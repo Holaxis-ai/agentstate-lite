@@ -63,7 +63,10 @@ aslite ui                              # the bundle, rendered — local server, 
 - **Storage is a seam.** The engine holds all semantics; backends (filesystem by
   default; memory, wire, cloud) plug in underneath with byte-identical version tokens.
 - **Recipes install capability as text.** A recipe is a folder of convention docs,
-  applied idempotently — it seeds schemas, then the bundle owns them.
+  applied idempotently — it seeds schemas, then the bundle owns them. Two ship built-in
+  (`context-notes`, `work-tracking`); `examples/recipes/claims` is the worked example of
+  an external recipe — a provenance/claims lifecycle installed via
+  `aslite recipe add examples/recipes/claims`, and the template for writing your own.
 
 Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf)
 — plain markdown any conformant tool can read.

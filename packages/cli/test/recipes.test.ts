@@ -634,3 +634,34 @@ test("--remote: recipe add against a served bundle, idempotent parity with the s
     await rm(remoteDir, { recursive: true, force: true });
   }
 });
+
+// ── The SHIPPED example recipe (examples/recipes/claims) — a drift gate for the public example ──
+
+const SHIPPED_CLAIMS_RECIPE = path.resolve(import.meta.dirname, "../../../examples/recipes/claims");
+
+test("SHIPPED example recipe (examples/recipes/claims): applies cleanly, declares the Claim kind with the full lifecycle enum, and is idempotent — the repo's public example cannot rot", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const result = await runJson(recipe, ["add", SHIPPED_CLAIMS_RECIPE, "--dir", dir]);
+    assert.equal(result.recipe, "added");
+    assert.equal(result.id, "claims");
+    assert.equal(result.version, "1.0.0");
+    assert.equal(result.changed, true);
+    const docs = result.docs as Array<Record<string, unknown>>;
+    assert.equal(docs.length, 1);
+    assert.equal(docs[0]!.id, "conventions/claim");
+
+    const bundle: Bundle = { root: dir };
+    const registry = await loadKinds(bundle);
+    const claim = registry.kinds.get("Claim");
+    assert.ok(claim, "the Claim kind must be declared after applying the shipped example recipe");
+    assert.deepEqual(claim!.fields.required, ["title", "status", "reason"]);
+    assert.deepEqual(claim!.fields.values?.status, ["active", "challenged", "locked", "deprecated"]);
+
+    const again = await runJson(recipe, ["add", SHIPPED_CLAIMS_RECIPE, "--dir", dir]);
+    assert.equal(again.changed, false, "re-applying the shipped recipe must be an idempotent no-op");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
