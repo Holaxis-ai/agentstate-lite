@@ -1,0 +1,358 @@
+/**
+ * CLI <-> wire-protocol integration suite (Stage 1 Unit 3 part B): drives the CLI's command
+ * layer with `--remote` against a REAL `@agentstate-lite/server` `serve()` instance (an actual
+ * `node:http` listener on an ephemeral port — unlike `packages/core/test/wire-protocol.test.ts`,
+ * which injects the router directly as the fetch transport with no sockets, this file exercises
+ * exactly what a `--remote` CLI invocation talks to) and asserts PARITY against the same
+ * operations run locally via `--dir`.
+ *
+ * Also covers the multi-writer convergence smoke (N concurrent `link add`s to the SAME source
+ * doc through one server) and the error-path taxonomy (`--remote` transport failure -> RUNTIME/1,
+ * `--remote` + `--dir` -> USAGE/2, `init --remote` -> USAGE/2 with a specific message, a malformed
+ * `--remote` URL -> USAGE/2).
+ *
+ * Test build coupling: this file imports `@agentstate-lite/server`, which resolves to
+ * `packages/server/dist` — fine under `npm run check` (build runs first), but a bare
+ * `npm test -w agentstate-lite` with a stale/missing server build will fail to resolve this
+ * import. Mirrors `docs/WIRE-PROTOCOL.md`'s "Test coupling note".
+ */
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+import { initBundle, writeDoc, MemoryBackend, type Bundle } from "@agentstate-lite/core";
+import { serve, type ServerHandle } from "@agentstate-lite/server";
+
+import { newCommand } from "../src/commands/new.js";
+import { doc } from "../src/commands/doc.js";
+import { list } from "../src/commands/list.js";
+import { link } from "../src/commands/link.js";
+import { view } from "../src/commands/view.js";
+import { init } from "../src/commands/init.js";
+import { CliError } from "../src/errors.js";
+import { applyRecipe } from "../src/recipes.js";
+import { CONTEXT_NOTES_RECIPE } from "../src/recipe-source.js";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(here, "../../..");
+const SAMPLE_BUNDLE = path.join(REPO_ROOT, "examples/sample-bundle");
+
+const T = "2026-07-01T00:00:00.000Z";
+
+async function tempDir(): Promise<string> {
+  return mkdtemp(path.join(tmpdir(), "agentstate-lite-remote-test-"));
+}
+
+/** Boot the reference server over `bundle` (a real socket listener, ephemeral port). */
+async function bootServerOverBundle(bundle: Bundle): Promise<{ url: string; close: () => Promise<void> }> {
+  const handle: ServerHandle = await serve({ bundle, port: 0 });
+  return { url: `http://${handle.host}:${handle.port}`, close: () => handle.close() };
+}
+
+/** Boot the reference server over a filesystem bundle rooted at `dir`. */
+async function bootServer(dir: string): Promise<{ url: string; close: () => Promise<void> }> {
+  return bootServerOverBundle({ root: dir });
+}
+
+/** Run a command function, capturing its `--json` stdout and parsing the envelope. */
+async function runJson(
+  cmd: (argv: string[], deps: { stdout: (s: string) => void }) => Promise<void>,
+  argv: string[],
+): Promise<Record<string, unknown>> {
+  let out = "";
+  await cmd([...argv, "--json"], { stdout: (s) => (out += s) });
+  return JSON.parse(out) as Record<string, unknown>;
+}
+
+test("new \"Context Note\" + doc read --remote: round-trip parity with the same operation run locally via --dir (the note command is gone; context notes are authored via the GENERIC path)", async () => {
+  const localDir = await tempDir();
+  const remoteDir = await tempDir();
+  try {
+    await initBundle(localDir);
+    await applyRecipe({ root: localDir }, CONTEXT_NOTES_RECIPE);
+    await initBundle(remoteDir);
+    await applyRecipe({ root: remoteDir }, CONTEXT_NOTES_RECIPE);
+    const server = await bootServer(remoteDir);
+    try {
+      const createArgs = ["Context Note", "c1", "--title", "c1", "--timestamp", T];
+      const localCreate = await runJson(newCommand, [...createArgs, "--dir", localDir]);
+      const remoteCreate = await runJson(newCommand, [...createArgs, "--remote", server.url]);
+      assert.equal(remoteCreate.id, localCreate.id);
+      assert.equal(remoteCreate.timestamp, localCreate.timestamp);
+
+      const localRead = await runJson(doc, ["read", localCreate.id as string, "--dir", localDir]);
+      const remoteRead = await runJson(doc, ["read", remoteCreate.id as string, "--remote", server.url]);
+      assert.deepEqual(remoteRead, localRead);
+    } finally {
+      await server.close();
+    }
+  } finally {
+    await rm(localDir, { recursive: true, force: true });
+    await rm(remoteDir, { recursive: true, force: true });
+  }
+});
+
+test("list --remote: count + default 4-field schema + --fields hatch, parity with local", async () => {
+  const localDir = await tempDir();
+  const remoteDir = await tempDir();
+  try {
+    const localBundle: Bundle = { root: localDir };
+    const remoteBundle: Bundle = { root: remoteDir };
+    await initBundle(localDir);
+    await initBundle(remoteDir);
+    for (const bundle of [localBundle, remoteBundle]) {
+      await writeDoc(bundle, { id: "a", frontmatter: { type: "Concept", title: "A", tags: ["x"], timestamp: T }, body: "A" });
+      await writeDoc(bundle, { id: "b", frontmatter: { type: "Concept", title: "B", tags: ["y"], timestamp: T }, body: "B" });
+    }
+    const server = await bootServer(remoteDir);
+    try {
+      const localList = await runJson(list, ["--dir", localDir]);
+      const remoteList = await runJson(list, ["--remote", server.url]);
+      assert.deepEqual(remoteList, localList);
+      assert.equal(remoteList.count, 2);
+
+      const localFields = await runJson(list, ["--dir", localDir, "--fields", "tags"]);
+      const remoteFields = await runJson(list, ["--remote", server.url, "--fields", "tags"]);
+      assert.deepEqual(remoteFields, localFields);
+    } finally {
+      await server.close();
+    }
+  } finally {
+    await rm(localDir, { recursive: true, force: true });
+    await rm(remoteDir, { recursive: true, force: true });
+  }
+});
+
+test("link add --remote: idempotent (changed:false, exit 0) on re-add", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, { id: "a", frontmatter: { type: "Concept", title: "A", timestamp: T }, body: "A" });
+    await writeDoc(bundle, { id: "b", frontmatter: { type: "Concept", title: "B", timestamp: T }, body: "B" });
+    const server = await bootServer(dir);
+    try {
+      const first = await runJson(link, ["add", "a", "b", "--remote", server.url]);
+      assert.equal(first.changed, true);
+      assert.equal(first.link, "added");
+
+      const second = await runJson(link, ["add", "a", "b", "--remote", server.url]);
+      assert.equal(second.changed, false);
+      assert.equal(second.link, "exists");
+
+      const shown = await runJson(link, ["show", "a", "--remote", server.url]);
+      assert.equal(shown.outbound_count, 1);
+    } finally {
+      await server.close();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("doc read --out --remote: canonical re-serialization is byte-identical to a LOCAL read for an engine-written doc", async () => {
+  const dir = await tempDir();
+  const outDir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "concepts/x",
+      frontmatter: { type: "Concept", title: "X", tags: ["a", "b"], timestamp: T },
+      body: "Hello **world**.\n\nA second paragraph.\n",
+    });
+    const server = await bootServer(dir);
+    try {
+      const localOut = path.join(outDir, "local.md");
+      const remoteOut = path.join(outDir, "remote.md");
+      // Capture the receipt (like every other call in this file via runJson) instead of letting
+      // it hit real test stdout — doc's default stdout falls back to process.stdout.write.
+      const captureStdout = { stdout: (_s: string) => {} };
+      await doc(["read", "concepts/x", "--out", localOut, "--dir", dir], captureStdout);
+      await doc(["read", "concepts/x", "--out", remoteOut, "--remote", server.url], captureStdout);
+      const localBytes = await readFile(localOut);
+      const remoteBytes = await readFile(remoteOut);
+      assert.deepEqual(remoteBytes, localBytes);
+    } finally {
+      await server.close();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("view --remote on examples/sample-bundle served remotely = 4 nodes / 7 edges; viz.html written locally", async () => {
+  const server = await bootServer(SAMPLE_BUNDLE);
+  const outDir = await tempDir();
+  try {
+    const out = path.join(outDir, "viz.html");
+    const result = await runJson(view, ["--remote", server.url, "--out", out]);
+    assert.equal(result.nodes, 4);
+    assert.equal(result.edges, 7);
+    assert.equal(result.out, out);
+    const html = await readFile(out, "utf8");
+    assert.ok(html.length > 0);
+    assert.match(html, /<html/i);
+  } finally {
+    await server.close();
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Multi-writer convergence over `MemoryBackend`, not `FilesystemBackend`, and that choice is
+ * load-bearing. `FilesystemBackend.write()`'s compare-and-swap is DOCUMENTED best-effort
+ * (`core/src/backend.ts`: "hash the current bytes and compare... cannot fully close the
+ * check-then-write race, POSIX has no atomic conditional rename"). Driving genuinely concurrent
+ * writes to the SAME doc through one real `serve()` process exposed exactly that: `currentVersion()`
+ * and the eventual `atomicWrite()` are separated by two `await` points, so under real concurrency
+ * MANY writers can all observe the SAME pre-write version, all pass the CAS check, and all proceed
+ * to write — producing SILENT lost updates (every individual `link add` reports `changed:true`, yet
+ * the final doc reflects only ONE of them) rather than the `VersionConflict`s that `link add`'s
+ * bounded retry loop is designed to catch and resolve. That is a genuine, pre-existing gap in the
+ * DEGENERATE filesystem adapter's concurrency story, not something this CLI-wiring unit should
+ * redesign (recorded honestly in STATUS.md's caveats instead). `MemoryBackend` has REAL enforced
+ * CAS (see `core/src/memory-backend.ts` and `dual-backend.test.ts`), so testing convergence against
+ * it here proves the thing Stage 1 Unit 3 actually claims: the WIRE PROTOCOL plus `link add`'s
+ * bounded CAS-retry loop converge correctly under real concurrent HTTP load when the backend's CAS
+ * is properly enforced — exactly the contract a document-centric remote backend (the flagship,
+ * CLAUDE.md gate 3) provides.
+ *
+ * Writer count is 5, not more, and that bound is load-bearing too: `link add`'s retry budget is
+ * `LINK_ADD_MAX_ATTEMPTS = 5` (link.ts), which tolerates at most 4 `VersionConflict`s per writer
+ * (`attempt < LINK_ADD_MAX_ATTEMPTS - 1`). Under worst-case lockstep interleaving — all N writers
+ * read the same starting version before any PUT lands, then one winner lands per round — the
+ * unluckiest of N writers conflicts N-1 times. N=5 puts that worst case at exactly 4 conflicts,
+ * inside the budget; N=8 would let the unluckiest writer need 7 retries and could genuinely exceed
+ * the budget (STALE_HEAD) on unlucky scheduling, which is a test-flakiness bug, not a product bug —
+ * do NOT "fix" this by raising `LINK_ADD_MAX_ATTEMPTS` for the test's sake.
+ */
+test("multi-writer convergence: N concurrent `link add`s to the SAME source doc through one server (MemoryBackend: real enforced CAS) all land, all exit 0", async () => {
+  const bundle: Bundle = { root: "mem://multi-writer-test", backend: new MemoryBackend() };
+  await writeDoc(bundle, { id: "hub", frontmatter: { type: "Concept", title: "Hub", timestamp: T }, body: "Hub." });
+  const targets = ["t1", "t2", "t3", "t4", "t5"];
+  for (const t of targets) {
+    await writeDoc(bundle, { id: t, frontmatter: { type: "Concept", title: t, timestamp: T }, body: t });
+  }
+  const server = await bootServerOverBundle(bundle);
+  try {
+    const results = await Promise.all(
+      targets.map((t) => runJson(link, ["add", "hub", t, "--remote", server.url])),
+    );
+    for (const r of results) {
+      assert.equal(r.changed, true, `expected ${r.to as string} to land`);
+      assert.equal(r.link, "added");
+    }
+
+    const shown = await runJson(link, ["show", "hub", "--remote", server.url]);
+    assert.equal(shown.outbound_count, targets.length);
+    const linked = new Set((shown.outbound as Array<{ to: string }>).map((l) => l.to));
+    for (const t of targets) assert.ok(linked.has(t), `${t} missing from converged outbound set`);
+  } finally {
+    await server.close();
+  }
+});
+
+/**
+ * Same concurrent-writer shape as above, now over the DEGENERATE `FilesystemBackend` adapter too —
+ * PROMOTED from a "never crashes" smoke check to a full lossless-convergence assertion, mirroring
+ * the `MemoryBackend` test above. This is safe to assert now (previously it was NOT) because
+ * `FilesystemBackend` gained a same-process per-key mutex (`core/src/backend.ts`'s
+ * `FilesystemBackend.locks`/`withLock`) that serializes each write's full check-then-write critical
+ * section per resolved file path: concurrent writers to the SAME doc now genuinely race for ONE
+ * winner per round and get real `VersionConflict`s to retry on, instead of all silently "succeeding"
+ * while only the last write survives. That closes the gap ONLY within one process — this is exactly
+ * the `serve` case (multiple CLI clients -> one `serve` process -> one `FilesystemBackend`), which is
+ * what this suite drives. Cross-process concurrent writers (two `serve` instances, or `serve` plus a
+ * direct local CLI write, over the same directory) remain best-effort — see STATUS.md.
+ *
+ * Writer count is 5, not more, for the SAME reason as the `MemoryBackend` test above:
+ * `LINK_ADD_MAX_ATTEMPTS = 5` in `link.ts` tolerates at most 4 `VersionConflict`s per writer under
+ * worst-case lockstep interleaving. Do NOT raise the writer count here without also reasoning about
+ * that budget (see the comment on the `MemoryBackend` test).
+ */
+test("multi-writer convergence over FilesystemBackend (served, same-process): N concurrent `link add`s to the SAME source doc through one server now converge losslessly, thanks to the same-process per-key mutex", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, { id: "hub", frontmatter: { type: "Concept", title: "Hub", timestamp: T }, body: "Hub." });
+    const targets = ["t1", "t2", "t3", "t4", "t5"];
+    for (const t of targets) {
+      await writeDoc(bundle, { id: t, frontmatter: { type: "Concept", title: t, timestamp: T }, body: t });
+    }
+    const server = await bootServer(dir);
+    try {
+      const results = await Promise.all(
+        targets.map((t) => runJson(link, ["add", "hub", t, "--remote", server.url])),
+      );
+      for (const r of results) {
+        assert.equal(r.changed, true, `expected ${r.to as string} to land`);
+        assert.equal(r.link, "added");
+      }
+
+      const shown = await runJson(link, ["show", "hub", "--remote", server.url]);
+      assert.equal(shown.outbound_count, targets.length);
+      const linked = new Set((shown.outbound as Array<{ to: string }>).map((l) => l.to));
+      for (const t of targets) assert.ok(linked.has(t), `${t} missing from converged outbound set`);
+    } finally {
+      await server.close();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--remote: an unreachable server maps to exit 1 RUNTIME with a serve hint, not a raw TypeError/USAGE misclassification", async () => {
+  await assert.rejects(
+    () => list(["--remote", "http://127.0.0.1:1", "--json"], {}),
+    (err: unknown) => {
+      assert.ok(err instanceof CliError, `expected a CliError, got ${String(err)}`);
+      assert.equal(err.code, "RUNTIME");
+      assert.equal(err.exitCode, 1);
+      assert.match(err.help ?? "", /serve/);
+      return true;
+    },
+  );
+});
+
+test("--remote + --dir together: USAGE (exit 2)", async () => {
+  await assert.rejects(
+    () => list(["--remote", "http://127.0.0.1:4818", "--dir", "/nonexistent", "--json"], {}),
+    (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "USAGE");
+      assert.equal(err.exitCode, 2);
+      return true;
+    },
+  );
+});
+
+test("init --remote: USAGE (exit 2) with the specific no-create-bundle-endpoint message", async () => {
+  await assert.rejects(
+    () => init(["--remote", "http://127.0.0.1:4818", "--json"], {}),
+    (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "USAGE");
+      assert.equal(err.exitCode, 2);
+      assert.match(err.message, /create-bundle endpoint/);
+      return true;
+    },
+  );
+});
+
+test("malformed --remote URL: USAGE (exit 2)", async () => {
+  await assert.rejects(
+    () => list(["--remote", "not-a-url", "--json"], {}),
+    (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "USAGE");
+      assert.equal(err.exitCode, 2);
+      return true;
+    },
+  );
+});

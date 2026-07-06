@@ -1,0 +1,203 @@
+/**
+ * `@agentstate-lite/core` — the OKF store engine.
+ *
+ * An **Open Knowledge Format (OKF v0.1, Draft)** *Knowledge Bundle* is a
+ * directory tree of UTF-8 markdown files, each carrying a YAML frontmatter block
+ * (delimited by `---` lines) plus a markdown body. Every non-reserved `.md` file
+ * is a *Concept*; its *Concept ID* is the file path minus `.md`
+ * (e.g. `tables/users.md` -> `tables/users`).
+ *
+ * The FILESYSTEM is the source of truth by default, but storage is routed through
+ * a pluggable {@link StorageBackend} (default: {@link FilesystemBackend}). This
+ * module implements bundle I/O, standard-markdown cross-links (never wikilinks),
+ * derived backlinks, freshness derived from `timestamp`, and reserved-file
+ * (`index.md`/`log.md`) handling. The static HTML visualizer lives in
+ * `@agentstate-lite/viewer`, which consumes this engine.
+ *
+ * The public function signatures below are contract-stable; everything past the
+ * "extensions" line is additive (pure helpers, reserved-file accessors, and the
+ * ported content_type utilities).
+ *
+ * @see OKF spec — GoogleCloudPlatform/knowledge-catalog, `okf/SPEC.md`
+ * @packageDocumentation
+ */
+
+// ── Contract types (re-exported verbatim from `types.ts`) ─────────────────────
+export type {
+  ConceptId,
+  Frontmatter,
+  OkfDocument,
+  Bundle,
+  InitBundleOptions,
+  QueryFilter,
+  Link,
+  FreshnessVerdict,
+  FreshnessOptions,
+  FreshnessResult,
+  ReservedFilename,
+  StorageBackend,
+  Version,
+  ReadResult,
+  ReservedReadResult,
+  VersionInfo,
+  WriteOptions,
+  DeleteOptions,
+} from "./types.js";
+
+// ── Contract functions ────────────────────────────────────────────────────────
+export {
+  initBundle,
+  writeDoc,
+  readDoc,
+  query,
+  parseLinks,
+  backlinks,
+} from "./bundle.js";
+
+// Version-surfacing engine API (additive; the seam's hard-case capabilities threaded
+// through the engine): `writeDocVersioned` returns the write's version token; `readDocVersioned`
+// returns a document with its version; `docVersions` exposes attributed history. The plain
+// `writeDoc`/`readDoc` above keep their historical `OkfDocument` returns unchanged.
+export { writeDocVersioned, readDocVersioned, docVersions } from "./bundle.js";
+export type { WriteResult } from "./bundle.js";
+
+// Delete (additive; the DELETE-operation pass): hard-delete, non-cascading, reserved files
+// stay non-deletable (guarded at the SAME engine layer writeDocVersioned's reserved-file
+// check lives at), idempotent (absent -> false, never an error). `deleteDoc` carries the
+// engine's id-safety/reserved-file guard; `deleteBlob` is a pure pass-through, mirroring
+// the blob wrappers above.
+export { deleteDoc, deleteBlob } from "./bundle.js";
+
+// Blob storage engine wrappers (additive; Stage-1 Unit 2a Part A): opaque bytes + a
+// content-type, addressed by a bundle-relative key DISJOINT from the concept-document
+// namespace, versioned by a raw-byte content hash, CAS-able, actor-attributed — reusing
+// the doc seam's version/CAS/actor machinery. Future consumers (the CLI's `promote`/
+// `pull`) route through ONLY these, never a backend directly.
+export { readBlob, writeBlob, existsBlob, listBlobs } from "./bundle.js";
+export type { BlobKey, ReadBlobResult } from "./types.js";
+
+export { freshness } from "./freshness.js";
+
+// Pluggable storage: the seam is `StorageBackend` (types.ts). `FilesystemBackend` is
+// the DEGENERATE default adapter (the engine falls back to it for a `{ root }` bundle);
+// `MemoryBackend` implements the SAME contract for the hard case (real version chain,
+// enforced compare-and-swap, per-write actor) and proves the engine is backend-neutral.
+export { FilesystemBackend } from "./backend.js";
+export { MemoryBackend } from "./memory-backend.js";
+
+// `RemoteBackend` is the CLIENT half of the wire-protocol v0 seam-over-HTTP contract
+// (docs/WIRE-PROTOCOL.md) — a FUTURE plug-in adapter, proven here against the
+// in-repo reference server (`@agentstate-lite/server`) by the tri-backend contract
+// tests. No CF/D1/production deployment is implied by its presence.
+export { RemoteBackend, RemoteError } from "./remote-backend.js";
+export type { FetchLike, RemoteBackendOptions } from "./remote-backend.js";
+
+// Versioning / attribution primitives shared by every adapter: the content-addressed
+// version token, a default actor, and the typed compare-and-swap conflict error.
+// `blobVersion` is the raw-bytes sibling of `contentVersion`/`versionOfBytes` (blobs
+// are hashed directly, never routed through a string/UTF-8 step).
+export {
+  contentVersion,
+  versionOfBytes,
+  blobVersion,
+  defaultActor,
+  VersionConflict,
+  stripETagWrapper,
+} from "./versioning.js";
+
+// ── Extensions (additive; do not break the contract) ──────────────────────────
+
+// `list` is an alias of `query` (the `list/query` API surface).
+export { list } from "./bundle.js";
+export type { QueryOptions, SkippedDoc } from "./bundle.js";
+
+// Head-projection scan + its canonical filter predicate — contracts documented at the
+// definition sites (bundle.ts/types.ts). The delete-tolerant batch read they share
+// (`readManyExisting`) is internal: its one-time export for the reference router was
+// withdrawn when the router switched to consuming `queryHeads` wholesale.
+export { queryHeads, matchesFilter } from "./bundle.js";
+export type { HeadResult } from "./types.js";
+
+// Reserved-file (§6 index.md / §7 log.md) accessors + index regeneration.
+export { readIndex, readLog, appendLog, regenerateIndex } from "./bundle.js";
+
+// Pure, unit-testable path / link / note / freshness helpers.
+export {
+  RESERVED_FILENAMES,
+  isReservedFile,
+  conceptIdFromPath,
+  pathFromConceptId,
+  assertSafeConceptId,
+  assertSafeReservedDir,
+  assertSafeBlobKey,
+  toPosix,
+} from "./paths.js";
+
+export {
+  extractMarkdownLinks,
+  resolveConceptId,
+  relativeHref,
+  parseLinksFromDoc,
+  isExternalHref,
+} from "./links.js";
+export type { RawLink } from "./links.js";
+
+export { parseTimestamp } from "./freshness.js";
+
+export { parseMarkdown, stringifyDoc, stringifyWithData, MalformedDocumentError } from "./frontmatter.js";
+
+// Kind conventions (CLAUDE.md gate 3, decision 5): a bundle-declared, opt-in document-kind
+// registry — validation + per-kind freshness horizons, read from `Convention` docs under
+// `conventions/`. THE mechanism is core (one implementation, consumed by CLI/viewer/server/future
+// MCP); usage is opt-in per bundle. A conventions-free bundle is byte-for-byte unaffected.
+export {
+  CONVENTIONS_PREFIX,
+  CONVENTION_TYPE,
+  loadKinds,
+  validateAgainstKind,
+  freshnessHorizonMs,
+  kindConventionDoc,
+  splitSections,
+} from "./kinds.js";
+export type { KindConvention, KindFields, KindRegistry } from "./kinds.js";
+
+// Ported MIME utilities (holaxis-agentstate `packages/schemas/src/content-type.ts`).
+// `resolveContentType` is the ONE place a blob's content-type is resolved (explicit
+// override > inferred from key extension > `DEFAULT_BLOB_CONTENT_TYPE`) — every
+// backend's blob methods route through it.
+export {
+  EXTENSION_CONTENT_TYPES,
+  extensionOfDocKey,
+  inferContentTypeFromDocKey,
+  inferContentTypeForNewBlob,
+  resolveContentType,
+  DEFAULT_BLOB_CONTENT_TYPE,
+} from "./content-type.js";
+export type { ContentTypeInference, ValidationWarning } from "./content-type.js";
+
+// Auth/collaboration wire contract (shared by worker auth-routes + CLI + future UI):
+// the SHARED SOURCE OF TRUTH for the `/v0/join`, `/v0/whoami`, `/v0/bundles`,
+// `/v0/invites*`, `/v0/members*`, `/v0/keys*` request/response shapes — see
+// `auth-wire.ts`'s module doc comment for the promotion plan (a future dedicated
+// `@agentstate-lite/wire` package). Lives here for now because core is the one package
+// both the CLI and the worker already depend on.
+export { ROLES, isRole } from "./auth-wire.js";
+export type {
+  Role,
+  JoinResponse,
+  MembershipWire,
+  WhoamiResponse,
+  ListBundlesResponse,
+  InviteRecordWire,
+  CreateInviteResponse,
+  ListInvitesResponse,
+  RevokeInviteResponse,
+  MemberRecordWire,
+  ListMembersResponse,
+  SetMemberRoleResponse,
+  RemoveMemberResponse,
+  MintKeyResponse,
+  ApiKeyRecordWire,
+  ListKeysResponse,
+  RevokeKeyResponse,
+} from "./auth-wire.js";

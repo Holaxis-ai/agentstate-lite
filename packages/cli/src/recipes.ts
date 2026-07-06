@@ -1,0 +1,270 @@
+// The CLI's recipe APPLY machinery + `context-notes`'s CONTENT ("recipe zero").
+//
+// This is where Context Note SEEDING lives (moved out of `packages/core` — CLAUDE.md gate 3: "the
+// engine special-cases NOTHING about conventions"). Core keeps only the generic apply primitive
+// (`writeDocVersioned` expect-absent CAS) and the generic `kindConventionDoc` serializer; this
+// module supplies the SPECIFIC content (the `Context Note` kind's convention + seed prose body,
+// plus the built-in recipe's manifest text) and the generic loop that applies ANY recipe's
+// convention docs idempotently, whether it came from the built-in source or an external folder
+// (`recipe-source.ts`'s `parseRecipeFiles` — the ONE parse+validate path both flow through).
+//
+// `context-notes` (recipe zero) is the spec-test that a recipe must model a convention doc WITH A
+// BODY, not just bare frontmatter — `CONTEXT_NOTE_SEED_BODY` is the in-bundle authoring reference
+// for kind conventions (see its own doc comment below).
+//
+// Recipes Unit B (pluggable recipes): the registry is no longer an in-code array of `Recipe`
+// objects keyed by name — that shape could only ever hold built-ins. `applyRecipe`'s input widened
+// to `recipe-source.ts`'s `LoadedRecipe` (a folder-shaped `OkfDocument[]`, produced identically
+// whether the folder was a built-in in-code constant or bytes read off disk), so a built-in and an
+// external recipe apply through byte-for-byte the SAME function.
+import {
+  writeDocVersioned,
+  query,
+  CONVENTIONS_PREFIX,
+  VersionConflict,
+  type Bundle,
+  type ConceptId,
+  type KindConvention,
+  type OkfDocument,
+  type ValidationWarning,
+} from "@agentstate-lite/core";
+import type { LoadedRecipe } from "./recipe-source.js";
+
+/** The `type` value the context-notes recipe governs; formerly a core export, localized when the
+ * bespoke `note` command (and core's `noteToDoc`) was deleted — the recipe is exactly the thing
+ * that DEFINES the type it governs, so the identifier belongs here now. */
+const CONTEXT_NOTE_TYPE = "Context Note";
+
+/**
+ * The `Context Note` kind convention (moved VERBATIM from core's `CONTEXT_NOTE_KIND`, Recipes Unit
+ * A). `governs`/`title` are stamped from the locally-defined `CONTEXT_NOTE_TYPE` above — the type
+ * this recipe governs, authored via the GENERIC path (`new "Context Note" <id>` + `doc read`/`doc
+ * update`/`doc write`; there is no bespoke note command or codec anymore). `description` is
+ * declared OPTIONAL (not required) because a `new "Context Note"` instance can legitimately carry
+ * an empty one, and a kind must not fail its own convention's producer. `sections` declares ONLY
+ * `Summary` — the one heading the recipe SCAFFOLDS on every `new "Context Note"` create — for the
+ * same producer-must-pass reason: a summary-only note is the most common legitimate shape, and
+ * declaring additional headings would make `status` flag every minimal note with
+ * KIND_SECTION_MISSING noise — alert fatigue on the primary path. The seed's BODY carries a worked
+ * multi-section/`fields.values` example for authors of OTHER kinds to copy.
+ */
+export const CONTEXT_NOTE_KIND: KindConvention = {
+  id: "conventions/context-note",
+  title: CONTEXT_NOTE_TYPE,
+  governs: CONTEXT_NOTE_TYPE,
+  path: "context-notes/",
+  fields: { required: ["title", "timestamp"], optional: ["description", "tags"], values: {} },
+  sections: ["Summary"],
+  freshnessHorizon: "24h",
+};
+
+/**
+ * The seed's prose body (`conventions/context-note.md`) is deliberately doubled up as the
+ * IN-BUNDLE authoring reference for kind conventions: every produced bundle that applies this
+ * recipe (via `init`'s default, or an explicit `recipe add context-notes`) ships one worked
+ * example of the ONE correct shape, right where an agent discovering `conventions/` will find it —
+ * not just in a doc an agent may never read. Bodies are prose (the registry only parses
+ * frontmatter, per `parseConventionDoc`), so a fenced YAML example here is inert to the parser
+ * and purely illustrative. Moved VERBATIM from core's `CONTEXT_NOTE_SEED_BODY` (Recipes Unit A) —
+ * this exact string, reused through the same `kindConventionDoc` serializer, is what guarantees
+ * the on-disk `conventions/context-note.md` a recipe-zero `init` produces is BYTE-IDENTICAL
+ * (modulo the always-dynamic `timestamp`) to what the old engine-side seeding produced.
+ */
+export const CONTEXT_NOTE_SEED_BODY =
+  "# Context Note\n\n" +
+  "An agent's cross-session orientation note: what happened, what was decided, and what's " +
+  "still open. Create one with `new \"Context Note\" <id>` (scaffolds the `# Summary` section " +
+  "under `context-notes/`), read it with `doc read`, and edit it with `doc update` / `doc " +
+  "write`. `status` surfaces this kind's 24h freshness horizon across the bundle.\n\n" +
+  "## Declaring a kind convention\n\n" +
+  "A kind convention is a plain OKF doc (`type: Convention`) living under `conventions/`. Its " +
+  "FRONTMATTER is the only part core parses (this prose is not). Supported frontmatter keys:\n\n" +
+  "- `governs` (required, non-empty) — the `type` value this convention governs.\n" +
+  "- `title` (optional) — display title; defaults to `governs`.\n" +
+  "- `path` (optional) — canonical bundle-relative path prefix instances are scaffolded under " +
+  "(e.g. `roadmap/`).\n" +
+  "- `fields.required` — list of field names an instance MUST carry (non-empty).\n" +
+  "- `fields.optional` — list of field names an instance MAY carry.\n" +
+  "- `fields.values` — a MAP of `field name -> list of allowed values`. This is the ONLY place " +
+  "an enum constraint goes — never a top-level `enum:`/`enums:`/`values:`/`constraints:` key, " +
+  "and never a field named directly at the top level either.\n" +
+  "- `sections` — list of expected level-1 (`# Heading`) body-section names. Declare only the " +
+  "headings EVERY instance must carry (this Context Note kind declares just `Summary`, the one " +
+  "section `new \"Context Note\"` scaffolds and every instance carries).\n" +
+  "- `freshness_horizon` — `<n>(m|h|d)`, e.g. `24h`, `30d`, `15m`.\n\n" +
+  "Worked example (a `Roadmap Item` kind, with an enum-restricted field and expected sections):\n\n" +
+  "```yaml\n" +
+  "---\n" +
+  "type: Convention\n" +
+  "title: Roadmap Item\n" +
+  "governs: Roadmap Item\n" +
+  "path: roadmap/\n" +
+  "fields:\n" +
+  "  required: [title, status]\n" +
+  "  optional: [horizon]\n" +
+  "  values:\n" +
+  "    status: [planned, active, done]\n" +
+  "sections: [Why, \"Done when\"]\n" +
+  "freshness_horizon: 30d\n" +
+  "---\n" +
+  "```\n";
+
+/** One-line description, shown by `recipes` and the command reference — the built-in `context-notes`
+ * recipe's `recipe.md` manifest `summary:`. */
+export const CONTEXT_NOTES_SUMMARY =
+  "Declares the built-in Context Note kind convention (title/timestamp required, 24h freshness horizon)";
+
+/** The prose body of the built-in `context-notes` recipe's `recipe.md` manifest doc — NOT parsed by
+ * `parseRecipeFiles` (only the manifest's frontmatter is read), purely descriptive for a human or
+ * agent who reads the recipe folder directly (built-in or, via a future `eject`, on disk). */
+export const RECIPE_DESC_BODY =
+  "# Context Notes\n\n" +
+  "Installs the `Context Note` kind convention: a lightweight cross-session orientation note — " +
+  "what happened, what was decided, what's still open. Declares the `Context Note` type's " +
+  "required fields, the `# Summary` scaffold section, and a 24h freshness horizon.\n\n" +
+  "Applied by default on `init` (opt out with `init --recipe none`), or on demand with " +
+  "`recipe add context-notes`.\n";
+
+/** The `type` value the work-tracking recipe governs — mirrors `CONTEXT_NOTE_TYPE`'s pattern (a
+ * recipe is exactly the thing that DEFINES the type it governs). */
+const TASK_TYPE = "Task";
+
+/**
+ * The `Task` kind convention — the first DOMAIN recipe on the pluggable-recipe foundation
+ * (Recipes Unit B was the plumbing; this is the first thing built on it). This frontmatter shape
+ * MUST match the hand-authored `conventions/task` doc already deployed on the reference remote
+ * bundle (verified by pulling it — see the recipes test), so `recipe add work-tracking` against
+ * that bundle is an idempotent no-op, not a second competing declaration of `Task`. No `sections`
+ * — unlike Context Note, a Task instance is not scaffolded around a fixed body shape; its body is
+ * free-form task description, and declaring expected headings here would just be lint noise on
+ * the common one-line task.
+ */
+export const TASK_KIND: KindConvention = {
+  id: "conventions/task",
+  title: TASK_TYPE,
+  governs: TASK_TYPE,
+  path: "tasks/",
+  fields: {
+    required: ["title", "status"],
+    optional: ["priority", "assignee", "description"],
+    values: { status: ["todo", "in_progress", "blocked", "done", "canceled"] },
+  },
+  freshnessHorizon: "30d",
+};
+
+/**
+ * The seed's prose body (`conventions/task.md`) — byte-identical to the hand-authored body on the
+ * deployed reference bundle (frontmatter parity is the CONTRACT; matching the body too just avoids
+ * a needless divergence between "the CLI's built-in" and "the worked example a human already
+ * wrote"). Composed entirely from EXISTING lite primitives (link graph as DAG, CAS write as claim,
+ * `list --type`/`status` as query/lint) — no bespoke task engine, no new verb (CLAUDE.md scope-out:
+ * kind-aware columns/claim/runnable-blocked are a separate concern, not part of this recipe).
+ */
+export const TASK_SEED_BODY =
+  "# Task\n\n" +
+  "A unit of work, composed entirely from lite primitives — no bespoke task engine.\n" +
+  "A task is a `type: Task` doc; its `status` is a validated enum; its DEPENDENCIES are\n" +
+  "cross-links to prerequisite task docs (the link graph IS the DAG, backlinks show what\n" +
+  "is blocked on it); an atomic CLAIM is a compare-and-swap write flipping `status` to\n" +
+  "`in_progress` (a second claimer gets a VersionConflict). Query with `list --type Task`;\n" +
+  "lint/orphans/staleness via `status`.\n";
+
+/** One-line description, shown by `recipes` and the command reference — the built-in
+ * `work-tracking` recipe's `recipe.md` manifest `summary:`. */
+export const WORK_TRACKING_SUMMARY =
+  "Declares the built-in Task kind convention (title/status required, status enum, 30d freshness horizon)";
+
+/** The prose body of the built-in `work-tracking` recipe's `recipe.md` manifest doc — NOT parsed
+ * by `parseRecipeFiles` (only the manifest's frontmatter is read), purely descriptive. */
+export const WORK_TRACKING_DESC_BODY =
+  "# Work Tracking\n\n" +
+  "Installs the `Task` kind convention: a unit of work with a validated `status` enum " +
+  "(todo/in_progress/blocked/done/canceled), scaffolded under `tasks/`. Status/priority/assignee " +
+  "are FIELDS of Task, not separate conventions or a bespoke task verb — dependencies, claiming, " +
+  "and querying all compose from existing generic primitives (`link add`, CAS `doc update`, " +
+  "`list --type Task`, `status`).\n\n" +
+  "Applied on demand with `recipe add work-tracking` (not part of `init`'s default — that stays " +
+  "`context-notes`).\n";
+
+/** Per-doc apply outcome: `changed: false` means the doc already existed (idempotent no-op). */
+export interface RecipeDocResult {
+  id: ConceptId;
+  changed: boolean;
+}
+
+/** The receipt `applyRecipe` returns: identity, per-doc outcomes, an overall `changed` (any doc
+ * changed), and any non-fatal warnings collected at LOAD time (recipe.md reserved keys, skipped
+ * malformed convention docs). Duplicate-`governs` against the TARGET bundle is a separate, POST-
+ * apply check (`loadKinds(bundle)`) — the command layer's job, not this function's. */
+export interface ApplyRecipeResult {
+  id: string;
+  version: string;
+  source: string;
+  docs: RecipeDocResult[];
+  changed: boolean;
+  warnings: ValidationWarning[];
+}
+
+/**
+ * Apply `recipe` to `bundle`: write each of its convention docs via the engine's generic
+ * expect-absent CAS create (`writeDocVersioned(bundle, doc, { expectedVersion: null })`) — the
+ * SAME create-race-closing pattern core's old `seedContextNoteKind` used, now generalized to any
+ * recipe, built-in OR external. Idempotent: a `VersionConflict` means the doc already exists (a
+ * prior apply, or a bundle author's own hand-edit) — silently a no-op for that doc, never an
+ * error, never a clobber.
+ *
+ * Timestamp rule (approved §B decision 6): the installer ALWAYS stamps `timestamp = now` — a
+ * convention doc's timestamp means "installed into THIS bundle," which is genuinely the apply
+ * instant, not whenever the recipe's bytes happened to be authored. Every convention doc
+ * `parseRecipeFiles` produces already carries a `timestamp` key (a real one for a bundle-authored
+ * external recipe; `PLACEHOLDER_TIMESTAMP` for the in-code built-in), so `{ ...d.frontmatter,
+ * timestamp: now }` REPLACES the value IN PLACE rather than appending a new key — preserving
+ * frontmatter key order end to end (`writeDocVersioned` itself additionally normalizes `type`
+ * first / `timestamp` last, so this holds regardless). On `VersionConflict` the freshly-stamped
+ * in-memory doc is discarded, so an existing on-disk doc is never rewritten or re-stamped —
+ * idempotency intact, hand-edits never clobbered.
+ */
+export async function applyRecipe(
+  bundle: Bundle,
+  recipe: LoadedRecipe,
+  now: string = new Date().toISOString(),
+): Promise<ApplyRecipeResult> {
+  const docs: RecipeDocResult[] = [];
+  for (const d of recipe.docs) {
+    const doc: OkfDocument = { ...d, frontmatter: { ...d.frontmatter, timestamp: now } };
+    let changed = true;
+    try {
+      await writeDocVersioned(bundle, doc, { expectedVersion: null });
+    } catch (err) {
+      if (err instanceof VersionConflict) {
+        changed = false; // already present — idempotent no-op, not an error
+      } else {
+        throw err;
+      }
+    }
+    docs.push({ id: doc.id, changed });
+  }
+  return {
+    id: recipe.id,
+    version: recipe.version,
+    source: recipe.source,
+    docs,
+    changed: docs.some((d) => d.changed),
+    warnings: recipe.warnings,
+  };
+}
+
+/**
+ * The set of convention-doc ids currently present under `conventions/` — ONE round-trip
+ * (backend-agnostic, works over `--remote`), used by `recipes` to report whether a built-in is
+ * already applied to `bundle` (every one of its docs' ids present).
+ */
+export async function appliedDocIds(bundle: Bundle): Promise<Set<ConceptId>> {
+  const docs = await query(bundle, { prefix: CONVENTIONS_PREFIX });
+  return new Set(docs.map((d) => d.id));
+}
+
+/** True when every convention doc `recipe` installs is already present in `appliedIds`. */
+export function isRecipeApplied(recipe: LoadedRecipe, appliedIds: Set<ConceptId>): boolean {
+  return recipe.docs.every((doc) => appliedIds.has(doc.id));
+}

@@ -1,0 +1,13 @@
+/**
+ * `@agentstate-lite/server` — the wire-protocol v0 REFERENCE server
+ * (`docs/WIRE-PROTOCOL.md`): a Web-standard `fetch`-style router over the OKF
+ * engine, plus a thin `node:http` bootstrap. A pure consumer of
+ * `@agentstate-lite/core` — no parsing/link/OKF logic lives here (see `router.ts`
+ * module doc). Reference-not-production: no auth, loopback-only default bind.
+ *
+ * @packageDocumentation
+ */
+
+export { createRouter, createRouterForBackend } from "./router.js";
+export { serve, requestFromIncomingMessage, writeResponseToServerResponse } from "./serve.js";
+export type { ServeOptions, ServerHandle } from "./serve.js";

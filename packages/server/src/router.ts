@@ -1,0 +1,594 @@
+/**
+ * Wire-protocol v0 fetch router — the wire-protocol v0 seam-over-HTTP contract
+ * (`docs/WIRE-PROTOCOL.md`) implemented as a plain
+ * `(req: Request) => Promise<Response>` function using Web-standard `Request`/
+ * `Response`, so the identical router later mounts unchanged in a Cloudflare
+ * Worker `fetch` handler (a future, out-of-scope deployment).
+ *
+ * ONE-ENGINE RULE: this module contains NO parsing/link/OKF logic of its own.
+ * Doc WRITES route through the engine (`writeDocVersioned` from `@agentstate-lite/core`)
+ * so server-side OKF enforcement (§9.2 non-empty `type`, id safety, reserved-file
+ * rejection) comes free — the engine keeps ALL semantics, the router only maps
+ * HTTP <-> the `StorageBackend` seam. Reads / list / versions / reserved-file
+ * access go through the bundle's `StorageBackend` DIRECTLY (protocol principle 2:
+ * "the seam is the schema" — every endpoint maps 1:1 to a seam method), not
+ * through the engine's `query`/`readDoc` wrappers.
+ *
+ * See `docs/WIRE-PROTOCOL.md` "Implemented by reference" section for the exact
+ * endpoint set and any recorded deviations from the draft.
+ */
+
+import {
+  FilesystemBackend,
+  MemoryBackend,
+  VersionConflict,
+  assertSafeBlobKey,
+  assertSafeConceptId,
+  isReservedFile,
+  queryHeads,
+  pathFromConceptId,
+  stripETagWrapper,
+  toPosix,
+  writeDocVersioned,
+  type BlobKey,
+  type Bundle,
+  type ConceptId,
+  type DeleteOptions,
+  type Frontmatter,
+  type ReservedFilename,
+  type StorageBackend,
+  type Version,
+  type WriteOptions,
+} from "@agentstate-lite/core";
+
+/** Default page size for `GET /docs` when `limit` is not supplied. */
+const DEFAULT_LIST_LIMIT = 50;
+
+/** True when `err` carries the `ENOENT`-shaped `.code` the seam's adapters use for "absent". */
+function isEnoent(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "ENOENT";
+}
+
+/** A bundle-relative concept id from a `docs/{id...}` path tail: decode each `/`-separated segment. */
+function decodeId(rawPathTail: string): ConceptId {
+  return rawPathTail
+    .split("/")
+    .map((seg) => decodeURIComponent(seg))
+    .join("/");
+}
+
+/** A bundle-relative blob key from a `blobs/{key...}` path tail — same per-segment decode as {@link decodeId}. */
+function decodeBlobKey(rawPathTail: string): BlobKey {
+  return rawPathTail
+    .split("/")
+    .map((seg) => decodeURIComponent(seg))
+    .join("/");
+}
+
+/**
+ * Validate a doc-route id is safe (no path traversal / absolute escape) and is not a
+ * reserved filename, THROWING (a plain `Error`, mapped to `400 USAGE` by the router's
+ * catch-all) before any backend call. `read`/`exists` (HEAD)/`versions`/`readMany` are
+ * called directly against the `StorageBackend` (protocol principle 2 — "the seam is
+ * the schema"), bypassing the engine's `assertSafeConceptId` guard that only fires on
+ * the engine-routed write path. Without this, `FilesystemBackend.read('../../etc/hosts')`
+ * resolves OUTSIDE the bundle root (`path.join` does not sandbox `..`) — a
+ * network-reachable path-traversal read. This closes that gap server-side (protocol
+ * principle 4: OKF/id-safety invariants are enforced server-side too).
+ */
+function assertValidDocId(id: ConceptId): void {
+  assertSafeConceptId(id);
+  if (isReservedFile(pathFromConceptId(id))) {
+    throw new Error(`'${id}' is a reserved file, not a concept document`);
+  }
+}
+
+/**
+ * Validate a reserved-file `dir` query param is bundle-relative: no absolute path, no
+ * `..` segment. `""` (bundle root) is valid. Unlike concept ids, the reserved-path
+ * helpers (`backend.ts` `reservedPath` / `memory-backend.ts` `reservedKey`) do NOT
+ * guard `dir` themselves — the wire endpoint is the only place an attacker-controlled
+ * `dir` value enters the seam, so the router must reject it before calling
+ * `readReserved`/`writeReserved`.
+ */
+function assertSafeDir(dir: string): void {
+  if (dir === "") return;
+  const norm = toPosix(dir);
+  if (norm.startsWith("/")) {
+    throw new Error(`dir must be bundle-relative, got absolute '${dir}'`);
+  }
+  if (norm.split("/").some((seg) => seg === "..")) {
+    throw new Error(`dir must not contain '..' segments: '${dir}'`);
+  }
+}
+
+/** Build a JSON `Response` with the standard `content-type`, merging in any extra headers. */
+function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", ...headers },
+  });
+}
+
+/** Build the `{ error: { code, message, details? } }` envelope (`docs/WIRE-PROTOCOL.md` Conventions). */
+function errorResponse(status: number, code: string, message: string, details?: unknown): Response {
+  return jsonResponse(status, {
+    error: details === undefined ? { code, message } : { code, message, details },
+  });
+}
+
+/**
+ * Map a thrown error to its wire status + envelope. `VersionConflict` -> `412`;
+ * an ENOENT-shaped rejection -> `404`; any other `Error` is treated as a client-input
+ * problem (the engine's own validation — §9.2 type, id safety, reserved-file rejection,
+ * malformed request bodies — throws plain `Error`s) -> `400 USAGE`; a non-`Error` throw
+ * (a genuine bug) -> `500 RUNTIME`.
+ */
+function errorFromCaught(err: unknown): Response {
+  if (err instanceof VersionConflict) {
+    return errorResponse(412, "VERSION_CONFLICT", err.message, { expected: err.expected, actual: err.actual });
+  }
+  if (isEnoent(err)) {
+    return errorResponse(404, "NOT_FOUND", err instanceof Error ? err.message : "not found");
+  }
+  if (err instanceof Error) {
+    return errorResponse(400, "USAGE", err.message);
+  }
+  return errorResponse(500, "RUNTIME", String(err));
+}
+
+/**
+ * Read `If-Match` / `If-None-Match: *` off a request into the seam's `WriteOptions.expectedVersion`.
+ *
+ * `If-Match` is passed through `stripETagWrapper` (production repair, Stage-1 Unit 2b): the
+ * router has always ACCEPTED the bare, unwrapped token here — that direction is proven working
+ * (the repair's own forensics confirmed request-side `If-Match` survives the edge unmodified) —
+ * but a client or intermediary MAY reflect back a quoted (`"sha256:..."`) or weak (`W/"sha256:..."`)
+ * form now that the router's OWN responses are correctly quoted (see `versionHeaders` below), so
+ * parsing tolerates both wrapped and bare forms rather than requiring the bare one.
+ */
+function writeOptionsFromHeaders(req: Request): WriteOptions {
+  const options: WriteOptions = {};
+  if (req.headers.get("If-None-Match") === "*") {
+    options.expectedVersion = null;
+  } else {
+    const ifMatch = req.headers.get("If-Match");
+    if (ifMatch !== null) options.expectedVersion = stripETagWrapper(ifMatch);
+  }
+  const actor = req.headers.get("X-Actor");
+  if (actor) options.actor = actor;
+  // `X-Agent` is manufactured ONLY by the auth'd worker's `withActor` (never sent by the CLI
+  // directly, never forgeable by a client past that gate) — absent here on `serve` (no auth,
+  // no `withActor`), so `options.agent` stays undefined there, correctly.
+  const agent = req.headers.get("X-Agent");
+  if (agent) options.agent = agent;
+  return options;
+}
+
+/**
+ * Read `If-Match` off a request into the seam's `DeleteOptions.expectedVersion` — the delete
+ * counterpart to {@link writeOptionsFromHeaders}, deliberately narrower: no `If-None-Match: *`
+ * branch (expect-absent is meaningless for a delete — there is no "create" reading of removing
+ * something that isn't there) and no `X-Actor` (a delete records no new revision to attribute).
+ * Quote/weak-prefix-tolerant via {@link stripETagWrapper}, same as `If-Match` on a write.
+ */
+function deleteOptionsFromHeaders(req: Request): DeleteOptions {
+  const ifMatch = req.headers.get("If-Match");
+  return ifMatch !== null ? { expectedVersion: stripETagWrapper(ifMatch) } : {};
+}
+
+/**
+ * Both version-transport headers for a response that carries `version`: `X-Version` (the bare
+ * token — the PRIMARY vehicle, a custom header no intermediary has any reason to rewrite) and a
+ * properly RFC-7232-QUOTED `ETag` (secondary, for HTTP-ecosystem tooling that expects one).
+ *
+ * PRODUCTION FINDING (Stage-1 Unit 2b): the unquoted bare-token `ETag` this router originally
+ * emitted (`ETag: sha256:<hex>`) is RFC-7232-INVALID — strong ETags MUST be a quoted string.
+ * Cloudflare's edge silently STRIPS an invalid ETag header when applying Brotli compression (the
+ * CLI's default `fetch` sends `Accept-Encoding: br`), while preserving it on an uncompressed
+ * response. `RemoteBackend` then read the header as ABSENT and, before this fix, defaulted the
+ * version to `""` — which became an EMPTY `If-Match` on the caller's next write, and the seam
+ * treats an absent/empty CAS guard as UNCONDITIONAL — silently downgrading a compare-and-swap
+ * write to last-writer-wins and losing concurrent updates. Verified via D1 ground truth + R2
+ * content forensics in production; request-direction `If-Match` was proven UNAFFECTED (only
+ * response headers pass through the edge's compression path). `X-Version` is now the primary,
+ * edge-proof vehicle; the ETag is kept, correctly quoted, for compatibility.
+ */
+function versionHeaders(version: Version): Record<string, string> {
+  return { "X-Version": version, ETag: `"${version}"` };
+}
+
+const BUNDLE_PATH_RE = /^\/v0\/bundles\/([^/]+)\/(.*)$/;
+
+/**
+ * Build the fetch-style router directly over an explicit `backend` — no `Bundle`-shape
+ * fallback to `new FilesystemBackend(...)`. This is the WORKER-CLEAN entry point: {@link
+ * createRouter} falls back to constructing a `FilesystemBackend` when `bundle.backend` is
+ * absent (needed by the reference server's local `--dir` support, `serve.ts`), and that
+ * fallback's `FilesystemBackend` import pulls in `node:fs` — something a Cloudflare Worker
+ * bundle must never contain (Stage-1 Unit 2b Part B's worker-cleanliness requirement). A
+ * Worker always constructs its own backend (`D1R2Backend`) explicitly and has no bundle
+ * directory to fall back to, so it calls THIS function instead of {@link createRouter}: the
+ * `FilesystemBackend`-referencing code path (and therefore its `node:fs` import) is never
+ * referenced from a Worker's own bundle entry point, so a tree-shaking bundler (esbuild /
+ * wrangler) drops it — proven by `packages/worker`'s dry-run build grep.
+ */
+export function createRouterForBackend(backend: StorageBackend): (req: Request) => Promise<Response> {
+  return buildRouter(backend);
+}
+
+/**
+ * Build the fetch-style router for `bundle`. The router is single-bundle (it closes
+ * over the one `Bundle` it was constructed with); the `{bundle}` path segment is
+ * accepted syntactically (any value) but not used to select among multiple bundles —
+ * see `docs/WIRE-PROTOCOL.md` deviations for the multi-bundle open question.
+ */
+export function createRouter(bundle: Bundle): (req: Request) => Promise<Response> {
+  return buildRouter(bundle.backend ?? new FilesystemBackend(bundle.root));
+}
+
+function buildRouter(backend: StorageBackend): (req: Request) => Promise<Response> {
+  // `writeDocVersioned` (the engine API `handleWriteDoc` routes doc writes through, so
+  // server-side OKF enforcement is free) takes a `Bundle`, not a bare `StorageBackend` — this
+  // synthesizes the minimal `Bundle` shape it needs. `root` is never read when `backend` is
+  // set (core's `backendFor` only falls back to `new FilesystemBackend(bundle.root)` when
+  // `bundle.backend` is absent), so an empty string is a safe, inert placeholder here.
+  const bundle: Bundle = { root: "", backend };
+
+  async function handleReadDoc(id: ConceptId): Promise<Response> {
+    assertValidDocId(id);
+    try {
+      const { doc, version } = await backend.read(id);
+      return jsonResponse(200, { id: doc.id, frontmatter: doc.frontmatter, body: doc.body }, versionHeaders(version));
+    } catch (err) {
+      if (isEnoent(err)) return errorResponse(404, "NOT_FOUND", `no concept document '${id}'`);
+      throw err;
+    }
+  }
+
+  async function handleHeadDoc(id: ConceptId): Promise<Response> {
+    // HEAD responses carry no body regardless of status (including a validation
+    // rejection) — caught locally rather than falling through to the JSON-enveloped
+    // catch-all.
+    try {
+      assertValidDocId(id);
+    } catch {
+      return new Response(null, { status: 400 });
+    }
+    try {
+      const { version } = await backend.read(id);
+      return new Response(null, { status: 200, headers: versionHeaders(version) });
+    } catch (err) {
+      if (isEnoent(err)) return new Response(null, { status: 404 });
+      throw err;
+    }
+  }
+
+  async function handleWriteDoc(id: ConceptId, req: Request): Promise<Response> {
+    let payload: { frontmatter?: Frontmatter; body?: string };
+    try {
+      payload = (await req.json()) as { frontmatter?: Frontmatter; body?: string };
+    } catch {
+      return errorResponse(400, "USAGE", "request body must be JSON { frontmatter, body }");
+    }
+    if (payload === null || typeof payload !== "object" || payload.frontmatter === undefined) {
+      return errorResponse(400, "USAGE", "request body must include a frontmatter object");
+    }
+    const options = writeOptionsFromHeaders(req);
+    const result = await writeDocVersioned(
+      bundle,
+      { id, frontmatter: payload.frontmatter, body: payload.body ?? "" },
+      options,
+    );
+    const status = options.expectedVersion === null ? 201 : 200;
+    return jsonResponse(status, { version: result.version }, versionHeaders(result.version));
+  }
+
+  /**
+   * `DELETE /docs/{id}`. Same validate-id-before-backend posture as `handleReadDoc`
+   * (`assertValidDocId` — traversal and reserved-filename ids reject `400 USAGE`, backend
+   * never called). `backend.delete` already returns `false` for an absent target rather
+   * than throwing, so there is no `try/catch` shaping needed here beyond the shared
+   * catch-all (`VersionConflict` -> `412` via `errorFromCaught`, same as a write). `200
+   * { deleted }` unconditionally — never a `404`, matching the wire's absence-is-success
+   * contract (AXI P6).
+   */
+  async function handleDeleteDoc(id: ConceptId, req: Request): Promise<Response> {
+    assertValidDocId(id);
+    const options = deleteOptionsFromHeaders(req);
+    const deleted = await backend.delete(id, options);
+    return jsonResponse(200, { deleted });
+  }
+
+  async function handleVersions(id: ConceptId): Promise<Response> {
+    assertValidDocId(id);
+    const history = await backend.versions(id);
+    return jsonResponse(200, { versions: history });
+  }
+
+  async function handleReadMany(req: Request): Promise<Response> {
+    let payload: { ids?: unknown };
+    try {
+      payload = (await req.json()) as { ids?: unknown };
+    } catch {
+      return errorResponse(400, "USAGE", "request body must be JSON { ids: string[] }");
+    }
+    if (!payload || !Array.isArray(payload.ids) || !payload.ids.every((x) => typeof x === "string")) {
+      return errorResponse(400, "USAGE", "request body must include an ids: string[] array");
+    }
+    const ids = payload.ids as ConceptId[];
+    if (ids.length === 0) return jsonResponse(200, { results: [] });
+
+    // Validate EVERY id before touching the backend at all — a single bad id (e.g. a
+    // traversal payload) rejects the whole batch rather than silently reading the rest.
+    for (const id of ids) {
+      try {
+        assertValidDocId(id);
+      } catch (err) {
+        return errorResponse(400, "USAGE", err instanceof Error ? err.message : `invalid id '${id}'`, { id });
+      }
+    }
+
+    // Determine the missing set up front (§ readMany: "404 + { missing }" if ANY id is
+    // absent) rather than relying on the batch read to fail generically mid-way.
+    const existsFlags = await Promise.all(ids.map((id) => backend.exists(id)));
+    const missing = ids.filter((_, i) => !existsFlags[i]);
+    if (missing.length > 0) {
+      return errorResponse(404, "NOT_FOUND", `${missing.length} id(s) not found`, { missing });
+    }
+    const results = await backend.readMany(ids);
+    return jsonResponse(200, {
+      results: results.map((r) => ({ id: r.doc.id, frontmatter: r.doc.frontmatter, body: r.doc.body, version: r.version })),
+    });
+  }
+
+  async function handleList(url: URL): Promise<Response> {
+    const prefix = url.searchParams.get("prefix") ?? undefined;
+    const type = url.searchParams.get("type") ?? undefined;
+    const tags = url.searchParams.getAll("tag");
+    const fields = url.searchParams.get("fields");
+    const limitParam = url.searchParams.get("limit");
+    const parsedLimit = limitParam ? parseInt(limitParam, 10) : NaN;
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : DEFAULT_LIST_LIMIT;
+    const cursor = url.searchParams.get("cursor") ?? undefined;
+
+    // HEAD-FIRST scan (this route only ever projects frontmatter — bodies never leave it),
+    // via core's ONE `queryHeads` implementation: it prefers the backend's optional
+    // push-down (`D1R2Backend` — one D1 query, zero R2 reads for column-backed rows),
+    // re-applies the canonical `matchesFilter` to whatever came back, and falls back to
+    // the delete-tolerant `list` + batch-read walk for every other backend (a doc deleted
+    // mid-scan is SKIPPED, not a scan-failing 404 — the server half of STATUS item 33; a
+    // MALFORMED doc still fails loudly, since quarantining it over the wire needs a
+    // `skipped` response shape — recorded as an open question). The synthetic `bundle`
+    // above is the same one `writeDocVersioned` already routes through — the router
+    // deliberately does NOT re-implement the prefer-else-fallback dance itself.
+    const heads = await queryHeads(bundle, { prefix, type, tags });
+
+    const count = heads.length;
+    let page = heads;
+    if (cursor) {
+      const idx = page.findIndex((r) => r.id === cursor);
+      // Vanished-cursor fallback: MUST use the SAME comparator the sort above used
+      // (`localeCompare`) — a code-unit `>` here diverges from locale order for ids like
+      // `B` vs `a`, re-emitting or skipping rows when the cursor doc was deleted or
+      // edited out of the filter between pages.
+      page = idx >= 0 ? page.slice(idx + 1) : page.filter((r) => r.id.localeCompare(cursor) > 0);
+    }
+    const limited = page.slice(0, limit);
+    const nextCursor = page.length > limit ? (limited[limited.length - 1]?.id ?? null) : null;
+
+    const docs = limited.map(({ id, frontmatter, version }) =>
+      fields === "frontmatter"
+        ? { id, version, frontmatter }
+        : {
+            id,
+            version,
+            type: frontmatter.type,
+            title: frontmatter.title,
+            timestamp: frontmatter.timestamp,
+          },
+    );
+    return jsonResponse(200, { count, docs, next_cursor: nextCursor });
+  }
+
+  async function handleReadReserved(dir: string, name: ReservedFilename): Promise<Response> {
+    assertSafeDir(dir);
+    const result = await backend.readReserved(dir, name);
+    if (result === null) return errorResponse(404, "NOT_FOUND", `no reserved file '${name}' at dir '${dir}'`);
+    return jsonResponse(200, { content: result.content }, versionHeaders(result.version));
+  }
+
+  async function handleWriteReserved(dir: string, name: ReservedFilename, req: Request): Promise<Response> {
+    assertSafeDir(dir);
+    let payload: { content?: unknown };
+    try {
+      payload = (await req.json()) as { content?: unknown };
+    } catch {
+      return errorResponse(400, "USAGE", "request body must be JSON { content }");
+    }
+    if (typeof payload.content !== "string") {
+      return errorResponse(400, "USAGE", "request body must include a content: string field");
+    }
+    const options = writeOptionsFromHeaders(req);
+    const version = await backend.writeReserved(dir, name, payload.content, options);
+    const status = options.expectedVersion === null ? 201 : 200;
+    return jsonResponse(status, { version }, versionHeaders(version));
+  }
+
+  // ── blobs: opaque bytes served by content-type (wire-protocol v0.1) ─────────
+  //
+  // Same `StorageBackend`-direct posture as reads/list/reserved-file access
+  // (principle 2 — "the seam is the schema"): `readBlob`/`writeBlob`/`existsBlob`/
+  // `listBlobs` map 1:1 to their routes. `assertSafeBlobKey` (Part A) is the ONE
+  // guard — it already rejects a `.md`-ending key (case-insensitively, covering the
+  // two reserved filenames), traversal/absolute escape, and dot-prefixed segments —
+  // applied identically on EVERY blob route including GET/HEAD (I1: a probing read
+  // must not bypass the guard writes enforce). Bytes cross the wire as the RAW
+  // request/response body (`req.arrayBuffer()` / a `Uint8Array` `Response` body),
+  // never JSON — B1: no `Buffer` anywhere in this module, so it stays CF-Worker-clean.
+
+  async function handleReadBlob(key: BlobKey): Promise<Response> {
+    assertSafeBlobKey(key);
+    const result = await backend.readBlob(key);
+    if (result === null) return errorResponse(404, "NOT_FOUND", `no blob '${key}'`);
+    return new Response(result.bytes, {
+      status: 200,
+      headers: { "content-type": result.contentType, ...versionHeaders(result.version) },
+    });
+  }
+
+  async function handleHeadBlob(key: BlobKey): Promise<Response> {
+    // Bodiless on EVERY status, including a validation rejection — mirrors handleHeadDoc.
+    try {
+      assertSafeBlobKey(key);
+    } catch {
+      return new Response(null, { status: 400 });
+    }
+    const result = await backend.readBlob(key);
+    if (result === null) return new Response(null, { status: 404 });
+    return new Response(null, {
+      status: 200,
+      headers: { "content-type": result.contentType, ...versionHeaders(result.version) },
+    });
+  }
+
+  async function handleWriteBlob(key: BlobKey, req: Request): Promise<Response> {
+    assertSafeBlobKey(key);
+    const bytes = new Uint8Array(await req.arrayBuffer());
+    const contentTypeHeader = req.headers.get("content-type");
+    const contentType = contentTypeHeader && contentTypeHeader.trim() !== "" ? contentTypeHeader : undefined;
+    const options = writeOptionsFromHeaders(req);
+    const version = await backend.writeBlob(key, bytes, contentType, options);
+    const status = options.expectedVersion === null ? 201 : 200;
+    return jsonResponse(status, { version }, versionHeaders(version));
+  }
+
+  /** `DELETE /blobs/{key}`, mirroring `handleDeleteDoc` exactly (`assertSafeBlobKey` rejects `.md`/traversal keys before the backend is ever called). */
+  async function handleDeleteBlob(key: BlobKey, req: Request): Promise<Response> {
+    assertSafeBlobKey(key);
+    const options = deleteOptionsFromHeaders(req);
+    const deleted = await backend.deleteBlob(key, options);
+    return jsonResponse(200, { deleted });
+  }
+
+  async function handleListBlobs(url: URL): Promise<Response> {
+    // Mirrors handleList's prefix/limit/cursor pagination shape (B2) — no type/tag
+    // filters (blobs carry no frontmatter to filter on), and rows are bare keys.
+    const prefix = url.searchParams.get("prefix") ?? undefined;
+    const limitParam = url.searchParams.get("limit");
+    const parsedLimit = limitParam ? parseInt(limitParam, 10) : NaN;
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : DEFAULT_LIST_LIMIT;
+    const cursor = url.searchParams.get("cursor") ?? undefined;
+
+    const keys = await backend.listBlobs(prefix); // already sorted (localeCompare, backend contract)
+    const count = keys.length;
+    let page = keys;
+    if (cursor) {
+      const idx = page.findIndex((k) => k === cursor);
+      // Same vanished-cursor comparator rule as handleList: the backends sort blob keys
+      // with `localeCompare`, so the fallback must compare the same way.
+      page = idx >= 0 ? page.slice(idx + 1) : page.filter((k) => k.localeCompare(cursor) > 0);
+    }
+    const limited = page.slice(0, limit);
+    const nextCursor = page.length > limit ? (limited[limited.length - 1] ?? null) : null;
+
+    return jsonResponse(200, { count, keys: limited, next_cursor: nextCursor });
+  }
+
+  function handleCapabilities(): Response {
+    // A degenerate backend states its limits instead of pretending (the FilesystemBackend
+    // honesty rule, promoted to the wire — docs/WIRE-PROTOCOL.md "Capabilities discovery").
+    // v0.1 (Stage-1 Unit 2b Part B): prefer the backend's OWN self-declaration
+    // (`StorageBackend.capabilities?.()`, `core/src/types.ts`) when it implements one — this
+    // is what lets a THIRD adapter (e.g. `D1R2Backend`) report its real guarantees instead of
+    // being guessed at. `FilesystemBackend`/`MemoryBackend` deliberately do NOT implement it,
+    // so they fall through to the original `instanceof MemoryBackend` inference — the standing
+    // proof this addition is additive (neither in-repo adapter needed to change).
+    const declared = backend.capabilities?.();
+    const caps = declared ?? {
+      enforced_cas: backend instanceof MemoryBackend,
+      blobs: true, // v0.1 — PUT/GET/HEAD /blobs/{key} + GET /blobs (list)
+      projections: true,
+      backlinks: false, // deferred to v1 (docs/WIRE-PROTOCOL.md)
+    };
+    return jsonResponse(200, {
+      // `history` and `enforced_cas` have always been the SAME boolean on every adapter this
+      // router has ever served (a backend either keeps real history + enforces CAS, or does
+      // neither) — the seam's `capabilities()` shape deliberately doesn't grow a second field
+      // for a distinction no adapter has ever needed; this preserves the wire's existing
+      // `history` field from that one value rather than inventing a new one.
+      history: caps.enforced_cas,
+      enforced_cas: caps.enforced_cas,
+      projections: caps.projections ?? true,
+      backlinks: caps.backlinks ?? false,
+      blobs: caps.blobs,
+    });
+  }
+
+  return async function handle(req: Request): Promise<Response> {
+    let url: URL;
+    try {
+      url = new URL(req.url);
+    } catch {
+      return errorResponse(400, "USAGE", "invalid request URL");
+    }
+
+    if (url.pathname === "/v0/capabilities") {
+      return handleCapabilities();
+    }
+
+    const match = BUNDLE_PATH_RE.exec(url.pathname);
+    if (!match) return errorResponse(404, "NOT_FOUND", `no route for ${url.pathname}`);
+    const rest = match[2] ?? "";
+
+    try {
+      if (rest === "docs") {
+        if (req.method === "GET") return await handleList(url);
+        return errorResponse(400, "USAGE", `unsupported method ${req.method} for /docs`);
+      }
+      if (rest === "docs:read-many") {
+        if (req.method === "POST") return await handleReadMany(req);
+        return errorResponse(400, "USAGE", `unsupported method ${req.method} for /docs:read-many`);
+      }
+      if (rest.startsWith("docs/")) {
+        const tail = rest.slice("docs/".length);
+        // `.../versions` is a sub-resource of a doc id; an id whose OWN final segment is
+        // literally "versions" is ambiguous with this — a known, recorded deviation.
+        if (tail.endsWith("/versions") && req.method === "GET") {
+          return await handleVersions(decodeId(tail.slice(0, -"/versions".length)));
+        }
+        const id = decodeId(tail);
+        if (req.method === "GET") return await handleReadDoc(id);
+        if (req.method === "PUT") return await handleWriteDoc(id, req);
+        if (req.method === "HEAD") return await handleHeadDoc(id);
+        if (req.method === "DELETE") return await handleDeleteDoc(id, req);
+        return errorResponse(400, "USAGE", `unsupported method ${req.method} for a doc route`);
+      }
+      if (rest.startsWith("reserved/")) {
+        const name = rest.slice("reserved/".length);
+        if (name !== "index.md" && name !== "log.md") {
+          return errorResponse(400, "USAGE", `reserved file name must be index.md or log.md, got '${name}'`);
+        }
+        const dir = url.searchParams.get("dir") ?? "";
+        if (req.method === "GET") return await handleReadReserved(dir, name);
+        if (req.method === "PUT") return await handleWriteReserved(dir, name, req);
+        return errorResponse(400, "USAGE", `unsupported method ${req.method} for a reserved-file route`);
+      }
+      if (rest === "blobs") {
+        if (req.method === "GET") return await handleListBlobs(url);
+        return errorResponse(400, "USAGE", `unsupported method ${req.method} for /blobs`);
+      }
+      if (rest.startsWith("blobs/")) {
+        const key = decodeBlobKey(rest.slice("blobs/".length));
+        if (req.method === "GET") return await handleReadBlob(key);
+        if (req.method === "PUT") return await handleWriteBlob(key, req);
+        if (req.method === "HEAD") return await handleHeadBlob(key);
+        if (req.method === "DELETE") return await handleDeleteBlob(key, req);
+        return errorResponse(400, "USAGE", `unsupported method ${req.method} for a blob route`);
+      }
+      return errorResponse(404, "NOT_FOUND", `no route for ${url.pathname}`);
+    } catch (err) {
+      return errorFromCaught(err);
+    }
+  };
+}

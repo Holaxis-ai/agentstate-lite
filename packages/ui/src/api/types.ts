@@ -1,0 +1,55 @@
+/**
+ * Wire response shapes for the surface the Board slice consumes — hand-written against
+ * `packages/server/src/router.ts` directly (contract-first codegen is recorded future work,
+ * `plans/ui-v1.md` rev 2's Package layout section). `Frontmatter` is the ONE shared type,
+ * imported type-only so it is erased at compile time and never pulls `@agentstate-lite/core`
+ * runtime code into the browser bundle (rev 2: "importing shared types type-only").
+ *
+ * ROUTE-SHAPE NOTE (plan-vs-code drift, verified against the router rather than trusted from
+ * the plan prose): every doc/blob/reserved route is BUNDLE-SCOPED — `/v0/bundles/{bundle}/...`,
+ * never a bare `/v0/docs` — see `BUNDLE_PATH_RE` in router.ts. `{bundle}` is accepted
+ * syntactically but unused by the single-bundle reference router, so this client hardcodes the
+ * literal `"default"` (client.ts's `BUNDLE`), matching the worker's own `DEFAULT_BUNDLE`.
+ */
+import type { Frontmatter } from "@agentstate-lite/core";
+
+export type { Frontmatter };
+
+/** One row of `GET .../docs?fields=frontmatter`: full frontmatter (never a body), plus its version. */
+export interface DocHead {
+  id: string;
+  version: string;
+  frontmatter: Frontmatter;
+}
+
+/** `GET .../docs?fields=frontmatter&type=...` response shape. */
+export interface ListDocsResponse {
+  count: number;
+  docs: DocHead[];
+  next_cursor: string | null;
+}
+
+/** `GET .../docs/{id}` response body (the version itself travels on the `X-Version`/`ETag` headers, not the body). */
+export interface ReadDocResponse {
+  id: string;
+  frontmatter: Frontmatter;
+  body: string;
+}
+
+/** `PUT .../docs/{id}` response body. */
+export interface WriteDocResponse {
+  version: string;
+}
+
+/** The wire-protocol JSON error envelope (`docs/WIRE-PROTOCOL.md` Conventions; `router.ts`'s `errorResponse`). */
+export interface WireErrorEnvelope {
+  error: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+}
+
+// NOTE: no Task-specific enum here (a former `TASK_STATUSES`/`TaskStatus` lived in this file) —
+// which kind/enum the board renders is derived or defaulted entirely in `../kinds/boardShape.ts`;
+// this module stays generic wire shapes only. See that module's doc comment.

@@ -1,0 +1,478 @@
+/**
+ * Kind conventions — the bundle-declared document-kind mechanism (CLAUDE.md gate 3,
+ * decision 5: "the mechanism is core and non-negotiable; usage is opt-in per bundle").
+ *
+ * A bundle MAY declare document kinds as plain OKF convention docs: a normal concept
+ * document with `frontmatter.type: "Convention"`, living under the `conventions/`
+ * prefix (the ONE documented discovery contract — see {@link CONVENTIONS_PREFIX}), that
+ * names the `type` value it governs plus its required/optional fields, allowed enum
+ * values, expected body sections, and an optional freshness horizon. A convention doc
+ * is NOT a schema fork: it is a plain OKF doc with a well-known `type`, read by this
+ * ONE registry (consumed by the CLI's `kinds`/`new`/`doc write`, and additively by any
+ * future consumer — viewer/server/MCP).
+ *
+ * Registry discovery is PREFIX-SCOPED and built ONCE per invocation, in the COMMAND
+ * layer — no engine path (`readDoc`, `writeDoc`, …) loads it implicitly, so
+ * a conventions-free bundle (every external OKF bundle today) pays only a cheap
+ * list-of-nothing and behaves byte-for-byte as before.
+ *
+ * Pure derivation logic (`validateAgainstKind`, `freshnessHorizonMs`, the convention-doc
+ * (de)serialization) is dependency-free; only {@link loadKinds} touches a backend.
+ */
+import { query } from "./bundle.js";
+import type { ValidationWarning } from "./validation.js";
+import type { Bundle, ConceptId, Frontmatter, OkfDocument } from "./types.js";
+
+/** The bundle-relative prefix a kind convention doc MUST live under to be discovered. */
+export const CONVENTIONS_PREFIX = "conventions/";
+
+/** The OKF `type` value a kind convention doc itself carries. */
+export const CONVENTION_TYPE = "Convention";
+
+/** A kind's declared required/optional fields and any enum-restricted field values. */
+export interface KindFields {
+  /** Field names that MUST be present and non-empty on an instance. */
+  required: string[];
+  /** Field names that MAY be present on an instance. */
+  optional: string[];
+  /** `fieldName -> allowed values` for fields restricted to an enumerated set. */
+  values: Record<string, string[]>;
+}
+
+/** A parsed kind convention: the governed `type` plus its declared shape. */
+export interface KindConvention {
+  /** Concept id of the convention doc itself (e.g. `conventions/roadmap-item`). */
+  id: ConceptId;
+  /** Display title (defaults to `governs` when the convention doc omits one). */
+  title: string;
+  /** The `type` value this convention governs (required, non-empty — malformed docs are skipped). */
+  governs: string;
+  /** Canonical bundle-relative path prefix for instances of this kind, if declared. */
+  path?: string;
+  fields: KindFields;
+  /** Expected body-section headings (level-1 `# Heading`), if declared. Scaffold + lint only. */
+  sections?: string[];
+  /** Raw declared horizon string (`<n>(m|h|d)`), if present — parse via {@link freshnessHorizonMs}. */
+  freshnessHorizon?: string;
+}
+
+/** The result of {@link loadKinds}: the built registry plus any non-fatal warnings collected along the way. */
+export interface KindRegistry {
+  /** `governs -> KindConvention`. On a duplicate `governs`, the first-by-id declaration wins. */
+  kinds: Map<string, KindConvention>;
+  /** Malformed/duplicate/unparseable conventions are SKIPPED, never thrown — collected here instead. */
+  warnings: ValidationWarning[];
+}
+
+/** True for a plain YAML/JSON map (excludes arrays, `null`, and non-object scalars). */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** True for a scalar YAML value (string/number/boolean) — the shape an enum/field-name member should be. */
+function isScalar(value: unknown): value is string | number | boolean {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+}
+
+/** Human-readable shape name for a warning message (`"an object"`, `"an array"`, `"null"`, …). */
+function describeShape(value: unknown): string {
+  if (Array.isArray(value)) return "an array";
+  if (value === null) return "null";
+  if (typeof value === "object") return "an object";
+  return typeof value;
+}
+
+/**
+ * String-coerce every scalar element of an array-ish value (tolerating YAML 1.1 boolean/Date
+ * coercion on unquoted enum members), WARNING and DROPPING any non-scalar member (an object or
+ * nested array) instead of silently stringifying it to `"[object Object]"` — the exact silent
+ * corruption a usability study caught agents feeding a list of objects into `required`/`optional`
+ * or an enum's `values` list (F2). A present-but-non-array `value` warns (wrong shape); an
+ * ABSENT (`undefined`) `value` does not, since "not declared" is normal, not a shape error.
+ */
+function toStringArrayLenient(
+  value: unknown,
+  path: string,
+  docId: string,
+  warnings: ValidationWarning[],
+): string[] {
+  if (!Array.isArray(value)) {
+    if (value !== undefined) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${docId}' has a non-list '${path}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
+        field: path,
+        severity: "warning",
+      });
+    }
+    return [];
+  }
+  const out: string[] = [];
+  for (const v of value) {
+    if (isScalar(v)) {
+      out.push(String(v));
+    } else {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_MEMBER",
+        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path}'; skipping it.`,
+        field: path,
+        severity: "warning",
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Field names the CLI reserves for its own machinery and can never treat as a kind-declared
+ * field: `type` is stamped from `kind.governs` (a kind declaring it as a field would let
+ * `new --type <v>` silently overwrite the governed type it just validated against), and
+ * `dir`/`remote`/`json`/`help` are consumed by every command's common flag handling before a
+ * `--<field> <value>` pair ever reaches kind-field mapping (declaring them would make the
+ * field permanently unreachable, not merely confusing). Filtered out of `required`/`optional`/
+ * `values` at parse time with a collected warning — never silently accepted.
+ */
+const RESERVED_FIELD_NAMES = new Set(["type", "dir", "remote", "json", "help"]);
+
+/** The only recognized keys inside a convention doc's `fields:` block. */
+const VALID_FIELDS_KEYS = new Set(["required", "optional", "values"]);
+
+/**
+ * Top-level convention-doc keys that are near-misses for the ONE correct enum-constraint shape
+ * (`fields.values.<field>: [...]`) — the exact wrong shapes a usability study (F2) caught agents
+ * reaching for (`enum:`, `enums:`, top-level `values:`, `constraints:`). This is a SMALL, DENY-
+ * ADJACENT set, not a generic top-level-key linter: OKF §9 permits unknown frontmatter, and a
+ * bundle producer may legitimately add other top-level keys to a convention doc (title, tags,
+ * whatever) — those get NO warning. Strict inside the blocks we own (`fields:`), permissive
+ * everywhere else.
+ */
+const MISPLACED_TOP_LEVEL_KEYS = new Set(["enum", "enums", "values", "constraints"]);
+
+// Level-1 headings only: `# Foo` (not `## Foo`). The ONE heading splitter, reused by
+// validateAgainstKind's section lint below and re-exported as public API from index.ts.
+const H1_RE = /^#\s+(.+?)\s*$/gm;
+
+/** Split a body into `{ headingText: sectionContent }` by its level-1 headings. */
+export function splitSections(body: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const matches = [...body.matchAll(H1_RE)];
+  for (let i = 0; i < matches.length; i++) {
+    const current = matches[i]!;
+    const name = (current[1] ?? "").trim();
+    const start = (current.index ?? 0) + current[0].length;
+    const end = i + 1 < matches.length ? (matches[i + 1]!.index ?? body.length) : body.length;
+    out[name] = body.slice(start, end).trim();
+  }
+  return out;
+}
+
+/** Parse one convention doc into a {@link KindConvention}, or a reason it was skipped. */
+function parseConventionDoc(
+  doc: OkfDocument,
+): (
+  | { ok: true; kind: KindConvention; reservedFieldsIgnored: string[] }
+  | { ok: false; reason: string }
+) & { warnings: ValidationWarning[] } {
+  const fm = doc.frontmatter as Record<string, unknown>;
+  const governs = typeof fm.governs === "string" ? fm.governs.trim() : "";
+  if (governs === "") {
+    return { ok: false, reason: "missing or empty 'governs' field", warnings: [] };
+  }
+
+  const warnings: ValidationWarning[] = [];
+
+  // Top-level near-miss constraint keys (see MISPLACED_TOP_LEVEL_KEYS doc comment): warn ONLY on
+  // this small deny-adjacent set — never on arbitrary other top-level keys.
+  for (const key of MISPLACED_TOP_LEVEL_KEYS) {
+    if (key in fm) {
+      warnings.push({
+        code: "KIND_CONVENTION_MISPLACED_KEY",
+        message: `kind convention '${doc.id}' declares a top-level '${key}' key, which core does not read; enum constraints go under 'fields.values.<field>: [...]', not '${key}'.`,
+        field: key,
+        severity: "warning",
+      });
+    }
+  }
+
+  const fieldsSource = fm.fields;
+  let fieldsRaw: Record<string, unknown> = {};
+  if (fieldsSource === undefined) {
+    // absent 'fields:' — nothing to declare, nothing to warn about.
+  } else if (!isPlainObject(fieldsSource)) {
+    warnings.push({
+      code: "KIND_CONVENTION_BAD_SHAPE",
+      message: `kind convention '${doc.id}' has a non-map 'fields' key (${describeShape(fieldsSource)}; expected a map with required/optional/values); ignoring it.`,
+      field: "fields",
+      severity: "warning",
+    });
+  } else {
+    fieldsRaw = fieldsSource;
+    for (const key of Object.keys(fieldsRaw)) {
+      if (!VALID_FIELDS_KEYS.has(key)) {
+        warnings.push({
+          code: "KIND_CONVENTION_UNKNOWN_FIELDS_KEY",
+          message: `kind convention '${doc.id}' declares an unrecognized key 'fields.${key}' (valid keys: fields.required, fields.optional, fields.values); ignoring it.`,
+          field: `fields.${key}`,
+          severity: "warning",
+        });
+      }
+    }
+  }
+
+  const reservedFieldsIgnored = new Set<string>();
+  const dropReserved = (name: string): boolean => {
+    if (!RESERVED_FIELD_NAMES.has(name)) return false;
+    reservedFieldsIgnored.add(name);
+    return true;
+  };
+  const required = toStringArrayLenient(fieldsRaw.required, "fields.required", doc.id, warnings).filter(
+    (f) => !dropReserved(f),
+  );
+  const optional = toStringArrayLenient(fieldsRaw.optional, "fields.optional", doc.id, warnings).filter(
+    (f) => !dropReserved(f),
+  );
+
+  const valuesSource = fieldsRaw.values;
+  const values: Record<string, string[]> = {};
+  if (valuesSource !== undefined) {
+    if (!isPlainObject(valuesSource)) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc.id}' has a non-map 'fields.values' (${describeShape(valuesSource)}; expected a map of field name -> list of allowed values); ignoring it.`,
+        field: "fields.values",
+        severity: "warning",
+      });
+    } else {
+      for (const [field, allowed] of Object.entries(valuesSource)) {
+        if (dropReserved(field)) continue;
+        values[field] = toStringArrayLenient(allowed, `fields.values.${field}`, doc.id, warnings);
+      }
+    }
+  }
+
+  // A values-constrained field that names neither a required nor an optional field is almost
+  // certainly a mistake (a declared constraint on an undeclared field can never fire, since
+  // `validateAgainstKind` only sees fields the instance actually carries — but the AUTHOR meant
+  // something).
+  const declaredFieldNames = new Set([...required, ...optional]);
+  for (const field of Object.keys(values)) {
+    if (!declaredFieldNames.has(field)) {
+      warnings.push({
+        code: "KIND_CONVENTION_UNDECLARED_VALUES_FIELD",
+        message: `kind convention '${doc.id}' declares 'fields.values.${field}' but '${field}' is not in fields.required or fields.optional.`,
+        field: `fields.values.${field}`,
+        severity: "warning",
+      });
+    }
+  }
+
+  const sections = Array.isArray(fm.sections)
+    ? fm.sections.filter((s): s is string => typeof s === "string" && s.trim() !== "")
+    : undefined;
+
+  const title = typeof fm.title === "string" && fm.title.trim() !== "" ? fm.title.trim() : governs;
+  const path = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : undefined;
+  const freshnessHorizon =
+    typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== ""
+      ? fm.freshness_horizon.trim()
+      : undefined;
+
+  const kind: KindConvention = { id: doc.id, title, governs, fields: { required, optional, values } };
+  if (path !== undefined) kind.path = path;
+  if (sections && sections.length > 0) kind.sections = sections;
+  if (freshnessHorizon !== undefined) kind.freshnessHorizon = freshnessHorizon;
+  return { ok: true, kind, reservedFieldsIgnored: [...reservedFieldsIgnored].sort(), warnings };
+}
+
+/**
+ * Build the {@link KindRegistry} for `bundle`: every `Convention` doc under
+ * {@link CONVENTIONS_PREFIX}, keyed by the `type` it governs. A Convention doc OUTSIDE
+ * the prefix is NOT discovered — that is the documented contract (CLAUDE.md gate 3),
+ * not a bug. Malformed docs are skipped with a collected warning (never thrown); a
+ * duplicate `governs` keeps the first-by-id declaration (query's results are
+ * id-sorted) and warns about the shadowed one. Callers build this ONCE per invocation
+ * and pass it down — no engine path calls this on its own.
+ */
+export async function loadKinds(bundle: Bundle): Promise<KindRegistry> {
+  const kinds = new Map<string, KindConvention>();
+  const warnings: ValidationWarning[] = [];
+
+  // A convention doc whose YAML frontmatter is itself corrupt must not crash the WHOLE registry
+  // load (which every `kinds`/`status`/`new`/`doc write` invocation runs) — it is reported as a
+  // registry warning, exactly like a semantically-malformed convention, and the rest still load.
+  const docs = await query(bundle, { prefix: CONVENTIONS_PREFIX, type: CONVENTION_TYPE }, {
+    onSkip: ({ id, reason }) =>
+      warnings.push({
+        code: "KIND_CONVENTION_MALFORMED",
+        message: `skipped kind convention '${id}' with unparseable frontmatter: ${reason}`,
+        field: id,
+        severity: "warning",
+      }),
+  });
+
+  for (const doc of docs) {
+    const parsed = parseConventionDoc(doc);
+    if (!parsed.ok) {
+      warnings.push({
+        code: "KIND_CONVENTION_MALFORMED",
+        message: `skipped malformed kind convention '${doc.id}': ${parsed.reason}`,
+        field: doc.id,
+        severity: "warning",
+      });
+      continue;
+    }
+    const { kind, reservedFieldsIgnored } = parsed;
+    warnings.push(...parsed.warnings);
+    if (reservedFieldsIgnored.length > 0) {
+      warnings.push({
+        code: "KIND_RESERVED_FIELD",
+        message: `kind convention '${doc.id}' declares reserved field name(s) ${reservedFieldsIgnored.join(", ")} (reserved by the CLI: type/dir/remote/json/help); ignoring them.`,
+        field: reservedFieldsIgnored.join(","),
+        severity: "warning",
+      });
+    }
+    if (kinds.has(kind.governs)) {
+      warnings.push({
+        code: "KIND_DUPLICATE_GOVERNS",
+        message: `duplicate kind convention for '${kind.governs}': '${doc.id}' ignored, keeping the first-declared '${kinds.get(kind.governs)!.id}'.`,
+        field: kind.governs,
+        severity: "warning",
+      });
+      continue;
+    }
+    if (kind.freshnessHorizon !== undefined && freshnessHorizonMs(kind) === undefined) {
+      warnings.push({
+        code: "KIND_HORIZON_MALFORMED",
+        message: `kind convention '${doc.id}' has a malformed freshness_horizon '${kind.freshnessHorizon}' (expected <n>(m|h|d)); ignoring it.`,
+        field: "freshness_horizon",
+        severity: "warning",
+      });
+    }
+    kinds.set(kind.governs, kind);
+  }
+
+  return { kinds, warnings };
+}
+
+const HORIZON_RE = /^(\d+)(m|h|d)$/;
+const HORIZON_UNIT_MS: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000 };
+
+/**
+ * Parse a kind's declared `freshness_horizon` (`<n>(m|h|d)`) to milliseconds, or
+ * `undefined` if the kind declares none or it is malformed. This FEEDS the existing
+ * {@link FreshnessOptions.maxAgeMs} at the CLI layer — it does not fork `freshness()`.
+ */
+export function freshnessHorizonMs(kind: KindConvention): number | undefined {
+  const raw = kind.freshnessHorizon;
+  if (raw === undefined) return undefined;
+  const m = HORIZON_RE.exec(raw);
+  if (!m) return undefined;
+  const n = Number(m[1]);
+  // A zero horizon (e.g. "0h") would make every instance instantly stale — reject it the same
+  // way as a malformed string, rather than silently accepting a horizon that can never be met.
+  if (n <= 0) return undefined;
+  const unit = m[2]!;
+  return n * HORIZON_UNIT_MS[unit]!;
+}
+
+/** True when a required-field value counts as "present" (non-empty string / non-empty array / any other defined value). */
+function isPresent(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "string") return value.trim() !== "";
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
+
+/**
+ * Validate `doc` against `kind`: required fields present + non-empty, enum-restricted
+ * field values within the declared allowed set, and declared body `sections` present
+ * (reusing the ONE heading splitter, {@link splitSections} — no second heading parser).
+ * Returns core's EXISTING {@link ValidationWarning} shape; never throws. Purely
+ * additive derivation — callers (the CLI) decide whether a warning blocks a write.
+ */
+export function validateAgainstKind(doc: OkfDocument, kind: KindConvention): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+  const fm = doc.frontmatter as Record<string, unknown>;
+
+  for (const field of kind.fields.required) {
+    if (!isPresent(fm[field])) {
+      warnings.push({
+        code: "KIND_FIELD_MISSING",
+        message: `'${kind.governs}' requires a non-empty '${field}' field (declared by ${kind.id}).`,
+        field,
+        severity: "warning",
+      });
+    }
+  }
+
+  for (const [field, allowed] of Object.entries(kind.fields.values)) {
+    const raw = fm[field];
+    if (raw === undefined || raw === null) continue;
+    // Arity: a `fields.values`-constrained field has SCALAR semantics by construction
+    // (an enum picks ONE state — `status`), so an ARRAY value is a violation even when
+    // every member passes the per-element membership check below. Without this,
+    // `--status todo --status done` persists a two-status doc with ZERO warnings, even
+    // strict (repeated-flag → array is a real FEATURE for non-enum fields like `tags`,
+    // so the guard lives HERE on the enum constraint, not in any command's parser — one
+    // validation locus, every consumer inherits: `new`, `doc update`, `doc write
+    // --strict`, `status`'s bundle lint). A future kind wanting a multi-select enum
+    // needs declared arity in the convention schema — not silently via arrays.
+    if (Array.isArray(raw)) {
+      warnings.push({
+        code: "KIND_FIELD_ARITY",
+        message:
+          `'${field}' is enum-restricted and takes exactly ONE value for '${kind.governs}'; ` +
+          `got ${raw.length} (${raw.map((v) => String(v)).join(", ")}).`,
+        field,
+        severity: "warning",
+      });
+    }
+    const allowedStrs = allowed.map((v) => String(v));
+    const actual = (Array.isArray(raw) ? raw : [raw]).map((v) => String(v));
+    for (const v of actual) {
+      if (!allowedStrs.includes(v)) {
+        warnings.push({
+          code: "KIND_FIELD_VALUE",
+          message: `'${field}' value '${v}' is not one of the allowed values for '${kind.governs}': ${allowedStrs.join(", ")}.`,
+          field,
+          severity: "warning",
+        });
+      }
+    }
+  }
+
+  if (kind.sections && kind.sections.length > 0) {
+    const sections = splitSections(doc.body ?? "");
+    for (const heading of kind.sections) {
+      if (!(heading in sections)) {
+        warnings.push({
+          code: "KIND_SECTION_MISSING",
+          message: `'${kind.governs}' expects a '# ${heading}' body section (declared by ${kind.id}).`,
+          field: heading,
+          severity: "warning",
+        });
+      }
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * Build the OKF concept document for a kind convention (the shape a `Convention` doc
+ * takes on disk — used to serialize any KindConvention to its on-disk Convention-doc form
+ * (e.g. by the CLI's recipe machinery)). `timestamp` is the caller's ISO instant (kept
+ * explicit rather than defaulted here, since `writeDocVersioned` already guarantees one).
+ */
+export function kindConventionDoc(kind: KindConvention, prose: string, timestamp: string): OkfDocument {
+  const fields: Record<string, unknown> = { required: kind.fields.required, optional: kind.fields.optional };
+  if (Object.keys(kind.fields.values).length > 0) fields.values = kind.fields.values;
+
+  const frontmatter: Frontmatter = { type: CONVENTION_TYPE, title: kind.title, governs: kind.governs, timestamp };
+  if (kind.path !== undefined) frontmatter.path = kind.path;
+  frontmatter.fields = fields;
+  if (kind.sections && kind.sections.length > 0) frontmatter.sections = kind.sections;
+  if (kind.freshnessHorizon !== undefined) frontmatter.freshness_horizon = kind.freshnessHorizon;
+
+  return { id: kind.id, frontmatter, body: prose };
+}

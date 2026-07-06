@@ -1,0 +1,372 @@
+// `agentstate-lite new "<Kind>" <id> --<field> <value> …` — create a new instance of a
+// bundle-declared kind.
+//
+// Phase-0 experiment result (binding — Part B of the kind-conventions plan): 9 fresh agents, 3
+// grammar variants. A generic `new "<Kind>" <id>` verb (no per-kind subcommands) scored 3/3 with
+// zero failures; per-kind subcommand sugar scored 3/3 too but with shallow discovery (subjects
+// groped for a `kinds` verb they couldn't find). `new` is statically registered in
+// `KNOWN_COMMANDS`/`cli.ts` like every other command — no dynamic per-kind dispatch machinery.
+//
+// `new` validates STRICTLY (unlike `doc write`'s warn-by-default): a missing required field or a
+// value outside a declared enum is a USAGE error (exit 2), never a written-but-warned doc. Declared
+// `sections` are scaffolded as empty body headings; the kind's `path` prefix (if declared) is
+// prepended onto the id unless the id already carries it. The engine (`writeDoc`) itself performs NO
+// kind validation — this command is the one place that reads the registry and decides.
+//
+// Round-review finding: `new` is CREATE-ONLY, not create-or-overwrite. It used to call `writeDoc`
+// unconditionally, so `new` on an id that already carries a document silently REPLACED its
+// title/body/every field with the freshly scaffolded ones — the same silent-data-loss class F1
+// closed for `doc write`. It now writes with the engine's expect-absent compare-and-swap
+// (`expectedVersion: null`, the same create-race-closing pattern the CLI's recipe machinery
+// (`applyRecipe`) uses): the write succeeds only if the target id does not yet exist, and a
+// pre-existing doc maps the resulting `VersionConflict` to a structured ALREADY_EXISTS error
+// (exit 5) that hints `doc update` (to patch it) or `doc write` (to overwrite it outright and
+// deliberately).
+//
+// Field flags are dynamic (kind-defined), so this command parses argv in TWO PHASES through the
+// SAME `node:util` `parseArgs` every other command uses (retiring the former hand-rolled
+// tokenizer, whose glued/malformed-flag error used to misdirect — see below).
+//
+// Phase 1 (lenient discovery): a `strict:false` parse over ONLY the control flags (dir/remote/
+// actor/json/help) extracts the leading `Kind` positional (and opens the bundle + loads the
+// registry). Phase 2 (authoritative): a STRICT `parseArgs` re-parse, built from the loaded kind's
+// declared fields (`{ type: "string", multiple: true }` each) PLUS the same control flags, is the
+// source of truth for every value, the `id`/`>2`-positionals check, and unknown-flag detection.
+// This keeps `new` on the exact same parser shape as every other command (consistency was the
+// point) while still handling a kind's fields, which aren't known until the Kind is loaded.
+//
+// A glued/malformed flag token (e.g. a shell-quoting mistake that lands `"--status todo"` as ONE
+// argv element) now surfaces as an "unknown field(s) … status todo" USAGE error that NAMES the
+// token — replacing the old hand-rolled parser's misdirecting "got 3 positionals" (a real agent
+// hit this mid-session; the whole point of this migration).
+//
+// `--actor` is a CONTROL flag here (mirrors `doc update`'s `DOC_UPDATE_VALUE_FLAGS`), so a kind
+// field literally named `actor` is unreachable via `new` — core's `RESERVED_FIELD_NAMES` does not
+// reserve `actor`, but the CLI already treats it as reserved on every other mutation surface, so
+// this is consistent, not a regression (still listed in a "declared:" hint, just never settable).
+import { parseArgs } from "node:util";
+import { loadKinds, type Frontmatter, type KindConvention } from "@agentstate-lite/core";
+import { openBundle, resolveRemoteFlag } from "../bundle.js";
+import { CliError } from "../errors.js";
+import { parseOrUsage } from "../args.js";
+import { render, resolveMode } from "../output.js";
+import { cliInvocation } from "../invocation.js";
+import { mutateDoc } from "../mutate.js";
+
+export const NEW_USAGE = `agentstate-lite new — create a new instance of a bundle-declared kind
+
+Usage:
+  agentstate-lite new "<Kind>" <id> --<field> <value> [--<field> <value> ...] [options]
+
+The kind must be declared by a kind convention doc under conventions/ — run 'agentstate-lite kinds'
+to list what a bundle declares. Supply each of the kind's required fields via --<field> <value>
+(or --<field>=<value>); declared optional fields may be supplied the same way. Repeat a flag to
+set an array value (e.g. --tags a --tags b). Any field not declared by the kind is a USAGE error.
+The kind's declared body 'sections' (if any) are scaffolded as empty '# Heading' blocks; its
+'path' prefix (if any) is prepended onto <id> unless <id> already carries it. Validation is
+STRICT: a missing required field or a disallowed enum value rejects the write (exit 2) rather
+than writing-with-a-warning.
+
+'new' is CREATE-ONLY: if the (prefixed) <id> already carries a document, the write is rejected
+(exit 5) instead of silently replacing it — run 'doc update' to patch an existing doc, or 'doc
+write' to overwrite it outright and deliberately.
+
+Options:
+  --dir <path>          Bundle directory (default: discovered from the cwd)
+  --remote <url>        Talk to a wire-protocol server instead of a local bundle
+                         (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+  --actor <name>         Attribute this write (recorded in version history by a persisting backend; the
+                         local filesystem backend accepts but does not store it). A present-but-blank
+                         value is a USAGE error (exit 2).
+  --no-prefix           Use <id> verbatim — do NOT auto-prepend the kind's declared path prefix
+  --json                Emit compact JSON instead of TOON
+  -h, --help            Show this help
+`;
+
+export interface NewCliDeps {
+  stdout: (s: string) => void;
+}
+
+/**
+ * Bundle-selection + output-control flags for `new`, shared by BOTH parse phases. NOT `strict` —
+ * `new` is ALWAYS strict, so a literal `--strict` token must remain an "unknown field" (falls into
+ * the kind-field bucket and is rejected as undeclared), matching pre-migration behavior. `actor`
+ * is control here (mirrors `doc update`'s `DOC_UPDATE_VALUE_FLAGS`), so a same-named kind field is
+ * shadowed — see file header.
+ */
+const NEW_CONTROL_OPTIONS = {
+  dir: { type: "string" },
+  remote: { type: "string" },
+  actor: { type: "string" },
+  "no-prefix": { type: "boolean" },
+  json: { type: "boolean" },
+  help: { type: "boolean", short: "h" },
+} as const;
+
+/** Prepend the kind's declared `path` prefix onto `id`, unless `id` already carries it. */
+function resolveInstanceId(kind: KindConvention, id: string): string {
+  if (!kind.path) return id;
+  const prefix = kind.path.replace(/\/+$/, "") + "/";
+  return id.startsWith(prefix) ? id : `${prefix}${id}`;
+}
+
+/**
+ * Phase 1 runs `strict:false`, which yields boolean `true` (not `undefined`, and no throw) for a
+ * CONFIGURED value flag given no value as the final argv token — e.g. `new Task x --dir`. `--dir`/
+ * `--remote` are consumed BEFORE the authoritative Phase-2 strict parse (they open the bundle the
+ * kind is loaded from), so a boolean here would reach `openBundle` and crash it ('paths[0] must be a
+ * string') as a RUNTIME (off the capped taxonomy) instead of the clean USAGE Phase 2 would give.
+ * Reject it here, returning the narrowed `string | undefined` so no unsound cast is needed.
+ */
+function controlFlagValue(val: string | boolean | undefined, flag: string): string | undefined {
+  if (typeof val === "boolean") {
+    throw new CliError("USAGE", `--${flag} requires a value`, {
+      help: `${cliInvocation()} new "<Kind>" <id> --${flag} <value>`,
+    });
+  }
+  return val;
+}
+
+/**
+ * Per-kind help for `new "<Kind>" --help`: the exact required/optional fields, enum values, scaffolded
+ * body sections, and id path prefix an agent needs to author a VALID instance — without a separate
+ * `kinds` round-trip (cold-start study: 2 testers had to cross-reference `kinds` before every `new`).
+ */
+function renderKindHelp(kind: KindConvention, inv: string): string {
+  const req = kind.fields.required.filter((f) => f !== "actor");
+  const opt = kind.fields.optional.filter((f) => f !== "actor");
+  const flags = (fields: string[]) => (fields.length > 0 ? fields.map((f) => `--${f} <v>`).join("  ") : "(none)");
+  const enums = Object.entries(kind.fields.values ?? {})
+    .map(([f, vals]) => `  --${f} allowed:  ${vals.join(" | ")}`)
+    .join("\n");
+  const sections = kind.sections && kind.sections.length > 0 ? kind.sections.join(", ") : "(none)";
+  const pathLine = kind.path
+    ? `Id:  auto-prefixed with '${kind.path.replace(/\/+$/, "")}/' unless <id> already carries it`
+    : "Id:  used as-is (this kind declares no path prefix)";
+  return (
+    `${inv} new "${kind.governs}" <id> — create a ${kind.governs} instance\n\n` +
+    `Fields (declared by the '${kind.governs}' kind convention):\n` +
+    `  required:  ${flags(req)}\n` +
+    `  optional:  ${flags(opt)}\n` +
+    (enums ? enums + "\n" : "") +
+    `Body sections scaffolded:  ${sections}\n` +
+    `${pathLine}\n\n` +
+    `Repeat a flag to set an array value (e.g. --tag a --tag b). Validation is STRICT.\n` +
+    `To ADD a field to this kind, edit its convention doc (${inv} kinds names it; then pull → edit fields.optional → promote).\n\n` +
+    `Options:\n` +
+    `  --actor <name>   Attribute the write\n` +
+    `  --no-prefix      Use <id> verbatim (skip the auto path prefix above)\n` +
+    `  --dir <path>     Bundle directory (default: discovered from the cwd)\n` +
+    `  --remote <url>   Talk to a wire-protocol server instead of a local bundle\n` +
+    `  --json           Emit compact JSON instead of TOON\n` +
+    `  -h, --help       Show this help\n`
+  );
+}
+
+export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {}): Promise<void> {
+  const stdout = deps.stdout ?? ((s: string) => void process.stdout.write(s));
+
+  // Phase 1 — lenient discovery: extract the leading `Kind` positional plus the bundle-selection
+  // flags, without yet knowing the kind's declared fields (unconfigured kind-field flags become
+  // stray booleans/positionals here — harmless, since only `positionals[0]` is read from this
+  // pass; Phase 2 is the AUTHORITATIVE parse for everything else, including `id`).
+  const pre = parseOrUsage(
+    () => parseArgs({ args: argv, strict: false, allowPositionals: true, options: NEW_CONTROL_OPTIONS }),
+    "new",
+  );
+  const kindName = (pre.positionals[0] as string | undefined)?.trim();
+  // `new --help` with NO kind named → the generic reference. `new "<Kind>" --help` → that kind's
+  // own schema (rendered below, once the kind is loaded) so an agent can author a valid instance
+  // without a separate `kinds` round-trip.
+  if (pre.values.help && !kindName) {
+    stdout(NEW_USAGE);
+    return;
+  }
+  if (!kindName) {
+    throw new CliError("USAGE", 'new requires "<Kind>" and <id> positionals', {
+      help: `${cliInvocation()} new "<Kind>" <id> --<field> <value>`,
+    });
+  }
+
+  const preDir = controlFlagValue(pre.values.dir, "dir");
+  const preRemote = controlFlagValue(pre.values.remote, "remote");
+  // `--help` must work anywhere: if the bundle can't be opened, fall back to the generic reference
+  // rather than erroring on a bundle lookup the user didn't ask to perform.
+  let bundle;
+  try {
+    bundle = await openBundle(preDir, await resolveRemoteFlag(preRemote, preDir));
+  } catch (err) {
+    if (pre.values.help) {
+      stdout(NEW_USAGE);
+      return;
+    }
+    throw err;
+  }
+  const registry = await loadKinds(bundle);
+  const kind = registry.kinds.get(kindName);
+  if (!kind) {
+    if (pre.values.help) {
+      stdout(NEW_USAGE); // named kind isn't declared here — the generic help is the most we can show
+      return;
+    }
+    const known = [...registry.kinds.keys()].sort();
+    throw new CliError(
+      "USAGE",
+      known.length > 0
+        ? `unknown kind '${kindName}' (declared: ${known.join(", ")})`
+        : `unknown kind '${kindName}' (no kinds declared in this bundle)`,
+      { help: `${cliInvocation()} kinds` },
+    );
+  }
+  if (pre.values.help) {
+    stdout(renderKindHelp(kind, cliInvocation()));
+    return;
+  }
+
+  // Phase 2 — strict, kind-aware, AUTHORITATIVE parse. `type`/`dir`/`remote`/`json`/`help` are
+  // already stripped from `declaredFields` by `loadKinds` (core's `RESERVED_FIELD_NAMES`); `actor`
+  // is NOT core-reserved, so it is excluded here explicitly (control wins on a name collision) —
+  // still listed in `declaredFields` for the "declared: …" hint text below.
+  const declaredFields = [...kind.fields.required, ...kind.fields.optional];
+  const fieldNames = declaredFields.filter((f) => f !== "actor");
+  const fieldOptions = Object.fromEntries(
+    fieldNames.map((f) => [f, { type: "string", multiple: true } as const]),
+  );
+
+  const { values, positionals } = parseOrUsage(() => {
+    try {
+      return parseArgs({
+        args: argv,
+        allowPositionals: true,
+        strict: true,
+        options: { ...fieldOptions, ...NEW_CONTROL_OPTIONS },
+      });
+    } catch (err) {
+      // Preserve the helpful unknown-field UX (and, notably, turn a glued/malformed flag token —
+      // e.g. `"--status todo"` as ONE argv element from a shell-quoting mistake — into an error
+      // that NAMES the offending token instead of the old hand-rolled parser's misdirecting "got N
+      // positionals"): re-throw the kind-specific message. `parseOrUsage` passes a thrown
+      // `CliError` through unchanged and translates any OTHER parse error normally.
+      if ((err as { code?: unknown } | null)?.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION") {
+        const raw = /'([^']+)'/.exec((err as Error).message)?.[1] ?? "";
+        const field = raw.replace(/^--?/, ""); // node quotes the raw '--name'; strip the dashes
+        if (field === "body" || field === "body-file") {
+          // --body is a `doc write` flag, not a `new` one: a kind's body comes from its scaffolded
+          // sections. Give that guidance instead of the confusing "unknown field 'body'".
+          throw new CliError(
+            "USAGE",
+            `'new' does not take --${field} — a kind's body comes from its declared sections (scaffolded as empty ` +
+              `'# Heading' blocks). Create the instance, then set content with '${cliInvocation()} doc update <id> ` +
+              `--body <text>'; or use '${cliInvocation()} doc write' for a generic (non-kind) document.`,
+            { help: `${cliInvocation()} new "${kindName}" <id>` },
+          );
+        }
+        throw new CliError(
+          "USAGE",
+          `unknown field(s) for kind '${kind.governs}': ${field}` +
+            (declaredFields.length > 0
+              ? ` (declared: ${declaredFields.join(", ")})`
+              : " (this kind declares no fields)") +
+            ` — to ADD it to the '${kind.governs}' kind: \`${cliInvocation()} kind field "${kind.governs}" add ${field}\` (then re-run).`,
+          { help: `${cliInvocation()} kinds` },
+        );
+      }
+      throw err; // parseOrUsage -> translated USAGE (missing value, takes-no-value, …)
+    }
+  }, "new");
+  // `values`'s inferred type is keyed off the STATIC control-options literal (TypeScript can't see
+  // through the runtime-built `fieldOptions` spread), so a dynamic kind-field lookup below needs an
+  // explicit index-signature view — the runtime shape is exactly `{ [field]: string[] | undefined }`
+  // for a `{ type: "string", multiple: true }` option, which is what every field option above is.
+  const dynamicValues = values as unknown as Record<string, string[] | string | boolean | undefined>;
+
+  const id = (positionals[1] as string | undefined)?.trim();
+  if (!id) {
+    throw new CliError("USAGE", 'new requires "<Kind>" and <id> positionals', {
+      help: `${cliInvocation()} new "<Kind>" <id> --<field> <value>`,
+    });
+  }
+  // A stray extra positional almost always means a flag was mistyped (e.g. a missing `--` before
+  // a value) rather than a deliberate third argument — surface it instead of silently absorbing it.
+  if (positionals.length > 2) {
+    throw new CliError(
+      "USAGE",
+      `new takes exactly "<Kind>" and <id>, got ${positionals.length} positionals: ${positionals.join(", ")}`,
+      { help: `${cliInvocation()} new "<Kind>" <id> --<field> <value>` },
+    );
+  }
+
+  const actor = values.actor as string | undefined;
+  if (actor !== undefined && actor.trim() === "") {
+    throw new CliError("USAGE", "--actor was given an empty value — pass an actor identity or omit the flag.", {
+      help: `${cliInvocation()} new "<Kind>" <id> --actor <name>`,
+    });
+  }
+
+  const frontmatter: Frontmatter = { type: kind.governs };
+  for (const field of fieldNames) {
+    const vals = dynamicValues[field] as string[] | undefined;
+    if (vals === undefined || vals.length === 0) continue;
+    frontmatter[field] = vals.length === 1 ? vals[0]! : vals;
+  }
+  // `mutateDoc`'s validate step (strict:true below) defaults `frontmatter.timestamp` in place if
+  // still absent BEFORE validating — so a kind that declares `timestamp` required (e.g. the seeded
+  // Context Note kind) validates against a value that is actually present, not "missing because the
+  // user didn't pass --timestamp".
+
+  const body = (kind.sections ?? []).map((heading) => `# ${heading}\n`).join("\n");
+  // `--no-prefix` uses the id VERBATIM instead of auto-prepending the kind's declared `path` — the
+  // escape hatch for when a caller needs a specific id/namespace that differs from the kind's
+  // convention (cold-start study r3: an agent needing a literal prefix had to drop off `new` onto
+  // `doc write`, losing strict kind validation, because the auto-prefix rewrote its id).
+  const targetId = values["no-prefix"] ? id : resolveInstanceId(kind, id);
+  const remote = values.remote as string | undefined;
+
+  // "create-only" mode: expect-absent CAS, the same closed-create-race pattern the CLI's recipe
+  // machinery (`applyRecipe`) uses. A pre-existing doc at `targetId` maps to a structured, actionable
+  // ALREADY_EXISTS (exit 5) instead of silently overwriting it. Validation is STRICT (unlike `doc
+  // write`'s warn-by-default): a missing required field or a disallowed enum value rejects the
+  // write (exit 2) before any write is attempted.
+  const result = await mutateDoc({
+    bundle,
+    id: targetId,
+    mode: "create-only",
+    registry,
+    remoteUrl: remote,
+    strict: true,
+    helpOnKindReject: `${cliInvocation()} kinds`,
+    actor: actor?.trim(),
+    buildCandidate: () => ({ frontmatter, body }),
+    errors: {
+      alreadyExists: () =>
+        new CliError(
+          "ALREADY_EXISTS",
+          `'${targetId}' already exists — 'new' only creates fresh instances of a kind and refuses to ` +
+            `silently overwrite one. Run '${cliInvocation()} doc update ${targetId}' to patch it, or ` +
+            `'${cliInvocation()} doc write ${targetId} --type ${kind.governs}' to overwrite it outright ` +
+            `and deliberately.`,
+          { help: `${cliInvocation()} doc update ${targetId}` },
+        ),
+    },
+  });
+
+  const saved = result.doc;
+  const receipt: Record<string, unknown> = {
+    new: "written",
+    kind: kind.governs,
+    id: saved.id,
+    type: saved.frontmatter.type,
+    timestamp: saved.frontmatter.timestamp ?? null,
+    // The content-addressed version token of the created doc — the CAS basis for a later
+    // optimistic `doc update --expected-version` (mirrors `doc write`/`doc history`).
+    version: result.version,
+  };
+  // Surface the path-prefixing so it isn't silent: an agent that passed a bare id (or a
+  // differently-prefixed one) sees the final id it actually got (cold-start study: C4 nearly
+  // committed a wrong id because the prefix was auto-applied without any indication).
+  if (targetId !== id) {
+    receipt.note = `id prefixed with the '${kind.governs}' kind's path → '${targetId}' (you passed '${id}')`;
+  }
+  receipt.help = [`${cliInvocation()} doc read ${saved.id}`];
+  stdout(render(receipt, resolveMode({ json: Boolean(values.json) })));
+}

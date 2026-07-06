@@ -1,0 +1,56 @@
+{
+  "name": "agentstate-lite",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Agent-facing CLI (AXI) for reading and writing local OKF knowledge bundles: context notes, docs, cross-links, and a self-contained static-HTML view.",
+  "keywords": [
+    "okf",
+    "knowledge",
+    "agent",
+    "axi",
+    "cli",
+    "markdown",
+    "context-notes"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/Holaxis-ai/agentstate-lite#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Holaxis-ai/agentstate-lite.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Holaxis-ai/agentstate-lite/issues"
+  },
+  "bin": {
+    "agentstate-lite": "./dist/agentstate-lite.mjs",
+    "aslite": "./dist/agentstate-lite.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --import ./test/ts-loader.mjs ./test/*.test.ts",
+    "gen:skill": "node scripts/gen-skill.mjs",
+    "check:skill": "node scripts/gen-skill.mjs --check",
+    "gen:skill:bundle": "node scripts/gen-skill.mjs --target skill",
+    "check:skill:bundle": "node scripts/gen-skill.mjs --target skill --check",
+    "build:skill": "node build.mjs && node scripts/gen-skill.mjs --target skill",
+    "check:bundle": "node scripts/check-skill-bundle.mjs",
+    "prepublishOnly": "node build.mjs"
+  },
+  "devDependencies": {
+    "@agentstate-lite/core": "*",
+    "@agentstate-lite/server": "*",
+    "@agentstate-lite/viewer": "*",
+    "@toon-format/toon": "2.3.0",
+    "@types/node": "^22.0.0",
+    "axi-sdk-js": "0.1.8",
+    "esbuild": "0.25.12",
+    "typescript": "^5.4.0"
+  }
+}

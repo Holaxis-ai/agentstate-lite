@@ -1,0 +1,28 @@
+{
+  "name": "@agentstate-lite/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Wire-protocol v0 REFERENCE server: a Web-standard fetch(Request)->Response router over the OKF engine (docs/WIRE-PROTOCOL.md), plus a thin node:http bootstrap. Local-first, no auth (loopback-only default). A reference implementation, not a production deployment.",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --import ./test/ts-loader.mjs ./test/*.test.ts"
+  },
+  "dependencies": {
+    "@agentstate-lite/core": "*"
+  }
+}

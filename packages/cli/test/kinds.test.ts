@@ -1,0 +1,742 @@
+/**
+ * CLI surface for kind conventions: `new`, `kinds`, `doc write`'s warn-by-default validation
+ * (`--strict` upgrade), and `status`'s kind-fed freshness horizon sweep.
+ *
+ * Runs command functions in-process (no subprocess) against a real temp filesystem bundle,
+ * mirroring `link.test.ts`'s pattern. The `--remote` parity test additionally boots a real
+ * `@agentstate-lite/server` `serve()` instance, mirroring `remote.test.ts`.
+ */
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { initBundle, writeDoc, readDoc, CONVENTION_TYPE, type Bundle } from "@agentstate-lite/core";
+import { serve, type ServerHandle } from "@agentstate-lite/server";
+
+import { newCommand } from "../src/commands/new.js";
+import { kinds } from "../src/commands/kinds.js";
+import { doc } from "../src/commands/doc.js";
+import { list } from "../src/commands/list.js";
+import { status } from "../src/commands/status.js";
+import { CliError } from "../src/errors.js";
+import { commandReference } from "../src/reference.js";
+import { buildHomeView } from "../src/commands/home.js";
+import { applyRecipe } from "../src/recipes.js";
+import { CONTEXT_NOTES_RECIPE } from "../src/recipe-source.js";
+
+const T = "2026-07-01T00:00:00.000Z";
+
+// A body carrying all four headings a hand-authored Context Note can emit (Summary/Decisions/Open
+// Questions/Pointers). The seeded Context Note kind declares only `sections: [Summary]` — the
+// alert-fatigue guard for minimal notes — which this body trivially satisfies. Used by
+// `doc write` tests below that write a "Context Note"-typed doc directly and want to isolate a
+// DIFFERENT violation (missing title/timestamp) from the seed's section lint.
+const FULL_SECTIONS_BODY =
+  "# Summary\n\nHi.\n\n# Decisions\n\n- Did X\n\n# Open Questions\n\n- Why not Y?\n\n" +
+  "# Pointers\n\n- [A](../concepts/a.md)\n";
+
+async function tempDir(): Promise<string> {
+  return mkdtemp(path.join(tmpdir(), "agentstate-lite-kinds-test-"));
+}
+
+/** A fresh bundle with the Context Note kind applied (mirrors `init`'s default `context-notes` recipe). */
+async function makeSeededBundle(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  const dir = await tempDir();
+  await initBundle(dir);
+  await applyRecipe({ root: dir }, CONTEXT_NOTES_RECIPE);
+  return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+/** Run a command function, capturing its `--json` stdout and parsing the envelope. */
+async function runJson(
+  cmd: (argv: string[], deps: { stdout: (s: string) => void }) => Promise<void>,
+  argv: string[],
+): Promise<Record<string, unknown>> {
+  let out = "";
+  await cmd([...argv, "--json"], { stdout: (s) => (out += s) });
+  return JSON.parse(out) as Record<string, unknown>;
+}
+
+test("kindsPointer: interpolated with the CALLER's resolved invocation, not a hardcoded bin name (F6 regression)", () => {
+  // reference.ts stays pure (no invocation.ts import): commandReference() takes the resolved
+  // invocation prefix as a plain argument. A caller passing a DIFFERENT prefix (e.g. the
+  // npx-fallback form an off-PATH install would resolve to) must see it reflected verbatim.
+  const npxForm = commandReference("npx -y agentstate-lite");
+  assert.equal(npxForm.kinds, "kinds are declared per-bundle — run `npx -y agentstate-lite kinds` to list them");
+
+  const bareForm = commandReference("agentstate-lite");
+  assert.equal(bareForm.kinds, "kinds are declared per-bundle — run `agentstate-lite kinds` to list them");
+
+  // buildHomeView (home.ts) threads deps.invocation() through to commandReference() the same way.
+  // (The 2-arg call omits the 3rd `summary` param — optional, so this stays the no-bundle path.)
+  const home = buildHomeView(null, { binPath: () => "/bin/agentstate-lite", invocation: () => "npx -y agentstate-lite" });
+  assert.equal(home.kinds, "kinds are declared per-bundle — run `npx -y agentstate-lite kinds` to list them");
+});
+
+test("kinds: on a seeded bundle, lists the Context Note kind with its declared shape + horizon", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    const result = await runJson(kinds, ["--dir", dir]);
+    assert.equal(result.count, 1);
+    const rows = result.kinds as Array<Record<string, unknown>>;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.governs, "Context Note");
+    assert.deepEqual(rows[0]!.required, ["title", "timestamp"]);
+    assert.deepEqual(rows[0]!.optional, ["description", "tags"]);
+    assert.equal(rows[0]!.path, "context-notes/");
+    assert.equal(rows[0]!.horizon, "24h");
+    assert.equal(rows[0]!.horizon_ms, 24 * 3_600_000);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("kinds: on a conventions-free bundle, an empty registry with a help hint (no crash, no I/O error)", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir); // no recipe applied — a bare bundle
+    const result = await runJson(kinds, ["--dir", dir]);
+    assert.equal(result.count, 0);
+    assert.deepEqual(result.kinds, []);
+    assert.ok(Array.isArray(result.help));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("new: unknown kind is a USAGE error (exit 2) that enumerates declared kinds", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await assert.rejects(
+      () => newCommand(["Bogus Kind", "x", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.match(err.message, /unknown kind 'Bogus Kind'/);
+        assert.match(err.message, /Context Note/);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new: a control flag (--dir/--remote) with no value (final argv token) is a clean USAGE, not a RUNTIME openBundle crash", async () => {
+  // Phase-1 discovery runs `strict:false`, which returns boolean `true` (not undefined, no throw) for
+  // a configured value flag given no value as the LAST token. `--dir`/`--remote` open the bundle
+  // BEFORE the authoritative Phase-2 strict parse, so an unguarded boolean would reach openBundle and
+  // crash it ('paths[0] must be of type string', RUNTIME/exit 1) instead of the clean USAGE Phase 2
+  // gives. The guard fires before any bundle access, so no seeded bundle is needed.
+  for (const flag of ["--dir", "--remote"]) {
+    await assert.rejects(
+      () => newCommand(["Task", "x", flag]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError, `${flag}: expected CliError, got ${String(err)}`);
+        assert.equal(err.code, "USAGE", `${flag}: code`);
+        assert.equal(err.exitCode, 2, `${flag}: exitCode`);
+        assert.ok(err.message.includes(`${flag} requires a value`), `${flag}: message was "${err.message}"`);
+        return true;
+      },
+    );
+  }
+});
+
+test('new "<Kind>" --help shows THAT kind\'s schema (fields/enum/sections/path), not the generic usage (maturity: per-kind help)', async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    let out = "";
+    await newCommand(["Context Note", "--help", "--dir", dir], { stdout: (s) => (out += s) });
+    assert.match(out, /create a Context Note instance/);
+    assert.match(out, /required:/);
+    assert.match(out, /--title/);
+    assert.match(out, /Summary/); // the kind's declared body section
+    assert.match(out, /context-notes\//); // the kind's declared path prefix
+    // `new --help` with NO kind still shows the GENERIC reference (not a kind schema).
+    let generic = "";
+    await newCommand(["--help"], { stdout: (s) => (generic += s) });
+    assert.match(generic, /create a new instance of a bundle-declared kind/);
+    assert.doesNotMatch(generic, /create a Context Note instance/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new surfaces the auto-applied path prefix in its receipt — no silent id rewrite (maturity)", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    const result = await runJson(newCommand, ["Context Note", "bare-note", "--title", "T", "--dir", dir]);
+    assert.equal(result.id, "context-notes/bare-note");
+    assert.match(result.note as string, /prefixed/);
+    assert.match(result.note as string, /bare-note/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --body gives targeted guidance, not a confusing 'unknown field body' (maturity)", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await assert.rejects(
+      () => newCommand(["Context Note", "x", "--title", "T", "--body", "hi", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /does not take --body/);
+        assert.match(err.message, /doc update|doc write/);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --no-prefix uses the id VERBATIM, skipping the kind's declared path prefix (maturity: escape hatch)", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    const result = await runJson(newCommand, ["Context Note", "literal/id", "--no-prefix", "--title", "T", "--dir", dir]);
+    assert.equal(result.id, "literal/id"); // NOT context-notes/literal/id
+    assert.equal(result.note, undefined); // no prefix applied → no prefix note
+    // Without --no-prefix the same id IS prefixed (control).
+    const prefixed = await runJson(newCommand, ["Context Note", "other/id", "--title", "T", "--dir", dir]);
+    assert.equal(prefixed.id, "context-notes/other/id");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new: missing required field is rejected by VALIDATION, not by machinery (USAGE, exit 2, cites the field)", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await assert.rejects(
+      () => newCommand(["Context Note", "missing-title", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /does not satisfy the 'Context Note' kind/);
+        assert.match(err.message, /title/);
+        return true;
+      },
+    );
+    // Nothing was written.
+    await assert.rejects(() => readDoc({ root: dir }, "context-notes/missing-title"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new: a conforming instance writes through the ordinary engine path, honoring the kind's path prefix", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    const result = await runJson(newCommand, ["Context Note", "my-note", "--title", "Hello", "--dir", dir]);
+    assert.equal(result.new, "written");
+    assert.equal(result.kind, "Context Note");
+    assert.equal(result.id, "context-notes/my-note"); // path prefix prepended
+    assert.equal(result.type, "Context Note");
+    assert.ok(result.timestamp); // auto-filled
+
+    const doc = await readDoc({ root: dir }, "context-notes/my-note");
+    assert.equal(doc.frontmatter.title, "Hello");
+
+    // Supplying an id that ALREADY carries the prefix is not double-prefixed.
+    const again = await runJson(newCommand, [
+      "Context Note",
+      "context-notes/already-prefixed",
+      "--title",
+      "X",
+      "--dir",
+      dir,
+    ]);
+    assert.equal(again.id, "context-notes/already-prefixed");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new: create-only — a SECOND 'new' at the same id is rejected (ALREADY_EXISTS, exit 5), never silently overwrites (round-review finding)", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    const first = await runJson(newCommand, ["Context Note", "guarded", "--title", "Original Title", "--dir", dir]);
+    assert.equal(first.new, "written");
+    assert.equal(first.id, "context-notes/guarded");
+
+    await assert.rejects(
+      () => newCommand(["Context Note", "guarded", "--title", "Clobbering Title", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "ALREADY_EXISTS");
+        assert.equal(err.exitCode, 5);
+        assert.match(err.message, /already exists/);
+        assert.match(err.message, /doc update/);
+        return true;
+      },
+    );
+
+    // Nothing was touched — the original title survives untouched.
+    const after = await readDoc({ root: dir }, "context-notes/guarded");
+    assert.equal(after.frontmatter.title, "Original Title");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new: an unrecognized --<field> flag for the kind is a USAGE error naming the declared fields", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await assert.rejects(
+      () => newCommand(["Context Note", "x", "--title", "T", "--bogus-field", "v", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /unknown field\(s\).*bogus-field/);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new: a stray extra positional is a USAGE error naming the count (F3 regression — was silently absorbed)", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await assert.rejects(
+      () => newCommand(["Context Note", "x", "extra-positional", "--title", "T", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /positionals/);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new: --<field>=<value> is accepted identically to --<field> <value> (F5 regression)", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    const result = await runJson(newCommand, ["Context Note", "eq-form", "--title=Equals Form", "--dir", dir]);
+    assert.equal(result.new, "written");
+    assert.equal(result.id, "context-notes/eq-form");
+    const saved = await readDoc({ root: dir }, "context-notes/eq-form");
+    assert.equal(saved.frontmatter.title, "Equals Form");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new: a kind declaring the reserved field name 'type' cannot have --type override the governed type — it is an unknown field, never a silent overwrite (F2 regression, CLI integration)", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/hijack",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        title: "Hijack",
+        governs: "Hijack",
+        fields: { required: ["title", "type"], optional: [] },
+        timestamp: T,
+      },
+      body: "Tries to declare 'type' as an own field.",
+    });
+    await assert.rejects(
+      () => newCommand(["Hijack", "x", "--title", "T", "--type", "Something Else", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /unknown field\(s\).*type/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("new: a kind with declared 'sections' scaffolds them as empty body headings", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/roadmap-item",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        title: "Roadmap Item",
+        governs: "Roadmap Item",
+        path: "roadmap/",
+        fields: { required: ["title", "status"], optional: [], values: { status: ["planned", "active", "done"] } },
+        sections: ["Why", "Done when"],
+        timestamp: T,
+      },
+      body: "Roadmap items.",
+    });
+
+    await newCommand(["Roadmap Item", "r1", "--title", "R1", "--status", "planned", "--dir", dir], {
+      stdout: () => {},
+    });
+    const saved = await readDoc(bundle, "roadmap/r1");
+    assert.match(saved.body, /^# Why/m);
+    assert.match(saved.body, /^# Done when/m);
+
+    // A disallowed enum value is a validation rejection.
+    await assert.rejects(
+      () => newCommand(["Roadmap Item", "r2", "--title", "R2", "--status", "cancelled", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /cancelled/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── parser-migration coverage: `new` retired its hand-rolled parser onto a two-phase `parseArgs` ──
+
+test("new --actor '' (blank): USAGE (exit 2)", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await assert.rejects(
+      () => newCommand(["Context Note", "x", "--title", "T", "--actor", "", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.match(err.message, /empty value/);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --actor <name>: accepted over a filesystem bundle (no crash, writes)", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    const result = await runJson(newCommand, ["Context Note", "actor-note", "--title", "T", "--actor", "alice", "--dir", dir]);
+    assert.equal(result.new, "written");
+    const saved = await readDoc({ root: dir }, "context-notes/actor-note");
+    assert.equal(saved.frontmatter.title, "T");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new: a glued flag token names the token, not \"N positionals\" (parser-migration regression)", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    // A shell-quoting mistake landing `--title todo` as ONE argv element used to be silently absorbed
+    // by the hand-rolled parser's positional bucket and reported as a misdirecting "got 3
+    // positionals" — the strict re-parse now surfaces it as an unknown-field error NAMING the token.
+    await assert.rejects(
+      () => newCommand(["Context Note", "x", "--title todo", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /title todo/);
+        assert.doesNotMatch(err.message, /positionals/);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new: a repeated --<field> becomes an array", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/taggable",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        title: "Taggable",
+        governs: "Taggable",
+        fields: { required: ["title"], optional: ["tag"] },
+        timestamp: T,
+      },
+      body: "A kind with a repeatable optional field.",
+    });
+
+    await newCommand(["Taggable", "x", "--title", "T", "--tag", "a", "--tag", "b", "--dir", dir], {
+      stdout: () => {},
+    });
+    const saved = await readDoc(bundle, "x");
+    assert.deepEqual(saved.frontmatter.tag, ["a", "b"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("doc write: warn-by-default when a kind governs --type (exit 0, warnings[] attached, doc still written)", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    let out = "";
+    // FULL_SECTIONS_BODY carries all four seeded sections, isolating the missing-title violation
+    // from the (unrelated) section lint the seed's `sections:` declaration now also runs.
+    await doc(
+      ["write", "context-notes/bad", "--type", "Context Note", "--body", FULL_SECTIONS_BODY, "--dir", dir, "--json"],
+      { stdout: (s) => (out += s) },
+    );
+    const result = JSON.parse(out) as Record<string, unknown>;
+    assert.equal(result.doc, "written");
+    const warnings = result.warnings as Array<Record<string, unknown>>;
+    // EXACTLY the missing-title warning — no phantom 'timestamp' warning alongside it (a
+    // timestamp-less write is auto-defaulted by the engine, and doc.ts now defaults
+    // frontmatter.timestamp BEFORE validation runs so validation sees the value that will
+    // actually be persisted; regression coverage for the post-review finding F1).
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0]!.field, "title");
+
+    // The doc WAS written despite the warnings (warn-by-default is non-blocking).
+    const saved = await readDoc({ root: dir }, "context-notes/bad");
+    assert.equal(saved.frontmatter.type, "Context Note");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc write: a timestamp-less write of a governed type produces NO warnings key at all (F1 regression — the phantom KIND_FIELD_MISSING 'timestamp' warning)", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    // --title supplied, --timestamp NOT supplied. Context Note requires title+timestamp; the
+    // engine always stamps a timestamp regardless, so a doc lacking ONLY --timestamp is fully
+    // conforming once written and must carry no warnings at all — not even a title-shaped one.
+    // FULL_SECTIONS_BODY satisfies the seed's `sections:` declaration so it too contributes no
+    // warnings, keeping this test isolated to the F1 timestamp regression it targets.
+    let out = "";
+    await doc(
+      [
+        "write",
+        "context-notes/fine",
+        "--type",
+        "Context Note",
+        "--title",
+        "Fine",
+        "--body",
+        FULL_SECTIONS_BODY,
+        "--dir",
+        dir,
+        "--json",
+      ],
+      { stdout: (s) => (out += s) },
+    );
+    const result = JSON.parse(out) as Record<string, unknown>;
+    assert.equal(result.doc, "written");
+    assert.equal("warnings" in result, false, `expected no warnings key, got ${JSON.stringify(result.warnings)}`);
+    assert.ok(typeof result.timestamp === "string" && result.timestamp.length > 0);
+
+    // The --strict variant of the identical write must SUCCEED (exit 0), not reject — this is
+    // exactly the case F1 caused to wrongly fail under --strict.
+    let strictOut = "";
+    await doc(
+      [
+        "write",
+        "context-notes/fine-strict",
+        "--type",
+        "Context Note",
+        "--title",
+        "Fine",
+        "--body",
+        FULL_SECTIONS_BODY,
+        "--strict",
+        "--dir",
+        dir,
+        "--json",
+      ],
+      { stdout: (s) => (strictOut += s) },
+    );
+    const strictResult = JSON.parse(strictOut) as Record<string, unknown>;
+    assert.equal(strictResult.doc, "written");
+    assert.equal("warnings" in strictResult, false);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc write --strict: upgrades a non-empty warning set to a USAGE error (exit 2), does NOT write", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await assert.rejects(
+      () =>
+        doc(["write", "context-notes/rejected", "--type", "Context Note", "--body", "x", "--strict", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        return true;
+      },
+    );
+    await assert.rejects(() => readDoc({ root: dir }, "context-notes/rejected"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc write: a conventions-free bundle (no governing kind) writes with no warnings key at all", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    let out = "";
+    await doc(["write", "concepts/x", "--type", "Concept", "--body", "hi", "--dir", dir, "--json"], {
+      stdout: (s) => (out += s),
+    });
+    const result = JSON.parse(out) as Record<string, unknown>;
+    assert.equal(result.doc, "written");
+    assert.equal("warnings" in result, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// The CLI-level "kind horizon feeds freshness" coupling (formerly pinned here via `note read`'s
+// `--max-age-ms` wiring) is covered generically now: `status`'s freshness sweep proves the SAME
+// kind-fed-horizon coupling both WITH and WITHOUT the recipe applied (`recipes.test.ts`), and the
+// underlying `freshness()`+`maxAgeMs` override behavior itself is covered directly at the engine
+// level (`core/test/pure.test.ts`'s "freshness: empty / fresh / stale-by-age / stale-by-dependency").
+// No CLI command exposes a per-doc explicit `--max-age-ms` override anymore — that is an accepted,
+// intentional regression (see STATUS.md / plans/delete-note.md), not a coverage gap.
+
+test("list --fields fields on a Convention row: pins the nested-object TOON rendering (Improvement 7)", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/roadmap-item",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        title: "Roadmap Item",
+        governs: "Roadmap Item",
+        fields: { required: ["title", "status"], optional: [], values: { status: ["planned", "active", "done"] } },
+        timestamp: T,
+      },
+      body: "Roadmap items.",
+    });
+    const result = await runJson(list, ["--type", CONVENTION_TYPE, "--fields", "fields", "--dir", dir]);
+    assert.equal(result.count, 1);
+    const rows = result.docs as Array<Record<string, unknown>>;
+    assert.equal(rows.length, 1);
+    // Pin the shape: --json round-trips a plain nested object unmodified through the row.
+    assert.deepEqual(rows[0]!.fields, {
+      required: ["title", "status"],
+      optional: [],
+      values: { status: ["planned", "active", "done"] },
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--remote: new + kinds against a served bundle, parity with the same operations run locally", async () => {
+  const localDir = await tempDir();
+  const remoteDir = await tempDir();
+  try {
+    await initBundle(localDir);
+    await applyRecipe({ root: localDir }, CONTEXT_NOTES_RECIPE);
+    await initBundle(remoteDir);
+    await applyRecipe({ root: remoteDir }, CONTEXT_NOTES_RECIPE);
+    const handle: ServerHandle = await serve({ bundle: { root: remoteDir }, port: 0 });
+    const url = `http://${handle.host}:${handle.port}`;
+    try {
+      const localKinds = await runJson(kinds, ["--dir", localDir]);
+      const remoteKinds = await runJson(kinds, ["--remote", url]);
+      assert.deepEqual(remoteKinds, localKinds);
+
+      const localNew = await runJson(newCommand, ["Context Note", "n1", "--title", "N1", "--dir", localDir]);
+      const remoteNew = await runJson(newCommand, ["Context Note", "n1", "--title", "N1", "--remote", url]);
+      assert.equal(remoteNew.id, localNew.id);
+      assert.equal(remoteNew.kind, localNew.kind);
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    await rm(localDir, { recursive: true, force: true });
+    await rm(remoteDir, { recursive: true, force: true });
+  }
+});
+
+test("seed round-trip (usability F2): init seeds 'sections: [Summary]' into 'kinds', and BOTH a summary-only and a fully-populated Context Note doc (written via the GENERIC 'doc write' path) pass 'status' with zero kind/registry warnings (alert-fatigue guard)", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    await applyRecipe({ root: dir }, CONTEXT_NOTES_RECIPE);
+
+    // init -> kinds shows the seeded sections (the seed exercises the 'sections' feature for
+    // real). ONLY Summary is declared — the one section the context-notes recipe scaffolds and
+    // every instance carries — so the minimal-note workflow below stays lint-free.
+    const kindsResult = await runJson(kinds, ["--dir", dir]);
+    const rows = kindsResult.kinds as Array<Record<string, unknown>>;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.governs, "Context Note");
+    assert.deepEqual(rows[0]!.sections, ["Summary"]);
+
+    // The PRIMARY-PATH pin: a summary-only Context Note (no Decisions/Open Questions/Pointers,
+    // the most common legitimate shape — written via the generic 'doc write', not a bespoke
+    // command) must produce ZERO kind warnings in status — the seed must never lint the minimal
+    // workflow (orchestrator decision on the F2 follow-up).
+    await doc(
+      [
+        "write",
+        "context-notes/minimal",
+        "--type",
+        "Context Note",
+        "--title",
+        "minimal",
+        "--body",
+        "# Summary\n\nJust a summary.",
+        "--dir",
+        dir,
+      ],
+      { stdout: () => {} },
+    );
+    const afterMinimal = await runJson(status, ["--dir", dir]);
+    assert.equal(afterMinimal.kind_warnings, 0, "a summary-only Context Note must not trip the seeded section lint");
+    assert.equal(afterMinimal.registry_warnings, 0);
+
+    // A real link target so the fully-populated doc's pointer link resolves (keeps the status
+    // report free of an unrelated unresolved-link finding — not what this test pins).
+    const bundle: Bundle = { root: dir };
+    await writeDoc(bundle, { id: "concepts/a", frontmatter: { type: "Concept", timestamp: T }, body: "A concept." });
+
+    // And the fully-populated shape (all four headings present) also passes, trivially
+    // satisfying the declared [Summary].
+    await doc(
+      [
+        "write",
+        "context-notes/full",
+        "--type",
+        "Context Note",
+        "--title",
+        "full",
+        "--body",
+        "# Summary\n\nAll sections present.\n\n# Decisions\n\n- Do X\n\n# Open Questions\n\n- Why not Y?\n\n# Pointers\n\n- [A](../concepts/a.md)\n",
+        "--dir",
+        dir,
+      ],
+      { stdout: () => {} },
+    );
+
+    // status -> still zero kind-conformance warnings and zero registry warnings (the seed
+    // itself is well-formed).
+    const statusResult = await runJson(status, ["--dir", dir]);
+    assert.equal(statusResult.kind_warnings, 0);
+    assert.equal(statusResult.registry_warnings, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

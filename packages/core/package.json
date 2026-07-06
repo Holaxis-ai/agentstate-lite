@@ -1,0 +1,33 @@
+{
+  "name": "@agentstate-lite/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "OKF store engine — bundle I/O, cross-links, derived backlinks, freshness, and viewer rendering.",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --import ./test/ts-loader.mjs ./test/*.test.ts"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "@agentstate-lite/server": "*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.4.0"
+  }
+}
