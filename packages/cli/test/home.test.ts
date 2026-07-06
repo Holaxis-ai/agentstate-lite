@@ -12,6 +12,14 @@ import path from "node:path";
 
 import { initBundle, writeDoc, type OkfDocument } from "@agentstate-lite/core";
 
+// HERMETIC CWD (found live, 2026-07-06): `home()` peeks at the project binding by walking UP
+// from the cwd, so a REAL `.agentstate.json` anywhere above the test process's cwd — including
+// the repo's own untracked one — leaks into every in-process test in this file and changes the
+// dashboard/remote-pointer output. node --test runs each file in its own process, so a
+// module-top chdir into a binding-free temp dir makes the whole file hermetic; tests that
+// chdir themselves capture and restore their OWN `origCwd`, which composes with this.
+process.chdir(await mkdtemp(path.join(tmpdir(), "aslite-hermetic-home-")));
+
 import {
   buildHomeView,
   home,

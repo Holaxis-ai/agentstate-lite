@@ -11,14 +11,20 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, mkdtemp } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { whoami } from "../src/commands/whoami.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = path.resolve(here, "../src");
+
+// HERMETIC CWD (found live, 2026-07-06): `whoami` peeks at the project binding by walking UP
+// from the cwd — an ambient `.agentstate.json` above the repo changes the offline listing.
+// Module-top chdir into a binding-free temp dir; this file's other paths are import.meta-based.
+process.chdir(await mkdtemp(path.join(tmpdir(), "aslite-hermetic-hints-")));
 
 const BARE_BIN = /\b(agentstate-lite|aslite)\b/;
 const PHANTOM_DIST = /dist\/agentstate-lite\.mjs/;
