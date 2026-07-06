@@ -154,48 +154,65 @@ the rest of the line unchanged.
 - `"$ASLITE" hook install|status|uninstall [--scope project|global]`
   — Install the SessionStart home-view hook (Claude Code, Codex, OpenCode)
 
-## Where workspace bundles live — default `~/.agentstate-lite/<workspace>/`
+## Workspaces — default location, one-time binding, then bare commands
 
 Unless the user directs otherwise, store each workspace's bundle under `~/.agentstate-lite/`,
 in a folder named after the workspace: a workspace named `holaxis-video-analyzer` keeps its
-bundle at `~/.agentstate-lite/holaxis-video-analyzer/`. Every bundle-facing command accepts
-`--dir <path>`, so target the workspace explicitly on each command:
+bundle at `~/.agentstate-lite/holaxis-video-analyzer/`. Do NOT pass `--dir` on every command —
+set the workspace up ONCE per project, and every later command finds it automatically:
 
 ```sh
+# One-time setup, run at the PROJECT ROOT (all three steps are idempotent):
 WS="$HOME/.agentstate-lite/holaxis-video-analyzer"
-"$ASLITE" init --dir "$WS"   # idempotent — creates the bundle, or opens an existing one
-"$ASLITE" list --dir "$WS"
+"$ASLITE" init --dir "$WS"                        # create (or open) the bundle
+printf '{ "bundle": "%s" }\n' "$WS" > .agentstate.json   # bind this project to it
+grep -qxF .agentstate.json .git/info/exclude 2>/dev/null \
+  || echo .agentstate.json >> .git/info/exclude  # local-only ignore (skip if not a git repo)
 ```
 
-Two things override this default:
+From then on, run every command BARE from anywhere in the project tree — the CLI resolves the
+nearest `.agentstate.json` up-tree, exactly as if `--dir` had been passed:
+
+```sh
+"$ASLITE" list
+"$ASLITE" doc read context-notes/cycle-1
+```
+
+Each invocation is stateless and resolves its bundle in this order: explicit `--dir`/`--remote`
+flag → `AGENTSTATE_LITE_REMOTE` env (URL only) → nearest `.agentstate.json` up-tree → enclosing
+bundle (`index.md` up-tree). So reserve `--dir` for the exceptions: reaching a workspace from
+OUTSIDE its bound project, touching a second workspace, or one-off work with no project.
+
+Two things override the default location:
 
 1. **Explicit user direction** — the user names a directory or a `--remote`; use that.
-2. **An existing binding or bundle** — a command run without `--dir` resolves a committed
-   `.agentstate.json` project binding (walking up from the cwd), then an enclosing bundle
-   (`index.md` up-tree). If either exists, that IS this project's workspace — use it rather
+2. **An existing binding or bundle** — if a bare command already resolves (a `.agentstate.json`
+   or an enclosing bundle exists up-tree), that IS this project's workspace — use it rather
    than creating a second bundle under `~/.agentstate-lite/`.
 
 ## Typical flow
 
 ```sh
-# Create (or open) the workspace's bundle in the default location
+# One-time workspace setup (default location + project binding — see the Workspaces section)
 WS="$HOME/.agentstate-lite/my-workspace"
 "$ASLITE" init --dir "$WS"
+printf '{ "bundle": "%s" }\n' "$WS" > .agentstate.json
 
+# Everything after runs bare — the binding resolves the workspace
 # Create a context note (an OKF concept) for the next session
-"$ASLITE" new "Context Note" cycle-1 --title "cycle-1" --dir "$WS"
-"$ASLITE" doc update context-notes/cycle-1 --body "What this session did and what's next" --dir "$WS"
+"$ASLITE" new "Context Note" cycle-1 --title "cycle-1"
+"$ASLITE" doc update context-notes/cycle-1 --body "What this session did and what's next"
 
 # Read it back
-"$ASLITE" doc read context-notes/cycle-1 --dir "$WS"
+"$ASLITE" doc read context-notes/cycle-1
 
 # Store a doc, cross-link it, and query the bundle
-"$ASLITE" doc write specs/auth --type Spec --title "Auth" --body "…" --dir "$WS"
-"$ASLITE" link add specs/auth context-notes/cycle-1 --dir "$WS"
-"$ASLITE" list --type Spec --dir "$WS"
+"$ASLITE" doc write specs/auth --type Spec --title "Auth" --body "…"
+"$ASLITE" link add specs/auth context-notes/cycle-1
+"$ASLITE" list --type Spec
 
 # Bake a shareable, self-contained HTML view of the whole bundle
-"$ASLITE" view --dir "$WS"
+"$ASLITE" view
 ```
 
 ## Remote (--remote, serve, identity, invites, keys)

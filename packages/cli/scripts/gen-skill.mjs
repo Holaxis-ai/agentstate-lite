@@ -77,7 +77,7 @@ function renderCommandsSection(COMMAND_GROUPS, prefix) {
 
 function renderWorkspaceLocation(prefix) {
   const lines = [];
-  lines.push("## Where workspace bundles live — default `~/.agentstate-lite/<workspace>/`");
+  lines.push("## Workspaces — default location, one-time binding, then bare commands");
   lines.push("");
   lines.push(
     "Unless the user directs otherwise, store each workspace's bundle under `~/.agentstate-lite/`,",
@@ -86,27 +86,50 @@ function renderWorkspaceLocation(prefix) {
     "in a folder named after the workspace: a workspace named `holaxis-video-analyzer` keeps its",
   );
   lines.push(
-    "bundle at `~/.agentstate-lite/holaxis-video-analyzer/`. Every bundle-facing command accepts",
+    "bundle at `~/.agentstate-lite/holaxis-video-analyzer/`. Do NOT pass `--dir` on every command —",
   );
-  lines.push("`--dir <path>`, so target the workspace explicitly on each command:");
+  lines.push(
+    "set the workspace up ONCE per project, and every later command finds it automatically:",
+  );
   lines.push("");
   lines.push("```sh");
+  lines.push("# One-time setup, run at the PROJECT ROOT (all three steps are idempotent):");
   lines.push('WS="$HOME/.agentstate-lite/holaxis-video-analyzer"');
-  lines.push(`${prefix} init --dir "$WS"   # idempotent — creates the bundle, or opens an existing one`);
-  lines.push(`${prefix} list --dir "$WS"`);
+  lines.push(`${prefix} init --dir "$WS"                        # create (or open) the bundle`);
+  lines.push('printf \'{ "bundle": "%s" }\\n\' "$WS" > .agentstate.json   # bind this project to it');
+  lines.push("grep -qxF .agentstate.json .git/info/exclude 2>/dev/null \\");
+  lines.push("  || echo .agentstate.json >> .git/info/exclude  # local-only ignore (skip if not a git repo)");
   lines.push("```");
   lines.push("");
-  lines.push("Two things override this default:");
+  lines.push(
+    "From then on, run every command BARE from anywhere in the project tree — the CLI resolves the",
+  );
+  lines.push("nearest `.agentstate.json` up-tree, exactly as if `--dir` had been passed:");
+  lines.push("");
+  lines.push("```sh");
+  lines.push(`${prefix} list`);
+  lines.push(`${prefix} doc read context-notes/cycle-1`);
+  lines.push("```");
+  lines.push("");
+  lines.push(
+    "Each invocation is stateless and resolves its bundle in this order: explicit `--dir`/`--remote`",
+  );
+  lines.push(
+    "flag → `AGENTSTATE_LITE_REMOTE` env (URL only) → nearest `.agentstate.json` up-tree → enclosing",
+  );
+  lines.push(
+    "bundle (`index.md` up-tree). So reserve `--dir` for the exceptions: reaching a workspace from",
+  );
+  lines.push("OUTSIDE its bound project, touching a second workspace, or one-off work with no project.");
+  lines.push("");
+  lines.push("Two things override the default location:");
   lines.push("");
   lines.push("1. **Explicit user direction** — the user names a directory or a `--remote`; use that.");
   lines.push(
-    "2. **An existing binding or bundle** — a command run without `--dir` resolves a committed",
+    "2. **An existing binding or bundle** — if a bare command already resolves (a `.agentstate.json`",
   );
   lines.push(
-    "   `.agentstate.json` project binding (walking up from the cwd), then an enclosing bundle",
-  );
-  lines.push(
-    "   (`index.md` up-tree). If either exists, that IS this project's workspace — use it rather",
+    "   or an enclosing bundle exists up-tree), that IS this project's workspace — use it rather",
   );
   lines.push("   than creating a second bundle under `~/.agentstate-lite/`.");
   lines.push("");
@@ -118,26 +141,26 @@ function renderTypicalFlow(prefix) {
   lines.push("## Typical flow");
   lines.push("");
   lines.push("```sh");
-  lines.push(`# Create (or open) the workspace's bundle in the default location`);
+  lines.push(`# One-time workspace setup (default location + project binding — see the Workspaces section)`);
   lines.push('WS="$HOME/.agentstate-lite/my-workspace"');
   lines.push(`${prefix} init --dir "$WS"`);
+  lines.push('printf \'{ "bundle": "%s" }\\n\' "$WS" > .agentstate.json');
   lines.push("");
+  lines.push(`# Everything after runs bare — the binding resolves the workspace`);
   lines.push(`# Create a context note (an OKF concept) for the next session`);
-  lines.push(`${prefix} new "Context Note" cycle-1 --title "cycle-1" --dir "$WS"`);
-  lines.push(
-    `${prefix} doc update context-notes/cycle-1 --body "What this session did and what's next" --dir "$WS"`,
-  );
+  lines.push(`${prefix} new "Context Note" cycle-1 --title "cycle-1"`);
+  lines.push(`${prefix} doc update context-notes/cycle-1 --body "What this session did and what's next"`);
   lines.push("");
   lines.push(`# Read it back`);
-  lines.push(`${prefix} doc read context-notes/cycle-1 --dir "$WS"`);
+  lines.push(`${prefix} doc read context-notes/cycle-1`);
   lines.push("");
   lines.push(`# Store a doc, cross-link it, and query the bundle`);
-  lines.push(`${prefix} doc write specs/auth --type Spec --title "Auth" --body "…" --dir "$WS"`);
-  lines.push(`${prefix} link add specs/auth context-notes/cycle-1 --dir "$WS"`);
-  lines.push(`${prefix} list --type Spec --dir "$WS"`);
+  lines.push(`${prefix} doc write specs/auth --type Spec --title "Auth" --body "…"`);
+  lines.push(`${prefix} link add specs/auth context-notes/cycle-1`);
+  lines.push(`${prefix} list --type Spec`);
   lines.push("");
   lines.push(`# Bake a shareable, self-contained HTML view of the whole bundle`);
-  lines.push(`${prefix} view --dir "$WS"`);
+  lines.push(`${prefix} view`);
   lines.push("```");
   lines.push("");
   return lines;
