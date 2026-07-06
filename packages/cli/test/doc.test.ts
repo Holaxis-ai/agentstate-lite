@@ -1378,6 +1378,198 @@ test("doc read: a domain `version` frontmatter field is NOT shadowed by the CAS 
   }
 });
 
+// ── `doc read --field <name>`: raw single-value output for scripting ───────────────────────────
+
+test("doc read --field: a scalar frontmatter field prints ONLY the raw value + newline (no envelope, no quotes)", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc({ root: dir }, { id: "concepts/a", frontmatter: { type: "Concept", title: "Auth flow", timestamp: T }, body: "Body." });
+    let out = "";
+    await doc(["read", "concepts/a", "--field", "title", "--dir", dir], {
+      stdout: (s) => (out += s),
+      readStdin: async () => undefined,
+    });
+    assert.equal(out, "Auth flow\n");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc read --field id / --field type: the meta names resolve off the doc's path / frontmatter directly", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc({ root: dir }, { id: "concepts/a", frontmatter: { type: "Concept", title: "A", timestamp: T }, body: "Body." });
+
+    let idOut = "";
+    await doc(["read", "concepts/a", "--field", "id", "--dir", dir], { stdout: (s) => (idOut += s), readStdin: async () => undefined });
+    assert.equal(idOut, "concepts/a\n");
+
+    let typeOut = "";
+    await doc(["read", "concepts/a", "--field", "type", "--dir", dir], { stdout: (s) => (typeOut += s), readStdin: async () => undefined });
+    assert.equal(typeOut, "Concept\n");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc read --field head_version: the printed CAS token is usable directly as --expected-version in a follow-up write (end-to-end)", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc({ root: dir }, { id: "concepts/a", frontmatter: { type: "Concept", title: "A", timestamp: T }, body: "Body." });
+
+    let out = "";
+    await doc(["read", "concepts/a", "--field", "head_version", "--dir", dir], {
+      stdout: (s) => (out += s),
+      readStdin: async () => undefined,
+    });
+    assert.equal(out.endsWith("\n"), true);
+    const token = out.trim();
+    assert.match(token, /^sha256:/);
+
+    const result = await runDoc(["update", "concepts/a", "--title", "A2", "--expected-version", token, "--dir", dir]);
+    assert.equal(result.changed, true);
+    const after = await readDoc({ root: dir }, "concepts/a");
+    assert.equal(after.frontmatter.title, "A2");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc read --field: a non-scalar (array) field prints compact single-line JSON, not TOON/multi-line", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc({ root: dir }, { id: "concepts/a", frontmatter: { type: "Concept", tags: ["one", "two"], timestamp: T }, body: "Body." });
+    let out = "";
+    await doc(["read", "concepts/a", "--field", "tags", "--dir", dir], {
+      stdout: (s) => (out += s),
+      readStdin: async () => undefined,
+    });
+    assert.equal(out, `${JSON.stringify(["one", "two"])}\n`);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc read --field: an ABSENT field routes its error to STDERR (not stdout), naming the field and listing the fields that DO exist, exit NOT_FOUND (6)", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc({ root: dir }, { id: "concepts/a", frontmatter: { type: "Concept", title: "A", timestamp: T }, body: "Body." });
+    let stdoutOut = "";
+    let stderrOut = "";
+    await assert.rejects(
+      () =>
+        doc(["read", "concepts/a", "--field", "nope", "--dir", dir, "--json"], {
+          stdout: (s) => (stdoutOut += s),
+          stderr: (s) => (stderrOut += s),
+          readStdin: async () => undefined,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "NOT_FOUND");
+        assert.equal(err.exitCode, 6);
+        assert.equal(err.handled, true); // the bin wrapper must not re-emit the envelope on stdout
+        return true;
+      },
+    );
+    assert.equal(stdoutOut, ""); // stdout stays reserved for the raw value even on failure
+    assert.match(stderrOut, /nope/);
+    assert.match(stderrOut, /title/); // self-correction: the fields that DO exist are listed
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc read --field: a MISSING doc reports the same NOT_FOUND behavior as today (envelope on STDERR, exit 6)", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    let stdoutOut = "";
+    let stderrOut = "";
+    await assert.rejects(
+      () =>
+        doc(["read", "concepts/nope", "--field", "title", "--dir", dir, "--json"], {
+          stdout: (s) => (stdoutOut += s),
+          stderr: (s) => (stderrOut += s),
+          readStdin: async () => undefined,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "NOT_FOUND");
+        assert.equal(err.exitCode, 6);
+        return true;
+      },
+    );
+    assert.equal(stdoutOut, "");
+    assert.match(stderrOut, /code: NOT_FOUND/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc read --field combined with --out: USAGE (exit 2) — both reserve stdout for a single raw payload", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc({ root: dir }, { id: "concepts/a", frontmatter: { type: "Concept", title: "A", timestamp: T }, body: "Body." });
+    await assert.rejects(
+      () =>
+        doc(["read", "concepts/a", "--field", "title", "--out", "./out.md", "--dir", dir, "--json"], {
+          readStdin: async () => undefined,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc read --field '' (blank): USAGE (exit 2), never silently falls back to the default full-record render", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc({ root: dir }, { id: "concepts/a", frontmatter: { type: "Concept", title: "A", timestamp: T }, body: "Body." });
+    await assert.rejects(
+      () => doc(["read", "concepts/a", "--field", "", "--dir", dir, "--json"], { readStdin: async () => undefined }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc read --field over --remote: parity with the identical field read locally via --dir", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc({ root: dir }, { id: "concepts/a", frontmatter: { type: "Concept", title: "A", timestamp: T }, body: "Body." });
+    const server = await bootServerOverBundle({ root: dir });
+    try {
+      let localOut = "";
+      await doc(["read", "concepts/a", "--field", "title", "--dir", dir], {
+        stdout: (s) => (localOut += s),
+        readStdin: async () => undefined,
+      });
+      let remoteOut = "";
+      await doc(["read", "concepts/a", "--field", "title", "--remote", server.url], {
+        stdout: (s) => (remoteOut += s),
+        readStdin: async () => undefined,
+      });
+      assert.equal(remoteOut, localOut);
+      assert.equal(remoteOut, "A\n");
+    } finally {
+      await server.close();
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
 // ── F3: doc read --out bundle-pollution warning ─────────────────────────────────────────────────
 
 test("doc read F3: --out resolving INSIDE the open bundle carries a loud `warning` field on the receipt (write still proceeds)", async () => {

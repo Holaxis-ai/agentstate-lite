@@ -33,6 +33,7 @@ export async function docRead(argv: string[], deps: Partial<DocCliDeps>): Promis
         args: argv,
         options: {
           out: { type: "string" },
+          field: { type: "string" },
           dir: { type: "string" },
           remote: { type: "string" },
           json: { type: "boolean" },
@@ -54,7 +55,53 @@ export async function docRead(argv: string[], deps: Partial<DocCliDeps>): Promis
     });
   }
 
+  // --field and --out both reserve stdout for a single raw payload — combining them is ambiguous
+  // (which one wins?), not a silent pick-one.
+  if (values.field !== undefined && values.out !== undefined && values.out.trim() !== "") {
+    throw new CliError(
+      "USAGE",
+      "--field and --out cannot be combined — both reserve stdout for a single raw value.",
+      { help: `${cliInvocation()} doc read ${id} --field <name>` },
+    );
+  }
+  // A present-but-blank --field is a USAGE error, not "no field given" (mirrors --expected-version/
+  // --actor's own blank-value guard elsewhere in this command family) — a scripting slip
+  // (`--field "$VAR"` with an unset $VAR) should fail loudly, not silently fall through to the
+  // default full-record render.
+  if (values.field !== undefined && values.field.trim() === "") {
+    throw new CliError(
+      "USAGE",
+      "--field was given an empty value — pass a frontmatter field name (or id/type/head_version).",
+      { help: `${cliInvocation()} doc read ${id} --field <name>` },
+    );
+  }
+  const field = values.field?.trim();
+
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
+
+  // --field <name>: print ONE raw value for scripting (the headline case is `--field head_version`,
+  // capturing the CAS token for a follow-up --expected-version write without shelling out through
+  // `| grep | sed` over the TOON record). No envelope, no other stdout output — mirrors --out -'s
+  // stdout-purity contract exactly: an error's envelope is routed to STDERR instead (same
+  // toExit/renderErrorEnvelope/asHandled dance below), never a second mechanism.
+  if (field) {
+    try {
+      let parsed: OkfDocument;
+      let version: Version;
+      try {
+        ({ doc: parsed, version } = await readDocVersioned(bundle, id));
+      } catch (err) {
+        throw readErrorToCliError(err, id, values.remote);
+      }
+      stdout(formatFieldValue(resolveField(parsed, version, field, id)));
+    } catch (err) {
+      const { envelope } = toExit(err);
+      stderr(renderErrorEnvelope(envelope));
+      throw asHandled(err);
+    }
+    return;
+  }
+
   const out = values.out?.trim();
 
   // Default (no --out): parse + print the doc as a structured record.
@@ -178,6 +225,42 @@ export async function docRead(argv: string[], deps: Partial<DocCliDeps>): Promis
     stderr(renderErrorEnvelope(envelope));
     throw asHandled(err);
   }
+}
+
+/**
+ * Resolve a `doc read --field <name>` request to its raw value, or throw NOT_FOUND listing the
+ * fields that DO exist (agents self-correct from the receipt rather than guessing). `head_version`
+ * and `id` are META names, not frontmatter — `head_version` is the store's CAS token (see the
+ * default render's identical `head_version` field above), `id` is derived from the doc's own path —
+ * so both are special-cased; every other name (`type` included) is looked up in the doc's OWN
+ * frontmatter, the same field set the default detail view dumps. A frontmatter value of `null` is
+ * treated as ABSENT, matching the default render's own null/undefined skip.
+ */
+function resolveField(parsed: OkfDocument, version: Version, field: string, id: string): unknown {
+  if (field === "head_version") return version;
+  if (field === "id") return parsed.id;
+  const fm = parsed.frontmatter as Record<string, unknown>;
+  if (fm[field] !== undefined && fm[field] !== null) return fm[field];
+  const available = [
+    "id",
+    "head_version",
+    ...Object.keys(fm).filter((key) => fm[key] !== undefined && fm[key] !== null),
+  ];
+  throw new CliError("NOT_FOUND", `'${id}' has no field '${field}' — fields present: ${available.join(", ")}`, {
+    help: `${cliInvocation()} doc read ${id}`,
+    details: { field, available },
+  });
+}
+
+/**
+ * Render a --field value RAW for scripting: a scalar (string/number/boolean) prints as-is, no
+ * quotes (JSON.stringify would quote a string, which a shell caller doesn't want); an array/object
+ * prints as compact single-line JSON, the only shape that can round-trip a non-scalar through a
+ * plain stdout line.
+ */
+function formatFieldValue(value: unknown): string {
+  if (typeof value === "object") return `${JSON.stringify(value)}\n`;
+  return `${String(value)}\n`;
 }
 
 /**

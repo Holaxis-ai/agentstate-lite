@@ -70,8 +70,8 @@ the rest of the line unchanged.
   — Write a generic OKF concept document
 - `"$ASLITE" doc update <id> [--<field> <value> ...] [--title <t>] [--tag <t>] [--type <t>] [--body <s> | --body-file <p>] [--expected-version <v>] [--actor <n>] [--remote <url>]`
   — Patch given fields (incl. kind-declared fields like --status) of an existing doc, preserving the rest; optimistic-CAS with --expected-version
-- `"$ASLITE" doc read <id> [--out (<path> | -)] [--remote <url>]`
-  — Read a doc (or pull its raw markdown bytes to disk)
+- `"$ASLITE" doc read <id> [--out (<path> | -) | --field <name>] [--remote <url>]`
+  — Read a doc (or pull its raw markdown bytes to disk, or print one raw field for scripting)
 - `"$ASLITE" doc history <id> [--remote <url>]`
   — Show a doc's attributed version history (newest first) — the tokens for --expected-version
 - `"$ASLITE" doc delete <id> [--expected-version <v>] [--remote <url>]`
@@ -197,3 +197,6 @@ Every remote-facing command ships in the SAME bundle, wired the same way as `--d
   an unknown field or an out-of-enum value is rejected (exit 2). Run `kinds` to see a kind's fields.
 - `hook install` registers a SessionStart home-view hook for Claude Code, Codex, and OpenCode so a
   new session starts with the bundle's state already in context.
+- Edit a doc's body through `doc update --body-file` (or `--body`), never by pulling the raw file
+  with `--out`, editing it with text tools, and re-promoting it — that risks corrupting the
+  frontmatter (the engine rejects it, but the right tool avoids the dance entirely).

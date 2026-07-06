@@ -7599,11 +7599,21 @@ Options:
                        filename (index.md/log.md) will instead CLOBBER that file outright; any
                        other (non-.md) path is inert (no warning) \u2014 the write still proceeds in
                        every case; not applicable to --out - or to --remote.
+  --field <name>       Print ONE frontmatter field's raw value to stdout, newline-terminated, no
+                       TOON envelope and no other output \u2014 for scripting, e.g. capturing
+                       head_version for a follow-up --expected-version write. A scalar prints
+                       as-is (no quotes); an array/object prints as compact JSON. id/type/
+                       head_version work too (head_version is the store's CAS token, not
+                       frontmatter). An absent field, or a missing doc, reports the error to
+                       STDERR instead (stdout stays reserved for the raw value); an absent field's
+                       error lists the fields that DO exist. Mutually exclusive with --out (both
+                       reserve stdout).
 ${COMMON_OPTIONS}
 
 Examples:
   agentstate-lite doc read concepts/auth
   agentstate-lite doc read concepts/auth --out ./auth.md
+  agentstate-lite doc read concepts/auth --field head_version
 `;
 var DOC_HISTORY_USAGE = `agentstate-lite doc history \u2014 show a doc's attributed version chain (newest first)
 
@@ -8182,6 +8192,7 @@ async function docRead(argv, deps) {
       args: argv,
       options: {
         out: { type: "string" },
+        field: { type: "string" },
         dir: { type: "string" },
         remote: { type: "string" },
         json: { type: "boolean" },
@@ -8201,7 +8212,39 @@ async function docRead(argv, deps) {
       help: `${cliInvocation()} doc read <id>`
     });
   }
+  if (values.field !== void 0 && values.out !== void 0 && values.out.trim() !== "") {
+    throw new CliError(
+      "USAGE",
+      "--field and --out cannot be combined \u2014 both reserve stdout for a single raw value.",
+      { help: `${cliInvocation()} doc read ${id} --field <name>` }
+    );
+  }
+  if (values.field !== void 0 && values.field.trim() === "") {
+    throw new CliError(
+      "USAGE",
+      "--field was given an empty value \u2014 pass a frontmatter field name (or id/type/head_version).",
+      { help: `${cliInvocation()} doc read ${id} --field <name>` }
+    );
+  }
+  const field = values.field?.trim();
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
+  if (field) {
+    try {
+      let parsed;
+      let version;
+      try {
+        ({ doc: parsed, version } = await readDocVersioned(bundle, id));
+      } catch (err) {
+        throw readErrorToCliError(err, id, values.remote);
+      }
+      stdout(formatFieldValue(resolveField(parsed, version, field, id)));
+    } catch (err) {
+      const { envelope } = toExit(err);
+      stderr(renderErrorEnvelope(envelope));
+      throw asHandled(err);
+    }
+    return;
+  }
   const out = values.out?.trim();
   if (!out) {
     let parsed;
@@ -8287,6 +8330,27 @@ async function docRead(argv, deps) {
     stderr(renderErrorEnvelope(envelope));
     throw asHandled(err);
   }
+}
+function resolveField(parsed, version, field, id) {
+  if (field === "head_version") return version;
+  if (field === "id") return parsed.id;
+  const fm = parsed.frontmatter;
+  if (fm[field] !== void 0 && fm[field] !== null) return fm[field];
+  const available = [
+    "id",
+    "head_version",
+    ...Object.keys(fm).filter((key2) => fm[key2] !== void 0 && fm[key2] !== null)
+  ];
+  throw new CliError("NOT_FOUND", `'${id}' has no field '${field}' \u2014 fields present: ${available.join(", ")}`, {
+    help: `${cliInvocation()} doc read ${id}`,
+    details: { field, available }
+  });
+}
+function formatFieldValue(value) {
+  if (typeof value === "object") return `${JSON.stringify(value)}
+`;
+  return `${String(value)}
+`;
 }
 function inBundlePollutionWarning(bundle, out) {
   if (bundle.backend) return void 0;
@@ -12389,8 +12453,8 @@ var COMMAND_GROUPS = [
         summary: "Patch given fields (incl. kind-declared fields like --status) of an existing doc, preserving the rest; optimistic-CAS with --expected-version"
       },
       {
-        usage: "doc read <id> [--out (<path> | -)] [--remote <url>]",
-        summary: "Read a doc (or pull its raw markdown bytes to disk)"
+        usage: "doc read <id> [--out (<path> | -) | --field <name>] [--remote <url>]",
+        summary: "Read a doc (or pull its raw markdown bytes to disk, or print one raw field for scripting)"
       },
       {
         usage: "doc history <id> [--remote <url>]",

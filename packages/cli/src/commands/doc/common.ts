@@ -135,11 +135,21 @@ Options:
                        filename (index.md/log.md) will instead CLOBBER that file outright; any
                        other (non-.md) path is inert (no warning) — the write still proceeds in
                        every case; not applicable to --out - or to --remote.
+  --field <name>       Print ONE frontmatter field's raw value to stdout, newline-terminated, no
+                       TOON envelope and no other output — for scripting, e.g. capturing
+                       head_version for a follow-up --expected-version write. A scalar prints
+                       as-is (no quotes); an array/object prints as compact JSON. id/type/
+                       head_version work too (head_version is the store's CAS token, not
+                       frontmatter). An absent field, or a missing doc, reports the error to
+                       STDERR instead (stdout stays reserved for the raw value); an absent field's
+                       error lists the fields that DO exist. Mutually exclusive with --out (both
+                       reserve stdout).
 ${COMMON_OPTIONS}
 
 Examples:
   agentstate-lite doc read concepts/auth
   agentstate-lite doc read concepts/auth --out ./auth.md
+  agentstate-lite doc read concepts/auth --field head_version
 `;
 
 export const DOC_HISTORY_USAGE = `agentstate-lite doc history — show a doc's attributed version chain (newest first)

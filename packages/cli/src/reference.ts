@@ -63,8 +63,8 @@ export const COMMAND_GROUPS: CommandGroup[] = [
         summary: "Patch given fields (incl. kind-declared fields like --status) of an existing doc, preserving the rest; optimistic-CAS with --expected-version",
       },
       {
-        usage: "doc read <id> [--out (<path> | -)] [--remote <url>]",
-        summary: "Read a doc (or pull its raw markdown bytes to disk)",
+        usage: "doc read <id> [--out (<path> | -) | --field <name>] [--remote <url>]",
+        summary: "Read a doc (or pull its raw markdown bytes to disk, or print one raw field for scripting)",
       },
       {
         usage: "doc history <id> [--remote <url>]",

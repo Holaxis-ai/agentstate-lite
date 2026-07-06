@@ -119,6 +119,13 @@ function renderNotesSection() {
     "- `hook install` registers a SessionStart home-view hook for Claude Code, Codex, and OpenCode so a",
   );
   lines.push("  new session starts with the bundle's state already in context.");
+  lines.push(
+    "- Edit a doc's body through `doc update --body-file` (or `--body`), never by pulling the raw file",
+  );
+  lines.push(
+    "  with `--out`, editing it with text tools, and re-promoting it — that risks corrupting the",
+  );
+  lines.push("  frontmatter (the engine rejects it, but the right tool avoids the dance entirely).");
   lines.push("");
   return lines;
 }
