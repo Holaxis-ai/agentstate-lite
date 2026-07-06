@@ -14,3 +14,6 @@ packages/ui/blob-report/
 docs/
 .agentstate.json
 packages/worker/wrangler.local.jsonc
+.claude/
+.codex/
+.config/
