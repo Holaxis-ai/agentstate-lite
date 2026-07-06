@@ -121,26 +121,48 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
 - `npx -y agentstate-lite hook install|status|uninstall [--scope project|global]`
   — Install the SessionStart home-view hook (Claude Code, Codex, OpenCode)
 
+## Where workspace bundles live — default `~/.agentstate-lite/<workspace>/`
+
+Unless the user directs otherwise, store each workspace's bundle under `~/.agentstate-lite/`,
+in a folder named after the workspace: a workspace named `holaxis-video-analyzer` keeps its
+bundle at `~/.agentstate-lite/holaxis-video-analyzer/`. Every bundle-facing command accepts
+`--dir <path>`, so target the workspace explicitly on each command:
+
+```sh
+WS="$HOME/.agentstate-lite/holaxis-video-analyzer"
+npx -y agentstate-lite init --dir "$WS"   # idempotent — creates the bundle, or opens an existing one
+npx -y agentstate-lite list --dir "$WS"
+```
+
+Two things override this default:
+
+1. **Explicit user direction** — the user names a directory or a `--remote`; use that.
+2. **An existing binding or bundle** — a command run without `--dir` resolves a committed
+   `.agentstate.json` project binding (walking up from the cwd), then an enclosing bundle
+   (`index.md` up-tree). If either exists, that IS this project's workspace — use it rather
+   than creating a second bundle under `~/.agentstate-lite/`.
+
 ## Typical flow
 
 ```sh
-# Create a bundle in the current directory
-npx -y agentstate-lite init
+# Create (or open) the workspace's bundle in the default location
+WS="$HOME/.agentstate-lite/my-workspace"
+npx -y agentstate-lite init --dir "$WS"
 
 # Create a context note (an OKF concept) for the next session
-npx -y agentstate-lite new "Context Note" cycle-1 --title "cycle-1"
-npx -y agentstate-lite doc update context-notes/cycle-1 --body "What this session did and what's next"
+npx -y agentstate-lite new "Context Note" cycle-1 --title "cycle-1" --dir "$WS"
+npx -y agentstate-lite doc update context-notes/cycle-1 --body "What this session did and what's next" --dir "$WS"
 
 # Read it back
-npx -y agentstate-lite doc read context-notes/cycle-1
+npx -y agentstate-lite doc read context-notes/cycle-1 --dir "$WS"
 
 # Store a doc, cross-link it, and query the bundle
-npx -y agentstate-lite doc write specs/auth --type Spec --title "Auth" --body "…"
-npx -y agentstate-lite link add specs/auth context-notes/cycle-1
-npx -y agentstate-lite list --type Spec
+npx -y agentstate-lite doc write specs/auth --type Spec --title "Auth" --body "…" --dir "$WS"
+npx -y agentstate-lite link add specs/auth context-notes/cycle-1 --dir "$WS"
+npx -y agentstate-lite list --type Spec --dir "$WS"
 
 # Bake a shareable, self-contained HTML view of the whole bundle
-npx -y agentstate-lite view
+npx -y agentstate-lite view --dir "$WS"
 ```
 
 ## Notes

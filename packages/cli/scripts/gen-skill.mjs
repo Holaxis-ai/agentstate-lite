@@ -75,28 +75,69 @@ function renderCommandsSection(COMMAND_GROUPS, prefix) {
   return lines;
 }
 
+function renderWorkspaceLocation(prefix) {
+  const lines = [];
+  lines.push("## Where workspace bundles live — default `~/.agentstate-lite/<workspace>/`");
+  lines.push("");
+  lines.push(
+    "Unless the user directs otherwise, store each workspace's bundle under `~/.agentstate-lite/`,",
+  );
+  lines.push(
+    "in a folder named after the workspace: a workspace named `holaxis-video-analyzer` keeps its",
+  );
+  lines.push(
+    "bundle at `~/.agentstate-lite/holaxis-video-analyzer/`. Every bundle-facing command accepts",
+  );
+  lines.push("`--dir <path>`, so target the workspace explicitly on each command:");
+  lines.push("");
+  lines.push("```sh");
+  lines.push('WS="$HOME/.agentstate-lite/holaxis-video-analyzer"');
+  lines.push(`${prefix} init --dir "$WS"   # idempotent — creates the bundle, or opens an existing one`);
+  lines.push(`${prefix} list --dir "$WS"`);
+  lines.push("```");
+  lines.push("");
+  lines.push("Two things override this default:");
+  lines.push("");
+  lines.push("1. **Explicit user direction** — the user names a directory or a `--remote`; use that.");
+  lines.push(
+    "2. **An existing binding or bundle** — a command run without `--dir` resolves a committed",
+  );
+  lines.push(
+    "   `.agentstate.json` project binding (walking up from the cwd), then an enclosing bundle",
+  );
+  lines.push(
+    "   (`index.md` up-tree). If either exists, that IS this project's workspace — use it rather",
+  );
+  lines.push("   than creating a second bundle under `~/.agentstate-lite/`.");
+  lines.push("");
+  return lines;
+}
+
 function renderTypicalFlow(prefix) {
   const lines = [];
   lines.push("## Typical flow");
   lines.push("");
   lines.push("```sh");
-  lines.push(`# Create a bundle in the current directory`);
-  lines.push(`${prefix} init`);
+  lines.push(`# Create (or open) the workspace's bundle in the default location`);
+  lines.push('WS="$HOME/.agentstate-lite/my-workspace"');
+  lines.push(`${prefix} init --dir "$WS"`);
   lines.push("");
   lines.push(`# Create a context note (an OKF concept) for the next session`);
-  lines.push(`${prefix} new "Context Note" cycle-1 --title "cycle-1"`);
-  lines.push(`${prefix} doc update context-notes/cycle-1 --body "What this session did and what's next"`);
+  lines.push(`${prefix} new "Context Note" cycle-1 --title "cycle-1" --dir "$WS"`);
+  lines.push(
+    `${prefix} doc update context-notes/cycle-1 --body "What this session did and what's next" --dir "$WS"`,
+  );
   lines.push("");
   lines.push(`# Read it back`);
-  lines.push(`${prefix} doc read context-notes/cycle-1`);
+  lines.push(`${prefix} doc read context-notes/cycle-1 --dir "$WS"`);
   lines.push("");
   lines.push(`# Store a doc, cross-link it, and query the bundle`);
-  lines.push(`${prefix} doc write specs/auth --type Spec --title "Auth" --body "…"`);
-  lines.push(`${prefix} link add specs/auth context-notes/cycle-1`);
-  lines.push(`${prefix} list --type Spec`);
+  lines.push(`${prefix} doc write specs/auth --type Spec --title "Auth" --body "…" --dir "$WS"`);
+  lines.push(`${prefix} link add specs/auth context-notes/cycle-1 --dir "$WS"`);
+  lines.push(`${prefix} list --type Spec --dir "$WS"`);
   lines.push("");
   lines.push(`# Bake a shareable, self-contained HTML view of the whole bundle`);
-  lines.push(`${prefix} view`);
+  lines.push(`${prefix} view --dir "$WS"`);
   lines.push("```");
   lines.push("");
   return lines;
@@ -169,6 +210,7 @@ function renderNpm(DESCRIPTION, COMMAND_GROUPS) {
   lines.push("<!-- GENERATED from src/reference.ts by scripts/gen-skill.mjs — do not edit by hand. -->");
   lines.push("");
   lines.push(...renderCommandsSection(COMMAND_GROUPS, NPX));
+  lines.push(...renderWorkspaceLocation(NPX));
   lines.push(...renderTypicalFlow(NPX));
   lines.push(...renderNotesSection());
   return lines.join("\n");
@@ -285,6 +327,7 @@ function renderSkill(DESCRIPTION, COMMAND_GROUPS) {
   );
   lines.push("");
   lines.push(...renderCommandsSection(COMMAND_GROUPS, ASLITE));
+  lines.push(...renderWorkspaceLocation(ASLITE));
   lines.push(...renderTypicalFlow(ASLITE));
   lines.push("## Remote (--remote, serve, identity, invites, keys)");
   lines.push("");
