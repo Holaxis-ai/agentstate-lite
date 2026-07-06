@@ -1,4 +1,4 @@
-// Drift gate for the committed SKILL bundle (skills/agentstate-lite/scripts/agentstate-lite.mjs).
+// Drift gate for the committed SKILL bundle (plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite.mjs).
 //
 // Rebuilds the CLI with the SAME esbuild config used by build.mjs (scripts/build-bundle.mjs — one
 // bundler config, no duplication) into a scratch temp file, then byte-compares it against the
@@ -20,8 +20,8 @@ import { fileURLToPath } from "node:url";
 import { buildCliBundle } from "./build-bundle.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-// packages/cli/scripts -> repo root -> skills/agentstate-lite/scripts/agentstate-lite.mjs
-const committedPath = resolve(here, "../../../skills/agentstate-lite/scripts/agentstate-lite.mjs");
+// packages/cli/scripts -> repo root -> plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite.mjs
+const committedPath = resolve(here, "../../../plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite.mjs");
 
 const scratchDir = await mkdtemp(join(tmpdir(), "aslite-skill-bundle-"));
 const scratchFile = join(scratchDir, "agentstate-lite.mjs");

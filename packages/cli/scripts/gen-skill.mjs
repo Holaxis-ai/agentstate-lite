@@ -5,7 +5,7 @@
 //
 //   --target npm   (default) → packages/cli/SKILL.md, examples prefixed `npx -y agentstate-lite`
 //                    (the published-package channel; installed with no bin-on-PATH assumption).
-//   --target skill            → skills/agentstate-lite/SKILL.md, examples prefixed `"$ASLITE"`
+//   --target skill            → plugins/agentstate-lite/skills/agentstate-lite/SKILL.md, examples prefixed `"$ASLITE"`
 //                    (the self-contained committed-bundle channel; see the resolver section it
 //                    generates — the bundle is not on PATH, so examples reference the resolved
 //                    shim path via the shell variable convention).
@@ -40,8 +40,8 @@ if (TARGET !== "npm" && TARGET !== "skill") {
 const skillPath =
   TARGET === "npm"
     ? resolve(here, "../SKILL.md")
-    // packages/cli/scripts -> repo root -> skills/agentstate-lite/SKILL.md
-    : resolve(here, "../../../skills/agentstate-lite/SKILL.md");
+    // packages/cli/scripts -> repo root -> plugins/agentstate-lite/skills/agentstate-lite/SKILL.md
+    : resolve(here, "../../../plugins/agentstate-lite/skills/agentstate-lite/SKILL.md");
 
 async function loadReference() {
   const out = await build({
@@ -168,7 +168,7 @@ function renderNpm(DESCRIPTION, COMMAND_GROUPS) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// skill target — skills/agentstate-lite/SKILL.md, self-contained committed-bundle channel
+// skill target — plugins/agentstate-lite/skills/agentstate-lite/SKILL.md, self-contained committed-bundle channel
 // (`npx skills add`). Mirrors the resolver pattern of the reference `holaxis-agentstate` skill.
 // ---------------------------------------------------------------------------------------------
 
@@ -228,8 +228,8 @@ function renderSkill(DESCRIPTION, COMMAND_GROUPS) {
   lines.push("");
   lines.push("```bash");
   lines.push('ASLITE="$(command -v agentstate-lite 2>/dev/null || ls -d \\');
-  lines.push('  "$HOME"/.claude/skills/agentstate-lite/scripts/agentstate-lite \\');
-  lines.push('  "$HOME"/.claude/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite/scripts/agentstate-lite \\');
+  lines.push('  "$HOME"/.claude/plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite \\');
+  lines.push('  "$HOME"/.claude/plugins/cache/*/agentstate-lite/*/plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite \\');
   lines.push("  2>/dev/null | sort -V | tail -1)\"");
   lines.push(`${ASLITE} --help`);
   lines.push("```");
@@ -241,7 +241,7 @@ function renderSkill(DESCRIPTION, COMMAND_GROUPS) {
     "the glob checks both a direct skill install (`~/.claude/skills/…`) and a plugin-marketplace",
   );
   lines.push(
-    "cache install (`~/.claude/plugins/cache/…/skills/agentstate-lite/scripts/…`), and",
+    "cache install (`~/.claude/plugins/cache/…/plugins/agentstate-lite/skills/agentstate-lite/scripts/…`), and",
   );
   lines.push(
     "`sort -V | tail -1` selects the highest installed version. This works from any cwd. Resolve to",
@@ -252,7 +252,7 @@ function renderSkill(DESCRIPTION, COMMAND_GROUPS) {
     "> If your harness happens to export `${CLAUDE_PLUGIN_ROOT}` you may instead use",
   );
   lines.push(
-    '> `"$CLAUDE_PLUGIN_ROOT/skills/agentstate-lite/scripts/agentstate-lite"`, but it is **often unset**',
+    '> `"$CLAUDE_PLUGIN_ROOT/plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite"`, but it is **often unset**',
   );
   lines.push("> in an agent shell — do not rely on it; prefer the resolver above.");
   lines.push("");

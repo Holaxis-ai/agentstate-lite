@@ -15,7 +15,7 @@
 // may call require() at runtime; ESM output has no ambient `require`, so we provide one.
 //
 // ADDITIVE mirror step: after producing the npm dist/ bundle, this ALSO copies the identical bytes
-// into the self-contained skill's scripts/ (skills/agentstate-lite/scripts/agentstate-lite.mjs) —
+// into the self-contained skill's scripts/ (plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite.mjs) —
 // the second, install-free distribution channel (`npx skills add`). One esbuild config
 // (scripts/build-bundle.mjs), no second bundler; the npm dist/ output is unaffected (files:
 // ["dist"] in package.json never sees the skill directory).
@@ -28,9 +28,9 @@ import { embedUiAssets } from "./scripts/embed-ui-assets.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const r = (p) => resolve(here, p);
 const outfile = r("dist/agentstate-lite.mjs");
-// packages/cli -> repo root -> skills/agentstate-lite/scripts/
-const skillMjs = r("../../skills/agentstate-lite/scripts/agentstate-lite.mjs");
-const skillShim = r("../../skills/agentstate-lite/scripts/agentstate-lite");
+// packages/cli -> repo root -> plugins/agentstate-lite/skills/agentstate-lite/scripts/
+const skillMjs = r("../../plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite.mjs");
+const skillShim = r("../../plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite");
 
 // Clean dist so the packed tarball never carries stale files (files: ["dist"]).
 await rm(r("dist"), { recursive: true, force: true });

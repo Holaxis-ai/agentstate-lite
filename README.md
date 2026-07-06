@@ -12,6 +12,22 @@ published to npm, formats and commands will change without ceremony, and some of
 biggest ideas are still bets under test. The honest breakdown is below — read it before
 depending on anything.
 
+## Install
+
+This repo is its own plugin marketplace — the skill carries a self-contained build of
+the CLI, so agents get the tool and the knowledge of how to use it in one install:
+
+```sh
+# Claude Code
+/plugin marketplace add Holaxis-ai/agentstate-lite   # then install via /plugin
+
+# Codex
+codex plugin marketplace add Holaxis-ai/agentstate-lite
+codex plugin add agentstate-lite@agentstate-lite
+```
+
+(An npm package is planned but not yet published.)
+
 ## Quickstart
 
 ```sh
