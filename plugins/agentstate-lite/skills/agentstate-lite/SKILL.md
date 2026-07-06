@@ -28,20 +28,20 @@ use `"$ASLITE"` in every command:
 
 ```bash
 ASLITE="$(command -v agentstate-lite 2>/dev/null || ls -d \
-  "$HOME"/.claude/plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite \
-  "$HOME"/.claude/plugins/cache/*/agentstate-lite/*/plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite \
+  "$HOME"/.claude/skills/agentstate-lite/scripts/agentstate-lite \
+  "$HOME"/.claude/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite/scripts/agentstate-lite \
   2>/dev/null | sort -V | tail -1)"
 "$ASLITE" --help
 ```
 
 `command -v` short-circuits if a future install ever puts `agentstate-lite` on `PATH`; otherwise
 the glob checks both a direct skill install (`~/.claude/skills/…`) and a plugin-marketplace
-cache install (`~/.claude/plugins/cache/…/plugins/agentstate-lite/skills/agentstate-lite/scripts/…`), and
+cache install (`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/agentstate-lite/scripts/…` — the cache copies the PLUGIN DIR's contents, so there is no `plugins/` segment), and
 `sort -V | tail -1` selects the highest installed version. This works from any cwd. Resolve to
 the **shim** (not the `.mjs` directly) so the Node >= 20 floor guard runs first.
 
 > If your harness happens to export `${CLAUDE_PLUGIN_ROOT}` you may instead use
-> `"$CLAUDE_PLUGIN_ROOT/plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite"`, but it is **often unset**
+> `"$CLAUDE_PLUGIN_ROOT/skills/agentstate-lite/scripts/agentstate-lite"`, but it is **often unset**
 > in an agent shell — do not rely on it; prefer the resolver above.
 
 **Runtime-hint note.** Every follow-up command the CLI itself prints (`help:` fields, error

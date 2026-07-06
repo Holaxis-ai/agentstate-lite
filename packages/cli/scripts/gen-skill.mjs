@@ -228,8 +228,8 @@ function renderSkill(DESCRIPTION, COMMAND_GROUPS) {
   lines.push("");
   lines.push("```bash");
   lines.push('ASLITE="$(command -v agentstate-lite 2>/dev/null || ls -d \\');
-  lines.push('  "$HOME"/.claude/plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite \\');
-  lines.push('  "$HOME"/.claude/plugins/cache/*/agentstate-lite/*/plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite \\');
+  lines.push('  "$HOME"/.claude/skills/agentstate-lite/scripts/agentstate-lite \\');
+  lines.push('  "$HOME"/.claude/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite/scripts/agentstate-lite \\');
   lines.push("  2>/dev/null | sort -V | tail -1)\"");
   lines.push(`${ASLITE} --help`);
   lines.push("```");
@@ -241,7 +241,7 @@ function renderSkill(DESCRIPTION, COMMAND_GROUPS) {
     "the glob checks both a direct skill install (`~/.claude/skills/…`) and a plugin-marketplace",
   );
   lines.push(
-    "cache install (`~/.claude/plugins/cache/…/plugins/agentstate-lite/skills/agentstate-lite/scripts/…`), and",
+    "cache install (`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/agentstate-lite/scripts/…` — the cache copies the PLUGIN DIR's contents, so there is no `plugins/` segment), and",
   );
   lines.push(
     "`sort -V | tail -1` selects the highest installed version. This works from any cwd. Resolve to",
@@ -252,7 +252,7 @@ function renderSkill(DESCRIPTION, COMMAND_GROUPS) {
     "> If your harness happens to export `${CLAUDE_PLUGIN_ROOT}` you may instead use",
   );
   lines.push(
-    '> `"$CLAUDE_PLUGIN_ROOT/plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite"`, but it is **often unset**',
+    '> `"$CLAUDE_PLUGIN_ROOT/skills/agentstate-lite/scripts/agentstate-lite"`, but it is **often unset**',
   );
   lines.push("> in an agent shell — do not rely on it; prefer the resolver above.");
   lines.push("");
