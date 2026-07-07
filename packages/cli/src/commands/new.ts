@@ -45,7 +45,7 @@
 // reserve `actor`, but the CLI already treats it as reserved on every other mutation surface, so
 // this is consistent, not a regression (still listed in a "declared:" hint, just never settable).
 import { parseArgs } from "node:util";
-import { loadKinds, type Frontmatter, type KindConvention } from "@agentstate-lite/core";
+import { loadKinds, type Frontmatter, type KindConvention, type KindRegistry } from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
@@ -128,11 +128,42 @@ function controlFlagValue(val: string | boolean | undefined, flag: string): stri
 }
 
 /**
+ * Inbound typed-link declarations targeting `kind`: every OTHER kind whose `links` map names
+ * `kind.governs` as a target. Pure reverse lookup over the ONE registry — no kind or link-type
+ * name appears in code, so the alignment teaching below is fully generic: whatever relationships
+ * a bundle's conventions declare are what get taught. Self-declarations (a kind linking to
+ * itself, e.g. Task "depends on" Task) are excluded — the kind's OWN `links` map already covers
+ * those on the outbound side.
+ */
+function inboundLinkDecls(
+  registry: KindRegistry,
+  kind: KindConvention,
+): Array<{ source: KindConvention; linkType: string }> {
+  const inbound: Array<{ source: KindConvention; linkType: string }> = [];
+  for (const source of registry.kinds.values()) {
+    if (source.governs === kind.governs) continue;
+    for (const [linkType, target] of Object.entries(source.links ?? {})) {
+      if (target === kind.governs) inbound.push({ source, linkType });
+    }
+  }
+  return inbound.sort(
+    (a, b) => a.source.governs.localeCompare(b.source.governs) || a.linkType.localeCompare(b.linkType),
+  );
+}
+
+/** `roadmap-items/<roadmap-item>`-style placeholder for a kind: declared path prefix + slugged name. */
+function kindIdPlaceholder(kind: KindConvention | undefined, governs: string): string {
+  const slug = governs.toLowerCase().replace(/\s+/g, "-");
+  const prefix = kind?.path ? kind.path.replace(/\/+$/, "") + "/" : "";
+  return `${prefix}<${slug}>`;
+}
+
+/**
  * Per-kind help for `new "<Kind>" --help`: the exact required/optional fields, enum values, scaffolded
  * body sections, and id path prefix an agent needs to author a VALID instance — without a separate
  * `kinds` round-trip (cold-start study: 2 testers had to cross-reference `kinds` before every `new`).
  */
-function renderKindHelp(kind: KindConvention, inv: string): string {
+function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: string): string {
   const req = kind.fields.required.filter((f) => f !== "actor");
   const opt = kind.fields.optional.filter((f) => f !== "actor");
   const flags = (fields: string[]) => (fields.length > 0 ? fields.map((f) => `--${f} <v>`).join("  ") : "(none)");
@@ -143,6 +174,21 @@ function renderKindHelp(kind: KindConvention, inv: string): string {
   const pathLine = kind.path
     ? `Id:  auto-prefixed with '${kind.path.replace(/\/+$/, "")}/' unless <id> already carries it`
     : "Id:  used as-is (this kind declares no path prefix)";
+  // Typed-link vocabulary, BOTH directions (declared-only; a bundle declaring none gets no block):
+  // the kind's own outbound types, plus the reverse lookup — other kinds declaring edges INTO this
+  // one. The inbound side is the alignment cue (e.g. a new Task learns Roadmap Items contain Tasks).
+  const outboundLines = Object.entries(kind.links ?? {}).map(
+    ([t, target]) => `  this kind may link:     "${t}" → ${target}`,
+  );
+  const inboundLines = inboundLinkDecls(registry, kind).map(
+    ({ source, linkType }) => `  other kinds link here:  ${source.governs} "${linkType}" → ${kind.governs}`,
+  );
+  const linksBlock =
+    outboundLines.length + inboundLines.length > 0
+      ? `Links (typed edges declared by this bundle's conventions; write with link add --text "<type>"):\n` +
+        [...outboundLines, ...inboundLines].join("\n") +
+        "\n"
+      : "";
   return (
     `${inv} new "${kind.governs}" <id> — create a ${kind.governs} instance\n\n` +
     `Fields (declared by the '${kind.governs}' kind convention):\n` +
@@ -150,6 +196,7 @@ function renderKindHelp(kind: KindConvention, inv: string): string {
     `  optional:  ${flags(opt)}\n` +
     (enums ? enums + "\n" : "") +
     `Body sections scaffolded:  ${sections}\n` +
+    linksBlock +
     `${pathLine}\n\n` +
     `Repeat a flag to set an array value (e.g. --tag a --tag b). Validation is STRICT.\n` +
     `To ADD a field to this kind, edit its convention doc (${inv} kinds names it; then pull → edit fields.optional → promote).\n\n` +
@@ -219,7 +266,7 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     );
   }
   if (pre.values.help) {
-    stdout(renderKindHelp(kind, cliInvocation()));
+    stdout(renderKindHelp(kind, registry, cliInvocation()));
     return;
   }
 
@@ -367,6 +414,22 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
   if (targetId !== id) {
     receipt.note = `id prefixed with the '${kind.governs}' kind's path → '${targetId}' (you passed '${id}')`;
   }
-  receipt.help = [`${cliInvocation()} doc read ${saved.id}`];
+  // Point-of-use link teaching (AXI §9): the moment an instance is created is when its declared
+  // relationships are actionable — surface them as complete, placeholder-parameterized commands
+  // derived from the SAME registry (inbound = alignment cue from other kinds' declarations,
+  // outbound = this kind's own). Capped per direction; a bundle declaring no links adds nothing.
+  const help = [`${cliInvocation()} doc read ${saved.id}`];
+  const HINTS_PER_DIRECTION = 3;
+  for (const { source, linkType } of inboundLinkDecls(registry, kind).slice(0, HINTS_PER_DIRECTION)) {
+    help.push(
+      `link from a ${source.governs}: ${cliInvocation()} link add ${kindIdPlaceholder(source, source.governs)} ${saved.id} --text "${linkType}"`,
+    );
+  }
+  for (const [linkType, target] of Object.entries(kind.links ?? {}).slice(0, HINTS_PER_DIRECTION)) {
+    help.push(
+      `link to a ${target}: ${cliInvocation()} link add ${saved.id} ${kindIdPlaceholder(registry.kinds.get(target), target)} --text "${linkType}"`,
+    );
+  }
+  receipt.help = help;
   stdout(render(receipt, resolveMode({ json: Boolean(values.json) })));
 }
