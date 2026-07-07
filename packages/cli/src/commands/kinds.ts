@@ -18,8 +18,9 @@ Usage:
   agentstate-lite kinds [--dir <path>] [--remote <url>]
 
 A kind convention is a plain OKF doc (type: Convention) under conventions/ declaring a document
-kind's required/optional fields, allowed enum values, expected body sections, and an optional
-freshness horizon. See 'agentstate-lite new --help' to create an instance of a declared kind.
+kind's required/optional fields, allowed enum values, typed-link vocabulary, expected body
+sections, and an optional freshness horizon. See 'agentstate-lite new --help' to create an
+instance of a declared kind.
 
 Declaring a kind convention (frontmatter keys core reads — everything else is unread prose):
   governs              string   required — the 'type' value this convention governs
@@ -29,6 +30,12 @@ Declaring a kind convention (frontmatter keys core reads — everything else is 
   fields.optional      list     field names an instance MAY carry
   fields.values        map      field name -> list of allowed values — the ONLY place an enum
                                  constraint goes; never a top-level enum/enums/values/constraints key
+  links                map      link type name -> allowed TARGET kind, for typed edges instances
+                                 of this kind may carry as link SOURCE (e.g. contains: Task). A
+                                 link whose display text exactly matches a declared type is a
+                                 typed edge; every other link is an untyped citation. Write typed
+                                 edges with 'link add <from> <to> --text <type>' and query them
+                                 with 'link show <id> --text <type>'
   sections             list     expected level-1 '# Heading' body-section names
   freshness_horizon    string   '<n>(m|h|d)', e.g. 24h, 30d, 15m
 A misshaped or misplaced key here is a non-fatal registry warning (visible in 'kinds'/'status'
@@ -55,6 +62,7 @@ function toRow(kind: KindConvention): Record<string, unknown> {
     optional: kind.fields.optional,
   };
   if (Object.keys(kind.fields.values).length > 0) row.values = kind.fields.values;
+  if (kind.links && Object.keys(kind.links).length > 0) row.links = kind.links;
   if (kind.path) row.path = kind.path;
   if (kind.sections && kind.sections.length > 0) row.sections = kind.sections;
   if (kind.freshnessHorizon) {

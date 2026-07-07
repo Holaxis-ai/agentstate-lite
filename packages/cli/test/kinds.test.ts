@@ -93,6 +93,36 @@ test("kinds: on a seeded bundle, lists the Context Note kind with its declared s
   }
 });
 
+test("kinds: projects a convention's 'links' declaration (typed-edge vocabulary); rows without one carry no links key", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await writeDoc({ root: dir }, {
+      id: "conventions/roadmap-item",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        title: "Roadmap Item",
+        governs: "Roadmap Item",
+        path: "roadmap-items/",
+        fields: { required: ["title", "status"], optional: [], values: { status: ["queued", "active", "done"] } },
+        links: { contains: "Task" },
+        timestamp: T,
+      },
+      body: "A kind declaring its typed-edge vocabulary.",
+    });
+    const result = await runJson(kinds, ["--dir", dir]);
+    const rows = result.kinds as Array<Record<string, unknown>>;
+    const roadmap = rows.find((r) => r.governs === "Roadmap Item");
+    assert.ok(roadmap, "expected the Roadmap Item kind row");
+    assert.deepEqual(roadmap!.links, { contains: "Task" });
+    // The seeded Context Note kind declares no links — its row must not carry the key at all.
+    const note = rows.find((r) => r.governs === "Context Note");
+    assert.ok(note);
+    assert.ok(!("links" in note!), "a kind without a links declaration gets no links key");
+  } finally {
+    await cleanup();
+  }
+});
+
 test("kinds: on a conventions-free bundle, an empty registry with a help hint (no crash, no I/O error)", async () => {
   const dir = await tempDir();
   try {
