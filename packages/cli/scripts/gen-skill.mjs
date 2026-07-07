@@ -143,6 +143,20 @@ function renderWorkspaceLocation(prefix) {
   );
   lines.push("   it rather than creating a second one.");
   lines.push("");
+  lines.push(
+    "The setup above is the **personal-workspace** pattern (home-dir bundle, absolute path, binding",
+  );
+  lines.push(
+    "kept OUT of the repo). The other pattern is **project-owned**: the bundle lives with the repo,",
+  );
+  lines.push(
+    "`.agentstate.json` holds a RELATIVE path and IS committed — every collaborator's agent then",
+  );
+  lines.push(
+    "resolves it from a bare clone. Choose by one question: do teammates share this bundle? When",
+  );
+  lines.push("the user's intent is ambiguous, ask which pattern fits rather than defaulting silently.");
+  lines.push("");
   return lines;
 }
 

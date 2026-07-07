@@ -79,8 +79,8 @@ export const COMMAND_GROUPS: CommandGroup[] = [
         summary: "Query concepts over their frontmatter (alias: query)",
       },
       {
-        usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>]) [--remote <url>]",
-        summary: "Add a cross-link, or show a concept's links + backlinks",
+        usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>]) [--remote <url>]",
+        summary: "Add a cross-link, or show a concept's links + backlinks (each carrying link text; --text filters both directions by exact match)",
       },
     ],
   },
@@ -115,7 +115,7 @@ export const COMMAND_GROUPS: CommandGroup[] = [
       },
       {
         usage: "kinds [--remote <url>]",
-        summary: "List the kind conventions this bundle declares (required/optional fields, horizon)",
+        summary: "List the kind conventions this bundle declares (required/optional fields, typed-link vocabulary, horizon)",
       },
       {
         usage: 'kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]',

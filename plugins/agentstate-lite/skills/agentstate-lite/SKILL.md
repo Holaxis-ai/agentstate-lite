@@ -78,8 +78,8 @@ the rest of the line unchanged.
   — Hard-delete a doc (idempotent: absent -> deleted:false, exit 0)
 - `"$ASLITE" list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--limit <n>] [--remote <url>]`
   — Query concepts over their frontmatter (alias: query)
-- `"$ASLITE" link (add <from> <to> [--text <t>] | show <id> [--limit <n>]) [--remote <url>]`
-  — Add a cross-link, or show a concept's links + backlinks
+- `"$ASLITE" link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>]) [--remote <url>]`
+  — Add a cross-link, or show a concept's links + backlinks (each carrying link text; --text filters both directions by exact match)
 
 ### Artifacts
 
@@ -97,7 +97,7 @@ the rest of the line unchanged.
 - `"$ASLITE" new "<Kind>" <id> --<field> <value> [...] [--no-prefix] [--actor <n>] [--remote <url>]`
   — Create a new instance of a bundle-declared kind — e.g. new "Context Note" <id> for a note (validates strictly)
 - `"$ASLITE" kinds [--remote <url>]`
-  — List the kind conventions this bundle declares (required/optional fields, horizon)
+  — List the kind conventions this bundle declares (required/optional fields, typed-link vocabulary, horizon)
 - `"$ASLITE" kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]`
   — Edit a kind's schema — add/remove a declared field or enum value on its convention (idempotent)
 - `"$ASLITE" recipes [--remote <url>]`
@@ -191,6 +191,12 @@ Two things override the default:
 2. **An existing workspace** — if a bare command already resolves (a binding, an enclosing
    bundle, or a conventional folder exists up-tree), that IS this project's workspace — use
    it rather than creating a second one.
+
+The setup above is the **personal-workspace** pattern (home-dir bundle, absolute path, binding
+kept OUT of the repo). The other pattern is **project-owned**: the bundle lives with the repo,
+`.agentstate.json` holds a RELATIVE path and IS committed — every collaborator's agent then
+resolves it from a bare clone. Choose by one question: do teammates share this bundle? When
+the user's intent is ambiguous, ask which pattern fits rather than defaulting silently.
 
 ## Typical flow
 

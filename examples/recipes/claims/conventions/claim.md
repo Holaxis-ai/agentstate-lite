@@ -3,6 +3,8 @@ type: Convention
 title: Claim
 governs: Claim
 path: claims/
+links:
+  supersedes: Claim
 fields:
   required:
     - title

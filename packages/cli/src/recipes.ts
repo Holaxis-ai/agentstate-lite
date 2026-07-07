@@ -144,6 +144,11 @@ export const TASK_KIND: KindConvention = {
   title: TASK_TYPE,
   governs: TASK_TYPE,
   path: "tasks/",
+  // The typed-edge vocabulary (decisions/typed-links-carrier): a task's dependency edge is a
+  // link whose display text is exactly "depends on", targeting another Task. Declared here so
+  // `kinds` teaches the vocabulary to any agent that orients — discovery shipped; validation
+  // is a future consumer.
+  links: { "depends on": TASK_TYPE },
   fields: {
     required: ["title", "status"],
     optional: ["priority", "assignee", "description"],
@@ -164,15 +169,16 @@ export const TASK_SEED_BODY =
   "# Task\n\n" +
   "A unit of work, composed entirely from lite primitives — no bespoke task engine.\n" +
   "A task is a `type: Task` doc; its `status` is a validated enum; its DEPENDENCIES are\n" +
-  "cross-links to prerequisite task docs (the link graph IS the DAG, backlinks show what\n" +
-  "is blocked on it); an atomic CLAIM is a compare-and-swap write flipping `status` to\n" +
+  "typed `depends on` cross-links to prerequisite task docs (the declared link type —\n" +
+  "the link graph IS the DAG, and `link show <id> --text \"depends on\"` shows both\n" +
+  "directions); an atomic CLAIM is a compare-and-swap write flipping `status` to\n" +
   "`in_progress` (a second claimer gets a VersionConflict). Query with `list --type Task`;\n" +
   "lint/orphans/staleness via `status`.\n";
 
 /** One-line description, shown by `recipes` and the command reference — the built-in
  * `work-tracking` recipe's `recipe.md` manifest `summary:`. */
 export const WORK_TRACKING_SUMMARY =
-  "Declares the built-in Task kind convention (title/status required, status enum, 30d freshness horizon)";
+  "Declares the built-in Task kind convention (title/status required, status enum, 'depends on' link type, 30d freshness horizon)";
 
 /** The prose body of the built-in `work-tracking` recipe's `recipe.md` manifest doc — NOT parsed
  * by `parseRecipeFiles` (only the manifest's frontmatter is read), purely descriptive. */

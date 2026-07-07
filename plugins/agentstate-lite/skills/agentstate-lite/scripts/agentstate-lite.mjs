@@ -5771,13 +5771,14 @@ function parseLinks(_bundle, doc2) {
 async function backlinks(bundle, target) {
   const normalizedTarget = toPosix(target).replace(/^\.?\//, "").replace(/\.md$/, "");
   const docs = await query(bundle);
-  const sources = /* @__PURE__ */ new Set();
+  const inbound = [];
   for (const doc2 of docs) {
     for (const link2 of parseLinksFromDoc(doc2)) {
-      if (link2.to === normalizedTarget) sources.add(doc2.id);
+      if (link2.to === normalizedTarget) inbound.push(link2);
     }
   }
-  return [...sources].sort((a, b) => a.localeCompare(b));
+  inbound.sort((a, b) => a.from.localeCompare(b.from) || a.text.localeCompare(b.text));
+  return inbound;
 }
 async function readBlob(bundle, key2) {
   return backendFor(bundle).readBlob(key2);
@@ -6442,12 +6443,41 @@ function parseConventionDoc(doc2) {
       });
     }
   }
+  const linksSource = fm.links;
+  let links;
+  if (linksSource !== void 0) {
+    if (!isPlainObject2(linksSource)) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc2.id}' has a non-map 'links' key (${describeShape(linksSource)}; expected a map of link type name -> target kind); ignoring it.`,
+        field: "links",
+        severity: "warning"
+      });
+    } else {
+      const parsed = {};
+      for (const [linkType, target] of Object.entries(linksSource)) {
+        const name = linkType.trim();
+        if (name === "" || !isScalar(target) || String(target).trim() === "") {
+          warnings.push({
+            code: "KIND_CONVENTION_BAD_MEMBER",
+            message: `kind convention '${doc2.id}' has a malformed 'links' entry ('${linkType}': ${describeShape(target)}; expected 'link type name: target kind'); skipping it.`,
+            field: `links.${linkType}`,
+            severity: "warning"
+          });
+          continue;
+        }
+        parsed[name] = String(target).trim();
+      }
+      if (Object.keys(parsed).length > 0) links = parsed;
+    }
+  }
   const sections = Array.isArray(fm.sections) ? fm.sections.filter((s) => typeof s === "string" && s.trim() !== "") : void 0;
   const title = typeof fm.title === "string" && fm.title.trim() !== "" ? fm.title.trim() : governs;
   const path8 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
   const freshnessHorizon = typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== "" ? fm.freshness_horizon.trim() : void 0;
   const kind2 = { id: doc2.id, title, governs, fields: { required, optional, values } };
   if (path8 !== void 0) kind2.path = path8;
+  if (links !== void 0) kind2.links = links;
   if (sections && sections.length > 0) kind2.sections = sections;
   if (freshnessHorizon !== void 0) kind2.freshnessHorizon = freshnessHorizon;
   return { ok: true, kind: kind2, reservedFieldsIgnored: [...reservedFieldsIgnored].sort(), warnings };
@@ -6580,6 +6610,7 @@ function kindConventionDoc(kind2, prose, timestamp) {
   if (Object.keys(kind2.fields.values).length > 0) fields.values = kind2.fields.values;
   const frontmatter = { type: CONVENTION_TYPE, title: kind2.title, governs: kind2.governs, timestamp };
   if (kind2.path !== void 0) frontmatter.path = kind2.path;
+  if (kind2.links && Object.keys(kind2.links).length > 0) frontmatter.links = kind2.links;
   frontmatter.fields = fields;
   if (kind2.sections && kind2.sections.length > 0) frontmatter.sections = kind2.sections;
   if (kind2.freshnessHorizon !== void 0) frontmatter.freshness_horizon = kind2.freshnessHorizon;
@@ -7091,6 +7122,11 @@ var TASK_KIND = {
   title: TASK_TYPE,
   governs: TASK_TYPE,
   path: "tasks/",
+  // The typed-edge vocabulary (decisions/typed-links-carrier): a task's dependency edge is a
+  // link whose display text is exactly "depends on", targeting another Task. Declared here so
+  // `kinds` teaches the vocabulary to any agent that orients — discovery shipped; validation
+  // is a future consumer.
+  links: { "depends on": TASK_TYPE },
   fields: {
     required: ["title", "status"],
     optional: ["priority", "assignee", "description"],
@@ -7098,8 +7134,8 @@ var TASK_KIND = {
   },
   freshnessHorizon: "30d"
 };
-var TASK_SEED_BODY = "# Task\n\nA unit of work, composed entirely from lite primitives \u2014 no bespoke task engine.\nA task is a `type: Task` doc; its `status` is a validated enum; its DEPENDENCIES are\ncross-links to prerequisite task docs (the link graph IS the DAG, backlinks show what\nis blocked on it); an atomic CLAIM is a compare-and-swap write flipping `status` to\n`in_progress` (a second claimer gets a VersionConflict). Query with `list --type Task`;\nlint/orphans/staleness via `status`.\n";
-var WORK_TRACKING_SUMMARY = "Declares the built-in Task kind convention (title/status required, status enum, 30d freshness horizon)";
+var TASK_SEED_BODY = '# Task\n\nA unit of work, composed entirely from lite primitives \u2014 no bespoke task engine.\nA task is a `type: Task` doc; its `status` is a validated enum; its DEPENDENCIES are\ntyped `depends on` cross-links to prerequisite task docs (the declared link type \u2014\nthe link graph IS the DAG, and `link show <id> --text "depends on"` shows both\ndirections); an atomic CLAIM is a compare-and-swap write flipping `status` to\n`in_progress` (a second claimer gets a VersionConflict). Query with `list --type Task`;\nlint/orphans/staleness via `status`.\n';
+var WORK_TRACKING_SUMMARY = "Declares the built-in Task kind convention (title/status required, status enum, 'depends on' link type, 30d freshness horizon)";
 var WORK_TRACKING_DESC_BODY = "# Work Tracking\n\nInstalls the `Task` kind convention: a unit of work with a validated `status` enum (todo/in_progress/blocked/done/canceled), scaffolded under `tasks/`. Status/priority/assignee are FIELDS of Task, not separate conventions or a bespoke task verb \u2014 dependencies, claiming, and querying all compose from existing generic primitives (`link add`, CAS `doc update`, `list --type Task`, `status`).\n\nApplied on demand with `recipe add work-tracking` (not part of `init`'s default \u2014 that stays `context-notes`).\n";
 async function applyRecipe(bundle, recipe2, now = (/* @__PURE__ */ new Date()).toISOString()) {
   const docs = [];
@@ -9086,15 +9122,22 @@ var LINK_USAGE = `agentstate-lite link \u2014 add a cross-link or show a concept
 
 Usage:
   agentstate-lite link add <from> <to> [--text <t>]
-  agentstate-lite link show <id> [--limit <n>]
+  agentstate-lite link show <id> [--limit <n>] [--text <t>]
 
 Idempotent: re-adding a link the source already carries is a no-op \u2014 exit 0, changed:false, no
 duplicate link, no timestamp refresh.
 
 Options:
-  --text <t>            Link display text (default: the target id)
+  --text <t>            (link add) Link display text (default: the target id)
+                         (link show) Filter outbound links AND backlinks to those whose text is
+                         EXACTLY <t> (case-sensitive, not a substring match); empty/missing value
+                         is a usage error. outbound_count/backlink_count report the FILTERED
+                         totals when set. A filter that matches nothing is a valid empty result,
+                         not an error \u2014 its help line names the distinct link texts that ARE
+                         present, so a near-miss (typo/case) is visible.
   --limit <n>          (link show) Cap each of the outbound/backlink lists (default: 50; 0 =
-                         unlimited); outbound_count/backlink_count always report the true totals
+                         unlimited); outbound_count/backlink_count always report the true
+                         (post-filter) totals
   --keep-timestamp      Preserve the source's existing timestamp (default: refresh to now,
                          since adding a cross-link is a meaningful change)
   --dir <path>          Bundle directory (default: discovered from the cwd)
@@ -9228,6 +9271,7 @@ async function linkShow(argv, stdout) {
       args: argv,
       options: {
         limit: { type: "string" },
+        text: { type: "string" },
         dir: { type: "string" },
         remote: { type: "string" },
         json: { type: "boolean" },
@@ -9252,6 +9296,15 @@ async function linkShow(argv, stdout) {
     }
     limit = Number(raw);
   }
+  let textFilter;
+  if (values.text !== void 0) {
+    textFilter = values.text.trim();
+    if (!textFilter) {
+      throw new CliError("USAGE", "--text requires a non-empty value to filter on", {
+        help: `${cliInvocation()} link show <id> --text <t>`
+      });
+    }
+  }
   const id = positionals[0]?.trim();
   if (!id) {
     throw new CliError("USAGE", "link show requires a concept <id>", {
@@ -9271,25 +9324,43 @@ async function linkShow(argv, stdout) {
     exists2 = false;
   }
   const inbound = await backlinks(bundle, id);
+  const textsPresent = textFilter === void 0 ? [] : [...new Set([...outbound, ...inbound].map((l) => l.text))].sort((a, b) => a.localeCompare(b));
+  if (textFilter !== void 0) {
+    outbound = outbound.filter((l) => l.text === textFilter);
+  }
+  const inboundMatched = textFilter !== void 0 ? inbound.filter((l) => l.text === textFilter) : inbound;
   const outboundShown = limit > 0 ? outbound.slice(0, limit) : outbound;
-  const inboundShown = limit > 0 ? inbound.slice(0, limit) : inbound;
+  const inboundShown = limit > 0 ? inboundMatched.slice(0, limit) : inboundMatched;
   const payload = {
     id,
     exists: exists2,
     outbound_count: outbound.length,
     outbound: outboundShown,
-    backlink_count: inbound.length,
-    backlinks: inboundShown
+    backlink_count: inboundMatched.length,
+    backlinks: inboundShown.map((l) => ({ from: l.from, text: l.text }))
   };
+  if (textFilter !== void 0) payload.text_filter = textFilter;
   const help = [];
-  if (outboundShown.length < outbound.length || inboundShown.length < inbound.length) {
+  if (outboundShown.length < outbound.length || inboundShown.length < inboundMatched.length) {
     help.push(
-      `showing ${outboundShown.length}/${outbound.length} outbound + ${inboundShown.length}/${inbound.length} backlinks \u2014 run \`${cliInvocation()} link show ${id} --limit 0\` for all`
+      `showing ${outboundShown.length}/${outbound.length} outbound + ${inboundShown.length}/${inboundMatched.length} backlinks \u2014 run \`${cliInvocation()} link show ${id} --limit 0\` for all`
     );
+  }
+  if (textFilter !== void 0 && outbound.length === 0 && inboundMatched.length === 0) {
+    if (textsPresent.length > 0) {
+      const TEXTS_SHOWN = 8;
+      const shown = textsPresent.slice(0, TEXTS_SHOWN).map((t) => `'${t}'`).join(", ");
+      const more = textsPresent.length > TEXTS_SHOWN ? ` (+${textsPresent.length - TEXTS_SHOWN} more)` : "";
+      help.push(
+        `no links matched --text '${textFilter}' in either direction (exact match) \u2014 link texts present here: ${shown}${more}`
+      );
+    } else if (exists2) {
+      help.push(`no links matched --text '${textFilter}' in either direction \u2014 this is a definitive empty result, not an error`);
+    }
   }
   if (!exists2) {
     help.push(
-      inbound.length > 0 ? `'${id}' has no document yet but is cited by ${inbound.length} \u2014 run \`${cliInvocation()} doc write ${id} --type <t>\` to create it` : `no concept at '${id}': it has no document and nothing links to it`
+      inboundMatched.length > 0 ? `'${id}' has no document yet but is cited by ${inboundMatched.length} \u2014 run \`${cliInvocation()} doc write ${id} --type <t>\` to create it` : `no concept at '${id}': it has no document and nothing links to it${textFilter !== void 0 ? ` matching --text '${textFilter}'` : ""}`
     );
   }
   if (help.length > 0) payload.help = help;
@@ -9696,8 +9767,9 @@ Usage:
   agentstate-lite kinds [--dir <path>] [--remote <url>]
 
 A kind convention is a plain OKF doc (type: Convention) under conventions/ declaring a document
-kind's required/optional fields, allowed enum values, expected body sections, and an optional
-freshness horizon. See 'agentstate-lite new --help' to create an instance of a declared kind.
+kind's required/optional fields, allowed enum values, typed-link vocabulary, expected body
+sections, and an optional freshness horizon. See 'agentstate-lite new --help' to create an
+instance of a declared kind.
 
 Declaring a kind convention (frontmatter keys core reads \u2014 everything else is unread prose):
   governs              string   required \u2014 the 'type' value this convention governs
@@ -9707,6 +9779,12 @@ Declaring a kind convention (frontmatter keys core reads \u2014 everything else 
   fields.optional      list     field names an instance MAY carry
   fields.values        map      field name -> list of allowed values \u2014 the ONLY place an enum
                                  constraint goes; never a top-level enum/enums/values/constraints key
+  links                map      link type name -> allowed TARGET kind, for typed edges instances
+                                 of this kind may carry as link SOURCE (e.g. contains: Task). A
+                                 link whose display text exactly matches a declared type is a
+                                 typed edge; every other link is an untyped citation. Write typed
+                                 edges with 'link add <from> <to> --text <type>' and query them
+                                 with 'link show <id> --text <type>'
   sections             list     expected level-1 '# Heading' body-section names
   freshness_horizon    string   '<n>(m|h|d)', e.g. 24h, 30d, 15m
 A misshaped or misplaced key here is a non-fatal registry warning (visible in 'kinds'/'status'
@@ -9727,6 +9805,7 @@ function toRow(kind2) {
     optional: kind2.fields.optional
   };
   if (Object.keys(kind2.fields.values).length > 0) row.values = kind2.fields.values;
+  if (kind2.links && Object.keys(kind2.links).length > 0) row.links = kind2.links;
   if (kind2.path) row.path = kind2.path;
   if (kind2.sections && kind2.sections.length > 0) row.sections = kind2.sections;
   if (kind2.freshnessHorizon) {
@@ -12478,8 +12557,8 @@ var COMMAND_GROUPS = [
         summary: "Query concepts over their frontmatter (alias: query)"
       },
       {
-        usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>]) [--remote <url>]",
-        summary: "Add a cross-link, or show a concept's links + backlinks"
+        usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>]) [--remote <url>]",
+        summary: "Add a cross-link, or show a concept's links + backlinks (each carrying link text; --text filters both directions by exact match)"
       }
     ]
   },
@@ -12513,7 +12592,7 @@ var COMMAND_GROUPS = [
       },
       {
         usage: "kinds [--remote <url>]",
-        summary: "List the kind conventions this bundle declares (required/optional fields, horizon)"
+        summary: "List the kind conventions this bundle declares (required/optional fields, typed-link vocabulary, horizon)"
       },
       {
         usage: 'kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]',

@@ -9,7 +9,10 @@
 // see the change) — `--keep-timestamp` opts back into core `writeDoc`'s normal preserve-if-present
 // behavior. The idempotent no-op path (source already links to the target) never touches the
 // timestamp: re-adding an existing link is a true no-op. `link show <id>` reports the concept's
-// outbound links (core `parseLinks`) and its "cited by" set (core `backlinks`).
+// outbound links (core `parseLinks`) and its "cited by" set (core `backlinks`), each row carrying
+// the citing/cited link's `text` — the only relationship-type signal OKF's untyped edges carry.
+// `link show --text <t>` filters BOTH directions to links whose text EXACTLY matches `<t>` (not a
+// substring match) — a reader-side lens over the same edges, never a second derivation.
 import { parseArgs } from "node:util";
 import {
   readDoc,
@@ -34,15 +37,22 @@ export const LINK_USAGE = `agentstate-lite link — add a cross-link or show a c
 
 Usage:
   agentstate-lite link add <from> <to> [--text <t>]
-  agentstate-lite link show <id> [--limit <n>]
+  agentstate-lite link show <id> [--limit <n>] [--text <t>]
 
 Idempotent: re-adding a link the source already carries is a no-op — exit 0, changed:false, no
 duplicate link, no timestamp refresh.
 
 Options:
-  --text <t>            Link display text (default: the target id)
+  --text <t>            (link add) Link display text (default: the target id)
+                         (link show) Filter outbound links AND backlinks to those whose text is
+                         EXACTLY <t> (case-sensitive, not a substring match); empty/missing value
+                         is a usage error. outbound_count/backlink_count report the FILTERED
+                         totals when set. A filter that matches nothing is a valid empty result,
+                         not an error — its help line names the distinct link texts that ARE
+                         present, so a near-miss (typo/case) is visible.
   --limit <n>          (link show) Cap each of the outbound/backlink lists (default: 50; 0 =
-                         unlimited); outbound_count/backlink_count always report the true totals
+                         unlimited); outbound_count/backlink_count always report the true
+                         (post-filter) totals
   --keep-timestamp      Preserve the source's existing timestamp (default: refresh to now,
                          since adding a cross-link is a meaningful change)
   --dir <path>          Bundle directory (default: discovered from the cwd)
@@ -218,6 +228,7 @@ async function linkShow(argv: string[], stdout: (s: string) => void): Promise<vo
         args: argv,
         options: {
           limit: { type: "string" },
+          text: { type: "string" },
           dir: { type: "string" },
           remote: { type: "string" },
           json: { type: "boolean" },
@@ -234,7 +245,7 @@ async function linkShow(argv: string[], stdout: (s: string) => void): Promise<vo
 
   // Row cap (AXI §9): a heavily-cited hub concept can have a very large "cited by" set — bound both
   // link lists by default like `status`/`list` do, while `outbound_count`/`backlink_count` keep
-  // reporting the true totals. Default 50; 0 = unlimited.
+  // reporting the true (post-filter) totals. Default 50; 0 = unlimited.
   const DEFAULT_LIMIT = 50;
   let limit = DEFAULT_LIMIT;
   if (values.limit !== undefined) {
@@ -245,6 +256,20 @@ async function linkShow(argv: string[], stdout: (s: string) => void): Promise<vo
       });
     }
     limit = Number(raw);
+  }
+
+  // `--text` is an exact-match filter over BOTH directions' link text — not a second derivation,
+  // just a lens over the same edges `parseLinks`/`backlinks` already resolved. An empty/missing
+  // value is a usage error (a filter that matches nothing is a valid result; a filter that names
+  // nothing is a mistake).
+  let textFilter: string | undefined;
+  if (values.text !== undefined) {
+    textFilter = values.text.trim();
+    if (!textFilter) {
+      throw new CliError("USAGE", "--text requires a non-empty value to filter on", {
+        help: `${cliInvocation()} link show <id> --text <t>`,
+      });
+    }
   }
 
   const id = positionals[0]?.trim();
@@ -276,28 +301,59 @@ async function linkShow(argv: string[], stdout: (s: string) => void): Promise<vo
   }
 
   const inbound = await backlinks(bundle, id);
+  // Distinct link texts across BOTH directions, captured BEFORE filtering — fuel for the
+  // zero-match near-miss hint below. Exact match means a typo ('contain' for 'contains') would
+  // otherwise read as an empty graph; naming what IS there mirrors `doc read --field`'s
+  // absent-field behavior.
+  const textsPresent =
+    textFilter === undefined
+      ? []
+      : [...new Set([...outbound, ...inbound].map((l) => l.text))].sort((a, b) => a.localeCompare(b));
+  if (textFilter !== undefined) {
+    outbound = outbound.filter((l) => l.text === textFilter);
+  }
+  // `inboundMatched` is the FILTERED set whenever `--text` is set — the honest post-filter total
+  // every downstream count/help message below reads from, never the unfiltered `inbound` length
+  // dressed up as if it were the filtered count.
+  const inboundMatched = textFilter !== undefined ? inbound.filter((l) => l.text === textFilter) : inbound;
   const outboundShown = limit > 0 ? outbound.slice(0, limit) : outbound;
-  const inboundShown = limit > 0 ? inbound.slice(0, limit) : inbound;
+  const inboundShown = limit > 0 ? inboundMatched.slice(0, limit) : inboundMatched;
   const payload: Record<string, unknown> = {
     id,
     exists,
     outbound_count: outbound.length,
     outbound: outboundShown,
-    backlink_count: inbound.length,
-    backlinks: inboundShown,
+    backlink_count: inboundMatched.length,
+    backlinks: inboundShown.map((l) => ({ from: l.from, text: l.text })),
   };
+  if (textFilter !== undefined) payload.text_filter = textFilter;
 
   const help: string[] = [];
-  if (outboundShown.length < outbound.length || inboundShown.length < inbound.length) {
+  if (outboundShown.length < outbound.length || inboundShown.length < inboundMatched.length) {
     help.push(
-      `showing ${outboundShown.length}/${outbound.length} outbound + ${inboundShown.length}/${inbound.length} backlinks — run \`${cliInvocation()} link show ${id} --limit 0\` for all`,
+      `showing ${outboundShown.length}/${outbound.length} outbound + ${inboundShown.length}/${inboundMatched.length} backlinks — run \`${cliInvocation()} link show ${id} --limit 0\` for all`,
     );
+  }
+  if (textFilter !== undefined && outbound.length === 0 && inboundMatched.length === 0) {
+    if (textsPresent.length > 0) {
+      const TEXTS_SHOWN = 8;
+      const shown = textsPresent
+        .slice(0, TEXTS_SHOWN)
+        .map((t) => `'${t}'`)
+        .join(", ");
+      const more = textsPresent.length > TEXTS_SHOWN ? ` (+${textsPresent.length - TEXTS_SHOWN} more)` : "";
+      help.push(
+        `no links matched --text '${textFilter}' in either direction (exact match) — link texts present here: ${shown}${more}`,
+      );
+    } else if (exists) {
+      help.push(`no links matched --text '${textFilter}' in either direction — this is a definitive empty result, not an error`);
+    }
   }
   if (!exists) {
     help.push(
-      inbound.length > 0
-        ? `'${id}' has no document yet but is cited by ${inbound.length} — run \`${cliInvocation()} doc write ${id} --type <t>\` to create it`
-        : `no concept at '${id}': it has no document and nothing links to it`,
+      inboundMatched.length > 0
+        ? `'${id}' has no document yet but is cited by ${inboundMatched.length} — run \`${cliInvocation()} doc write ${id} --type <t>\` to create it`
+        : `no concept at '${id}': it has no document and nothing links to it${textFilter !== undefined ? ` matching --text '${textFilter}'` : ""}`,
     );
   }
   if (help.length > 0) payload.help = help;
