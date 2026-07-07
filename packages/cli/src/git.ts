@@ -73,6 +73,8 @@ interface RunOptions {
 function gitEnv(rebase: boolean): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const v of SCRUBBED_GIT_VARS) delete env[v];
+  // Locale-pin git prose so classifyGitError's fallback matchers survive non-English hosts.
+  env.LC_ALL = "C";
   env.GIT_TERMINAL_PROMPT = "0";
   env.GIT_SSH_COMMAND = "ssh -o BatchMode=yes -o ConnectTimeout=10";
   if (rebase) {
@@ -257,7 +259,7 @@ export function abortStaleRebase(boardPath: string): void {
 
 // ── doc-change vocabulary ─────────────────────────────────────────────────────
 
-export type DocVerb = "created" | "updated" | "deleted";
+export type DocVerb = "added" | "updated" | "deleted";
 
 /**
  * One board doc's change, ENRICHED from its own frontmatter. `actor` is read PER-DOC FROM
@@ -299,7 +301,7 @@ function nameStatusRows(out: string): Array<{ letter: string; relPath: string }>
 
 /** Map a name-status letter to the doc verb (`T` type-change reads as an update). */
 function verbOf(letter: string): DocVerb | null {
-  if (letter === "A") return "created";
+  if (letter === "A") return "added";
   if (letter === "M" || letter === "T") return "updated";
   if (letter === "D") return "deleted";
   return null;

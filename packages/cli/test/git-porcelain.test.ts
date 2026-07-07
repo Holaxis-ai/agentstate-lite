@@ -134,7 +134,7 @@ test("stageAndCommit: new, modified, AND deleted docs are committed with the rig
     assert.equal(r.committed, true);
     assert.ok(r.sha);
     const byId = new Map(r.docs.map((d) => [d.docId, d]));
-    assert.equal(byId.get("tasks/fresh")?.verb, "created");
+    assert.equal(byId.get("tasks/fresh")?.verb, "added");
     assert.equal(byId.get("tasks/seed-one")?.verb, "updated");
     assert.equal(byId.get("notes/welcome")?.verb, "deleted");
     // The deletion's kind/actor come from the OUTGOING (HEAD) version's frontmatter.
@@ -473,8 +473,8 @@ test("commit grammar: multi-doc single actor → `board: <actor> — N docs` (ne
     assert.equal(r.subject, "board: mike — 2 docs");
     assert.doesNotMatch(r.subject ?? "", /\b1 docs\b/);
     const body = headBody(topo.a.board);
-    assert.match(body, /^created Task tasks\/g-one$/m);
-    assert.match(body, /^created Task tasks\/g-two$/m);
+    assert.match(body, /^added Task tasks\/g-one$/m);
+    assert.match(body, /^added Task tasks\/g-two$/m);
   } finally {
     await topo.cleanup();
   }
@@ -535,7 +535,7 @@ test("changesSince: created/updated/deleted enrichment (deletion attributed from
     assert.ok(r.ok);
     const byId = new Map(r.changes.map((c) => [c.docId, c]));
     assert.equal(r.changes.length, 3);
-    assert.deepEqual(byId.get("tasks/born"), { docId: "tasks/born", actor: "brian", verb: "created", kind: "Task", title: "Born" });
+    assert.deepEqual(byId.get("tasks/born"), { docId: "tasks/born", actor: "brian", verb: "added", kind: "Task", title: "Born" });
     assert.deepEqual(byId.get("tasks/seed-two"), { docId: "tasks/seed-two", actor: "brian", verb: "updated", kind: "Task", title: "Seed two" });
     assert.deepEqual(byId.get("notes/welcome"), { docId: "notes/welcome", actor: "mike", verb: "deleted", kind: "Note", title: "Welcome" });
     assert.ok(r.changes.every((c) => c.actor !== "alice" && c.actor !== "Harness Bot"), "git identity never leaks into attribution");
