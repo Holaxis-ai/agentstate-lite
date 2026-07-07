@@ -134,7 +134,9 @@ test("status: examples/sample-bundle characterization — a fully clean bundle (
   assert.equal(result.stale, 0);
   assert.equal(result.no_timestamp, 0);
   assert.equal(result.registry_warnings, 0);
-  // A clean report omits every row-list block rather than emitting eight empty categories.
+  assert.equal(result.link_type_violations, 0);
+  assert.equal(result.missing_expected_links, 0);
+  // A clean report omits every row-list block rather than emitting ten empty categories.
   for (const key of [
     "kind_lint",
     "unresolved",
@@ -142,6 +144,8 @@ test("status: examples/sample-bundle characterization — a fully clean bundle (
     "stale_docs",
     "no_timestamp_docs",
     "registry_lint",
+    "link_type_violations_rows",
+    "missing_expected_links_rows",
   ]) {
     assert.equal(key in result, false, `expected no '${key}' key on a clean report`);
   }
@@ -160,6 +164,10 @@ test("status: a conventions-free freshly-initialized bundle is equally clean", a
     assert.equal(result.stale, 0);
     assert.equal(result.no_timestamp, 0);
     assert.equal(result.registry_warnings, 0);
+    assert.equal(result.link_type_violations, 0);
+    assert.equal(result.missing_expected_links, 0);
+    assert.equal("link_type_violations_rows" in result, false);
+    assert.equal("missing_expected_links_rows" in result, false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -172,6 +180,13 @@ test("status: fixture bundle exercises every finding class with the correct coun
 
     assert.equal(result.docs, 10);
     assert.equal(result.kinds, 1);
+
+    // The Widget kind declares no 'links'/'expects_inbound' — the graph lints stay at zero, no
+    // row-list blocks, over a fixture built entirely for the OTHER finding classes.
+    assert.equal(result.link_type_violations, 0);
+    assert.equal(result.missing_expected_links, 0);
+    assert.equal("link_type_violations_rows" in result, false);
+    assert.equal("missing_expected_links_rows" in result, false);
 
     // Kind lint: exactly the missing-title + bad-enum warnings, minimal {id,field,code} rows.
     assert.equal(result.kind_warnings, 2);
@@ -263,6 +278,177 @@ test("status: a link to a reserved file (index.md/log.md) is never counted as un
   }
 });
 
+/**
+ * A GENERIC graph-lints fixture (not Task/Roadmap Item), pinning that nothing is hardcoded:
+ *   - `conventions/box`   — declares 'Box', a link SOURCE: `links: {contains: Crate}`.
+ *   - `conventions/crate` — declares 'Crate', a link TARGET: `expects_inbound: {contains: Box}`,
+ *                            plus a `status` field (queued/active/done) for the triage signal.
+ *   - `items/good-box` -> `items/good-crate` (text 'contains'): a CONFORMING edge (Box -> Crate) —
+ *     satisfies good-crate's expects_inbound, never a violation.
+ *   - `items/box-to-widget` -> `items/rogue` (text 'contains'): wrong TARGET (Box -> Widget, not
+ *     Crate) — a link_type_violations row.
+ *   - `items/rogue` -> `items/good-crate` (text 'contains'): wrong SOURCE (Widget -> Crate, not
+ *     Box -> Crate) — a SECOND link_type_violations row. (`items/rogue` is type 'Widget', an
+ *     undeclared kind, so it never itself appears in any kind-governed finding.)
+ *   - `items/missing-crate` (status: queued) and `items/done-crate` (status: done) — Crate
+ *     instances with NO inbound 'contains' edge from a Box at all -> two missing_expected_links
+ *     rows, used to pin the status-in-row + non-done-first sort.
+ */
+async function makeGraphLintFixtureBundle(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  const dir = await tempDir();
+  const bundle = await initBundle(dir);
+  const now = new Date().toISOString();
+
+  await writeDoc(bundle, {
+    id: "conventions/box",
+    frontmatter: {
+      type: "Convention",
+      governs: "Box",
+      fields: { required: ["title"], optional: [] },
+      links: { contains: "Crate" },
+      timestamp: now,
+    },
+    body: "Box declares its typed-edge vocabulary.",
+  });
+  await writeDoc(bundle, {
+    id: "conventions/crate",
+    frontmatter: {
+      type: "Convention",
+      governs: "Crate",
+      fields: { required: ["title", "status"], optional: [], values: { status: ["queued", "active", "done"] } },
+      expects_inbound: { contains: "Box" },
+      timestamp: now,
+    },
+    body: "Crate declares its inbound-link expectation.",
+  });
+  await writeDoc(bundle, {
+    id: "items/good-box",
+    frontmatter: { type: "Box", title: "Good Box", timestamp: now },
+    body: "Contains a [contains](good-crate.md).",
+  });
+  await writeDoc(bundle, {
+    id: "items/box-to-widget",
+    frontmatter: { type: "Box", title: "Box To Widget", timestamp: now },
+    body: "Contains a [contains](rogue.md).",
+  });
+  await writeDoc(bundle, {
+    id: "items/rogue",
+    frontmatter: { type: "Widget", title: "Rogue", timestamp: now },
+    body: "Contains a [contains](good-crate.md).",
+  });
+  await writeDoc(bundle, {
+    id: "items/good-crate",
+    frontmatter: { type: "Crate", title: "Good Crate", status: "active", timestamp: now },
+    body: "",
+  });
+  await writeDoc(bundle, {
+    id: "items/missing-crate",
+    frontmatter: { type: "Crate", title: "Missing Crate", status: "queued", timestamp: now },
+    body: "",
+  });
+  await writeDoc(bundle, {
+    id: "items/done-crate",
+    frontmatter: { type: "Crate", title: "Done Crate", status: "done", timestamp: now },
+    body: "",
+  });
+
+  return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+test("status: link_type_violations — every edge violating a declared 'links' vocabulary, bundle-wide (same rule as 'link add's write-time lint)", async () => {
+  const { dir, cleanup } = await makeGraphLintFixtureBundle();
+  try {
+    const result = await runJson(["--dir", dir]);
+    assert.equal(result.link_type_violations, 2);
+    const violations = result.link_type_violations_rows as {
+      shown: number;
+      total: number;
+      rows: Record<string, unknown>[];
+    };
+    assert.equal(violations.total, 2);
+    assert.ok(
+      violations.rows.some(
+        (r) => r.from === "items/box-to-widget" && r.to === "items/rogue" && r.text === "contains" && r.expected === "Box -> Crate",
+      ),
+      "expected the wrong-TARGET violation row",
+    );
+    assert.ok(
+      violations.rows.some(
+        (r) => r.from === "items/rogue" && r.to === "items/good-crate" && r.text === "contains" && r.expected === "Box -> Crate",
+      ),
+      "expected the wrong-SOURCE violation row",
+    );
+    // The CONFORMING edge (good-box -> good-crate) must never appear as a violation.
+    assert.ok(!violations.rows.some((r) => r.from === "items/good-box"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("status: missing_expected_links — Crate instances lacking a conforming inbound 'contains' edge from a Box; status-in-row + non-done-first sort", async () => {
+  const { dir, cleanup } = await makeGraphLintFixtureBundle();
+  try {
+    const result = await runJson(["--dir", dir]);
+    assert.equal(result.missing_expected_links, 2);
+    const missing = result.missing_expected_links_rows as {
+      shown: number;
+      total: number;
+      rows: Record<string, unknown>[];
+    };
+    assert.equal(missing.total, 2);
+    // Non-done first (missing-crate, status: queued), then done (done-crate) — never plain id order.
+    assert.deepEqual(missing.rows.map((r) => r.id), ["items/missing-crate", "items/done-crate"]);
+    assert.equal(missing.rows[0]!.status, "queued");
+    assert.deepEqual(missing.rows[0]!.missing, ["contains"]);
+    assert.equal(missing.rows[1]!.status, "done");
+    assert.deepEqual(missing.rows[1]!.missing, ["contains"]);
+    // good-crate received a CONFORMING inbound edge (from good-box, a real Box) — it must NOT appear,
+    // even though it also received a non-conforming inbound edge (from rogue, a Widget).
+    assert.ok(!missing.rows.some((r) => r.id === "items/good-crate"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("status: missing_expected_links omits the 'status' key when the declaring kind has no status field", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle = await initBundle(dir);
+    const now = new Date().toISOString();
+    await writeDoc(bundle, {
+      id: "conventions/tag",
+      frontmatter: { type: "Convention", governs: "Tag", fields: { required: ["title"], optional: [] }, timestamp: now },
+      body: "Tag kind — a link SOURCE only.",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/note",
+      frontmatter: {
+        type: "Convention",
+        governs: "Note",
+        fields: { required: ["title"], optional: [] }, // no 'status' field declared
+        expects_inbound: { "tagged by": "Tag" },
+        timestamp: now,
+      },
+      body: "Note kind — expects an inbound 'tagged by' edge from a Tag; declares no status field.",
+    });
+    await writeDoc(bundle, {
+      id: "items/lonely-note",
+      frontmatter: { type: "Note", title: "Lonely", timestamp: now },
+      body: "",
+    });
+
+    const result = await runJson(["--dir", dir]);
+    assert.equal(result.missing_expected_links, 1);
+    const missing = result.missing_expected_links_rows as { rows: Record<string, unknown>[] };
+    assert.equal(missing.rows.length, 1);
+    assert.equal(missing.rows[0]!.id, "items/lonely-note");
+    assert.equal("status" in missing.rows[0]!, false, "a kind with no declared status field must not get a status key");
+    assert.deepEqual(missing.rows[0]!.missing, ["tagged by"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("status: --limit caps each category's row list with an explicit shown/total; --limit 0 is unlimited", async () => {
   const { dir, cleanup } = await makeFixtureBundle();
   try {
@@ -337,6 +523,8 @@ test("status: TOON (agent-facing default, no --json) renders the summary keys", 
       "stale:",
       "no_timestamp:",
       "registry_warnings:",
+      "link_type_violations:",
+      "missing_expected_links:",
     ]) {
       assert.ok(out.includes(key), `expected TOON output to contain '${key}', got:\n${out}`);
     }

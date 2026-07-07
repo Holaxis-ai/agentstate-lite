@@ -256,6 +256,170 @@ test("link show --text '' (empty/blank value): USAGE error, exit 2", async () =>
   }
 });
 
+test("link add: a wrong-kind violation (source AND target type mismatches against a declared 'links' vocabulary) attaches a warnings[] to the success envelope, exit 0 (the link is already written)", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));
+  try {
+    const bundle = await initBundle(dir);
+    // A GENERIC vocabulary (not Task/Roadmap Item), pinning that nothing is hardcoded: 'Box'
+    // declares 'contains' -> 'Crate'.
+    await writeDoc(bundle, {
+      id: "conventions/box",
+      frontmatter: {
+        type: "Convention",
+        governs: "Box",
+        fields: { required: ["title"], optional: [] },
+        links: { contains: "Crate" },
+        timestamp: OLD_TS,
+      },
+      body: "Box declares its typed-edge vocabulary.",
+    });
+    await writeDoc(bundle, { id: "box-1", frontmatter: { type: "Box", title: "Box1", timestamp: OLD_TS }, body: "" });
+    await writeDoc(bundle, { id: "crate-1", frontmatter: { type: "Crate", title: "Crate1", timestamp: OLD_TS }, body: "" });
+    await writeDoc(bundle, { id: "widget-1", frontmatter: { type: "Widget", title: "Widget1", timestamp: OLD_TS }, body: "" });
+
+    // Wrong SOURCE: a Widget (not a Box) using the 'contains' text against a conforming target.
+    const wrongSource = await linkAdd(dir, ["widget-1", "crate-1", "--text", "contains"]);
+    assert.equal(wrongSource.changed, true);
+    const sourceWarnings = wrongSource.warnings as Array<Record<string, unknown>>;
+    assert.ok(sourceWarnings, "expected a warnings array for a wrong-source edge");
+    assert.equal(sourceWarnings.length, 1);
+    assert.equal(sourceWarnings[0]!.code, "LINK_TYPE_VIOLATION");
+    assert.equal(sourceWarnings[0]!.severity, "warning");
+    assert.match(
+      sourceWarnings[0]!.message as string,
+      /'contains' is declared by 'Box' -> Crate; this link is Widget -> Crate\./,
+    );
+
+    // Wrong TARGET: a conforming Box source, but the target is a Widget instead of a Crate.
+    const wrongTarget = await linkAdd(dir, ["box-1", "widget-1", "--text", "contains"]);
+    assert.equal(wrongTarget.changed, true);
+    const targetWarnings = wrongTarget.warnings as Array<Record<string, unknown>>;
+    assert.ok(targetWarnings, "expected a warnings array for a wrong-target edge");
+    assert.equal(targetWarnings[0]!.code, "LINK_TYPE_VIOLATION");
+    assert.match(
+      targetWarnings[0]!.message as string,
+      /'contains' is declared by 'Box' -> Crate; this link is Box -> Widget\./,
+    );
+
+    // A CONFORMING edge (Box -> Crate) never warns.
+    const conforming = await linkAdd(dir, ["box-1", "crate-1", "--text", "contains"]);
+    assert.equal(conforming.changed, true);
+    assert.ok(!("warnings" in conforming), "a conforming typed edge must never attach a warnings key");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("link add: a same-spelling-different-case link type warns naming the declared spelling (case-variant near miss) — no edit-distance matching", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/box",
+      frontmatter: {
+        type: "Convention",
+        governs: "Box",
+        fields: { required: ["title"], optional: [] },
+        links: { contains: "Crate" },
+        timestamp: OLD_TS,
+      },
+      body: "Box declares its typed-edge vocabulary.",
+    });
+    await writeDoc(bundle, { id: "box-1", frontmatter: { type: "Box", title: "Box1", timestamp: OLD_TS }, body: "" });
+    await writeDoc(bundle, { id: "crate-1", frontmatter: { type: "Crate", title: "Crate1", timestamp: OLD_TS }, body: "" });
+
+    // 'Contains' (capital C) is a case-variant of the declared 'contains' — a near miss, not an
+    // exact match, even though the source/target kinds here would otherwise conform.
+    const result = await linkAdd(dir, ["box-1", "crate-1", "--text", "Contains"]);
+    assert.equal(result.changed, true);
+    const warnings = result.warnings as Array<Record<string, unknown>>;
+    assert.ok(warnings, "expected a case-variant warning");
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0]!.code, "LINK_TYPE_CASE_VARIANT");
+    assert.match(
+      warnings[0]!.message as string,
+      /'Contains' is a case-variant of the declared link type 'contains' — did you mean --text 'contains'\?/,
+    );
+
+    // An unrelated near-miss text (edit-distance close, but NOT a case variant) never warns —
+    // this lint does ONLY exact-match + case-insensitive-match, never edit-distance matching.
+    await writeDoc(bundle, { id: "crate-2", frontmatter: { type: "Crate", title: "Crate2", timestamp: OLD_TS }, body: "" });
+    const editDistance = await linkAdd(dir, ["box-1", "crate-2", "--text", "contain"]);
+    assert.equal(editDistance.changed, true);
+    assert.ok(!("warnings" in editDistance), "an edit-distance near miss (not a case variant) must never warn");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("link add: an untyped link (text matching no declared type, in any casing) never warns", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/box",
+      frontmatter: {
+        type: "Convention",
+        governs: "Box",
+        fields: { required: ["title"], optional: [] },
+        links: { contains: "Crate" },
+        timestamp: OLD_TS,
+      },
+      body: "Box declares its typed-edge vocabulary.",
+    });
+    await writeDoc(bundle, { id: "box-1", frontmatter: { type: "Box", title: "Box1", timestamp: OLD_TS }, body: "" });
+    await writeDoc(bundle, { id: "widget-1", frontmatter: { type: "Widget", title: "Widget1", timestamp: OLD_TS }, body: "" });
+
+    const result = await linkAdd(dir, ["box-1", "widget-1", "--text", "see also"]);
+    assert.equal(result.changed, true);
+    assert.ok(!("warnings" in result), "an untyped link must never attach a warnings key");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("link add: the idempotent no-op path (changed:false) performs no registry load and no type-conformance check — no warnings key even for an already-violating edge", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/box",
+      frontmatter: {
+        type: "Convention",
+        governs: "Box",
+        fields: { required: ["title"], optional: [] },
+        links: { contains: "Crate" },
+        timestamp: OLD_TS,
+      },
+      body: "Box declares its typed-edge vocabulary.",
+    });
+    await writeDoc(bundle, { id: "widget-1", frontmatter: { type: "Widget", title: "Widget1", timestamp: OLD_TS }, body: "" });
+    await writeDoc(bundle, { id: "crate-1", frontmatter: { type: "Crate", title: "Crate1", timestamp: OLD_TS }, body: "" });
+
+    const first = await linkAdd(dir, ["widget-1", "crate-1", "--text", "contains"]);
+    assert.equal(first.changed, true);
+    assert.ok(first.warnings, "first add of a wrong-source edge should warn");
+
+    const second = await linkAdd(dir, ["widget-1", "crate-1", "--text", "contains"]);
+    assert.equal(second.changed, false);
+    assert.equal(second.link, "exists");
+    assert.ok(!("warnings" in second), "the idempotent no-op path must never attach a warnings key");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("link add: a conventions-free bundle (no kind declares any links) never warns, regardless of --text", async () => {
+  const { dir, cleanup } = await makeFixtureBundle();
+  try {
+    const result = await linkAdd(dir, ["concepts/a", "concepts/b", "--text", "contains"]);
+    assert.equal(result.changed, true);
+    assert.ok(!("warnings" in result), "a conventions-free bundle must never attach a warnings key");
+  } finally {
+    await cleanup();
+  }
+});
+
 test("link show --text (no value at all): USAGE error, exit 2 — a bare parseArgs failure, not a bare TypeError", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));
   try {

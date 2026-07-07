@@ -341,6 +341,92 @@ test("kindConventionDoc: a links declaration round-trips through write/loadKinds
   });
 });
 
+test("loadKinds: parses an 'expects_inbound' declaration (inbound-link expectation, declared on the TARGET kind); wrong shapes warn and are ignored; absent stays absent with no warning", async () => {
+  await withMemBundle(async (bundle) => {
+    await writeDoc(bundle, {
+      id: "conventions/widget",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Widget",
+        fields: { required: ["title"], optional: [] },
+        // A GENERIC vocabulary (not Task/Roadmap Item) to pin that nothing is hardcoded: a
+        // 'Widget' expects an inbound 'contains' edge from a 'Crate' and an inbound 'assigned to'
+        // edge from an 'Owner'.
+        expects_inbound: { contains: "Crate", "assigned to": "Owner" },
+        timestamp: T,
+      },
+      body: "A convention declaring its inbound-link expectations.",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/expects-as-list",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Expects As List",
+        expects_inbound: ["contains"],
+        timestamp: T,
+      },
+      body: "expects_inbound as a list, not a map.",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/expects-bad-member",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Expects Bad Member",
+        expects_inbound: { contains: { kind: "Crate" }, supersedes: "Claim" },
+        timestamp: T,
+      },
+      body: "one malformed expects_inbound entry beside a good one.",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/no-expects",
+      frontmatter: { type: CONVENTION_TYPE, governs: "No Expects", timestamp: T },
+      body: "no expects_inbound key at all.",
+    });
+
+    const registry = await loadKinds(bundle);
+    assert.deepEqual(registry.kinds.get("Widget")!.expectsInbound, { contains: "Crate", "assigned to": "Owner" });
+
+    // Non-map shape: ignored entirely, KIND_CONVENTION_BAD_SHAPE names 'expects_inbound'.
+    assert.equal(registry.kinds.get("Expects As List")!.expectsInbound, undefined);
+    assert.ok(
+      registry.warnings.some(
+        (w) =>
+          w.code === "KIND_CONVENTION_BAD_SHAPE" &&
+          /expects-as-list/.test(w.message) &&
+          /'expects_inbound'/.test(w.message),
+      ),
+    );
+
+    // Malformed entry: skipped with KIND_CONVENTION_BAD_MEMBER; the good entry survives.
+    assert.deepEqual(registry.kinds.get("Expects Bad Member")!.expectsInbound, { supersedes: "Claim" });
+    assert.ok(
+      registry.warnings.some(
+        (w) => w.code === "KIND_CONVENTION_BAD_MEMBER" && w.field === "expects_inbound.contains",
+      ),
+    );
+
+    // Absent: no key on the parsed kind, and no warning (not declared is normal).
+    assert.equal(registry.kinds.get("No Expects")!.expectsInbound, undefined);
+    assert.ok(!registry.warnings.some((w) => /no-expects/.test(w.message)));
+  });
+});
+
+test("kindConventionDoc: an expects_inbound declaration round-trips through write/loadKinds", async () => {
+  await withMemBundle(async (bundle) => {
+    const kind: KindConvention = {
+      id: "conventions/expecting-kind",
+      title: "Expecting Kind",
+      governs: "Expecting Kind",
+      fields: { required: ["title"], optional: [], values: {} },
+      expectsInbound: { contains: "Crate" },
+    };
+    await writeDoc(bundle, kindConventionDoc(kind, "prose.", T));
+    const registry = await loadKinds(bundle);
+    assert.deepEqual(registry.kinds.get("Expecting Kind")!.expectsInbound, { contains: "Crate" });
+    assert.equal(registry.warnings.length, 0);
+  });
+});
+
 test("loadKinds: a 'fields.values' key naming a field NOT in required/optional warns (a declared constraint on an undeclared field)", async () => {
   await withMemBundle(async (bundle) => {
     await writeDoc(bundle, {

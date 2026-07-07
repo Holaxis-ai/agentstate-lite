@@ -57,6 +57,15 @@ export interface KindConvention {
    * citation). Discovery-only at this layer — write-time validation is a future consumer.
    */
   links?: Record<string, string>;
+  /**
+   * Inbound-link expectations this kind declares on ITSELF as link TARGET: `link type name ->
+   * expected SOURCE kind` (e.g. a `Task` declaring `expects_inbound: {contains: "Roadmap Item"}`
+   * means every Task instance is expected to carry at least one inbound edge whose text is
+   * exactly `contains` from a doc of type `Roadmap Item`). Discovery-only at this layer — the
+   * `status` graph-lint sweep (`missing_expected_links`) is the write-side consumer; write-time
+   * validation is never enforced by this key.
+   */
+  expectsInbound?: Record<string, string>;
   /** Expected body-section headings (level-1 `# Heading`), if declared. Scaffold + lint only. */
   sections?: string[];
   /** Raw declared horizon string (`<n>(m|h|d)`), if present — parse via {@link freshnessHorizonMs}. */
@@ -305,6 +314,39 @@ function parseConventionDoc(
     }
   }
 
+  // `expects_inbound:` — inbound-link expectations this kind declares on ITSELF as link TARGET
+  // (see the KindConvention.expectsInbound doc comment). Same lenient posture as `links`: absent
+  // is normal (no warning), a non-map shape warns and is ignored, a malformed entry warns and is
+  // skipped — never thrown.
+  const expectsInboundSource = fm.expects_inbound;
+  let expectsInbound: Record<string, string> | undefined;
+  if (expectsInboundSource !== undefined) {
+    if (!isPlainObject(expectsInboundSource)) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc.id}' has a non-map 'expects_inbound' key (${describeShape(expectsInboundSource)}; expected a map of link type name -> expected source kind); ignoring it.`,
+        field: "expects_inbound",
+        severity: "warning",
+      });
+    } else {
+      const parsed: Record<string, string> = {};
+      for (const [linkType, source] of Object.entries(expectsInboundSource)) {
+        const name = linkType.trim();
+        if (name === "" || !isScalar(source) || String(source).trim() === "") {
+          warnings.push({
+            code: "KIND_CONVENTION_BAD_MEMBER",
+            message: `kind convention '${doc.id}' has a malformed 'expects_inbound' entry ('${linkType}': ${describeShape(source)}; expected 'link type name: expected source kind'); skipping it.`,
+            field: `expects_inbound.${linkType}`,
+            severity: "warning",
+          });
+          continue;
+        }
+        parsed[name] = String(source).trim();
+      }
+      if (Object.keys(parsed).length > 0) expectsInbound = parsed;
+    }
+  }
+
   const sections = Array.isArray(fm.sections)
     ? fm.sections.filter((s): s is string => typeof s === "string" && s.trim() !== "")
     : undefined;
@@ -319,6 +361,7 @@ function parseConventionDoc(
   const kind: KindConvention = { id: doc.id, title, governs, fields: { required, optional, values } };
   if (path !== undefined) kind.path = path;
   if (links !== undefined) kind.links = links;
+  if (expectsInbound !== undefined) kind.expectsInbound = expectsInbound;
   if (sections && sections.length > 0) kind.sections = sections;
   if (freshnessHorizon !== undefined) kind.freshnessHorizon = freshnessHorizon;
   return { ok: true, kind, reservedFieldsIgnored: [...reservedFieldsIgnored].sort(), warnings };
@@ -511,6 +554,9 @@ export function kindConventionDoc(kind: KindConvention, prose: string, timestamp
   const frontmatter: Frontmatter = { type: CONVENTION_TYPE, title: kind.title, governs: kind.governs, timestamp };
   if (kind.path !== undefined) frontmatter.path = kind.path;
   if (kind.links && Object.keys(kind.links).length > 0) frontmatter.links = kind.links;
+  if (kind.expectsInbound && Object.keys(kind.expectsInbound).length > 0) {
+    frontmatter.expects_inbound = kind.expectsInbound;
+  }
   frontmatter.fields = fields;
   if (kind.sections && kind.sections.length > 0) frontmatter.sections = kind.sections;
   if (kind.freshnessHorizon !== undefined) frontmatter.freshness_horizon = kind.freshnessHorizon;

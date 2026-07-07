@@ -29,7 +29,7 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
 - `npx -y agentstate-lite view [--dir <path>] [--out <path>] [--name <label>] [--remote <url>]`
   — Bake the bundle into one self-contained static HTML file
 - `npx -y agentstate-lite status [--limit <n>] [--remote <url>]`
-  — Read-only bundle health report (kind lint, unresolved links, orphans, staleness)
+  — Read-only bundle health report (kind lint, unresolved links, orphans, staleness, graph lints)
 
 ### Documents & links
 

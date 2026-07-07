@@ -45,7 +45,7 @@ export const COMMAND_GROUPS: CommandGroup[] = [
       },
       {
         usage: "status [--limit <n>] [--remote <url>]",
-        summary: "Read-only bundle health report (kind lint, unresolved links, orphans, staleness)",
+        summary: "Read-only bundle health report (kind lint, unresolved links, orphans, staleness, graph lints)",
       },
     ],
   },
