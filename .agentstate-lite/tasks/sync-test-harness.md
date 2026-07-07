@@ -1,13 +1,22 @@
 ---
 type: Task
 title: 'U0 sync test harness: scratch git topologies + fixtures (BLOCKS ALL)'
-status: todo
+status: done
 priority: '1'
 description: >-
-  U0. Hermetic git test harness (bare origin + two clones, board worktree)
-  planting every sync fixture incl. stale-rebase and held index.lock. BLOCKS ALL
-  sync units. Deps: none.
-timestamp: '2026-07-07T21:17:06.807Z'
+  SHIPPED (this PR): packages/cli/test/git-harness.ts (hermetic fixture library
+  — two-clone topologies, board worktree provisioning incl. --no-track
+  migration-machine state, same/different-doc divergence, dangling cursor via
+  real gc, wedged mid-rebase, O_EXCL index.lock/GIT_BUSY, staged/dirty user-code
+  planters, frontmatter-actor vs git-author divergence) + git-harness.test.ts
+  (12 state-asserting self-tests). CLI suite 406->418, npm run check green.
+  Builder builder-u0; independent review APPROVE (safety: single wrapped spawn
+  site, sandbox escape impossible by construction; both deviations ruled
+  accept). Caveats for U1/U2 builders: build ff-only-matrix/push-fail/two-origin
+  fixtures in-suite (reviewer's downstream_gaps list); deprovisionBoard is
+  exported but uncovered until U1 uses it.
+assignee: builder-u0
+timestamp: '2026-07-07T22:02:31.038Z'
 ---
 # U0 — sync test harness (BLOCKS ALL sync units)
 
