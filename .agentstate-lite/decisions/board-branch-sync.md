@@ -1,9 +1,9 @@
 ---
 type: Decision
 title: >-
-  Board branch + linked worktree for sync (Brian approved 2026-07-07; Mike to
-  confirm before migration)
-timestamp: '2026-07-07T19:39:02.318Z'
+  Board branch + linked worktree for sync (Brian approved + Mike confirmed
+  2026-07-07)
+timestamp: '2026-07-07T20:47:37.833Z'
 ---
 # Decision: sync operates on a dedicated `board` branch via linked worktree
 
@@ -30,5 +30,14 @@ provision per clone (automated, self-healing); a one-time migration of the curre
 main-committed bundle ([plans/sync-verb-implementation](../plans/sync-verb-implementation.md)
 U5); worktree `.git`-file handling becomes mandatory throughout (`rev-parse --git-path`).
 
-**Status.** Brian approved in-session 2026-07-07. PENDING Mike's confirmation before the
-migration unit (U5) executes on this repo. Build of U0–U4/U6 is not gated on it.
+**Status.** Brian approved in-session 2026-07-07. Mike CONFIRMED 2026-07-07 (recorded by his
+orchestrator agent), with two riders binding on the build:
+
+1. **Migration is files-not-history**: the `board` branch starts from the bundle's CURRENT
+   state — the pre-port private history and anything scrubbed never enters it (same rule as
+   the 2026-07-07 public port; see docs/call-2026-07-07-bundle-in-repo).
+2. **Provisioning is detection-gated and loud**: the CLI creates the worktree ONLY when the
+   `board` branch already exists on the remote, and says so in structured output — never a
+   silent git mutation, never on a repo without the branch.
+
+U5 is unblocked. Build of U0–U4/U6 was never gated.
