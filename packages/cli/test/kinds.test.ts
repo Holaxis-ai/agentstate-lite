@@ -123,6 +123,75 @@ test("kinds: projects a convention's 'links' declaration (typed-edge vocabulary)
   }
 });
 
+test("new: point-of-use link teaching is GENERIC — per-kind help shows both directions; the create receipt hints complete link-add commands; no declarations = no hints", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-kinds-test-"));
+  try {
+    const bundle = await initBundle(dir);
+    // A deliberately NON-work-management vocabulary: Incident "affects" -> Service proves no
+    // Task/Roadmap-Item knowledge is hardcoded anywhere in the teaching path.
+    await writeDoc(bundle, {
+      id: "conventions/service",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Service",
+        path: "services/",
+        fields: { required: ["title"], optional: [] },
+        links: { "runs on": "Service" },
+        timestamp: T,
+      },
+      body: "",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/incident",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Incident",
+        path: "incidents/",
+        fields: { required: ["title"], optional: [] },
+        links: { affects: "Service" },
+        timestamp: T,
+      },
+      body: "",
+    });
+
+    // Moment 1 — per-kind help: outbound ("runs on" -> Service) AND the reverse lookup (Incident
+    // "affects" -> Service). The self-declaration appears outbound only, never echoed inbound.
+    let helpOut = "";
+    await newCommand(["Service", "--help", "--dir", dir], { stdout: (s) => (helpOut += s) });
+    assert.match(helpOut, /this kind may link:\s+"runs on" → Service/);
+    assert.match(helpOut, /other kinds link here:\s+Incident "affects" → Service/);
+    assert.ok(!/other kinds link here:\s+Service/.test(helpOut), "self-declaration must not echo inbound");
+
+    // Moment 2 — the create receipt: complete, placeholder-parameterized link-add commands in
+    // BOTH directions, derived purely from the registry.
+    const receipt = await runJson(newCommand, ["Service", "api", "--title", "API", "--dir", dir]);
+    const hints = receipt.help as string[];
+    assert.ok(
+      hints.some((h) => /link from a Incident:/.test(h) && /link add incidents\/<incident> services\/api --text "affects"/.test(h)),
+      `expected the inbound alignment hint, got: ${JSON.stringify(hints)}`,
+    );
+    assert.ok(
+      hints.some((h) => /link to a Service:/.test(h) && /link add services\/api services\/<service> --text "runs on"/.test(h)),
+      `expected the outbound hint, got: ${JSON.stringify(hints)}`,
+    );
+
+    // A kind with NO declared links (in either direction) gets ONLY the doc-read hint, and its
+    // per-kind help carries no Links block — declarations absent means teaching absent.
+    await writeDoc(bundle, {
+      id: "conventions/memo",
+      frontmatter: { type: CONVENTION_TYPE, governs: "Memo", fields: { required: ["title"], optional: [] }, timestamp: T },
+      body: "",
+    });
+    const memoReceipt = await runJson(newCommand, ["Memo", "m1", "--title", "M", "--dir", dir]);
+    assert.equal((memoReceipt.help as string[]).length, 1);
+    let memoHelp = "";
+    await newCommand(["Memo", "--help", "--dir", dir], { stdout: (s) => (memoHelp += s) });
+    assert.ok(!/Links \(typed edges/.test(memoHelp));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("kinds: on a conventions-free bundle, an empty registry with a help hint (no crash, no I/O error)", async () => {
   const dir = await tempDir();
   try {

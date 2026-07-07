@@ -9587,20 +9587,45 @@ function controlFlagValue(val, flag) {
   }
   return val;
 }
-function renderKindHelp(kind2, inv) {
+function inboundLinkDecls(registry, kind2) {
+  const inbound = [];
+  for (const source of registry.kinds.values()) {
+    if (source.governs === kind2.governs) continue;
+    for (const [linkType, target] of Object.entries(source.links ?? {})) {
+      if (target === kind2.governs) inbound.push({ source, linkType });
+    }
+  }
+  return inbound.sort(
+    (a, b) => a.source.governs.localeCompare(b.source.governs) || a.linkType.localeCompare(b.linkType)
+  );
+}
+function kindIdPlaceholder(kind2, governs) {
+  const slug = governs.toLowerCase().replace(/\s+/g, "-");
+  const prefix = kind2?.path ? kind2.path.replace(/\/+$/, "") + "/" : "";
+  return `${prefix}<${slug}>`;
+}
+function renderKindHelp(kind2, registry, inv) {
   const req = kind2.fields.required.filter((f) => f !== "actor");
   const opt = kind2.fields.optional.filter((f) => f !== "actor");
   const flags = (fields) => fields.length > 0 ? fields.map((f) => `--${f} <v>`).join("  ") : "(none)";
   const enums = Object.entries(kind2.fields.values ?? {}).map(([f, vals]) => `  --${f} allowed:  ${vals.join(" | ")}`).join("\n");
   const sections = kind2.sections && kind2.sections.length > 0 ? kind2.sections.join(", ") : "(none)";
   const pathLine = kind2.path ? `Id:  auto-prefixed with '${kind2.path.replace(/\/+$/, "")}/' unless <id> already carries it` : "Id:  used as-is (this kind declares no path prefix)";
+  const outboundLines = Object.entries(kind2.links ?? {}).map(
+    ([t, target]) => `  this kind may link:     "${t}" \u2192 ${target}`
+  );
+  const inboundLines = inboundLinkDecls(registry, kind2).map(
+    ({ source, linkType }) => `  other kinds link here:  ${source.governs} "${linkType}" \u2192 ${kind2.governs}`
+  );
+  const linksBlock = outboundLines.length + inboundLines.length > 0 ? `Links (typed edges declared by this bundle's conventions; write with link add --text "<type>"):
+` + [...outboundLines, ...inboundLines].join("\n") + "\n" : "";
   return `${inv} new "${kind2.governs}" <id> \u2014 create a ${kind2.governs} instance
 
 Fields (declared by the '${kind2.governs}' kind convention):
   required:  ${flags(req)}
   optional:  ${flags(opt)}
 ` + (enums ? enums + "\n" : "") + `Body sections scaffolded:  ${sections}
-${pathLine}
+` + linksBlock + `${pathLine}
 
 Repeat a flag to set an array value (e.g. --tag a --tag b). Validation is STRICT.
 To ADD a field to this kind, edit its convention doc (${inv} kinds names it; then pull \u2192 edit fields.optional \u2192 promote).
@@ -9657,7 +9682,7 @@ async function newCommand(argv, deps = {}) {
     );
   }
   if (pre.values.help) {
-    stdout(renderKindHelp(kind2, cliInvocation()));
+    stdout(renderKindHelp(kind2, registry, cliInvocation()));
     return;
   }
   const declaredFields = [...kind2.fields.required, ...kind2.fields.optional];
@@ -9755,7 +9780,19 @@ async function newCommand(argv, deps = {}) {
   if (targetId !== id) {
     receipt.note = `id prefixed with the '${kind2.governs}' kind's path \u2192 '${targetId}' (you passed '${id}')`;
   }
-  receipt.help = [`${cliInvocation()} doc read ${saved.id}`];
+  const help = [`${cliInvocation()} doc read ${saved.id}`];
+  const HINTS_PER_DIRECTION = 3;
+  for (const { source, linkType } of inboundLinkDecls(registry, kind2).slice(0, HINTS_PER_DIRECTION)) {
+    help.push(
+      `link from a ${source.governs}: ${cliInvocation()} link add ${kindIdPlaceholder(source, source.governs)} ${saved.id} --text "${linkType}"`
+    );
+  }
+  for (const [linkType, target] of Object.entries(kind2.links ?? {}).slice(0, HINTS_PER_DIRECTION)) {
+    help.push(
+      `link to a ${target}: ${cliInvocation()} link add ${saved.id} ${kindIdPlaceholder(registry.kinds.get(target), target)} --text "${linkType}"`
+    );
+  }
+  receipt.help = help;
   stdout(render(receipt, resolveMode({ json: Boolean(values.json) })));
 }
 
