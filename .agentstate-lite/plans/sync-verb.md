@@ -1,9 +1,9 @@
 ---
 type: Plan
 title: >-
-  sync verb v2.1: board branch + worktree, UX layer folded in (panel- and
-  DevX-reviewed)
-timestamp: '2026-07-07T19:50:35.976Z'
+  sync verb v2.2: board branch + worktree, UX + hardening layers (two-round
+  panel review)
+timestamp: '2026-07-07T20:05:39.232Z'
 ---
 # sync verb — design v2 (board branch + linked worktree)
 
@@ -154,3 +154,70 @@ The strings in the UX review's message pack are the CONTRACT for implementation 
   `board` branch gets exactly one prepared "you may notice" aside (docs + skill), so
   GitHub's branch list reads as designed, not surprise magic.
 - **Deferred:** `sync --dry-run` (named; SessionStart already previews; build on demand).
+
+## Hardening layer (v2.2 — round-2 panel adjudications; evidence in [research/sync-verb-review](../research/sync-verb-review.md) Round 2)
+
+- **Conflict mechanic (REPLACES the abort-and-retry chain — it did not converge):** a
+  same-doc conflict is a CAS conflict, and the loser re-reads and re-writes. On conflict,
+  sync KEEPS the upstream version of each conflicted doc, EXPORTS the local version to a
+  file (path named in the envelope, one per doc), COMPLETES the rebase — the worktree is
+  never left mid-state and non-conflicted local changes land — and exits CONFLICT(5):
+  "doc X: teammate's version kept; yours saved at <path>". Reconcile = `doc update` with
+  the merged body (a NEW write on top), then sync pushes cleanly. Converges in one pass;
+  nothing lost. `--show-incoming` remains the pre-reconcile viewer. CONVERGENCE IS AN
+  ACCEPTANCE TEST (follow the documented chain; assert the conflict clears).
+- **Explicit refs, never `@{u}`:** all remote ops use `origin/board` (`rebase
+  origin/board`, `merge --ff-only origin/board`, `show origin/board:<path>`) — the
+  migration path's subtree-split branch has no tracking config (empirical), so `@{u}` is
+  undefined on exactly the migrating machine. Migration pushes with `-u` regardless.
+- **SessionStart = ONE command, home never waits:** a single hook entry runs the
+  time-boxed best-effort pull (provision if needed → fetch → ff-only → write awareness
+  cache + marker) and THEN renders home. home always renders last-known cache instantly
+  and never blocks on the network — the pull refreshes the cache for the next render
+  when it loses the time box. No inter-entry ordering dependency exists.
+- **Setup verb:** for a project with a board on origin, `aslite sync` IS the setup
+  command (step-0 self-provision). The SKILL teaches sync for existing projects and
+  reserves `init` for greenfield; `init` run inside a git repo prints an FS-only hint
+  ("if this project shares a board, run sync instead" — detected by .git up-tree, no git
+  binary invoked).
+- **Provision self-heal guards (all empirically grounded):** `git fetch origin` before
+  referencing `board`; a pre-existing non-empty `.agentstate-lite/` is resolved or
+  refused with guidance, never blind `worktree add`; "already checked out" is idempotent
+  success; a stale rebase state found at sync start (crash/kill mid-run) is aborted
+  before proceeding.
+- **`--pull-only` semantics pinned:** ff-only merge (same as SessionStart), never rebase
+  — a dirty board worktree (uncommitted docs) can't strand it. Full `sync` commits first,
+  so its rebase always starts clean.
+- **Awareness single source:** `changesSince(cursor) → {docId, actor, verb, kind, title}`
+  (enriched) is THE producer for both faces and the future activity feed; commit bodies
+  carry a human-readable mirror of the same list but are NEVER parsed. Commit messages
+  pass via argv/`-F -`, no shell interpolation. Multi-actor batches: subject names the
+  actor only when there is exactly one (`board: 4 docs from 2 actors` otherwise);
+  attribution is per-doc from frontmatter.
+- **Cache + marker discipline:** the awareness cache and board-pending marker live in
+  `~/.agentstate/` under the SAME per-bundle key, atomic-write 0600/0700 machinery as the
+  cursor (one module); the marker is timestamped and refreshed by every pull step; home
+  treats absent/stale/malformed as null inside its existing double-guard — marker absence
+  alone never produces "run init".
+- **Error codes:** distinct GIT_MISSING and NO_UPSTREAM codes, both exit 1 (the
+  FORBIDDEN/LAST_ADMIN distinct-code-shared-exit pattern). AUTH(4) vs network(1)
+  classification is documented BEST-EFFORT (GitHub returns "not found" for
+  unauthorized-private; clean separation impossible).
+- **SessionStart backstop counts both:** unpushed board commits AND uncommitted board
+  changes — catching the agent that never ran sync at all, not just the one whose push
+  failed.
+- **Cursor honesty (accepted trade-off, decided):** cross-machine per-person awareness is
+  out of scope for the git tier. The human render is labeled by machine reality ("since
+  this machine last synced") and self-authored changes are filtered from the human count;
+  true per-person state defers to the hosted tier.
+- **String fixes:** push-fail help ends "…when you're back online or your access is
+  restored"; the since-line actor phrase is built from the ACTUAL actors, never assumes
+  one teammate.
+- **Records discipline:** U5/U6 update tasks/git-sharing and docs/core so "git pull IS
+  the sharing mechanism" never outlives the mechanism it describes. The "you may notice"
+  aside gains one line: `git clean -fdx` on main removes the board checkout (recoverable
+  — re-provisions from origin; unpushed board commits are why you sync first).
+- Migration PRECONDITION: every founder syncs (at minimum commits) board state before the
+  migration lands; `--migrate` refuses if uncommitted board changes exist; the
+  reassurance ships in the PRE-migration rollout note, the post-migration render is
+  backup.

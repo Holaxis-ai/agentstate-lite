@@ -3,7 +3,7 @@ type: Plan
 title: >-
   sync verb v2 — binding implementation plan (U0 harness → U6 skill; U5
   migration Mike-gated)
-timestamp: '2026-07-07T19:51:02.013Z'
+timestamp: '2026-07-07T20:06:10.555Z'
 ---
 # sync verb v2 — binding implementation plan
 
@@ -100,3 +100,27 @@ e2e + gate-1 AXI watch-points. Ship each unit branch + PR; Brian merges.
 - **U6 gains:** P11 skill text (typical flow ends with sync; "shared with teammates" not
   branch mechanics; unit-close trigger; single "you may notice board branch" aside).
 - **Deferred:** `sync --dry-run` (P9).
+
+## Round-2 amendments (v2.2 — see the design's Hardening layer; these override earlier unit text where they conflict)
+
+- **U1:** explicit `origin/board` refs everywhere (NO `@{u}`); provision self-heal guards
+  (fetch-first, non-empty-dir resolution, already-checked-out = success); stale-rebase-
+  state self-heal at start; the CONVERGING conflict mechanic (keep-theirs + export-yours
+  + complete-the-rebase) replaces abort-and-retry; `--pull-only` = ff-only merge; commit
+  message via argv/`-F -`; distinct GIT_MISSING/NO_UPSTREAM codes.
+- **U2 (now cursor + awareness state module):** cache + board-pending marker join the
+  cursor under one per-bundle-keyed, atomic, 0600/0700 module; marker timestamped;
+  enriched changesSince → {docId, actor, verb, kind, title} as the single feed producer.
+- **U3:** conflict envelope carries the export path per doc; show-incoming reads
+  `origin/board:<path>`, renders deleted-upstream as a state, inherits doc-read's full
+  byte contract; CONVERGENCE ACCEPTANCE TEST (documented chain clears the conflict);
+  multi-actor commit grammar.
+- **U4:** ONE SessionStart hook command (pull step then home render, single entry — no
+  inter-entry ordering); home renders last-known cache instantly, never network-blocked;
+  backstop counts unpushed commits + uncommitted changes; machine-honest since-line +
+  self-authored filtering; actor phrase from actual actors.
+- **U5:** migration preconditions (all founders sync first; refuse on uncommitted board
+  changes); `git push -u origin board`; pre-migration rollout note carries the
+  reassurance; updates tasks/git-sharing + docs/core (records discipline).
+- **U6:** skill teaches `sync` as the setup verb for existing projects (init =
+  greenfield); init's FS-only in-a-git-repo hint; `git clean` line in the aside.
