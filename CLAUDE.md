@@ -14,15 +14,18 @@ esbuild bundle that inlines core + viewer + server + the built UI assets + deps 
 self-contained ESM file. The filesystem is the
 DEFAULT local backend; the storage seam is pluggable (gate 3) and production runs D1/R2.
 
-Before changing anything, read the PROJECT BUNDLE — a local `.agentstate.json` binding
-(untracked/gitignored: it names the team's private deployment, which must not ship in the
-open-source repo) resolves it on team machines, so a bare `doc read docs/core` just works: `docs/core` (the ONE-PAGE
+Before changing anything, read the PROJECT BUNDLE — it lives IN-REPO at `.agentstate-lite/`
+(committed shared memory, discovered by the conventional-folder walk with zero config), so a
+bare `doc read docs/core` just works on any clone: `docs/core` (the ONE-PAGE
 product statement + frozen-scope list; scope questions answer to it), the board for live
 state (`list --type Task`; per-unit records live in `tasks/<unit>` descriptions; the
-pre-2026-07-06 changelog is archived at `archive/status`), `docs/vision` (near-term design
+pre-2026-07-06 changelog lives in the PRIVATE out-of-repo board archive, with the other
+`visibility: private` docs), `docs/vision` (near-term design
 intent + OKF grounding) and `docs/north-star` (the future-state vision) as needed — then
-the packages' `src/`. The repo itself carries only README + this file + code (`docs/` is
-gitignored; untracked local copies may exist). Ground
+the packages' `src/`. The repo carries README + this file + code + the committed bundle
+(root `/docs/` stays gitignored; a `.agentstate.json` binding, also gitignored, is the
+local-only override and must NOT be committed here — the conventional folder is the
+resolution path). Ground
 every change in the ACTUAL current code, not assumptions — including the claims in THIS
 file: when this guide and the code disagree, the code wins and this file gets fixed.
 
@@ -199,9 +202,9 @@ bundle-relative**.
   the public remote (github.com/Holaxis-ai/agentstate-lite) after each committed unit. The
   pre-public development history lives on the local `archive/pre-public` branch — NEVER push
   it (it predates the open-source scrub).
-- **Records live on the PROJECT BUNDLE (the deployed board) — the product tracks its own
-  build.** Unit-close means: update `tasks/<unit>` (`doc update tasks/<unit> --status …
-  --remote <url>`, with the description carrying the record — what shipped, commit hash,
+- **Records live on the PROJECT BUNDLE (the in-repo board at `.agentstate-lite/`) — the
+  product tracks its own build.** Unit-close means: update `tasks/<unit>` (bare
+  `doc update tasks/<unit> --status …`, with the description carrying the record — what shipped, commit hash,
   honest caveats) and, when the shipped list or sequence changed, the bundle's `roadmap`
   doc. Plans are authored as bundle docs (`plans/<unit>`, `type: Plan`); research as
   `research/<topic>` (`type: Research`). Byte-channel moves (files ↔ bundle) go through

@@ -11,7 +11,7 @@ packages/cli/src/generated/
 packages/ui/test-results/
 packages/ui/playwright-report/
 packages/ui/blob-report/
-docs/
+/docs/
 .agentstate.json
 packages/worker/wrangler.local.jsonc
 .claude/
