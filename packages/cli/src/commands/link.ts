@@ -48,7 +48,8 @@ Options:
                          EXACTLY <t> (case-sensitive, not a substring match); empty/missing value
                          is a usage error. outbound_count/backlink_count report the FILTERED
                          totals when set. A filter that matches nothing is a valid empty result,
-                         not an error.
+                         not an error — its help line names the distinct link texts that ARE
+                         present, so a near-miss (typo/case) is visible.
   --limit <n>          (link show) Cap each of the outbound/backlink lists (default: 50; 0 =
                          unlimited); outbound_count/backlink_count always report the true
                          (post-filter) totals
@@ -300,6 +301,14 @@ async function linkShow(argv: string[], stdout: (s: string) => void): Promise<vo
   }
 
   const inbound = await backlinks(bundle, id);
+  // Distinct link texts across BOTH directions, captured BEFORE filtering — fuel for the
+  // zero-match near-miss hint below. Exact match means a typo ('contain' for 'contains') would
+  // otherwise read as an empty graph; naming what IS there mirrors `doc read --field`'s
+  // absent-field behavior.
+  const textsPresent =
+    textFilter === undefined
+      ? []
+      : [...new Set([...outbound, ...inbound].map((l) => l.text))].sort((a, b) => a.localeCompare(b));
   if (textFilter !== undefined) {
     outbound = outbound.filter((l) => l.text === textFilter);
   }
@@ -325,8 +334,20 @@ async function linkShow(argv: string[], stdout: (s: string) => void): Promise<vo
       `showing ${outboundShown.length}/${outbound.length} outbound + ${inboundShown.length}/${inboundMatched.length} backlinks — run \`${cliInvocation()} link show ${id} --limit 0\` for all`,
     );
   }
-  if (textFilter !== undefined && exists && outbound.length === 0 && inboundMatched.length === 0) {
-    help.push(`no links matched --text '${textFilter}' in either direction — this is a definitive empty result, not an error`);
+  if (textFilter !== undefined && outbound.length === 0 && inboundMatched.length === 0) {
+    if (textsPresent.length > 0) {
+      const TEXTS_SHOWN = 8;
+      const shown = textsPresent
+        .slice(0, TEXTS_SHOWN)
+        .map((t) => `'${t}'`)
+        .join(", ");
+      const more = textsPresent.length > TEXTS_SHOWN ? ` (+${textsPresent.length - TEXTS_SHOWN} more)` : "";
+      help.push(
+        `no links matched --text '${textFilter}' in either direction (exact match) — link texts present here: ${shown}${more}`,
+      );
+    } else if (exists) {
+      help.push(`no links matched --text '${textFilter}' in either direction — this is a definitive empty result, not an error`);
+    }
   }
   if (!exists) {
     help.push(

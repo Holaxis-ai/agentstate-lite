@@ -206,6 +206,38 @@ test("link show --text: filters BOTH outbound links and backlinks to an exact te
   }
 });
 
+test("link show --text zero-match: help names the distinct link texts present (near-miss hint); a linkless doc keeps the plain definitive-empty message", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));
+  try {
+    const bundle = await initBundle(dir);
+    for (const id of ["hub", "t0", "t1", "citer", "lone"]) {
+      await writeDoc(bundle, { id, frontmatter: { type: "Concept", title: id, timestamp: OLD_TS }, body: "" });
+    }
+    await linkAdd(dir, ["hub", "t0", "--text", "prereq"]);
+    await linkAdd(dir, ["hub", "t1", "--text", "see also"]);
+    await linkAdd(dir, ["citer", "hub", "--text", "prereq"]);
+
+    // A near-miss ('prereqs' for 'prereq') matches nothing, but the help line names what IS there
+    // (distinct, sorted, both directions pooled) instead of reading as an empty graph.
+    const miss = await linkShow(dir, ["hub", "--text", "prereqs"]);
+    assert.equal(miss.outbound_count, 0);
+    assert.equal(miss.backlink_count, 0);
+    const help = miss.help as string[];
+    assert.ok(
+      help.some((h) => /no links matched --text 'prereqs'/.test(h) && /link texts present here: 'prereq', 'see also'/.test(h)),
+      `near-miss help should name the texts present, got: ${JSON.stringify(help)}`,
+    );
+
+    // A doc with NO links at all has no texts to name — the plain definitive-empty message stays.
+    const lone = await linkShow(dir, ["lone", "--text", "anything"]);
+    const loneHelp = lone.help as string[];
+    assert.ok(loneHelp.some((h) => /definitive empty result, not an error/.test(h)));
+    assert.ok(!loneHelp.some((h) => /link texts present here/.test(h)));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("link show --text '' (empty/blank value): USAGE error, exit 2", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));
   try {
