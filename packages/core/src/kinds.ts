@@ -50,6 +50,13 @@ export interface KindConvention {
   /** Canonical bundle-relative path prefix for instances of this kind, if declared. */
   path?: string;
   fields: KindFields;
+  /**
+   * The typed-edge vocabulary this kind declares as link SOURCE: `link type name -> allowed
+   * target kind` (decision `decisions/typed-links-carrier`, 2026-07-07: a link whose display
+   * text exactly matches a declared type is a typed edge; every other link is an untyped
+   * citation). Discovery-only at this layer — write-time validation is a future consumer.
+   */
+  links?: Record<string, string>;
   /** Expected body-section headings (level-1 `# Heading`), if declared. Scaffold + lint only. */
   sections?: string[];
   /** Raw declared horizon string (`<n>(m|h|d)`), if present — parse via {@link freshnessHorizonMs}. */
@@ -266,6 +273,38 @@ function parseConventionDoc(
     }
   }
 
+  // `links:` — the typed-edge vocabulary (see the KindConvention.links doc comment). Same
+  // lenient posture as `fields`: absent is normal (no warning), a non-map shape warns and is
+  // ignored, a malformed entry warns and is skipped — never thrown.
+  const linksSource = fm.links;
+  let links: Record<string, string> | undefined;
+  if (linksSource !== undefined) {
+    if (!isPlainObject(linksSource)) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc.id}' has a non-map 'links' key (${describeShape(linksSource)}; expected a map of link type name -> target kind); ignoring it.`,
+        field: "links",
+        severity: "warning",
+      });
+    } else {
+      const parsed: Record<string, string> = {};
+      for (const [linkType, target] of Object.entries(linksSource)) {
+        const name = linkType.trim();
+        if (name === "" || !isScalar(target) || String(target).trim() === "") {
+          warnings.push({
+            code: "KIND_CONVENTION_BAD_MEMBER",
+            message: `kind convention '${doc.id}' has a malformed 'links' entry ('${linkType}': ${describeShape(target)}; expected 'link type name: target kind'); skipping it.`,
+            field: `links.${linkType}`,
+            severity: "warning",
+          });
+          continue;
+        }
+        parsed[name] = String(target).trim();
+      }
+      if (Object.keys(parsed).length > 0) links = parsed;
+    }
+  }
+
   const sections = Array.isArray(fm.sections)
     ? fm.sections.filter((s): s is string => typeof s === "string" && s.trim() !== "")
     : undefined;
@@ -279,6 +318,7 @@ function parseConventionDoc(
 
   const kind: KindConvention = { id: doc.id, title, governs, fields: { required, optional, values } };
   if (path !== undefined) kind.path = path;
+  if (links !== undefined) kind.links = links;
   if (sections && sections.length > 0) kind.sections = sections;
   if (freshnessHorizon !== undefined) kind.freshnessHorizon = freshnessHorizon;
   return { ok: true, kind, reservedFieldsIgnored: [...reservedFieldsIgnored].sort(), warnings };
@@ -470,6 +510,7 @@ export function kindConventionDoc(kind: KindConvention, prose: string, timestamp
 
   const frontmatter: Frontmatter = { type: CONVENTION_TYPE, title: kind.title, governs: kind.governs, timestamp };
   if (kind.path !== undefined) frontmatter.path = kind.path;
+  if (kind.links && Object.keys(kind.links).length > 0) frontmatter.links = kind.links;
   frontmatter.fields = fields;
   if (kind.sections && kind.sections.length > 0) frontmatter.sections = kind.sections;
   if (kind.freshnessHorizon !== undefined) frontmatter.freshness_horizon = kind.freshnessHorizon;

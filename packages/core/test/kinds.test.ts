@@ -267,6 +267,80 @@ test("loadKinds: an object member in 'fields.required' warns and is DROPPED, nev
   });
 });
 
+test("loadKinds: parses a 'links' declaration (typed-edge vocabulary); wrong shapes warn and are ignored; absent stays absent with no warning", async () => {
+  await withMemBundle(async (bundle) => {
+    await writeDoc(bundle, {
+      id: "conventions/linked-item",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Linked Item",
+        fields: { required: ["title"], optional: [] },
+        // The decided declaration shape (decisions/typed-links-carrier): link type -> target kind.
+        links: { contains: "Task", "depends on": "Task" },
+        timestamp: T,
+      },
+      body: "A convention declaring its typed-edge vocabulary.",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/links-as-list",
+      frontmatter: { type: CONVENTION_TYPE, governs: "Links As List", links: ["contains"], timestamp: T },
+      body: "links as a list, not a map.",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/links-bad-member",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Links Bad Member",
+        links: { contains: { kind: "Task" }, supersedes: "Claim" },
+        timestamp: T,
+      },
+      body: "one malformed links entry beside a good one.",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/no-links",
+      frontmatter: { type: CONVENTION_TYPE, governs: "No Links", timestamp: T },
+      body: "no links key at all.",
+    });
+
+    const registry = await loadKinds(bundle);
+    assert.deepEqual(registry.kinds.get("Linked Item")!.links, { contains: "Task", "depends on": "Task" });
+
+    // Non-map shape: ignored entirely, KIND_CONVENTION_BAD_SHAPE names 'links'.
+    assert.equal(registry.kinds.get("Links As List")!.links, undefined);
+    assert.ok(
+      registry.warnings.some(
+        (w) => w.code === "KIND_CONVENTION_BAD_SHAPE" && /links-as-list/.test(w.message) && /'links'/.test(w.message),
+      ),
+    );
+
+    // Malformed entry: skipped with KIND_CONVENTION_BAD_MEMBER; the good entry survives.
+    assert.deepEqual(registry.kinds.get("Links Bad Member")!.links, { supersedes: "Claim" });
+    assert.ok(
+      registry.warnings.some((w) => w.code === "KIND_CONVENTION_BAD_MEMBER" && w.field === "links.contains"),
+    );
+
+    // Absent: no key on the parsed kind, and no warning (not declared is normal).
+    assert.equal(registry.kinds.get("No Links")!.links, undefined);
+    assert.ok(!registry.warnings.some((w) => /no-links/.test(w.message)));
+  });
+});
+
+test("kindConventionDoc: a links declaration round-trips through write/loadKinds", async () => {
+  await withMemBundle(async (bundle) => {
+    const kind: KindConvention = {
+      id: "conventions/linked-kind",
+      title: "Linked Kind",
+      governs: "Linked Kind",
+      fields: { required: ["title"], optional: [], values: {} },
+      links: { contains: "Task" },
+    };
+    await writeDoc(bundle, kindConventionDoc(kind, "prose.", T));
+    const registry = await loadKinds(bundle);
+    assert.deepEqual(registry.kinds.get("Linked Kind")!.links, { contains: "Task" });
+    assert.equal(registry.warnings.length, 0);
+  });
+});
+
 test("loadKinds: a 'fields.values' key naming a field NOT in required/optional warns (a declared constraint on an undeclared field)", async () => {
   await withMemBundle(async (bundle) => {
     await writeDoc(bundle, {

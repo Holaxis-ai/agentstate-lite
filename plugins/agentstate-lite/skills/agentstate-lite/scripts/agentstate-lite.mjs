@@ -6443,12 +6443,41 @@ function parseConventionDoc(doc2) {
       });
     }
   }
+  const linksSource = fm.links;
+  let links;
+  if (linksSource !== void 0) {
+    if (!isPlainObject2(linksSource)) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc2.id}' has a non-map 'links' key (${describeShape(linksSource)}; expected a map of link type name -> target kind); ignoring it.`,
+        field: "links",
+        severity: "warning"
+      });
+    } else {
+      const parsed = {};
+      for (const [linkType, target] of Object.entries(linksSource)) {
+        const name = linkType.trim();
+        if (name === "" || !isScalar(target) || String(target).trim() === "") {
+          warnings.push({
+            code: "KIND_CONVENTION_BAD_MEMBER",
+            message: `kind convention '${doc2.id}' has a malformed 'links' entry ('${linkType}': ${describeShape(target)}; expected 'link type name: target kind'); skipping it.`,
+            field: `links.${linkType}`,
+            severity: "warning"
+          });
+          continue;
+        }
+        parsed[name] = String(target).trim();
+      }
+      if (Object.keys(parsed).length > 0) links = parsed;
+    }
+  }
   const sections = Array.isArray(fm.sections) ? fm.sections.filter((s) => typeof s === "string" && s.trim() !== "") : void 0;
   const title = typeof fm.title === "string" && fm.title.trim() !== "" ? fm.title.trim() : governs;
   const path8 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
   const freshnessHorizon = typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== "" ? fm.freshness_horizon.trim() : void 0;
   const kind2 = { id: doc2.id, title, governs, fields: { required, optional, values } };
   if (path8 !== void 0) kind2.path = path8;
+  if (links !== void 0) kind2.links = links;
   if (sections && sections.length > 0) kind2.sections = sections;
   if (freshnessHorizon !== void 0) kind2.freshnessHorizon = freshnessHorizon;
   return { ok: true, kind: kind2, reservedFieldsIgnored: [...reservedFieldsIgnored].sort(), warnings };
@@ -6581,6 +6610,7 @@ function kindConventionDoc(kind2, prose, timestamp) {
   if (Object.keys(kind2.fields.values).length > 0) fields.values = kind2.fields.values;
   const frontmatter = { type: CONVENTION_TYPE, title: kind2.title, governs: kind2.governs, timestamp };
   if (kind2.path !== void 0) frontmatter.path = kind2.path;
+  if (kind2.links && Object.keys(kind2.links).length > 0) frontmatter.links = kind2.links;
   frontmatter.fields = fields;
   if (kind2.sections && kind2.sections.length > 0) frontmatter.sections = kind2.sections;
   if (kind2.freshnessHorizon !== void 0) frontmatter.freshness_horizon = kind2.freshnessHorizon;
@@ -7083,6 +7113,11 @@ var TASK_KIND = {
   title: TASK_TYPE,
   governs: TASK_TYPE,
   path: "tasks/",
+  // The typed-edge vocabulary (decisions/typed-links-carrier): a task's dependency edge is a
+  // link whose display text is exactly "depends on", targeting another Task. Declared here so
+  // `kinds` teaches the vocabulary to any agent that orients — discovery shipped; validation
+  // is a future consumer.
+  links: { "depends on": TASK_TYPE },
   fields: {
     required: ["title", "status"],
     optional: ["priority", "assignee", "description"],
@@ -7090,8 +7125,8 @@ var TASK_KIND = {
   },
   freshnessHorizon: "30d"
 };
-var TASK_SEED_BODY = "# Task\n\nA unit of work, composed entirely from lite primitives \u2014 no bespoke task engine.\nA task is a `type: Task` doc; its `status` is a validated enum; its DEPENDENCIES are\ncross-links to prerequisite task docs (the link graph IS the DAG, backlinks show what\nis blocked on it); an atomic CLAIM is a compare-and-swap write flipping `status` to\n`in_progress` (a second claimer gets a VersionConflict). Query with `list --type Task`;\nlint/orphans/staleness via `status`.\n";
-var WORK_TRACKING_SUMMARY = "Declares the built-in Task kind convention (title/status required, status enum, 30d freshness horizon)";
+var TASK_SEED_BODY = '# Task\n\nA unit of work, composed entirely from lite primitives \u2014 no bespoke task engine.\nA task is a `type: Task` doc; its `status` is a validated enum; its DEPENDENCIES are\ntyped `depends on` cross-links to prerequisite task docs (the declared link type \u2014\nthe link graph IS the DAG, and `link show <id> --text "depends on"` shows both\ndirections); an atomic CLAIM is a compare-and-swap write flipping `status` to\n`in_progress` (a second claimer gets a VersionConflict). Query with `list --type Task`;\nlint/orphans/staleness via `status`.\n';
+var WORK_TRACKING_SUMMARY = "Declares the built-in Task kind convention (title/status required, status enum, 'depends on' link type, 30d freshness horizon)";
 var WORK_TRACKING_DESC_BODY = "# Work Tracking\n\nInstalls the `Task` kind convention: a unit of work with a validated `status` enum (todo/in_progress/blocked/done/canceled), scaffolded under `tasks/`. Status/priority/assignee are FIELDS of Task, not separate conventions or a bespoke task verb \u2014 dependencies, claiming, and querying all compose from existing generic primitives (`link add`, CAS `doc update`, `list --type Task`, `status`).\n\nApplied on demand with `recipe add work-tracking` (not part of `init`'s default \u2014 that stays `context-notes`).\n";
 async function applyRecipe(bundle, recipe2, now = (/* @__PURE__ */ new Date()).toISOString()) {
   const docs = [];
@@ -9723,8 +9758,9 @@ Usage:
   agentstate-lite kinds [--dir <path>] [--remote <url>]
 
 A kind convention is a plain OKF doc (type: Convention) under conventions/ declaring a document
-kind's required/optional fields, allowed enum values, expected body sections, and an optional
-freshness horizon. See 'agentstate-lite new --help' to create an instance of a declared kind.
+kind's required/optional fields, allowed enum values, typed-link vocabulary, expected body
+sections, and an optional freshness horizon. See 'agentstate-lite new --help' to create an
+instance of a declared kind.
 
 Declaring a kind convention (frontmatter keys core reads \u2014 everything else is unread prose):
   governs              string   required \u2014 the 'type' value this convention governs
@@ -9734,6 +9770,12 @@ Declaring a kind convention (frontmatter keys core reads \u2014 everything else 
   fields.optional      list     field names an instance MAY carry
   fields.values        map      field name -> list of allowed values \u2014 the ONLY place an enum
                                  constraint goes; never a top-level enum/enums/values/constraints key
+  links                map      link type name -> allowed TARGET kind, for typed edges instances
+                                 of this kind may carry as link SOURCE (e.g. contains: Task). A
+                                 link whose display text exactly matches a declared type is a
+                                 typed edge; every other link is an untyped citation. Write typed
+                                 edges with 'link add <from> <to> --text <type>' and query them
+                                 with 'link show <id> --text <type>'
   sections             list     expected level-1 '# Heading' body-section names
   freshness_horizon    string   '<n>(m|h|d)', e.g. 24h, 30d, 15m
 A misshaped or misplaced key here is a non-fatal registry warning (visible in 'kinds'/'status'
@@ -9754,6 +9796,7 @@ function toRow(kind2) {
     optional: kind2.fields.optional
   };
   if (Object.keys(kind2.fields.values).length > 0) row.values = kind2.fields.values;
+  if (kind2.links && Object.keys(kind2.links).length > 0) row.links = kind2.links;
   if (kind2.path) row.path = kind2.path;
   if (kind2.sections && kind2.sections.length > 0) row.sections = kind2.sections;
   if (kind2.freshnessHorizon) {
@@ -12540,7 +12583,7 @@ var COMMAND_GROUPS = [
       },
       {
         usage: "kinds [--remote <url>]",
-        summary: "List the kind conventions this bundle declares (required/optional fields, horizon)"
+        summary: "List the kind conventions this bundle declares (required/optional fields, typed-link vocabulary, horizon)"
       },
       {
         usage: 'kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]',
