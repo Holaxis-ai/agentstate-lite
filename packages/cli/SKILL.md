@@ -159,11 +159,10 @@ Two things override the default:
    bundle, or a conventional folder exists up-tree), that IS this project's workspace — use
    it rather than creating a second one.
 
-The setup above is the **personal-workspace** pattern (home-dir bundle, absolute path, binding
-kept OUT of the repo). The other pattern is **project-owned**: the bundle lives with the repo,
-`.agentstate.json` holds a RELATIVE path and IS committed — every collaborator's agent then
-resolves it from a bare clone. Choose by one question: do teammates share this bundle? When
-the user's intent is ambiguous, ask which pattern fits rather than defaulting silently.
+If the user wants the workspace PRIVATE to their machine instead of shared (a personal
+scratch workspace), keep the bundle OUT of the repo (e.g. under `~/.agentstate-lite/<name>/`)
+and point a git-excluded `.agentstate.json` at it. Choose by one question: do teammates
+share this bundle? When the user's intent is ambiguous, ask rather than defaulting silently.
 
 ## Typical flow
 

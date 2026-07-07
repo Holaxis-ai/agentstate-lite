@@ -144,18 +144,15 @@ function renderWorkspaceLocation(prefix) {
   lines.push("   it rather than creating a second one.");
   lines.push("");
   lines.push(
-    "The setup above is the **personal-workspace** pattern (home-dir bundle, absolute path, binding",
+    "If the user wants the workspace PRIVATE to their machine instead of shared (a personal",
   );
   lines.push(
-    "kept OUT of the repo). The other pattern is **project-owned**: the bundle lives with the repo,",
+    "scratch workspace), keep the bundle OUT of the repo (e.g. under `~/.agentstate-lite/<name>/`)",
   );
   lines.push(
-    "`.agentstate.json` holds a RELATIVE path and IS committed — every collaborator's agent then",
+    "and point a git-excluded `.agentstate.json` at it. Choose by one question: do teammates",
   );
-  lines.push(
-    "resolves it from a bare clone. Choose by one question: do teammates share this bundle? When",
-  );
-  lines.push("the user's intent is ambiguous, ask which pattern fits rather than defaulting silently.");
+  lines.push("share this bundle? When the user's intent is ambiguous, ask rather than defaulting silently.");
   lines.push("");
   return lines;
 }
