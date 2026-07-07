@@ -183,6 +183,18 @@ bundle-relative**.
   outside the monorepo (its `node_modules` must contain ONLY `agentstate-lite`).
 - `examples/sample-bundle` is the interop fixture: externally-shaped (unquoted timestamps,
   relative links, wrapped bullets). If a change breaks its round-trip, the change is wrong.
+- **Plugin version discipline: any change to the committed plugin content** (either SKILL.md,
+  the bundled `plugins/…/scripts/agentstate-lite.mjs`, or anything else under `plugins/`) **must
+  bump the version in BOTH `.claude-plugin/marketplace.json` AND
+  `plugins/agentstate-lite/.codex-plugin/plugin.json`** — the plugin cache is version-keyed, so
+  unbumped content changes silently serve stale guidance to every installed agent. Check main's
+  CURRENT version before picking the next one (PR branches have collided on this).
+- **Branch from CURRENT `origin/main`, never from a previous PR's tip.** Generated files
+  (SKILL.md, the committed bundle) usually merge textually, but the drift gates only prove
+  generated-matches-generator — they CANNOT catch regenerated prose that a change made
+  semantically false, a missed version bump, or a README that now contradicts new behavior.
+  After any merge into a branch, re-read the regenerated prose near your change and check the
+  front-door docs (README quickstart) still tell the truth.
 - Commit cadence: one commit per reviewed unit of work, with a descriptive message; push to
   the public remote (github.com/Holaxis-ai/agentstate-lite) after each committed unit. The
   pre-public development history lives on the local `archive/pre-public` branch — NEVER push
