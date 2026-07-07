@@ -16,6 +16,10 @@ description: >-
   REMAINING Tier 1: the sync verb (design pinned in plans/sync-verb — porcelain
   + awareness cursor; builds now that its consumer exists) and the SessionStart
   fail-soft pull.
-timestamp: '2026-07-07T18:31:50.413Z'
+timestamp: '2026-07-07T19:39:17.252Z'
 ---
 [design](../plans/sync-verb.md)
+
+[binding implementation plan](../plans/sync-verb-implementation.md)
+
+[design review evidence](../research/sync-verb-review.md)
