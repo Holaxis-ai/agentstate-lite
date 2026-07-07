@@ -190,6 +190,12 @@ Two things override the default location:
    or an enclosing bundle exists up-tree), that IS this project's workspace — use it rather
    than creating a second bundle under `~/.agentstate-lite/`.
 
+The setup above is the **personal-workspace** pattern (home-dir bundle, absolute path, binding
+kept OUT of the repo). The other pattern is **project-owned**: the bundle lives with the repo,
+`.agentstate.json` holds a RELATIVE path and IS committed — every collaborator's agent then
+resolves it from a bare clone. Choose by one question: do teammates share this bundle? When
+the user's intent is ambiguous, ask which pattern fits rather than defaulting silently.
+
 ## Typical flow
 
 ```sh

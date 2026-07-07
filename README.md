@@ -38,6 +38,16 @@ aslite hook install              # agents orient automatically at session start
 # commit .agentstate.json — every agent on every machine now finds the bundle
 ```
 
+**Two binding patterns — choose by one question: do teammates share this bundle?**
+
+- **Project-owned (commit it):** the bundle lives with or beside the repo; `.agentstate.json`
+  holds a *relative* path and is committed, so every collaborator's agent resolves it from a
+  bare clone. The quickstart above is this pattern.
+- **Personal workspace (exclude it):** the bundle lives in your home directory
+  (`~/.agentstate-lite/<name>/`); the binding holds an absolute path and stays out of the
+  repo via `.git/info/exclude`. This is the pattern the bundled skill teaches agents by
+  default.
+
 Then, day to day:
 
 ```sh
