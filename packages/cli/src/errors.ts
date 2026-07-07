@@ -42,7 +42,30 @@ export type CliErrorCode =
    * (`packages/worker/src/auth-routes.ts`'s `wouldRemoveLastAdmin` guard). A genuine
    * precondition conflict, same taxonomy bucket as `STALE_HEAD`/`ALREADY_EXISTS`.
    */
-  | "LAST_ADMIN";
+  | "LAST_ADMIN"
+  /**
+   * sync U1 (plans/sync-verb-implementation §U1): the `git` binary itself is absent (the spawn
+   * fails ENOENT). Exit 1 with a DISTINCT code — the FORBIDDEN/LAST_ADMIN distinct-code-shared-exit
+   * pattern — so an agent can branch on "install git" vs. a transient runtime failure.
+   */
+  | "GIT_MISSING"
+  /**
+   * sync U1: the board branch has no usable remote counterpart — no `origin` remote, or `origin`
+   * exists but carries no `board` ref (`origin/board` unresolvable). Exit 1, distinct code.
+   */
+  | "NO_UPSTREAM"
+  /**
+   * sync U1 (adjudication B): another git process holds the repository lock (`index.lock` exists —
+   * a concurrent sync, or the user's own git mid-operation). Exit 1 with `details.retryable: true`
+   * — a STRUCTURED RETRY envelope, never a raw git strand on stdout.
+   */
+  | "GIT_BUSY"
+  /**
+   * sync U1: an unresolved same-doc divergence between the local board and `origin/board` (or a
+   * worktree left with unmerged paths). The CAS-semantics bucket: same exit (5) as
+   * `STALE_HEAD`/`ALREADY_EXISTS` — "the precondition moved under you" — with a distinct code.
+   */
+  | "CONFLICT";
 
 /** The capped exit-code taxonomy (§6). More codes become brittle; refine via `code` instead. */
 export const EXIT = {
@@ -75,6 +98,10 @@ const CODE_EXIT: Record<CliErrorCode, number> = {
   RUNTIME: EXIT.RUNTIME,
   FORBIDDEN: EXIT.USAGE,
   LAST_ADMIN: EXIT.CONFLICT,
+  GIT_MISSING: EXIT.RUNTIME,
+  NO_UPSTREAM: EXIT.RUNTIME,
+  GIT_BUSY: EXIT.RUNTIME,
+  CONFLICT: EXIT.CONFLICT,
 };
 
 export interface CliErrorOptions {
@@ -221,6 +248,140 @@ export function toExit(err: unknown): { exitCode: number; envelope: ErrorEnvelop
   }
   const message = err instanceof Error ? err.message : String(err);
   return { exitCode: EXIT.RUNTIME, envelope: { error: { code: "RUNTIME", message } }, handled: false };
+}
+
+/**
+ * The captured outcome of one failed `git` invocation (`cli/src/git.ts`'s spawn wrapper is the ONLY
+ * producer). Deliberately a plain data shape — not an Error subclass — so the classifier below is a
+ * pure, unit-testable function mirroring {@link classifyBundleError}'s role for the wire surface.
+ */
+export interface GitFailure {
+  /** The git argv (WITHOUT the leading `git -C <dir>` prefix) — names the op in messages/details. */
+  args: readonly string[];
+  /** The child's exit status; null when the spawn itself failed or the process was killed. */
+  status: number | null;
+  stdout: string;
+  stderr: string;
+  /** True when the per-op timeout killed the child (the wrapper's no-hang invariant fired). */
+  timedOut?: boolean;
+  /** The spawn-level errno code (e.g. `ENOENT` = no git binary), when the process never ran. */
+  spawnErrorCode?: string;
+}
+
+/** First non-empty line of a git failure's stderr (fall back to stdout) — for compact messages. */
+function firstGitLine(f: GitFailure): string {
+  const line =
+    f.stderr.split("\n").find((l) => l.trim().length > 0) ??
+    f.stdout.split("\n").find((l) => l.trim().length > 0) ??
+    "";
+  return line.trim();
+}
+
+/**
+ * Classify one failed git invocation into a `CliError` on the capped taxonomy — the ONE chokepoint
+ * (plans/sync-verb-implementation, "Global porcelain invariants") between raw git and the AXI
+ * surface: no raw git strand ever reaches stdout; every failure lands structured. Mirrors
+ * {@link classifyBundleError}. Matching prefers STABLE signals (spawn errno, `index.lock`, ref
+ * names) over localized prose where git offers one; the prose fallbacks are ordered so the more
+ * specific state wins:
+ *
+ *  - spawn `ENOENT` -> `GIT_MISSING` (exit 1): git itself is not installed — distinct code, shared
+ *    exit (the FORBIDDEN/LAST_ADMIN pattern), so "install git" is branchable from "retry".
+ *  - per-op timeout -> `TRANSIENT` (exit 1): the no-hang invariant fired; retryable.
+ *  - `index.lock` / "Another git process" -> `GIT_BUSY` (exit 1, adjudication B) with
+ *    `details.retryable: true` — the structured RETRY envelope.
+ *  - missing `origin` remote / unresolvable `origin/board` (invalid upstream, can't-merge,
+ *    couldn't-find-remote-ref, src-refspec) -> `NO_UPSTREAM` (exit 1): the board branch isn't
+ *    linked to a remote yet.
+ *  - credential/permission signals -> `AUTH_REQUIRED` (exit 4). BEST-EFFORT by design (recorded in
+ *    research/sync-verb-review): GitHub answers "Repository not found." for unauthorized-private,
+ *    so not-found-shaped transport failures classify as AUTH rather than silently reading as
+ *    "no such repo" — clean AUTH-vs-network separation is impossible from stderr alone.
+ *  - detached HEAD -> RUNTIME (exit 1), a precondition failure NAMING the state.
+ *  - unmerged paths / mid-merge refusals -> `CONFLICT` (exit 5).
+ *  - unreachable/unresolvable host, connection refused/timed out -> `TRANSIENT` (exit 1).
+ *  - anything else -> RUNTIME (exit 1) carrying the op name + first stderr line (structured, never
+ *    a raw dump).
+ */
+export function classifyGitError(f: GitFailure): CliError {
+  const op = f.args[0] ?? "git";
+  const text = `${f.stderr}\n${f.stdout}`;
+
+  if (f.spawnErrorCode === "ENOENT") {
+    return new CliError("GIT_MISSING", "sync needs git, which isn't installed on this machine", {
+      details: { op },
+      help: "install git (https://git-scm.com/downloads), then re-run the command",
+    });
+  }
+  if (f.timedOut || f.spawnErrorCode === "ETIMEDOUT") {
+    return new CliError("TRANSIENT", `git ${op} timed out — the network or repository may be slow; retry`, {
+      details: { op, retryable: true },
+    });
+  }
+  if (/index\.lock|Another git process seems to be running/i.test(text)) {
+    return new CliError(
+      "GIT_BUSY",
+      "another git process is using this repository — retry once it finishes",
+      { details: { op, retryable: true } },
+    );
+  }
+  if (
+    /'origin' does not appear to be a git repository/i.test(text) ||
+    /No such remote:? '?origin'?/i.test(text) ||
+    /invalid upstream ['"]?origin\//i.test(text) ||
+    /origin\/[^\s]+ - not something we can merge/i.test(text) ||
+    /couldn'?t find remote ref/i.test(text) ||
+    /src refspec [^\s]+ does not match any/i.test(text)
+  ) {
+    return new CliError(
+      "NO_UPSTREAM",
+      "the board branch isn't linked to a remote yet — sync can't share it",
+      { details: { op } },
+    );
+  }
+  if (
+    /authentication failed/i.test(text) ||
+    /could not read (Username|Password)/i.test(text) ||
+    /Permission denied \(publickey/i.test(text) ||
+    /returned error: 40[13]/i.test(text) ||
+    /Repository not found/i.test(text) ||
+    /does not appear to be a git repository/i.test(text) ||
+    /access denied|Invalid username or password/i.test(text)
+  ) {
+    return new CliError(
+      "AUTH_REQUIRED",
+      `git ${op} was denied access to the remote (or the repository is not visible to your credentials)`,
+      { details: { op, best_effort: true } },
+    );
+  }
+  if (/You are not currently on a branch|HEAD detached/i.test(text)) {
+    return new CliError(
+      "RUNTIME",
+      "the board worktree is in a detached-HEAD state — sync needs the board branch checked out",
+      { details: { op, state: "detached-head" } },
+    );
+  }
+  if (
+    /needs merge/i.test(text) ||
+    /unmerged files/i.test(text) ||
+    /not possible because you have unmerged/i.test(text) ||
+    /Resolve all conflicts/i.test(text)
+  ) {
+    return new CliError("CONFLICT", "the board worktree has unresolved conflicts", { details: { op } });
+  }
+  if (
+    /Could not resolve host|unable to access|Connection (refused|timed out|reset)|Operation timed out|network is unreachable|Failed to connect/i.test(
+      text,
+    )
+  ) {
+    return new CliError("TRANSIENT", `git ${op} could not reach the remote — offline or the host is unreachable; retry`, {
+      details: { op, retryable: true },
+    });
+  }
+  const line = firstGitLine(f);
+  return new CliError("RUNTIME", `git ${op} failed${line ? `: ${line}` : ""}`, {
+    details: { op, exit_status: f.status },
+  });
 }
 
 /**
