@@ -153,41 +153,6 @@ test("link add --remote: idempotent (changed:false, exit 0) on re-add", async ()
   }
 });
 
-test("link show --text --remote: backlink text + exact-match filtering are IDENTICAL over --remote and --dir (backlinks are derived CLIENT-SIDE via readMany, no wire route)", async () => {
-  const localDir = await tempDir();
-  const remoteDir = await tempDir();
-  try {
-    for (const dir of [localDir, remoteDir]) {
-      const bundle: Bundle = { root: dir };
-      await initBundle(dir);
-      await writeDoc(bundle, { id: "hub", frontmatter: { type: "Concept", title: "Hub", timestamp: T }, body: "" });
-      await writeDoc(bundle, { id: "citer", frontmatter: { type: "Concept", title: "Citer", timestamp: T }, body: "" });
-    }
-    const server = await bootServer(remoteDir);
-    try {
-      await link(["add", "citer", "hub", "--text", "prereq", "--dir", localDir, "--json"], { stdout: () => {} });
-      await link(["add", "citer", "hub", "--text", "prereq", "--remote", server.url, "--json"], { stdout: () => {} });
-
-      const localShown = await runJson(link, ["show", "hub", "--text", "prereq", "--dir", localDir]);
-      const remoteShown = await runJson(link, ["show", "hub", "--text", "prereq", "--remote", server.url]);
-      assert.deepEqual(remoteShown, localShown);
-      assert.equal(remoteShown.backlink_count, 1);
-      assert.deepEqual(remoteShown.backlinks, [{ from: "citer", text: "prereq" }]);
-
-      // A filter matching nothing is the same definitive empty state over both transports.
-      const localEmpty = await runJson(link, ["show", "hub", "--text", "no-match", "--dir", localDir]);
-      const remoteEmpty = await runJson(link, ["show", "hub", "--text", "no-match", "--remote", server.url]);
-      assert.deepEqual(remoteEmpty, localEmpty);
-      assert.equal(remoteEmpty.backlink_count, 0);
-    } finally {
-      await server.close();
-    }
-  } finally {
-    await rm(localDir, { recursive: true, force: true });
-    await rm(remoteDir, { recursive: true, force: true });
-  }
-});
-
 test("doc read --out --remote: canonical re-serialization is byte-identical to a LOCAL read for an engine-written doc", async () => {
   const dir = await tempDir();
   const outDir = await tempDir();

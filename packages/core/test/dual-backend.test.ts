@@ -66,18 +66,10 @@ test("dual-backend: core operations return identical results over filesystem and
   assert.deepEqual(memResult, fsResult);
 
   // Spot-check the shared expectation so a mutually-wrong pair can't pass silently.
-  const r = fsResult as {
-    conceptIds: string[];
-    betaBacklinks: { from: string; text: string }[];
-    alphaBacklinks: { from: string; text: string }[];
-    freshness: string;
-  };
+  const r = fsResult as { conceptIds: string[]; betaBacklinks: string[]; alphaBacklinks: string[]; freshness: string };
   assert.deepEqual(r.conceptIds, ["concepts/alpha", "concepts/beta"]);
-  assert.deepEqual(r.betaBacklinks, [{ from: "concepts/alpha", text: "Beta" }]); // alpha → beta (relative link)
-  assert.deepEqual(r.alphaBacklinks, [
-    { from: NOTE_ID, text: "Alpha" },
-    { from: "tables/users", text: "Alpha" },
-  ]); // note + table both cite alpha
+  assert.deepEqual(r.betaBacklinks, ["concepts/alpha"]); // alpha → beta (relative link)
+  assert.deepEqual(r.alphaBacklinks, [NOTE_ID, "tables/users"]); // note + table both cite alpha
   assert.equal(r.freshness, "fresh");
 });
 

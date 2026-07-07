@@ -287,14 +287,9 @@ test("wire: core operations return identical results over RemoteBackend as over 
   const localResult = await scenario({ root: "mem://local", backend: new MemoryBackend() });
   assert.deepEqual(wireResult, localResult);
 
-  const r = wireResult as {
-    conceptIds: string[];
-    betaBacklinks: { from: string; text: string }[];
-    alphaBacklinks: { from: string; text: string }[];
-    freshness: string;
-  };
+  const r = wireResult as { conceptIds: string[]; betaBacklinks: string[]; alphaBacklinks: string[]; freshness: string };
   assert.deepEqual(r.conceptIds, ["concepts/alpha", "concepts/beta"]);
-  assert.deepEqual(r.betaBacklinks, [{ from: "concepts/alpha", text: "Beta" }]);
+  assert.deepEqual(r.betaBacklinks, ["concepts/alpha"]);
   assert.equal(r.freshness, "fresh");
 });
 

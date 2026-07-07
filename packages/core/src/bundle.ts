@@ -381,23 +381,18 @@ export function parseLinks(_bundle: Bundle, doc: OkfDocument): Link[] {
 /**
  * "Cited by" set for a target concept — derived by reversing the resolved link
  * graph over the whole bundle. Backlinks are DERIVED, never stored (OKF has no
- * `cited_by` frontmatter field). Returns the full citing {@link Link} (carrying
- * `text`, the only relationship-type signal the bytes carry), not a bare source
- * id — a source citing the target via two differently-worded links yields two
- * rows, mirroring {@link parseLinks}'s own no-dedup-by-target granularity on the
- * outbound side. Sorted by source id, then link text, for determinism.
+ * `cited_by` frontmatter field).
  */
-export async function backlinks(bundle: Bundle, target: ConceptId): Promise<Link[]> {
+export async function backlinks(bundle: Bundle, target: ConceptId): Promise<ConceptId[]> {
   const normalizedTarget = toPosix(target).replace(/^\.?\//, "").replace(/\.md$/, "");
   const docs = await query(bundle);
-  const inbound: Link[] = [];
+  const sources = new Set<ConceptId>();
   for (const doc of docs) {
     for (const link of parseLinksFromDoc(doc)) {
-      if (link.to === normalizedTarget) inbound.push(link);
+      if (link.to === normalizedTarget) sources.add(doc.id);
     }
   }
-  inbound.sort((a, b) => a.from.localeCompare(b.from) || a.text.localeCompare(b.text));
-  return inbound;
+  return [...sources].sort((a, b) => a.localeCompare(b));
 }
 
 // ── blobs: opaque bytes + a content-type (Stage-1 Unit 2a Part A) ──────────────

@@ -48,13 +48,6 @@ async function linkAdd(dir: string, args: string[]): Promise<Record<string, unkn
   return JSON.parse(out);
 }
 
-/** Run `link show` in-process against `dir`, capturing stdout and decoding the `--json` envelope. */
-async function linkShow(dir: string, args: string[]): Promise<Record<string, unknown>> {
-  let out = "";
-  await link(["show", ...args, "--dir", dir, "--json"], { stdout: (s) => (out += s) });
-  return JSON.parse(out);
-}
-
 test("link add: refreshes the source timestamp by default (freshness reflects the change)", async () => {
   const { dir, cleanup } = await makeFixtureBundle();
   try {
@@ -149,94 +142,6 @@ test("link show --limit caps the outbound/backlink lists; counts stay the true t
     assert.equal((shown.outbound as unknown[]).length, 2, "outbound page is capped");
     const help = shown.help as string[];
     assert.ok(help.some((h) => /showing 2\/4 outbound/.test(h) && /--limit 0/.test(h)));
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("link show: backlink rows carry the citing link's text (typed-edge reading v0, rung a)", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));
-  try {
-    const bundle = await initBundle(dir);
-    await writeDoc(bundle, { id: "target", frontmatter: { type: "Concept", title: "Target", timestamp: OLD_TS }, body: "" });
-    await writeDoc(bundle, { id: "citer", frontmatter: { type: "Concept", title: "Citer", timestamp: OLD_TS }, body: "" });
-    await linkAdd(dir, ["citer", "target", "--text", "depends on"]);
-
-    const shown = await linkShow(dir, ["target"]);
-    assert.equal(shown.backlink_count, 1);
-    assert.deepEqual(shown.backlinks, [{ from: "citer", text: "depends on" }]);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("link show --text: filters BOTH outbound links and backlinks to an exact text match; counts are the filtered totals (typed-edge reading v0, rung b)", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));
-  try {
-    const bundle = await initBundle(dir);
-    for (const id of ["hub", "t0", "t1", "citer"]) {
-      await writeDoc(bundle, { id, frontmatter: { type: "Concept", title: id, timestamp: OLD_TS }, body: "" });
-    }
-    await linkAdd(dir, ["hub", "t0", "--text", "prereq"]);
-    await linkAdd(dir, ["hub", "t1", "--text", "see also"]);
-    await linkAdd(dir, ["citer", "hub", "--text", "prereq"]);
-
-    const filtered = await linkShow(dir, ["hub", "--text", "prereq"]);
-    assert.equal(filtered.text_filter, "prereq");
-    assert.equal(filtered.outbound_count, 1, "outbound_count is the FILTERED total, not the true total (2)");
-    assert.deepEqual((filtered.outbound as { to: string }[]).map((l) => l.to), ["t0"]);
-    assert.equal(filtered.backlink_count, 1);
-    assert.deepEqual(filtered.backlinks, [{ from: "citer", text: "prereq" }]);
-
-    // A substring of "prereq" must NOT match — exact match only.
-    const substring = await linkShow(dir, ["hub", "--text", "pre"]);
-    assert.equal(substring.outbound_count, 0);
-    assert.equal(substring.backlink_count, 0);
-
-    // A filter matching nothing in either direction is a DEFINITIVE empty result, not an error.
-    const empty = await linkShow(dir, ["hub", "--text", "no-such-relation"]);
-    assert.equal(empty.outbound_count, 0);
-    assert.deepEqual(empty.outbound, []);
-    assert.equal(empty.backlink_count, 0);
-    assert.deepEqual(empty.backlinks, []);
-    const help = empty.help as string[];
-    assert.ok(help.some((h) => /no links matched --text 'no-such-relation'/.test(h)));
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("link show --text '' (empty/blank value): USAGE error, exit 2", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));
-  try {
-    await initBundle(dir);
-    await assert.rejects(
-      () => link(["show", "hub", "--text", "  ", "--dir", dir, "--json"], { stdout: () => {} }),
-      (err: unknown) => {
-        assert.ok(err instanceof CliError);
-        assert.equal(err.code, "USAGE");
-        assert.equal(err.exitCode, 2);
-        return true;
-      },
-    );
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("link show --text (no value at all): USAGE error, exit 2 — a bare parseArgs failure, not a bare TypeError", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));
-  try {
-    await initBundle(dir);
-    await assert.rejects(
-      () => link(["show", "hub", "--dir", dir, "--json", "--text"], { stdout: () => {} }),
-      (err: unknown) => {
-        assert.ok(err instanceof CliError);
-        assert.equal(err.code, "USAGE");
-        assert.equal(err.exitCode, 2);
-        return true;
-      },
-    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

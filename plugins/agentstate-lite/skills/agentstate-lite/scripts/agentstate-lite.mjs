@@ -5771,14 +5771,13 @@ function parseLinks(_bundle, doc2) {
 async function backlinks(bundle, target) {
   const normalizedTarget = toPosix(target).replace(/^\.?\//, "").replace(/\.md$/, "");
   const docs = await query(bundle);
-  const inbound = [];
+  const sources = /* @__PURE__ */ new Set();
   for (const doc2 of docs) {
     for (const link2 of parseLinksFromDoc(doc2)) {
-      if (link2.to === normalizedTarget) inbound.push(link2);
+      if (link2.to === normalizedTarget) sources.add(doc2.id);
     }
   }
-  inbound.sort((a, b) => a.from.localeCompare(b.from) || a.text.localeCompare(b.text));
-  return inbound;
+  return [...sources].sort((a, b) => a.localeCompare(b));
 }
 async function readBlob(bundle, key2) {
   return backendFor(bundle).readBlob(key2);
@@ -9078,21 +9077,15 @@ var LINK_USAGE = `agentstate-lite link \u2014 add a cross-link or show a concept
 
 Usage:
   agentstate-lite link add <from> <to> [--text <t>]
-  agentstate-lite link show <id> [--limit <n>] [--text <t>]
+  agentstate-lite link show <id> [--limit <n>]
 
 Idempotent: re-adding a link the source already carries is a no-op \u2014 exit 0, changed:false, no
 duplicate link, no timestamp refresh.
 
 Options:
-  --text <t>            (link add) Link display text (default: the target id)
-                         (link show) Filter outbound links AND backlinks to those whose text is
-                         EXACTLY <t> (case-sensitive, not a substring match); empty/missing value
-                         is a usage error. outbound_count/backlink_count report the FILTERED
-                         totals when set. A filter that matches nothing is a valid empty result,
-                         not an error.
+  --text <t>            Link display text (default: the target id)
   --limit <n>          (link show) Cap each of the outbound/backlink lists (default: 50; 0 =
-                         unlimited); outbound_count/backlink_count always report the true
-                         (post-filter) totals
+                         unlimited); outbound_count/backlink_count always report the true totals
   --keep-timestamp      Preserve the source's existing timestamp (default: refresh to now,
                          since adding a cross-link is a meaningful change)
   --dir <path>          Bundle directory (default: discovered from the cwd)
@@ -9226,7 +9219,6 @@ async function linkShow(argv, stdout) {
       args: argv,
       options: {
         limit: { type: "string" },
-        text: { type: "string" },
         dir: { type: "string" },
         remote: { type: "string" },
         json: { type: "boolean" },
@@ -9251,15 +9243,6 @@ async function linkShow(argv, stdout) {
     }
     limit = Number(raw);
   }
-  let textFilter;
-  if (values.text !== void 0) {
-    textFilter = values.text.trim();
-    if (!textFilter) {
-      throw new CliError("USAGE", "--text requires a non-empty value to filter on", {
-        help: `${cliInvocation()} link show <id> --text <t>`
-      });
-    }
-  }
   const id = positionals[0]?.trim();
   if (!id) {
     throw new CliError("USAGE", "link show requires a concept <id>", {
@@ -9279,33 +9262,25 @@ async function linkShow(argv, stdout) {
     exists2 = false;
   }
   const inbound = await backlinks(bundle, id);
-  if (textFilter !== void 0) {
-    outbound = outbound.filter((l) => l.text === textFilter);
-  }
-  const inboundMatched = textFilter !== void 0 ? inbound.filter((l) => l.text === textFilter) : inbound;
   const outboundShown = limit > 0 ? outbound.slice(0, limit) : outbound;
-  const inboundShown = limit > 0 ? inboundMatched.slice(0, limit) : inboundMatched;
+  const inboundShown = limit > 0 ? inbound.slice(0, limit) : inbound;
   const payload = {
     id,
     exists: exists2,
     outbound_count: outbound.length,
     outbound: outboundShown,
-    backlink_count: inboundMatched.length,
-    backlinks: inboundShown.map((l) => ({ from: l.from, text: l.text }))
+    backlink_count: inbound.length,
+    backlinks: inboundShown
   };
-  if (textFilter !== void 0) payload.text_filter = textFilter;
   const help = [];
-  if (outboundShown.length < outbound.length || inboundShown.length < inboundMatched.length) {
+  if (outboundShown.length < outbound.length || inboundShown.length < inbound.length) {
     help.push(
-      `showing ${outboundShown.length}/${outbound.length} outbound + ${inboundShown.length}/${inboundMatched.length} backlinks \u2014 run \`${cliInvocation()} link show ${id} --limit 0\` for all`
+      `showing ${outboundShown.length}/${outbound.length} outbound + ${inboundShown.length}/${inbound.length} backlinks \u2014 run \`${cliInvocation()} link show ${id} --limit 0\` for all`
     );
-  }
-  if (textFilter !== void 0 && exists2 && outbound.length === 0 && inboundMatched.length === 0) {
-    help.push(`no links matched --text '${textFilter}' in either direction \u2014 this is a definitive empty result, not an error`);
   }
   if (!exists2) {
     help.push(
-      inboundMatched.length > 0 ? `'${id}' has no document yet but is cited by ${inboundMatched.length} \u2014 run \`${cliInvocation()} doc write ${id} --type <t>\` to create it` : `no concept at '${id}': it has no document and nothing links to it${textFilter !== void 0 ? ` matching --text '${textFilter}'` : ""}`
+      inbound.length > 0 ? `'${id}' has no document yet but is cited by ${inbound.length} \u2014 run \`${cliInvocation()} doc write ${id} --type <t>\` to create it` : `no concept at '${id}': it has no document and nothing links to it`
     );
   }
   if (help.length > 0) payload.help = help;
@@ -12494,8 +12469,8 @@ var COMMAND_GROUPS = [
         summary: "Query concepts over their frontmatter (alias: query)"
       },
       {
-        usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>]) [--remote <url>]",
-        summary: "Add a cross-link, or show a concept's links + backlinks (each carrying link text; --text filters both directions by exact match)"
+        usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>]) [--remote <url>]",
+        summary: "Add a cross-link, or show a concept's links + backlinks"
       }
     ]
   },

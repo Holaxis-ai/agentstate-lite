@@ -72,9 +72,8 @@ async function scenario(bundle: Bundle): Promise<unknown> {
   const all = await query(bundle);
   const concepts = await list(bundle, { type: "Concept" });
   const alpha = await readDoc(bundle, "concepts/alpha");
-  // Reduced to { from, text } — mirrors packages/core/test/scenario.ts's shape.
-  const betaBacklinks = (await backlinks(bundle, "concepts/beta")).map((l) => ({ from: l.from, text: l.text }));
-  const alphaBacklinks = (await backlinks(bundle, "concepts/alpha")).map((l) => ({ from: l.from, text: l.text }));
+  const betaBacklinks = await backlinks(bundle, "concepts/beta");
+  const alphaBacklinks = await backlinks(bundle, "concepts/alpha");
   const noteDoc = await readDoc(bundle, NOTE_ID);
   const noteFreshness = freshness(noteDoc, { now: NOW });
 
@@ -100,18 +99,10 @@ test("D1R2Backend: core operations return results identical to FilesystemBackend
     assert.deepEqual(memResult, fsResult);
     assert.deepEqual(d1r2Result, fsResult, "D1R2Backend must return results identical to FilesystemBackend");
 
-    const r = fsResult as {
-      conceptIds: string[];
-      betaBacklinks: { from: string; text: string }[];
-      alphaBacklinks: { from: string; text: string }[];
-      freshness: string;
-    };
+    const r = fsResult as { conceptIds: string[]; betaBacklinks: string[]; alphaBacklinks: string[]; freshness: string };
     assert.deepEqual(r.conceptIds, ["concepts/alpha", "concepts/beta"]);
-    assert.deepEqual(r.betaBacklinks, [{ from: "concepts/alpha", text: "Beta" }]);
-    assert.deepEqual(r.alphaBacklinks, [
-      { from: NOTE_ID, text: "Alpha" },
-      { from: "tables/users", text: "Alpha" },
-    ]);
+    assert.deepEqual(r.betaBacklinks, ["concepts/alpha"]);
+    assert.deepEqual(r.alphaBacklinks, [NOTE_ID, "tables/users"]);
     assert.equal(r.freshness, "fresh");
   } finally {
     await rm(fsRoot, { recursive: true, force: true });

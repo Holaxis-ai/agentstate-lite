@@ -78,8 +78,8 @@ the rest of the line unchanged.
   — Hard-delete a doc (idempotent: absent -> deleted:false, exit 0)
 - `"$ASLITE" list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--limit <n>] [--remote <url>]`
   — Query concepts over their frontmatter (alias: query)
-- `"$ASLITE" link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>]) [--remote <url>]`
-  — Add a cross-link, or show a concept's links + backlinks (each carrying link text; --text filters both directions by exact match)
+- `"$ASLITE" link (add <from> <to> [--text <t>] | show <id> [--limit <n>]) [--remote <url>]`
+  — Add a cross-link, or show a concept's links + backlinks
 
 ### Artifacts
 
