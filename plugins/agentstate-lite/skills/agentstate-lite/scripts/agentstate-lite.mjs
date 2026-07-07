@@ -6896,8 +6896,17 @@ async function findAncestorWithFile(start, filename) {
     dir = parent;
   }
 }
+var CONVENTIONAL_BUNDLE_DIR_NAME = ".agentstate-lite";
 async function findBundleRoot(start) {
-  return findAncestorWithFile(start, "index.md");
+  let dir = path4.resolve(start);
+  while (true) {
+    if (await exists(path4.join(dir, "index.md"))) return dir;
+    const conventional = path4.join(dir, CONVENTIONAL_BUNDLE_DIR_NAME);
+    if (await exists(path4.join(conventional, "index.md"))) return conventional;
+    const parent = path4.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
 }
 var PROJECT_BINDING_FILE_NAME = ".agentstate.json";
 function isHttpUrl(value) {
@@ -7027,8 +7036,8 @@ async function openBundle(dirFlag, remoteFlag) {
   if (!root) {
     throw new CliError(
       "NOT_FOUND",
-      "no OKF bundle found (no index.md in the current directory or its ancestors)",
-      { help: `${cliInvocation()} init` }
+      `no OKF bundle found (no index.md, and no ${CONVENTIONAL_BUNDLE_DIR_NAME}/index.md, in the current directory or its ancestors)`,
+      { help: `${cliInvocation()} init --dir ${CONVENTIONAL_BUNDLE_DIR_NAME}` }
     );
   }
   return { root };

@@ -31,22 +31,26 @@ codex plugin add agentstate-lite@agentstate-lite
 ## Quickstart
 
 ```sh
-aslite init                      # create a bundle (seeds the context-notes recipe)
-aslite recipe add work-tracking  # install the Task kind — a task board, as data
-aslite hook install              # agents orient automatically at session start
-                                 # (Claude Code, Codex, OpenCode)
-# commit .agentstate.json — every agent on every machine now finds the bundle
+aslite init --dir .agentstate-lite   # create the project's bundle (seeds context-notes)
+aslite recipe add work-tracking      # install the Task kind — a task board, as data
+aslite hook install                  # agents orient automatically at session start
+                                     # (Claude Code, Codex, OpenCode)
+# commit the .agentstate-lite/ folder — every clone's agents now find the bundle
 ```
 
-**Two binding patterns — choose by one question: do teammates share this bundle?**
+The conventional `.agentstate-lite/` folder at the project root is discovered with zero
+config (the way git finds `.git`) — every command after setup runs bare from anywhere in
+the project tree. The bundle is committed shared memory: check it in and every
+collaborator's agents work against the same workspace.
 
-- **Project-owned (commit it):** the bundle lives with or beside the repo; `.agentstate.json`
-  holds a *relative* path and is committed, so every collaborator's agent resolves it from a
-  bare clone. The quickstart above is this pattern.
-- **Personal workspace (exclude it):** the bundle lives in your home directory
-  (`~/.agentstate-lite/<name>/`); the binding holds an absolute path and stays out of the
-  repo via `.git/info/exclude`. This is the pattern the bundled skill teaches agents by
-  default.
+**Two overrides when the default doesn't fit:**
+
+- **`.agentstate.json` binding:** a committed pointer (`{ "bundle": "<path-or-url>" }`) for
+  anything unconventional — a remote URL, an out-of-tree directory. Beats the conventional
+  folder when both exist.
+- **Personal workspace (keep it private):** the bundle lives in your home directory
+  (`~/.agentstate-lite/<name>/`); a git-excluded binding points at it, and nothing enters
+  the repo.
 
 Then, day to day:
 
@@ -90,8 +94,9 @@ Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPla
   escape hatches, idempotent mutations, a small stable exit-code taxonomy.
 - The byte channel (`promote`/`pull`) for artifacts that should never enter a model's
   context window.
-- Project discovery: a committed `.agentstate.json` resolves the bundle for any agent
-  on any machine with zero prior context.
+- Project discovery: a committed `.agentstate-lite/` folder (or an explicit
+  `.agentstate.json` binding) resolves the bundle for any agent on any machine with zero
+  prior context.
 
 ## What's early or experimental
 

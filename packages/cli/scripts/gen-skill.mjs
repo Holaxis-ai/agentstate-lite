@@ -77,34 +77,30 @@ function renderCommandsSection(COMMAND_GROUPS, prefix) {
 
 function renderWorkspaceLocation(prefix) {
   const lines = [];
-  lines.push("## Workspaces — default location, one-time binding, then bare commands");
+  lines.push("## Workspaces — the project's bundle lives at `.agentstate-lite/` in the project root");
   lines.push("");
   lines.push(
-    "Unless the user directs otherwise, store each workspace's bundle under `~/.agentstate-lite/`,",
+    "Unless the user directs otherwise, a project's workspace bundle lives in a `.agentstate-lite/`",
   );
   lines.push(
-    "in a folder named after the workspace: a workspace named `holaxis-video-analyzer` keeps its",
+    "folder at the project root, and it is COMMITTED to the repo — the bundle is shared memory, and",
   );
   lines.push(
-    "bundle at `~/.agentstate-lite/holaxis-video-analyzer/`. Do NOT pass `--dir` on every command —",
+    "committing it is what lets two or more humans (and their agents) collaborate on it across",
   );
-  lines.push(
-    "set the workspace up ONCE per project, and every later command finds it automatically:",
-  );
+  lines.push("clones. Setup is ONE command, run once at the project root:");
   lines.push("");
   lines.push("```sh");
-  lines.push("# One-time setup, run at the PROJECT ROOT (all three steps are idempotent):");
-  lines.push('WS="$HOME/.agentstate-lite/holaxis-video-analyzer"');
-  lines.push(`${prefix} init --dir "$WS"                        # create (or open) the bundle`);
-  lines.push('printf \'{ "bundle": "%s" }\\n\' "$WS" > .agentstate.json   # bind this project to it');
-  lines.push("grep -qxF .agentstate.json .git/info/exclude 2>/dev/null \\");
-  lines.push("  || echo .agentstate.json >> .git/info/exclude  # local-only ignore (skip if not a git repo)");
+  lines.push(`${prefix} init --dir .agentstate-lite   # idempotent — creates the bundle, or opens an existing one`);
   lines.push("```");
   lines.push("");
   lines.push(
-    "From then on, run every command BARE from anywhere in the project tree — the CLI resolves the",
+    "That's the whole setup. The CLI discovers the conventional folder on its own (the way git",
   );
-  lines.push("nearest `.agentstate.json` up-tree, exactly as if `--dir` had been passed:");
+  lines.push(
+    "finds `.git`), so every command runs BARE from anywhere in the project tree — no flags, no",
+  );
+  lines.push("config files:");
   lines.push("");
   lines.push("```sh");
   lines.push(`${prefix} list`);
@@ -112,40 +108,51 @@ function renderWorkspaceLocation(prefix) {
   lines.push("```");
   lines.push("");
   lines.push(
+    "Commit the folder like any other source (only gitignore it if the user says the workspace",
+  );
+  lines.push("should stay private to this machine).");
+  lines.push("");
+  lines.push(
     "Each invocation is stateless and resolves its bundle in this order: explicit `--dir`/`--remote`",
   );
   lines.push(
-    "flag → `AGENTSTATE_LITE_REMOTE` env (URL only) → nearest `.agentstate.json` up-tree → enclosing",
+    "flag → `AGENTSTATE_LITE_REMOTE` env (URL only) → nearest `.agentstate.json` binding up-tree →",
   );
   lines.push(
-    "bundle (`index.md` up-tree). So reserve `--dir` for the exceptions: reaching a workspace from",
+    "the cwd walk, which at each ancestor checks the directory's own `index.md`, then its",
   );
-  lines.push("OUTSIDE its bound project, touching a second workspace, or one-off work with no project.");
+  lines.push(
+    "conventional `.agentstate-lite/index.md`. Reserve `--dir` for the exceptions: a bundle outside",
+  );
+  lines.push("any project, a second workspace, or reaching another project's bundle from elsewhere.");
   lines.push("");
-  lines.push("Two things override the default location:");
-  lines.push("");
-  lines.push("1. **Explicit user direction** — the user names a directory or a `--remote`; use that.");
-  lines.push(
-    "2. **An existing binding or bundle** — if a bare command already resolves (a `.agentstate.json`",
-  );
-  lines.push(
-    "   or an enclosing bundle exists up-tree), that IS this project's workspace — use it rather",
-  );
-  lines.push("   than creating a second bundle under `~/.agentstate-lite/`.");
+  lines.push("Two things override the default:");
   lines.push("");
   lines.push(
-    "The setup above is the **personal-workspace** pattern (home-dir bundle, absolute path, binding",
+    "1. **Explicit user direction** — the user names a directory or a `--remote`; use that. A",
   );
   lines.push(
-    "kept OUT of the repo). The other pattern is **project-owned**: the bundle lives with the repo,",
+    "   `.agentstate.json` binding (`{ \"bundle\": \"<path-or-url>\" }` at the project root) is the",
+  );
+  lines.push("   durable form of that direction — it beats the conventional folder when both exist.");
+  lines.push(
+    "2. **An existing workspace** — if a bare command already resolves (a binding, an enclosing",
   );
   lines.push(
-    "`.agentstate.json` holds a RELATIVE path and IS committed — every collaborator's agent then",
+    "   bundle, or a conventional folder exists up-tree), that IS this project's workspace — use",
+  );
+  lines.push("   it rather than creating a second one.");
+  lines.push("");
+  lines.push(
+    "If the user wants the workspace PRIVATE to their machine instead of shared (a personal",
   );
   lines.push(
-    "resolves it from a bare clone. Choose by one question: do teammates share this bundle? When",
+    "scratch workspace), keep the bundle OUT of the repo (e.g. under `~/.agentstate-lite/<name>/`)",
   );
-  lines.push("the user's intent is ambiguous, ask which pattern fits rather than defaulting silently.");
+  lines.push(
+    "and point a git-excluded `.agentstate.json` at it. Choose by one question: do teammates",
+  );
+  lines.push("share this bundle? When the user's intent is ambiguous, ask rather than defaulting silently.");
   lines.push("");
   return lines;
 }
@@ -155,12 +162,10 @@ function renderTypicalFlow(prefix) {
   lines.push("## Typical flow");
   lines.push("");
   lines.push("```sh");
-  lines.push(`# One-time workspace setup (default location + project binding — see the Workspaces section)`);
-  lines.push('WS="$HOME/.agentstate-lite/my-workspace"');
-  lines.push(`${prefix} init --dir "$WS"`);
-  lines.push('printf \'{ "bundle": "%s" }\\n\' "$WS" > .agentstate.json');
+  lines.push(`# One-time setup at the project root (see the Workspaces section); commit the folder`);
+  lines.push(`${prefix} init --dir .agentstate-lite`);
   lines.push("");
-  lines.push(`# Everything after runs bare — the binding resolves the workspace`);
+  lines.push(`# Everything after runs bare, from anywhere in the project tree`);
   lines.push(`# Create a context note (an OKF concept) for the next session`);
   lines.push(`${prefix} new "Context Note" cycle-1 --title "cycle-1"`);
   lines.push(`${prefix} doc update context-notes/cycle-1 --body "What this session did and what's next"`);

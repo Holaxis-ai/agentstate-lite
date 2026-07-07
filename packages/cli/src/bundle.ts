@@ -27,7 +27,10 @@
 // UP from the cwd (nearest ancestor wins — same shape `findBundleRoot` uses for `index.md`; see
 // `resolveProjectBinding`). It sits BETWEEN the env var and cwd discovery in the precedence chain:
 // explicit `--remote`/`--dir` flags -> `AGENTSTATE_LITE_REMOTE` env -> the project binding file ->
-// the existing cwd `index.md` walk. Explicit beats ambient beats committed beats discovered. The
+// the cwd walk (which checks each ancestor's own `index.md` FIRST, then its conventional
+// `.agentstate-lite/index.md` — see `CONVENTIONAL_BUNDLE_DIR_NAME`/`findBundleRoot`). Explicit
+// beats ambient beats committed beats discovered, and within discovery an enclosing bundle beats
+// the conventional project folder at the same level. The
 // binding's `bundle` value is EITHER an http(s) URL (resolved exactly like `--remote <url>`) OR a
 // filesystem path (resolved exactly like `--dir <path>`; a RELATIVE path resolves against the
 // DIRECTORY CONTAINING `.agentstate.json`, never the cwd — a committed pointer must be
@@ -100,9 +103,33 @@ async function findAncestorWithFile(start: string, filename: string): Promise<st
   }
 }
 
-/** Walk up from `start` to the nearest ancestor containing `index.md`; null if none. */
+/**
+ * The conventional project-scoped bundle directory name: a bundle at
+ * `<project-root>/.agentstate-lite/` is discovered by the cwd walk with NO configuration —
+ * the folder alone is enough, the way `git` treats `.git`. It is the DEFAULT home for a
+ * project's workspace bundle (committed, so it collaborates across clones), while
+ * `.agentstate.json` remains the explicit override for anything unconventional (a remote
+ * URL, an out-of-tree directory) and — being an explicit committed pointer — beats it.
+ */
+export const CONVENTIONAL_BUNDLE_DIR_NAME = ".agentstate-lite";
+
+/**
+ * Walk up from `start` to the nearest bundle root; null if none. At EACH level, the
+ * directory's own `index.md` is checked first (standing inside a bundle keeps winning),
+ * then the conventional `.agentstate-lite/index.md` — so the nearest level wins overall,
+ * and within a level an enclosing bundle beats the conventional folder.
+ */
 async function findBundleRoot(start: string): Promise<string | null> {
-  return findAncestorWithFile(start, "index.md");
+  let dir = path.resolve(start);
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    if (await exists(path.join(dir, "index.md"))) return dir;
+    const conventional = path.join(dir, CONVENTIONAL_BUNDLE_DIR_NAME);
+    if (await exists(path.join(conventional, "index.md"))) return conventional;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
 }
 
 /** The committed project-scoped pointer filename (see the module header). */
@@ -341,8 +368,8 @@ export async function openBundle(dirFlag: string | undefined, remoteFlag?: strin
   if (!root) {
     throw new CliError(
       "NOT_FOUND",
-      "no OKF bundle found (no index.md in the current directory or its ancestors)",
-      { help: `${cliInvocation()} init` },
+      `no OKF bundle found (no index.md, and no ${CONVENTIONAL_BUNDLE_DIR_NAME}/index.md, in the current directory or its ancestors)`,
+      { help: `${cliInvocation()} init --dir ${CONVENTIONAL_BUNDLE_DIR_NAME}` },
     );
   }
   return { root };
