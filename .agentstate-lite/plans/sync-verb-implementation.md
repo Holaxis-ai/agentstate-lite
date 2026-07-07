@@ -3,7 +3,7 @@ type: Plan
 title: >-
   sync verb v2 — binding implementation plan (U0 harness → U6 skill; U5
   migration Mike-gated)
-timestamp: '2026-07-07T19:39:02.551Z'
+timestamp: '2026-07-07T19:51:02.013Z'
 ---
 # sync verb v2 — binding implementation plan
 
@@ -83,3 +83,20 @@ e2e + gate-1 AXI watch-points. Ship each unit branch + PR; Brian merges.
 - Hook wiring: default `--with-sync` unless axi-sdk-js multi-entry lands first.
 - Rename detection: OFF (`-M` omitted) — doc identity IS its path; A+D is the true story.
 - Mike's confirmation gates U5 only; U0–U4 and U6 can build now.
+
+## UX amendments (v2.1 — from research/sync-verb-ux-review; message pack is the string contract)
+
+- **U3 gains:** the two distinct empty states; conflict rows {id, kind, title, yours,
+  theirs}; `sync --show-incoming <id>` (reads @{u} version via `git show @{u}:<path>`,
+  doc-read truncation + --out); push-fail warning leading with safety; commit grammar
+  (single-doc subject, list in body, never "1 docs"). Tests: string-pinned message pack
+  moments (a)-(d), (f).
+- **U4 gains:** SessionStart pull step is the designated provisioner, ordered BEFORE
+  home's render; board-pending FS marker; home's no-bundle fallback says "run sync" (never
+  "init") when board exists on origin — test-pinned against the divergent-second-bundle
+  footgun; human-face render lines + `board: up to date` + offline note (moment (e)).
+- **U5 gains:** `--yes` requirement + "already migrated" idempotence; the one-time
+  migration heads-up in rollout note and first post-migration render.
+- **U6 gains:** P11 skill text (typical flow ends with sync; "shared with teammates" not
+  branch mechanics; unit-close trigger; single "you may notice board branch" aside).
+- **Deferred:** `sync --dry-run` (P9).

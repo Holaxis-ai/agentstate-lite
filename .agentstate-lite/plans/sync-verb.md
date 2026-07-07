@@ -1,9 +1,9 @@
 ---
 type: Plan
 title: >-
-  sync verb v2: board branch + linked worktree — folder-scoped by construction
-  (panel-reviewed)
-timestamp: '2026-07-07T19:39:02.435Z'
+  sync verb v2.1: board branch + worktree, UX layer folded in (panel- and
+  DevX-reviewed)
+timestamp: '2026-07-07T19:50:35.976Z'
 ---
 # sync verb — design v2 (board branch + linked worktree)
 
@@ -112,3 +112,45 @@ is CONFIG, not build). Real-time ladder parked with wake conditions. Non-goals: 
 daemon, no auto-commit-per-write, no submodules (the linked worktree is NOT a submodule —
 same repo, no gitlink), no embedded git library (system git inherits the user's auth —
 still the whole point), no cross-repo multi-bundle orchestration.
+
+## UX layer (v2.1 — DevX pass; full record + message pack in [research/sync-verb-ux-review](../research/sync-verb-ux-review.md))
+
+The strings in the UX review's message pack are the CONTRACT for implementation — moments
+(a)–(f) ship as written there. Amendments to the sections above:
+
+- **Provisioning (amends step 0 + SessionStart):** the SessionStart `sync --pull-only`
+  step is the DESIGNATED provisioner and runs before `home` renders. `home`'s no-bundle
+  fallback becomes board-aware via an FS-only cache marker: when `board` exists on origin
+  it says "board not yet provisioned — run `aslite sync`", NEVER "run init". A founder
+  with a board on origin must be unable to init a divergent second bundle by following
+  our own hint.
+- **Empty states (amends step 4):** two distinct strings — no git repo →
+  `sync: nothing to sync`; clean and current → `sync: already up to date`. The receipt is
+  the point.
+- **Conflict path (amends step 2):** conflict rows carry `{id, kind, title, yours,
+  theirs}`, and the design adds `sync --show-incoming <id>` — prints the upstream (@{u})
+  version of a doc in canonical markdown with doc-read semantics (truncation + `--out`
+  hatch) so resolution never needs raw git or hand-edited markers. Help chain:
+  show-incoming → `doc update` → re-run `sync`.
+- **Push-fail honesty (amends step 4):** partial envelope leads with safety
+  ("committed to the board locally — your work is saved…"), exit class 4 (auth) / 1
+  (network) unchanged for agents.
+- **Awareness render (amends the cursor/SessionStart sections):** agent face = envelope
+  rows `{verb, kind, id, title, actor}`; human face = one line per doc,
+  `mike · updated Task "…"`; clean → `board: up to date`; offline → "showing last known
+  state" note.
+- **Commit grammar (amends step 1):** stable `board:` prefix preserved; single-doc
+  subject `board: <actor> — updated <id>`; multi-doc `board: <actor> — N docs` (never
+  "1 docs"); the per-doc verb-kind-id list goes in the commit BODY so `git log board`
+  carries the activity feed without a re-derivation.
+- **Migration comms (amends Migration):** U5 ships a one-time heads-up to both founders
+  (rollout note + first post-migration render): after `git pull`, `.agentstate-lite/`
+  briefly disappears from main and is re-created on the next aslite command — nothing is
+  lost; from then on `aslite sync`, not `git pull`, updates the board. `sync --migrate`
+  requires `--yes` and is idempotent ("already migrated").
+- **User-facing language rule:** no "worktree"/"linked"/"subtree" in any user-facing
+  string. The one founder-sentence: "`aslite sync` shares your board — commits your
+  changes, pulls your teammate's, pushes yours, touching nothing but the board." The
+  `board` branch gets exactly one prepared "you may notice" aside (docs + skill), so
+  GitHub's branch list reads as designed, not surprise magic.
+- **Deferred:** `sync --dry-run` (named; SessionStart already previews; build on demand).
