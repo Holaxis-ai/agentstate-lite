@@ -62,7 +62,7 @@ the rest of the line unchanged.
 - `"$ASLITE" view [--dir <path>] [--out <path>] [--name <label>] [--remote <url>]`
   — Bake the bundle into one self-contained static HTML file
 - `"$ASLITE" status [--limit <n>] [--remote <url>]`
-  — Read-only bundle health report (kind lint, unresolved links, orphans, staleness)
+  — Read-only bundle health report (kind lint, unresolved links, orphans, staleness, graph lints)
 
 ### Documents & links
 

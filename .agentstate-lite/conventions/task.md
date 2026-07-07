@@ -5,6 +5,8 @@ governs: Task
 path: tasks/
 links:
   depends on: Task
+expects_inbound:
+  contains: Roadmap Item
 fields:
   required:
     - title

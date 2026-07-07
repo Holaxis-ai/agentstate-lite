@@ -36,6 +36,13 @@ Declaring a kind convention (frontmatter keys core reads — everything else is 
                                  typed edge; every other link is an untyped citation. Write typed
                                  edges with 'link add <from> <to> --text <type>' and query them
                                  with 'link show <id> --text <type>'
+  expects_inbound      map      link type name -> expected SOURCE kind, declared on the kind the
+                                 expectation is ABOUT (the link TARGET) — e.g. a 'Task' declaring
+                                 {contains: "Roadmap Item"} expects every Task to have an inbound
+                                 'contains' edge from a Roadmap Item. Drives the 'status' command's
+                                 missing_expected_links lint; 'link add' also warns on a
+                                 type-mismatched edge against any declared 'links'/'expects_inbound'
+                                 vocabulary. Write-time is never blocked by this key.
   sections             list     expected level-1 '# Heading' body-section names
   freshness_horizon    string   '<n>(m|h|d)', e.g. 24h, 30d, 15m
 A misshaped or misplaced key here is a non-fatal registry warning (visible in 'kinds'/'status'
@@ -63,6 +70,7 @@ function toRow(kind: KindConvention): Record<string, unknown> {
   };
   if (Object.keys(kind.fields.values).length > 0) row.values = kind.fields.values;
   if (kind.links && Object.keys(kind.links).length > 0) row.links = kind.links;
+  if (kind.expectsInbound && Object.keys(kind.expectsInbound).length > 0) row.expects_inbound = kind.expectsInbound;
   if (kind.path) row.path = kind.path;
   if (kind.sections && kind.sections.length > 0) row.sections = kind.sections;
   if (kind.freshnessHorizon) {

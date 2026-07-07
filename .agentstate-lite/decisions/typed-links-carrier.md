@@ -88,3 +88,21 @@ types declare — a build-time decision for the trial, not worth inventing machi
 today. The built-in work-tracking recipe in the REPO gains these declarations when the
 validator ships (declaration + machinery arrive together for new bundles, per the
 consumer-pull discipline).
+
+## Addendum (2026-07-07, ratified same day): `expects_inbound` — the expectation vocabulary
+
+Mike's "do we really need a session?" applied again: the expectation semantics unbundled to
+one reversible reader-side key, no joint dependency (normative, not structural — the cloud
+edge index never reads it). RATIFIED: a kind convention MAY declare, on the kind the norm
+is ABOUT (the link target), `expects_inbound: {<link type>: <source kind>}` = "≥1 inbound
+edge of that type from that kind, else a status lint finding." Sweep-only by nature (a
+missing inbound edge is someone else's future write — write-time cannot check it);
+unconditional in v1 (no cardinality, no status conditions — the done-task noise is honest,
+grouped by status, and only lived annoyance justifies a terminal-status refinement).
+Enforcement posture unchanged: warn-only, never blocks reads. Shipped with the graph-lints
+unit (PR #7) alongside write-time type-conformance warnings on `link add`. First
+declaration: Task expects `contains` from Roadmap Item. Also ratified in passing: `contains`
+is now declared by TWO kinds (Roadmap → Roadmap Item, Roadmap Item → Task) — the lint
+flagged the spine's previously-undeclared usage and the fix was declaring the vocabulary
+the data already used; multi-declaration resolution picks the declaration matching the
+actual source kind.

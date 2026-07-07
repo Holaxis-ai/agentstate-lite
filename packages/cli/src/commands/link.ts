@@ -13,6 +13,11 @@
 // the citing/cited link's `text` — the only relationship-type signal OKF's untyped edges carry.
 // `link show --text <t>` filters BOTH directions to links whose text EXACTLY matches `<t>` (not a
 // substring match) — a reader-side lens over the same edges, never a second derivation.
+// `link add`'s SUCCESS envelope (`changed:true` only — the idempotent no-op path never checks) also
+// carries a graph-lint `warnings[]` when the link's text matches a bundle-declared typed-edge
+// vocabulary entry (a kind's `links` map) but the actual source/target kinds don't conform, or when
+// the text is a same-spelling-different-case near miss of a declared type — warn-only, never
+// blocking, since the link is already written by the time this check runs.
 import { parseArgs } from "node:util";
 import {
   readDoc,
@@ -23,8 +28,11 @@ import {
   relativeHref,
   isReservedFile,
   pathFromConceptId,
+  loadKinds,
   VersionConflict,
+  type Bundle,
   type OkfDocument,
+  type ValidationWarning,
   type Version,
 } from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
@@ -32,6 +40,7 @@ import { CliError, classifyBundleError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
+import { collectLinkDeclarations } from "../link-types.js";
 
 export const LINK_USAGE = `agentstate-lite link — add a cross-link or show a concept's links + backlinks
 
@@ -41,6 +50,12 @@ Usage:
 
 Idempotent: re-adding a link the source already carries is a no-op — exit 0, changed:false, no
 duplicate link, no timestamp refresh.
+
+Graph lint (link add only): if this bundle declares a kind's 'links' vocabulary (see 'kinds --help')
+and --text matches a declared type, the just-written link is checked against the actual source/target
+kinds; a mismatch or a same-spelling-different-case near miss attaches a 'warnings' array to the
+success envelope (exit 0 — the link is already written). An untyped --text (no declared match, any
+casing) or a conventions-free bundle never warns.
 
 Options:
   --text <t>            (link add) Link display text (default: the target id)
@@ -67,6 +82,79 @@ const LINK_ADD_MAX_ATTEMPTS = 5;
 
 export interface LinkCliDeps {
   stdout: (s: string) => void;
+}
+
+/** A doc's `type` field, or "" when absent/non-string (mirrors `status.ts`'s own `docType`). */
+function docType(doc: OkfDocument): string {
+  return typeof doc.frontmatter.type === "string" ? doc.frontmatter.type : "";
+}
+
+/**
+ * Write-time type-conformance lint for a just-written link (graph lints unit): if `text` exactly
+ * matches a declared typed-edge vocabulary entry, verify the ACTUAL source/target kinds against the
+ * declaration (a mismatch is a `LINK_TYPE_VIOLATION`); if `text` matches a declared type only
+ * case-insensitively, warn naming the declared spelling (`LINK_TYPE_CASE_VARIANT`) — no edit-distance
+ * matching. Untyped links (no match, in any casing) return no warnings. Never throws for a missing
+ * target doc (a dangling target just skips the target-kind half of the check — unresolved links are
+ * `status`'s existing concern); a conventions-free bundle (no kind declares any `links`) returns
+ * immediately with zero extra I/O beyond the registry load every write command already pays for.
+ */
+async function lintLinkType(
+  bundle: Bundle,
+  args: { sourceType: string; text: string; to: string; remoteUrl?: string },
+): Promise<ValidationWarning[]> {
+  const registry = await loadKinds(bundle);
+  const declarations = collectLinkDeclarations(registry);
+  if (declarations.size === 0) return [];
+
+  const exact = declarations.get(args.text);
+  if (exact && exact.length > 0) {
+    // An exact-match text is the only case that needs the target doc's actual type — a near-miss
+    // (or no match at all) never pays for this extra read.
+    let targetType: string | undefined;
+    let targetResolved = true;
+    try {
+      targetType = docType(await readDoc(bundle, args.to));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+        targetResolved = false;
+      } else {
+        throw classifyBundleError(err, args.remoteUrl);
+      }
+    }
+    const matched = exact.find((d) => d.governs === args.sourceType) ?? exact[0]!;
+    const sourceOk = exact.some((d) => d.governs === args.sourceType);
+    const targetOk = !targetResolved || targetType === matched.target;
+    if (!sourceOk || !targetOk) {
+      return [
+        {
+          code: "LINK_TYPE_VIOLATION",
+          message:
+            `'${args.text}' is declared by '${matched.governs}' -> ${matched.target}; this link is ` +
+            `${args.sourceType || "(untyped)"} -> ${targetResolved ? targetType || "(untyped)" : "(unresolved)"}.`,
+          field: "text",
+          severity: "warning",
+        },
+      ];
+    }
+    return [];
+  }
+
+  // No exact match: a same-spelling-different-case near miss ('Contains' vs 'contains') warns
+  // naming the declared spelling.
+  for (const declaredText of declarations.keys()) {
+    if (declaredText.toLowerCase() === args.text.toLowerCase()) {
+      return [
+        {
+          code: "LINK_TYPE_CASE_VARIANT",
+          message: `'${args.text}' is a case-variant of the declared link type '${declaredText}' — did you mean --text '${declaredText}'?`,
+          field: "text",
+          severity: "warning",
+        },
+      ];
+    }
+  }
+  return [];
 }
 
 export async function link(argv: string[], deps: Partial<LinkCliDeps> = {}): Promise<void> {
@@ -193,20 +281,26 @@ async function linkAdd(argv: string[], stdout: (s: string) => void): Promise<voi
         { ...source, frontmatter: nextFrontmatter, body: nextBody },
         { expectedVersion: version },
       );
-      stdout(
-        render(
-          {
-            link: "added",
-            from: saved.id,
-            to,
-            href,
-            text,
-            changed: true,
-            help: [`${cliInvocation()} link show ${to}`],
-          },
-          mode,
-        ),
-      );
+      // Write-time type-conformance lint (graph lints unit) — warn-only, never blocking: the link
+      // is already written by the time this runs. Skipped entirely on the idempotent no-op path
+      // above (a true no-op performs no registry load and no checks).
+      const warnings = await lintLinkType(bundle, {
+        sourceType: docType(source),
+        text,
+        to: normalizedTo,
+        remoteUrl: values.remote,
+      });
+      const receipt: Record<string, unknown> = {
+        link: "added",
+        from: saved.id,
+        to,
+        href,
+        text,
+        changed: true,
+        help: [`${cliInvocation()} link show ${to}`],
+      };
+      if (warnings.length > 0) receipt.warnings = warnings;
+      stdout(render(receipt, mode));
       return;
     } catch (err) {
       if (err instanceof VersionConflict && attempt < LINK_ADD_MAX_ATTEMPTS - 1) continue;

@@ -123,6 +123,36 @@ test("kinds: projects a convention's 'links' declaration (typed-edge vocabulary)
   }
 });
 
+test("kinds: projects a convention's 'expects_inbound' declaration (inbound-link expectation); rows without one carry no expects_inbound key", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await writeDoc({ root: dir }, {
+      id: "conventions/task",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        title: "Task",
+        governs: "Task",
+        path: "tasks/",
+        fields: { required: ["title", "status"], optional: [], values: { status: ["queued", "active", "done"] } },
+        expects_inbound: { contains: "Roadmap Item" },
+        timestamp: T,
+      },
+      body: "A kind declaring an inbound-link expectation.",
+    });
+    const result = await runJson(kinds, ["--dir", dir]);
+    const rows = result.kinds as Array<Record<string, unknown>>;
+    const task = rows.find((r) => r.governs === "Task");
+    assert.ok(task, "expected the Task kind row");
+    assert.deepEqual(task!.expects_inbound, { contains: "Roadmap Item" });
+    // The seeded Context Note kind declares no expects_inbound — its row must not carry the key at all.
+    const note = rows.find((r) => r.governs === "Context Note");
+    assert.ok(note);
+    assert.ok(!("expects_inbound" in note!), "a kind without an expects_inbound declaration gets no expects_inbound key");
+  } finally {
+    await cleanup();
+  }
+});
+
 test("new: point-of-use link teaching is GENERIC — per-kind help shows both directions; the create receipt hints complete link-add commands; no declarations = no hints", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-kinds-test-"));
   try {

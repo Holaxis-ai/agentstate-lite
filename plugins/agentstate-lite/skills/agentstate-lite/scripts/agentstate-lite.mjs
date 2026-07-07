@@ -6471,6 +6471,34 @@ function parseConventionDoc(doc2) {
       if (Object.keys(parsed).length > 0) links = parsed;
     }
   }
+  const expectsInboundSource = fm.expects_inbound;
+  let expectsInbound;
+  if (expectsInboundSource !== void 0) {
+    if (!isPlainObject2(expectsInboundSource)) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc2.id}' has a non-map 'expects_inbound' key (${describeShape(expectsInboundSource)}; expected a map of link type name -> expected source kind); ignoring it.`,
+        field: "expects_inbound",
+        severity: "warning"
+      });
+    } else {
+      const parsed = {};
+      for (const [linkType, source] of Object.entries(expectsInboundSource)) {
+        const name = linkType.trim();
+        if (name === "" || !isScalar(source) || String(source).trim() === "") {
+          warnings.push({
+            code: "KIND_CONVENTION_BAD_MEMBER",
+            message: `kind convention '${doc2.id}' has a malformed 'expects_inbound' entry ('${linkType}': ${describeShape(source)}; expected 'link type name: expected source kind'); skipping it.`,
+            field: `expects_inbound.${linkType}`,
+            severity: "warning"
+          });
+          continue;
+        }
+        parsed[name] = String(source).trim();
+      }
+      if (Object.keys(parsed).length > 0) expectsInbound = parsed;
+    }
+  }
   const sections = Array.isArray(fm.sections) ? fm.sections.filter((s) => typeof s === "string" && s.trim() !== "") : void 0;
   const title = typeof fm.title === "string" && fm.title.trim() !== "" ? fm.title.trim() : governs;
   const path8 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
@@ -6478,6 +6506,7 @@ function parseConventionDoc(doc2) {
   const kind2 = { id: doc2.id, title, governs, fields: { required, optional, values } };
   if (path8 !== void 0) kind2.path = path8;
   if (links !== void 0) kind2.links = links;
+  if (expectsInbound !== void 0) kind2.expectsInbound = expectsInbound;
   if (sections && sections.length > 0) kind2.sections = sections;
   if (freshnessHorizon !== void 0) kind2.freshnessHorizon = freshnessHorizon;
   return { ok: true, kind: kind2, reservedFieldsIgnored: [...reservedFieldsIgnored].sort(), warnings };
@@ -6611,6 +6640,9 @@ function kindConventionDoc(kind2, prose, timestamp) {
   const frontmatter = { type: CONVENTION_TYPE, title: kind2.title, governs: kind2.governs, timestamp };
   if (kind2.path !== void 0) frontmatter.path = kind2.path;
   if (kind2.links && Object.keys(kind2.links).length > 0) frontmatter.links = kind2.links;
+  if (kind2.expectsInbound && Object.keys(kind2.expectsInbound).length > 0) {
+    frontmatter.expects_inbound = kind2.expectsInbound;
+  }
   frontmatter.fields = fields;
   if (kind2.sections && kind2.sections.length > 0) frontmatter.sections = kind2.sections;
   if (kind2.freshnessHorizon !== void 0) frontmatter.freshness_horizon = kind2.freshnessHorizon;
@@ -9118,6 +9150,22 @@ function deleteErrorToCliError(err, key2, remoteUrl) {
 
 // src/commands/link.ts
 import { parseArgs as parseArgs11 } from "node:util";
+
+// src/link-types.ts
+function collectLinkDeclarations(registry) {
+  const byText = /* @__PURE__ */ new Map();
+  for (const kind2 of registry.kinds.values()) {
+    if (!kind2.links) continue;
+    for (const [text, target] of Object.entries(kind2.links)) {
+      const list2 = byText.get(text) ?? [];
+      list2.push({ governs: kind2.governs, target });
+      byText.set(text, list2);
+    }
+  }
+  return byText;
+}
+
+// src/commands/link.ts
 var LINK_USAGE = `agentstate-lite link \u2014 add a cross-link or show a concept's links + backlinks
 
 Usage:
@@ -9126,6 +9174,12 @@ Usage:
 
 Idempotent: re-adding a link the source already carries is a no-op \u2014 exit 0, changed:false, no
 duplicate link, no timestamp refresh.
+
+Graph lint (link add only): if this bundle declares a kind's 'links' vocabulary (see 'kinds --help')
+and --text matches a declared type, the just-written link is checked against the actual source/target
+kinds; a mismatch or a same-spelling-different-case near miss attaches a 'warnings' array to the
+success envelope (exit 0 \u2014 the link is already written). An untyped --text (no declared match, any
+casing) or a conventions-free bundle never warns.
 
 Options:
   --text <t>            (link add) Link display text (default: the target id)
@@ -9147,6 +9201,55 @@ Options:
   -h, --help            Show this help
 `;
 var LINK_ADD_MAX_ATTEMPTS = 5;
+function docType(doc2) {
+  return typeof doc2.frontmatter.type === "string" ? doc2.frontmatter.type : "";
+}
+async function lintLinkType(bundle, args) {
+  const registry = await loadKinds(bundle);
+  const declarations = collectLinkDeclarations(registry);
+  if (declarations.size === 0) return [];
+  const exact = declarations.get(args.text);
+  if (exact && exact.length > 0) {
+    let targetType;
+    let targetResolved = true;
+    try {
+      targetType = docType(await readDoc(bundle, args.to));
+    } catch (err) {
+      if (err?.code === "ENOENT") {
+        targetResolved = false;
+      } else {
+        throw classifyBundleError(err, args.remoteUrl);
+      }
+    }
+    const matched = exact.find((d) => d.governs === args.sourceType) ?? exact[0];
+    const sourceOk = exact.some((d) => d.governs === args.sourceType);
+    const targetOk = !targetResolved || targetType === matched.target;
+    if (!sourceOk || !targetOk) {
+      return [
+        {
+          code: "LINK_TYPE_VIOLATION",
+          message: `'${args.text}' is declared by '${matched.governs}' -> ${matched.target}; this link is ${args.sourceType || "(untyped)"} -> ${targetResolved ? targetType || "(untyped)" : "(unresolved)"}.`,
+          field: "text",
+          severity: "warning"
+        }
+      ];
+    }
+    return [];
+  }
+  for (const declaredText of declarations.keys()) {
+    if (declaredText.toLowerCase() === args.text.toLowerCase()) {
+      return [
+        {
+          code: "LINK_TYPE_CASE_VARIANT",
+          message: `'${args.text}' is a case-variant of the declared link type '${declaredText}' \u2014 did you mean --text '${declaredText}'?`,
+          field: "text",
+          severity: "warning"
+        }
+      ];
+    }
+  }
+  return [];
+}
 async function link(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const sub = argv[0];
@@ -9239,20 +9342,23 @@ async function linkAdd(argv, stdout) {
         { ...source, frontmatter: nextFrontmatter, body: nextBody },
         { expectedVersion: version }
       );
-      stdout(
-        render(
-          {
-            link: "added",
-            from: saved.id,
-            to,
-            href,
-            text,
-            changed: true,
-            help: [`${cliInvocation()} link show ${to}`]
-          },
-          mode
-        )
-      );
+      const warnings = await lintLinkType(bundle, {
+        sourceType: docType(source),
+        text,
+        to: normalizedTo,
+        remoteUrl: values.remote
+      });
+      const receipt = {
+        link: "added",
+        from: saved.id,
+        to,
+        href,
+        text,
+        changed: true,
+        help: [`${cliInvocation()} link show ${to}`]
+      };
+      if (warnings.length > 0) receipt.warnings = warnings;
+      stdout(render(receipt, mode));
       return;
     } catch (err) {
       if (err instanceof VersionConflict && attempt < LINK_ADD_MAX_ATTEMPTS - 1) continue;
@@ -9822,6 +9928,13 @@ Declaring a kind convention (frontmatter keys core reads \u2014 everything else 
                                  typed edge; every other link is an untyped citation. Write typed
                                  edges with 'link add <from> <to> --text <type>' and query them
                                  with 'link show <id> --text <type>'
+  expects_inbound      map      link type name -> expected SOURCE kind, declared on the kind the
+                                 expectation is ABOUT (the link TARGET) \u2014 e.g. a 'Task' declaring
+                                 {contains: "Roadmap Item"} expects every Task to have an inbound
+                                 'contains' edge from a Roadmap Item. Drives the 'status' command's
+                                 missing_expected_links lint; 'link add' also warns on a
+                                 type-mismatched edge against any declared 'links'/'expects_inbound'
+                                 vocabulary. Write-time is never blocked by this key.
   sections             list     expected level-1 '# Heading' body-section names
   freshness_horizon    string   '<n>(m|h|d)', e.g. 24h, 30d, 15m
 A misshaped or misplaced key here is a non-fatal registry warning (visible in 'kinds'/'status'
@@ -9843,6 +9956,7 @@ function toRow(kind2) {
   };
   if (Object.keys(kind2.fields.values).length > 0) row.values = kind2.fields.values;
   if (kind2.links && Object.keys(kind2.links).length > 0) row.links = kind2.links;
+  if (kind2.expectsInbound && Object.keys(kind2.expectsInbound).length > 0) row.expects_inbound = kind2.expectsInbound;
   if (kind2.path) row.path = kind2.path;
   if (kind2.sections && kind2.sections.length > 0) row.sections = kind2.sections;
   if (kind2.freshnessHorizon) {
@@ -10223,10 +10337,12 @@ Runs, in ONE pass over the bundle: a kind-conformance lint (against any declared
 reusing the SAME validator 'doc write'/'new' use), an unresolved-link scan (a link whose target
 isn't in the bundle \u2014 informational, since OKF permits links to not-yet-written knowledge; external
 links are excluded entirely), an orphan scan (concept docs with zero inbound links from OTHER
-concept docs), and a freshness sweep over kinds that declare a horizon (a governed doc older than
-it is 'stale'; a governed doc with no usable timestamp \u2014 missing OR malformed \u2014 is counted
-'no_timestamp'). Duplicate-id detection is not offered: an id IS its storage path, so ids are
-structurally unique.
+concept docs), a freshness sweep over kinds that declare a horizon (a governed doc older than it is
+'stale'; a governed doc with no usable timestamp \u2014 missing OR malformed \u2014 is counted
+'no_timestamp'), and two graph lints over any declared 'links'/'expects_inbound' vocabulary (see
+'kinds --help'): edges violating a declared typed-edge type ('link_type_violations') and kind
+instances missing a declared inbound expectation ('missing_expected_links'). Duplicate-id detection
+is not offered: an id IS its storage path, so ids are structurally unique.
 
 Category semantics (one line each):
   malformed          A document whose YAML frontmatter cannot be parsed at all \u2014 it is skipped by
@@ -10250,6 +10366,15 @@ Category semantics (one line each):
                       judged stale or fresh at all, so it is counted separately from 'stale'.
   registry_warnings  Malformed convention docs THEMSELVES (loadKinds' own warnings) \u2014 a problem in
                       the schema declaration, not in a doc that kind governs.
+  link_type_violations  An edge whose text EXACTLY matches a declared typed-edge vocabulary entry
+                      (some kind's 'links' map) but the actual source and/or target doc's type
+                      doesn't conform to that declaration \u2014 the same rule 'link add' warns on at
+                      write time, applied bundle-wide.
+  missing_expected_links  A kind instance whose OWN kind declares 'expects_inbound' but lacks at
+                      least one conforming inbound edge (exact text match AND the citing doc's
+                      type matches the expected source kind). Rows carry the instance's 'status'
+                      field value when its kind declares one (the triage signal); non-done
+                      instances sort first.
 
 This is a whole-bundle read (one registry load + one query, batched) \u2014 acceptable for an explicitly
 batch-analysis command; over --remote it is one whole-bundle fetch, not a per-doc round trip.
@@ -10270,7 +10395,7 @@ function cap(rows, limit) {
   const bounded = limit > 0 ? rows.slice(0, limit) : rows;
   return { shown: bounded.length, total: rows.length, rows: bounded };
 }
-function docType(doc2) {
+function docType2(doc2) {
   return typeof doc2.frontmatter.type === "string" ? doc2.frontmatter.type : "";
 }
 async function status(argv, deps = {}) {
@@ -10308,44 +10433,88 @@ async function status(argv, deps = {}) {
     query(bundle, {}, { onSkip: (s) => malformedRows.push({ id: s.id, reason: s.reason }) })
   ]);
   const byId = new Set(docs.map((d) => d.id));
+  const docsById = new Map(docs.map((d) => [d.id, d]));
   const lintRows = [];
   for (const doc2 of docs) {
-    const kind2 = registry.kinds.get(docType(doc2));
+    const kind2 = registry.kinds.get(docType2(doc2));
     if (!kind2) continue;
     for (const w of validateAgainstKind(doc2, kind2)) {
       lintRows.push({ id: doc2.id, field: w.field ?? "", code: w.code });
     }
   }
+  const linkTypeDeclarations = collectLinkDeclarations(registry);
   const unresolvedRows = [];
   const inbound = /* @__PURE__ */ new Set();
+  const inboundEdges = /* @__PURE__ */ new Map();
+  const linkTypeViolationRows = [];
   for (const doc2 of docs) {
     for (const l of parseLinksFromDoc(doc2)) {
       if (!byId.has(l.to)) {
         unresolvedRows.push({ from: doc2.id, href: l.href });
         continue;
       }
-      if (l.to !== doc2.id) inbound.add(l.to);
+      if (l.to !== doc2.id) {
+        inbound.add(l.to);
+        const list2 = inboundEdges.get(l.to) ?? [];
+        list2.push({ text: l.text, sourceType: docType2(doc2) });
+        inboundEdges.set(l.to, list2);
+      }
+      const declared = linkTypeDeclarations.get(l.text);
+      if (declared && declared.length > 0) {
+        const sourceType = docType2(doc2);
+        const targetType = docType2(docsById.get(l.to));
+        const matched = declared.find((d) => d.governs === sourceType) ?? declared[0];
+        const sourceOk = declared.some((d) => d.governs === sourceType);
+        const targetOk = targetType === matched.target;
+        if (!sourceOk || !targetOk) {
+          linkTypeViolationRows.push({
+            from: doc2.id,
+            to: l.to,
+            text: l.text,
+            expected: `${matched.governs} -> ${matched.target}`
+          });
+        }
+      }
     }
   }
   const orphanRows = [];
   for (const doc2 of docs) {
-    if (!inbound.has(doc2.id)) orphanRows.push({ id: doc2.id, type: docType(doc2) });
+    if (!inbound.has(doc2.id)) orphanRows.push({ id: doc2.id, type: docType2(doc2) });
   }
   const now = /* @__PURE__ */ new Date();
   const staleRows = [];
   const noTimestampRows = [];
   for (const doc2 of docs) {
-    const kind2 = registry.kinds.get(docType(doc2));
+    const kind2 = registry.kinds.get(docType2(doc2));
     if (!kind2) continue;
     const horizonMs = freshnessHorizonMs(kind2);
     if (horizonMs === void 0) continue;
     const result = freshness(doc2, { maxAgeMs: horizonMs, now });
     if (result.verdict === "empty") {
-      noTimestampRows.push({ id: doc2.id, type: docType(doc2) });
+      noTimestampRows.push({ id: doc2.id, type: docType2(doc2) });
     } else if (result.verdict === "stale") {
       staleRows.push({ id: doc2.id, age_ms: result.ageMs, horizon_ms: horizonMs });
     }
   }
+  const missingExpectedRows = [];
+  for (const doc2 of docs) {
+    const kind2 = registry.kinds.get(docType2(doc2));
+    if (!kind2?.expectsInbound) continue;
+    const edges = inboundEdges.get(doc2.id) ?? [];
+    const missing = Object.entries(kind2.expectsInbound).filter(([text, sourceKind]) => !edges.some((e) => e.text === text && e.sourceType === sourceKind)).map(([text]) => text);
+    if (missing.length === 0) continue;
+    const row = { id: doc2.id };
+    const declaresStatus = kind2.fields.required.includes("status") || kind2.fields.optional.includes("status");
+    if (declaresStatus) row.status = doc2.frontmatter.status;
+    row.missing = missing;
+    missingExpectedRows.push(row);
+  }
+  missingExpectedRows.sort((a, b) => {
+    const aDone = a.status === "done";
+    const bDone = b.status === "done";
+    if (aDone !== bDone) return aDone ? 1 : -1;
+    return String(a.id).localeCompare(String(b.id));
+  });
   const malformed = cap(malformedRows, limit);
   const lint = cap(lintRows, limit);
   const unresolved = cap(unresolvedRows, limit);
@@ -10356,6 +10525,8 @@ async function status(argv, deps = {}) {
     registry.warnings.map((w) => ({ ...w })),
     limit
   );
+  const linkTypeViolations = cap(linkTypeViolationRows, limit);
+  const missingExpectedLinks = cap(missingExpectedRows, limit);
   const out = {
     docs: docs.length,
     kinds: registry.kinds.size,
@@ -10365,7 +10536,9 @@ async function status(argv, deps = {}) {
     orphans: orphans.total,
     stale: stale.total,
     no_timestamp: noTimestamp.total,
-    registry_warnings: registryLint.total
+    registry_warnings: registryLint.total,
+    link_type_violations: linkTypeViolations.total,
+    missing_expected_links: missingExpectedLinks.total
   };
   if (malformed.total > 0) out.malformed_docs = malformed;
   if (lint.total > 0) out.kind_lint = lint;
@@ -10373,6 +10546,8 @@ async function status(argv, deps = {}) {
   if (orphans.total > 0) out.orphan_docs = orphans;
   if (stale.total > 0) out.stale_docs = stale;
   if (noTimestamp.total > 0) out.no_timestamp_docs = noTimestamp;
+  if (linkTypeViolations.total > 0) out.link_type_violations_rows = linkTypeViolations;
+  if (missingExpectedLinks.total > 0) out.missing_expected_links_rows = missingExpectedLinks;
   if (registryLint.total > 0) out.registry_lint = registryLint;
   stdout(render(out, resolveMode(values)));
 }
@@ -12562,7 +12737,7 @@ var COMMAND_GROUPS = [
       },
       {
         usage: "status [--limit <n>] [--remote <url>]",
-        summary: "Read-only bundle health report (kind lint, unresolved links, orphans, staleness)"
+        summary: "Read-only bundle health report (kind lint, unresolved links, orphans, staleness, graph lints)"
       }
     ]
   },
