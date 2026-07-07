@@ -1,79 +1,114 @@
 ---
 type: Plan
 title: >-
-  sync verb design: git porcelain, four rules, the awareness cursor (build HOLDS
-  for its consumer)
-timestamp: '2026-07-07T18:02:14.174Z'
+  sync verb v2: board branch + linked worktree — folder-scoped by construction
+  (panel-reviewed)
+timestamp: '2026-07-07T19:39:02.435Z'
 ---
-# sync verb — design (git porcelain + the awareness cursor)
+# sync verb — design v2 (board branch + linked worktree)
 
-Design pinned 2026-07-07 while the build HOLDS: sync's first live consumer is the founders'
-shared in-repo bundle, which lands after Brian's skill-location change + the scrubbed port
-(see [docs/call-2026-07-07-bundle-in-repo](../docs/call-2026-07-07-bundle-in-repo.md) and
-the port scrub audit (private board archive)). Spec lineage:
-[tasks/git-sharing](../tasks/git-sharing.md) Tier 1 (the migration script is the harvested
-spec). Do not build before the consumer exists.
+v2 pinned 2026-07-07, superseding v1 after the 4-agent panel review
+([research/sync-verb-review](../research/sync-verb-review.md)) showed v1's shared-branch
+porcelain unsafe in the common case. Architecture change recorded in
+[decisions/board-branch-sync](../decisions/board-branch-sync.md) (Brian approved; Mike to
+confirm before migration executes). The driving requirement, from Brian directly: sync must
+touch ONLY `.agentstate-lite/`. Git cannot pull or push a folder on a shared branch —
+those operations are branch-atomic — so folder scoping is achieved STRUCTURALLY: the
+bundle lives on a dedicated `board` branch (branch root = bundle root) checked out as a
+linked worktree at `.agentstate-lite/`, gitignored on main.
+
+## What changed from v1 (each traced to a panel finding)
+
+- v1's `git pull --rebase` on the shared branch refused on any unstaged change, could
+  corrupt uncommitted user code via `--autostash` while exiting 0, rebased the founders'
+  own code commits, and stranded the repo mid-rebase on conflict. Under the board
+  worktree, sync physically cannot touch user code: the rebase replays only bundle
+  commits, conflicts occur only in docs, and the worktree has its OWN index (no
+  index.lock contention with the user's git).
+- v1's pathspec commit silently dropped NEW (untracked) docs. v2 stages first: `add -A`
+  inside the worktree, then commit.
+- v1 folded the pull into the SessionStart home view, violating home()'s structural
+  offline guarantee. v2 splits them (below).
+- v1's cursor had no error branch. v2 specifies guard + re-anchor + honest reporting.
+- v1 named no push trigger. v2 wires the loop's other half (below).
 
 ## Shape
 
-`aslite sync [--dir|--remote…no: git tier only] [--pull-only]` — shell out to SYSTEM git:
+`aslite sync [--pull-only]` — shell to SYSTEM git, always `git -C <worktree>`, env
+scrubbed (unset GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE — inherited values override `-C`),
+GIT_TERMINAL_PROMPT=0, GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=10':
 
-1. detect: bundle inside a git worktree? (`git rev-parse`) — if not, definitive structured
-   answer, exit 0 semantics per AXI (a non-repo bundle has "nothing to sync", not an error).
-2. commit: **pathspec-limited to the bundle folder only** — never `add -A`, never touch the
-   user's staged code. Auto-message carries the actor (`board: <actor> — N docs`).
-3. `git pull --rebase`, then push.
-4. Envelope: `{committed, pulled, pushed, conflicts[]}` — counts + conflicted doc IDS with
-   suggested resolution commands. Definitive empty: `sync: nothing to sync`. Idempotent.
+0. **provision**: worktree absent but `board` exists on origin → `git worktree add
+   .agentstate-lite board` (self-healing clone). No git repo at all → definitive
+   "sync: nothing to sync", exit 0. All worktree internals via `git rev-parse --git-path`
+   (in a linked worktree `.git` is a FILE — never assume a directory).
+1. **commit**: `git add -A` → `git commit -m "board: <actor> — N docs"`; skip when
+   `git diff --cached --quiet` (idempotent no-op).
+2. **pull**: `git fetch origin` → `git rebase @{u}` inside the worktree. On conflict:
+   collect ids via `diff --name-only --diff-filter=U`, then `git rebase --abort` — NEVER
+   leave the worktree mid-rebase — and exit CONFLICT(5) reporting both versions per doc
+   with resolution routed through `doc update` (never hand-edited conflict markers).
+3. **push** (`--pull-only` skips 1 and 3).
+4. **Envelope**: `{committed, pulled, pushed, conflicts{shown,total,rows}}` (cap()
+   convention); "sync: nothing to sync" exit 0. classifyGitError chokepoint: git-missing →
+   RUNTIME(1) with help "install git", auth → AUTH(4), unresolved conflict → CONFLICT(5).
+   No raw git output on stdout, ever. Precondition failures (detached HEAD, no upstream)
+   are structured errors naming the state.
 
-## The four rules (constitution-level)
+## The four rules (v1's, upgraded)
 
-1. **Git is an OPTIONAL runtime dependency.** Only sync (and the hook's pull) touch it;
-   every core command works with no git installed. Git-missing is a structured error naming
-   the requirement, never a crash. Local-first = network AND git can both be absent.
-2. **Path-scoped, always.** The bundle lives inside the user's code repo; sweeping up their
-   staged changes is the unforgivable footgun.
-3. **AXI at the boundary.** No raw git output on stdout, ever. `GIT_TERMINAL_PROMPT=0` so an
-   auth problem is a structured error, never a hung agent (same bug class as the day-one
-   stdin hang). Conflicts translate to doc ids + commands.
-4. **Command layer only (gate 3).** The engine never learns git exists; FilesystemBackend
-   stays byte-oriented. A git-backed `versions()` adapter remains a separate future
-   decision, neither needed nor foreclosed.
+1. **Git optional** — unchanged. Stated plainly now: the awareness value lives in this
+   tier; a git-less bundle gets zero awareness by design.
+2. **Path-scoped, always** — now BY CONSTRUCTION (the synced branch contains only the
+   bundle), not by per-command discipline.
+3. **AXI at the boundary** — unchanged, plus the non-interactive guards above.
+4. **Command layer only** — unchanged; the engine never learns git exists. Placement:
+   new `cli/src/git.ts` + `cli/src/cursor.ts`; `packages/core` untouched.
 
-## The awareness cursor (ships WITH sync — it is why sync exists)
+## Awareness cursor
 
-Awareness = attributed-changes-since-cursor. In the git tier the cursor is a commit SHA and
-git IS the change feed: `git diff --name-status <last-seen>..HEAD -- <bundle-path>` mapped
-to doc ids + frontmatter actors. Mechanism:
+Keyed per BUNDLE (repo remote URL + subpath; fallback: absolute bundle root), stored in
+`~/.agentstate/` with credentials.ts's atomic-write/0600 discipline, as an OPAQUE
+`{tier: "git", token: <sha>}` — the future D1 tier ships `{tier: "d1", token: <seq>}`
+behind the same `changesSince(cursor) → {docId, actor}[]` interface, keeping the CLI
+surface tier-agnostic. Guard `git cat-file -e <token>^{commit}` before diffing; on miss,
+re-anchor to HEAD and report "delta unavailable (history rewritten)" — never silently
+skip unseen changes. Two-dot diff (snapshot-to-snapshot; requires object existence, not
+ancestry).
 
-- last-seen SHA per machine in `~/.agentstate/` (untracked, 0600 discipline).
-- SessionStart hook: fail-soft fast-forward pull → render "since your last session:
-  N docs changed — <actor>: <ids>" in the home view → advance cursor.
-- Same derivation feeds the human activity feed (plans/ui-orientation-brief) — one
-  primitive, two faces. This is engine gap 2's git-tier implementation; the D1 `seq`
-  implementation waits for the live tier.
+## SessionStart (split, preserving home's offline guarantee)
 
-## Conflict model (honest tier semantics)
+A SEPARATE hook step runs `sync --pull-only`: `fetch` + `merge --ff-only @{u}` in the
+worktree (fail-soft: swallows not-a-repo, no-upstream, detached HEAD, divergence, dirty
+refusal, auth/network — every nonzero exit), computes the delta + unpushed-commit count,
+CACHES both to a file, advances the cursor. `home()` stays fs-only/offline/instant and
+renders from the cache: "since your last session: N docs changed — <actor>: <ids>" plus
+the honesty backstop: "M local board commits not yet pushed — run sync when online."
+Hook wiring is a named open decision: extend axi-sdk-js installSessionStartHooks for a
+second managed entry, or `hook install --with-sync` (default: --with-sync — no external
+dependency). The richer human render (verb + kind + title, chronological) belongs to the
+activity feed (plans/ui-orientation-brief) consuming the SAME derivation — one primitive,
+two faces.
 
-One OKF doc = one file → git 3-way merge resolves different-doc concurrency automatically
-(the common case). Same-doc concurrent edits = a CAS conflict arriving at sync time instead
-of write time; surface doc-granular with resolution guidance. Escalation when write-time
-enforcement is actually needed: `serve` as a shared head (e.g. over a tailnet) or the frozen
-worker — config changes, not builds. Tiers stack; git stays the durable source of truth.
+## Push triggers (the loop's other half)
 
-## Real-time ladder (parked, with wake conditions)
+- The SKILL's typical flow and the unit-close convention end with `sync` — recording work
+  is not done until it is shared.
+- Optional Stop/SessionEnd hook mirroring the pull step.
+- The SessionStart unpushed-count is the backstop when both were missed.
 
-1. Poll faster (ui server / cron pulls 30–60s) — near-free, probably sufficient. Wake: the
-   founders actually working simultaneously.
-2. Shared enforced head for hot docs/claims — existing machinery. Wake: same-doc collisions
-   observed in practice (respect the null hypothesis: canonical's leases sometimes ADDED
-   friction).
-3. Push/SSE (`changes-since` wire route; Durable Objects on CF) — the only new build. Wake:
-   a real live-orchestration workflow that needs sub-second reaction. Note agents are
-   pull-shaped; the realistic push consumer is the human UI, covered cheaper by (1).
+## Migration (one-time; the current bundle is committed on main)
 
-## Non-goals
+`git subtree split -P .agentstate-lite -b board` (preserves the folder's history as the
+branch), push `board`; remove the folder from main's tree + gitignore it; provision
+worktrees per clone (or let sync self-provision). Scriptable; candidate `sync --migrate`.
+Human-gated: runs on this repo only after Mike confirms the decision doc.
 
-No daemon · no auto-commit-per-write (defer; sync batches) · no git submodules/subtrees ·
-no embedded git library (system git inherits the user's auth for free — the whole point) ·
-no cross-repo multi-bundle orchestration.
+## Carried unchanged from v1
+
+Conflict model (one doc = one file; git 3-way merges different-doc concurrency; same-doc
+= CAS-conflict-at-sync-time; escalation to `serve` as a shared head or the frozen worker
+is CONFIG, not build). Real-time ladder parked with wake conditions. Non-goals: no
+daemon, no auto-commit-per-write, no submodules (the linked worktree is NOT a submodule —
+same repo, no gitlink), no embedded git library (system git inherits the user's auth —
+still the whole point), no cross-repo multi-bundle orchestration.
