@@ -1,7 +1,7 @@
 ---
 type: Research
 title: 'sync verb v2 — DevX/UX design review: 7 essential proposals + the message pack'
-timestamp: '2026-07-07T19:50:03.170Z'
+timestamp: '2026-07-07T21:09:30.405Z'
 ---
 # sync verb v2 — DevX/UX design review (proposals + message pack)
 
@@ -53,11 +53,15 @@ divergent second bundle. Silent wrong-model creation.
 
 (a) clean sync: `sync: {committed: 2, pushed: 2, pulled: 3, actor: brian, incoming: {shown, total, rows: [{verb, kind, id, title, actor}…]}}`
 (b) empty states: `sync: nothing to sync` (no repo) vs `sync: already up to date` (current)
-(c) conflict (exit 5): message "sync paused: 1 doc changed on both sides — your local
-    edits are safe, nothing was overwritten"; rows {id, kind, title, yours, theirs}; help
-    chain: `sync --show-incoming <id>` → `doc update <id> --body-file <file>` → `sync`
-(d) push failed after commit: warning "committed to the board locally — your work is
-    saved. The push failed (offline or auth); re-run sync when you're back online."
+(c) conflict (exit 5) — AMENDED per Phase B vet (see plans/sync-verb-implementation A/D):
+    U3a interim message "doc X changed on both sides — nothing was changed on either side;
+    conflict resolution ships in the next update". U3b converge per-doc string "teammate's
+    version kept; yours saved at <path> — reconcile with doc update" (the phrase "nothing
+    was overwritten" is DROPPED). rows {id, kind, title, yours, theirs}; help chain:
+    `sync --show-incoming <id>` → `doc update <id> --body-file <file>` → `sync`
+(d) push failed after commit — AMENDED per Phase B vet (see plans/sync-verb-implementation
+    D): warning "committed to the board locally — your work is saved. The push failed
+    (offline or auth); re-run sync when you're back online or your access is restored."
     (exit 4 auth / 1 network, same message)
 (e) SessionStart: `board: since_last_session: "3 board changes from mike"` + per-doc
     human lines + `unpushed: "2 local board commits not yet pushed — run sync when
