@@ -7113,6 +7113,11 @@ var TASK_KIND = {
   title: TASK_TYPE,
   governs: TASK_TYPE,
   path: "tasks/",
+  // The typed-edge vocabulary (decisions/typed-links-carrier): a task's dependency edge is a
+  // link whose display text is exactly "depends on", targeting another Task. Declared here so
+  // `kinds` teaches the vocabulary to any agent that orients — discovery shipped; validation
+  // is a future consumer.
+  links: { "depends on": TASK_TYPE },
   fields: {
     required: ["title", "status"],
     optional: ["priority", "assignee", "description"],
@@ -7120,8 +7125,8 @@ var TASK_KIND = {
   },
   freshnessHorizon: "30d"
 };
-var TASK_SEED_BODY = "# Task\n\nA unit of work, composed entirely from lite primitives \u2014 no bespoke task engine.\nA task is a `type: Task` doc; its `status` is a validated enum; its DEPENDENCIES are\ncross-links to prerequisite task docs (the link graph IS the DAG, backlinks show what\nis blocked on it); an atomic CLAIM is a compare-and-swap write flipping `status` to\n`in_progress` (a second claimer gets a VersionConflict). Query with `list --type Task`;\nlint/orphans/staleness via `status`.\n";
-var WORK_TRACKING_SUMMARY = "Declares the built-in Task kind convention (title/status required, status enum, 30d freshness horizon)";
+var TASK_SEED_BODY = '# Task\n\nA unit of work, composed entirely from lite primitives \u2014 no bespoke task engine.\nA task is a `type: Task` doc; its `status` is a validated enum; its DEPENDENCIES are\ntyped `depends on` cross-links to prerequisite task docs (the declared link type \u2014\nthe link graph IS the DAG, and `link show <id> --text "depends on"` shows both\ndirections); an atomic CLAIM is a compare-and-swap write flipping `status` to\n`in_progress` (a second claimer gets a VersionConflict). Query with `list --type Task`;\nlint/orphans/staleness via `status`.\n';
+var WORK_TRACKING_SUMMARY = "Declares the built-in Task kind convention (title/status required, status enum, 'depends on' link type, 30d freshness horizon)";
 var WORK_TRACKING_DESC_BODY = "# Work Tracking\n\nInstalls the `Task` kind convention: a unit of work with a validated `status` enum (todo/in_progress/blocked/done/canceled), scaffolded under `tasks/`. Status/priority/assignee are FIELDS of Task, not separate conventions or a bespoke task verb \u2014 dependencies, claiming, and querying all compose from existing generic primitives (`link add`, CAS `doc update`, `list --type Task`, `status`).\n\nApplied on demand with `recipe add work-tracking` (not part of `init`'s default \u2014 that stays `context-notes`).\n";
 async function applyRecipe(bundle, recipe2, now = (/* @__PURE__ */ new Date()).toISOString()) {
   const docs = [];

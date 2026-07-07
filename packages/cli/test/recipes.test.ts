@@ -210,6 +210,7 @@ test("recipe add work-tracking: applies conventions/task.md, frontmatter matches
       title: "Task",
       governs: "Task",
       path: "tasks/",
+      links: { "depends on": "Task" },
       fields: {
         required: ["title", "status"],
         optional: ["priority", "assignee", "description"],
@@ -239,6 +240,7 @@ test("kinds: reports Task with required/optional/values/horizon after recipe add
     assert.deepEqual(kind!.fields.values.status, ["todo", "in_progress", "blocked", "done", "canceled"]);
     assert.equal(kind!.path, "tasks/");
     assert.equal(kind!.freshnessHorizon, "30d");
+    assert.deepEqual(kind!.links, { "depends on": "Task" }, "the seeded Task kind declares its typed-edge vocabulary");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -658,6 +660,7 @@ test("SHIPPED example recipe (examples/recipes/claims): applies cleanly, declare
     assert.ok(claim, "the Claim kind must be declared after applying the shipped example recipe");
     assert.deepEqual(claim!.fields.required, ["title", "status", "reason"]);
     assert.deepEqual(claim!.fields.values?.status, ["active", "challenged", "locked", "deprecated"]);
+    assert.deepEqual(claim!.links, { supersedes: "Claim" }, "the example recipe declares the supersession edge type");
 
     const again = await runJson(recipe, ["add", SHIPPED_CLAIMS_RECIPE, "--dir", dir]);
     assert.equal(again.changed, false, "re-applying the shipped recipe must be an idempotent no-op");
