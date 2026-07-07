@@ -45,8 +45,8 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
   — Hard-delete a doc (idempotent: absent -> deleted:false, exit 0)
 - `npx -y agentstate-lite list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--limit <n>] [--remote <url>]`
   — Query concepts over their frontmatter (alias: query)
-- `npx -y agentstate-lite link (add <from> <to> [--text <t>] | show <id> [--limit <n>]) [--remote <url>]`
-  — Add a cross-link, or show a concept's links + backlinks
+- `npx -y agentstate-lite link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>]) [--remote <url>]`
+  — Add a cross-link, or show a concept's links + backlinks (each carrying link text; --text filters both directions by exact match)
 
 ### Artifacts
 

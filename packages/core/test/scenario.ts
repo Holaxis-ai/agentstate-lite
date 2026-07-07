@@ -56,8 +56,10 @@ export async function scenario(bundle: Bundle): Promise<unknown> {
   const all = await query(bundle);
   const concepts = await list(bundle, { type: "Concept" });
   const alpha = await readDoc(bundle, "concepts/alpha");
-  const betaBacklinks = await backlinks(bundle, "concepts/beta");
-  const alphaBacklinks = await backlinks(bundle, "concepts/alpha");
+  // Reduced to { from, text } — the two fields a citing-link consumer (CLI `link show`) cares
+  // about; `to`/`href` are redundant here (every row targets the same `backlinks()` argument).
+  const betaBacklinks = (await backlinks(bundle, "concepts/beta")).map((l) => ({ from: l.from, text: l.text }));
+  const alphaBacklinks = (await backlinks(bundle, "concepts/alpha")).map((l) => ({ from: l.from, text: l.text }));
   const noteDoc = await readDoc(bundle, NOTE_ID);
   const noteFreshness = freshness(noteDoc, { now: NOW });
 

@@ -79,8 +79,8 @@ export const COMMAND_GROUPS: CommandGroup[] = [
         summary: "Query concepts over their frontmatter (alias: query)",
       },
       {
-        usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>]) [--remote <url>]",
-        summary: "Add a cross-link, or show a concept's links + backlinks",
+        usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>]) [--remote <url>]",
+        summary: "Add a cross-link, or show a concept's links + backlinks (each carrying link text; --text filters both directions by exact match)",
       },
     ],
   },
