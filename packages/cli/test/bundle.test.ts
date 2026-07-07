@@ -21,7 +21,13 @@ import path from "node:path";
 import { initBundle, writeDoc } from "@agentstate-lite/core";
 import { serve, type ServerHandle } from "@agentstate-lite/server";
 
-import { resolveProjectBinding, resolveRemoteFlag, openBundle, PROJECT_BINDING_FILE_NAME } from "../src/bundle.js";
+import {
+  resolveProjectBinding,
+  resolveRemoteFlag,
+  openBundle,
+  PROJECT_BINDING_FILE_NAME,
+  CONVENTIONAL_BUNDLE_DIR_NAME,
+} from "../src/bundle.js";
 import { CliError } from "../src/errors.js";
 import { list } from "../src/commands/list.js";
 import { whoami } from "../src/commands/whoami.js";
@@ -507,5 +513,131 @@ test("whoami: a URL-type project binding is NOT merely noted — it drives whoam
   } finally {
     globalThis.fetch = originalFetch;
     await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
+// ── conventional-folder discovery: <ancestor>/.agentstate-lite/ found with zero config ─────
+
+test("openBundle: a conventional .agentstate-lite/ bundle at an ancestor is discovered bare — no flags, no env, no binding", async () => {
+  const project = await tempDir();
+  try {
+    const conventional = path.join(project, CONVENTIONAL_BUNDLE_DIR_NAME);
+    await initBundle(conventional);
+    const nested = path.join(project, "src", "deep");
+    await mkdir(nested, { recursive: true });
+    await inDir(nested, async () => {
+      const bundle = await openBundle(undefined, undefined);
+      assert.equal(bundle.root, conventional);
+    });
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
+
+test("openBundle: standing INSIDE a bundle beats a conventional folder at the same level — index.md is checked first per level", async () => {
+  const project = await tempDir();
+  try {
+    // project/ is itself a bundle AND carries a conventional subfolder bundle.
+    await initBundle(project);
+    const conventional = path.join(project, CONVENTIONAL_BUNDLE_DIR_NAME);
+    await initBundle(conventional);
+    await inDir(project, async () => {
+      const bundle = await openBundle(undefined, undefined);
+      assert.equal(bundle.root, project);
+    });
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
+
+test("openBundle: the NEAREST level wins — a nested dir's conventional folder beats an ancestor's", async () => {
+  const project = await tempDir();
+  try {
+    const outer = path.join(project, CONVENTIONAL_BUNDLE_DIR_NAME);
+    await initBundle(outer);
+    const sub = path.join(project, "packages", "app");
+    const inner = path.join(sub, CONVENTIONAL_BUNDLE_DIR_NAME);
+    await initBundle(inner);
+    await inDir(sub, async () => {
+      const bundle = await openBundle(undefined, undefined);
+      assert.equal(bundle.root, inner);
+    });
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
+
+test("openBundle: a directory-type .agentstate.json binding BEATS the conventional folder (committed beats discovered)", async () => {
+  const project = await tempDir();
+  const elsewhere = await tempDir();
+  try {
+    await initBundle(path.join(project, CONVENTIONAL_BUNDLE_DIR_NAME));
+    await initBundle(elsewhere);
+    await writeBinding(project, elsewhere);
+    await inDir(project, async () => {
+      const bundle = await openBundle(undefined, undefined);
+      assert.equal(bundle.root, elsewhere);
+    });
+  } finally {
+    await rm(project, { recursive: true, force: true });
+    await rm(elsewhere, { recursive: true, force: true });
+  }
+});
+
+test("openBundle: an explicit --dir beats the conventional folder, and a bare .agentstate-lite/ WITHOUT index.md is not a bundle (no false positive)", async () => {
+  const project = await tempDir();
+  const explicit = await tempDir();
+  try {
+    await initBundle(path.join(project, CONVENTIONAL_BUNDLE_DIR_NAME));
+    await initBundle(explicit);
+    await inDir(project, async () => {
+      const bundle = await openBundle(explicit, undefined);
+      assert.equal(bundle.root, explicit);
+    });
+    // An empty conventional folder (no index.md) must fall through to NOT_FOUND, and the
+    // error must name BOTH forms it looked for plus the conventional init hint.
+    const empty = await tempDir();
+    try {
+      await mkdir(path.join(empty, CONVENTIONAL_BUNDLE_DIR_NAME));
+      await inDir(empty, async () => {
+        await assert.rejects(
+          () => openBundle(undefined, undefined),
+          (err: unknown) => {
+            assert.ok(err instanceof CliError);
+            assert.equal(err.code, "NOT_FOUND");
+            assert.match(err.message, /\.agentstate-lite\/index\.md/);
+            return true;
+          },
+        );
+      });
+    } finally {
+      await rm(empty, { recursive: true, force: true });
+    }
+  } finally {
+    await rm(project, { recursive: true, force: true });
+    await rm(explicit, { recursive: true, force: true });
+  }
+});
+
+test("end-to-end: a bare `list` from a nested cwd rides conventional-folder discovery to a real bundle", async () => {
+  const project = await tempDir();
+  try {
+    const conventional = path.join(project, CONVENTIONAL_BUNDLE_DIR_NAME);
+    await initBundle(conventional);
+    await writeDoc(
+      { root: conventional },
+      { id: "specs/demo", frontmatter: { type: "Spec", title: "Demo" }, body: "hello" },
+    );
+    const nested = path.join(project, "src");
+    await mkdir(nested, { recursive: true });
+    await inDir(nested, async () => {
+      let out = "";
+      await list(["--json"], { stdout: (s) => (out += s) });
+      const parsed = JSON.parse(out) as { count: number; docs: Array<{ id: string }> };
+      assert.equal(parsed.count, 1);
+      assert.equal(parsed.docs[0]?.id, "specs/demo");
+    });
+  } finally {
+    await rm(project, { recursive: true, force: true });
   }
 });

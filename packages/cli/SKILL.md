@@ -121,51 +121,51 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
 - `npx -y agentstate-lite hook install|status|uninstall [--scope project|global]`
   — Install the SessionStart home-view hook (Claude Code, Codex, OpenCode)
 
-## Workspaces — default location, one-time binding, then bare commands
+## Workspaces — the project's bundle lives at `.agentstate-lite/` in the project root
 
-Unless the user directs otherwise, store each workspace's bundle under `~/.agentstate-lite/`,
-in a folder named after the workspace: a workspace named `holaxis-video-analyzer` keeps its
-bundle at `~/.agentstate-lite/holaxis-video-analyzer/`. Do NOT pass `--dir` on every command —
-set the workspace up ONCE per project, and every later command finds it automatically:
+Unless the user directs otherwise, a project's workspace bundle lives in a `.agentstate-lite/`
+folder at the project root, and it is COMMITTED to the repo — the bundle is shared memory, and
+committing it is what lets two or more humans (and their agents) collaborate on it across
+clones. Setup is ONE command, run once at the project root:
 
 ```sh
-# One-time setup, run at the PROJECT ROOT (all three steps are idempotent):
-WS="$HOME/.agentstate-lite/holaxis-video-analyzer"
-npx -y agentstate-lite init --dir "$WS"                        # create (or open) the bundle
-printf '{ "bundle": "%s" }\n' "$WS" > .agentstate.json   # bind this project to it
-grep -qxF .agentstate.json .git/info/exclude 2>/dev/null \
-  || echo .agentstate.json >> .git/info/exclude  # local-only ignore (skip if not a git repo)
+npx -y agentstate-lite init --dir .agentstate-lite   # idempotent — creates the bundle, or opens an existing one
 ```
 
-From then on, run every command BARE from anywhere in the project tree — the CLI resolves the
-nearest `.agentstate.json` up-tree, exactly as if `--dir` had been passed:
+That's the whole setup. The CLI discovers the conventional folder on its own (the way git
+finds `.git`), so every command runs BARE from anywhere in the project tree — no flags, no
+config files:
 
 ```sh
 npx -y agentstate-lite list
 npx -y agentstate-lite doc read context-notes/cycle-1
 ```
 
+Commit the folder like any other source (only gitignore it if the user says the workspace
+should stay private to this machine).
+
 Each invocation is stateless and resolves its bundle in this order: explicit `--dir`/`--remote`
-flag → `AGENTSTATE_LITE_REMOTE` env (URL only) → nearest `.agentstate.json` up-tree → enclosing
-bundle (`index.md` up-tree). So reserve `--dir` for the exceptions: reaching a workspace from
-OUTSIDE its bound project, touching a second workspace, or one-off work with no project.
+flag → `AGENTSTATE_LITE_REMOTE` env (URL only) → nearest `.agentstate.json` binding up-tree →
+the cwd walk, which at each ancestor checks the directory's own `index.md`, then its
+conventional `.agentstate-lite/index.md`. Reserve `--dir` for the exceptions: a bundle outside
+any project, a second workspace, or reaching another project's bundle from elsewhere.
 
-Two things override the default location:
+Two things override the default:
 
-1. **Explicit user direction** — the user names a directory or a `--remote`; use that.
-2. **An existing binding or bundle** — if a bare command already resolves (a `.agentstate.json`
-   or an enclosing bundle exists up-tree), that IS this project's workspace — use it rather
-   than creating a second bundle under `~/.agentstate-lite/`.
+1. **Explicit user direction** — the user names a directory or a `--remote`; use that. A
+   `.agentstate.json` binding (`{ "bundle": "<path-or-url>" }` at the project root) is the
+   durable form of that direction — it beats the conventional folder when both exist.
+2. **An existing workspace** — if a bare command already resolves (a binding, an enclosing
+   bundle, or a conventional folder exists up-tree), that IS this project's workspace — use
+   it rather than creating a second one.
 
 ## Typical flow
 
 ```sh
-# One-time workspace setup (default location + project binding — see the Workspaces section)
-WS="$HOME/.agentstate-lite/my-workspace"
-npx -y agentstate-lite init --dir "$WS"
-printf '{ "bundle": "%s" }\n' "$WS" > .agentstate.json
+# One-time setup at the project root (see the Workspaces section); commit the folder
+npx -y agentstate-lite init --dir .agentstate-lite
 
-# Everything after runs bare — the binding resolves the workspace
+# Everything after runs bare, from anywhere in the project tree
 # Create a context note (an OKF concept) for the next session
 npx -y agentstate-lite new "Context Note" cycle-1 --title "cycle-1"
 npx -y agentstate-lite doc update context-notes/cycle-1 --body "What this session did and what's next"
