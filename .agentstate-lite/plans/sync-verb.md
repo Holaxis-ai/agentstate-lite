@@ -3,7 +3,7 @@ type: Plan
 title: >-
   sync verb v2.2: board branch + worktree, UX + hardening layers (two-round
   panel review)
-timestamp: '2026-07-07T20:05:39.232Z'
+timestamp: '2026-07-07T21:09:30.292Z'
 ---
 # sync verb — design v2 (board branch + linked worktree)
 
@@ -44,10 +44,17 @@ GIT_TERMINAL_PROMPT=0, GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=1
    (in a linked worktree `.git` is a FILE — never assume a directory).
 1. **commit**: `git add -A` → `git commit -m "board: <actor> — N docs"`; skip when
    `git diff --cached --quiet` (idempotent no-op).
-2. **pull**: `git fetch origin` → `git rebase @{u}` inside the worktree. On conflict:
-   collect ids via `diff --name-only --diff-filter=U`, then `git rebase --abort` — NEVER
-   leave the worktree mid-rebase — and exit CONFLICT(5) reporting both versions per doc
-   with resolution routed through `doc update` (never hand-edited conflict markers).
+2. **pull**: `git fetch origin` → `git rebase origin/board` inside the worktree. On
+   conflict — STAGED IN TWO UNITS (Phase B adjudication A): U3a DETECTS only — collect ids
+   via `diff --name-only --diff-filter=U`, then `git rebase --abort` cleanly (ZERO data
+   movement; the worktree is left pristine, NEVER mid-rebase) — and exits CONFLICT(5) with
+   the interim string "doc X changed on both sides — nothing was changed on either side;
+   conflict resolution ships in the next update". U3b then ships the CONVERGING mechanic
+   (keep the upstream version + export the local version per doc + COMPLETE the rebase; see
+   the Hardening layer below and
+   [plans/sync-verb-implementation](../plans/sync-verb-implementation.md) U3b for the exact
+   verified sequence). Resolution always routes through `doc update` (never hand-edited
+   conflict markers).
 3. **push** (`--pull-only` skips 1 and 3).
 4. **Envelope**: `{committed, pulled, pushed, conflicts{shown,total,rows}}` (cap()
    convention); "sync: nothing to sync" exit 0. classifyGitError chokepoint: git-missing →
