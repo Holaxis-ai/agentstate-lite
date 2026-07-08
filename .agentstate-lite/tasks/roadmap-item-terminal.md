@@ -1,18 +1,16 @@
 ---
 type: Task
 title: 'Roadmap Item declares terminal: done (recipe seed + live board convention)'
-status: todo
+status: done
 priority: '3'
 description: >-
-  Composition follow-up from PR #21 x PR #20 crossing in flight: the roadmap
-  recipe seeds Roadmap Item with the queued/active/done enum but no terminal
-  declaration, so list --open will not filter finished roadmap items the way it
-  filters done/canceled tasks. Two touches, both tiny: (1) recipes.ts
-  ROADMAP_ITEM seed gains terminal: {status: [done]} plus test; (2) the live
-  board conventions/roadmap-item doc gains the same declaration. GATED on PR #20
-  merging first — before that, main parser warns
-  KIND_CONVENTION_UNKNOWN_FIELDS_KEY on fields.terminal.
-actor: mike/claude
-timestamp: '2026-07-08T23:15:16.864Z'
+  Satisfied by PR #20's merge itself: the Brian-authorized fix round (commit
+  0064293) applied the recorded ruling — ROADMAP_ITEM_KIND seeds terminal:
+  {status: [done]} in the recipe AND the live board's
+  conventions/roadmap-item.md got the declaration atomically; test-pinned (done
+  Roadmap Item hides from list --open). Filed before that fix round was visible;
+  nothing left to build.
+actor: brian-claude
+timestamp: '2026-07-08T23:17:38.096Z'
 ---
 
