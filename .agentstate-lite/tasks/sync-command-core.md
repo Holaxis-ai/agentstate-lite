@@ -3,14 +3,31 @@ type: Task
 title: >-
   U3a the sync command core flow: provision/commit/pull/push/envelope + interim
   conflict guard
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  U3a. Replace the sync stub with the core flow (entry self-heal, provision,
-  commit, pull, push, envelope, two empty states, push-fail) plus the INTERIM
-  conflict guard. Deps: sync-git-porcelain, sync-cursor-store.
+  U3a SHIPPED via PR (mike/claude side, per the interleave). Full loop: claim
+  pushed to main BEFORE work; one Sonnet no-spawn builder against the binding
+  brief; one Fable no-spawn cold reviewer. Builder flagged 6 deviations — ALL
+  ACCEPTED on review, incl. the consequential one: entry self-heal MUST precede
+  provisioning (detached HEAD during rebase makes isProvisioned read a wedged
+  worktree as unprovisioned; spec's letter amended to preserve its intent).
+  Review then found 2 HIGH bugs the 18 green tests missed, both empirically
+  reproduced: (1) BLOCKER — the pre-guard heal could silently 'rebase --abort'
+  the USER'S branch on any pre-migration repo (plain .agentstate-lite dir
+  resolves git ops to the parent repo; violates the #1 cannot-touch-user-code
+  gate) — fixed with a repoTopLevel self-resolution guard + regression test; (2)
+  receipt double-counted self-authored docs as incoming (cursor baseline
+  predates own commit) — fixed with a pre/post-fetch origin/board ref diff;
+  authoring-only sync now reports pulled:0. Plus: post-commit fetch/conflict
+  failures now carry the your-work-is-saved framing + cache write;
+  extension-based raw-path labeling. The central happy-path e2e (commit yours +
+  pull theirs) was the blind spot that hid bug 2 — now pinned. 843 tests (492
+  cli, +22 this unit); plugin 1.0.14. FOLLOW-UPS for U3b/U4 recorded in PR:
+  conflicts field re-add, diffDocsBetween refactor opportunity in git.ts,
+  GIT_BUSY-during-push untested e2e.
 assignee: mike/claude
-timestamp: '2026-07-08T01:19:38.166Z'
+timestamp: '2026-07-08T02:26:06.447Z'
 ---
 # U3a — the `sync` command, core flow
 

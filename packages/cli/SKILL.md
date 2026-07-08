@@ -78,8 +78,8 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
   — Boot the reference wire-protocol server over a local bundle (loopback, no auth)
 - `npx -y agentstate-lite ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
   — Boot the local web UI (board / doc detail / admin / graph) — same origin, loopback-only
-- `npx -y agentstate-lite sync [options]`
-  — Sync the bundle with a remote (NOT YET IMPLEMENTED)
+- `npx -y agentstate-lite sync [--pull-only] [--dir <path>] [--limit <n>]`
+  — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push)
 
 ### Identity
 

@@ -3894,26 +3894,26 @@ function applyReplacer(root, replacer) {
   if (replacedRoot === void 0) return transformChildren(root, replacer, []);
   return transformChildren(normalizeValue(replacedRoot), replacer, []);
 }
-function transformChildren(value, replacer, path8) {
-  if (isJsonObject(value)) return transformObject(value, replacer, path8);
-  if (isJsonArray(value)) return transformArray(value, replacer, path8);
+function transformChildren(value, replacer, path10) {
+  if (isJsonObject(value)) return transformObject(value, replacer, path10);
+  if (isJsonArray(value)) return transformArray(value, replacer, path10);
   return value;
 }
-function transformObject(obj, replacer, path8) {
+function transformObject(obj, replacer, path10) {
   const result = {};
   for (const [key2, value] of Object.entries(obj)) {
-    const childPath = [...path8, key2];
+    const childPath = [...path10, key2];
     const replacedValue = replacer(key2, value, childPath);
     if (replacedValue === void 0) continue;
     result[key2] = transformChildren(normalizeValue(replacedValue), replacer, childPath);
   }
   return result;
 }
-function transformArray(arr, replacer, path8) {
+function transformArray(arr, replacer, path10) {
   const result = [];
   for (let i = 0; i < arr.length; i++) {
     const value = arr[i];
-    const childPath = [...path8, i];
+    const childPath = [...path10, i];
     const replacedValue = replacer(String(i), value, childPath);
     if (replacedValue === void 0) continue;
     const normalizedValue = normalizeValue(replacedValue);
@@ -3940,11 +3940,11 @@ function resolveOptions(options2) {
 }
 
 // ../../node_modules/axi-sdk-js/dist/output.js
-function collapseHomeDirectory(path8, homeDir = homedir()) {
-  if (!path8.startsWith(homeDir)) {
-    return path8;
+function collapseHomeDirectory(path10, homeDir = homedir()) {
+  if (!path10.startsWith(homeDir)) {
+    return path10;
   }
-  return `~${path8.slice(homeDir.length)}`;
+  return `~${path10.slice(homeDir.length)}`;
 }
 function homeHeaderOutput(options2) {
   return {
@@ -4048,7 +4048,7 @@ function isUpdateAvailable(current, latest) {
 }
 var nodeFs = {
   existsSync,
-  readFileSync: (path8, encoding) => readFileSync(path8, encoding)
+  readFileSync: (path10, encoding) => readFileSync(path10, encoding)
 };
 function readNearestPackageJson(startPath, fs10 = nodeFs) {
   let dir = dirname(startPath);
@@ -4075,36 +4075,36 @@ function readNearestPackageJson(startPath, fs10 = nodeFs) {
 }
 function detectInstallMethod(options2) {
   const env = options2.env ?? process.env;
-  const path8 = options2.entry.replaceAll("\\", "/");
-  if (path8.includes("/_npx/") || /\/dlx-[^/]+\//.test(path8) || path8.includes("/pnpm/dlx/") || path8.includes("/bun/install/cache/")) {
+  const path10 = options2.entry.replaceAll("\\", "/");
+  if (path10.includes("/_npx/") || /\/dlx-[^/]+\//.test(path10) || path10.includes("/pnpm/dlx/") || path10.includes("/bun/install/cache/")) {
     return { kind: "npx" };
   }
-  const homebrewFormula = homebrewFormulaFromPath(path8, env);
+  const homebrewFormula = homebrewFormulaFromPath(path10, env);
   if (homebrewFormula) {
     return { kind: "homebrew", formula: homebrewFormula };
   }
   const pnpmHome = normalizePathRoot(env.PNPM_HOME);
-  if (isPathInsideRoot(path8, pnpmHome) || isKnownPnpmGlobalStore(path8, env)) {
+  if (isPathInsideRoot(path10, pnpmHome) || isKnownPnpmGlobalStore(path10, env)) {
     return { kind: "pnpm-global" };
   }
-  if (isKnownNpmGlobalInstall(path8, env)) {
+  if (isKnownNpmGlobalInstall(path10, env)) {
     return { kind: "npm-global" };
   }
   return { kind: "unknown" };
 }
-function normalizePathRoot(path8) {
-  const normalized = path8?.replaceAll("\\", "/").replace(/\/+$/, "");
+function normalizePathRoot(path10) {
+  const normalized = path10?.replaceAll("\\", "/").replace(/\/+$/, "");
   return normalized && normalized.length > 0 ? normalized : void 0;
 }
-function isPathInsideRoot(path8, root) {
-  return root !== void 0 && (path8 === root || path8.startsWith(`${root}/`));
+function isPathInsideRoot(path10, root) {
+  return root !== void 0 && (path10 === root || path10.startsWith(`${root}/`));
 }
-function homebrewFormulaFromPath(path8, env) {
+function homebrewFormulaFromPath(path10, env) {
   for (const root of homebrewCellarRoots(env)) {
-    if (!isPathInsideRoot(path8, root)) {
+    if (!isPathInsideRoot(path10, root)) {
       continue;
     }
-    const relative = path8.slice(root.length).replace(/^\/+/, "");
+    const relative = path10.slice(root.length).replace(/^\/+/, "");
     const formula = relative.split("/")[0];
     if (formula) {
       return formula;
@@ -4132,12 +4132,12 @@ function homebrewCellarRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownPnpmGlobalStore(path8, env) {
+function isKnownPnpmGlobalStore(path10, env) {
   return pnpmGlobalStoreRoots(env).some((root) => {
-    if (!isPathInsideRoot(path8, root)) {
+    if (!isPathInsideRoot(path10, root)) {
       return false;
     }
-    const relative = path8.slice(root.length).replace(/^\/+/, "");
+    const relative = path10.slice(root.length).replace(/^\/+/, "");
     return /^\d+\/\.pnpm\//.test(relative);
   });
 }
@@ -4155,8 +4155,8 @@ function pnpmGlobalStoreRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownNpmGlobalInstall(path8, env) {
-  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path8, root)) || isKnownVersionManagerNpmGlobal(path8, env);
+function isKnownNpmGlobalInstall(path10, env) {
+  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path10, root)) || isKnownVersionManagerNpmGlobal(path10, env);
 }
 function npmGlobalNodeModulesRoots(env) {
   const roots = [
@@ -4182,8 +4182,8 @@ function npmGlobalNodeModulesRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownVersionManagerNpmGlobal(path8, env) {
-  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path8, root) && path8.includes("/lib/node_modules/"));
+function isKnownVersionManagerNpmGlobal(path10, env) {
+  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path10, root) && path10.includes("/lib/node_modules/"));
 }
 function versionManagerNodeRoots(env) {
   const roots = [];
@@ -4346,7 +4346,7 @@ async function defaultRunInstall(plan, stdout, context) {
   }
   stdout.write(`running: ${plan.command}
 `);
-  return new Promise((resolve3) => {
+  return new Promise((resolve4) => {
     const [command, ...args] = argv;
     const child = spawn(packageManagerExecutable(command, context.platform), args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -4359,10 +4359,10 @@ async function defaultRunInstall(plan, stdout, context) {
       process.stderr.write(chunk);
     });
     child.on("error", (error) => {
-      resolve3({ ok: false, message: error.message });
+      resolve4({ ok: false, message: error.message });
     });
     child.on("close", (code) => {
-      resolve3(code === 0 ? { ok: true } : { ok: false, message: `${plan.command} exited with code ${code}` });
+      resolve4(code === 0 ? { ok: true } : { ok: false, message: `${plan.command} exited with code ${code}` });
     });
   });
 }
@@ -4419,7 +4419,7 @@ async function runUpdate(options2) {
   const binName = binNameFromArgv(invokedAs);
   const mode = parseUpdateArgs(options2.args, binName);
   const platform = options2.platform ?? process.platform;
-  const realpath = options2.realpath ?? ((path8) => realpathSync(path8));
+  const realpath = options2.realpath ?? ((path10) => realpathSync(path10));
   const entry = resolveEntry(invokedAs, realpath);
   const fs10 = options2.fs ?? nodeFs;
   const fromPackageJson = entry ? readNearestPackageJson(entry, fs10) : {};
@@ -6018,7 +6018,7 @@ function retryDelayMs(attempt) {
   return backoff + Math.floor(Math.random() * RETRY_JITTER_MS);
 }
 function delay(ms) {
-  return new Promise((resolve3) => setTimeout(resolve3, ms));
+  return new Promise((resolve4) => setTimeout(resolve4, ms));
 }
 function encodeId(id) {
   return id.split("/").map((seg) => encodeURIComponent(seg)).join("/");
@@ -6320,13 +6320,13 @@ function describeShape(value) {
   if (typeof value === "object") return "an object";
   return typeof value;
 }
-function toStringArrayLenient(value, path8, docId, warnings) {
+function toStringArrayLenient(value, path10, docId, warnings) {
   if (!Array.isArray(value)) {
     if (value !== void 0) {
       warnings.push({
         code: "KIND_CONVENTION_BAD_SHAPE",
-        message: `kind convention '${docId}' has a non-list '${path8}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
-        field: path8,
+        message: `kind convention '${docId}' has a non-list '${path10}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
+        field: path10,
         severity: "warning"
       });
     }
@@ -6339,8 +6339,8 @@ function toStringArrayLenient(value, path8, docId, warnings) {
     } else {
       warnings.push({
         code: "KIND_CONVENTION_BAD_MEMBER",
-        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path8}'; skipping it.`,
-        field: path8,
+        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path10}'; skipping it.`,
+        field: path10,
         severity: "warning"
       });
     }
@@ -6501,10 +6501,10 @@ function parseConventionDoc(doc2) {
   }
   const sections = Array.isArray(fm.sections) ? fm.sections.filter((s) => typeof s === "string" && s.trim() !== "") : void 0;
   const title = typeof fm.title === "string" && fm.title.trim() !== "" ? fm.title.trim() : governs;
-  const path8 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
+  const path10 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
   const freshnessHorizon = typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== "" ? fm.freshness_horizon.trim() : void 0;
   const kind2 = { id: doc2.id, title, governs, fields: { required, optional, values } };
-  if (path8 !== void 0) kind2.path = path8;
+  if (path10 !== void 0) kind2.path = path10;
   if (links !== void 0) kind2.links = links;
   if (expectsInbound !== void 0) kind2.expectsInbound = expectsInbound;
   if (sections && sections.length > 0) kind2.sections = sections;
@@ -6812,6 +6812,68 @@ function toExit(err) {
   const message = err instanceof Error ? err.message : String(err);
   return { exitCode: EXIT.RUNTIME, envelope: { error: { code: "RUNTIME", message } }, handled: false };
 }
+function firstGitLine(f) {
+  const line = f.stderr.split("\n").find((l) => l.trim().length > 0) ?? f.stdout.split("\n").find((l) => l.trim().length > 0) ?? "";
+  return line.trim();
+}
+function classifyGitError(f) {
+  const op = f.args[0] ?? "git";
+  const text = `${f.stderr}
+${f.stdout}`;
+  if (f.spawnErrorCode === "ENOENT") {
+    return new CliError("GIT_MISSING", "sync needs git, which isn't installed on this machine", {
+      details: { op },
+      help: "install git (https://git-scm.com/downloads), then re-run the command"
+    });
+  }
+  if (f.timedOut || f.spawnErrorCode === "ETIMEDOUT") {
+    return new CliError("TRANSIENT", `git ${op} timed out \u2014 the network or repository may be slow; retry`, {
+      details: { op, retryable: true }
+    });
+  }
+  if (/index\.lock|Another git process seems to be running/i.test(text)) {
+    return new CliError(
+      "GIT_BUSY",
+      "another git process is using this repository \u2014 retry once it finishes",
+      { details: { op, retryable: true } }
+    );
+  }
+  if (/'origin' does not appear to be a git repository/i.test(text) || /No such remote:? '?origin'?/i.test(text) || /invalid upstream ['"]?origin\//i.test(text) || /origin\/[^\s]+ - not something we can merge/i.test(text) || /couldn'?t find remote ref/i.test(text) || /src refspec [^\s]+ does not match any/i.test(text)) {
+    return new CliError(
+      "NO_UPSTREAM",
+      "the board branch isn't linked to a remote yet \u2014 sync can't share it",
+      { details: { op } }
+    );
+  }
+  if (/authentication failed/i.test(text) || /could not read (Username|Password)/i.test(text) || /Permission denied \(publickey/i.test(text) || /returned error: 40[13]/i.test(text) || /Repository not found/i.test(text) || /does not appear to be a git repository/i.test(text) || /access denied|Invalid username or password/i.test(text)) {
+    return new CliError(
+      "AUTH_REQUIRED",
+      `git ${op} was denied access to the remote (or the repository is not visible to your credentials)`,
+      { details: { op, best_effort: true } }
+    );
+  }
+  if (/You are not currently on a branch|HEAD detached/i.test(text)) {
+    return new CliError(
+      "RUNTIME",
+      "the board worktree is in a detached-HEAD state \u2014 sync needs the board branch checked out",
+      { details: { op, state: "detached-head" } }
+    );
+  }
+  if (/needs merge/i.test(text) || /unmerged files/i.test(text) || /not possible because you have unmerged/i.test(text) || /Resolve all conflicts/i.test(text)) {
+    return new CliError("CONFLICT", "the board worktree has unresolved conflicts", { details: { op } });
+  }
+  if (/Could not resolve host|unable to access|Connection (refused|timed out|reset)|Operation timed out|network is unreachable|Failed to connect/i.test(
+    text
+  )) {
+    return new CliError("TRANSIENT", `git ${op} could not reach the remote \u2014 offline or the host is unreachable; retry`, {
+      details: { op, retryable: true }
+    });
+  }
+  const line = firstGitLine(f);
+  return new CliError("RUNTIME", `git ${op} failed${line ? `: ${line}` : ""}`, {
+    details: { op, exit_status: f.status }
+  });
+}
 function asHandled(err) {
   if (err instanceof CliError) {
     return new CliError(err.code, err.message, {
@@ -6835,8 +6897,8 @@ function normalizeServer(raw) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`server URL must use http or https: ${raw}`);
   }
-  const path8 = url.pathname.replace(/\/+$/, "");
-  return { base: url.origin + path8, resource: url.origin };
+  const path10 = url.pathname.replace(/\/+$/, "");
+  return { base: url.origin + path10, resource: url.origin };
 }
 
 // src/credentials.ts
@@ -6857,7 +6919,7 @@ function credentialsPath(home2 = homedir4()) {
 async function writeFileAtomic0600(dir, fileName, content) {
   await mkdir(dir, { recursive: true, mode: DIR_MODE });
   await chmod(dir, DIR_MODE);
-  const path8 = join4(dir, fileName);
+  const path10 = join4(dir, fileName);
   const tmpPath = join4(dir, `.${fileName}.${randomBytes(8).toString("hex")}.tmp`);
   const handle = await open(tmpPath, "wx", FILE_MODE);
   try {
@@ -6867,7 +6929,7 @@ async function writeFileAtomic0600(dir, fileName, content) {
     await handle.close();
   }
   try {
-    await rename(tmpPath, path8);
+    await rename(tmpPath, path10);
   } catch (err) {
     await unlink(tmpPath).catch(() => {
     });
@@ -9012,8 +9074,8 @@ async function blobs(argv, deps = {}) {
     stdout(BLOBS_USAGE);
     return;
   }
-  const DEFAULT_LIMIT2 = 100;
-  let limit = DEFAULT_LIMIT2;
+  const DEFAULT_LIMIT3 = 100;
+  let limit = DEFAULT_LIMIT3;
   if (values.limit !== void 0) {
     const raw = values.limit.trim();
     if (!/^\d+$/.test(raw)) {
@@ -9401,8 +9463,8 @@ async function linkShow(argv, stdout) {
     stdout(LINK_USAGE);
     return;
   }
-  const DEFAULT_LIMIT2 = 50;
-  let limit = DEFAULT_LIMIT2;
+  const DEFAULT_LIMIT3 = 50;
+  let limit = DEFAULT_LIMIT3;
   if (values.limit !== void 0) {
     const raw = values.limit.trim();
     if (!/^\d+$/.test(raw)) {
@@ -9555,8 +9617,8 @@ async function list(argv, deps = {}) {
     }
     filter.fields = fields;
   }
-  const DEFAULT_LIMIT2 = 100;
-  let limit = DEFAULT_LIMIT2;
+  const DEFAULT_LIMIT3 = 100;
+  let limit = DEFAULT_LIMIT3;
   if (values.limit !== void 0) {
     const raw = values.limit.trim();
     if (!/^\d+$/.test(raw)) {
@@ -11319,10 +11381,10 @@ function buildRouter(backend) {
 import { createServer } from "node:http";
 function readBody(req) {
   if (req.method === "GET" || req.method === "HEAD") return Promise.resolve(void 0);
-  return new Promise((resolve3, reject) => {
+  return new Promise((resolve4, reject) => {
     const chunks = [];
     req.on("data", (chunk) => chunks.push(chunk));
-    req.on("end", () => resolve3(chunks.length > 0 ? Buffer.concat(chunks) : void 0));
+    req.on("end", () => resolve4(chunks.length > 0 ? Buffer.concat(chunks) : void 0));
     req.on("error", reject);
   });
 }
@@ -11352,7 +11414,7 @@ async function writeResponseToServerResponse(res, response) {
 function serve(options2) {
   const router = createRouter(options2.bundle);
   const host = options2.host ?? "127.0.0.1";
-  return new Promise((resolve3, reject) => {
+  return new Promise((resolve4, reject) => {
     const server = createServer((req, res) => {
       const origin = `http://${req.headers.host ?? `${host}:0`}`;
       requestFromIncomingMessage(req, origin).then((request) => router(request)).then((response) => writeResponseToServerResponse(res, response)).catch((err) => {
@@ -11367,7 +11429,7 @@ function serve(options2) {
         reject(new Error("failed to bind a TCP address"));
         return;
       }
-      resolve3({
+      resolve4({
         host,
         port: addr.port,
         close: () => new Promise((resolveClose, rejectClose) => {
@@ -11400,9 +11462,9 @@ direct local CLI write) over the SAME directory is still best-effort \u2014 see 
 `;
 var DEFAULT_SERVE_PORT = 4818;
 function defaultWaitForShutdown() {
-  return new Promise((resolve3) => {
-    process.once("SIGINT", () => resolve3());
-    process.once("SIGTERM", () => resolve3());
+  return new Promise((resolve4) => {
+    process.once("SIGINT", () => resolve4());
+    process.once("SIGTERM", () => resolve4());
   });
 }
 async function serve2(argv, deps = {}) {
@@ -11657,7 +11719,7 @@ async function handleRequest(req, res, options2, sessionSecret) {
 }
 function bootUiServer(options2) {
   const sessionSecret = options2.sessionSecret ?? mintSessionSecret();
-  return new Promise((resolve3, reject) => {
+  return new Promise((resolve4, reject) => {
     const server = createServer2((req, res) => {
       void handleRequest(req, res, options2, sessionSecret).catch((err) => {
         res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
@@ -11671,7 +11733,7 @@ function bootUiServer(options2) {
         reject(new Error("failed to bind a TCP address"));
         return;
       }
-      resolve3({
+      resolve4({
         host: HOST,
         port: addr.port,
         token: sessionSecret,
@@ -11702,9 +11764,9 @@ separate, unreviewed feature). The printed URL carries a per-run session token; 
 exchanges it for an HttpOnly, SameSite=Strict cookie \u2014 nothing is persisted beyond this process.
 `;
 function defaultWaitForShutdown2() {
-  return new Promise((resolve3) => {
-    process.once("SIGINT", () => resolve3());
-    process.once("SIGTERM", () => resolve3());
+  return new Promise((resolve4) => {
+    process.once("SIGINT", () => resolve4());
+    process.once("SIGTERM", () => resolve4());
   });
 }
 function defaultOpenBrowser(url) {
@@ -11815,23 +11877,696 @@ async function ui(argv, deps = {}) {
 }
 
 // src/commands/sync.ts
+import { existsSync as existsSync4, realpathSync as realpathSync5 } from "node:fs";
+import path9 from "node:path";
 import { parseArgs as parseArgs22 } from "node:util";
-var SYNC_USAGE = `agentstate-lite sync \u2014 sync the bundle with a remote (NOT YET IMPLEMENTED)
+
+// src/git.ts
+import { spawnSync } from "node:child_process";
+import { existsSync as existsSync3, readdirSync, realpathSync as realpathSync4, rmdirSync } from "node:fs";
+import path8 from "node:path";
+var BOARD_BRANCH = "board";
+var BOARD_REMOTE = "origin";
+var BOARD_REF = `${BOARD_REMOTE}/${BOARD_BRANCH}`;
+var BUNDLE_DIR = ".agentstate-lite";
+var SCRUBBED_GIT_VARS = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"];
+var LOCAL_TIMEOUT_MS = 3e4;
+var NETWORK_TIMEOUT_MS = 6e4;
+function gitEnv(rebase) {
+  const env = { ...process.env };
+  for (const v of SCRUBBED_GIT_VARS) delete env[v];
+  env.LC_ALL = "C";
+  env.GIT_TERMINAL_PROMPT = "0";
+  env.GIT_SSH_COMMAND = "ssh -o BatchMode=yes -o ConnectTimeout=10";
+  if (rebase) {
+    env.GIT_EDITOR = "true";
+    env.GIT_SEQUENCE_EDITOR = "true";
+  }
+  return env;
+}
+function runGit(dir, args, opts = {}) {
+  const r = spawnSync("git", ["-C", dir, ...args], {
+    env: gitEnv(opts.rebase ?? false),
+    encoding: "utf8",
+    timeout: opts.timeoutMs ?? LOCAL_TIMEOUT_MS,
+    input: opts.input,
+    maxBuffer: 32 * 1024 * 1024
+  });
+  if (r.error) {
+    const code = r.error.code;
+    throw classifyGitError({
+      args,
+      status: r.status ?? null,
+      stdout: r.stdout ?? "",
+      stderr: r.stderr ?? "",
+      timedOut: code === "ETIMEDOUT",
+      spawnErrorCode: code ?? "SPAWN"
+    });
+  }
+  if (r.status === null) {
+    throw classifyGitError({ args, status: null, stdout: r.stdout ?? "", stderr: r.stderr ?? "", timedOut: true });
+  }
+  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+}
+function failureOf(args, r) {
+  return { args, status: r.status, stdout: r.stdout, stderr: r.stderr };
+}
+function mustGit(dir, args, opts = {}) {
+  const r = runGit(dir, args, opts);
+  if (r.status !== 0) throw classifyGitError(failureOf(args, r));
+  return r.stdout;
+}
+function repoTopLevel(dir) {
+  if (!existsSync3(dir)) return null;
+  const r = runGit(dir, ["rev-parse", "--show-toplevel"]);
+  if (r.status !== 0) return null;
+  const top = r.stdout.trim();
+  return top.length > 0 ? top : null;
+}
+function worktreeGitPath(boardPath, relative) {
+  const raw = mustGit(boardPath, ["rev-parse", "--git-path", relative]).trim();
+  return path8.resolve(boardPath, raw);
+}
+function realOrSame(p) {
+  try {
+    return realpathSync4(p);
+  } catch {
+    return p;
+  }
+}
+function isProvisioned(dir) {
+  const top = repoTopLevel(dir);
+  if (!top) return false;
+  const boardPath = path8.join(top, BUNDLE_DIR);
+  if (!existsSync3(boardPath)) return false;
+  const boardTop = repoTopLevel(boardPath);
+  if (!boardTop || realOrSame(boardTop) !== realOrSame(boardPath)) return false;
+  const branch = runGit(boardPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  return branch.status === 0 && branch.stdout.trim() === BOARD_BRANCH;
+}
+function provisionBoardWorktree(dir) {
+  const top = repoTopLevel(dir);
+  if (!top) return { kind: "no_repo" };
+  const boardPath = path8.join(top, BUNDLE_DIR);
+  if (isProvisioned(top)) return { kind: "already", boardPath };
+  runGit(top, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
+  const hasLocal = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
+  const hasRemote = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0;
+  if (!hasLocal && !hasRemote) return { kind: "no_board" };
+  if (existsSync3(boardPath)) {
+    if (readdirSync(boardPath).length > 0) {
+      throw new CliError(
+        "RUNTIME",
+        `a non-empty '${BUNDLE_DIR}' directory already exists at ${boardPath} but is not the shared board checkout \u2014 move it aside, then re-run sync`,
+        {
+          details: { path: boardPath },
+          help: `mv ${BUNDLE_DIR} ${BUNDLE_DIR}.bak  # then re-run sync; reconcile any local-only docs afterwards`
+        }
+      );
+    }
+    rmdirSync(boardPath);
+  }
+  const r = hasLocal ? runGit(top, ["worktree", "add", boardPath, BOARD_BRANCH]) : runGit(top, [
+    "worktree",
+    "add",
+    "--no-track",
+    "-b",
+    BOARD_BRANCH,
+    boardPath,
+    `refs/remotes/${BOARD_REF}`
+  ]);
+  if (r.status !== 0) {
+    const list2 = runGit(top, ["worktree", "list", "--porcelain"]);
+    if (list2.status === 0 && list2.stdout.split("\n").includes(`branch refs/heads/${BOARD_BRANCH}`)) {
+      return { kind: "already", boardPath };
+    }
+    throw classifyGitError(failureOf(["worktree", "add"], r));
+  }
+  return { kind: "provisioned", boardPath };
+}
+function detectStaleRebase(boardPath) {
+  return existsSync3(worktreeGitPath(boardPath, "rebase-merge")) || existsSync3(worktreeGitPath(boardPath, "rebase-apply"));
+}
+function abortStaleRebase(boardPath) {
+  mustGit(boardPath, ["rebase", "--abort"], { rebase: true });
+}
+var UNKNOWN = "unknown";
+function fmString(v) {
+  return typeof v === "string" && v.trim().length > 0 ? v.trim() : UNKNOWN;
+}
+function isConceptDocPath(relPath) {
+  return relPath.endsWith(".md") && !isReservedFile(relPath);
+}
+function nameStatusRows(out) {
+  return out.split("\n").map((l) => l.trimEnd()).filter((l) => l.length > 0).map((l) => {
+    const [letter = "", ...rest] = l.split("	");
+    return { letter: letter.trim().charAt(0), relPath: rest.join("	") };
+  }).filter((r) => r.letter.length > 0 && r.relPath.length > 0);
+}
+function verbOf(letter) {
+  if (letter === "A") return "added";
+  if (letter === "M" || letter === "T") return "updated";
+  if (letter === "D") return "deleted";
+  return null;
+}
+function enrichDocChange(boardPath, relPath, verb, rev) {
+  const docId = conceptIdFromPath(relPath);
+  let actor = UNKNOWN;
+  let kind2 = UNKNOWN;
+  let title = docId;
+  const shown = runGit(boardPath, ["show", `${rev}:${relPath}`]);
+  if (shown.status === 0) {
+    try {
+      const { frontmatter } = parseMarkdown(shown.stdout, relPath);
+      actor = fmString(frontmatter.actor);
+      kind2 = fmString(frontmatter.type);
+      const t = fmString(frontmatter.title);
+      if (t !== UNKNOWN) title = t;
+    } catch {
+    }
+  }
+  return { docId, actor, verb, kind: kind2, title };
+}
+function commitSubject(docs) {
+  if (docs.length === 0) return "board: bundle maintenance";
+  const first = docs[0];
+  if (docs.length === 1) return `board: ${first.actor} \u2014 ${first.verb} ${first.docId}`;
+  const actors = [...new Set(docs.map((d) => d.actor))];
+  if (actors.length === 1) return `board: ${actors[0]} \u2014 ${docs.length} docs`;
+  return `board: ${docs.length} docs from ${actors.length} actors`;
+}
+function stageAndCommit(boardPath) {
+  mustGit(boardPath, ["add", "-A"]);
+  if (runGit(boardPath, ["diff", "--cached", "--quiet"]).status === 0) {
+    return { committed: false, docs: [] };
+  }
+  const rows = nameStatusRows(mustGit(boardPath, ["diff", "--cached", "--name-status", "--no-renames"]));
+  const docs = [];
+  for (const { letter, relPath } of rows) {
+    if (!isConceptDocPath(relPath)) continue;
+    const verb = verbOf(letter);
+    if (!verb) continue;
+    docs.push(enrichDocChange(boardPath, relPath, verb, verb === "deleted" ? "HEAD" : ":0"));
+  }
+  const subject = commitSubject(docs);
+  const bodyLines = docs.length > 0 ? docs.map((d) => `${d.verb} ${d.kind} ${d.docId}`) : rows.map((r) => `${r.letter} ${r.relPath}`);
+  const message = `${subject}
+
+${bodyLines.join("\n")}
+`;
+  mustGit(boardPath, ["commit", "--no-verify", "-F", "-"], { input: message });
+  const sha = mustGit(boardPath, ["rev-parse", "HEAD"]).trim();
+  return { committed: true, sha, subject, docs };
+}
+function fetchRebase(boardPath) {
+  mustGit(boardPath, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
+  const r = runGit(boardPath, ["rebase", BOARD_REF], { rebase: true, timeoutMs: NETWORK_TIMEOUT_MS });
+  if (r.status === 0) return { status: "clean" };
+  if (detectStaleRebase(boardPath)) {
+    const conflicted = mustGit(boardPath, ["diff", "--name-only", "--diff-filter=U"]).split("\n").map((l) => l.trim()).filter((l) => l.length > 0).map((p) => isConceptDocPath(p) ? conceptIdFromPath(p) : p);
+    mustGit(boardPath, ["rebase", "--abort"], { rebase: true });
+    return { status: "conflict", conflictedDocIds: conflicted };
+  }
+  throw classifyGitError(failureOf(["rebase", BOARD_REF], r));
+}
+function push(boardPath) {
+  mustGit(boardPath, ["push", BOARD_REMOTE, BOARD_BRANCH], { timeoutMs: NETWORK_TIMEOUT_MS });
+}
+function swallowReason(err) {
+  switch (err.code) {
+    case "GIT_MISSING":
+      return "git-missing";
+    case "NO_UPSTREAM":
+      return "no-upstream";
+    case "GIT_BUSY":
+      return "busy";
+    case "AUTH_REQUIRED":
+      return "auth";
+    case "TRANSIENT":
+      return "network";
+    case "CONFLICT":
+      return "conflict";
+    default:
+      return "runtime";
+  }
+}
+function ffPull(boardPath) {
+  try {
+    if (!repoTopLevel(boardPath)) return { updated: false, swallowed: "not-a-repo" };
+    if (runGit(boardPath, ["symbolic-ref", "-q", "HEAD"]).status !== 0) {
+      return { updated: false, swallowed: "detached-head" };
+    }
+    const before = mustGit(boardPath, ["rev-parse", "HEAD"]).trim();
+    let fetchReason;
+    const fetched = runGit(boardPath, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
+    if (fetched.status !== 0) {
+      fetchReason = swallowReason(classifyGitError(failureOf(["fetch"], fetched)));
+    }
+    const merged = runGit(boardPath, ["merge", "--ff-only", BOARD_REF]);
+    if (merged.status !== 0) {
+      const text = `${merged.stderr}
+${merged.stdout}`;
+      if (/Not possible to fast-forward/i.test(text) || /have diverged/i.test(text)) {
+        return { updated: false, swallowed: "diverged" };
+      }
+      if (/local changes .* would be overwritten|Please commit your changes or stash/i.test(text)) {
+        return { updated: false, swallowed: "dirty" };
+      }
+      return { updated: false, swallowed: swallowReason(classifyGitError(failureOf(["merge"], merged))) };
+    }
+    const after = mustGit(boardPath, ["rev-parse", "HEAD"]).trim();
+    const result = { updated: after !== before };
+    if (fetchReason !== void 0) result.swallowed = fetchReason;
+    return result;
+  } catch (err) {
+    if (err instanceof CliError) return { updated: false, swallowed: swallowReason(err) };
+    return { updated: false, swallowed: "runtime" };
+  }
+}
+function changesSince(boardPath, token) {
+  if (runGit(boardPath, ["cat-file", "-e", `${token}^{commit}`]).status !== 0) {
+    return { ok: false, reason: "dangling" };
+  }
+  const rows = nameStatusRows(
+    mustGit(boardPath, ["diff", "--name-status", "--no-renames", `${token}..HEAD`])
+  );
+  const changes = [];
+  for (const { letter, relPath } of rows) {
+    if (!isConceptDocPath(relPath)) continue;
+    const verb = verbOf(letter);
+    if (!verb) continue;
+    changes.push(enrichDocChange(boardPath, relPath, verb, verb === "deleted" ? token : "HEAD"));
+  }
+  return { ok: true, changes };
+}
+function unpushedCount(boardPath) {
+  if (runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
+    return null;
+  }
+  const out = mustGit(boardPath, ["rev-list", "--count", `${BOARD_REF}..HEAD`]).trim();
+  const n = Number.parseInt(out, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// src/cursor.ts
+import { chmod as chmod2, mkdir as mkdir2, readFile as readFile2 } from "node:fs/promises";
+import { createHash as createHash2 } from "node:crypto";
+import { homedir as homedir5 } from "node:os";
+import { basename as basename4, join as join6, resolve as resolve3 } from "node:path";
+var SYNC_STATE_DIR_NAME = "sync";
+var DIR_MODE2 = 448;
+var REANCHOR_NOTE = "delta unavailable (history rewritten)";
+function normalizeRemoteUrl(url) {
+  let u = url.trim().replace(/\/+$/, "");
+  if (u.endsWith(".git")) u = u.slice(0, -".git".length);
+  return u;
+}
+function normalizeSubpath(subpath) {
+  return subpath.trim().replace(/^\.\//, "").replace(/^\/+/, "").replace(/\/+$/, "");
+}
+function bundleKey(src) {
+  if ("remoteUrl" in src) {
+    return `remote
+${normalizeRemoteUrl(src.remoteUrl)}
+${normalizeSubpath(src.subpath)}`;
+  }
+  return `path
+${resolve3(src.root)}`;
+}
+function syncStateDir(home2 = homedir5()) {
+  return join6(credentialsDir(home2), SYNC_STATE_DIR_NAME);
+}
+function syncStatePath(key2, home2 = homedir5()) {
+  const digest = createHash2("sha256").update(key2, "utf8").digest("hex").slice(0, 32);
+  return join6(syncStateDir(home2), `${digest}.json`);
+}
+var EMPTY_STATE = { cursor: null, cache: null, marker: null };
+function isRecord(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function isTimestamp(v) {
+  return typeof v === "string" && Number.isFinite(Date.parse(v));
+}
+function isCount(v) {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0;
+}
+function asCursor(v) {
+  if (!isRecord(v)) return null;
+  if (typeof v.tier !== "string" || v.tier.length === 0) return null;
+  const token = v.token;
+  const tokenOk = typeof token === "string" && token.length > 0 || typeof token === "number" && Number.isFinite(token);
+  if (!tokenOk) return null;
+  return { ...v };
+}
+function asDeltaRow(v) {
+  if (!isRecord(v)) return null;
+  for (const field of ["docId", "verb", "kind", "title", "actor"]) {
+    if (typeof v[field] !== "string") return null;
+  }
+  return { ...v };
+}
+function asCache(v) {
+  if (!isRecord(v)) return null;
+  if (!isTimestamp(v.updatedAt)) return null;
+  if (!Array.isArray(v.delta)) return null;
+  const delta = [];
+  for (const raw of v.delta) {
+    const row = asDeltaRow(raw);
+    if (row === null) return null;
+    delta.push(row);
+  }
+  if (!isCount(v.unpushedCount) || !isCount(v.uncommittedCount)) return null;
+  if (v.note !== void 0 && typeof v.note !== "string") return null;
+  return { ...v, delta };
+}
+function asMarker(v) {
+  if (!isRecord(v)) return null;
+  if (!isTimestamp(v.updatedAt)) return null;
+  return { ...v };
+}
+async function readSyncState(key2, home2 = homedir5()) {
+  let raw;
+  try {
+    raw = await readFile2(syncStatePath(key2, home2), "utf8");
+  } catch {
+    return { ...EMPTY_STATE };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ...EMPTY_STATE };
+  }
+  if (!isRecord(parsed)) return { ...EMPTY_STATE };
+  if (parsed.key !== key2) return { ...EMPTY_STATE };
+  return {
+    cursor: asCursor(parsed.cursor),
+    cache: asCache(parsed.cache),
+    marker: asMarker(parsed.marker)
+  };
+}
+async function readCursor(key2, home2 = homedir5()) {
+  return (await readSyncState(key2, home2)).cursor;
+}
+async function writeSyncState(key2, patch, home2 = homedir5()) {
+  const next = { ...await readSyncState(key2, home2), ...patch };
+  const parent = credentialsDir(home2);
+  await mkdir2(parent, { recursive: true, mode: DIR_MODE2 });
+  await chmod2(parent, DIR_MODE2);
+  const path10 = syncStatePath(key2, home2);
+  const record = {
+    key: key2,
+    cursor: next.cursor ?? void 0,
+    cache: next.cache ?? void 0,
+    marker: next.marker ?? void 0
+  };
+  await writeFileAtomic0600(syncStateDir(home2), basename4(path10), JSON.stringify(record, null, 2) + "\n");
+  return next;
+}
+async function writeCursor(key2, cursor, home2 = homedir5()) {
+  if (asCursor(cursor) === null) {
+    throw new TypeError("cursor must be { tier: non-empty string, token: non-empty string | finite number }");
+  }
+  await writeSyncState(key2, { cursor }, home2);
+}
+async function writeCache(key2, cache, home2 = homedir5()) {
+  if (asCache(cache) === null) {
+    throw new TypeError(
+      "cache must carry { updatedAt: ISO timestamp, delta: AwarenessDeltaRow[], unpushedCount, uncommittedCount }"
+    );
+  }
+  await writeSyncState(key2, { cache }, home2);
+}
+async function recordReanchor(key2, cursor, counts, home2 = homedir5(), now = () => /* @__PURE__ */ new Date()) {
+  if (asCursor(cursor) === null) {
+    throw new TypeError("cursor must be { tier: non-empty string, token: non-empty string | finite number }");
+  }
+  const cache = {
+    updatedAt: now().toISOString(),
+    delta: [],
+    unpushedCount: counts.unpushedCount,
+    uncommittedCount: counts.uncommittedCount,
+    note: REANCHOR_NOTE
+  };
+  await writeSyncState(key2, { cursor, cache }, home2);
+  return cache;
+}
+
+// src/commands/sync.ts
+var SYNC_USAGE = `agentstate-lite sync \u2014 share the board branch with a remote (git tier)
 
 Usage:
-  agentstate-lite sync [--dir <path>]
+  agentstate-lite sync [--pull-only] [--dir <path>] [--limit <n>] [--json]
 
-Status:
-  agentstate-lite is filesystem-first; remote sync is a planned fast-follow. This command is a
-  deliberate stub \u2014 it exits 2 (NOT_IMPLEMENTED) so no caller mistakes a no-op for a real sync.
+Shares this repo's board (\`.agentstate-lite\`, a linked worktree of the \`board\` branch) with your
+teammates: commits any pending local doc changes, pulls theirs, and pushes yours \u2014 touching
+nothing outside the board. \`--pull-only\` skips commit + push and only fast-forwards from origin
+(never rebases) \u2014 the mode a read-only session (or SessionStart) uses to pick up incoming changes
+without publishing local ones.
+
+Two definitive empty states (exit 0): no git repo (or no board anywhere yet, local or on origin)
+prints 'sync: nothing to sync'; a clean, already-current board prints 'sync: already up to date'.
+Otherwise the receipt reports { committed, pushed, pulled, actor, incoming } \u2014 \`incoming\` is the
+enriched delta of docs that arrived this run (capped; --limit controls the row cap, default 20).
+
+A same-doc conflict between your board and origin is DETECTED and the rebase is CLEANLY ABORTED \u2014
+the worktree is left exactly as it was, nothing moved on either side. This is an INTERIM guard
+(exit 5); real per-doc conflict resolution ships in a follow-up update.
+
+If the push fails after a local commit already landed (offline, revoked/expired credentials, or a
+locked repository), the receipt still reports what committed/pulled successfully \u2014 your work is
+saved locally either way, and re-running sync retries the push.
+
+Options:
+  --pull-only          Only fast-forward from origin (never rebase); skip commit + push
+  --dir <path>         Directory to run sync from (default: the cwd) \u2014 must be inside a git repo
+  --limit <n>          Cap the incoming-delta row list to <n> rows (default: 20; 0 = unlimited)
+  --json               Emit compact JSON instead of TOON
+  -h, --help           Show this help
 `;
+var DEFAULT_LIMIT2 = 20;
+function cap2(rows, limit) {
+  const bounded = limit > 0 ? rows.slice(0, limit) : rows;
+  return { shown: bounded.length, total: rows.length, rows: bounded };
+}
+var PUSH_FAIL_SAFETY_MESSAGE = "committed to the board locally \u2014 your work is saved. The push failed (offline or auth); re-run sync when you're back online or your access is restored.";
+function pushFailureMessage(err) {
+  if (err.code === "AUTH_REQUIRED" || err.code === "TRANSIENT") return PUSH_FAIL_SAFETY_MESSAGE;
+  return `committed to the board locally \u2014 your work is saved. ${err.message}`;
+}
+function upstreamHelp(inv) {
+  return `if a teammate has already set this project up for sharing, make sure your \`origin\` remote points at the SAME repository they pushed the \`board\` branch to; if not, someone needs to run the (human-gated) migration once before ${inv} sync can share it`;
+}
+function withUpstreamHelp(err, inv) {
+  if (err.code === "NO_UPSTREAM" && err.help === void 0) {
+    return new CliError("NO_UPSTREAM", err.message, { details: err.details, help: upstreamHelp(inv) });
+  }
+  return err;
+}
+function toCliError(err, op) {
+  if (err instanceof CliError) return err;
+  return classifyGitError({ args: [op], status: null, stdout: "", stderr: err instanceof Error ? err.message : String(err) });
+}
+async function throwPostCommitFailure(err, committedThisRun, key2, boardPath) {
+  if (!committedThisRun) throw err;
+  const wrapped = new CliError(err.code, pushFailureMessage(err), { details: err.details, help: err.help });
+  await writeCache(key2, {
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    delta: [],
+    unpushedCount: unpushedCount(boardPath) ?? 0,
+    uncommittedCount: countUncommitted(boardPath)
+  });
+  throw wrapped;
+}
+function isRawPathEntry(entry) {
+  const base = entry.split("/").pop() ?? entry;
+  return base.includes(".");
+}
+function conflictLabel(entry) {
+  return isRawPathEntry(entry) ? entry : `doc ${entry}`;
+}
+function buildConflictMessage(ids) {
+  const labels = ids.length > 0 ? ids.map(conflictLabel) : ["the board"];
+  return `${labels.join(", ")} changed on both sides \u2014 nothing was changed on either side; conflict resolution ships in the next update`;
+}
+function ffSwallowToError(reason, inv) {
+  switch (reason) {
+    case "git-missing":
+      return new CliError("GIT_MISSING", "sync needs git, which isn't installed on this machine", {
+        help: "install git (https://git-scm.com/downloads), then re-run the command"
+      });
+    case "no-upstream":
+      return new CliError(
+        "NO_UPSTREAM",
+        "the board branch isn't linked to a remote yet \u2014 sync can't share it",
+        { help: upstreamHelp(inv) }
+      );
+    case "auth":
+      return new CliError(
+        "AUTH_REQUIRED",
+        "sync was denied access to the remote (or the repository is not visible to your credentials)",
+        { details: { best_effort: true } }
+      );
+    case "network":
+      return new CliError(
+        "TRANSIENT",
+        "sync could not reach the remote \u2014 offline or the host is unreachable; retry",
+        { details: { retryable: true } }
+      );
+    case "busy":
+      return new CliError(
+        "GIT_BUSY",
+        "another git process is using this repository \u2014 retry once it finishes",
+        { details: { retryable: true } }
+      );
+    case "diverged":
+      return new CliError(
+        "CONFLICT",
+        `the board has local commits not yet pushed, and origin has moved too \u2014 \`sync --pull-only\` only fast-forwards; run \`${inv} sync\` (without --pull-only) to reconcile`
+      );
+    case "conflict":
+      return new CliError(
+        "CONFLICT",
+        `the board worktree has unresolved conflicts \u2014 run \`${inv} sync\` (without --pull-only) to reconcile`
+      );
+    case "dirty":
+      return new CliError(
+        "RUNTIME",
+        "the board worktree has uncommitted local changes that a fast-forward-only pull would overwrite \u2014 commit or discard them, or run a full sync instead of --pull-only"
+      );
+    case "detached-head":
+      return new CliError(
+        "RUNTIME",
+        "the board worktree is in a detached-HEAD state \u2014 sync needs the board branch checked out",
+        { details: { state: "detached-head" } }
+      );
+    case "not-a-repo":
+      return new CliError(
+        "RUNTIME",
+        "the board worktree is not a git repository \u2014 run sync again to re-provision it"
+      );
+    default:
+      return new CliError(
+        "RUNTIME",
+        `sync's pull step failed for an unclassified reason (${reason}) \u2014 re-run, or run without --pull-only`
+      );
+  }
+}
+function realOrSame2(p) {
+  try {
+    return realpathSync5(p);
+  } catch {
+    return p;
+  }
+}
+function healStaleRebaseBeforeProvisioning(dir) {
+  try {
+    const top = repoTopLevel(dir);
+    if (!top) return;
+    const candidateBoardPath = path9.join(top, BUNDLE_DIR);
+    if (!existsSync4(candidateBoardPath)) return;
+    const boardTop = repoTopLevel(candidateBoardPath);
+    if (!boardTop || realOrSame2(boardTop) !== realOrSame2(candidateBoardPath)) return;
+    if (detectStaleRebase(candidateBoardPath)) {
+      abortStaleRebase(candidateBoardPath);
+    }
+  } catch {
+  }
+}
+function currentHead(boardPath) {
+  const r = runGit(boardPath, ["rev-parse", "HEAD"]);
+  if (r.status !== 0) {
+    throw classifyGitError({ args: ["rev-parse", "HEAD"], status: r.status, stdout: r.stdout, stderr: r.stderr });
+  }
+  return r.stdout.trim();
+}
+function countUncommitted(boardPath) {
+  const r = runGit(boardPath, ["status", "--porcelain"]);
+  if (r.status !== 0) return 0;
+  return r.stdout.split("\n").filter((l) => l.trim().length > 0).length;
+}
+function resolveOriginRef(boardPath) {
+  const r = runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]);
+  return r.status === 0 ? r.stdout.trim() : null;
+}
+var UNKNOWN_FIELD = "unknown";
+function fmValue(v) {
+  return typeof v === "string" && v.trim().length > 0 ? v.trim() : UNKNOWN_FIELD;
+}
+function isConceptDocRelPath(relPath) {
+  return relPath.endsWith(".md") && !isReservedFile(relPath);
+}
+function nameStatusPairs(out) {
+  return out.split("\n").map((l) => l.trimEnd()).filter((l) => l.length > 0).map((l) => {
+    const [letter = "", ...rest] = l.split("	");
+    return { letter: letter.trim().charAt(0), relPath: rest.join("	") };
+  }).filter((r) => r.letter.length > 0 && r.relPath.length > 0);
+}
+function verbForLetter(letter) {
+  if (letter === "A") return "added";
+  if (letter === "M" || letter === "T") return "updated";
+  if (letter === "D") return "deleted";
+  return null;
+}
+function enrichDocChangeAt(boardPath, relPath, verb, rev) {
+  const docId = conceptIdFromPath(relPath);
+  let actor = UNKNOWN_FIELD;
+  let kind2 = UNKNOWN_FIELD;
+  let title = docId;
+  const shown = runGit(boardPath, ["show", `${rev}:${relPath}`]);
+  if (shown.status === 0) {
+    try {
+      const { frontmatter } = parseMarkdown(shown.stdout, relPath);
+      actor = fmValue(frontmatter.actor);
+      kind2 = fmValue(frontmatter.type);
+      const t = fmValue(frontmatter.title);
+      if (t !== UNKNOWN_FIELD) title = t;
+    } catch {
+    }
+  }
+  return { docId, actor, verb, kind: kind2, title };
+}
+function originDocsBetween(boardPath, fromRef, toRef) {
+  if (!fromRef || !toRef || fromRef === toRef) return [];
+  const r = runGit(boardPath, ["diff", "--name-status", "--no-renames", `${fromRef}..${toRef}`]);
+  if (r.status !== 0) return [];
+  const changes = [];
+  for (const { letter, relPath } of nameStatusPairs(r.stdout)) {
+    if (!isConceptDocRelPath(relPath)) continue;
+    const verb = verbForLetter(letter);
+    if (!verb) continue;
+    changes.push(enrichDocChangeAt(boardPath, relPath, verb, verb === "deleted" ? fromRef : toRef));
+  }
+  return changes;
+}
+function resolveBundleKey(boardPath) {
+  const r = runGit(boardPath, ["remote", "get-url", BOARD_REMOTE]);
+  if (r.status === 0 && r.stdout.trim().length > 0) {
+    return bundleKey({ remoteUrl: r.stdout.trim(), subpath: "" });
+  }
+  return bundleKey({ root: boardPath });
+}
+function singleActor(docs) {
+  if (docs.length === 0) return void 0;
+  const actors = new Set(docs.map((d) => d.actor));
+  return actors.size === 1 ? docs[0].actor : void 0;
+}
+function toIncomingRows(changes) {
+  return changes.map((c) => ({ verb: c.verb, kind: c.kind, id: c.docId, title: c.title, actor: c.actor }));
+}
+function toDeltaRows(changes) {
+  return changes.map((c) => ({ docId: c.docId, verb: c.verb, kind: c.kind, title: c.title, actor: c.actor }));
+}
 async function sync(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
+  const inv = cliInvocation();
   const { values } = parseOrUsage(
     () => parseArgs22({
       args: argv,
       options: {
+        "pull-only": { type: "boolean" },
         dir: { type: "string" },
+        limit: { type: "string" },
         json: { type: "boolean" },
         help: { type: "boolean", short: "h" }
       },
@@ -11843,11 +12578,124 @@ async function sync(argv, deps = {}) {
     stdout(SYNC_USAGE);
     return;
   }
-  throw new CliError(
-    "NOT_IMPLEMENTED",
-    "sync is not implemented yet \u2014 agentstate-lite is filesystem-first; remote sync is a planned fast-follow",
-    { help: "the bundle is a plain folder; version it with git, or copy the directory, until sync lands" }
-  );
+  let limit = DEFAULT_LIMIT2;
+  if (values.limit !== void 0) {
+    const raw = values.limit.trim();
+    if (!/^\d+$/.test(raw)) {
+      throw new CliError("USAGE", "--limit must be a non-negative integer (0 = unlimited)");
+    }
+    limit = Number(raw);
+  }
+  const dir = values.dir ?? process.cwd();
+  const pullOnly = Boolean(values["pull-only"]);
+  const mode = resolveMode(values);
+  healStaleRebaseBeforeProvisioning(dir);
+  const outcome = provisionBoardWorktree(dir);
+  if (outcome.kind === "no_repo" || outcome.kind === "no_board") {
+    stdout(render({ sync: "nothing to sync" }, mode));
+    return;
+  }
+  const boardPath = outcome.boardPath;
+  const key2 = resolveBundleKey(boardPath);
+  const storedCursor = await readCursor(key2);
+  const startHead = currentHead(boardPath);
+  const preFetchOriginRef = resolveOriginRef(boardPath);
+  let commitResult = { committed: false, docs: [] };
+  if (!pullOnly) {
+    commitResult = stageAndCommit(boardPath);
+  }
+  if (pullOnly) {
+    const ff = ffPull(boardPath);
+    if (ff.swallowed) {
+      throw ffSwallowToError(ff.swallowed, inv);
+    }
+  } else {
+    let rebaseOutcome;
+    try {
+      rebaseOutcome = fetchRebase(boardPath);
+    } catch (rawErr) {
+      const enriched = withUpstreamHelp(toCliError(rawErr, "rebase"), inv);
+      throw await throwPostCommitFailure(enriched, commitResult.committed, key2, boardPath);
+    }
+    if (rebaseOutcome.status === "conflict") {
+      const rows = rebaseOutcome.conflictedDocIds.map(
+        (entry) => isRawPathEntry(entry) ? { path: entry } : { id: entry }
+      );
+      const conflictErr = new CliError("CONFLICT", buildConflictMessage(rebaseOutcome.conflictedDocIds), {
+        details: { conflicts: cap2(rows, limit) }
+      });
+      throw await throwPostCommitFailure(conflictErr, commitResult.committed, key2, boardPath);
+    }
+  }
+  const postFetchOriginRef = resolveOriginRef(boardPath);
+  const originDelta = originDocsBetween(boardPath, preFetchOriginRef, postFetchOriginRef);
+  const cursorToken = storedCursor && storedCursor.tier === "git" && typeof storedCursor.token === "string" ? storedCursor.token : void 0;
+  const postPullHead = currentHead(boardPath);
+  const delta = changesSince(boardPath, cursorToken ?? startHead);
+  let changes;
+  let reanchorNote;
+  if (delta.ok) {
+    changes = delta.changes;
+    await writeCursor(key2, { tier: "git", token: postPullHead });
+  } else {
+    changes = [];
+    reanchorNote = REANCHOR_NOTE;
+    await recordReanchor(
+      key2,
+      { tier: "git", token: postPullHead },
+      { unpushedCount: unpushedCount(boardPath) ?? 0, uncommittedCount: countUncommitted(boardPath) }
+    );
+  }
+  let pushedCount = 0;
+  if (!pullOnly) {
+    const ahead = unpushedCount(boardPath) ?? 0;
+    try {
+      push(boardPath);
+      pushedCount = ahead;
+    } catch (err) {
+      const classified = toCliError(err, "push");
+      const warning = pushFailureMessage(classified);
+      const partial = { warning };
+      partial.committed = commitResult.docs.length;
+      partial.pushed = 0;
+      partial.pulled = originDelta.length;
+      const actor2 = singleActor(commitResult.docs);
+      if (actor2) partial.actor = actor2;
+      partial.incoming = cap2(toIncomingRows(originDelta), limit);
+      if (reanchorNote) partial.note = reanchorNote;
+      stdout(render(partial, mode));
+      await writeCache(key2, {
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        delta: toDeltaRows(changes),
+        unpushedCount: unpushedCount(boardPath) ?? 0,
+        uncommittedCount: countUncommitted(boardPath),
+        ...reanchorNote ? { note: reanchorNote } : {}
+      });
+      throw asHandled(new CliError(classified.code, warning, { details: classified.details }));
+    }
+  }
+  await writeCache(key2, {
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    delta: toDeltaRows(changes),
+    unpushedCount: unpushedCount(boardPath) ?? 0,
+    uncommittedCount: countUncommitted(boardPath),
+    ...reanchorNote ? { note: reanchorNote } : {}
+  });
+  const committedCount = commitResult.docs.length;
+  const pulledCount = originDelta.length;
+  if (committedCount === 0 && pulledCount === 0 && pushedCount === 0 && !reanchorNote) {
+    stdout(render({ sync: "already up to date" }, mode));
+    return;
+  }
+  const receipt = {};
+  receipt.committed = committedCount;
+  receipt.pushed = pushedCount;
+  receipt.pulled = pulledCount;
+  const actor = singleActor(commitResult.docs);
+  if (actor) receipt.actor = actor;
+  receipt.incoming = cap2(toIncomingRows(originDelta), limit);
+  if (reanchorNote) receipt.note = reanchorNote;
+  stdout(render(receipt, mode));
 }
 
 // src/commands/login.ts
@@ -11964,11 +12812,11 @@ async function toRemoteError(res) {
   const code = envelope?.error?.code ?? (res.status === 401 ? "AUTH_REQUIRED" : res.status >= 500 ? "RUNTIME" : "USAGE");
   return new RemoteError(message, code, res.status);
 }
-async function authRequest(base, path8, options2 = {}) {
+async function authRequest(base, path10, options2 = {}) {
   const headers = {};
   if (options2.body !== void 0) headers["content-type"] = "application/json";
   if (options2.authToken) headers["Authorization"] = `Bearer ${options2.authToken}`;
-  const request = new Request(`${base}${path8}`, {
+  const request = new Request(`${base}${path10}`, {
     method: options2.method ?? "GET",
     headers,
     body: options2.body !== void 0 ? JSON.stringify(options2.body) : void 0
@@ -12098,7 +12946,7 @@ Options:
   --json            Emit compact JSON instead of TOON
   -h, --help        Show this help
 `;
-async function join6(argv, deps = {}) {
+async function join7(argv, deps = {}) {
   const saveApiKey = deps.saveApiKey ?? ((origin2, apiKey) => saveApiKeyForOrigin(origin2, apiKey));
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const { values } = parseOrUsage(
@@ -12842,8 +13690,8 @@ var COMMAND_GROUPS = [
         summary: "Boot the local web UI (board / doc detail / admin / graph) \u2014 same origin, loopback-only"
       },
       {
-        usage: "sync [options]",
-        summary: "Sync the bundle with a remote (NOT YET IMPLEMENTED)"
+        usage: "sync [--pull-only] [--dir <path>] [--limit <n>]",
+        summary: "Share the board branch with a remote \u2014 commits, pulls, and pushes (git tier; --pull-only skips commit+push)"
       }
     ]
   },
@@ -13170,9 +14018,9 @@ async function home(argv, deps = {}) {
 }
 
 // src/commands/hook.ts
-import { existsSync as existsSync3, readFileSync as readFileSync3, writeFileSync as writeFileSync2, rmSync } from "node:fs";
-import { homedir as homedir5 } from "node:os";
-import { join as join7, dirname as dirname4 } from "node:path";
+import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync2, rmSync } from "node:fs";
+import { homedir as homedir6 } from "node:os";
+import { join as join8, dirname as dirname4 } from "node:path";
 import { mkdirSync as mkdirSync2 } from "node:fs";
 import { parseArgs as parseArgs30 } from "node:util";
 var HOOK_USAGE = `agentstate-lite hook \u2014 manage the SessionStart home-view hook
@@ -13254,28 +14102,28 @@ function readHookStatus(settings) {
 }
 function targetsFor(base) {
   return {
-    claudeSettings: join7(base, ".claude", "settings.json"),
-    codexHooks: join7(base, ".codex", "hooks.json"),
-    opencodePlugin: join7(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
+    claudeSettings: join8(base, ".claude", "settings.json"),
+    codexHooks: join8(base, ".codex", "hooks.json"),
+    opencodePlugin: join8(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
   };
 }
-function readSettings(path8) {
-  if (!existsSync3(path8)) return {};
+function readSettings(path10) {
+  if (!existsSync5(path10)) return {};
   try {
-    return JSON.parse(readFileSync3(path8, "utf8"));
+    return JSON.parse(readFileSync4(path10, "utf8"));
   } catch {
     return {};
   }
 }
-function writeSettings(path8, settings) {
-  mkdirSync2(dirname4(path8), { recursive: true });
-  writeFileSync2(path8, `${JSON.stringify(settings, null, 2)}
+function writeSettings(path10, settings) {
+  mkdirSync2(dirname4(path10), { recursive: true });
+  writeFileSync2(path10, `${JSON.stringify(settings, null, 2)}
 `);
 }
-function opencodePluginInstalled(path8) {
-  if (!existsSync3(path8)) return false;
+function opencodePluginInstalled(path10) {
+  if (!existsSync5(path10)) return false;
   try {
-    return readFileSync3(path8, "utf8").includes(OPENCODE_MANAGED_MARKER);
+    return readFileSync4(path10, "utf8").includes(OPENCODE_MANAGED_MARKER);
   } catch {
     return false;
   }
@@ -13312,7 +14160,7 @@ async function hook(argv, deps = {}) {
       help: `${cliInvocation()} hook ${sub} --scope project|global`
     });
   }
-  const base = deps.base ?? (scope === "global" ? homedir5() : process.cwd());
+  const base = deps.base ?? (scope === "global" ? homedir6() : process.cwd());
   const targets = targetsFor(base);
   const mode = resolveMode(values);
   if (sub === "status") {
@@ -13369,10 +14217,10 @@ async function hook(argv, deps = {}) {
     return;
   }
   let changed = false;
-  for (const path8 of [targets.claudeSettings, targets.codexHooks]) {
-    const [updated, didChange] = computeHookUninstall(readSettings(path8));
+  for (const path10 of [targets.claudeSettings, targets.codexHooks]) {
+    const [updated, didChange] = computeHookUninstall(readSettings(path10));
     if (didChange) {
-      writeSettings(path8, updated);
+      writeSettings(path10, updated);
       changed = true;
     }
   }
@@ -13546,7 +14394,7 @@ async function main(argv) {
       sync: wrap2(sync),
       login: wrap2(login),
       whoami: wrap2(whoami),
-      join: wrap2(join6),
+      join: wrap2(join7),
       invite: wrap2(invite),
       member: wrap2(member),
       key: wrap2(key),
