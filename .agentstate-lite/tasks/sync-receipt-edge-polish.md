@@ -9,7 +9,7 @@ description: >-
   git-identity fallback, --help worktree language, single-branch refspec hint,
   code-repo linked-worktree raw fatal.
 actor: brian-claude
-timestamp: '2026-07-08T18:03:56.808Z'
+timestamp: '2026-07-08T18:50:19.178Z'
 ---
 From the PR#13 three-lane review (all empirical):
 1. Cross-run receipt under-report: fetch-succeeded-then-failed run → NEXT run
@@ -35,3 +35,6 @@ From the PR#13 three-lane review (all empirical):
    interpretations of a `.md`-suffixed input and takes the doc branch. Fix: when the
    input's concept and raw relpaths are identical (or the path is reserved), classify
    the hit as raw; regression test for `show-incoming log.md`.
+8. Two error strings in errors.ts (~:360, :370) still say "board worktree" while the
+   sibling ffSwallowToError strings now say "board checkout" (U6 vocab sweep missed the
+   classifyGitError pair) — same condition renders different vocabulary by path.

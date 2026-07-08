@@ -9,7 +9,8 @@ description: >-
   U4. One in-process pull-then-render SessionStart subcommand (time-boxed,
   guaranteed fall-through) plus home cache render and the both-count backstop.
   Deps: sync-command-core.
-timestamp: '2026-07-08T15:03:59.273Z'
+actor: brian-claude
+timestamp: '2026-07-08T18:50:18.934Z'
 ---
 # U4 — SessionStart integration
 
@@ -75,3 +76,10 @@ Builder → independent Reviewer → QA. Deps: sync-command-core (U3a).
 - Dependencies note: tasks/sync-actor-attribution and tasks/sync-cache-per-clone must
   land before this unit's human face renders, or it will say "unknown did everything"
   and the unpushed backstop will lie across clones.
+
+## Inherited from U6 close (2026-07-08)
+
+- U6 deliberately omitted the hook-install re-run prompt (its dependency is THIS unit's
+  pull-then-render subcommand). This unit delivers it: when the new hook command ships,
+  prompt founders to re-run `hook install` so their machines pick up the loop (U5's
+  rollout note is the backstop).
