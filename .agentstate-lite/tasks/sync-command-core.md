@@ -3,13 +3,14 @@ type: Task
 title: >-
   U3a the sync command core flow: provision/commit/pull/push/envelope + interim
   conflict guard
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   U3a. Replace the sync stub with the core flow (entry self-heal, provision,
   commit, pull, push, envelope, two empty states, push-fail) plus the INTERIM
   conflict guard. Deps: sync-git-porcelain, sync-cursor-store.
-timestamp: '2026-07-07T21:20:03.074Z'
+assignee: mike/claude
+timestamp: '2026-07-08T01:19:38.166Z'
 ---
 # U3a — the `sync` command, core flow
 
