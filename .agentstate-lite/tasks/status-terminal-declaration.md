@@ -1,23 +1,24 @@
 ---
 type: Task
 title: 'Declare terminal statuses on kind conventions: THREE consumers now waiting'
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  The evidence-gated refinement from the expects_inbound design has its trigger
-  — three independent demand signals: (1) missing_expected_links reports
-  historical done/canceled tasks as noise (the original gate, 2026-07-07); (2) a
-  foreign-harness agent needed OPEN = non-terminal and could not express it
-  (2026-07-08); (3) the status sweep sort hardcodes the string done. Design: the
-  kind convention status enum gains a terminal marker (shape TBD at build: e.g.
-  fields.values.status plus terminal: [done, canceled] — mirror the
-  links/expects_inbound lenient-parse pattern). Consumers: the lint
-  skips-or-groups terminal instances; list gains an open semantic (with
-  tasks/list-field-sets); the sweep sort reads the declaration. One small
-  declaration, three existing consumers — consumer-pull satisfied for real.
-actor: brian-claude
+  SHIPPED in PR #20 (merge e7a1531, plugin 1.0.22). fields.terminal on kind
+  conventions + exported isTerminal (any-member semantics for array values);
+  kinds projects it; three consumers: list --open (declaration-driven, help-line
+  no-op on undeclared bundles), status sweep exclusion (terminal_skipped
+  reported top-level, counting INSTANCES), work-tracking TASK_KIND seed. Live
+  board task convention declares done/canceled — rode the PR deliberately so the
+  declaration landed atomically with the parser (pre-merge main warned on the
+  unknown key). Post-review polish by briand fleet during their #20 rebase:
+  doc-comment honesty on any-member arrays + terminal_skipped disambiguation
+  (d13242f), and Brian ruled Roadmap Item done is terminal (seeded in the
+  roadmap recipe). Payoff on this board: list --type Task --open, 46 tasks to 19
+  open in one query.
+actor: mike/claude
 assignee: mike/claude
-timestamp: '2026-07-08T23:45:00.000Z'
+timestamp: '2026-07-08T23:17:55.537Z'
 ---
 
 
