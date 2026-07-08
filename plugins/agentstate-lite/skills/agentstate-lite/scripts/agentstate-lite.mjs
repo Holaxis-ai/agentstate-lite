@@ -12128,9 +12128,12 @@ function fetchRebaseResolving(boardPath, exportDir) {
           writeFileSync2(exportPath, local.stdout, { mode: 384 });
           if (isDoc) {
             try {
-              const { body } = parseMarkdown(local.stdout.toString("utf8"), relPath);
-              bodyExportPath = exportPath.replace(/\.md$/, ".body.md");
-              writeFileSync2(bodyExportPath, body, { mode: 384 });
+              const decoded = local.stdout.toString("utf8");
+              if (Buffer.from(decoded, "utf8").equals(local.stdout)) {
+                const { body } = parseMarkdown(decoded, relPath);
+                bodyExportPath = exportPath.replace(/\.md$/, ".body.md");
+                writeFileSync2(bodyExportPath, body, { mode: 384 });
+              }
             } catch {
               bodyExportPath = null;
             }
@@ -12485,10 +12488,10 @@ function convergeDocLine(c) {
     return `${label} \u2014 teammate's version kept (your side deleted it; nothing to save)`;
   }
   if (!c.landed) {
-    const recreate = c.isDoc ? " \u2014 re-create with doc write" : "";
+    const recreate = c.isDoc && c.bodyExportPath !== null ? " \u2014 re-create with doc write" : "";
     return `${label} \u2014 teammate's deletion kept; yours saved at ${c.exportPath}${recreate}`;
   }
-  const reconcile = c.isDoc ? " \u2014 reconcile with doc update" : "";
+  const reconcile = c.isDoc && c.bodyExportPath !== null ? " \u2014 reconcile with doc update" : "";
   return `${label} \u2014 teammate's version kept; yours saved at ${c.exportPath}${reconcile}`;
 }
 function buildConvergeMessage(conflicts) {

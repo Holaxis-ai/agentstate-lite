@@ -13,6 +13,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -699,6 +700,48 @@ test("U3b round-2 REQUIRED 1: an invalid-UTF-8 blob round-trips BYTE-IDENTICALLY
   } finally {
     await cleanup();
     await rm(outDir, { recursive: true, force: true });
+    await topo.cleanup();
+  }
+});
+
+test("U3b round-3 LOW 1+2: a doc that PARSES but does not utf8-round-trip gets NO body companion, NO verb suffix, NO chain", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(2);
+  const [homeA, homeB] = homes;
+  try {
+    // Valid OKF frontmatter, but the BODY carries a raw invalid-UTF-8 byte: the blob PARSES after
+    // a lossy decode (the bad byte becomes U+FFFD), yet its bytes do not round-trip — writing a
+    // .body.md from the decode would silently corrupt the body the chain then applies.
+    const fm = "---\ntype: Task\ntitle: Weird bytes\n---\n# Weird\n\n";
+    const blobA = Buffer.concat([Buffer.from(fm, "utf8"), Buffer.from([0x41, 0x20, 0xff, 0x0a])]);
+    const blobB = Buffer.concat([Buffer.from(fm, "utf8"), Buffer.from([0x42, 0x20, 0xfe, 0x0a])]);
+    assert.notEqual(Buffer.from(blobB.toString("utf8"), "utf8").compare(blobB), 0, "sanity: parses-but-non-roundtrippable");
+
+    await writeFile(path.join(topo.a.board, "tasks/weird.md"), blobA);
+    const aSync = await runSync(homeA!, ["--dir", topo.a.root]);
+    assert.equal(aSync.err, undefined, aSync.err?.message);
+
+    await writeFile(path.join(topo.b.board, "tasks/weird.md"), blobB);
+    const conflicted = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.ok(conflicted.err, "expected the CONFLICT(5) terminal envelope");
+    assert.equal(conflicted.err!.code, "CONFLICT");
+
+    // The FULL export stays byte-exact; the body companion is SKIPPED (LOW 2).
+    const exportPath = exportPathFor(topo, homeB!, "tasks/weird.md");
+    assert.equal(Buffer.compare(await readFile(exportPath), blobB), 0, "full export byte-identical");
+    assert.equal(existsSync(exportPath.replace(/\.md$/, ".body.md")), false, "no corrupted .body.md is ever written");
+
+    // No runnable artifact → no fixing-verb suffix on the line (LOW 1), no chain, no yours_body.
+    assert.ok(conflicted.err!.message.includes("doc tasks/weird — teammate's version kept; yours saved at"), conflicted.err!.message);
+    assert.ok(!conflicted.err!.message.includes("reconcile with doc update"), "no doc-update suffix without a body export");
+    assert.equal(conflicted.err!.help, undefined, "no chain over a corrupted body");
+    const rows = (conflicted.err!.details as { conflicts: { rows: Array<Record<string, unknown>> } }).conflicts.rows;
+    assert.equal(rows[0]!.id, "tasks/weird");
+    assert.equal(rows[0]!.yours_body, undefined, "no body companion on the row");
+    assert.equal(isMidRebase(topo.b), false);
+    assertPristine(topo.b, "B after non-roundtrippable converge");
+  } finally {
+    await cleanup();
     await topo.cleanup();
   }
 });

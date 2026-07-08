@@ -280,22 +280,29 @@ export function annotateLanded(boardPath: string, conflicts: ResolvedConflict[])
  * deletion kept" and points at `doc write` (re-create) — `doc update` on a doc whose file is
  * gone fails NOT_FOUND. The DROPPED phrase "nothing was overwritten" stays dropped (pack (c)).
  */
-export function convergeDocLine(c: Pick<LandedConflict, "entry" | "isDoc" | "exportPath" | "landed">): string {
+export function convergeDocLine(
+  c: Pick<LandedConflict, "entry" | "isDoc" | "exportPath" | "bodyExportPath" | "landed">,
+): string {
   const label = entryLabel(c);
   if (c.exportPath === null) {
     return `${label} — teammate's version kept (your side deleted it; nothing to save)`;
   }
+  // ROUND-3 LOW 1: the fixing-verb suffix is keyed on the BODY export's existence, not on
+  // isDoc alone — a doc with no .body.md (unparseable or non-utf8-round-trippable local blob)
+  // must not tell the user to `doc update` with the only file that exists (the FULL export),
+  // which would nest YAML frontmatter into the body. Mirrors the deletion case: no runnable
+  // artifact, no verb.
   if (!c.landed) {
-    const recreate = c.isDoc ? " — re-create with doc write" : "";
+    const recreate = c.isDoc && c.bodyExportPath !== null ? " — re-create with doc write" : "";
     return `${label} — teammate's deletion kept; yours saved at ${c.exportPath}${recreate}`;
   }
-  const reconcile = c.isDoc ? " — reconcile with doc update" : "";
+  const reconcile = c.isDoc && c.bodyExportPath !== null ? " — reconcile with doc update" : "";
   return `${label} — teammate's version kept; yours saved at ${c.exportPath}${reconcile}`;
 }
 
 /** The CONFLICT(5) envelope message: one converge line per conflicted entry, "; "-joined. */
 export function buildConvergeMessage(
-  conflicts: Array<Pick<LandedConflict, "entry" | "isDoc" | "exportPath" | "landed">>,
+  conflicts: Array<Pick<LandedConflict, "entry" | "isDoc" | "exportPath" | "bodyExportPath" | "landed">>,
 ): string {
   return conflicts.map(convergeDocLine).join("; ");
 }

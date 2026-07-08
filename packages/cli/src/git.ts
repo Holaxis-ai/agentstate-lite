@@ -603,12 +603,19 @@ export function fetchRebaseResolving(boardPath: string, exportDir: string): Fetc
           writeFileSync(exportPath, local.stdout, { mode: 0o600 });
           // The BODY-ONLY companion (round-2 REQUIRED 3): the literally-executable
           // `doc update --body-file` input. Only for a concept doc whose blob parses as OKF
-          // markdown — a parse failure just means no runnable chain (the full export remains).
+          // markdown AND whose bytes round-trip utf8 cleanly (round-3 LOW 2: a doc that PARSES
+          // after a lossy decode — an invalid byte became U+FFFD — would get a CORRUPTED body
+          // companion while the full export stays exact, and the emitted chain would apply the
+          // corruption; skip the companion, and with it the runnable chain, instead). A parse
+          // failure likewise just means no runnable chain — the full export remains either way.
           if (isDoc) {
             try {
-              const { body } = parseMarkdown(local.stdout.toString("utf8"), relPath);
-              bodyExportPath = exportPath.replace(/\.md$/, ".body.md");
-              writeFileSync(bodyExportPath, body, { mode: 0o600 });
+              const decoded = local.stdout.toString("utf8");
+              if (Buffer.from(decoded, "utf8").equals(local.stdout)) {
+                const { body } = parseMarkdown(decoded, relPath);
+                bodyExportPath = exportPath.replace(/\.md$/, ".body.md");
+                writeFileSync(bodyExportPath, body, { mode: 0o600 });
+              }
             } catch {
               bodyExportPath = null;
             }

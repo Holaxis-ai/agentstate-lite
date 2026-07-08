@@ -10,31 +10,37 @@ description: >-
   carried the converging mechanic + round-1 fixes (impl b744b70, round-1
   63ed6c1: quotepath invariant + -z conflict list, deletion-aware help,
   deletion-direction pins) PLUS Mike's review fix 00203a1 (structural
-  absent-upstream detection); fix-round-2 landed as the FOLLOW-UP branch
-  fix/sync-u3b-hardening (commit 01bd2be, cherry-picked off origin/main — NOT in
-  #15): byte-exact blob exports via runGitBytes (closes
-  tasks/sync-binary-export), the explicit isDoc discriminator replacing the
-  dot-in-basename heuristic (entryLabel; probe-first show-incoming id resolution
-  folding Mike's cat-file probe into the candidate walk), and the
-  literally-executable reconcile chain (body-only .body.md export companion
-  feeding --body-file; frontmatter_differs surfacing; rows carry
-  yours/yours_body). MECHANIC (unchanged): git.ts fetchRebaseResolving — export
-  :3 local FIRST (the rebase inversion), checkout origin/board -- <path>, add,
-  GIT_EDITOR=true rebase --continue, LOOP until rebase state gone, empty replays
-  --skip'd, abort-before-rethrow (worktree never mid-state); CONFLICT(5) with
-  amended pack (c); conflicted run SKIPS push (next sync pushes); exports at
-  ~/.agentstate/sync/exports/<key-digest>/<relPath>. Tests 48 green in the sync
-  suites (31 sync.test.ts + 17 sync-conflict.test.ts incl. binding 3-assert
+  absent-upstream detection); fix-round-2 AND the round-3 LOW notes landed as
+  the FOLLOW-UP branch fix/sync-u3b-hardening (NOT in #15): byte-exact blob
+  exports via runGitBytes (closes tasks/sync-binary-export), the explicit isDoc
+  discriminator replacing the dot-in-basename heuristic (entryLabel; probe-first
+  show-incoming id resolution folding Mike's cat-file probe into the candidate
+  walk), the literally-executable reconcile chain (body-only .body.md export
+  companion feeding --body-file; frontmatter_differs surfacing; rows carry
+  yours/yours_body), and the round-3 LOWs: the fixing-verb suffix is keyed on
+  the body export's existence (no doc-update hint when only the full export
+  exists) and the body companion is skipped when the blob does not
+  utf8-round-trip (a parses-but-corrupting decode never reaches the chain).
+  MECHANIC (unchanged): git.ts fetchRebaseResolving — export :3 local FIRST (the
+  rebase inversion), checkout origin/board -- <path>, add, GIT_EDITOR=true
+  rebase --continue, LOOP until rebase state gone, empty replays --skip'd,
+  abort-before-rethrow (worktree never mid-state); CONFLICT(5) with amended pack
+  (c); conflicted run SKIPS push (next sync pushes); exports at
+  ~/.agentstate/sync/exports/<key-digest>/<relPath>. Tests 50 green in the sync
+  suites (32 sync.test.ts + 18 sync-conflict.test.ts incl. binding 3-assert
   convergence chain, multi-commit loop, log.md reserved, non-ASCII converge,
   both deletion directions, invalid-UTF-8 byte round-trip, dotted-id conflict,
-  literal character-for-character chain execution); npm run check green. Plugin
-  1.0.17 both manifests (main was 1.0.16). Remaining caveats: cursor/cache not
-  advanced on a conflicted run (next sync re-reports the delta); TAB-in-filename
-  residual tracked as tasks/sync-nonascii-path-pins; frontmatter_differs
-  surfaces local frontmatter changes but does not auto-apply them.
+  literal character-for-character chain execution, parses-but-non-roundtrippable
+  fixture); npm run check green. Plugin 1.0.17 both manifests (main was 1.0.16).
+  KNOWN LIMITATIONS: cursor/cache not advanced on a conflicted run (next sync
+  re-reports the delta); TAB-in-filename residual tracked as
+  tasks/sync-nonascii-path-pins; frontmatter_differs surfaces local frontmatter
+  changes but does not auto-apply them; printed help chains are
+  space-split-unquoted — an export path containing a space emits an ambiguous
+  chain (cosmetic/platform-rare; the row's yours_body field is unambiguous).
 assignee: brian-claude
 actor: builder-u3b
-timestamp: '2026-07-08T17:30:18.528Z'
+timestamp: '2026-07-08T17:35:29.771Z'
 ---
 # U3b — conflict resolution + `--show-incoming`
 
