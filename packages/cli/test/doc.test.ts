@@ -1272,7 +1272,7 @@ test("doc update --actor: an identical patch with the SAME actor stays a no-op (
   }
 });
 
-test("doc update --actor over --remote: succeeds (X-Actor threads over the wire; server is filesystem-backed so persistence is not asserted here)", async () => {
+test("doc update --actor over --remote: succeeds AND persists actor into frontmatter through the wire (X-Actor threads separately; server is filesystem-backed so the on-disk doc is assertable)", async () => {
   const { dir, cleanup } = await makeTaskBundle();
   try {
     await writeDoc({ root: dir }, { id: "tasks/x", frontmatter: { type: "Task", title: "X", status: "todo", timestamp: T }, body: "" });
@@ -1281,6 +1281,10 @@ test("doc update --actor over --remote: succeeds (X-Actor threads over the wire;
       const result = await runDoc(["update", "tasks/x", "--status", "done", "--actor", "alice", "--remote", server.url]);
       assert.equal(result.doc, "updated");
       assert.equal(result.changed, true);
+      // Reviewer issue 3: the server IS filesystem-backed over `dir`, so remote-path frontmatter
+      // persistence is directly assertable — pinning the wire parity the unit exists for.
+      const after = await readDoc({ root: dir }, "tasks/x");
+      assert.equal(after.frontmatter.actor, "alice", "actor persisted into frontmatter through the remote path");
     } finally {
       await server.close();
     }

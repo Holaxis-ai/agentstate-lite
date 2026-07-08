@@ -7,7 +7,8 @@ description: >-
   U6. Skill and docs truth pass: typical flow ends with sync, sync as setup
   verb, hook-install re-run prompt, plugin version bump in both manifests. Deps:
   sync-conflict-resolution, sync-sessionstart.
-timestamp: '2026-07-07T21:20:03.589Z'
+actor: brian-claude
+timestamp: '2026-07-08T15:50:39.056Z'
 ---
 # U6 — skill + docs truth pass
 
@@ -52,3 +53,12 @@ sync-sessionstart (U4) — U6 teaches the FULL user-facing surface.
 [depends on](sync-conflict-resolution.md)
 
 [depends on](sync-sessionstart.md)
+
+## Inherited from the actor-attribution review (2026-07-08, issue 4)
+
+Attribution is now POSSIBLE (--actor persists to frontmatter) but adoption is unforced —
+the skill's own guidance never tells agents to pass --actor, so "unknown" stays the
+common case in practice (the unit's own closing board record initially shipped without
+it — proof). This unit's skill pass should teach --actor in the typical flow and the
+Workspaces section ("write docs with --actor <your-name> so teammates' awareness renders
+attribute you"), keeping the pinned no-default semantics.

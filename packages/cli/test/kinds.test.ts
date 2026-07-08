@@ -882,3 +882,35 @@ test("seed round-trip (usability F2): init seeds 'sections: [Summary]' into 'kin
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("new: a kind DECLARING `actor` as required is satisfiable through the --actor control flag, and rejects without it (actor-attribution review, issue 2)", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    await writeDoc(bundle, {
+      id: "conventions/memo",
+      frontmatter: { type: CONVENTION_TYPE, governs: "Memo", fields: { required: ["title", "actor"], optional: [] }, timestamp: T },
+      body: "",
+    });
+
+    // WITH --actor: validates green and the written doc carries the field.
+    const receipt = await runJson(newCommand, ["Memo", "m1", "--title", "M", "--actor", "alice", "--dir", dir]);
+    const written = await readDoc(bundle, receipt.id as string);
+    assert.equal(written.frontmatter.actor, "alice");
+    assert.equal(receipt.warnings, undefined, "no kind warnings when the required actor arrives via the control flag");
+
+    // WITHOUT --actor: the required field is genuinely missing — strict `new` rejects it.
+    await assert.rejects(
+      () => runJson(newCommand, ["Memo", "m2", "--title", "M", "--dir", dir]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /actor/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

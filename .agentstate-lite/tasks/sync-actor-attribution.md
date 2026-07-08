@@ -33,7 +33,8 @@ description: >-
   silently stop consuming a piped body). Plugin 1.0.14 -> 1.0.15 (parallel
   branches may collide on the number — orchestrator reconciles at merge).
 assignee: brian-claude
-timestamp: '2026-07-08T15:19:36.341Z'
+actor: brian-claude
+timestamp: '2026-07-08T15:48:08.950Z'
 ---
 Driven evidence (PR#13 panel, consumer + mechanic lanes, empirical): receipt `actor:
 unknown`, commit subject `board: unknown — 2 docs`, every incoming row `actor: unknown`,
