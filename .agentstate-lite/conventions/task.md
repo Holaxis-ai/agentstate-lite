@@ -22,8 +22,12 @@ fields:
       - blocked
       - done
       - canceled
+  terminal:
+    status:
+      - done
+      - canceled
 freshness_horizon: 30d
-timestamp: '2026-07-03T02:48:49.517Z'
+timestamp: '2026-07-08T22:10:00.000Z'
 ---
 # Task
 
@@ -32,4 +36,5 @@ A task is a `type: Task` doc; its `status` is a validated enum; its DEPENDENCIES
 cross-links to prerequisite task docs (the link graph IS the DAG, backlinks show what
 is blocked on it); an atomic CLAIM is a compare-and-swap write flipping `status` to
 `in_progress` (a second claimer gets a VersionConflict). Query with `list --type Task`;
-lint/orphans/staleness via `status`.
+lint/orphans/staleness via `status`. `done`/`canceled` are TERMINAL: `list --open`
+hides them, and the status sweep skips them (reported as `terminal_skipped`).

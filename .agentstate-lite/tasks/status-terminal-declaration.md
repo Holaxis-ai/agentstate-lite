@@ -17,7 +17,7 @@ description: >-
   declaration, three existing consumers — consumer-pull satisfied for real.
 actor: brian-claude
 assignee: mike/claude
-timestamp: '2026-07-08T22:54:50.744Z'
+timestamp: '2026-07-08T23:45:00.000Z'
 ---
 
 
@@ -30,3 +30,12 @@ Roadmap Item declares `terminal: {status: [done]}` (done roadmap items hide from
 (no status field to declare). Update the recipe seed AND the live board's
 conventions/roadmap-item.md atomically in the same pass, mirroring how this PR
 already handles the Task convention.
+
+## Known limitation (recorded at the PR #20 fix round, 2026-07-08)
+
+Terminal exclusion covers exactly what the spec above scoped: the lint skip, `list
+--open`, and the `status` sweep SORT — not the freshness sweep itself. A terminal
+(done/canceled) doc whose `timestamp` ages past the kind's freshness horizon still
+appears in `status`'s `stale_docs`. This is deliberate spec scope, not an oversight:
+staleness is a property of the record, not of the work's openness. Revisit only if
+terminal-doc stale noise materializes on the live board (~30d observation window).

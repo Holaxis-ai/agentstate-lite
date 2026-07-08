@@ -53,7 +53,7 @@ export const CONTEXT_NOTE_KIND: KindConvention = {
   title: CONTEXT_NOTE_TYPE,
   governs: CONTEXT_NOTE_TYPE,
   path: "context-notes/",
-  fields: { required: ["title", "timestamp"], optional: ["description", "tags"], values: {} },
+  fields: { required: ["title", "timestamp"], optional: ["description", "tags"], values: {}, terminal: {} },
   sections: ["Summary"],
   freshnessHorizon: "24h",
 };
@@ -153,6 +153,10 @@ export const TASK_KIND: KindConvention = {
     required: ["title", "status"],
     optional: ["priority", "assignee", "description"],
     values: { status: ["todo", "in_progress", "blocked", "done", "canceled"] },
+    // The terminal declaration (tasks/status-terminal-declaration.md): done/canceled are the
+    // states past which a Task is no longer open — machinery (list --open, the status sweep's
+    // exclusion + sort) ships together with the declaration for every new bundle.
+    terminal: { status: ["done", "canceled"] },
   },
   freshnessHorizon: "30d",
 };
@@ -212,7 +216,9 @@ export const ROADMAP_KIND: KindConvention = {
   // "contains", targeting a Roadmap Item — declared so `kinds` teaches it and `link add`'s graph
   // lint validates it.
   links: { contains: ROADMAP_ITEM_TYPE },
-  fields: { required: ["title"], optional: [], values: {} },
+  // No status field on the spine, so nothing to declare terminal (Brian's ruling on the
+  // task board's `tasks/status-terminal-declaration.md`).
+  fields: { required: ["title"], optional: [], values: {}, terminal: {} },
 };
 
 /** The `conventions/roadmap.md` prose body. */
@@ -241,6 +247,9 @@ export const ROADMAP_ITEM_KIND: KindConvention = {
     required: ["title", "status"],
     optional: ["description", "sequence"],
     values: { status: ["queued", "active", "done"] },
+    // Brian's ruling (task board `tasks/status-terminal-declaration.md`): a done Roadmap Item
+    // hides from `list --open`, consistent with Task's done/canceled.
+    terminal: { status: ["done"] },
   },
 };
 

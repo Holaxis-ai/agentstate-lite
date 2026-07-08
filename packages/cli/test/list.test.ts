@@ -375,6 +375,270 @@ test("--field over --remote: same result set as --dir against a live serve()", a
   }
 });
 
+// ── tasks/list-field-sets.md: comma = set membership (OR) within one --field ──────────────────
+
+test("list --field status=todo,doing (comma = OR within one field): matches EITHER value", async () => {
+  const { dir, cleanup } = await makeTwoKindBundle();
+  try {
+    const result = await runJson(["--type", "Task", "--field", "status=todo,doing", "--dir", dir]);
+    assert.equal(result.count, 2);
+    const ids = (result.docs as Array<{ id: string }>).map((d) => d.id).sort();
+    assert.deepEqual(ids, ["tasks/a", "tasks/b"]);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("list --field status=todo,doing --field priority=high: AND across different --field flags is UNCHANGED — OR applies only WITHIN one field", async () => {
+  const { dir, cleanup } = await makeTwoKindBundle();
+  try {
+    const result = await runJson([
+      "--type", "Task", "--field", "status=todo,doing", "--field", "priority=high", "--dir", dir,
+    ]);
+    assert.equal(result.count, 1);
+    const rows = result.docs as Array<Record<string, unknown>>;
+    assert.equal(rows[0]!.id, "tasks/a"); // tasks/b is status=doing but priority=low, so it's excluded
+  } finally {
+    await cleanup();
+  }
+});
+
+test("list --field status=todo,,done (empty member): USAGE (exit 2)", async () => {
+  const { dir, cleanup } = await makeTwoKindBundle();
+  try {
+    await assert.rejects(
+      () => list(["--field", "status=todo,,done", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("list --field status=,done (leading empty member from a stray comma): USAGE (exit 2)", async () => {
+  const { dir, cleanup } = await makeTwoKindBundle();
+  try {
+    await assert.rejects(
+      () => list(["--field", "status=,done", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("list --field status= (bare, no comma at all): USAGE (exit 2) with the TAILORED empty-value message, not the comma-membership wording", async () => {
+  const { dir, cleanup } = await makeTwoKindBundle();
+  try {
+    await assert.rejects(
+      () => list(["--field", "status=", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.match((err as CliError).message, /has an empty value/);
+        assert.doesNotMatch((err as CliError).message, /comma is the set-membership separator/);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("--field comma-OR over --remote: same result set as --dir (reader-side post-filter is transparent over the wire)", async () => {
+  const { dir, cleanup } = await makeTwoKindBundle();
+  try {
+    const handle: ServerHandle = await serve({ bundle: { root: dir }, port: 0 });
+    const url = `http://${handle.host}:${handle.port}`;
+    try {
+      const local = await runJson(["--type", "Task", "--field", "status=todo,doing", "--dir", dir]);
+      const remote = await runJson(["--type", "Task", "--field", "status=todo,doing", "--remote", url]);
+      assert.deepEqual(remote, local);
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+// ── tasks/status-terminal-declaration.md: `--open` ──────────────────────────────────────────────
+
+/**
+ * A bundle with a `Task` kind declaring a terminal set (done/canceled), a second GOVERNED kind
+ * with NO terminal declared (`Ticket`), and an UNGOVERNED type doc — the three "must stay
+ * included" shapes `--open` promises, alongside the terminal Task instances it must exclude.
+ */
+async function makeTerminalBundle(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  const dir = await tempDir();
+  const bundle: Bundle = { root: dir };
+  await initBundle(dir);
+  await writeDoc(bundle, {
+    id: "conventions/task",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      title: "Task",
+      governs: "Task",
+      path: "tasks/",
+      fields: {
+        required: ["title", "status"],
+        optional: [],
+        values: { status: ["todo", "doing", "done", "canceled"] },
+        terminal: { status: ["done", "canceled"] },
+      },
+      timestamp: T,
+    },
+    body: "A unit of work.",
+  });
+  await writeDoc(bundle, {
+    id: "conventions/ticket",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      title: "Ticket",
+      governs: "Ticket",
+      path: "tickets/",
+      fields: { required: ["severity"], optional: [] }, // GOVERNED, but declares no terminal set
+      timestamp: T,
+    },
+    body: "A support ticket, no terminal declared.",
+  });
+
+  await writeDoc(bundle, { id: "tasks/a", frontmatter: { type: "Task", title: "Task A", status: "todo", timestamp: T }, body: "" });
+  await writeDoc(bundle, { id: "tasks/b", frontmatter: { type: "Task", title: "Task B", status: "done", timestamp: T }, body: "" });
+  await writeDoc(bundle, { id: "tasks/c", frontmatter: { type: "Task", title: "Task C", status: "canceled", timestamp: T }, body: "" });
+  await writeDoc(bundle, { id: "tickets/x", frontmatter: { type: "Ticket", title: "Ticket X", severity: "sev1", timestamp: T }, body: "" });
+  await writeDoc(bundle, { id: "notes/free", frontmatter: { type: "Note", title: "Free note", timestamp: T }, body: "" });
+
+  return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+test("list --open: excludes terminal Task instances (done/canceled), keeps non-terminal Tasks, a governed-no-terminal kind, and an ungoverned type", async () => {
+  const { dir, cleanup } = await makeTerminalBundle();
+  try {
+    // 7 total: the two Convention docs themselves (ungoverned as a type) + 5 concept docs.
+    const all = await runJson(["--dir", dir]);
+    assert.equal(all.count, 7);
+
+    const open = await runJson(["--open", "--dir", dir]);
+    assert.equal(open.count, 5); // the 2 done/canceled Tasks are the only exclusions
+    const ids = (open.docs as Array<{ id: string }>).map((d) => d.id).sort();
+    assert.deepEqual(ids, ["conventions/task", "conventions/ticket", "notes/free", "tasks/a", "tickets/x"]);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("list --type Task --open: composes with --type — kind columns still apply, terminal Tasks excluded", async () => {
+  const { dir, cleanup } = await makeTerminalBundle();
+  try {
+    const result = await runJson(["--type", "Task", "--open", "--dir", dir]);
+    assert.equal(result.count, 1);
+    const rows = result.docs as Array<Record<string, unknown>>;
+    assert.equal(rows[0]!.id, "tasks/a");
+    assert.deepEqual(Object.keys(rows[0]!).sort(), ["id", "status", "title"]);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("list --open: a bundle where NO kind declares any terminal set is a structural no-op — same count, an explicit help line says so", async () => {
+  const { dir, cleanup } = await makeTwoKindBundle(); // neither Task nor Ticket declares fields.terminal here
+  try {
+    const without = await runJson(["--dir", dir]);
+    const withOpen = await runJson(["--open", "--dir", dir]);
+    assert.equal(withOpen.count, without.count);
+    const help = withOpen.help as string[];
+    assert.ok(
+      Array.isArray(help) && help.some((h) => /no kind declares terminal values — --open filtered nothing/.test(h)),
+      `expected the --open no-op help line, got ${JSON.stringify(help)}`,
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("--open over --remote: same result set as --dir against a live serve() (the terminal-exclusion filter is transparent over the wire, same as the comma-OR post-filter)", async () => {
+  const { dir, cleanup } = await makeTerminalBundle();
+  try {
+    const handle: ServerHandle = await serve({ bundle: { root: dir }, port: 0 });
+    const url = `http://${handle.host}:${handle.port}`;
+    try {
+      const local = await runJson(["--type", "Task", "--open", "--dir", dir]);
+      const remote = await runJson(["--type", "Task", "--open", "--remote", url]);
+      assert.deepEqual(remote, local);
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("list --open: an ARRAY-valued terminal field (status: [todo, done]) is excluded — isTerminal matches on membership, never throws", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/task",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        title: "Task",
+        governs: "Task",
+        path: "tasks/",
+        fields: {
+          required: ["title"],
+          optional: ["status"],
+          values: { status: ["todo", "doing", "done"] },
+          terminal: { status: ["done"] },
+        },
+        timestamp: T,
+      },
+      body: "",
+    });
+    // An array-valued status (e.g. from a repeated --status flag) still counts as terminal if
+    // ANY member is a terminal value — the same membership semantics validateAgainstKind/matchesFilter use.
+    await writeDoc(bundle, {
+      id: "tasks/multi",
+      frontmatter: { type: "Task", title: "Multi", status: ["todo", "done"], timestamp: T },
+      body: "",
+    });
+    await writeDoc(bundle, {
+      id: "tasks/plain",
+      frontmatter: { type: "Task", title: "Plain", status: "todo", timestamp: T },
+      body: "",
+    });
+
+    const result = await runJson(["--type", "Task", "--open", "--dir", dir]);
+    assert.equal(result.count, 1, "the array-valued terminal doc must be excluded, no throw");
+    const rows = result.docs as Array<{ id: string }>;
+    assert.equal(rows[0]!.id, "tasks/plain");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("list --open --field status=done (contradictory): the --field push-down already narrows to terminal docs, so --open excludes all of them — definitive count:0, exit 0", async () => {
+  const { dir, cleanup } = await makeTerminalBundle();
+  try {
+    const result = await runJson(["--type", "Task", "--open", "--field", "status=done", "--dir", dir]);
+    assert.equal(result.count, 0);
+    assert.deepEqual(result.docs, []);
+  } finally {
+    await cleanup();
+  }
+});
+
 // ── Cross-cutting ────────────────────────────────────────────────────────────────────────────────
 
 test("conventions-free bundle: --type Foo stays minimal schema; --field filters normally (registry loads to empty, no crash)", async () => {

@@ -17,7 +17,10 @@ fields:
       - queued
       - active
       - done
-timestamp: '2026-07-06T21:19:50.296Z'
+  terminal:
+    status:
+      - done
+timestamp: '2026-07-08T23:30:00.000Z'
 ---
 
 # Roadmap Item
@@ -28,4 +31,5 @@ A durable line of work spanning multiple tasks — the granular form of the sing
 of where that hurts). Backlinks from a task answer "which item owns this"; an item's
 progress is DERIVED, never stored: list its contained tasks and read their statuses (the
 rollup). `status` tracks the item itself: `queued` (not started) → `active` (any
-contained task moving) → `done` (all contained tasks done or canceled).
+contained task moving) → `done` (all contained tasks done or canceled). `done` is
+TERMINAL: `list --open` excludes done items (Brian's ruling, `tasks/status-terminal-declaration.md`).

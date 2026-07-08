@@ -6350,7 +6350,7 @@ function toStringArrayLenient(value, path11, docId, warnings) {
   return out;
 }
 var RESERVED_FIELD_NAMES = /* @__PURE__ */ new Set(["type", "dir", "remote", "json", "help"]);
-var VALID_FIELDS_KEYS = /* @__PURE__ */ new Set(["required", "optional", "values"]);
+var VALID_FIELDS_KEYS = /* @__PURE__ */ new Set(["required", "optional", "values", "terminal"]);
 var MISPLACED_TOP_LEVEL_KEYS = /* @__PURE__ */ new Set(["enum", "enums", "values", "constraints"]);
 var H1_RE = /^#\s+(.+?)\s*$/gm;
 function splitSections(body) {
@@ -6398,7 +6398,7 @@ function parseConventionDoc(doc2) {
       if (!VALID_FIELDS_KEYS.has(key2)) {
         warnings.push({
           code: "KIND_CONVENTION_UNKNOWN_FIELDS_KEY",
-          message: `kind convention '${doc2.id}' declares an unrecognized key 'fields.${key2}' (valid keys: fields.required, fields.optional, fields.values); ignoring it.`,
+          message: `kind convention '${doc2.id}' declares an unrecognized key 'fields.${key2}' (valid keys: fields.required, fields.optional, fields.values, fields.terminal); ignoring it.`,
           field: `fields.${key2}`,
           severity: "warning"
         });
@@ -6443,6 +6443,45 @@ function parseConventionDoc(doc2) {
         field: `fields.values.${field}`,
         severity: "warning"
       });
+    }
+  }
+  const terminalSource = fieldsRaw.terminal;
+  const terminal = {};
+  if (terminalSource !== void 0) {
+    if (!isPlainObject2(terminalSource)) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc2.id}' has a non-map 'fields.terminal' (${describeShape(terminalSource)}; expected a map of field name -> list of terminal values); ignoring it.`,
+        field: "fields.terminal",
+        severity: "warning"
+      });
+    } else {
+      for (const [field, terminalValues] of Object.entries(terminalSource)) {
+        if (dropReserved(field)) continue;
+        terminal[field] = toStringArrayLenient(terminalValues, `fields.terminal.${field}`, doc2.id, warnings);
+      }
+    }
+  }
+  for (const field of Object.keys(terminal)) {
+    const allowed = values[field];
+    if (!allowed) {
+      warnings.push({
+        code: "KIND_CONVENTION_TERMINAL_UNDECLARED_FIELD",
+        message: `kind convention '${doc2.id}' declares 'fields.terminal.${field}' but '${field}' has no 'fields.values.${field}' enum declared.`,
+        field: `fields.terminal.${field}`,
+        severity: "warning"
+      });
+      continue;
+    }
+    for (const v of terminal[field]) {
+      if (!allowed.includes(v)) {
+        warnings.push({
+          code: "KIND_CONVENTION_TERMINAL_VALUE",
+          message: `kind convention '${doc2.id}' declares terminal value '${v}' for field '${field}' but it is not one of the declared 'fields.values.${field}' values (${allowed.join(", ")}).`,
+          field: `fields.terminal.${field}`,
+          severity: "warning"
+        });
+      }
     }
   }
   const linksSource = fm.links;
@@ -6505,7 +6544,7 @@ function parseConventionDoc(doc2) {
   const title = typeof fm.title === "string" && fm.title.trim() !== "" ? fm.title.trim() : governs;
   const path11 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
   const freshnessHorizon = typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== "" ? fm.freshness_horizon.trim() : void 0;
-  const kind2 = { id: doc2.id, title, governs, fields: { required, optional, values } };
+  const kind2 = { id: doc2.id, title, governs, fields: { required, optional, values, terminal } };
   if (path11 !== void 0) kind2.path = path11;
   if (links !== void 0) kind2.links = links;
   if (expectsInbound !== void 0) kind2.expectsInbound = expectsInbound;
@@ -6636,9 +6675,20 @@ function validateAgainstKind(doc2, kind2) {
   }
   return warnings;
 }
+function isTerminal(kind2, frontmatter) {
+  const fm = frontmatter;
+  for (const [field, terminalValues] of Object.entries(kind2.fields.terminal)) {
+    const raw = fm[field];
+    if (raw === void 0 || raw === null) continue;
+    const actual = (Array.isArray(raw) ? raw : [raw]).map((v) => String(v));
+    if (actual.some((v) => terminalValues.includes(v))) return true;
+  }
+  return false;
+}
 function kindConventionDoc(kind2, prose, timestamp) {
   const fields = { required: kind2.fields.required, optional: kind2.fields.optional };
   if (Object.keys(kind2.fields.values).length > 0) fields.values = kind2.fields.values;
+  if (Object.keys(kind2.fields.terminal).length > 0) fields.terminal = kind2.fields.terminal;
   const frontmatter = { type: CONVENTION_TYPE, title: kind2.title, governs: kind2.governs, timestamp };
   if (kind2.path !== void 0) frontmatter.path = kind2.path;
   if (kind2.links && Object.keys(kind2.links).length > 0) frontmatter.links = kind2.links;
@@ -7215,7 +7265,7 @@ var CONTEXT_NOTE_KIND = {
   title: CONTEXT_NOTE_TYPE,
   governs: CONTEXT_NOTE_TYPE,
   path: "context-notes/",
-  fields: { required: ["title", "timestamp"], optional: ["description", "tags"], values: {} },
+  fields: { required: ["title", "timestamp"], optional: ["description", "tags"], values: {}, terminal: {} },
   sections: ["Summary"],
   freshnessHorizon: "24h"
 };
@@ -7236,7 +7286,11 @@ var TASK_KIND = {
   fields: {
     required: ["title", "status"],
     optional: ["priority", "assignee", "description"],
-    values: { status: ["todo", "in_progress", "blocked", "done", "canceled"] }
+    values: { status: ["todo", "in_progress", "blocked", "done", "canceled"] },
+    // The terminal declaration (tasks/status-terminal-declaration.md): done/canceled are the
+    // states past which a Task is no longer open — machinery (list --open, the status sweep's
+    // exclusion + sort) ships together with the declaration for every new bundle.
+    terminal: { status: ["done", "canceled"] }
   },
   freshnessHorizon: "30d"
 };
@@ -7253,7 +7307,9 @@ var ROADMAP_KIND = {
   // "contains", targeting a Roadmap Item — declared so `kinds` teaches it and `link add`'s graph
   // lint validates it.
   links: { contains: ROADMAP_ITEM_TYPE },
-  fields: { required: ["title"], optional: [], values: {} }
+  // No status field on the spine, so nothing to declare terminal (Brian's ruling on the
+  // task board's `tasks/status-terminal-declaration.md`).
+  fields: { required: ["title"], optional: [], values: {}, terminal: {} }
 };
 var ROADMAP_SEED_BODY = "# Roadmap\n\nThe spine document: a single top-level roadmap doc that CONTAINS the bundle's Roadmap\nItems via typed links carrying the text `contains` (`link add <roadmap> <item> --text\ncontains`), making the whole roadmap \u2192 item \u2192 task chain one filtered query per hop\n(`link show <id> --text contains`). Progress is DERIVED, never stored: list the\ncontained items and read their statuses.\n";
 var ROADMAP_ITEM_KIND = {
@@ -7265,7 +7321,10 @@ var ROADMAP_ITEM_KIND = {
   fields: {
     required: ["title", "status"],
     optional: ["description", "sequence"],
-    values: { status: ["queued", "active", "done"] }
+    values: { status: ["queued", "active", "done"] },
+    // Brian's ruling (task board `tasks/status-terminal-declaration.md`): a done Roadmap Item
+    // hides from `list --open`, consistent with Task's done/canceled.
+    terminal: { status: ["done"] }
   }
 };
 var ROADMAP_ITEM_SEED_BODY = '# Roadmap Item\n\nA durable line of work spanning multiple tasks \u2014 the granular form of the single\nroadmap spine doc. An item CONTAINS its tasks via links carrying the text `contains`;\nbacklinks from a task answer "which item owns this". An item\'s progress is DERIVED,\nnever stored: list its contained tasks and read their statuses (the rollup). `status`\ntracks the item itself: `queued` (not started) \u2192 `active` (any contained task moving)\n\u2192 `done` (all contained tasks done or canceled).\n';
@@ -9617,18 +9676,31 @@ import { parseArgs as parseArgs12 } from "node:util";
 var LIST_USAGE = `agentstate-lite list \u2014 query concepts over their frontmatter (alias: query)
 
 Usage:
-  agentstate-lite list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--fields <a,b>] [--limit <n>] [--dir <path>]
+  agentstate-lite list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--fields <a,b>] [--open] [--limit <n>] [--dir <path>]
 
 Options:
   --type <t>           Restrict to concepts whose frontmatter type equals this
   --tag <t>            Restrict to concepts carrying this tag (repeatable; ALL must match)
-  --field <k=v>        Restrict to concepts whose frontmatter field k equals v (repeatable; ALL must
-                       match). Array fields match on membership; values are string-coerced (so an
-                       unquoted YAML number like priority: 1 matches --field priority=1)
+  --field <k=v>        Restrict to concepts whose frontmatter field k equals v (repeatable; ALL
+                       flags/fields are ANDed). A COMMA in v is SET MEMBERSHIP (OR): --field
+                       status=todo,in_progress matches EITHER value on that one field. Array fields
+                       still match on membership; values are string-coerced (so an unquoted YAML
+                       number like priority: 1 matches --field priority=1). Comma is therefore the
+                       set separator \u2014 a literal comma inside one value can no longer be expressed
+                       via --field (ids/enum values don't carry commas in practice); an empty member
+                       (--field status=todo,,done) is a USAGE error.
   --prefix <p>         Restrict to concept ids starting with this bundle-relative prefix
   --fields <a,b,...>   Add extra frontmatter fields to each row (comma-separated; default schema is
                        id,type,title,timestamp). ALWAYS overrides kind-aware columns below. Each cell
                        is truncated to 80 chars \u2014 long content lives in \`doc read <id>\`.
+  --open               Exclude concepts whose OWN kind declares a terminal set of field values
+                       (see 'kinds --help') and whose frontmatter currently matches it (e.g. a Task
+                       whose status is 'done'/'canceled', if the Task kind declares that terminal
+                       set). Purely declaration-driven: an ungoverned type, a governed type with no
+                       terminal declaration, or a doc missing the field are all INCLUDED. On a
+                       bundle where NO kind declares a terminal set, --open filters nothing (a help
+                       line says so, so the flag is never silently meaningless). Composes with
+                       --type/--field/--prefix.
   --limit <n>          Cap the number of rows returned (default: 100; 0 = unlimited). A truncated
                        result reports \`shown\` alongside the total \`count\`.
   --dir <path>         Bundle directory (default: discovered from the cwd)
@@ -9652,6 +9724,7 @@ async function list(argv, deps = {}) {
         field: { type: "string", multiple: true },
         prefix: { type: "string" },
         fields: { type: "string" },
+        open: { type: "boolean" },
         limit: { type: "string" },
         dir: { type: "string" },
         remote: { type: "string" },
@@ -9670,8 +9743,9 @@ async function list(argv, deps = {}) {
   if (values.type?.trim()) filter.type = values.type.trim();
   if (values.tag && values.tag.length > 0) filter.tags = values.tag;
   if (values.prefix?.trim()) filter.prefix = values.prefix.trim();
+  const singleFields = {};
+  const orFieldSets = {};
   if (values.field && values.field.length > 0) {
-    const fields = {};
     for (const entry of values.field) {
       const eq = entry.indexOf("=");
       const key2 = eq >= 0 ? entry.slice(0, eq).trim() : "";
@@ -9680,9 +9754,31 @@ async function list(argv, deps = {}) {
           help: `${cliInvocation()} list --field status=done`
         });
       }
-      fields[key2] = entry.slice(eq + 1);
+      const rawValue = entry.slice(eq + 1);
+      const members = rawValue.split(",");
+      if (members.some((m) => m === "")) {
+        if (!rawValue.includes(",")) {
+          throw new CliError(
+            "USAGE",
+            `--field ${key2} has an empty value \u2014 expected --field ${key2}=<value>, or comma-separated set membership --field ${key2}=a,b`,
+            { help: `${cliInvocation()} list --field status=done` }
+          );
+        }
+        throw new CliError(
+          "USAGE",
+          `--field ${key2} has an empty member in '${rawValue}' (comma is the set-membership separator \u2014 use 'a,b', not 'a,,b' or a leading/trailing comma)`,
+          { help: `${cliInvocation()} list --field status=todo,in_progress` }
+        );
+      }
+      if (members.length > 1) {
+        orFieldSets[key2] = members;
+        delete singleFields[key2];
+      } else {
+        singleFields[key2] = rawValue;
+        delete orFieldSets[key2];
+      }
     }
-    filter.fields = fields;
+    if (Object.keys(singleFields).length > 0) filter.fields = singleFields;
   }
   const DEFAULT_LIMIT3 = 100;
   let limit = DEFAULT_LIMIT3;
@@ -9699,7 +9795,31 @@ async function list(argv, deps = {}) {
   const extraFields = (values.fields?.trim() ? values.fields.split(",") : []).map((f) => f.trim()).filter((f) => f && !DEFAULT_KEYS.has(f));
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
   const skipped = [];
-  const docs = await queryHeads(bundle, filter, { onSkip: (s) => skipped.push(s) });
+  let docs = await queryHeads(bundle, filter, { onSkip: (s) => skipped.push(s) });
+  let registryCache;
+  const getRegistry = async () => {
+    registryCache ??= await loadKinds(bundle);
+    return registryCache;
+  };
+  for (const [field, members] of Object.entries(orFieldSets)) {
+    docs = docs.filter((d) => members.some((m) => matchesFilter(d, { fields: { [field]: m } })));
+  }
+  let openNoopReason;
+  if (values.open) {
+    const registry = await getRegistry();
+    const anyTerminalDeclared = [...registry.kinds.values()].some(
+      (k) => Object.keys(k.fields.terminal).length > 0
+    );
+    if (!anyTerminalDeclared) {
+      openNoopReason = "no kind declares terminal values \u2014 --open filtered nothing";
+    } else {
+      docs = docs.filter((d) => {
+        const kind2 = registry.kinds.get(typeof d.frontmatter.type === "string" ? d.frontmatter.type : "");
+        if (!kind2) return true;
+        return !isTerminal(kind2, d.frontmatter);
+      });
+    }
+  }
   const COLUMN_CELL_CAP = 80;
   const cell = (v) => {
     if (v === void 0 || v === null) return "";
@@ -9719,7 +9839,7 @@ async function list(argv, deps = {}) {
   const fieldsFlagGiven = values.fields !== void 0;
   let kindCols;
   if (!fieldsFlagGiven && filter.type && docs.length > 0) {
-    const registry = await loadKinds(bundle);
+    const registry = await getRegistry();
     const kind2 = registry.kinds.get(filter.type);
     if (kind2) {
       const cols = [.../* @__PURE__ */ new Set([...kind2.fields.required, ...kind2.fields.optional])].filter(
@@ -9754,11 +9874,12 @@ async function list(argv, deps = {}) {
       `${skipped.length} document(s) skipped (unparseable frontmatter) \u2014 run \`${cliInvocation()} doc read <id>\` for the full error, then fix the YAML`
     );
   }
+  if (openNoopReason) help.push(openNoopReason);
   if (!kindCols && !fieldsFlagGiven && !filter.type && docs.length > 0) {
     const first = docs[0].frontmatter.type;
     const uniformType = typeof first === "string" && first !== "" && docs.every((d) => d.frontmatter.type === first);
     if (uniformType) {
-      const registry = await loadKinds(bundle);
+      const registry = await getRegistry();
       const kind2 = registry.kinds.get(first);
       if (kind2) {
         const cols = [.../* @__PURE__ */ new Set([...kind2.fields.required, ...kind2.fields.optional])].filter(
@@ -10063,6 +10184,13 @@ Declaring a kind convention (frontmatter keys core reads \u2014 everything else 
   fields.optional      list     field names an instance MAY carry
   fields.values        map      field name -> list of allowed values \u2014 the ONLY place an enum
                                  constraint goes; never a top-level enum/enums/values/constraints key
+  fields.terminal      map      field name -> subset of that field's values marking an instance
+                                 "done" (e.g. status: [done, canceled]). A field named here SHOULD
+                                 also be declared in fields.values (a coherence warning otherwise);
+                                 a value named here that isn't one of that field's allowed values
+                                 also warns. Drives 'list --open' (excludes terminal instances) and
+                                 the 'status' command's missing_expected_links sweep (excludes them
+                                 from the count/rows and its sort)
   links                map      link type name -> allowed TARGET kind, for typed edges instances
                                  of this kind may carry as link SOURCE (e.g. contains: Task). A
                                  link whose display text exactly matches a declared type is a
@@ -10096,6 +10224,7 @@ function toRow(kind2) {
     optional: kind2.fields.optional
   };
   if (Object.keys(kind2.fields.values).length > 0) row.values = kind2.fields.values;
+  if (Object.keys(kind2.fields.terminal).length > 0) row.terminal = kind2.fields.terminal;
   if (kind2.links && Object.keys(kind2.links).length > 0) row.links = kind2.links;
   if (kind2.expectsInbound && Object.keys(kind2.expectsInbound).length > 0) row.expects_inbound = kind2.expectsInbound;
   if (kind2.path) row.path = kind2.path;
@@ -10150,7 +10279,8 @@ Adds or removes a DECLARED field on the '<Kind>' kind's governing convention doc
 'kinds' command LISTS what a bundle declares; this singular 'kind' command EDITS one (mirroring
 'recipes'/'recipe'). A field added without --required is OPTIONAL; --values restricts it to an
 enumerated set. Idempotent: adding an already-declared field (or removing an absent one) is a
-no-op that exits 0. Preserves everything else on the convention (governs/path/sections/body).
+no-op that exits 0. Preserves everything else on the convention (governs/path/sections/body, and
+any fields.* sibling key this command does not own \u2014 e.g. a declared 'terminal' set).
 
 Options:
   --required            Add the field as REQUIRED (default: optional). Ignored by 'remove'.
@@ -10291,10 +10421,13 @@ async function kind(argv, deps = {}) {
     }
   }
   if (changed) {
-    const newFields = {};
+    const newFields = { ...fieldsObj };
     if (required.length > 0) newFields.required = required;
+    else delete newFields.required;
     if (optional.length > 0) newFields.optional = optional;
+    else delete newFields.optional;
     if (Object.keys(valuesMap).length > 0) newFields.values = valuesMap;
+    else delete newFields.values;
     const newFm = { ...fm };
     if (Object.keys(newFields).length > 0) newFm.fields = newFields;
     else delete newFm.fields;
@@ -10514,8 +10647,17 @@ Category semantics (one line each):
   missing_expected_links  A kind instance whose OWN kind declares 'expects_inbound' but lacks at
                       least one conforming inbound edge (exact text match AND the citing doc's
                       type matches the expected source kind). Rows carry the instance's 'status'
-                      field value when its kind declares one (the triage signal); non-done
-                      instances sort first.
+                      field value when its kind declares one (the triage signal). An instance
+                      whose OWN kind declares a terminal set of field values (see 'kinds --help')
+                      AND whose frontmatter currently matches it is EXCLUDED from this count and
+                      its rows (it's noise \u2014 a done/canceled instance doesn't need the expected
+                      edge anymore); the top-level 'terminal_skipped' field counts the INSTANCES
+                      skipped before this lint evaluated them \u2014 not findings suppressed (a skipped
+                      instance might have linted clean anyway) \u2014 present only when > 0. A kind with no terminal
+                      declaration is unaffected (every instance still counts, exactly as before
+                      terminal declarations existed). Non-terminal instances sort first: by the
+                      declared terminal set when the kind has one, else by the legacy hardcoded
+                      status === "done" fallback.
 
 This is a whole-bundle read (one registry load + one query, batched) \u2014 acceptable for an explicitly
 batch-analysis command; over --remote it is one whole-bundle fetch, not a per-doc round trip.
@@ -10637,10 +10779,16 @@ async function status(argv, deps = {}) {
       staleRows.push({ id: doc2.id, age_ms: result.ageMs, horizon_ms: horizonMs });
     }
   }
-  const missingExpectedRows = [];
+  const missingExpectedRanked = [];
+  let terminalSkipped = 0;
   for (const doc2 of docs) {
     const kind2 = registry.kinds.get(docType2(doc2));
     if (!kind2?.expectsInbound) continue;
+    const terminalDeclared = Object.keys(kind2.fields.terminal).length > 0;
+    if (terminalDeclared && isTerminal(kind2, doc2.frontmatter)) {
+      terminalSkipped++;
+      continue;
+    }
     const edges = inboundEdges.get(doc2.id) ?? [];
     const missing = Object.entries(kind2.expectsInbound).filter(([text, sourceKind]) => !edges.some((e) => e.text === text && e.sourceType === sourceKind)).map(([text]) => text);
     if (missing.length === 0) continue;
@@ -10648,14 +10796,14 @@ async function status(argv, deps = {}) {
     const declaresStatus = kind2.fields.required.includes("status") || kind2.fields.optional.includes("status");
     if (declaresStatus) row.status = doc2.frontmatter.status;
     row.missing = missing;
-    missingExpectedRows.push(row);
+    const sortsFirst = terminalDeclared ? isTerminal(kind2, doc2.frontmatter) : row.status === "done";
+    missingExpectedRanked.push({ row, sortsFirst });
   }
-  missingExpectedRows.sort((a, b) => {
-    const aDone = a.status === "done";
-    const bDone = b.status === "done";
-    if (aDone !== bDone) return aDone ? 1 : -1;
-    return String(a.id).localeCompare(String(b.id));
+  missingExpectedRanked.sort((a, b) => {
+    if (a.sortsFirst !== b.sortsFirst) return a.sortsFirst ? 1 : -1;
+    return String(a.row.id).localeCompare(String(b.row.id));
   });
+  const missingExpectedRows = missingExpectedRanked.map((e) => e.row);
   const malformed = cap(malformedRows, limit);
   const lint = cap(lintRows, limit);
   const unresolved = cap(unresolvedRows, limit);
@@ -10681,6 +10829,7 @@ async function status(argv, deps = {}) {
     link_type_violations: linkTypeViolations.total,
     missing_expected_links: missingExpectedLinks.total
   };
+  if (terminalSkipped > 0) out.terminal_skipped = terminalSkipped;
   if (malformed.total > 0) out.malformed_docs = malformed;
   if (lint.total > 0) out.kind_lint = lint;
   if (unresolved.total > 0) out.unresolved = unresolved;
@@ -14164,8 +14313,8 @@ var COMMAND_GROUPS = [
         summary: "Hard-delete a doc (idempotent: absent -> deleted:false, exit 0)"
       },
       {
-        usage: "list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--limit <n>] [--remote <url>]",
-        summary: "Query concepts over their frontmatter (alias: query)"
+        usage: "list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--open] [--limit <n>] [--remote <url>]",
+        summary: "Query concepts over their frontmatter (alias: query) \u2014 a comma in --field's value is set membership (OR); --open excludes terminal instances (declared kinds only)"
       },
       {
         usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>]) [--remote <url>]",

@@ -22,6 +22,7 @@ import { parseArgs } from "node:util";
 import {
   freshness,
   freshnessHorizonMs,
+  isTerminal,
   loadKinds,
   type OkfDocument,
   parseLinksFromDoc,
@@ -79,8 +80,17 @@ Category semantics (one line each):
   missing_expected_links  A kind instance whose OWN kind declares 'expects_inbound' but lacks at
                       least one conforming inbound edge (exact text match AND the citing doc's
                       type matches the expected source kind). Rows carry the instance's 'status'
-                      field value when its kind declares one (the triage signal); non-done
-                      instances sort first.
+                      field value when its kind declares one (the triage signal). An instance
+                      whose OWN kind declares a terminal set of field values (see 'kinds --help')
+                      AND whose frontmatter currently matches it is EXCLUDED from this count and
+                      its rows (it's noise — a done/canceled instance doesn't need the expected
+                      edge anymore); the top-level 'terminal_skipped' field counts the INSTANCES
+                      skipped before this lint evaluated them — not findings suppressed (a skipped
+                      instance might have linted clean anyway) — present only when > 0. A kind with no terminal
+                      declaration is unaffected (every instance still counts, exactly as before
+                      terminal declarations existed). Non-terminal instances sort first: by the
+                      declared terminal set when the kind has one, else by the legacy hardcoded
+                      status === "done" fallback.
 
 This is a whole-bundle read (one registry load + one query, batched) — acceptable for an explicitly
 batch-analysis command; over --remote it is one whole-bundle fetch, not a per-doc round trip.
@@ -266,11 +276,23 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   // check each declared `{link type: expected source kind}` entry against the doc's resolved
   // inbound edges (built above, one whole-bundle pass — never a second traversal). A doc missing
   // one or more expectations gets ONE row naming all of them. `status` is included on the row only
-  // when the kind itself declares a `status` field (the triage signal); non-"done" rows sort first.
-  const missingExpectedRows: Record<string, unknown>[] = [];
+  // when the kind itself declares a `status` field (the triage signal).
+  //
+  // tasks/status-terminal-declaration.md: an instance whose OWN kind declares a terminal set
+  // (`kind.fields.terminal`) that its frontmatter currently matches is EXCLUDED entirely — a
+  // done/canceled instance is noise for this lint (the original gate, 2026-07-07). The exclusion
+  // is counted (`terminalSkipped`) rather than silently shrinking the total; a kind with NO
+  // terminal declaration keeps every instance, exactly as before this declaration existed.
+  const missingExpectedRanked: { row: Record<string, unknown>; sortsFirst: boolean }[] = [];
+  let terminalSkipped = 0;
   for (const doc of docs) {
     const kind = registry.kinds.get(docType(doc));
     if (!kind?.expectsInbound) continue;
+    const terminalDeclared = Object.keys(kind.fields.terminal).length > 0;
+    if (terminalDeclared && isTerminal(kind, doc.frontmatter)) {
+      terminalSkipped++;
+      continue;
+    }
     const edges = inboundEdges.get(doc.id) ?? [];
     const missing = Object.entries(kind.expectsInbound)
       .filter(([text, sourceKind]) => !edges.some((e) => e.text === text && e.sourceType === sourceKind))
@@ -280,14 +302,21 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
     const declaresStatus = kind.fields.required.includes("status") || kind.fields.optional.includes("status");
     if (declaresStatus) row.status = doc.frontmatter.status;
     row.missing = missing;
-    missingExpectedRows.push(row);
+    // Sort key: when the kind DECLARES a terminal set, order by the ACTUAL declaration
+    // (`isTerminal`) rather than a hardcoded "done" string — a bundle whose enum uses different
+    // terminal words (e.g. resolved/archived) still gets non-terminal-first triage ordering.
+    // A kind with no terminal declaration keeps the EXACT pre-existing hardcoded fallback (no
+    // regression). Every row here is already non-terminal by construction (terminal instances
+    // were excluded above), so for a terminal-declaring kind this is always `false` — the
+    // fallback branch is the only one that can ever sort a row second.
+    const sortsFirst = terminalDeclared ? isTerminal(kind, doc.frontmatter) : row.status === "done";
+    missingExpectedRanked.push({ row, sortsFirst });
   }
-  missingExpectedRows.sort((a, b) => {
-    const aDone = a.status === "done";
-    const bDone = b.status === "done";
-    if (aDone !== bDone) return aDone ? 1 : -1;
-    return String(a.id).localeCompare(String(b.id));
+  missingExpectedRanked.sort((a, b) => {
+    if (a.sortsFirst !== b.sortsFirst) return a.sortsFirst ? 1 : -1;
+    return String(a.row.id).localeCompare(String(b.row.id));
   });
+  const missingExpectedRows = missingExpectedRanked.map((e) => e.row);
 
   const malformed = cap(malformedRows, limit);
   const lint = cap(lintRows, limit);
@@ -315,6 +344,13 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
     link_type_violations: linkTypeViolations.total,
     missing_expected_links: missingExpectedLinks.total,
   };
+  // Beside the count, unconditionally at the top level (never nested inside the row block below,
+  // which is itself omitted when `missing_expected_links` is 0 — a bundle where EVERY matching
+  // instance happened to be terminal-skipped would otherwise hide this field entirely, exactly
+  // the silent shrink the exclusion above must not cause). Semantics: INSTANCES skipped BEFORE
+  // the missing_expected_links lint evaluated them — not findings suppressed (a skipped instance
+  // might have carried its expected edge and linted clean anyway).
+  if (terminalSkipped > 0) out.terminal_skipped = terminalSkipped;
   // Row-list blocks are omitted when empty (matching `kinds`/`doc write`'s existing omit-if-empty
   // convention) so a clean bundle's report stays a short summary, not nine empty categories.
   if (malformed.total > 0) out.malformed_docs = malformed;

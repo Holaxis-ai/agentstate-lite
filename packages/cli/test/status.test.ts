@@ -449,6 +449,143 @@ test("status: missing_expected_links omits the 'status' key when the declaring k
   }
 });
 
+// ── tasks/status-terminal-declaration.md: the missing_expected_links sweep's terminal exclusion ──
+
+/**
+ * The SAME Box/Crate graph-lint shape as `makeGraphLintFixtureBundle`, except the Crate kind now
+ * DECLARES a terminal set (`terminal: { status: ["done"] }`) — pins the sweep's terminal
+ * consumer: a terminal instance is excluded from `missing_expected_links` entirely (never a row,
+ * never counted), the exclusion is surfaced via a top-level `terminal_skipped`, and a non-
+ * terminal instance is unaffected.
+ */
+async function makeTerminalSweepFixtureBundle(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  const dir = await tempDir();
+  const bundle = await initBundle(dir);
+  const now = new Date().toISOString();
+
+  await writeDoc(bundle, {
+    id: "conventions/box",
+    frontmatter: {
+      type: "Convention",
+      governs: "Box",
+      fields: { required: ["title"], optional: [] },
+      links: { contains: "Crate" },
+      timestamp: now,
+    },
+    body: "Box declares its typed-edge vocabulary.",
+  });
+  await writeDoc(bundle, {
+    id: "conventions/crate",
+    frontmatter: {
+      type: "Convention",
+      governs: "Crate",
+      fields: {
+        required: ["title", "status"],
+        optional: [],
+        values: { status: ["queued", "active", "done"] },
+        terminal: { status: ["done"] },
+      },
+      expects_inbound: { contains: "Box" },
+      timestamp: now,
+    },
+    body: "Crate declares its inbound-link expectation AND a terminal status.",
+  });
+  await writeDoc(bundle, {
+    id: "items/queued-crate",
+    frontmatter: { type: "Crate", title: "Queued Crate", status: "queued", timestamp: now },
+    body: "",
+  });
+  await writeDoc(bundle, {
+    id: "items/done-crate",
+    frontmatter: { type: "Crate", title: "Done Crate", status: "done", timestamp: now },
+    body: "",
+  });
+
+  return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+test("status: missing_expected_links excludes a TERMINAL instance entirely (declared kind) and reports terminal_skipped beside the count", async () => {
+  const { dir, cleanup } = await makeTerminalSweepFixtureBundle();
+  try {
+    const result = await runJson(["--dir", dir]);
+    assert.equal(result.missing_expected_links, 1, "only the non-terminal queued-crate counts");
+    assert.equal(result.terminal_skipped, 1, "the done-crate was excluded, not silently dropped");
+    const missing = result.missing_expected_links_rows as { total: number; rows: Record<string, unknown>[] };
+    assert.equal(missing.total, 1);
+    assert.deepEqual(missing.rows.map((r) => r.id), ["items/queued-crate"]);
+    assert.ok(
+      !missing.rows.some((r) => r.id === "items/done-crate"),
+      "the terminal instance must not appear as a row at all",
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("status: terminal_skipped is ABSENT when zero instances are excluded (a kind with no terminal declaration is unaffected)", async () => {
+  const { dir, cleanup } = await makeGraphLintFixtureBundle(); // this fixture's Crate kind declares NO terminal set
+  try {
+    const result = await runJson(["--dir", dir]);
+    assert.equal(result.missing_expected_links, 2, "the pre-existing behavior — done-crate still counts");
+    assert.equal("terminal_skipped" in result, false, "no exclusions occurred, so the field must not appear");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("status: the terminal exclusion keys off the DECLARED value set, not a hardcoded 'done' string — a kind whose terminal words are 'resolved'/'archived' excludes those, not literal 'done'", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle = await initBundle(dir);
+    const now = new Date().toISOString();
+    await writeDoc(bundle, {
+      id: "conventions/box2",
+      frontmatter: {
+        type: "Convention",
+        governs: "Box2",
+        fields: { required: ["title"], optional: [] },
+        links: { contains: "Ticket2" },
+        timestamp: now,
+      },
+      body: "",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/ticket2",
+      frontmatter: {
+        type: "Convention",
+        governs: "Ticket2",
+        fields: {
+          required: ["title", "stage"],
+          optional: [],
+          values: { stage: ["open", "in_review", "resolved", "archived"] },
+          terminal: { stage: ["resolved", "archived"] },
+        },
+        expects_inbound: { contains: "Box2" },
+        timestamp: now,
+      },
+      body: "A GENERIC (non-status) enum field name, to pin nothing is hardcoded to 'status'/'done'.",
+    });
+    await writeDoc(bundle, {
+      id: "items/open-ticket",
+      frontmatter: { type: "Ticket2", title: "Open", stage: "open", timestamp: now },
+      body: "",
+    });
+    await writeDoc(bundle, {
+      id: "items/resolved-ticket",
+      frontmatter: { type: "Ticket2", title: "Resolved", stage: "resolved", timestamp: now },
+      body: "",
+    });
+
+    const result = await runJson(["--dir", dir]);
+    assert.equal(result.missing_expected_links, 1, "only open-ticket; resolved-ticket is terminal-excluded");
+    assert.equal(result.terminal_skipped, 1);
+    const missing = result.missing_expected_links_rows as { rows: Record<string, unknown>[] };
+    assert.deepEqual(missing.rows.map((r) => r.id), ["items/open-ticket"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("status: --limit caps each category's row list with an explicit shown/total; --limit 0 is unlimited", async () => {
   const { dir, cleanup } = await makeFixtureBundle();
   try {

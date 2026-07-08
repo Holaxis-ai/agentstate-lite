@@ -30,6 +30,13 @@ Declaring a kind convention (frontmatter keys core reads — everything else is 
   fields.optional      list     field names an instance MAY carry
   fields.values        map      field name -> list of allowed values — the ONLY place an enum
                                  constraint goes; never a top-level enum/enums/values/constraints key
+  fields.terminal      map      field name -> subset of that field's values marking an instance
+                                 "done" (e.g. status: [done, canceled]). A field named here SHOULD
+                                 also be declared in fields.values (a coherence warning otherwise);
+                                 a value named here that isn't one of that field's allowed values
+                                 also warns. Drives 'list --open' (excludes terminal instances) and
+                                 the 'status' command's missing_expected_links sweep (excludes them
+                                 from the count/rows and its sort)
   links                map      link type name -> allowed TARGET kind, for typed edges instances
                                  of this kind may carry as link SOURCE (e.g. contains: Task). A
                                  link whose display text exactly matches a declared type is a
@@ -69,6 +76,7 @@ function toRow(kind: KindConvention): Record<string, unknown> {
     optional: kind.fields.optional,
   };
   if (Object.keys(kind.fields.values).length > 0) row.values = kind.fields.values;
+  if (Object.keys(kind.fields.terminal).length > 0) row.terminal = kind.fields.terminal;
   if (kind.links && Object.keys(kind.links).length > 0) row.links = kind.links;
   if (kind.expectsInbound && Object.keys(kind.expectsInbound).length > 0) row.expects_inbound = kind.expectsInbound;
   if (kind.path) row.path = kind.path;

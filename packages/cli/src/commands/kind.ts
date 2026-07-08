@@ -7,7 +7,8 @@
 // pull→edit→promote over --remote) — the recurring maintenance-journey gap the cold-start usability
 // study surfaced in every round (C3). This closes it: it reads the governing convention doc (its id
 // comes from `loadKinds`), edits the raw `fields.{required,optional,values}` in place while preserving
-// everything else (governs/path/sections/body), and writes it back through the ordinary engine. Works
+// everything else (governs/path/sections/body, and any `fields.*` sibling key it doesn't own — e.g.
+// `terminal` — carried through verbatim), and writes it back through the ordinary engine. Works
 // over `--dir` and `--remote` alike (it is just a doc read + write). Idempotent: adding an
 // already-declared field, or removing an absent one, is a no-op that exits 0.
 import { parseArgs } from "node:util";
@@ -31,7 +32,8 @@ Adds or removes a DECLARED field on the '<Kind>' kind's governing convention doc
 'kinds' command LISTS what a bundle declares; this singular 'kind' command EDITS one (mirroring
 'recipes'/'recipe'). A field added without --required is OPTIONAL; --values restricts it to an
 enumerated set. Idempotent: adding an already-declared field (or removing an absent one) is a
-no-op that exits 0. Preserves everything else on the convention (governs/path/sections/body).
+no-op that exits 0. Preserves everything else on the convention (governs/path/sections/body, and
+any fields.* sibling key this command does not own — e.g. a declared 'terminal' set).
 
 Options:
   --required            Add the field as REQUIRED (default: optional). Ignored by 'remove'.
@@ -202,11 +204,19 @@ export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Pro
   }
 
   if (changed) {
-    // Rebuild `fields`, omitting now-empty lists/maps so the convention stays clean.
-    const newFields: Record<string, unknown> = {};
+    // Rebuild `fields` FROM the original raw object, replacing only the three keys this command
+    // owns (required/optional/values, omitted when now-empty so the convention stays clean).
+    // Every OTHER sibling key — `terminal` today, any future declaration key — passes through
+    // VERBATIM, matching the registry's lenient-parse posture: an unrelated `kind field` edit
+    // must never destroy a declaration it doesn't understand (PR #20 review, regression-pinned
+    // in kind.test.ts).
+    const newFields: Record<string, unknown> = { ...fieldsObj };
     if (required.length > 0) newFields.required = required;
+    else delete newFields.required;
     if (optional.length > 0) newFields.optional = optional;
+    else delete newFields.optional;
     if (Object.keys(valuesMap).length > 0) newFields.values = valuesMap;
+    else delete newFields.values;
     const newFm: Frontmatter = { ...fm };
     if (Object.keys(newFields).length > 0) newFm.fields = newFields;
     else delete newFm.fields;

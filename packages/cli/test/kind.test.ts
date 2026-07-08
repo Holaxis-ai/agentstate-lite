@@ -5,10 +5,11 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { initBundle, loadKinds, readDoc, writeDoc } from "@agentstate-lite/core";
+import { initBundle, loadKinds, readDoc, writeDoc, CONVENTION_TYPE } from "@agentstate-lite/core";
 import { applyRecipe } from "../src/recipes.js";
 import { CONTEXT_NOTES_RECIPE } from "../src/recipe-source.js";
 import { kind } from "../src/commands/kind.js";
+import { list } from "../src/commands/list.js";
 import { status } from "../src/commands/status.js";
 import { CliError } from "../src/errors.js";
 
@@ -93,6 +94,71 @@ test("kind field guards: unknown kind, reserved field name, and a bad action are
     }
   } finally {
     await cleanup();
+  }
+});
+
+test("kind field preserves fields.* siblings it does not own: terminal (and unknown future keys) survive an unrelated edit, and list --open still filters", async () => {
+  // Regression pin (PR #20 review, MAJOR): `kind field` used to REBUILD `fields` from a whitelist
+  // of {required, optional, values}, so ANY kind-field edit silently destroyed a declared
+  // `fields.terminal` — a clean exit-0 that turned `list --open` into a no-op. The fix is
+  // structural: every sibling key under `fields` that the command does not own passes through
+  // VERBATIM (lenient-parse posture), so a future declaration key cannot re-open the hole either —
+  // pinned here with a deliberately-unrecognized `experimental` sibling alongside `terminal`.
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-kind-terminal-test-"));
+  try {
+    await initBundle(dir);
+    await writeDoc(
+      { root: dir },
+      {
+        id: "conventions/task",
+        frontmatter: {
+          type: CONVENTION_TYPE,
+          title: "Task",
+          governs: "Task",
+          path: "tasks/",
+          fields: {
+            required: ["title", "status"],
+            optional: [],
+            values: { status: ["todo", "doing", "done", "canceled"] },
+            terminal: { status: ["done", "canceled"] },
+            experimental: { note: "an unrecognized future sibling — must survive verbatim" },
+          },
+          timestamp: "2026-07-01T00:00:00.000Z",
+        },
+        body: "A unit of work.",
+      },
+    );
+    await writeDoc({ root: dir }, { id: "tasks/open", frontmatter: { type: "Task", title: "Open", status: "todo", timestamp: "2026-07-01T00:00:00.000Z" }, body: "" });
+    await writeDoc({ root: dir }, { id: "tasks/done", frontmatter: { type: "Task", title: "Done", status: "done", timestamp: "2026-07-01T00:00:00.000Z" }, body: "" });
+
+    const runListOpen = async (): Promise<string[]> => {
+      let out = "";
+      await list(["--type", "Task", "--open", "--dir", dir, "--json"], { stdout: (s) => (out += s) });
+      const parsed = JSON.parse(out) as { docs: Array<{ id: string }> };
+      return parsed.docs.map((d) => d.id).sort();
+    };
+
+    // Baseline: the terminal declaration is live — --open excludes the done Task.
+    assert.deepEqual(await runListOpen(), ["tasks/open"], "baseline: --open filters before the edit");
+
+    // The UNRELATED edit: add an optional field. Must not touch terminal or the unknown sibling.
+    const r = await runKind(["field", "Task", "add", "due", "--dir", dir]);
+    assert.equal(r.changed, true);
+
+    // On-disk truth: the convention's raw frontmatter still carries BOTH sibling keys, verbatim.
+    const conv = await readDoc({ root: dir }, "conventions/task");
+    const fields = conv.frontmatter.fields as Record<string, unknown>;
+    assert.deepEqual(fields.terminal, { status: ["done", "canceled"] }, "fields.terminal survived the unrelated edit");
+    assert.deepEqual(
+      fields.experimental,
+      { note: "an unrecognized future sibling — must survive verbatim" },
+      "an unrecognized fields.* sibling survived verbatim",
+    );
+
+    // Behavioral truth: --open still filters (the declaration still powers the derivation).
+    assert.deepEqual(await runListOpen(), ["tasks/open"], "--open still filters after the edit");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
 

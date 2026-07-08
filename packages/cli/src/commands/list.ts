@@ -20,8 +20,21 @@
 //   - `--field key=value` filter (Fork B, repeatable, ANDed): a generic core QueryFilter facet (any
 //     kind, any field), not CLI-side — so it rides the engine's one filter locus over --remote for
 //     free, same as the existing type/tags facets (applied to pushed-down heads, never bodies).
+//
+// tasks/list-field-sets.md + tasks/status-terminal-declaration.md (field-query semantics unit):
+//
+//   - Set membership on `--field`: a COMMA in the value is OR-within-that-field (`status=todo,
+//     in_progress`), AND unchanged across different `--field` flags/keys. A single-member value (no
+//     comma) still rides core's `QueryFilter.fields` push-down byte-identically; a multi-member value
+//     is READER-SIDE post-filtering over the (possibly still push-down-narrowed) result, reusing
+//     core's own `matchesFilter` predicate per candidate member rather than a second coercion
+//     implementation — no engine/wire change for the OR semantics.
+//   - `--open`: exclude docs whose OWN declared kind marks their current field value(s) terminal
+//     (`isTerminal`, `@agentstate-lite/core`'s kinds.ts). Purely declaration-driven and reader-side;
+//     an ungoverned type, a kind with no terminal declaration, or a doc missing the field are all
+//     INCLUDED (not-terminal is the semantic, never a hardcoded status string).
 import { parseArgs } from "node:util";
-import { queryHeads, loadKinds, type QueryFilter } from "@agentstate-lite/core";
+import { queryHeads, loadKinds, isTerminal, matchesFilter, type KindRegistry, type QueryFilter } from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
@@ -31,18 +44,31 @@ import { cliInvocation } from "../invocation.js";
 export const LIST_USAGE = `agentstate-lite list — query concepts over their frontmatter (alias: query)
 
 Usage:
-  agentstate-lite list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--fields <a,b>] [--limit <n>] [--dir <path>]
+  agentstate-lite list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--fields <a,b>] [--open] [--limit <n>] [--dir <path>]
 
 Options:
   --type <t>           Restrict to concepts whose frontmatter type equals this
   --tag <t>            Restrict to concepts carrying this tag (repeatable; ALL must match)
-  --field <k=v>        Restrict to concepts whose frontmatter field k equals v (repeatable; ALL must
-                       match). Array fields match on membership; values are string-coerced (so an
-                       unquoted YAML number like priority: 1 matches --field priority=1)
+  --field <k=v>        Restrict to concepts whose frontmatter field k equals v (repeatable; ALL
+                       flags/fields are ANDed). A COMMA in v is SET MEMBERSHIP (OR): --field
+                       status=todo,in_progress matches EITHER value on that one field. Array fields
+                       still match on membership; values are string-coerced (so an unquoted YAML
+                       number like priority: 1 matches --field priority=1). Comma is therefore the
+                       set separator — a literal comma inside one value can no longer be expressed
+                       via --field (ids/enum values don't carry commas in practice); an empty member
+                       (--field status=todo,,done) is a USAGE error.
   --prefix <p>         Restrict to concept ids starting with this bundle-relative prefix
   --fields <a,b,...>   Add extra frontmatter fields to each row (comma-separated; default schema is
                        id,type,title,timestamp). ALWAYS overrides kind-aware columns below. Each cell
                        is truncated to 80 chars — long content lives in \`doc read <id>\`.
+  --open               Exclude concepts whose OWN kind declares a terminal set of field values
+                       (see 'kinds --help') and whose frontmatter currently matches it (e.g. a Task
+                       whose status is 'done'/'canceled', if the Task kind declares that terminal
+                       set). Purely declaration-driven: an ungoverned type, a governed type with no
+                       terminal declaration, or a doc missing the field are all INCLUDED. On a
+                       bundle where NO kind declares a terminal set, --open filters nothing (a help
+                       line says so, so the flag is never silently meaningless). Composes with
+                       --type/--field/--prefix.
   --limit <n>          Cap the number of rows returned (default: 100; 0 = unlimited). A truncated
                        result reports \`shown\` alongside the total \`count\`.
   --dir <path>         Bundle directory (default: discovered from the cwd)
@@ -73,6 +99,7 @@ export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Pro
           field: { type: "string", multiple: true },
           prefix: { type: "string" },
           fields: { type: "string" },
+          open: { type: "boolean" },
           limit: { type: "string" },
           dir: { type: "string" },
           remote: { type: "string" },
@@ -93,12 +120,20 @@ export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Pro
   if (values.tag && values.tag.length > 0) filter.tags = values.tag;
   if (values.prefix?.trim()) filter.prefix = values.prefix.trim();
 
-  // Fork B: --field key=value (repeatable, ANDed). Split on the FIRST "=" (a deliberate value
-  // containing "=" survives); an empty key, or a token with no "=" at all, is USAGE (exit 2). The
-  // value is taken verbatim after the first "=" (not trimmed) — the shell handles quoting, and a
-  // deliberately spaced value should survive untouched.
+  // Fork B: --field key=value (repeatable, ANDed across different keys). Split on the FIRST "="
+  // (a deliberate value containing "=" survives); an empty key, or a token with no "=" at all, is
+  // USAGE (exit 2). tasks/list-field-sets.md: a COMMA in the value is now the SET-MEMBERSHIP
+  // separator (OR within that one field) — the value is split on "," into members (each taken
+  // verbatim, not trimmed, same as before a comma existed, so a deliberately spaced member
+  // survives untouched); an EMPTY member (--field status=todo,,done, or a leading/trailing comma)
+  // is USAGE, since it can never match anything and is almost certainly a typo. A single-member
+  // value (no comma) is unchanged from before and rides core's `QueryFilter.fields` push-down
+  // byte-identically; a multi-member value is collected into `orFieldSets` and post-filtered
+  // below (reader-side — no engine/wire change). A repeated `--field` for the SAME key keeps
+  // last-one-wins (matching the pre-existing single-value behavior), whichever variant it lands as.
+  const singleFields: Record<string, string> = {};
+  const orFieldSets: Record<string, string[]> = {};
   if (values.field && values.field.length > 0) {
-    const fields: Record<string, string> = {};
     for (const entry of values.field) {
       const eq = entry.indexOf("=");
       const key = eq >= 0 ? entry.slice(0, eq).trim() : "";
@@ -107,9 +142,36 @@ export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Pro
           help: `${cliInvocation()} list --field status=done`,
         });
       }
-      fields[key] = entry.slice(eq + 1);
+      const rawValue = entry.slice(eq + 1);
+      const members = rawValue.split(",");
+      if (members.some((m) => m === "")) {
+        // Two distinct typos share the "empty member" shape but deserve different wording: a
+        // BARE value (no comma at all, e.g. `--field status=`) is an empty value, not a
+        // set-membership mistake — tailor the message so it doesn't talk about commas the user
+        // never typed. Both stay a loud USAGE (exit 2): a silent count:0 on either typo would be
+        // a false negative for an agent scanning for a real match.
+        if (!rawValue.includes(",")) {
+          throw new CliError(
+            "USAGE",
+            `--field ${key} has an empty value — expected --field ${key}=<value>, or comma-separated set membership --field ${key}=a,b`,
+            { help: `${cliInvocation()} list --field status=done` },
+          );
+        }
+        throw new CliError(
+          "USAGE",
+          `--field ${key} has an empty member in '${rawValue}' (comma is the set-membership separator — use 'a,b', not 'a,,b' or a leading/trailing comma)`,
+          { help: `${cliInvocation()} list --field status=todo,in_progress` },
+        );
+      }
+      if (members.length > 1) {
+        orFieldSets[key] = members;
+        delete singleFields[key];
+      } else {
+        singleFields[key] = rawValue;
+        delete orFieldSets[key];
+      }
     }
-    filter.fields = fields;
+    if (Object.keys(singleFields).length > 0) filter.fields = singleFields;
   }
 
   // Row cap (AXI §9 "reveal truncated lists"): `list` is THE query verb and the one most likely to
@@ -142,7 +204,47 @@ export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Pro
   // Head projections, not full docs: every row below reads only id + frontmatter, and over
   // `--remote` the push-down means bodies never cross the wire (frontmatter-projection pass).
   const skipped: { id: string; reason: string }[] = [];
-  const docs = await queryHeads(bundle, filter, { onSkip: (s) => skipped.push(s) });
+  let docs = await queryHeads(bundle, filter, { onSkip: (s) => skipped.push(s) });
+
+  // Registry cache: loaded AT MOST once per invocation, on demand — the OR-field post-filter below
+  // never needs it (matchesFilter is registry-free), only --open and the two kind-column forks do.
+  let registryCache: KindRegistry | undefined;
+  const getRegistry = async (): Promise<KindRegistry> => {
+    registryCache ??= await loadKinds(bundle);
+    return registryCache;
+  };
+
+  // tasks/list-field-sets.md: OR-within-field post-filter for every multi-member --field (comma
+  // sets). AND across fields (a doc must satisfy EVERY field's set), each field itself OR'd across
+  // its declared members. Reuses core's OWN exact-match predicate (`matchesFilter`) per candidate
+  // member instead of a second value-coercion implementation — reader-side only, no engine/wire
+  // change (the single-member case above already rode the real push-down).
+  for (const [field, members] of Object.entries(orFieldSets)) {
+    docs = docs.filter((d) => members.some((m) => matchesFilter(d, { fields: { [field]: m } })));
+  }
+
+  // tasks/status-terminal-declaration.md: --open excludes a doc whose OWN kind declares a terminal
+  // set (`kind.fields.terminal`) that its current frontmatter matches (`isTerminal`) — purely
+  // declaration-driven: an ungoverned type, a governed type with no terminal declaration, or a doc
+  // missing the field are all kept (not-terminal is the safe default). A bundle where NO kind
+  // declares ANY terminal set makes --open a structural no-op; that's reported via a help line
+  // below rather than silently doing nothing.
+  let openNoopReason: string | undefined;
+  if (values.open) {
+    const registry = await getRegistry();
+    const anyTerminalDeclared = [...registry.kinds.values()].some(
+      (k) => Object.keys(k.fields.terminal).length > 0,
+    );
+    if (!anyTerminalDeclared) {
+      openNoopReason = "no kind declares terminal values — --open filtered nothing";
+    } else {
+      docs = docs.filter((d) => {
+        const kind = registry.kinds.get(typeof d.frontmatter.type === "string" ? d.frontmatter.type : "");
+        if (!kind) return true;
+        return !isTerminal(kind, d.frontmatter);
+      });
+    }
+  }
 
   // Cap a projected cell so one long field can't dominate a row (AXI §2/§3 — long-form content
   // belongs in `doc read`, not a list cell). SHARED by the `--fields` projection and the kind-aware
@@ -185,7 +287,7 @@ export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Pro
 
   let kindCols: string[] | undefined;
   if (!fieldsFlagGiven && filter.type && docs.length > 0) {
-    const registry = await loadKinds(bundle); // command-layer, loaded ONCE (gate 3)
+    const registry = await getRegistry(); // command-layer, loaded AT MOST once (gate 3)
     const kind = registry.kinds.get(filter.type);
     if (kind) {
       const cols = [...new Set([...kind.fields.required, ...kind.fields.optional])].filter(
@@ -230,6 +332,9 @@ export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Pro
       `${skipped.length} document(s) skipped (unparseable frontmatter) — run \`${cliInvocation()} doc read <id>\` for the full error, then fix the YAML`,
     );
   }
+  // --open on a bundle with zero terminal declarations is a structural no-op (nothing to exclude) —
+  // said explicitly so the flag is never silently meaningless (tasks/status-terminal-declaration.md).
+  if (openNoopReason) help.push(openNoopReason);
   // Discovery hint for the kind-column projection (Fork A): the felt friction this closes is an
   // agent typing `--fields status,priority` on every board scan because nothing advertises that
   // `--type Task` projects those columns automatically. When a MINIMAL-schema result turns out to
@@ -243,7 +348,7 @@ export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Pro
     const first = docs[0]!.frontmatter.type;
     const uniformType = typeof first === "string" && first !== "" && docs.every((d) => d.frontmatter.type === first);
     if (uniformType) {
-      const registry = await loadKinds(bundle);
+      const registry = await getRegistry();
       const kind = registry.kinds.get(first);
       if (kind) {
         const cols = [...new Set([...kind.fields.required, ...kind.fields.optional])].filter(
