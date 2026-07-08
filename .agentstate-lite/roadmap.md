@@ -49,7 +49,7 @@ exists.
   `queryHeads` frontmatter projection consumed end to end (scans carry no bodies over the wire)
   and the D1 `frontmatter` head column (Worker scans stop touching R2; legacy rows self-heal on
   write — observed on this bundle's data).
-- **Roadmap recipe** (`3fc74cd`, 2026-07-08) — the THIRD built-in (`recipe add roadmap`):
+- **Roadmap recipe** (`4167b40`, 2026-07-08) — the THIRD built-in (`recipe add roadmap`):
   this board's Roadmap + Roadmap Item conventions extracted as work-tracking's companion
   (typed `contains` vocabulary roadmap → item → task, item status enum queued/active/done).
   The Task-side `expects_inbound` pairing travels as a documented one-step opt-in

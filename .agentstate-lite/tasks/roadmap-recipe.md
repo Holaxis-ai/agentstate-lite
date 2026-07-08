@@ -20,7 +20,7 @@ description: >-
   commit, branch feat/roadmap-recipe.
 actor: builder-recipe
 assignee: brian-claude
-timestamp: '2026-07-08T20:16:39.879Z'
+timestamp: '2026-07-08T20:19:13.413Z'
 ---
 # Roadmap recipe — extract Roadmap + Roadmap Item conventions into a reusable recipe
 
@@ -43,7 +43,7 @@ unaffected until it opts in.
    `work-tracking`) vs external-folder recipe.
 2. expects_inbound TRAVEL: how the Roadmap Item ↔ Task `contains` expectation travels.
 
-## Record (built 2026-07-08, commit 3fc74cd; CORRECTED after cold review — see the
+## Record (built 2026-07-08, commit 4167b40 — originally 3fc74cd, rewritten by the rebase over the cache-per-clone merge; CORRECTED after cold review — see the
 correction section below; fix commit on feat/roadmap-recipe)
 
 **Shipped:** built-in `roadmap` recipe (`recipe add roadmap`) — `conventions/roadmap` +
@@ -52,7 +52,9 @@ correction section below; fix commit on feat/roadmap-recipe)
 the `roadmap-items/` scaffold path, no path/horizon on the spine). First MULTI-doc
 built-in; same `kindConventionDoc` → `stringifyDoc` → `parseRecipeFiles` pipeline, zero
 core changes, `initBundle` still seeds nothing, `init`'s default stays context-notes.
-Plugin 1.0.18 → 1.0.19 (both manifests). README quickstart/recipes updated.
+Plugin bumped in both manifests (1.0.19 at build; re-bumped to 1.0.20 after rebasing over
+the cache-per-clone merge, which took 1.0.19 — see caveat 3). README quickstart/recipes
+updated.
 
 **Decision 1 — DISTRIBUTION: built-in.** (Upheld by cold review.) The unit's goal is
 tasks+roadmaps traveling to OTHER workspaces; built-ins travel inside the single-file
@@ -100,7 +102,7 @@ against manifest wording drift.
 ## Record correction (fix round, 2026-07-08 — cold review REQUEST-CHANGES)
 
 The original close record claimed "Full `npm run check` green ... on final tree." **That
-claim was FALSE at the closed sha (3fc74cd/d9b4340):** the pre-existing consistency test
+claim was FALSE at the closed sha (orig. 3fc74cd/d9b4340; post-rebase 4167b40/23e2c12):** the pre-existing consistency test
 `recipe-source.test.ts` › "builtinNames / DEFAULT_RECIPE_REF / CONTEXT_NOTES_RECIPE stay
 consistent" still expected two built-ins, so the CLI suite (and therefore `npm test
 --workspaces` and `npm run check`) was RED at close. The cold review caught both the red
@@ -128,8 +130,11 @@ bundle with hand-authored conventions at the same ids reports applied:true (pre-
 semantics, unchanged). (2) The recipe-serialized `conventions/roadmap.md` carries
 `optional: []` where the board's hand-authored file omits the key — byte-level divergence,
 semantically identical after parse (the board-parity test compares loaded kinds, which is
-the contract). (3) Plugin version 1.0.19 may collide with the parallel cache-per-clone
-branch — whichever merges second re-bumps (flagged to the orchestrator).
+the contract). (3) The predicted 1.0.19 collision with the parallel cache-per-clone branch
+HAPPENED (it merged first, taking 1.0.19): resolved per convention in the fix round —
+rebased onto origin/main, re-bumped both manifests to 1.0.20, and REBUILT the committed
+plugin bundle from the merged source (regeneration verified byte-identical; never
+hand-merged).
 
 ## Gates
 
