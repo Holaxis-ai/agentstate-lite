@@ -1,13 +1,42 @@
 ---
 type: Task
 title: 'U2 cursor + awareness state module: opaque cursor + cache + marker'
-status: todo
+status: done
 priority: '1'
 description: >-
-  U2. New cursor.ts owning the opaque per-bundle cursor plus awareness cache and
-  board-pending marker; atomic 0600/0700; enriched changesSince with per-doc
-  frontmatter actor. Deps: sync-test-harness.
-timestamp: '2026-07-07T21:20:02.871Z'
+  U2 SHIPPED (builder-u2, feat/sync-cursor-store). NEW
+  packages/cli/src/cursor.ts — the per-bundle sync/awareness state store: opaque
+  {tier, token} cursor (unknown tiers round-trip UNTOUCHED; token is
+  string|number so the future {tier:d1, token:seq} swaps in with zero CLI
+  changes), the awareness cache (enriched delta rows {docId, verb, kind, title,
+  actor-from-frontmatter} + unpushed/uncommitted backstop counts + updatedAt +
+  honest note field), and the timestamped board-pending marker (refreshMarker
+  per pull step) — all three under ONE per-bundle key (bundleKey: repo remote
+  URL + subpath, normalized; fallback absolute bundle root) in
+  ~/.agentstate/sync/<sha256(key)>.json, with the key ALSO stored inside the
+  file so a hash collision reads as foreign (null), never another bundle's
+  state. Atomic 0600/0700 writes via writeFileAtomic0600 EXTRACTED-shared from
+  credentials.ts (ONE discipline, no fork). Reads NEVER throw:
+  absent/malformed/foreign/unreadable/stale-past-maxAgeMs all read null,
+  per-section independent (home's double-guard safe). recordReanchor()
+  atomically re-anchors the cursor and records REANCHOR_NOTE 'delta unavailable
+  (history rewritten)' with an empty delta + caller's backstop counts — never
+  silent, never fatal. NO git in the module (U1 boundary honored; existence
+  guard stays the caller's job). Tests: 13 new in
+  packages/cli/test/cursor.test.ts (dangling-SHA re-anchor over the U0 harness;
+  cross-bundle isolation over TWO DISTINCT ORIGINS per the U0 reviewer note;
+  atomic+perms 0600/0700; malformed/absent/stale->null; tier opacity;
+  cache+marker schema round-trip incl. frontmatter-sourced actor rows). CLI
+  suite 418->431 green; npm run check exit 0. Caveats: (1) AwarenessDeltaRow is
+  defined HERE as the single-feed shape — U1's changesSince should import it at
+  merge time, reconcile if U1 defined its own; (2) cross-process merge-writes
+  are last-writer-wins (crash-consistent via rename; same acceptance as
+  FilesystemBackend — state is re-derivable from git); (3) plugin manifests
+  bumped 1.0.11->1.0.12 (the credentials refactor changes the committed bundled
+  mjs) — collision risk with parallel unit PRs, re-check at merge. Deps:
+  sync-test-harness.
+assignee: builder-u2
+timestamp: '2026-07-07T23:12:35.379Z'
 ---
 # U2 — cursor + awareness state module
 

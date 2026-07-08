@@ -1,0 +1,403 @@
+// `cursor.ts` — the per-bundle sync/awareness STATE STORE (sync-verb plan §U2).
+//
+// ONE module owns the three pieces of per-bundle local state that the sync verb (U3) writes and
+// SessionStart/home (U4) reads, all under ONE per-bundle key in `~/.agentstate/sync/`:
+//
+//   1. the awareness CURSOR — an OPAQUE `{tier, token}` ("where this machine last read up to").
+//      The git tier stores a commit SHA as the token; a future hosted tier ships
+//      `{tier: "d1", token: <seq>}` behind the SAME `changesSince` interface, so the store (and
+//      the CLI above it) never interprets the token — an UNKNOWN tier round-trips untouched.
+//   2. the awareness CACHE — the enriched delta rows plus the unpushed/uncommitted backstop
+//      counts that `home` renders fs-only ("since your last session: …" + "M local board commits
+//      not yet pushed"), timestamped so a consumer can label/expire it.
+//   3. the board-pending MARKER — a timestamp refreshed by every pull step; its PRESENCE is the
+//      fs-only "a board exists for this repo" signal that keeps first-contact from ever hinting
+//      `init` at a founder whose origin already has a board.
+//
+// BOUNDARY (binding): this module is the state store + its schema/serialization ONLY. The git
+// diff, the `git cat-file -e` cursor-existence guard, and per-doc frontmatter enrichment live in
+// U1's `git.ts` (`changesSince` et al.) — this module NEVER shells out to git. When the CALLER's
+// existence guard finds the stored token gone (history rewritten), it re-anchors through
+// {@link recordReanchor}, which records the honest {@link REANCHOR_NOTE} in the cache so the miss
+// is REPORTED, never a silent skip and never fatal.
+//
+// KEYING: per BUNDLE, not per machine-location — `bundleKey` derives the key from the repo's
+// remote URL + the bundle's subpath within the repo (so every checkout of the same shared board
+// on this machine shares one cursor), falling back to the absolute bundle root for a
+// remote-less repo. The key is hashed into the state file's name and ALSO stored inside the file;
+// a read whose stored key mismatches is treated as foreign (null), so a hash collision can never
+// bleed one bundle's state into another.
+//
+// DURABILITY: every write goes through `credentials.ts`'s `writeFileAtomic0600` — THE one
+// `~/.agentstate/` atomic-write discipline (O_EXCL temp 0600 → chmod → rename, dir forced 0700).
+// Writes are read-merge-write over the whole per-bundle file; the rename keeps readers
+// crash-consistent (old complete file or new complete file, never a partial). Like
+// `FilesystemBackend`, cross-process last-writer-wins is accepted — the state here is a cursor
+// and a render cache, both re-derivable from git on the next sync.
+//
+// READS NEVER THROW: absent, malformed, foreign-keyed, unreadable, or (where a max age is given)
+// stale state all read as `null` — `home`'s double-guard depends on this, and marker/cache
+// absence alone must never degrade a session (U2 DoD: marker absence ALONE never produces
+// "run init").
+import { chmod, mkdir, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { homedir } from "node:os";
+import { basename, join, resolve } from "node:path";
+
+import { credentialsDir, writeFileAtomic0600 } from "./credentials.js";
+
+/** The subdirectory of `~/.agentstate/` holding per-bundle sync state files. */
+export const SYNC_STATE_DIR_NAME = "sync";
+const DIR_MODE = 0o700;
+
+/**
+ * The honest re-anchor note recorded when the stored cursor's object no longer exists (history
+ * rewritten under it) — surfaced by the next `home` render instead of the delta. NEVER a silent
+ * skip, never fatal (plan §U2).
+ */
+export const REANCHOR_NOTE = "delta unavailable (history rewritten)";
+
+// ── per-bundle key ────────────────────────────────────────────────────────────
+
+/**
+ * What identifies a bundle for state-keying: the repo's remote URL + the bundle's subpath within
+ * the repo (the caller — U1's git layer — knows both), or, for a repo with no remote, the
+ * absolute bundle root as a fallback. NOT per-machine-location: two checkouts of the same shared
+ * board on one machine share one key (U4's "since this MACHINE last synced" honesty).
+ */
+export type BundleKeySource =
+  | { remoteUrl: string; subpath: string }
+  | { root: string };
+
+/** Light, lossless-in-spirit normalization so trivially-equivalent URL spellings key together. */
+function normalizeRemoteUrl(url: string): string {
+  let u = url.trim().replace(/\/+$/, "");
+  if (u.endsWith(".git")) u = u.slice(0, -".git".length);
+  return u;
+}
+
+function normalizeSubpath(subpath: string): string {
+  return subpath
+    .trim()
+    .replace(/^\.\//, "")
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "");
+}
+
+/**
+ * Derive the canonical per-bundle key string. Newline-separated fields (a newline can appear in
+ * neither a git URL nor a path in practice), prefixed with the key kind so a remote-keyed and a
+ * path-keyed bundle can never collide textually.
+ */
+export function bundleKey(src: BundleKeySource): string {
+  if ("remoteUrl" in src) {
+    return `remote\n${normalizeRemoteUrl(src.remoteUrl)}\n${normalizeSubpath(src.subpath)}`;
+  }
+  return `path\n${resolve(src.root)}`;
+}
+
+/** `~/.agentstate/sync` — the 0700 directory holding one state file per bundle key. */
+export function syncStateDir(home: string = homedir()): string {
+  return join(credentialsDir(home), SYNC_STATE_DIR_NAME);
+}
+
+/** The absolute path of the state file for `key` (filename = truncated sha256 of the key). */
+export function syncStatePath(key: string, home: string = homedir()): string {
+  const digest = createHash("sha256").update(key, "utf8").digest("hex").slice(0, 32);
+  return join(syncStateDir(home), `${digest}.json`);
+}
+
+// ── schema ────────────────────────────────────────────────────────────────────
+
+/**
+ * The OPAQUE awareness cursor. `tier` names the sync backend that minted the token; `token` is
+ * meaningful ONLY to that tier (git: a commit SHA string; a future d1 tier: a sequence number).
+ * The store validates shape, never meaning, and preserves any extra fields a future tier adds —
+ * so a new tier swaps in without CLI changes (plan §U2).
+ */
+export interface SyncCursor {
+  readonly tier: string;
+  readonly token: string | number;
+  readonly [extra: string]: unknown;
+}
+
+/**
+ * One enriched delta row — THE single feed shape (produced by U1's `changesSince`, rendered by
+ * U3's sync envelope and U4's home face, and the future activity feed's row). `actor` is sourced
+ * PER-DOC FROM FRONTMATTER, never from a commit subject (adjudication F) — this store only
+ * persists it.
+ */
+export interface AwarenessDeltaRow {
+  docId: string;
+  /** "added" | "updated" | "deleted" — minted by the producer; persisted verbatim here. */
+  verb: string;
+  kind: string;
+  title: string;
+  actor: string;
+  [extra: string]: unknown;
+}
+
+/**
+ * The awareness cache `home` renders fs-only (§U4): the since-last-session delta plus the
+ * backstop counts (BOTH unpushed board commits AND uncommitted board changes — catching the agent
+ * that never ran sync at all, not just the failed-push one). `note` carries an honest condition
+ * to surface instead of/alongside the delta (e.g. {@link REANCHOR_NOTE}).
+ */
+export interface AwarenessCache {
+  /** ISO timestamp of the pull step that refreshed this cache (staleness labeling/expiry). */
+  updatedAt: string;
+  delta: AwarenessDeltaRow[];
+  /** Local board commits not yet pushed to origin. */
+  unpushedCount: number;
+  /** Uncommitted changes sitting in the board worktree. */
+  uncommittedCount: number;
+  note?: string;
+  [extra: string]: unknown;
+}
+
+/**
+ * The board-pending marker: presence = "a board exists for this repo" (fs-only first-contact
+ * signal, §U4); `updatedAt` is refreshed by every pull step. Absence is ALWAYS a valid state —
+ * consumers must treat a missing marker as "unknown", never as an error.
+ */
+export interface BoardPendingMarker {
+  updatedAt: string;
+  [extra: string]: unknown;
+}
+
+/** The whole per-bundle state record. Every piece is independently nullable. */
+export interface SyncState {
+  cursor: SyncCursor | null;
+  cache: AwarenessCache | null;
+  marker: BoardPendingMarker | null;
+}
+
+const EMPTY_STATE: SyncState = { cursor: null, cache: null, marker: null };
+
+// ── validation (malformed → null, section-independent) ───────────────────────
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/** A string that parses to a real date — the schema's timestamp requirement. */
+function isTimestamp(v: unknown): v is string {
+  return typeof v === "string" && Number.isFinite(Date.parse(v));
+}
+
+function isCount(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0;
+}
+
+/** Validate a cursor SHAPE (tier + token present and sane) while preserving it verbatim. */
+function asCursor(v: unknown): SyncCursor | null {
+  if (!isRecord(v)) return null;
+  if (typeof v.tier !== "string" || v.tier.length === 0) return null;
+  const token = v.token;
+  const tokenOk =
+    (typeof token === "string" && token.length > 0) ||
+    (typeof token === "number" && Number.isFinite(token));
+  if (!tokenOk) return null;
+  return { ...v } as SyncCursor;
+}
+
+function asDeltaRow(v: unknown): AwarenessDeltaRow | null {
+  if (!isRecord(v)) return null;
+  for (const field of ["docId", "verb", "kind", "title", "actor"] as const) {
+    if (typeof v[field] !== "string") return null;
+  }
+  return { ...v } as AwarenessDeltaRow;
+}
+
+function asCache(v: unknown): AwarenessCache | null {
+  if (!isRecord(v)) return null;
+  if (!isTimestamp(v.updatedAt)) return null;
+  if (!Array.isArray(v.delta)) return null;
+  const delta: AwarenessDeltaRow[] = [];
+  for (const raw of v.delta) {
+    const row = asDeltaRow(raw);
+    if (row === null) return null; // one malformed row poisons the cache — a partial delta would lie
+    delta.push(row);
+  }
+  if (!isCount(v.unpushedCount) || !isCount(v.uncommittedCount)) return null;
+  if (v.note !== undefined && typeof v.note !== "string") return null;
+  return { ...v, delta } as AwarenessCache;
+}
+
+function asMarker(v: unknown): BoardPendingMarker | null {
+  if (!isRecord(v)) return null;
+  if (!isTimestamp(v.updatedAt)) return null;
+  return { ...v } as BoardPendingMarker;
+}
+
+/** `null` when `updatedAt` is older than `maxAgeMs` (or unbounded when no max age is given). */
+function freshOrNull<T extends { updatedAt: string }>(
+  value: T | null,
+  opts?: ReadOptions,
+): T | null {
+  if (value === null) return null;
+  if (opts?.maxAgeMs === undefined) return value;
+  const now = (opts.now ?? (() => new Date()))();
+  const age = now.getTime() - Date.parse(value.updatedAt);
+  return age > opts.maxAgeMs ? null : value;
+}
+
+// ── reads (never throw) ───────────────────────────────────────────────────────
+
+/** Staleness policy for timestamped reads — the CONSUMER decides how old is too old. */
+export interface ReadOptions {
+  /** When set, a cache/marker older than this reads as `null` (stale = absent). */
+  maxAgeMs?: number;
+  /** Injectable clock for tests. */
+  now?: () => Date;
+}
+
+/**
+ * Read the whole per-bundle state record. NEVER throws: absent file, unreadable file, invalid
+ * JSON, or a foreign key all read as the empty record; each SECTION is validated independently,
+ * so one malformed section reads null without taking the others down.
+ */
+export async function readSyncState(key: string, home: string = homedir()): Promise<SyncState> {
+  let raw: string;
+  try {
+    raw = await readFile(syncStatePath(key, home), "utf8");
+  } catch {
+    return { ...EMPTY_STATE }; // absent or unreadable — both are just "no state yet"
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ...EMPTY_STATE };
+  }
+  if (!isRecord(parsed)) return { ...EMPTY_STATE };
+  // Foreign-file guard: the key is stored INSIDE the file too; a truncated-hash collision (or a
+  // hand-copied file) must read as absent for this key, never as another bundle's state.
+  if (parsed.key !== key) return { ...EMPTY_STATE };
+  return {
+    cursor: asCursor(parsed.cursor),
+    cache: asCache(parsed.cache),
+    marker: asMarker(parsed.marker),
+  };
+}
+
+/** The stored cursor, or `null` (absent/malformed — never throws). Cursors do not age out. */
+export async function readCursor(key: string, home: string = homedir()): Promise<SyncCursor | null> {
+  return (await readSyncState(key, home)).cursor;
+}
+
+/** The awareness cache, or `null` (absent/malformed/stale-past-`maxAgeMs` — never throws). */
+export async function readCache(
+  key: string,
+  opts?: ReadOptions,
+  home: string = homedir(),
+): Promise<AwarenessCache | null> {
+  return freshOrNull((await readSyncState(key, home)).cache, opts);
+}
+
+/** The board-pending marker, or `null` (absent/malformed/stale-past-`maxAgeMs` — never throws). */
+export async function readMarker(
+  key: string,
+  opts?: ReadOptions,
+  home: string = homedir(),
+): Promise<BoardPendingMarker | null> {
+  return freshOrNull((await readSyncState(key, home)).marker, opts);
+}
+
+// ── writes (atomic read-merge-write; invalid input is a programmer error) ─────
+
+/**
+ * Merge `patch` into the stored record and write the whole file atomically. An explicit `null` in
+ * the patch CLEARS that section; an absent field preserves it. Returns the state as written.
+ * Writes CAN throw (disk/permission errors) — they run inside sync, never inside `home`.
+ */
+export async function writeSyncState(
+  key: string,
+  patch: Partial<SyncState>,
+  home: string = homedir(),
+): Promise<SyncState> {
+  const next: SyncState = { ...(await readSyncState(key, home)), ...patch };
+  // Force the PARENT `~/.agentstate/` to 0700 too (writeFileAtomic0600 only governs the leaf dir).
+  const parent = credentialsDir(home);
+  await mkdir(parent, { recursive: true, mode: DIR_MODE });
+  await chmod(parent, DIR_MODE);
+  const path = syncStatePath(key, home);
+  const record = {
+    key,
+    cursor: next.cursor ?? undefined,
+    cache: next.cache ?? undefined,
+    marker: next.marker ?? undefined,
+  };
+  await writeFileAtomic0600(syncStateDir(home), basename(path), JSON.stringify(record, null, 2) + "\n");
+  return next;
+}
+
+/** Persist the cursor (verbatim — opaque token, unknown tiers untouched). */
+export async function writeCursor(
+  key: string,
+  cursor: SyncCursor,
+  home: string = homedir(),
+): Promise<void> {
+  if (asCursor(cursor) === null) {
+    throw new TypeError("cursor must be { tier: non-empty string, token: non-empty string | finite number }");
+  }
+  await writeSyncState(key, { cursor }, home);
+}
+
+/** Persist the awareness cache the next `home` render reads. */
+export async function writeCache(
+  key: string,
+  cache: AwarenessCache,
+  home: string = homedir(),
+): Promise<void> {
+  if (asCache(cache) === null) {
+    throw new TypeError(
+      "cache must carry { updatedAt: ISO timestamp, delta: AwarenessDeltaRow[], unpushedCount, uncommittedCount }",
+    );
+  }
+  await writeSyncState(key, { cache }, home);
+}
+
+/**
+ * Refresh the board-pending marker's timestamp (called by every pull step). Preserves any extra
+ * fields a prior writer stored on the marker. Returns the marker as written.
+ */
+export async function refreshMarker(
+  key: string,
+  home: string = homedir(),
+  now: () => Date = () => new Date(),
+): Promise<BoardPendingMarker> {
+  const current = (await readSyncState(key, home)).marker;
+  const marker: BoardPendingMarker = { ...(current ?? {}), updatedAt: now().toISOString() };
+  await writeSyncState(key, { marker }, home);
+  return marker;
+}
+
+/**
+ * Re-anchor after the CALLER's existence guard (U1's `git cat-file -e` before diffing) finds the
+ * stored token gone — history was rewritten under the cursor. Atomically records the NEW cursor
+ * (HEAD, minted by the caller) AND an awareness cache whose `note` is the honest
+ * {@link REANCHOR_NOTE} with an EMPTY delta (the real delta is unknowable across a rewrite) plus
+ * the caller's current backstop counts — so the miss is reported on the next render, never a
+ * silent skip, and never fatal. Returns the cache as written.
+ */
+export async function recordReanchor(
+  key: string,
+  cursor: SyncCursor,
+  counts: { unpushedCount: number; uncommittedCount: number },
+  home: string = homedir(),
+  now: () => Date = () => new Date(),
+): Promise<AwarenessCache> {
+  if (asCursor(cursor) === null) {
+    throw new TypeError("cursor must be { tier: non-empty string, token: non-empty string | finite number }");
+  }
+  const cache: AwarenessCache = {
+    updatedAt: now().toISOString(),
+    delta: [],
+    unpushedCount: counts.unpushedCount,
+    uncommittedCount: counts.uncommittedCount,
+    note: REANCHOR_NOTE,
+  };
+  await writeSyncState(key, { cursor, cache }, home);
+  return cache;
+}
