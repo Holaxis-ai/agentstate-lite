@@ -1,7 +1,7 @@
 ---
 type: Roadmap
 title: agentstate-lite — Roadmap (near-term spine)
-timestamp: '2026-07-06T13:59:11.713Z'
+timestamp: '2026-07-08T19:56:00.000Z'
 ---
 # agentstate-lite — Roadmap (near-term spine)
 
@@ -49,6 +49,13 @@ exists.
   `queryHeads` frontmatter projection consumed end to end (scans carry no bodies over the wire)
   and the D1 `frontmatter` head column (Worker scans stop touching R2; legacy rows self-heal on
   write — observed on this bundle's data).
+- **Roadmap recipe** (`4167b40`, 2026-07-08) — the THIRD built-in (`recipe add roadmap`):
+  this board's Roadmap + Roadmap Item conventions extracted as work-tracking's companion
+  (typed `contains` vocabulary roadmap → item → task, item status enum queued/active/done).
+  The Task-side `expects_inbound` pairing travels as a documented one-step opt-in
+  (pull → edit → promote), pinned by a test that executes the documented chain literally —
+  the recipe pipeline has no versioned re-application and `kind field` edits fields only.
+  Record: [tasks/roadmap-recipe](tasks/roadmap-recipe.md).
 
 # Next — queued (sequenced)
 
@@ -69,9 +76,7 @@ exists.
    the deleted `note` command was). The recipe LEANS ON these; they benefit every kind and get built
    as dogfooding proves the need. (Plus a LOW follow-up: a kind-field arity guard across `new` +
    `doc update`.)
-3. **Roadmap kind recipe** — roadmap-items-as-docs as a second domain recipe, deferred until granular
-   roadmap items are actually felt (one interim `roadmap` doc suffices today).
-4. **Work-management cookbook** — compose tasks + roadmap + the roadmap<->task link convention + the
+3. **Work-management cookbook** — compose tasks + roadmap + the roadmap<->task link convention + the
    task-rollup query: the first real cookbook. (`task-system-skill` subsumed: a skill delivers +
    teaches a recipe.) The plugin/marketplace distribution channel is a reserved THIRD `RecipeSource`,
    built when needed.

@@ -21,7 +21,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -35,8 +35,18 @@ import { status } from "../src/commands/status.js";
 import { doc } from "../src/commands/doc.js";
 import { newCommand } from "../src/commands/new.js";
 import { list } from "../src/commands/list.js";
+import { pull } from "../src/commands/pull.js";
+import { promote } from "../src/commands/promote.js";
+import { link } from "../src/commands/link.js";
 import { CliError } from "../src/errors.js";
-import { CONTEXT_NOTE_SEED_BODY, TASK_SEED_BODY, applyRecipe } from "../src/recipes.js";
+import {
+  CONTEXT_NOTE_SEED_BODY,
+  TASK_SEED_BODY,
+  ROADMAP_SEED_BODY,
+  ROADMAP_ITEM_SEED_BODY,
+  ROADMAP_DESC_BODY,
+  applyRecipe,
+} from "../src/recipes.js";
 import { CONTEXT_NOTES_RECIPE } from "../src/recipe-source.js";
 
 const T = "2026-07-01T00:00:00.000Z";
@@ -154,9 +164,9 @@ test("recipes: lists context-notes with applied:false on a bare bundle, applied:
   try {
     await initBundle(dir);
     const before = await runJson(recipes, ["--dir", dir]);
-    assert.equal(before.count, 2);
+    assert.equal(before.count, 3);
     const rowsBefore = before.recipes as Array<Record<string, unknown>>;
-    assert.equal(rowsBefore.length, 2);
+    assert.equal(rowsBefore.length, 3);
     assert.equal(rowsBefore[0]!.name, "context-notes");
     assert.equal(rowsBefore[0]!.version, "1");
     assert.equal(rowsBefore[0]!.applied, false);
@@ -173,15 +183,15 @@ test("recipes: lists context-notes with applied:false on a bare bundle, applied:
 
 // ── work-tracking: the second built-in recipe (first DOMAIN recipe) ───────────────────────────
 
-test("recipes: lists BOTH context-notes and work-tracking", async () => {
+test("recipes: lists ALL THREE built-ins — context-notes, work-tracking, roadmap", async () => {
   const dir = await tempDir();
   try {
     await initBundle(dir);
     const result = await runJson(recipes, ["--dir", dir]);
-    assert.equal(result.count, 2);
+    assert.equal(result.count, 3);
     const rows = result.recipes as Array<Record<string, unknown>>;
     const names = rows.map((r) => r.name).sort();
-    assert.deepEqual(names, ["context-notes", "work-tracking"]);
+    assert.deepEqual(names, ["context-notes", "roadmap", "work-tracking"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -328,6 +338,291 @@ test("recipe add work-tracking: idempotent — second add is changed:false, on-d
 
     const bytesAfterSecond = await readFile(path.join(dir, "conventions", "task.md"), "utf8");
     assert.equal(bytesAfterSecond, bytesAfterFirst, "a no-op re-add must not touch the on-disk bytes");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── roadmap: the third built-in recipe (work-tracking's companion; first MULTI-DOC built-in) ───
+
+test("recipe add roadmap: applies conventions/roadmap.md AND conventions/roadmap-item.md, frontmatter faithful to the board's hand-authored conventions modulo timestamp", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const result = await runJson(recipe, ["add", "roadmap", "--dir", dir]);
+    assert.equal(result.recipe, "added");
+    assert.equal(result.id, "roadmap");
+    assert.equal(result.version, "1");
+    assert.equal(result.source, "builtin:roadmap");
+    assert.equal(result.changed, true);
+    const docs = result.docs as Array<Record<string, unknown>>;
+    assert.equal(docs.length, 2);
+    assert.deepEqual(
+      docs.map((d) => d.id).sort(),
+      ["conventions/roadmap", "conventions/roadmap-item"],
+    );
+    assert.ok(docs.every((d) => d.changed === true));
+
+    const roadmapRaw = await readFile(path.join(dir, "conventions", "roadmap.md"), "utf8");
+    const roadmapParsed = parseMarkdown(roadmapRaw);
+    const { timestamp: ts1, ...roadmapRest } = roadmapParsed.frontmatter;
+    assert.deepEqual(roadmapRest, {
+      type: CONVENTION_TYPE,
+      title: "Roadmap",
+      governs: "Roadmap",
+      links: { contains: "Roadmap Item" },
+      fields: { required: ["title"], optional: [] },
+    });
+    assert.ok(!Number.isNaN(Date.parse(ts1 as string)), `expected a valid ISO timestamp, got ${ts1}`);
+    assert.equal(roadmapParsed.body, ROADMAP_SEED_BODY);
+
+    const itemRaw = await readFile(path.join(dir, "conventions", "roadmap-item.md"), "utf8");
+    const itemParsed = parseMarkdown(itemRaw);
+    const { timestamp: ts2, ...itemRest } = itemParsed.frontmatter;
+    assert.deepEqual(itemRest, {
+      type: CONVENTION_TYPE,
+      title: "Roadmap Item",
+      governs: "Roadmap Item",
+      path: "roadmap-items/",
+      links: { contains: "Task" },
+      fields: {
+        required: ["title", "status"],
+        optional: ["description", "sequence"],
+        values: { status: ["queued", "active", "done"] },
+      },
+    });
+    assert.ok(!Number.isNaN(Date.parse(ts2 as string)), `expected a valid ISO timestamp, got ${ts2}`);
+    assert.equal(itemParsed.body, ROADMAP_ITEM_SEED_BODY);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("kinds: reports Roadmap + Roadmap Item with the contains vocabulary and the item status enum after recipe add roadmap", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    await recipe(["add", "roadmap", "--dir", dir], { stdout: () => {} });
+    const registry = await loadKinds({ root: dir });
+
+    const roadmapKind = registry.kinds.get("Roadmap");
+    assert.ok(roadmapKind);
+    assert.deepEqual(roadmapKind!.fields.required, ["title"]);
+    assert.deepEqual(roadmapKind!.links, { contains: "Roadmap Item" });
+    assert.equal(roadmapKind!.path, undefined, "the spine is one doc, not a scaffolded family");
+
+    const itemKind = registry.kinds.get("Roadmap Item");
+    assert.ok(itemKind);
+    assert.equal(itemKind!.path, "roadmap-items/");
+    assert.deepEqual(itemKind!.links, { contains: "Task" });
+    assert.deepEqual(itemKind!.fields.required, ["title", "status"]);
+    assert.deepEqual(itemKind!.fields.optional, ["description", "sequence"]);
+    assert.deepEqual(itemKind!.fields.values.status, ["queued", "active", "done"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("recipe add roadmap: idempotent — second add is changed:false, on-disk bytes of BOTH docs unchanged", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const first = await runJson(recipe, ["add", "roadmap", "--dir", dir]);
+    assert.equal(first.changed, true);
+    const roadmapAfterFirst = await readFile(path.join(dir, "conventions", "roadmap.md"), "utf8");
+    const itemAfterFirst = await readFile(path.join(dir, "conventions", "roadmap-item.md"), "utf8");
+
+    const second = await runJson(recipe, ["add", "roadmap", "--dir", dir]);
+    assert.equal(second.changed, false);
+    const docsSecond = second.docs as Array<Record<string, unknown>>;
+    assert.ok(docsSecond.every((d) => d.changed === false));
+
+    assert.equal(await readFile(path.join(dir, "conventions", "roadmap.md"), "utf8"), roadmapAfterFirst);
+    assert.equal(await readFile(path.join(dir, "conventions", "roadmap-item.md"), "utf8"), itemAfterFirst);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("recipe add roadmap: does not disturb a hand-edited conventions/roadmap-item.md — the untouched sibling doc still applies", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    await writeDoc(bundle, {
+      id: "conventions/roadmap-item",
+      frontmatter: { type: CONVENTION_TYPE, title: "Roadmap Item", governs: "Roadmap Item", timestamp: T },
+      body: "Custom prose the author wrote.",
+    });
+
+    const result = await runJson(recipe, ["add", "roadmap", "--dir", dir]);
+    // PARTIAL apply: the hand-edited doc loses nothing; the absent sibling is still created.
+    assert.equal(result.changed, true);
+    const docs = result.docs as Array<Record<string, unknown>>;
+    const byId = new Map(docs.map((d) => [d.id, d.changed]));
+    assert.equal(byId.get("conventions/roadmap-item"), false, "hand-edited doc must not be clobbered");
+    assert.equal(byId.get("conventions/roadmap"), true, "absent sibling must still be created");
+
+    const registry = await loadKinds(bundle);
+    const itemKind = registry.kinds.get("Roadmap Item");
+    assert.ok(itemKind);
+    // The author's declaration (no path, no enum) survives untouched.
+    assert.equal(itemKind!.path, undefined);
+    assert.equal(itemKind!.fields.values.status, undefined);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("recipes: roadmap applied:false when only ONE of its two docs exists — applied means ALL docs present", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    await writeDoc(bundle, {
+      id: "conventions/roadmap",
+      frontmatter: { type: CONVENTION_TYPE, title: "Roadmap", governs: "Roadmap", timestamp: T },
+      body: "Hand-authored spine convention only.",
+    });
+
+    const before = await runJson(recipes, ["--dir", dir]);
+    const rowBefore = (before.recipes as Array<Record<string, unknown>>).find((r) => r.name === "roadmap");
+    assert.ok(rowBefore);
+    assert.equal(rowBefore!.applied, false, "one-of-two docs present must NOT count as applied");
+
+    await recipe(["add", "roadmap", "--dir", dir], { stdout: () => {} });
+    const after = await runJson(recipes, ["--dir", dir]);
+    const rowAfter = (after.recipes as Array<Record<string, unknown>>).find((r) => r.name === "roadmap");
+    assert.equal(rowAfter!.applied, true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── The board-parity drift gate: the built-in must stay faithful to the SOURCE conventions ─────
+
+const BOARD_CONVENTIONS = path.resolve(import.meta.dirname, "../../../.agentstate-lite/conventions");
+
+test("board parity: the roadmap recipe's kinds load IDENTICALLY to the repo board's hand-authored conventions/roadmap(-item).md (the extraction cannot drift from its source)", async () => {
+  const recipeDir = await tempDir();
+  const boardDir = await tempDir();
+  try {
+    await initBundle(recipeDir);
+    await recipe(["add", "roadmap", "--dir", recipeDir], { stdout: () => {} });
+
+    await initBundle(boardDir);
+    await mkdir(path.join(boardDir, "conventions"), { recursive: true });
+    for (const f of ["roadmap.md", "roadmap-item.md"]) {
+      await writeFile(path.join(boardDir, "conventions", f), await readFile(path.join(BOARD_CONVENTIONS, f), "utf8"));
+    }
+
+    const fromRecipe = await loadKinds({ root: recipeDir });
+    const fromBoard = await loadKinds({ root: boardDir });
+    for (const governs of ["Roadmap", "Roadmap Item"]) {
+      assert.deepEqual(
+        fromRecipe.kinds.get(governs),
+        fromBoard.kinds.get(governs),
+        `the '${governs}' kind loaded from the built-in recipe must equal the board's hand-authored declaration`,
+      );
+    }
+  } finally {
+    await rm(recipeDir, { recursive: true, force: true });
+    await rm(boardDir, { recursive: true, force: true });
+  }
+});
+
+// ── The DOCUMENTED expects_inbound pairing chain — executed literally from the manifest body ───
+//
+// The roadmap recipe's manifest documents the one-step Task-kind pairing (pull → edit → promote)
+// because a recipe's expect-absent CAS can never patch an EXISTING conventions/task doc and
+// `kind field` edits only fields.{required,optional,values}. Per the repo's review conventions, a
+// documented command chain is pinned by a test that literally runs the emitted strings: this test
+// EXTRACTS the two command lines from ROADMAP_DESC_BODY's fenced block, binds the placeholders
+// (the out-file path and the `<version from the pull receipt>` token), executes them, and asserts
+// the lint the pairing exists to enable actually fires and then clears.
+
+/** Extract the fenced pairing chain from the manifest body: [pullArgv, promoteArgv] templates. */
+function pairingChainLines(body: string): string[] {
+  const fence = body.match(/```\n([\s\S]*?)```/);
+  assert.ok(fence, "the roadmap manifest body must carry the fenced pairing chain");
+  return fence![1]!
+    .split("\n")
+    .filter((l) => l.trim() !== "" && !l.trim().startsWith("#"));
+}
+
+test("pairing chain: the documented pull → edit → promote steps in the roadmap manifest, executed literally, arm Task's expects_inbound and the missing_expected_links lint fires then clears", async () => {
+  const dir = await tempDir();
+  const work = await tempDir(); // the adopter's scratch dir, OUTSIDE the bundle
+  try {
+    await initBundle(dir);
+    await recipe(["add", "work-tracking", "--dir", dir], { stdout: () => {} });
+    await recipe(["add", "roadmap", "--dir", dir], { stdout: () => {} });
+
+    const chain = pairingChainLines(ROADMAP_DESC_BODY);
+    assert.equal(chain.length, 2, "the documented chain is exactly two commands (pull, promote)");
+    assert.match(chain[0]!, /^agentstate-lite pull /);
+    assert.match(chain[1]!, /^agentstate-lite promote /);
+    // The placeholder bindings below assume these exact tokens — assert them BEFORE executing
+    // anything, so manifest wording drift fails HERE as a clear assertion rather than silently
+    // no-op'ing a .replace() (which would, e.g., pull task.md into the test process cwd).
+    assert.match(chain[0]!, /--out task\.md/, "the documented pull must name its out-file 'task.md'");
+    assert.match(chain[1]!, /^agentstate-lite promote task\.md /, "the documented promote must take 'task.md' as its file");
+    assert.match(chain[1]!, /<version from the pull receipt>/, "the documented promote must carry the version placeholder");
+
+    // Step 1 — the documented pull, out-path bound to the scratch dir.
+    const outFile = path.join(work, "task.md");
+    const pullArgv = chain[0]!
+      .replace(/^agentstate-lite pull /, "")
+      .replace("--out task.md", `--out ${outFile}`)
+      .split(/\s+/);
+    const pullReceipt = await runJson(pull, [...pullArgv, "--dir", dir]);
+    const version = pullReceipt.version as string;
+    assert.ok(version, "the pull receipt must carry the CAS version token the chain relies on");
+
+    // Step 2 — the documented edit: add the two expects_inbound lines to the frontmatter.
+    const pulled = await readFile(outFile, "utf8");
+    assert.ok(!pulled.includes("expects_inbound"), "work-tracking's Task must NOT pre-declare the pairing");
+    await writeFile(outFile, pulled.replace("\nfields:", "\nexpects_inbound:\n  contains: Roadmap Item\nfields:"));
+
+    // Step 3 — the documented promote, placeholders bound (file path + version token).
+    const promoteArgv = chain[1]!
+      .replace(/^agentstate-lite promote task\.md /, `${outFile} `)
+      .replace("<version from the pull receipt>", version)
+      .split(/\s+/);
+    const promoted = await runJson(promote, [...promoteArgv, "--dir", dir]);
+    assert.equal(promoted.id, "conventions/task");
+
+    // The pairing is armed: Task now expects an inbound `contains` from a Roadmap Item.
+    const registry = await loadKinds({ root: dir });
+    assert.deepEqual(registry.kinds.get("Task")!.expectsInbound, { contains: "Roadmap Item" });
+
+    // An unowned task trips the lint …
+    await runJson(newCommand, ["Task", "demo", "--title", "Demo", "--status", "todo", "--dir", dir]);
+    const unowned = await runJson(status, ["--dir", dir]);
+    assert.equal(unowned.missing_expected_links, 1);
+    const rows = (unowned.missing_expected_links_rows as { rows: Array<Record<string, unknown>> }).rows;
+    assert.equal(rows[0]!.id, "tasks/demo");
+    assert.deepEqual(rows[0]!.missing, ["contains"]);
+
+    // … and an owning Roadmap Item's typed `contains` link clears it.
+    await runJson(newCommand, ["Roadmap Item", "item-1", "--title", "Item 1", "--status", "active", "--dir", dir]);
+    await runJson(link, ["add", "roadmap-items/item-1", "tasks/demo", "--text", "contains", "--dir", dir]);
+    const owned = await runJson(status, ["--dir", dir]);
+    assert.equal(owned.missing_expected_links, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(work, { recursive: true, force: true });
+  }
+});
+
+test("gate 3 / conventions-free: init's default does NOT install roadmap — a bundle stays roadmap-free until it opts in", async () => {
+  const dir = await tempDir();
+  try {
+    await init(["--dir", dir], { stdout: () => {} });
+    const registry = await loadKinds({ root: dir });
+    assert.equal(registry.kinds.has("Roadmap"), false);
+    assert.equal(registry.kinds.has("Roadmap Item"), false);
+    await assert.rejects(() => readFile(path.join(dir, "conventions", "roadmap.md")));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

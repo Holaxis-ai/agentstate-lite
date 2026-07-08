@@ -192,6 +192,108 @@ export const WORK_TRACKING_DESC_BODY =
   "Applied on demand with `recipe add work-tracking` (not part of `init`'s default — that stays " +
   "`context-notes`).\n";
 
+/** The `type` values the roadmap recipe governs — extracted from the project's own board (the
+ * hand-authored `conventions/roadmap` + `conventions/roadmap-item` docs), the same
+ * dogfood-then-package path work-tracking took. */
+const ROADMAP_TYPE = "Roadmap";
+const ROADMAP_ITEM_TYPE = "Roadmap Item";
+
+/**
+ * The `Roadmap` kind convention — the SPINE: a single top-level roadmap doc that `contains` the
+ * bundle's Roadmap Items via typed links. Frontmatter faithful to the board's hand-authored
+ * `conventions/roadmap` (no `path` — the spine is one doc, conventionally the bundle-root
+ * `roadmap`, not a scaffolded family; no freshness horizon; `title` is the only required field).
+ */
+export const ROADMAP_KIND: KindConvention = {
+  id: "conventions/roadmap",
+  title: ROADMAP_TYPE,
+  governs: ROADMAP_TYPE,
+  // The typed-edge vocabulary: the spine's ownership edge is a link whose display text is exactly
+  // "contains", targeting a Roadmap Item — declared so `kinds` teaches it and `link add`'s graph
+  // lint validates it.
+  links: { contains: ROADMAP_ITEM_TYPE },
+  fields: { required: ["title"], optional: [], values: {} },
+};
+
+/** The `conventions/roadmap.md` prose body. */
+export const ROADMAP_SEED_BODY =
+  "# Roadmap\n\n" +
+  "The spine document: a single top-level roadmap doc that CONTAINS the bundle's Roadmap\n" +
+  "Items via typed links carrying the text `contains` (`link add <roadmap> <item> --text\n" +
+  "contains`), making the whole roadmap → item → task chain one filtered query per hop\n" +
+  "(`link show <id> --text contains`). Progress is DERIVED, never stored: list the\n" +
+  "contained items and read their statuses.\n";
+
+/**
+ * The `Roadmap Item` kind convention — a durable line of work spanning multiple tasks.
+ * Frontmatter faithful to the board's hand-authored `conventions/roadmap-item`: scaffolded under
+ * `roadmap-items/`, `contains` its Tasks, `status` is the three-state item lifecycle (coarser than
+ * Task's five-state enum on purpose — an item's granular progress is the derived task rollup, not
+ * a stored field).
+ */
+export const ROADMAP_ITEM_KIND: KindConvention = {
+  id: "conventions/roadmap-item",
+  title: ROADMAP_ITEM_TYPE,
+  governs: ROADMAP_ITEM_TYPE,
+  path: "roadmap-items/",
+  links: { contains: "Task" },
+  fields: {
+    required: ["title", "status"],
+    optional: ["description", "sequence"],
+    values: { status: ["queued", "active", "done"] },
+  },
+};
+
+/** The `conventions/roadmap-item.md` prose body. */
+export const ROADMAP_ITEM_SEED_BODY =
+  "# Roadmap Item\n\n" +
+  "A durable line of work spanning multiple tasks — the granular form of the single\n" +
+  "roadmap spine doc. An item CONTAINS its tasks via links carrying the text `contains`;\n" +
+  "backlinks from a task answer \"which item owns this\". An item's progress is DERIVED,\n" +
+  "never stored: list its contained tasks and read their statuses (the rollup). `status`\n" +
+  "tracks the item itself: `queued` (not started) → `active` (any contained task moving)\n" +
+  "→ `done` (all contained tasks done or canceled).\n";
+
+/** One-line description, shown by `recipes` and the command reference — the built-in `roadmap`
+ * recipe's `recipe.md` manifest `summary:`. */
+export const ROADMAP_SUMMARY =
+  "Declares the Roadmap + Roadmap Item kind conventions (typed 'contains' links, roadmap → item → task; item status enum queued/active/done) — work-tracking's companion";
+
+/** The prose body of the built-in `roadmap` recipe's `recipe.md` manifest doc — NOT parsed by
+ * `parseRecipeFiles` (only the manifest's frontmatter is read), purely descriptive. Its "Pairing
+ * the Task kind" section is the RECORDED resolution of this unit's expects_inbound design
+ * question: recipes apply via expect-absent CAS and can never patch an EXISTING `conventions/task`
+ * doc, and `kind field` edits only `fields.{required,optional,values}` — so the Task-side
+ * `expects_inbound` pairing is a documented one-step opt-in (pull → edit → promote, the
+ * CLI's one sanctioned convention-schema edit route), not a silent recipe patch. The chain below
+ * is pinned by a test that literally executes it (recipes.test.ts). */
+export const ROADMAP_DESC_BODY =
+  "# Roadmap\n\n" +
+  "Installs the `Roadmap` and `Roadmap Item` kind conventions: roadmap-items-as-docs. A single\n" +
+  "`Roadmap` spine doc CONTAINS `Roadmap Item` docs; each item CONTAINS its `Task` docs — all\n" +
+  "via typed links carrying the text `contains`, so the whole roadmap → item → task chain is\n" +
+  "one filtered query per hop (`link show <id> --text contains`). An item's progress is derived\n" +
+  "from its contained tasks' statuses, never stored.\n\n" +
+  "Applied on demand with `recipe add roadmap` (not part of `init`'s default — that stays\n" +
+  "`context-notes`). Composes with the `work-tracking` recipe (the `Task` kind this recipe's\n" +
+  "`contains` vocabulary points at) — apply both for the full chain.\n\n" +
+  "## Pairing the Task kind (opt-in, one documented step)\n\n" +
+  "The graph lint that answers \"which tasks have no owning Roadmap Item\" reads\n" +
+  "`expects_inbound` on the TASK kind's convention (`status` then reports\n" +
+  "`missing_expected_links`). A recipe applies via expect-absent CAS and never touches a doc\n" +
+  "that already exists, so this recipe cannot patch your bundle's `conventions/task` — the\n" +
+  "pairing is a deliberate one-step opt-in on the adopting bundle:\n\n" +
+  "```\n" +
+  "agentstate-lite pull --doc-key conventions/task.md --out task.md\n" +
+  "# edit task.md — add to the frontmatter:\n" +
+  "#   expects_inbound:\n" +
+  "#     contains: Roadmap Item\n" +
+  "agentstate-lite promote task.md --doc-key conventions/task.md --expected-version <version from the pull receipt>\n" +
+  "```\n\n" +
+  "Without this step everything else still works (the `contains` vocabulary and its link-type\n" +
+  "validation come from THIS recipe's conventions); only the \"task lacks an owning item\" lint\n" +
+  "stays off.\n";
+
 /** Per-doc apply outcome: `changed: false` means the doc already existed (idempotent no-op). */
 export interface RecipeDocResult {
   id: ConceptId;
