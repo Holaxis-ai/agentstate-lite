@@ -1,13 +1,39 @@
 ---
 type: Task
 title: 'U1 git porcelain layer: git.ts spawn wrapper + ops + classifyGitError'
-status: todo
+status: done
 priority: '1'
 description: >-
-  U1. New git.ts spawn wrapper + ops (provision, stageAndCommit, fetchRebase
-  DETECT-ONLY, push, ffPull, changesSince, unpushedCount) and classifyGitError
-  with GIT_MISSING/NO_UPSTREAM/GIT_BUSY. Deps: sync-test-harness.
-timestamp: '2026-07-07T21:20:02.769Z'
+  SHIPPED (feat/sync-git-porcelain): packages/cli/src/git.ts — ONE spawn wrapper
+  (env scrub GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE, git -C,
+  GIT_TERMINAL_PROMPT=0, GIT_SSH_COMMAND BatchMode+ConnectTimeout,
+  GIT_EDITOR/GIT_SEQUENCE_EDITOR=true on rebase ops, per-op timeout
+  30s/60s-network, --no-renames) + ops: isProvisioned, provisionBoardWorktree
+  (fetch-first self-heal; non-empty-dir REFUSED with guidance; empty-dir
+  resolved; already-checked-out idempotent; no_repo/no_board outcomes),
+  detectStaleRebase/abortStaleRebase, stageAndCommit (add -A, skip-empty, -F -
+  stdin message, grammar subject + verb-kind-id body, per-doc frontmatter
+  enrichment incl. deleted-doc from HEAD), fetchRebase (DETECT-ONLY conflict:
+  collect --diff-filter=U ids, clean abort, zero data movement), push, ffPull
+  (full swallow matrix w/ reason vocabulary), changesSince (two-dot, cat-file -e
+  dangling guard, actor PER-DOC FROM FRONTMATTER — {docId, actor, verb, kind,
+  title}, matches U2's AwarenessDeltaRow shape), unpushedCount (null = no
+  origin/board ref, distinct from 0). classifyGitError in errors.ts:
+  GIT_MISSING/NO_UPSTREAM/GIT_BUSY (exit 1, GIT_BUSY carries details.retryable),
+  AUTH_REQUIRED(4) vs TRANSIENT(1) best-effort, CONFLICT(5). TESTS:
+  packages/cli/test/git-porcelain.test.ts — 39 tests over the U0 harness, all
+  §U1 acceptance criteria; CLI suite 418→457, npm run check fully green.
+  CAVEATS: (1) board commits use --no-verify (plan-silent; keeps user hook
+  policy/interactive hooks off the machine branch); (2) GIT_SSH_COMMAND is
+  forced unconditionally per the invariant — a user-set GIT_SSH_COMMAND env is
+  overridden (~/.ssh/config still applies); (3) unreachable local-path remotes
+  classify AUTH (documented best-effort not-found heuristic); (4)
+  reserved-file-only commits get subject 'board: bundle maintenance' (grammar
+  extension); (5) errors.ts CODE_EXIT lands in the committed plugin bundle →
+  both manifests bumped 1.0.11→1.0.12 (U2 also took 1.0.12; orchestrator
+  reconciles at merge).
+assignee: builder-u1
+timestamp: '2026-07-07T23:16:16.658Z'
 ---
 # U1 — git porcelain layer
 
