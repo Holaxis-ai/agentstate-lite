@@ -182,9 +182,9 @@ share this bundle? When the user's intent is ambiguous, ask rather than defaulti
 ## Typical flow
 
 ```sh
-# One-time setup at the project root (see the Workspaces section):
-# an existing project is set up by sync; init is for a brand-new workspace only
-npx -y agentstate-lite init --dir .agentstate-lite
+# One-time setup at the project root (see the Workspaces section) — run ONE of these:
+npx -y agentstate-lite sync                          # existing project that shares a board — sets up AND pulls the shared board
+npx -y agentstate-lite init --dir .agentstate-lite   # GREENFIELD ONLY — never on a project that already has a workspace
 
 # Everything after runs bare, from anywhere in the project tree
 # Create a context note (an OKF concept) for the next session

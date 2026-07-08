@@ -194,9 +194,9 @@ function renderTypicalFlow(prefix) {
   lines.push("## Typical flow");
   lines.push("");
   lines.push("```sh");
-  lines.push(`# One-time setup at the project root (see the Workspaces section):`);
-  lines.push(`# an existing project is set up by sync; init is for a brand-new workspace only`);
-  lines.push(`${prefix} init --dir .agentstate-lite`);
+  lines.push(`# One-time setup at the project root (see the Workspaces section) — run ONE of these:`);
+  lines.push(`${prefix} sync                          # existing project that shares a board — sets up AND pulls the shared board`);
+  lines.push(`${prefix} init --dir .agentstate-lite   # GREENFIELD ONLY — never on a project that already has a workspace`);
   lines.push("");
   lines.push(`# Everything after runs bare, from anywhere in the project tree`);
   lines.push(`# Create a context note (an OKF concept) for the next session`);
