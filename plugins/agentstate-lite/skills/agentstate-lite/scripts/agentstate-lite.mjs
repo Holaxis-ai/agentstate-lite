@@ -14489,6 +14489,40 @@ function compactCommandReference(invocation) {
     commands_help: `run \`${invocation} <command> --help\` (or \`${invocation} --help\`) for full usage`
   };
 }
+function wrapText(text, width = 96) {
+  const words = text.split(/\s+/).filter((w) => w.length > 0);
+  const wrapped = [];
+  let line = "";
+  for (const word of words) {
+    const candidate = line.length === 0 ? word : `${line} ${word}`;
+    if (candidate.length > width && line.length > 0) {
+      wrapped.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line.length > 0) wrapped.push(line);
+  return wrapped.join("\n");
+}
+function helpIndexText(invocation) {
+  const ref = commandReference(invocation);
+  const lines = [
+    `${invocation} \u2014 ${DESCRIPTION}`,
+    "",
+    `Usage: ${invocation} <command> [options]`,
+    `Run \`${invocation} <command> --help\` for a specific command's full reference.`
+  ];
+  for (const [group, commandLines] of Object.entries(ref.commands)) {
+    lines.push("", `${group}:`);
+    for (const commandLine of commandLines) {
+      lines.push(`  ${commandLine}`);
+    }
+  }
+  lines.push("", wrapText(ref.kinds), "", wrapText(ref.remoteEnv));
+  return `${lines.join("\n")}
+`;
+}
 
 // src/commands/home.ts
 import { parseArgs as parseArgs29 } from "node:util";
@@ -14969,7 +15003,7 @@ var KNOWN_COMMANDS = [
   "hook"
 ];
 function helpReference() {
-  return render(commandReference(cliInvocation()), "default");
+  return helpIndexText(cliInvocation());
 }
 function unknownCommandError(cmd) {
   return new CliError("USAGE", `unknown command: ${cmd} (known: ${KNOWN_COMMANDS.join(", ")})`, {

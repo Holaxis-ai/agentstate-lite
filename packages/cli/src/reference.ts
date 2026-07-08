@@ -8,6 +8,17 @@
 // pure `commandReference()` projector below. Adding/removing a command here updates every consumer at
 // once. This module is pure data + a pure projection: NO I/O, NO imports beyond TypeScript types.
 //
+// `--help` renders `commandReference()`'s output as PLAIN PROSE via `helpIndexText()` (grouped
+// headings, one command per physical line) — never TOON. Field feedback (external-agent session,
+// help-index-readability task) found the previous rendering (TOON-encoding the same data) crammed
+// every group's commands into one escaped string-array value per line, forcing an agent to grep a
+// giant line instead of reading it; subcommand help (e.g. `new --help`) is plain prose and was
+// praised by the same agent. Help is prose an agent READS, not data it parses — TOON stays the
+// default for actual data surfaces (`list`, `status`, …), never for this index. `home` keeps
+// rendering `compactCommandReference()`'s command NAMES as TOON (it is real per-session state —
+// bundle summary, auth status — not a help manual), so this is a renderer change scoped to `--help`
+// alone; the registry (`COMMAND_GROUPS`) and `commandReference()`'s projection are untouched.
+//
 // Adapted from holaxis-agentstate `packages/cli/src/reference.ts`, retargeted from the promote/pull
 // command set to the OKF-native bundle command set.
 
@@ -319,4 +330,56 @@ export function compactCommandReference(invocation: string): {
     commands,
     commands_help: `run \`${invocation} <command> --help\` (or \`${invocation} --help\`) for full usage`,
   };
+}
+
+/**
+ * Word-wrap `text` to `width` columns, breaking only at existing spaces (never mid-word). Pure, no
+ * I/O. Used solely to keep the footer pointers ({@link kindsPointer}, {@link remoteEnvPointer}) —
+ * each authored as one long single-line string — readable as wrapped prose in `helpIndexText()`
+ * instead of one unbroken line; command usage/summary lines are deliberately left un-wrapped (see
+ * {@link helpIndexText}'s comment).
+ */
+export function wrapText(text: string, width = 96): string {
+  const words = text.split(/\s+/).filter((w) => w.length > 0);
+  const wrapped: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const candidate = line.length === 0 ? word : `${line} ${word}`;
+    if (candidate.length > width && line.length > 0) {
+      wrapped.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line.length > 0) wrapped.push(line);
+  return wrapped.join("\n");
+}
+
+/**
+ * The `--help` / `-h` / `help` INDEX: `commandReference()`'s data rendered as grouped PLAIN TEXT —
+ * a heading per group, one command per physical line (its usage synopsis and one-line summary
+ * joined by " — ", exactly as `commandReference()` already composes them — only the OUTPUT FORMAT
+ * changes here, from a TOON-encoded object to prose). Command lines are intentionally left
+ * un-wrapped (some usage+summary pairs are long; splitting them across physical lines would break
+ * the "one command per line" property this rewrite exists to deliver) — only the free-prose footer
+ * pointers are wrapped, via {@link wrapText}. Pure: derives entirely from {@link commandReference}
+ * plus the caller-supplied `invocation` prefix; no I/O.
+ */
+export function helpIndexText(invocation: string): string {
+  const ref = commandReference(invocation);
+  const lines: string[] = [
+    `${invocation} — ${DESCRIPTION}`,
+    "",
+    `Usage: ${invocation} <command> [options]`,
+    `Run \`${invocation} <command> --help\` for a specific command's full reference.`,
+  ];
+  for (const [group, commandLines] of Object.entries(ref.commands)) {
+    lines.push("", `${group}:`);
+    for (const commandLine of commandLines) {
+      lines.push(`  ${commandLine}`);
+    }
+  }
+  lines.push("", wrapText(ref.kinds), "", wrapText(ref.remoteEnv));
+  return `${lines.join("\n")}\n`;
 }
