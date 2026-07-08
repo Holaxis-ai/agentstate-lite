@@ -6,44 +6,35 @@ title: >-
 status: done
 priority: '1'
 description: >-
-  U3b SHIPPED + two review-fix rounds (commits b744b70 impl, 63ed6c1 round-1
-  fixes, 02bb0a6 round-2 fixes; branch feat/sync-conflict-resolution, rebased
-  onto main's actor-attribution merge). Converging conflict mechanic replaces
-  U3a's interim guard: git.ts fetchRebaseResolving implements the verified
-  sequence verbatim (export :3 local FIRST — the rebase inversion — then
-  checkout origin/board -- <path>, add, GIT_EDITOR=true rebase --continue; -z
-  NUL-framed conflict list; LOOP until rebase state gone; empty replays
-  --skip'd; unexpected failure aborts before rethrow — worktree NEVER
-  mid-state). Exports at ~/.agentstate/sync/exports/<key-digest>/<relPath>: the
-  blob's EXACT BYTES (runGitBytes is the one spawn site; runGit is its utf8
-  projection) plus a <name>.body.md BODY-ONLY companion for parseable docs. sync
-  exits CONFLICT(5) with amended pack (c): per-doc lines (doc label from the
-  EXPLICIT isDoc discriminator carried on the conflict data — dotted ids like
-  notes/v1.2 label correctly; deleted-upstream reads 'teammate's deletion kept …
-  re-create with doc write'), rows
-  {id|path,kind,title,yours,yours_body,frontmatter_differs,theirs}, help chain
-  over the BODY export (literally executable; prefers a LANDED doc, doc-write
-  fallback); safety-prefix composition preserved; conflicted run SKIPS push
-  (next sync pushes). --show-incoming <id>: PROBE-FIRST id resolution
-  (origin/board:<id>.md then raw fallback, ../absolute guarded), byte-exact
-  --out/--out - channels, truncating text render labeled 'as of last fetch',
-  absent-upstream = expected state. -c core.quotepath=off is a wrapper invariant
-  (non-ASCII paths). Tests 48 green in the sync suites (31 sync.test.ts + 17
-  sync-conflict.test.ts: binding 3-assert convergence chain, multi-commit loop,
-  log.md reserved, mixed-batch, non-ASCII converge, both deletion directions,
-  invalid-UTF-8 byte round-trip through export AND show-incoming --out,
-  dotted-id conflict, literal character-for-character chain execution w/
-  frontmatter-diff surfacing, show-incoming matrix); npm run check fully green.
-  Plugin 1.0.16 both manifests. RETIRED caveats: utf8-only exports (now
-  byte-exact) and the dotted-id raw-path residual (now structural). Remaining
-  caveats: cursor/cache not advanced on a conflicted run (next sync re-reports
-  the delta); a filename containing a literal TAB still breaks the merged
-  name-status parsers (tracked as tasks/sync-nonascii-path-pins; the -z conflict
-  list and byte channels are immune); a local frontmatter change is surfaced via
-  frontmatter_differs but must be re-applied manually with doc update flags.
+  U3b SHIPPED across two PRs — records match git truth: PR #15 (merge 1f7f7b9)
+  carried the converging mechanic + round-1 fixes (impl b744b70, round-1
+  63ed6c1: quotepath invariant + -z conflict list, deletion-aware help,
+  deletion-direction pins) PLUS Mike's review fix 00203a1 (structural
+  absent-upstream detection); fix-round-2 landed as the FOLLOW-UP branch
+  fix/sync-u3b-hardening (commit 01bd2be, cherry-picked off origin/main — NOT in
+  #15): byte-exact blob exports via runGitBytes (closes
+  tasks/sync-binary-export), the explicit isDoc discriminator replacing the
+  dot-in-basename heuristic (entryLabel; probe-first show-incoming id resolution
+  folding Mike's cat-file probe into the candidate walk), and the
+  literally-executable reconcile chain (body-only .body.md export companion
+  feeding --body-file; frontmatter_differs surfacing; rows carry
+  yours/yours_body). MECHANIC (unchanged): git.ts fetchRebaseResolving — export
+  :3 local FIRST (the rebase inversion), checkout origin/board -- <path>, add,
+  GIT_EDITOR=true rebase --continue, LOOP until rebase state gone, empty replays
+  --skip'd, abort-before-rethrow (worktree never mid-state); CONFLICT(5) with
+  amended pack (c); conflicted run SKIPS push (next sync pushes); exports at
+  ~/.agentstate/sync/exports/<key-digest>/<relPath>. Tests 48 green in the sync
+  suites (31 sync.test.ts + 17 sync-conflict.test.ts incl. binding 3-assert
+  convergence chain, multi-commit loop, log.md reserved, non-ASCII converge,
+  both deletion directions, invalid-UTF-8 byte round-trip, dotted-id conflict,
+  literal character-for-character chain execution); npm run check green. Plugin
+  1.0.17 both manifests (main was 1.0.16). Remaining caveats: cursor/cache not
+  advanced on a conflicted run (next sync re-reports the delta); TAB-in-filename
+  residual tracked as tasks/sync-nonascii-path-pins; frontmatter_differs
+  surfaces local frontmatter changes but does not auto-apply them.
 assignee: brian-claude
 actor: builder-u3b
-timestamp: '2026-07-08T17:14:23.447Z'
+timestamp: '2026-07-08T17:30:18.528Z'
 ---
 # U3b — conflict resolution + `--show-incoming`
 

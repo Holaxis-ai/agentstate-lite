@@ -12943,15 +12943,15 @@ async function showIncoming(id, values, deps) {
     if (candidates.every((c) => c.relPath !== id)) candidates.push({ relPath: id, isDoc: false });
     let hit = null;
     for (const probe of candidates) {
-      const shown = runGitBytes(top, ["show", `refs/remotes/${BOARD_REF}:${probe.relPath}`]);
-      if (shown.status === 0) {
-        hit = { probe, bytes: shown.stdout };
-        break;
+      if (runGit(top, ["cat-file", "-e", `refs/remotes/${BOARD_REF}:${probe.relPath}`]).status !== 0) {
+        continue;
       }
-      const text = shown.stderr;
-      if (!/does not exist in|exists on disk, but not in/i.test(text)) {
+      const shown = runGitBytes(top, ["show", `refs/remotes/${BOARD_REF}:${probe.relPath}`]);
+      if (shown.status !== 0) {
         throw classifyGitError({ args: ["show"], status: shown.status, stdout: "", stderr: shown.stderr });
       }
+      hit = { probe, bytes: shown.stdout };
+      break;
     }
     if (hit === null) {
       const state = {
