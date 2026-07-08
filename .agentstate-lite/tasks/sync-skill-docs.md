@@ -8,7 +8,7 @@ description: >-
   verb, hook-install re-run prompt, plugin version bump in both manifests. Deps:
   sync-conflict-resolution, sync-sessionstart.
 actor: brian-claude
-timestamp: '2026-07-08T15:50:39.056Z'
+timestamp: '2026-07-08T16:32:34.984Z'
 ---
 # U6 — skill + docs truth pass
 
@@ -62,3 +62,19 @@ common case in practice (the unit's own closing board record initially shipped w
 it — proof). This unit's skill pass should teach --actor in the typical flow and the
 Workspaces section ("write docs with --actor <your-name> so teammates' awareness renders
 attribute you"), keeping the pinned no-default semantics.
+
+## Inherited: security-disclosure policy line (2026-07-08, Brian-approved)
+
+The docs pass adds a short standing convention to the repo CLAUDE.md (and a one-line
+echo in the board's conventions if natural):
+
+> **Security disclosure:** a defect that is (a) exploitable by someone other than the
+> victim AND (b) present on main goes through a private GitHub Security Advisory —
+> fix privately, merge, then disclose — never a public PR comment or board doc.
+> Because the marketplace channel tracks this repo, "released" means "merged to main".
+> Pre-merge review findings stay public by default. The board is public: the
+> write-time scrub discipline covers vulnerability details, not just secrets.
+
+Context: PR #13/U3b review discussions published defect details safely (all found and
+fixed pre-merge; none exploitable) — this line pins WHERE the boundary sits before the
+first post-merge exploitable case forces the question.
