@@ -551,13 +551,26 @@ test("new --actor '' (blank): USAGE (exit 2)", async () => {
   }
 });
 
-test("new --actor <name>: accepted over a filesystem bundle (no crash, writes)", async () => {
+test("new --actor <name>: writes AND persists the actor into the instance's frontmatter (strict mode stays green)", async () => {
   const { dir, cleanup } = await makeSeededBundle();
   try {
     const result = await runJson(newCommand, ["Context Note", "actor-note", "--title", "T", "--actor", "alice", "--dir", dir]);
     assert.equal(result.new, "written");
     const saved = await readDoc({ root: dir }, "context-notes/actor-note");
     assert.equal(saved.frontmatter.title, "T");
+    assert.equal(saved.frontmatter.actor, "alice", "the per-doc attribution sync's enrichment reads");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new WITHOUT --actor: no actor frontmatter field appears (absent stays absent)", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    const result = await runJson(newCommand, ["Context Note", "plain-note", "--title", "T", "--dir", dir]);
+    assert.equal(result.new, "written");
+    const saved = await readDoc({ root: dir }, "context-notes/plain-note");
+    assert.ok(!("actor" in saved.frontmatter), "no actor key must be persisted when --actor was not given");
   } finally {
     await cleanup();
   }
@@ -865,6 +878,38 @@ test("seed round-trip (usability F2): init seeds 'sections: [Summary]' into 'kin
     const statusResult = await runJson(status, ["--dir", dir]);
     assert.equal(statusResult.kind_warnings, 0);
     assert.equal(statusResult.registry_warnings, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("new: a kind DECLARING `actor` as required is satisfiable through the --actor control flag, and rejects without it (actor-attribution review, issue 2)", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    await writeDoc(bundle, {
+      id: "conventions/memo",
+      frontmatter: { type: CONVENTION_TYPE, governs: "Memo", fields: { required: ["title", "actor"], optional: [] }, timestamp: T },
+      body: "",
+    });
+
+    // WITH --actor: validates green and the written doc carries the field.
+    const receipt = await runJson(newCommand, ["Memo", "m1", "--title", "M", "--actor", "alice", "--dir", dir]);
+    const written = await readDoc(bundle, receipt.id as string);
+    assert.equal(written.frontmatter.actor, "alice");
+    assert.equal(receipt.warnings, undefined, "no kind warnings when the required actor arrives via the control flag");
+
+    // WITHOUT --actor: the required field is genuinely missing — strict `new` rejects it.
+    await assert.rejects(
+      () => runJson(newCommand, ["Memo", "m2", "--title", "M", "--dir", dir]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /actor/);
+        return true;
+      },
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

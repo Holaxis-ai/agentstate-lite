@@ -283,6 +283,36 @@ test("new Task <id> --title --status: creates under tasks/ and validates; an out
   }
 });
 
+test("kind-lint neutrality: a work-tracking Task written with --actor persists the actor and produces ZERO kind warnings in `status`", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    await recipe(["add", "work-tracking", "--dir", dir], { stdout: () => {} });
+
+    // `new` is STRICT — this create SUCCEEDING already proves the undeclared 'actor' frontmatter key
+    // trips no kind warning (validateAgainstKind is not a top-level-key linter; OKF §9 permits
+    // undeclared frontmatter). The `status` assertion below pins the same neutrality on the bundle lint.
+    const created = await runJson(newCommand, [
+      "Task", "attributed", "--title", "Attributed", "--status", "todo", "--actor", "alice", "--dir", dir,
+    ]);
+    assert.equal(created.id, "tasks/attributed");
+    assert.equal("warnings" in created, false, "no kind warnings on the create receipt");
+
+    // A kind-field patch (strict path) with --actor: still green, and the actor is OVERWRITTEN.
+    const updated = await runJson(doc, ["update", "tasks/attributed", "--status", "in_progress", "--actor", "bob", "--dir", dir]);
+    assert.equal(updated.changed, true);
+    assert.equal("warnings" in updated, false, "no kind warnings on the update receipt");
+    const read = await runJson(doc, ["read", "tasks/attributed", "--dir", dir]);
+    assert.equal(read.actor, "bob", "the update's --actor superseded the create's");
+
+    const health = await runJson(status, ["--dir", dir]);
+    assert.equal(health.kind_warnings, 0, "the undeclared 'actor' frontmatter key must trip NO kind lint");
+    assert.equal("kind_lint" in health, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("recipe add work-tracking: idempotent — second add is changed:false, on-disk bytes unchanged", async () => {
   const dir = await tempDir();
   try {

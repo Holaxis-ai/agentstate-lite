@@ -329,6 +329,43 @@ test("doc write --actor: recorded in version history on a PERSISTING backend (Me
   assert.equal(history[0]!.actor, "alice");
 });
 
+// ── --actor persists into frontmatter (sync attribution — adjudication F / PR#13 item 3) ─────────
+
+test("doc write --actor: persists the actor as the doc's OWN frontmatter field (the per-doc attribution sync reads)", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await runDoc(["write", "concepts/attributed", "--type", "Concept", "--body", "b", "--actor", "alice", "--dir", dir]);
+    const saved = await readDoc({ root: dir }, "concepts/attributed");
+    assert.equal(saved.frontmatter.actor, "alice");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc write WITHOUT --actor: no actor frontmatter field appears (absent stays absent — no default, no env fallback)", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await runDoc(["write", "concepts/plain", "--type", "Concept", "--body", "b", "--dir", dir]);
+    const saved = await readDoc({ root: dir }, "concepts/plain");
+    assert.ok(!("actor" in saved.frontmatter), "no actor key must be persisted when --actor was not given");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc write overwrite WITHOUT --actor: an existing actor field is dropped (full replace) and honestly reported in dropped_fields", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await runDoc(["write", "concepts/a", "--type", "Concept", "--body", "b", "--actor", "alice", "--dir", dir]);
+    const result = await runDoc(["write", "concepts/a", "--type", "Concept", "--body", "b2", "--dir", dir]);
+    assert.ok((result.dropped_fields as string[]).includes("actor"), "the dropped actor is surfaced, never silent");
+    const saved = await readDoc({ root: dir }, "concepts/a");
+    assert.ok(!("actor" in saved.frontmatter), "doc write is a full replace — the un-resupplied actor is gone");
+  } finally {
+    await cleanup();
+  }
+});
+
 // ── doc update ───────────────────────────────────────────────────────────────────────────────────
 
 test("doc update: patches ONE field, preserving the body and every other field verbatim, refreshes timestamp", async () => {
@@ -1186,19 +1223,56 @@ test("doc update --actor: recorded in version history on a PERSISTING backend (M
   assert.equal(history[0]!.actor, "alice");
 });
 
-test("doc update --actor: accepted through the CLI over a filesystem bundle (degenerate backend accepts-but-does-not-persist — no crash)", async () => {
+test("doc update --actor: persists the actor into frontmatter over a filesystem bundle (the degenerate backend keeps no history — frontmatter IS the attribution)", async () => {
   const { dir, cleanup } = await makeTaskBundle();
   try {
     await writeDoc({ root: dir }, { id: "tasks/x", frontmatter: { type: "Task", title: "X", status: "todo", timestamp: T }, body: "" });
     const result = await runDoc(["update", "tasks/x", "--status", "done", "--actor", "alice", "--dir", dir]);
     assert.equal(result.doc, "updated");
     assert.equal(result.changed, true);
+    const saved = await readDoc({ root: dir }, "tasks/x");
+    assert.equal(saved.frontmatter.actor, "alice", "actor reached frontmatter — the per-doc source sync's enrichment reads");
   } finally {
     await cleanup();
   }
 });
 
-test("doc update --actor over --remote: succeeds (X-Actor threads over the wire; server is filesystem-backed so persistence is not asserted here)", async () => {
+test("doc update --actor: OVERWRITES a previous actor; omitting --actor preserves the existing one verbatim", async () => {
+  const { dir, cleanup } = await makeTaskBundle();
+  try {
+    await writeDoc(
+      { root: dir },
+      { id: "tasks/x", frontmatter: { type: "Task", title: "X", status: "todo", actor: "alice", timestamp: T }, body: "" },
+    );
+    // A later write by a different actor supersedes the attribution.
+    await runDoc(["update", "tasks/x", "--status", "in_progress", "--actor", "bob", "--dir", dir]);
+    let saved = await readDoc({ root: dir }, "tasks/x");
+    assert.equal(saved.frontmatter.actor, "bob");
+    // No --actor → the field is untouched (preserved by the patch, not cleared, not defaulted).
+    await runDoc(["update", "tasks/x", "--status", "done", "--dir", dir]);
+    saved = await readDoc({ root: dir }, "tasks/x");
+    assert.equal(saved.frontmatter.actor, "bob");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc update --actor: an identical patch with the SAME actor stays a no-op (changed:false, no write, no timestamp refresh)", async () => {
+  const { dir, cleanup } = await makeTaskBundle();
+  try {
+    await writeDoc({ root: dir }, { id: "tasks/x", frontmatter: { type: "Task", title: "X", status: "todo", timestamp: T }, body: "" });
+    const first = await runDoc(["update", "tasks/x", "--status", "done", "--actor", "alice", "--dir", dir]);
+    assert.equal(first.changed, true);
+    const tsAfterFirst = (await readDoc({ root: dir }, "tasks/x")).frontmatter.timestamp;
+    const again = await runDoc(["update", "tasks/x", "--status", "done", "--actor", "alice", "--dir", dir]);
+    assert.equal(again.changed, false, "same content + same actor converges to a no-op, as before this feature");
+    assert.equal((await readDoc({ root: dir }, "tasks/x")).frontmatter.timestamp, tsAfterFirst, "no timestamp refresh on the no-op");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc update --actor over --remote: succeeds AND persists actor into frontmatter through the wire (X-Actor threads separately; server is filesystem-backed so the on-disk doc is assertable)", async () => {
   const { dir, cleanup } = await makeTaskBundle();
   try {
     await writeDoc({ root: dir }, { id: "tasks/x", frontmatter: { type: "Task", title: "X", status: "todo", timestamp: T }, body: "" });
@@ -1207,6 +1281,10 @@ test("doc update --actor over --remote: succeeds (X-Actor threads over the wire;
       const result = await runDoc(["update", "tasks/x", "--status", "done", "--actor", "alice", "--remote", server.url]);
       assert.equal(result.doc, "updated");
       assert.equal(result.changed, true);
+      // Reviewer issue 3: the server IS filesystem-backed over `dir`, so remote-path frontmatter
+      // persistence is directly assertable — pinning the wire parity the unit exists for.
+      const after = await readDoc({ root: dir }, "tasks/x");
+      assert.equal(after.frontmatter.actor, "alice", "actor persisted into frontmatter through the remote path");
     } finally {
       await server.close();
     }

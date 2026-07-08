@@ -33,6 +33,7 @@ import {
   toIncomingRows,
   PUSH_FAIL_SAFETY_MESSAGE,
 } from "../src/commands/sync.js";
+import { doc } from "../src/commands/doc.js";
 import { CliError } from "../src/errors.js";
 import type { DocChange } from "../src/git.js";
 import { readSyncState, bundleKey } from "../src/cursor.js";
@@ -95,6 +96,19 @@ async function tempHomes(n: number): Promise<{ homes: string[]; cleanup: () => P
 
 function docChange(partial: Partial<DocChange> & Pick<DocChange, "docId" | "verb">): DocChange {
   return { kind: "Note", title: partial.docId, actor: "unknown", ...partial };
+}
+
+/**
+ * Author a board doc through the REAL CLI write path (`doc write … --actor <name> --dir <board>`)
+ * — NOT the harness's `writeBoardDoc` engine hand-seeding. This is what pins actor attribution
+ * end-to-end (PR#13 panel adjudication F): the CLI itself must persist `--actor` into frontmatter,
+ * because frontmatter is the ONLY per-doc source sync's enrichment reads.
+ */
+async function cliDocWrite(boardDir: string, id: string, args: string[]): Promise<void> {
+  await doc(["write", id, ...args, "--dir", boardDir, "--json"], {
+    stdout: () => {},
+    readStdin: async () => undefined,
+  });
 }
 
 // ── pure-function unit tests ───────────────────────────────────────────────────
@@ -227,7 +241,9 @@ test("sync: two-clone founder e2e — A writes+syncs (full), B --pull-only sees 
   const { homes, cleanup } = await tempHomes(2);
   const [homeA, homeB] = homes;
   try {
-    await writeBoardDoc(topo.a, "notes/founder", { frontmatter: { type: "Note", title: "Founder note", actor: "mike" }, body: "# hi\n" });
+    // The REAL authoring path (was harness hand-seeded actor frontmatter, which masked the
+    // attribution gap this suite now pins — see the dedicated actor-attribution e2e below).
+    await cliDocWrite(topo.a.board, "notes/founder", ["--type", "Note", "--title", "Founder note", "--body", "# hi\n", "--actor", "mike"]);
 
     const first = await runSync(homeA!, ["--dir", topo.a.root]);
     assert.equal(first.err, undefined, first.err?.message);
@@ -264,6 +280,41 @@ test("sync: two-clone founder e2e — A writes+syncs (full), B --pull-only sees 
     assert.ok(state.cursor, "B's cursor was written");
     assert.equal(state.cursor!.token, boardHead(topo.b));
     assert.equal(state.cache?.unpushedCount, 0);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("sync: actor attribution e2e — `doc write --actor alice` through the REAL CLI path renders 'alice' (never 'unknown') in the receipt, the commit subject, and B's incoming rows", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(2);
+  const [homeA, homeB] = homes;
+  try {
+    // NO harness hand-seeding: the doc's actor frontmatter must come from the CLI write path
+    // itself, or sync's per-doc enrichment (which reads ONLY frontmatter.actor) falls back to
+    // "unknown" everywhere — the exact PR#13 panel finding (adjudication F) this test pins closed.
+    await cliDocWrite(topo.a.board, "notes/attributed", [
+      "--type", "Note", "--title", "Attributed note", "--body", "# hi\n", "--actor", "alice",
+    ]);
+
+    const a = await runSync(homeA!, ["--dir", topo.a.root]);
+    assert.equal(a.err, undefined, a.err?.message);
+    assert.match(a.out, /committed: 1/);
+    assert.match(a.out, /actor: alice/, "the receipt's actor comes per-doc from frontmatter, via the real CLI write");
+    assert.ok(!a.out.includes("unknown"), `no 'unknown' anywhere in A's receipt:\n${a.out}`);
+
+    // The commit subject is the human mirror of the same enrichment — it must name alice too.
+    const subject = git(topo.a.board, ["log", "-1", "--format=%s"]).trim();
+    assert.equal(subject, "board: alice — added notes/attributed");
+
+    // B's incoming rows attribute the change to alice, never unknown.
+    const b = await runSync(homeB!, ["--dir", topo.b.root, "--pull-only"]);
+    assert.equal(b.err, undefined, b.err?.message);
+    assert.match(b.out, /pulled: 1/);
+    assert.match(b.out, /notes\/attributed/);
+    assert.match(b.out, /alice/, "B's incoming row carries the author");
+    assert.ok(!b.out.includes("unknown"), `no 'unknown' anywhere in B's incoming rows:\n${b.out}`);
   } finally {
     await cleanup();
     await topo.cleanup();

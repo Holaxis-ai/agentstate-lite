@@ -314,6 +314,14 @@ export async function docUpdate(argv: string[], deps: Partial<DocCliDeps>): Prom
       if (p.description !== undefined) nextFrontmatter.description = p.description;
       if (p.tags && p.tags.length > 0) nextFrontmatter.tags = p.tags;
       if (p.type !== undefined) nextFrontmatter.type = p.type.trim();
+      // `--actor` persists into the doc's `actor` frontmatter field — the per-doc attribution
+      // sync's enrichment reads (adjudication F). Overwrites a previous actor (this write's
+      // attribution supersedes the last writer's); omitted → the existing value is preserved
+      // verbatim via the spread above (no default, no env fallback). Still a MODIFIER, not a
+      // patchable field by itself: `--actor` alone keeps rejecting as "nothing to patch" (changing
+      // that would either re-open the held-open-stdin hang class or silently stop consuming a
+      // piped body — see the stdin guards above).
+      if (p.actor !== undefined) nextFrontmatter.actor = p.actor.trim();
       // `timestamp` means "last meaningful change" (OKF + VISION); a patch IS one, so refresh it by
       // default — `--keep-timestamp` opts back into preserving the existing value (mirrors `link
       // add`). `mutateDoc`'s ignoring-timestamp idempotency check decides whether this refreshed

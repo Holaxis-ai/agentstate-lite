@@ -89,6 +89,14 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
   if (values.description !== undefined) frontmatter.description = values.description;
   if (values.resource !== undefined) frontmatter.resource = values.resource;
   if (values.tag && values.tag.length > 0) frontmatter.tags = values.tag;
+  // `--actor` persists as the doc's OWN `actor` frontmatter field — the per-doc attribution that
+  // sync's change enrichment reads (frontmatter is the ONLY per-doc source; engine version
+  // attribution below is a separate channel a plain filesystem bundle never surfaces). Sync-verb
+  // review adjudication F / PR#13 item 3: without this, every CLI-authored doc rendered actor
+  // "unknown" in sync receipts, commit subjects, and incoming rows. No `--actor` → no field (no
+  // default, no env fallback); kind conventions are unaffected (validateAgainstKind is not a
+  // top-level-key linter — OKF §9 permits undeclared frontmatter).
+  if (values.actor !== undefined) frontmatter.actor = values.actor.trim();
   if (values.timestamp?.trim()) {
     // Validate an explicit --timestamp at the input boundary: gate 2 derives freshness/staleness and
     // list-sort from it, so an un-parseable value would silently poison those (it was previously
