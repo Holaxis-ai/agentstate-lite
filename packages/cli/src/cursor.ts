@@ -101,10 +101,27 @@ export function syncStateDir(home: string = homedir()): string {
   return join(credentialsDir(home), SYNC_STATE_DIR_NAME);
 }
 
+/** The truncated sha256 digest that names this key's on-disk artifacts (ONE hashing locus). */
+function keyDigest(key: string): string {
+  return createHash("sha256").update(key, "utf8").digest("hex").slice(0, 32);
+}
+
 /** The absolute path of the state file for `key` (filename = truncated sha256 of the key). */
 export function syncStatePath(key: string, home: string = homedir()): string {
-  const digest = createHash("sha256").update(key, "utf8").digest("hex").slice(0, 32);
-  return join(syncStateDir(home), `${digest}.json`);
+  return join(syncStateDir(home), `${keyDigest(key)}.json`);
+}
+
+/**
+ * `~/.agentstate/sync/exports/<key-digest>` — the per-bundle directory sync's CONVERGING conflict
+ * mechanic (U3b) exports the LOCAL version of each conflicted doc into ("yours saved at <path>").
+ * Deliberately OUTSIDE any worktree (the board worktree must end every sync pristine) and under
+ * the same per-bundle key discipline as the cursor/cache/marker state — exports for two different
+ * bundles can never collide. Stable per doc (no per-run timestamp): a re-conflict on the same doc
+ * overwrites the export with the NEWER local version, which is what "yours" means at that point,
+ * and nothing accumulates unboundedly. This module only names the path; the git layer creates it.
+ */
+export function syncExportsDir(key: string, home: string = homedir()): string {
+  return join(syncStateDir(home), "exports", keyDigest(key));
 }
 
 // ── schema ────────────────────────────────────────────────────────────────────

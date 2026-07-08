@@ -111,8 +111,8 @@ the rest of the line unchanged.
   — Boot the reference wire-protocol server over a local bundle (loopback, no auth)
 - `"$ASLITE" ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
   — Boot the local web UI (board / doc detail / admin / graph) — same origin, loopback-only
-- `"$ASLITE" sync [--pull-only] [--dir <path>] [--limit <n>]`
-  — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push)
+- `"$ASLITE" sync [--pull-only] [--show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
+  — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> prints the incoming version as of the last fetch
 
 ### Identity
 

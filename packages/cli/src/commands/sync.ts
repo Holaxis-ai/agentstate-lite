@@ -1,15 +1,22 @@
-// `agentstate-lite sync` — share the board branch with a remote (U3a, plans/sync-verb-implementation
-// §U3a). Replaces the former NOT_IMPLEMENTED stub now that the git-tier sync verb is real.
+// `agentstate-lite sync` — share the board branch with a remote (U3a core flow + U3b conflict
+// resolution, plans/sync-verb-implementation §U3a/§U3b).
 //
 // FLOW (full sync; `--pull-only` skips steps 2 and 4):
 //   0. entry self-heal (adjudication C): a stale mid-rebase state found at ENTRY (a crashed/killed
 //      prior run) is aborted BEFORE the commit step — a wedged worktree kills commit first.
 //   1. provision the board worktree (U1 self-heal, `provisionBoardWorktree`).
 //   2. commit (`stageAndCommit`; skip-empty).
-//   3. pull — full sync: `rebase origin/board` (`fetchRebase`, DETECT-ONLY on conflict). `--pull-only`:
-//      `merge --ff-only origin/board` (`ffPull`) — NEVER rebase.
-//   4. push (`push`).
+//   3. pull — full sync: `rebase origin/board` with the CONVERGING conflict mechanic
+//      (`fetchRebaseResolving`, U3b: keep upstream, export local, COMPLETE the rebase — replaces
+//      U3a's detect-and-abort interim guard). `--pull-only`: `merge --ff-only origin/board`
+//      (`ffPull`) — NEVER rebase.
+//   4. push (`push`). A run that resolved conflicts SKIPS the push and exits CONFLICT(5) with the
+//      amended pack (c) envelope — the documented reconcile chain's next `sync` pushes everything.
 //   5. envelope + awareness cache write (U2's cursor/cache/marker store — consumed by U4).
+//
+// `sync --show-incoming <id>` (U3b) is the conflict VIEWER: prints the upstream version of one doc
+// via `git show origin/board:<path>` with full doc-read semantics (truncation, `--out` byte hatch,
+// `--out -` stderr envelope), labeled "as of last fetch" (no implicit fetch — adjudication G).
 //
 // COMMAND LAYER ONLY: this module is the FIRST real caller of both U1 (`git.ts`) and U2
 // (`cursor.ts`) — it composes their exported vocabulary but never re-implements git plumbing or
@@ -24,9 +31,16 @@
 // translates every `FfPullResult.swallowed` reason into the capped CliError taxonomy instead of
 // silently no-op'ing.
 import { existsSync, realpathSync } from "node:fs";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { conceptIdFromPath, isReservedFile, parseMarkdown } from "@agentstate-lite/core";
+import {
+  assertSafeConceptId,
+  conceptIdFromPath,
+  isReservedFile,
+  parseMarkdown,
+  pathFromConceptId,
+} from "@agentstate-lite/core";
 import {
   BOARD_REF,
   BOARD_REMOTE,
@@ -34,7 +48,7 @@ import {
   abortStaleRebase,
   changesSince,
   detectStaleRebase,
-  fetchRebase,
+  fetchRebaseResolving,
   ffPull,
   provisionBoardWorktree,
   push,
@@ -44,26 +58,30 @@ import {
   unpushedCount,
   type CommitResult,
   type DocChange,
-  type FetchRebaseOutcome,
+  type FetchRebaseResolvingOutcome,
+  type ResolvedConflict,
 } from "../git.js";
 import {
   REANCHOR_NOTE,
   bundleKey,
   readCursor,
   recordReanchor,
+  syncExportsDir,
   writeCache,
   writeCursor,
   type AwarenessDeltaRow,
 } from "../cursor.js";
-import { CliError, asHandled, classifyGitError } from "../errors.js";
+import { CliError, asHandled, classifyGitError, toExit } from "../errors.js";
 import { parseOrUsage } from "../args.js";
-import { render, resolveMode } from "../output.js";
+import { render, renderErrorEnvelope, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
+import { BODY_PREVIEW_LIMIT } from "./doc/common.js";
 
 export const SYNC_USAGE = `agentstate-lite sync — share the board branch with a remote (git tier)
 
 Usage:
   agentstate-lite sync [--pull-only] [--dir <path>] [--limit <n>] [--json]
+  agentstate-lite sync --show-incoming <id> [--out <file>] [--dir <path>] [--json]
 
 Shares this repo's board (\`.agentstate-lite\`, a linked worktree of the \`board\` branch) with your
 teammates: commits any pending local doc changes, pulls theirs, and pushes yours — touching
@@ -76,9 +94,18 @@ prints 'sync: nothing to sync'; a clean, already-current board prints 'sync: alr
 Otherwise the receipt reports { committed, pushed, pulled, actor, incoming } — \`incoming\` is the
 enriched delta of docs that arrived this run (capped; --limit controls the row cap, default 20).
 
-A same-doc conflict between your board and origin is DETECTED and the rebase is CLEANLY ABORTED —
-the worktree is left exactly as it was, nothing moved on either side. This is an INTERIM guard
-(exit 5); real per-doc conflict resolution ships in a follow-up update.
+When a doc changed on BOTH sides, sync CONVERGES: your teammate's version is kept on the board,
+YOUR version is saved to an export file named in the receipt, and the sync completes (the
+worktree is never left mid-state; non-conflicted local changes still land). The run exits 5 with
+one row per conflicted doc and the reconcile chain: \`sync --show-incoming <id>\` to view the kept
+incoming version, \`doc update <id> --body-file <export-file>\` to write your merged version on
+top, then \`sync\` again to share it.
+
+\`sync --show-incoming <id>\` prints the board's incoming (upstream) version of one doc — the
+state of \`origin/board\` as of the last fetch (it never fetches). Full doc-read semantics: large
+bodies truncate and point at \`--out <file>\` (raw bytes to disk); \`--out -\` streams the raw
+bytes to stdout with the receipt (or any error envelope) on stderr. A doc absent upstream renders
+as an expected state, not an error.
 
 If the push fails after a local commit already landed (offline, revoked/expired credentials, or a
 locked repository), the receipt still reports what committed/pulled successfully — your work is
@@ -86,6 +113,8 @@ saved locally either way, and re-running sync retries the push.
 
 Options:
   --pull-only          Only fast-forward from origin (never rebase); skip commit + push
+  --show-incoming <id> Print the upstream (origin/board) version of one doc, as of the last fetch
+  --out <file>         With --show-incoming: write the raw bytes to <file> ('-' = raw to stdout)
   --dir <path>         Directory to run sync from (default: the cwd) — must be inside a git repo
   --limit <n>          Cap the incoming-delta row list to <n> rows (default: 20; 0 = unlimited)
   --json               Emit compact JSON instead of TOON
@@ -94,6 +123,10 @@ Options:
 
 export interface SyncCliDeps {
   stdout: (s: string) => void;
+  /** show-incoming's receipt/envelope channel when stdout is reserved for raw bytes (--out -). */
+  stderr: (s: string) => void;
+  /** Raw byte writes for `--show-incoming --out -` (stdout stays a pure byte stream). */
+  writeStdoutBytes: (data: Uint8Array) => void;
 }
 
 /** AXI list-cap default: 20 rows unless `--limit` overrides it (0 = unlimited). */
@@ -174,19 +207,19 @@ function toCliError(err: unknown, op: string): CliError {
 }
 
 /**
- * REVIEW FINDING 3 (fixed): a full sync that COMMITS locally and THEN fails — at fetch/rebase
- * (offline, no upstream, busy) or at the interim conflict guard — used to rethrow bare, losing the
- * "your work is saved" reassurance push-fail already gets, and skipping the cache write (so U4's
- * unpushed backstop would miss a genuinely stranded commit). This composes {@link
- * pushFailureMessage}'s SAME message selection (the exact safety string for auth/network, a
- * reassurance-prefixed classified message otherwise) onto ANY post-commit failure, not just a push
- * failure — the "work is saved" framing is equally true regardless of WHICH later step failed.
- * `committedThisRun` gates it: when nothing NEW was committed this run (`CommitResult.committed ===
- * false` — a skip-empty no-op, OR a conflict against a divergence that was ALREADY committed before
- * this run even started, as in the stale-mid-rebase self-heal path), the error passes through
- * UNCHANGED and NO cache write happens — there is nothing new to reassure about or persist, and the
- * interim conflict guard's exact test-pinned string must not gain an unexpected prefix in that
- * case.
+ * REVIEW FINDING 3 (fixed; retained by U3b): a full sync that COMMITS locally and THEN fails — at
+ * fetch/rebase (offline, no upstream, busy) or at the converging conflict terminal — used to
+ * rethrow bare, losing the "your work is saved" reassurance push-fail already gets, and skipping
+ * the cache write (so U4's unpushed backstop would miss a genuinely stranded commit). This
+ * composes {@link pushFailureMessage}'s SAME message selection (the exact safety string for
+ * auth/network, a reassurance-prefixed classified message otherwise) onto ANY post-commit failure,
+ * not just a push failure — the "work is saved" framing is equally true regardless of WHICH later
+ * step failed. `committedThisRun` gates it: when nothing NEW was committed this run
+ * (`CommitResult.committed === false` — a skip-empty no-op, OR a conflict against a divergence
+ * that was ALREADY committed before this run even started, as in the stale-mid-rebase self-heal
+ * path), the error passes through UNCHANGED and NO cache write happens — there is nothing new to
+ * reassure about or persist, and the converge terminal's exact test-pinned string must not gain
+ * an unexpected prefix in that case.
  */
 async function throwPostCommitFailure(
   err: CliError,
@@ -230,17 +263,121 @@ export function conflictLabel(entry: string): string {
 }
 
 /**
- * The INTERIM conflict guard's EXACT string (test-pinned, singular form): "doc X changed on both
- * sides — nothing was changed on either side; conflict resolution ships in the next update". The
- * multi-id generalization (comma-joined labels) is a builder judgment call — the brief says "the
- * actual doc id[s]" but pins only the singular wording; flagged in the report.
+ * A {@link ResolvedConflict} annotated with whether the kept-upstream version actually LANDED at
+ * HEAD (false = the teammate's side DELETED the file, so keep-upstream meant removing it). The
+ * one `cat-file -e HEAD:<path>` probe per conflict happens in {@link annotateLanded}; the message
+ * builder, the row projector, and the help-chain pick (review fix 2) all read the SAME answer —
+ * the help chain must never name a doc whose file is gone (`doc update` on it fails NOT_FOUND).
  */
-export function buildConflictMessage(ids: string[]): string {
-  const labels = ids.length > 0 ? ids.map(conflictLabel) : ["the board"];
+export type LandedConflict = ResolvedConflict & { landed: boolean };
+
+/** Annotate each resolved conflict with the post-rebase HEAD existence probe (ONE probe per doc). */
+export function annotateLanded(boardPath: string, conflicts: ResolvedConflict[]): LandedConflict[] {
+  return conflicts.map((c) => ({
+    ...c,
+    landed: runGit(boardPath, ["cat-file", "-e", `HEAD:${c.relPath}`]).status === 0,
+  }));
+}
+
+/**
+ * The converging mechanic's per-doc string (adjudication D, test-pinned): "teammate's version
+ * kept; yours saved at <path> — reconcile with doc update", prefixed by the entry's label
+ * ("doc <id>" for a concept doc; a reserved/raw path VERBATIM). Builder judgment calls, flagged
+ * in the report: (1) a reserved/raw path drops the fixing-verb suffix (there is no `doc update`/
+ * `doc write` verb for log.md — the kept-upstream/export mechanic still applied identically);
+ * (2) a local-side DELETION (no stage-3 blob → nothing to export) says so honestly instead of
+ * naming a file that doesn't exist; (3) review fix 2: a doc DELETED UPSTREAM says "teammate's
+ * deletion kept" and points at `doc write` (re-create) — `doc update` on a doc whose file is
+ * gone fails NOT_FOUND. The DROPPED phrase "nothing was overwritten" stays dropped (pack (c)).
+ */
+export function convergeDocLine(c: Pick<LandedConflict, "entry" | "isDoc" | "exportPath" | "landed">): string {
+  const label = conflictLabel(c.entry);
+  if (c.exportPath === null) {
+    return `${label} — teammate's version kept (your side deleted it; nothing to save)`;
+  }
+  if (!c.landed) {
+    const recreate = c.isDoc ? " — re-create with doc write" : "";
+    return `${label} — teammate's deletion kept; yours saved at ${c.exportPath}${recreate}`;
+  }
+  const reconcile = c.isDoc ? " — reconcile with doc update" : "";
+  return `${label} — teammate's version kept; yours saved at ${c.exportPath}${reconcile}`;
+}
+
+/** The CONFLICT(5) envelope message: one converge line per conflicted entry, "; "-joined. */
+export function buildConvergeMessage(
+  conflicts: Array<Pick<LandedConflict, "entry" | "isDoc" | "exportPath" | "landed">>,
+): string {
+  return conflicts.map(convergeDocLine).join("; ");
+}
+
+/**
+ * The reconcile HELP CHAIN (amended pack (c)): view the kept incoming version, write your merged
+ * version on top as a NEW doc update, then sync again — converges in one pass, loses nothing.
+ * Only ever built for a conflict whose kept version LANDED (review fix 2 — see {@link pickHelp}).
+ */
+export function convergeHelp(inv: string, id: string, exportPath: string): string {
   return (
-    `${labels.join(", ")} changed on both sides — nothing was changed on either side; ` +
-    `conflict resolution ships in the next update`
+    `${inv} sync --show-incoming ${id} → ${inv} doc update ${id} --body-file ${exportPath} → ${inv} sync`
   );
+}
+
+/** The re-create chain for a doc DELETED upstream: `doc write` (a fresh doc), then sync. */
+export function recreateHelp(inv: string, id: string, exportPath: string): string {
+  return `${inv} doc write ${id} --type <Type> --body-file ${exportPath} → ${inv} sync`;
+}
+
+/**
+ * REVIEW FIX 2: pick the help chain from the ANNOTATED conflicts — prefer a doc whose kept
+ * version LANDED (the `doc update` reconcile chain is directly runnable for it); when every
+ * conflicted doc was deleted upstream, fall back to the `doc write` re-create chain for the
+ * first one that has an export. No exportable doc at all → no help (the message lines carry
+ * the per-doc disposition).
+ */
+export function pickHelp(inv: string, conflicts: LandedConflict[]): string | undefined {
+  const reconcilable = conflicts.find((c) => c.isDoc && c.exportPath !== null && c.landed);
+  if (reconcilable) return convergeHelp(inv, reconcilable.entry, reconcilable.exportPath!);
+  const recreatable = conflicts.find((c) => c.isDoc && c.exportPath !== null);
+  if (recreatable) return recreateHelp(inv, recreatable.entry, recreatable.exportPath!);
+  return undefined;
+}
+
+/**
+ * Enrich one kept-upstream conflicted doc's {kind, title} from the content that LANDED on the
+ * board (HEAD after the completed rebase — the teammate's version, unless a later non-conflicting
+ * local commit modified it cleanly on top). Absent/malformed content degrades to no fields, the
+ * codebase's omit-when-empty convention.
+ */
+function keptDocMeta(boardPath: string, relPath: string): { kind?: string; title?: string } {
+  const shown = runGit(boardPath, ["show", `HEAD:${relPath}`]);
+  if (shown.status !== 0) return {};
+  try {
+    const { frontmatter } = parseMarkdown(shown.stdout, relPath);
+    const kind = fmValue(frontmatter.type);
+    const title = fmValue(frontmatter.title);
+    return {
+      ...(kind !== UNKNOWN_FIELD ? { kind } : {}),
+      ...(title !== UNKNOWN_FIELD ? { title } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Project the resolved conflicts into the envelope's row shape (amended pack (c)):
+ * `{id|path, kind, title, yours, theirs}` — `yours` is the export file's absolute path (the
+ * directly actionable `doc update --body-file` argument), `theirs` names the disposition of the
+ * teammate's version ("kept" — it is what's on the board now; "kept (deleted upstream)" when
+ * keeping it meant removing the file).
+ */
+export function toConflictRows(boardPath: string, conflicts: LandedConflict[]): Record<string, unknown>[] {
+  return conflicts.map((c) => {
+    const row: Record<string, unknown> = c.isDoc ? { id: c.entry } : { path: c.entry };
+    if (c.isDoc) Object.assign(row, keptDocMeta(boardPath, c.relPath));
+    row.yours = c.exportPath !== null ? c.exportPath : "deleted locally — nothing to save";
+    row.theirs = c.landed ? "kept" : "kept (deleted upstream)";
+    return row;
+  });
 }
 
 /** Map an `FfPullResult.swallowed` reason (U1's fail-soft vocabulary) to the capped CliError taxonomy. */
@@ -564,6 +701,8 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
         args: argv,
         options: {
           "pull-only": { type: "boolean" },
+          "show-incoming": { type: "string" },
+          out: { type: "string" },
           dir: { type: "string" },
           limit: { type: "string" },
           json: { type: "boolean" },
@@ -576,6 +715,27 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   if (values.help) {
     stdout(SYNC_USAGE);
     return;
+  }
+
+  // `--show-incoming <id>` is the conflict VIEWER — a pure read of the last-fetched origin/board
+  // state, dispatched before any of the sync flow (it never provisions, commits, pulls or pushes).
+  if (values["show-incoming"] !== undefined) {
+    const id = values["show-incoming"].trim();
+    if (!id) {
+      throw new CliError("USAGE", "--show-incoming was given an empty value — pass a doc id (or a reserved path like log.md)", {
+        help: `${inv} sync --show-incoming <id>`,
+      });
+    }
+    if (values["pull-only"]) {
+      throw new CliError("USAGE", "--show-incoming and --pull-only cannot be combined — the viewer never pulls");
+    }
+    await showIncoming(id, values, deps);
+    return;
+  }
+  if (values.out !== undefined) {
+    throw new CliError("USAGE", "--out only applies to sync --show-incoming <id>", {
+      help: `${inv} sync --show-incoming <id> --out <file>`,
+    });
   }
 
   let limit = DEFAULT_LIMIT;
@@ -623,19 +783,20 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
     commitResult = stageAndCommit(boardPath);
   }
 
-  // STEP 3: pull. Full sync rebases (conflict = INTERIM guard, DETECT + clean-abort, U1's job);
-  // --pull-only ff-only-merges (NEVER rebases) via the SAME `ffPull` primitive U4's SessionStart
-  // pull uses — but THIS caller translates every swallowed reason into a real structured error
-  // instead of silently no-op'ing (see the module header).
+  // STEP 3: pull. Full sync rebases with the CONVERGING conflict mechanic (U3b: keep upstream,
+  // export local, COMPLETE the rebase — never left mid-state); --pull-only ff-only-merges (NEVER
+  // rebases) via the SAME `ffPull` primitive U4's SessionStart pull uses — but THIS caller
+  // translates every swallowed reason into a real structured error instead of silently no-op'ing
+  // (see the module header).
   if (pullOnly) {
     const ff = ffPull(boardPath);
     if (ff.swallowed) {
       throw ffSwallowToError(ff.swallowed, inv);
     }
   } else {
-    let rebaseOutcome: FetchRebaseOutcome;
+    let rebaseOutcome: FetchRebaseResolvingOutcome;
     try {
-      rebaseOutcome = fetchRebase(boardPath);
+      rebaseOutcome = fetchRebaseResolving(boardPath, syncExportsDir(key));
     } catch (rawErr) {
       // Finding 3: a fetch/rebase failure AFTER a real local commit this run gets the SAME
       // safety-first framing a push failure does (composed with the NO_UPSTREAM help, in order),
@@ -643,24 +804,26 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
       const enriched = withUpstreamHelp(toCliError(rawErr, "rebase"), inv);
       throw await throwPostCommitFailure(enriched, commitResult.committed, key, boardPath);
     }
-    if (rebaseOutcome.status === "conflict") {
-      // INTERIM guard (adjudication A — THIS unit only): U1 already detected the conflict and
-      // cleanly aborted the rebase (worktree pristine, zero data movement). NO export file, NO
-      // keep/converge mechanic here — U3b replaces this whole branch with that. `details.conflicts`
-      // carries the same {shown,total,rows} shape the DoD's envelope names, just inside the thrown
-      // error's details rather than a success envelope (U3a never returns a normal envelope on
-      // conflict — see the omitted `conflicts` field note on the success receipt below).
-      const rows = rebaseOutcome.conflictedDocIds.map((entry) =>
-        isRawPathEntry(entry) ? { path: entry } : { id: entry },
-      );
-      const conflictErr = new CliError("CONFLICT", buildConflictMessage(rebaseOutcome.conflictedDocIds), {
+    if (rebaseOutcome.status === "resolved") {
+      // CONVERGING outcome (amended pack (c)): the rebase COMPLETED — the teammate's version of
+      // each conflicted doc is on the board, the local version is exported, and non-conflicted
+      // local changes landed on top of origin/board. The run is still a CONFLICT(5) terminal
+      // state: the push is deliberately SKIPPED — the documented reconcile chain's next `sync`
+      // (after `doc update <id> --body-file <export>`) commits the merged version and pushes
+      // everything in one pass.
+      // ONE landed probe per conflict feeds the message lines, the rows, AND the help-chain pick
+      // (review fix 2: the chain must never name a doc whose kept version is a deletion).
+      const conflicts = annotateLanded(boardPath, rebaseOutcome.conflicts);
+      const rows = toConflictRows(boardPath, conflicts);
+      const help = pickHelp(inv, conflicts);
+      const conflictErr = new CliError("CONFLICT", buildConvergeMessage(conflicts), {
         details: { conflicts: cap(rows, limit) },
+        ...(help ? { help } : {}),
       });
-      // Finding 3: the SAME safety-first treatment applies here — a conflict against origin
-      // doesn't undo a local commit this run already made (possibly of OTHER, non-conflicting
-      // docs in the same commit). When nothing new was committed this run (e.g. the divergent
-      // edit was already committed BEFORE this run started, as in the stale-mid-rebase self-heal
-      // path), the guard's exact test-pinned string passes through unchanged.
+      // Finding 3 composition (unchanged from U3a): when THIS run committed, the safety prefix
+      // ("committed to the board locally — your work is saved.") composes onto the converge
+      // message, and the cache is written with honest counts. When nothing new was committed this
+      // run, the converge message passes through unchanged.
       throw await throwPostCommitFailure(conflictErr, commitResult.committed, key, boardPath);
     }
   }
@@ -764,12 +927,188 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   const actor = singleActor(commitResult.docs);
   if (actor) receipt.actor = actor;
   receipt.incoming = cap(toIncomingRows(originDelta), limit);
-  // `conflicts` (the DoD's `{committed, pulled, pushed, conflicts{shown,total,rows}}` envelope
-  // shape) is OMITTED here rather than rendered empty: in U3a a conflict is DETECTED BEFORE this
-  // point and always throws (the branch above), so a success receipt's `conflicts` would always be
-  // {shown:0,total:0,rows:[]} — dead weight every sync, against this codebase's own omit-when-empty
-  // convention (status.ts, home.ts) and AXI §7 (ruthlessly minimize). U3b, which actually POPULATES
-  // conflict rows on a partial-success outcome, is the natural place to add this field back.
+  // `conflicts` is OMITTED here rather than rendered empty: a conflicted run always THROWS above
+  // (the converging branch's CONFLICT(5) envelope carries the populated rows in its details), so a
+  // success receipt's `conflicts` would always be {shown:0,total:0,rows:[]} — dead weight every
+  // sync, against this codebase's own omit-when-empty convention (status.ts, home.ts) and AXI §7
+  // (ruthlessly minimize).
   if (reanchorNote) receipt.note = reanchorNote;
   stdout(render(receipt, mode));
+}
+
+// ── `sync --show-incoming <id>` — the conflict viewer (U3b) ─────────────────────
+
+/**
+ * The staleness label every show-incoming render carries (adjudication G, a conscious deferral):
+ * the output reflects `origin/board` AS OF THE LAST FETCH — the viewer never fetches implicitly.
+ */
+export const SHOW_INCOMING_AS_OF = "last fetch";
+
+/** The expected-state string for a doc that is absent on origin/board (deleted upstream, or new locally). */
+export const SHOW_INCOMING_ABSENT_STATE =
+  "absent upstream — not on origin/board as of the last fetch (deleted upstream, or a new local doc)";
+
+/** Attach the doc-read body semantics to a render record: truncate large bodies, point at the byte hatch. */
+function attachBodyPreview(rec: Record<string, unknown>, body: string, byteHatch: string): void {
+  if (body.length > BODY_PREVIEW_LIMIT) {
+    rec.body = body.slice(0, BODY_PREVIEW_LIMIT);
+    rec.body_truncated = true;
+    rec.body_chars = body.length;
+    rec.help = [byteHatch];
+  } else {
+    rec.body = body;
+  }
+}
+
+/**
+ * Print the UPSTREAM version of one board doc — `git show origin/board:<path>` — with FULL
+ * doc-read semantics (gate-1): the default render truncates a large body and points at the byte
+ * hatch; `--out <file>` writes the raw bytes to disk; `--out -` streams the raw bytes to stdout
+ * with the receipt (or ANY error envelope) on STDERR, keeping the byte stream pure. A doc absent
+ * upstream renders as an EXPECTED STATE (exit 0), never a fatal — it may be deleted upstream or
+ * simply new locally; either way there is nothing incoming to show. Every render is labeled
+ * "as of last fetch" (no implicit fetch — adjudication G).
+ */
+async function showIncoming(
+  id: string,
+  values: { out?: string; dir?: string; json?: boolean },
+  deps: Partial<SyncCliDeps>,
+): Promise<void> {
+  const stdout = deps.stdout ?? ((s: string) => void process.stdout.write(s));
+  const stderr = deps.stderr ?? ((s: string) => void process.stderr.write(s));
+  const writeStdoutBytes = deps.writeStdoutBytes ?? ((d: Uint8Array) => void process.stdout.write(d));
+  const inv = cliInvocation();
+  const mode = resolveMode(values);
+  const out = values.out?.trim();
+  const streamMode = out === "-";
+
+  const run = async (): Promise<void> => {
+    // Same location resolution as sync itself (board-interior invocations retarget to the
+    // enclosing project); refs/remotes are SHARED across a repo's worktrees, so any directory
+    // inside the repo can read the last-fetched origin/board state — no provisioning required.
+    const dir = retargetBoardInterior(values.dir ?? process.cwd());
+    const top = repoTopLevel(dir);
+    if (!top) {
+      throw new CliError(
+        "RUNTIME",
+        "not inside a git repository — there is no fetched board state to show",
+        { details: { state: "no-repo" } },
+      );
+    }
+
+    // id → repo-relative path. A raw/reserved entry (log.md, index.md, …) is used VERBATIM (the
+    // same vocabulary the conflict rows report); a concept id maps through core's ONE path
+    // vocabulary, with the same id-safety guard core applies (this read bypasses the engine).
+    let relPath: string;
+    if (isRawPathEntry(id)) {
+      if (path.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
+        throw new CliError("USAGE", `--show-incoming needs a repo-relative path without '..' segments: ${id}`);
+      }
+      relPath = id;
+    } else {
+      try {
+        assertSafeConceptId(id);
+      } catch (err) {
+        throw new CliError("USAGE", err instanceof Error ? err.message : String(err));
+      }
+      relPath = pathFromConceptId(id);
+    }
+
+    if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
+      throw ffSwallowToError("no-upstream", inv);
+    }
+
+    const shown = runGit(top, ["show", `refs/remotes/${BOARD_REF}:${relPath}`]);
+    if (shown.status !== 0) {
+      // Absent-upstream is detected STRUCTURALLY (`cat-file -e` on the exact ref:path — the same
+      // probe fetchRebaseResolving uses), never by matching git's human error prose: message
+      // strings drift across git versions even with LC_ALL=C pinned (the standing porcelain
+      // lesson, CLAUDE.md "branch from current main" note).
+      if (runGit(top, ["cat-file", "-e", `refs/remotes/${BOARD_REF}:${relPath}`]).status !== 0) {
+        const state = {
+          sync: "show-incoming",
+          id,
+          as_of: SHOW_INCOMING_AS_OF,
+          state: SHOW_INCOMING_ABSENT_STATE,
+        };
+        // Stream mode keeps stdout a pure byte channel — the state record rides the receipt
+        // channel (stderr), same as the receipt would have.
+        (streamMode ? stderr : stdout)(render(state, mode));
+        return;
+      }
+      throw classifyGitError({ args: ["show"], status: shown.status, stdout: shown.stdout, stderr: shown.stderr });
+    }
+    const content = shown.stdout;
+
+    // Byte channel (`--out`): the raw committed bytes, receipt on the appropriate channel.
+    if (out) {
+      const bytes = Buffer.from(content, "utf8");
+      const receipt: Record<string, unknown> = {
+        sync: "show-incoming",
+        id,
+        as_of: SHOW_INCOMING_AS_OF,
+        out,
+        size_bytes: bytes.byteLength,
+      };
+      if (streamMode) {
+        writeStdoutBytes(bytes);
+        stderr(render(receipt, mode));
+        return;
+      }
+      await fs.writeFile(out, bytes);
+      stdout(render(receipt, mode));
+      return;
+    }
+
+    // Default render: the parsed detail view with doc-read body semantics. A raw/reserved path
+    // (log.md carries no frontmatter) — or a doc whose upstream frontmatter is malformed — renders
+    // the raw content as the body instead of failing: the viewer's job is to SHOW the incoming
+    // version, whatever its shape.
+    const byteHatch = `${inv} sync --show-incoming ${id} --out <file>`;
+    const rec: Record<string, unknown> = {};
+    if (isRawPathEntry(id)) {
+      rec.path = id;
+      rec.as_of = SHOW_INCOMING_AS_OF;
+      attachBodyPreview(rec, content, byteHatch);
+    } else {
+      let parsed: { frontmatter: Record<string, unknown>; body: string } | null = null;
+      try {
+        const { frontmatter, body } = parseMarkdown(content, relPath);
+        parsed = { frontmatter: frontmatter as Record<string, unknown>, body };
+      } catch {
+        parsed = null;
+      }
+      rec.id = id;
+      if (parsed) {
+        const KNOWN_ORDER = ["type", "title", "description", "resource", "tags", "timestamp"];
+        const RESERVED_OUTPUT = new Set(["id", "as_of", "body", "body_truncated", "body_chars", "help"]);
+        for (const key of KNOWN_ORDER) {
+          if (parsed.frontmatter[key] !== undefined && parsed.frontmatter[key] !== null) rec[key] = parsed.frontmatter[key];
+        }
+        for (const key of Object.keys(parsed.frontmatter)) {
+          if (KNOWN_ORDER.includes(key) || RESERVED_OUTPUT.has(key)) continue;
+          if (parsed.frontmatter[key] === undefined || parsed.frontmatter[key] === null) continue;
+          rec[key] = parsed.frontmatter[key];
+        }
+      }
+      rec.as_of = SHOW_INCOMING_AS_OF;
+      attachBodyPreview(rec, parsed ? parsed.body : content, byteHatch);
+    }
+    stdout(render(rec, mode));
+  };
+
+  if (!streamMode) {
+    await run();
+    return;
+  }
+  // `--out -`: route any error envelope to STDERR (stdout is reserved for raw bytes), then rethrow
+  // as `handled` so the bin wrapper sets the exit code WITHOUT re-emitting the envelope to stdout —
+  // the same dance `doc read --out -` pins (gate-1).
+  try {
+    await run();
+  } catch (err) {
+    const { envelope } = toExit(err);
+    stderr(renderErrorEnvelope(envelope));
+    throw asHandled(err);
+  }
 }
