@@ -10,7 +10,7 @@ description: >-
   guaranteed fall-through) plus home cache render and the both-count backstop.
   Deps: sync-command-core.
 actor: brian-claude
-timestamp: '2026-07-08T18:50:18.934Z'
+timestamp: '2026-07-08T19:57:42.928Z'
 ---
 # U4 — SessionStart integration
 
@@ -83,3 +83,9 @@ Builder → independent Reviewer → QA. Deps: sync-command-core (U3a).
   pull-then-render subcommand). This unit delivers it: when the new hook command ships,
   prompt founders to re-run `hook install` so their machines pick up the loop (U5's
   rollout note is the backstop).
+
+- Inherited from sync-cache-per-clone (2026-07-08): state keying is now per-CLONE
+  (remote + subpath + checkout root). A brand-new clone has NO marker until its first
+  pull, so first-contact board detection must stay PROBE-GATED (origin/board existence),
+  never marker-only — consistent with the detection-gated provisioning rider on
+  decisions/board-branch-sync. Read that task record before building the home render.
