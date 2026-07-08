@@ -76,8 +76,9 @@ export const COMMAND_GROUPS: CommandGroup[] = [
         summary: "Hard-delete a doc (idempotent: absent -> deleted:false, exit 0)",
       },
       {
-        usage: "list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--limit <n>] [--remote <url>]",
-        summary: "Query concepts over their frontmatter (alias: query)",
+        usage: "list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--open] [--limit <n>] [--remote <url>]",
+        summary:
+          "Query concepts over their frontmatter (alias: query) — a comma in --field's value is set membership (OR); --open excludes terminal instances (declared kinds only)",
       },
       {
         usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>]) [--remote <url>]",

@@ -153,6 +153,40 @@ test("kinds: projects a convention's 'expects_inbound' declaration (inbound-link
   }
 });
 
+test("kinds: projects a convention's 'fields.terminal' declaration; rows without one carry no terminal key", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await writeDoc({ root: dir }, {
+      id: "conventions/ticket",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        title: "Ticket",
+        governs: "Ticket",
+        path: "tickets/",
+        fields: {
+          required: ["title", "stage"],
+          optional: [],
+          values: { stage: ["open", "in_review", "resolved", "archived"] },
+          terminal: { stage: ["resolved", "archived"] },
+        },
+        timestamp: T,
+      },
+      body: "A kind declaring which stage values are terminal.",
+    });
+    const result = await runJson(kinds, ["--dir", dir]);
+    const rows = result.kinds as Array<Record<string, unknown>>;
+    const ticket = rows.find((r) => r.governs === "Ticket");
+    assert.ok(ticket, "expected the Ticket kind row");
+    assert.deepEqual(ticket!.terminal, { stage: ["resolved", "archived"] });
+    // The seeded Context Note kind declares no terminal set — its row must not carry the key at all.
+    const note = rows.find((r) => r.governs === "Context Note");
+    assert.ok(note);
+    assert.ok(!("terminal" in note!), "a kind without a terminal declaration gets no terminal key");
+  } finally {
+    await cleanup();
+  }
+});
+
 test("new: point-of-use link teaching is GENERIC — per-kind help shows both directions; the create receipt hints complete link-add commands; no declarations = no hints", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-kinds-test-"));
   try {

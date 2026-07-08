@@ -77,8 +77,8 @@ the rest of the line unchanged.
   — Show a doc's attributed version history (newest first) — the tokens for --expected-version
 - `"$ASLITE" doc delete <id> [--expected-version <v>] [--remote <url>]`
   — Hard-delete a doc (idempotent: absent -> deleted:false, exit 0)
-- `"$ASLITE" list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--limit <n>] [--remote <url>]`
-  — Query concepts over their frontmatter (alias: query)
+- `"$ASLITE" list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--open] [--limit <n>] [--remote <url>]`
+  — Query concepts over their frontmatter (alias: query) — a comma in --field's value is set membership (OR); --open excludes terminal instances (declared kinds only)
 - `"$ASLITE" link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>]) [--remote <url>]`
   — Add a cross-link, or show a concept's links + backlinks (each carrying link text; --text filters both directions by exact match)
 
