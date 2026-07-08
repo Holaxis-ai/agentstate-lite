@@ -236,7 +236,14 @@ export function provisionBoardWorktree(dir: string): ProvisionOutcome {
       ]);
   if (r.status !== 0) {
     // The branch is already checked out (somewhere): the checkout EXISTS — idempotent success.
-    if (/already checked out/i.test(r.stderr)) return { kind: "already", boardPath };
+    // STRUCTURAL check, not message-matching: git's refusal phrasing changed across versions
+    // ("already checked out" ≤2.47, "already used by worktree" ≥2.48), and LC_ALL=C pins locale
+    // but not version. `worktree list --porcelain` names the checked-out branch of every
+    // worktree in a stable machine format — version-proof.
+    const list = runGit(top, ["worktree", "list", "--porcelain"]);
+    if (list.status === 0 && list.stdout.split("\n").includes(`branch refs/heads/${BOARD_BRANCH}`)) {
+      return { kind: "already", boardPath };
+    }
     throw classifyGitError(failureOf(["worktree", "add"], r));
   }
   return { kind: "provisioned", boardPath };
