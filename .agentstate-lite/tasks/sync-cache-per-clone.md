@@ -3,13 +3,15 @@ type: Task
 title: >-
   Awareness cache keyed per remote overwrites across clones (PR#13 review, item
   4)
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   MEDIUM-HIGH, blocks U4's backstop honesty: two clones of one origin on one
   machine share one cache file — a clean sync in clone A erases clone B's
   'unpushed work' state.
-timestamp: '2026-07-08T15:03:34.425Z'
+actor: brian-claude
+assignee: brian-claude
+timestamp: '2026-07-08T19:39:50.179Z'
 ---
 Driven evidence (PR#13 panel, empirical): clone B had 2 stranded unpushed commits
 (cache unpushed: 2); a clean sync in clone A reset the SHARED cache to unpushed: 0 —

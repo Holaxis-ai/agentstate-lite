@@ -1,13 +1,15 @@
 ---
 type: Task
 title: Extract Roadmap + Roadmap Item conventions into a reusable recipe
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Package the Roadmap and Roadmap Item conventions as a recipe-add-able recipe.
   Carries two named open design questions (distribution; how the Task
   expects_inbound pairing travels). Requested by Brian. Deps: none.
-timestamp: '2026-07-07T21:17:07.707Z'
+actor: brian-claude
+assignee: brian-claude
+timestamp: '2026-07-08T19:39:50.301Z'
 ---
 # Roadmap recipe — extract Roadmap + Roadmap Item conventions into a reusable recipe
 
