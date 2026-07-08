@@ -10,7 +10,7 @@ description: >-
   guaranteed fall-through) plus home cache render and the both-count backstop.
   Deps: sync-command-core.
 actor: brian-claude
-timestamp: '2026-07-08T19:57:42.928Z'
+timestamp: '2026-07-08T20:10:47.642Z'
 ---
 # U4 — SessionStart integration
 
@@ -89,3 +89,9 @@ Builder → independent Reviewer → QA. Deps: sync-command-core (U3a).
   pull, so first-contact board detection must stay PROBE-GATED (origin/board existence),
   never marker-only — consistent with the detection-gated provisioning rider on
   decisions/board-branch-sync. Read that task record before building the home render.
+
+- Inherited from the cache-per-clone review (2026-07-08): (a) REUSE sync.ts's
+  resolveBundleKey (export it) rather than re-deriving the state key in home.ts — a
+  second independent derivation is the real state-split risk, not symlinks; (b) the U0
+  harness realpaths its scratch roots, so harness-based tests CANNOT catch a caller
+  that forgets to realpath — U4's reviewer should check that path by hand.
