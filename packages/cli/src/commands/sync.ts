@@ -84,11 +84,11 @@ Usage:
   agentstate-lite sync [--pull-only] [--dir <path>] [--limit <n>] [--json]
   agentstate-lite sync --show-incoming <id> [--out <file>] [--dir <path>] [--json]
 
-Shares this repo's board (\`.agentstate-lite\`, a linked worktree of the \`board\` branch) with your
+Shares this repo's board (\`.agentstate-lite\`, kept on its own \`board\` branch) with your
 teammates: commits any pending local doc changes, pulls theirs, and pushes yours — touching
 nothing outside the board. \`--pull-only\` skips commit + push and only fast-forwards from origin
-(never rebases) — the mode a read-only session (or SessionStart) uses to pick up incoming changes
-without publishing local ones.
+(never rebases) — the mode a read-only session uses to pick up incoming changes without
+publishing local ones.
 
 Two definitive empty states (exit 0): no git repo (or no board anywhere yet, local or on origin)
 prints 'sync: nothing to sync'; a clean, already-current board prints 'sync: already up to date'.
@@ -97,7 +97,7 @@ enriched delta of docs that arrived this run (capped; --limit controls the row c
 
 When a doc changed on BOTH sides, sync CONVERGES: your teammate's version is kept on the board,
 YOUR version is saved to an export file named in the receipt, and the sync completes (the
-worktree is never left mid-state; non-conflicted local changes still land). The run exits 5 with
+board is never left mid-state; non-conflicted local changes still land). The run exits 5 with
 one row per conflicted doc and the reconcile chain: \`sync --show-incoming <id>\` to view the kept
 incoming version, \`doc update <id> --body-file <export-file>\` to write your merged version on
 top, then \`sync\` again to share it.
@@ -451,24 +451,24 @@ export function ffSwallowToError(reason: string, inv: string): CliError {
     case "conflict":
       return new CliError(
         "CONFLICT",
-        `the board worktree has unresolved conflicts — run \`${inv} sync\` (without --pull-only) to reconcile`,
+        `the board checkout has unresolved conflicts — run \`${inv} sync\` (without --pull-only) to reconcile`,
       );
     case "dirty":
       return new CliError(
         "RUNTIME",
-        "the board worktree has uncommitted local changes that a fast-forward-only pull would " +
+        "the board checkout has uncommitted local changes that a fast-forward-only pull would " +
           "overwrite — commit or discard them, or run a full sync instead of --pull-only",
       );
     case "detached-head":
       return new CliError(
         "RUNTIME",
-        "the board worktree is in a detached-HEAD state — sync needs the board branch checked out",
+        "the board checkout is in a detached-HEAD state — sync needs the board branch checked out",
         { details: { state: "detached-head" } },
       );
     case "not-a-repo":
       return new CliError(
         "RUNTIME",
-        "the board worktree is not a git repository — run sync again to re-provision it",
+        "the board checkout is not a git repository — run sync again to re-provision it",
       );
     default:
       return new CliError(

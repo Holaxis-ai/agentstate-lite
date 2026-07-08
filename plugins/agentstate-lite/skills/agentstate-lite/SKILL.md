@@ -5,8 +5,9 @@ description: >-
   self-contained static-HTML view) via the self-contained agentstate-lite CLI bundled in this
   skill (scripts/agentstate-lite — a committed, zero-dependency bundle; no npm install
   required). Use when an agent needs to persist a context note across sessions, store a
-  decision/spec as a doc, link concepts, query a bundle, run a local wire-protocol server
-  (`serve` / `--remote`), or bake a shareable HTML view.
+  decision/spec as a doc, link concepts, query a bundle, share the project's board with
+  teammates (`sync`), run a local wire-protocol server (`serve` / `--remote`), or bake a
+  shareable HTML view.
 ---
 
 # agentstate-lite
@@ -57,8 +58,8 @@ the rest of the line unchanged.
 
 ### Bundle
 
-- `"$ASLITE" init [--dir <path>] [--okf-version <v>]`
-  — Create (or open) an OKF knowledge bundle in a directory
+- `"$ASLITE" init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]`
+  — Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init
 - `"$ASLITE" view [--dir <path>] [--out <path>] [--name <label>] [--remote <url>]`
   — Bake the bundle into one self-contained static HTML file
 - `"$ASLITE" status [--limit <n>] [--remote <url>]`
@@ -158,11 +159,19 @@ the rest of the line unchanged.
 
 Unless the user directs otherwise, a project's workspace bundle lives in a `.agentstate-lite/`
 folder at the project root, and it is COMMITTED to the repo — the bundle is shared memory, and
-committing it is what lets two or more humans (and their agents) collaborate on it across
-clones. Setup is ONE command, run once at the project root:
+sharing it is what lets two or more humans (and their agents) collaborate on it across
+clones. Setup depends on whether the project already has a workspace:
+
+- **Joining an existing project** — if `.agentstate-lite/` is already in the clone, there is
+  NOTHING to set up. If it isn't but the project shares its board (the repo's remote has a
+  `board` branch), `sync` is the setup verb — run it once and it creates the folder and pulls
+  the shared state. NEVER init a project that already has a workspace: that creates a
+  divergent second bundle.
+- **Starting fresh (greenfield)** — `init` creates a bundle that doesn't exist anywhere yet.
 
 ```sh
-"$ASLITE" init --dir .agentstate-lite   # idempotent — creates the bundle, or opens an existing one
+"$ASLITE" sync                            # existing project — provisions the shared board, or reports "nothing to sync"
+"$ASLITE" init --dir .agentstate-lite     # greenfield only — idempotent; creates the bundle, or opens an existing one
 ```
 
 That's the whole setup. The CLI discovers the conventional folder on its own (the way git
@@ -174,8 +183,14 @@ config files:
 "$ASLITE" doc read context-notes/cycle-1
 ```
 
-Commit the folder like any other source (only gitignore it if the user says the workspace
-should stay private to this machine).
+The folder is shared with teammates via `aslite sync`, which commits and pushes board changes
+itself; until a project adopts sync, board changes are committed as their own small commits,
+not batched with code. (Only gitignore the folder if the user says the workspace should stay
+private to this machine.)
+
+Write with attribution: pass `--actor <your-name>` on `new` / `doc write` / `doc update`.
+There is no default actor, so an unattributed write renders as unknown in teammates'
+awareness — the `--actor` you pass is what attributes your changes to you.
 
 Each invocation is stateless and resolves its bundle in this order: explicit `--dir`/`--remote`
 flag → `AGENTSTATE_LITE_REMOTE` env (URL only) → nearest `.agentstate.json` binding up-tree →
@@ -200,25 +215,57 @@ share this bundle? When the user's intent is ambiguous, ask rather than defaulti
 ## Typical flow
 
 ```sh
-# One-time setup at the project root (see the Workspaces section); commit the folder
+# One-time setup at the project root (see the Workspaces section):
+# an existing project is set up by sync; init is for a brand-new workspace only
 "$ASLITE" init --dir .agentstate-lite
 
 # Everything after runs bare, from anywhere in the project tree
 # Create a context note (an OKF concept) for the next session
-"$ASLITE" new "Context Note" cycle-1 --title "cycle-1"
-"$ASLITE" doc update context-notes/cycle-1 --body "What this session did and what's next"
+"$ASLITE" new "Context Note" cycle-1 --title "cycle-1" --actor <your-name>
+"$ASLITE" doc update context-notes/cycle-1 --body "What this session did and what's next" --actor <your-name>
 
 # Read it back
 "$ASLITE" doc read context-notes/cycle-1
 
 # Store a doc, cross-link it, and query the bundle
-"$ASLITE" doc write specs/auth --type Spec --title "Auth" --body "…"
+"$ASLITE" doc write specs/auth --type Spec --title "Auth" --body "…" --actor <your-name>
 "$ASLITE" link add specs/auth context-notes/cycle-1
 "$ASLITE" list --type Spec
 
 # Bake a shareable, self-contained HTML view of the whole bundle
 "$ASLITE" view
+
+# Share the board — recording work isn't done until it's shared
+# (safe everywhere: a project with no shared board just prints "sync: nothing to sync")
+"$ASLITE" sync
 ```
+
+## Sharing the board — `sync`
+
+`aslite sync` shares your board — commits your changes, pulls your teammate's, pushes yours,
+touching nothing but the board.
+
+Run it whenever you close a unit of work — a task finished, a decision recorded, a session
+ending. Recording work isn't done until it's shared. Two honest empty states (both exit 0):
+a project that doesn't share a board yet prints `sync: nothing to sync` (keep committing the
+folder's changes as their own small commits there); a clean, already-current board prints
+`sync: already up to date`.
+
+When a doc changed on BOTH sides, sync converges instead of stopping: your teammate's version
+is kept on the board, YOURS is saved to an export file named in the receipt, and the run
+exits 5 with one row per conflicted doc. Reconcile with the doc verbs, never git:
+
+```sh
+"$ASLITE" sync --show-incoming <id>                 # view the kept incoming version (as of the last fetch)
+"$ASLITE" doc update <id> --body-file <export-file> # write your merged version on top
+"$ASLITE" sync                                      # share it
+```
+
+`sync --pull-only` picks up teammates' changes without publishing local ones. If a push fails
+(offline, auth), your work is already committed locally — re-running sync retries the push.
+
+On projects that share their board you may notice a `board` branch in the repo's GitHub —
+that's the board; never merge it into main.
 
 ## Remote (--remote, serve, identity, invites, keys)
 

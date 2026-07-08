@@ -36,8 +36,9 @@ export const COMMAND_GROUPS: CommandGroup[] = [
     group: "Bundle",
     commands: [
       {
-        usage: "init [--dir <path>] [--okf-version <v>]",
-        summary: "Create (or open) an OKF knowledge bundle in a directory",
+        usage: "init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]",
+        summary:
+          "Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init",
       },
       {
         usage: "view [--dir <path>] [--out <path>] [--name <label>] [--remote <url>]",

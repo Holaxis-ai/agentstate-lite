@@ -3894,26 +3894,26 @@ function applyReplacer(root, replacer) {
   if (replacedRoot === void 0) return transformChildren(root, replacer, []);
   return transformChildren(normalizeValue(replacedRoot), replacer, []);
 }
-function transformChildren(value, replacer, path10) {
-  if (isJsonObject(value)) return transformObject(value, replacer, path10);
-  if (isJsonArray(value)) return transformArray(value, replacer, path10);
+function transformChildren(value, replacer, path11) {
+  if (isJsonObject(value)) return transformObject(value, replacer, path11);
+  if (isJsonArray(value)) return transformArray(value, replacer, path11);
   return value;
 }
-function transformObject(obj, replacer, path10) {
+function transformObject(obj, replacer, path11) {
   const result = {};
   for (const [key2, value] of Object.entries(obj)) {
-    const childPath = [...path10, key2];
+    const childPath = [...path11, key2];
     const replacedValue = replacer(key2, value, childPath);
     if (replacedValue === void 0) continue;
     result[key2] = transformChildren(normalizeValue(replacedValue), replacer, childPath);
   }
   return result;
 }
-function transformArray(arr, replacer, path10) {
+function transformArray(arr, replacer, path11) {
   const result = [];
   for (let i = 0; i < arr.length; i++) {
     const value = arr[i];
-    const childPath = [...path10, i];
+    const childPath = [...path11, i];
     const replacedValue = replacer(String(i), value, childPath);
     if (replacedValue === void 0) continue;
     const normalizedValue = normalizeValue(replacedValue);
@@ -3940,11 +3940,11 @@ function resolveOptions(options2) {
 }
 
 // ../../node_modules/axi-sdk-js/dist/output.js
-function collapseHomeDirectory(path10, homeDir = homedir()) {
-  if (!path10.startsWith(homeDir)) {
-    return path10;
+function collapseHomeDirectory(path11, homeDir = homedir()) {
+  if (!path11.startsWith(homeDir)) {
+    return path11;
   }
-  return `~${path10.slice(homeDir.length)}`;
+  return `~${path11.slice(homeDir.length)}`;
 }
 function homeHeaderOutput(options2) {
   return {
@@ -4048,7 +4048,7 @@ function isUpdateAvailable(current, latest) {
 }
 var nodeFs = {
   existsSync,
-  readFileSync: (path10, encoding) => readFileSync(path10, encoding)
+  readFileSync: (path11, encoding) => readFileSync(path11, encoding)
 };
 function readNearestPackageJson(startPath, fs11 = nodeFs) {
   let dir = dirname(startPath);
@@ -4075,36 +4075,36 @@ function readNearestPackageJson(startPath, fs11 = nodeFs) {
 }
 function detectInstallMethod(options2) {
   const env = options2.env ?? process.env;
-  const path10 = options2.entry.replaceAll("\\", "/");
-  if (path10.includes("/_npx/") || /\/dlx-[^/]+\//.test(path10) || path10.includes("/pnpm/dlx/") || path10.includes("/bun/install/cache/")) {
+  const path11 = options2.entry.replaceAll("\\", "/");
+  if (path11.includes("/_npx/") || /\/dlx-[^/]+\//.test(path11) || path11.includes("/pnpm/dlx/") || path11.includes("/bun/install/cache/")) {
     return { kind: "npx" };
   }
-  const homebrewFormula = homebrewFormulaFromPath(path10, env);
+  const homebrewFormula = homebrewFormulaFromPath(path11, env);
   if (homebrewFormula) {
     return { kind: "homebrew", formula: homebrewFormula };
   }
   const pnpmHome = normalizePathRoot(env.PNPM_HOME);
-  if (isPathInsideRoot(path10, pnpmHome) || isKnownPnpmGlobalStore(path10, env)) {
+  if (isPathInsideRoot(path11, pnpmHome) || isKnownPnpmGlobalStore(path11, env)) {
     return { kind: "pnpm-global" };
   }
-  if (isKnownNpmGlobalInstall(path10, env)) {
+  if (isKnownNpmGlobalInstall(path11, env)) {
     return { kind: "npm-global" };
   }
   return { kind: "unknown" };
 }
-function normalizePathRoot(path10) {
-  const normalized = path10?.replaceAll("\\", "/").replace(/\/+$/, "");
+function normalizePathRoot(path11) {
+  const normalized = path11?.replaceAll("\\", "/").replace(/\/+$/, "");
   return normalized && normalized.length > 0 ? normalized : void 0;
 }
-function isPathInsideRoot(path10, root) {
-  return root !== void 0 && (path10 === root || path10.startsWith(`${root}/`));
+function isPathInsideRoot(path11, root) {
+  return root !== void 0 && (path11 === root || path11.startsWith(`${root}/`));
 }
-function homebrewFormulaFromPath(path10, env) {
+function homebrewFormulaFromPath(path11, env) {
   for (const root of homebrewCellarRoots(env)) {
-    if (!isPathInsideRoot(path10, root)) {
+    if (!isPathInsideRoot(path11, root)) {
       continue;
     }
-    const relative = path10.slice(root.length).replace(/^\/+/, "");
+    const relative = path11.slice(root.length).replace(/^\/+/, "");
     const formula = relative.split("/")[0];
     if (formula) {
       return formula;
@@ -4132,12 +4132,12 @@ function homebrewCellarRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownPnpmGlobalStore(path10, env) {
+function isKnownPnpmGlobalStore(path11, env) {
   return pnpmGlobalStoreRoots(env).some((root) => {
-    if (!isPathInsideRoot(path10, root)) {
+    if (!isPathInsideRoot(path11, root)) {
       return false;
     }
-    const relative = path10.slice(root.length).replace(/^\/+/, "");
+    const relative = path11.slice(root.length).replace(/^\/+/, "");
     return /^\d+\/\.pnpm\//.test(relative);
   });
 }
@@ -4155,8 +4155,8 @@ function pnpmGlobalStoreRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownNpmGlobalInstall(path10, env) {
-  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path10, root)) || isKnownVersionManagerNpmGlobal(path10, env);
+function isKnownNpmGlobalInstall(path11, env) {
+  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path11, root)) || isKnownVersionManagerNpmGlobal(path11, env);
 }
 function npmGlobalNodeModulesRoots(env) {
   const roots = [
@@ -4182,8 +4182,8 @@ function npmGlobalNodeModulesRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownVersionManagerNpmGlobal(path10, env) {
-  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path10, root) && path10.includes("/lib/node_modules/"));
+function isKnownVersionManagerNpmGlobal(path11, env) {
+  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path11, root) && path11.includes("/lib/node_modules/"));
 }
 function versionManagerNodeRoots(env) {
   const roots = [];
@@ -4419,7 +4419,7 @@ async function runUpdate(options2) {
   const binName = binNameFromArgv(invokedAs);
   const mode = parseUpdateArgs(options2.args, binName);
   const platform = options2.platform ?? process.platform;
-  const realpath = options2.realpath ?? ((path10) => realpathSync(path10));
+  const realpath = options2.realpath ?? ((path11) => realpathSync(path11));
   const entry = resolveEntry(invokedAs, realpath);
   const fs11 = options2.fs ?? nodeFs;
   const fromPackageJson = entry ? readNearestPackageJson(entry, fs11) : {};
@@ -5040,6 +5040,8 @@ function installSessionStartHooks(options2 = {}) {
 
 // src/commands/init.ts
 import { parseArgs } from "node:util";
+import { existsSync as existsSync3 } from "node:fs";
+import path6 from "node:path";
 
 // ../core/src/bundle.ts
 import path3 from "node:path";
@@ -6320,13 +6322,13 @@ function describeShape(value) {
   if (typeof value === "object") return "an object";
   return typeof value;
 }
-function toStringArrayLenient(value, path10, docId, warnings) {
+function toStringArrayLenient(value, path11, docId, warnings) {
   if (!Array.isArray(value)) {
     if (value !== void 0) {
       warnings.push({
         code: "KIND_CONVENTION_BAD_SHAPE",
-        message: `kind convention '${docId}' has a non-list '${path10}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
-        field: path10,
+        message: `kind convention '${docId}' has a non-list '${path11}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
+        field: path11,
         severity: "warning"
       });
     }
@@ -6339,8 +6341,8 @@ function toStringArrayLenient(value, path10, docId, warnings) {
     } else {
       warnings.push({
         code: "KIND_CONVENTION_BAD_MEMBER",
-        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path10}'; skipping it.`,
-        field: path10,
+        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path11}'; skipping it.`,
+        field: path11,
         severity: "warning"
       });
     }
@@ -6501,10 +6503,10 @@ function parseConventionDoc(doc2) {
   }
   const sections = Array.isArray(fm.sections) ? fm.sections.filter((s) => typeof s === "string" && s.trim() !== "") : void 0;
   const title = typeof fm.title === "string" && fm.title.trim() !== "" ? fm.title.trim() : governs;
-  const path10 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
+  const path11 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
   const freshnessHorizon = typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== "" ? fm.freshness_horizon.trim() : void 0;
   const kind2 = { id: doc2.id, title, governs, fields: { required, optional, values } };
-  if (path10 !== void 0) kind2.path = path10;
+  if (path11 !== void 0) kind2.path = path11;
   if (links !== void 0) kind2.links = links;
   if (expectsInbound !== void 0) kind2.expectsInbound = expectsInbound;
   if (sections && sections.length > 0) kind2.sections = sections;
@@ -6897,8 +6899,8 @@ function normalizeServer(raw) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`server URL must use http or https: ${raw}`);
   }
-  const path10 = url.pathname.replace(/\/+$/, "");
-  return { base: url.origin + path10, resource: url.origin };
+  const path11 = url.pathname.replace(/\/+$/, "");
+  return { base: url.origin + path11, resource: url.origin };
 }
 
 // src/credentials.ts
@@ -6919,7 +6921,7 @@ function credentialsPath(home2 = homedir4()) {
 async function writeFileAtomic0600(dir, fileName, content) {
   await mkdir(dir, { recursive: true, mode: DIR_MODE });
   await chmod(dir, DIR_MODE);
-  const path10 = join4(dir, fileName);
+  const path11 = join4(dir, fileName);
   const tmpPath = join4(dir, `.${fileName}.${randomBytes(8).toString("hex")}.tmp`);
   const handle = await open(tmpPath, "wx", FILE_MODE);
   try {
@@ -6929,7 +6931,7 @@ async function writeFileAtomic0600(dir, fileName, content) {
     await handle.close();
   }
   try {
-    await rename(tmpPath, path10);
+    await rename(tmpPath, path11);
   } catch (err) {
     await unlink(tmpPath).catch(() => {
     });
@@ -7566,6 +7568,15 @@ Options:
   --json                  Emit compact JSON instead of TOON
   -h, --help              Show this help
 `;
+function insideGitRepo(dir) {
+  let cur = path6.resolve(dir);
+  for (; ; ) {
+    if (existsSync3(path6.join(cur, ".git"))) return true;
+    const parent = path6.dirname(cur);
+    if (parent === cur) return false;
+    cur = parent;
+  }
+}
 async function init(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const { values } = parseOrUsage(
@@ -7619,6 +7630,9 @@ async function init(argv, deps = {}) {
   }
   const receipt = { init: "ok", root: bundle.root, recipe: recipeApplied };
   if (warnings.length > 0) receipt.warnings = warnings;
+  if (insideGitRepo(root)) {
+    receipt.hint = `this directory is inside a git repo \u2014 if the project already shares a board, run \`${cliInvocation()} sync\` instead of init (sync sets up the existing shared board; init creates a new bundle)`;
+  }
   receipt.help = [
     `${cliInvocation()} new "Context Note" <id> --title <title>`,
     `${cliInvocation()} recipes  (list other capability recipes \u2014 e.g. work-tracking adds a Task kind)`
@@ -8340,7 +8354,7 @@ async function docUpdate(argv, deps) {
 // src/commands/doc/read.ts
 import { parseArgs as parseArgs4 } from "node:util";
 import { promises as fs6 } from "node:fs";
-import path6 from "node:path";
+import path7 from "node:path";
 async function docRead(argv, deps) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const stderr = deps.stderr ?? ((s) => void process.stderr.write(s));
@@ -8454,7 +8468,7 @@ async function docRead(argv, deps) {
       try {
         assertSafeConceptId(id);
         rel = pathFromConceptId(id);
-        bytes = await fs6.readFile(path6.join(bundle.root, rel));
+        bytes = await fs6.readFile(path7.join(bundle.root, rel));
       } catch (err) {
         throw readErrorToCliError(err, id, values.remote);
       }
@@ -8512,9 +8526,9 @@ function formatFieldValue(value) {
 }
 function inBundlePollutionWarning(bundle, out) {
   if (bundle.backend) return void 0;
-  const resolvedOut = path6.resolve(out);
+  const resolvedOut = path7.resolve(out);
   const root = bundle.root;
-  const isInside = resolvedOut === root || resolvedOut.startsWith(root + path6.sep);
+  const isInside = resolvedOut === root || resolvedOut.startsWith(root + path7.sep);
   if (!isInside) return void 0;
   if (isReservedFile(resolvedOut)) {
     return `--out ${out} resolves to ${resolvedOut}, which is INSIDE this bundle (${root}) at a reserved OKF filename \u2014 the write will CLOBBER that reserved file (index.md/log.md is never re-parsed as a concept doc). Pass a path outside the bundle if that is not intended.`;
@@ -10640,7 +10654,7 @@ import { parseArgs as parseArgs19 } from "node:util";
 
 // ../viewer/src/generate.ts
 import { promises as fs9 } from "node:fs";
-import * as path7 from "node:path";
+import * as path8 from "node:path";
 
 // ../viewer/src/bundle.ts
 function asString(value) {
@@ -10950,7 +10964,7 @@ async function generateVisualization(bundleSource, options2 = {}) {
   let data;
   let defaultOutDir;
   if (typeof bundleSource === "string") {
-    const root = path7.resolve(bundleSource);
+    const root = path8.resolve(bundleSource);
     const stat = await fs9.stat(root).catch(() => null);
     if (!stat || !stat.isDirectory()) {
       throw new Error("bundle directory not found: " + root);
@@ -10962,8 +10976,8 @@ async function generateVisualization(bundleSource, options2 = {}) {
     defaultOutDir = process.cwd();
   }
   const html = renderTemplate(data);
-  const out = path7.resolve(options2.out ?? path7.join(defaultOutDir, "viz.html"));
-  await fs9.mkdir(path7.dirname(out), { recursive: true });
+  const out = path8.resolve(options2.out ?? path8.join(defaultOutDir, "viz.html"));
+  await fs9.mkdir(path8.dirname(out), { recursive: true });
   const tmp = out + ".tmp-" + process.pid;
   await fs9.writeFile(tmp, html, "utf8");
   await fs9.rename(tmp, out);
@@ -11888,15 +11902,15 @@ async function ui(argv, deps = {}) {
 }
 
 // src/commands/sync.ts
-import { existsSync as existsSync4, readFileSync as readFileSync4, realpathSync as realpathSync5 } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync4, realpathSync as realpathSync5 } from "node:fs";
 import { promises as fs10 } from "node:fs";
-import path9 from "node:path";
+import path10 from "node:path";
 import { parseArgs as parseArgs22 } from "node:util";
 
 // src/git.ts
 import { spawnSync } from "node:child_process";
-import { existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, realpathSync as realpathSync4, rmdirSync, writeFileSync as writeFileSync2 } from "node:fs";
-import path8 from "node:path";
+import { existsSync as existsSync4, mkdirSync as mkdirSync2, readdirSync, realpathSync as realpathSync4, rmdirSync, writeFileSync as writeFileSync2 } from "node:fs";
+import path9 from "node:path";
 var BOARD_BRANCH = "board";
 var BOARD_REMOTE = "origin";
 var BOARD_REF = `${BOARD_REMOTE}/${BOARD_BRANCH}`;
@@ -11954,7 +11968,7 @@ function mustGit(dir, args, opts = {}) {
   return r.stdout;
 }
 function repoTopLevel(dir) {
-  if (!existsSync3(dir)) return null;
+  if (!existsSync4(dir)) return null;
   const r = runGit(dir, ["rev-parse", "--show-toplevel"]);
   if (r.status !== 0) return null;
   const top = r.stdout.trim();
@@ -11962,7 +11976,7 @@ function repoTopLevel(dir) {
 }
 function worktreeGitPath(boardPath, relative) {
   const raw = mustGit(boardPath, ["rev-parse", "--git-path", relative]).trim();
-  return path8.resolve(boardPath, raw);
+  return path9.resolve(boardPath, raw);
 }
 function realOrSame(p) {
   try {
@@ -11974,8 +11988,8 @@ function realOrSame(p) {
 function isProvisioned(dir) {
   const top = repoTopLevel(dir);
   if (!top) return false;
-  const boardPath = path8.join(top, BUNDLE_DIR);
-  if (!existsSync3(boardPath)) return false;
+  const boardPath = path9.join(top, BUNDLE_DIR);
+  if (!existsSync4(boardPath)) return false;
   const boardTop = repoTopLevel(boardPath);
   if (!boardTop || realOrSame(boardTop) !== realOrSame(boardPath)) return false;
   const branch = runGit(boardPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
@@ -11984,13 +11998,13 @@ function isProvisioned(dir) {
 function provisionBoardWorktree(dir) {
   const top = repoTopLevel(dir);
   if (!top) return { kind: "no_repo" };
-  const boardPath = path8.join(top, BUNDLE_DIR);
+  const boardPath = path9.join(top, BUNDLE_DIR);
   if (isProvisioned(top)) return { kind: "already", boardPath };
   runGit(top, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
   const hasLocal = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
   const hasRemote = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0;
   if (!hasLocal && !hasRemote) return { kind: "no_board" };
-  if (existsSync3(boardPath)) {
+  if (existsSync4(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
       throw new CliError(
         "RUNTIME",
@@ -12022,7 +12036,7 @@ function provisionBoardWorktree(dir) {
   return { kind: "provisioned", boardPath };
 }
 function detectStaleRebase(boardPath) {
-  return existsSync3(worktreeGitPath(boardPath, "rebase-merge")) || existsSync3(worktreeGitPath(boardPath, "rebase-apply"));
+  return existsSync4(worktreeGitPath(boardPath, "rebase-merge")) || existsSync4(worktreeGitPath(boardPath, "rebase-apply"));
 }
 function abortStaleRebase(boardPath) {
   mustGit(boardPath, ["rebase", "--abort"], { rebase: true });
@@ -12123,8 +12137,8 @@ function fetchRebaseResolving(boardPath, exportDir) {
         let bodyExportPath = null;
         const isDoc = isConceptDocPath(relPath);
         if (local.status === 0) {
-          exportPath = path8.join(exportDir, relPath);
-          mkdirSync2(path8.dirname(exportPath), { recursive: true, mode: 448 });
+          exportPath = path9.join(exportDir, relPath);
+          mkdirSync2(path9.dirname(exportPath), { recursive: true, mode: 448 });
           writeFileSync2(exportPath, local.stdout, { mode: 384 });
           if (isDoc) {
             try {
@@ -12356,14 +12370,14 @@ async function writeSyncState(key2, patch, home2 = homedir5()) {
   const parent = credentialsDir(home2);
   await mkdir2(parent, { recursive: true, mode: DIR_MODE2 });
   await chmod2(parent, DIR_MODE2);
-  const path10 = syncStatePath(key2, home2);
+  const path11 = syncStatePath(key2, home2);
   const record = {
     key: key2,
     cursor: next.cursor ?? void 0,
     cache: next.cache ?? void 0,
     marker: next.marker ?? void 0
   };
-  await writeFileAtomic0600(syncStateDir(home2), basename4(path10), JSON.stringify(record, null, 2) + "\n");
+  await writeFileAtomic0600(syncStateDir(home2), basename4(path11), JSON.stringify(record, null, 2) + "\n");
   return next;
 }
 async function writeCursor(key2, cursor, home2 = homedir5()) {
@@ -12402,11 +12416,11 @@ Usage:
   agentstate-lite sync [--pull-only] [--dir <path>] [--limit <n>] [--json]
   agentstate-lite sync --show-incoming <id> [--out <file>] [--dir <path>] [--json]
 
-Shares this repo's board (\`.agentstate-lite\`, a linked worktree of the \`board\` branch) with your
+Shares this repo's board (\`.agentstate-lite\`, kept on its own \`board\` branch) with your
 teammates: commits any pending local doc changes, pulls theirs, and pushes yours \u2014 touching
 nothing outside the board. \`--pull-only\` skips commit + push and only fast-forwards from origin
-(never rebases) \u2014 the mode a read-only session (or SessionStart) uses to pick up incoming changes
-without publishing local ones.
+(never rebases) \u2014 the mode a read-only session uses to pick up incoming changes without
+publishing local ones.
 
 Two definitive empty states (exit 0): no git repo (or no board anywhere yet, local or on origin)
 prints 'sync: nothing to sync'; a clean, already-current board prints 'sync: already up to date'.
@@ -12415,7 +12429,7 @@ enriched delta of docs that arrived this run (capped; --limit controls the row c
 
 When a doc changed on BOTH sides, sync CONVERGES: your teammate's version is kept on the board,
 YOUR version is saved to an export file named in the receipt, and the sync completes (the
-worktree is never left mid-state; non-conflicted local changes still land). The run exits 5 with
+board is never left mid-state; non-conflicted local changes still land). The run exits 5 with
 one row per conflicted doc and the reconcile chain: \`sync --show-incoming <id>\` to view the kept
 incoming version, \`doc update <id> --body-file <export-file>\` to write your merged version on
 top, then \`sync\` again to share it.
@@ -12589,23 +12603,23 @@ function ffSwallowToError(reason, inv) {
     case "conflict":
       return new CliError(
         "CONFLICT",
-        `the board worktree has unresolved conflicts \u2014 run \`${inv} sync\` (without --pull-only) to reconcile`
+        `the board checkout has unresolved conflicts \u2014 run \`${inv} sync\` (without --pull-only) to reconcile`
       );
     case "dirty":
       return new CliError(
         "RUNTIME",
-        "the board worktree has uncommitted local changes that a fast-forward-only pull would overwrite \u2014 commit or discard them, or run a full sync instead of --pull-only"
+        "the board checkout has uncommitted local changes that a fast-forward-only pull would overwrite \u2014 commit or discard them, or run a full sync instead of --pull-only"
       );
     case "detached-head":
       return new CliError(
         "RUNTIME",
-        "the board worktree is in a detached-HEAD state \u2014 sync needs the board branch checked out",
+        "the board checkout is in a detached-HEAD state \u2014 sync needs the board branch checked out",
         { details: { state: "detached-head" } }
       );
     case "not-a-repo":
       return new CliError(
         "RUNTIME",
-        "the board worktree is not a git repository \u2014 run sync again to re-provision it"
+        "the board checkout is not a git repository \u2014 run sync again to re-provision it"
       );
     default:
       return new CliError(
@@ -12625,8 +12639,8 @@ function healStaleRebaseBeforeProvisioning(dir) {
   try {
     const top = repoTopLevel(dir);
     if (!top) return;
-    const candidateBoardPath = path9.join(top, BUNDLE_DIR);
-    if (!existsSync4(candidateBoardPath)) return;
+    const candidateBoardPath = path10.join(top, BUNDLE_DIR);
+    if (!existsSync5(candidateBoardPath)) return;
     const boardTop = repoTopLevel(candidateBoardPath);
     if (!boardTop || realOrSame2(boardTop) !== realOrSame2(candidateBoardPath)) return;
     if (!isLinkedWorktree(candidateBoardPath)) return;
@@ -12641,14 +12655,14 @@ function isLinkedWorktree(p) {
   if (r.status !== 0) return false;
   const [gitDirRaw, commonDirRaw] = r.stdout.trim().split("\n");
   if (!gitDirRaw || !commonDirRaw) return false;
-  const commonDir = path9.isAbsolute(commonDirRaw) ? commonDirRaw : path9.resolve(p, commonDirRaw);
+  const commonDir = path10.isAbsolute(commonDirRaw) ? commonDirRaw : path10.resolve(p, commonDirRaw);
   return realOrSame2(gitDirRaw) !== realOrSame2(commonDir);
 }
 function retargetBoardInterior(dir) {
   try {
     const top = repoTopLevel(dir);
-    if (top && path9.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
-      return path9.dirname(top);
+    if (top && path10.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
+      return path10.dirname(top);
     }
   } catch {
   }
@@ -12929,7 +12943,7 @@ async function showIncoming(id, values, deps) {
         { details: { state: "no-repo" } }
       );
     }
-    if (path9.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
+    if (path10.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
       throw new CliError("USAGE", `--show-incoming needs a repo-relative doc id or path without '..' segments: ${id}`);
     }
     if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
@@ -13144,11 +13158,11 @@ async function toRemoteError(res) {
   const code = envelope?.error?.code ?? (res.status === 401 ? "AUTH_REQUIRED" : res.status >= 500 ? "RUNTIME" : "USAGE");
   return new RemoteError(message, code, res.status);
 }
-async function authRequest(base, path10, options2 = {}) {
+async function authRequest(base, path11, options2 = {}) {
   const headers = {};
   if (options2.body !== void 0) headers["content-type"] = "application/json";
   if (options2.authToken) headers["Authorization"] = `Bearer ${options2.authToken}`;
-  const request = new Request(`${base}${path10}`, {
+  const request = new Request(`${base}${path11}`, {
     method: options2.method ?? "GET",
     headers,
     body: options2.body !== void 0 ? JSON.stringify(options2.body) : void 0
@@ -13918,8 +13932,8 @@ var COMMAND_GROUPS = [
     group: "Bundle",
     commands: [
       {
-        usage: "init [--dir <path>] [--okf-version <v>]",
-        summary: "Create (or open) an OKF knowledge bundle in a directory"
+        usage: "init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]",
+        summary: "Create (or open) an OKF knowledge bundle in a directory \u2014 greenfield setup; a project that already shares a board is set up by sync, not init"
       },
       {
         usage: "view [--dir <path>] [--out <path>] [--name <label>] [--remote <url>]",
@@ -14350,7 +14364,7 @@ async function home(argv, deps = {}) {
 }
 
 // src/commands/hook.ts
-import { existsSync as existsSync5, readFileSync as readFileSync5, writeFileSync as writeFileSync3, rmSync } from "node:fs";
+import { existsSync as existsSync6, readFileSync as readFileSync5, writeFileSync as writeFileSync3, rmSync } from "node:fs";
 import { homedir as homedir6 } from "node:os";
 import { join as join8, dirname as dirname4 } from "node:path";
 import { mkdirSync as mkdirSync3 } from "node:fs";
@@ -14439,23 +14453,23 @@ function targetsFor(base) {
     opencodePlugin: join8(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
   };
 }
-function readSettings(path10) {
-  if (!existsSync5(path10)) return {};
+function readSettings(path11) {
+  if (!existsSync6(path11)) return {};
   try {
-    return JSON.parse(readFileSync5(path10, "utf8"));
+    return JSON.parse(readFileSync5(path11, "utf8"));
   } catch {
     return {};
   }
 }
-function writeSettings(path10, settings) {
-  mkdirSync3(dirname4(path10), { recursive: true });
-  writeFileSync3(path10, `${JSON.stringify(settings, null, 2)}
+function writeSettings(path11, settings) {
+  mkdirSync3(dirname4(path11), { recursive: true });
+  writeFileSync3(path11, `${JSON.stringify(settings, null, 2)}
 `);
 }
-function opencodePluginInstalled(path10) {
-  if (!existsSync5(path10)) return false;
+function opencodePluginInstalled(path11) {
+  if (!existsSync6(path11)) return false;
   try {
-    return readFileSync5(path10, "utf8").includes(OPENCODE_MANAGED_MARKER);
+    return readFileSync5(path11, "utf8").includes(OPENCODE_MANAGED_MARKER);
   } catch {
     return false;
   }
@@ -14549,10 +14563,10 @@ async function hook(argv, deps = {}) {
     return;
   }
   let changed = false;
-  for (const path10 of [targets.claudeSettings, targets.codexHooks]) {
-    const [updated, didChange] = computeHookUninstall(readSettings(path10));
+  for (const path11 of [targets.claudeSettings, targets.codexHooks]) {
+    const [updated, didChange] = computeHookUninstall(readSettings(path11));
     if (didChange) {
-      writeSettings(path10, updated);
+      writeSettings(path11, updated);
       changed = true;
     }
   }

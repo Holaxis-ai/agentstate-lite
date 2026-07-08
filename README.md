@@ -60,7 +60,16 @@ aslite list --type Task
 aslite doc update tasks/ship-parser --status in_progress --actor claude
 aslite doc history tasks/ship-parser   # who changed what, when
 aslite ui                              # the bundle, rendered — local server, no cloud
+aslite sync                            # share the board with teammates — commits yours,
+                                       # pulls theirs, pushes; touches nothing but the board
 ```
+
+`sync` is for projects that share their board on a `board` branch of the repo's remote —
+there it is also the setup verb (a fresh clone's first `sync` provisions the board). A
+project that hasn't adopted it just gets `sync: nothing to sync`; keep committing the
+folder. When a doc changed on both sides, sync converges: your teammate's version is kept,
+yours is saved to an export file, and `sync --show-incoming <id>` + `doc update` reconcile —
+no git surgery.
 
 ## How it works
 
@@ -87,7 +96,7 @@ Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPla
 
 ## What's solid
 
-- The engine and the storage seam: 750 tests across six workspaces, four backends
+- The engine and the storage seam: 900+ tests across six workspaces, four backends
   pinned to byte-identical version tokens, and a versioning/CAS model ported from a
   design already proven in production.
 - The CLI surface, built agent-first: structured output, counts and truncation with
