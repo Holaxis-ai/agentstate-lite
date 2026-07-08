@@ -1,7 +1,7 @@
 // `cursor.ts` — the per-bundle sync/awareness STATE STORE (sync-verb plan §U2).
 //
-// ONE module owns the three pieces of per-bundle local state that the sync verb (U3) writes and
-// SessionStart/home (U4) reads, all under ONE per-bundle key in `~/.agentstate/sync/`:
+// ONE module owns the three pieces of per-clone local state that the sync verb (U3) writes and
+// SessionStart/home (U4) reads, all under ONE per-clone key in `~/.agentstate/sync/`:
 //
 //   1. the awareness CURSOR — an OPAQUE `{tier, token}` ("where this machine last read up to").
 //      The git tier stores a commit SHA as the token; a future hosted tier ships
@@ -12,7 +12,11 @@
 //      not yet pushed"), timestamped so a consumer can label/expire it.
 //   3. the board-pending MARKER — a timestamp refreshed by every pull step; its PRESENCE is the
 //      fs-only "a board exists for this repo" signal that keeps first-contact from ever hinting
-//      `init` at a founder whose origin already has a board.
+//      `init` at a founder whose origin already has a board. Under per-clone keying the marker is
+//      per-checkout too (a brand-new clone has none until its first pull) — deliberately NOT
+//      split out onto a shared per-remote key: it has no shipped consumer yet (U4), its contract
+//      already requires absence to read as "unknown, never an error", and a second keyspace would
+//      reintroduce exactly the cross-clone file coupling this keying exists to prevent.
 //
 // BOUNDARY (binding): this module is the state store + its schema/serialization ONLY. The git
 // diff, the `git cat-file -e` cursor-existence guard, and per-doc frontmatter enrichment live in
@@ -21,12 +25,30 @@
 // {@link recordReanchor}, which records the honest {@link REANCHOR_NOTE} in the cache so the miss
 // is REPORTED, never a silent skip and never fatal.
 //
-// KEYING: per BUNDLE, not per machine-location — `bundleKey` derives the key from the repo's
-// remote URL + the bundle's subpath within the repo (so every checkout of the same shared board
-// on this machine shares one cursor), falling back to the absolute bundle root for a
-// remote-less repo. The key is hashed into the state file's name and ALSO stored inside the file;
-// a read whose stored key mismatches is treated as foreign (null), so a hash collision can never
-// bleed one bundle's state into another.
+// KEYING: per CLONE — remote URL + subpath + the CHECKOUT ROOT (this checkout's absolute board
+// path), falling back to the absolute bundle root alone for a remote-less repo. Every piece of
+// state here is a per-CLONE fact: the cursor is "what THIS CHECKOUT's board last saw" (each
+// clone's board worktree has its own HEAD), the unpushed/uncommitted backstop counts are computed
+// against this checkout's worktree, and the cache's delta rows derive from the per-clone cursor.
+// An earlier revision keyed by remote+subpath only ("every checkout of the same shared board on
+// this machine shares one cursor") — empirically WRONG (PR#13 review, item 4): two clones of one
+// origin on one machine shared one state file, so clone A's clean sync erased clone B's
+// "unpushed: 2" backstop state — the backstop failed exactly on its target case, and the
+// agent-worktree pattern makes same-machine multi-clone the norm. The remote-URL component is
+// KEPT alongside the checkout root so a recycled path (project X's clone deleted, project Y
+// cloned at the same location) reads the old state as foreign instead of inheriting it. The key
+// is hashed into the state file's name and ALSO stored inside the file; a read whose stored key
+// mismatches is treated as foreign (null), so a hash collision can never bleed one bundle's
+// state into another.
+//
+// MIGRATION (old remote-only keys → per-clone keys): none — ignore-and-reanchor. State files
+// written under the pre-fix key are simply never read again (their stored key can't match any
+// new-shape key, so even a hand-renamed file reads as foreign); they sit as small orphaned JSON
+// under `~/.agentstate/sync/` and are harmless. Every piece of state is re-derivable from git:
+// the first post-upgrade sync finds no cursor and falls back to its pre-sync HEAD baseline (the
+// same honest first-sync shape a fresh clone gets), and the backstop counts are recomputed from
+// the worktree on every sync. No cleanup sweep — deleting files we cannot positively attribute
+// is riskier than leaving them.
 //
 // DURABILITY: every write goes through `credentials.ts`'s `writeFileAtomic0600` — THE one
 // `~/.agentstate/` atomic-write discipline (O_EXCL temp 0600 → chmod → rename, dir forced 0700).
@@ -60,16 +82,28 @@ export const REANCHOR_NOTE = "delta unavailable (history rewritten)";
 // ── per-bundle key ────────────────────────────────────────────────────────────
 
 /**
- * What identifies a bundle for state-keying: the repo's remote URL + the bundle's subpath within
- * the repo (the caller — U1's git layer — knows both), or, for a repo with no remote, the
- * absolute bundle root as a fallback. NOT per-machine-location: two checkouts of the same shared
- * board on one machine share one key (U4's "since this MACHINE last synced" honesty).
+ * What identifies a bundle CHECKOUT for state-keying: the repo's remote URL + the bundle's
+ * subpath within the repo + this checkout's absolute root (the caller — sync's command layer —
+ * knows all three), or, for a repo with no remote, the absolute bundle root alone. Deliberately
+ * per-CLONE, not per-remote-per-machine: two checkouts of the same shared board on one machine
+ * get two keys, because the cursor and the unpushed/uncommitted backstop counts are facts about
+ * ONE checkout's worktree (PR#13 review, item 4 — the shared-key shape let one clone's clean
+ * sync erase another's stranded-unpushed state). U4's honesty story is per-checkout too: "since
+ * this checkout last synced" is the delta a session sitting in that checkout can act on.
  */
 export type BundleKeySource =
-  | { remoteUrl: string; subpath: string }
+  | { remoteUrl: string; subpath: string; checkoutRoot: string }
   | { root: string };
 
-/** Light, lossless-in-spirit normalization so trivially-equivalent URL spellings key together. */
+/**
+ * Light, lossless-in-spirit normalization so trivially-equivalent URL spellings key together.
+ * Known caveats (recorded on tasks/sync-cursor-store): ssh-vs-https spellings of one repo still
+ * FALSE-SPLIT, and `.git`-stripping can FALSE-MERGE two genuinely distinct remote paths. With the
+ * checkout root now in the key, both are far less load-bearing: a false-split only bites when the
+ * SAME checkout's own origin URL spelling changes (the state honestly re-derives from the
+ * first-sync baseline), and a false-merge can no longer merge two different clones' state — only
+ * the same checkout across a `repo`↔`repo.git` remote flip, which IS the same bundle.
+ */
 function normalizeRemoteUrl(url: string): string {
   let u = url.trim().replace(/\/+$/, "");
   if (u.endsWith(".git")) u = u.slice(0, -".git".length);
@@ -85,13 +119,15 @@ function normalizeSubpath(subpath: string): string {
 }
 
 /**
- * Derive the canonical per-bundle key string. Newline-separated fields (a newline can appear in
+ * Derive the canonical per-clone key string. Newline-separated fields (a newline can appear in
  * neither a git URL nor a path in practice), prefixed with the key kind so a remote-keyed and a
- * path-keyed bundle can never collide textually.
+ * path-keyed bundle can never collide textually. The checkout root is `resolve`d (one absolute
+ * spelling) but NOT realpath'd here — the store stays a pure serialization layer; a caller that
+ * can sit behind symlinks (sync does, via its board-path resolution) realpaths before keying.
  */
 export function bundleKey(src: BundleKeySource): string {
   if ("remoteUrl" in src) {
-    return `remote\n${normalizeRemoteUrl(src.remoteUrl)}\n${normalizeSubpath(src.subpath)}`;
+    return `remote\n${normalizeRemoteUrl(src.remoteUrl)}\n${normalizeSubpath(src.subpath)}\n${resolve(src.checkoutRoot)}`;
   }
   return `path\n${resolve(src.root)}`;
 }
@@ -115,8 +151,9 @@ export function syncStatePath(key: string, home: string = homedir()): string {
  * `~/.agentstate/sync/exports/<key-digest>` — the per-bundle directory sync's CONVERGING conflict
  * mechanic (U3b) exports the LOCAL version of each conflicted doc into ("yours saved at <path>").
  * Deliberately OUTSIDE any worktree (the board worktree must end every sync pristine) and under
- * the same per-bundle key discipline as the cursor/cache/marker state — exports for two different
- * bundles can never collide. Stable per doc (no per-run timestamp): a re-conflict on the same doc
+ * the same per-clone key discipline as the cursor/cache/marker state — exports for two different
+ * bundles (or two clones of ONE bundle: each clone's conflicted local version is its own "yours")
+ * can never collide. Stable per doc (no per-run timestamp): a re-conflict on the same doc
  * overwrites the export with the NEWER local version, which is what "yours" means at that point,
  * and nothing accumulates unboundedly. This module only names the path; the git layer creates it.
  */

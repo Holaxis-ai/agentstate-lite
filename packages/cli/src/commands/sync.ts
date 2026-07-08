@@ -686,18 +686,23 @@ export function originDocsBetween(boardPath: string, fromRef: string | null, toR
 }
 
 /**
- * The per-bundle cursor/cache/marker key (U2's `bundleKey`) for THIS board worktree: keyed by the
+ * The per-clone cursor/cache/marker key (U2's `bundleKey`) for THIS board worktree: keyed by the
  * `origin` remote URL (git worktrees share one remote config with their main worktree) with an
- * empty subpath (the board branch's root IS the bundle root — gate 2), falling back to the
- * absolute board path when no origin URL resolves (mirrors U2's own path fallback for a
- * remote-less repo).
+ * empty subpath (the board branch's root IS the bundle root — gate 2) PLUS the board worktree's
+ * own realpath as the checkout identity — two clones of one origin on one machine must never
+ * share a state file (PR#13 review, item 4: the shared file let clone A's clean sync erase clone
+ * B's stranded-unpushed backstop state). Falls back to the absolute board path alone when no
+ * origin URL resolves (U2's own path fallback for a remote-less repo). The realpath (via
+ * `realOrSame`) keeps the key stable across symlinked spellings of one checkout (macOS
+ * `/tmp` → `/private/tmp`, an aliased home) — same clone, same key, every invocation.
  */
 function resolveBundleKey(boardPath: string): string {
+  const checkoutRoot = realOrSame(boardPath);
   const r = runGit(boardPath, ["remote", "get-url", BOARD_REMOTE]);
   if (r.status === 0 && r.stdout.trim().length > 0) {
-    return bundleKey({ remoteUrl: r.stdout.trim(), subpath: "" });
+    return bundleKey({ remoteUrl: r.stdout.trim(), subpath: "", checkoutRoot });
   }
-  return bundleKey({ root: boardPath });
+  return bundleKey({ root: checkoutRoot });
 }
 
 /** The single actor when every committed doc shares one (mirrors `git.ts`'s commit-subject grammar). */

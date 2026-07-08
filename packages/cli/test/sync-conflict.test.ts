@@ -111,9 +111,15 @@ async function tempHomes(n: number): Promise<{ homes: string[]; cleanup: () => P
   };
 }
 
-/** The export path sync uses for `relPath` in `topo`'s shared bundle under `home`. */
+/**
+ * The export path sync uses for `relPath` under `home` — for CLONE B, the conflicting side in
+ * every scenario in this suite (exports are keyed per-clone now: remote + checkout root).
+ */
 function exportPathFor(topo: TwoCloneTopology, home: string, relPath: string): string {
-  return path.join(syncExportsDir(bundleKey({ remoteUrl: topo.origin, subpath: "" }), home), relPath);
+  return path.join(
+    syncExportsDir(bundleKey({ remoteUrl: topo.origin, subpath: "", checkoutRoot: topo.b.board }), home),
+    relPath,
+  );
 }
 
 /** Assert a board worktree ended a sync pristine: no mid-rebase state, no uncommitted changes. */
