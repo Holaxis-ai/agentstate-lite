@@ -3,7 +3,7 @@ type: Task
 title: >-
   new --link "<type>=<target>": one-step create+link riding the declared
   vocabulary
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Field feedback (generic form): create-then-link is two steps and the one place
@@ -17,6 +17,6 @@ description: >-
   roadmap-items/typed-relationships (create ordering/circularity is why
   create-then-link is two steps today).
 actor: mike/claude
-timestamp: '2026-07-08T22:57:52.359Z'
+timestamp: '2026-07-08T23:02:00.388Z'
 ---
 
