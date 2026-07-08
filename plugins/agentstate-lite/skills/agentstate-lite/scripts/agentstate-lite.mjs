@@ -9752,6 +9752,13 @@ async function list(argv, deps = {}) {
       const rawValue = entry.slice(eq + 1);
       const members = rawValue.split(",");
       if (members.some((m) => m === "")) {
+        if (!rawValue.includes(",")) {
+          throw new CliError(
+            "USAGE",
+            `--field ${key2} has an empty value \u2014 expected --field ${key2}=<value>, or comma-separated set membership --field ${key2}=a,b`,
+            { help: `${cliInvocation()} list --field status=done` }
+          );
+        }
         throw new CliError(
           "USAGE",
           `--field ${key2} has an empty member in '${rawValue}' (comma is the set-membership separator \u2014 use 'a,b', not 'a,,b' or a leading/trailing comma)`,

@@ -145,6 +145,18 @@ export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Pro
       const rawValue = entry.slice(eq + 1);
       const members = rawValue.split(",");
       if (members.some((m) => m === "")) {
+        // Two distinct typos share the "empty member" shape but deserve different wording: a
+        // BARE value (no comma at all, e.g. `--field status=`) is an empty value, not a
+        // set-membership mistake — tailor the message so it doesn't talk about commas the user
+        // never typed. Both stay a loud USAGE (exit 2): a silent count:0 on either typo would be
+        // a false negative for an agent scanning for a real match.
+        if (!rawValue.includes(",")) {
+          throw new CliError(
+            "USAGE",
+            `--field ${key} has an empty value — expected --field ${key}=<value>, or comma-separated set membership --field ${key}=a,b`,
+            { help: `${cliInvocation()} list --field status=done` },
+          );
+        }
         throw new CliError(
           "USAGE",
           `--field ${key} has an empty member in '${rawValue}' (comma is the set-membership separator — use 'a,b', not 'a,,b' or a leading/trailing comma)`,

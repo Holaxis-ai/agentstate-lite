@@ -436,6 +436,25 @@ test("list --field status=,done (leading empty member from a stray comma): USAGE
   }
 });
 
+test("list --field status= (bare, no comma at all): USAGE (exit 2) with the TAILORED empty-value message, not the comma-membership wording", async () => {
+  const { dir, cleanup } = await makeTwoKindBundle();
+  try {
+    await assert.rejects(
+      () => list(["--field", "status=", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.match((err as CliError).message, /has an empty value/);
+        assert.doesNotMatch((err as CliError).message, /comma is the set-membership separator/);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
 test("--field comma-OR over --remote: same result set as --dir (reader-side post-filter is transparent over the wire)", async () => {
   const { dir, cleanup } = await makeTwoKindBundle();
   try {
@@ -543,6 +562,78 @@ test("list --open: a bundle where NO kind declares any terminal set is a structu
       Array.isArray(help) && help.some((h) => /no kind declares terminal values — --open filtered nothing/.test(h)),
       `expected the --open no-op help line, got ${JSON.stringify(help)}`,
     );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("--open over --remote: same result set as --dir against a live serve() (the terminal-exclusion filter is transparent over the wire, same as the comma-OR post-filter)", async () => {
+  const { dir, cleanup } = await makeTerminalBundle();
+  try {
+    const handle: ServerHandle = await serve({ bundle: { root: dir }, port: 0 });
+    const url = `http://${handle.host}:${handle.port}`;
+    try {
+      const local = await runJson(["--type", "Task", "--open", "--dir", dir]);
+      const remote = await runJson(["--type", "Task", "--open", "--remote", url]);
+      assert.deepEqual(remote, local);
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("list --open: an ARRAY-valued terminal field (status: [todo, done]) is excluded — isTerminal matches on membership, never throws", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/task",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        title: "Task",
+        governs: "Task",
+        path: "tasks/",
+        fields: {
+          required: ["title"],
+          optional: ["status"],
+          values: { status: ["todo", "doing", "done"] },
+          terminal: { status: ["done"] },
+        },
+        timestamp: T,
+      },
+      body: "",
+    });
+    // An array-valued status (e.g. from a repeated --status flag) still counts as terminal if
+    // ANY member is a terminal value — the same membership semantics validateAgainstKind/matchesFilter use.
+    await writeDoc(bundle, {
+      id: "tasks/multi",
+      frontmatter: { type: "Task", title: "Multi", status: ["todo", "done"], timestamp: T },
+      body: "",
+    });
+    await writeDoc(bundle, {
+      id: "tasks/plain",
+      frontmatter: { type: "Task", title: "Plain", status: "todo", timestamp: T },
+      body: "",
+    });
+
+    const result = await runJson(["--type", "Task", "--open", "--dir", dir]);
+    assert.equal(result.count, 1, "the array-valued terminal doc must be excluded, no throw");
+    const rows = result.docs as Array<{ id: string }>;
+    assert.equal(rows[0]!.id, "tasks/plain");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("list --open --field status=done (contradictory): the --field push-down already narrows to terminal docs, so --open excludes all of them — definitive count:0, exit 0", async () => {
+  const { dir, cleanup } = await makeTerminalBundle();
+  try {
+    const result = await runJson(["--type", "Task", "--open", "--field", "status=done", "--dir", dir]);
+    assert.equal(result.count, 0);
+    assert.deepEqual(result.docs, []);
   } finally {
     await cleanup();
   }
