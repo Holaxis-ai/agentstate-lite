@@ -330,6 +330,153 @@ test("U3b: non-conflicted docs in the SAME sync still land locally, and the NEXT
   }
 });
 
+// ── review fix 1: non-ASCII paths through the FULL converge path ────────────────
+
+test("U3b fix 1: a NON-ASCII doc id (tasks/café) converges — no quotepath corruption, export byte-identical, reconcile chain clears", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(2);
+  const [homeA, homeB] = homes;
+  try {
+    // Seed the non-ASCII doc on the shared board first (A authors it, pushes; B pulls).
+    await writeBoardDoc(topo.a, "tasks/café", {
+      frontmatter: { type: "Task", title: "Café", actor: "mike" },
+      body: "# Café\n\nbase\n",
+    });
+    const seeded = await runSync(homeA!, ["--dir", topo.a.root]);
+    assert.equal(seeded.err, undefined, seeded.err?.message);
+    const bPull = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.equal(bPull.err, undefined, bPull.err?.message);
+
+    // Diverge it on both sides. With core.quotepath at git's default, the conflict list came back
+    // C-QUOTED ("tasks/caf\\303\\251.md", quotes included) and every per-path op then missed the
+    // real file — the export silently failed (a FALSE "your side deleted it"), cat-file misrouted
+    // modify→delete, and `git rm` failed pathspec → RUNTIME exit 1 on EVERY retry (the stuck-loop
+    // class this unit exists to kill).
+    await modifyBoardDoc(topo.a, "tasks/café", { body: "# Café\n\nA's café\n" });
+    const aSync = await runSync(homeA!, ["--dir", topo.a.root]);
+    assert.equal(aSync.err, undefined, aSync.err?.message);
+    await modifyBoardDoc(topo.b, "tasks/café", { body: "# Café\n\nB's café\n" });
+    const localBytes = await readBoardFile(topo.b, "tasks/café.md");
+
+    const conflicted = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.ok(conflicted.err, "expected the CONFLICT(5) terminal envelope, not a RUNTIME pathspec failure");
+    assert.equal(conflicted.err!.code, "CONFLICT", `got ${conflicted.err!.code}: ${conflicted.err!.message}`);
+    assert.ok(!conflicted.err!.message.includes("your side deleted it"), "no FALSE local-deletion claim");
+    assert.ok(!conflicted.err!.message.includes("\\303"), "no C-quoted escapes leak into the message");
+
+    // Kept upstream + exported byte-identically, exactly like an ASCII path.
+    assert.match(git(topo.b.board, ["show", "HEAD:tasks/café.md"]), /A's café/);
+    const exportPath = exportPathFor(topo, homeB!, "tasks/café.md");
+    assert.equal(await readFile(exportPath, "utf8"), localBytes, "export byte-identical to the local version");
+    assert.equal(isMidRebase(topo.b), false);
+    assertPristine(topo.b, "B after non-ASCII converge");
+
+    // The reconcile chain CLEARS it (the exact loop that used to be stuck forever).
+    const mergedFile = path.join(homeB!, "café-merged.md");
+    await writeFile(mergedFile, "# Café\n\nA's café\n\nB's café\n");
+    const updated = await runDoc(["update", "tasks/café", "--body-file", mergedFile, "--dir", topo.b.board]);
+    assert.equal(updated.err, undefined, updated.err?.message);
+    const cleared = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.equal(cleared.err, undefined, `the reconcile chain must clear the conflict: ${cleared.err?.message}`);
+    assert.match(git(topo.origin, ["show", "board:tasks/café.md"]), /A's café[\s\S]*B's café/);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+// ── review fix 2 + note 3: deletion conflicts, BOTH directions ──────────────────
+
+test("U3b deletion conflict (upstream deleted, local edited): deletion kept, yours exported, help points at doc write, re-create clears", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(2);
+  const [homeA, homeB] = homes;
+  try {
+    // A deletes the shared doc and pushes.
+    await deleteBoardDoc(topo.a, "tasks/seed-two");
+    const aSync = await runSync(homeA!, ["--dir", topo.a.root]);
+    assert.equal(aSync.err, undefined, aSync.err?.message);
+
+    // B edits the SAME doc (uncommitted) — a modify/delete conflict on B's sync.
+    await modifyBoardDoc(topo.b, "tasks/seed-two", { body: "# Seed two\n\nB's edit of a doc A deleted\n" });
+    const localBytes = await readBoardFile(topo.b, "tasks/seed-two.md");
+
+    const result = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.ok(result.err, "expected the CONFLICT(5) terminal envelope");
+    assert.equal(result.err!.code, "CONFLICT");
+    assert.ok(result.err!.message.includes("teammate's deletion kept"), `deletion framing in: ${result.err!.message}`);
+    assert.ok(result.err!.message.includes("re-create with doc write"), "points at doc write");
+    assert.ok(!result.err!.message.includes("reconcile with doc update"), "doc update would fail NOT_FOUND — never suggested");
+
+    // REVIEW FIX 2: the help chain must NOT emit `doc update` for a doc whose file is gone.
+    assert.ok(result.err!.help, "a re-create chain is offered");
+    assert.ok(result.err!.help!.includes("doc write tasks/seed-two"), `help: ${result.err!.help}`);
+    assert.ok(!result.err!.help!.includes("doc update"), "no doc-update chain for a deleted-upstream doc");
+
+    // The deletion LANDED (keep-upstream = the file is gone), yours exported byte-identically.
+    assert.notEqual(gitTry(topo.b.board, ["cat-file", "-e", "HEAD:tasks/seed-two.md"]).status, 0, "file gone at HEAD");
+    const exportPath = exportPathFor(topo, homeB!, "tasks/seed-two.md");
+    assert.equal(await readFile(exportPath, "utf8"), localBytes, "export byte-identical to the local version");
+    const rows = (result.err!.details as { conflicts: { rows: Array<Record<string, unknown>> } }).conflicts.rows;
+    assert.equal(rows[0]!.theirs, "kept (deleted upstream)");
+    assert.equal(rows[0]!.yours, exportPath);
+    assert.equal(isMidRebase(topo.b), false);
+    assertPristine(topo.b, "B after upstream-deletion converge");
+
+    // The re-create chain clears it: doc write (a fresh doc) → sync pushes, exit 0.
+    const recreated = await runDoc([
+      "write", "tasks/seed-two", "--type", "Task", "--title", "Seed two", "--body-file", exportPath, "--dir", topo.b.board,
+    ]);
+    assert.equal(recreated.err, undefined, recreated.err?.message);
+    const cleared = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.equal(cleared.err, undefined, cleared.err?.message);
+    assert.match(git(topo.origin, ["show", "board:tasks/seed-two.md"]), /B's edit of a doc A deleted/);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("U3b deletion conflict (local deleted, upstream edited): teammate's version restored, honest nothing-to-save line, no help chain", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(2);
+  const [homeA, homeB] = homes;
+  try {
+    // A edits the shared doc and pushes.
+    await modifyBoardDoc(topo.a, "tasks/seed-two", { body: "# Seed two\n\nA's edit of a doc B deleted\n" });
+    const aSync = await runSync(homeA!, ["--dir", topo.a.root]);
+    assert.equal(aSync.err, undefined, aSync.err?.message);
+
+    // B DELETES the same doc (uncommitted) — the inverted modify/delete conflict.
+    await deleteBoardDoc(topo.b, "tasks/seed-two");
+
+    const result = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.ok(result.err, "expected the CONFLICT(5) terminal envelope");
+    assert.equal(result.err!.code, "CONFLICT");
+    assert.ok(
+      result.err!.message.includes("teammate's version kept (your side deleted it; nothing to save)"),
+      `honest nothing-to-save line in: ${result.err!.message}`,
+    );
+    // No stage-3 blob existed → nothing exportable → no help chain (the line carries the story).
+    assert.equal(result.err!.help, undefined);
+
+    // The teammate's version was RESTORED on the board; nothing to export.
+    assert.match(git(topo.b.board, ["show", "HEAD:tasks/seed-two.md"]), /A's edit of a doc B deleted/);
+    const rows = (result.err!.details as { conflicts: { rows: Array<Record<string, unknown>> } }).conflicts.rows;
+    assert.equal(rows[0]!.theirs, "kept");
+    assert.equal(rows[0]!.yours, "deleted locally — nothing to save");
+    assert.equal(isMidRebase(topo.b), false);
+    assertPristine(topo.b, "B after local-deletion converge");
+
+    // Next sync is clean (B accepts the restoration) — nothing stranded.
+    const next = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.equal(next.err, undefined, next.err?.message);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
 // ── `sync --show-incoming <id>` — the conflict viewer matrix ────────────────────
 
 test("show-incoming: an existing upstream doc renders parsed frontmatter + body, labeled as of last fetch", async () => {

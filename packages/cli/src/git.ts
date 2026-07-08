@@ -20,6 +20,8 @@
  *   - Worktree internals via `git rev-parse --git-path` (`.git` is a FILE in a linked worktree).
  *   - Rename detection OFF (`--no-renames`): a doc's identity IS its path; add+delete is the true
  *     story. Explicit (not merely `-M` omitted) so a host `diff.renames=true` config cannot leak in.
+ *   - Path quoting OFF (`-c core.quotepath=off`): non-ASCII paths come back as raw UTF-8, never
+ *     C-quoted — parsed paths must round-trip back into git as pathspecs (see `runGit`'s header).
  *   - No raw git on stdout: every failure routes through `classifyGitError` (errors.ts) into the
  *     capped exit taxonomy.
  *
@@ -89,9 +91,20 @@ function gitEnv(rebase: boolean): NodeJS.ProcessEnv {
  * Run `git -C <dir> <args…>` under the porcelain invariants, TOLERATING a nonzero exit (the caller
  * inspects `status`). A spawn-level failure (no git binary, fired timeout) can never be a
  * legitimate outcome, so it THROWS the classified `CliError` (GIT_MISSING / TRANSIENT) directly.
+ *
+ * `-c core.quotepath=off` is a WRAPPER INVARIANT (U3b review fix 1): with git's default
+ * `core.quotepath=true`, any non-ASCII path (e.g. `tasks/café.md`) comes back C-QUOTED in
+ * diff/status output (`"tasks/caf\303\251.md"`, surrounding quotes included) — and every
+ * downstream parse that feeds the parsed string back into git as a path/pathspec (`show :3:<p>`,
+ * `checkout -- <p>`, `rm -- <p>`, `show <rev>:<p>`) then MISSES the real file. Off = raw UTF-8
+ * bytes out, exactly what the filesystem and pathspecs expect — killing the class for EVERY
+ * path-parsing consumer (name-status in stageAndCommit/changesSince, sync.ts's origin diff) at
+ * the one chokepoint, like LC_ALL=C does for prose. A truly hostile name (a TAB inside a
+ * filename would still break `--name-status`'s tab-split) is additionally handled by `-z` NUL
+ * framing where the stakes are a stuck loop (see `fetchRebaseResolving`'s conflict list).
  */
 export function runGit(dir: string, args: string[], opts: RunOptions = {}): GitRunResult {
-  const r = spawnSync("git", ["-C", dir, ...args], {
+  const r = spawnSync("git", ["-C", dir, "-c", "core.quotepath=off", ...args], {
     env: gitEnv(opts.rebase ?? false),
     encoding: "utf8",
     timeout: opts.timeoutMs ?? LOCAL_TIMEOUT_MS,
@@ -510,10 +523,13 @@ export function fetchRebaseResolving(boardPath: string, exportDir: string): Fetc
   if (r.status === 0) return { status: "clean" };
   if (!detectStaleRebase(boardPath)) throw classifyGitError(failureOf(["rebase", BOARD_REF], r));
 
+  // `-z` NUL framing (U3b review fix 1): the conflict list is the one parse whose corruption
+  // means a STUCK LOOP (a mis-parsed path fails `show :3:`/`checkout`/`rm` on every iteration),
+  // so it must be robust even against names the tab/newline-split parsers can't express — NUL
+  // output is raw and unquoted BY DEFINITION, independent of any quotepath setting.
   const listConflicted = (): string[] =>
-    mustGit(boardPath, ["diff", "--name-only", "--diff-filter=U"])
-      .split("\n")
-      .map((l) => l.trim())
+    mustGit(boardPath, ["diff", "--name-only", "-z", "--diff-filter=U"])
+      .split("\0")
       .filter((l) => l.length > 0);
 
   const byPath = new Map<string, ResolvedConflict>();

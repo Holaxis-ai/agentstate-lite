@@ -263,19 +263,41 @@ export function conflictLabel(entry: string): string {
 }
 
 /**
+ * A {@link ResolvedConflict} annotated with whether the kept-upstream version actually LANDED at
+ * HEAD (false = the teammate's side DELETED the file, so keep-upstream meant removing it). The
+ * one `cat-file -e HEAD:<path>` probe per conflict happens in {@link annotateLanded}; the message
+ * builder, the row projector, and the help-chain pick (review fix 2) all read the SAME answer —
+ * the help chain must never name a doc whose file is gone (`doc update` on it fails NOT_FOUND).
+ */
+export type LandedConflict = ResolvedConflict & { landed: boolean };
+
+/** Annotate each resolved conflict with the post-rebase HEAD existence probe (ONE probe per doc). */
+export function annotateLanded(boardPath: string, conflicts: ResolvedConflict[]): LandedConflict[] {
+  return conflicts.map((c) => ({
+    ...c,
+    landed: runGit(boardPath, ["cat-file", "-e", `HEAD:${c.relPath}`]).status === 0,
+  }));
+}
+
+/**
  * The converging mechanic's per-doc string (adjudication D, test-pinned): "teammate's version
  * kept; yours saved at <path> — reconcile with doc update", prefixed by the entry's label
- * ("doc <id>" for a concept doc; a reserved/raw path VERBATIM). Two builder judgment calls,
- * flagged in the report: (1) a reserved/raw path drops the "— reconcile with doc update" suffix
- * (there is no `doc update` verb for log.md — the kept-upstream/export mechanic still applied
- * identically); (2) a local-side DELETION (no stage-3 blob → nothing to export) says so honestly
- * instead of naming a file that doesn't exist. The DROPPED phrase "nothing was overwritten" stays
- * dropped (amended pack (c)).
+ * ("doc <id>" for a concept doc; a reserved/raw path VERBATIM). Builder judgment calls, flagged
+ * in the report: (1) a reserved/raw path drops the fixing-verb suffix (there is no `doc update`/
+ * `doc write` verb for log.md — the kept-upstream/export mechanic still applied identically);
+ * (2) a local-side DELETION (no stage-3 blob → nothing to export) says so honestly instead of
+ * naming a file that doesn't exist; (3) review fix 2: a doc DELETED UPSTREAM says "teammate's
+ * deletion kept" and points at `doc write` (re-create) — `doc update` on a doc whose file is
+ * gone fails NOT_FOUND. The DROPPED phrase "nothing was overwritten" stays dropped (pack (c)).
  */
-export function convergeDocLine(c: Pick<ResolvedConflict, "entry" | "isDoc" | "exportPath">): string {
+export function convergeDocLine(c: Pick<LandedConflict, "entry" | "isDoc" | "exportPath" | "landed">): string {
   const label = conflictLabel(c.entry);
   if (c.exportPath === null) {
     return `${label} — teammate's version kept (your side deleted it; nothing to save)`;
+  }
+  if (!c.landed) {
+    const recreate = c.isDoc ? " — re-create with doc write" : "";
+    return `${label} — teammate's deletion kept; yours saved at ${c.exportPath}${recreate}`;
   }
   const reconcile = c.isDoc ? " — reconcile with doc update" : "";
   return `${label} — teammate's version kept; yours saved at ${c.exportPath}${reconcile}`;
@@ -283,7 +305,7 @@ export function convergeDocLine(c: Pick<ResolvedConflict, "entry" | "isDoc" | "e
 
 /** The CONFLICT(5) envelope message: one converge line per conflicted entry, "; "-joined. */
 export function buildConvergeMessage(
-  conflicts: Array<Pick<ResolvedConflict, "entry" | "isDoc" | "exportPath">>,
+  conflicts: Array<Pick<LandedConflict, "entry" | "isDoc" | "exportPath" | "landed">>,
 ): string {
   return conflicts.map(convergeDocLine).join("; ");
 }
@@ -291,11 +313,32 @@ export function buildConvergeMessage(
 /**
  * The reconcile HELP CHAIN (amended pack (c)): view the kept incoming version, write your merged
  * version on top as a NEW doc update, then sync again — converges in one pass, loses nothing.
+ * Only ever built for a conflict whose kept version LANDED (review fix 2 — see {@link pickHelp}).
  */
 export function convergeHelp(inv: string, id: string, exportPath: string): string {
   return (
     `${inv} sync --show-incoming ${id} → ${inv} doc update ${id} --body-file ${exportPath} → ${inv} sync`
   );
+}
+
+/** The re-create chain for a doc DELETED upstream: `doc write` (a fresh doc), then sync. */
+export function recreateHelp(inv: string, id: string, exportPath: string): string {
+  return `${inv} doc write ${id} --type <Type> --body-file ${exportPath} → ${inv} sync`;
+}
+
+/**
+ * REVIEW FIX 2: pick the help chain from the ANNOTATED conflicts — prefer a doc whose kept
+ * version LANDED (the `doc update` reconcile chain is directly runnable for it); when every
+ * conflicted doc was deleted upstream, fall back to the `doc write` re-create chain for the
+ * first one that has an export. No exportable doc at all → no help (the message lines carry
+ * the per-doc disposition).
+ */
+export function pickHelp(inv: string, conflicts: LandedConflict[]): string | undefined {
+  const reconcilable = conflicts.find((c) => c.isDoc && c.exportPath !== null && c.landed);
+  if (reconcilable) return convergeHelp(inv, reconcilable.entry, reconcilable.exportPath!);
+  const recreatable = conflicts.find((c) => c.isDoc && c.exportPath !== null);
+  if (recreatable) return recreateHelp(inv, recreatable.entry, recreatable.exportPath!);
+  return undefined;
 }
 
 /**
@@ -324,15 +367,15 @@ function keptDocMeta(boardPath: string, relPath: string): { kind?: string; title
  * Project the resolved conflicts into the envelope's row shape (amended pack (c)):
  * `{id|path, kind, title, yours, theirs}` — `yours` is the export file's absolute path (the
  * directly actionable `doc update --body-file` argument), `theirs` names the disposition of the
- * teammate's version ("kept" — it is what's on the board now).
+ * teammate's version ("kept" — it is what's on the board now; "kept (deleted upstream)" when
+ * keeping it meant removing the file).
  */
-export function toConflictRows(boardPath: string, conflicts: ResolvedConflict[]): Record<string, unknown>[] {
+export function toConflictRows(boardPath: string, conflicts: LandedConflict[]): Record<string, unknown>[] {
   return conflicts.map((c) => {
     const row: Record<string, unknown> = c.isDoc ? { id: c.entry } : { path: c.entry };
     if (c.isDoc) Object.assign(row, keptDocMeta(boardPath, c.relPath));
     row.yours = c.exportPath !== null ? c.exportPath : "deleted locally — nothing to save";
-    const landed = runGit(boardPath, ["cat-file", "-e", `HEAD:${c.relPath}`]).status === 0;
-    row.theirs = landed ? "kept" : "kept (deleted upstream)";
+    row.theirs = c.landed ? "kept" : "kept (deleted upstream)";
     return row;
   });
 }
@@ -768,14 +811,14 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
       // state: the push is deliberately SKIPPED — the documented reconcile chain's next `sync`
       // (after `doc update <id> --body-file <export>`) commits the merged version and pushes
       // everything in one pass.
-      const conflicts = rebaseOutcome.conflicts;
+      // ONE landed probe per conflict feeds the message lines, the rows, AND the help-chain pick
+      // (review fix 2: the chain must never name a doc whose kept version is a deletion).
+      const conflicts = annotateLanded(boardPath, rebaseOutcome.conflicts);
       const rows = toConflictRows(boardPath, conflicts);
-      const firstReconcilable = conflicts.find((c) => c.isDoc && c.exportPath !== null);
+      const help = pickHelp(inv, conflicts);
       const conflictErr = new CliError("CONFLICT", buildConvergeMessage(conflicts), {
         details: { conflicts: cap(rows, limit) },
-        ...(firstReconcilable
-          ? { help: convergeHelp(inv, firstReconcilable.entry, firstReconcilable.exportPath!) }
-          : {}),
+        ...(help ? { help } : {}),
       });
       // Finding 3 composition (unchanged from U3a): when THIS run committed, the safety prefix
       // ("committed to the board locally — your work is saved.") composes onto the converge

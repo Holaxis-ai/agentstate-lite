@@ -11917,7 +11917,7 @@ function gitEnv(rebase) {
   return env;
 }
 function runGit(dir, args, opts = {}) {
-  const r = spawnSync("git", ["-C", dir, ...args], {
+  const r = spawnSync("git", ["-C", dir, "-c", "core.quotepath=off", ...args], {
     env: gitEnv(opts.rebase ?? false),
     encoding: "utf8",
     timeout: opts.timeoutMs ?? LOCAL_TIMEOUT_MS,
@@ -12096,7 +12096,7 @@ function fetchRebaseResolving(boardPath, exportDir) {
   const r = runGit(boardPath, ["rebase", BOARD_REF], { rebase: true, timeoutMs: NETWORK_TIMEOUT_MS });
   if (r.status === 0) return { status: "clean" };
   if (!detectStaleRebase(boardPath)) throw classifyGitError(failureOf(["rebase", BOARD_REF], r));
-  const listConflicted = () => mustGit(boardPath, ["diff", "--name-only", "--diff-filter=U"]).split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  const listConflicted = () => mustGit(boardPath, ["diff", "--name-only", "-z", "--diff-filter=U"]).split("\0").filter((l) => l.length > 0);
   const byPath = /* @__PURE__ */ new Map();
   try {
     let stops = 0;
@@ -12460,10 +12460,20 @@ function isRawPathEntry(entry) {
 function conflictLabel(entry) {
   return isRawPathEntry(entry) ? entry : `doc ${entry}`;
 }
+function annotateLanded(boardPath, conflicts) {
+  return conflicts.map((c) => ({
+    ...c,
+    landed: runGit(boardPath, ["cat-file", "-e", `HEAD:${c.relPath}`]).status === 0
+  }));
+}
 function convergeDocLine(c) {
   const label = conflictLabel(c.entry);
   if (c.exportPath === null) {
     return `${label} \u2014 teammate's version kept (your side deleted it; nothing to save)`;
+  }
+  if (!c.landed) {
+    const recreate = c.isDoc ? " \u2014 re-create with doc write" : "";
+    return `${label} \u2014 teammate's deletion kept; yours saved at ${c.exportPath}${recreate}`;
   }
   const reconcile = c.isDoc ? " \u2014 reconcile with doc update" : "";
   return `${label} \u2014 teammate's version kept; yours saved at ${c.exportPath}${reconcile}`;
@@ -12473,6 +12483,16 @@ function buildConvergeMessage(conflicts) {
 }
 function convergeHelp(inv, id, exportPath) {
   return `${inv} sync --show-incoming ${id} \u2192 ${inv} doc update ${id} --body-file ${exportPath} \u2192 ${inv} sync`;
+}
+function recreateHelp(inv, id, exportPath) {
+  return `${inv} doc write ${id} --type <Type> --body-file ${exportPath} \u2192 ${inv} sync`;
+}
+function pickHelp(inv, conflicts) {
+  const reconcilable = conflicts.find((c) => c.isDoc && c.exportPath !== null && c.landed);
+  if (reconcilable) return convergeHelp(inv, reconcilable.entry, reconcilable.exportPath);
+  const recreatable = conflicts.find((c) => c.isDoc && c.exportPath !== null);
+  if (recreatable) return recreateHelp(inv, recreatable.entry, recreatable.exportPath);
+  return void 0;
 }
 function keptDocMeta(boardPath, relPath) {
   const shown = runGit(boardPath, ["show", `HEAD:${relPath}`]);
@@ -12494,8 +12514,7 @@ function toConflictRows(boardPath, conflicts) {
     const row = c.isDoc ? { id: c.entry } : { path: c.entry };
     if (c.isDoc) Object.assign(row, keptDocMeta(boardPath, c.relPath));
     row.yours = c.exportPath !== null ? c.exportPath : "deleted locally \u2014 nothing to save";
-    const landed = runGit(boardPath, ["cat-file", "-e", `HEAD:${c.relPath}`]).status === 0;
-    row.theirs = landed ? "kept" : "kept (deleted upstream)";
+    row.theirs = c.landed ? "kept" : "kept (deleted upstream)";
     return row;
   });
 }
@@ -12767,12 +12786,12 @@ async function sync(argv, deps = {}) {
       throw await throwPostCommitFailure(enriched, commitResult.committed, key2, boardPath);
     }
     if (rebaseOutcome.status === "resolved") {
-      const conflicts = rebaseOutcome.conflicts;
+      const conflicts = annotateLanded(boardPath, rebaseOutcome.conflicts);
       const rows = toConflictRows(boardPath, conflicts);
-      const firstReconcilable = conflicts.find((c) => c.isDoc && c.exportPath !== null);
+      const help = pickHelp(inv, conflicts);
       const conflictErr = new CliError("CONFLICT", buildConvergeMessage(conflicts), {
         details: { conflicts: cap2(rows, limit) },
-        ...firstReconcilable ? { help: convergeHelp(inv, firstReconcilable.entry, firstReconcilable.exportPath) } : {}
+        ...help ? { help } : {}
       });
       throw await throwPostCommitFailure(conflictErr, commitResult.committed, key2, boardPath);
     }

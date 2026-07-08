@@ -30,6 +30,7 @@ import {
   ffSwallowToError,
   isRawPathEntry,
   originDocsBetween,
+  pickHelp,
   pushFailureMessage,
   singleActor,
   sync,
@@ -128,7 +129,7 @@ test("cap: shows all rows under the limit; caps + reports total over it; 0 means
 
 test("convergeDocLine: concept doc, EXACT test-pinned per-doc string (adjudication D)", () => {
   assert.equal(
-    convergeDocLine({ entry: "tasks/seed-one", isDoc: true, exportPath: "/x/tasks/seed-one.md" }),
+    convergeDocLine({ entry: "tasks/seed-one", isDoc: true, exportPath: "/x/tasks/seed-one.md", landed: true }),
     "doc tasks/seed-one — teammate's version kept; yours saved at /x/tasks/seed-one.md — reconcile with doc update",
   );
 });
@@ -138,7 +139,7 @@ test("convergeDocLine: a reserved-file entry (log.md) renders VERBATIM — never
   assert.equal(isRawPathEntry("tasks/seed-one"), false);
   assert.equal(conflictLabel("log.md"), "log.md");
   assert.equal(conflictLabel("tasks/seed-one"), "doc tasks/seed-one");
-  const line = convergeDocLine({ entry: "log.md", isDoc: false, exportPath: "/x/log.md" });
+  const line = convergeDocLine({ entry: "log.md", isDoc: false, exportPath: "/x/log.md", landed: true });
   assert.equal(line, "log.md — teammate's version kept; yours saved at /x/log.md");
   assert.ok(!line.includes("doc log.md"), `expected no "doc log.md" in: ${line}`);
   assert.ok(!line.includes("reconcile with doc update"), "no doc-update reconcile hint for a reserved file");
@@ -146,15 +147,24 @@ test("convergeDocLine: a reserved-file entry (log.md) renders VERBATIM — never
 
 test("convergeDocLine: a local-side deletion (no export) says so honestly instead of naming a missing file", () => {
   assert.equal(
-    convergeDocLine({ entry: "tasks/seed-one", isDoc: true, exportPath: null }),
+    convergeDocLine({ entry: "tasks/seed-one", isDoc: true, exportPath: null, landed: true }),
     "doc tasks/seed-one — teammate's version kept (your side deleted it; nothing to save)",
   );
 });
 
+test("convergeDocLine: a doc DELETED UPSTREAM says 'deletion kept' and points at doc write, never doc update (review fix 2)", () => {
+  const line = convergeDocLine({ entry: "tasks/seed-one", isDoc: true, exportPath: "/x/tasks/seed-one.md", landed: false });
+  assert.equal(
+    line,
+    "doc tasks/seed-one — teammate's deletion kept; yours saved at /x/tasks/seed-one.md — re-create with doc write",
+  );
+  assert.ok(!line.includes("doc update"), "doc update on a deleted doc fails NOT_FOUND — never suggested here");
+});
+
 test("buildConvergeMessage: multiple entries join with '; ', and the DROPPED phrase stays dropped (amended pack c)", () => {
   const msg = buildConvergeMessage([
-    { entry: "tasks/seed-one", isDoc: true, exportPath: "/x/tasks/seed-one.md" },
-    { entry: "log.md", isDoc: false, exportPath: "/x/log.md" },
+    { entry: "tasks/seed-one", isDoc: true, exportPath: "/x/tasks/seed-one.md", landed: true },
+    { entry: "log.md", isDoc: false, exportPath: "/x/log.md", landed: true },
   ]);
   assert.equal(
     msg,
@@ -169,6 +179,25 @@ test("convergeHelp: the documented reconcile chain — show-incoming → doc upd
     convergeHelp("aslite", "tasks/seed-one", "/x/tasks/seed-one.md"),
     "aslite sync --show-incoming tasks/seed-one → aslite doc update tasks/seed-one --body-file /x/tasks/seed-one.md → aslite sync",
   );
+});
+
+test("pickHelp: prefers a LANDED doc; falls back to the doc-write re-create chain; none exportable → no help (review fix 2)", () => {
+  const landed = { relPath: "tasks/a.md", entry: "tasks/a", isDoc: true, exportPath: "/x/tasks/a.md", landed: true };
+  const deletedUpstream = { relPath: "tasks/b.md", entry: "tasks/b", isDoc: true, exportPath: "/x/tasks/b.md", landed: false };
+  const localDeletion = { relPath: "tasks/c.md", entry: "tasks/c", isDoc: true, exportPath: null, landed: true };
+
+  // A deleted-upstream doc listed FIRST must not win over a landed one.
+  assert.equal(
+    pickHelp("aslite", [deletedUpstream, landed]),
+    "aslite sync --show-incoming tasks/a → aslite doc update tasks/a --body-file /x/tasks/a.md → aslite sync",
+  );
+  // Every conflicted doc deleted upstream → the doc-write re-create chain.
+  assert.equal(
+    pickHelp("aslite", [deletedUpstream]),
+    "aslite doc write tasks/b --type <Type> --body-file /x/tasks/b.md → aslite sync",
+  );
+  // Nothing exportable at all → no help.
+  assert.equal(pickHelp("aslite", [localDeletion]), undefined);
 });
 
 test("ffSwallowToError: git-missing / no-upstream reuse the EXACT test-pinned wording (message pack f)", () => {
