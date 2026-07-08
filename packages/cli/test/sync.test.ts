@@ -305,6 +305,56 @@ test("sync: INTERIM conflict guard — exit 5, pristine worktree, the exact stri
   }
 });
 
+test("sync: commit-then-conflict — the run's OWN commit lands, then the envelope composes the safety framing with the EXACT interim string", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(2);
+  const [, homeB] = homes;
+  try {
+    // A commits + pushes a change to the shared seed doc.
+    await modifyBoardDoc(topo.a, "tasks/seed-one", { body: "# Seed one\n\nA's version.\n" });
+    commitBoard(topo.a, "board: alice — updated tasks/seed-one");
+    pushBoard(topo.a);
+    const originAfterA = originBoardHead(topo);
+
+    // B edits the SAME doc but does NOT commit. Unlike the pure-guard test above (where
+    // divergeSameDoc pre-commits both sides and stageAndCommit no-ops), sync's own commit step
+    // must land B's work THIS run (committedThisRun = true) BEFORE the rebase hits the conflict —
+    // the most common real entry into a conflict: a founder's `doc update` leaves uncommitted
+    // changes and sync sweeps them up.
+    await modifyBoardDoc(topo.b, "tasks/seed-one", { body: "# Seed one\n\nB's conflicting version.\n" });
+    assert.notEqual(gitTry(topo.b.board, ["status", "--porcelain"]).stdout, "", "sanity: B's edit is UNCOMMITTED before sync");
+    const beforeHead = boardHead(topo.b);
+
+    const result = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.ok(result.err, "expected a thrown CliError");
+    assert.equal(result.err!.code, "CONFLICT");
+    assert.equal(result.err!.exitCode, 5);
+    // The composite, pinned EXACTLY: safety framing first — made TRUE by the commit asserted
+    // below — then the interim-guard string passes through UNCHANGED as the suffix.
+    assert.equal(
+      result.err!.message,
+      "committed to the board locally — your work is saved. " +
+        "doc tasks/seed-one changed on both sides — nothing was changed on either side; " +
+        "conflict resolution ships in the next update",
+    );
+    assert.ok(JSON.stringify(result.err!.details ?? {}).includes("tasks/seed-one"), "conflict rows carry the doc id");
+
+    // "your work is saved" is TRUE: sync's own commit landed and survived the aborted rebase.
+    const afterHead = boardHead(topo.b);
+    assert.notEqual(afterHead, beforeHead, "sync committed B's work this run");
+    assert.match(git(topo.b.board, ["show", "HEAD:tasks/seed-one.md"]), /B's conflicting version/);
+
+    // And every interim-guard invariant holds on the composite path too: clean abort, pristine
+    // worktree, nothing moved on either side (origin untouched, no export file anywhere).
+    assert.equal(isMidRebase(topo.b), false);
+    assert.equal(gitTry(topo.b.board, ["status", "--porcelain"]).stdout, "", "worktree pristine after the clean abort");
+    assert.equal(originBoardHead(topo), originAfterA, "origin/board untouched by B's conflicted sync");
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
 test("sync: push-fail after a successful commit -> PARTIAL envelope leading with safety, exit 1, work stays committed locally", async () => {
   const topo = await makeTwoCloneTopology();
   const { homes, cleanup } = await tempHomes(1);
