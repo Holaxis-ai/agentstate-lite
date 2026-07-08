@@ -24,11 +24,10 @@ import path from "node:path";
 import {
   buildConvergeMessage,
   cap,
-  conflictLabel,
   convergeDocLine,
   convergeHelp,
+  entryLabel,
   ffSwallowToError,
-  isRawPathEntry,
   originDocsBetween,
   pickHelp,
   pushFailureMessage,
@@ -134,11 +133,14 @@ test("convergeDocLine: concept doc, EXACT test-pinned per-doc string (adjudicati
   );
 });
 
+test("entryLabel: driven by the EXPLICIT isDoc discriminator — a dotted doc id labels as a doc (round-2 REQUIRED 2)", () => {
+  assert.equal(entryLabel({ entry: "log.md", isDoc: false }), "log.md");
+  assert.equal(entryLabel({ entry: "tasks/seed-one", isDoc: true }), "doc tasks/seed-one");
+  // The retired string-shape heuristic misread this as a raw path; the discriminator cannot.
+  assert.equal(entryLabel({ entry: "notes/v1.2", isDoc: true }), "doc notes/v1.2");
+});
+
 test("convergeDocLine: a reserved-file entry (log.md) renders VERBATIM — never 'doc log.md' — and drops the reconcile suffix", () => {
-  assert.equal(isRawPathEntry("log.md"), true);
-  assert.equal(isRawPathEntry("tasks/seed-one"), false);
-  assert.equal(conflictLabel("log.md"), "log.md");
-  assert.equal(conflictLabel("tasks/seed-one"), "doc tasks/seed-one");
   const line = convergeDocLine({ entry: "log.md", isDoc: false, exportPath: "/x/log.md", landed: true });
   assert.equal(line, "log.md — teammate's version kept; yours saved at /x/log.md");
   assert.ok(!line.includes("doc log.md"), `expected no "doc log.md" in: ${line}`);
@@ -181,23 +183,38 @@ test("convergeHelp: the documented reconcile chain — show-incoming → doc upd
   );
 });
 
-test("pickHelp: prefers a LANDED doc; falls back to the doc-write re-create chain; none exportable → no help (review fix 2)", () => {
-  const landed = { relPath: "tasks/a.md", entry: "tasks/a", isDoc: true, exportPath: "/x/tasks/a.md", landed: true };
-  const deletedUpstream = { relPath: "tasks/b.md", entry: "tasks/b", isDoc: true, exportPath: "/x/tasks/b.md", landed: false };
-  const localDeletion = { relPath: "tasks/c.md", entry: "tasks/c", isDoc: true, exportPath: null, landed: true };
+test("pickHelp: prefers a LANDED doc; falls back to the doc-write re-create chain; none usable → no help (review fix 2 + round-2 REQUIRED 3)", () => {
+  const landed = {
+    relPath: "tasks/a.md", entry: "tasks/a", isDoc: true,
+    exportPath: "/x/tasks/a.md", bodyExportPath: "/x/tasks/a.body.md", landed: true,
+  };
+  const deletedUpstream = {
+    relPath: "tasks/b.md", entry: "tasks/b", isDoc: true,
+    exportPath: "/x/tasks/b.md", bodyExportPath: "/x/tasks/b.body.md", landed: false,
+  };
+  const localDeletion = {
+    relPath: "tasks/c.md", entry: "tasks/c", isDoc: true,
+    exportPath: null, bodyExportPath: null, landed: true,
+  };
+  const unparseable = {
+    relPath: "tasks/d.md", entry: "tasks/d", isDoc: true,
+    exportPath: "/x/tasks/d.md", bodyExportPath: null, landed: true,
+  };
 
-  // A deleted-upstream doc listed FIRST must not win over a landed one.
+  // A deleted-upstream doc listed FIRST must not win over a landed one — and the chain names the
+  // BODY-ONLY export (round-2 REQUIRED 3: `--body-file` input, literally executable).
   assert.equal(
     pickHelp("aslite", [deletedUpstream, landed]),
-    "aslite sync --show-incoming tasks/a → aslite doc update tasks/a --body-file /x/tasks/a.md → aslite sync",
+    "aslite sync --show-incoming tasks/a → aslite doc update tasks/a --body-file /x/tasks/a.body.md → aslite sync",
   );
-  // Every conflicted doc deleted upstream → the doc-write re-create chain.
+  // Every conflicted doc deleted upstream → the doc-write re-create chain (body export again).
   assert.equal(
     pickHelp("aslite", [deletedUpstream]),
-    "aslite doc write tasks/b --type <Type> --body-file /x/tasks/b.md → aslite sync",
+    "aslite doc write tasks/b --type <Type> --body-file /x/tasks/b.body.md → aslite sync",
   );
-  // Nothing exportable at all → no help.
+  // Nothing usable at all (no export, or no BODY export to feed --body-file) → no help.
   assert.equal(pickHelp("aslite", [localDeletion]), undefined);
+  assert.equal(pickHelp("aslite", [unparseable]), undefined);
 });
 
 test("ffSwallowToError: git-missing / no-upstream reuse the EXACT test-pinned wording (message pack f)", () => {
@@ -409,16 +426,23 @@ test("sync: CONVERGING conflict (pre-committed divergence) — exit 5, upstream 
     const exported = await readFile(exportPath, "utf8");
     assert.equal(exported, localBytes, "export file byte-identical to the local version");
 
-    // The envelope rows carry {id, kind, title, yours, theirs} + the help chain (amended pack c).
+    // The envelope rows carry {id, kind, title, yours, yours_body, theirs} + the help chain
+    // (amended pack c; round-2 REQUIRED 3: the chain consumes the BODY-ONLY export).
+    const bodyExportPath = exportPath.replace(/\.md$/, ".body.md");
     const conflicts = (result.err!.details as { conflicts: { rows: Record<string, unknown>[] } }).conflicts;
     assert.equal(conflicts.rows.length, 1);
     assert.equal(conflicts.rows[0]!.id, div.docId);
     assert.equal(conflicts.rows[0]!.kind, "Task");
     assert.equal(conflicts.rows[0]!.title, "Seed one");
     assert.equal(conflicts.rows[0]!.yours, exportPath);
+    assert.equal(conflicts.rows[0]!.yours_body, bodyExportPath);
     assert.equal(conflicts.rows[0]!.theirs, "kept");
     assert.ok(result.err!.help!.includes(`sync --show-incoming ${div.docId}`), "help chain step 1");
-    assert.ok(result.err!.help!.includes(`doc update ${div.docId} --body-file ${exportPath}`), "help chain step 2");
+    assert.ok(result.err!.help!.includes(`doc update ${div.docId} --body-file ${bodyExportPath}`), "help chain step 2 (body-only input)");
+    // The body-only companion really is body-only (no YAML frontmatter to nest).
+    const bodyExport = await readFile(bodyExportPath, "utf8");
+    assert.ok(!bodyExport.startsWith("---"), "body export carries no frontmatter block");
+    assert.match(bodyExport, /changed by B/);
 
     // Nothing moved on origin's side.
     assert.equal(originBoardHead(topo), div.aHead, "origin/board untouched by B's conflicted sync");

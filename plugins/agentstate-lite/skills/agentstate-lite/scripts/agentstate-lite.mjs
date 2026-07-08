@@ -11888,7 +11888,7 @@ async function ui(argv, deps = {}) {
 }
 
 // src/commands/sync.ts
-import { existsSync as existsSync4, realpathSync as realpathSync5 } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync4, realpathSync as realpathSync5 } from "node:fs";
 import { promises as fs10 } from "node:fs";
 import path9 from "node:path";
 import { parseArgs as parseArgs22 } from "node:util";
@@ -11917,28 +11917,33 @@ function gitEnv(rebase) {
   return env;
 }
 function runGit(dir, args, opts = {}) {
+  const r = runGitBytes(dir, args, opts);
+  return { status: r.status, stdout: r.stdout.toString("utf8"), stderr: r.stderr };
+}
+function runGitBytes(dir, args, opts = {}) {
   const r = spawnSync("git", ["-C", dir, "-c", "core.quotepath=off", ...args], {
     env: gitEnv(opts.rebase ?? false),
-    encoding: "utf8",
     timeout: opts.timeoutMs ?? LOCAL_TIMEOUT_MS,
     input: opts.input,
     maxBuffer: 32 * 1024 * 1024
   });
+  const stdout = r.stdout ?? Buffer.alloc(0);
+  const stderr = (r.stderr ?? Buffer.alloc(0)).toString("utf8");
   if (r.error) {
     const code = r.error.code;
     throw classifyGitError({
       args,
       status: r.status ?? null,
-      stdout: r.stdout ?? "",
-      stderr: r.stderr ?? "",
+      stdout: stdout.toString("utf8"),
+      stderr,
       timedOut: code === "ETIMEDOUT",
       spawnErrorCode: code ?? "SPAWN"
     });
   }
   if (r.status === null) {
-    throw classifyGitError({ args, status: null, stdout: r.stdout ?? "", stderr: r.stderr ?? "", timedOut: true });
+    throw classifyGitError({ args, status: null, stdout: stdout.toString("utf8"), stderr, timedOut: true });
   }
-  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  return { status: r.status, stdout, stderr };
 }
 function failureOf(args, r) {
   return { args, status: r.status, stdout: r.stdout, stderr: r.stderr };
@@ -12113,12 +12118,23 @@ function fetchRebaseResolving(boardPath, exportDir) {
         continue;
       }
       for (const relPath of conflicted) {
-        const local = runGit(boardPath, ["show", `:3:${relPath}`]);
+        const local = runGitBytes(boardPath, ["show", `:3:${relPath}`]);
         let exportPath = null;
+        let bodyExportPath = null;
+        const isDoc = isConceptDocPath(relPath);
         if (local.status === 0) {
           exportPath = path8.join(exportDir, relPath);
           mkdirSync2(path8.dirname(exportPath), { recursive: true, mode: 448 });
           writeFileSync2(exportPath, local.stdout, { mode: 384 });
+          if (isDoc) {
+            try {
+              const { body } = parseMarkdown(local.stdout.toString("utf8"), relPath);
+              bodyExportPath = exportPath.replace(/\.md$/, ".body.md");
+              writeFileSync2(bodyExportPath, body, { mode: 384 });
+            } catch {
+              bodyExportPath = null;
+            }
+          }
         }
         if (runGit(boardPath, ["cat-file", "-e", `refs/remotes/${BOARD_REF}:${relPath}`]).status === 0) {
           mustGit(boardPath, ["checkout", BOARD_REF, "--", relPath]);
@@ -12128,9 +12144,10 @@ function fetchRebaseResolving(boardPath, exportDir) {
         }
         byPath.set(relPath, {
           relPath,
-          entry: isConceptDocPath(relPath) ? conceptIdFromPath(relPath) : relPath,
-          isDoc: isConceptDocPath(relPath),
-          exportPath
+          entry: isDoc ? conceptIdFromPath(relPath) : relPath,
+          isDoc,
+          exportPath,
+          bodyExportPath
         });
       }
       const cont = runGit(boardPath, ["rebase", "--continue"], { rebase: true });
@@ -12453,12 +12470,8 @@ async function throwPostCommitFailure(err, committedThisRun, key2, boardPath) {
   });
   throw wrapped;
 }
-function isRawPathEntry(entry) {
-  const base = entry.split("/").pop() ?? entry;
-  return base.includes(".");
-}
-function conflictLabel(entry) {
-  return isRawPathEntry(entry) ? entry : `doc ${entry}`;
+function entryLabel(c) {
+  return c.isDoc ? `doc ${c.entry}` : c.entry;
 }
 function annotateLanded(boardPath, conflicts) {
   return conflicts.map((c) => ({
@@ -12467,7 +12480,7 @@ function annotateLanded(boardPath, conflicts) {
   }));
 }
 function convergeDocLine(c) {
-  const label = conflictLabel(c.entry);
+  const label = entryLabel(c);
   if (c.exportPath === null) {
     return `${label} \u2014 teammate's version kept (your side deleted it; nothing to save)`;
   }
@@ -12481,17 +12494,17 @@ function convergeDocLine(c) {
 function buildConvergeMessage(conflicts) {
   return conflicts.map(convergeDocLine).join("; ");
 }
-function convergeHelp(inv, id, exportPath) {
-  return `${inv} sync --show-incoming ${id} \u2192 ${inv} doc update ${id} --body-file ${exportPath} \u2192 ${inv} sync`;
+function convergeHelp(inv, id, bodyExportPath) {
+  return `${inv} sync --show-incoming ${id} \u2192 ${inv} doc update ${id} --body-file ${bodyExportPath} \u2192 ${inv} sync`;
 }
-function recreateHelp(inv, id, exportPath) {
-  return `${inv} doc write ${id} --type <Type> --body-file ${exportPath} \u2192 ${inv} sync`;
+function recreateHelp(inv, id, bodyExportPath) {
+  return `${inv} doc write ${id} --type <Type> --body-file ${bodyExportPath} \u2192 ${inv} sync`;
 }
 function pickHelp(inv, conflicts) {
-  const reconcilable = conflicts.find((c) => c.isDoc && c.exportPath !== null && c.landed);
-  if (reconcilable) return convergeHelp(inv, reconcilable.entry, reconcilable.exportPath);
-  const recreatable = conflicts.find((c) => c.isDoc && c.exportPath !== null);
-  if (recreatable) return recreateHelp(inv, recreatable.entry, recreatable.exportPath);
+  const reconcilable = conflicts.find((c) => c.isDoc && c.bodyExportPath !== null && c.landed);
+  if (reconcilable) return convergeHelp(inv, reconcilable.entry, reconcilable.bodyExportPath);
+  const recreatable = conflicts.find((c) => c.isDoc && c.bodyExportPath !== null);
+  if (recreatable) return recreateHelp(inv, recreatable.entry, recreatable.bodyExportPath);
   return void 0;
 }
 function keptDocMeta(boardPath, relPath) {
@@ -12509,11 +12522,28 @@ function keptDocMeta(boardPath, relPath) {
     return {};
   }
 }
+function frontmatterDiffKeys(boardPath, c) {
+  if (!c.isDoc || c.exportPath === null || !c.landed) return [];
+  try {
+    const local = parseMarkdown(readFileSync4(c.exportPath, "utf8"), c.relPath).frontmatter;
+    const shown = runGit(boardPath, ["show", `HEAD:${c.relPath}`]);
+    if (shown.status !== 0) return [];
+    const kept = parseMarkdown(shown.stdout, c.relPath).frontmatter;
+    const keys = /* @__PURE__ */ new Set([...Object.keys(local), ...Object.keys(kept)]);
+    keys.delete("timestamp");
+    return [...keys].filter((k) => JSON.stringify(local[k]) !== JSON.stringify(kept[k])).sort();
+  } catch {
+    return [];
+  }
+}
 function toConflictRows(boardPath, conflicts) {
   return conflicts.map((c) => {
     const row = c.isDoc ? { id: c.entry } : { path: c.entry };
     if (c.isDoc) Object.assign(row, keptDocMeta(boardPath, c.relPath));
     row.yours = c.exportPath !== null ? c.exportPath : "deleted locally \u2014 nothing to save";
+    if (c.bodyExportPath !== null) row.yours_body = c.bodyExportPath;
+    const diff = frontmatterDiffKeys(boardPath, c);
+    if (diff.length > 0) row.frontmatter_differs = diff;
     row.theirs = c.landed ? "kept" : "kept (deleted upstream)";
     return row;
   });
@@ -12896,40 +12926,45 @@ async function showIncoming(id, values, deps) {
         { details: { state: "no-repo" } }
       );
     }
-    let relPath;
-    if (isRawPathEntry(id)) {
-      if (path9.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
-        throw new CliError("USAGE", `--show-incoming needs a repo-relative path without '..' segments: ${id}`);
-      }
-      relPath = id;
-    } else {
-      try {
-        assertSafeConceptId(id);
-      } catch (err) {
-        throw new CliError("USAGE", err instanceof Error ? err.message : String(err));
-      }
-      relPath = pathFromConceptId(id);
+    if (path9.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
+      throw new CliError("USAGE", `--show-incoming needs a repo-relative doc id or path without '..' segments: ${id}`);
     }
     if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
       throw ffSwallowToError("no-upstream", inv);
     }
-    const shown = runGit(top, ["show", `refs/remotes/${BOARD_REF}:${relPath}`]);
-    if (shown.status !== 0) {
-      if (runGit(top, ["cat-file", "-e", `refs/remotes/${BOARD_REF}:${relPath}`]).status !== 0) {
-        const state = {
-          sync: "show-incoming",
-          id,
-          as_of: SHOW_INCOMING_AS_OF,
-          state: SHOW_INCOMING_ABSENT_STATE
-        };
-        (streamMode ? stderr : stdout)(render(state, mode));
-        return;
-      }
-      throw classifyGitError({ args: ["show"], status: shown.status, stdout: shown.stdout, stderr: shown.stderr });
+    const candidates = [];
+    let conceptIdOk = true;
+    try {
+      assertSafeConceptId(id);
+    } catch {
+      conceptIdOk = false;
     }
-    const content = shown.stdout;
+    if (conceptIdOk) candidates.push({ relPath: pathFromConceptId(id), isDoc: true });
+    if (candidates.every((c) => c.relPath !== id)) candidates.push({ relPath: id, isDoc: false });
+    let hit = null;
+    for (const probe of candidates) {
+      const shown = runGitBytes(top, ["show", `refs/remotes/${BOARD_REF}:${probe.relPath}`]);
+      if (shown.status === 0) {
+        hit = { probe, bytes: shown.stdout };
+        break;
+      }
+      const text = shown.stderr;
+      if (!/does not exist in|exists on disk, but not in/i.test(text)) {
+        throw classifyGitError({ args: ["show"], status: shown.status, stdout: "", stderr: shown.stderr });
+      }
+    }
+    if (hit === null) {
+      const state = {
+        sync: "show-incoming",
+        id,
+        as_of: SHOW_INCOMING_AS_OF,
+        state: SHOW_INCOMING_ABSENT_STATE
+      };
+      (streamMode ? stderr : stdout)(render(state, mode));
+      return;
+    }
+    const bytes = hit.bytes;
     if (out) {
-      const bytes = Buffer.from(content, "utf8");
       const receipt = {
         sync: "show-incoming",
         id,
@@ -12946,16 +12981,17 @@ async function showIncoming(id, values, deps) {
       stdout(render(receipt, mode));
       return;
     }
+    const content = bytes.toString("utf8");
     const byteHatch = `${inv} sync --show-incoming ${id} --out <file>`;
     const rec = {};
-    if (isRawPathEntry(id)) {
+    if (!hit.probe.isDoc) {
       rec.path = id;
       rec.as_of = SHOW_INCOMING_AS_OF;
       attachBodyPreview(rec, content, byteHatch);
     } else {
       let parsed = null;
       try {
-        const { frontmatter, body } = parseMarkdown(content, relPath);
+        const { frontmatter, body } = parseMarkdown(content, hit.probe.relPath);
         parsed = { frontmatter, body };
       } catch {
         parsed = null;
@@ -13983,8 +14019,8 @@ var COMMAND_GROUPS = [
         summary: "Boot the local web UI (board / doc detail / admin / graph) \u2014 same origin, loopback-only"
       },
       {
-        usage: "sync [--pull-only] [--show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]",
-        summary: "Share the board branch with a remote \u2014 commits, pulls, and pushes (git tier; --pull-only skips commit+push). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> prints the incoming version as of the last fetch"
+        usage: "sync [--pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]",
+        summary: "Share the board branch with a remote \u2014 commits, pulls, and pushes (git tier; --pull-only skips commit+push). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch"
       }
     ]
   },
@@ -14311,7 +14347,7 @@ async function home(argv, deps = {}) {
 }
 
 // src/commands/hook.ts
-import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync3, rmSync } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync5, writeFileSync as writeFileSync3, rmSync } from "node:fs";
 import { homedir as homedir6 } from "node:os";
 import { join as join8, dirname as dirname4 } from "node:path";
 import { mkdirSync as mkdirSync3 } from "node:fs";
@@ -14403,7 +14439,7 @@ function targetsFor(base) {
 function readSettings(path10) {
   if (!existsSync5(path10)) return {};
   try {
-    return JSON.parse(readFileSync4(path10, "utf8"));
+    return JSON.parse(readFileSync5(path10, "utf8"));
   } catch {
     return {};
   }
@@ -14416,7 +14452,7 @@ function writeSettings(path10, settings) {
 function opencodePluginInstalled(path10) {
   if (!existsSync5(path10)) return false;
   try {
-    return readFileSync4(path10, "utf8").includes(OPENCODE_MANAGED_MARKER);
+    return readFileSync5(path10, "utf8").includes(OPENCODE_MANAGED_MARKER);
   } catch {
     return false;
   }
