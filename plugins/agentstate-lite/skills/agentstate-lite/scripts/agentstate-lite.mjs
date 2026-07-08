@@ -7307,7 +7307,9 @@ var ROADMAP_KIND = {
   // "contains", targeting a Roadmap Item — declared so `kinds` teaches it and `link add`'s graph
   // lint validates it.
   links: { contains: ROADMAP_ITEM_TYPE },
-  fields: { required: ["title"], optional: [], values: {} }
+  // No status field on the spine, so nothing to declare terminal (Brian's ruling on the
+  // task board's `tasks/status-terminal-declaration.md`).
+  fields: { required: ["title"], optional: [], values: {}, terminal: {} }
 };
 var ROADMAP_SEED_BODY = "# Roadmap\n\nThe spine document: a single top-level roadmap doc that CONTAINS the bundle's Roadmap\nItems via typed links carrying the text `contains` (`link add <roadmap> <item> --text\ncontains`), making the whole roadmap \u2192 item \u2192 task chain one filtered query per hop\n(`link show <id> --text contains`). Progress is DERIVED, never stored: list the\ncontained items and read their statuses.\n";
 var ROADMAP_ITEM_KIND = {
@@ -7319,7 +7321,10 @@ var ROADMAP_ITEM_KIND = {
   fields: {
     required: ["title", "status"],
     optional: ["description", "sequence"],
-    values: { status: ["queued", "active", "done"] }
+    values: { status: ["queued", "active", "done"] },
+    // Brian's ruling (task board `tasks/status-terminal-declaration.md`): a done Roadmap Item
+    // hides from `list --open`, consistent with Task's done/canceled.
+    terminal: { status: ["done"] }
   }
 };
 var ROADMAP_ITEM_SEED_BODY = '# Roadmap Item\n\nA durable line of work spanning multiple tasks \u2014 the granular form of the single\nroadmap spine doc. An item CONTAINS its tasks via links carrying the text `contains`;\nbacklinks from a task answer "which item owns this". An item\'s progress is DERIVED,\nnever stored: list its contained tasks and read their statuses (the rollup). `status`\ntracks the item itself: `queued` (not started) \u2192 `active` (any contained task moving)\n\u2192 `done` (all contained tasks done or canceled).\n';
@@ -10274,7 +10279,8 @@ Adds or removes a DECLARED field on the '<Kind>' kind's governing convention doc
 'kinds' command LISTS what a bundle declares; this singular 'kind' command EDITS one (mirroring
 'recipes'/'recipe'). A field added without --required is OPTIONAL; --values restricts it to an
 enumerated set. Idempotent: adding an already-declared field (or removing an absent one) is a
-no-op that exits 0. Preserves everything else on the convention (governs/path/sections/body).
+no-op that exits 0. Preserves everything else on the convention (governs/path/sections/body, and
+any fields.* sibling key this command does not own \u2014 e.g. a declared 'terminal' set).
 
 Options:
   --required            Add the field as REQUIRED (default: optional). Ignored by 'remove'.
@@ -10415,10 +10421,13 @@ async function kind(argv, deps = {}) {
     }
   }
   if (changed) {
-    const newFields = {};
+    const newFields = { ...fieldsObj };
     if (required.length > 0) newFields.required = required;
+    else delete newFields.required;
     if (optional.length > 0) newFields.optional = optional;
+    else delete newFields.optional;
     if (Object.keys(valuesMap).length > 0) newFields.values = valuesMap;
+    else delete newFields.values;
     const newFm = { ...fm };
     if (Object.keys(newFields).length > 0) newFm.fields = newFields;
     else delete newFm.fields;
@@ -10642,8 +10651,9 @@ Category semantics (one line each):
                       whose OWN kind declares a terminal set of field values (see 'kinds --help')
                       AND whose frontmatter currently matches it is EXCLUDED from this count and
                       its rows (it's noise \u2014 a done/canceled instance doesn't need the expected
-                      edge anymore); the top-level 'terminal_skipped' field reports how many were
-                      excluded this way, present only when > 0. A kind with no terminal
+                      edge anymore); the top-level 'terminal_skipped' field counts the INSTANCES
+                      skipped before this lint evaluated them \u2014 not findings suppressed (a skipped
+                      instance might have linted clean anyway) \u2014 present only when > 0. A kind with no terminal
                       declaration is unaffected (every instance still counts, exactly as before
                       terminal declarations existed). Non-terminal instances sort first: by the
                       declared terminal set when the kind has one, else by the legacy hardcoded
