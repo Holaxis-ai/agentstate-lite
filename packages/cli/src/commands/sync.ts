@@ -1020,8 +1020,11 @@ async function showIncoming(
 
     const shown = runGit(top, ["show", `refs/remotes/${BOARD_REF}:${relPath}`]);
     if (shown.status !== 0) {
-      const text = `${shown.stderr}\n${shown.stdout}`;
-      if (/does not exist in|exists on disk, but not in/i.test(text)) {
+      // Absent-upstream is detected STRUCTURALLY (`cat-file -e` on the exact ref:path — the same
+      // probe fetchRebaseResolving uses), never by matching git's human error prose: message
+      // strings drift across git versions even with LC_ALL=C pinned (the standing porcelain
+      // lesson, CLAUDE.md "branch from current main" note).
+      if (runGit(top, ["cat-file", "-e", `refs/remotes/${BOARD_REF}:${relPath}`]).status !== 0) {
         const state = {
           sync: "show-incoming",
           id,

@@ -12915,9 +12915,7 @@ async function showIncoming(id, values, deps) {
     }
     const shown = runGit(top, ["show", `refs/remotes/${BOARD_REF}:${relPath}`]);
     if (shown.status !== 0) {
-      const text = `${shown.stderr}
-${shown.stdout}`;
-      if (/does not exist in|exists on disk, but not in/i.test(text)) {
+      if (runGit(top, ["cat-file", "-e", `refs/remotes/${BOARD_REF}:${relPath}`]).status !== 0) {
         const state = {
           sync: "show-incoming",
           id,
