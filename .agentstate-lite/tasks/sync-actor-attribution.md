@@ -3,13 +3,14 @@ type: Task
 title: >-
   Actor attribution: doc write --actor must reach frontmatter (PR#13 review,
   item 3)
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   HIGH, blocks U4's human face: every CLI-authored doc renders actor 'unknown' —
   --actor persists only as engine version attribution, never frontmatter, which
   is the ONLY source changesSince reads (adjudication F).
-timestamp: '2026-07-08T15:03:34.178Z'
+assignee: brian-claude
+timestamp: '2026-07-08T15:19:36.341Z'
 ---
 Driven evidence (PR#13 panel, consumer + mechanic lanes, empirical): receipt `actor:
 unknown`, commit subject `board: unknown — 2 docs`, every incoming row `actor: unknown`,

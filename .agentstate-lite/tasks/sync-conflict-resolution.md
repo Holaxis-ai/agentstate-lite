@@ -3,13 +3,14 @@ type: Task
 title: >-
   U3b sync conflict resolution: converging keep-theirs/export-yours +
   show-incoming
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   U3b. The converging conflict mechanic (keep upstream, export local, complete
   rebase) with the ours/theirs inversion warning and exact verified sequence,
   plus show-incoming and the binding convergence test. Deps: sync-command-core.
-timestamp: '2026-07-07T21:20:03.176Z'
+assignee: brian-claude
+timestamp: '2026-07-08T15:19:36.217Z'
 ---
 # U3b — conflict resolution + `--show-incoming`
 
