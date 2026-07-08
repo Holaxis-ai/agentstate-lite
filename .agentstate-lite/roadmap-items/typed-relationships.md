@@ -18,7 +18,7 @@ description: >-
   texts. Text-as-carrier therefore REQUIRES a declared vocabulary to be viable:
   a link is a typed edge iff its text matches a declared type; everything else
   remains an untyped citation. Undeclared text-as-type is not a workable design.
-timestamp: '2026-07-08T20:25:58.805Z'
+timestamp: '2026-07-08T22:57:58.387Z'
 ---
 [contains](../tasks/typed-links-read-path.md)
 
@@ -33,3 +33,5 @@ timestamp: '2026-07-08T20:25:58.805Z'
 [contains](../tasks/graph-lints.md)
 
 [contains](../tasks/status-terminal-declaration.md)
+
+[contains](../tasks/new-link-flag.md)
