@@ -1,14 +1,15 @@
 ---
 type: Task
 title: 'U6 skill + docs truth pass: flow ends with sync, setup verb, plugin bump'
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   U6. Skill and docs truth pass: typical flow ends with sync, sync as setup
   verb, hook-install re-run prompt, plugin version bump in both manifests. Deps:
   sync-conflict-resolution, sync-sessionstart.
 actor: brian-claude
-timestamp: '2026-07-08T18:05:54.136Z'
+assignee: brian-claude
+timestamp: '2026-07-08T18:09:38.440Z'
 ---
 # U6 — skill + docs truth pass
 
