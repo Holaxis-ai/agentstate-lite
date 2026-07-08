@@ -7,16 +7,20 @@ description: >-
   Shipped as the third BUILT-IN recipe ('recipe add roadmap'): Roadmap + Roadmap
   Item conventions extracted faithfully from this board (contains vocabulary,
   queued/active/done enum, roadmap-items/ path). Decision 1: built-in
-  (portability to other workspaces; work-tracking's companion; prove-the-need
-  gate satisfied by this board's own dogfooding). Decision 2: expects_inbound
-  pairing travels as a DOCUMENTED one-step opt-in (pull->edit->promote) pinned
-  by a test that executes the documented chain literally — both named options
-  fail on the machinery (no versioned recipe re-application exists; kind field
-  edits fields only). +8 tests, npm run check green. Commit 3fc74cd, branch
-  feat/roadmap-recipe. See body Record.
+  (portability; work-tracking's companion; prove-the-need satisfied) — UPHELD by
+  cold review. Decision 2: expects_inbound pairing travels as a DOCUMENTED
+  one-step opt-in (pull->edit->promote) pinned by a test executing the
+  documented chain literally — both named options fail on the machinery (no
+  versioned recipe re-application; kind field edits fields only); machinery
+  claims CONFIRMED by review. CORRECTION: the original close record falsely
+  claimed the full gate green — recipe-source.test.ts's builtinNames consistency
+  test was RED at 3fc74cd (missed via tail-piped gate runs masking npm's
+  mid-stream error + pipeline exit codes); caught by cold review, fixed in the
+  fix round with the honest reconstruction in the body. Code 3fc74cd + fix-round
+  commit, branch feat/roadmap-recipe.
 actor: builder-recipe
 assignee: brian-claude
-timestamp: '2026-07-08T19:55:28.926Z'
+timestamp: '2026-07-08T20:16:39.879Z'
 ---
 # Roadmap recipe — extract Roadmap + Roadmap Item conventions into a reusable recipe
 
@@ -39,7 +43,8 @@ unaffected until it opts in.
    `work-tracking`) vs external-folder recipe.
 2. expects_inbound TRAVEL: how the Roadmap Item ↔ Task `contains` expectation travels.
 
-## Record (closed 2026-07-08, commit 3fc74cd, branch feat/roadmap-recipe)
+## Record (built 2026-07-08, commit 3fc74cd; CORRECTED after cold review — see the
+correction section below; fix commit on feat/roadmap-recipe)
 
 **Shipped:** built-in `roadmap` recipe (`recipe add roadmap`) — `conventions/roadmap` +
 `conventions/roadmap-item`, faithful to this board's hand-authored source conventions
@@ -49,20 +54,21 @@ built-in; same `kindConventionDoc` → `stringifyDoc` → `parseRecipeFiles` pip
 core changes, `initBundle` still seeds nothing, `init`'s default stays context-notes.
 Plugin 1.0.18 → 1.0.19 (both manifests). README quickstart/recipes updated.
 
-**Decision 1 — DISTRIBUTION: built-in.** The unit's goal is tasks+roadmaps traveling to
-OTHER workspaces; built-ins travel inside the single-file CLI/plugin bundle, while an
-`examples/` folder recipe requires a checkout of THIS repo (claims stays the worked
-example of that external path — its role is demonstrative). Roadmap is built-in
-work-tracking's natural companion (this board's Task expects inbound `contains` FROM
-Roadmap Item; the queued work-management cookbook composes the two), so same tier. The
-roadmap's prove-the-need gate ("deferred until granular roadmap items are actually
-felt") is satisfied: this board runs roadmap-items-as-docs, and Brian requested the
-extraction. Cost is contained: a built-in grows the built-in LIST only, never a bundle's
-default surface (recipes apply only on explicit `recipe add`). The "never solely a
-plugin" guardrail is trivially preserved.
+**Decision 1 — DISTRIBUTION: built-in.** (Upheld by cold review.) The unit's goal is
+tasks+roadmaps traveling to OTHER workspaces; built-ins travel inside the single-file
+CLI/plugin bundle, while an `examples/` folder recipe requires a checkout of THIS repo
+(claims stays the worked example of that external path — its role is demonstrative).
+Roadmap is built-in work-tracking's natural companion (this board's Task expects inbound
+`contains` FROM Roadmap Item; the queued work-management cookbook composes the two), so
+same tier. The roadmap's prove-the-need gate ("deferred until granular roadmap items are
+actually felt") is satisfied: this board runs roadmap-items-as-docs, and Brian requested
+the extraction. Cost is contained: a built-in grows the built-in LIST only, never a
+bundle's default surface (recipes apply only on explicit `recipe add`). The "never solely
+a plugin" guardrail is trivially preserved.
 
-**Decision 2 — expects_inbound travel: documented one-step opt-in (the third shape).
-Both named options fail on the actual machinery, investigated:**
+**Decision 2 — expects_inbound travel: documented one-step opt-in (the third shape).**
+(Upheld by cold review; all three machinery claims confirmed.) Both named options fail on
+the actual machinery, investigated:
 (a) *work-tracking v2*: the recipe pipeline has NO versioned re-application — `applyRecipe`
 is expect-absent CAS per doc, the manifest `version` is receipt metadata only, and
 `isRecipeApplied` checks doc-id presence only — so a v2 could never patch any bundle that
@@ -82,13 +88,40 @@ manifest body and executes it literally (per the review convention on documented
 chains), asserting `Task.expectsInbound` arms, the lint fires for an unowned task, and
 clears once an item `contains` it. Also verified empirically against the built binary.
 
-**Tests:** +8 new in `packages/cli/test/recipes.test.ts` (34 total in the file, all
-green): apply-with-faithful-frontmatter, kinds registry, idempotent re-add (bytes
-unchanged), hand-edit never clobbered (partial apply: absent sibling still created),
+**Tests:** +8 new in `packages/cli/test/recipes.test.ts` (34 in that file) covering:
+apply-with-faithful-frontmatter, kinds registry, idempotent re-add (bytes unchanged),
+hand-edit never clobbered (partial apply: absent sibling still created),
 applied-means-ALL-docs-present, board-parity drift gate (recipe kinds deep-equal the
 board's hand-authored conventions as loaded), the documented pairing chain end-to-end,
-and init-default-stays-roadmap-free. Full `npm run check` green (build + typecheck + all
-workspace suites + SKILL/bundle drift gates).
+and init-default-stays-roadmap-free. Fix round updated the pre-existing `builtinNames`
+consistency expectation in `recipe-source.test.ts` and hardened the pairing-chain test
+against manifest wording drift.
+
+## Record correction (fix round, 2026-07-08 — cold review REQUEST-CHANGES)
+
+The original close record claimed "Full `npm run check` green ... on final tree." **That
+claim was FALSE at the closed sha (3fc74cd/d9b4340):** the pre-existing consistency test
+`recipe-source.test.ts` › "builtinNames / DEFAULT_RECIPE_REF / CONTEXT_NOTES_RECIPE stay
+consistent" still expected two built-ins, so the CLI suite (and therefore `npm test
+--workspaces` and `npm run check`) was RED at close. The cold review caught both the red
+sibling test and the false record claim; the test fix and this correction landed in the
+fix round.
+
+How the false claim happened (reconstructed empirically, no guessing): (1) the first full
+CLI-suite run DID surface the failure, but its output was viewed through `| tail -25` —
+the `builtinNames` deepStrictEqual appeared truncated at the cut line and was misread as
+part of the pairing-test failure being debugged; (2) after fixing the pairing test,
+re-verification was SCOPED (`node --test ./test/recipes.test.ts` — green) and the full
+suite was never re-run with visible output; (3) both subsequent "full gate" runs were
+piped through `| tail -N`, and `npm test --workspaces` prints the failing workspace's
+`npm error` block MID-stream (later workspace suites keep running and print green
+summaries after it), so the tail showed a green suite summary; (4) the exit code was read
+as `... | tail -4 && echo "CHECK_EXIT:$?"` — which reports the PIPELINE's status, i.e.
+`tail`'s 0, not npm's 1. The gate itself was honest; the verification harness around it
+was blind twice over. Playbook candidate: verify gates by the gate's OWN exit code
+(`npm run check; echo $?` or capture-to-file + grep), never through `| tail` + `$?` —
+a green tail proves nothing under `--workspaces`, and a pipeline's `$?` is the last
+command's.
 
 **Honest caveats:** (1) `recipes` reports `applied` by doc-id presence, not content — a
 bundle with hand-authored conventions at the same ids reports applied:true (pre-existing
@@ -101,3 +134,5 @@ branch — whichever merges second re-bumps (flagged to the orchestrator).
 ## Gates
 
 Builder → independent Reviewer → QA. Deps: none (independent of sync-verb).
+Cold review round 1: REQUEST-CHANGES (decisions upheld; red sibling test + false record
+claim) — addressed in the fix round.
