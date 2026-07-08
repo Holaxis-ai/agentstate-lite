@@ -8,7 +8,8 @@ description: >-
   from the PR#13 panel: cross-run under-report, non-ff push message,
   git-identity fallback, --help worktree language, single-branch refspec hint,
   code-repo linked-worktree raw fatal.
-timestamp: '2026-07-08T15:03:34.675Z'
+actor: brian-claude
+timestamp: '2026-07-08T18:03:56.808Z'
 ---
 From the PR#13 three-lane review (all empirical):
 1. Cross-run receipt under-report: fetch-succeeded-then-failed run → NEXT run
@@ -28,3 +29,9 @@ From the PR#13 three-lane review (all empirical):
    fetch the board ref explicitly, or give no_board its own hint.
 6. sync from a linked worktree of the CODE repo leaks a raw git fatal (no-raw-git
    invariant violation on an exotic-but-real path).
+7. show-incoming mislabels reserved paths as docs (codex PR#16 review,
+   context-notes/pr-16-review): `sync --show-incoming log.md` renders `id: log.md`
+   instead of `path: log.md` — probe-first resolution collapses the concept and raw
+   interpretations of a `.md`-suffixed input and takes the doc branch. Fix: when the
+   input's concept and raw relpaths are identical (or the path is reserved), classify
+   the hit as raw; regression test for `show-incoming log.md`.
