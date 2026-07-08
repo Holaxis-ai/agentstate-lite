@@ -13,12 +13,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { sync, SHOW_INCOMING_AS_OF, SHOW_INCOMING_ABSENT_STATE } from "../src/commands/sync.js";
 import { doc } from "../src/commands/doc.js";
 import { CliError } from "../src/errors.js";
+import { cliInvocation } from "../src/invocation.js";
 import { bundleKey, syncExportsDir } from "../src/cursor.js";
 import {
   boardHead,
@@ -420,17 +422,23 @@ test("U3b deletion conflict (upstream deleted, local edited): deletion kept, you
     const rows = (result.err!.details as { conflicts: { rows: Array<Record<string, unknown>> } }).conflicts.rows;
     assert.equal(rows[0]!.theirs, "kept (deleted upstream)");
     assert.equal(rows[0]!.yours, exportPath);
+    const bodyExportPath = exportPath.replace(/\.md$/, ".body.md");
+    assert.equal(rows[0]!.yours_body, bodyExportPath, "the body-only companion rides the row");
+    assert.ok(result.err!.help!.includes(`--body-file ${bodyExportPath}`), "the chain consumes the BODY export (round-2 REQUIRED 3)");
     assert.equal(isMidRebase(topo.b), false);
     assertPristine(topo.b, "B after upstream-deletion converge");
 
-    // The re-create chain clears it: doc write (a fresh doc) → sync pushes, exit 0.
+    // The re-create chain clears it: doc write over the BODY-ONLY export (a fresh doc) → sync
+    // pushes, exit 0 — and the re-created doc's frontmatter is CLEAN (no nested YAML).
     const recreated = await runDoc([
-      "write", "tasks/seed-two", "--type", "Task", "--title", "Seed two", "--body-file", exportPath, "--dir", topo.b.board,
+      "write", "tasks/seed-two", "--type", "Task", "--title", "Seed two", "--body-file", bodyExportPath, "--dir", topo.b.board,
     ]);
     assert.equal(recreated.err, undefined, recreated.err?.message);
     const cleared = await runSync(homeB!, ["--dir", topo.b.root]);
     assert.equal(cleared.err, undefined, cleared.err?.message);
-    assert.match(git(topo.origin, ["show", "board:tasks/seed-two.md"]), /B's edit of a doc A deleted/);
+    const originDoc = git(topo.origin, ["show", "board:tasks/seed-two.md"]);
+    assert.match(originDoc, /B's edit of a doc A deleted/);
+    assert.equal(originDoc.split("---").length, 3, "exactly one frontmatter block — no YAML nested into the body");
   } finally {
     await cleanup();
     await topo.cleanup();
@@ -643,5 +651,227 @@ test("show-incoming: usage guards — empty id, --pull-only combination, --out w
   } finally {
     await cleanup();
     await rm(plain, { recursive: true, force: true });
+  }
+});
+
+// ── round-2 REQUIRED 1: byte-safety — invalid-UTF-8 blobs round-trip exactly ────
+
+test("U3b round-2 REQUIRED 1: an invalid-UTF-8 blob round-trips BYTE-IDENTICALLY through the conflict export AND show-incoming --out", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(2);
+  const [homeA, homeB] = homes;
+  const outDir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-u3b-bytes-"));
+  try {
+    // Two DIFFERENT blobs, both invalid UTF-8 (0xff / lone continuation bytes): a utf8-string
+    // round-trip rewrites these to U+FFFD (and changes the byte length) — the corruption this
+    // test pins closed.
+    const blobA = Buffer.from([0x62, 0x6c, 0x6f, 0x62, 0x20, 0xff, 0xfe, 0x80, 0x0a]);
+    const blobB = Buffer.from([0x62, 0x6c, 0x6f, 0x62, 0x20, 0xc0, 0xaf, 0x81, 0x0a]);
+    assert.notEqual(Buffer.from(blobA.toString("utf8"), "utf8").compare(blobA), 0, "sanity: blobA is NOT utf8-round-trippable");
+
+    // Both founders add the SAME raw path with different binary content (an add/add conflict).
+    await writeFile(path.join(topo.a.board, "data.bin"), blobA);
+    const aSync = await runSync(homeA!, ["--dir", topo.a.root]);
+    assert.equal(aSync.err, undefined, aSync.err?.message);
+
+    await writeFile(path.join(topo.b.board, "data.bin"), blobB);
+    const conflicted = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.ok(conflicted.err, "expected the CONFLICT(5) terminal envelope");
+    assert.equal(conflicted.err!.code, "CONFLICT");
+
+    // (a) The conflict export is the local blob's EXACT bytes.
+    const exportPath = exportPathFor(topo, homeB!, "data.bin");
+    assert.equal(Buffer.compare(await readFile(exportPath), blobB), 0, "(a) export byte-identical to the local blob");
+    // ...and the kept (upstream) blob landed byte-identically in the worktree.
+    assert.equal(Buffer.compare(await readFile(path.join(topo.b.board, "data.bin")), blobA), 0, "kept blob byte-identical to upstream");
+    assertPristine(topo.b, "B after binary converge");
+
+    // (b) show-incoming --out delivers the upstream blob's EXACT bytes — file and stdout modes.
+    const outFile = path.join(outDir, "incoming.bin");
+    const toFile = await runSync(homeB!, ["--show-incoming", "data.bin", "--out", outFile, "--dir", topo.b.root]);
+    assert.equal(toFile.err, undefined, toFile.err?.message);
+    assert.equal(Buffer.compare(await readFile(outFile), blobA), 0, "(b) --out <file> byte-identical");
+    assert.match(toFile.out, new RegExp(`size_bytes: ${blobA.byteLength}`), "size_bytes computed from the Buffer");
+
+    const toStdout = await runSync(homeB!, ["--show-incoming", "data.bin", "--out", "-", "--dir", topo.b.root]);
+    assert.equal(toStdout.err, undefined, toStdout.err?.message);
+    assert.equal(Buffer.compare(toStdout.bytes, blobA), 0, "(b) --out - streams the exact bytes");
+    assert.equal(toStdout.out, "", "stdout carries ONLY the byte stream");
+  } finally {
+    await cleanup();
+    await rm(outDir, { recursive: true, force: true });
+    await topo.cleanup();
+  }
+});
+
+test("U3b round-3 LOW 1+2: a doc that PARSES but does not utf8-round-trip gets NO body companion, NO verb suffix, NO chain", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(2);
+  const [homeA, homeB] = homes;
+  try {
+    // Valid OKF frontmatter, but the BODY carries a raw invalid-UTF-8 byte: the blob PARSES after
+    // a lossy decode (the bad byte becomes U+FFFD), yet its bytes do not round-trip — writing a
+    // .body.md from the decode would silently corrupt the body the chain then applies.
+    const fm = "---\ntype: Task\ntitle: Weird bytes\n---\n# Weird\n\n";
+    const blobA = Buffer.concat([Buffer.from(fm, "utf8"), Buffer.from([0x41, 0x20, 0xff, 0x0a])]);
+    const blobB = Buffer.concat([Buffer.from(fm, "utf8"), Buffer.from([0x42, 0x20, 0xfe, 0x0a])]);
+    assert.notEqual(Buffer.from(blobB.toString("utf8"), "utf8").compare(blobB), 0, "sanity: parses-but-non-roundtrippable");
+
+    await writeFile(path.join(topo.a.board, "tasks/weird.md"), blobA);
+    const aSync = await runSync(homeA!, ["--dir", topo.a.root]);
+    assert.equal(aSync.err, undefined, aSync.err?.message);
+
+    await writeFile(path.join(topo.b.board, "tasks/weird.md"), blobB);
+    const conflicted = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.ok(conflicted.err, "expected the CONFLICT(5) terminal envelope");
+    assert.equal(conflicted.err!.code, "CONFLICT");
+
+    // The FULL export stays byte-exact; the body companion is SKIPPED (LOW 2).
+    const exportPath = exportPathFor(topo, homeB!, "tasks/weird.md");
+    assert.equal(Buffer.compare(await readFile(exportPath), blobB), 0, "full export byte-identical");
+    assert.equal(existsSync(exportPath.replace(/\.md$/, ".body.md")), false, "no corrupted .body.md is ever written");
+
+    // No runnable artifact → no fixing-verb suffix on the line (LOW 1), no chain, no yours_body.
+    assert.ok(conflicted.err!.message.includes("doc tasks/weird — teammate's version kept; yours saved at"), conflicted.err!.message);
+    assert.ok(!conflicted.err!.message.includes("reconcile with doc update"), "no doc-update suffix without a body export");
+    assert.equal(conflicted.err!.help, undefined, "no chain over a corrupted body");
+    const rows = (conflicted.err!.details as { conflicts: { rows: Array<Record<string, unknown>> } }).conflicts.rows;
+    assert.equal(rows[0]!.id, "tasks/weird");
+    assert.equal(rows[0]!.yours_body, undefined, "no body companion on the row");
+    assert.equal(isMidRebase(topo.b), false);
+    assertPristine(topo.b, "B after non-roundtrippable converge");
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+// ── round-2 REQUIRED 2: dotted concept ids are docs, not raw paths ──────────────
+
+test("U3b round-2 REQUIRED 2: a DOTTED doc id (notes/v1.2) conflicts as a DOC — labeled 'doc notes/v1.2', export + reconcile work", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(2);
+  const [homeA, homeB] = homes;
+  try {
+    // Seed the dotted-id doc on the shared board (A authors, pushes; B pulls).
+    await writeBoardDoc(topo.a, "notes/v1.2", {
+      frontmatter: { type: "Note", title: "Spec v1.2", actor: "mike" },
+      body: "# v1.2\n\nbase\n",
+    });
+    const seeded = await runSync(homeA!, ["--dir", topo.a.root]);
+    assert.equal(seeded.err, undefined, seeded.err?.message);
+    const bPull = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.equal(bPull.err, undefined, bPull.err?.message);
+
+    // Diverge it on both sides.
+    await modifyBoardDoc(topo.a, "notes/v1.2", { body: "# v1.2\n\nA's revision\n" });
+    const aSync = await runSync(homeA!, ["--dir", topo.a.root]);
+    assert.equal(aSync.err, undefined, aSync.err?.message);
+    await modifyBoardDoc(topo.b, "notes/v1.2", { body: "# v1.2\n\nB's revision\n" });
+    const localBytes = await readBoardFile(topo.b, "notes/v1.2.md");
+
+    const conflicted = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.ok(conflicted.err, "expected the CONFLICT(5) terminal envelope");
+    assert.equal(conflicted.err!.code, "CONFLICT");
+    // The retired string-shape heuristic labeled this a raw path; the explicit discriminator
+    // carried from resolution time labels it a DOC.
+    assert.ok(conflicted.err!.message.includes("doc notes/v1.2 — teammate's version kept"), `doc label in: ${conflicted.err!.message}`);
+    const rows = (conflicted.err!.details as { conflicts: { rows: Array<Record<string, unknown>> } }).conflicts.rows;
+    assert.equal(rows[0]!.id, "notes/v1.2", "reported under `id`, not `path`");
+    assert.equal(rows[0]!.kind, "Note");
+
+    // Export byte-identical; the chain (over the BODY export) reconciles and pushes clean.
+    const exportPath = exportPathFor(topo, homeB!, "notes/v1.2.md");
+    assert.equal(await readFile(exportPath, "utf8"), localBytes);
+    assert.ok(conflicted.err!.help!.includes("doc update notes/v1.2 --body-file"), "the doc-update chain names the dotted id");
+
+    // show-incoming prefers the CONCEPT interpretation for the dotted id.
+    const incoming = await runSync(homeB!, ["--show-incoming", "notes/v1.2", "--dir", topo.b.root]);
+    assert.equal(incoming.err, undefined, incoming.err?.message);
+    assert.match(incoming.out, /A's revision/);
+    assert.match(incoming.out, /Spec v1\.2/, "parsed as a doc (frontmatter rendered), not a raw path");
+
+    const mergedFile = path.join(homeB!, "v12-merged.md");
+    await writeFile(mergedFile, "# v1.2\n\nA's revision\n\nB's revision\n");
+    const updated = await runDoc(["update", "notes/v1.2", "--body-file", mergedFile, "--dir", topo.b.board]);
+    assert.equal(updated.err, undefined, updated.err?.message);
+    const cleared = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.equal(cleared.err, undefined, cleared.err?.message);
+    assert.match(git(topo.origin, ["show", "board:notes/v1.2.md"]), /A's revision[\s\S]*B's revision/);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+// ── round-2 REQUIRED 3: the emitted chain is LITERALLY executable ───────────────
+
+/** Execute one emitted help-chain step EXACTLY as printed (prefix-checked, split on spaces). */
+async function runChainStep(home: string, cwd: string, command: string): Promise<void> {
+  const inv = cliInvocation();
+  assert.ok(command.startsWith(`${inv} `), `chain step must start with the invocation verbatim: ${command}`);
+  const argv = command.slice(inv.length + 1).split(" ");
+  const prevCwd = process.cwd();
+  process.chdir(cwd);
+  try {
+    await withHome(home, async () => {
+      if (argv[0] === "sync") {
+        await sync(argv.slice(1), { stdout: () => {}, stderr: () => {}, writeStdoutBytes: () => {} });
+      } else if (argv[0] === "doc") {
+        await doc(argv.slice(1), { stdout: () => {}, readStdin: async () => undefined });
+      } else {
+        assert.fail(`unexpected chain verb: ${argv[0]}`);
+      }
+    });
+  } finally {
+    process.chdir(prevCwd);
+  }
+}
+
+test("U3b round-2 REQUIRED 3: the emitted help chain executes CHARACTER-FOR-CHARACTER — clean frontmatter, local frontmatter diff SURFACED", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(2);
+  const [homeA, homeB] = homes;
+  try {
+    // A changes the body; B changes the body AND the frontmatter (a retitle) — the exact case
+    // where a body-only reconcile would silently drop the local frontmatter change.
+    await modifyBoardDoc(topo.a, "tasks/seed-one", { body: "# Seed one\n\nA's body\n" });
+    const aSync = await runSync(homeA!, ["--dir", topo.a.root]);
+    assert.equal(aSync.err, undefined, aSync.err?.message);
+    await modifyBoardDoc(topo.b, "tasks/seed-one", {
+      frontmatter: { title: "B's retitle" },
+      body: "# Seed one\n\nB's body\n",
+    });
+
+    const conflicted = await runSync(homeB!, ["--dir", topo.b.root]);
+    assert.ok(conflicted.err, "expected the CONFLICT(5) terminal envelope");
+    assert.equal(conflicted.err!.code, "CONFLICT");
+
+    // Constraint (b): the local frontmatter difference is SURFACED, never silently dropped.
+    const rows = (conflicted.err!.details as { conflicts: { rows: Array<Record<string, unknown>> } }).conflicts.rows;
+    assert.ok(Array.isArray(rows[0]!.frontmatter_differs), `frontmatter_differs surfaced: ${JSON.stringify(rows[0])}`);
+    assert.ok((rows[0]!.frontmatter_differs as string[]).includes("title"), "the retitle is named");
+
+    // Constraint (a): execute the emitted chain EXACTLY as printed — every step, verbatim.
+    const help = conflicted.err!.help!;
+    const steps = help.split(" → ");
+    assert.equal(steps.length, 3, `the chain has three steps: ${help}`);
+    for (const step of steps) {
+      await runChainStep(homeB!, topo.b.root, step);
+    }
+
+    // The chain cleared the conflict and pushed; the doc's frontmatter is CLEAN (no nested YAML).
+    const originDoc = git(topo.origin, ["show", "board:tasks/seed-one.md"]);
+    assert.equal(originDoc.split("---").length, 3, "exactly one frontmatter block — no YAML nested into the body");
+    assert.match(originDoc, /B's body/, "the chain applied B's body on top");
+    assert.ok(!/\n# Seed one[\s\S]*type:/.test(originDoc), "no frontmatter keys leaked into the body");
+    // The kept title is upstream's ("Seed one") — the local retitle did NOT silently apply, and
+    // that is exactly why the envelope surfaced it for an explicit re-apply.
+    assert.match(originDoc, /title: Seed one/);
+    assert.ok(!originDoc.includes("B's retitle"), "the local retitle is not silently merged");
+    assertPristine(topo.b, "B after literal chain execution");
+  } finally {
+    await cleanup();
+    await topo.cleanup();
   }
 });

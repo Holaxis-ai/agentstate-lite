@@ -30,7 +30,7 @@
 // an interactive verb that must report a REAL structured outcome, so `ffSwallowToError` below
 // translates every `FfPullResult.swallowed` reason into the capped CliError taxonomy instead of
 // silently no-op'ing.
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -54,6 +54,7 @@ import {
   push,
   repoTopLevel,
   runGit,
+  runGitBytes,
   stageAndCommit,
   unpushedCount,
   type CommitResult,
@@ -239,27 +240,16 @@ async function throwPostCommitFailure(
 }
 
 /**
- * A conflicted entry from `fetchRebase`'s `conflictedDocIds` is EITHER a concept-doc id (extension
- * already stripped by `conceptIdFromPath`) or a reserved/non-doc repo-relative path reported
- * VERBATIM (git.ts's own mapping: `isConceptDocPath(p) ? conceptIdFromPath(p) : p`). A genuine
- * concept id NEVER carries a file extension (the ONE `.md` it had is always stripped); ANY raw
- * path kept verbatim DOES — a reserved file keeps its `.md`, but so would a stray NON-markdown
- * file committed to the board branch (e.g. a binary blob) keep ITS OWN extension. Review finding 4
- * (fixed): the original check here was `.endsWith(".md")`, which wrongly gave a non-`.md` raw path
- * the "doc " prefix too (it doesn't end in `.md`, so it read as a "doc"). The correct structural
- * signal is "does this entry's FINAL PATH SEGMENT carry any extension at all" — no extension means
- * a real concept id; any extension (`.md` or otherwise) means a raw/reserved path, rendered
- * verbatim. Known residual edge case: a concept id whose OWN basename happens to contain a literal
- * dot (e.g. an id derived from `notes/v1.2.md`) would still be misclassified as "raw" here — there
- * is no type tag on `conflictedDocIds` to disambiguate further.
+ * Label a conflicted entry by its EXPLICIT doc-vs-raw discriminator (round-2 REQUIRED 2):
+ * "doc <id>" for a concept doc, the reserved/raw repo-relative path VERBATIM otherwise. The
+ * discriminator travels ON the conflict data ({@link ResolvedConflict}.isDoc, set by
+ * `fetchRebaseResolving` from the path shape at resolution time) — it is never re-derived from
+ * the entry STRING, because a dotted doc id (`notes/v1.2`, legal in core) is indistinguishable
+ * from a raw path by string shape alone (the retired `isRawPathEntry` heuristic's documented
+ * residual, now structural).
  */
-export function isRawPathEntry(entry: string): boolean {
-  const base = entry.split("/").pop() ?? entry;
-  return base.includes(".");
-}
-
-export function conflictLabel(entry: string): string {
-  return isRawPathEntry(entry) ? entry : `doc ${entry}`;
+export function entryLabel(c: Pick<ResolvedConflict, "entry" | "isDoc">): string {
+  return c.isDoc ? `doc ${c.entry}` : c.entry;
 }
 
 /**
@@ -290,22 +280,29 @@ export function annotateLanded(boardPath: string, conflicts: ResolvedConflict[])
  * deletion kept" and points at `doc write` (re-create) — `doc update` on a doc whose file is
  * gone fails NOT_FOUND. The DROPPED phrase "nothing was overwritten" stays dropped (pack (c)).
  */
-export function convergeDocLine(c: Pick<LandedConflict, "entry" | "isDoc" | "exportPath" | "landed">): string {
-  const label = conflictLabel(c.entry);
+export function convergeDocLine(
+  c: Pick<LandedConflict, "entry" | "isDoc" | "exportPath" | "bodyExportPath" | "landed">,
+): string {
+  const label = entryLabel(c);
   if (c.exportPath === null) {
     return `${label} — teammate's version kept (your side deleted it; nothing to save)`;
   }
+  // ROUND-3 LOW 1: the fixing-verb suffix is keyed on the BODY export's existence, not on
+  // isDoc alone — a doc with no .body.md (unparseable or non-utf8-round-trippable local blob)
+  // must not tell the user to `doc update` with the only file that exists (the FULL export),
+  // which would nest YAML frontmatter into the body. Mirrors the deletion case: no runnable
+  // artifact, no verb.
   if (!c.landed) {
-    const recreate = c.isDoc ? " — re-create with doc write" : "";
+    const recreate = c.isDoc && c.bodyExportPath !== null ? " — re-create with doc write" : "";
     return `${label} — teammate's deletion kept; yours saved at ${c.exportPath}${recreate}`;
   }
-  const reconcile = c.isDoc ? " — reconcile with doc update" : "";
+  const reconcile = c.isDoc && c.bodyExportPath !== null ? " — reconcile with doc update" : "";
   return `${label} — teammate's version kept; yours saved at ${c.exportPath}${reconcile}`;
 }
 
 /** The CONFLICT(5) envelope message: one converge line per conflicted entry, "; "-joined. */
 export function buildConvergeMessage(
-  conflicts: Array<Pick<LandedConflict, "entry" | "isDoc" | "exportPath" | "landed">>,
+  conflicts: Array<Pick<LandedConflict, "entry" | "isDoc" | "exportPath" | "bodyExportPath" | "landed">>,
 ): string {
   return conflicts.map(convergeDocLine).join("; ");
 }
@@ -313,31 +310,35 @@ export function buildConvergeMessage(
 /**
  * The reconcile HELP CHAIN (amended pack (c)): view the kept incoming version, write your merged
  * version on top as a NEW doc update, then sync again — converges in one pass, loses nothing.
- * Only ever built for a conflict whose kept version LANDED (review fix 2 — see {@link pickHelp}).
+ * Only ever built for a conflict whose kept version LANDED (review fix 2 — see {@link pickHelp}),
+ * and ALWAYS over the BODY-ONLY export (round-2 REQUIRED 3): `doc update --body-file` treats its
+ * input as a body, so the full-fidelity export (frontmatter included) would nest YAML into the
+ * body if fed to it — the chain must be literally executable without corrupting frontmatter.
  */
-export function convergeHelp(inv: string, id: string, exportPath: string): string {
+export function convergeHelp(inv: string, id: string, bodyExportPath: string): string {
   return (
-    `${inv} sync --show-incoming ${id} → ${inv} doc update ${id} --body-file ${exportPath} → ${inv} sync`
+    `${inv} sync --show-incoming ${id} → ${inv} doc update ${id} --body-file ${bodyExportPath} → ${inv} sync`
   );
 }
 
 /** The re-create chain for a doc DELETED upstream: `doc write` (a fresh doc), then sync. */
-export function recreateHelp(inv: string, id: string, exportPath: string): string {
-  return `${inv} doc write ${id} --type <Type> --body-file ${exportPath} → ${inv} sync`;
+export function recreateHelp(inv: string, id: string, bodyExportPath: string): string {
+  return `${inv} doc write ${id} --type <Type> --body-file ${bodyExportPath} → ${inv} sync`;
 }
 
 /**
- * REVIEW FIX 2: pick the help chain from the ANNOTATED conflicts — prefer a doc whose kept
- * version LANDED (the `doc update` reconcile chain is directly runnable for it); when every
- * conflicted doc was deleted upstream, fall back to the `doc write` re-create chain for the
- * first one that has an export. No exportable doc at all → no help (the message lines carry
- * the per-doc disposition).
+ * REVIEW FIX 2 + round-2 REQUIRED 3: pick the help chain from the ANNOTATED conflicts — prefer a
+ * doc whose kept version LANDED (the `doc update` reconcile chain is directly runnable for it);
+ * when every conflicted doc was deleted upstream, fall back to the `doc write` re-create chain.
+ * Both chains require the BODY-ONLY export (the literally-executable `--body-file` input); a doc
+ * with no body export (unparseable local blob) is skipped. No usable doc at all → no help (the
+ * message lines carry the per-doc disposition).
  */
 export function pickHelp(inv: string, conflicts: LandedConflict[]): string | undefined {
-  const reconcilable = conflicts.find((c) => c.isDoc && c.exportPath !== null && c.landed);
-  if (reconcilable) return convergeHelp(inv, reconcilable.entry, reconcilable.exportPath!);
-  const recreatable = conflicts.find((c) => c.isDoc && c.exportPath !== null);
-  if (recreatable) return recreateHelp(inv, recreatable.entry, recreatable.exportPath!);
+  const reconcilable = conflicts.find((c) => c.isDoc && c.bodyExportPath !== null && c.landed);
+  if (reconcilable) return convergeHelp(inv, reconcilable.entry, reconcilable.bodyExportPath!);
+  const recreatable = conflicts.find((c) => c.isDoc && c.bodyExportPath !== null);
+  if (recreatable) return recreateHelp(inv, recreatable.entry, recreatable.bodyExportPath!);
   return undefined;
 }
 
@@ -364,17 +365,47 @@ function keptDocMeta(boardPath: string, relPath: string): { kind?: string; title
 }
 
 /**
+ * Round-2 REQUIRED 3, constraint (b) — no silent local-data loss: the reconcile chain writes a
+ * merged BODY, so a LOCAL frontmatter change (a status flip, a retitle) that differed from the
+ * kept upstream version would otherwise vanish without a trace. Surface it: the top-level
+ * frontmatter keys whose values differ between the exported local version and the kept (HEAD)
+ * version, `timestamp` excluded (the engine refreshes it on every write — it ALWAYS differs,
+ * pure noise). Empty on any parse/read failure and for deleted-upstream docs (where the whole
+ * doc's disposition is already the story).
+ */
+function frontmatterDiffKeys(boardPath: string, c: LandedConflict): string[] {
+  if (!c.isDoc || c.exportPath === null || !c.landed) return [];
+  try {
+    const local = parseMarkdown(readFileSync(c.exportPath, "utf8"), c.relPath).frontmatter as Record<string, unknown>;
+    const shown = runGit(boardPath, ["show", `HEAD:${c.relPath}`]);
+    if (shown.status !== 0) return [];
+    const kept = parseMarkdown(shown.stdout, c.relPath).frontmatter as Record<string, unknown>;
+    const keys = new Set([...Object.keys(local), ...Object.keys(kept)]);
+    keys.delete("timestamp");
+    return [...keys].filter((k) => JSON.stringify(local[k]) !== JSON.stringify(kept[k])).sort();
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Project the resolved conflicts into the envelope's row shape (amended pack (c)):
- * `{id|path, kind, title, yours, theirs}` — `yours` is the export file's absolute path (the
- * directly actionable `doc update --body-file` argument), `theirs` names the disposition of the
- * teammate's version ("kept" — it is what's on the board now; "kept (deleted upstream)" when
- * keeping it meant removing the file).
+ * `{id|path, kind, title, yours, theirs}` — `yours` is the full-fidelity export's absolute path
+ * (your version, recoverable byte-for-byte), `yours_body` (when present) is the BODY-ONLY export
+ * the reconcile chain's `doc update --body-file` consumes literally, `theirs` names the
+ * disposition of the teammate's version ("kept" — it is what's on the board now; "kept (deleted
+ * upstream)" when keeping it meant removing the file), and `frontmatter_differs` (when present)
+ * lists the local frontmatter fields the body-merge chain would NOT carry over — re-apply those
+ * via `doc update` flags (no silent loss, round-2 REQUIRED 3).
  */
 export function toConflictRows(boardPath: string, conflicts: LandedConflict[]): Record<string, unknown>[] {
   return conflicts.map((c) => {
     const row: Record<string, unknown> = c.isDoc ? { id: c.entry } : { path: c.entry };
     if (c.isDoc) Object.assign(row, keptDocMeta(boardPath, c.relPath));
     row.yours = c.exportPath !== null ? c.exportPath : "deleted locally — nothing to save";
+    if (c.bodyExportPath !== null) row.yours_body = c.bodyExportPath;
+    const diff = frontmatterDiffKeys(boardPath, c);
+    if (diff.length > 0) row.frontmatter_differs = diff;
     row.theirs = c.landed ? "kept" : "kept (deleted upstream)";
     return row;
   });
@@ -996,53 +1027,70 @@ async function showIncoming(
       );
     }
 
-    // id → repo-relative path. A raw/reserved entry (log.md, index.md, …) is used VERBATIM (the
-    // same vocabulary the conflict rows report); a concept id maps through core's ONE path
-    // vocabulary, with the same id-safety guard core applies (this read bypasses the engine).
-    let relPath: string;
-    if (isRawPathEntry(id)) {
-      if (path.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
-        throw new CliError("USAGE", `--show-incoming needs a repo-relative path without '..' segments: ${id}`);
-      }
-      relPath = id;
-    } else {
-      try {
-        assertSafeConceptId(id);
-      } catch (err) {
-        throw new CliError("USAGE", err instanceof Error ? err.message : String(err));
-      }
-      relPath = pathFromConceptId(id);
+    // The '..'/absolute safety guard applies to EVERY interpretation of the id (this read
+    // bypasses the engine, so it must enforce its own path safety).
+    if (path.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
+      throw new CliError("USAGE", `--show-incoming needs a repo-relative doc id or path without '..' segments: ${id}`);
     }
 
     if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
       throw ffSwallowToError("no-upstream", inv);
     }
 
-    const shown = runGit(top, ["show", `refs/remotes/${BOARD_REF}:${relPath}`]);
-    if (shown.status !== 0) {
-      // Absent-upstream is detected STRUCTURALLY (`cat-file -e` on the exact ref:path — the same
-      // probe fetchRebaseResolving uses), never by matching git's human error prose: message
-      // strings drift across git versions even with LC_ALL=C pinned (the standing porcelain
-      // lesson, CLAUDE.md "branch from current main" note).
-      if (runGit(top, ["cat-file", "-e", `refs/remotes/${BOARD_REF}:${relPath}`]).status !== 0) {
-        const state = {
-          sync: "show-incoming",
-          id,
-          as_of: SHOW_INCOMING_AS_OF,
-          state: SHOW_INCOMING_ABSENT_STATE,
-        };
-        // Stream mode keeps stdout a pure byte channel — the state record rides the receipt
-        // channel (stderr), same as the receipt would have.
-        (streamMode ? stderr : stdout)(render(state, mode));
-        return;
-      }
-      throw classifyGitError({ args: ["show"], status: shown.status, stdout: shown.stdout, stderr: shown.stderr });
+    // id → repo-relative path, PROBE-FIRST (round-2 REQUIRED 2: no string-shape heuristic —
+    // a dotted concept id like `notes/v1.2` is legal, so the CONCEPT interpretation
+    // (`origin/board:<id>.md`) is probed first, with the verbatim raw path (log.md, a stray
+    // blob) as the fallback). Bytes, not utf8 (round-2 REQUIRED 1): the --out channels must
+    // deliver the blob's exact bytes.
+    interface Probe {
+      relPath: string;
+      isDoc: boolean;
     }
-    const content = shown.stdout;
+    const candidates: Probe[] = [];
+    let conceptIdOk = true;
+    try {
+      assertSafeConceptId(id);
+    } catch {
+      conceptIdOk = false;
+    }
+    if (conceptIdOk) candidates.push({ relPath: pathFromConceptId(id), isDoc: true });
+    if (candidates.every((c) => c.relPath !== id)) candidates.push({ relPath: id, isDoc: false });
 
-    // Byte channel (`--out`): the raw committed bytes, receipt on the appropriate channel.
+    let hit: { probe: Probe; bytes: Buffer } | null = null;
+    for (const probe of candidates) {
+      // Each candidate's absence is detected STRUCTURALLY (`cat-file -e` on the exact ref:path —
+      // the same probe fetchRebaseResolving uses), never by matching git's human error prose:
+      // message strings drift across git versions even with LC_ALL=C pinned (the standing
+      // porcelain lesson, CLAUDE.md "branch from current main" note; Mike's review fix 00203a1,
+      // carried through this probe-first candidate walk).
+      if (runGit(top, ["cat-file", "-e", `refs/remotes/${BOARD_REF}:${probe.relPath}`]).status !== 0) {
+        continue; // absent under THIS interpretation — try the next candidate
+      }
+      const shown = runGitBytes(top, ["show", `refs/remotes/${BOARD_REF}:${probe.relPath}`]);
+      if (shown.status !== 0) {
+        // The path EXISTS at the ref (the structural probe just said so) — this is a genuine
+        // failure, never an absence.
+        throw classifyGitError({ args: ["show"], status: shown.status, stdout: "", stderr: shown.stderr });
+      }
+      hit = { probe, bytes: shown.stdout };
+      break;
+    }
+    if (hit === null) {
+      const state = {
+        sync: "show-incoming",
+        id,
+        as_of: SHOW_INCOMING_AS_OF,
+        state: SHOW_INCOMING_ABSENT_STATE,
+      };
+      // Stream mode keeps stdout a pure byte channel — the state record rides the receipt
+      // channel (stderr), same as the receipt would have.
+      (streamMode ? stderr : stdout)(render(state, mode));
+      return;
+    }
+    const bytes = hit.bytes;
+
+    // Byte channel (`--out`): the blob's EXACT bytes, receipt on the appropriate channel.
     if (out) {
-      const bytes = Buffer.from(content, "utf8");
       const receipt: Record<string, unknown> = {
         sync: "show-incoming",
         id,
@@ -1060,20 +1108,22 @@ async function showIncoming(
       return;
     }
 
-    // Default render: the parsed detail view with doc-read body semantics. A raw/reserved path
-    // (log.md carries no frontmatter) — or a doc whose upstream frontmatter is malformed — renders
-    // the raw content as the body instead of failing: the viewer's job is to SHOW the incoming
-    // version, whatever its shape.
+    // Default render: the parsed detail view with doc-read body semantics (a TEXT view — the
+    // utf8 decode here is fine; the byte-exact channel is --out above). A raw/reserved path
+    // (log.md carries no frontmatter) — or a doc whose upstream frontmatter is malformed —
+    // renders the raw content as the body instead of failing: the viewer's job is to SHOW the
+    // incoming version, whatever its shape.
+    const content = bytes.toString("utf8");
     const byteHatch = `${inv} sync --show-incoming ${id} --out <file>`;
     const rec: Record<string, unknown> = {};
-    if (isRawPathEntry(id)) {
+    if (!hit.probe.isDoc) {
       rec.path = id;
       rec.as_of = SHOW_INCOMING_AS_OF;
       attachBodyPreview(rec, content, byteHatch);
     } else {
       let parsed: { frontmatter: Record<string, unknown>; body: string } | null = null;
       try {
-        const { frontmatter, body } = parseMarkdown(content, relPath);
+        const { frontmatter, body } = parseMarkdown(content, hit.probe.relPath);
         parsed = { frontmatter: frontmatter as Record<string, unknown>, body };
       } catch {
         parsed = null;

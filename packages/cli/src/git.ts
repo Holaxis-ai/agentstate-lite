@@ -104,29 +104,51 @@ function gitEnv(rebase: boolean): NodeJS.ProcessEnv {
  * framing where the stakes are a stuck loop (see `fetchRebaseResolving`'s conflict list).
  */
 export function runGit(dir: string, args: string[], opts: RunOptions = {}): GitRunResult {
+  const r = runGitBytes(dir, args, opts);
+  return { status: r.status, stdout: r.stdout.toString("utf8"), stderr: r.stderr };
+}
+
+/** {@link runGitBytes}'s result: stdout as the EXACT BYTES; stderr decoded (it is git prose). */
+export interface GitRunBytesResult {
+  status: number;
+  stdout: Buffer;
+  stderr: string;
+}
+
+/**
+ * The ONE spawn site (U3b round-2 review, REQUIRED 1): every git invocation — text or binary —
+ * flows through here, so the wrapper invariants (scrubbed env, locale pin, quotepath off, no-hang
+ * timeouts, non-interactive editors) hold for both. `stdout` is returned as a Buffer of the EXACT
+ * bytes git produced; {@link runGit} is the utf8-decoding projection every text parser rides.
+ * Call THIS directly when the payload is a raw blob that must round-trip byte-identically (the
+ * `:3:` conflict export, `show-incoming --out`'s byte channel) — routing a blob through a UTF-8
+ * string silently rewrites invalid sequences to U+FFFD.
+ */
+export function runGitBytes(dir: string, args: string[], opts: RunOptions = {}): GitRunBytesResult {
   const r = spawnSync("git", ["-C", dir, "-c", "core.quotepath=off", ...args], {
     env: gitEnv(opts.rebase ?? false),
-    encoding: "utf8",
     timeout: opts.timeoutMs ?? LOCAL_TIMEOUT_MS,
     input: opts.input,
     maxBuffer: 32 * 1024 * 1024,
   });
+  const stdout = r.stdout ?? Buffer.alloc(0);
+  const stderr = (r.stderr ?? Buffer.alloc(0)).toString("utf8");
   if (r.error) {
     const code = (r.error as NodeJS.ErrnoException).code;
     throw classifyGitError({
       args,
       status: r.status ?? null,
-      stdout: r.stdout ?? "",
-      stderr: r.stderr ?? "",
+      stdout: stdout.toString("utf8"),
+      stderr,
       timedOut: code === "ETIMEDOUT",
       spawnErrorCode: code ?? "SPAWN",
     });
   }
   // A killed child (e.g. timeout without an error object on some platforms) has status null.
   if (r.status === null) {
-    throw classifyGitError({ args, status: null, stdout: r.stdout ?? "", stderr: r.stderr ?? "", timedOut: true });
+    throw classifyGitError({ args, status: null, stdout: stdout.toString("utf8"), stderr, timedOut: true });
   }
-  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  return { status: r.status, stdout, stderr };
 }
 
 /** A {@link GitFailure} from a tolerated-but-failed invocation, for classification. */
@@ -461,13 +483,27 @@ export interface ResolvedConflict {
   relPath: string;
   /** The doc id for a concept doc; the repo-relative path VERBATIM for a reserved/non-doc file. */
   entry: string;
-  /** True when `entry` is a concept-doc id (drives the "doc <id>" vs verbatim-path label). */
+  /**
+   * True when `entry` is a concept-doc id — the AUTHORITATIVE doc-vs-raw discriminator (derived
+   * from the path shape at resolution time, round-2 REQUIRED 2). Consumers must branch on THIS,
+   * never re-derive from the entry string (a dotted doc id like `notes/v1.2` is
+   * indistinguishable from a raw path by string shape alone).
+   */
   isDoc: boolean;
   /**
-   * Absolute path of the exported LOCAL version ("yours saved at <path>"), or null when the local
-   * side had no content to save (the local commit DELETED the file — no stage-3 blob exists).
+   * Absolute path of the exported LOCAL version — the FULL-FIDELITY artifact (the blob's exact
+   * bytes, round-2 REQUIRED 1) — or null when the local side had no content to save (the local
+   * commit DELETED the file — no stage-3 blob exists).
    */
   exportPath: string | null;
+  /**
+   * Absolute path of the exported LOCAL version's BODY ONLY (round-2 REQUIRED 3): the artifact
+   * the reconcile chain's `doc update <id> --body-file <file>` can consume LITERALLY —
+   * `--body-file` treats its input as a body, so feeding it the full export would nest the YAML
+   * frontmatter into the body. Written only for a concept doc whose local blob parses as OKF
+   * markdown; null otherwise (raw/reserved files, local deletions, unparseable blobs).
+   */
+  bodyExportPath: string | null;
 }
 
 export type FetchRebaseResolvingOutcome =
@@ -514,8 +550,10 @@ const MAX_REBASE_STOPS = 1000;
  * On ANY unexpected failure mid-loop the rebase is ABORTED before rethrowing — the worktree is
  * never left mid-state on any path.
  *
- * Export files land at `<exportDir>/<relPath>` (created 0700/0600 — the caller passes a
- * per-bundle dir OUTSIDE the worktree, see cursor.ts `syncExportsDir`).
+ * Export files land at `<exportDir>/<relPath>` — the blob's EXACT BYTES (round-2 REQUIRED 1) —
+ * with a `<relPath minus .md>.body.md` body-only companion for parseable concept docs (round-2
+ * REQUIRED 3, the `doc update --body-file` input). Created 0700/0600; the caller passes a
+ * per-bundle dir OUTSIDE the worktree (see cursor.ts `syncExportsDir`).
  */
 export function fetchRebaseResolving(boardPath: string, exportDir: string): FetchRebaseResolvingOutcome {
   mustGit(boardPath, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
@@ -552,12 +590,36 @@ export function fetchRebaseResolving(boardPath: string, exportDir: string): Fetc
       }
       for (const relPath of conflicted) {
         // 1. EXPORT yours FIRST: `:3:` = theirs-in-rebase = the LOCAL version (the inversion).
-        const local = runGit(boardPath, ["show", `:3:${relPath}`]);
+        // BYTES, not a utf8 string (round-2 REQUIRED 1): the export must round-trip the blob
+        // byte-identically — a binary/invalid-UTF-8 blob routed through a string is corrupted
+        // (invalid sequences become U+FFFD).
+        const local = runGitBytes(boardPath, ["show", `:3:${relPath}`]);
         let exportPath: string | null = null;
+        let bodyExportPath: string | null = null;
+        const isDoc = isConceptDocPath(relPath);
         if (local.status === 0) {
           exportPath = path.join(exportDir, relPath);
           mkdirSync(path.dirname(exportPath), { recursive: true, mode: 0o700 });
           writeFileSync(exportPath, local.stdout, { mode: 0o600 });
+          // The BODY-ONLY companion (round-2 REQUIRED 3): the literally-executable
+          // `doc update --body-file` input. Only for a concept doc whose blob parses as OKF
+          // markdown AND whose bytes round-trip utf8 cleanly (round-3 LOW 2: a doc that PARSES
+          // after a lossy decode — an invalid byte became U+FFFD — would get a CORRUPTED body
+          // companion while the full export stays exact, and the emitted chain would apply the
+          // corruption; skip the companion, and with it the runnable chain, instead). A parse
+          // failure likewise just means no runnable chain — the full export remains either way.
+          if (isDoc) {
+            try {
+              const decoded = local.stdout.toString("utf8");
+              if (Buffer.from(decoded, "utf8").equals(local.stdout)) {
+                const { body } = parseMarkdown(decoded, relPath);
+                bodyExportPath = exportPath.replace(/\.md$/, ".body.md");
+                writeFileSync(bodyExportPath, body, { mode: 0o600 });
+              }
+            } catch {
+              bodyExportPath = null;
+            }
+          }
         }
         // 2+3. Keep the UPSTREAM (teammate's) version — explicit ref, never --ours/--theirs. An
         // upstream-side DELETION keeps upstream's state by removing the path instead.
@@ -569,9 +631,10 @@ export function fetchRebaseResolving(boardPath: string, exportDir: string): Fetc
         }
         byPath.set(relPath, {
           relPath,
-          entry: isConceptDocPath(relPath) ? conceptIdFromPath(relPath) : relPath,
-          isDoc: isConceptDocPath(relPath),
+          entry: isDoc ? conceptIdFromPath(relPath) : relPath,
+          isDoc,
           exportPath,
+          bodyExportPath,
         });
       }
       // Advance non-interactively. A nonzero exit that leaves the rebase state behind is a NEW
