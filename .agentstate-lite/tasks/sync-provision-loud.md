@@ -3,7 +3,7 @@ type: Task
 title: >-
   sync's self-provisioning is silent — violates the detection-gated-and-LOUD
   rider
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Found on the first real fresh-clone deployment (2026-07-08, reproducible on
@@ -15,7 +15,8 @@ description: >-
   boardPath} should surface a line/field in the envelope on every path incl.
   both empty states (e.g. provisioned: <path> or a help line). Small; natural
   rider on U4 or the sync-receipt-edge-polish task.
-actor: claude
-timestamp: '2026-07-08T19:08:44.712Z'
+actor: mike
+assignee: mike/claude
+timestamp: '2026-07-08T19:26:21.369Z'
 ---
 

@@ -3,7 +3,7 @@ type: Task
 title: >-
   Board worktrees break under path-remounted sandboxes - use relative paths +
   worktree repair self-heal
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   Field finding (2026-07-08, real sandboxed-agent deployment; reproducible:
@@ -24,7 +24,8 @@ description: >-
   absolute + a repair hint. Affects every containerized/sandboxed agent on the
   board-branch architecture. The U3a never-touch guarantee held throughout: the
   failure is refusal + bad advice, not damage.
-actor: claude
-timestamp: '2026-07-08T19:22:20.623Z'
+actor: mike
+assignee: mike/claude
+timestamp: '2026-07-08T19:26:21.267Z'
 ---
 
