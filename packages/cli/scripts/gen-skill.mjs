@@ -86,12 +86,30 @@ function renderWorkspaceLocation(prefix) {
     "folder at the project root, and it is COMMITTED to the repo — the bundle is shared memory, and",
   );
   lines.push(
-    "committing it is what lets two or more humans (and their agents) collaborate on it across",
+    "sharing it is what lets two or more humans (and their agents) collaborate on it across",
   );
-  lines.push("clones. Setup is ONE command, run once at the project root:");
+  lines.push("clones. Setup depends on whether the project already has a workspace:");
+  lines.push("");
+  lines.push(
+    "- **Joining an existing project** — if `.agentstate-lite/` is already in the clone, there is",
+  );
+  lines.push(
+    "  NOTHING to set up. If it isn't but the project shares its board (the repo's remote has a",
+  );
+  lines.push(
+    "  `board` branch), `sync` is the setup verb — run it once and it creates the folder and pulls",
+  );
+  lines.push(
+    "  the shared state. NEVER init a project that already has a workspace: that creates a",
+  );
+  lines.push("  divergent second bundle.");
+  lines.push(
+    "- **Starting fresh (greenfield)** — `init` creates a bundle that doesn't exist anywhere yet.",
+  );
   lines.push("");
   lines.push("```sh");
-  lines.push(`${prefix} init --dir .agentstate-lite   # idempotent — creates the bundle, or opens an existing one`);
+  lines.push(`${prefix} sync                            # existing project — provisions the shared board, or reports "nothing to sync"`);
+  lines.push(`${prefix} init --dir .agentstate-lite     # greenfield only — idempotent; creates the bundle, or opens an existing one`);
   lines.push("```");
   lines.push("");
   lines.push(
@@ -108,9 +126,23 @@ function renderWorkspaceLocation(prefix) {
   lines.push("```");
   lines.push("");
   lines.push(
-    "Commit the folder like any other source (only gitignore it if the user says the workspace",
+    "The folder is shared with teammates via `aslite sync`, which commits and pushes board changes",
   );
-  lines.push("should stay private to this machine).");
+  lines.push(
+    "itself; until a project adopts sync, board changes are committed as their own small commits,",
+  );
+  lines.push(
+    "not batched with code. (Only gitignore the folder if the user says the workspace should stay",
+  );
+  lines.push("private to this machine.)");
+  lines.push("");
+  lines.push(
+    "Write with attribution: pass `--actor <your-name>` on `new` / `doc write` / `doc update`.",
+  );
+  lines.push(
+    "There is no default actor, so an unattributed write renders as unknown in teammates'",
+  );
+  lines.push("awareness — the `--actor` you pass is what attributes your changes to you.");
   lines.push("");
   lines.push(
     "Each invocation is stateless and resolves its bundle in this order: explicit `--dir`/`--remote`",
@@ -162,25 +194,82 @@ function renderTypicalFlow(prefix) {
   lines.push("## Typical flow");
   lines.push("");
   lines.push("```sh");
-  lines.push(`# One-time setup at the project root (see the Workspaces section); commit the folder`);
-  lines.push(`${prefix} init --dir .agentstate-lite`);
+  lines.push(`# One-time setup at the project root (see the Workspaces section) — run ONE of these:`);
+  lines.push(`${prefix} sync                          # existing project that shares a board — sets up AND pulls the shared board`);
+  lines.push(`${prefix} init --dir .agentstate-lite   # GREENFIELD ONLY — never on a project that already has a workspace`);
   lines.push("");
   lines.push(`# Everything after runs bare, from anywhere in the project tree`);
   lines.push(`# Create a context note (an OKF concept) for the next session`);
-  lines.push(`${prefix} new "Context Note" cycle-1 --title "cycle-1"`);
-  lines.push(`${prefix} doc update context-notes/cycle-1 --body "What this session did and what's next"`);
+  lines.push(`${prefix} new "Context Note" cycle-1 --title "cycle-1" --actor <your-name>`);
+  lines.push(`${prefix} doc update context-notes/cycle-1 --body "What this session did and what's next" --actor <your-name>`);
   lines.push("");
   lines.push(`# Read it back`);
   lines.push(`${prefix} doc read context-notes/cycle-1`);
   lines.push("");
   lines.push(`# Store a doc, cross-link it, and query the bundle`);
-  lines.push(`${prefix} doc write specs/auth --type Spec --title "Auth" --body "…"`);
+  lines.push(`${prefix} doc write specs/auth --type Spec --title "Auth" --body "…" --actor <your-name>`);
   lines.push(`${prefix} link add specs/auth context-notes/cycle-1`);
   lines.push(`${prefix} list --type Spec`);
   lines.push("");
   lines.push(`# Bake a shareable, self-contained HTML view of the whole bundle`);
   lines.push(`${prefix} view`);
+  lines.push("");
+  lines.push(`# Share the board — recording work isn't done until it's shared`);
+  lines.push(`# (safe everywhere: a project with no shared board just prints "sync: nothing to sync")`);
+  lines.push(`${prefix} sync`);
   lines.push("```");
+  lines.push("");
+  return lines;
+}
+
+function renderSyncSection(prefix) {
+  const lines = [];
+  lines.push("## Sharing the board — `sync`");
+  lines.push("");
+  lines.push(
+    "`aslite sync` shares your board — commits your changes, pulls your teammate's, pushes yours,",
+  );
+  lines.push("touching nothing but the board.");
+  lines.push("");
+  lines.push(
+    "Run it whenever you close a unit of work — a task finished, a decision recorded, a session",
+  );
+  lines.push(
+    "ending. Recording work isn't done until it's shared. Two honest empty states (both exit 0):",
+  );
+  lines.push(
+    "a project that doesn't share a board yet prints `sync: nothing to sync` (keep committing the",
+  );
+  lines.push(
+    "folder's changes as their own small commits there); a clean, already-current board prints",
+  );
+  lines.push("`sync: already up to date`.");
+  lines.push("");
+  lines.push(
+    "When a doc changed on BOTH sides, sync converges instead of stopping: your teammate's version",
+  );
+  lines.push(
+    "is kept on the board, YOURS is saved to an export file named in the receipt, and the run",
+  );
+  lines.push("exits 5 with one row per conflicted doc. Reconcile with the doc verbs, never git:");
+  lines.push("");
+  lines.push("```sh");
+  lines.push(`${prefix} sync --show-incoming <id>                 # view the kept incoming version (as of the last fetch)`);
+  lines.push(`${prefix} doc update <id> --body-file <export-file> # write your merged version on top`);
+  lines.push(`${prefix} sync                                      # share it`);
+  lines.push("```");
+  lines.push("");
+  lines.push(
+    "`sync --pull-only` picks up teammates' changes without publishing local ones. If a push fails",
+  );
+  lines.push(
+    "(offline, auth), your work is already committed locally — re-running sync retries the push.",
+  );
+  lines.push("");
+  lines.push(
+    "On projects that share their board you may notice a `board` branch in the repo's GitHub —",
+  );
+  lines.push("that's the board; never merge it into main.");
   lines.push("");
   return lines;
 }
@@ -231,7 +320,10 @@ function renderNpm(DESCRIPTION, COMMAND_GROUPS) {
   lines.push(
     "  needs to persist a context note across sessions, store a decision/spec as a doc, link concepts,",
   );
-  lines.push(`  query a bundle, or bake a shareable HTML view. Runs standalone via \`${NPX}\`.`);
+  lines.push(
+    "  query a bundle, share the project's board with teammates (`sync`), or bake a shareable HTML",
+  );
+  lines.push(`  view. Runs standalone via \`${NPX}\`.`);
   lines.push("---");
   lines.push("");
   lines.push(`# ${PKG}`);
@@ -254,6 +346,7 @@ function renderNpm(DESCRIPTION, COMMAND_GROUPS) {
   lines.push(...renderCommandsSection(COMMAND_GROUPS, NPX));
   lines.push(...renderWorkspaceLocation(NPX));
   lines.push(...renderTypicalFlow(NPX));
+  lines.push(...renderSyncSection(NPX));
   lines.push(...renderNotesSection());
   return lines.join("\n");
 }
@@ -281,9 +374,12 @@ function renderSkill(DESCRIPTION, COMMAND_GROUPS) {
     "  required). Use when an agent needs to persist a context note across sessions, store a",
   );
   lines.push(
-    "  decision/spec as a doc, link concepts, query a bundle, run a local wire-protocol server",
+    "  decision/spec as a doc, link concepts, query a bundle, share the project's board with",
   );
-  lines.push("  (`serve` / `--remote`), or bake a shareable HTML view.");
+  lines.push(
+    "  teammates (`sync`), run a local wire-protocol server (`serve` / `--remote`), or bake a",
+  );
+  lines.push("  shareable HTML view.");
   lines.push("---");
   lines.push("");
   lines.push(`# ${PKG}`);
@@ -371,6 +467,7 @@ function renderSkill(DESCRIPTION, COMMAND_GROUPS) {
   lines.push(...renderCommandsSection(COMMAND_GROUPS, ASLITE));
   lines.push(...renderWorkspaceLocation(ASLITE));
   lines.push(...renderTypicalFlow(ASLITE));
+  lines.push(...renderSyncSection(ASLITE));
   lines.push("## Remote (--remote, serve, identity, invites, keys)");
   lines.push("");
   lines.push(

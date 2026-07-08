@@ -1,15 +1,26 @@
 ---
 type: Task
 title: 'U6 skill + docs truth pass: flow ends with sync, setup verb, plugin bump'
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  U6. Skill and docs truth pass: typical flow ends with sync, sync as setup
-  verb, hook-install re-run prompt, plugin version bump in both manifests. Deps:
-  sync-conflict-resolution, sync-sessionstart.
+  SHIPPED (feat/sync-skill-docs 21c6597): all five Brian-approved convention
+  texts landed verbatim in CLAUDE.md + both SKILL channels (security disclosure;
+  review-gate anchor bullet + four lines; npm-ci worktree line;
+  version-collision sentence; bundle-vs-code commit convention incl. the
+  Workspaces line replacement); --actor taught throughout; init's fs-only
+  in-a-git-repo hint (+4 tests); CLAUDE.md truth fixes (sync in Scope with
+  U4/--migrate marked unshipped; kind-registry consumer list; README 750->913
+  tests); sync.ts help/error strings de-jargoned; plugin 1.0.18. Cold review
+  APPROVE: texts machine-verified exact, claims driven empirically. DELIBERATE
+  OMISSION (reviewer-conditioned, recorded here): the hook-install re-run prompt
+  was NOT delivered — its dependency (U4's pull-then-render subcommand) is
+  unshipped, so the prompt is moved to U4 (line added to
+  tasks/sync-sessionstart), with U5 comms as backstop. Known residue: two 'board
+  worktree' strings in errors.ts filed on sync-receipt-edge-polish.
 actor: brian-claude
 assignee: brian-claude
-timestamp: '2026-07-08T18:09:38.440Z'
+timestamp: '2026-07-08T18:50:15.688Z'
 ---
 # U6 — skill + docs truth pass
 

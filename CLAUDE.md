@@ -136,7 +136,8 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   cheap list-of-nothing. Malformed conventions are skipped with a collected warning, never
   thrown; a duplicate `governs` keeps the first-by-id declaration. The registry is built
   ONCE per invocation, in the COMMAND layer (`kinds`/`new`/`doc write`/`doc update`/`list`'s
-  kind columns in the CLI today); no engine path (`readDoc`/`writeDoc`/…) loads it
+  kind columns, and the other kind-aware commands — `status`, `link`, `home`, `promote`,
+  recipe/init seeding); no engine path (`readDoc`/`writeDoc`/…) loads it
   implicitly. `validateAgainstKind` returns core's existing `ValidationWarning` shape and
   reuses THE one heading splitter (`splitSections`, now in `kinds.ts`) for section linting —
   no second heading parser. `freshnessHorizonMs` FEEDS the existing
@@ -184,6 +185,8 @@ bundle-relative**.
   `list`, `link add`/`show`, and `view` on `examples/sample-bundle` (expect 4 nodes / 7 edges). To
   verify publishability, `npm pack -w agentstate-lite` and run the tarball's bin in a temp dir
   outside the monorepo (its `node_modules` must contain ONLY `agentstate-lite`).
+- A fresh git worktree has no node_modules: run `npm ci` inside it before trusting any
+  test or drift-gate result (up-tree module resolution manufactures phantom failures).
 - `examples/sample-bundle` is the interop fixture: externally-shaped (unquoted timestamps,
   relative links, wrapped bullets). If a change breaks its round-trip, the change is wrong.
 - **Plugin version discipline: any change to the committed plugin content** (either SKILL.md,
@@ -191,7 +194,9 @@ bundle-relative**.
   bump the version in BOTH `.claude-plugin/marketplace.json` AND
   `plugins/agentstate-lite/.codex-plugin/plugin.json`** — the plugin cache is version-keyed, so
   unbumped content changes silently serve stale guidance to every installed agent. Check main's
-  CURRENT version before picking the next one (PR branches have collided on this).
+  CURRENT version before picking the next one (PR branches have collided on this). Parallel unit
+  branches will collide on the next version by design; whichever merges second gets re-bumped
+  and rebased over the other's regenerated bundle before merge.
 - **Branch from CURRENT `origin/main`, never from a previous PR's tip.** Generated files
   (SKILL.md, the committed bundle) usually merge textually, but the drift gates only prove
   generated-matches-generator — they CANNOT catch regenerated prose that a change made
@@ -202,6 +207,25 @@ bundle-relative**.
   the public remote (github.com/Holaxis-ai/agentstate-lite) after each committed unit. The
   pre-public development history lives on the local `archive/pre-public` branch — NEVER push
   it (it predates the open-source scrub).
+- **Every unit ships Builder → independent Reviewer → QA — never Build → QA.** Subagent code
+  review is a required gate before QA and before any merge, even when the orchestrator applied
+  the changes directly. Review-process conventions:
+  - Agents that touch git or run tests work in an ISOLATED worktree/checkout, never the
+    shared working tree; reviewers detach onto the exact sha under review.
+  - A risky mechanic and the test that makes it safe ship in the SAME reviewed unit —
+    a gate must own the risk it guards.
+  - A review claiming it "executed" a documented command chain means character-for-character
+    with the emitted artifacts — no reasonable substitutions; pin such chains with tests that
+    literally run the emitted strings.
+  - Reviewers verify empirically where feasible (built artifact, scratch environments),
+    label each finding empirical vs reasoned, and report survived attacks alongside
+    findings so an APPROVE is calibrated.
+- **Security disclosure:** a defect that is (a) exploitable by someone other than the
+  victim AND (b) present on main goes through a private GitHub Security Advisory —
+  fix privately, merge, then disclose — never a public PR comment or board doc.
+  Because the marketplace channel tracks this repo, "released" means "merged to main".
+  Pre-merge review findings stay public by default. The board is public: the
+  write-time scrub discipline covers vulnerability details, not just secrets.
 - **Records live on the PROJECT BUNDLE (the in-repo board at `.agentstate-lite/`) — the
   product tracks its own build.** Unit-close means: update `tasks/<unit>` (bare
   `doc update tasks/<unit> --status …`, with the description carrying the record — what shipped, commit hash,
@@ -210,7 +234,14 @@ bundle-relative**.
   `research/<topic>` (`type: Research`). Byte-channel moves (files ↔ bundle) go through
   `promote`/`pull`, never model retyping. Stale records have real cost here (a session once
   nearly rebuilt a shipped unit), so: BEFORE building any "queued" item, grep the tree —
-  records may lag the code.
+  records may lag the code. Work is CLAIMED before it is built: flip `tasks/<unit>` to
+  `in_progress` with `--actor` — the CAS write IS the claim (see the bundle's Task convention).
+  **Bundle commits are not code commits.** Board/bundle writes (records, claims, context
+  notes, task updates — anything under `.agentstate-lite/` with no code alongside) are
+  small `board:`-prefixed commits pushed DIRECTLY to main; their value is immediacy, and
+  `aslite sync` supersedes even that once the migration lands. Code ships via branch +
+  PR + review gates, always. A board doc rides a PR only when it is ITSELF the reviewed
+  deliverable (a plan under vetting, records that explain a code change they accompany).
 
 ## Scope
 
@@ -249,6 +280,15 @@ the bundle):
 - **The local `ui` command** (gate 4): the SPA-over-loopback vertical slice is shipped and
   working in both modes; views paused by human verdict (`tasks/ui-v1`). The bundle now also
   holds the project's own plans/research/changelog-archive docs — the records convention above.
+- **The `sync` verb (git tier)** — shares a project's board over a `board` branch on the
+  repo's own remote: self-healing provisioning (sync is the SETUP verb on a fresh clone of a
+  board-sharing project), commit/pull/push touching nothing outside the board, CONVERGING
+  conflict resolution (teammate's version kept, yours exported to a file; reconcile via
+  `doc update`, exit 5), `--show-incoming <id>` viewer, `--pull-only`, cursor + awareness
+  cache (`cli/src/git.ts`, `cursor.ts`, `commands/sync.ts` — command layer only; core never
+  learns git exists). NOT yet shipped: the SessionStart pull-then-render hook (U4) and
+  `sync --migrate` (U5, Mike-gated) — THIS repo's own board still lives on main, so the
+  bundle-commit convention above still applies here.
 
 Standing gates on future work:
 

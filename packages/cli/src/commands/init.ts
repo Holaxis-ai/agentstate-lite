@@ -6,6 +6,8 @@
 // is `--dir` or the cwd (unlike the other commands, `init` does NOT require the dir to already be a
 // bundle — it is what makes one).
 import { parseArgs } from "node:util";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { initBundle, loadKinds } from "@agentstate-lite/core";
 import { resolveTargetDir } from "../bundle.js";
 import { CliError } from "../errors.js";
@@ -33,6 +35,23 @@ Options:
 /** Injectable seam so the parse→init wiring is unit-testable. */
 export interface InitCliDeps {
   stdout: (s: string) => void;
+}
+
+/**
+ * FS-only: true when `dir` or any ancestor contains a `.git` entry (directory OR file — a `.git`
+ * FILE is how git marks a secondary checkout, so both shapes count). Deliberately never invokes
+ * the git binary: `init` stays engine-only/offline, and this probe exists solely to print a hint,
+ * so a cheap, dependency-free walk is the whole contract (plan §U6: "detected by `.git` up-tree,
+ * NO git binary invoked").
+ */
+export function insideGitRepo(dir: string): boolean {
+  let cur = path.resolve(dir);
+  for (;;) {
+    if (existsSync(path.join(cur, ".git"))) return true;
+    const parent = path.dirname(cur);
+    if (parent === cur) return false;
+    cur = parent;
+  }
 }
 
 /** CLI entry: parse flags, init the bundle, print its root. */
@@ -101,6 +120,15 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
 
   const receipt: Record<string, unknown> = { init: "ok", root: bundle.root, recipe: recipeApplied };
   if (warnings.length > 0) receipt.warnings = warnings;
+  // In-a-git-repo hint (plan §U6): `sync` is the setup verb for a project that already shares a
+  // board — `init` there mints a divergent second bundle. The probe is fs-only (`.git` up-tree,
+  // no git binary) and the hint is ADVISORY: it never blocks, never changes the exit code.
+  if (insideGitRepo(root)) {
+    receipt.hint =
+      "this directory is inside a git repo — if the project already shares a board, run " +
+      `\`${cliInvocation()} sync\` instead of init (sync sets up the existing shared board; ` +
+      "init creates a new bundle)";
+  }
   // Surface the recipe catalog so a cold agent whose task needs a DIFFERENT kind (e.g. tasks) does
   // not have to guess that `recipes` exists — the study's C1 tester had to discover work-tracking
   // (the Task kind) on its own after `init` advertised only the auto-seeded Context Note.
