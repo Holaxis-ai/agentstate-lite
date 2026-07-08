@@ -391,6 +391,7 @@ test("recipe add roadmap: applies conventions/roadmap.md AND conventions/roadmap
         required: ["title", "status"],
         optional: ["description", "sequence"],
         values: { status: ["queued", "active", "done"] },
+        terminal: { status: ["done"] },
       },
     });
     assert.ok(!Number.isNaN(Date.parse(ts2 as string)), `expected a valid ISO timestamp, got ${ts2}`);
@@ -420,6 +421,32 @@ test("kinds: reports Roadmap + Roadmap Item with the contains vocabulary and the
     assert.deepEqual(itemKind!.fields.required, ["title", "status"]);
     assert.deepEqual(itemKind!.fields.optional, ["description", "sequence"]);
     assert.deepEqual(itemKind!.fields.values.status, ["queued", "active", "done"]);
+    assert.deepEqual(itemKind!.fields.terminal, { status: ["done"] }, "Roadmap Item declares done as terminal (Brian's ruling)");
+    assert.deepEqual(roadmapKind!.fields.terminal, {}, "the spine has no status field, so nothing is terminal");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("roadmap terminal consumer: a done Roadmap Item hides from list --open; queued/active stay (Brian's ruling on tasks/status-terminal-declaration)", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    await recipe(["add", "roadmap", "--dir", dir], { stdout: () => {} });
+    const T = "2026-07-01T00:00:00.000Z";
+    await writeDoc({ root: dir }, { id: "roadmap-items/queued", frontmatter: { type: "Roadmap Item", title: "Queued", status: "queued", timestamp: T }, body: "" });
+    await writeDoc({ root: dir }, { id: "roadmap-items/active", frontmatter: { type: "Roadmap Item", title: "Active", status: "active", timestamp: T }, body: "" });
+    await writeDoc({ root: dir }, { id: "roadmap-items/shipped", frontmatter: { type: "Roadmap Item", title: "Shipped", status: "done", timestamp: T }, body: "" });
+
+    let out = "";
+    await list(["--type", "Roadmap Item", "--open", "--dir", dir, "--json"], { stdout: (s) => (out += s) });
+    const parsed = JSON.parse(out) as { count: number; docs: Array<{ id: string }> };
+    assert.equal(parsed.count, 2);
+    assert.deepEqual(
+      parsed.docs.map((d) => d.id).sort(),
+      ["roadmap-items/active", "roadmap-items/queued"],
+      "the done item is excluded; queued/active remain open",
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
