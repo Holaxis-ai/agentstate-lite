@@ -1,6 +1,8 @@
-// Tests for `sync` (U3a, plans/sync-verb-implementation §U3a) — the git-tier sync command's core
-// flow: entry self-heal, provision, commit, pull, push, envelope, the INTERIM conflict guard, and
-// the awareness cache/cursor write U4 will consume.
+// Tests for `sync` (U3a core flow + U3b conflict strings, plans/sync-verb-implementation
+// §U3a/§U3b) — entry self-heal, provision, commit, pull, push, envelope, the CONVERGING conflict
+// mechanic's pinned strings/composite framing, and the awareness cache/cursor write U4 consumes.
+// The U3b-specific scenarios (binding convergence chain, multi-commit loop, reserved-file
+// conflict, --show-incoming) live in `sync-conflict.test.ts`.
 //
 // Two layers, mirroring the codebase's own convention (status.ts/home.ts export pure helpers for
 // direct unit testing; git-backed behavior is exercised over the U0 harness):
@@ -14,15 +16,17 @@
 //      share one HOME between two clones the way a single-founder test safely can.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
-  buildConflictMessage,
+  buildConvergeMessage,
   cap,
   conflictLabel,
+  convergeDocLine,
+  convergeHelp,
   ffSwallowToError,
   isRawPathEntry,
   originDocsBetween,
@@ -36,7 +40,7 @@ import {
 import { doc } from "../src/commands/doc.js";
 import { CliError } from "../src/errors.js";
 import type { DocChange } from "../src/git.js";
-import { readSyncState, bundleKey } from "../src/cursor.js";
+import { readSyncState, bundleKey, syncExportsDir } from "../src/cursor.js";
 import {
   boardHead,
   commitBoard,
@@ -47,6 +51,7 @@ import {
   modifyBoardDoc,
   originBoardHead,
   pushBoard,
+  readBoardFile,
   wedgeMidRebase,
   writeBoardDoc,
   git,
@@ -121,30 +126,48 @@ test("cap: shows all rows under the limit; caps + reports total over it; 0 means
   assert.deepEqual(cap([], 20), { shown: 0, total: 0, rows: [] });
 });
 
-test("buildConflictMessage: singular doc, EXACT test-pinned string", () => {
+test("convergeDocLine: concept doc, EXACT test-pinned per-doc string (adjudication D)", () => {
   assert.equal(
-    buildConflictMessage(["tasks/seed-one"]),
-    "doc tasks/seed-one changed on both sides — nothing was changed on either side; " +
-      "conflict resolution ships in the next update",
+    convergeDocLine({ entry: "tasks/seed-one", isDoc: true, exportPath: "/x/tasks/seed-one.md" }),
+    "doc tasks/seed-one — teammate's version kept; yours saved at /x/tasks/seed-one.md — reconcile with doc update",
   );
 });
 
-test("buildConflictMessage: a reserved-file entry (log.md) never renders as 'doc log.md' (lesson 2)", () => {
+test("convergeDocLine: a reserved-file entry (log.md) renders VERBATIM — never 'doc log.md' — and drops the reconcile suffix", () => {
   assert.equal(isRawPathEntry("log.md"), true);
   assert.equal(isRawPathEntry("tasks/seed-one"), false);
   assert.equal(conflictLabel("log.md"), "log.md");
   assert.equal(conflictLabel("tasks/seed-one"), "doc tasks/seed-one");
-  const msg = buildConflictMessage(["log.md"]);
-  assert.ok(!msg.includes("doc log.md"), `expected no "doc log.md" in: ${msg}`);
-  assert.ok(msg.startsWith("log.md changed on both sides"));
+  const line = convergeDocLine({ entry: "log.md", isDoc: false, exportPath: "/x/log.md" });
+  assert.equal(line, "log.md — teammate's version kept; yours saved at /x/log.md");
+  assert.ok(!line.includes("doc log.md"), `expected no "doc log.md" in: ${line}`);
+  assert.ok(!line.includes("reconcile with doc update"), "no doc-update reconcile hint for a reserved file");
 });
 
-test("buildConflictMessage: multiple ids join with a comma, each labeled by its own kind", () => {
-  const msg = buildConflictMessage(["tasks/seed-one", "log.md"]);
+test("convergeDocLine: a local-side deletion (no export) says so honestly instead of naming a missing file", () => {
+  assert.equal(
+    convergeDocLine({ entry: "tasks/seed-one", isDoc: true, exportPath: null }),
+    "doc tasks/seed-one — teammate's version kept (your side deleted it; nothing to save)",
+  );
+});
+
+test("buildConvergeMessage: multiple entries join with '; ', and the DROPPED phrase stays dropped (amended pack c)", () => {
+  const msg = buildConvergeMessage([
+    { entry: "tasks/seed-one", isDoc: true, exportPath: "/x/tasks/seed-one.md" },
+    { entry: "log.md", isDoc: false, exportPath: "/x/log.md" },
+  ]);
   assert.equal(
     msg,
-    "doc tasks/seed-one, log.md changed on both sides — nothing was changed on either side; " +
-      "conflict resolution ships in the next update",
+    "doc tasks/seed-one — teammate's version kept; yours saved at /x/tasks/seed-one.md — reconcile with doc update; " +
+      "log.md — teammate's version kept; yours saved at /x/log.md",
+  );
+  assert.ok(!msg.includes("nothing was overwritten"), "the amended pack DROPS this phrase");
+});
+
+test("convergeHelp: the documented reconcile chain — show-incoming → doc update --body-file → sync", () => {
+  assert.equal(
+    convergeHelp("aslite", "tasks/seed-one", "/x/tasks/seed-one.md"),
+    "aslite sync --show-incoming tasks/seed-one → aslite doc update tasks/seed-one --body-file /x/tasks/seed-one.md → aslite sync",
   );
 });
 
@@ -321,42 +344,62 @@ test("sync: actor attribution e2e — `doc write --actor alice` through the REAL
   }
 });
 
-test("sync: INTERIM conflict guard — exit 5, pristine worktree, the exact string, NO export file", async () => {
+test("sync: CONVERGING conflict (pre-committed divergence) — exit 5, upstream kept, yours exported, pristine worktree, the exact string", async () => {
   const topo = await makeTwoCloneTopology();
   const { homes, cleanup } = await tempHomes(2);
   const [homeA, homeB] = homes;
   try {
     // `divergeSameDoc` already COMMITS both sides (A pushes; B commits LOCALLY but does not push)
     // — so B arrives at `sync` with a real, already-committed, unpushed divergent commit. This
-    // means `stageAndCommit` is a skip-empty no-op here (nothing new to stage) and `fetchRebase`
-    // hits the SAME-DOC conflict directly on its own first attempt.
+    // means `stageAndCommit` is a skip-empty no-op here (committedThisRun = false), so the
+    // converge message arrives WITHOUT the post-commit safety prefix — pinned EXACTLY below.
     const div = await divergeSameDoc(topo);
-    const beforeHead = boardHead(topo.b);
+    const localBytes = await readBoardFile(topo.b, div.docPath);
     assert.equal(gitTry(topo.b.board, ["status", "--porcelain"]).stdout, "", "sanity: B's divergent edit is already committed, not left dirty");
 
     const result = await runSync(homeB!, ["--dir", topo.b.root]);
     assert.ok(result.err, "expected a thrown CliError");
     assert.equal(result.err!.code, "CONFLICT");
     assert.equal(result.err!.exitCode, 5);
+
+    const exportPath = path.join(syncExportsDir(bundleKey({ remoteUrl: topo.origin, subpath: "" }), homeB!), div.docPath);
     assert.equal(
       result.err!.message,
-      `doc ${div.docId} changed on both sides — nothing was changed on either side; ` +
-        `conflict resolution ships in the next update`,
+      `doc ${div.docId} — teammate's version kept; yours saved at ${exportPath} — reconcile with doc update`,
     );
+    assert.ok(!result.err!.message.includes("nothing was overwritten"), "the amended pack DROPS this phrase");
 
-    // Worktree pristine: no mid-rebase state left behind, and NOTHING moved — B's board HEAD is
-    // exactly where it was (the rebase was cleanly aborted, not partially applied), and no export
-    // file was created anywhere (U3a builds none; U3b is what adds that mechanic).
-    assert.equal(isMidRebase(topo.b), false);
-    assert.equal(boardHead(topo.b), beforeHead, "nothing was changed on either side — B's HEAD is untouched");
-    assert.equal(gitTry(topo.b.board, ["status", "--porcelain"]).stdout, "", "worktree is clean after the clean rebase --abort");
+    // The teammate's version was KEPT: the rebase COMPLETED (B's now-empty commit was dropped)
+    // and the landed content is exactly origin/board's.
+    assert.equal(isMidRebase(topo.b), false, "the rebase completed — never left mid-state");
+    assert.equal(boardHead(topo.b), div.aHead, "B's board converged onto origin/board's tip");
+    assert.match(git(topo.b.board, ["show", `HEAD:${div.docPath}`]), /changed by A/);
+    assert.equal(gitTry(topo.b.board, ["status", "--porcelain"]).stdout, "", "worktree pristine after the completed rebase");
+
+    // YOURS was saved: the export file is BYTE-IDENTICAL to B's local version.
+    const exported = await readFile(exportPath, "utf8");
+    assert.equal(exported, localBytes, "export file byte-identical to the local version");
+
+    // The envelope rows carry {id, kind, title, yours, theirs} + the help chain (amended pack c).
+    const conflicts = (result.err!.details as { conflicts: { rows: Record<string, unknown>[] } }).conflicts;
+    assert.equal(conflicts.rows.length, 1);
+    assert.equal(conflicts.rows[0]!.id, div.docId);
+    assert.equal(conflicts.rows[0]!.kind, "Task");
+    assert.equal(conflicts.rows[0]!.title, "Seed one");
+    assert.equal(conflicts.rows[0]!.yours, exportPath);
+    assert.equal(conflicts.rows[0]!.theirs, "kept");
+    assert.ok(result.err!.help!.includes(`sync --show-incoming ${div.docId}`), "help chain step 1");
+    assert.ok(result.err!.help!.includes(`doc update ${div.docId} --body-file ${exportPath}`), "help chain step 2");
+
+    // Nothing moved on origin's side.
+    assert.equal(originBoardHead(topo), div.aHead, "origin/board untouched by B's conflicted sync");
   } finally {
     await cleanup();
     await topo.cleanup();
   }
 });
 
-test("sync: commit-then-conflict — the run's OWN commit lands, then the envelope composes the safety framing with the EXACT interim string", async () => {
+test("sync: commit-then-conflict — the run's OWN commit lands, then the envelope composes the safety framing with the EXACT converge string", async () => {
   const topo = await makeTwoCloneTopology();
   const { homes, cleanup } = await tempHomes(2);
   const [, homeB] = homes;
@@ -367,38 +410,42 @@ test("sync: commit-then-conflict — the run's OWN commit lands, then the envelo
     pushBoard(topo.a);
     const originAfterA = originBoardHead(topo);
 
-    // B edits the SAME doc but does NOT commit. Unlike the pure-guard test above (where
-    // divergeSameDoc pre-commits both sides and stageAndCommit no-ops), sync's own commit step
-    // must land B's work THIS run (committedThisRun = true) BEFORE the rebase hits the conflict —
-    // the most common real entry into a conflict: a founder's `doc update` leaves uncommitted
-    // changes and sync sweeps them up.
+    // B edits the SAME doc but does NOT commit. Unlike the pre-committed-divergence test above
+    // (where divergeSameDoc pre-commits both sides and stageAndCommit no-ops), sync's own commit
+    // step must land B's work THIS run (committedThisRun = true) BEFORE the rebase hits the
+    // conflict — the most common real entry into a conflict: a founder's `doc update` leaves
+    // uncommitted changes and sync sweeps them up.
     await modifyBoardDoc(topo.b, "tasks/seed-one", { body: "# Seed one\n\nB's conflicting version.\n" });
+    const localBytes = await readBoardFile(topo.b, "tasks/seed-one.md");
     assert.notEqual(gitTry(topo.b.board, ["status", "--porcelain"]).stdout, "", "sanity: B's edit is UNCOMMITTED before sync");
-    const beforeHead = boardHead(topo.b);
 
     const result = await runSync(homeB!, ["--dir", topo.b.root]);
     assert.ok(result.err, "expected a thrown CliError");
     assert.equal(result.err!.code, "CONFLICT");
     assert.equal(result.err!.exitCode, 5);
-    // The composite, pinned EXACTLY: safety framing first — made TRUE by the commit asserted
-    // below — then the interim-guard string passes through UNCHANGED as the suffix.
+    // The composite, pinned EXACTLY: safety framing first — made TRUE by the commit (B's version
+    // was committed, then exported when the converging rebase kept upstream) — then the converge
+    // terminal string passes through UNCHANGED as the suffix.
+    const exportPath = path.join(
+      syncExportsDir(bundleKey({ remoteUrl: topo.origin, subpath: "" }), homeB!),
+      "tasks/seed-one.md",
+    );
     assert.equal(
       result.err!.message,
       "committed to the board locally — your work is saved. " +
-        "doc tasks/seed-one changed on both sides — nothing was changed on either side; " +
-        "conflict resolution ships in the next update",
+        `doc tasks/seed-one — teammate's version kept; yours saved at ${exportPath} — reconcile with doc update`,
     );
     assert.ok(JSON.stringify(result.err!.details ?? {}).includes("tasks/seed-one"), "conflict rows carry the doc id");
 
-    // "your work is saved" is TRUE: sync's own commit landed and survived the aborted rebase.
-    const afterHead = boardHead(topo.b);
-    assert.notEqual(afterHead, beforeHead, "sync committed B's work this run");
-    assert.match(git(topo.b.board, ["show", "HEAD:tasks/seed-one.md"]), /B's conflicting version/);
+    // "your work is saved" is TRUE twice over: B's version is in the export file byte-for-byte,
+    // and the board itself CONVERGED onto the teammate's version (the rebase completed).
+    assert.equal(await readFile(exportPath, "utf8"), localBytes, "export byte-identical to B's version");
+    assert.match(git(topo.b.board, ["show", "HEAD:tasks/seed-one.md"]), /A's version/);
 
-    // And every interim-guard invariant holds on the composite path too: clean abort, pristine
-    // worktree, nothing moved on either side (origin untouched, no export file anywhere).
+    // Every converge invariant holds on the composite path too: rebase completed, pristine
+    // worktree, origin untouched (the conflicted run never pushes).
     assert.equal(isMidRebase(topo.b), false);
-    assert.equal(gitTry(topo.b.board, ["status", "--porcelain"]).stdout, "", "worktree pristine after the clean abort");
+    assert.equal(gitTry(topo.b.board, ["status", "--porcelain"]).stdout, "", "worktree pristine after the completed rebase");
     assert.equal(originBoardHead(topo), originAfterA, "origin/board untouched by B's conflicted sync");
   } finally {
     await cleanup();
@@ -466,14 +513,14 @@ test("sync: a stale mid-rebase state at ENTRY self-heals (adjudication C) before
     assert.equal(isMidRebase(topo.b), false, "self-healed — never left stuck mid-rebase");
 
     // The underlying divergence is REAL (same doc, both sides), so a fresh rebase attempt hits it
-    // again immediately after healing — "heals at entry then completes" means the command reaches
-    // a well-defined terminal outcome (this interim conflict receipt), never hangs or re-wedges.
-    // (Flagged in the builder report: this is the documented interpretation of "completes" given
-    // the only available U0 fixture for this scenario is a genuine same-doc divergence.)
+    // again immediately after healing — and since U3b the fresh attempt CONVERGES (upstream kept,
+    // local exported, rebase completed) and reaches the CONFLICT(5) terminal envelope; the command
+    // never hangs or re-wedges.
     assert.ok(result.err, "expected a thrown CliError");
     assert.equal(result.err!.code, "CONFLICT");
     assert.equal(result.err!.exitCode, 5);
     assert.ok(result.err!.message.includes(div.docId));
+    assert.ok(result.err!.message.includes("teammate's version kept"), "the converging terminal string");
   } finally {
     await cleanup();
     await topo.cleanup();

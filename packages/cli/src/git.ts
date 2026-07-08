@@ -23,13 +23,14 @@
  *   - No raw git on stdout: every failure routes through `classifyGitError` (errors.ts) into the
  *     capped exit taxonomy.
  *
- * CONFLICT BOUNDARY (adjudication A): {@link fetchRebase} DETECTS a same-doc conflict — collects
- * the conflicted ids via `diff --name-only --diff-filter=U` — and `git rebase --abort`s cleanly.
- * ZERO data movement, no ours/theirs logic anywhere in this module; the converging keep/export
- * mechanic is U3b, built ON these primitives.
+ * CONFLICT BOUNDARY: {@link fetchRebase} DETECTS a same-doc conflict — collects the conflicted ids
+ * via `diff --name-only --diff-filter=U` — and `git rebase --abort`s cleanly (ZERO data movement;
+ * U3a's interim shape, kept for any consumer that must never move data). The CONVERGING mechanic
+ * (U3b) is {@link fetchRebaseResolving}: keep the upstream version, export the local version, and
+ * COMPLETE the rebase — the full-sync path's op since U3b.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, realpathSync, rmdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { conceptIdFromPath, isReservedFile, parseMarkdown } from "@agentstate-lite/core";
@@ -437,6 +438,144 @@ export function fetchRebase(boardPath: string): FetchRebaseOutcome {
     return { status: "conflict", conflictedDocIds: conflicted };
   }
   throw classifyGitError(failureOf(["rebase", BOARD_REF], r));
+}
+
+// ── fetch + rebase, CONVERGING (U3b, plans/sync-verb-implementation §U3b) ─────
+
+/** One conflicted file the converging rebase resolved (keep-upstream + export-local). */
+export interface ResolvedConflict {
+  /** The repo-relative path of the conflicted file. */
+  relPath: string;
+  /** The doc id for a concept doc; the repo-relative path VERBATIM for a reserved/non-doc file. */
+  entry: string;
+  /** True when `entry` is a concept-doc id (drives the "doc <id>" vs verbatim-path label). */
+  isDoc: boolean;
+  /**
+   * Absolute path of the exported LOCAL version ("yours saved at <path>"), or null when the local
+   * side had no content to save (the local commit DELETED the file — no stage-3 blob exists).
+   */
+  exportPath: string | null;
+}
+
+export type FetchRebaseResolvingOutcome =
+  | { status: "clean" }
+  /**
+   * Same-doc conflicts were RESOLVED by the converging mechanic (upstream kept, local exported)
+   * and the rebase COMPLETED — the worktree is never left mid-state; non-conflicted local commits
+   * landed on top of `origin/board`. One entry per conflicted file (deduped across rebase stops:
+   * a doc conflicting at several stops keeps its LAST export — the local FINAL content).
+   */
+  | { status: "resolved"; conflicts: ResolvedConflict[] };
+
+/**
+ * Backstop against a converging loop that stops making progress (should be impossible: every
+ * iteration either completes a replayed commit or `--skip`s one, and the todo list is finite).
+ */
+const MAX_REBASE_STOPS = 1000;
+
+/**
+ * `git fetch origin` then `git rebase origin/board`, RESOLVING same-doc conflicts with the
+ * CONVERGING mechanic (U3b — replaces U3a's detect-and-abort interim guard on the full-sync path;
+ * {@link fetchRebase} keeps its detect-only shape for any consumer that must never move data).
+ *
+ * WARNING — rebase INVERTS ours/theirs. Replaying local commits ONTO origin/board makes
+ * HEAD/stage-2 ("ours") the UPSTREAM version and stage-3 ("theirs") YOUR local version. That
+ * inversion is why every step below uses EXPLICIT refs (`origin/board`, `:3:`) and NEVER
+ * `--ours`/`--theirs`.
+ *
+ * The exact verified sequence (research/sync-verb-review Round 2; test-pinned), per conflicted
+ * `<path>`:
+ *   1. `git show :3:<path> > <export-file>` — FIRST (`:3:` = theirs-in-rebase = the LOCAL
+ *      version → this is "yours saved").
+ *   2. `git checkout origin/board -- <path>` — keep the UPSTREAM (teammate's) version.
+ *   3. `git add -- <path>`.
+ * Then advance non-interactively: `GIT_EDITOR=true GIT_SEQUENCE_EDITOR=true git rebase --continue`
+ * (the `rebase: true` env invariant), LOOPING the whole block until the rebase state
+ * (`rev-parse --git-path rebase-merge` / `rebase-apply`) is GONE — multiple local commits each
+ * stop the rebase. Two states the verbatim sequence meets in practice are handled explicitly:
+ *   - a replayed commit whose EVERY change was a conflicted path now kept at upstream becomes
+ *     EMPTY; `rebase --continue` refuses it, so a stop with NO unmerged files advances with
+ *     `git rebase --skip` (the commit's content lives on in the export file);
+ *   - a side that has no blob for the path (local deleted it → no stage 3: nothing to export;
+ *     upstream deleted it → keep-upstream means `git rm -- <path>`).
+ * On ANY unexpected failure mid-loop the rebase is ABORTED before rethrowing — the worktree is
+ * never left mid-state on any path.
+ *
+ * Export files land at `<exportDir>/<relPath>` (created 0700/0600 — the caller passes a
+ * per-bundle dir OUTSIDE the worktree, see cursor.ts `syncExportsDir`).
+ */
+export function fetchRebaseResolving(boardPath: string, exportDir: string): FetchRebaseResolvingOutcome {
+  mustGit(boardPath, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
+  const r = runGit(boardPath, ["rebase", BOARD_REF], { rebase: true, timeoutMs: NETWORK_TIMEOUT_MS });
+  if (r.status === 0) return { status: "clean" };
+  if (!detectStaleRebase(boardPath)) throw classifyGitError(failureOf(["rebase", BOARD_REF], r));
+
+  const listConflicted = (): string[] =>
+    mustGit(boardPath, ["diff", "--name-only", "--diff-filter=U"])
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+  const byPath = new Map<string, ResolvedConflict>();
+  try {
+    let stops = 0;
+    while (detectStaleRebase(boardPath)) {
+      if (++stops > MAX_REBASE_STOPS) {
+        throw new CliError(
+          "RUNTIME",
+          `sync's converging rebase did not terminate after ${MAX_REBASE_STOPS} stops — aborting to leave the board unchanged`,
+        );
+      }
+      const conflicted = listConflicted();
+      if (conflicted.length === 0) {
+        // No unmerged files at this stop: the replayed commit became EMPTY (every change it
+        // carried was a conflicted path kept at upstream) — drop it. `--skip` may itself stop on
+        // the NEXT commit's conflict (tolerated nonzero); the loop handles that stop normally.
+        runGit(boardPath, ["rebase", "--skip"], { rebase: true });
+        continue;
+      }
+      for (const relPath of conflicted) {
+        // 1. EXPORT yours FIRST: `:3:` = theirs-in-rebase = the LOCAL version (the inversion).
+        const local = runGit(boardPath, ["show", `:3:${relPath}`]);
+        let exportPath: string | null = null;
+        if (local.status === 0) {
+          exportPath = path.join(exportDir, relPath);
+          mkdirSync(path.dirname(exportPath), { recursive: true, mode: 0o700 });
+          writeFileSync(exportPath, local.stdout, { mode: 0o600 });
+        }
+        // 2+3. Keep the UPSTREAM (teammate's) version — explicit ref, never --ours/--theirs. An
+        // upstream-side DELETION keeps upstream's state by removing the path instead.
+        if (runGit(boardPath, ["cat-file", "-e", `refs/remotes/${BOARD_REF}:${relPath}`]).status === 0) {
+          mustGit(boardPath, ["checkout", BOARD_REF, "--", relPath]);
+          mustGit(boardPath, ["add", "--", relPath]);
+        } else {
+          mustGit(boardPath, ["rm", "-f", "--", relPath]);
+        }
+        byPath.set(relPath, {
+          relPath,
+          entry: isConceptDocPath(relPath) ? conceptIdFromPath(relPath) : relPath,
+          isDoc: isConceptDocPath(relPath),
+          exportPath,
+        });
+      }
+      // Advance non-interactively. A nonzero exit that leaves the rebase state behind is a NEW
+      // stop (the next commit's conflict, or an empty commit) — the loop resolves it; a nonzero
+      // exit with NO rebase state left is a genuine failure.
+      const cont = runGit(boardPath, ["rebase", "--continue"], { rebase: true });
+      if (cont.status !== 0 && !detectStaleRebase(boardPath)) {
+        throw classifyGitError(failureOf(["rebase", "--continue"], cont));
+      }
+    }
+  } catch (err) {
+    // NEVER leave the worktree mid-state: restore the pre-rebase board, then rethrow.
+    try {
+      mustGit(boardPath, ["rebase", "--abort"], { rebase: true });
+    } catch {
+      /* best-effort — the original error is the one that matters */
+    }
+    throw err;
+  }
+  return { status: "resolved", conflicts: [...byPath.values()] };
 }
 
 // ── push ──────────────────────────────────────────────────────────────────────

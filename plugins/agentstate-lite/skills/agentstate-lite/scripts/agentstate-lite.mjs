@@ -3409,7 +3409,7 @@ var require_parse = __commonJS({
 var require_gray_matter = __commonJS({
   "../../node_modules/gray-matter/index.js"(exports2, module2) {
     "use strict";
-    var fs10 = __require("fs");
+    var fs11 = __require("fs");
     var sections = require_section_matter();
     var defaults = require_defaults();
     var stringify = require_stringify();
@@ -3493,7 +3493,7 @@ var require_gray_matter = __commonJS({
       return stringify(file, data, options2);
     };
     matter2.read = function(filepath, options2) {
-      const str2 = fs10.readFileSync(filepath, "utf8");
+      const str2 = fs11.readFileSync(filepath, "utf8");
       const file = matter2(str2, options2);
       file.path = filepath;
       return file;
@@ -4050,14 +4050,14 @@ var nodeFs = {
   existsSync,
   readFileSync: (path10, encoding) => readFileSync(path10, encoding)
 };
-function readNearestPackageJson(startPath, fs10 = nodeFs) {
+function readNearestPackageJson(startPath, fs11 = nodeFs) {
   let dir = dirname(startPath);
   let previous = "";
   while (dir !== previous) {
     const packageJsonPath = join(dir, "package.json");
-    if (fs10.existsSync(packageJsonPath)) {
+    if (fs11.existsSync(packageJsonPath)) {
       try {
-        const parsed = JSON.parse(fs10.readFileSync(packageJsonPath, "utf-8"));
+        const parsed = JSON.parse(fs11.readFileSync(packageJsonPath, "utf-8"));
         if (typeof parsed.name === "string" && parsed.name.length > 0) {
           return {
             packageName: parsed.name,
@@ -4379,9 +4379,9 @@ function resolveEntry(invokedAs, realpath) {
     return invokedAs;
   }
 }
-function resolveInstalledVersion(invokedAs, realpath, fs10) {
+function resolveInstalledVersion(invokedAs, realpath, fs11) {
   const installedEntry = resolveEntry(invokedAs, realpath);
-  return installedEntry ? readNearestPackageJson(installedEntry, fs10).version : void 0;
+  return installedEntry ? readNearestPackageJson(installedEntry, fs11).version : void 0;
 }
 function homebrewUpgradeOutput(options2) {
   const update = {
@@ -4421,8 +4421,8 @@ async function runUpdate(options2) {
   const platform = options2.platform ?? process.platform;
   const realpath = options2.realpath ?? ((path10) => realpathSync(path10));
   const entry = resolveEntry(invokedAs, realpath);
-  const fs10 = options2.fs ?? nodeFs;
-  const fromPackageJson = entry ? readNearestPackageJson(entry, fs10) : {};
+  const fs11 = options2.fs ?? nodeFs;
+  const fromPackageJson = entry ? readNearestPackageJson(entry, fs11) : {};
   const packageName = options2.packageName ?? fromPackageJson.packageName;
   const current = options2.version ?? fromPackageJson.version;
   if (!packageName) {
@@ -4484,7 +4484,7 @@ async function runUpdate(options2) {
       packageName,
       current,
       latest,
-      installedVersion: resolveInstalledVersion(invokedAs, realpath, fs10),
+      installedVersion: resolveInstalledVersion(invokedAs, realpath, fs11),
       command: plan.command
     });
   }
@@ -11889,12 +11889,13 @@ async function ui(argv, deps = {}) {
 
 // src/commands/sync.ts
 import { existsSync as existsSync4, realpathSync as realpathSync5 } from "node:fs";
+import { promises as fs10 } from "node:fs";
 import path9 from "node:path";
 import { parseArgs as parseArgs22 } from "node:util";
 
 // src/git.ts
 import { spawnSync } from "node:child_process";
-import { existsSync as existsSync3, readdirSync, realpathSync as realpathSync4, rmdirSync } from "node:fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync2, readdirSync, realpathSync as realpathSync4, rmdirSync, writeFileSync as writeFileSync2 } from "node:fs";
 import path8 from "node:path";
 var BOARD_BRANCH = "board";
 var BOARD_REMOTE = "origin";
@@ -12089,16 +12090,62 @@ ${bodyLines.join("\n")}
   const sha = mustGit(boardPath, ["rev-parse", "HEAD"]).trim();
   return { committed: true, sha, subject, docs };
 }
-function fetchRebase(boardPath) {
+var MAX_REBASE_STOPS = 1e3;
+function fetchRebaseResolving(boardPath, exportDir) {
   mustGit(boardPath, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
   const r = runGit(boardPath, ["rebase", BOARD_REF], { rebase: true, timeoutMs: NETWORK_TIMEOUT_MS });
   if (r.status === 0) return { status: "clean" };
-  if (detectStaleRebase(boardPath)) {
-    const conflicted = mustGit(boardPath, ["diff", "--name-only", "--diff-filter=U"]).split("\n").map((l) => l.trim()).filter((l) => l.length > 0).map((p) => isConceptDocPath(p) ? conceptIdFromPath(p) : p);
-    mustGit(boardPath, ["rebase", "--abort"], { rebase: true });
-    return { status: "conflict", conflictedDocIds: conflicted };
+  if (!detectStaleRebase(boardPath)) throw classifyGitError(failureOf(["rebase", BOARD_REF], r));
+  const listConflicted = () => mustGit(boardPath, ["diff", "--name-only", "--diff-filter=U"]).split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  const byPath = /* @__PURE__ */ new Map();
+  try {
+    let stops = 0;
+    while (detectStaleRebase(boardPath)) {
+      if (++stops > MAX_REBASE_STOPS) {
+        throw new CliError(
+          "RUNTIME",
+          `sync's converging rebase did not terminate after ${MAX_REBASE_STOPS} stops \u2014 aborting to leave the board unchanged`
+        );
+      }
+      const conflicted = listConflicted();
+      if (conflicted.length === 0) {
+        runGit(boardPath, ["rebase", "--skip"], { rebase: true });
+        continue;
+      }
+      for (const relPath of conflicted) {
+        const local = runGit(boardPath, ["show", `:3:${relPath}`]);
+        let exportPath = null;
+        if (local.status === 0) {
+          exportPath = path8.join(exportDir, relPath);
+          mkdirSync2(path8.dirname(exportPath), { recursive: true, mode: 448 });
+          writeFileSync2(exportPath, local.stdout, { mode: 384 });
+        }
+        if (runGit(boardPath, ["cat-file", "-e", `refs/remotes/${BOARD_REF}:${relPath}`]).status === 0) {
+          mustGit(boardPath, ["checkout", BOARD_REF, "--", relPath]);
+          mustGit(boardPath, ["add", "--", relPath]);
+        } else {
+          mustGit(boardPath, ["rm", "-f", "--", relPath]);
+        }
+        byPath.set(relPath, {
+          relPath,
+          entry: isConceptDocPath(relPath) ? conceptIdFromPath(relPath) : relPath,
+          isDoc: isConceptDocPath(relPath),
+          exportPath
+        });
+      }
+      const cont = runGit(boardPath, ["rebase", "--continue"], { rebase: true });
+      if (cont.status !== 0 && !detectStaleRebase(boardPath)) {
+        throw classifyGitError(failureOf(["rebase", "--continue"], cont));
+      }
+    }
+  } catch (err) {
+    try {
+      mustGit(boardPath, ["rebase", "--abort"], { rebase: true });
+    } catch {
+    }
+    throw err;
   }
-  throw classifyGitError(failureOf(["rebase", BOARD_REF], r));
+  return { status: "resolved", conflicts: [...byPath.values()] };
 }
 function push(boardPath) {
   mustGit(boardPath, ["push", BOARD_REMOTE, BOARD_BRANCH], { timeoutMs: NETWORK_TIMEOUT_MS });
@@ -12207,9 +12254,14 @@ ${resolve3(src.root)}`;
 function syncStateDir(home2 = homedir5()) {
   return join6(credentialsDir(home2), SYNC_STATE_DIR_NAME);
 }
+function keyDigest(key2) {
+  return createHash2("sha256").update(key2, "utf8").digest("hex").slice(0, 32);
+}
 function syncStatePath(key2, home2 = homedir5()) {
-  const digest = createHash2("sha256").update(key2, "utf8").digest("hex").slice(0, 32);
-  return join6(syncStateDir(home2), `${digest}.json`);
+  return join6(syncStateDir(home2), `${keyDigest(key2)}.json`);
+}
+function syncExportsDir(key2, home2 = homedir5()) {
+  return join6(syncStateDir(home2), "exports", keyDigest(key2));
 }
 var EMPTY_STATE = { cursor: null, cache: null, marker: null };
 function isRecord(v) {
@@ -12328,6 +12380,7 @@ var SYNC_USAGE = `agentstate-lite sync \u2014 share the board branch with a remo
 
 Usage:
   agentstate-lite sync [--pull-only] [--dir <path>] [--limit <n>] [--json]
+  agentstate-lite sync --show-incoming <id> [--out <file>] [--dir <path>] [--json]
 
 Shares this repo's board (\`.agentstate-lite\`, a linked worktree of the \`board\` branch) with your
 teammates: commits any pending local doc changes, pulls theirs, and pushes yours \u2014 touching
@@ -12340,9 +12393,18 @@ prints 'sync: nothing to sync'; a clean, already-current board prints 'sync: alr
 Otherwise the receipt reports { committed, pushed, pulled, actor, incoming } \u2014 \`incoming\` is the
 enriched delta of docs that arrived this run (capped; --limit controls the row cap, default 20).
 
-A same-doc conflict between your board and origin is DETECTED and the rebase is CLEANLY ABORTED \u2014
-the worktree is left exactly as it was, nothing moved on either side. This is an INTERIM guard
-(exit 5); real per-doc conflict resolution ships in a follow-up update.
+When a doc changed on BOTH sides, sync CONVERGES: your teammate's version is kept on the board,
+YOUR version is saved to an export file named in the receipt, and the sync completes (the
+worktree is never left mid-state; non-conflicted local changes still land). The run exits 5 with
+one row per conflicted doc and the reconcile chain: \`sync --show-incoming <id>\` to view the kept
+incoming version, \`doc update <id> --body-file <export-file>\` to write your merged version on
+top, then \`sync\` again to share it.
+
+\`sync --show-incoming <id>\` prints the board's incoming (upstream) version of one doc \u2014 the
+state of \`origin/board\` as of the last fetch (it never fetches). Full doc-read semantics: large
+bodies truncate and point at \`--out <file>\` (raw bytes to disk); \`--out -\` streams the raw
+bytes to stdout with the receipt (or any error envelope) on stderr. A doc absent upstream renders
+as an expected state, not an error.
 
 If the push fails after a local commit already landed (offline, revoked/expired credentials, or a
 locked repository), the receipt still reports what committed/pulled successfully \u2014 your work is
@@ -12350,6 +12412,8 @@ saved locally either way, and re-running sync retries the push.
 
 Options:
   --pull-only          Only fast-forward from origin (never rebase); skip commit + push
+  --show-incoming <id> Print the upstream (origin/board) version of one doc, as of the last fetch
+  --out <file>         With --show-incoming: write the raw bytes to <file> ('-' = raw to stdout)
   --dir <path>         Directory to run sync from (default: the cwd) \u2014 must be inside a git repo
   --limit <n>          Cap the incoming-delta row list to <n> rows (default: 20; 0 = unlimited)
   --json               Emit compact JSON instead of TOON
@@ -12396,9 +12460,44 @@ function isRawPathEntry(entry) {
 function conflictLabel(entry) {
   return isRawPathEntry(entry) ? entry : `doc ${entry}`;
 }
-function buildConflictMessage(ids) {
-  const labels = ids.length > 0 ? ids.map(conflictLabel) : ["the board"];
-  return `${labels.join(", ")} changed on both sides \u2014 nothing was changed on either side; conflict resolution ships in the next update`;
+function convergeDocLine(c) {
+  const label = conflictLabel(c.entry);
+  if (c.exportPath === null) {
+    return `${label} \u2014 teammate's version kept (your side deleted it; nothing to save)`;
+  }
+  const reconcile = c.isDoc ? " \u2014 reconcile with doc update" : "";
+  return `${label} \u2014 teammate's version kept; yours saved at ${c.exportPath}${reconcile}`;
+}
+function buildConvergeMessage(conflicts) {
+  return conflicts.map(convergeDocLine).join("; ");
+}
+function convergeHelp(inv, id, exportPath) {
+  return `${inv} sync --show-incoming ${id} \u2192 ${inv} doc update ${id} --body-file ${exportPath} \u2192 ${inv} sync`;
+}
+function keptDocMeta(boardPath, relPath) {
+  const shown = runGit(boardPath, ["show", `HEAD:${relPath}`]);
+  if (shown.status !== 0) return {};
+  try {
+    const { frontmatter } = parseMarkdown(shown.stdout, relPath);
+    const kind2 = fmValue(frontmatter.type);
+    const title = fmValue(frontmatter.title);
+    return {
+      ...kind2 !== UNKNOWN_FIELD ? { kind: kind2 } : {},
+      ...title !== UNKNOWN_FIELD ? { title } : {}
+    };
+  } catch {
+    return {};
+  }
+}
+function toConflictRows(boardPath, conflicts) {
+  return conflicts.map((c) => {
+    const row = c.isDoc ? { id: c.entry } : { path: c.entry };
+    if (c.isDoc) Object.assign(row, keptDocMeta(boardPath, c.relPath));
+    row.yours = c.exportPath !== null ? c.exportPath : "deleted locally \u2014 nothing to save";
+    const landed = runGit(boardPath, ["cat-file", "-e", `HEAD:${c.relPath}`]).status === 0;
+    row.theirs = landed ? "kept" : "kept (deleted upstream)";
+    return row;
+  });
 }
 function ffSwallowToError(reason, inv) {
   switch (reason) {
@@ -12595,6 +12694,8 @@ async function sync(argv, deps = {}) {
       args: argv,
       options: {
         "pull-only": { type: "boolean" },
+        "show-incoming": { type: "string" },
+        out: { type: "string" },
         dir: { type: "string" },
         limit: { type: "string" },
         json: { type: "boolean" },
@@ -12607,6 +12708,24 @@ async function sync(argv, deps = {}) {
   if (values.help) {
     stdout(SYNC_USAGE);
     return;
+  }
+  if (values["show-incoming"] !== void 0) {
+    const id = values["show-incoming"].trim();
+    if (!id) {
+      throw new CliError("USAGE", "--show-incoming was given an empty value \u2014 pass a doc id (or a reserved path like log.md)", {
+        help: `${inv} sync --show-incoming <id>`
+      });
+    }
+    if (values["pull-only"]) {
+      throw new CliError("USAGE", "--show-incoming and --pull-only cannot be combined \u2014 the viewer never pulls");
+    }
+    await showIncoming(id, values, deps);
+    return;
+  }
+  if (values.out !== void 0) {
+    throw new CliError("USAGE", "--out only applies to sync --show-incoming <id>", {
+      help: `${inv} sync --show-incoming <id> --out <file>`
+    });
   }
   let limit = DEFAULT_LIMIT2;
   if (values.limit !== void 0) {
@@ -12642,17 +12761,18 @@ async function sync(argv, deps = {}) {
   } else {
     let rebaseOutcome;
     try {
-      rebaseOutcome = fetchRebase(boardPath);
+      rebaseOutcome = fetchRebaseResolving(boardPath, syncExportsDir(key2));
     } catch (rawErr) {
       const enriched = withUpstreamHelp(toCliError(rawErr, "rebase"), inv);
       throw await throwPostCommitFailure(enriched, commitResult.committed, key2, boardPath);
     }
-    if (rebaseOutcome.status === "conflict") {
-      const rows = rebaseOutcome.conflictedDocIds.map(
-        (entry) => isRawPathEntry(entry) ? { path: entry } : { id: entry }
-      );
-      const conflictErr = new CliError("CONFLICT", buildConflictMessage(rebaseOutcome.conflictedDocIds), {
-        details: { conflicts: cap2(rows, limit) }
+    if (rebaseOutcome.status === "resolved") {
+      const conflicts = rebaseOutcome.conflicts;
+      const rows = toConflictRows(boardPath, conflicts);
+      const firstReconcilable = conflicts.find((c) => c.isDoc && c.exportPath !== null);
+      const conflictErr = new CliError("CONFLICT", buildConvergeMessage(conflicts), {
+        details: { conflicts: cap2(rows, limit) },
+        ...firstReconcilable ? { help: convergeHelp(inv, firstReconcilable.entry, firstReconcilable.exportPath) } : {}
       });
       throw await throwPostCommitFailure(conflictErr, commitResult.committed, key2, boardPath);
     }
@@ -12726,6 +12846,132 @@ async function sync(argv, deps = {}) {
   receipt.incoming = cap2(toIncomingRows(originDelta), limit);
   if (reanchorNote) receipt.note = reanchorNote;
   stdout(render(receipt, mode));
+}
+var SHOW_INCOMING_AS_OF = "last fetch";
+var SHOW_INCOMING_ABSENT_STATE = "absent upstream \u2014 not on origin/board as of the last fetch (deleted upstream, or a new local doc)";
+function attachBodyPreview(rec, body, byteHatch) {
+  if (body.length > BODY_PREVIEW_LIMIT) {
+    rec.body = body.slice(0, BODY_PREVIEW_LIMIT);
+    rec.body_truncated = true;
+    rec.body_chars = body.length;
+    rec.help = [byteHatch];
+  } else {
+    rec.body = body;
+  }
+}
+async function showIncoming(id, values, deps) {
+  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
+  const stderr = deps.stderr ?? ((s) => void process.stderr.write(s));
+  const writeStdoutBytes = deps.writeStdoutBytes ?? ((d) => void process.stdout.write(d));
+  const inv = cliInvocation();
+  const mode = resolveMode(values);
+  const out = values.out?.trim();
+  const streamMode = out === "-";
+  const run = async () => {
+    const dir = retargetBoardInterior(values.dir ?? process.cwd());
+    const top = repoTopLevel(dir);
+    if (!top) {
+      throw new CliError(
+        "RUNTIME",
+        "not inside a git repository \u2014 there is no fetched board state to show",
+        { details: { state: "no-repo" } }
+      );
+    }
+    let relPath;
+    if (isRawPathEntry(id)) {
+      if (path9.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
+        throw new CliError("USAGE", `--show-incoming needs a repo-relative path without '..' segments: ${id}`);
+      }
+      relPath = id;
+    } else {
+      try {
+        assertSafeConceptId(id);
+      } catch (err) {
+        throw new CliError("USAGE", err instanceof Error ? err.message : String(err));
+      }
+      relPath = pathFromConceptId(id);
+    }
+    if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
+      throw ffSwallowToError("no-upstream", inv);
+    }
+    const shown = runGit(top, ["show", `refs/remotes/${BOARD_REF}:${relPath}`]);
+    if (shown.status !== 0) {
+      const text = `${shown.stderr}
+${shown.stdout}`;
+      if (/does not exist in|exists on disk, but not in/i.test(text)) {
+        const state = {
+          sync: "show-incoming",
+          id,
+          as_of: SHOW_INCOMING_AS_OF,
+          state: SHOW_INCOMING_ABSENT_STATE
+        };
+        (streamMode ? stderr : stdout)(render(state, mode));
+        return;
+      }
+      throw classifyGitError({ args: ["show"], status: shown.status, stdout: shown.stdout, stderr: shown.stderr });
+    }
+    const content = shown.stdout;
+    if (out) {
+      const bytes = Buffer.from(content, "utf8");
+      const receipt = {
+        sync: "show-incoming",
+        id,
+        as_of: SHOW_INCOMING_AS_OF,
+        out,
+        size_bytes: bytes.byteLength
+      };
+      if (streamMode) {
+        writeStdoutBytes(bytes);
+        stderr(render(receipt, mode));
+        return;
+      }
+      await fs10.writeFile(out, bytes);
+      stdout(render(receipt, mode));
+      return;
+    }
+    const byteHatch = `${inv} sync --show-incoming ${id} --out <file>`;
+    const rec = {};
+    if (isRawPathEntry(id)) {
+      rec.path = id;
+      rec.as_of = SHOW_INCOMING_AS_OF;
+      attachBodyPreview(rec, content, byteHatch);
+    } else {
+      let parsed = null;
+      try {
+        const { frontmatter, body } = parseMarkdown(content, relPath);
+        parsed = { frontmatter, body };
+      } catch {
+        parsed = null;
+      }
+      rec.id = id;
+      if (parsed) {
+        const KNOWN_ORDER = ["type", "title", "description", "resource", "tags", "timestamp"];
+        const RESERVED_OUTPUT = /* @__PURE__ */ new Set(["id", "as_of", "body", "body_truncated", "body_chars", "help"]);
+        for (const key2 of KNOWN_ORDER) {
+          if (parsed.frontmatter[key2] !== void 0 && parsed.frontmatter[key2] !== null) rec[key2] = parsed.frontmatter[key2];
+        }
+        for (const key2 of Object.keys(parsed.frontmatter)) {
+          if (KNOWN_ORDER.includes(key2) || RESERVED_OUTPUT.has(key2)) continue;
+          if (parsed.frontmatter[key2] === void 0 || parsed.frontmatter[key2] === null) continue;
+          rec[key2] = parsed.frontmatter[key2];
+        }
+      }
+      rec.as_of = SHOW_INCOMING_AS_OF;
+      attachBodyPreview(rec, parsed ? parsed.body : content, byteHatch);
+    }
+    stdout(render(rec, mode));
+  };
+  if (!streamMode) {
+    await run();
+    return;
+  }
+  try {
+    await run();
+  } catch (err) {
+    const { envelope } = toExit(err);
+    stderr(renderErrorEnvelope(envelope));
+    throw asHandled(err);
+  }
 }
 
 // src/commands/login.ts
@@ -13720,8 +13966,8 @@ var COMMAND_GROUPS = [
         summary: "Boot the local web UI (board / doc detail / admin / graph) \u2014 same origin, loopback-only"
       },
       {
-        usage: "sync [--pull-only] [--dir <path>] [--limit <n>]",
-        summary: "Share the board branch with a remote \u2014 commits, pulls, and pushes (git tier; --pull-only skips commit+push)"
+        usage: "sync [--pull-only] [--show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]",
+        summary: "Share the board branch with a remote \u2014 commits, pulls, and pushes (git tier; --pull-only skips commit+push). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> prints the incoming version as of the last fetch"
       }
     ]
   },
@@ -14048,10 +14294,10 @@ async function home(argv, deps = {}) {
 }
 
 // src/commands/hook.ts
-import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync2, rmSync } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync3, rmSync } from "node:fs";
 import { homedir as homedir6 } from "node:os";
 import { join as join8, dirname as dirname4 } from "node:path";
-import { mkdirSync as mkdirSync2 } from "node:fs";
+import { mkdirSync as mkdirSync3 } from "node:fs";
 import { parseArgs as parseArgs30 } from "node:util";
 var HOOK_USAGE = `agentstate-lite hook \u2014 manage the SessionStart home-view hook
 
@@ -14146,8 +14392,8 @@ function readSettings(path10) {
   }
 }
 function writeSettings(path10, settings) {
-  mkdirSync2(dirname4(path10), { recursive: true });
-  writeFileSync2(path10, `${JSON.stringify(settings, null, 2)}
+  mkdirSync3(dirname4(path10), { recursive: true });
+  writeFileSync3(path10, `${JSON.stringify(settings, null, 2)}
 `);
 }
 function opencodePluginInstalled(path10) {
