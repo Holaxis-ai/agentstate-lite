@@ -18,6 +18,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { mkdtemp, rm, writeFile, readFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -95,6 +96,23 @@ function headSubject(boardDir: string): string {
 }
 function headBody(boardDir: string): string {
   return git(boardDir, ["log", "-1", "--format=%b"]);
+}
+
+/** Plant a second repository's `board` worktree at another repo's conventional board path. */
+async function plantForeignBoardWorktreeAt(scratchDir: string, boardPath: string): Promise<string> {
+  const foreignRoot = path.join(scratchDir, "foreign");
+  git(scratchDir, ["init", "-b", "main", foreignRoot]);
+  await writeFile(path.join(foreignRoot, "README.md"), "# foreign project\n");
+  git(foreignRoot, ["add", "-A"]);
+  git(foreignRoot, ["commit", "-m", "foreign: initial"]);
+  git(foreignRoot, ["checkout", "--orphan", BOARD_BRANCH]);
+  git(foreignRoot, ["rm", "-rf", "."]);
+  await writeFile(path.join(foreignRoot, "foreign.md"), "# Foreign board\n");
+  git(foreignRoot, ["add", "-A"]);
+  git(foreignRoot, ["commit", "-m", "foreign: board"]);
+  git(foreignRoot, ["checkout", "main"]);
+  git(foreignRoot, ["worktree", "add", boardPath, BOARD_BRANCH]);
+  return foreignRoot;
 }
 
 // ── user code untouched (staged + unstaged, any branch) ───────────────────────
@@ -429,6 +447,38 @@ test("provision: board branch checked out at a NON-conventional path = idempoten
   }
 });
 
+test("provisionBoardWorktree: a FOREIGN repo's board worktree at .agentstate-lite is refused, and the emitted remedy is executable verbatim", async () => {
+  const topo = await makeTwoCloneTopology({ provision: false });
+  try {
+    const foreignRoot = await plantForeignBoardWorktreeAt(topo.dir, topo.a.board);
+    assert.equal(git(topo.a.board, ["rev-parse", "--abbrev-ref", "HEAD"]).trim(), BOARD_BRANCH);
+    assert.notEqual(
+      git(topo.a.board, ["rev-parse", "--git-common-dir"]).trim(),
+      git(topo.a.root, ["rev-parse", "--git-common-dir"]).trim(),
+      "precondition: the checkout belongs to the foreign repo, despite sitting at this repo's board path",
+    );
+    assert.equal(isProvisioned(topo.a.root), false, "a foreign board worktree is not provisioned");
+
+    const err = capture(() => provisionBoardWorktree(topo.a.root));
+    assert.ok(err instanceof CliError);
+    assert.equal(err.code, "RUNTIME");
+    assert.match(err.message, /belongs to a different git repository/i);
+    assert.match(err.message, new RegExp(topo.a.root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.ok(err.help, "carries a fixing command");
+    assert.ok(
+      err.help.startsWith(`mv '${topo.a.board}' '${topo.a.board}.bak'`),
+      "remedy uses absolute paths, so it works from any invocation directory",
+    );
+
+    const command = err.help.split("  # ")[0]!;
+    execFileSync("/bin/sh", ["-c", command], { cwd: foreignRoot, stdio: "pipe" });
+    assert.equal(existsSync(topo.a.board), false, "verbatim remedy moved the foreign checkout aside");
+    assert.equal(existsSync(`${topo.a.board}.bak`), true, "backup path exists for manual recovery");
+  } finally {
+    await topo.cleanup();
+  }
+});
+
 // ── worktree portability: relative pointers + repair self-heal (2026-07-08 field finding) ─────
 
 test("provision: a FRESH worktree add writes RELATIVE pointers when the running git supports it (feature-gated on git capability, never on a version string)", async () => {
@@ -463,7 +513,7 @@ test("provisionBoardWorktree: THE MOUNT-MOVE FIELD FINDING — stale ABSOLUTE po
     const staleGitFile = (await readFile(path.join(topo.a.board, ".git"), "utf8")).trim();
     assert.match(staleGitFile, /^gitdir:\s*\//, "precondition: the harness's own provisioning wrote ABSOLUTE pointers");
 
-    const movedRoot = `${topo.a.root}-moved`;
+    const movedRoot = path.join(path.dirname(topo.a.root), `moved-${path.basename(topo.a.root)}`);
     await rename(topo.a.root, movedRoot);
     const movedBoard = path.join(movedRoot, BUNDLE_DIR);
 
@@ -588,7 +638,7 @@ test("provisionBoardWorktree: the LEGITIMATE composite (moved + genuinely wedged
   try {
     const div = await wedgeMidRebase(topo);
     assert.ok(isMidRebase(topo.b));
-    const movedRoot = `${topo.b.root}-moved`;
+    const movedRoot = path.join(path.dirname(topo.b.root), `moved-${path.basename(topo.b.root)}`);
     await rename(topo.b.root, movedRoot);
     const outcome = provisionBoardWorktree(movedRoot);
     assert.equal(outcome.kind, "repaired", "a genuine board-originated wedge survives the tightened check");
@@ -623,7 +673,7 @@ test("provisionBoardWorktree: PROBE-E (cold review) — a wedge started from a N
     assert.notEqual(r.status, 0, "sanity: the rebase conflicted");
     assert.ok(isMidRebase(topo.a), "sanity: genuinely wedged, and NOT from board");
 
-    const movedRoot = `${topo.a.root}-moved`;
+    const movedRoot = path.join(path.dirname(topo.a.root), `moved-${path.basename(topo.a.root)}`);
     await rename(topo.a.root, movedRoot);
 
     const err = capture(() => provisionBoardWorktree(movedRoot));

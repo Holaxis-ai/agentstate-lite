@@ -30,7 +30,7 @@
 // an interactive verb that must report a REAL structured outcome, so `ffSwallowToError` below
 // translates every `FfPullResult.swallowed` reason into the capped CliError taxonomy instead of
 // silently no-op'ing.
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -593,6 +593,34 @@ function isLinkedWorktree(p: string): boolean {
   return realOrSame(gitDirRaw) !== realOrSame(commonDir);
 }
 
+/** True for git's linked-worktree/submodule marker shape: a `.git` FILE, not a directory. */
+function hasGitFileSignature(p: string): boolean {
+  try {
+    return statSync(path.join(p, ".git")).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Path-only fallback for the mount-move case: stale worktree pointers make `repoTopLevel(dir)`
+ * fail from inside `.agentstate-lite`, but the enclosing path still names the conventional board
+ * checkout. Retarget to its parent so `provisionBoardWorktree` can run the repair path. The `.git`
+ * FILE gate keeps this away from plain pre-migration bundle directories; independent nested repos
+ * with a `.git` directory still fall through to the normal no-board/no-repo classification.
+ */
+function retargetStaleBoardInteriorByPath(dir: string): string | null {
+  let cur = path.resolve(dir);
+  for (;;) {
+    if (path.basename(cur) === BUNDLE_DIR && hasGitFileSignature(cur)) {
+      return path.dirname(cur);
+    }
+    const parent = path.dirname(cur);
+    if (parent === cur) return null;
+    cur = parent;
+  }
+}
+
 /**
  * REVIEW ROUND 2, FINDING 2 (MEDIUM-HIGH): `sync` run from INSIDE the board worktree — exactly
  * where an agent sits right after `doc write --dir .agentstate-lite` — used to fail with a leaked
@@ -612,7 +640,7 @@ function retargetBoardInterior(dir: string): string {
   } catch {
     /* fall through — the normal flow classifies whatever this is */
   }
-  return dir;
+  return retargetStaleBoardInteriorByPath(dir) ?? dir;
 }
 
 /** The board worktree's current HEAD sha, via U1's exported `runGit` (no U1 op named this directly). */

@@ -984,7 +984,7 @@ test("sync: loud provisioning — THE MOUNT-MOVE FIELD FINDING end-to-end — a 
     const staleGitFile = (await readFile(path.join(topo.a.board, ".git"), "utf8")).trim();
     assert.match(staleGitFile, /^gitdir:\s*\//, "precondition: the harness's own provisioning wrote ABSOLUTE pointers");
 
-    const movedRoot = `${topo.a.root}-moved`;
+    const movedRoot = path.join(path.dirname(topo.a.root), `moved-${path.basename(topo.a.root)}`);
     await rename(topo.a.root, movedRoot);
     const movedBoard = path.join(movedRoot, BUNDLE_DIR);
 
@@ -1025,6 +1025,30 @@ test("sync: loud provisioning — THE MOUNT-MOVE FIELD FINDING end-to-end — a 
     assert.equal(again.out, "sync: already up to date\n", "no provisioned/repaired key on a steady-state re-run");
   } finally {
     await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("sync: moved/remounted repo still repairs when invoked from INSIDE the stale board checkout", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(1);
+  let movedRoot: string | undefined;
+  try {
+    movedRoot = path.join(path.dirname(topo.a.root), `moved-${path.basename(topo.a.root)}`);
+    await rename(topo.a.root, movedRoot);
+    const movedBoard = path.join(movedRoot, BUNDLE_DIR);
+
+    const result = await runSync(homes[0]!, ["--dir", movedBoard]);
+    assert.equal(result.err, undefined, result.err?.message);
+    assert.ok(
+      result.out.includes(`repaired: ${movedBoard} — worktree pointers repaired`),
+      `expected repair announcement instead of a false empty state: ${result.out}`,
+    );
+    assert.match(result.out, /sync: already up to date/);
+    assert.equal(gitTry(movedBoard, ["rev-parse", "--abbrev-ref", "HEAD"]).stdout.trim(), "board");
+  } finally {
+    await cleanup();
+    if (movedRoot) await rm(movedRoot, { recursive: true, force: true });
     await topo.cleanup();
   }
 });
@@ -1099,7 +1123,7 @@ test("sync: THE HEAL-ORDERING EDGE — a repaired worktree that was ALSO wedged 
     const div = await wedgeMidRebase(topo);
     assert.ok(isMidRebase(topo.b), "sanity: genuinely wedged before the move");
 
-    const movedRoot = `${topo.b.root}-moved`;
+    const movedRoot = path.join(path.dirname(topo.b.root), `moved-${path.basename(topo.b.root)}`);
     await rename(topo.b.root, movedRoot);
     const movedBoard = path.join(movedRoot, BUNDLE_DIR);
 
