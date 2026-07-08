@@ -114,7 +114,13 @@ export interface MutateDocOptions {
    * the classification is identical bar the hint's placeholder URL.
    */
   remoteUrl?: string;
-  /** Attribution for the write (`WriteOptions.actor`). Threaded on every mode's `writeDoc` call. */
+  /**
+   * Attribution for the write (`WriteOptions.actor`). Threaded on every mode's `writeDoc` call.
+   * This is ONLY the engine/version-history channel: the CLI verbs each ALSO persist `--actor`
+   * into `frontmatter.actor` in their own candidate construction (the per-doc attribution sync
+   * reads — adjudication F), because frontmatter is document CONTENT with per-verb semantics
+   * (patch preserves, overwrite full-replaces, create scaffolds) — not a pipeline concern.
+   */
   actor?: string;
   /**
    * "patch" mode only: an EXPLICIT optimistic compare-and-swap token. When set, the patch is a

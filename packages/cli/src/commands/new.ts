@@ -41,9 +41,12 @@
 // hit this mid-session; the whole point of this migration).
 //
 // `--actor` is a CONTROL flag here (mirrors `doc update`'s `DOC_UPDATE_VALUE_FLAGS`), so a kind
-// field literally named `actor` is unreachable via `new` — core's `RESERVED_FIELD_NAMES` does not
-// reserve `actor`, but the CLI already treats it as reserved on every other mutation surface, so
-// this is consistent, not a regression (still listed in a "declared:" hint, just never settable).
+// field literally named `actor` is unreachable AS A KIND-FIELD FLAG via `new` — core's
+// `RESERVED_FIELD_NAMES` does not reserve `actor`, but the CLI already treats it as reserved on
+// every other mutation surface, so this is consistent, not a regression (still listed in a
+// "declared:" hint). Since the actor-attribution fix, the control flag ITSELF persists
+// `frontmatter.actor` (see the write below), so a kind declaring `actor` is satisfiable after all
+// — through the control flag, with control semantics (blank-value guard, trim).
 import { parseArgs } from "node:util";
 import { loadKinds, type Frontmatter, type KindConvention, type KindRegistry } from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
@@ -75,8 +78,9 @@ Options:
   --dir <path>          Bundle directory (default: discovered from the cwd)
   --remote <url>        Talk to a wire-protocol server instead of a local bundle
                          (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
-  --actor <name>         Attribute this write (recorded in version history by a persisting backend; the
-                         local filesystem backend accepts but does not store it). A present-but-blank
+  --actor <name>         Attribute this write: persisted as the doc's own 'actor' frontmatter field
+                         (the per-doc attribution sync and its receipts read) and recorded in version
+                         history by a persisting backend. Omitted = no actor field. A present-but-blank
                          value is a USAGE error (exit 2).
   --no-prefix           Use <id> verbatim — do NOT auto-prepend the kind's declared path prefix
   --json                Emit compact JSON instead of TOON
@@ -201,7 +205,7 @@ function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: strin
     `Repeat a flag to set an array value (e.g. --tag a --tag b). Validation is STRICT.\n` +
     `To ADD a field to this kind, edit its convention doc (${inv} kinds names it; then pull → edit fields.optional → promote).\n\n` +
     `Options:\n` +
-    `  --actor <name>   Attribute the write\n` +
+    `  --actor <name>   Attribute the write (persisted as the doc's 'actor' frontmatter field)\n` +
     `  --no-prefix      Use <id> verbatim (skip the auto path prefix above)\n` +
     `  --dir <path>     Bundle directory (default: discovered from the cwd)\n` +
     `  --remote <url>   Talk to a wire-protocol server instead of a local bundle\n` +
@@ -356,6 +360,12 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     if (vals === undefined || vals.length === 0) continue;
     frontmatter[field] = vals.length === 1 ? vals[0]! : vals;
   }
+  // `--actor` persists as the instance's `actor` frontmatter field — the per-doc attribution
+  // sync's enrichment reads (adjudication F; same policy as `doc write`/`doc update`). Because
+  // `--actor` is a CONTROL flag (see the file header), this is ALSO the one route that satisfies a
+  // kind declaring `actor` among its fields. Omitted → no field. Kind validation is unaffected: an
+  // undeclared frontmatter key trips no warning (OKF §9), so strict mode stays green.
+  if (actor !== undefined) frontmatter.actor = actor.trim();
   // `mutateDoc`'s validate step (strict:true below) defaults `frontmatter.timestamp` in place if
   // still absent BEFORE validating — so a kind that declares `timestamp` required (e.g. the seeded
   // Context Note kind) validates against a value that is actually present, not "missing because the

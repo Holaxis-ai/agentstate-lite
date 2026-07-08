@@ -59,9 +59,11 @@ Options:
   --strict             If a kind convention governs --type, reject (exit 2) instead of writing with
                        warnings when the doc does not satisfy it (default: warn-and-write, exit 0 —
                        see 'agentstate-lite kinds')
-  --actor <name>       Attribute this write (recorded in version history by a persisting backend; the
-                       local filesystem backend accepts but does not store it). A present-but-blank
-                       value is a USAGE error (exit 2).
+  --actor <name>       Attribute this write: persisted as the doc's own 'actor' frontmatter field
+                       (the per-doc attribution sync and its receipts read) and recorded in version
+                       history by a persisting backend. Note doc write is a FULL replace: omitting
+                       --actor on an overwrite drops any existing actor field (reported in
+                       dropped_fields). A present-but-blank value is a USAGE error (exit 2).
 ${COMMON_OPTIONS}
 
 Examples:
@@ -105,8 +107,11 @@ Options:
                          (from a prior read/write/history receipt) — a conflict is STALE_HEAD (exit
                          5), NOT retried. Omit for a normal (auto-retrying) update. A present-but-
                          blank value is a USAGE error (exit 2), not "no CAS".
-  --actor <name>         Attribute this write (see 'doc history'). A present-but-blank value is a
-                         USAGE error (exit 2).
+  --actor <name>         Attribute this write: sets the doc's 'actor' frontmatter field (overwriting
+                         a previous actor; omitted = the existing actor is preserved verbatim) and
+                         threads to version history (see 'doc history'). Not a patch by itself —
+                         pass it alongside the field(s) you are changing. A present-but-blank value
+                         is a USAGE error (exit 2).
 
 Passing NO patchable field at all is a USAGE error (exit 2) — there is nothing to do.
 ${COMMON_OPTIONS}
@@ -162,8 +167,10 @@ history-keeping backend (a remote deployment) returns the full chain and the rea
 --actor; on an AUTH'D remote, actor is your authenticated principal (server-set, unforgeable) and
 agent is the --actor label you declared under it. A local --dir bundle keeps no history, so it
 returns just the single current revision and reports the file's OS owner as the actor (the
-filesystem backend accepts but does NOT persist --actor). The newest version is the token to pass
-to --expected-version for an optimistic doc update/delete.
+filesystem backend keeps no per-write history for --actor; the doc's own 'actor' frontmatter
+field — which every write path persists when --actor is given — is where per-doc attribution
+lives). The newest version is the token to pass to --expected-version for an optimistic doc
+update/delete.
 ${COMMON_OPTIONS}
 
 Examples:

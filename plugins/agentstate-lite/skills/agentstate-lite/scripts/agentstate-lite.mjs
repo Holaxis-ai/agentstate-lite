@@ -7674,9 +7674,11 @@ Options:
   --strict             If a kind convention governs --type, reject (exit 2) instead of writing with
                        warnings when the doc does not satisfy it (default: warn-and-write, exit 0 \u2014
                        see 'agentstate-lite kinds')
-  --actor <name>       Attribute this write (recorded in version history by a persisting backend; the
-                       local filesystem backend accepts but does not store it). A present-but-blank
-                       value is a USAGE error (exit 2).
+  --actor <name>       Attribute this write: persisted as the doc's own 'actor' frontmatter field
+                       (the per-doc attribution sync and its receipts read) and recorded in version
+                       history by a persisting backend. Note doc write is a FULL replace: omitting
+                       --actor on an overwrite drops any existing actor field (reported in
+                       dropped_fields). A present-but-blank value is a USAGE error (exit 2).
 ${COMMON_OPTIONS}
 
 Examples:
@@ -7719,8 +7721,11 @@ Options:
                          (from a prior read/write/history receipt) \u2014 a conflict is STALE_HEAD (exit
                          5), NOT retried. Omit for a normal (auto-retrying) update. A present-but-
                          blank value is a USAGE error (exit 2), not "no CAS".
-  --actor <name>         Attribute this write (see 'doc history'). A present-but-blank value is a
-                         USAGE error (exit 2).
+  --actor <name>         Attribute this write: sets the doc's 'actor' frontmatter field (overwriting
+                         a previous actor; omitted = the existing actor is preserved verbatim) and
+                         threads to version history (see 'doc history'). Not a patch by itself \u2014
+                         pass it alongside the field(s) you are changing. A present-but-blank value
+                         is a USAGE error (exit 2).
 
 Passing NO patchable field at all is a USAGE error (exit 2) \u2014 there is nothing to do.
 ${COMMON_OPTIONS}
@@ -7774,8 +7779,10 @@ history-keeping backend (a remote deployment) returns the full chain and the rea
 --actor; on an AUTH'D remote, actor is your authenticated principal (server-set, unforgeable) and
 agent is the --actor label you declared under it. A local --dir bundle keeps no history, so it
 returns just the single current revision and reports the file's OS owner as the actor (the
-filesystem backend accepts but does NOT persist --actor). The newest version is the token to pass
-to --expected-version for an optimistic doc update/delete.
+filesystem backend keeps no per-write history for --actor; the doc's own 'actor' frontmatter
+field \u2014 which every write path persists when --actor is given \u2014 is where per-doc attribution
+lives). The newest version is the token to pass to --expected-version for an optimistic doc
+update/delete.
 ${COMMON_OPTIONS}
 
 Examples:
@@ -8015,6 +8022,7 @@ async function docWrite(argv, deps) {
   if (values.description !== void 0) frontmatter.description = values.description;
   if (values.resource !== void 0) frontmatter.resource = values.resource;
   if (values.tag && values.tag.length > 0) frontmatter.tags = values.tag;
+  if (values.actor !== void 0) frontmatter.actor = values.actor.trim();
   if (values.timestamp?.trim()) {
     const ts = values.timestamp.trim();
     if (Number.isNaN(Date.parse(ts))) {
@@ -8272,6 +8280,7 @@ async function docUpdate(argv, deps) {
       if (p.description !== void 0) nextFrontmatter.description = p.description;
       if (p.tags && p.tags.length > 0) nextFrontmatter.tags = p.tags;
       if (p.type !== void 0) nextFrontmatter.type = p.type.trim();
+      if (p.actor !== void 0) nextFrontmatter.actor = p.actor.trim();
       if (!p.keepTimestamp) nextFrontmatter.timestamp = (/* @__PURE__ */ new Date()).toISOString();
       let nextBody = existing.body;
       if (p.body !== void 0) nextBody = p.body;
@@ -9737,8 +9746,9 @@ Options:
   --dir <path>          Bundle directory (default: discovered from the cwd)
   --remote <url>        Talk to a wire-protocol server instead of a local bundle
                          (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
-  --actor <name>         Attribute this write (recorded in version history by a persisting backend; the
-                         local filesystem backend accepts but does not store it). A present-but-blank
+  --actor <name>         Attribute this write: persisted as the doc's own 'actor' frontmatter field
+                         (the per-doc attribution sync and its receipts read) and recorded in version
+                         history by a persisting backend. Omitted = no actor field. A present-but-blank
                          value is a USAGE error (exit 2).
   --no-prefix           Use <id> verbatim \u2014 do NOT auto-prepend the kind's declared path prefix
   --json                Emit compact JSON instead of TOON
@@ -9809,7 +9819,7 @@ Repeat a flag to set an array value (e.g. --tag a --tag b). Validation is STRICT
 To ADD a field to this kind, edit its convention doc (${inv} kinds names it; then pull \u2192 edit fields.optional \u2192 promote).
 
 Options:
-  --actor <name>   Attribute the write
+  --actor <name>   Attribute the write (persisted as the doc's 'actor' frontmatter field)
   --no-prefix      Use <id> verbatim (skip the auto path prefix above)
   --dir <path>     Bundle directory (default: discovered from the cwd)
   --remote <url>   Talk to a wire-protocol server instead of a local bundle
@@ -9922,6 +9932,7 @@ async function newCommand(argv, deps = {}) {
     if (vals === void 0 || vals.length === 0) continue;
     frontmatter[field] = vals.length === 1 ? vals[0] : vals;
   }
+  if (actor !== void 0) frontmatter.actor = actor.trim();
   const body = (kind2.sections ?? []).map((heading) => `# ${heading}
 `).join("\n");
   const targetId = values["no-prefix"] ? id : resolveInstanceId(kind2, id);
