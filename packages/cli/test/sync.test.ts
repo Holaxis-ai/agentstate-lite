@@ -595,3 +595,71 @@ test("sync: FINDING 3 — a commit that lands, then a fetch failure, still gets 
     await topo.cleanup();
   }
 });
+
+// ── review round 2: wrong-target-git-operation regressions ─────────────────────
+
+test("sync: an independent NESTED git repo at .agentstate-lite is NEVER healed — its in-progress rebase survives (round-2 finding 1)", async () => {
+  const outer = await mkdtemp(path.join(tmpdir(), "agentstate-lite-sync-nested-"));
+  try {
+    const idc = ["-c", "user.name=t", "-c", "user.email=t@t.test"];
+    // Outer project repo (no board anywhere).
+    git(outer, ["init", "-q", "-b", "main"]);
+    await writeFile(path.join(outer, "README.md"), "outer\n");
+    git(outer, [...idc, "add", "-A"]);
+    git(outer, [...idc, "commit", "-q", "-m", "outer initial"]);
+
+    // An UNRELATED standalone repo squatting at exactly `.agentstate-lite` (its own `git init`,
+    // NOT a linked board worktree), wedged mid-rebase with a real conflict.
+    const nested = path.join(outer, ".agentstate-lite");
+    await mkdir(nested);
+    git(nested, ["init", "-q", "-b", "main"]);
+    await writeFile(path.join(nested, "a.txt"), "one\n");
+    git(nested, [...idc, "add", "-A"]);
+    git(nested, [...idc, "commit", "-q", "-m", "base"]);
+    git(nested, ["checkout", "-q", "-b", "feature"]);
+    await writeFile(path.join(nested, "a.txt"), "two\n");
+    git(nested, [...idc, "commit", "-q", "-am", "feature change"]);
+    git(nested, ["checkout", "-q", "main"]);
+    await writeFile(path.join(nested, "a.txt"), "three\n");
+    git(nested, [...idc, "commit", "-q", "-am", "main change"]);
+    git(nested, ["checkout", "-q", "feature"]);
+    const rebase = gitTry(nested, [...idc, "rebase", "main"]);
+    assert.notEqual(rebase.status, 0, "sanity: the nested repo's rebase stopped on a conflict");
+    const rebaseState = path.join(nested, ".git", "rebase-merge");
+    assert.ok(existsSync(rebaseState), "sanity: the nested repo is genuinely mid-rebase");
+    const wedgedHead = gitTry(nested, ["rev-parse", "HEAD"]).stdout.trim();
+
+    // sync in the OUTER repo: must not touch the nested repo, and reports nothing to sync.
+    const { homes, cleanup } = await tempHomes(1);
+    try {
+      const result = await runSync(homes[0]!, ["--dir", outer]);
+      assert.equal(result.err, undefined, result.err?.message);
+      assert.match(result.out, /nothing to sync/);
+      assert.ok(existsSync(rebaseState), "the nested repo's in-progress rebase is UNTOUCHED");
+      assert.equal(gitTry(nested, ["rev-parse", "HEAD"]).stdout.trim(), wedgedHead, "nested HEAD unmoved");
+    } finally {
+      await cleanup();
+    }
+  } finally {
+    await rm(outer, { recursive: true, force: true });
+  }
+});
+
+test("sync: run from INSIDE the board worktree retargets to the enclosing project and just works (round-2 finding 2)", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(1);
+  try {
+    await writeBoardDoc(topo.a, "notes/from-inside", { frontmatter: { type: "Note", title: "From inside", actor: "brian" }, body: "# x\n" });
+
+    // `--dir` pointed AT the board worktree itself — where an agent sits right after
+    // `doc write --dir .agentstate-lite`. Previously: RUNTIME with a leaked doubled path.
+    const result = await runSync(homes[0]!, ["--dir", topo.a.board]);
+    assert.equal(result.err, undefined, result.err?.message);
+    assert.match(result.out, /committed: 1/);
+    assert.match(result.out, /pushed: 1/);
+    assert.equal(gitTry(topo.a.board, ["status", "--porcelain"]).stdout, "", "board worktree clean after the sync");
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});

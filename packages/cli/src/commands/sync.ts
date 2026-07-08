@@ -354,12 +354,57 @@ function healStaleRebaseBeforeProvisioning(dir: string): void {
     if (!existsSync(candidateBoardPath)) return;
     const boardTop = repoTopLevel(candidateBoardPath);
     if (!boardTop || realOrSame(boardTop) !== realOrSame(candidateBoardPath)) return;
+    // REVIEW ROUND 2, FINDING 1 (HIGH impact / low likelihood): the self-resolution check above is
+    // ALSO true for an independent NESTED git repo that happens to sit at `.agentstate-lite` (its
+    // own `git init`, not our board) — and healing THAT would `rebase --abort` an innocent repo's
+    // in-progress rebase, then report "nothing to sync". The board worktree's structural signature
+    // is the LINKED-worktree shape: its per-worktree git dir (`.git/worktrees/<name>` inside the
+    // parent) differs from the shared common dir (the parent's `.git`); a standalone nested repo
+    // has the two EQUAL. Note the `board`-branch check canNOT serve here — the wedged state this
+    // heal exists for has a DETACHED HEAD by definition. Only a linked worktree may ever be healed.
+    if (!isLinkedWorktree(candidateBoardPath)) return;
     if (detectStaleRebase(candidateBoardPath)) {
       abortStaleRebase(candidateBoardPath);
     }
   } catch {
     /* best-effort probe only — see the doc comment above */
   }
+}
+
+/**
+ * True when `p` is inside a LINKED git worktree: its per-worktree git dir differs from the shared
+ * common dir. A standalone repo — including an unrelated nested repo squatting at the bundle path
+ * (review round 2, finding 1) — resolves both to the SAME directory.
+ */
+function isLinkedWorktree(p: string): boolean {
+  const r = runGit(p, ["rev-parse", "--absolute-git-dir", "--git-common-dir"]);
+  if (r.status !== 0) return false;
+  const [gitDirRaw, commonDirRaw] = r.stdout.trim().split("\n");
+  if (!gitDirRaw || !commonDirRaw) return false;
+  const commonDir = path.isAbsolute(commonDirRaw) ? commonDirRaw : path.resolve(p, commonDirRaw);
+  return realOrSame(gitDirRaw) !== realOrSame(commonDir);
+}
+
+/**
+ * REVIEW ROUND 2, FINDING 2 (MEDIUM-HIGH): `sync` run from INSIDE the board worktree — exactly
+ * where an agent sits right after `doc write --dir .agentstate-lite` — used to fail with a leaked
+ * doubled path: `repoTopLevel(dir)` resolves to the board worktree itself, provisioning then
+ * fabricates `<board>/.agentstate-lite`, its `worktree add` fails "already checked out", and the
+ * fallback returned a boardPath that does not exist. The structural signature of "standing inside
+ * the board" is a repo top that is BOTH named `.agentstate-lite` AND a linked worktree; retarget
+ * to its parent directory (the enclosing project), where the normal resolution — heal probe, then
+ * provisioning's idempotent "already" branch — proceeds against the REAL board path.
+ */
+function retargetBoardInterior(dir: string): string {
+  try {
+    const top = repoTopLevel(dir);
+    if (top && path.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
+      return path.dirname(top);
+    }
+  } catch {
+    /* fall through — the normal flow classifies whatever this is */
+  }
+  return dir;
 }
 
 /** The board worktree's current HEAD sha, via U1's exported `runGit` (no U1 op named this directly). */
@@ -542,7 +587,9 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
     limit = Number(raw);
   }
 
-  const dir = values.dir ?? process.cwd();
+  // Review round 2, finding 2: standing inside the board worktree retargets to the enclosing
+  // project so provisioning's idempotent path resolves the REAL board (see retargetBoardInterior).
+  const dir = retargetBoardInterior(values.dir ?? process.cwd());
   const pullOnly = Boolean(values["pull-only"]);
   const mode = resolveMode(values);
 

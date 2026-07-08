@@ -12467,11 +12467,30 @@ function healStaleRebaseBeforeProvisioning(dir) {
     if (!existsSync4(candidateBoardPath)) return;
     const boardTop = repoTopLevel(candidateBoardPath);
     if (!boardTop || realOrSame2(boardTop) !== realOrSame2(candidateBoardPath)) return;
+    if (!isLinkedWorktree(candidateBoardPath)) return;
     if (detectStaleRebase(candidateBoardPath)) {
       abortStaleRebase(candidateBoardPath);
     }
   } catch {
   }
+}
+function isLinkedWorktree(p) {
+  const r = runGit(p, ["rev-parse", "--absolute-git-dir", "--git-common-dir"]);
+  if (r.status !== 0) return false;
+  const [gitDirRaw, commonDirRaw] = r.stdout.trim().split("\n");
+  if (!gitDirRaw || !commonDirRaw) return false;
+  const commonDir = path9.isAbsolute(commonDirRaw) ? commonDirRaw : path9.resolve(p, commonDirRaw);
+  return realOrSame2(gitDirRaw) !== realOrSame2(commonDir);
+}
+function retargetBoardInterior(dir) {
+  try {
+    const top = repoTopLevel(dir);
+    if (top && path9.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
+      return path9.dirname(top);
+    }
+  } catch {
+  }
+  return dir;
 }
 function currentHead(boardPath) {
   const r = runGit(boardPath, ["rev-parse", "HEAD"]);
@@ -12586,7 +12605,7 @@ async function sync(argv, deps = {}) {
     }
     limit = Number(raw);
   }
-  const dir = values.dir ?? process.cwd();
+  const dir = retargetBoardInterior(values.dir ?? process.cwd());
   const pullOnly = Boolean(values["pull-only"]);
   const mode = resolveMode(values);
   healStaleRebaseBeforeProvisioning(dir);
