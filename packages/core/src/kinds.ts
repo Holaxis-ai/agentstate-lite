@@ -602,9 +602,11 @@ export function validateAgainstKind(doc: OkfDocument, kind: KindConvention): Val
  * (task board `tasks/status-terminal-declaration.md`) — THE one derivation every consumer calls
  * (list's `--open`, the `status` sweep's exclusion + sort fallback). Coercion mirrors
  * `validateAgainstKind`'s enum check: `String(v)` per element, so an unquoted YAML scalar still
- * matches, and an array field matches on membership. A kind with an empty `fields.terminal` (no
- * declaration), or a doc missing every declared terminal field, is never terminal — not-terminal
- * is the safe default, never a false "done".
+ * matches, and an array field matches on ANY-member semantics: ONE terminal value anywhere in an
+ * array field marks the whole doc terminal (a doc with `status: [done, doing]` IS terminal), so
+ * multi-valued fields should only declare terminal values whose mere presence means "closed". A
+ * kind with an empty `fields.terminal` (no declaration), or a doc missing every declared terminal
+ * field, is never terminal — not-terminal is the safe default.
  */
 export function isTerminal(kind: KindConvention, frontmatter: Frontmatter): boolean {
   const fm = frontmatter as Record<string, unknown>;

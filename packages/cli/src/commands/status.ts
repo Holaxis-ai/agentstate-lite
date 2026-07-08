@@ -84,8 +84,9 @@ Category semantics (one line each):
                       whose OWN kind declares a terminal set of field values (see 'kinds --help')
                       AND whose frontmatter currently matches it is EXCLUDED from this count and
                       its rows (it's noise — a done/canceled instance doesn't need the expected
-                      edge anymore); the top-level 'terminal_skipped' field reports how many were
-                      excluded this way, present only when > 0. A kind with no terminal
+                      edge anymore); the top-level 'terminal_skipped' field counts the INSTANCES
+                      skipped before this lint evaluated them — not findings suppressed (a skipped
+                      instance might have linted clean anyway) — present only when > 0. A kind with no terminal
                       declaration is unaffected (every instance still counts, exactly as before
                       terminal declarations existed). Non-terminal instances sort first: by the
                       declared terminal set when the kind has one, else by the legacy hardcoded
@@ -346,7 +347,9 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   // Beside the count, unconditionally at the top level (never nested inside the row block below,
   // which is itself omitted when `missing_expected_links` is 0 — a bundle where EVERY matching
   // instance happened to be terminal-skipped would otherwise hide this field entirely, exactly
-  // the silent shrink the exclusion above must not cause).
+  // the silent shrink the exclusion above must not cause). Semantics: INSTANCES skipped BEFORE
+  // the missing_expected_links lint evaluated them — not findings suppressed (a skipped instance
+  // might have carried its expected edge and linted clean anyway).
   if (terminalSkipped > 0) out.terminal_skipped = terminalSkipped;
   // Row-list blocks are omitted when empty (matching `kinds`/`doc write`'s existing omit-if-empty
   // convention) so a clean bundle's report stays a short summary, not nine empty categories.
