@@ -6,42 +6,44 @@ title: >-
 status: done
 priority: '1'
 description: >-
-  U3b SHIPPED + review fixes (commits b744b70 impl, 63ed6c1 fix round; branch
-  feat/sync-conflict-resolution, rebased onto main's actor-attribution merge).
-  Converging conflict mechanic replaces U3a's interim guard: git.ts
-  fetchRebaseResolving implements the verified sequence verbatim (export :3
-  local FIRST — the rebase inversion — then checkout origin/board -- <path>,
-  add, GIT_EDITOR=true rebase --continue; LOOP until rebase state gone; empty
-  replays advanced via --skip; unexpected failure aborts before rethrow so the
-  worktree is NEVER mid-state). fetchRebase stays detect-only. sync exits
-  CONFLICT(5) with amended pack (c): per-doc 'doc <id> — teammate's version
-  kept; yours saved at <path> — reconcile with doc update' (reserved paths
-  verbatim; deleted-upstream docs read 'teammate's deletion kept … re-create
-  with doc write'), rows {id|path,kind,title,yours,theirs}, help chain
-  preferring a LANDED doc (doc-update chain) with a doc-write re-create
-  fallback; safety-prefix composition preserved; conflicted run deliberately
-  SKIPS push (next sync pushes). Exports:
-  ~/.agentstate/sync/exports/<key-digest>/<relPath> (0700/0600, never in a
-  worktree, stable per doc). --show-incoming <id>: git show origin/board:<path>,
-  full doc-read semantics (truncate + --out + --out - stderr envelope), labeled
-  'as of last fetch', absent-upstream = expected state. REVIEW FIXES: (1)
-  quotepath class killed — conflict list is -z NUL-framed AND -c
-  core.quotepath=off is a spawn-wrapper invariant (also incidentally fixes the
-  same latent class in stageAndCommit/changesSince/originDocsBetween name-status
-  parses — follow-up: pin those paths with non-ASCII tests); (2) help chain
-  never names a deleted-upstream doc for doc update; (3) both deletion-conflict
-  directions pinned e2e. Tests 44 green in the sync suites (30 sync.test.ts
-  incl. main's attribution e2e + 14 sync-conflict.test.ts: binding 3-assert
-  convergence chain, multi-commit loop, log.md reserved, mixed-batch, non-ASCII
-  converge, both deletion directions, show-incoming matrix); npm run check fully
-  green. Plugin 1.0.16 both manifests. Caveats: cursor/cache not advanced on a
-  conflicted run (next sync re-reports the delta); exports are utf8-only; a
-  concept id whose basename contains a dot labels as a raw path (pre-existing
-  isRawPathEntry residual); a filename containing a literal TAB would still
-  break the merged name-status parsers (the -z conflict list is immune).
+  U3b SHIPPED + two review-fix rounds (commits b744b70 impl, 63ed6c1 round-1
+  fixes, 02bb0a6 round-2 fixes; branch feat/sync-conflict-resolution, rebased
+  onto main's actor-attribution merge). Converging conflict mechanic replaces
+  U3a's interim guard: git.ts fetchRebaseResolving implements the verified
+  sequence verbatim (export :3 local FIRST — the rebase inversion — then
+  checkout origin/board -- <path>, add, GIT_EDITOR=true rebase --continue; -z
+  NUL-framed conflict list; LOOP until rebase state gone; empty replays
+  --skip'd; unexpected failure aborts before rethrow — worktree NEVER
+  mid-state). Exports at ~/.agentstate/sync/exports/<key-digest>/<relPath>: the
+  blob's EXACT BYTES (runGitBytes is the one spawn site; runGit is its utf8
+  projection) plus a <name>.body.md BODY-ONLY companion for parseable docs. sync
+  exits CONFLICT(5) with amended pack (c): per-doc lines (doc label from the
+  EXPLICIT isDoc discriminator carried on the conflict data — dotted ids like
+  notes/v1.2 label correctly; deleted-upstream reads 'teammate's deletion kept …
+  re-create with doc write'), rows
+  {id|path,kind,title,yours,yours_body,frontmatter_differs,theirs}, help chain
+  over the BODY export (literally executable; prefers a LANDED doc, doc-write
+  fallback); safety-prefix composition preserved; conflicted run SKIPS push
+  (next sync pushes). --show-incoming <id>: PROBE-FIRST id resolution
+  (origin/board:<id>.md then raw fallback, ../absolute guarded), byte-exact
+  --out/--out - channels, truncating text render labeled 'as of last fetch',
+  absent-upstream = expected state. -c core.quotepath=off is a wrapper invariant
+  (non-ASCII paths). Tests 48 green in the sync suites (31 sync.test.ts + 17
+  sync-conflict.test.ts: binding 3-assert convergence chain, multi-commit loop,
+  log.md reserved, mixed-batch, non-ASCII converge, both deletion directions,
+  invalid-UTF-8 byte round-trip through export AND show-incoming --out,
+  dotted-id conflict, literal character-for-character chain execution w/
+  frontmatter-diff surfacing, show-incoming matrix); npm run check fully green.
+  Plugin 1.0.16 both manifests. RETIRED caveats: utf8-only exports (now
+  byte-exact) and the dotted-id raw-path residual (now structural). Remaining
+  caveats: cursor/cache not advanced on a conflicted run (next sync re-reports
+  the delta); a filename containing a literal TAB still breaks the merged
+  name-status parsers (tracked as tasks/sync-nonascii-path-pins; the -z conflict
+  list and byte channels are immune); a local frontmatter change is surfaced via
+  frontmatter_differs but must be re-applied manually with doc update flags.
 assignee: brian-claude
 actor: builder-u3b
-timestamp: '2026-07-08T16:09:32.620Z'
+timestamp: '2026-07-08T17:14:23.447Z'
 ---
 # U3b — conflict resolution + `--show-incoming`
 
