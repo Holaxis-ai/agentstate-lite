@@ -37,6 +37,13 @@ export interface KindFields {
   optional: string[];
   /** `fieldName -> allowed values` for fields restricted to an enumerated set. */
   values: Record<string, string[]>;
+  /**
+   * `fieldName -> terminal values` (a subset of that field's `values` enum, when declared) — the
+   * states past which an instance is "done" (task board `tasks/status-terminal-declaration.md`).
+   * Consumed via {@link isTerminal}, the ONE derivation every consumer (list's `--open`, the
+   * `status` sweep's exclusion + sort) calls. Empty map when the kind declares no terminal set.
+   */
+  terminal: Record<string, string[]>;
 }
 
 /** A parsed kind convention: the governed `type` plus its declared shape. */
@@ -151,7 +158,7 @@ function toStringArrayLenient(
 const RESERVED_FIELD_NAMES = new Set(["type", "dir", "remote", "json", "help"]);
 
 /** The only recognized keys inside a convention doc's `fields:` block. */
-const VALID_FIELDS_KEYS = new Set(["required", "optional", "values"]);
+const VALID_FIELDS_KEYS = new Set(["required", "optional", "values", "terminal"]);
 
 /**
  * Top-level convention-doc keys that are near-misses for the ONE correct enum-constraint shape
@@ -227,7 +234,7 @@ function parseConventionDoc(
       if (!VALID_FIELDS_KEYS.has(key)) {
         warnings.push({
           code: "KIND_CONVENTION_UNKNOWN_FIELDS_KEY",
-          message: `kind convention '${doc.id}' declares an unrecognized key 'fields.${key}' (valid keys: fields.required, fields.optional, fields.values); ignoring it.`,
+          message: `kind convention '${doc.id}' declares an unrecognized key 'fields.${key}' (valid keys: fields.required, fields.optional, fields.values, fields.terminal); ignoring it.`,
           field: `fields.${key}`,
           severity: "warning",
         });
@@ -279,6 +286,55 @@ function parseConventionDoc(
         field: `fields.values.${field}`,
         severity: "warning",
       });
+    }
+  }
+
+  // `fields.terminal` — the subset of values (per field) that mark an instance "done" (task board
+  // `tasks/status-terminal-declaration.md`). EXACTLY the lenient posture of `fields.values` above:
+  // absent is normal, a non-map shape warns+ignores, a non-scalar member warns+skips.
+  const terminalSource = fieldsRaw.terminal;
+  const terminal: Record<string, string[]> = {};
+  if (terminalSource !== undefined) {
+    if (!isPlainObject(terminalSource)) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc.id}' has a non-map 'fields.terminal' (${describeShape(terminalSource)}; expected a map of field name -> list of terminal values); ignoring it.`,
+        field: "fields.terminal",
+        severity: "warning",
+      });
+    } else {
+      for (const [field, terminalValues] of Object.entries(terminalSource)) {
+        if (dropReserved(field)) continue;
+        terminal[field] = toStringArrayLenient(terminalValues, `fields.terminal.${field}`, doc.id, warnings);
+      }
+    }
+  }
+
+  // Coherence warning 1: a terminal set declared over a field with no `fields.values` enum at all
+  // (mirrors the UNDECLARED_VALUES_FIELD check above — the author probably meant to declare the
+  // enum too). Coherence warning 2: a terminal VALUE that isn't one of that field's declared enum
+  // values (only checked when the field's enum IS declared, to avoid double-warning the same
+  // mistake two different ways).
+  for (const field of Object.keys(terminal)) {
+    const allowed = values[field];
+    if (!allowed) {
+      warnings.push({
+        code: "KIND_CONVENTION_TERMINAL_UNDECLARED_FIELD",
+        message: `kind convention '${doc.id}' declares 'fields.terminal.${field}' but '${field}' has no 'fields.values.${field}' enum declared.`,
+        field: `fields.terminal.${field}`,
+        severity: "warning",
+      });
+      continue;
+    }
+    for (const v of terminal[field]!) {
+      if (!allowed.includes(v)) {
+        warnings.push({
+          code: "KIND_CONVENTION_TERMINAL_VALUE",
+          message: `kind convention '${doc.id}' declares terminal value '${v}' for field '${field}' but it is not one of the declared 'fields.values.${field}' values (${allowed.join(", ")}).`,
+          field: `fields.terminal.${field}`,
+          severity: "warning",
+        });
+      }
     }
   }
 
@@ -358,7 +414,7 @@ function parseConventionDoc(
       ? fm.freshness_horizon.trim()
       : undefined;
 
-  const kind: KindConvention = { id: doc.id, title, governs, fields: { required, optional, values } };
+  const kind: KindConvention = { id: doc.id, title, governs, fields: { required, optional, values, terminal } };
   if (path !== undefined) kind.path = path;
   if (links !== undefined) kind.links = links;
   if (expectsInbound !== undefined) kind.expectsInbound = expectsInbound;
@@ -542,6 +598,26 @@ export function validateAgainstKind(doc: OkfDocument, kind: KindConvention): Val
 }
 
 /**
+ * True iff `frontmatter` carries a terminal value on any field `kind.fields.terminal` declares
+ * (task board `tasks/status-terminal-declaration.md`) — THE one derivation every consumer calls
+ * (list's `--open`, the `status` sweep's exclusion + sort fallback). Coercion mirrors
+ * `validateAgainstKind`'s enum check: `String(v)` per element, so an unquoted YAML scalar still
+ * matches, and an array field matches on membership. A kind with an empty `fields.terminal` (no
+ * declaration), or a doc missing every declared terminal field, is never terminal — not-terminal
+ * is the safe default, never a false "done".
+ */
+export function isTerminal(kind: KindConvention, frontmatter: Frontmatter): boolean {
+  const fm = frontmatter as Record<string, unknown>;
+  for (const [field, terminalValues] of Object.entries(kind.fields.terminal)) {
+    const raw = fm[field];
+    if (raw === undefined || raw === null) continue;
+    const actual = (Array.isArray(raw) ? raw : [raw]).map((v) => String(v));
+    if (actual.some((v) => terminalValues.includes(v))) return true;
+  }
+  return false;
+}
+
+/**
  * Build the OKF concept document for a kind convention (the shape a `Convention` doc
  * takes on disk — used to serialize any KindConvention to its on-disk Convention-doc form
  * (e.g. by the CLI's recipe machinery)). `timestamp` is the caller's ISO instant (kept
@@ -550,6 +626,7 @@ export function validateAgainstKind(doc: OkfDocument, kind: KindConvention): Val
 export function kindConventionDoc(kind: KindConvention, prose: string, timestamp: string): OkfDocument {
   const fields: Record<string, unknown> = { required: kind.fields.required, optional: kind.fields.optional };
   if (Object.keys(kind.fields.values).length > 0) fields.values = kind.fields.values;
+  if (Object.keys(kind.fields.terminal).length > 0) fields.terminal = kind.fields.terminal;
 
   const frontmatter: Frontmatter = { type: CONVENTION_TYPE, title: kind.title, governs: kind.governs, timestamp };
   if (kind.path !== undefined) frontmatter.path = kind.path;

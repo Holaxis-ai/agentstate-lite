@@ -225,6 +225,7 @@ test("recipe add work-tracking: applies conventions/task.md, frontmatter matches
         required: ["title", "status"],
         optional: ["priority", "assignee", "description"],
         values: { status: ["todo", "in_progress", "blocked", "done", "canceled"] },
+        terminal: { status: ["done", "canceled"] },
       },
       freshness_horizon: "30d",
     });
@@ -248,6 +249,7 @@ test("kinds: reports Task with required/optional/values/horizon after recipe add
     assert.deepEqual(kind!.fields.required, ["title", "status"]);
     assert.deepEqual(kind!.fields.optional, ["priority", "assignee", "description"]);
     assert.deepEqual(kind!.fields.values.status, ["todo", "in_progress", "blocked", "done", "canceled"]);
+    assert.deepEqual(kind!.fields.terminal.status, ["done", "canceled"]);
     assert.equal(kind!.path, "tasks/");
     assert.equal(kind!.freshnessHorizon, "30d");
     assert.deepEqual(kind!.links, { "depends on": "Task" }, "the seeded Task kind declares its typed-edge vocabulary");

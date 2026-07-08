@@ -26,6 +26,7 @@ import {
   CONVENTIONS_PREFIX,
   CONVENTION_TYPE,
   freshnessHorizonMs,
+  isTerminal,
   kindConventionDoc,
   loadKinds,
   validateAgainstKind,
@@ -47,7 +48,7 @@ const NOTE_KIND_FIXTURE: KindConvention = {
   title: "Context Note",
   governs: "Context Note",
   path: "context-notes/",
-  fields: { required: ["title", "timestamp"], optional: ["description", "tags"], values: {} },
+  fields: { required: ["title", "timestamp"], optional: ["description", "tags"], values: {}, terminal: {} },
   sections: ["Summary"],
   freshnessHorizon: "24h",
 };
@@ -331,7 +332,7 @@ test("kindConventionDoc: a links declaration round-trips through write/loadKinds
       id: "conventions/linked-kind",
       title: "Linked Kind",
       governs: "Linked Kind",
-      fields: { required: ["title"], optional: [], values: {} },
+      fields: { required: ["title"], optional: [], values: {}, terminal: {} },
       links: { contains: "Task" },
     };
     await writeDoc(bundle, kindConventionDoc(kind, "prose.", T));
@@ -417,7 +418,7 @@ test("kindConventionDoc: an expects_inbound declaration round-trips through writ
       id: "conventions/expecting-kind",
       title: "Expecting Kind",
       governs: "Expecting Kind",
-      fields: { required: ["title"], optional: [], values: {} },
+      fields: { required: ["title"], optional: [], values: {}, terminal: {} },
       expectsInbound: { contains: "Crate" },
     };
     await writeDoc(bundle, kindConventionDoc(kind, "prose.", T));
@@ -448,6 +449,187 @@ test("loadKinds: a 'fields.values' key naming a field NOT in required/optional w
     assert.ok(warning, "expected a KIND_CONVENTION_UNDECLARED_VALUES_FIELD warning");
     assert.match(warning!.message, /status/);
   });
+});
+
+// ── 'fields.terminal' (tasks/status-terminal-declaration.md): the subset of an enum's values past
+// which an instance is "done". GENERIC vocabulary (a 'Ticket' kind, not Task) to pin that nothing
+// is hardcoded — mirrors the exact lenient posture of 'fields.values' above (absent normal,
+// non-map BAD_SHAPE warn+ignore, non-scalar member BAD_MEMBER warn+skip) plus two coherence checks.
+test("loadKinds: parses 'fields.terminal' (happy path); wrong shapes warn and are ignored; absent stays absent with no warning", async () => {
+  await withMemBundle(async (bundle) => {
+    await writeDoc(bundle, {
+      id: "conventions/ticket",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Ticket",
+        fields: {
+          required: ["title", "stage"],
+          optional: [],
+          values: { stage: ["open", "in_review", "resolved", "archived"] },
+          terminal: { stage: ["resolved", "archived"] },
+        },
+        timestamp: T,
+      },
+      body: "A convention declaring which stage values are terminal.",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/terminal-as-list",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Terminal As List",
+        fields: { required: ["title"], optional: [], terminal: ["resolved"] },
+        timestamp: T,
+      },
+      body: "fields.terminal as a list, not a map.",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/terminal-bad-member",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Terminal Bad Member",
+        fields: {
+          required: ["title", "stage"],
+          optional: [],
+          values: { stage: ["open", "resolved"] },
+          terminal: { stage: ["resolved", { weird: true }] },
+        },
+        timestamp: T,
+      },
+      body: "one non-scalar terminal member beside a good one.",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/no-terminal",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "No Terminal",
+        fields: { required: ["title"], optional: [] },
+        timestamp: T,
+      },
+      body: "no fields.terminal key at all.",
+    });
+
+    const registry = await loadKinds(bundle);
+    assert.deepEqual(registry.kinds.get("Ticket")!.fields.terminal, { stage: ["resolved", "archived"] });
+
+    // Non-map shape: ignored entirely (empty map), KIND_CONVENTION_BAD_SHAPE names 'fields.terminal'.
+    assert.deepEqual(registry.kinds.get("Terminal As List")!.fields.terminal, {});
+    assert.ok(
+      registry.warnings.some(
+        (w) =>
+          w.code === "KIND_CONVENTION_BAD_SHAPE" &&
+          /terminal-as-list/.test(w.message) &&
+          /'fields\.terminal'/.test(w.message),
+      ),
+    );
+
+    // Malformed member: skipped with KIND_CONVENTION_BAD_MEMBER; the good member survives.
+    assert.deepEqual(registry.kinds.get("Terminal Bad Member")!.fields.terminal, { stage: ["resolved"] });
+    assert.ok(
+      registry.warnings.some(
+        (w) => w.code === "KIND_CONVENTION_BAD_MEMBER" && w.field === "fields.terminal.stage",
+      ),
+    );
+
+    // Absent: an empty map (the KindFields default), and no warning (not declared is normal).
+    assert.deepEqual(registry.kinds.get("No Terminal")!.fields.terminal, {});
+    assert.ok(!registry.warnings.some((w) => /no-terminal/.test(w.message)));
+  });
+});
+
+test("loadKinds: 'fields.terminal' coherence warnings — a terminal set over a field with no declared enum, and a terminal value outside the declared enum", async () => {
+  await withMemBundle(async (bundle) => {
+    await writeDoc(bundle, {
+      id: "conventions/terminal-undeclared-field",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Terminal Undeclared Field",
+        // 'stage' has a terminal set but NO fields.values.stage enum at all.
+        fields: { required: ["title", "stage"], optional: [], terminal: { stage: ["done"] } },
+        timestamp: T,
+      },
+      body: "A terminal set declared over a field with no enum.",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/terminal-value-outside-enum",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Terminal Value Outside Enum",
+        fields: {
+          required: ["title", "stage"],
+          optional: [],
+          values: { stage: ["open", "resolved"] },
+          // 'archived' is not one of the declared stage values.
+          terminal: { stage: ["resolved", "archived"] },
+        },
+        timestamp: T,
+      },
+      body: "A terminal value outside the declared enum.",
+    });
+
+    const registry = await loadKinds(bundle);
+
+    assert.deepEqual(registry.kinds.get("Terminal Undeclared Field")!.fields.terminal, { stage: ["done"] });
+    const undeclared = registry.warnings.find((w) => w.code === "KIND_CONVENTION_TERMINAL_UNDECLARED_FIELD");
+    assert.ok(undeclared, "expected a KIND_CONVENTION_TERMINAL_UNDECLARED_FIELD warning");
+    assert.match(undeclared!.message, /stage/);
+
+    assert.deepEqual(registry.kinds.get("Terminal Value Outside Enum")!.fields.terminal, {
+      stage: ["resolved", "archived"],
+    });
+    const outsideEnum = registry.warnings.find((w) => w.code === "KIND_CONVENTION_TERMINAL_VALUE");
+    assert.ok(outsideEnum, "expected a KIND_CONVENTION_TERMINAL_VALUE warning");
+    assert.match(outsideEnum!.message, /archived/);
+  });
+});
+
+test("kindConventionDoc: a 'fields.terminal' declaration round-trips through write/loadKinds", async () => {
+  await withMemBundle(async (bundle) => {
+    const kind: KindConvention = {
+      id: "conventions/terminal-kind",
+      title: "Terminal Kind",
+      governs: "Terminal Kind",
+      fields: {
+        required: ["title", "stage"],
+        optional: [],
+        values: { stage: ["open", "resolved"] },
+        terminal: { stage: ["resolved"] },
+      },
+    };
+    await writeDoc(bundle, kindConventionDoc(kind, "prose.", T));
+    const registry = await loadKinds(bundle);
+    assert.deepEqual(registry.kinds.get("Terminal Kind")!.fields.terminal, { stage: ["resolved"] });
+    assert.equal(registry.warnings.length, 0);
+  });
+});
+
+test("isTerminal: truth table — declared+terminal, declared+non-terminal, undeclared field, no terminal declarations at all", () => {
+  const kind: KindConvention = {
+    id: "conventions/ticket",
+    title: "Ticket",
+    governs: "Ticket",
+    fields: {
+      required: ["title", "stage"],
+      optional: [],
+      values: { stage: ["open", "in_review", "resolved", "archived"] },
+      terminal: { stage: ["resolved", "archived"] },
+    },
+  };
+  assert.equal(isTerminal(kind, { type: "Ticket", stage: "resolved" }), true);
+  assert.equal(isTerminal(kind, { type: "Ticket", stage: "archived" }), true);
+  assert.equal(isTerminal(kind, { type: "Ticket", stage: "open" }), false);
+  // A doc missing the declared terminal field entirely is never terminal (not-terminal is the
+  // safe default).
+  assert.equal(isTerminal(kind, { type: "Ticket" }), false);
+
+  // A kind with an empty 'fields.terminal' (no declaration at all) is never terminal, regardless
+  // of the frontmatter — the mechanism only fires when a bundle opts in.
+  const undeclaredKind: KindConvention = {
+    id: "conventions/plain",
+    title: "Plain",
+    governs: "Plain",
+    fields: { required: ["title"], optional: [], values: {}, terminal: {} },
+  };
+  assert.equal(isTerminal(undeclaredKind, { type: "Plain", stage: "resolved" }), false);
 });
 
 test("loadKinds: a top-level near-miss constraint key ('enum'/'enums'/'values'/'constraints') warns 'did you mean fields.values?'", async () => {
@@ -584,7 +766,7 @@ test("validateAgainstKind: enum comparison tolerates a YAML-1.1-coerced non-stri
     id: "conventions/flagged",
     title: "Flagged",
     governs: "Flagged",
-    fields: { required: [], optional: [], values: { flag: [false, true] as unknown as string[] } },
+    fields: { required: [], optional: [], values: { flag: [false, true] as unknown as string[] }, terminal: {} },
   };
   const doc: OkfDocument = { id: "flagged/x", frontmatter: { type: "Flagged", flag: false, timestamp: T }, body: "" };
   assert.deepEqual(validateAgainstKind(doc, kind), []); // 'false' coerces to allowed 'false'
@@ -600,7 +782,7 @@ test("validateAgainstKind: an enum-restricted field carrying an ARRAY is a KIND_
     id: "conventions/roadmap-item",
     title: "Roadmap Item",
     governs: "Roadmap Item",
-    fields: { required: ["title", "status"], optional: ["labels"], values: { status: ["planned", "active", "done"] } },
+    fields: { required: ["title", "status"], optional: ["labels"], values: { status: ["planned", "active", "done"] }, terminal: {} },
   };
 
   // Two ALLOWED members still violate arity — each passes the element-wise membership
