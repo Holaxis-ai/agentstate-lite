@@ -9,7 +9,7 @@ description: >-
   U4. One in-process pull-then-render SessionStart subcommand (time-boxed,
   guaranteed fall-through) plus home cache render and the both-count backstop.
   Deps: sync-command-core.
-timestamp: '2026-07-07T21:20:03.280Z'
+timestamp: '2026-07-08T15:03:59.273Z'
 ---
 # U4 — SessionStart integration
 
@@ -60,3 +60,18 @@ Renders (moment (e), strings test-pinned):
 Builder → independent Reviewer → QA. Deps: sync-command-core (U3a).
 
 [depends on](sync-command-core.md)
+
+## Inherited from the PR#13 three-lane review (2026-07-08)
+
+- **Marker refresh (review item 5):** U3a's pull step never calls `refreshMarker` —
+  plan §U2 says "refreshed by every pull step", and THIS unit's first-contact logic
+  ("run sync, never init") reads it. Add the call (in sync's pull step or this unit's
+  wiring) and test that a synced repo presents the marker.
+- **Provisioning receipt (review item 6):** a first-ever sync that PROVISIONS the
+  worktree prints "already up to date" with an empty awareness delta — the run that
+  materialized the whole board announces nothing (`outcome.kind === "provisioned"` is
+  computed and unused). Give it a distinct receipt ("board provisioned" + doc count)
+  and make the first-contact render honest; test-pinned.
+- Dependencies note: tasks/sync-actor-attribution and tasks/sync-cache-per-clone must
+  land before this unit's human face renders, or it will say "unknown did everything"
+  and the unpushed backstop will lie across clones.

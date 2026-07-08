@@ -143,8 +143,8 @@ export const COMMAND_GROUPS: CommandGroup[] = [
         summary: "Boot the local web UI (board / doc detail / admin / graph) — same origin, loopback-only",
       },
       {
-        usage: "sync [options]",
-        summary: "Sync the bundle with a remote (NOT YET IMPLEMENTED)",
+        usage: "sync [--pull-only] [--dir <path>] [--limit <n>]",
+        summary: "Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push)",
       },
     ],
   },

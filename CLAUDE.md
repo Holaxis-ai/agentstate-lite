@@ -255,8 +255,11 @@ Standing gates on future work:
 - **Deploys are human-gated**, and D1 migrations apply BEFORE `wrangler deploy` — the ordering
   is load-bearing (new code may reference new columns unconditionally; deploy-first has already
   been identified as a full-outage class).
-- **`npm publish` and any marketplace listing are human-gated** (the package is pack-verified
-  standalone; publishing awaits the human's trigger).
+- **Distribution is the in-repo marketplace/skill channel** — self-contained CLI + skill in one
+  install, verified end-to-end from Claude Code and Codex; it ships the tool AND the knowledge of
+  how to use it. npm is a PARKED parallel channel for plain-terminal audiences (keep `npm pack`
+  verified standalone; the SKILL generator's dual-channel design stays); its wake condition is a
+  real user asking for `npx` — do not surface it as a pending decision.
 - **Multi-bundle partitioning + per-bundle key scoping + bundle-scoped authz** is its own
   future unit, designed and built TOGETHER (the Stage-2 review's adjudication) — do not build
   piecemeal, and do not build without an explicit decision. Same for the GitHub device-flow
