@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'Declare terminal statuses on kind conventions: THREE consumers now waiting'
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   The evidence-gated refinement from the expects_inbound design has its trigger
@@ -15,7 +15,8 @@ description: >-
   skips-or-groups terminal instances; list gains an open semantic (with
   tasks/list-field-sets); the sweep sort reads the declaration. One small
   declaration, three existing consumers — consumer-pull satisfied for real.
-actor: claude
-timestamp: '2026-07-08T20:25:58.710Z'
+actor: mike
+assignee: mike/claude
+timestamp: '2026-07-08T21:30:55.513Z'
 ---
 

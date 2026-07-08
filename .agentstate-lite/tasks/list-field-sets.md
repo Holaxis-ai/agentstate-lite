@@ -3,7 +3,7 @@ type: Task
 title: >-
   list --field set membership: comma = OR within a field (open tasks in one
   query)
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Field finding from a real foreign-harness deployment (2026-07-08): an agent
@@ -16,7 +16,8 @@ description: >-
   current scales — the same restraint boundary as the parked graph-query). Pairs
   with tasks/status-terminal-declaration: once terminal statuses are declared,
   OPEN becomes a semantic rather than a hand-maintained OR-list.
-actor: claude
-timestamp: '2026-07-08T20:25:58.601Z'
+actor: mike
+assignee: mike/claude
+timestamp: '2026-07-08T21:30:55.409Z'
 ---
 
