@@ -1,5 +1,6 @@
 /**
- * `cursor.ts` — the per-bundle sync/awareness state store (sync-verb plan §U2).
+ * `cursor.ts` — the per-clone sync/awareness state store (sync-verb plan §U2; keying made
+ * per-clone by PR#13 review item 4 — see the module's own KEYING/MIGRATION header).
  *
  * Covers the plan's binding acceptance criteria on the STORE side: the dangling-SHA → honest
  * re-anchor note flow (the `git cat-file -e` guard itself is the caller's job — U1 — so the git
@@ -65,15 +66,28 @@ function sampleCache(): AwarenessCache {
 
 // ── bundle key ────────────────────────────────────────────────────────────────
 
-test("bundleKey: remote-keyed — equivalent URL/subpath spellings key together; distinct bundles stay distinct", () => {
-  const base = bundleKey({ remoteUrl: "https://github.com/org/repo", subpath: ".agentstate-lite" });
-  // Trivial spelling variants of the SAME bundle → same key.
-  assert.equal(bundleKey({ remoteUrl: "https://github.com/org/repo.git", subpath: ".agentstate-lite" }), base);
-  assert.equal(bundleKey({ remoteUrl: "https://github.com/org/repo/", subpath: "./.agentstate-lite/" }), base);
+test("bundleKey: remote-keyed — equivalent URL/subpath/root spellings key together; distinct bundles stay distinct", () => {
+  const base = bundleKey({ remoteUrl: "https://github.com/org/repo", subpath: ".agentstate-lite", checkoutRoot: "/w/clone-a/.agentstate-lite" });
+  // Trivial spelling variants of the SAME checkout of the SAME bundle → same key.
+  assert.equal(bundleKey({ remoteUrl: "https://github.com/org/repo.git", subpath: ".agentstate-lite", checkoutRoot: "/w/clone-a/.agentstate-lite" }), base);
+  assert.equal(bundleKey({ remoteUrl: "https://github.com/org/repo/", subpath: "./.agentstate-lite/", checkoutRoot: "/w/clone-a/x/../.agentstate-lite" }), base);
   // A different subpath in the SAME repo is a different bundle.
-  assert.notEqual(bundleKey({ remoteUrl: "https://github.com/org/repo", subpath: "other-bundle" }), base);
+  assert.notEqual(bundleKey({ remoteUrl: "https://github.com/org/repo", subpath: "other-bundle", checkoutRoot: "/w/clone-a/.agentstate-lite" }), base);
   // A different repo is a different bundle.
-  assert.notEqual(bundleKey({ remoteUrl: "https://github.com/org/other", subpath: ".agentstate-lite" }), base);
+  assert.notEqual(bundleKey({ remoteUrl: "https://github.com/org/other", subpath: ".agentstate-lite", checkoutRoot: "/w/clone-a/.agentstate-lite" }), base);
+});
+
+test("bundleKey: per-CLONE — the SAME origin checked out at two roots on one machine gets two keys (PR#13 review, item 4)", () => {
+  const cloneA = bundleKey({ remoteUrl: "https://github.com/org/repo", subpath: "", checkoutRoot: "/w/clone-a/.agentstate-lite" });
+  const cloneB = bundleKey({ remoteUrl: "https://github.com/org/repo", subpath: "", checkoutRoot: "/w/clone-b/.agentstate-lite" });
+  assert.notEqual(cloneA, cloneB, "two clones of one origin must never share a state file");
+  assert.notEqual(syncStatePath(cloneA, "/home/x"), syncStatePath(cloneB, "/home/x"), "distinct state files too");
+  // The remote component still matters: a RECYCLED checkout root under a different origin is a
+  // different key — stale state from the previous project at this path can never be inherited.
+  assert.notEqual(
+    bundleKey({ remoteUrl: "https://github.com/org/other", subpath: "", checkoutRoot: "/w/clone-a/.agentstate-lite" }),
+    cloneA,
+  );
 });
 
 test("bundleKey: path fallback is keyed by ABSOLUTE root and can never collide with a remote key", () => {
@@ -81,7 +95,7 @@ test("bundleKey: path fallback is keyed by ABSOLUTE root and can never collide w
   assert.equal(bundleKey({ root: "/tmp/some/../some/bundle" }), p, "resolved to one absolute root");
   assert.notEqual(bundleKey({ root: "/tmp/other/bundle" }), p);
   // The kind prefix keeps a pathological remote URL from ever colliding with a path key.
-  assert.notEqual(bundleKey({ remoteUrl: "/tmp/some/bundle", subpath: "" }), p);
+  assert.notEqual(bundleKey({ remoteUrl: "/tmp/some/bundle", subpath: "", checkoutRoot: "/tmp/some/bundle" }), p);
 });
 
 // ── cursor opacity ────────────────────────────────────────────────────────────
@@ -124,7 +138,7 @@ test("cursor: writing a shape-invalid cursor is a programmer error (throws), nev
 test("permissions: state file 0600; sync dir AND ~/.agentstate both 0700; no temp files left behind", async () => {
   const home = await tempHome();
   try {
-    const key = bundleKey({ remoteUrl: "https://github.com/org/repo", subpath: BUNDLE_DIR });
+    const key = bundleKey({ remoteUrl: "https://github.com/org/repo", subpath: BUNDLE_DIR, checkoutRoot: "/w/clone-a/.agentstate-lite" });
     await writeCursor(key, { tier: "git", token: "a".repeat(40) }, home);
 
     const fileMode = (await stat(syncStatePath(key, home))).mode & 0o777;
@@ -248,7 +262,7 @@ test("staleness: cache/marker older than maxAgeMs read null; fresh ones read bac
 test("cache round-trip: enriched delta rows (frontmatter-sourced actor), backstop counts, extra fields preserved", async () => {
   const home = await tempHome();
   try {
-    const key = bundleKey({ remoteUrl: "https://github.com/org/repo", subpath: BUNDLE_DIR });
+    const key = bundleKey({ remoteUrl: "https://github.com/org/repo", subpath: BUNDLE_DIR, checkoutRoot: "/w/clone-a/.agentstate-lite" });
     assert.equal(await readCache(key, undefined, home), null);
 
     const cache: AwarenessCache = { ...sampleCache(), source: "sync" }; // extra field survives
@@ -311,14 +325,17 @@ test("cross-bundle isolation: two bundles from two distinct origins get distinct
     const urlTwo = git(topoTwo.a.root, ["remote", "get-url", "origin"]).trim();
     assert.notEqual(urlOne, urlTwo, "harness gave two distinct origins");
 
-    const keyOne = bundleKey({ remoteUrl: urlOne, subpath: BUNDLE_DIR });
-    const keyTwo = bundleKey({ remoteUrl: urlTwo, subpath: BUNDLE_DIR });
+    const keyOne = bundleKey({ remoteUrl: urlOne, subpath: BUNDLE_DIR, checkoutRoot: topoOne.a.board });
+    const keyTwo = bundleKey({ remoteUrl: urlTwo, subpath: BUNDLE_DIR, checkoutRoot: topoTwo.a.board });
     assert.notEqual(keyOne, keyTwo, "distinct origins → distinct keys");
     assert.notEqual(syncStatePath(keyOne, home), syncStatePath(keyTwo, home), "distinct state files");
 
-    // Same origin, either clone → SAME key (per-bundle, NOT per-checkout-location).
+    // Same origin, same checkout → SAME key, whatever the URL spelling; the OTHER clone of the
+    // same origin is a DIFFERENT key (per-CLONE keying — PR#13 review, item 4).
     const urlOneB = git(topoOne.b.root, ["remote", "get-url", "origin"]).trim();
-    assert.equal(bundleKey({ remoteUrl: urlOneB, subpath: BUNDLE_DIR }), keyOne);
+    assert.equal(urlOneB, urlOne, "harness: both clones share one origin URL");
+    assert.equal(bundleKey({ remoteUrl: urlOneB, subpath: BUNDLE_DIR, checkoutRoot: topoOne.a.board }), keyOne);
+    assert.notEqual(bundleKey({ remoteUrl: urlOneB, subpath: BUNDLE_DIR, checkoutRoot: topoOne.b.board }), keyOne);
 
     // Populate bundle ONE fully; bundle TWO stays empty.
     await writeCursor(keyOne, { tier: "git", token: boardHead(topoOne.a) }, home);
@@ -350,7 +367,7 @@ test("re-anchor: a dangling cursor SHA is re-anchored with the HONEST note — n
   const topo = await makeTwoCloneTopology();
   try {
     const url = git(topo.a.root, ["remote", "get-url", "origin"]).trim();
-    const key = bundleKey({ remoteUrl: url, subpath: BUNDLE_DIR });
+    const key = bundleKey({ remoteUrl: url, subpath: BUNDLE_DIR, checkoutRoot: topo.a.board });
 
     // Store a cursor whose SHA is subsequently rewritten OUT of history and pruned (U0 fixture).
     const dangling = await danglingCursorSha(topo.a);

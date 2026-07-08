@@ -10,13 +10,16 @@
 //   1. Pure-function unit tests (no git, no filesystem) for the message-pack string builders and
 //      the swallow/classification mappers — fast, and pin the exact strings directly.
 //   2. Integration tests over `git-harness.ts`'s real scratch topologies, driving `sync()` itself.
-//      Per-clone cursor/cache/marker state lives under `~/.agentstate/sync/` (U2), which is a
-//      REAL per-machine directory — so a two-clone scenario simulating two DIFFERENT founders
-//      must scope EACH clone's HOME separately (mirrors `auth-cli.test.ts`'s `withHome`), never
-//      share one HOME between two clones the way a single-founder test safely can.
+//      Cursor/cache/marker state lives under `~/.agentstate/sync/` (U2), keyed PER CLONE (remote
+//      URL + checkout root — PR#13 review item 4), so two clones under ONE home keep separate
+//      state files (the dedicated cross-clone isolation tests below drive exactly that, the
+//      agent-worktree same-machine shape). Scenarios simulating two DIFFERENT founders on two
+//      machines still scope EACH clone's HOME separately (mirrors `auth-cli.test.ts`'s
+//      `withHome`) — per-machine credential/state separation is a real thing to model even
+//      though the keying alone would now keep the files apart.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -40,10 +43,11 @@ import {
 import { doc } from "../src/commands/doc.js";
 import { CliError } from "../src/errors.js";
 import type { DocChange } from "../src/git.js";
-import { readSyncState, bundleKey, syncExportsDir } from "../src/cursor.js";
+import { REANCHOR_NOTE, readSyncState, bundleKey, syncExportsDir, syncStateDir, writeCursor } from "../src/cursor.js";
 import {
   boardHead,
   commitBoard,
+  danglingCursorSha,
   divergeSameDoc,
   gitTry,
   isMidRebase,
@@ -355,7 +359,7 @@ test("sync: two-clone founder e2e — A writes+syncs (full), B --pull-only sees 
     assert.equal(bAgain.out, "sync: already up to date\n");
 
     // The awareness cache/cursor really landed under B's own home (U4's future read path).
-    const key = bundleKey({ remoteUrl: topo.origin, subpath: "" });
+    const key = bundleKey({ remoteUrl: topo.origin, subpath: "", checkoutRoot: topo.b.board });
     const state = await readSyncState(key, homeB!);
     assert.ok(state.cursor, "B's cursor was written");
     assert.equal(state.cursor!.token, boardHead(topo.b));
@@ -419,7 +423,7 @@ test("sync: CONVERGING conflict (pre-committed divergence) — exit 5, upstream 
     assert.equal(result.err!.code, "CONFLICT");
     assert.equal(result.err!.exitCode, 5);
 
-    const exportPath = path.join(syncExportsDir(bundleKey({ remoteUrl: topo.origin, subpath: "" }), homeB!), div.docPath);
+    const exportPath = path.join(syncExportsDir(bundleKey({ remoteUrl: topo.origin, subpath: "", checkoutRoot: topo.b.board }), homeB!), div.docPath);
     assert.equal(
       result.err!.message,
       `doc ${div.docId} — teammate's version kept; yours saved at ${exportPath} — reconcile with doc update`,
@@ -491,7 +495,7 @@ test("sync: commit-then-conflict — the run's OWN commit lands, then the envelo
     // was committed, then exported when the converging rebase kept upstream) — then the converge
     // terminal string passes through UNCHANGED as the suffix.
     const exportPath = path.join(
-      syncExportsDir(bundleKey({ remoteUrl: topo.origin, subpath: "" }), homeB!),
+      syncExportsDir(bundleKey({ remoteUrl: topo.origin, subpath: "", checkoutRoot: topo.b.board }), homeB!),
       "tasks/seed-one.md",
     );
     assert.equal(
@@ -748,7 +752,7 @@ test("sync: FINDING 3 — a commit that lands, then a fetch failure, still gets 
     assert.notEqual(after, before, "the commit genuinely landed locally despite the fetch failure");
 
     // The cache was written with honest (post-commit) backstop counts BEFORE the throw.
-    const key = bundleKey({ remoteUrl: badOrigin, subpath: "" });
+    const key = bundleKey({ remoteUrl: badOrigin, subpath: "", checkoutRoot: topo.b.board });
     const state = await readSyncState(key, homes[0]!);
     assert.ok(state.cache, "cache was written despite the thrown error");
     assert.equal(state.cache!.unpushedCount, 1, "the stranded commit is honestly reflected as unpushed");
@@ -804,6 +808,106 @@ test("sync: an independent NESTED git repo at .agentstate-lite is NEVER healed �
     }
   } finally {
     await rm(outer, { recursive: true, force: true });
+  }
+});
+
+// ── PR#13 review item 4: per-CLONE state keying (same origin, same machine, ONE HOME) ───────────
+
+test("sync: cross-clone isolation — clone A's clean sync must NOT erase clone B's stranded-unpushed backstop state (one origin, ONE HOME)", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(1);
+  const home = homes[0]!; // ONE home — the same-machine multi-clone shape (agent worktrees) the bug lived in
+  try {
+    // B strands TWO committed-but-unpushed board commits: a rejecting pre-receive hook on origin
+    // makes B's full sync fail at the push step — the exact empirical PR#13 shape ("clone B had 2
+    // stranded unpushed commits; cache unpushed: 2").
+    await modifyBoardDoc(topo.b, "tasks/seed-one", { body: "# Seed one\n\nB's first stranded edit\n" });
+    commitBoard(topo.b, "board: B edit one");
+    await modifyBoardDoc(topo.b, "tasks/seed-two", { body: "# Seed two\n\nB's second stranded edit\n" });
+    commitBoard(topo.b, "board: B edit two");
+    const hookPath = path.join(topo.origin, "hooks", "pre-receive");
+    await writeFile(hookPath, "#!/bin/sh\necho 'rejecting all pushes (test fixture)' >&2\nexit 1\n", { mode: 0o755 });
+    const bResult = await runSync(home, ["--dir", topo.b.root]);
+    assert.ok(bResult.err, "B's push was rejected — the commits are genuinely stranded");
+
+    const keyB = bundleKey({ remoteUrl: topo.origin, subpath: "", checkoutRoot: topo.b.board });
+    const bBefore = await readSyncState(keyB, home);
+    assert.equal(bBefore.cache?.unpushedCount, 2, "B's backstop honestly records the 2 stranded commits");
+    const bCursor = bBefore.cursor?.token;
+    assert.equal(bCursor, boardHead(topo.b), "B's cursor is B's OWN board HEAD");
+
+    // A's CLEAN sync under the SAME home (hook removed first, so A is genuinely clean end to end).
+    await rm(hookPath);
+    const aResult = await runSync(home, ["--dir", topo.a.root]);
+    assert.equal(aResult.err, undefined, aResult.err?.message);
+    assert.equal(aResult.out, "sync: already up to date\n");
+
+    // A got its OWN state file under its OWN key…
+    const keyA = bundleKey({ remoteUrl: topo.origin, subpath: "", checkoutRoot: topo.a.board });
+    assert.notEqual(keyA, keyB, "same origin, same machine, two clones → two keys (the fix)");
+    const aState = await readSyncState(keyA, home);
+    assert.equal(aState.cache?.unpushedCount, 0, "A's own state is honestly clean");
+
+    // …and the bug's exact target case: B's stranded state SURVIVED A's clean sync.
+    const bAfter = await readSyncState(keyB, home);
+    assert.equal(bAfter.cache?.unpushedCount, 2, "B's 'unpushed: 2' backstop survives A's clean sync");
+    assert.equal(bAfter.cursor?.token, bCursor, "B's cursor untouched by A's sync");
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("sync: same-clone key stability — syncs from the repo root, a subdirectory, and inside the board worktree all reuse ONE state file", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(1);
+  const home = homes[0]!;
+  try {
+    const first = await runSync(home, ["--dir", topo.a.root]);
+    assert.equal(first.err, undefined, first.err?.message);
+    const stateFiles = async () => (await readdir(syncStateDir(home))).filter((f) => f.endsWith(".json")).sort();
+    const afterFirst = await stateFiles();
+    assert.equal(afterFirst.length, 1, "one clone → one state file");
+
+    // Different invocation directories inside the SAME clone must derive the SAME key: the repo
+    // root, a plain subdirectory, and the board-interior retarget path all resolve one board.
+    const fromSubdir = await runSync(home, ["--dir", path.join(topo.a.root, "src")]);
+    assert.equal(fromSubdir.err, undefined, fromSubdir.err?.message);
+    const fromBoardInterior = await runSync(home, ["--dir", topo.a.board]);
+    assert.equal(fromBoardInterior.err, undefined, fromBoardInterior.err?.message);
+    assert.deepEqual(await stateFiles(), afterFirst, "no second state file ever appeared for this clone");
+
+    // And the file is readable under the key sync derives: remote + THIS checkout's board root.
+    const key = bundleKey({ remoteUrl: topo.origin, subpath: "", checkoutRoot: topo.a.board });
+    const state = await readSyncState(key, home);
+    assert.equal(state.cursor?.token, boardHead(topo.a), "cursor persisted and re-read under the stable per-clone key");
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("sync: a dangling stored cursor under the per-clone key still re-anchors with the HONEST note through the real sync flow", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(1);
+  const home = homes[0]!;
+  try {
+    // Plant the cursor under the SAME key sync derives — if resolveBundleKey and this key ever
+    // disagreed, sync would silently fall back to the first-sync baseline (no note) and this fails.
+    const key = bundleKey({ remoteUrl: topo.origin, subpath: "", checkoutRoot: topo.a.board });
+    const dangling = await danglingCursorSha(topo.a);
+    await writeCursor(key, { tier: "git", token: dangling }, home);
+
+    const result = await runSync(home, ["--dir", topo.a.root]);
+    assert.equal(result.err, undefined, result.err?.message);
+    assert.match(result.out, /delta unavailable \(history rewritten\)/, "the honest re-anchor note reaches the receipt");
+
+    const state = await readSyncState(key, home);
+    assert.equal(state.cursor?.token, boardHead(topo.a), "cursor re-anchored to HEAD");
+    assert.equal(state.cache?.note, REANCHOR_NOTE);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
   }
 });
 

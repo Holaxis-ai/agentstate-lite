@@ -12280,7 +12280,8 @@ function bundleKey(src) {
   if ("remoteUrl" in src) {
     return `remote
 ${normalizeRemoteUrl(src.remoteUrl)}
-${normalizeSubpath(src.subpath)}`;
+${normalizeSubpath(src.subpath)}
+${resolve3(src.checkoutRoot)}`;
   }
   return `path
 ${resolve3(src.root)}`;
@@ -12735,11 +12736,12 @@ function originDocsBetween(boardPath, fromRef, toRef) {
   return changes;
 }
 function resolveBundleKey(boardPath) {
+  const checkoutRoot = realOrSame2(boardPath);
   const r = runGit(boardPath, ["remote", "get-url", BOARD_REMOTE]);
   if (r.status === 0 && r.stdout.trim().length > 0) {
-    return bundleKey({ remoteUrl: r.stdout.trim(), subpath: "" });
+    return bundleKey({ remoteUrl: r.stdout.trim(), subpath: "", checkoutRoot });
   }
-  return bundleKey({ root: boardPath });
+  return bundleKey({ root: checkoutRoot });
 }
 function singleActor(docs) {
   if (docs.length === 0) return void 0;
