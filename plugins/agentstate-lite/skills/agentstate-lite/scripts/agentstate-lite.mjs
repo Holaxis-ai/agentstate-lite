@@ -6850,15 +6850,14 @@ function credentialsDir(home2 = homedir4()) {
 function credentialsPath(home2 = homedir4()) {
   return join4(credentialsDir(home2), CRED_FILE_NAME);
 }
-async function saveCredentials(creds, home2 = homedir4()) {
-  const dir = credentialsDir(home2);
+async function writeFileAtomic0600(dir, fileName, content) {
   await mkdir(dir, { recursive: true, mode: DIR_MODE });
   await chmod(dir, DIR_MODE);
-  const path8 = credentialsPath(home2);
-  const tmpPath = join4(dir, `.${CRED_FILE_NAME}.${randomBytes(8).toString("hex")}.tmp`);
+  const path8 = join4(dir, fileName);
+  const tmpPath = join4(dir, `.${fileName}.${randomBytes(8).toString("hex")}.tmp`);
   const handle = await open(tmpPath, "wx", FILE_MODE);
   try {
-    await handle.writeFile(JSON.stringify(creds, null, 2) + "\n");
+    await handle.writeFile(content);
     await handle.chmod(FILE_MODE);
   } finally {
     await handle.close();
@@ -6870,6 +6869,13 @@ async function saveCredentials(creds, home2 = homedir4()) {
     });
     throw err;
   }
+}
+async function saveCredentials(creds, home2 = homedir4()) {
+  await writeFileAtomic0600(
+    credentialsDir(home2),
+    CRED_FILE_NAME,
+    JSON.stringify(creds, null, 2) + "\n"
+  );
 }
 async function loadCredentials(home2 = homedir4()) {
   let raw;
