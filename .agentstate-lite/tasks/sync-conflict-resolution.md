@@ -3,14 +3,38 @@ type: Task
 title: >-
   U3b sync conflict resolution: converging keep-theirs/export-yours +
   show-incoming
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  U3b. The converging conflict mechanic (keep upstream, export local, complete
-  rebase) with the ours/theirs inversion warning and exact verified sequence,
-  plus show-incoming and the binding convergence test. Deps: sync-command-core.
+  U3b SHIPPED (commit d353745, branch feat/sync-conflict-resolution). Converging
+  conflict mechanic replaces U3a's interim guard: new git.ts op
+  fetchRebaseResolving implements the verified sequence verbatim (export :3
+  local FIRST — the rebase inversion — then checkout origin/board -- <path>,
+  add, GIT_EDITOR=true rebase --continue; LOOP until rebase state gone; empty
+  replays advanced via --skip; unexpected failure aborts before rethrow so the
+  worktree is NEVER mid-state). fetchRebase stays detect-only. sync exits
+  CONFLICT(5) with amended pack (c): per-doc 'doc <id> — teammate's version
+  kept; yours saved at <path> — reconcile with doc update' (reserved paths
+  verbatim, no doc-update suffix), rows {id|path,kind,title,yours,theirs}, help
+  chain show-incoming → doc update --body-file → sync; throwPostCommitFailure
+  safety-prefix composition preserved; conflicted run deliberately SKIPS push
+  (next sync pushes everything). Exports:
+  ~/.agentstate/sync/exports/<key-digest>/<relPath> (0700/0600, never in a
+  worktree, stable per doc). --show-incoming <id>: git show origin/board:<path>,
+  full doc-read semantics (truncate + --out + --out - stderr envelope), labeled
+  'as of last fetch', absent-upstream = expected state. Tests 38 green in the
+  sync suites (27 sync.test.ts incl. repinned converge strings + 11
+  sync-conflict.test.ts: BINDING 3-assert convergence e2e w/ reconcile chain,
+  multi-commit loop, log.md reserved conflict, mixed-batch landing,
+  show-incoming matrix); npm run check fully green; built-CLI two-clone conflict
+  smoke verified end to end. Plugin 1.0.15 both manifests (NOTE: parallel
+  actor-attribution branch may collide on the number — reconcile at merge).
+  Caveats: cursor/cache not advanced on a conflicted run (next sync re-reports
+  the delta); exports are utf8-only (a binary blob on the board would
+  re-encode); a concept id whose basename contains a dot still labels as a raw
+  path (pre-existing isRawPathEntry residual).
 assignee: brian-claude
-timestamp: '2026-07-08T15:19:36.217Z'
+timestamp: '2026-07-08T15:45:50.118Z'
 ---
 # U3b — conflict resolution + `--show-incoming`
 
