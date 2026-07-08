@@ -11902,19 +11902,29 @@ async function ui(argv, deps = {}) {
 }
 
 // src/commands/sync.ts
-import { existsSync as existsSync5, readFileSync as readFileSync4, realpathSync as realpathSync5 } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync4, realpathSync as realpathSync5, statSync as statSync3 } from "node:fs";
 import { promises as fs10 } from "node:fs";
 import path10 from "node:path";
 import { parseArgs as parseArgs22 } from "node:util";
 
 // src/git.ts
 import { spawnSync } from "node:child_process";
-import { existsSync as existsSync4, mkdirSync as mkdirSync2, readdirSync, realpathSync as realpathSync4, rmdirSync, writeFileSync as writeFileSync2 } from "node:fs";
+import {
+  existsSync as existsSync4,
+  mkdirSync as mkdirSync2,
+  readdirSync,
+  readFileSync as readFileSync3,
+  realpathSync as realpathSync4,
+  rmdirSync,
+  statSync as statSync2,
+  writeFileSync as writeFileSync2
+} from "node:fs";
 import path9 from "node:path";
 var BOARD_BRANCH = "board";
 var BOARD_REMOTE = "origin";
 var BOARD_REF = `${BOARD_REMOTE}/${BOARD_BRANCH}`;
 var BUNDLE_DIR = ".agentstate-lite";
+var RELATIVE_WORKTREE_CONFIG = ["-c", "worktree.useRelativePaths=true"];
 var SCRUBBED_GIT_VARS = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"];
 var LOCAL_TIMEOUT_MS = 3e4;
 var NETWORK_TIMEOUT_MS = 6e4;
@@ -11985,15 +11995,68 @@ function realOrSame(p) {
     return p;
   }
 }
+function gitCommonDir(dir) {
+  const r = runGit(dir, ["rev-parse", "--git-common-dir"]);
+  if (r.status !== 0) return null;
+  const raw = r.stdout.trim();
+  if (raw.length === 0) return null;
+  return realOrSame(path9.isAbsolute(raw) ? raw : path9.resolve(dir, raw));
+}
+function sameGitCommonDir(a, b) {
+  const aCommon = gitCommonDir(a);
+  const bCommon = gitCommonDir(b);
+  return aCommon !== null && bCommon !== null && aCommon === bCommon;
+}
+function worktreeRootResolves(boardPath) {
+  const boardTop = repoTopLevel(boardPath);
+  return boardTop !== null && realOrSame(boardTop) === realOrSame(boardPath);
+}
+function worktreeRootResolvesForOwner(boardPath, ownerTop) {
+  return worktreeRootResolves(boardPath) && sameGitCommonDir(boardPath, ownerTop);
+}
+function rebaseWasFromBoardBranch(boardPath) {
+  for (const state of ["rebase-merge", "rebase-apply"]) {
+    const headNamePath = path9.join(worktreeGitPath(boardPath, state), "head-name");
+    if (!existsSync4(headNamePath)) continue;
+    try {
+      if (readFileSync3(headNamePath, "utf8").trim() === `refs/heads/${BOARD_BRANCH}`) return true;
+    } catch {
+    }
+  }
+  return false;
+}
+function repairedWorktreeIsBoard(boardPath, ownerTop) {
+  if (!worktreeRootResolvesForOwner(boardPath, ownerTop)) return false;
+  const branch = runGit(boardPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  if (branch.status === 0 && branch.stdout.trim() === BOARD_BRANCH) return true;
+  return detectStaleRebase(boardPath) && rebaseWasFromBoardBranch(boardPath);
+}
 function isProvisioned(dir) {
   const top = repoTopLevel(dir);
   if (!top) return false;
   const boardPath = path9.join(top, BUNDLE_DIR);
-  if (!existsSync4(boardPath)) return false;
-  const boardTop = repoTopLevel(boardPath);
-  if (!boardTop || realOrSame(boardTop) !== realOrSame(boardPath)) return false;
+  if (!existsSync4(boardPath) || !worktreeRootResolvesForOwner(boardPath, top)) return false;
   const branch = runGit(boardPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
   return branch.status === 0 && branch.stdout.trim() === BOARD_BRANCH;
+}
+function hasWorktreeSignature(dir) {
+  const gitPath = path9.join(dir, ".git");
+  if (!existsSync4(gitPath)) return false;
+  try {
+    return statSync2(gitPath).isFile();
+  } catch {
+    return false;
+  }
+}
+function repairWorktree(top, boardPath) {
+  const r = runGit(top, [...RELATIVE_WORKTREE_CONFIG, "worktree", "repair", boardPath]);
+  return r.status === 0;
+}
+function shellQuote(s) {
+  return `'${s.replaceAll("'", "'\\''")}'`;
+}
+function moveAsideHelp(boardPath, note) {
+  return `mv ${shellQuote(boardPath)} ${shellQuote(`${boardPath}.bak`)}  # ${note}`;
 }
 function provisionBoardWorktree(dir) {
   const top = repoTopLevel(dir);
@@ -12006,18 +12069,50 @@ function provisionBoardWorktree(dir) {
   if (!hasLocal && !hasRemote) return { kind: "no_board" };
   if (existsSync4(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
-      throw new CliError(
-        "RUNTIME",
-        `a non-empty '${BUNDLE_DIR}' directory already exists at ${boardPath} but is not the shared board checkout \u2014 move it aside, then re-run sync`,
-        {
-          details: { path: boardPath },
-          help: `mv ${BUNDLE_DIR} ${BUNDLE_DIR}.bak  # then re-run sync; reconcile any local-only docs afterwards`
+      const hadSignature = hasWorktreeSignature(boardPath);
+      let reason = "foreign";
+      if (hadSignature) {
+        if (worktreeRootResolves(boardPath) && !sameGitCommonDir(boardPath, top)) {
+          reason = "foreign_checkout";
+        } else {
+          repairWorktree(top, boardPath);
         }
-      );
+        if (repairedWorktreeIsBoard(boardPath, top)) return { kind: "repaired", boardPath };
+        if (reason !== "foreign_checkout") {
+          if (worktreeRootResolves(boardPath) && !sameGitCommonDir(boardPath, top)) {
+            reason = "foreign_checkout";
+          } else {
+            reason = worktreeRootResolves(boardPath) ? "wrong_branch" : "unrepairable";
+          }
+        }
+      }
+      const messages = {
+        foreign: {
+          message: `a non-empty '${BUNDLE_DIR}' directory already exists at ${boardPath} but is not the shared board checkout \u2014 move it aside, then re-run sync`,
+          help: moveAsideHelp(boardPath, "then re-run sync; reconcile any local-only docs afterwards")
+        },
+        foreign_checkout: {
+          message: `'${BUNDLE_DIR}' at ${boardPath} is git checkout machinery, but it belongs to a different git repository than ${top} \u2014 move it aside, then re-run sync to provision this repo's board from origin/board`,
+          help: moveAsideHelp(boardPath, "then re-run sync; the existing checkout is untouched, just relocated")
+        },
+        unrepairable: {
+          message: `'${BUNDLE_DIR}' at ${boardPath} looks like the board checkout with stale pointers that 'git worktree repair' could not fix (its git-internal registration is likely gone) \u2014 move it aside, then re-run sync to re-provision fresh from origin/board`,
+          help: moveAsideHelp(boardPath, "then re-run sync; recover any local-only, unpushed docs from the backup afterwards")
+        },
+        wrong_branch: {
+          message: `'${BUNDLE_DIR}' at ${boardPath} is git checkout machinery (a linked worktree or nested repo), but it is not checked out to the '${BOARD_BRANCH}' branch (nor mid-rebase from it) \u2014 it is likely used for something else \u2014 move it aside, then re-run sync to re-provision the board fresh from origin/board`,
+          help: moveAsideHelp(boardPath, "then re-run sync; the existing checkout is untouched, just relocated")
+        }
+      };
+      throw new CliError("RUNTIME", messages[reason].message, {
+        details: { path: boardPath },
+        help: messages[reason].help
+      });
     }
     rmdirSync(boardPath);
   }
-  const r = hasLocal ? runGit(top, ["worktree", "add", boardPath, BOARD_BRANCH]) : runGit(top, [
+  const r = hasLocal ? runGit(top, [...RELATIVE_WORKTREE_CONFIG, "worktree", "add", boardPath, BOARD_BRANCH]) : runGit(top, [
+    ...RELATIVE_WORKTREE_CONFIG,
     "worktree",
     "add",
     "--no-track",
@@ -12423,6 +12518,13 @@ nothing outside the board. \`--pull-only\` skips commit + push and only fast-for
 (never rebases) \u2014 the mode a read-only session uses to pick up incoming changes without
 publishing local ones.
 
+On a repo that has never had the board checkout materialized locally (a fresh clone, or the first
+\`aslite\` invocation after one), sync provisions \`.agentstate-lite\` itself from \`origin/board\` \u2014
+never silently: the receipt carries a \`provisioned: <path>\` line. If the checkout already exists
+but its pointers went stale (e.g. it was moved or remounted at a different path), sync self-heals
+it via \`git worktree repair\` and reports \`repaired: <path>\` the same way \u2014 a repair is a git
+mutation too, and both lines appear even on an otherwise-empty run.
+
 Two definitive empty states (exit 0): no git repo (or no board anywhere yet, local or on origin)
 prints 'sync: nothing to sync'; a clean, already-current board prints 'sync: already up to date'.
 Otherwise the receipt reports { committed, pushed, pulled, actor, incoming } \u2014 \`incoming\` is the
@@ -12566,6 +12668,20 @@ function toConflictRows(boardPath, conflicts) {
     return row;
   });
 }
+function provisionAnnouncement(outcome) {
+  if (outcome.kind === "provisioned") {
+    return { provisioned: `${outcome.boardPath} \u2014 materialized from origin/board` };
+  }
+  if (outcome.kind === "repaired") {
+    return { repaired: `${outcome.boardPath} \u2014 worktree pointers repaired` };
+  }
+  return void 0;
+}
+function withProvisionAnnouncement(err, outcome) {
+  const announcement = provisionAnnouncement(outcome);
+  if (!announcement) return err;
+  return new CliError(err.code, err.message, { details: { ...err.details, ...announcement }, help: err.help });
+}
 function ffSwallowToError(reason, inv) {
   switch (reason) {
     case "git-missing":
@@ -12659,6 +12775,24 @@ function isLinkedWorktree(p) {
   const commonDir = path10.isAbsolute(commonDirRaw) ? commonDirRaw : path10.resolve(p, commonDirRaw);
   return realOrSame2(gitDirRaw) !== realOrSame2(commonDir);
 }
+function hasGitFileSignature(p) {
+  try {
+    return statSync3(path10.join(p, ".git")).isFile();
+  } catch {
+    return false;
+  }
+}
+function retargetStaleBoardInteriorByPath(dir) {
+  let cur = path10.resolve(dir);
+  for (; ; ) {
+    if (path10.basename(cur) === BUNDLE_DIR && hasGitFileSignature(cur)) {
+      return path10.dirname(cur);
+    }
+    const parent = path10.dirname(cur);
+    if (parent === cur) return null;
+    cur = parent;
+  }
+}
 function retargetBoardInterior(dir) {
   try {
     const top = repoTopLevel(dir);
@@ -12667,7 +12801,7 @@ function retargetBoardInterior(dir) {
     }
   } catch {
   }
-  return dir;
+  return retargetStaleBoardInteriorByPath(dir) ?? dir;
 }
 function currentHead(boardPath) {
   const r = runGit(boardPath, ["rev-parse", "HEAD"]);
@@ -12813,6 +12947,9 @@ async function sync(argv, deps = {}) {
     return;
   }
   const boardPath = outcome.boardPath;
+  if (outcome.kind === "repaired") {
+    healStaleRebaseBeforeProvisioning(dir);
+  }
   const key2 = resolveBundleKey(boardPath);
   const storedCursor = await readCursor(key2);
   const startHead = currentHead(boardPath);
@@ -12824,24 +12961,27 @@ async function sync(argv, deps = {}) {
   if (pullOnly) {
     const ff = ffPull(boardPath);
     if (ff.swallowed) {
-      throw ffSwallowToError(ff.swallowed, inv);
+      throw withProvisionAnnouncement(ffSwallowToError(ff.swallowed, inv), outcome);
     }
   } else {
     let rebaseOutcome;
     try {
       rebaseOutcome = fetchRebaseResolving(boardPath, syncExportsDir(key2));
     } catch (rawErr) {
-      const enriched = withUpstreamHelp(toCliError(rawErr, "rebase"), inv);
+      const enriched = withProvisionAnnouncement(withUpstreamHelp(toCliError(rawErr, "rebase"), inv), outcome);
       throw await throwPostCommitFailure(enriched, commitResult.committed, key2, boardPath);
     }
     if (rebaseOutcome.status === "resolved") {
       const conflicts = annotateLanded(boardPath, rebaseOutcome.conflicts);
       const rows = toConflictRows(boardPath, conflicts);
       const help = pickHelp(inv, conflicts);
-      const conflictErr = new CliError("CONFLICT", buildConvergeMessage(conflicts), {
-        details: { conflicts: cap2(rows, limit) },
-        ...help ? { help } : {}
-      });
+      const conflictErr = withProvisionAnnouncement(
+        new CliError("CONFLICT", buildConvergeMessage(conflicts), {
+          details: { conflicts: cap2(rows, limit) },
+          ...help ? { help } : {}
+        }),
+        outcome
+      );
       throw await throwPostCommitFailure(conflictErr, commitResult.committed, key2, boardPath);
     }
   }
@@ -12873,7 +13013,10 @@ async function sync(argv, deps = {}) {
     } catch (err) {
       const classified = toCliError(err, "push");
       const warning = pushFailureMessage(classified);
-      const partial = { warning };
+      const partial = {};
+      const announcement2 = provisionAnnouncement(outcome);
+      if (announcement2) Object.assign(partial, announcement2);
+      partial.warning = warning;
       partial.committed = commitResult.docs.length;
       partial.pushed = 0;
       partial.pulled = originDelta.length;
@@ -12902,10 +13045,16 @@ async function sync(argv, deps = {}) {
   const committedCount = commitResult.docs.length;
   const pulledCount = originDelta.length;
   if (committedCount === 0 && pulledCount === 0 && pushedCount === 0 && !reanchorNote) {
-    stdout(render({ sync: "already up to date" }, mode));
+    const rec = {};
+    const announcement2 = provisionAnnouncement(outcome);
+    if (announcement2) Object.assign(rec, announcement2);
+    rec.sync = "already up to date";
+    stdout(render(rec, mode));
     return;
   }
   const receipt = {};
+  const announcement = provisionAnnouncement(outcome);
+  if (announcement) Object.assign(receipt, announcement);
   receipt.committed = committedCount;
   receipt.pushed = pushedCount;
   receipt.pulled = pulledCount;

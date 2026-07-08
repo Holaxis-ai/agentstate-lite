@@ -32,7 +32,16 @@
  * COMPLETE the rebase — the full-sync path's op since U3b.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 import { conceptIdFromPath, isReservedFile, parseMarkdown } from "@agentstate-lite/core";
@@ -46,6 +55,18 @@ export const BOARD_REMOTE = "origin";
 export const BOARD_REF = `${BOARD_REMOTE}/${BOARD_BRANCH}`;
 /** The conventional folder the board worktree is checked out at (relative to the repo top level). */
 export const BUNDLE_DIR = ".agentstate-lite";
+
+/**
+ * Worktree-portability config forced on every worktree-CREATING/-REPAIRING invocation (field
+ * finding 2026-07-08): git >= 2.48's `worktree.useRelativePaths` writes BOTH the linked worktree's
+ * `.git` file and the main repo's `worktrees/<name>/gitdir` registration as paths RELATIVE to each
+ * other, instead of the pre-2.48 default of absolute paths on both sides. Since the board worktree
+ * always lives INSIDE the repo it belongs to (`<repoTop>/.agentstate-lite`), a relative pointer is
+ * mount-portable by construction — a sandbox/devcontainer/CI checkout remounted at a different
+ * absolute path stays self-consistent. NO version probing: an unknown `-c` config key is silently
+ * ignored by git older than 2.48, so this is safe to pass unconditionally on every version.
+ */
+const RELATIVE_WORKTREE_CONFIG = ["-c", "worktree.useRelativePaths=true"];
 
 // ── the ONE spawn wrapper ─────────────────────────────────────────────────────
 
@@ -189,6 +210,91 @@ function realOrSame(p: string): string {
   }
 }
 
+/** The repo/worktree's git common-dir, realpathed for ownership comparisons. */
+function gitCommonDir(dir: string): string | null {
+  const r = runGit(dir, ["rev-parse", "--git-common-dir"]);
+  if (r.status !== 0) return null;
+  const raw = r.stdout.trim();
+  if (raw.length === 0) return null;
+  return realOrSame(path.isAbsolute(raw) ? raw : path.resolve(dir, raw));
+}
+
+/** True when both paths are worktrees of the same git repository/common-dir. */
+function sameGitCommonDir(a: string, b: string): boolean {
+  const aCommon = gitCommonDir(a);
+  const bCommon = gitCommonDir(b);
+  return aCommon !== null && bCommon !== null && aCommon === bCommon;
+}
+
+/**
+ * True when `boardPath`'s OWN git plumbing resolves back to itself — the structural signature of
+ * a healthy linked worktree, independent of what's currently checked out there. Deliberately
+ * WEAKER than {@link isProvisioned}: a worktree wedged mid-rebase has a DETACHED HEAD (rebase
+ * checks out commits directly), so it is never "on the `board` branch" until healed — but its
+ * pointer files can still be perfectly healthy (or freshly repaired). This is the repair
+ * self-heal's OWN success signal (worktree-portability): `git worktree repair`'s job is only to
+ * fix the POINTERS, not to un-wedge a rebase, so checking for `isProvisioned`'s stronger
+ * "on-branch" condition would misreport a genuinely successful repair as a failure whenever the
+ * worktree was ALSO wedged (the heal-ordering edge — the caller re-runs the entry heal for that).
+ */
+function worktreeRootResolves(boardPath: string): boolean {
+  const boardTop = repoTopLevel(boardPath);
+  return boardTop !== null && realOrSame(boardTop) === realOrSame(boardPath);
+}
+
+/**
+ * Stronger than {@link worktreeRootResolves}: the path must be a worktree root AND belong to the
+ * same git common-dir as the project that wants to adopt it. This rejects a foreign repo's board
+ * worktree parked at this project's conventional path.
+ */
+function worktreeRootResolvesForOwner(boardPath: string, ownerTop: string): boolean {
+  return worktreeRootResolves(boardPath) && sameGitCommonDir(boardPath, ownerTop);
+}
+
+/**
+ * True when a wedged rebase in `boardPath` was invoked FROM the `board` branch — read from git's
+ * OWN `rebase-merge/head-name` (or `rebase-apply/head-name`, the non-interactive backend) file,
+ * which git writes with the ORIGINAL ref (e.g. `refs/heads/board`) specifically so
+ * `--continue`/`--abort` know where to return to, even though HEAD itself is detached for the
+ * rebase's duration (empirically verified live). This is a STRUCTURAL signal from git's own
+ * bookkeeping, never inferred or guessed — the discriminator {@link repairedWorktreeIsBoard} needs
+ * to accept a wedged-mid-rebase worktree (detached HEAD, never literally "on branch board") WITHOUT
+ * also accepting an unrelated worktree that merely happens to be mid-rebase on some OTHER branch.
+ */
+function rebaseWasFromBoardBranch(boardPath: string): boolean {
+  for (const state of ["rebase-merge", "rebase-apply"]) {
+    const headNamePath = path.join(worktreeGitPath(boardPath, state), "head-name");
+    if (!existsSync(headNamePath)) continue;
+    try {
+      if (readFileSync(headNamePath, "utf8").trim() === `refs/heads/${BOARD_BRANCH}`) return true;
+    } catch {
+      /* an unreadable head-name proves nothing either way — keep checking the other backend */
+    }
+  }
+  return false;
+}
+
+/**
+ * The repair self-heal's ACTUAL success signal (worktree-portability): {@link worktreeRootResolves}
+ * alone is NOT enough — `git worktree repair` is safe to run (and exits 0) on a worktree whose
+ * pointers were never even stale, so a genuinely healthy but WRONG-branch worktree (someone's own
+ * unrelated `git worktree add .agentstate-lite some-other-branch`), or one merely left on a plain
+ * detached HEAD for an unrelated reason (no rebase in progress at all), would otherwise be
+ * misreported as a successful "repaired" board checkout — and every downstream sync step
+ * (`stageAndCommit`, `fetchRebaseResolving`, `push`) would then operate against content that was
+ * NEVER the shared board (cold-review finding, confirmed live via two probes: a sidecar branch
+ * checked out in the worktree, and a plain non-rebase detached HEAD). This is genuinely on
+ * `board` when EITHER the branch is attached and literally `board`, OR HEAD is detached BECAUSE
+ * of a wedged rebase that was itself started FROM `board` ({@link rebaseWasFromBoardBranch}) — any
+ * other detached state (or any other named branch) is NOT accepted, and falls through to refusal.
+ */
+function repairedWorktreeIsBoard(boardPath: string, ownerTop: string): boolean {
+  if (!worktreeRootResolvesForOwner(boardPath, ownerTop)) return false;
+  const branch = runGit(boardPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  if (branch.status === 0 && branch.stdout.trim() === BOARD_BRANCH) return true;
+  return detectStaleRebase(boardPath) && rebaseWasFromBoardBranch(boardPath);
+}
+
 /**
  * True when the conventional board worktree is genuinely provisioned for the repo containing
  * `dir`: `<toplevel>/.agentstate-lite` exists, is ITSELF a worktree root (not a plain directory
@@ -198,9 +304,7 @@ export function isProvisioned(dir: string): boolean {
   const top = repoTopLevel(dir);
   if (!top) return false;
   const boardPath = path.join(top, BUNDLE_DIR);
-  if (!existsSync(boardPath)) return false;
-  const boardTop = repoTopLevel(boardPath);
-  if (!boardTop || realOrSame(boardTop) !== realOrSame(boardPath)) return false;
+  if (!existsSync(boardPath) || !worktreeRootResolvesForOwner(boardPath, top)) return false;
   const branch = runGit(boardPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
   return branch.status === 0 && branch.stdout.trim() === BOARD_BRANCH;
 }
@@ -210,12 +314,65 @@ export function isProvisioned(dir: string): boolean {
 export type ProvisionOutcome =
   /** The worktree was created (fresh or self-healed clone). */
   | { kind: "provisioned"; boardPath: string }
+  /**
+   * A pre-existing worktree carrying STALE pointers (the sandbox/mount-move field finding —
+   * `.git` file / `worktrees/<name>/gitdir` still name the OLD absolute path) was structurally
+   * repaired via `git worktree repair`. Distinct from `already`: a repair IS a git mutation
+   * (rewrites the pointer files) and must be ANNOUNCEABLE, never folded into the silent-no-op
+   * "already" case (decisions/board-branch-sync rider 2).
+   */
+  | { kind: "repaired"; boardPath: string }
   /** Already provisioned (or the board branch is already checked out) — idempotent success. */
   | { kind: "already"; boardPath: string }
   /** `dir` is not inside a git repository at all — the caller emits `sync: nothing to sync`. */
   | { kind: "no_repo" }
   /** A repo, but no `board` branch exists locally OR on origin — nothing to provision from. */
   | { kind: "no_board" };
+
+/**
+ * True when `<dir>/.git` exists as a FILE (never a directory) — the structural signature of git's
+ * own checkout machinery: a linked worktree OR a submodule (both point their `.git` at a real
+ * gitdir elsewhere via this same file shape; a full repository's `.git` is a directory). This is
+ * the ONLY gate that makes {@link repairWorktree} reachable: the U3a #1 never-touch guarantee
+ * requires that a repair attempt can NEVER fire against a plain foreign directory, only against
+ * something that already looks like git's own machinery — {@link repairedWorktreeIsBoard} is what
+ * then tells a genuine `board` worktree apart from a submodule or an unrelated worktree that merely
+ * shares this same signature.
+ */
+function hasWorktreeSignature(dir: string): boolean {
+  const gitPath = path.join(dir, ".git");
+  if (!existsSync(gitPath)) return false;
+  try {
+    return statSync(gitPath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Attempt `git worktree repair` on a worktree with a stale/mismatched `.git` file (empirically
+ * verified live against the field finding: after the enclosing repo is moved/remounted, this
+ * rewrites BOTH the linked worktree's `.git` file and the main repo's `worktrees/<name>/gitdir`
+ * registration to agree again — and, with {@link RELATIVE_WORKTREE_CONFIG}, to RELATIVE paths, so
+ * a capable git converts an inherited absolute setup while repairing it). Run from the repo TOP
+ * (not the board path itself — the board path's own git plumbing is exactly what's broken).
+ * Structural signal only (porcelain lesson): the caller re-checks `isProvisioned` itself, never
+ * trusts this function's exit code alone as proof of a healthy result, and never inspects stderr
+ * prose (`repair:` diagnostic lines are expected chatter on the SUCCESS path here, not failure).
+ */
+function repairWorktree(top: string, boardPath: string): boolean {
+  const r = runGit(top, [...RELATIVE_WORKTREE_CONFIG, "worktree", "repair", boardPath]);
+  return r.status === 0;
+}
+
+/** Single-quote shell escaping for remediation commands printed in error help. */
+function shellQuote(s: string): string {
+  return `'${s.replaceAll("'", "'\\''")}'`;
+}
+
+function moveAsideHelp(boardPath: string, note: string): string {
+  return `mv ${shellQuote(boardPath)} ${shellQuote(`${boardPath}.bak`)}  # ${note}`;
+}
 
 /**
  * SELF-HEALING board-worktree provisioning (all branches empirically grounded, §U1):
@@ -226,6 +383,17 @@ export type ProvisionOutcome =
  * resolvable case, removed so the add can proceed); "already checked out" from git = idempotent
  * success. The `--no-track` add faithfully reproduces the migration machine's no-tracking-config
  * state — which is exactly why every other op uses EXPLICIT `origin/board` refs.
+ *
+ * WORKTREE PORTABILITY (2026-07-08 field finding): a fresh `add` writes RELATIVE pointers
+ * ({@link RELATIVE_WORKTREE_CONFIG}, git >= 2.48; silently ignored on older git — no version
+ * probing). And a pre-existing NON-EMPTY directory that carries a worktree signature (a `.git`
+ * FILE — {@link hasWorktreeSignature}) is NOT automatically foreign: it may be a genuine board
+ * worktree whose pointers went stale because the enclosing repo was mounted at a different path
+ * (a sandbox/devcontainer/CI checkout). Before refusing, attempt {@link repairWorktree} and
+ * re-check {@link repairedWorktreeIsBoard} — only when that STILL fails does the refusal fire,
+ * worded to name what was actually observed (never telling someone to move aside a worktree that
+ * repair simply could not fix, or one that genuinely IS the board checkout, as if either were a
+ * directory that was never git's business to begin with).
  */
 export function provisionBoardWorktree(dir: string): ProvisionOutcome {
   const top = repoTopLevel(dir);
@@ -244,15 +412,61 @@ export function provisionBoardWorktree(dir: string): ProvisionOutcome {
 
   if (existsSync(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
-      // Non-empty and (per isProvisioned above) not the board worktree: REFUSE with guidance.
-      throw new CliError(
-        "RUNTIME",
-        `a non-empty '${BUNDLE_DIR}' directory already exists at ${boardPath} but is not the shared board checkout — move it aside, then re-run sync`,
-        {
-          details: { path: boardPath },
-          help: `mv ${BUNDLE_DIR} ${BUNDLE_DIR}.bak  # then re-run sync; reconcile any local-only docs afterwards`,
+      // Non-empty and (per isProvisioned above) not currently a genuine `board` checkout: it may
+      // STILL be the real board worktree, just wedged with stale pointers — try the structural
+      // self-heal FIRST, reachable ONLY because the worktree signature is present (never for a
+      // plain foreign directory — the U3a #1 never-touch guarantee).
+      const hadSignature = hasWorktreeSignature(boardPath);
+      let reason: "foreign" | "foreign_checkout" | "unrepairable" | "wrong_branch" = "foreign";
+      if (hadSignature) {
+        if (worktreeRootResolves(boardPath) && !sameGitCommonDir(boardPath, top)) {
+          reason = "foreign_checkout";
+        } else {
+          repairWorktree(top, boardPath);
+        }
+        // repairedWorktreeIsBoard, NOT a bare worktreeRootResolves/isProvisioned: repair's job is
+        // fixing POINTERS, not un-wedging a rebase (a worktree ALSO wedged mid-rebase stays on a
+        // DETACHED HEAD until healed — the heal-ordering edge, the caller re-runs the entry heal
+        // once it sees `repaired`) — but a bare pointer-resolves check is NOT sufficient proof this
+        // is genuinely the board checkout at all (cold-review finding: `git worktree repair` is a
+        // safe no-op on an ALREADY-healthy worktree regardless of which branch it's on, so a
+        // sidecar worktree someone genuinely uses for something else, or one merely left on a
+        // plain detached HEAD, would otherwise be silently misreported as "repaired").
+        if (repairedWorktreeIsBoard(boardPath, top)) return { kind: "repaired", boardPath };
+        if (reason !== "foreign_checkout") {
+          if (worktreeRootResolves(boardPath) && !sameGitCommonDir(boardPath, top)) {
+            reason = "foreign_checkout";
+          } else {
+            reason = worktreeRootResolves(boardPath) ? "wrong_branch" : "unrepairable";
+          }
+        }
+      }
+      // REFUSE, worded to the case actually observed — never telling someone to move aside a
+      // worktree that repair simply could not fix, or one that IS the board checkout, as if it
+      // were foreign junk. Every remedy stays NON-DESTRUCTIVE (`mv`, never `rm`) — none of these
+      // reasons make the directory's CONTENT worthless, only unsafe for sync to adopt automatically.
+      const messages: Record<typeof reason, { message: string; help: string }> = {
+        foreign: {
+          message: `a non-empty '${BUNDLE_DIR}' directory already exists at ${boardPath} but is not the shared board checkout — move it aside, then re-run sync`,
+          help: moveAsideHelp(boardPath, "then re-run sync; reconcile any local-only docs afterwards"),
         },
-      );
+        foreign_checkout: {
+          message: `'${BUNDLE_DIR}' at ${boardPath} is git checkout machinery, but it belongs to a different git repository than ${top} — move it aside, then re-run sync to provision this repo's board from origin/board`,
+          help: moveAsideHelp(boardPath, "then re-run sync; the existing checkout is untouched, just relocated"),
+        },
+        unrepairable: {
+          message: `'${BUNDLE_DIR}' at ${boardPath} looks like the board checkout with stale pointers that 'git worktree repair' could not fix (its git-internal registration is likely gone) — move it aside, then re-run sync to re-provision fresh from origin/board`,
+          help: moveAsideHelp(boardPath, "then re-run sync; recover any local-only, unpushed docs from the backup afterwards"),
+        },
+        wrong_branch: {
+          message: `'${BUNDLE_DIR}' at ${boardPath} is git checkout machinery (a linked worktree or nested repo), but it is not checked out to the '${BOARD_BRANCH}' branch (nor mid-rebase from it) — it is likely used for something else — move it aside, then re-run sync to re-provision the board fresh from origin/board`,
+          help: moveAsideHelp(boardPath, "then re-run sync; the existing checkout is untouched, just relocated"),
+        },
+      };
+      throw new CliError("RUNTIME", messages[reason].message, {
+        details: { path: boardPath },
+        help: messages[reason].help,
+      });
     }
     // The one resolvable pre-existing state: an EMPTY directory. Remove it so worktree add can
     // create the path itself.
@@ -260,8 +474,9 @@ export function provisionBoardWorktree(dir: string): ProvisionOutcome {
   }
 
   const r = hasLocal
-    ? runGit(top, ["worktree", "add", boardPath, BOARD_BRANCH])
+    ? runGit(top, [...RELATIVE_WORKTREE_CONFIG, "worktree", "add", boardPath, BOARD_BRANCH])
     : runGit(top, [
+        ...RELATIVE_WORKTREE_CONFIG,
         "worktree",
         "add",
         "--no-track",

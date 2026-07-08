@@ -18,14 +18,17 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
   BOARD_BRANCH,
+  BUNDLE_DIR,
   git,
+  gitTry,
   makeTwoCloneTopology,
   deprovisionBoard,
   writeBoardDoc,
@@ -45,6 +48,7 @@ import {
   plantStagedUserCode,
   plantNonEmptyBundleDir,
   originBoardHead,
+  type BoardRepo,
 } from "./git-harness.js";
 
 import {
@@ -92,6 +96,23 @@ function headSubject(boardDir: string): string {
 }
 function headBody(boardDir: string): string {
   return git(boardDir, ["log", "-1", "--format=%b"]);
+}
+
+/** Plant a second repository's `board` worktree at another repo's conventional board path. */
+async function plantForeignBoardWorktreeAt(scratchDir: string, boardPath: string): Promise<string> {
+  const foreignRoot = path.join(scratchDir, "foreign");
+  git(scratchDir, ["init", "-b", "main", foreignRoot]);
+  await writeFile(path.join(foreignRoot, "README.md"), "# foreign project\n");
+  git(foreignRoot, ["add", "-A"]);
+  git(foreignRoot, ["commit", "-m", "foreign: initial"]);
+  git(foreignRoot, ["checkout", "--orphan", BOARD_BRANCH]);
+  git(foreignRoot, ["rm", "-rf", "."]);
+  await writeFile(path.join(foreignRoot, "foreign.md"), "# Foreign board\n");
+  git(foreignRoot, ["add", "-A"]);
+  git(foreignRoot, ["commit", "-m", "foreign: board"]);
+  git(foreignRoot, ["checkout", "main"]);
+  git(foreignRoot, ["worktree", "add", boardPath, BOARD_BRANCH]);
+  return foreignRoot;
 }
 
 // ── user code untouched (staged + unstaged, any branch) ───────────────────────
@@ -421,6 +442,245 @@ test("provision: board branch checked out at a NON-conventional path = idempoten
     git(topo.a.root, ["worktree", "add", "--no-track", "-b", BOARD_BRANCH, path.join(topo.a.root, "elsewhere"), `origin/${BOARD_BRANCH}`]);
     const r = provisionBoardWorktree(topo.a.root);
     assert.equal(r.kind, "already");
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("provisionBoardWorktree: a FOREIGN repo's board worktree at .agentstate-lite is refused, and the emitted remedy is executable verbatim", async () => {
+  const topo = await makeTwoCloneTopology({ provision: false });
+  try {
+    const foreignRoot = await plantForeignBoardWorktreeAt(topo.dir, topo.a.board);
+    assert.equal(git(topo.a.board, ["rev-parse", "--abbrev-ref", "HEAD"]).trim(), BOARD_BRANCH);
+    assert.notEqual(
+      git(topo.a.board, ["rev-parse", "--git-common-dir"]).trim(),
+      git(topo.a.root, ["rev-parse", "--git-common-dir"]).trim(),
+      "precondition: the checkout belongs to the foreign repo, despite sitting at this repo's board path",
+    );
+    assert.equal(isProvisioned(topo.a.root), false, "a foreign board worktree is not provisioned");
+
+    const err = capture(() => provisionBoardWorktree(topo.a.root));
+    assert.ok(err instanceof CliError);
+    assert.equal(err.code, "RUNTIME");
+    assert.match(err.message, /belongs to a different git repository/i);
+    assert.match(err.message, new RegExp(topo.a.root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.ok(err.help, "carries a fixing command");
+    assert.ok(
+      err.help.startsWith(`mv '${topo.a.board}' '${topo.a.board}.bak'`),
+      "remedy uses absolute paths, so it works from any invocation directory",
+    );
+
+    const command = err.help.split("  # ")[0]!;
+    execFileSync("/bin/sh", ["-c", command], { cwd: foreignRoot, stdio: "pipe" });
+    assert.equal(existsSync(topo.a.board), false, "verbatim remedy moved the foreign checkout aside");
+    assert.equal(existsSync(`${topo.a.board}.bak`), true, "backup path exists for manual recovery");
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+// ── worktree portability: relative pointers + repair self-heal (2026-07-08 field finding) ─────
+
+test("provision: a FRESH worktree add writes RELATIVE pointers when the running git supports it (feature-gated on git capability, never on a version string)", async () => {
+  const topo = await makeTwoCloneTopology({ provision: false });
+  try {
+    const r = provisionBoardWorktree(topo.a.root);
+    assert.equal(r.kind, "provisioned");
+    const gitFile = (await readFile(path.join(topo.a.board, ".git"), "utf8")).trim();
+    assert.match(gitFile, /^gitdir:\s*/);
+    const isRelative = !gitFile.slice("gitdir:".length).trim().startsWith("/");
+    if (isRelative) {
+      assert.match(gitFile, /^gitdir:\s*\.\./, "git >= 2.48: a fresh add writes a relative pointer");
+    } else {
+      // The running git predates 2.48 (worktree.useRelativePaths is an unknown config key, silently
+      // ignored) — the absolute fallback must still work end-to-end; the relative-form assertion
+      // is a no-op on this machine rather than a failure.
+      console.log(
+        `NOTE: running git does not support worktree.useRelativePaths (observed absolute pointer: ${gitFile}) — relative-path assertion skipped`,
+      );
+    }
+    assert.equal(isProvisioned(topo.a.root), true);
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("provisionBoardWorktree: THE MOUNT-MOVE FIELD FINDING — stale ABSOLUTE pointers (repo moved/remounted) self-repair via `git worktree repair`; outcome 'repaired'; worktree fully functional afterward", async () => {
+  // provision:true — the harness's own raw `worktree add` (no relative-paths config) writes
+  // ABSOLUTE pointers, exactly the pre-2.48-shaped state a sandbox/devcontainer mount-move breaks.
+  const topo = await makeTwoCloneTopology();
+  try {
+    const staleGitFile = (await readFile(path.join(topo.a.board, ".git"), "utf8")).trim();
+    assert.match(staleGitFile, /^gitdir:\s*\//, "precondition: the harness's own provisioning wrote ABSOLUTE pointers");
+
+    const movedRoot = path.join(path.dirname(topo.a.root), `moved-${path.basename(topo.a.root)}`);
+    await rename(topo.a.root, movedRoot);
+    const movedBoard = path.join(movedRoot, BUNDLE_DIR);
+
+    // From the moved location, the linked worktree's OWN git plumbing is entirely broken — exactly
+    // the sandbox field finding (it reads as "not a git repository" from its own directory).
+    assert.notEqual(
+      gitTry(movedBoard, ["rev-parse", "--show-toplevel"]).status,
+      0,
+      "the moved worktree's own git plumbing is broken pre-repair",
+    );
+    assert.equal(isProvisioned(movedRoot), false, "reads as unprovisioned pre-repair");
+
+    const outcome = provisionBoardWorktree(movedRoot);
+    assert.equal(outcome.kind, "repaired");
+    assert.equal(outcome.boardPath, movedBoard);
+    assert.equal(isProvisioned(movedRoot), true, "healthy after repair");
+
+    const repairedGitFile = (await readFile(path.join(movedBoard, ".git"), "utf8")).trim();
+    assert.ok(!repairedGitFile.includes(topo.a.root), `no longer pointing at the OLD path: ${repairedGitFile}`);
+
+    // End-to-end: the repaired worktree is a genuinely FUNCTIONAL linked worktree, not merely
+    // readable — commit, push, and a teammate's pull all still work against it.
+    const movedRepo: BoardRepo = { name: "A-moved", root: movedRoot, board: movedBoard };
+    await modifyBoardDoc(movedRepo, "tasks/seed-one", { body: "# Seed one\n\npost-repair edit\n" });
+    const commit = stageAndCommit(movedRepo.board);
+    assert.equal(commit.committed, true);
+    push(movedRepo.board);
+    assert.deepEqual(ffPull(topo.b.board), { updated: true });
+    assert.match(await readBoardFile(topo.b, "tasks/seed-one.md"), /post-repair edit/);
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("provisionBoardWorktree: a worktree signature repair CANNOT fix refuses with REWORDED guidance (never phrased as if it were foreign junk)", async () => {
+  const topo = await makeTwoCloneTopology();
+  try {
+    const gitFileContent = (await readFile(path.join(topo.a.board, ".git"), "utf8")).trim();
+    const m = /^gitdir:\s*(.+)$/.exec(gitFileContent);
+    assert.ok(m, "expected a gitdir: line");
+    // Break the worktree BEYOND repair: delete its git-internal registration entirely (the main
+    // repo's per-worktree admin dir) while leaving the `.git` FILE — the worktree SIGNATURE —
+    // untouched, so `hasWorktreeSignature` still reads true and the repair path is attempted.
+    const adminDir = path.resolve(topo.a.board, m![1]!);
+    await rm(adminDir, { recursive: true, force: true });
+
+    const err = capture(() => provisionBoardWorktree(topo.a.root));
+    assert.ok(err instanceof CliError);
+    assert.equal(err.code, "RUNTIME");
+    assert.match(
+      err.message,
+      /stale pointers that 'git worktree repair' could not fix/i,
+      "reworded to name what was actually observed",
+    );
+    assert.doesNotMatch(err.message, /is not the shared board checkout/i, "distinct from the plain-foreign wording");
+    assert.match(err.help ?? "", /^mv /, "still a non-destructive mv, never rm");
+    assert.ok(existsSync(path.join(topo.a.board, "tasks", "seed-one.md")), "pre-existing bundle CONTENT is untouched");
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+// ── cold-review finding: a HEALTHY worktree that just isn't genuinely `board` ──────────────────
+//
+// `git worktree repair` exits 0 (a true no-op) on a worktree whose pointers were NEVER stale —
+// so a bare "did the plumbing resolve" recheck after repair cannot, by itself, prove the worktree
+// is genuinely the shared board checkout. Two ways a healthy-but-wrong worktree can sit at
+// `.agentstate-lite`: checked out to some OTHER branch entirely, or left on a plain detached HEAD
+// for a reason that has NOTHING to do with sync's own rebase machinery. Both must REFUSE, never
+// silently adopt the directory as "repaired" — the U3a #1 never-touch guarantee is about content
+// as much as location: sync must never commit/rebase/push whatever happens to be checked out at
+// the conventional path.
+
+test("provisionBoardWorktree: a HEALTHY worktree checked out to a DIFFERENT branch entirely is refused, never silently adopted as 'repaired'", async () => {
+  const topo = await makeTwoCloneTopology();
+  try {
+    // The worktree's OWN git plumbing is perfectly fine — just parked on an unrelated branch (a
+    // teammate's own sidecar use of the same conventional path, or a stray manual checkout).
+    git(topo.a.board, ["checkout", "-b", "totally-unrelated-branch"]);
+    assert.equal(isProvisioned(topo.a.root), false, "not provisioned: HEAD isn't board");
+
+    const before = git(topo.a.board, ["rev-parse", BOARD_BRANCH]).trim();
+    const err = capture(() => provisionBoardWorktree(topo.a.root));
+    assert.ok(err instanceof CliError);
+    assert.equal(err.code, "RUNTIME");
+    assert.match(err.message, /not checked out to the '?board'? branch/i, "names the actual observed state");
+    assert.doesNotMatch(err.message, /stale pointers/i, "distinct from the unrepairable-pointers wording");
+    assert.doesNotMatch(err.message, /is not the shared board checkout/i, "distinct from the plain-foreign wording");
+    assert.match(err.help ?? "", /^mv /, "still a non-destructive mv, never rm");
+
+    // Never silently adopted: the board branch's own tip is untouched, and the checked-out branch
+    // (and its content) survives exactly as it was.
+    assert.equal(git(topo.a.board, ["rev-parse", BOARD_BRANCH]).trim(), before, "board ref unmoved");
+    assert.equal(git(topo.a.board, ["rev-parse", "--abbrev-ref", "HEAD"]).trim(), "totally-unrelated-branch");
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("provisionBoardWorktree: a HEALTHY worktree on a plain detached HEAD (NOT mid-rebase) is refused, never silently adopted as 'repaired'", async () => {
+  const topo = await makeTwoCloneTopology();
+  try {
+    // Detach for a reason that has nothing to do with sync's own rebase machinery.
+    git(topo.a.board, ["checkout", "--detach"]);
+    assert.notEqual(gitTry(topo.a.board, ["symbolic-ref", "-q", "HEAD"]).status, 0, "genuinely detached");
+    assert.equal(isMidRebase(topo.a), false, "sanity: NOT mid-rebase — the discriminator this test targets");
+    assert.equal(isProvisioned(topo.a.root), false);
+
+    const err = capture(() => provisionBoardWorktree(topo.a.root));
+    assert.ok(err instanceof CliError);
+    assert.equal(err.code, "RUNTIME");
+    assert.match(err.message, /not checked out to the '?board'? branch/i, "names the actual observed state");
+    assert.match(err.help ?? "", /^mv /, "still a non-destructive mv, never rm");
+    assert.ok(existsSync(path.join(topo.a.board, "tasks", "seed-one.md")), "pre-existing bundle CONTENT is untouched");
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("provisionBoardWorktree: the LEGITIMATE composite (moved + genuinely wedged mid-rebase FROM board) still resolves to 'repaired' — the wrong-branch guard does not regress this case", async () => {
+  const topo = await makeTwoCloneTopology();
+  try {
+    const div = await wedgeMidRebase(topo);
+    assert.ok(isMidRebase(topo.b));
+    const movedRoot = path.join(path.dirname(topo.b.root), `moved-${path.basename(topo.b.root)}`);
+    await rename(topo.b.root, movedRoot);
+    const outcome = provisionBoardWorktree(movedRoot);
+    assert.equal(outcome.kind, "repaired", "a genuine board-originated wedge survives the tightened check");
+    assert.ok(div.docId, "sanity: the divergence fixture actually produced a conflicted doc id");
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("provisionBoardWorktree: PROBE-E (cold review) — a wedge started from a NON-board branch, then moved, REFUSES rather than silently returning 'repaired'", async () => {
+  const topo = await makeTwoCloneTopology();
+  try {
+    const board = topo.a.board;
+    // Two sibling branches, NEITHER of them `board`, diverging on the same file — a genuine
+    // conflict that has NOTHING to do with the board branch at all.
+    git(board, ["checkout", "-b", "not-board"]);
+    await writeFile(path.join(board, "scratch.txt"), "A\n");
+    git(board, ["add", "-A"]);
+    git(board, ["commit", "-m", "not-board: base"]);
+
+    git(board, ["checkout", "-b", "not-board-side"]);
+    await writeFile(path.join(board, "scratch.txt"), "B\n");
+    git(board, ["add", "-A"]);
+    git(board, ["commit", "-m", "not-board-side: edit"]);
+
+    git(board, ["checkout", "not-board"]);
+    await writeFile(path.join(board, "scratch.txt"), "C\n");
+    git(board, ["add", "-A"]);
+    git(board, ["commit", "-m", "not-board: edit"]);
+
+    const r = gitTry(board, ["rebase", "not-board-side"]);
+    assert.notEqual(r.status, 0, "sanity: the rebase conflicted");
+    assert.ok(isMidRebase(topo.a), "sanity: genuinely wedged, and NOT from board");
+
+    const movedRoot = path.join(path.dirname(topo.a.root), `moved-${path.basename(topo.a.root)}`);
+    await rename(topo.a.root, movedRoot);
+
+    const err = capture(() => provisionBoardWorktree(movedRoot));
+    assert.ok(err instanceof CliError, "must REFUSE — rebaseWasFromBoardBranch is false here, so repairedWorktreeIsBoard must reject it despite being mid-rebase");
+    assert.equal(err.code, "RUNTIME");
+    assert.match(err.message, /not checked out to the '?board'? branch/i, "the wrong-branch wording, not a false 'repaired'");
+    assert.match(err.help ?? "", /^mv /, "still a non-destructive mv, never rm");
   } finally {
     await topo.cleanup();
   }

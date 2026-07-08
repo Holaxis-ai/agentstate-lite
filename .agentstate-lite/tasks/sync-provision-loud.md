@@ -3,20 +3,20 @@ type: Task
 title: >-
   sync's self-provisioning is silent — violates the detection-gated-and-LOUD
   rider
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Found on the first real fresh-clone deployment (2026-07-08, reproducible on
-  any clone of a repo with an origin/board branch): first sync correctly
-  self-provisions the worktree, but the receipt prints only 'sync: already up to
-  date' — the provisioning itself is unannounced. decisions/board-branch-sync
-  rider 2 (Mike, binding): provisioning 'says so in structured output — never a
-  silent git mutation.' Fix: the provision outcome {kind:'provisioned',
-  boardPath} should surface a line/field in the envelope on every path incl.
-  both empty states (e.g. provisioned: <path> or a help line). Small; natural
-  rider on U4 or the sync-receipt-edge-polish task.
+  SHIPPED via PR (same unit as worktree-portability — repair is a git mutation
+  too, announcing one without the other would be incoherent).
+  provisionAnnouncement wires {provisioned: <path> — materialized from
+  origin/board} and {repaired: <path> — worktree pointers repaired} into EVERY
+  output path: full receipt, already-up-to-date shortcut, push-fail partial,
+  CONFLICT details, --pull-only ff-swallow errors. Steady-state carries neither
+  key (byte-exact pinned). Rider 2 of decisions/board-branch-sync now fully
+  satisfied: detection-gated AND loud. Field origin: first real fresh-clone
+  deployment printed only already-up-to-date after materializing a worktree.
 actor: mike
 assignee: mike/claude
-timestamp: '2026-07-08T19:26:21.369Z'
+timestamp: '2026-07-08T20:25:07.697Z'
 ---
 

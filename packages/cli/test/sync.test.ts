@@ -19,7 +19,7 @@
 //      though the keying alone would now keep the files apart.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, rename, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -33,6 +33,7 @@ import {
   ffSwallowToError,
   originDocsBetween,
   pickHelp,
+  provisionAnnouncement,
   pushFailureMessage,
   singleActor,
   sync,
@@ -45,6 +46,7 @@ import { CliError } from "../src/errors.js";
 import type { DocChange } from "../src/git.js";
 import { REANCHOR_NOTE, readSyncState, bundleKey, syncExportsDir, syncStateDir, writeCursor } from "../src/cursor.js";
 import {
+  BUNDLE_DIR,
   boardHead,
   commitBoard,
   danglingCursorSha,
@@ -59,6 +61,7 @@ import {
   wedgeMidRebase,
   writeBoardDoc,
   git,
+  type BoardRepo,
 } from "./git-harness.js";
 
 // ── test scaffolding ───────────────────────────────────────────────────────────
@@ -289,6 +292,18 @@ test("toIncomingRows / toDeltaRows: project DocChange into each consumer's own r
   const changes = [docChange({ docId: "tasks/x", verb: "added", kind: "Task", title: "X", actor: "mike" })];
   assert.deepEqual(toIncomingRows(changes), [{ verb: "added", kind: "Task", id: "tasks/x", title: "X", actor: "mike" }]);
   assert.deepEqual(toDeltaRows(changes), [{ docId: "tasks/x", verb: "added", kind: "Task", title: "X", actor: "mike" }]);
+});
+
+test("provisionAnnouncement: decisions/board-branch-sync rider 2 — a mutation is ALWAYS announceable, a no-op never is", () => {
+  assert.deepEqual(provisionAnnouncement({ kind: "provisioned", boardPath: "/x/.agentstate-lite" }), {
+    provisioned: "/x/.agentstate-lite — materialized from origin/board",
+  });
+  assert.deepEqual(provisionAnnouncement({ kind: "repaired", boardPath: "/x/.agentstate-lite" }), {
+    repaired: "/x/.agentstate-lite — worktree pointers repaired",
+  });
+  assert.equal(provisionAnnouncement({ kind: "already", boardPath: "/x/.agentstate-lite" }), undefined);
+  assert.equal(provisionAnnouncement({ kind: "no_repo" }), undefined);
+  assert.equal(provisionAnnouncement({ kind: "no_board" }), undefined);
 });
 
 // ── integration tests over the U0 git harness ──────────────────────────────────
@@ -924,6 +939,207 @@ test("sync: run from INSIDE the board worktree retargets to the enclosing projec
     assert.match(result.out, /committed: 1/);
     assert.match(result.out, /pushed: 1/);
     assert.equal(gitTry(topo.a.board, ["status", "--porcelain"]).stdout, "", "board worktree clean after the sync");
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+// ── worktree portability + loud provisioning (2026-07-08 field finding + rider 2) ──────────────
+//
+// decisions/board-branch-sync rider 2 (binding): "provisioning is detection-gated and loud … says
+// so in structured output — never a silent git mutation." These tests pin the exact announcement
+// strings sync's envelope must carry whenever provisioning itself did something, and prove the
+// mount-move field finding (a sandbox/devcontainer remount snaps a board worktree's ABSOLUTE
+// pointers) self-repairs end-to-end through the REAL `sync()` entry point — not just the
+// lower-level `provisionBoardWorktree` unit covered in git-porcelain.test.ts.
+
+test("sync: loud provisioning — a fresh unprovisioned clone's FIRST sync announces 'provisioned', never silently", async () => {
+  const topo = await makeTwoCloneTopology({ provision: false });
+  const { homes, cleanup } = await tempHomes(1);
+  try {
+    const result = await runSync(homes[0]!, ["--dir", topo.a.root]);
+    assert.equal(result.err, undefined, result.err?.message);
+    assert.ok(
+      result.out.includes(`provisioned: ${topo.a.board} — materialized from origin/board`),
+      `expected the provisioned announcement in: ${result.out}`,
+    );
+    // A fresh clone with nothing else pending still hits the "already up to date" shortcut — the
+    // very regression this rider closes (previously: a bare 'sync: already up to date', silent
+    // about the provisioning that just happened).
+    assert.match(result.out, /sync: already up to date/);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("sync: loud provisioning — THE MOUNT-MOVE FIELD FINDING end-to-end — a moved/remounted repo self-repairs through the REAL sync() entry point and announces 'repaired'", async () => {
+  // provision:true — the harness's own raw `worktree add` (no relative-paths config) writes
+  // ABSOLUTE pointers, reproducing the pre-2.48-shaped state a sandbox/CI/devcontainer mount-move
+  // breaks (empirically verified live, board task sync-worktree-portability).
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(2);
+  try {
+    const staleGitFile = (await readFile(path.join(topo.a.board, ".git"), "utf8")).trim();
+    assert.match(staleGitFile, /^gitdir:\s*\//, "precondition: the harness's own provisioning wrote ABSOLUTE pointers");
+
+    const movedRoot = path.join(path.dirname(topo.a.root), `moved-${path.basename(topo.a.root)}`);
+    await rename(topo.a.root, movedRoot);
+    const movedBoard = path.join(movedRoot, BUNDLE_DIR);
+
+    // Plant a genuine local change BEFORE syncing, so a clean run through the repaired worktree
+    // proves it is fully FUNCTIONAL (commit + push), not merely self-consistent.
+    await cliDocWrite(movedBoard, "notes/post-move", [
+      "--type",
+      "Note",
+      "--title",
+      "Post-move",
+      "--body",
+      "# hi\n",
+      "--actor",
+      "mike",
+    ]);
+
+    const result = await runSync(homes[0]!, ["--dir", movedRoot]);
+    assert.equal(result.err, undefined, result.err?.message);
+    assert.ok(
+      result.out.includes(`repaired: ${movedBoard} — worktree pointers repaired`),
+      `expected the repaired announcement in: ${result.out}`,
+    );
+    assert.match(result.out, /committed: 1/);
+    assert.match(result.out, /pushed: 1/);
+
+    // End-to-end, the OTHER side: B (never moved) picks up the repaired-and-pushed doc via an
+    // ordinary pull-only sync — proving the repaired worktree's push genuinely reached origin.
+    const b = await runSync(homes[1]!, ["--dir", topo.b.root, "--pull-only"]);
+    assert.equal(b.err, undefined, b.err?.message);
+    assert.match(b.out, /pulled: 1/);
+    assert.match(b.out, /notes\/post-move/);
+
+    // And the repaired worktree is usable by ordinary git too, not just this CLI.
+    assert.equal(gitTry(movedBoard, ["rev-parse", "--abbrev-ref", "HEAD"]).stdout.trim(), "board");
+
+    // Steady-state re-run from the (now healthy) moved location: NEITHER announcement key appears.
+    const again = await runSync(homes[0]!, ["--dir", movedRoot]);
+    assert.equal(again.out, "sync: already up to date\n", "no provisioned/repaired key on a steady-state re-run");
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("sync: moved/remounted repo still repairs when invoked from INSIDE the stale board checkout", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(1);
+  let movedRoot: string | undefined;
+  try {
+    movedRoot = path.join(path.dirname(topo.a.root), `moved-${path.basename(topo.a.root)}`);
+    await rename(topo.a.root, movedRoot);
+    const movedBoard = path.join(movedRoot, BUNDLE_DIR);
+
+    const result = await runSync(homes[0]!, ["--dir", movedBoard]);
+    assert.equal(result.err, undefined, result.err?.message);
+    assert.ok(
+      result.out.includes(`repaired: ${movedBoard} — worktree pointers repaired`),
+      `expected repair announcement instead of a false empty state: ${result.out}`,
+    );
+    assert.match(result.out, /sync: already up to date/);
+    assert.equal(gitTry(movedBoard, ["rev-parse", "--abbrev-ref", "HEAD"]).stdout.trim(), "board");
+  } finally {
+    await cleanup();
+    if (movedRoot) await rm(movedRoot, { recursive: true, force: true });
+    await topo.cleanup();
+  }
+});
+
+test("sync: steady state carries NEITHER 'provisioned' NOR 'repaired' — an already-healthy worktree's sync stays exactly 'sync: already up to date'", async () => {
+  const topo = await makeTwoCloneTopology(); // provision:true, healthy pointers, no move
+  const { homes, cleanup } = await tempHomes(1);
+  try {
+    const result = await runSync(homes[0]!, ["--dir", topo.a.root]);
+    assert.equal(result.err, undefined, result.err?.message);
+    assert.equal(result.out, "sync: already up to date\n");
+    assert.ok(!result.out.includes("provisioned:"));
+    assert.ok(!result.out.includes("repaired:"));
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+// ── review round 2 (post cold-review), gap #4: loud provisioning on the OTHER two entry points ─
+
+test("sync: loud provisioning — a fresh unprovisioned clone's FIRST `--pull-only` run ALSO announces 'provisioned' (not just the full-sync path)", async () => {
+  const topo = await makeTwoCloneTopology({ provision: false });
+  const { homes, cleanup } = await tempHomes(1);
+  try {
+    const result = await runSync(homes[0]!, ["--dir", topo.a.root, "--pull-only"]);
+    assert.equal(result.err, undefined, result.err?.message);
+    assert.ok(
+      result.out.includes(`provisioned: ${topo.a.board} — materialized from origin/board`),
+      `expected the provisioned announcement in: ${result.out}`,
+    );
+    assert.match(result.out, /sync: already up to date/);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("sync: loud provisioning — a FRESH provision followed by a broken-origin failure still carries 'provisioned' in the thrown error's details (AUTH_REQUIRED)", async () => {
+  const topo = await makeTwoCloneTopology({ provision: false });
+  const { homes, cleanup } = await tempHomes(1);
+  try {
+    // Break origin AFTER the initial clone already fetched refs/remotes/origin/board (mirrors
+    // FINDING 3's own technique): provisioning succeeds from that pre-fetched local ref (needs no
+    // network), but STEP 3's own `fetch` inside fetchRebaseResolving then fails for real.
+    git(topo.a.root, ["remote", "set-url", "origin", "/nonexistent-origin-xyz"]);
+    const result = await runSync(homes[0]!, ["--dir", topo.a.root]);
+    assert.ok(result.err, "expected a thrown CliError");
+    assert.equal(result.err!.code, "AUTH_REQUIRED");
+    assert.equal(
+      result.err!.details?.provisioned,
+      `${topo.a.board} — materialized from origin/board`,
+      "the fresh provision is announced even though the run ultimately failed",
+    );
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("sync: THE HEAL-ORDERING EDGE — a repaired worktree that was ALSO wedged mid-rebase gets healed before the commit/pull step, converging cleanly instead of failing on 'rebase already in progress'", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(1);
+  try {
+    // Wedge B mid-rebase on a genuine same-doc conflict (tasks/seed-one), THEN move the entire
+    // repo — reproducing a worse-case composite: `healStaleRebaseBeforeProvisioning`'s entry-heal
+    // (STEP 0) correctly SKIPS this worktree at entry (its stale pointers make repoTopLevel(...)
+    // resolve to nothing, reading as "not a linked worktree yet" rather than "wedged") — so without
+    // the heal-ordering fix, provisioning's own repair would fix the POINTERS but leave the wedge
+    // behind, and the next `git rebase` attempt would fail outright ("a rebase is already in
+    // progress") instead of cleanly reaching the converging conflict mechanic.
+    const div = await wedgeMidRebase(topo);
+    assert.ok(isMidRebase(topo.b), "sanity: genuinely wedged before the move");
+
+    const movedRoot = path.join(path.dirname(topo.b.root), `moved-${path.basename(topo.b.root)}`);
+    await rename(topo.b.root, movedRoot);
+    const movedBoard = path.join(movedRoot, BUNDLE_DIR);
+
+    const result = await runSync(homes[0]!, ["--dir", movedRoot]);
+    // The healed wedge lets STEP 3 start a FRESH rebase, which re-hits the SAME same-doc conflict —
+    // resolved by the CONVERGING mechanic (U3b), a clean CONFLICT(5) terminal, never a raw
+    // "rebase already in progress" RUNTIME failure.
+    assert.ok(result.err, "expected the converging CONFLICT terminal");
+    assert.equal(result.err!.code, "CONFLICT");
+    assert.ok(result.err!.message.includes(div.docId), result.err!.message);
+    // Loud provisioning still applies on this (error) path too — rider 2 is not receipt-only.
+    assert.equal(result.err!.details?.repaired, `${movedBoard} — worktree pointers repaired`);
+
+    // And the heal genuinely ran: the worktree is no longer wedged mid-rebase.
+    const movedRepo: BoardRepo = { name: "B-moved", root: movedRoot, board: movedBoard };
+    assert.equal(isMidRebase(movedRepo), false, "the wedge was healed before the pull step reached it");
   } finally {
     await cleanup();
     await topo.cleanup();
