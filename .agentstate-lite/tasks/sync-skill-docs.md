@@ -8,7 +8,7 @@ description: >-
   verb, hook-install re-run prompt, plugin version bump in both manifests. Deps:
   sync-conflict-resolution, sync-sessionstart.
 actor: brian-claude
-timestamp: '2026-07-08T16:32:34.984Z'
+timestamp: '2026-07-08T17:15:36.975Z'
 ---
 # U6 — skill + docs truth pass
 
@@ -78,3 +78,32 @@ echo in the board's conventions if natural):
 Context: PR #13/U3b review discussions published defect details safely (all found and
 fixed pre-merge; none exploitable) — this line pins WHERE the boundary sits before the
 first post-merge exploitable case forces the question.
+## Inherited: review-process conventions for CLAUDE.md (2026-07-08, Brian-approved after proportionality review)
+
+The docs pass folds these into the EXISTING CLAUDE.md sections — no new doc, no new
+artifact (a standalone playbook was proposed and rejected as recency-weighted overhead):
+
+Into the review-gate paragraph (the "agents review each others' code" rule), four lines:
+> - Agents that touch git or run tests work in an ISOLATED worktree/checkout, never the
+>   shared working tree; reviewers detach onto the exact sha under review.
+> - A risky mechanic and the test that makes it safe ship in the SAME reviewed unit —
+>   a gate must own the risk it guards.
+> - A review claiming it "executed" a documented command chain means character-for-
+>   character with the emitted artifacts — no reasonable substitutions; pin such chains
+>   with tests that literally run the emitted strings.
+> - Reviewers verify empirically where feasible (built artifact, scratch environments),
+>   label each finding empirical vs reasoned, and report survived attacks alongside
+>   findings so an APPROVE is calibrated.
+
+Into "Working here", one mechanical line (next to the build-from-repo-root warning):
+> - A fresh git worktree has no node_modules: run `npm ci` inside it before trusting any
+>   test or drift-gate result (up-tree module resolution manufactures phantom failures).
+
+Into the plugin-version-discipline bullet, one sentence appended:
+> Parallel unit branches will collide on the next version by design; whichever merges
+> second gets re-bumped and rebased over the other's regenerated bundle before merge.
+
+NOT included, deliberately: claim-before-work (already documented where the records
+conventions live — verify it is, add there if not), report-before-idle (orchestrator-
+harness-specific), and any cross-team-review-cadence mandate (a founders' policy
+question, put to Mike separately — do not canonize unilaterally).
