@@ -6,8 +6,9 @@ title: >-
 status: done
 priority: '1'
 description: >-
-  U3b SHIPPED (commit d353745, branch feat/sync-conflict-resolution). Converging
-  conflict mechanic replaces U3a's interim guard: new git.ts op
+  U3b SHIPPED + review fixes (commits b744b70 impl, 63ed6c1 fix round; branch
+  feat/sync-conflict-resolution, rebased onto main's actor-attribution merge).
+  Converging conflict mechanic replaces U3a's interim guard: git.ts
   fetchRebaseResolving implements the verified sequence verbatim (export :3
   local FIRST — the rebase inversion — then checkout origin/board -- <path>,
   add, GIT_EDITOR=true rebase --continue; LOOP until rebase state gone; empty
@@ -15,26 +16,32 @@ description: >-
   worktree is NEVER mid-state). fetchRebase stays detect-only. sync exits
   CONFLICT(5) with amended pack (c): per-doc 'doc <id> — teammate's version
   kept; yours saved at <path> — reconcile with doc update' (reserved paths
-  verbatim, no doc-update suffix), rows {id|path,kind,title,yours,theirs}, help
-  chain show-incoming → doc update --body-file → sync; throwPostCommitFailure
-  safety-prefix composition preserved; conflicted run deliberately SKIPS push
-  (next sync pushes everything). Exports:
+  verbatim; deleted-upstream docs read 'teammate's deletion kept … re-create
+  with doc write'), rows {id|path,kind,title,yours,theirs}, help chain
+  preferring a LANDED doc (doc-update chain) with a doc-write re-create
+  fallback; safety-prefix composition preserved; conflicted run deliberately
+  SKIPS push (next sync pushes). Exports:
   ~/.agentstate/sync/exports/<key-digest>/<relPath> (0700/0600, never in a
   worktree, stable per doc). --show-incoming <id>: git show origin/board:<path>,
   full doc-read semantics (truncate + --out + --out - stderr envelope), labeled
-  'as of last fetch', absent-upstream = expected state. Tests 38 green in the
-  sync suites (27 sync.test.ts incl. repinned converge strings + 11
-  sync-conflict.test.ts: BINDING 3-assert convergence e2e w/ reconcile chain,
-  multi-commit loop, log.md reserved conflict, mixed-batch landing,
-  show-incoming matrix); npm run check fully green; built-CLI two-clone conflict
-  smoke verified end to end. Plugin 1.0.15 both manifests (NOTE: parallel
-  actor-attribution branch may collide on the number — reconcile at merge).
-  Caveats: cursor/cache not advanced on a conflicted run (next sync re-reports
-  the delta); exports are utf8-only (a binary blob on the board would
-  re-encode); a concept id whose basename contains a dot still labels as a raw
-  path (pre-existing isRawPathEntry residual).
+  'as of last fetch', absent-upstream = expected state. REVIEW FIXES: (1)
+  quotepath class killed — conflict list is -z NUL-framed AND -c
+  core.quotepath=off is a spawn-wrapper invariant (also incidentally fixes the
+  same latent class in stageAndCommit/changesSince/originDocsBetween name-status
+  parses — follow-up: pin those paths with non-ASCII tests); (2) help chain
+  never names a deleted-upstream doc for doc update; (3) both deletion-conflict
+  directions pinned e2e. Tests 44 green in the sync suites (30 sync.test.ts
+  incl. main's attribution e2e + 14 sync-conflict.test.ts: binding 3-assert
+  convergence chain, multi-commit loop, log.md reserved, mixed-batch, non-ASCII
+  converge, both deletion directions, show-incoming matrix); npm run check fully
+  green. Plugin 1.0.16 both manifests. Caveats: cursor/cache not advanced on a
+  conflicted run (next sync re-reports the delta); exports are utf8-only; a
+  concept id whose basename contains a dot labels as a raw path (pre-existing
+  isRawPathEntry residual); a filename containing a literal TAB would still
+  break the merged name-status parsers (the -z conflict list is immune).
 assignee: brian-claude
-timestamp: '2026-07-08T15:45:50.118Z'
+actor: builder-u3b
+timestamp: '2026-07-08T16:09:32.620Z'
 ---
 # U3b — conflict resolution + `--show-incoming`
 
