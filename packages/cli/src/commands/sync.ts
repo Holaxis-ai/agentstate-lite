@@ -60,6 +60,7 @@ import {
   type CommitResult,
   type DocChange,
   type FetchRebaseResolvingOutcome,
+  type ProvisionOutcome,
   type ResolvedConflict,
 } from "../git.js";
 import {
@@ -89,6 +90,13 @@ teammates: commits any pending local doc changes, pulls theirs, and pushes yours
 nothing outside the board. \`--pull-only\` skips commit + push and only fast-forwards from origin
 (never rebases) — the mode a read-only session uses to pick up incoming changes without
 publishing local ones.
+
+On a repo that has never had the board checkout materialized locally (a fresh clone, or the first
+\`aslite\` invocation after one), sync provisions \`.agentstate-lite\` itself from \`origin/board\` —
+never silently: the receipt carries a \`provisioned: <path>\` line. If the checkout already exists
+but its pointers went stale (e.g. it was moved or remounted at a different path), sync self-heals
+it via \`git worktree repair\` and reports \`repaired: <path>\` the same way — a repair is a git
+mutation too, and both lines appear even on an otherwise-empty run.
 
 Two definitive empty states (exit 0): no git repo (or no board anywhere yet, local or on origin)
 prints 'sync: nothing to sync'; a clean, already-current board prints 'sync: already up to date'.
@@ -409,6 +417,38 @@ export function toConflictRows(boardPath: string, conflicts: LandedConflict[]): 
     row.theirs = c.landed ? "kept" : "kept (deleted upstream)";
     return row;
   });
+}
+
+/**
+ * decisions/board-branch-sync rider 2 (binding): provisioning is a git mutation and must be
+ * ANNOUNCEABLE — "says so in structured output — never a silent git mutation." Only `provisioned`
+ * (a fresh materialize) and `repaired` (the stale-pointer self-heal) MUTATED anything this run;
+ * `already`/`no_repo`/`no_board` did nothing to announce, so this returns `undefined` for them —
+ * the omit-when-absent convention every envelope in this module already follows. Message pack
+ * shape (test-pinned): one field, named for the outcome, `<path> — <what happened>`.
+ */
+export function provisionAnnouncement(outcome: ProvisionOutcome): Record<string, string> | undefined {
+  if (outcome.kind === "provisioned") {
+    return { provisioned: `${outcome.boardPath} — materialized from origin/board` };
+  }
+  if (outcome.kind === "repaired") {
+    return { repaired: `${outcome.boardPath} — worktree pointers repaired` };
+  }
+  return undefined;
+}
+
+/**
+ * Merge {@link provisionAnnouncement} into a CliError's `details`, for the (rarer) case where
+ * provisioning mutated git state and THEN the same run hit a later failure (a conflict, a
+ * fetch/rebase error) — rider 2 applies to every envelope this run can produce, not only the
+ * success receipt. `err` passes through UNCHANGED when there is nothing to announce, so a run
+ * with no provisioning event keeps its exact prior shape (no test-pinned string gains an
+ * unexpected key).
+ */
+function withProvisionAnnouncement(err: CliError, outcome: ProvisionOutcome): CliError {
+  const announcement = provisionAnnouncement(outcome);
+  if (!announcement) return err;
+  return new CliError(err.code, err.message, { details: { ...err.details, ...announcement }, help: err.help });
 }
 
 /** Map an `FfPullResult.swallowed` reason (U1's fail-soft vocabulary) to the capped CliError taxonomy. */
@@ -805,6 +845,17 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   }
   const boardPath = outcome.boardPath;
 
+  // THE HEAL-ORDERING EDGE: `healStaleRebaseBeforeProvisioning` above ran BEFORE this worktree was
+  // known to be sound — its own worktree-root guard correctly SKIPPED a worktree with stale
+  // pointers (repoTopLevel(candidate) resolved to nothing, reading as "not a linked worktree yet"
+  // rather than "wedged"). The repair `provisionBoardWorktree` just performed fixes those pointers,
+  // so a rebase left wedged INSIDE this worktree would otherwise go unhealed for the rest of this
+  // run. Re-run the SAME entry heal now that the worktree is structurally sound (best-effort,
+  // matching the entry heal's own posture — see its doc comment).
+  if (outcome.kind === "repaired") {
+    healStaleRebaseBeforeProvisioning(dir);
+  }
+
   const key = resolveBundleKey(boardPath);
   const storedCursor = await readCursor(key);
   const startHead = currentHead(boardPath);
@@ -827,7 +878,7 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   if (pullOnly) {
     const ff = ffPull(boardPath);
     if (ff.swallowed) {
-      throw ffSwallowToError(ff.swallowed, inv);
+      throw withProvisionAnnouncement(ffSwallowToError(ff.swallowed, inv), outcome);
     }
   } else {
     let rebaseOutcome: FetchRebaseResolvingOutcome;
@@ -837,7 +888,7 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
       // Finding 3: a fetch/rebase failure AFTER a real local commit this run gets the SAME
       // safety-first framing a push failure does (composed with the NO_UPSTREAM help, in order),
       // and the cache is written with honest counts before the throw.
-      const enriched = withUpstreamHelp(toCliError(rawErr, "rebase"), inv);
+      const enriched = withProvisionAnnouncement(withUpstreamHelp(toCliError(rawErr, "rebase"), inv), outcome);
       throw await throwPostCommitFailure(enriched, commitResult.committed, key, boardPath);
     }
     if (rebaseOutcome.status === "resolved") {
@@ -852,10 +903,13 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
       const conflicts = annotateLanded(boardPath, rebaseOutcome.conflicts);
       const rows = toConflictRows(boardPath, conflicts);
       const help = pickHelp(inv, conflicts);
-      const conflictErr = new CliError("CONFLICT", buildConvergeMessage(conflicts), {
-        details: { conflicts: cap(rows, limit) },
-        ...(help ? { help } : {}),
-      });
+      const conflictErr = withProvisionAnnouncement(
+        new CliError("CONFLICT", buildConvergeMessage(conflicts), {
+          details: { conflicts: cap(rows, limit) },
+          ...(help ? { help } : {}),
+        }),
+        outcome,
+      );
       // Finding 3 composition (unchanged from U3a): when THIS run committed, the safety prefix
       // ("committed to the board locally — your work is saved.") composes onto the converge
       // message, and the cache is written with honest counts. When nothing new was committed this
@@ -915,7 +969,10 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
     } catch (err) {
       const classified = toCliError(err, "push");
       const warning = pushFailureMessage(classified);
-      const partial: Record<string, unknown> = { warning };
+      const partial: Record<string, unknown> = {};
+      const announcement = provisionAnnouncement(outcome);
+      if (announcement) Object.assign(partial, announcement);
+      partial.warning = warning;
       partial.committed = commitResult.docs.length;
       partial.pushed = 0;
       partial.pulled = originDelta.length;
@@ -950,13 +1007,21 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   const pulledCount = originDelta.length;
 
   // The second definitive empty state: nothing committed, nothing pulled FROM ORIGIN, nothing
-  // pushed, and no re-anchor to report — a genuinely idempotent re-run.
+  // pushed, and no re-anchor to report — a genuinely idempotent re-run. Rider 2 still applies here:
+  // a FRESH provision/repair with nothing else to report must not read as a silent no-op — the
+  // announcement (when present) rides alongside the "already up to date" line, never replacing it.
   if (committedCount === 0 && pulledCount === 0 && pushedCount === 0 && !reanchorNote) {
-    stdout(render({ sync: "already up to date" }, mode));
+    const rec: Record<string, unknown> = {};
+    const announcement = provisionAnnouncement(outcome);
+    if (announcement) Object.assign(rec, announcement);
+    rec.sync = "already up to date";
+    stdout(render(rec, mode));
     return;
   }
 
   const receipt: Record<string, unknown> = {};
+  const announcement = provisionAnnouncement(outcome);
+  if (announcement) Object.assign(receipt, announcement);
   receipt.committed = committedCount;
   receipt.pushed = pushedCount;
   receipt.pulled = pulledCount;
