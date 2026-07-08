@@ -123,8 +123,10 @@ export const COMMAND_GROUPS: CommandGroup[] = [
     group: "Kinds",
     commands: [
       {
-        usage: 'new "<Kind>" <id> --<field> <value> [...] [--no-prefix] [--actor <n>] [--remote <url>]',
-        summary: 'Create a new instance of a bundle-declared kind — e.g. new "Context Note" <id> for a note (validates strictly)',
+        usage:
+          'new "<Kind>" <id> --<field> <value> [...] [--link "<type>=<target-id>" ...] [--no-prefix] [--actor <n>] [--remote <url>]',
+        summary:
+          'Create a new instance of a bundle-declared kind — e.g. new "Context Note" <id> for a note (validates strictly); repeatable --link wires typed cross-links in the same step',
       },
       {
         usage: "kinds [--remote <url>]",

@@ -1,0 +1,384 @@
+/**
+ * `new --link "<type>=<target-id>"` — one-step create+link (board task `tasks/new-link-flag`).
+ *
+ * Ergonomics only: `--link` rides the EXACT SAME mutation `link add` uses (`addLink`, exported
+ * from `commands/link.ts`) after the doc write succeeds. Pins: single/repeatable use, the
+ * undeclared-link-type warning (teach, never block), a dangling target (allowed, same as `link
+ * add`), malformed-value USAGE rejection (nothing written), the receipt shape, a post-creation
+ * link failure (doc stays created, the failing entry is named, non-zero exit), the existing
+ * create-only/ALREADY_EXISTS behavior composing unaffected, and --remote parity.
+ *
+ * Runs command functions in-process (no subprocess) against a real temp filesystem bundle,
+ * mirroring `kinds.test.ts`'s pattern.
+ */
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { initBundle, writeDoc, readDoc, CONVENTION_TYPE, type Bundle } from "@agentstate-lite/core";
+import { serve, type ServerHandle } from "@agentstate-lite/server";
+
+import { newCommand } from "../src/commands/new.js";
+import { CliError } from "../src/errors.js";
+
+const T = "2026-07-01T00:00:00.000Z";
+
+async function tempDir(): Promise<string> {
+  return mkdtemp(path.join(tmpdir(), "agentstate-lite-new-link-test-"));
+}
+
+/** A bundle declaring one "Task" kind with a two-entry outbound link vocabulary. */
+async function makeTaskBundle(): Promise<{ dir: string; bundle: Bundle; cleanup: () => Promise<void> }> {
+  const dir = await tempDir();
+  const bundle: Bundle = { root: dir };
+  await initBundle(dir);
+  await writeDoc(bundle, {
+    id: "conventions/task",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      title: "Task",
+      governs: "Task",
+      path: "tasks/",
+      fields: { required: ["title"], optional: [] },
+      links: { "depends on": "Task", blocks: "Task" },
+      timestamp: T,
+    },
+    body: "A unit of work.",
+  });
+  return { dir, bundle, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+/** Run a command function, capturing its `--json` stdout and parsing the envelope. */
+async function runJson(
+  cmd: (argv: string[], deps: { stdout: (s: string) => void }) => Promise<void>,
+  argv: string[],
+): Promise<Record<string, unknown>> {
+  let out = "";
+  await cmd([...argv, "--json"], { stdout: (s) => (out += s) });
+  return JSON.parse(out) as Record<string, unknown>;
+}
+
+test("new --link: a single declared-type link is added through the SAME machinery link add uses", async () => {
+  const { dir, bundle, cleanup } = await makeTaskBundle();
+  try {
+    await runJson(newCommand, ["Task", "t1", "--title", "T1", "--dir", dir]);
+    const result = await runJson(newCommand, [
+      "Task",
+      "t2",
+      "--title",
+      "T2",
+      "--link",
+      "depends on=tasks/t1",
+      "--dir",
+      dir,
+    ]);
+    assert.equal(result.id, "tasks/t2");
+    const links = result.links as Array<Record<string, unknown>>;
+    assert.equal(links.length, 1);
+    assert.equal(links[0]!.type, "depends on");
+    assert.equal(links[0]!.target, "tasks/t1");
+    assert.equal(links[0]!.changed, true);
+    assert.ok(typeof links[0]!.href === "string" && (links[0]!.href as string).length > 0);
+    assert.equal(links[0]!.warnings, undefined, "a declared, conforming type must carry no warnings");
+    assert.equal(links[0]!.error, undefined);
+
+    // The link actually landed in the doc's body, via the identical `link add` write path.
+    const written = await readDoc(bundle, "tasks/t2");
+    assert.match(written.body, /\[depends on\]\(t1\.md\)/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --link: repeatable — two --link flags both land, each reported in the receipt's links array", async () => {
+  const { dir, cleanup } = await makeTaskBundle();
+  try {
+    await runJson(newCommand, ["Task", "t1", "--title", "T1", "--dir", dir]);
+    await runJson(newCommand, ["Task", "t2", "--title", "T2", "--dir", dir]);
+    const result = await runJson(newCommand, [
+      "Task",
+      "t3",
+      "--title",
+      "T3",
+      "--link",
+      "depends on=tasks/t1",
+      "--link",
+      "blocks=tasks/t2",
+      "--dir",
+      dir,
+    ]);
+    const links = result.links as Array<Record<string, unknown>>;
+    assert.equal(links.length, 2);
+    assert.deepEqual(
+      links.map((l) => [l.type, l.target, l.changed]),
+      [
+        ["depends on", "tasks/t1", true],
+        ["blocks", "tasks/t2", true],
+      ],
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --link: a type NOT in the kind's declared link vocabulary warns (teach) but still adds the link", async () => {
+  const { dir, cleanup } = await makeTaskBundle();
+  try {
+    await runJson(newCommand, ["Task", "t1", "--title", "T1", "--dir", dir]);
+    const result = await runJson(newCommand, [
+      "Task",
+      "t2",
+      "--title",
+      "T2",
+      "--link",
+      "randomtype=tasks/t1",
+      "--dir",
+      dir,
+    ]);
+    const links = result.links as Array<Record<string, unknown>>;
+    assert.equal(links.length, 1);
+    assert.equal(links[0]!.changed, true, "an undeclared type still WRITES the link — warn, never block");
+    const warnings = links[0]!.warnings as Array<Record<string, unknown>>;
+    assert.ok(Array.isArray(warnings) && warnings.length > 0);
+    assert.equal(warnings[0]!.code, "LINK_TYPE_UNDECLARED_FOR_KIND");
+    assert.match(warnings[0]!.message as string, /'randomtype' is not declared in the 'Task' kind's link vocabulary/);
+    assert.match(warnings[0]!.message as string, /depends on/);
+    assert.match(warnings[0]!.message as string, /blocks/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --link: a dangling target (no document there yet) is allowed, same as `link add` today", async () => {
+  const { dir, bundle, cleanup } = await makeTaskBundle();
+  try {
+    const result = await runJson(newCommand, [
+      "Task",
+      "t1",
+      "--title",
+      "T1",
+      "--link",
+      "depends on=tasks/not-created-yet",
+      "--dir",
+      dir,
+    ]);
+    const links = result.links as Array<Record<string, unknown>>;
+    assert.equal(links.length, 1);
+    assert.equal(links[0]!.changed, true, "a dangling target must not block or fail the link write");
+    assert.equal(links[0]!.error, undefined);
+    // No target doc was created as a side effect — it genuinely doesn't exist yet.
+    await assert.rejects(() => readDoc(bundle, "tasks/not-created-yet"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --link: a malformed value (missing '=', empty type, empty target) is a USAGE error (exit 2) — nothing is written", async () => {
+  const { dir, bundle, cleanup } = await makeTaskBundle();
+  try {
+    const cases = ["no-equals-sign", "=tasks/t1", "depends on="];
+    for (const [i, bad] of cases.entries()) {
+      const id = `bad-${i}`;
+      await assert.rejects(
+        () => newCommand(["Task", id, "--title", "T", "--link", bad, "--dir", dir, "--json"], { stdout: () => {} }),
+        (err: unknown) => {
+          assert.ok(err instanceof CliError, `case '${bad}': expected CliError, got ${String(err)}`);
+          assert.equal(err.code, "USAGE", `case '${bad}': code`);
+          assert.equal(err.exitCode, 2, `case '${bad}': exitCode`);
+          assert.match(err.message, /<type>=<target-id>/, `case '${bad}': message names the expected form`);
+          return true;
+        },
+      );
+      // Fail-fast: a malformed --link value is checked BEFORE any write — the doc must not exist.
+      await assert.rejects(() => readDoc(bundle, `tasks/${id}`));
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --link: a link that FAILS after the doc was already created — the doc exists, the receipt names the failure, and the command exits non-zero (no fake atomicity)", async () => {
+  const { dir, bundle, cleanup } = await makeTaskBundle();
+  try {
+    let out = "";
+    await assert.rejects(
+      () =>
+        newCommand(
+          ["Task", "t1", "--title", "T1", "--link", "depends on=index", "--dir", dir, "--json"],
+          { stdout: (s) => (out += s) },
+        ),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        // 'index' names a reserved OKF file — the SAME rejection `link add` gives — surfaced as USAGE.
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.match(err.message, /t1' was created, but 1 of 1 --link entry failed/);
+        return true;
+      },
+    );
+    // The receipt was still emitted to stdout (no silent partial success) BEFORE the throw.
+    const receipt = JSON.parse(out) as Record<string, unknown>;
+    assert.equal(receipt.new, "written");
+    assert.equal(receipt.id, "tasks/t1");
+    const links = receipt.links as Array<Record<string, unknown>>;
+    assert.equal(links.length, 1);
+    assert.equal(links[0]!.type, "depends on");
+    assert.equal(links[0]!.target, "index");
+    assert.equal(links[0]!.changed, undefined);
+    const linkErr = links[0]!.error as Record<string, unknown>;
+    assert.equal(linkErr.code, "USAGE");
+    assert.match(linkErr.message as string, /reserved OKF file/);
+
+    // The doc itself was NOT rolled back — it genuinely exists.
+    const written = await readDoc(bundle, "tasks/t1");
+    assert.equal(written.frontmatter.title, "T1");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --link: receipt shape — a success entry carries exactly {type, target, changed, href}, no stray keys", async () => {
+  const { dir, cleanup } = await makeTaskBundle();
+  try {
+    const result = await runJson(newCommand, [
+      "Task",
+      "t1",
+      "--title",
+      "T1",
+      "--link",
+      "depends on=tasks/nope",
+      "--dir",
+      dir,
+    ]);
+    const links = result.links as Array<Record<string, unknown>>;
+    assert.deepEqual(Object.keys(links[0]!).sort(), ["changed", "href", "target", "type"]);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --link: an already-satisfied outbound type is dropped from the receipt's own follow-up link-add hints", async () => {
+  const { dir, cleanup } = await makeTaskBundle();
+  try {
+    await runJson(newCommand, ["Task", "t1", "--title", "T1", "--dir", dir]);
+    const result = await runJson(newCommand, [
+      "Task",
+      "t2",
+      "--title",
+      "T2",
+      "--link",
+      "depends on=tasks/t1",
+      "--dir",
+      dir,
+    ]);
+    const hints = result.help as string[];
+    assert.ok(
+      !hints.some((h) => /--text "depends on"/.test(h)),
+      `the 'depends on' hint should be dropped since --link already satisfied it, got: ${JSON.stringify(hints)}`,
+    );
+    assert.ok(
+      hints.some((h) => /--text "blocks"/.test(h)),
+      `the UNSATISFIED 'blocks' hint should still be offered, got: ${JSON.stringify(hints)}`,
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --link: re-running the exact same new+--link on an id that already exists is STILL create-only ALREADY_EXISTS (exit 5) — no duplicate link processing", async () => {
+  const { dir, bundle, cleanup } = await makeTaskBundle();
+  try {
+    await runJson(newCommand, ["Task", "t1", "--title", "T1", "--dir", dir]);
+    const first = await runJson(newCommand, [
+      "Task",
+      "t2",
+      "--title",
+      "T2",
+      "--link",
+      "depends on=tasks/t1",
+      "--dir",
+      dir,
+    ]);
+    assert.equal((first.links as unknown[]).length, 1);
+
+    await assert.rejects(
+      () =>
+        newCommand(
+          ["Task", "t2", "--title", "T2", "--link", "depends on=tasks/t1", "--dir", dir, "--json"],
+          { stdout: () => {} },
+        ),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "ALREADY_EXISTS");
+        assert.equal(err.exitCode, 5);
+        return true;
+      },
+    );
+    // The doc's body carries exactly ONE copy of the link — the rejected re-run never reached
+    // link processing at all (create-only fails before any --link is touched).
+    const written = await readDoc(bundle, "tasks/t2");
+    const matches = written.body.match(/\[depends on\]/g) ?? [];
+    assert.equal(matches.length, 1);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("--remote: new --link against a served bundle, parity with the same operation run locally", async () => {
+  const localDir = await tempDir();
+  const remoteDir = await tempDir();
+  try {
+    const localBundle: Bundle = { root: localDir };
+    const remoteBundle: Bundle = { root: remoteDir };
+    await initBundle(localDir);
+    await initBundle(remoteDir);
+    const taskConvention = {
+      type: CONVENTION_TYPE,
+      title: "Task",
+      governs: "Task",
+      path: "tasks/",
+      fields: { required: ["title"], optional: [] },
+      links: { "depends on": "Task" },
+      timestamp: T,
+    };
+    await writeDoc(localBundle, { id: "conventions/task", frontmatter: taskConvention, body: "A unit of work." });
+    await writeDoc(remoteBundle, { id: "conventions/task", frontmatter: taskConvention, body: "A unit of work." });
+
+    const handle: ServerHandle = await serve({ bundle: remoteBundle, port: 0 });
+    const url = `http://${handle.host}:${handle.port}`;
+    try {
+      await runJson(newCommand, ["Task", "t1", "--title", "T1", "--dir", localDir]);
+      await runJson(newCommand, ["Task", "t1", "--title", "T1", "--remote", url]);
+
+      const localResult = await runJson(newCommand, [
+        "Task",
+        "t2",
+        "--title",
+        "T2",
+        "--link",
+        "depends on=tasks/t1",
+        "--dir",
+        localDir,
+      ]);
+      const remoteResult = await runJson(newCommand, [
+        "Task",
+        "t2",
+        "--title",
+        "T2",
+        "--link",
+        "depends on=tasks/t1",
+        "--remote",
+        url,
+      ]);
+      assert.equal(remoteResult.id, localResult.id);
+      assert.deepEqual(remoteResult.links, localResult.links);
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    await rm(localDir, { recursive: true, force: true });
+    await rm(remoteDir, { recursive: true, force: true });
+  }
+});

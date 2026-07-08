@@ -18,6 +18,10 @@
 // vocabulary entry (a kind's `links` map) but the actual source/target kinds don't conform, or when
 // the text is a same-spelling-different-case near miss of a declared type — warn-only, never
 // blocking, since the link is already written by the time this check runs.
+//
+// The mutation itself (versioned-read → idempotency check → CAS write → lint) is factored into
+// the exported `addLink`, so `new --link` (`commands/new.ts`, one-step create+link) rides the
+// EXACT SAME path this file's own `link add` subcommand uses — never a second link-writer.
 import { parseArgs } from "node:util";
 import {
   readDoc,
@@ -173,6 +177,137 @@ export async function link(argv: string[], deps: Partial<LinkCliDeps> = {}): Pro
   });
 }
 
+/** Options for {@link addLink} — a subset of `link add`'s own flags, since callers other than
+ * the CLI subcommand (e.g. `new --link`) never expose `--dir`/`--json`/etc. themselves. */
+export interface AddLinkOptions {
+  /** Link display text (default: the target id, mirroring `link add`'s own default). */
+  text?: string;
+  /** Preserve the source's existing timestamp instead of refreshing it to now(). */
+  keepTimestamp?: boolean;
+  /** Threaded into `classifyBundleError` so a `--remote` mutation's AUTH_REQUIRED carries a
+   * copy-pastable hint (mirrors every other bundle-mutating command). */
+  remoteUrl?: string;
+}
+
+export interface AddLinkResult {
+  /** The source doc's id (post-write, or as read on the idempotent no-op path). */
+  from: string;
+  /** The link's bundle-relative normalized target (leading slash / `.md` suffix stripped). */
+  normalizedTo: string;
+  href: string;
+  text: string;
+  /** false on the idempotent no-op path (the source already links to this target). */
+  changed: boolean;
+  /** Present only when the write-time type-conformance lint (graph lints unit) attached one. */
+  warnings?: ValidationWarning[];
+}
+
+/**
+ * Core link-add mutation: idempotent versioned-read → idempotency check → CAS write (bounded
+ * retry) → write-time type-conformance lint. Extracted out of `linkAdd` below (the CLI
+ * subcommand, which composes this into its own receipt shape unchanged) so `new --link`
+ * (`commands/new.ts` — one-step create+link) rides the EXACT SAME machinery instead of a second
+ * hand-rolled link-writer (gate 3: one link resolver, no parallel implementation).
+ */
+export async function addLink(
+  bundle: Bundle,
+  from: string,
+  to: string,
+  opts: AddLinkOptions = {},
+): Promise<AddLinkResult> {
+  const text = opts.text?.trim() || to;
+  const href = relativeHref(from, to);
+  const normalizedTo = to.replace(/^\/+/, "").replace(/\.md$/, "");
+
+  // Reserved files (index.md/log.md, any directory level) are never concept documents, so they
+  // can never be a link target — core's `resolveConceptId` now drops such a link from the parsed
+  // edge set entirely (it never becomes a concept edge), which would otherwise silently break the
+  // idempotency check below (`parseLinks(...).some(l => l.to === normalizedTo)` could never
+  // observe a link it can no longer see, so a re-run would append a duplicate link on every
+  // invocation instead of converging to `changed:false`). Reject up front with a structured error
+  // instead — a pure, no-I/O check via the SAME reserved-name predicate core uses.
+  if (isReservedFile(pathFromConceptId(normalizedTo))) {
+    throw new CliError(
+      "USAGE",
+      `'${to}' names a reserved OKF file (index.md/log.md), which is never a concept document and cannot be a link target`,
+      { help: `${cliInvocation()} list` },
+    );
+  }
+
+  // Versioned-read + compare-and-swap-write: read the source WITH its version, check idempotency,
+  // then write the appended link CONDITIONAL on that version. On a VersionConflict (a concurrent
+  // writer moved the doc between our read and write), re-read once, re-check idempotency (the
+  // racing write may have added this very link → converge to changed:false), and retry within a
+  // small bounded budget.
+  for (let attempt = 0; ; attempt++) {
+    let source: OkfDocument;
+    let version: Version;
+    try {
+      ({ doc: source, version } = await readDocVersioned(bundle, from));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+        throw new CliError("NOT_FOUND", `no source concept at id '${from}'`, {
+          help: `${cliInvocation()} list`,
+        });
+      }
+      // classifyBundleError passes an already-classified CliError through unchanged (e.g. a
+      // transport-error RUNTIME from a wrapped --remote fetchImpl, see bundle.ts) and maps a
+      // RemoteError by its own code instead of collapsing everything into USAGE.
+      throw classifyBundleError(err, opts.remoteUrl);
+    }
+
+    // Idempotent: if the source already links to this target (in either link form), re-adding is a
+    // no-op that exits 0 rather than appending a duplicate (AXI: mutations converge).
+    const already = parseLinks(bundle, source).some((l) => l.to === normalizedTo);
+    if (already) {
+      return { from: source.id, normalizedTo, href, text, changed: false };
+    }
+
+    const trimmed = source.body.replace(/\s*$/, "");
+    const nextBody = `${trimmed}${trimmed ? "\n\n" : ""}[${text}](${href})\n`;
+    // Refresh `timestamp` to now() by default — adding a cross-link is a meaningful change and
+    // freshness must reflect it — unless `keepTimestamp` asks to preserve the source's existing
+    // value. Recomputed each CAS attempt (the source is re-read on retry) so a slow retry still lands
+    // a timestamp taken at write time, not at the first read.
+    const nextFrontmatter = opts.keepTimestamp
+      ? source.frontmatter
+      : { ...source.frontmatter, timestamp: new Date().toISOString() };
+    try {
+      const saved = await writeDoc(
+        bundle,
+        { ...source, frontmatter: nextFrontmatter, body: nextBody },
+        { expectedVersion: version },
+      );
+      // Write-time type-conformance lint (graph lints unit) — warn-only, never blocking: the link
+      // is already written by the time this runs. Skipped entirely on the idempotent no-op path
+      // above (a true no-op performs no registry load and no checks).
+      const warnings = await lintLinkType(bundle, {
+        sourceType: docType(source),
+        text,
+        to: normalizedTo,
+        remoteUrl: opts.remoteUrl,
+      });
+      return {
+        from: saved.id,
+        normalizedTo,
+        href,
+        text,
+        changed: true,
+        warnings: warnings.length > 0 ? warnings : undefined,
+      };
+    } catch (err) {
+      if (err instanceof VersionConflict && attempt < LINK_ADD_MAX_ATTEMPTS - 1) continue;
+      if (err instanceof VersionConflict) {
+        // Exhausted the retry budget: surface as a CONFLICT (exit 5) with a re-run fixing command.
+        throw new CliError("STALE_HEAD", err.message, {
+          help: `${cliInvocation()} link add ${from} ${to}`,
+        });
+      }
+      throw err;
+    }
+  }
+}
+
 async function linkAdd(argv: string[], stdout: (s: string) => void): Promise<void> {
   const { values, positionals } = parseOrUsage(
     () =>
@@ -202,117 +337,43 @@ async function linkAdd(argv: string[], stdout: (s: string) => void): Promise<voi
       help: `${cliInvocation()} link add <from> <to>`,
     });
   }
-  const text = values.text?.trim() || to;
-  const href = relativeHref(from, to);
-  const normalizedTo = to.replace(/^\/+/, "").replace(/\.md$/, "");
-
-  // Reserved files (index.md/log.md, any directory level) are never concept documents, so they
-  // can never be a link target — core's `resolveConceptId` now drops such a link from the parsed
-  // edge set entirely (it never becomes a concept edge), which would otherwise silently break this
-  // command's idempotency check below (`parseLinks(...).some(l => l.to === normalizedTo)` could
-  // never observe a link it can no longer see, so a re-run would append a duplicate link on every
-  // invocation instead of converging to `changed:false`). Reject up front with a structured error
-  // instead — a pure, no-I/O check via the SAME reserved-name predicate core uses.
-  if (isReservedFile(pathFromConceptId(normalizedTo))) {
-    throw new CliError(
-      "USAGE",
-      `'${to}' names a reserved OKF file (index.md/log.md), which is never a concept document and cannot be a link target`,
-      { help: `${cliInvocation()} list` },
-    );
-  }
 
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
   const mode = resolveMode(values);
 
-  // `link add` is the engine's PROOF consumer of versioned-read + compare-and-swap-write: read the
-  // source WITH its version, check idempotency, then write the appended link CONDITIONAL on that
-  // version. On a VersionConflict (a concurrent writer moved the doc between our read and write),
-  // re-read once, re-check idempotency (the racing write may have added this very link → converge to
-  // changed:false), and retry within a small bounded budget. The idempotent no-op behavior and exit
-  // codes are preserved.
-  for (let attempt = 0; ; attempt++) {
-    let source: OkfDocument;
-    let version: Version;
-    try {
-      ({ doc: source, version } = await readDocVersioned(bundle, from));
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
-        throw new CliError("NOT_FOUND", `no source concept at id '${from}'`, {
-          help: `${cliInvocation()} list`,
-        });
-      }
-      // classifyBundleError passes an already-classified CliError through unchanged (e.g. a
-      // transport-error RUNTIME from a wrapped --remote fetchImpl, see bundle.ts) and maps a
-      // RemoteError by its own code instead of collapsing everything into USAGE.
-      throw classifyBundleError(err, values.remote);
-    }
+  const result = await addLink(bundle, from, to, {
+    text: values.text,
+    keepTimestamp: values["keep-timestamp"],
+    remoteUrl: values.remote,
+  });
 
-    // Idempotent: if the source already links to this target (in either link form), re-adding is a
-    // no-op that exits 0 rather than appending a duplicate (AXI: mutations converge).
-    const already = parseLinks(bundle, source).some((l) => l.to === normalizedTo);
-    if (already) {
-      stdout(
-        render(
-          {
-            link: "exists",
-            from: source.id,
-            to: normalizedTo,
-            changed: false,
-            help: [`${cliInvocation()} link show ${normalizedTo}`],
-          },
-          mode,
-        ),
-      );
-      return;
-    }
-
-    const trimmed = source.body.replace(/\s*$/, "");
-    const nextBody = `${trimmed}${trimmed ? "\n\n" : ""}[${text}](${href})\n`;
-    // Refresh `timestamp` to now() by default — adding a cross-link is a meaningful change and
-    // freshness must reflect it — unless `--keep-timestamp` asks to preserve the source's existing
-    // value. Recomputed each CAS attempt (the source is re-read on retry) so a slow retry still lands
-    // a timestamp taken at write time, not at the first read.
-    const nextFrontmatter = values["keep-timestamp"]
-      ? source.frontmatter
-      : { ...source.frontmatter, timestamp: new Date().toISOString() };
-    try {
-      const saved = await writeDoc(
-        bundle,
-        { ...source, frontmatter: nextFrontmatter, body: nextBody },
-        { expectedVersion: version },
-      );
-      // Write-time type-conformance lint (graph lints unit) — warn-only, never blocking: the link
-      // is already written by the time this runs. Skipped entirely on the idempotent no-op path
-      // above (a true no-op performs no registry load and no checks).
-      const warnings = await lintLinkType(bundle, {
-        sourceType: docType(source),
-        text,
-        to: normalizedTo,
-        remoteUrl: values.remote,
-      });
-      const receipt: Record<string, unknown> = {
-        link: "added",
-        from: saved.id,
-        to,
-        href,
-        text,
-        changed: true,
-        help: [`${cliInvocation()} link show ${to}`],
-      };
-      if (warnings.length > 0) receipt.warnings = warnings;
-      stdout(render(receipt, mode));
-      return;
-    } catch (err) {
-      if (err instanceof VersionConflict && attempt < LINK_ADD_MAX_ATTEMPTS - 1) continue;
-      if (err instanceof VersionConflict) {
-        // Exhausted the retry budget: surface as a CONFLICT (exit 5) with a re-run fixing command.
-        throw new CliError("STALE_HEAD", err.message, {
-          help: `${cliInvocation()} link add ${from} ${to}`,
-        });
-      }
-      throw err;
-    }
+  if (!result.changed) {
+    stdout(
+      render(
+        {
+          link: "exists",
+          from: result.from,
+          to: result.normalizedTo,
+          changed: false,
+          help: [`${cliInvocation()} link show ${result.normalizedTo}`],
+        },
+        mode,
+      ),
+    );
+    return;
   }
+
+  const receipt: Record<string, unknown> = {
+    link: "added",
+    from: result.from,
+    to,
+    href: result.href,
+    text: result.text,
+    changed: true,
+    help: [`${cliInvocation()} link show ${to}`],
+  };
+  if (result.warnings && result.warnings.length > 0) receipt.warnings = result.warnings;
+  stdout(render(receipt, mode));
 }
 
 async function linkShow(argv: string[], stdout: (s: string) => void): Promise<void> {

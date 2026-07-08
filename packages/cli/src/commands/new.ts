@@ -48,13 +48,20 @@
 // `frontmatter.actor` (see the write below), so a kind declaring `actor` is satisfiable after all
 // — through the control flag, with control semantics (blank-value guard, trim).
 import { parseArgs } from "node:util";
-import { loadKinds, type Frontmatter, type KindConvention, type KindRegistry } from "@agentstate-lite/core";
+import {
+  loadKinds,
+  type Frontmatter,
+  type KindConvention,
+  type KindRegistry,
+  type ValidationWarning,
+} from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
-import { CliError } from "../errors.js";
+import { CliError, asHandled, classifyBundleError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 import { mutateDoc } from "../mutate.js";
+import { addLink } from "./link.js";
 
 export const NEW_USAGE = `agentstate-lite new — create a new instance of a bundle-declared kind
 
@@ -82,6 +89,18 @@ Options:
                          (the per-doc attribution sync and its receipts read) and recorded in version
                          history by a persisting backend. Omitted = no actor field. A present-but-blank
                          value is a USAGE error (exit 2).
+  --link "<type>=<target-id>"
+                         Repeatable. After the doc is created, add an outbound cross-link of this
+                         TYPE to the given target id — through the exact same idempotent path
+                         'link add --text "<type>"' uses (relative bundle-relative href; a
+                         dangling target, i.e. one with no document yet, is allowed, same as
+                         'link add'). A type not in this kind's declared 'links' vocabulary warns
+                         but still adds the link (teach, never block). A malformed value (missing
+                         '=', empty type, or empty target) is a USAGE error (exit 2) — checked
+                         BEFORE the doc is written, so a malformed --link creates nothing. If a
+                         link fails AFTER the doc was created (e.g. a reserved-file target), the
+                         doc is NOT rolled back: the receipt's 'links' array names which entries
+                         failed and the command exits non-zero.
   --no-prefix           Use <id> verbatim — do NOT auto-prepend the kind's declared path prefix
   --json                Emit compact JSON instead of TOON
   -h, --help            Show this help
@@ -96,12 +115,15 @@ export interface NewCliDeps {
  * `new` is ALWAYS strict, so a literal `--strict` token must remain an "unknown field" (falls into
  * the kind-field bucket and is rejected as undeclared), matching pre-migration behavior. `actor`
  * is control here (mirrors `doc update`'s `DOC_UPDATE_VALUE_FLAGS`), so a same-named kind field is
- * shadowed — see file header.
+ * shadowed — see file header. `link` (the one-step create+link ergonomics flag) is control for the
+ * same reason: it is generic to EVERY kind, not a kind-declared field, so a kind literally
+ * declaring a field named `link` is shadowed too (same judgment call as `actor`).
  */
 const NEW_CONTROL_OPTIONS = {
   dir: { type: "string" },
   remote: { type: "string" },
   actor: { type: "string" },
+  link: { type: "string", multiple: true },
   "no-prefix": { type: "boolean" },
   json: { type: "boolean" },
   help: { type: "boolean", short: "h" },
@@ -112,6 +134,45 @@ function resolveInstanceId(kind: KindConvention, id: string): string {
   if (!kind.path) return id;
   const prefix = kind.path.replace(/\/+$/, "") + "/";
   return id.startsWith(prefix) ? id : `${prefix}${id}`;
+}
+
+/** One parsed `--link "<type>=<target-id>"` value. */
+interface ParsedLinkFlag {
+  type: string;
+  target: string;
+}
+
+/**
+ * Parse one `--link` value into its `{type, target}` pair. Splits on the FIRST '=' (a target id
+ * can never itself contain '=', but this keeps the rule simple and doesn't matter either way).
+ * Malformed input (no '=', empty type, empty target) is a USAGE error (exit 2) NAMING the
+ * expected form — checked for every value before any doc is written, so a malformed --link
+ * creates nothing (fail fast, never a partially-applied create).
+ */
+function parseLinkFlagValue(raw: string): ParsedLinkFlag {
+  const eq = raw.indexOf("=");
+  if (eq < 0) {
+    throw new CliError("USAGE", `--link value '${raw}' is missing '=' — expected the form "<type>=<target-id>"`, {
+      help: `${cliInvocation()} new "<Kind>" <id> --link "<type>=<target-id>"`,
+    });
+  }
+  const type = raw.slice(0, eq).trim();
+  const target = raw.slice(eq + 1).trim();
+  if (!type) {
+    throw new CliError(
+      "USAGE",
+      `--link value '${raw}' has an empty link type — expected the form "<type>=<target-id>"`,
+      { help: `${cliInvocation()} new "<Kind>" <id> --link "<type>=<target-id>"` },
+    );
+  }
+  if (!target) {
+    throw new CliError(
+      "USAGE",
+      `--link value '${raw}' has an empty target id — expected the form "<type>=<target-id>"`,
+      { help: `${cliInvocation()} new "<Kind>" <id> --link "<type>=<target-id>"` },
+    );
+  }
+  return { type, target };
 }
 
 /**
@@ -168,8 +229,8 @@ function kindIdPlaceholder(kind: KindConvention | undefined, governs: string): s
  * `kinds` round-trip (cold-start study: 2 testers had to cross-reference `kinds` before every `new`).
  */
 function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: string): string {
-  const req = kind.fields.required.filter((f) => f !== "actor");
-  const opt = kind.fields.optional.filter((f) => f !== "actor");
+  const req = kind.fields.required.filter((f) => f !== "actor" && f !== "link");
+  const opt = kind.fields.optional.filter((f) => f !== "actor" && f !== "link");
   const flags = (fields: string[]) => (fields.length > 0 ? fields.map((f) => `--${f} <v>`).join("  ") : "(none)");
   const enums = Object.entries(kind.fields.values ?? {})
     .map(([f, vals]) => `  --${f} allowed:  ${vals.join(" | ")}`)
@@ -189,7 +250,8 @@ function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: strin
   );
   const linksBlock =
     outboundLines.length + inboundLines.length > 0
-      ? `Links (typed edges declared by this bundle's conventions; write with link add --text "<type>"):\n` +
+      ? `Links (typed edges declared by this bundle's conventions; write with --link "<type>=<target-id>" ` +
+        `at create time, or link add --text "<type>" after the fact):\n` +
         [...outboundLines, ...inboundLines].join("\n") +
         "\n"
       : "";
@@ -206,6 +268,10 @@ function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: strin
     `To ADD a field to this kind, edit its convention doc (${inv} kinds names it; then pull → edit fields.optional → promote).\n\n` +
     `Options:\n` +
     `  --actor <name>   Attribute the write (persisted as the doc's 'actor' frontmatter field)\n` +
+    `  --link "<type>=<target-id>"\n` +
+    `                   Repeatable: after creating this instance, add an outbound link of type\n` +
+    `                   <type> to <target-id> (same idempotent path as 'link add'; a dangling\n` +
+    `                   target is allowed)\n` +
     `  --no-prefix      Use <id> verbatim (skip the auto path prefix above)\n` +
     `  --dir <path>     Bundle directory (default: discovered from the cwd)\n` +
     `  --remote <url>   Talk to a wire-protocol server instead of a local bundle\n` +
@@ -276,10 +342,10 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
 
   // Phase 2 — strict, kind-aware, AUTHORITATIVE parse. `type`/`dir`/`remote`/`json`/`help` are
   // already stripped from `declaredFields` by `loadKinds` (core's `RESERVED_FIELD_NAMES`); `actor`
-  // is NOT core-reserved, so it is excluded here explicitly (control wins on a name collision) —
-  // still listed in `declaredFields` for the "declared: …" hint text below.
+  // and `link` are NOT core-reserved, so they are excluded here explicitly (control wins on a name
+  // collision) — still listed in `declaredFields` for the "declared: …" hint text below.
   const declaredFields = [...kind.fields.required, ...kind.fields.optional];
-  const fieldNames = declaredFields.filter((f) => f !== "actor");
+  const fieldNames = declaredFields.filter((f) => f !== "actor" && f !== "link");
   const fieldOptions = Object.fromEntries(
     fieldNames.map((f) => [f, { type: "string", multiple: true } as const]),
   );
@@ -354,6 +420,12 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     });
   }
 
+  // Parse EVERY --link value up front, before any write — a malformed value is a caller mistake,
+  // not a partial-success case, so it must reject cleanly with NOTHING created (see
+  // `parseLinkFlagValue`'s header).
+  const linkFlags = (values.link as string[] | undefined) ?? [];
+  const parsedLinks = linkFlags.map(parseLinkFlagValue);
+
   const frontmatter: Frontmatter = { type: kind.governs };
   for (const field of fieldNames) {
     const vals = dynamicValues[field] as string[] | undefined;
@@ -424,10 +496,65 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
   if (targetId !== id) {
     receipt.note = `id prefixed with the '${kind.governs}' kind's path → '${targetId}' (you passed '${id}')`;
   }
+  // --link (one-step create+link ergonomics unit): wire each declared cross-link through the
+  // EXACT SAME machinery `link add` uses (`addLink`, `link.ts`) — never a second link-writer.
+  // Best-effort across entries: the doc already exists by this point, and each --link is an
+  // INDEPENDENT edge, so one failing entry does not abort the others (no fake atomicity — every
+  // entry is attempted and reported).
+  interface LinkFlagReceipt {
+    type: string;
+    target: string;
+    changed?: boolean;
+    href?: string;
+    warnings?: ValidationWarning[];
+    error?: { code: string; message: string };
+  }
+  const linkResults: LinkFlagReceipt[] = [];
+  const satisfiedOutboundTypes = new Set<string>();
+  let firstLinkFailure: CliError | undefined;
+  for (const { type, target } of parsedLinks) {
+    const warnings: ValidationWarning[] = [];
+    // Teach when this kind declares an outbound link vocabulary and `type` isn't in it — warn,
+    // never block: a hard reject here would be incoherent given a DANGLING target (below) is
+    // unconditionally allowed, so a merely-undeclared TYPE can't be held to a stricter standard.
+    if (kind.links && Object.keys(kind.links).length > 0 && !(type in kind.links)) {
+      warnings.push({
+        code: "LINK_TYPE_UNDECLARED_FOR_KIND",
+        message: `'${type}' is not declared in the '${kind.governs}' kind's link vocabulary (declared: ${Object.keys(kind.links).join(", ")}) — added anyway.`,
+        field: "text",
+        severity: "warning",
+      });
+    }
+    try {
+      const added = await addLink(bundle, saved.id, target, { text: type, remoteUrl: remote });
+      if (added.warnings) warnings.push(...added.warnings);
+      linkResults.push({
+        type,
+        target,
+        changed: added.changed,
+        href: added.href,
+        ...(warnings.length > 0 ? { warnings } : {}),
+      });
+      satisfiedOutboundTypes.add(type);
+    } catch (err) {
+      const classified = err instanceof CliError ? err : classifyBundleError(err, remote);
+      linkResults.push({
+        type,
+        target,
+        error: { code: classified.code, message: classified.message },
+        ...(warnings.length > 0 ? { warnings } : {}),
+      });
+      if (!firstLinkFailure) firstLinkFailure = classified;
+    }
+  }
+  if (parsedLinks.length > 0) receipt.links = linkResults;
+
   // Point-of-use link teaching (AXI §9): the moment an instance is created is when its declared
   // relationships are actionable — surface them as complete, placeholder-parameterized commands
   // derived from the SAME registry (inbound = alignment cue from other kinds' declarations,
   // outbound = this kind's own). Capped per direction; a bundle declaring no links adds nothing.
+  // An outbound type already satisfied via --link above is dropped from its own hint — suggesting
+  // a follow-up `link add` for a relationship this very command just established would be noise.
   const help = [`${cliInvocation()} doc read ${saved.id}`];
   const HINTS_PER_DIRECTION = 3;
   for (const { source, linkType } of inboundLinkDecls(registry, kind).slice(0, HINTS_PER_DIRECTION)) {
@@ -435,11 +562,27 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
       `link from a ${source.governs}: ${cliInvocation()} link add ${kindIdPlaceholder(source, source.governs)} ${saved.id} --text "${linkType}"`,
     );
   }
-  for (const [linkType, target] of Object.entries(kind.links ?? {}).slice(0, HINTS_PER_DIRECTION)) {
+  const outboundLinkDecls = Object.entries(kind.links ?? {}).filter(([linkType]) => !satisfiedOutboundTypes.has(linkType));
+  for (const [linkType, target] of outboundLinkDecls.slice(0, HINTS_PER_DIRECTION)) {
     help.push(
       `link to a ${target}: ${cliInvocation()} link add ${saved.id} ${kindIdPlaceholder(registry.kinds.get(target), target)} --text "${linkType}"`,
     );
   }
   receipt.help = help;
   stdout(render(receipt, resolveMode({ json: Boolean(values.json) })));
+
+  // At least one --link entry failed AFTER the doc was created: the full receipt above already
+  // named the doc (it exists — no rollback, no fake atomicity) and which links failed. Throw
+  // `asHandled` so the bin wrapper sets a non-zero exit WITHOUT re-emitting a second, conflicting
+  // envelope (mirrors `sync`'s post-commit push-failure partial-envelope pattern).
+  if (firstLinkFailure) {
+    const failedCount = linkResults.filter((r) => r.error).length;
+    throw asHandled(
+      new CliError(
+        firstLinkFailure.code,
+        `'${saved.id}' was created, but ${failedCount} of ${parsedLinks.length} --link ${parsedLinks.length === 1 ? "entry" : "entries"} failed — see 'links' in the receipt above for details`,
+        { help: firstLinkFailure.help },
+      ),
+    );
+  }
 }
