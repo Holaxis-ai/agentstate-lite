@@ -8,7 +8,7 @@ description: >-
   verb, hook-install re-run prompt, plugin version bump in both manifests. Deps:
   sync-conflict-resolution, sync-sessionstart.
 actor: brian-claude
-timestamp: '2026-07-08T17:15:36.975Z'
+timestamp: '2026-07-08T18:05:54.136Z'
 ---
 # U6 — skill + docs truth pass
 
@@ -107,3 +107,25 @@ NOT included, deliberately: claim-before-work (already documented where the reco
 conventions live — verify it is, add there if not), report-before-idle (orchestrator-
 harness-specific), and any cross-team-review-cadence mandate (a founders' policy
 question, put to Mike separately — do not canonize unilaterally).
+
+## Inherited: bundle-vs-code commit convention (2026-07-08, Brian — must not live only in agent memory)
+
+Two exact changes:
+
+1. Repo CLAUDE.md, records section ("Records live on the PROJECT BUNDLE"), add:
+> **Bundle commits are not code commits.** Board/bundle writes (records, claims, context
+> notes, task updates — anything under `.agentstate-lite/` with no code alongside) are
+> small `board:`-prefixed commits pushed DIRECTLY to main; their value is immediacy, and
+> `aslite sync` supersedes even that once the migration lands. Code ships via branch +
+> PR + review gates, always. A board doc rides a PR only when it is ITSELF the reviewed
+> deliverable (a plan under vetting, records that explain a code change they accompany).
+
+2. The SKILL's Workspaces section (gen-skill.mjs): the line "Commit the folder like any
+   other source" is now MISLEADING — it taught batching board writes into code PRs.
+   Replace with the sync-era truth: the folder is shared with teammates via `aslite sync`
+   (which commits and pushes board changes itself); until a project adopts sync, board
+   changes are committed as their own small commits, not batched with code.
+
+Context: the convention was operating implicitly (Mike's side's claim/record commits to
+main; our claim commits) but was memorialized nowhere — an orchestrator conflated the
+two classes and proposed holding board records for a code PR. Scaffolding, not memory.
