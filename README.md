@@ -33,6 +33,8 @@ codex plugin add agentstate-lite@agentstate-lite
 ```sh
 aslite init --dir .agentstate-lite   # create the project's bundle (seeds context-notes)
 aslite recipe add work-tracking      # install the Task kind — a task board, as data
+aslite recipe add roadmap            # its companion: Roadmap + Roadmap Item kinds
+                                     # (typed 'contains' links: roadmap → item → task)
 aslite hook install                  # agents orient automatically at session start
                                      # (Claude Code, Codex, OpenCode)
 # commit the .agentstate-lite/ folder — every clone's agents now find the bundle
@@ -86,8 +88,8 @@ no git surgery.
 - **Storage is a seam.** The engine holds all semantics; backends (filesystem by
   default; memory, wire, cloud) plug in underneath with byte-identical version tokens.
 - **Recipes install capability as text.** A recipe is a folder of convention docs,
-  applied idempotently — it seeds schemas, then the bundle owns them. Two ship built-in
-  (`context-notes`, `work-tracking`); `examples/recipes/claims` is the worked example of
+  applied idempotently — it seeds schemas, then the bundle owns them. Three ship built-in
+  (`context-notes`, `work-tracking`, `roadmap`); `examples/recipes/claims` is the worked example of
   an external recipe — a provenance/claims lifecycle installed via
   `aslite recipe add examples/recipes/claims`, and the template for writing your own.
 

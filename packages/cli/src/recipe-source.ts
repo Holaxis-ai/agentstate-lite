@@ -42,6 +42,12 @@ import {
   TASK_SEED_BODY,
   WORK_TRACKING_SUMMARY,
   WORK_TRACKING_DESC_BODY,
+  ROADMAP_KIND,
+  ROADMAP_SEED_BODY,
+  ROADMAP_ITEM_KIND,
+  ROADMAP_ITEM_SEED_BODY,
+  ROADMAP_SUMMARY,
+  ROADMAP_DESC_BODY,
 } from "./recipes.js";
 
 /** One recipe file: a path relative to the recipe root (posix), raw markdown bytes. */
@@ -272,10 +278,31 @@ function buildWorkTrackingFiles(): RecipeFile[] {
   ];
 }
 
+/** The third built-in recipe — work-tracking's companion, extracted from the project's own board
+ * (`conventions/roadmap` + `conventions/roadmap-item`, dogfooded there first): the FIRST built-in
+ * carrying TWO convention docs, exercising the multi-doc arm of the same
+ * `kindConventionDoc` -> `stringifyDoc` pipeline. */
+function buildRoadmapFiles(): RecipeFile[] {
+  const roadmap = kindConventionDoc(ROADMAP_KIND, ROADMAP_SEED_BODY, PLACEHOLDER_TIMESTAMP);
+  const item = kindConventionDoc(ROADMAP_ITEM_KIND, ROADMAP_ITEM_SEED_BODY, PLACEHOLDER_TIMESTAMP);
+  return [
+    {
+      path: "recipe.md",
+      bytes: stringifyDoc(
+        { type: "Recipe", id: "roadmap", title: "Roadmap", version: "1", summary: ROADMAP_SUMMARY },
+        ROADMAP_DESC_BODY,
+      ),
+    },
+    { path: "conventions/roadmap.md", bytes: stringifyDoc(roadmap.frontmatter, roadmap.body) },
+    { path: "conventions/roadmap-item.md", bytes: stringifyDoc(item.frontmatter, item.body) },
+  ];
+}
+
 /** Every built-in recipe's `RecipeFile[]`, keyed by the name `recipe add <name>` takes. */
 const BUILTIN_FILES: Record<string, RecipeFile[]> = {
   "context-notes": buildContextNotesFiles(),
   "work-tracking": buildWorkTrackingFiles(),
+  roadmap: buildRoadmapFiles(),
 };
 
 /** Names of every built-in recipe (`recipes` lists exactly these — approved §B decision 9). */
