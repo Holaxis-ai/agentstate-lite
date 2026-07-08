@@ -15,8 +15,18 @@ description: >-
   skips-or-groups terminal instances; list gains an open semantic (with
   tasks/list-field-sets); the sweep sort reads the declaration. One small
   declaration, three existing consumers — consumer-pull satisfied for real.
-actor: mike
+actor: brian-claude
 assignee: mike/claude
-timestamp: '2026-07-08T21:30:55.513Z'
+timestamp: '2026-07-08T22:54:50.744Z'
 ---
 
+
+## Ruling (Brian, 2026-07-08): Roadmap Item declares terminal too
+
+From the PR #20 cross-review's merge-order finding: when rebasing over merged #21, the
+roadmap recipe's two kinds need the now-required `terminal` property. Brian's call:
+Roadmap Item declares `terminal: {status: [done]}` (done roadmap items hide from
+`list --open`, consistent with Task); the Roadmap spine kind takes `terminal: {}`
+(no status field to declare). Update the recipe seed AND the live board's
+conventions/roadmap-item.md atomically in the same pass, mirroring how this PR
+already handles the Task convention.
