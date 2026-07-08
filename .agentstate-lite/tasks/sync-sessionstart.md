@@ -3,14 +3,15 @@ type: Task
 title: >-
   U4 SessionStart: single in-process pull-then-render hook + home cache +
   backstop
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   U4. One in-process pull-then-render SessionStart subcommand (time-boxed,
   guaranteed fall-through) plus home cache render and the both-count backstop.
   Deps: sync-command-core.
 actor: brian-claude
-timestamp: '2026-07-08T20:10:47.642Z'
+assignee: brian-claude
+timestamp: '2026-07-08T23:17:10.244Z'
 ---
 # U4 — SessionStart integration
 
