@@ -69,6 +69,54 @@ test("the sandboxed page is structurally blocked from reaching the data API (con
   }
 });
 
+test("the sandboxed page cannot navigate its frame (or the top) to an external origin (frame-src 'self' + sandbox)", async ({ page }) => {
+  const ui = await bootUiOverPagesBundle(TASKS);
+  try {
+    // frame-src 'self' reports a CSP violation to the shell's console when the framed page tries to
+    // navigate anywhere off-origin — capture it as the definitive proof the escape was BLOCKED (the
+    // request never leaves; the frame lands on a chrome-error page, NOT example.com).
+    const frameSrcViolations: string[] = [];
+    page.on("console", (m) => {
+      if (/frame-src/i.test(m.text())) frameSrcViolations.push(m.text());
+    });
+
+    await page.goto(ui.url);
+    const topOriginBefore = new URL(page.url()).origin;
+    await page.locator('[data-page-id="pages-registry/board"]').click();
+    const handle = await page.waitForSelector("iframe.page-frame-iframe");
+    const frame = await handle.contentFrame();
+    if (!frame) throw new Error("iframe had no content frame");
+    await expect(page.frameLocator("iframe.page-frame-iframe").locator(".col").first()).toBeVisible();
+
+    // From inside the page, attempt to escape to an external origin — self-nav (blocked by the
+    // shell's frame-src 'self') and top-nav (blocked by the sandbox: no allow-top-navigation).
+    await frame.evaluate(() => {
+      try {
+        (window.top as Window).location.href = "https://example.com/";
+      } catch {
+        /* top-nav blocked by sandbox */
+      }
+      try {
+        window.location.href = "https://example.com/";
+      } catch {
+        /* self-nav blocked */
+      }
+    });
+    await page.waitForTimeout(800);
+
+    // The frame's off-origin navigation was blocked by frame-src 'self' (request never sent)...
+    expect(frameSrcViolations.join("\n")).toMatch(/frame-src 'self'/);
+    // ...the frame never reached example.com...
+    const frameHandleNow = await page.$("iframe.page-frame-iframe");
+    const frameNow = frameHandleNow ? await frameHandleNow.contentFrame() : null;
+    expect(frameNow?.url() ?? "").not.toContain("example.com");
+    // ...and the top page never left the ui origin (sandbox blocked top-nav).
+    expect(new URL(page.url()).origin).toBe(topOriginBefore);
+  } finally {
+    await ui.cleanup();
+  }
+});
+
 test("a status change streams live into the open page (card moves columns, no reload)", async ({ page }) => {
   const ui = await bootUiOverPagesBundle(TASKS);
   try {

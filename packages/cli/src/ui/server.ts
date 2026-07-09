@@ -16,12 +16,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { basename } from "node:path";
 import { requestFromIncomingMessage, writeResponseToServerResponse } from "@agentstate-lite/server";
-import { readBlob, assertSafeBlobKey, type Bundle } from "@agentstate-lite/core";
+import { readBlob, queryHeads, assertSafeBlobKey, type Bundle } from "@agentstate-lite/core";
 import { isAllowedHost } from "./host.js";
 import { checkAuth, mintSessionSecret, sessionCookieHeader } from "./session.js";
 import { serveAsset } from "./assets.js";
 import { proxyToRemote } from "./proxy.js";
-import { PageNonceRegistry, pageCsp } from "./pages.js";
+import { PageNonceRegistry, pageCsp, PAGE_BLOB_PREFIX } from "./pages.js";
 import { SseHub } from "./events.js";
 import { startWatcher, type ChangeEvent, type WatcherHandle } from "./watch.js";
 
@@ -113,8 +113,41 @@ async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonc
   });
 }
 
-/** Mint a nonce for the requested (session-authed) page key. Only a SAFE blob key is accepted; the served bytes may still 404 if the blob is absent. */
-async function handleMint(req: Request, runtime: UiRuntime): Promise<Response> {
+/** The set of blob keys declared as a `type: Page` doc's `entry` — the ONLY keys a nonce may be minted for (mode-aware: local `queryHeads`, or the remote's `type=Page` head projection). */
+async function registeredPageEntries(options: UiServerOptions): Promise<Set<string>> {
+  const entries = new Set<string>();
+  if (options.mode === "dir") {
+    for (const head of await queryHeads(options.bundle!, { type: "Page" })) {
+      const entry = head.frontmatter.entry;
+      if (typeof entry === "string" && entry) entries.add(entry);
+    }
+    return entries;
+  }
+  const url = new URL(`${options.remoteBase}/v0/bundles/${REMOTE_BUNDLE}/docs`);
+  url.searchParams.set("fields", "frontmatter");
+  url.searchParams.set("type", "Page");
+  url.searchParams.set("limit", "500");
+  const headers: Record<string, string> = {};
+  if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
+  const res = await fetch(url, { headers });
+  if (res.ok) {
+    const body = (await res.json()) as { docs: { frontmatter: Record<string, unknown> }[] };
+    for (const d of body.docs) {
+      const entry = d.frontmatter.entry;
+      if (typeof entry === "string" && entry) entries.add(entry);
+    }
+  }
+  return entries;
+}
+
+/**
+ * Mint a nonce for the requested (session-authed) page key. Confinement (tasks/ui-pages-spike A1):
+ * a nonce may ONLY be minted for a key that (a) lives under the page blob prefix AND (b) is the
+ * declared `entry` of a `type: Page` registry doc. This is what stops the nonce mechanism from
+ * being turned into a read-anything-blob primitive (e.g. minting `secrets/creds.bin`) even by a
+ * compromised same-origin shell — a nonce only ever exists for a bundle-declared page.
+ */
+async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOptions): Promise<Response> {
   let payload: { key?: unknown };
   try {
     payload = (await req.json()) as { key?: unknown };
@@ -127,6 +160,13 @@ async function handleMint(req: Request, runtime: UiRuntime): Promise<Response> {
     assertSafeBlobKey(key);
   } catch (err) {
     return jsonError(400, "USAGE", err instanceof Error ? err.message : `unsafe page key '${key}'`);
+  }
+  if (!key.startsWith(PAGE_BLOB_PREFIX)) {
+    return jsonError(403, "FORBIDDEN", `page keys must live under '${PAGE_BLOB_PREFIX}'; '${key}' does not`);
+  }
+  const entries = await registeredPageEntries(options);
+  if (!entries.has(key)) {
+    return jsonError(403, "FORBIDDEN", `'${key}' is not a registered page (no type:Page doc declares it as 'entry')`);
   }
   const nonce = runtime.nonces.mint(key);
   return new Response(JSON.stringify({ nonce, url: `/__page/${nonce}` }), {
@@ -209,7 +249,7 @@ async function handleRequest(
 
   let response: Response;
   if (url.pathname === "/__page/mint" && request.method === "POST") {
-    response = await handleMint(request, runtime);
+    response = await handleMint(request, runtime, options);
   } else if (url.pathname === "/__ui/config") {
     response = configResponse(options);
   } else if (url.pathname.startsWith("/v0/")) {

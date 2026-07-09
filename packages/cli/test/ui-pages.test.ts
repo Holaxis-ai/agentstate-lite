@@ -10,7 +10,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { initBundle, writeBlob, type Bundle } from "@agentstate-lite/core";
+import { initBundle, writeBlob, writeDoc, type Bundle } from "@agentstate-lite/core";
 import { createRouter } from "@agentstate-lite/server";
 import { bootUiServer, type UiServerHandle } from "../src/ui/server.js";
 import { PageNonceRegistry, pageCsp } from "../src/ui/pages.js";
@@ -36,6 +36,17 @@ test("PageNonceRegistry: an expired nonce resolves to null (and is swept)", () =
   const nonce = reg.mint("pages/a.html");
   assert.equal(reg.resolve(nonce), null);
   assert.equal(reg.size(), 0);
+});
+
+test("PageNonceRegistry: bounded by a cap — the oldest nonce is evicted once full (no unbounded growth)", () => {
+  const reg = new PageNonceRegistry(60_000, 3);
+  const oldest = reg.mint("pages/a.html");
+  reg.mint("pages/b.html");
+  reg.mint("pages/c.html");
+  assert.equal(reg.size(), 3);
+  reg.mint("pages/d.html"); // over cap -> evict the oldest
+  assert.equal(reg.size(), 3);
+  assert.equal(reg.resolve(oldest), null, "the oldest nonce was evicted");
 });
 
 test("pageCsp: locks the page to inert bytes — connect-src 'none', frame-ancestors 'self'", () => {
@@ -83,7 +94,11 @@ async function bootPagesServer(): Promise<{ handle: UiServerHandle; origin: stri
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-pages-"));
   await initBundle(dir);
   const bundle: Bundle = { root: dir };
+  // A registered page (blob + its type:Page registry doc), plus an OFF-LIMITS blob that is NOT a
+  // page — the A1 confinement must refuse to mint a nonce for the latter.
   await writeBlob(bundle, "pages/test.html", Buffer.from("<!doctype html><title>t</title><p>hi</p>"), "text/html; charset=utf-8");
+  await writeBlob(bundle, "secrets/creds.bin", Buffer.from("TOP-SECRET"), "application/octet-stream");
+  await writeDoc(bundle, { id: "pages-registry/test", frontmatter: { type: "Page", title: "Test", entry: "pages/test.html" }, body: "" });
   const handle = await bootUiServer({ mode: "dir", port: 0, router: createRouter(bundle), bundle, sessionSecret: SECRET });
   const origin = `http://${handle.host}:${handle.port}`;
   return {
@@ -173,6 +188,39 @@ test("mint of an unsafe key (traversal / reserved .md) is a USAGE error, not a n
       body: JSON.stringify({ key: "../../etc/hosts" }),
     });
     assert.equal(res.status, 400);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("A1: mint is confined to REGISTERED page entries — an off-limits blob cannot be minted/exfiltrated", async () => {
+  const { origin, cleanup } = await bootPagesServer();
+  const mintKey = (key: string) =>
+    fetch(`${origin}/__page/mint`, {
+      method: "POST",
+      headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+      body: JSON.stringify({ key }),
+    });
+  try {
+    // A REAL, existing blob that is not a page (not under pages/, not a registered entry) -> refused.
+    assert.equal((await mintKey("secrets/creds.bin")).status, 403);
+    // Under the page prefix but NOT declared by any type:Page doc -> refused.
+    assert.equal((await mintKey("pages/not-registered.html")).status, 403);
+    // The registered page entry -> still minted (happy path intact).
+    assert.equal((await mintKey("pages/test.html")).status, 200);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("B1: the shell asset CSP explicitly confines framing to same-origin (frame-src/child-src 'self')", async () => {
+  const { origin, cleanup } = await bootPagesServer();
+  try {
+    const res = await fetch(`${origin}/`, { headers: { cookie: `aslite_ui_session=${SECRET}` } });
+    assert.equal(res.status, 200);
+    const csp = res.headers.get("content-security-policy") ?? "";
+    assert.match(csp, /frame-src 'self'/);
+    assert.match(csp, /child-src 'self'/);
   } finally {
     await cleanup();
   }
