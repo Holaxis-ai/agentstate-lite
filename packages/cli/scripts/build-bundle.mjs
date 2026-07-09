@@ -19,6 +19,14 @@ const r = (p) => resolve(pkgRoot, p);
  */
 export async function buildCliBundle(outfile) {
   await build({
+    // Pin esbuild's working directory — it otherwise defaults to `process.cwd()` and embeds
+    // paths relative to it in the CJS-interop module comments/keys (e.g. `node_modules/foo/…`
+    // vs `../../node_modules/foo/…`), making the OUTPUT BYTES depend on the CALLER's cwd. Every
+    // existing call site happened to run with cwd == this package (`npm run build -w
+    // agentstate-lite`, `-w agentstate-lite` script invocations), so this went unnoticed until a
+    // caller running from the repo root (scripts/ci-version-bundle.mjs) hit a false "changed"
+    // diff on an otherwise-identical rebuild.
+    absWorkingDir: pkgRoot,
     entryPoints: [r("src/index.ts")],
     outfile,
     bundle: true,
