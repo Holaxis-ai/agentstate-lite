@@ -421,6 +421,24 @@ export interface Link {
   href: string;
 }
 
+/**
+ * Filter for {@link queryEdges} — the whole-bundle derived edge list, filtered. `from`/`to` each
+ * accept a single {@link ConceptId}, a trailing-slash prefix (`"tasks/"` matches any id starting
+ * with that literal string — one rule, no glob syntax), or an array of either (union: a match
+ * against ANY entry satisfies that facet). Providing both `from` and `to` ANDs them. `text` is an
+ * EXACT match against the link's display text (never substring/regex/case-insensitive). All facets
+ * are optional; an empty filter returns every edge in the bundle (still including dangling ones —
+ * a link to a nonexistent doc is a valid edge, per §5).
+ */
+export interface EdgeFilter {
+  /** Restrict to edges whose source matches this id/prefix (or union of ids/prefixes). */
+  from?: string | string[];
+  /** Restrict to edges whose resolved target matches this id/prefix (or union of ids/prefixes). */
+  to?: string | string[];
+  /** Restrict to edges whose display text exactly equals this value. */
+  text?: string;
+}
+
 /** A consumer-derived freshness verdict. OKF has no first-class staleness flag (mapping §c). */
 export type FreshnessVerdict = "fresh" | "stale" | "empty";
 
