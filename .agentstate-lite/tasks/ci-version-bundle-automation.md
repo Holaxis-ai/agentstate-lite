@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'CI auto-bump + bundle regen at merge: delete the PR-crossing re-bump tax'
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   De-complexification (Mike-approved 2026-07-09): the committed skill bundle (a
@@ -20,6 +20,6 @@ description: >-
   retires the CLAUDE.md parallel-branch re-bump convention clause (update it in
   the same unit).
 actor: mike/claude
-timestamp: '2026-07-09T01:19:54.635Z'
+timestamp: '2026-07-09T15:45:22.263Z'
 ---
 
