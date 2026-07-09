@@ -20,7 +20,7 @@ import { openBundle, resolveRemoteFlag, API_KEY_ENV_VAR } from "../bundle.js";
 import { normalizeServer } from "../config.js";
 import { getApiKeyForOrigin } from "../credentials.js";
 import { bootUiServer as bootUiServerDefault, type UiServerHandle, type UiServerOptions } from "../ui/server.js";
-import { writeUiUrlFile, clearUiUrlFile, UI_URL_FILE_NAME } from "../ui/url-file.js";
+import { writeUiUrlFile, clearUiUrlFile } from "../ui/url-file.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
@@ -220,10 +220,9 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
         mode: options.mode,
         root: rootLabel,
         auth:
-          "per-run session token embedded in the URL above; the first load exchanges it for an HttpOnly, SameSite=Strict cookie — nothing is persisted beyond this process",
+          "per-run session SECRET, minted fresh each boot and never persisted; the first load exchanges the URL token for an HttpOnly, SameSite=Strict cookie. The current tokenized URL (not the secret) is written to ~/.agentstate/ui-url (0600) for one-click re-entry and cleared on clean shutdown — a crash leaves only a stale URL whose token is already dead (the secret rotates next boot)",
         help: [
           `open ${url} in a browser`,
-          `URL saved to ~/.agentstate/${UI_URL_FILE_NAME} (0600) for one-click re-entry`,
           ...(usedStablePort
             ? [`this host:port is stable for this bundle — on restart, reopen the freshly-printed URL (the token rotates each run)`]
             : []),
