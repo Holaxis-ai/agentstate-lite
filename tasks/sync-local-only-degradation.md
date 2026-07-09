@@ -6,15 +6,18 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  Brian+Mike requirement (2026-07-09): agentstate-lite must be fully usable with
-  local commits only — no remote, no pushes — and every remote-requiring surface
-  needs a graceful degradation path with clear user communication. Audit
-  (empirical, this date): the engine is already fully local and
-  sync/session-start degrade SILENTLY (exit 0, no errors) — the gap is
-  communication, not capability. Details + open design questions in the body.
-actor: brian-claude
+  Builder done (f2150c3 on feat/sync-local-only), IN REVIEW. Shipped items 1-3:
+  the local-only empty state (pinned message + note — supported mode, changes
+  stay local, sync committed nothing, sharing conceptual since sync --share is
+  todo); degradation matrix documented per-site with dishonest wordings fixed
+  (--show-incoming got a viewer-specific no-ref message; --pull-only and
+  upstreamHelp name local-only as supported); skill Workspaces teaches the
+  trilogy. cli 650/650, check green, CI-convention compliant (no manifest/bundle
+  changes). Caveats: bundle detection = index.md at the conventional root; open
+  questions A/B untouched for founder adjudication.
+actor: builder-localonly
 assignee: brian-claude
-timestamp: '2026-07-09T20:42:19.361Z'
+timestamp: '2026-07-09T21:16:34.803Z'
 ---
 ## Audit findings (empirical, 2026-07-09, built CLI over a local-only git repo)
 

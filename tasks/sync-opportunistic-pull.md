@@ -6,15 +6,19 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  Brian's demand signal (2026-07-09): regular, automatic, silent board pulls
-  beyond session start. Adjudicated AGAINST cron/launchd (per-machine hand
-  config, platform-variant, violates the no-daemon non-goal) and FOR the
-  operational-moments pattern: board-reading commands check the awareness
-  cache's age and refresh via a time-boxed ff-only pull when stale. The Homebrew
-  pattern; rung 1 of the parked real-time ladder in its product-native shape.
-actor: brian-claude
+  Builder done (975ccf2 on feat/sync-opportunistic-pull), IN REVIEW. Shipped:
+  INLINE (adjudicated) stale-cache ff-only auto-pull on list/doc
+  read/status/home/link show — 5m threshold, 2s budget, attempt-side throttle,
+  AGENTSTATE_LITE_NO_AUTOPULL opt-out, default-on incl. non-TTY;
+  pullBoardAndRecord extracted from session-start as the ONE shared pull path
+  (no fork); sync receipt's one-time hook-install hint. 13 new tests, cli
+  661/661, check green, CI-convention compliant. Caveats: CLI test script sets
+  the opt-out knob suite-wide for hermeticity (reviewer adjudicating);
+  board-parity test needs a provisioned checkout (filed:
+  board-parity-test-post-migration).
+actor: builder-opppull
 assignee: brian-claude
-timestamp: '2026-07-09T20:42:19.476Z'
+timestamp: '2026-07-09T21:16:34.917Z'
 ---
 ## Design sketch (carried from the adjudication; builder refines, panel-vets if judged risky)
 
