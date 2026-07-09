@@ -1,13 +1,15 @@
 ---
 type: Task
 title: U5 migrate this repo's bundle to the board branch (Mike-gated)
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   U5. sync --migrate (yes-guarded, idempotent) subtree-split to the board branch
   with push -u; never runs git clean; records discipline. HUMAN-GATED on Mike.
   Deps: sync-command-core.
-timestamp: '2026-07-07T21:20:03.382Z'
+actor: brian-claude
+assignee: brian-claude
+timestamp: '2026-07-09T16:51:44.446Z'
 ---
 # U5 — migration of THIS repo's bundle (HUMAN-GATED: Mike)
 
