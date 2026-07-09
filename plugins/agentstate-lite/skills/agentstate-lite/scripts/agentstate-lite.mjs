@@ -9462,6 +9462,69 @@ async function link(argv, deps = {}) {
     help: `${cliInvocation()} link --help`
   });
 }
+async function addLink(bundle, from, to, opts = {}) {
+  const text = opts.text?.trim() || to;
+  const href = relativeHref(from, to);
+  const normalizedTo = to.replace(/^\/+/, "").replace(/\.md$/, "");
+  if (isReservedFile(pathFromConceptId(normalizedTo))) {
+    throw new CliError(
+      "USAGE",
+      `'${to}' names a reserved OKF file (index.md/log.md), which is never a concept document and cannot be a link target`,
+      { help: `${cliInvocation()} list` }
+    );
+  }
+  for (let attempt = 0; ; attempt++) {
+    let source;
+    let version;
+    try {
+      ({ doc: source, version } = await readDocVersioned(bundle, from));
+    } catch (err) {
+      if (err?.code === "ENOENT") {
+        throw new CliError("NOT_FOUND", `no source concept at id '${from}'`, {
+          help: `${cliInvocation()} list`
+        });
+      }
+      throw classifyBundleError(err, opts.remoteUrl);
+    }
+    const already = parseLinks(bundle, source).some((l) => l.to === normalizedTo);
+    if (already) {
+      return { from: source.id, normalizedTo, href, text, changed: false };
+    }
+    const trimmed = source.body.replace(/\s*$/, "");
+    const nextBody = `${trimmed}${trimmed ? "\n\n" : ""}[${text}](${href})
+`;
+    const nextFrontmatter = opts.keepTimestamp ? source.frontmatter : { ...source.frontmatter, timestamp: (/* @__PURE__ */ new Date()).toISOString() };
+    try {
+      const saved = await writeDoc(
+        bundle,
+        { ...source, frontmatter: nextFrontmatter, body: nextBody },
+        { expectedVersion: version }
+      );
+      const warnings = await lintLinkType(bundle, {
+        sourceType: docType(source),
+        text,
+        to: normalizedTo,
+        remoteUrl: opts.remoteUrl
+      });
+      return {
+        from: saved.id,
+        normalizedTo,
+        href,
+        text,
+        changed: true,
+        warnings: warnings.length > 0 ? warnings : void 0
+      };
+    } catch (err) {
+      if (err instanceof VersionConflict && attempt < LINK_ADD_MAX_ATTEMPTS - 1) continue;
+      if (err instanceof VersionConflict) {
+        throw new CliError("STALE_HEAD", err.message, {
+          help: `${cliInvocation()} link add ${from} ${to}`
+        });
+      }
+      throw err;
+    }
+  }
+}
 async function linkAdd(argv, stdout) {
   const { values, positionals } = parseOrUsage(
     () => parseArgs11({
@@ -9489,85 +9552,39 @@ async function linkAdd(argv, stdout) {
       help: `${cliInvocation()} link add <from> <to>`
     });
   }
-  const text = values.text?.trim() || to;
-  const href = relativeHref(from, to);
-  const normalizedTo = to.replace(/^\/+/, "").replace(/\.md$/, "");
-  if (isReservedFile(pathFromConceptId(normalizedTo))) {
-    throw new CliError(
-      "USAGE",
-      `'${to}' names a reserved OKF file (index.md/log.md), which is never a concept document and cannot be a link target`,
-      { help: `${cliInvocation()} list` }
-    );
-  }
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
   const mode = resolveMode(values);
-  for (let attempt = 0; ; attempt++) {
-    let source;
-    let version;
-    try {
-      ({ doc: source, version } = await readDocVersioned(bundle, from));
-    } catch (err) {
-      if (err?.code === "ENOENT") {
-        throw new CliError("NOT_FOUND", `no source concept at id '${from}'`, {
-          help: `${cliInvocation()} list`
-        });
-      }
-      throw classifyBundleError(err, values.remote);
-    }
-    const already = parseLinks(bundle, source).some((l) => l.to === normalizedTo);
-    if (already) {
-      stdout(
-        render(
-          {
-            link: "exists",
-            from: source.id,
-            to: normalizedTo,
-            changed: false,
-            help: [`${cliInvocation()} link show ${normalizedTo}`]
-          },
-          mode
-        )
-      );
-      return;
-    }
-    const trimmed = source.body.replace(/\s*$/, "");
-    const nextBody = `${trimmed}${trimmed ? "\n\n" : ""}[${text}](${href})
-`;
-    const nextFrontmatter = values["keep-timestamp"] ? source.frontmatter : { ...source.frontmatter, timestamp: (/* @__PURE__ */ new Date()).toISOString() };
-    try {
-      const saved = await writeDoc(
-        bundle,
-        { ...source, frontmatter: nextFrontmatter, body: nextBody },
-        { expectedVersion: version }
-      );
-      const warnings = await lintLinkType(bundle, {
-        sourceType: docType(source),
-        text,
-        to: normalizedTo,
-        remoteUrl: values.remote
-      });
-      const receipt = {
-        link: "added",
-        from: saved.id,
-        to,
-        href,
-        text,
-        changed: true,
-        help: [`${cliInvocation()} link show ${to}`]
-      };
-      if (warnings.length > 0) receipt.warnings = warnings;
-      stdout(render(receipt, mode));
-      return;
-    } catch (err) {
-      if (err instanceof VersionConflict && attempt < LINK_ADD_MAX_ATTEMPTS - 1) continue;
-      if (err instanceof VersionConflict) {
-        throw new CliError("STALE_HEAD", err.message, {
-          help: `${cliInvocation()} link add ${from} ${to}`
-        });
-      }
-      throw err;
-    }
+  const result = await addLink(bundle, from, to, {
+    text: values.text,
+    keepTimestamp: values["keep-timestamp"],
+    remoteUrl: values.remote
+  });
+  if (!result.changed) {
+    stdout(
+      render(
+        {
+          link: "exists",
+          from: result.from,
+          to: result.normalizedTo,
+          changed: false,
+          help: [`${cliInvocation()} link show ${result.normalizedTo}`]
+        },
+        mode
+      )
+    );
+    return;
   }
+  const receipt = {
+    link: "added",
+    from: result.from,
+    to,
+    href: result.href,
+    text: result.text,
+    changed: true,
+    help: [`${cliInvocation()} link show ${to}`]
+  };
+  if (result.warnings && result.warnings.length > 0) receipt.warnings = result.warnings;
+  stdout(render(receipt, mode));
 }
 async function linkShow(argv, stdout) {
   const { values, positionals } = parseOrUsage(
@@ -9929,6 +9946,18 @@ Options:
                          (the per-doc attribution sync and its receipts read) and recorded in version
                          history by a persisting backend. Omitted = no actor field. A present-but-blank
                          value is a USAGE error (exit 2).
+  --link "<type>=<target-id>"
+                         Repeatable. After the doc is created, add an outbound cross-link of this
+                         TYPE to the given target id \u2014 through the exact same idempotent path
+                         'link add --text "<type>"' uses (relative bundle-relative href; a
+                         dangling target, i.e. one with no document yet, is allowed, same as
+                         'link add'). A type not in this kind's declared 'links' vocabulary warns
+                         but still adds the link (teach, never block). A malformed value (missing
+                         '=', empty type, or empty target) is a USAGE error (exit 2) \u2014 checked
+                         BEFORE the doc is written, so a malformed --link creates nothing. If a
+                         link fails AFTER the doc was created (e.g. a reserved-file target), the
+                         doc is NOT rolled back: the receipt's 'links' array names which entries
+                         failed and the command exits non-zero.
   --no-prefix           Use <id> verbatim \u2014 do NOT auto-prepend the kind's declared path prefix
   --json                Emit compact JSON instead of TOON
   -h, --help            Show this help
@@ -9937,6 +9966,7 @@ var NEW_CONTROL_OPTIONS = {
   dir: { type: "string" },
   remote: { type: "string" },
   actor: { type: "string" },
+  link: { type: "string", multiple: true },
   "no-prefix": { type: "boolean" },
   json: { type: "boolean" },
   help: { type: "boolean", short: "h" }
@@ -9945,6 +9975,31 @@ function resolveInstanceId(kind2, id) {
   if (!kind2.path) return id;
   const prefix = kind2.path.replace(/\/+$/, "") + "/";
   return id.startsWith(prefix) ? id : `${prefix}${id}`;
+}
+function parseLinkFlagValue(raw) {
+  const eq = raw.indexOf("=");
+  if (eq < 0) {
+    throw new CliError("USAGE", `--link value '${raw}' is missing '=' \u2014 expected the form "<type>=<target-id>"`, {
+      help: `${cliInvocation()} new "<Kind>" <id> --link "<type>=<target-id>"`
+    });
+  }
+  const type = raw.slice(0, eq).trim();
+  const target = raw.slice(eq + 1).trim();
+  if (!type) {
+    throw new CliError(
+      "USAGE",
+      `--link value '${raw}' has an empty link type \u2014 expected the form "<type>=<target-id>"`,
+      { help: `${cliInvocation()} new "<Kind>" <id> --link "<type>=<target-id>"` }
+    );
+  }
+  if (!target) {
+    throw new CliError(
+      "USAGE",
+      `--link value '${raw}' has an empty target id \u2014 expected the form "<type>=<target-id>"`,
+      { help: `${cliInvocation()} new "<Kind>" <id> --link "<type>=<target-id>"` }
+    );
+  }
+  return { type, target };
 }
 function controlFlagValue(val, flag) {
   if (typeof val === "boolean") {
@@ -9972,8 +10027,8 @@ function kindIdPlaceholder(kind2, governs) {
   return `${prefix}<${slug}>`;
 }
 function renderKindHelp(kind2, registry, inv) {
-  const req = kind2.fields.required.filter((f) => f !== "actor");
-  const opt = kind2.fields.optional.filter((f) => f !== "actor");
+  const req = kind2.fields.required.filter((f) => f !== "actor" && f !== "link");
+  const opt = kind2.fields.optional.filter((f) => f !== "actor" && f !== "link");
   const flags = (fields) => fields.length > 0 ? fields.map((f) => `--${f} <v>`).join("  ") : "(none)";
   const enums = Object.entries(kind2.fields.values ?? {}).map(([f, vals]) => `  --${f} allowed:  ${vals.join(" | ")}`).join("\n");
   const sections = kind2.sections && kind2.sections.length > 0 ? kind2.sections.join(", ") : "(none)";
@@ -9984,7 +10039,7 @@ function renderKindHelp(kind2, registry, inv) {
   const inboundLines = inboundLinkDecls(registry, kind2).map(
     ({ source, linkType }) => `  other kinds link here:  ${source.governs} "${linkType}" \u2192 ${kind2.governs}`
   );
-  const linksBlock = outboundLines.length + inboundLines.length > 0 ? `Links (typed edges declared by this bundle's conventions; write with link add --text "<type>"):
+  const linksBlock = outboundLines.length + inboundLines.length > 0 ? `Links (typed edges declared by this bundle's conventions; write with --link "<type>=<target-id>" at create time, or link add --text "<type>" after the fact):
 ` + [...outboundLines, ...inboundLines].join("\n") + "\n" : "";
   return `${inv} new "${kind2.governs}" <id> \u2014 create a ${kind2.governs} instance
 
@@ -9999,6 +10054,10 @@ To ADD a field to this kind, edit its convention doc (${inv} kinds names it; the
 
 Options:
   --actor <name>   Attribute the write (persisted as the doc's 'actor' frontmatter field)
+  --link "<type>=<target-id>"
+                   Repeatable: after creating this instance, add an outbound link of type
+                   <type> to <target-id> (same idempotent path as 'link add'; a dangling
+                   target is allowed)
   --no-prefix      Use <id> verbatim (skip the auto path prefix above)
   --dir <path>     Bundle directory (default: discovered from the cwd)
   --remote <url>   Talk to a wire-protocol server instead of a local bundle
@@ -10053,7 +10112,7 @@ async function newCommand(argv, deps = {}) {
     return;
   }
   const declaredFields = [...kind2.fields.required, ...kind2.fields.optional];
-  const fieldNames = declaredFields.filter((f) => f !== "actor");
+  const fieldNames = declaredFields.filter((f) => f !== "actor" && f !== "link");
   const fieldOptions = Object.fromEntries(
     fieldNames.map((f) => [f, { type: "string", multiple: true }])
   );
@@ -10105,6 +10164,8 @@ async function newCommand(argv, deps = {}) {
       help: `${cliInvocation()} new "<Kind>" <id> --actor <name>`
     });
   }
+  const linkFlags = values.link ?? [];
+  const parsedLinks = linkFlags.map(parseLinkFlagValue);
   const frontmatter = { type: kind2.governs };
   for (const field of fieldNames) {
     const vals = dynamicValues[field];
@@ -10148,6 +10209,42 @@ async function newCommand(argv, deps = {}) {
   if (targetId !== id) {
     receipt.note = `id prefixed with the '${kind2.governs}' kind's path \u2192 '${targetId}' (you passed '${id}')`;
   }
+  const linkResults = [];
+  const satisfiedOutboundTypes = /* @__PURE__ */ new Set();
+  let firstLinkFailure;
+  for (const { type, target } of parsedLinks) {
+    const warnings = [];
+    if (kind2.links && Object.keys(kind2.links).length > 0 && !(type in kind2.links)) {
+      warnings.push({
+        code: "LINK_TYPE_UNDECLARED_FOR_KIND",
+        message: `'${type}' is not declared in the '${kind2.governs}' kind's link vocabulary (declared: ${Object.keys(kind2.links).join(", ")}) \u2014 added anyway.`,
+        field: "text",
+        severity: "warning"
+      });
+    }
+    try {
+      const added = await addLink(bundle, saved.id, target, { text: type, remoteUrl: remote });
+      if (added.warnings) warnings.push(...added.warnings);
+      linkResults.push({
+        type,
+        target,
+        changed: added.changed,
+        href: added.href,
+        ...warnings.length > 0 ? { warnings } : {}
+      });
+      satisfiedOutboundTypes.add(type);
+    } catch (err) {
+      const classified = err instanceof CliError ? err : classifyBundleError(err, remote);
+      linkResults.push({
+        type,
+        target,
+        error: { code: classified.code, message: classified.message },
+        ...warnings.length > 0 ? { warnings } : {}
+      });
+      if (!firstLinkFailure) firstLinkFailure = classified;
+    }
+  }
+  if (parsedLinks.length > 0) receipt.links = linkResults;
   const help = [`${cliInvocation()} doc read ${saved.id}`];
   const HINTS_PER_DIRECTION = 3;
   for (const { source, linkType } of inboundLinkDecls(registry, kind2).slice(0, HINTS_PER_DIRECTION)) {
@@ -10155,13 +10252,24 @@ async function newCommand(argv, deps = {}) {
       `link from a ${source.governs}: ${cliInvocation()} link add ${kindIdPlaceholder(source, source.governs)} ${saved.id} --text "${linkType}"`
     );
   }
-  for (const [linkType, target] of Object.entries(kind2.links ?? {}).slice(0, HINTS_PER_DIRECTION)) {
+  const outboundLinkDecls = Object.entries(kind2.links ?? {}).filter(([linkType]) => !satisfiedOutboundTypes.has(linkType));
+  for (const [linkType, target] of outboundLinkDecls.slice(0, HINTS_PER_DIRECTION)) {
     help.push(
       `link to a ${target}: ${cliInvocation()} link add ${saved.id} ${kindIdPlaceholder(registry.kinds.get(target), target)} --text "${linkType}"`
     );
   }
   receipt.help = help;
   stdout(render(receipt, resolveMode({ json: Boolean(values.json) })));
+  if (firstLinkFailure) {
+    const failedCount = linkResults.filter((r) => r.error).length;
+    throw asHandled(
+      new CliError(
+        firstLinkFailure.code,
+        `'${saved.id}' was created, but ${failedCount} of ${parsedLinks.length} --link ${parsedLinks.length === 1 ? "entry" : "entries"} failed \u2014 see 'links' in the receipt above for details`,
+        { help: firstLinkFailure.help }
+      )
+    );
+  }
 }
 
 // src/commands/kinds.ts
@@ -14347,8 +14455,8 @@ var COMMAND_GROUPS = [
     group: "Kinds",
     commands: [
       {
-        usage: 'new "<Kind>" <id> --<field> <value> [...] [--no-prefix] [--actor <n>] [--remote <url>]',
-        summary: 'Create a new instance of a bundle-declared kind \u2014 e.g. new "Context Note" <id> for a note (validates strictly)'
+        usage: 'new "<Kind>" <id> --<field> <value> [...] [--link "<type>=<target-id>" ...] [--no-prefix] [--actor <n>] [--remote <url>]',
+        summary: 'Create a new instance of a bundle-declared kind \u2014 e.g. new "Context Note" <id> for a note (validates strictly); repeatable --link wires typed cross-links in the same step'
       },
       {
         usage: "kinds [--remote <url>]",
