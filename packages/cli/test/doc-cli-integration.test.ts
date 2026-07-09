@@ -31,6 +31,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 
 import { initBundle, writeDoc } from "@agentstate-lite/core";
 
@@ -44,8 +45,12 @@ async function tempDir(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "agentstate-lite-cli-integration-"));
 }
 
+// Build ONLY if the bundle is absent. The package's `test` script builds once up front, so under
+// `npm test` / `npm run check` this is a no-op — which is what keeps two build-in-a-before-hook
+// integration files from launching CONCURRENT `vite build`s that clobber packages/ui/dist (the
+// node --test runner runs files in parallel). Building here still supports running THIS file alone.
 before(() => {
-  execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
+  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
 });
 
 test("built CLI: doc write guard refuses to blank an EXISTING doc's body when stdin is redirected from /dev/null (agent-harness shape — no TTY, no real pipe, isTTY undefined)", async () => {
