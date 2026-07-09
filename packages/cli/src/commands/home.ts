@@ -23,8 +23,8 @@
 // BOARD AWARENESS (sync-verb §U4): home additionally renders a `board` block — the moment-(e)
 // strings ("since this machine last synced", per-doc human lines, the unpushed/uncommitted
 // backstop, `board: up to date`) — read from the per-clone awareness CACHE (`cursor.ts`) that
-// sync/session-start's pull steps write. The OFFLINE GUARANTEE is preserved: the default board
-// loader spawns git for LOCAL-ONLY plumbing (rev-parse/status against the checkout on disk —
+// sync/session-start's pull steps write. The RENDER's OFFLINE GUARANTEE is preserved: the default
+// board loader spawns git for LOCAL-ONLY plumbing (rev-parse/status against the checkout on disk —
 // never fetch/pull/push, no network I/O of any kind), reuses sync.ts's exported
 // `resolveBundleKey` (THE one state-key derivation — cache-per-clone review advisory (a)), and is
 // double-guarded like the summarizer: any throw (git missing, no repo, unreadable state) degrades
@@ -32,6 +32,16 @@
 // NEVER probed here — `session-start` (the pull-then-render hook command) passes its own pull
 // outcome IN-PROCESS via `HomeDeps.boardPull`; a plain `home` render labels the cache with
 // `as_of` instead of guessing at network state.
+//
+// OPPORTUNISTIC FRESHNESS (tasks/sync-opportunistic-pull — the ONE deliberate amendment to "home
+// never touches the network"): a plain LOCAL `home` invocation — a board-READING command — first
+// runs autopull.ts's `maybeAutoPull`, the silent, time-boxed, ff-only, detection-gated stale-cache
+// pull every board-reading command shares. Everything the old guarantee protected still holds
+// structurally: the RENDER itself (everything below the trigger) is fs + local-git only and never
+// blocked by the pull (the trigger is bounded and fail-soft, and with the network off it degrades
+// to at most one bounded fetch attempt per staleness window); a `--remote`-scoped home, and a
+// session-start-driven render (which already pulled in-process, signaled by `deps.boardPull`),
+// never trigger it. Home still NEVER provisions and still exits 0 in every case.
 //
 // PROJECT-BINDING PEEK (item 43 follow-on — `bundle.ts`'s `resolveProjectBinding`): home does NOT
 // call `resolveRemoteFlag` (see `bundle.ts`'s header — home is a THIRD deliberate exception,
@@ -63,6 +73,7 @@ import {
   unpushedCount,
 } from "../git.js";
 import { countUncommitted, resolveBundleKey, retargetBoardInterior } from "./sync.js";
+import { maybeAutoPull } from "../autopull.js";
 import { readSyncState, type AwarenessCache, type AwarenessDeltaRow } from "../cursor.js";
 import { hookNeedsUpdate } from "./hook.js";
 
@@ -140,6 +151,13 @@ export interface HomeDeps {
    * re-install prompt's signal). Defaults to hook.ts's {@link hookNeedsUpdate} (fs-only reads).
    */
   hookNeedsUpdate: () => boolean;
+  /**
+   * The opportunistic board-freshness trigger (see the module header's OPPORTUNISTIC FRESHNESS
+   * note). Default: autopull.ts's `maybeAutoPull` with `requireBoardBundle: false` (home has no
+   * single target bundle — it always renders the board block). Never runs when `boardPull` is
+   * present (session-start already pulled in-process) or for a `--remote`-scoped view.
+   */
+  autoPull: (dir?: string) => Promise<unknown>;
 }
 
 /** A doc's `title` with the SAME fallback `list.ts` uses (frontmatter `title`, else the id's tail). */
@@ -644,6 +662,18 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
       }
     } catch (err) {
       bindingError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  // Opportunistic board freshness (module header, OPPORTUNISTIC FRESHNESS): plain LOCAL home only —
+  // never for a --remote scope, and never when session-start already pulled in-process
+  // (deps.boardPull present). Double-guarded like everything else here: the default trigger never
+  // throws, and an injected/misbehaving one is caught so it can never fail the session.
+  if (!remote && deps.boardPull === undefined) {
+    try {
+      await (deps.autoPull ?? ((d?: string) => maybeAutoPull(d, { requireBoardBundle: false })))(dir);
+    } catch {
+      /* best-effort freshness only — the render must always appear */
     }
   }
 

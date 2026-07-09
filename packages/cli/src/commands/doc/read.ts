@@ -16,6 +16,7 @@ import {
   type Version,
 } from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../../bundle.js";
+import { maybeAutoPull } from "../../autopull.js";
 import { CliError, toExit, asHandled } from "../../errors.js";
 import { parseOrUsage } from "../../args.js";
 import { render, resolveMode, renderErrorEnvelope } from "../../output.js";
@@ -77,7 +78,11 @@ export async function docRead(argv: string[], deps: Partial<DocCliDeps>): Promis
   }
   const field = values.field?.trim();
 
-  const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
+  const remote = await resolveRemoteFlag(values.remote, values.dir);
+  // Opportunistic board freshness (autopull.ts): silent, fail-soft, detection-gated — see list.ts.
+  // Runs on the READ verb only (never doc write/update/delete — the trigger is for reads).
+  if (!remote) await (deps.autoPull ?? maybeAutoPull)(values.dir);
+  const bundle = await openBundle(values.dir, remote);
 
   // --field <name>: print ONE raw value for scripting (the headline case is `--field head_version`,
   // capturing the CAS token for a follow-up --expected-version write without shelling out through

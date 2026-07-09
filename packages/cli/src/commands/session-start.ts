@@ -45,30 +45,19 @@
 // STATE DISCIPLINE (test-pinned): the CURSOR advances only on a SUCCESSFUL pull; the MARKER is
 // refreshed by every pull step that confirmed a provisioned board; the cache is written only on a
 // successful pull (mirroring sync's step 5 — the render's backstop counts are computed LIVE by
-// home's board probe, so they stay honest even when the network pull failed).
+// home's board probe, so they stay honest even when the network pull failed). The pull-and-record
+// step itself is SHARED, not owned here: autopull.ts's `pullBoardAndRecord` (extracted from this
+// command) is the ONE code path both this hook and the opportunistic read-command trigger use —
+// do not fork the state-write discipline back into either caller.
 import { parseArgs } from "node:util";
 
+import { provisionBoardWorktree, type ProvisionOutcome } from "../git.js";
+import { refreshMarker } from "../cursor.js";
+import { pullBoardAndRecord } from "../autopull.js";
 import {
-  changesSince,
-  ffPull,
-  provisionBoardWorktree,
-  unpushedCount,
-  type ProvisionOutcome,
-} from "../git.js";
-import {
-  readCursor,
-  recordReanchor,
-  refreshMarker,
-  writeCache,
-  writeCursor,
-} from "../cursor.js";
-import {
-  countUncommitted,
-  currentHead,
   provisionAnnouncement,
   resolveBundleKey,
   retargetBoardInterior,
-  toDeltaRows,
 } from "./sync.js";
 import { defaultSummarizeBundle, discoverSummarizeBundle, home, type BoardPullOutcome } from "./home.js";
 import { cliInvocation } from "../invocation.js";
@@ -167,51 +156,27 @@ export async function sessionStartPull(
       return { offline: true, boardPath, ...(announcement ? { announcement } : {}) };
     }
 
-    const storedCursor = await readCursor(key);
-    const startHead = currentHead(boardPath);
-    const ff = ffPull(boardPath, {
+    // THE shared pull-and-record step (autopull.ts's `pullBoardAndRecord` — extracted from this
+    // command so the opportunistic read-command trigger shares ONE state-write discipline): ff-only
+    // pull; on success the cursor advances to the post-pull HEAD and the cache is rewritten
+    // (mirroring sync's step 5, with U2's honest re-anchor on a dangling cursor); a swallowed pull
+    // writes NOTHING ("cursor advanced only on a successful pull").
+    const pulled = await pullBoardAndRecord(boardPath, key, {
       fetchTimeoutMs: remaining(),
       connectTimeoutSeconds: SESSION_START_CONNECT_TIMEOUT_SECONDS,
     });
-    if (ff.swallowed) {
-      // No cursor advance, no cache write (the pull did not succeed — "cursor advanced only on a
-      // successful pull"). Offline-class reasons get the pinned note; local-state classes get an
-      // honest pointer at the interactive verb.
-      if (OFFLINE_REASONS.has(ff.swallowed)) {
+    if (pulled.swallowed !== undefined) {
+      // Offline-class reasons get the pinned note; local-state classes get an honest pointer at
+      // the interactive verb.
+      if (OFFLINE_REASONS.has(pulled.swallowed)) {
         return { offline: true, boardPath, ...(announcement ? { announcement } : {}) };
       }
       return {
         offline: false,
         boardPath,
         ...(announcement ? { announcement } : {}),
-        notes: [`board pull skipped (${ff.swallowed}) — run \`${cliInvocation()} sync\` to reconcile`],
+        notes: [`board pull skipped (${pulled.swallowed}) — run \`${cliInvocation()} sync\` to reconcile`],
       };
-    }
-
-    // Successful pull: mirror sync's step 5 — cursor-based delta (self-inclusive; the render
-    // filters self-authored rows), cursor advanced to the post-pull HEAD, cache refreshed.
-    const cursorToken =
-      storedCursor && storedCursor.tier === "git" && typeof storedCursor.token === "string"
-        ? storedCursor.token
-        : undefined;
-    const postPullHead = currentHead(boardPath);
-    const delta = changesSince(boardPath, cursorToken ?? startHead);
-    if (delta.ok) {
-      await writeCursor(key, { tier: "git", token: postPullHead });
-      await writeCache(key, {
-        updatedAt: new Date().toISOString(),
-        delta: toDeltaRows(delta.changes),
-        unpushedCount: unpushedCount(boardPath) ?? 0,
-        uncommittedCount: countUncommitted(boardPath),
-      });
-    } else {
-      // Dangling cursor (history rewritten) — U2's honest re-anchor: empty delta + note, never a
-      // silent skip, never fatal. (It writes a cache too, so `refreshed` below stays true.)
-      await recordReanchor(
-        key,
-        { tier: "git", token: postPullHead },
-        { unpushedCount: unpushedCount(boardPath) ?? 0, uncommittedCount: countUncommitted(boardPath) },
-      );
     }
     // The ONE outcome that rewrote the cache — the render may skip its as_of freshness label.
     return { offline: false, refreshed: true, boardPath, ...(announcement ? { announcement } : {}) };

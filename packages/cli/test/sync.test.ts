@@ -87,11 +87,15 @@ function captureStdout(): { stdout: (s: string) => void; text: () => string } {
   return { stdout: (s: string) => chunks.push(s), text: () => chunks.join("") };
 }
 
-/** Run `sync(argv)` under an isolated per-call HOME (a distinct "machine"). Returns captured stdout. */
+/**
+ * Run `sync(argv)` under an isolated per-call HOME (a distinct "machine"). Returns captured stdout.
+ * `hookInstalled` is pinned true so the one-time onboarding hint (its OWN suite: autopull.test.ts)
+ * never perturbs this file's exact-receipt assertions — a temp HOME has no hook by construction.
+ */
 async function runSync(home: string, argv: string[]): Promise<{ out: string; err?: CliError }> {
   const cap = captureStdout();
   try {
-    await withHome(home, () => sync(argv, { stdout: cap.stdout }));
+    await withHome(home, () => sync(argv, { stdout: cap.stdout, hookInstalled: () => true }));
     return { out: cap.text() };
   } catch (err) {
     if (err instanceof CliError) return { out: cap.text(), err };

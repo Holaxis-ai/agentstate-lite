@@ -67,6 +67,8 @@ import {
   REANCHOR_NOTE,
   bundleKey,
   readCursor,
+  readHookHintedAt,
+  recordHookHinted,
   recordReanchor,
   recordSelfActors,
   refreshMarker,
@@ -75,6 +77,7 @@ import {
   writeCursor,
   type AwarenessDeltaRow,
 } from "../cursor.js";
+import { hookInstalled } from "./hook.js";
 import { migrateBoard } from "./sync-migrate.js";
 import { CliError, asHandled, classifyGitError, toExit } from "../errors.js";
 import { parseOrUsage } from "../args.js";
@@ -159,6 +162,8 @@ export interface SyncCliDeps {
   stderr: (s: string) => void;
   /** Raw byte writes for `--show-incoming --out -` (stdout stays a pure byte stream). */
   writeStdoutBytes: (data: Uint8Array) => void;
+  /** The installed-hook probe behind the one-time onboarding hint (default hook.ts's {@link hookInstalled}). */
+  hookInstalled: () => boolean;
 }
 
 /** AXI list-cap default: 20 rows unless `--limit` overrides it (0 = unlimited). */
@@ -472,6 +477,36 @@ function withProvisionAnnouncement(err: CliError, outcome: ProvisionOutcome): Cl
   const announcement = provisionAnnouncement(outcome);
   if (!announcement) return err;
   return new CliError(err.code, err.message, { details: { ...err.details, ...announcement }, help: err.help });
+}
+
+/**
+ * The onboarding last-mile hint (tasks/sync-opportunistic-pull): when NO managed SessionStart hook
+ * is installed anywhere (project or global scope), a successful sync's receipt hints `hook install`
+ * ONCE per clone. Once-ness mechanism: recorded on the per-clone sync state (cursor.ts's
+ * `hookHintedAt` — the same keyed store the cursor/cache ride), so the hint is honest (it names the
+ * ONE manual step left in the onboarding chain) and never nagging (a clone sees it exactly once;
+ * an already-installed hook suppresses it before it is ever shown, and installing later simply
+ * makes the probe true). Chosen surface: sync's SUCCESS receipts — sync is the setup verb (first
+ * contact provisions through it), and the receipt is read at exactly the moment onboarding
+ * completes; home renders every session and would nag. Best-effort throughout: any probe/state
+ * failure suppresses the hint, never the receipt.
+ */
+export async function hookInstallHintOnce(
+  key: string,
+  inv: string,
+  installed: () => boolean = hookInstalled,
+): Promise<string | undefined> {
+  try {
+    if (installed()) return undefined;
+    if ((await readHookHintedAt(key)) !== null) return undefined;
+    await recordHookHinted(key);
+    return (
+      `no SessionStart hook is installed — run \`${inv} hook install\` once and every new agent ` +
+      `session will start with the board pulled and rendered`
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 /** Map an `FfPullResult.swallowed` reason (U1's fail-soft vocabulary) to the capped CliError taxonomy. */
@@ -1107,11 +1142,16 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   // pushed, and no re-anchor to report — a genuinely idempotent re-run. Rider 2 still applies here:
   // a FRESH provision/repair with nothing else to report must not read as a silent no-op — the
   // announcement (when present) rides alongside the "already up to date" line, never replacing it.
+  // The onboarding last-mile hint rides BOTH success surfaces (the full receipt and "already up
+  // to date") — a founder's very first sync is often an empty one right after provisioning.
+  const hookHint = await hookInstallHintOnce(key, inv, deps.hookInstalled);
+
   if (committedCount === 0 && pulledCount === 0 && pushedCount === 0 && !reanchorNote) {
     const rec: Record<string, unknown> = {};
     const announcement = provisionAnnouncement(outcome);
     if (announcement) Object.assign(rec, announcement);
     rec.sync = "already up to date";
+    if (hookHint) rec.hint = hookHint;
     stdout(render(rec, mode));
     return;
   }
@@ -1131,6 +1171,7 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   // sync, against this codebase's own omit-when-empty convention (status.ts, home.ts) and AXI §7
   // (ruthlessly minimize).
   if (reanchorNote) receipt.note = reanchorNote;
+  if (hookHint) receipt.hint = hookHint;
   stdout(render(receipt, mode));
 }
 
