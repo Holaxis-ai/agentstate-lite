@@ -7,7 +7,8 @@
  */
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
-import { bootUiOverPagesBundle, CLI_DIST } from "./harness.js";
+import { rm } from "node:fs/promises";
+import { bootUiOverPagesBundle, bootUiServerInProcess, seedPagesBundle, CLI_DIST } from "./harness.js";
 
 const TASKS = [
   { id: "tasks/alpha", frontmatter: { type: "Task", title: "Alpha task", status: "todo" }, body: "" },
@@ -117,33 +118,41 @@ test("the sandboxed page cannot navigate its frame (or the top) to an external o
   }
 });
 
-test("P1: an SSE gap self-heals — a change made while the stream was down appears after reconnect (no permanent staleness)", async ({ page, context }) => {
-  const ui = await bootUiOverPagesBundle(TASKS);
+test("P1: an SSE outage self-heals — a change made while the stream was down appears after it returns (no permanent staleness)", async ({ page }) => {
+  // The REAL outage this guards: the ui server restarts (the stable-port design invites exactly
+  // this), the open tab's SSE stream dies, and a change lands while it is down — no frame will
+  // ever replay it. The in-process boot seam lets the restarted server keep the same port AND
+  // session secret, so the browser's cookie stays valid and recovery (reconnect -> resync ->
+  // full reload/re-query) can be observed end-to-end.
+  const dir = await seedPagesBundle(TASKS);
+  const secret = "e2e-sse-resilience-fixed-secret";
+  const first = await bootUiServerInProcess({ dir, sessionSecret: secret });
+  let second: Awaited<ReturnType<typeof bootUiServerInProcess>> | undefined;
   try {
-    await page.goto(ui.url);
+    await page.goto(`http://127.0.0.1:${first.port}/?token=${secret}`);
     await page.locator('[data-page-id="pages-registry/board"]').click();
     const frame = page.frameLocator("iframe.page-frame-iframe");
     await expect(frame.locator(".col", { hasText: "To do" }).locator(".card h3", { hasText: "Alpha task" })).toBeVisible();
 
-    // Sever the network: the SSE stream drops, and every frame the server emits from here on is
-    // gone for good (no replay buffer server-side).
-    await context.setOffline(true);
+    // The server goes away mid-session: the stream drops FOR REAL (socket severed).
+    await first.close();
     await page.waitForTimeout(500); // let the client notice the drop
 
-    // The change happens DURING the gap — its SSE frame is lost.
-    execFileSync(process.execPath, [CLI_DIST, "doc", "update", "tasks/alpha", "--status", "in_progress", "--dir", ui.dir], {
+    // The change happens DURING the outage — its SSE frame is lost for good.
+    execFileSync(process.execPath, [CLI_DIST, "doc", "update", "tasks/alpha", "--status", "in_progress", "--dir", dir], {
       stdio: "ignore",
     });
-    await page.waitForTimeout(1_000); // the watcher broadcasts into the void while we're offline
 
-    // Restore the network: the stream reconnects and the resync reloads the page — the missed
-    // change must now be visible even though its delta frame never arrived.
-    await context.setOffline(false);
+    // Same bundle, same port, same secret: the stream reconnects and the resync must recover the
+    // missed change even though its delta frame never arrived.
+    second = await bootUiServerInProcess({ dir, port: first.port, sessionSecret: secret });
     await expect(frame.locator(".col", { hasText: "In progress" }).locator(".card h3", { hasText: "Alpha task" })).toBeVisible({
       timeout: 20_000,
     });
   } finally {
-    await ui.cleanup();
+    await first.close().catch(() => {}); // already closed on the happy path
+    await second?.close();
+    await rm(dir, { recursive: true, force: true });
   }
 });
 

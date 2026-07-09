@@ -126,12 +126,11 @@ export async function bootUiOverDirBundle(seedTasks: SeedTask[]): Promise<Runnin
 }
 
 /**
- * Boot `ui --dir` over a fresh bundle seeded with the given Tasks AND the two seed pages
+ * Seed a fresh temp bundle with the given Tasks AND the two seed pages
  * (`examples/pages/{activity-feed,board}.html` blobs + their `type: Page` registry docs) — the
- * fixture for the pages-spike e2e (tasks/ui-pages-spike). Returns the running instance plus the
- * seeded dir and a cleanup.
+ * fixture for the pages-spike e2e (tasks/ui-pages-spike). Returns the bundle dir.
  */
-export async function bootUiOverPagesBundle(seedTasks: SeedTask[]): Promise<RunningUi & { dir: string; cleanup: () => Promise<void> }> {
+export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
   const { initBundle, writeDoc, writeBlob } = await import("@agentstate-lite/core");
   const { readFile } = await import("node:fs/promises");
   const examples = path.resolve(here, "../../../examples/pages");
@@ -171,6 +170,12 @@ export async function bootUiOverPagesBundle(seedTasks: SeedTask[]): Promise<Runn
   );
   await writeBlob({ root: dir }, "pages/activity-feed.html", await readFile(path.join(examples, "activity-feed.html")), "text/html; charset=utf-8");
   await writeBlob({ root: dir }, "pages/board.html", await readFile(path.join(examples, "board.html")), "text/html; charset=utf-8");
+  return dir;
+}
+
+/** Boot the real CLI's `ui --dir` over a freshly seeded pages bundle (see {@link seedPagesBundle}). */
+export async function bootUiOverPagesBundle(seedTasks: SeedTask[]): Promise<RunningUi & { dir: string; cleanup: () => Promise<void> }> {
+  const dir = await seedPagesBundle(seedTasks);
   const running = await bootUi(["--dir", dir]);
   return {
     ...running,
@@ -180,6 +185,40 @@ export async function bootUiOverPagesBundle(seedTasks: SeedTask[]): Promise<Runn
       await rm(dir, { recursive: true, force: true });
     },
   };
+}
+
+/** The slice of the CLI's `UiServerHandle` the resilience spec drives (local mirror — see the import note below). */
+export interface InProcessUiServer {
+  host: string;
+  port: number;
+  token: string;
+  close(): Promise<void>;
+}
+
+/**
+ * Boot the ui server IN-PROCESS (the same `bootUiServer` the CLI command wraps) with an INJECTED
+ * session secret and port — the test seam the server exports for exactly this. Only the
+ * SSE-resilience spec uses it: proving recovery across a server restart requires the restarted
+ * instance to honor the browser's existing cookie (same secret, same port), which the real CLI —
+ * correctly — makes impossible from the outside (the secret rotates every boot).
+ */
+export async function bootUiServerInProcess(opts: { dir: string; port?: number; sessionSecret: string }): Promise<InProcessUiServer> {
+  // Non-literal specifier ON PURPOSE: a literal would pull the CLI's node-typed sources into THIS
+  // package's DOM-flavored tsc program (typecheck breakage in a file this package doesn't own);
+  // Playwright's loader still resolves the .js -> .ts source at runtime.
+  const uiServerModule = "../../cli/src/ui/server.js";
+  const { bootUiServer } = (await import(uiServerModule)) as {
+    bootUiServer: (options: Record<string, unknown>) => Promise<InProcessUiServer>;
+  };
+  const { createRouter } = await import("@agentstate-lite/server");
+  const bundle = { root: opts.dir };
+  return bootUiServer({
+    mode: "dir",
+    port: opts.port ?? 0,
+    router: createRouter(bundle),
+    bundle,
+    sessionSecret: opts.sessionSecret,
+  });
 }
 
 /** Boot a local, keyless reference `serve()` instance, then `ui --remote <that url>` proxying it — proves conditional (absent) Bearer injection with zero cloud, per rev 3.2. */
