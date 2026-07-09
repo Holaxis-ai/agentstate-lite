@@ -210,13 +210,19 @@ bundle-relative**.
   changed, the run is a no-op — that convergence, not a paths filter or actor check, is what stops
   the bot's own commit from re-triggering an infinite loop. **A PR must NOT hand-bump either
   manifest or hand-rebuild the committed bundle** — parallel branches no longer collide on the next
-  version number, because they no longer touch it at all; the bot picks it up once, on merge.
-- **Branch from CURRENT `origin/main`, never from a previous PR's tip.** Generated files
-  (SKILL.md, the committed bundle) usually merge textually, but the drift gates only prove
-  generated-matches-generator — they CANNOT catch regenerated prose that a change made
-  semantically false, a missed version bump, or a README that now contradicts new behavior.
-  After any merge into a branch, re-read the regenerated prose near your change and check the
-  front-door docs (README quickstart) still tell the truth.
+  version number, because they no longer touch it at all; the bot picks it up once, on merge. The
+  bot's regen-and-diff only covers the two GENERATED artifacts (the skill-target SKILL.md, the
+  compiled bundle) — a hand-edit to NON-generated plugin content (the bash shim
+  `plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite`, or a manifest field
+  other than `version`) has nothing for the bot to regenerate against and will go unnoticed, so it
+  still needs a manual version bump in the SAME PR.
+- **Branch from CURRENT `origin/main`, never from a previous PR's tip.** The npm-target
+  `packages/cli/SKILL.md` (`check:skill`) is still generated from `reference.ts` and PR-verified, so
+  a branch cut from a stale tip can carry a stale version of it relative to current main. More
+  generally, regenerated prose can go semantically stale without any drift gate catching it — a
+  change can make a sentence FALSE without any generator noticing. After any merge into a branch,
+  re-read the regenerated prose near your change and check the front-door docs (README quickstart)
+  still tell the truth.
 - Commit cadence: one commit per reviewed unit of work, with a descriptive message; push to
   the public remote (github.com/Holaxis-ai/agentstate-lite) after each committed unit. The
   pre-public development history lives on the local `archive/pre-public` branch — NEVER push
