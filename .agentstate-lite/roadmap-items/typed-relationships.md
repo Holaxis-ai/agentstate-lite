@@ -5,20 +5,28 @@ title: >-
   ontology session
 status: active
 description: >-
-  The typed-links ladder from the work-management trial, converged with Brian's
-  architecture map 2026-07-07. Rungs (a) backlinks carry link text and (b) link
-  show --text filter + near-miss hint MERGED via PR #3 (f64090f). Rung (c) —
-  validated link types — is the open item, gated on the Mike/Brian ontology
-  session; the same design is the cloud's derived-graph edge model, and it
-  decides the cookbook question. NEW CONSTRAINT for that session (from the
-  graph-query review, 2026-07-07, see plans/graph-query-v0): OKF link text is
-  OVERLOADED — human display text on prose/citation links AND relationship
-  carrier on typed links; on the real board the deliberate vocabulary
-  (contains/supersedes/supports) is outnumbered ~6:1 by id-default and prose
-  texts. Text-as-carrier therefore REQUIRES a declared vocabulary to be viable:
-  a link is a typed edge iff its text matches a declared type; everything else
-  remains an untyped citation. Undeclared text-as-type is not a workable design.
-timestamp: '2026-07-08T22:57:58.387Z'
+  The typed-links ladder from the work-management trial, converged with Brian
+  architecture map 2026-07-07. SHIPPED: rungs (a) backlinks carry link text and
+  (b) link show --text (PR #3); the ratified carrier decision (a link is a typed
+  edge iff its text matches a kind-declared type —
+  decisions/typed-links-carrier); point-of-use teaching (per-kind help + receipt
+  hints, PR #6); graph lints (link-type conformance warn + expects_inbound
+  sweep, PR #7); one-step create+link (new --link, PR #23 pending). Rung (c) —
+  REQUIRED/validated links, i.e. enforcement — DEMOTED per Mike 2026-07-09:
+  parked, no longer gated on a scheduled ontology session. Rationale: all
+  realized value came from the reading/teaching rungs; the one field case of
+  demand was served by a required FIELD + documented procedure (its own verdict:
+  ergonomic gap, not structural); enforcement forces the canonical-vocabulary
+  governance question prematurely and violates warn-do-not-block. WAKE
+  CONDITION: a second real user blocked where the required-field workaround
+  genuinely cannot serve. Standing constraint for whenever it wakes (graph-query
+  review 2026-07-07): OKF link text is overloaded (display text vs relationship
+  carrier, ~6:1 prose on the real board) — declared vocabulary is the only
+  viable carrier; undeclared text-as-type is not workable. Minimal package if
+  built: outbound-only, at-least-one, dangling-satisfies,
+  warn-by-default/--strict, sweep-backed.
+actor: mike/claude
+timestamp: '2026-07-09T01:46:28.126Z'
 ---
 [contains](../tasks/typed-links-read-path.md)
 
