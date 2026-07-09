@@ -99,12 +99,12 @@ export function PageFrame({ pageId }: { pageId: string }) {
         <span className="page-frame-title">{title}</span>
       </div>
       {error ? (
-        <p className="board-status board-status-error">Could not open page: {error}</p>
+        <p className="view-status view-status-error">Could not open page: {error}</p>
       ) : src ? (
         // allow-scripts ONLY — no allow-same-origin: opaque origin, no data-API reach.
         <iframe ref={iframeRef} className="page-frame-iframe" sandbox="allow-scripts" src={src} title={title} />
       ) : (
-        <p className="board-status">Opening page…</p>
+        <p className="view-status">Opening page…</p>
       )}
     </div>
   );

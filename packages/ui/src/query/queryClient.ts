@@ -13,7 +13,7 @@ import { QueryCache, QueryClient } from "@tanstack/react-query";
 import { ApiError } from "../api/client.js";
 import { getInterceptorStatus, setInterceptorStatus } from "./interceptor.js";
 
-/** Board poll cadence. A local dev tool over a single machine's bundle — no need to be aggressive. */
+/** Launcher poll cadence (a fallback beneath the live SSE stream). A local dev tool over a single machine's bundle — no need to be aggressive. */
 export const POLL_INTERVAL_MS = 5_000;
 
 function onQueryError(err: unknown): void {

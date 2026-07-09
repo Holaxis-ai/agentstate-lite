@@ -1,15 +1,15 @@
 /**
  * App shell: mounts the ONE global interceptor gate (plans/ui-v1.md rev 3.2) in front of whichever
- * view the URL names. The pages-spike (tasks/ui-pages-spike) makes the LAUNCHER the landing: it
- * lists the bundle's `type: Page` docs and frames the chosen one in a sandboxed iframe. The paused
- * Board view stays routable (`?view=board`); doc/admin/graph remain phase-C stubs that fall back to
- * the launcher rather than crash a deep link.
+ * view the URL names. The pages-spike (tasks/ui-pages-spike) makes the LAUNCHER the SOLE surface:
+ * it lists the bundle's `type: Page` docs and frames the chosen one in a sandboxed iframe. The old
+ * paused React views (board/doc/admin/graph) were removed by human verdict — the launcher REPLACES
+ * them, not co-exists — so any non-`page` route falls back to the launcher. The banked plumbing
+ * (interceptor + relogin recovery, typed client, query layer) is kept and still ridden here.
  */
 import { useSyncExternalStore } from "react";
 import { getRoute, subscribeToRoute, navigate } from "./routing.js";
 import { useInterceptorStatus } from "./query/interceptor.js";
 import { ReloginScreen } from "./views/ReloginScreen.js";
-import { Board } from "./views/Board.js";
 import { Launcher } from "./views/Launcher.js";
 import { PageFrame } from "./views/PageFrame.js";
 
@@ -20,10 +20,7 @@ export function App() {
 
   if (interceptorStatus !== "ok") return <ReloginScreen kind={interceptorStatus} />;
 
-  let view;
-  if (route.view === "board") view = <Board />;
-  else if (route.view === "page" && route.id) view = <PageFrame pageId={route.id} />;
-  else view = <Launcher />;
+  const view = route.view === "page" && route.id ? <PageFrame pageId={route.id} /> : <Launcher />;
 
   return (
     <div className="app">

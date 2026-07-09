@@ -1,8 +1,8 @@
 /**
- * Launcher (tasks/ui-pages-spike): the pages-spike landing. Shows the bundle summary plus every
- * `type: Page` registry doc as a card (title, description, entry key, and provenance — actor +
- * timestamp), and a built-in card for the paused Board view (kept routable). Clicking a page card
- * routes to `?view=page&id=<registry doc id>`, which mounts a sandboxed {@link PageFrame}.
+ * Launcher (tasks/ui-pages-spike): the ui command's SOLE landing surface. Shows the bundle summary
+ * plus every `type: Page` registry doc as a card (title, description, entry key, and provenance —
+ * actor + timestamp). Clicking a page card routes to `?view=page&id=<registry doc id>`, which mounts
+ * a sandboxed {@link PageFrame}. (The old paused React board/doc/admin/graph views were removed.)
  *
  * Live: a doc change over SSE may add/remove/retitle a Page doc, so the page list refetches on any
  * doc change — the launcher reflects a freshly-promoted page without a manual reload.
@@ -52,20 +52,14 @@ export function Launcher() {
       </section>
 
       <section className="launcher-grid">
-        <button type="button" className="launcher-card launcher-card-builtin" onClick={() => navigate({ view: "board" })}>
-          <h3>Board (built-in)</h3>
-          <p className="launcher-card-desc">The kanban view — status columns over the bundle's Task docs.</p>
-          <p className="launcher-card-provenance">built-in view</p>
-        </button>
-
         {pages.map((page) => (
           <PageCard key={page.id} page={page} />
         ))}
       </section>
 
-      {pagesQuery.isPending && <p className="board-status">Loading pages…</p>}
+      {pagesQuery.isPending && <p className="view-status">Loading pages…</p>}
       {pagesQuery.isError && (
-        <p className="board-status board-status-error">Could not load pages: {(pagesQuery.error as Error).message}</p>
+        <p className="view-status view-status-error">Could not load pages: {(pagesQuery.error as Error).message}</p>
       )}
       {!pagesQuery.isPending && !pagesQuery.isError && pages.length === 0 && (
         <p className="launcher-empty">

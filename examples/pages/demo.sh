@@ -47,8 +47,8 @@ echo "1) Launch the UI (foreground; it prints a tokenized http://127.0.0.1:PORT 
 echo
 echo "   node $CLI ui --dir $BUNDLE --open"
 echo
-echo "   The landing is the LAUNCHER: click 'Activity feed' or 'Board' to open a page in a"
-echo "   sandboxed iframe. 'Board (built-in)' is the old React kanban, kept for comparison."
+echo "   The landing is the LAUNCHER (the ui command's one surface): click 'Activity feed' or"
+echo "   'Board' to open that page in a sandboxed iframe."
 echo
 echo "2) In a SECOND terminal, drive live updates against the SAME scratch bundle:"
 echo

@@ -26,7 +26,7 @@ describe("client", () => {
     expect((init.headers as Record<string, string>)["X-Requested-With"]).toBeUndefined(); // GET — no CSRF header required
   });
 
-  it("listHeadsPage supports a prefix filter instead of (or alongside) type — e.g. the board-shape module's conventions/ scan", async () => {
+  it("listHeadsPage supports a prefix filter instead of (or alongside) type — e.g. a page's conventions/ scan", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { count: 0, docs: [], next_cursor: null }));
     await listHeadsPage({ prefix: "conventions/", type: "Convention" });
     const [url] = fetchMock.mock.calls[0] as [string];
