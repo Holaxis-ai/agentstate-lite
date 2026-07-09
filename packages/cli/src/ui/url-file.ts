@@ -4,12 +4,13 @@
 // died on a restart re-opens the freshly-printed URL in one click instead of copy-pasting a
 // rotating token from the terminal.
 //
-// This does NOT persist the session SECRET: each run still mints a fresh, ephemeral secret (the
-// "nothing persisted beyond this process" property is intact). The file is a transient POINTER to
-// the current run's URL — overwritten on the next boot, and removed on a clean shutdown (only if it
-// still points at OUR url, so a newer instance's pointer is never clobbered). A stale file left by
-// a crash points at a dead/rotated URL, which simply 403s or refuses the connection — never a leak
-// of a reusable credential.
+// The file DOES hold a live credential while the run lasts: the recorded URL embeds the run's
+// session token (`?token=`), which is exactly why it rides the credentials-file discipline (0600,
+// dir 0700) instead of a plain cache path. Each run mints a fresh secret, so the persistence
+// window is the run itself: the file is overwritten on the next boot and removed on a clean
+// shutdown (only if it still points at OUR url, so a newer instance's pointer is never
+// clobbered). A stale file left by a crash points at a dead server whose token the next boot
+// rotates away — it 403s or refuses the connection; it is never a REUSABLE credential.
 import { readFile, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";

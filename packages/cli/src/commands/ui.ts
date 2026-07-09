@@ -26,7 +26,7 @@ import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 
-export const UI_USAGE = `agentstate-lite ui — boot the local web UI (board · doc detail · admin · graph)
+export const UI_USAGE = `agentstate-lite ui — boot the local web UI: a launcher for the bundle's pages (type: Page docs, framed sandboxed with live updates)
 
 Usage:
   agentstate-lite ui [--dir <path> | --remote <url>] [--port <n>] [--open]
@@ -43,7 +43,10 @@ Options:
 
 No --host flag in v1 — always binds 127.0.0.1 (loopback-only; a network-exposed key proxy is a
 separate, unreviewed feature). The printed URL carries a per-run session token; the first load
-exchanges it for an HttpOnly, SameSite=Strict cookie — nothing is persisted beyond this process.
+exchanges it for an HttpOnly, SameSite=Strict cookie. One thing IS persisted: the current run's
+tokenized URL is written to ~/.agentstate/ui-url (0600) for one-click re-entry — a live
+credential while this run lasts, removed on clean shutdown; after a crash the leftover token is
+dead (the server is gone, and the secret rotates next boot).
 `;
 
 /** Injectable seam so boot + shutdown wiring is unit-testable without real sockets/signals/spawns/home-dir writes. */
@@ -211,8 +214,11 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
 
   const url = `http://${handle.host}:${handle.port}/?token=${handle.token}`;
 
-  // Record this run's URL for one-click re-entry after a restart (0600 ~/.agentstate/ui-url). The
-  // per-run token still rotates — this is a transient pointer, not a persisted secret.
+  // Record this run's tokenized URL for one-click re-entry after a restart (~/.agentstate/ui-url).
+  // While this run lasts the file holds a LIVE credential — the URL embeds the session token —
+  // which is why it gets the credentials-file discipline (0600, dir 0700), is overwritten on the
+  // next boot, and is removed on clean shutdown. A crash leaves only a token the next boot's
+  // fresh secret makes dead.
   await writeUrlFile(url);
 
   stdout(
@@ -223,7 +229,7 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
         mode: options.mode,
         root: rootLabel,
         auth:
-          "per-run session SECRET, minted fresh each boot and never persisted; the first load exchanges the URL token for an HttpOnly, SameSite=Strict cookie. The current tokenized URL (not the secret) is written to ~/.agentstate/ui-url (0600) for one-click re-entry and cleared on clean shutdown — a crash leaves only a stale URL whose token is already dead (the secret rotates next boot)",
+          "per-run session SECRET, minted fresh each boot; the first load exchanges the URL token for an HttpOnly, SameSite=Strict cookie. The current TOKENIZED URL — a live credential while this run lasts, since it embeds the token — is written to ~/.agentstate/ui-url (0600) for one-click re-entry and cleared on clean shutdown; a crash leaves only a stale URL whose token dies with this process (the secret rotates next boot)",
         help: [
           `open ${url} in a browser`,
           ...(usedStablePort

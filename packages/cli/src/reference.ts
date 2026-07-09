@@ -157,7 +157,8 @@ export const COMMAND_GROUPS: CommandGroup[] = [
       },
       {
         usage: "ui [--dir <path> | --remote <url>] [--port <p>] [--open]",
-        summary: "Boot the local web UI (board / doc detail / admin / graph) — same origin, loopback-only",
+        summary:
+          "Boot the local web UI: a launcher for the bundle's pages (type: Page docs rendered in sandboxed iframes, with live updates) — same origin, loopback-only",
       },
       {
         // NOTE: `sync --migrate` (TEMPORARY, founders' one-time act — see commands/sync-migrate.ts)
