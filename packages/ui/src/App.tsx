@@ -12,6 +12,7 @@ import { useInterceptorStatus } from "./query/interceptor.js";
 import { ReloginScreen } from "./views/ReloginScreen.js";
 import { Launcher } from "./views/Launcher.js";
 import { PageFrame } from "./views/PageFrame.js";
+import { BrandMark } from "./BrandMark.js";
 
 export function App() {
   const interceptorStatus = useInterceptorStatus();
@@ -25,6 +26,7 @@ export function App() {
   return (
     <div className="app">
       <header className="app-header">
+        <BrandMark />
         <button type="button" className="app-title" onClick={() => navigate({ view: "launcher" })}>
           agentstate-lite
         </button>

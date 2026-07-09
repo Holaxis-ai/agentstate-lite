@@ -91,8 +91,8 @@ function PageCard({ page }: { page: PageEntry }) {
         <code>{page.entry}</code>
       </p>
       <p className="launcher-card-provenance">
-        {page.actor && <span>{page.actor}</span>}
-        {when && <span>{when}</span>}
+        {page.actor && <span className="launcher-card-actor">{page.actor}</span>}
+        {when && <span className="launcher-card-when">{when}</span>}
       </p>
     </button>
   );
