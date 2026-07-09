@@ -37,6 +37,7 @@ import {
   VersionConflict,
   type Bundle,
   type EdgeFilter,
+  type Link,
   type OkfDocument,
   type ValidationWarning,
   type Version,
@@ -592,6 +593,22 @@ async function linkList(argv: string[], stdout: (s: string) => void): Promise<vo
     }
   }
 
+  // --from/--to: trim each repeated value and reject a blank/empty selector with USAGE rather than
+  // silently matching nothing — an empty string can never be a valid id/prefix selector, so
+  // `--from ''` is almost certainly a mistake, not a deliberate "match nothing" request.
+  const fromValues = (values.from ?? []).map((v) => v.trim());
+  if (fromValues.some((v) => v === "")) {
+    throw new CliError("USAGE", "--from requires a non-empty id or prefix (got an empty/blank value)", {
+      help: `${cliInvocation()} link list --from <id|prefix/>`,
+    });
+  }
+  const toValues = (values.to ?? []).map((v) => v.trim());
+  if (toValues.some((v) => v === "")) {
+    throw new CliError("USAGE", "--to requires a non-empty id or prefix (got an empty/blank value)", {
+      help: `${cliInvocation()} link list --to <id|prefix/>`,
+    });
+  }
+
   // Row cap (AXI §9), mirroring `list`'s own default/semantics (this is a bundle-wide scan, the
   // same shape of question) rather than `link show`'s smaller per-concept default of 50.
   const DEFAULT_LIMIT = 100;
@@ -608,12 +625,23 @@ async function linkList(argv: string[], stdout: (s: string) => void): Promise<vo
 
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
 
-  const filter: EdgeFilter = {};
-  if (values.from && values.from.length > 0) filter.from = values.from;
-  if (values.to && values.to.length > 0) filter.to = values.to;
-  if (textFilter !== undefined) filter.text = textFilter;
+  // The scope filter carries ONLY --from/--to, never --text: this fetches the from/to-scoped edge
+  // set in exactly ONE queryEdges call (one round trip over --remote) regardless of whether --text
+  // is also given. --text is then applied as a local exact-match filter over that same
+  // already-fetched list — so a zero-match --text query costs ONE scan, not two (the near-miss
+  // hint below reuses these SAME scoped edges for its "texts present" list rather than re-scanning).
+  const scopeFilter: EdgeFilter = {};
+  if (fromValues.length > 0) scopeFilter.from = fromValues;
+  if (toValues.length > 0) scopeFilter.to = toValues;
 
-  const edges = await queryEdges(bundle, filter);
+  let scopedEdges: Link[];
+  try {
+    scopedEdges = await queryEdges(bundle, scopeFilter);
+  } catch (err) {
+    throw classifyBundleError(err, values.remote);
+  }
+
+  const edges = textFilter !== undefined ? scopedEdges.filter((e) => e.text === textFilter) : scopedEdges;
   const rows = edges.map((e) => ({ from: e.from, to: e.to, text: e.text }));
   const total = rows.length;
   const shownRows = limit > 0 ? rows.slice(0, limit) : rows;
@@ -628,15 +656,10 @@ async function linkList(argv: string[], stdout: (s: string) => void): Promise<vo
       `showing ${shownRows.length} of ${total} — run \`${cliInvocation()} link list --limit 0\` (or a higher --limit) for all`,
     );
   }
-  // Zero-match with --text: name the distinct texts present among edges matching the SAME
-  // --from/--to scope (unfiltered by --text) — the same near-miss hint `link show` gives,
-  // scoped to whichever from/to selectors this call also applied.
+  // Zero-match with --text: name the distinct texts present among the SAME --from/--to-scoped
+  // edges already fetched above (no second scan) — the same near-miss hint `link show` gives.
   if (textFilter !== undefined && total === 0) {
-    const unfilteredScope: EdgeFilter = {};
-    if (filter.from !== undefined) unfilteredScope.from = filter.from;
-    if (filter.to !== undefined) unfilteredScope.to = filter.to;
-    const scoped = await queryEdges(bundle, unfilteredScope);
-    const textsPresent = [...new Set(scoped.map((e) => e.text))].sort((a, b) => a.localeCompare(b));
+    const textsPresent = [...new Set(scopedEdges.map((e) => e.text))].sort((a, b) => a.localeCompare(b));
     help.push(nearMissTextHint(textFilter, textsPresent, ""));
   }
   if (help.length > 0) out.help = help;

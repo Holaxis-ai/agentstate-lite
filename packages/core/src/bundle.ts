@@ -468,14 +468,20 @@ export async function queryEdges(bundle: Bundle, filter: EdgeFilter = {}): Promi
  *
  * `queryEdges` treats a trailing `/` as a PREFIX selector — that capability belongs to
  * `queryEdges`/the CLI's `link list`, never to `backlinks`, which is a per-concept "cited
- * by" lookup and must stay EXACT-match only (its pre-generalization contract; `link
- * show`, `status`'s backlink-count lints, and every other caller depend on this). A
- * trailing slash on `target` is therefore stripped before delegating, so
- * `backlinks(bundle, "tasks/")` still means the single concept `tasks` — never a prefix
- * scan over everything under it.
+ * by" lookup and must stay EXACT-match on the LITERAL `target` ALWAYS (its
+ * pre-generalization contract; `link show`, `status`'s backlink-count lints, and every
+ * other caller depend on this). A valid concept id never ends in `/`, so a trailing-slash
+ * `target` can never legitimately name a real concept — `backlinks(bundle, "tasks/")`
+ * must be `[]` byte-identically, REGARDLESS of whether a doc literally named `tasks`
+ * happens to exist. (An earlier fix here stripped the trailing slash and delegated
+ * `{ to: "tasks" }` into `queryEdges` — which is wrong: it ALIASES `"tasks/"` to the
+ * bare id `"tasks"`, so a bundle with a `tasks` doc would report ITS backlinks under
+ * the `"tasks/"` query, when main never did. Short-circuiting instead — never handing a
+ * trailing-slash target to `queryEdges` at all — avoids that alias entirely.)
  */
 export async function backlinks(bundle: Bundle, target: ConceptId): Promise<Link[]> {
-  return queryEdges(bundle, { to: target.replace(/\/+$/, "") });
+  if (target.endsWith("/")) return [];
+  return queryEdges(bundle, { to: target });
 }
 
 // ── blobs: opaque bytes + a content-type (Stage-1 Unit 2a Part A) ──────────────

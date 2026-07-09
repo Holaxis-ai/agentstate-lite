@@ -188,6 +188,54 @@ test("backlinks(bundle, 'tasks/') (a trailing slash) does NOT leak queryEdges' p
   });
 });
 
+// ── review finding: the FIRST fix here (strip the trailing slash, then delegate `{ to: "tasks" }`
+// into queryEdges) was itself wrong — it ALIASES "tasks/" to the bare id "tasks", so on a bundle
+// that ALSO has a doc literally named `tasks`, backlinks("tasks/") would wrongly return `tasks`'s
+// own backlinks (main returns [] regardless). The prior test above never caught this because its
+// fixture had no doc literally named `tasks`. This fixture adds one, with its own incoming edge,
+// disjoint from the tasks/* family — proving `backlinks`/`queryEdges({to:...})` treat "tasks" and
+// "tasks/" as two entirely different, non-aliasing selectors.
+async function seedFixtureWithBareTasksDoc(bundle: Bundle): Promise<void> {
+  await seedFixture(bundle); // tasks/a, tasks/b, roadmap-items/x (see seedFixture's own edge map)
+  await writeDoc(bundle, {
+    id: "tasks",
+    frontmatter: { type: "Task", title: "Tasks (bare)", timestamp: T },
+    body: "",
+  });
+  await writeDoc(bundle, {
+    id: "citer-of-bare-tasks",
+    frontmatter: { type: "T", title: "Citer", timestamp: T },
+    body: "[the tasks doc itself](tasks.md)",
+  });
+}
+
+test("backlinks('tasks/') stays [] even when a doc literally named 'tasks' exists and has real incoming edges — no alias from the stripped-slash form to the bare id", async () => {
+  await withBundle(async (bundle) => {
+    await seedFixtureWithBareTasksDoc(bundle);
+
+    // (a) The trailing-slash form must stay [] — NOT tasks's own backlinks.
+    const trailingSlash = await backlinks(bundle, "tasks/");
+    assert.deepEqual(trailingSlash, [], "'tasks/' must never alias to the bare 'tasks' doc's backlinks");
+
+    // (b) The bare exact id DOES return its real backlinks — the exact-match path is unaffected.
+    const bare = await backlinks(bundle, "tasks");
+    assert.deepEqual(bare.map((l) => ({ from: l.from, text: l.text })), [
+      { from: "citer-of-bare-tasks", text: "the tasks doc itself" },
+    ]);
+
+    // (c) queryEdges({ to: "tasks/" }) (the CLI's `link list --to tasks/`) still prefix-matches the
+    // tasks/* family — and, being a strict string-prefix rule (one rule, no glob), does NOT also
+    // sweep in the bare 'tasks' doc's edge (which has no '/' to match against). Prefix and exact
+    // selectors stay cleanly disjoint: adding a 'tasks' doc perturbs neither.
+    const prefixQuery = await queryEdges(bundle, { to: "tasks/" });
+    assert.equal(prefixQuery.length, 4, "the tasks/* prefix family is unaffected by the bare 'tasks' doc");
+    assert.ok(
+      prefixQuery.every((e) => e.to !== "tasks"),
+      "a strict 'tasks/' prefix must not also match the bare id 'tasks'",
+    );
+  });
+});
+
 test("queryEdges selector input normalization: a trailing '.md' and a leading './' both resolve to the same exact id as the bare id", async () => {
   await withBundle(async (bundle) => {
     await seedFixture(bundle);

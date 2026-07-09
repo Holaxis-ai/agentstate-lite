@@ -514,6 +514,50 @@ test("the prefix rule is confined to `link list` and never leaks into `link show
   }
 });
 
+// review finding (round 2): the FIRST fix ("strip the trailing slash, then delegate the bare id")
+// was itself wrong — it ALIASES 'tasks/' to the bare id 'tasks', so a bundle that ALSO has a doc
+// literally named `tasks` would wrongly report ITS backlinks under `link show tasks/` (main
+// returns [] regardless of whether such a doc exists). The test above never caught this because
+// its fixture had no doc literally named `tasks`. This fixture adds one, with its own real
+// incoming edge, disjoint from the tasks/* family.
+test("link show tasks/ stays backlink_count 0 even when a doc literally named 'tasks' exists with real incoming edges (no alias); link show tasks returns THOSE backlinks; link list --to tasks/ still prefix-matches the tasks/* family only", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-list-test-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, { id: "tasks", frontmatter: { type: "Task", title: "Tasks (bare)", timestamp: OLD_TS }, body: "" });
+    await writeDoc(bundle, { id: "tasks/a", frontmatter: { type: "Task", title: "A", timestamp: OLD_TS }, body: "" });
+    await writeDoc(bundle, {
+      id: "citer-of-bare-tasks",
+      frontmatter: { type: "T", title: "Citer", timestamp: OLD_TS },
+      body: "[the tasks doc itself](tasks.md)",
+    });
+    await writeDoc(bundle, {
+      id: "citer-of-tasks-a",
+      frontmatter: { type: "T", title: "Citer A", timestamp: OLD_TS },
+      body: "[a task](tasks/a.md)",
+    });
+
+    // (a) The trailing-slash form must NOT return the bare 'tasks' doc's real backlinks.
+    const shownSlash = await linkShow(dir, ["tasks/"]);
+    assert.equal(shownSlash.backlink_count, 0, "'tasks/' must never alias to the bare 'tasks' doc's backlinks");
+    assert.deepEqual(shownSlash.backlinks, []);
+
+    // (b) The bare exact id DOES return its real backlinks — proving the exact-match path itself
+    // is unaffected by the trailing-slash guard.
+    const shownBare = await linkShow(dir, ["tasks"]);
+    assert.equal(shownBare.backlink_count, 1);
+    assert.deepEqual(shownBare.backlinks, [{ from: "citer-of-bare-tasks", text: "the tasks doc itself" }]);
+
+    // (c) `link list --to tasks/` still prefix-matches the tasks/* family — and, being a strict
+    // string-prefix rule, does NOT also sweep in the bare 'tasks' doc's edge.
+    const listed = await linkList(dir, ["--to", "tasks/"]);
+    assert.equal(listed.count, 1);
+    assert.deepEqual(listed.edges, [{ from: "citer-of-tasks-a", to: "tasks/a", text: "a task" }]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("link list --to <id>: exact match only, not a prefix", async () => {
   const { dir, cleanup } = await makeEdgeFixtureBundle();
   try {
@@ -650,6 +694,85 @@ test("link list --text '' (empty/blank value): USAGE error, exit 2", async () =>
     );
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("link list --from '' (empty/blank value): USAGE error, exit 2 — never silently matches nothing", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-list-test-"));
+  try {
+    await initBundle(dir);
+    await assert.rejects(
+      () => link(["list", "--from", "  ", "--dir", dir, "--json"], { stdout: () => {} }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("link list --to '' (empty/blank value): USAGE error, exit 2 — never silently matches nothing", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-list-test-"));
+  try {
+    await initBundle(dir);
+    await assert.rejects(
+      () => link(["list", "--to", "", "--dir", dir, "--json"], { stdout: () => {} }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("link list --from/--to: whitespace is trimmed off a real value (not just detected as blank)", async () => {
+  const { dir, cleanup } = await makeEdgeFixtureBundle();
+  try {
+    const result = await linkList(dir, ["--to", "  tasks/a  "]);
+    assert.equal(result.count, 1);
+    assert.deepEqual(result.edges, [{ from: "roadmap-items/x", to: "tasks/a", text: "contains" }]);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link list --text zero-match over --remote: exactly ONE round trip (2 HTTP requests: list + read-many), not two round trips (4) — the near-miss hint reuses the already-fetched scoped edges rather than re-scanning", async () => {
+  const { dir, cleanup } = await makeEdgeFixtureBundle();
+  try {
+    const handle: ServerHandle = await serve({ bundle: { root: dir }, port: 0 });
+    const url = `http://${handle.host}:${handle.port}`;
+    // `globalThis.fetch` is what the CLI's --remote transport (bundle.ts's `wrapTransportErrors`)
+    // calls at request time — a plain mutable global, unlike a frozen ESM namespace export, so
+    // wrapping it for the duration of one test (and restoring it in `finally`) is safe here.
+    const originalFetch = globalThis.fetch;
+    let requestCount = 0;
+    globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+      requestCount++;
+      return originalFetch(...args);
+    }) as typeof fetch;
+    try {
+      let out = "";
+      await link(["list", "--text", "no-such-text", "--remote", url, "--json"], { stdout: (s) => (out += s) });
+      const result = JSON.parse(out) as Record<string, unknown>;
+      assert.equal(result.count, 0);
+      assert.ok((result.help as string[])?.some((h) => /no links matched --text 'no-such-text'/.test(h)));
+    } finally {
+      globalThis.fetch = originalFetch;
+      await handle.close();
+    }
+    // ONE queryEdges call == ONE query()/readMany round trip == 2 HTTP requests (GET the doc-id
+    // list, then POST the batch read). The pre-fix double-scan would show 4.
+    assert.equal(requestCount, 2, "a zero-match --text query must cost exactly one round trip, not two");
+  } finally {
+    await cleanup();
   }
 });
 

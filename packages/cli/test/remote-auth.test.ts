@@ -39,6 +39,7 @@ import { createRouter } from "@agentstate-lite/server";
 
 import { list } from "../src/commands/list.js";
 import { doc } from "../src/commands/doc.js";
+import { link } from "../src/commands/link.js";
 import { toExit } from "../src/errors.js";
 import { API_KEY_ENV_VAR } from "../src/bundle.js";
 import { saveApiKeyForOrigin } from "../src/credentials.js";
@@ -199,6 +200,24 @@ test("--remote against a gated handler, via a command WITH its own catch-all (do
       const { exitCode, envelope } = await exitOf(() => doc(["read", "concepts/alpha", "--remote", REMOTE_URL, "--json"], {}));
       assert.equal(exitCode, 4);
       assert.equal(envelope.error.code, "AUTH_REQUIRED");
+    }),
+  );
+});
+
+test("--remote against a gated handler, via `link list` (graph-query-v0's queryEdges scan): wrong API key lands on AUTH_REQUIRED/exit 4, AND the help names the REAL remote origin, not the generic '<url>' placeholder a command with no local catch-all would fall back to (P2c)", async () => {
+  const router = await freshRouter();
+  await withApiKeyEnv("totally-wrong-key", () =>
+    withGatedFetch(gate(router, CORRECT_KEY), async () => {
+      const { exitCode, envelope } = await exitOf(() => link(["list", "--remote", REMOTE_URL, "--json"], {}));
+      assert.equal(exitCode, 4);
+      assert.equal(envelope.error.code, "AUTH_REQUIRED");
+      assert.match(envelope.error.help ?? "", /login --remote/);
+      assert.match(
+        envelope.error.help ?? "",
+        new RegExp(REMOTE_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+        `help must name the real remote origin (${REMOTE_URL}), not fall back to a generic '<url>' placeholder`,
+      );
+      assert.ok(!(envelope.error.help ?? "").includes("<url>"), "help must not contain the unresolved '<url>' placeholder");
     }),
   );
 });
