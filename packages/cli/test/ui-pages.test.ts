@@ -443,6 +443,48 @@ test("P1: deleting a page's registry doc revokes its LIVE nonce — page bytes s
   }
 });
 
+test("P1: retargeting a page's registry doc revokes its OLD nonce — the old key is no longer any Page's entry", async () => {
+  const { origin, dir, cleanup } = await bootPagesServer();
+  try {
+    const mint = await fetch(`${origin}/__page/mint`, {
+      method: "POST",
+      headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+      body: JSON.stringify({ key: "pages/test.html" }),
+    });
+    assert.equal(mint.status, 200);
+    const { url: oldUrl } = (await mint.json()) as { url: string };
+
+    // The old nonce serves while its key is still the registry doc's entry...
+    assert.equal((await fetch(`${origin}${oldUrl}`)).status, 200);
+
+    // ...retarget the SAME registry doc to a DIFFERENT blob (mirrors a `doc update` that changes
+    // `entry`, not a delete) — the mechanism is identical to the delete-revocation path above
+    // (`registeredPageEntries` re-derives the live set at SERVE time), so this closes the
+    // coverage gap between "doc removed" and "doc's entry moved out from under a live nonce".
+    const bundle: Bundle = { root: dir };
+    await writeBlob(bundle, "pages/test2.html", Buffer.from("<!doctype html><title>t2</title><p>hi again</p>"), "text/html; charset=utf-8");
+    await writeDoc(bundle, { id: "pages-registry/test", frontmatter: { type: "Page", title: "Test", entry: "pages/test2.html" }, body: "" });
+
+    // The OLD nonce now 403s — its key is no longer any Page's entry — even though it's still
+    // inside its TTL and the registry doc it was minted from still exists (just retargeted, not
+    // deleted).
+    const revoked = await fetch(`${origin}${oldUrl}`);
+    assert.equal(revoked.status, 403);
+
+    // The new entry key mints and serves fine — retargeting isn't a one-way break.
+    const remint = await fetch(`${origin}/__page/mint`, {
+      method: "POST",
+      headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+      body: JSON.stringify({ key: "pages/test2.html" }),
+    });
+    assert.equal(remint.status, 200);
+    const { url: newUrl } = (await remint.json()) as { url: string };
+    assert.equal((await fetch(`${origin}${newUrl}`)).status, 200);
+  } finally {
+    await cleanup();
+  }
+});
+
 test("P1: shell assets AND page bytes both send Referrer-Policy: no-referrer (the tokenized shell URL must never ride a referrer)", async () => {
   const { origin, cleanup } = await bootPagesServer();
   try {
