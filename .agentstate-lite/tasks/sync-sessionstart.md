@@ -3,15 +3,94 @@ type: Task
 title: >-
   U4 SessionStart: single in-process pull-then-render hook + home cache +
   backstop
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  U4. One in-process pull-then-render SessionStart subcommand (time-boxed,
-  guaranteed fall-through) plus home cache render and the both-count backstop.
-  Deps: sync-command-core.
-actor: brian-claude
+  SHIPPED (fc52d1c, branch feat/sync-sessionstart, pending review+QA+merge). ONE
+  SessionStart subcommand `session-start` (adjudication E): time-boxed
+  best-effort pull (provision-if-needed loud per rider 2 -> fetch -> ff-only
+  merge origin/board -> cache+cursor+marker writes) THEN the home render
+  IN-PROCESS. Budget: 7s total / 5s ssh connect / under the 10s hook timeout —
+  enforced by per-op spawnSync kills sliced from the remaining budget
+  (empirically verified to unblock even with a hanging remote-helper grandchild
+  holding the pipes) plus a command-layer race as the belt; a pull that loses
+  the box is ABANDONED (killed), the render shows last-known cache + the pinned
+  offline note, the NEXT session's pull refreshes (deviation from one plan
+  reading: the losing pull does not keep running in background — in-process
+  ruling won). DESIGN DECISIONS: (1) subcommand name session-start, registered
+  in reference.ts Session group + KNOWN_COMMANDS; (2) SELF identity =
+  operational — cursor.ts gains a per-clone selfActors section recorded by
+  sync's commit step from the docs it commits ('unknown' never recorded:
+  filtering it would hide teammates' unattributed work); (3) hook-outdated
+  detection = managed-hook command lacking 'session-start' across project+global
+  scopes, surfaced as a self-clearing home hook_update note (the U6-inherited
+  re-run prompt); (4) hook install is now hand-rolled over the SDK's exported
+  pure updaters because installSessionStartHooks cannot express a subcommand and
+  its OpenCode plugin spawns argv-less — our OpenCode plugin source is
+  args-aware and SDK-managed-marker compatible; (5) backstop counts are computed
+  LIVE (local git) by home's board probe with cache fallback, so they stay
+  honest when the network pull failed; (6) first contact is PROBE-GATED
+  (origin/board or local board ref — marker NOT consulted: per-clone keying
+  means a fresh clone has none, and deriving its key needs the same git calls
+  anyway), and the init hint is suppressed next to ANY board block. INHERITED
+  CLOSED: marker refresh added to sync's flow (item 5, test-pinned);
+  provisioning run renders announcement + doc count (item 6). RELIED ON: PR#19's
+  provisionAnnouncement (path-only, not persisted) is passed in-process from the
+  pull step to the render — never through the cache. home.ts offline-guarantee
+  tests untouched+green; board probe spawns LOCAL-ONLY git (documented in home's
+  header). Tests 229 cli (28 new) all green; npm run check green; two-founder
+  loop verified end-to-end on the BUILT artifact (fresh-clone provision receipt,
+  up-to-date, attributed delta, offline note, hook install shape). Plugin
+  1.0.22->1.0.23 both manifests. CAVEATS: (a) session-start --dir names the
+  PROJECT dir (sync semantics) and bridges to home's bundle-root --dir by
+  pointing the dashboard at the pulled board (documented in session-start.ts);
+  (b) 'board: up to date' renders for a cache-driven clean state on plain home
+  too (label honesty adjudication applied to the since-line only); (c)
+  local-state swallow reasons (diverged/dirty/conflict) render 'board pull
+  skipped (<reason>) — run sync to reconcile', not the offline note — builder
+  wording; (d) reviewer should hand-check the resolveBundleKey call path for
+  realpath (harness realpaths its roots — advisory (b)); resolveBundleKey
+  realpaths internally, callers pass repo-top-derived paths. REVIEW ROUND
+  (APPROVE + 3 polish fixes, applied on top): CLAUDE.md gate-1 hook bullet
+  updated to the hand-rolled truth; as_of now keyed on an explicit
+  pull.refreshed flag (a local-state-swallowed pull no longer reads as fresh —
+  test-pinned pure + diverged e2e); the --dir bridge falls back to home's
+  DISCOVERY walk when no board resolved (a boardless project with a committed
+  .agentstate-lite no longer gets an init hint — test-pinned on this repo's
+  shape). KNOWN NOTES: (a) home's board probe's local git spawns inherit the 30s
+  LOCAL_TIMEOUT per op — realistic-case instant, but a pathological FS stall
+  could blow the 10s hook window (worst-case unbudgeted by design; the budget
+  slicing covers the network ops only); (b) hermeticity: tests that run
+  home/session-start with DEFAULT deps read the real user HOME for the
+  hook-freshness probe (this suite injects hookNeedsUpdate/swaps HOME; ad-hoc
+  default-deps runs on a dev machine may see the hook_update nag). FIX ROUND
+  (PR#24 Codex review, MEDIUM, empirically verified): a budget slice that
+  decayed to 0 flowed into spawnSync{timeout: 0}, which Node treats as NO
+  timeout — an unpreemptable hang past the hook window. Mechanism: the provision
+  call site had NO budget guard at all, and the ffPull site's guard had a
+  check-to-use gap (readCursor + currentHead run between the guard and the
+  remaining() evaluation of the fetch slice; remaining() clamps at 0, making
+  exactly 0 the reachable poison value). Fixed at BOTH layers: (1) runGitBytes
+  chokepoint — timeoutMs <= 0 classifies as an immediate fired timeout
+  (TRANSIENT) without spawning, closing the class for every caller; (2)
+  session-start guards EVERY network boundary (new entry guard before provision;
+  MIN_USEFUL_BUDGET_MS exported and documented). ADJUDICATED CONTRACT (reviewer
+  suggestion 3): LOCAL ops are deliberately NOT budget-sliced —
+  rev-parse/status/symbolic-ref, the ff-only merge of already-fetched objects,
+  and state reads ride LOCAL_TIMEOUT (30s) unbudgeted; realistic latency is ms,
+  and slicing would turn slow-but-succeeding local ops into spurious failures.
+  Accepted residual: a pathological FS stall can exceed the 10s hook window,
+  where the hook harness kills the render (session unharmed). Stated in
+  session-start.ts's module header (BUDGET FLOOR + LOCAL-OP CONTRACT). Pinned:
+  runGitBytes floor unit test (timeoutMs 0 and -5 -> immediate TRANSIENT, git
+  init observably never ran); scripted-clock e2e forcing the slice to exactly 0
+  AT the ffPull boundary against a hanging remote helper (offline outcome,
+  boardPath present proving the decay hit the fetch boundary, marker refreshed,
+  cursor untouched, wall <5s vs the 60s hang without the floor);
+  zero-budget-at-entry render pin.
+actor: builder-u4
 assignee: brian-claude
-timestamp: '2026-07-08T23:17:10.244Z'
+timestamp: '2026-07-09T15:36:35.520Z'
 ---
 # U4 — SessionStart integration
 

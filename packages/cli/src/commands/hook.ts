@@ -1,47 +1,55 @@
-// `agentstate-lite hook install|status|uninstall` — manage the SessionStart home-view hook.
+// `agentstate-lite hook install|status|uninstall` — manage the SessionStart board-aware hook.
 //
-// The hook makes the zero-arg home view (identity + auth + command reference) load as ambient context
-// at the start of every agent session, so an agent orients before its first action (AXI §7).
+// Since sync-verb §U4 the installed hook runs `<bin> session-start` — ONE subcommand doing a
+// time-boxed best-effort board pull and THEN rendering the home view (identity + auth + bundle
+// dashboard + board awareness) as ambient context, so an agent orients — with its teammates'
+// board changes already pulled — before its first action (AXI §7; adjudication E: a single
+// unconditional hook command, never two entries or a compound shell string).
 //
 // MULTI-RUNTIME (AXI §7 "default app targets"): install writes a real SessionStart hook for ALL of
 //   • Claude Code   → <base>/.claude/settings.json           (SessionStart command hook)
 //   • Codex         → <base>/.codex/hooks.json + config.toml  (SessionStart hook + [features].hooks)
 //   • OpenCode      → <base>/.config/opencode/plugins/axi-agentstate-lite.js  (ambient-context plugin)
-// via axi-sdk-js `installSessionStartHooks`, which also computes the PORTABLE hook command (the bare
-// bin name when on PATH, else the absolute executable path — never a phantom).
+//
+// The portable COMMAND BASE (bare bin name when on PATH, else the absolute executable — never a
+// phantom) comes from invocation.ts's `hookCommand()`, which mirrors the axi-sdk-js
+// `resolvePortableHookCommand` semantics. The JSON/TOML edits reuse the SDK's exported pure
+// updaters (`computeSessionStartHookUpdate` / `computeCodexConfigUpdate`); the OpenCode plugin
+// source is OURS (the SDK's generated plugin spawns its command with NO argv, so it cannot express
+// `<bin> session-start`) but carries the SDK-compatible managed-marker line, so status/uninstall —
+// and any SDK-side tooling matching that marker — keep working unchanged.
 //
 // SCOPE: `--scope project` (default) targets the current repo (base = cwd); `--scope global` targets
-// the user home (base = ~). The SDK builds runtime paths under the given base; project-scope OpenCode
-// lands under `<cwd>/.config/opencode/plugins/` (see STATUS for that one caveat).
-//
-// install leverages the SDK (which owns the OpenCode plugin source); uninstall/status are hand-rolled
-// (the SDK exports neither) and match the SDK's own marker rule so the three stay in agreement.
+// the user home (base = ~); project-scope OpenCode lands under `<cwd>/.config/opencode/plugins/`.
 import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import { parseArgs } from "node:util";
 import {
-  installSessionStartHooks,
+  computeCodexConfigUpdate,
+  computeSessionStartHookUpdate,
   type HookSettings,
   type HookEntry,
 } from "axi-sdk-js";
-import { cliInvocation, hookCommand, collapseHomeDirectory, BIN_NAMES } from "../invocation.js";
+import { cliInvocation, hookCommand, collapseHomeDirectory } from "../invocation.js";
 import { render, resolveMode } from "../output.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 
 /** The marker the SDK/CLI match managed SessionStart hooks by (substring of the hook command). */
-export const HOOK_USAGE = `agentstate-lite hook — manage the SessionStart home-view hook
+export const HOOK_USAGE = `agentstate-lite hook — manage the SessionStart board-aware hook
 
 Usage:
   agentstate-lite hook install   [--scope project|global]
   agentstate-lite hook status    [--scope project|global]
   agentstate-lite hook uninstall [--scope project|global]
 
-Installs (or removes) a SessionStart hook that runs the home view as ambient context at the start of
-every agent session — for Claude Code, Codex, AND OpenCode. Idempotent: re-installing the same hook
-is a no-op; uninstalling an absent hook is a no-op.
+Installs (or removes) a SessionStart hook that runs \`session-start\` — a time-boxed best-effort
+board pull, then the home view — as ambient context at the start of every agent session, for
+Claude Code, Codex, AND OpenCode. Idempotent: re-installing the same hook is a no-op; uninstalling
+an absent hook is a no-op. Re-run install after upgrading from a pre-session-start version: the
+old hook rendered the home view without pulling the board first.
 
 Options:
   --scope project   Write to the CURRENT project (default): .claude/, .codex/, .config/opencode/
@@ -51,13 +59,24 @@ Options:
 `;
 
 export const HOOK_MARKER = "agentstate-lite";
-/** SessionStart hook timeout, in seconds (matches the SDK default). */
+/** SessionStart hook timeout, in seconds (matches the SDK default; session-start budgets under it). */
 export const HOOK_TIMEOUT_SECONDS = 10;
-/** The dist entrypoint whose presence in the exec path authorizes an auto-install (see the SDK policy). */
-const DIST_ENTRYPOINT = "dist/agentstate-lite.mjs";
-/** The OpenCode plugin filename the SDK writes for this marker, and its managed-file marker. */
+/** The subcommand the installed hook runs (sync-verb §U4's pull-then-render command). */
+export const HOOK_SUBCOMMAND = "session-start";
+/** The OpenCode plugin filename (SDK naming convention for this marker) and its managed-file marker. */
 const OPENCODE_PLUGIN_FILENAME = "axi-agentstate-lite.js";
 const OPENCODE_MANAGED_MARKER = `axi-sdk-js managed opencode plugin: ${HOOK_MARKER}`;
+
+/**
+ * The full hook command: `<portable-base> session-start`. A base containing whitespace (an
+ * absolute executable path with a space) is double-quoted for the shell-string targets — the
+ * OpenCode plugin spawns the base UNQUOTED as an argv[0] with `["session-start"]` args, so it
+ * never needs the quoting.
+ */
+export function sessionStartHookCommand(base: string = hookCommand()): string {
+  const quoted = /\s/.test(base) ? JSON.stringify(base) : base;
+  return `${quoted} ${HOOK_SUBCOMMAND}`;
+}
 
 function isManagedHook(hook: HookEntry | undefined): boolean {
   return typeof hook?.command === "string" && hook.command.includes(HOOK_MARKER);
@@ -166,6 +185,124 @@ function opencodePluginInstalled(path: string): boolean {
   }
 }
 
+/**
+ * The OpenCode ambient-context plugin source — OURS, not the SDK's generated one (the SDK plugin
+ * spawns its command with an EMPTY argv, so it cannot run `<bin> session-start`). Functionally a
+ * fork of the SDK's plugin with an args array; line 1 is the SDK-compatible managed-marker
+ * verbatim, so `hook status`/`hook uninstall` (and the SDK's own marker rule) treat it as the same
+ * managed file.
+ */
+export function buildOpenCodePluginSource(base: string, timeoutSeconds: number = HOOK_TIMEOUT_SECONDS): string {
+  return `// ${OPENCODE_MANAGED_MARKER}
+// Generated by \`agentstate-lite hook install\` (axi-sdk-js managed-marker compatible). It is safe
+// to edit only if you remove the managed marker above.
+import { spawn } from "node:child_process";
+
+const command = ${JSON.stringify(base)};
+const commandArgs = [${JSON.stringify(HOOK_SUBCOMMAND)}];
+const marker = ${JSON.stringify(HOOK_MARKER)};
+const ambientHeader = ${JSON.stringify(`## AXI ambient context: ${HOOK_MARKER}`)};
+const timeoutMs = ${JSON.stringify(timeoutSeconds * 1000)};
+
+function runAxiSessionStart(cwd) {
+  return new Promise((resolve) => {
+    const child = spawn(command, commandArgs, {
+      cwd: directoryOrFallback(cwd),
+      env: process.env,
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGTERM");
+      resolve("error: " + marker + " ambient context timed out after " + timeoutMs + "ms");
+    }, timeoutMs);
+
+    child.stdout?.setEncoding("utf-8");
+    child.stderr?.setEncoding("utf-8");
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve("error: " + marker + " ambient context failed: " + error.message);
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve(stdout.trim());
+        return;
+      }
+      const message = (stderr || stdout || marker + " exited with code " + code).trim();
+      resolve("error: " + marker + " ambient context failed: " + message);
+    });
+  });
+}
+
+function directoryOrFallback(directory) {
+  return typeof directory === "string" && directory.length > 0
+    ? directory
+    : process.cwd();
+}
+
+export const AxiAgentstateLiteAmbientContextPlugin = async ({ directory }) => {
+  const sessionCache = new Map();
+
+  return {
+    "experimental.chat.system.transform": async (input, output) => {
+      const sessionID = input.sessionID ?? "__global__";
+      let homeView = sessionCache.get(sessionID);
+      if (homeView === undefined) {
+        homeView = await runAxiSessionStart(directory);
+        sessionCache.set(sessionID, homeView);
+      }
+
+      if (homeView.length === 0) return;
+      output.system.push(ambientHeader + "\\n" + homeView);
+    },
+  };
+};
+`;
+}
+
+/**
+ * U6-inherited re-install prompt signal (consumed by the home render): TRUE when a MANAGED
+ * SessionStart hook is installed at any of the given scope bases (default: the cwd project scope
+ * and the user-home global scope) whose command predates {@link HOOK_SUBCOMMAND} — i.e. the
+ * pre-U4 home-only hook. Fs-only reads, tolerant of anything malformed; self-clearing (a re-run
+ * `hook install` rewrites the command and this goes quiet).
+ */
+export function hookNeedsUpdate(bases: string[] = [process.cwd(), homedir()]): boolean {
+  for (const base of bases) {
+    const targets = targetsFor(base);
+    for (const p of [targets.claudeSettings, targets.codexHooks]) {
+      const s = readHookStatus(readSettings(p));
+      if (s.installed && s.command !== undefined && !s.command.includes(HOOK_SUBCOMMAND)) return true;
+    }
+    if (opencodePluginInstalled(targets.opencodePlugin)) {
+      try {
+        if (!readFileSync(targets.opencodePlugin, "utf8").includes(HOOK_SUBCOMMAND)) return true;
+      } catch {
+        /* unreadable plugin file — no claim either way */
+      }
+    }
+  }
+  return false;
+}
+
 /** Injectable seam: scope base + stdout, defaulting to production. */
 export interface HookDeps {
   /** Override the scope base directory (for tests). Default: ~ (global) or cwd (project). */
@@ -234,7 +371,7 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
             claude_code: claude.installed,
             codex: codex.installed,
             opencode,
-            command: claude.command ? collapseHomeDirectory(claude.command) : hookCommand(),
+            command: claude.command ? collapseHomeDirectory(claude.command) : sessionStartHookCommand(),
             targets: {
               claude_code: collapseHomeDirectory(targets.claudeSettings),
               codex: collapseHomeDirectory(targets.codexHooks),
@@ -250,22 +387,55 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
 
   if (sub === "install") {
     const errors: string[] = [];
-    // The SDK owns the OpenCode plugin source + the portable-command resolution + the Codex
-    // config.toml [features].hooks flag; we force-install (explicit user intent) at the scope base.
-    installSessionStartHooks({
-      marker: HOOK_MARKER,
-      binaryNames: [...BIN_NAMES],
-      distEntrypoints: [DIST_ENTRYPOINT],
-      homeDir: base,
-      timeoutSeconds: HOOK_TIMEOUT_SECONDS,
-      shouldInstall: () => true,
-      onError: (m) => errors.push(m),
-    });
+    const commandBase = hookCommand();
+    const command = sessionStartHookCommand(commandBase);
+    // Claude Code settings.json + Codex hooks.json: the SDK's exported pure updater, with OUR
+    // `<bin> session-start` command (the SDK's own installer computes an argv-less command
+    // internally, which cannot express a subcommand — see the module header).
+    for (const target of [targets.claudeSettings, targets.codexHooks]) {
+      try {
+        const [updated, changed] = computeSessionStartHookUpdate(readSettings(target), {
+          marker: HOOK_MARKER,
+          command,
+          timeoutSeconds: HOOK_TIMEOUT_SECONDS,
+        });
+        if (changed) writeSettings(target, updated);
+      } catch (err) {
+        errors.push(`${target}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    // Codex [features].hooks flag (config.toml) — same SDK updater the old installer used.
+    const codexConfigPath = join(base, ".codex", "config.toml");
+    try {
+      const current = existsSync(codexConfigPath) ? readFileSync(codexConfigPath, "utf8") : "";
+      const [updated, changed] = computeCodexConfigUpdate(current);
+      if (changed) {
+        mkdirSync(dirname(codexConfigPath), { recursive: true });
+        writeFileSync(codexConfigPath, updated);
+      }
+    } catch (err) {
+      errors.push(`${codexConfigPath}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    // OpenCode ambient-context plugin — our args-aware source, SDK-marker compatible.
+    try {
+      mkdirSync(dirname(targets.opencodePlugin), { recursive: true });
+      const next = buildOpenCodePluginSource(commandBase);
+      const current = existsSync(targets.opencodePlugin)
+        ? readFileSync(targets.opencodePlugin, "utf8")
+        : undefined;
+      if (current !== undefined && !current.includes(OPENCODE_MANAGED_MARKER)) {
+        errors.push(`${targets.opencodePlugin}: refusing to overwrite unmanaged OpenCode plugin`);
+      } else if (current !== next) {
+        writeFileSync(targets.opencodePlugin, next);
+      }
+    } catch (err) {
+      errors.push(`${targets.opencodePlugin}: ${err instanceof Error ? err.message : String(err)}`);
+    }
     const out: Record<string, unknown> = {
       action: "install",
       scope,
       installed: true,
-      command: hookCommand(),
+      command,
       targets: {
         claude_code: collapseHomeDirectory(targets.claudeSettings),
         codex: collapseHomeDirectory(targets.codexHooks),

@@ -54,8 +54,10 @@ Watch-points that are easy to regress here:
 - **Mutations are idempotent.** Re-writing a doc or re-adding an existing link must be a
   no-op that exits 0 (`link add` returns `changed:false` when the link already exists).
 - **The SessionStart hook targets Claude Code, Codex, AND OpenCode.** `hook install` writes a
-  REAL SessionStart hook to all three (via axi-sdk-js `installSessionStartHooks`) with a portable
-  command (the bare bin name when on PATH, else the absolute executable) — no phantom `dist/axi`.
+  REAL `<bin> session-start` hook to all three — hand-rolled over axi-sdk-js's exported pure
+  updaters (the SDK installer can't express argv; our args-aware OpenCode plugin stays
+  SDK-marker compatible) — with a portable command base (bare bin name when on PATH, else the
+  absolute executable) — no phantom `dist/axi`.
 
 ### 2. OKF-conformance for bundles
 
@@ -286,9 +288,14 @@ the bundle):
   conflict resolution (teammate's version kept, yours exported to a file; reconcile via
   `doc update`, exit 5), `--show-incoming <id>` viewer, `--pull-only`, cursor + awareness
   cache (`cli/src/git.ts`, `cursor.ts`, `commands/sync.ts` — command layer only; core never
-  learns git exists). NOT yet shipped: the SessionStart pull-then-render hook (U4) and
-  `sync --migrate` (U5, Mike-gated) — THIS repo's own board still lives on main, so the
-  bundle-commit convention above still applies here.
+  learns git exists), and the SessionStart integration (U4): `session-start` — ONE hook
+  subcommand doing a time-boxed (≤7s) best-effort pull then the home render in-process, with
+  the board-awareness block ("since this machine last synced" attributed per actor,
+  self-authored rows filtered, unpushed/uncommitted backstop, probe-gated "run sync — never
+  init" first contact), wired by `hook install` across Claude Code/Codex/OpenCode
+  (`commands/session-start.ts`, `commands/home.ts`'s board block, `commands/hook.ts`).
+  NOT yet shipped: `sync --migrate` (U5, Mike-gated) — THIS repo's own board still lives on
+  main, so the bundle-commit convention above still applies here.
 
 Standing gates on future work:
 

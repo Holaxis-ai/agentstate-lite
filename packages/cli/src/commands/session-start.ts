@@ -1,0 +1,307 @@
+// `agentstate-lite session-start` — the SessionStart hook payload (sync-verb plan §U4).
+//
+// ONE subcommand, pull-then-render IN-PROCESS (adjudication E, the architect's ruling — never two
+// hook entries, never a compound shell string):
+//
+//   1. a TIME-BOXED, best-effort board pull ({@link sessionStartPull}): provision the board
+//      worktree if needed (loud, per the board-branch-sync rider-2 announcements) → fetch →
+//      ff-only merge `origin/board` → write the awareness cache + advance the cursor + refresh
+//      the board-pending marker;
+//   2. THEN the home render, in-process, fs-only — home's own offline guarantee untouched.
+//
+// TIME BOX (plan §U4: pull budget ≤ 7s total, connect ≤ 5s, under the 10s hook timeout). The
+// enforcement is layered:
+//   • every network-touching git op gets `timeoutMs` = the REMAINING budget (spawnSync's kill is
+//     the hard stop — a hung fetch dies inside the budget, whatever the transport is doing), and
+//     ssh ConnectTimeout is lowered to 5s so a black-holed ssh host fails faster still;
+//   • the command layer ADDITIONALLY races the whole pull step against the budget
+//     ({@link sessionStart}), so even a misbehaving injected/async pull can never delay the
+//     render — the GUARANTEED fall-through. (The default pull runs synchronous git and is bounded
+//     by the per-op kills; the race is the belt to that suspenders.)
+// A pull that loses its time box is ABANDONED (its in-flight git op is killed); this run renders
+// the last-known cache with the pinned offline note, and the NEXT session's pull refreshes it.
+//
+// BUDGET FLOOR + LOCAL-OP CONTRACT (PR#24 review fix round — a stated contract, not an accident):
+//   • Every NETWORK boundary (the provision fetch, ffPull's fetch) is double-protected: a
+//     {@link MIN_USEFUL_BUDGET_MS} guard immediately before the op takes the offline path when
+//     the budget is effectively spent, AND git.ts's runGitBytes chokepoint treats a non-positive
+//     `timeoutMs` as an IMMEDIATE fired timeout without spawning — because Node's spawnSync
+//     treats `timeout: 0` as NO timeout, a slice that decays to 0 in the guard-to-spawn gap
+//     (local ops run between the check and the spawn) would otherwise hang unpreemptably.
+//   • LOCAL ops are deliberately NOT budget-sliced: rev-parse/status/symbolic-ref, the ff-only
+//     merge of already-fetched objects, and state-file reads ride git.ts's LOCAL_TIMEOUT (30s)
+//     unbudgeted. Realistic latency is milliseconds; slicing them would turn a slow-but-
+//     succeeding local op into a spurious failure. The accepted residual: a pathological
+//     filesystem stall can exceed the 10s hook window, in which case the hook harness kills the
+//     render (the session is unharmed). Recorded on tasks/sync-sessionstart.
+//
+// FAIL-SOFT MATRIX: every failure — no repo, no board, provisioning refusal, offline fetch, auth,
+// a held lock, a missing git binary, a thrown anything — is swallowed into the render. This
+// command NEVER exits nonzero for board reasons and the render ALWAYS appears (test-pinned).
+// Network-unreachable classes render the pinned "board sync offline — showing last known state"
+// note; local-state classes (diverged, dirty, conflict…) render an honest pointer at `sync`,
+// which reports the full story with real exit codes.
+//
+// STATE DISCIPLINE (test-pinned): the CURSOR advances only on a SUCCESSFUL pull; the MARKER is
+// refreshed by every pull step that confirmed a provisioned board; the cache is written only on a
+// successful pull (mirroring sync's step 5 — the render's backstop counts are computed LIVE by
+// home's board probe, so they stay honest even when the network pull failed).
+import { parseArgs } from "node:util";
+
+import {
+  changesSince,
+  ffPull,
+  provisionBoardWorktree,
+  unpushedCount,
+  type ProvisionOutcome,
+} from "../git.js";
+import {
+  readCursor,
+  recordReanchor,
+  refreshMarker,
+  writeCache,
+  writeCursor,
+} from "../cursor.js";
+import {
+  countUncommitted,
+  currentHead,
+  provisionAnnouncement,
+  resolveBundleKey,
+  retargetBoardInterior,
+  toDeltaRows,
+} from "./sync.js";
+import { defaultSummarizeBundle, discoverSummarizeBundle, home, type BoardPullOutcome } from "./home.js";
+import { cliInvocation } from "../invocation.js";
+import { parseOrUsage } from "../args.js";
+
+/** Pull budget: ≤ 7s total (plan §U4), under hook.ts's 10s HOOK_TIMEOUT_SECONDS. */
+export const SESSION_START_PULL_BUDGET_MS = 7_000;
+/** ssh connect budget: ≤ 5s (plan §U4). */
+export const SESSION_START_CONNECT_TIMEOUT_SECONDS = 5;
+/**
+ * The explicit budget floor: below this remaining budget, EVERY network boundary (the provision
+ * fetch and ffPull's fetch — both guarded) takes the offline path outright instead of spawning
+ * with a decayed slice. See the module header's BUDGET FLOOR contract; the runGitBytes
+ * non-positive-timeout floor closes the residual guard-to-spawn decay race.
+ */
+export const MIN_USEFUL_BUDGET_MS = 250;
+
+export const SESSION_START_USAGE = `agentstate-lite session-start — the SessionStart hook payload (pull the board, then render home)
+
+Usage:
+  agentstate-lite session-start [--dir <path>] [--json]
+
+Runs a time-boxed, best-effort pull of this repo's shared board (provisioning the checkout from
+origin/board on a fresh clone — announced, never silent), then renders the home view with the
+board-awareness block: what changed since this machine last synced, attributed per teammate, plus
+the unpushed/uncommitted backstop. Every pull failure — offline, auth, a busy repo, a lost time
+box — falls through to the render (exit 0): you always get the last known state, honestly labeled.
+
+This is the command \`hook install\` wires as the SessionStart hook for Claude Code, Codex, and
+OpenCode. Run it directly to see exactly what a new session will see.
+
+Options:
+  --dir <path>   Directory to run from (default: the cwd)
+  --json         Emit compact JSON instead of TOON
+  -h, --help     Show this help
+`;
+
+/** `ffPull` swallow reasons that mean "could not reach/verify the remote" → the offline note. */
+const OFFLINE_REASONS = new Set(["network", "auth", "busy", "git-missing"]);
+
+/** Injectable seam for the fall-through tests. */
+export interface SessionStartDeps {
+  stdout: (s: string) => void;
+  /** The pull step. Default: {@link sessionStartPull}. */
+  pull: (dir: string | undefined, budgetMs: number) => Promise<BoardPullOutcome | undefined>;
+  /** Pull budget override (tests shrink it). Default {@link SESSION_START_PULL_BUDGET_MS}. */
+  budgetMs: number;
+}
+
+/**
+ * The pull step: provision → ff-pull → state writes, all inside `budgetMs`. Returns the
+ * {@link BoardPullOutcome} the render consumes, or `undefined` when there is no board in play
+ * (no repo / no board anywhere / provisioning refused — home's own probe-gated first-contact
+ * logic covers those renders). NEVER throws.
+ */
+export async function sessionStartPull(
+  dir: string | undefined,
+  budgetMs: number = SESSION_START_PULL_BUDGET_MS,
+  now: () => number = Date.now,
+): Promise<BoardPullOutcome | undefined> {
+  const deadline = now() + budgetMs;
+  const remaining = () => Math.max(0, deadline - now());
+  try {
+    const startDir = retargetBoardInterior(dir ?? process.cwd());
+
+    // Budget guard at the FIRST network boundary (PR#24 fix round): retargetBoardInterior above
+    // already spent local-git time, and a tiny/zero injected budget can be spent at entry — never
+    // hand a decayed slice to the provision fetch. (The residual guard-to-spawn decay race is
+    // closed at the runGitBytes floor — see the module header.)
+    if (remaining() < MIN_USEFUL_BUDGET_MS) return { offline: true };
+
+    // Provision if needed (self-healing first contact — sync's own step 1, detection-gated inside
+    // provisionBoardWorktree: it probes origin/board and only then materializes the worktree).
+    let outcome: ProvisionOutcome;
+    try {
+      outcome = provisionBoardWorktree(startDir, {
+        fetchTimeoutMs: remaining(),
+        connectTimeoutSeconds: SESSION_START_CONNECT_TIMEOUT_SECONDS,
+      });
+    } catch {
+      // Provisioning refused (a stray non-board directory, unrepairable pointers, …): the render's
+      // probe-gated first-contact line points at `sync`, which reports the full refusal guidance
+      // with real exit codes — this hook stays calm and renders.
+      return undefined;
+    }
+    if (outcome.kind === "no_repo" || outcome.kind === "no_board") return undefined;
+    const boardPath = outcome.boardPath;
+    const announcement = provisionAnnouncement(outcome);
+
+    const key = resolveBundleKey(boardPath);
+    // Marker refresh: EVERY pull step that confirmed a provisioned board (plan §U2), regardless of
+    // how the network half goes below.
+    await refreshMarker(key);
+
+    if (remaining() < MIN_USEFUL_BUDGET_MS) {
+      return { offline: true, boardPath, ...(announcement ? { announcement } : {}) };
+    }
+
+    const storedCursor = await readCursor(key);
+    const startHead = currentHead(boardPath);
+    const ff = ffPull(boardPath, {
+      fetchTimeoutMs: remaining(),
+      connectTimeoutSeconds: SESSION_START_CONNECT_TIMEOUT_SECONDS,
+    });
+    if (ff.swallowed) {
+      // No cursor advance, no cache write (the pull did not succeed — "cursor advanced only on a
+      // successful pull"). Offline-class reasons get the pinned note; local-state classes get an
+      // honest pointer at the interactive verb.
+      if (OFFLINE_REASONS.has(ff.swallowed)) {
+        return { offline: true, boardPath, ...(announcement ? { announcement } : {}) };
+      }
+      return {
+        offline: false,
+        boardPath,
+        ...(announcement ? { announcement } : {}),
+        notes: [`board pull skipped (${ff.swallowed}) — run \`${cliInvocation()} sync\` to reconcile`],
+      };
+    }
+
+    // Successful pull: mirror sync's step 5 — cursor-based delta (self-inclusive; the render
+    // filters self-authored rows), cursor advanced to the post-pull HEAD, cache refreshed.
+    const cursorToken =
+      storedCursor && storedCursor.tier === "git" && typeof storedCursor.token === "string"
+        ? storedCursor.token
+        : undefined;
+    const postPullHead = currentHead(boardPath);
+    const delta = changesSince(boardPath, cursorToken ?? startHead);
+    if (delta.ok) {
+      await writeCursor(key, { tier: "git", token: postPullHead });
+      await writeCache(key, {
+        updatedAt: new Date().toISOString(),
+        delta: toDeltaRows(delta.changes),
+        unpushedCount: unpushedCount(boardPath) ?? 0,
+        uncommittedCount: countUncommitted(boardPath),
+      });
+    } else {
+      // Dangling cursor (history rewritten) — U2's honest re-anchor: empty delta + note, never a
+      // silent skip, never fatal. (It writes a cache too, so `refreshed` below stays true.)
+      await recordReanchor(
+        key,
+        { tier: "git", token: postPullHead },
+        { unpushedCount: unpushedCount(boardPath) ?? 0, uncommittedCount: countUncommitted(boardPath) },
+      );
+    }
+    // The ONE outcome that rewrote the cache — the render may skip its as_of freshness label.
+    return { offline: false, refreshed: true, boardPath, ...(announcement ? { announcement } : {}) };
+  } catch {
+    // The last defense of the fail-soft matrix: an unexpected throw means this run could not
+    // verify the board's currency — render the last-known state with the offline note. (The note
+    // only ever renders next to a REAL provisioned board: home's probe returning null/unprovisioned
+    // ignores the pull outcome's offline flag.)
+    return { offline: true };
+  }
+}
+
+/**
+ * CLI entry: time-boxed pull, then the home render IN-PROCESS — the render appears no matter what
+ * the pull did (fall-through is test-pinned). Exit 0 in every board state; only a usage error
+ * (unknown flag) exits nonzero, matching every other command's argv contract.
+ */
+export async function sessionStart(argv: string[], deps: Partial<SessionStartDeps> = {}): Promise<void> {
+  const stdout = deps.stdout ?? ((s: string) => void process.stdout.write(s));
+
+  const { values } = parseOrUsage(
+    () =>
+      parseArgs({
+        args: argv,
+        options: {
+          dir: { type: "string" },
+          json: { type: "boolean" },
+          help: { type: "boolean", short: "h" },
+        },
+        allowPositionals: true,
+      }),
+    "session-start",
+  );
+  if (values.help) {
+    stdout(SESSION_START_USAGE);
+    return;
+  }
+
+  const budgetMs = deps.budgetMs ?? SESSION_START_PULL_BUDGET_MS;
+  const pull = deps.pull ?? sessionStartPull;
+
+  // The belt to the pull step's internal per-op suspenders: race the WHOLE pull against the
+  // budget, so even a pull that hangs in ways the per-op kills can't see (an injected async dep,
+  // an unforeseen await) never delays the render. A losing pull keeps running detached within
+  // this process (harmless: its state writes are atomic and next session reads them) — its
+  // rejection is swallowed so it can never surface later.
+  let timer: NodeJS.Timeout | undefined;
+  let outcome: BoardPullOutcome | undefined;
+  try {
+    const raced = await Promise.race<BoardPullOutcome | undefined | "timeout">([
+      Promise.resolve()
+        .then(() => pull(values.dir, budgetMs))
+        .catch((): BoardPullOutcome => ({ offline: true })),
+      new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), budgetMs);
+      }),
+    ]);
+    outcome = raced === "timeout" ? { offline: true } : raced;
+  } catch {
+    outcome = { offline: true };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+
+  // GUARANTEED fall-through: the home render, in-process. home itself never throws and never
+  // touches the network — the whole render is fs + local-git, stale-instant by construction.
+  //
+  // `--dir` SEMANTICS BRIDGE: this verb's `--dir` names the PROJECT directory to run from (sync's
+  // semantics); home's `--dir` names a literal BUNDLE root. Forwarding a project path verbatim
+  // would make home's dashboard miss the project's bundle and dangle a wrong `init` hint next to
+  // it. So with an explicit --dir the dashboard's summarizer is redirected: board resolved →
+  // summarize the BOARD bundle itself; no board (a boardless project with a committed
+  // `.agentstate-lite/`, this repo's own pre-migration shape) → home's normal DISCOVERY walk,
+  // started from the given dir instead of the cwd. A bare (cwd) invocation — the installed
+  // hook's shape — keeps home's byte-identical conventional discovery.
+  const homeArgv: string[] = [];
+  if (values.dir !== undefined) homeArgv.push("--dir", values.dir);
+  if (values.json) homeArgv.push("--json");
+  const boardPath = outcome?.boardPath;
+  const projectDir = values.dir;
+  await home(homeArgv, {
+    stdout,
+    boardPull: outcome,
+    ...(projectDir !== undefined
+      ? {
+          summarizeBundle: () =>
+            boardPath !== undefined
+              ? defaultSummarizeBundle(boardPath)
+              : discoverSummarizeBundle(projectDir),
+        }
+      : {}),
+  });
+}

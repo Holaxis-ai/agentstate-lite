@@ -20,6 +20,19 @@
 // `home()` wraps the call in its OWN try/catch too, so even an injected/misbehaving dep can never
 // fail a session.
 //
+// BOARD AWARENESS (sync-verb §U4): home additionally renders a `board` block — the moment-(e)
+// strings ("since this machine last synced", per-doc human lines, the unpushed/uncommitted
+// backstop, `board: up to date`) — read from the per-clone awareness CACHE (`cursor.ts`) that
+// sync/session-start's pull steps write. The OFFLINE GUARANTEE is preserved: the default board
+// loader spawns git for LOCAL-ONLY plumbing (rev-parse/status against the checkout on disk —
+// never fetch/pull/push, no network I/O of any kind), reuses sync.ts's exported
+// `resolveBundleKey` (THE one state-key derivation — cache-per-clone review advisory (a)), and is
+// double-guarded like the summarizer: any throw (git missing, no repo, unreadable state) degrades
+// to "no board block", never a failed session. The live "did a pull just happen / fail" signal is
+// NEVER probed here — `session-start` (the pull-then-render hook command) passes its own pull
+// outcome IN-PROCESS via `HomeDeps.boardPull`; a plain `home` render labels the cache with
+// `as_of` instead of guessing at network state.
+//
 // PROJECT-BINDING PEEK (item 43 follow-on — `bundle.ts`'s `resolveProjectBinding`): home does NOT
 // call `resolveRemoteFlag` (see `bundle.ts`'s header — home is a THIRD deliberate exception,
 // alongside `init`/`serve`), so a committed `.agentstate.json` naming a remote URL can never make
@@ -35,10 +48,23 @@ import { loadCredentials, type Credentials } from "../credentials.js";
 import { cliInvocation, binPath, collapseHomeDirectory } from "../invocation.js";
 import { DESCRIPTION, commandReference, compactCommandReference } from "../reference.js";
 import { render } from "../output.js";
-import { openBundle, resolveProjectBinding } from "../bundle.js";
+import { findBundleRoot, openBundle, resolveProjectBinding } from "../bundle.js";
 import { normalizeServer } from "../config.js";
 import { queryHeads, type OkfDocument } from "@agentstate-lite/core";
 import { parseArgs } from "node:util";
+import path from "node:path";
+import {
+  BOARD_BRANCH,
+  BOARD_REF,
+  BUNDLE_DIR,
+  isProvisioned,
+  repoTopLevel,
+  runGit,
+  unpushedCount,
+} from "../git.js";
+import { countUncommitted, resolveBundleKey, retargetBoardInterior } from "./sync.js";
+import { readSyncState, type AwarenessCache, type AwarenessDeltaRow } from "../cursor.js";
+import { hookNeedsUpdate } from "./hook.js";
 
 /** A dashboard row in the minimal list schema (AXI §2) — reuses `list.ts`'s exact projection. */
 export interface HomeRow {
@@ -99,6 +125,21 @@ export interface HomeDeps {
    * instead of doing real FS I/O.
    */
   summarizeBundle: () => Promise<BundleSummary | UnreadableBundle | null>;
+  /**
+   * The board-awareness probe (sync-verb §U4) — LOCAL git + the per-clone state file, never a
+   * network op. Defaults to {@link defaultLoadBoardStatus}; tests inject a fake.
+   */
+  loadBoardStatus: (dir?: string) => Promise<BoardStatus | null>;
+  /**
+   * The in-process pull outcome from `session-start` (the pull-then-render hook command). Plain
+   * `home` leaves it undefined — home itself NEVER pulls.
+   */
+  boardPull?: BoardPullOutcome;
+  /**
+   * True when an installed managed SessionStart hook predates `session-start` (the U6-inherited
+   * re-install prompt's signal). Defaults to hook.ts's {@link hookNeedsUpdate} (fs-only reads).
+   */
+  hookNeedsUpdate: () => boolean;
 }
 
 /** A doc's `title` with the SAME fallback `list.ts` uses (frontmatter `title`, else the id's tail). */
@@ -180,6 +221,221 @@ export async function defaultSummarizeBundle(dir?: string): Promise<BundleSummar
 }
 
 /**
+ * `defaultSummarizeBundle` with DISCOVERY semantics: walk up from `startDir` for the nearest
+ * bundle root (a level's own `index.md`, else its conventional `.agentstate-lite/index.md` —
+ * bundle.ts's one walk) and summarize THAT. session-start's `--dir` bridge uses this when no
+ * board resolved: its `--dir` names a PROJECT directory, so treating it as a literal bundle root
+ * (what an explicit `--dir` means to `openBundle`) would miss a committed conventional bundle
+ * sitting right under it and dangle a wrong `init` hint next to a real bundle.
+ */
+export async function discoverSummarizeBundle(
+  startDir: string,
+): Promise<BundleSummary | UnreadableBundle | null> {
+  try {
+    const root = await findBundleRoot(path.resolve(startDir));
+    return root ? defaultSummarizeBundle(root) : null;
+  } catch {
+    return null;
+  }
+}
+
+// ── board awareness (sync-verb §U4) ───────────────────────────────────────────
+
+/**
+ * The IN-PROCESS pull outcome `session-start` hands the render (never persisted — the honest
+ * "did THIS run reach the remote" signal only the process that just pulled can give).
+ */
+export interface BoardPullOutcome {
+  /**
+   * True when this run could NOT confirm the board's currency: the fetch failed (offline, auth,
+   * a held lock), the pull lost its time box, or the pull step threw. Renders the pinned
+   * {@link BOARD_OFFLINE_NOTE}.
+   */
+  offline: boolean;
+  /**
+   * True ONLY when this run's pull SUCCEEDED and rewrote the awareness cache (including the
+   * re-anchor path — that writes a cache too). This is the explicit signal that lets the render
+   * skip the `as_of` freshness label; every other outcome — offline, a local-state swallow
+   * (diverged/dirty), a lost time box — leaves the cache as it was, so the label must attach.
+   */
+  refreshed?: boolean;
+  /** Rider-2 provisioning announcements when THIS run provisioned/repaired the checkout. */
+  announcement?: Record<string, string>;
+  /** Additional honest condition lines (e.g. a non-network pull skip pointing at `sync`). */
+  notes?: string[];
+  /**
+   * The provisioned board checkout the pull step resolved (absolute). session-start uses it to
+   * point an explicit `--dir <project>` invocation's bundle dashboard at the board bundle (home's
+   * own `--dir` names a literal bundle root, not a project directory — different verb, different
+   * flag semantics).
+   */
+  boardPath?: string;
+}
+
+/** What the fs+local-git board probe found for the render (see {@link defaultLoadBoardStatus}). */
+export type BoardStatus =
+  /** A board exists for this repo (local `board` branch or `origin/board`) but is NOT checked out. */
+  | { state: "unprovisioned" }
+  | {
+      state: "provisioned";
+      /** The last pull step's awareness cache (null: never pulled from this clone). */
+      cache: AwarenessCache | null;
+      /** Actors this clone's own syncs committed — filtered from the human count (cursor.ts). */
+      selfActors: string[];
+      /** LIVE local backstop counts (git plumbing against the checkout — network-free). */
+      unpushed: number | null;
+      uncommitted: number | null;
+    };
+
+/** Pinned moment-(e) strings (research/sync-verb-ux-review (e); machine-honest per adjudication). */
+export const BOARD_UP_TO_DATE = "up to date";
+export const BOARD_OFFLINE_NOTE = "board sync offline — showing last known state";
+/** Cap on the rendered per-doc human lines (the since-line header carries the full count). */
+export const BOARD_CHANGES_SHOWN_LIMIT = 10;
+
+/** The probe-gated first-contact line — NEVER "run init" (the divergent-second-bundle footgun). */
+export function boardFirstContactLine(inv: string): string {
+  return `not yet provisioned — run \`${inv} sync\` to set it up`;
+}
+
+/** The hook-reinstall prompt (U6-inherited): the installed hook predates `session-start`. */
+export function hookUpdateNote(inv: string): string {
+  return `the installed SessionStart hook predates \`session-start\` — re-run \`${inv} hook install\` to pick up the board-aware hook`;
+}
+
+/**
+ * The actor phrase, built from the ACTUAL actors of the visible rows (cursor-honesty adjudication:
+ * never assume one teammate) — unique, first-appearance order: "mike", "mike and sara",
+ * "mike, sara and jo".
+ */
+export function actorPhrase(rows: Array<Pick<AwarenessDeltaRow, "actor">>): string {
+  const actors: string[] = [];
+  for (const r of rows) if (!actors.includes(r.actor)) actors.push(r.actor);
+  if (actors.length <= 1) return actors[0] ?? "";
+  return `${actors.slice(0, -1).join(", ")} and ${actors[actors.length - 1]}`;
+}
+
+/** "3 board changes from mike" — the machine-honest since-line's value (label = the field key). */
+export function sinceLine(rows: Array<Pick<AwarenessDeltaRow, "actor">>): string {
+  const n = rows.length;
+  return `${n} board ${n === 1 ? "change" : "changes"} from ${actorPhrase(rows)}`;
+}
+
+/** One per-doc human line: `mike · updated Task "Seed one"` (kind omitted when unknown). */
+export function docLine(row: Pick<AwarenessDeltaRow, "actor" | "verb" | "kind" | "title">): string {
+  const kindPart = row.kind && row.kind !== "unknown" ? `${row.kind} ` : "";
+  return `${row.actor} · ${row.verb} ${kindPart}"${row.title}"`;
+}
+
+/** "2 local board commits not yet pushed — run sync when online" (pack (e), never "1 commits"). */
+export function unpushedLine(n: number): string {
+  return `${n} local board ${n === 1 ? "commit" : "commits"} not yet pushed — run sync when online`;
+}
+
+/** The backstop's other half: uncommitted board changes (the agent that never ran sync at all). */
+export function uncommittedLine(n: number): string {
+  return `${n} uncommitted board ${n === 1 ? "change" : "changes"} — run sync to share ${n === 1 ? "it" : "them"}`;
+}
+
+/** `n` when it parses as a live count; the cache's persisted count otherwise (last-known fallback). */
+function countOr(live: number | null, cached: number | undefined): number {
+  return live ?? cached ?? 0;
+}
+
+/**
+ * PURE: fold the board status + the (optional) in-process pull outcome into the rendered block.
+ * Returns `block` (a string — the pinned "up to date" — or the record of moment-(e) lines) for a
+ * provisioned board, or `firstContact` (the "run sync, never init" line) for a detected-but-
+ * unprovisioned one. Self-authored rows (actor ∈ selfActors) are filtered from the human count;
+ * `as_of` labels every render whose pull did NOT refresh the cache (plain home, an offline
+ * session-start, a local-state-swallowed pull) so a stale cache never reads as current — only
+ * `pull.refreshed` skips it.
+ */
+export function buildBoardBlock(
+  status: BoardStatus | null,
+  pull: BoardPullOutcome | undefined,
+  inv: string,
+): { block?: string | Record<string, unknown>; firstContact?: string } {
+  if (!status) return {};
+  if (status.state === "unprovisioned") return { firstContact: boardFirstContactLine(inv) };
+
+  const rec: Record<string, unknown> = {};
+  if (pull?.announcement) Object.assign(rec, pull.announcement);
+  const rows = status.cache?.delta ?? [];
+  const visible = rows.filter((r) => !status.selfActors.includes(r.actor));
+  if (visible.length > 0) {
+    // CURSOR HONESTY (decided trade-off, plan §U4): labeled by MACHINE reality — the cursor is
+    // per-clone state, not a cross-machine per-person one (that defers to the hosted tier).
+    rec.since_this_machine_last_synced = sinceLine(visible);
+    rec.changes = visible.slice(0, BOARD_CHANGES_SHOWN_LIMIT).map(docLine);
+  }
+  const unpushed = countOr(status.unpushed, status.cache?.unpushedCount);
+  const uncommitted = countOr(status.uncommitted, status.cache?.uncommittedCount);
+  if (unpushed > 0) rec.unpushed = unpushedLine(unpushed);
+  if (uncommitted > 0) rec.uncommitted = uncommittedLine(uncommitted);
+  const notes: string[] = [];
+  if (pull?.offline) notes.push(BOARD_OFFLINE_NOTE);
+  if (pull?.notes) notes.push(...pull.notes);
+  if (status.cache?.note) notes.push(status.cache.note);
+  if (notes.length > 0) rec.note = notes.join("; ");
+  // Freshness labeling: only a render straight after a SUCCESSFUL pull (pull.refreshed — the
+  // pull actually rewrote the cache) may skip it. Everything else — plain home, an offline pull,
+  // AND a local-state swallow (diverged/dirty: offline:false but the cache was NOT refreshed) —
+  // must label the cache's age (review round: the old `!pull || pull.offline` condition let the
+  // swallowed case masquerade as fresh).
+  if (status.cache && !pull?.refreshed && Object.keys(rec).length > 0) {
+    rec.as_of = status.cache.updatedAt;
+  }
+  if (Object.keys(rec).length === 0) return { block: BOARD_UP_TO_DATE };
+  return { block: rec };
+}
+
+/**
+ * The default board-status probe: LOCAL git plumbing only (never a fetch — the OFFLINE GUARANTEE
+ * holds; see the module header). Unprovisioned first-contact detection is PROBE-GATED on the
+ * board ref's existence (`origin/board` — present in any full clone's local refs — or a local
+ * `board` branch), NEVER marker-only: under per-clone state keying a brand-new clone has no
+ * marker until its first pull (sync-cache-per-clone rider), and the marker's key derivation needs
+ * the same git calls anyway, so the ref probe is strictly stronger AND equally offline. Every
+ * failure mode (no git binary, not a repo, unreadable state file) degrades to `null` — no board
+ * block, never a failed session.
+ */
+export async function defaultLoadBoardStatus(dir?: string): Promise<BoardStatus | null> {
+  try {
+    // Retarget when sitting INSIDE the board worktree (exactly where an agent lands after
+    // `doc write --dir .agentstate-lite`) — otherwise the worktree reads as its OWN repo top,
+    // `<board>/.agentstate-lite` doesn't exist, and the shared refs would misreport the live
+    // board as "unprovisioned" (sync round-2 finding 2's shape, reused via its exported fix).
+    const top = repoTopLevel(retargetBoardInterior(dir ?? process.cwd()));
+    if (!top) return null;
+    const boardPath = path.join(top, BUNDLE_DIR);
+    if (!isProvisioned(top)) {
+      const probed =
+        runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0 ||
+        runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
+      return probed ? { state: "unprovisioned" } : null;
+    }
+    const key = resolveBundleKey(boardPath);
+    const state = await readSyncState(key);
+    let uncommitted: number | null;
+    try {
+      uncommitted = countUncommitted(boardPath);
+    } catch {
+      uncommitted = null;
+    }
+    return {
+      state: "provisioned",
+      cache: state.cache,
+      selfActors: state.selfActors ?? [],
+      unpushed: unpushedCount(boardPath),
+      uncommitted,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Build the home view object (PURE — no I/O). Insertion order is the rendered TOON field order:
  * identity header FIRST (AXI §10 — identify the tool before live data; a one-line identity header
  * is not "the manual"), then auth status, then the LIVE `bundle` dashboard (when present — AXI
@@ -200,6 +456,8 @@ export function buildHomeView(
   remoteKeyStored?: boolean,
   binding?: HomeBindingNote,
   bindingError?: string,
+  board?: { block?: string | Record<string, unknown>; firstContact?: string },
+  hookUpdate?: string,
 ): Record<string, unknown> {
   const inv = deps.invocation();
   // Auth status is purely "is a per-origin API key stored for this --remote?" (`remoteKeyStored`,
@@ -276,7 +534,10 @@ export function buildHomeView(
     }
     if (binding) bundleBlock.via = binding.file;
     view.bundle = bundleBlock;
-  } else {
+  } else if (!board?.firstContact && board?.block === undefined) {
+    // A live board block (or the first-contact line) supersedes the init hint entirely: a project
+    // with a provisioned/detected board HAS its bundle — "run init" there is the divergent-
+    // second-bundle footgun.
     view.getting_started = `no OKF bundle found in this directory — run \`${deps.invocation()} init\` to create one`;
     if (binding) {
       // A URL-type binding always routes into the `if (remote)` branch above instead (home's own
@@ -285,6 +546,19 @@ export function buildHomeView(
       // leaving the `init` hint looking like there was never a binding at all.
       view.getting_started += ` (project binding ${binding.file} -> ${binding.target} did not resolve to a bundle)`;
     }
+  }
+  // The board block (sync-verb §U4). FIRST-CONTACT footgun guard: when a board exists for this
+  // repo but isn't provisioned, the line above the fold is "run sync" — and the `init` hint is
+  // SUPPRESSED entirely (the else-if above), so a founder can never be told to init a divergent
+  // second bundle by our own hint.
+  if (board?.firstContact) {
+    view.board = board.firstContact;
+  } else if (board?.block !== undefined) {
+    view.board = board.block;
+  }
+  if (hookUpdate) {
+    // U6-inherited re-install prompt: self-clearing (disappears once `hook install` is re-run).
+    view.hook_update = hookUpdate;
   }
   if (bindingError) {
     // A malformed .agentstate.json — never a thrown exception (home must never crash the
@@ -405,19 +679,43 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
     }
   }
 
+  const invocation = deps.invocation ?? cliInvocation;
+
+  // The board block (sync-verb §U4) — skipped for a --remote scope (the board is a git-tier LOCAL
+  // concept). Double-guarded like everything else here: a throwing probe yields no board block.
+  let board: { block?: string | Record<string, unknown>; firstContact?: string } | undefined;
+  if (!remote) {
+    try {
+      const status = await (deps.loadBoardStatus ?? defaultLoadBoardStatus)(dir);
+      board = buildBoardBlock(status, deps.boardPull, invocation());
+    } catch {
+      board = undefined;
+    }
+  }
+
+  // U6-inherited hook re-install prompt (fs-only reads; guarded — never fails the session).
+  let hookUpdate: string | undefined;
+  try {
+    if ((deps.hookNeedsUpdate ?? hookNeedsUpdate)()) hookUpdate = hookUpdateNote(invocation());
+  } catch {
+    hookUpdate = undefined;
+  }
+
   stdout(
     render(
       buildHomeView(
         creds,
         {
           binPath: deps.binPath ?? binPath,
-          invocation: deps.invocation ?? cliInvocation,
+          invocation,
         },
         summary,
         remote,
         remoteKeyStored,
         binding,
         bindingError,
+        board,
+        hookUpdate,
       ),
       // Honor --json (JSON is equally offline/never-throw); default remains TOON, the format the
       // SessionStart hook ingests as ambient context.
