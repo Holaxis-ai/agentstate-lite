@@ -5,18 +5,20 @@ status: in_progress
 priority: '1'
 description: >-
   TIER 0 SHIPPED 2026-07-06 (board in git via byte channel; worker frozen). TIER
-  0.5 SHIPPED 2026-07-07 (repo commit 2f90e6f): THE BOARD LIVES IN THE PUBLIC
-  REPO at .agentstate-lite/ — PR #5's conventional-folder discovery resolves it
-  bare on any clone, the .agentstate.json binding is gone, and git pull IS the
-  founders' sharing mechanism (the call's decision, executed after the scrub: 5
-  redactions applied, 3 visibility:private docs held back in the private archive
-  at ~/projects/Holaxis/agentstate-board, files ported never history). Standing
-  rule: board writes are PUBLIC on push — scrub discipline moved from port-time
-  to write-time. Field-reads + body-edit guidance shipped earlier remain.
-  REMAINING Tier 1: the sync verb (design pinned in plans/sync-verb — porcelain
-  + awareness cursor; builds now that its consumer exists) and the SessionStart
-  fail-soft pull.
-timestamp: '2026-07-07T19:39:17.252Z'
+  0.5 SHIPPED 2026-07-07 (2f90e6f): the board lives IN the public repo at
+  .agentstate-lite/, discovered bare on any clone; board writes are PUBLIC on
+  push (write-time scrub discipline). TIER 1 sync verb SHIPPED 2026-07-08: U0
+  porcelain foundation, U2 cursor/state store, U3a sync command, U3b converging
+  conflicts + byte-exact exports (PR #16), U6 skill/docs (PR #17), per-clone
+  state keying (PR #18), mount-portable worktrees + loud provisioning + remount
+  self-heal (PR #19 + codex fix). Field-hardened same-week by a real
+  private-tracker deployment (sandboxed agents, path remounts). REMAINING: U4
+  SessionStart pull-then-render (in review, brian-claude,
+  tasks/sync-sessionstart) and U5 migration of THIS repo to the board branch
+  (Mike-gated, tasks/sync-migration). This umbrella closes when U5 lands and the
+  bundle-commits-on-main convention retires.
+actor: mike/claude
+timestamp: '2026-07-09T15:13:42.267Z'
 ---
 [design](../plans/sync-verb.md)
 

@@ -1,23 +1,17 @@
 ---
 type: Task
 title: 'Graph lints: write-time link-type conformance + expects_inbound status sweep'
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  The enforce stage of the typed-links pipeline, pulled forward after Mike
-  correctly applied consumer-pull against my own deferral (three hand-found
-  glue-decay incidents WERE the live consumer). expects_inbound convention key
-  (parsed like links, sweep-only by nature); link add warns on wrong-kind +
-  case-variant edges (warn-only, no-op path unchecked, conventions-free
-  byte-identical); status gains link_type_violations + missing_expected_links
-  (single-pass, non-done rows first). Dogfood catch on first real run: 5
-  violations on our own board incl. a mistyped edge I wrote hours earlier
-  (contains -> a Decision) — fixed by declaring the Roadmap kind (contains ->
-  Roadmap Item, first multi-declaration) and one text change, NOT by
-  suppressing. Day-one board state: violations 0, missing_expected 16 (4 open
-  tasks actionable at top, done-tail honest noise; terminal-status refinement
-  stays evidence-gated). Built by one Sonnet no-spawn agent; reviewed/verified
-  by orchestrator. Plugin 1.0.11; +11 tests (787). PR #7 — done on merge.
-timestamp: '2026-07-07T19:43:06.812Z'
+  SHIPPED in PR #7: ONE shared declaration collector (cli/src/link-types.ts)
+  feeding both consumers — write-time link_type_violations (warn) on link add,
+  and the expects_inbound status sweep (missing_expected_links). Extended since
+  by PR #20 (terminal instances excluded from the sweep, reported as
+  terminal_skipped) and PR #23 pending (addLink extraction reuses the same lint
+  for new --link). Closed in the 2026-07-09 board hygiene pass — record had sat
+  in_progress since shipping.
+actor: mike/claude
+timestamp: '2026-07-09T15:13:41.841Z'
 ---
 
