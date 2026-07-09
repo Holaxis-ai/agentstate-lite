@@ -43,8 +43,8 @@ import { key } from "./commands/key.js";
 import { home } from "./commands/home.js";
 import { hook } from "./commands/hook.js";
 import { CliError, toEnvelope, toExit } from "./errors.js";
-import { render, renderErrorEnvelope } from "./output.js";
-import { DESCRIPTION, commandReference } from "./reference.js";
+import { renderErrorEnvelope } from "./output.js";
+import { DESCRIPTION, helpIndexText } from "./reference.js";
 import { cliInvocation } from "./invocation.js";
 import { parseArgs } from "node:util";
 
@@ -78,12 +78,13 @@ export const KNOWN_COMMANDS = [
 ] as const;
 
 /**
- * The `--help` / `-h` / `help` reference, rendered as TOON from COMMAND_GROUPS (single source of
- * truth). Used both by the pre-route and as the SDK's required `topLevelHelp` (which is unreached
- * because --help is pre-routed above runAxiCli).
+ * The `--help` / `-h` / `help` reference, rendered as grouped PLAIN PROSE from COMMAND_GROUPS
+ * (single source of truth) — never TOON; see `reference.ts`'s module comment for why (help is
+ * prose an agent reads, not data it parses). Used both by the pre-route and as the SDK's required
+ * `topLevelHelp` (which is unreached because --help is pre-routed above runAxiCli).
  */
 function helpReference(): string {
-  return render(commandReference(cliInvocation()), "default");
+  return helpIndexText(cliInvocation());
 }
 
 /**

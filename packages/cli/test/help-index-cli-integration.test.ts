@@ -1,0 +1,67 @@
+/**
+ * End-to-end smoke test for the top-level `--help`/`-h`/`help` rewrite (help-index-readability
+ * task), run against the BUILT CLI (`dist/agentstate-lite.mjs`) over a real subprocess — the actual
+ * bytes an agent shelling out to the tool would see. Mirrors `doc-cli-integration.test.ts`'s
+ * `before`-hook build pattern (this package has no other build-once convention to reuse).
+ *
+ * The regression this guards: the top-level index used to TOON-encode `commandReference()`,
+ * producing one escaped string-array line per command GROUP (an agent had to grep the line to find
+ * a command). `helpIndexText()` (src/reference.ts) now renders the same data as grouped plain text,
+ * one command per physical line — this file pins that shape on the actual CLI process boundary, and
+ * separately confirms the bare (home) view and a subcommand's own `--help` are untouched.
+ */
+import test, { before } from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const cliPackageRoot = path.resolve(here, "..");
+const cliBin = path.join(cliPackageRoot, "dist", "agentstate-lite.mjs");
+
+before(() => {
+  execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
+});
+
+function run(args: string[]): string {
+  return execFileSync("node", [cliBin, ...args], { encoding: "utf8" });
+}
+
+for (const argv of [["--help"], ["-h"], ["help"]]) {
+  test(`built CLI: \`${argv[0]}\` renders the grouped plain-text command index, not TOON`, () => {
+    const out = run(argv);
+
+    // The OLD TOON shape this replaces: `Group[n]: "cmd1 — …","cmd2 — …",...` — a comma-joined,
+    // quote-escaped array on one line per group. None of that survives.
+    assert.doesNotMatch(out, /\[\d+\]:/, "must not contain a TOON array-length header like `Bundle[3]:`");
+    assert.doesNotMatch(out, /","/, "must not contain TOON's comma-quote array-item separator");
+
+    // The new shape: a description header, a Usage line, and every group as its own plain heading
+    // with each command on its own indented physical line. (The resolved invocation off-PATH is
+    // `npx -y agentstate-lite`, a multi-word prefix, so match loosely on the leading token.)
+    assert.match(out, /^.+ — read and write a local OKF knowledge bundle/);
+    assert.match(out, /\nUsage: .+ <command> \[options\]\n/);
+    assert.match(out, /\nBundle:\n {2}init \[--dir <path>\][^\n]* — Create \(or open\) an OKF knowledge bundle/);
+    assert.match(out, /\nDocuments & links:\n {2}doc write <id> --type <t>/);
+    assert.match(out, /\nSession:\n {2}hook install\|status\|uninstall/);
+
+    // The footer pointers are still present, and readably wrapped (no single line runs the whole
+    // bundle-resolution paragraph together).
+    assert.match(out, /kinds are declared per-bundle/);
+    assert.match(out, /bundle resolution, in order/);
+  });
+}
+
+test("built CLI: the bare (home) view is UNCHANGED by the --help rewrite — still TOON", () => {
+  const out = run([]);
+  assert.match(out, /^"agentstate-lite":\n {2}bin: /);
+  assert.doesNotMatch(out, /\nBundle:\n {2}init /, "home must not have picked up the --help prose format");
+});
+
+test("built CLI: a subcommand's own `--help` (e.g. `new --help`) is UNCHANGED by the top-level rewrite", () => {
+  const out = run(["new", "--help"]);
+  assert.match(out, /^agentstate-lite new — create a new instance of a bundle-declared kind/);
+  assert.match(out, /\nUsage:\n {2}agentstate-lite new /);
+  assert.doesNotMatch(out, /\nBundle:\n/, "must not have picked up the top-level index's group headings");
+});
