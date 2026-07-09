@@ -20,6 +20,6 @@ description: >-
   opt-out / refuse-unless-opt-in like --blank-body / warn-only). Then Sonnet
   build + Fable review + PR (not a direct push).
 actor: mike/claude
-timestamp: '2026-07-09T23:16:18.125Z'
+timestamp: '2026-07-09T23:23:53.960Z'
 ---
-
+[proper fix](../roadmap-items/link-model-body-safe.md)
