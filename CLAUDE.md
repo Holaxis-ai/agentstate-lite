@@ -177,7 +177,13 @@ bundle-relative**.
 
 - Build/verify gate: `npm run build` and `npm run typecheck` must exit 0, and `npm test`
   (`--workspaces --if-present`: core + cli + server + viewer + worker + ui suites) must pass, before
-  shipping. `npm run check` runs all of that plus the SKILL/bundle drift gates in one shot.
+  shipping. `npm run check` runs all of that plus this repo's own `scripts/` tests (`test:scripts`)
+  and the npm-target SKILL.md drift gate (`check:skill`) in one shot. The plugin-bundle drift gates
+  (`check:skill:bundle`, `check:bundle` — the ~650KB committed artifact and the skill-target
+  SKILL.md) are BOT-OWNED on merge to main (see the plugin version + bundle bullet below) and are
+  deliberately NOT part of this PR-side gate; a branch that only touches CLI source is not expected
+  to carry a current rebuild of either. Run them by hand via `npm run check:plugin-bundle` if you
+  want to eyeball drift before the bot does.
   **Always build from the REPO ROOT** — a package-scoped build leaves sibling `dist/`s stale and
   test files that import them crash confusingly. `npm run build` bundles the CLI to
   `packages/cli/dist/agentstate-lite.mjs` (esbuild). Smoke-test the built CLI
@@ -185,18 +191,26 @@ bundle-relative**.
   `list`, `link add`/`show`, and `view` on `examples/sample-bundle` (expect 4 nodes / 7 edges). To
   verify publishability, `npm pack -w agentstate-lite` and run the tarball's bin in a temp dir
   outside the monorepo (its `node_modules` must contain ONLY `agentstate-lite`).
+- **Verify a gate by its own exit code, never through a pipe.** A piped tail or grep (`npm test |
+  tail`, `... | grep -v Skip`) reports the PIPE's last command's exit status, not the gate's — a
+  failing gate can read as green. Run gates unpiped, or redirect to a file and grep the file
+  separately; check the exit code from the LAST change made, never a stale run from before it.
 - A fresh git worktree has no node_modules: run `npm ci` inside it before trusting any
   test or drift-gate result (up-tree module resolution manufactures phantom failures).
 - `examples/sample-bundle` is the interop fixture: externally-shaped (unquoted timestamps,
   relative links, wrapped bullets). If a change breaks its round-trip, the change is wrong.
-- **Plugin version discipline: any change to the committed plugin content** (either SKILL.md,
-  the bundled `plugins/…/scripts/agentstate-lite.mjs`, or anything else under `plugins/`) **must
-  bump the version in BOTH `.claude-plugin/marketplace.json` AND
-  `plugins/agentstate-lite/.codex-plugin/plugin.json`** — the plugin cache is version-keyed, so
-  unbumped content changes silently serve stale guidance to every installed agent. Check main's
-  CURRENT version before picking the next one (PR branches have collided on this). Parallel unit
-  branches will collide on the next version by design; whichever merges second gets re-bumped
-  and rebased over the other's regenerated bundle before merge.
+- **Plugin version + committed bundle are BOT-OWNED on merge to main — PRs never touch them
+  (2026-07-09, retiring the old hand-bump-and-rebase convention).** A CI workflow
+  (`.github/workflows/ci-version-bundle.yml`, logic in `scripts/ci-version-bundle.mjs`) runs on
+  every push to `main`: it regenerates the skill-target `SKILL.md` and rebuilds the committed
+  `plugins/…/scripts/agentstate-lite.mjs`; only if either differs from what's committed does it
+  bump the patch version in BOTH `.claude-plugin/marketplace.json` and
+  `plugins/agentstate-lite/.codex-plugin/plugin.json` and commit artifact+manifests together in
+  ONE bot commit (the plugin cache is version-keyed, so they must land atomically). If nothing
+  changed, the run is a no-op — that convergence, not a paths filter or actor check, is what stops
+  the bot's own commit from re-triggering an infinite loop. **A PR must NOT hand-bump either
+  manifest or hand-rebuild the committed bundle** — parallel branches no longer collide on the next
+  version number, because they no longer touch it at all; the bot picks it up once, on merge.
 - **Branch from CURRENT `origin/main`, never from a previous PR's tip.** Generated files
   (SKILL.md, the committed bundle) usually merge textually, but the drift gates only prove
   generated-matches-generator — they CANNOT catch regenerated prose that a change made
