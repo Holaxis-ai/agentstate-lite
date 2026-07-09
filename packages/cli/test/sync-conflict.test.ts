@@ -17,7 +17,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { sync, SHOW_INCOMING_AS_OF, SHOW_INCOMING_ABSENT_STATE } from "../src/commands/sync.js";
+import { sync, SHOW_INCOMING_AS_OF, SHOW_INCOMING_ABSENT_STATE, SHOW_INCOMING_NO_UPSTREAM } from "../src/commands/sync.js";
 import { doc } from "../src/commands/doc.js";
 import { CliError } from "../src/errors.js";
 import { cliInvocation } from "../src/invocation.js";
@@ -591,6 +591,25 @@ test("show-incoming: --out <file> writes the raw upstream bytes; --out - streams
     await cleanup();
     await rm(outDir, { recursive: true, force: true });
     await topo.cleanup();
+  }
+});
+
+test("show-incoming: no fetched origin/board ref → the viewer-specific NO_UPSTREAM (pinned; local-only named as supported, never the sharing-verb framing)", async () => {
+  const { homes, cleanup } = await tempHomes(1);
+  const lone = await mkdtemp(path.join(tmpdir(), "agentstate-lite-u3b-localonly-"));
+  try {
+    // A repo with NO origin/board ref anywhere — the local-only shape (degradation matrix,
+    // tasks/sync-local-only-degradation item 2): the viewer must say there is nothing FETCHED to
+    // show and that a local-only board simply has no incoming versions — not "sync can't share it".
+    git(lone, ["init", "-b", "main"]);
+    const result = await runSync(homes[0]!, ["--show-incoming", "tasks/seed-one", "--dir", lone]);
+    assert.ok(result.err, "expected a thrown CliError");
+    assert.equal(result.err!.code, "NO_UPSTREAM");
+    assert.equal(result.err!.message, SHOW_INCOMING_NO_UPSTREAM);
+    assert.match(result.err!.help ?? "", /--pull-only/, "the hint names the fetch path for shared boards");
+  } finally {
+    await cleanup();
+    await rm(lone, { recursive: true, force: true });
   }
 });
 

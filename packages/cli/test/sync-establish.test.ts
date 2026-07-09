@@ -4,8 +4,9 @@
 // The suite pins:
 //   • first publication is explicit: bare sync never publishes a local-only `board` branch;
 //   • snapshot creation does not touch the code worktree, its index, or the source bundle;
-//   • decision 1 (LOCKED): bare `sync` on combo 1 keeps the pinned `sync: nothing to sync` string,
-//     only ADDING a routing hint — never auto-publishes;
+//   • decision 1, surviving half (LOCKED): bare `sync` NEVER auto-publishes. Its other half —
+//     the pinned "nothing to sync" string + routing hint on combo 1 — was superseded by the
+//     local-only state (tasks/sync-local-only-degradation); see the combo-1 test below;
 //   • decision 3 (LOCKED): the gitignore append lands in the WORKING TREE only, uncommitted;
 //   • the keystone first-contact journey end to end (clone A establishes, clone B joins);
 //   • races, push failures, symlinks, staged bundle paths, and post-publish crash recovery;
@@ -21,7 +22,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { initBundle } from "@agentstate-lite/core";
-import { sync } from "../src/commands/sync.js";
+import { sync, SYNC_LOCAL_ONLY_MESSAGE, syncLocalOnlyNote } from "../src/commands/sync.js";
 import { init } from "../src/commands/init.js";
 import { recipe } from "../src/commands/recipe.js";
 import { list } from "../src/commands/list.js";
@@ -130,28 +131,35 @@ test("establish strings: pinned constants", () => {
 
 // ── matrix cell 1: absent/absent — bare sync hints, --establish publishes ─────
 
-test("combo 1 (absent/absent): bare sync keeps 'nothing to sync' + adds an --establish hint", async () => {
+test("combo 1 (absent/absent): bare sync reports the LOCAL-ONLY state, whose note routes to --establish", async () => {
+  // Supersedes the earlier stable-'nothing to sync'-plus-hint shape (this file's original
+  // decision 1) per tasks/sync-local-only-degradation: a bundle with no board branch anywhere is
+  // a real, supported LOCAL-ONLY board and gets its own honest empty state — never the bare
+  // "nothing" line while local board changes may be sitting in the folder. The --establish
+  // routing moved from the ad-hoc `hint` into the pinned note.
   const topo = await makeGreenfieldTopology();
   const { home, cleanup } = await tempHome();
   try {
     await initPlainBundleDir(topo.a);
     const rec = await runSyncJson(home, ["--dir", topo.a.root]);
-    assert.equal(rec.sync, "nothing to sync", "the pinned string never changes (decision 1)");
-    assert.equal(typeof rec.hint, "string");
-    assert.match(rec.hint as string, /--establish/);
+    assert.equal(rec.sync, SYNC_LOCAL_ONLY_MESSAGE);
+    assert.equal(rec.note, syncLocalOnlyNote(cliInvocation()));
+    assert.match(rec.note as string, /--establish/, "the note routes sharing to the real verb");
+    assert.equal("hint" in rec, false, "the ad-hoc hint field is retired — the note carries the routing");
   } finally {
     await cleanup();
     await topo.cleanup();
   }
 });
 
-test("combo 1: bare sync with NO local bundle folder at all carries no establish hint", async () => {
+test("combo 1: bare sync with NO local bundle folder at all stays 'nothing to sync' with no establish routing", async () => {
   const topo = await makeGreenfieldTopology();
   const { home, cleanup } = await tempHome();
   try {
     const rec = await runSyncJson(home, ["--dir", topo.a.root]);
     assert.equal(rec.sync, "nothing to sync");
-    assert.equal("hint" in rec, false, "nothing establishABLE here — no folder, no hint to give");
+    assert.equal("hint" in rec, false, "nothing establishABLE here — no folder, no routing to give");
+    assert.equal("note" in rec, false, "and no local-only note either — there is no board here at all");
   } finally {
     await cleanup();
     await topo.cleanup();
@@ -294,6 +302,20 @@ test("local-only board: bare sync and --pull-only refuse; --establish publishes 
       git(topo.origin, ["rev-parse", BOARD_BRANCH]).trim(),
       git(topo.a.board, ["rev-parse", "HEAD"]).trim(),
     );
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("local-only board: --show-incoming routes an UNPUBLISHED local board to --establish, not the viewer's no-fetched-state message", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await handBuildLocalOnlyBoard(topo.a, "notes/local-only", "hand-built, never pushed");
+    const { err } = await runSync(home, ["--show-incoming", "notes/local-only", "--dir", topo.a.root]);
+    assert.equal(err?.code, "NO_UPSTREAM");
+    assert.match(err?.message ?? "", /sync --establish/, "an unpublished local board has a real publication path");
   } finally {
     await cleanup();
     await topo.cleanup();

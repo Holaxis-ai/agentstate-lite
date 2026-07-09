@@ -40,7 +40,10 @@ import {
   toDeltaRows,
   toIncomingRows,
   PUSH_FAIL_SAFETY_MESSAGE,
+  SYNC_LOCAL_ONLY_MESSAGE,
+  syncLocalOnlyNote,
 } from "../src/commands/sync.js";
+import { cliInvocation } from "../src/invocation.js";
 import { doc } from "../src/commands/doc.js";
 import { CliError } from "../src/errors.js";
 import type { DocChange } from "../src/git.js";
@@ -245,11 +248,19 @@ test("ffSwallowToError: git-missing / no-upstream reuse the EXACT test-pinned wo
   assert.equal(missing.exitCode, 1);
   assert.equal(missing.message, "sync needs git, which isn't installed on this machine");
 
+  // The --pull-only degradation wording (tasks/sync-local-only-degradation item 2): says what it
+  // means for a PULL (nothing to pull from), and names local-only as a supported mode — never the
+  // old sharing-verb framing ("sync can't share it") the pull-only caller didn't ask about.
   const noUpstream = ffSwallowToError("no-upstream", "agentstate-lite");
   assert.equal(noUpstream.code, "NO_UPSTREAM");
   assert.equal(noUpstream.exitCode, 1);
-  assert.equal(noUpstream.message, "the board branch isn't linked to a remote yet — sync can't share it");
+  assert.equal(
+    noUpstream.message,
+    "the board branch isn't linked to a remote — there is nothing to pull from or push to " +
+      "(a local-only board is a supported mode; sharing needs a remote 'board' branch)",
+  );
   assert.ok(noUpstream.help && noUpstream.help.length > 0, "no-upstream carries a fixing hint");
+  assert.match(noUpstream.help!, /local-only/, "the fixing hint names local-only as supported");
 });
 
 test("ffSwallowToError: auth is exit 4, network/busy/dirty/diverged classify sensibly", () => {
@@ -332,7 +343,7 @@ test("sync: no git repo at all -> the definitive 'nothing to sync' empty state, 
   }
 });
 
-test("sync: a git repo with no board branch anywhere (local or origin) is ALSO 'nothing to sync'", async () => {
+test("sync: a git repo with no board branch anywhere AND no bundle is ALSO 'nothing to sync'", async () => {
   const { homes, cleanup } = await tempHomes(1);
   const lone = await mkdtemp(path.join(tmpdir(), "agentstate-lite-sync-test-lone-"));
   try {
@@ -343,6 +354,60 @@ test("sync: a git repo with no board branch anywhere (local or origin) is ALSO '
   } finally {
     await cleanup();
     await rm(lone, { recursive: true, force: true });
+  }
+});
+
+/** A git repo carrying a conventional bundle folder (index.md signature) but NO board branch anywhere. */
+async function makeLocalOnlyRepo(): Promise<string> {
+  const repo = await mkdtemp(path.join(tmpdir(), "agentstate-lite-sync-test-localonly-"));
+  git(repo, ["init", "-b", "main"]);
+  await mkdir(path.join(repo, BUNDLE_DIR), { recursive: true });
+  await writeFile(path.join(repo, BUNDLE_DIR, "index.md"), '---\nokf_version: "0.1"\n---\n');
+  return repo;
+}
+
+test("sync: a repo whose BUNDLE exists but has no board branch anywhere gets the LOCAL-ONLY state (P4 split), exit 0 — pinned, distinct from both other empty states", async () => {
+  const { homes, cleanup } = await tempHomes(1);
+  const repo = await makeLocalOnlyRepo();
+  try {
+    const { out, err } = await runSync(homes[0]!, ["--dir", repo]);
+    assert.equal(err, undefined, err?.message);
+    assert.ok(out.includes(SYNC_LOCAL_ONLY_MESSAGE), `pinned local-only line missing from: ${out}`);
+    assert.ok(out.includes(syncLocalOnlyNote(cliInvocation())), `pinned local-only note missing from: ${out}`);
+    assert.ok(out.includes("sync --establish"), "the note routes sharing to the REAL verb");
+    // DISTINCT from the other two definitive empty states — the whole point of the split.
+    assert.ok(!out.includes("nothing to sync"), "must not reuse the no-repo/no-bundle empty state");
+    assert.ok(!out.includes("already up to date"), "must not reuse the clean shared-board empty state");
+  } finally {
+    await cleanup();
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("sync: LOCAL board changes present → the local-only state still appears, sync mutates nothing and never claims a commit", async () => {
+  const { homes, cleanup } = await tempHomes(1);
+  const repo = await makeLocalOnlyRepo();
+  try {
+    // Real local board work, written through the REAL CLI path — the exact case the founders'
+    // requirement protects: fresh changes must not be answered with a bare "nothing to sync".
+    await cliDocWrite(path.join(repo, BUNDLE_DIR), "notes/local-work", [
+      "--type", "Note", "--title", "Local work", "--body", "# local\n", "--actor", "mike",
+    ]);
+    const before = git(repo, ["status", "--porcelain"]);
+
+    const { out, err } = await runSync(homes[0]!, ["--dir", repo]);
+    assert.equal(err, undefined, err?.message);
+    assert.ok(out.includes(SYNC_LOCAL_ONLY_MESSAGE), `pinned local-only line missing from: ${out}`);
+    // Honesty gate: the run must not lie about committing anything — no receipt counters, and the
+    // note says outright that sync committed nothing.
+    assert.ok(!/committed/.test(out.replace("sync committed nothing", "")), "never claims a commit happened");
+    assert.ok(out.includes("sync committed nothing"), "the note states the no-commit fact explicitly");
+    // And it genuinely didn't: the repo's git state is byte-identical.
+    assert.equal(git(repo, ["status", "--porcelain"]), before, "sync mutated no git state");
+    assert.ok(existsSync(path.join(repo, BUNDLE_DIR, "notes", "local-work.md")), "the local doc is untouched");
+  } finally {
+    await cleanup();
+    await rm(repo, { recursive: true, force: true });
   }
 });
 

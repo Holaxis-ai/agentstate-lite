@@ -365,7 +365,12 @@ export type ProvisionOutcome =
   | { kind: "already"; boardPath: string }
   /** `dir` is not inside a git repository at all — the caller emits `sync: nothing to sync`. */
   | { kind: "no_repo" }
-  /** A repo, but no `board` branch exists locally OR on origin — nothing to provision from. */
+  /**
+   * A repo, but no `board` branch exists locally OR on origin — nothing to provision from. The
+   * caller splits this by whether a bundle folder exists (sync.ts's empty-state split): no bundle
+   * → `sync: nothing to sync`; bundle present → the honest LOCAL-ONLY board state (a supported
+   * mode, tasks/sync-local-only-degradation), never the bare "nothing" line.
+   */
   | { kind: "no_board" }
   /** An unprovisioned local `board` branch exists, but this caller refuses to adopt it by name. */
   | { kind: "local_board"; boardPath: string; remoteExists: boolean };
@@ -452,7 +457,10 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
   if (isProvisioned(top)) return { kind: "already", boardPath };
 
   // Fetch BEFORE referencing board — tolerated nonzero (offline / no remote): the local ref
-  // checks below decide what is actually provisionable.
+  // checks below decide what is actually provisionable. This IS provisioning's no-remote
+  // degradation path (tasks/sync-local-only-degradation item 2): a remote-less or offline repo
+  // never errors here — it provisions from a previously fetched/local board ref when one exists,
+  // and otherwise reports `no_board` for the caller's empty-state split to word honestly.
   runGit(top, ["fetch", "--prune", BOARD_REMOTE], {
     timeoutMs: budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS,
     connectTimeoutSeconds: budget.connectTimeoutSeconds,
