@@ -132,9 +132,14 @@ and gitignores it — you push that branch and open the PR yourself; nothing on 
 is pushed or changed. Until that PR merges the old committed folder is a frozen snapshot: sync no
 longer updates it, so treat it as read-only. Without \`--yes\`, \`--migrate\` prints a preview (a
 dry run, including the rollout note to send teammates) and changes nothing. It refuses while
-\`.agentstate-lite/\` has uncommitted changes, and reports 'already migrated' (exit 0) once a
-board branch exists on origin. Coordinate first: every founder syncs (at minimum commits) their
-board work before anyone migrates.
+\`.agentstate-lite/\` has uncommitted changes, when the current branch is behind origin on
+commits touching the folder (pull first — a teammate's board commit must never be stranded on
+the frozen copy), when origin is unreachable (the freshness check and the push both need it),
+and when any \`board/...\` branch exists locally or on the remote (git cannot create a \`board\`
+branch alongside them). It reports 'already migrated' (exit 0) once a board branch exists on
+origin — with state-aware guidance, including re-creating the folder-removal commit when an
+interrupted run left it missing. Coordinate first: every founder syncs (at minimum commits)
+their board work before anyone migrates.
 
 Options:
   --pull-only          Only fast-forward from origin (never rebase); skip commit + push

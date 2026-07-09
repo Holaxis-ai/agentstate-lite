@@ -230,12 +230,15 @@ test("sync --migrate --yes: files-not-history board branch, PR-shaped removal, b
     assert.match(staged, new RegExp(stagedPath.replace("/", "\\/")));
     assert.equal(existsSync(path.join(topo.a.root, BUNDLE_DIR, "index.md")), true, "folder still on disk (frozen snapshot)");
 
-    // BOTH-WORLDS window semantics (test-pinned, per the adjudication): the folder is a frozen
-    // snapshot main still tracks, so a plain `sync` on this clone refuses with the structured
-    // non-empty-dir guidance rather than adopting or clobbering anything.
+    // BOTH-WORLDS window semantics (test-pinned; fix round, review MEDIUM 3): the folder is a
+    // frozen snapshot main still TRACKS, so a plain `sync` on this clone refuses with the
+    // migration-aware guidance — NEVER the generic "move it aside" advice, which would hand-build
+    // the phantom-modification → checkout-restore → stale-push overlay the reviewer proved.
     const during = await runSync(homeA, ["--dir", topo.a.root, "--json"]);
     assert.equal(during.err?.code, "RUNTIME");
-    assert.match(during.err!.message, /is not the shared board checkout — move it aside/);
+    assert.match(during.err!.message, /the migration PR hasn't merged yet, or this clone hasn't pulled it/);
+    assert.doesNotMatch(during.err!.message, /move it aside/);
+    assert.match(during.err!.help ?? "", /git pull/);
 
     // COMPLETION — literally run the receipt's emitted chain (verbatim-execution pin).
     // 1. "git push -u origin board-migration" (from next_steps[0]).
@@ -252,6 +255,16 @@ test("sync --migrate --yes: files-not-history board branch, PR-shaped removal, b
 
     // The OTHER founder's journey (clone B): pull → folder gone → sync provisions loudly → intact.
     assert.equal(existsSync(path.join(topo.b.root, BUNDLE_DIR, "index.md")), true, "B still has the folder pre-pull");
+    // Pre-pull, B's plain `sync` gets the same migration-aware window refusal (fix 3) —
+    // never the mv advice.
+    const preB = await runSync(homeB, ["--dir", topo.b.root, "--json"]);
+    assert.equal(preB.err?.code, "RUNTIME");
+    assert.match(preB.err!.message, /the migration PR hasn't merged yet, or this clone hasn't pulled it/);
+    // And B's --migrate at this point is already-migrated state (c) with the LANDED probe: the
+    // removal has reached origin/main, so the note says so truthfully (review HIGH 2's honesty).
+    const bAlready = await runSyncJson(homeB, ["--migrate", "--yes", "--dir", topo.b.root]);
+    assert.equal(bAlready.migrate, MIGRATE_ALREADY);
+    assert.match(String(bAlready.note), /already landed on 'main' — run 'git pull'/);
     git(topo.b.root, ["pull"]);
     assert.equal(existsSync(path.join(topo.b.root, BUNDLE_DIR)), false, "folder vanished from B after git pull");
     const afterB = await runSyncJson(homeB, ["--dir", topo.b.root]);
@@ -276,17 +289,24 @@ test("sync --migrate --yes is idempotent: re-run and teammate-run both report al
     await runSyncJson(home, ["--migrate", "--yes", "--dir", topo.a.root]);
     const boardSha = git(topo.origin, ["rev-parse", "refs/heads/board"]).trim();
 
-    // Re-run on the migrating clone: exit 0, pinned string, nothing changes.
+    // Re-run on the migrating clone: exit 0, pinned string, nothing changes. State (a) of the
+    // already-migrated branching (fix round, review HIGH 2): the migration branch exists, so the
+    // note guides to the PR — the happy path's lost-receipt affordance.
+    const removalSha = git(topo.a.root, ["rev-parse", `refs/heads/${MIGRATION_BRANCH}`]).trim();
     const again = await runSyncJson(home, ["--migrate", "--yes", "--dir", topo.a.root]);
     assert.equal(again.migrate, MIGRATE_ALREADY);
-    assert.match(String(again.note), /still carries the committed \.agentstate-lite\/ folder/);
+    assert.match(String(again.note), /already prepared on 'board-migration' — push it and open its PR/);
+    assert.equal((again.next_steps as string[])[0], `push the migration branch: git push -u origin ${MIGRATION_BRANCH}`);
     assert.equal(git(topo.origin, ["rev-parse", "refs/heads/board"]).trim(), boardSha);
+    assert.equal(git(topo.a.root, ["rev-parse", `refs/heads/${MIGRATION_BRANCH}`]).trim(), removalSha, "nothing recreated");
 
-    // Teammate's clone (folder still committed, hasn't pulled): already migrated, nothing mutated.
+    // Teammate's clone (folder still committed, hasn't pulled, NO local board evidence): state
+    // (c) — already migrated, nothing mutated, and the note is TRUTHFUL about where the removal
+    // is (the PR hasn't landed on origin/main yet — never asserts a PR this clone can't see).
     const preHeadB = git(topo.b.root, ["rev-parse", "HEAD"]).trim();
     const teammate = await runSyncJson(home, ["--migrate", "--yes", "--dir", topo.b.root]);
     assert.equal(teammate.migrate, MIGRATE_ALREADY);
-    assert.match(String(teammate.note), /pull it, then run/);
+    assert.match(String(teammate.note), /once the folder-removal lands on the default branch: 'git pull'/);
     assert.equal(git(topo.b.root, ["rev-parse", "HEAD"]).trim(), preHeadB);
     assert.equal(
       gitTry(topo.b.root, ["rev-parse", "--verify", "--quiet", "refs/heads/board"]).status !== 0,
@@ -390,6 +410,165 @@ test("sync --migrate recovers an interrupted run: a matching single-root local b
     assert.equal(rec.migrated, MIGRATE_DONE);
     assert.equal((rec.board_commit as string).trim(), orphanSha, "the interrupted run's root commit is reused");
     assert.equal(git(topo.origin, ["rev-parse", "refs/heads/board"]).trim(), orphanSha);
+  } finally {
+    await topo.cleanup();
+    await cleanup();
+  }
+});
+
+// ── fix round: crash-window recovery (review HIGH 2) ──────────────────────────
+
+test("crash window (killed between push -u and the removal commit): re-run offers, --yes re-creates just the removal commit", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    // Reproduce the EXACT crash state: root commit cut, local board branch created, board pushed
+    // with -u — and then the process died before the removal commit existed anywhere.
+    const treeSha = git(topo.a.root, ["rev-parse", `HEAD:${BUNDLE_DIR}`]).trim();
+    const rootSha = git(topo.a.root, ["commit-tree", treeSha, "-m", "board: bundle migrated from 'main' (files only)"]).trim();
+    git(topo.a.root, ["branch", "board", rootSha]);
+    git(topo.a.root, ["push", "-u", "origin", "board"]);
+    const preHead = git(topo.a.root, ["rev-parse", "HEAD"]).trim();
+
+    // Without --yes: the OFFER — and the already-migrated path never mutates under a bare run.
+    const offer = await runSyncJson(home, ["--migrate", "--dir", topo.a.root]);
+    assert.equal(offer.migrate, MIGRATE_ALREADY);
+    assert.match(
+      String(offer.note),
+      /an interrupted migration left the board branch pushed but no folder-removal commit — re-run/,
+    );
+    assert.match(String(offer.note), /--migrate --yes/);
+    assert.equal(
+      gitTry(topo.a.root, ["rev-parse", "--verify", "--quiet", `refs/heads/${MIGRATION_BRANCH}`]).status !== 0,
+      true,
+      "the offer mutated nothing",
+    );
+
+    // With --yes: the recovery re-creates JUST the removal commit and guides to the PR.
+    const rec = await runSyncJson(home, ["--migrate", "--yes", "--dir", topo.a.root]);
+    assert.equal(rec.migrate, MIGRATE_ALREADY);
+    assert.match(String(rec.recovered), /it has been re-created on 'board-migration'/);
+    const removalSha = (rec.removal_commit as string).trim();
+    assert.equal(git(topo.a.root, ["rev-parse", `refs/heads/${MIGRATION_BRANCH}`]).trim(), removalSha);
+    assert.equal(git(topo.a.root, ["rev-parse", `${MIGRATION_BRANCH}~1`]).trim(), preHead, "one commit on top of main");
+    assert.doesNotMatch(git(topo.a.root, ["ls-tree", "--name-only", MIGRATION_BRANCH]), /\.agentstate-lite/);
+    assert.match(git(topo.a.root, ["show", `${MIGRATION_BRANCH}:.gitignore`]), /^\.agentstate-lite\/$/m);
+    assert.equal((rec.next_steps as string[])[0], `push the migration branch: git push -u origin ${MIGRATION_BRANCH}`);
+    assert.equal(git(topo.origin, ["rev-parse", "refs/heads/board"]).trim(), rootSha, "board on origin untouched");
+    assert.equal(git(topo.a.root, ["rev-parse", "HEAD"]).trim(), preHead, "current branch untouched");
+    assert.doesNotMatch(JSON.stringify(rec), FORBIDDEN);
+  } finally {
+    await topo.cleanup();
+    await cleanup();
+  }
+});
+
+// ── fix round: behind-origin freshness guard + dead-fetch refusal (review HIGH 1) ─
+
+test("behind-origin guard: a stale clone whose origin carries a teammate's board commit refuses; pull-then-migrate carries it", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    // The reviewer's exact disaster setup: B pushes a board commit to main; A migrates UNPULLED.
+    await writeFile(
+      path.join(topo.b.board, "tasks", "from-b.md"),
+      "---\ntype: Task\ntitle: From B\nactor: mike\n---\n# From B\n",
+    );
+    git(topo.b.root, ["add", "-A"]);
+    git(topo.b.root, ["commit", "-m", "board: B adds a task"]);
+    git(topo.b.root, ["push", "origin", "main"]);
+
+    const preHead = git(topo.a.root, ["rev-parse", "HEAD"]).trim();
+    for (const argv of [["--migrate", "--yes"], ["--migrate"]]) {
+      const { err } = await runSync(home, [...argv, "--dir", topo.a.root, "--json"]);
+      assert.equal(err?.code, "RUNTIME", argv.join(" "));
+      assert.match(err!.message, /'main' is behind origin\/main with board changes/);
+      assert.match(err!.message, /strand a teammate's board commits/);
+      assert.match(err!.help ?? "", /^git pull, then re-run/);
+      assert.equal((err!.details as { behind_board_commits: number }).behind_board_commits, 1);
+      assertPristine(topo, topo.a.root, preHead);
+    }
+
+    // The guard's whole point: pull first, and the teammate's doc IS on the board branch.
+    git(topo.a.root, ["pull"]);
+    const rec = await runSyncJson(home, ["--migrate", "--yes", "--dir", topo.a.root]);
+    assert.equal(rec.migrated, MIGRATE_DONE);
+    assert.match(git(topo.a.root, ["ls-tree", "-r", "--name-only", "refs/heads/board"]), /^tasks\/from-b\.md$/m);
+  } finally {
+    await topo.cleanup();
+    await cleanup();
+  }
+});
+
+test("behind-origin on NON-board commits does not block migration (the board tree is identical either way)", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await writeFile(path.join(topo.b.root, "README.md"), "# demo project — updated by B\n");
+    git(topo.b.root, ["add", "-A"]);
+    git(topo.b.root, ["commit", "-m", "docs: B updates the README"]);
+    git(topo.b.root, ["push", "origin", "main"]);
+
+    const rec = await runSyncJson(home, ["--migrate", "--yes", "--dir", topo.a.root]);
+    assert.equal(rec.migrated, MIGRATE_DONE);
+  } finally {
+    await topo.cleanup();
+    await cleanup();
+  }
+});
+
+test("a dead fetch refuses migration outright (offline = no freshness, and the push would fail anyway)", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    git(topo.a.root, ["remote", "set-url", "origin", path.join(topo.dir, "nonexistent.git")]);
+    const preHead = git(topo.a.root, ["rev-parse", "HEAD"]).trim();
+    for (const argv of [["--migrate", "--yes"], ["--migrate"]]) {
+      const { err } = await runSync(home, [...argv, "--dir", topo.a.root, "--json"]);
+      assert.equal(err?.code, "TRANSIENT", argv.join(" "));
+      assert.match(err!.message, /migration refused: could not reach 'origin'/);
+      assert.equal((err!.details as { retryable: boolean }).retryable, true);
+    }
+    assert.equal(git(topo.a.root, ["rev-parse", "HEAD"]).trim(), preHead);
+    assert.equal(
+      gitTry(topo.a.root, ["rev-parse", "--verify", "--quiet", "refs/heads/board"]).status !== 0,
+      true,
+      "nothing mutated offline",
+    );
+  } finally {
+    await topo.cleanup();
+    await cleanup();
+  }
+});
+
+// ── fix round: board/… namespace D/F conflict (review adjudication 5) ─────────
+
+test("branches under board/… (remote or local) refuse migration by name; cleared, migration proceeds", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    // The EXACT shape this repo's own origin carried: a merged PR branch named board/<something>.
+    git(topo.b.root, ["push", "origin", "main:refs/heads/board/sync-verb-tasks"]);
+
+    const remoteCase = await runSync(home, ["--migrate", "--yes", "--dir", topo.a.root, "--json"]);
+    assert.equal(remoteCase.err?.code, "RUNTIME");
+    assert.match(remoteCase.err!.message, /branches named 'board\/…' exist/);
+    assert.match(remoteCase.err!.message, /board\/sync-verb-tasks \(on origin\)/);
+    assert.match(remoteCase.err!.help ?? "", /delete or rename these branches/);
+
+    // A LOCAL offender is named too (same D/F class against refs/heads/board).
+    git(topo.a.root, ["branch", "board/local-experiment"]);
+    const localCase = await runSync(home, ["--migrate", "--dir", topo.a.root, "--json"]);
+    assert.equal(localCase.err?.code, "RUNTIME");
+    assert.match(localCase.err!.message, /board\/local-experiment \(local\)/);
+
+    // Clear both offenders → the same command completes (the migration fetch prunes the stale
+    // refs/remotes/origin/board/* tracking ref, so the push's own tracking-ref update is clean).
+    git(topo.a.root, ["branch", "-D", "board/local-experiment"]);
+    git(topo.b.root, ["push", "origin", ":refs/heads/board/sync-verb-tasks"]);
+    const rec = await runSyncJson(home, ["--migrate", "--yes", "--dir", topo.a.root]);
+    assert.equal(rec.migrated, MIGRATE_DONE);
+    assert.equal(git(topo.origin, ["rev-list", "--count", "refs/heads/board"]).trim(), "1");
   } finally {
     await topo.cleanup();
     await cleanup();

@@ -12110,6 +12110,16 @@ function provisionBoardWorktree(dir, budget = {}) {
   if (!hasLocal && !hasRemote) return { kind: "no_board" };
   if (existsSync3(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
+      if (hasRemote && !hasWorktreeSignature(boardPath) && runGit(top, ["cat-file", "-e", `HEAD:${BUNDLE_DIR}`]).status === 0) {
+        throw new CliError(
+          "RUNTIME",
+          `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is still the pre-migration folder committed on this branch \u2014 the migration PR hasn't merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', then run sync again`,
+          {
+            details: { path: boardPath, state: "pre-migration-window" },
+            help: "git pull  # after the migration PR merges, then re-run sync"
+          }
+        );
+      }
       const hadSignature = hasWorktreeSignature(boardPath);
       let reason = "foreign";
       if (hadSignature) {
@@ -12323,8 +12333,15 @@ function push(boardPath) {
 function pushBoardUpstream(top) {
   mustGit(top, ["push", "-u", BOARD_REMOTE, BOARD_BRANCH], { timeoutMs: NETWORK_TIMEOUT_MS });
 }
-function fetchOriginTolerated(top) {
-  return runGit(top, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS }).status === 0;
+function fetchOrigin(top) {
+  return runGit(top, ["fetch", "--prune", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS }).status === 0;
+}
+function remoteBoardNamespaceBranches(top) {
+  const r = runGit(top, ["ls-remote", "--heads", BOARD_REMOTE, `${BOARD_BRANCH}/*`], {
+    timeoutMs: NETWORK_TIMEOUT_MS
+  });
+  if (r.status !== 0) throw classifyGitError(failureOf(["ls-remote"], r));
+  return r.stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0).map((l) => l.split("	")[1] ?? "").filter((ref) => ref.startsWith("refs/heads/")).map((ref) => ref.slice("refs/heads/".length));
 }
 function swallowReason(err) {
   switch (err.code) {
@@ -12590,7 +12607,7 @@ var MIGRATE_PREVIEW = "preview \u2014 nothing has been changed; re-run with --ye
 var MIGRATE_ALREADY = "already migrated \u2014 a board branch already exists on origin";
 var MIGRATE_DONE = "the board branch is live on origin \u2014 push the migration branch and open its PR to finish";
 function bothWorldsLine(branch) {
-  return `until the migration PR merges, this project is in a BOTH-WORLDS state: the shared board lives on the '${BOARD_BRANCH}' branch (live on ${BOARD_REMOTE} \u2014 sync is armed against it), while '${branch}' still carries the old committed folder. That folder is now a FROZEN SNAPSHOT that receives no further updates: treat it as read-only, don't write docs into it, and never merge '${BOARD_BRANCH}' into '${branch}'`;
+  return `until the migration PR merges, this project is in a BOTH-WORLDS state: the shared board lives on the '${BOARD_BRANCH}' branch (live on ${BOARD_REMOTE}), while '${branch}' still carries the old committed folder. That folder is now a FROZEN SNAPSHOT that receives no further updates: treat it as read-only, don't write docs into it, and never merge '${BOARD_BRANCH}' into '${branch}'. Sync starts working on each clone once the PR merges and that clone runs 'git pull'`;
 }
 function rolloutNote(inv, branch) {
   return [
@@ -12610,9 +12627,17 @@ function previewRecord(inv, branch) {
     after_merge: `once the PR merges, on every clone: 'git pull' makes ${BUNDLE_DIR}/ vanish from '${branch}', and the next '${inv} sync' re-creates it from the ${BOARD_BRANCH} branch \u2014 nothing is lost`,
     both_worlds: bothWorldsLine(branch),
     before_you_run: `every founder should sync \u2014 at minimum commit \u2014 their board changes first: board work sitting uncommitted or unpushed on another machine cannot be detected from here, and it will NOT be on the new branch`,
+    verified: `this preview already checked the machine-checkable preconditions: ${BOARD_REMOTE} is reachable, '${branch}' is not behind ${BOARD_REMOTE}/${branch} on board changes, and no '${BOARD_BRANCH}/\u2026' branches exist (they would block creating the '${BOARD_BRANCH}' branch)`,
     rollout_note: rolloutNote(inv, branch),
     run: `${inv} sync --migrate --yes`
   };
+}
+function nextSteps(inv, branch) {
+  return [
+    `push the migration branch: git push -u ${BOARD_REMOTE} ${MIGRATION_BRANCH}`,
+    `open a PR from '${MIGRATION_BRANCH}' into '${branch}' and merge it`,
+    `after the merge lands: 'git pull', then '${inv} sync' \u2014 ${BUNDLE_DIR}/ vanishes from '${branch}' and comes back as the live shared board`
+  ];
 }
 function localBranchExists(top, name) {
   return runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${name}`]).status === 0;
@@ -12632,6 +12657,30 @@ function folderTreeAtHead(top) {
   const t = runGit(top, ["cat-file", "-t", sha]);
   if (t.status !== 0 || t.stdout.trim() !== "tree") return null;
   return sha;
+}
+function behindBoardCommits(top, branch) {
+  const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
+  if (runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status !== 0) return null;
+  return mustGit2(top, ["rev-list", `HEAD..${remoteRef}`, "--", BUNDLE_DIR]).split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+}
+function assertNotBehindOnBoard(top, inv, branch) {
+  const behind = behindBoardCommits(top, branch);
+  if (behind !== null && behind.length > 0) {
+    throw new CliError(
+      "RUNTIME",
+      `migration refused: '${branch}' is behind ${BOARD_REMOTE}/${branch} with board changes \u2014 migrating from this stale state would strand a teammate's board commits on the frozen folder forever`,
+      {
+        details: { behind_board_commits: behind.length, commits: behind.slice(0, 20) },
+        help: `git pull, then re-run ${inv} sync --migrate --yes`
+      }
+    );
+  }
+}
+function boardNamespaceConflicts(top) {
+  const local = runGit(top, ["for-each-ref", "--format=%(refname:short)", `refs/heads/${BOARD_BRANCH}/`]);
+  const localNames = local.status === 0 ? local.stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0).map((n) => `${n} (local)`) : [];
+  const remoteNames = remoteBoardNamespaceBranches(top).map((n) => `${n} (on ${BOARD_REMOTE})`);
+  return [...localNames, ...remoteNames];
 }
 function parseLsTreeZ(out) {
   return out.split("\0").filter((l) => l.length > 0).map((l) => {
@@ -12707,19 +12756,22 @@ async function migrateBoard(dir, opts, stdout) {
       `not inside a git repository \u2014 there is no committed ${BUNDLE_DIR}/ folder to migrate`
     );
   }
-  fetchOriginTolerated(top);
+  const fetchOk = fetchOrigin(top);
   if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0) {
-    const rec = { migrate: MIGRATE_ALREADY };
-    if (folderTreeAtHead(top) !== null) {
-      rec.note = `this clone still carries the committed ${BUNDLE_DIR}/ folder \u2014 the folder-removal commit is either waiting in the migration PR or already on the default branch: pull it, then run '${inv} sync' (the folder vanishes, then returns as the live board)`;
-    }
-    stdout(render(rec, mode));
+    await alreadyMigrated(top, inv, mode, opts.yes, fetchOk, stdout);
     return;
   }
   if (runGit(top, ["remote", "get-url", BOARD_REMOTE]).status !== 0) {
     throw new CliError(
       "RUNTIME",
       `this repository has no '${BOARD_REMOTE}' remote \u2014 migration publishes the board branch to ${BOARD_REMOTE}; add the remote, then re-run`
+    );
+  }
+  if (!fetchOk) {
+    throw new CliError(
+      "TRANSIENT",
+      `migration refused: could not reach '${BOARD_REMOTE}' \u2014 migration verifies freshness against the remote and must push the board branch, neither of which can happen offline; get online, then re-run`,
+      { details: { retryable: true } }
     );
   }
   const branchR = runGit(top, ["rev-parse", "--abbrev-ref", "HEAD"]);
@@ -12746,6 +12798,7 @@ async function migrateBoard(dir, opts, stdout) {
       }
     );
   }
+  assertNotBehindOnBoard(top, inv, branch);
   const status2 = runGit(top, ["status", "--porcelain", "--", BUNDLE_DIR]);
   const dirty = (status2.status === 0 ? status2.stdout : "").split("\n").map((l) => l.trimEnd()).filter((l) => l.length > 0).map((l) => ({ status: l.slice(0, 2).trim(), path: l.slice(3) }));
   if (dirty.length > 0) {
@@ -12763,6 +12816,17 @@ async function migrateBoard(dir, opts, stdout) {
     throw new CliError(
       "RUNTIME",
       `a '${MIGRATION_BRANCH}' branch already exists \u2014 if it is left over from an interrupted migration, push it and open its PR (or delete it: git branch -D ${MIGRATION_BRANCH}), then re-run`
+    );
+  }
+  const namespaceConflicts = boardNamespaceConflicts(top);
+  if (namespaceConflicts.length > 0) {
+    throw new CliError(
+      "RUNTIME",
+      `migration refused: branches named '${BOARD_BRANCH}/\u2026' exist \u2014 git cannot create a '${BOARD_BRANCH}' branch alongside them: ${namespaceConflicts.join(", ")}`,
+      {
+        details: { conflicting_branches: namespaceConflicts },
+        help: `delete or rename these branches, then re-run ${inv} sync --migrate --yes`
+      }
     );
   }
   let reuseBoardSha = null;
@@ -12793,15 +12857,46 @@ async function migrateBoard(dir, opts, stdout) {
     pushed: `${BOARD_REMOTE}/${BOARD_BRANCH} (tracking set)`,
     removal_branch: MIGRATION_BRANCH,
     removal_commit: removalSha,
-    next_steps: [
-      `push the migration branch: git push -u ${BOARD_REMOTE} ${MIGRATION_BRANCH}`,
-      `open a PR from '${MIGRATION_BRANCH}' into '${branch}' and merge it`,
-      `after the merge lands: 'git pull', then '${inv} sync' \u2014 ${BUNDLE_DIR}/ vanishes from '${branch}' and comes back as the live shared board`
-    ],
+    next_steps: nextSteps(inv, branch),
     both_worlds: bothWorldsLine(branch),
     tell_your_teammates: rolloutNote(inv, branch)
   };
   stdout(render(receipt, mode));
+}
+async function alreadyMigrated(top, inv, mode, yes, fetchOk, stdout) {
+  const rec = { migrate: MIGRATE_ALREADY };
+  const folderTracked = folderTreeAtHead(top) !== null;
+  const branchR = runGit(top, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  const branch = branchR.status === 0 ? branchR.stdout.trim() : "HEAD";
+  if (localBranchExists(top, MIGRATION_BRANCH)) {
+    rec.note = `the folder-removal commit is already prepared on '${MIGRATION_BRANCH}' \u2014 push it and open its PR`;
+    rec.next_steps = nextSteps(inv, branch === "HEAD" ? "the default branch" : branch);
+  } else if (folderTracked && localBranchExists(top, BOARD_BRANCH) && branch !== "HEAD") {
+    if (!yes) {
+      rec.note = `an interrupted migration left the board branch pushed but no folder-removal commit \u2014 re-run '${inv} sync --migrate --yes' to re-create it on '${MIGRATION_BRANCH}' (nothing has been changed by this run)`;
+    } else if (!fetchOk) {
+      throw new CliError(
+        "TRANSIENT",
+        `migration refused: could not reach '${BOARD_REMOTE}' \u2014 finishing the interrupted migration re-creates the folder-removal commit, which must be cut from a fresh view of ${BOARD_REMOTE}; get online, then re-run`,
+        { details: { retryable: true } }
+      );
+    } else {
+      assertNotBehindOnBoard(top, inv, branch);
+      const removalSha = createRemovalCommit(top, inv, branch);
+      mustGit2(top, ["branch", MIGRATION_BRANCH, removalSha]);
+      rec.recovered = `an interrupted migration left the board branch pushed but no folder-removal commit \u2014 it has been re-created on '${MIGRATION_BRANCH}'`;
+      rec.removal_branch = MIGRATION_BRANCH;
+      rec.removal_commit = removalSha;
+      rec.next_steps = nextSteps(inv, branch);
+      rec.both_worlds = bothWorldsLine(branch);
+    }
+  } else if (folderTracked) {
+    const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
+    const remoteBranchKnown = branch !== "HEAD" && runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status === 0;
+    const landedUpstream = remoteBranchKnown && runGit(top, ["cat-file", "-e", `${remoteRef}:${BUNDLE_DIR}`]).status !== 0;
+    rec.note = landedUpstream ? `this clone still carries the committed ${BUNDLE_DIR}/ folder and the folder-removal has already landed on '${branch}' \u2014 run 'git pull' (the folder vanishes), then '${inv} sync' (it returns as the live board)` : `this clone still carries the committed ${BUNDLE_DIR}/ folder \u2014 once the folder-removal lands on the default branch: 'git pull' (the folder vanishes), then '${inv} sync' (it returns as the live board)`;
+  }
+  stdout(render(rec, mode));
 }
 
 // src/commands/sync.ts
@@ -12855,9 +12950,14 @@ and gitignores it \u2014 you push that branch and open the PR yourself; nothing 
 is pushed or changed. Until that PR merges the old committed folder is a frozen snapshot: sync no
 longer updates it, so treat it as read-only. Without \`--yes\`, \`--migrate\` prints a preview (a
 dry run, including the rollout note to send teammates) and changes nothing. It refuses while
-\`.agentstate-lite/\` has uncommitted changes, and reports 'already migrated' (exit 0) once a
-board branch exists on origin. Coordinate first: every founder syncs (at minimum commits) their
-board work before anyone migrates.
+\`.agentstate-lite/\` has uncommitted changes, when the current branch is behind origin on
+commits touching the folder (pull first \u2014 a teammate's board commit must never be stranded on
+the frozen copy), when origin is unreachable (the freshness check and the push both need it),
+and when any \`board/...\` branch exists locally or on the remote (git cannot create a \`board\`
+branch alongside them). It reports 'already migrated' (exit 0) once a board branch exists on
+origin \u2014 with state-aware guidance, including re-creating the folder-removal commit when an
+interrupted run left it missing. Coordinate first: every founder syncs (at minimum commits)
+their board work before anyone migrates.
 
 Options:
   --pull-only          Only fast-forward from origin (never rebase); skip commit + push
