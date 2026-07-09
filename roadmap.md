@@ -1,7 +1,7 @@
 ---
 type: Roadmap
 title: agentstate-lite — Roadmap (near-term spine)
-timestamp: '2026-07-08T19:56:00.000Z'
+timestamp: '2026-07-09T21:35:14.404Z'
 ---
 # agentstate-lite — Roadmap (near-term spine)
 
@@ -129,3 +129,5 @@ items the same way, so the whole chain (roadmap → item → task) is one filter
 - [contains](roadmap-items/claims-provenance.md) — claims/provenance as the capability channel
 - [contains](roadmap-items/typed-relationships.md) — typed relationships (reading shipped; validation gated)
 - [contains](roadmap-items/ui-rethink.md) — the human window rethink
+
+[contains](roadmap-items/real-time-event-backbone.md)
