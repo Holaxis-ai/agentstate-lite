@@ -3,7 +3,7 @@ type: Task
 title: >-
   Local-only first-class: graceful degradation + clear communication when no
   remote exists (founders' requirement)
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Brian+Mike requirement (2026-07-09): agentstate-lite must be fully usable with
@@ -13,7 +13,8 @@ description: >-
   sync/session-start degrade SILENTLY (exit 0, no errors) — the gap is
   communication, not capability. Details + open design questions in the body.
 actor: brian-claude
-timestamp: '2026-07-09T17:40:20.062Z'
+assignee: brian-claude
+timestamp: '2026-07-09T20:42:19.361Z'
 ---
 ## Audit findings (empirical, 2026-07-09, built CLI over a local-only git repo)
 

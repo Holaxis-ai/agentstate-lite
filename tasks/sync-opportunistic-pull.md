@@ -3,7 +3,7 @@ type: Task
 title: >-
   Opportunistic board freshness: stale-cache pull on read commands (real-time
   ladder rung 1, product-native)
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Brian's demand signal (2026-07-09): regular, automatic, silent board pulls
@@ -13,7 +13,8 @@ description: >-
   cache's age and refresh via a time-boxed ff-only pull when stale. The Homebrew
   pattern; rung 1 of the parked real-time ladder in its product-native shape.
 actor: brian-claude
-timestamp: '2026-07-09T16:37:11.557Z'
+assignee: brian-claude
+timestamp: '2026-07-09T20:42:19.476Z'
 ---
 ## Design sketch (carried from the adjudication; builder refines, panel-vets if judged risky)
 

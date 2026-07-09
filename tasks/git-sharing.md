@@ -1,21 +1,20 @@
 ---
 type: Task
 title: 'Git sharing tier: bundle-in-a-git-repo as the OSS multi-human floor'
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  TIER 0 SHIPPED 2026-07-06 (board in git via byte channel; worker frozen). TIER
-  0.5 SHIPPED 2026-07-07 (2f90e6f): the board lives IN the public repo at
-  .agentstate-lite/, discovered bare on any clone; board writes are PUBLIC on
-  push (write-time scrub discipline). TIER 1 sync verb: U0-U3b, U6, per-clone
-  keying, loud provisioning (PRs 16-19), U4 SessionStart pull-then-render (PR
-  #24) all SHIPPED; U5 sync --migrate COMMAND SHIPPED 2026-07-09 (TEMPORARY
-  founders-only flag, tasks/sync-migration) — Tier 1 completes when the founders
-  EXECUTE the migration of THIS repo (human-timed: run --migrate --yes, merge
-  the board-migration PR, pull + sync). This umbrella closes when that execution
-  lands and the bundle-commits-on-main convention retires.
-actor: builder-u5
-timestamp: '2026-07-09T17:17:57.202Z'
+  TIER 1 COMPLETE 2026-07-09 — the arc closes: Tier 0 (board in git via byte
+  channel), Tier 0.5 (board in the public repo, conventional-folder discovery),
+  Tier 1 (the sync verb U0-U6 with converging conflict resolution and
+  show-incoming; the SessionStart pull-then-render hook; the migration EXECUTED
+  — board on its own branch, root 608e1fb, removal PR #27 merged with
+  tree-hash-verified zero loss). git pull no longer shares the board; aslite
+  sync does, and this record traveled that way. Follow-on work continues under
+  the task backlog (sync-share, local-only, opportunistic-pull); the umbrella is
+  done.
+actor: brian
+timestamp: '2026-07-09T20:42:19.245Z'
 ---
 [design](../plans/sync-verb.md)
 
