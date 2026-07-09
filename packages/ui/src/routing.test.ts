@@ -2,16 +2,20 @@ import { describe, expect, it } from "vitest";
 import { parseRoute, routeToSearch } from "./routing.js";
 
 describe("parseRoute", () => {
-  it("defaults to the board view for an empty search string", () => {
-    expect(parseRoute("")).toEqual({ view: "board" });
+  it("defaults to the launcher view for an empty search string", () => {
+    expect(parseRoute("")).toEqual({ view: "launcher" });
   });
 
-  it("defaults to the board view for an unrecognized view name", () => {
-    expect(parseRoute("?view=bogus")).toEqual({ view: "board" });
+  it("defaults to the launcher view for an unrecognized view name", () => {
+    expect(parseRoute("?view=bogus")).toEqual({ view: "launcher" });
   });
 
   it("parses a known view name", () => {
     expect(parseRoute("?view=admin")).toEqual({ view: "admin" });
+  });
+
+  it("parses a page view with its registry-doc id", () => {
+    expect(parseRoute("?view=page&id=pages-registry/board")).toEqual({ view: "page", id: "pages-registry/board" });
   });
 
   it("parses a doc view with its id", () => {
@@ -29,12 +33,16 @@ describe("parseRoute", () => {
 });
 
 describe("routeToSearch", () => {
-  it("renders the bare board route as an empty string (the clean default URL)", () => {
-    expect(routeToSearch({ view: "board" })).toBe("");
+  it("renders the bare launcher route as an empty string (the clean default URL)", () => {
+    expect(routeToSearch({ view: "launcher" })).toBe("");
   });
 
-  it("renders a non-board view", () => {
+  it("renders a non-launcher view", () => {
     expect(routeToSearch({ view: "admin" })).toBe("?view=admin");
+  });
+
+  it("renders a page route with its id", () => {
+    expect(routeToSearch({ view: "page", id: "pages-registry/board" })).toBe("?view=page&id=pages-registry%2Fboard");
   });
 
   it("renders a doc route with its id", () => {
@@ -45,9 +53,11 @@ describe("routeToSearch", () => {
 describe("parseRoute / routeToSearch round-trip", () => {
   it("round-trips every route shape", () => {
     const routes: Array<Parameters<typeof routeToSearch>[0]> = [
+      { view: "launcher" },
       { view: "board" },
       { view: "admin" },
       { view: "graph" },
+      { view: "page", id: "pages-registry/board" },
       { view: "doc", id: "tasks/foo" },
     ];
     for (const route of routes) {
