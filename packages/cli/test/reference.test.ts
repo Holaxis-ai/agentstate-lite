@@ -9,7 +9,7 @@
 // TOON-array shape regressing.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { COMMAND_GROUPS, DESCRIPTION, helpIndexText, remoteEnvPointer, wrapText } from "../src/reference.js";
+import { COMMAND_GROUPS, DESCRIPTION, compactCommandReference, helpIndexText, remoteEnvPointer, wrapText } from "../src/reference.js";
 
 const INV = "agentstate-lite";
 
@@ -79,4 +79,16 @@ test("wrapText: wraps long prose at existing spaces without breaking words, and 
   }
   // No word was split or dropped: rejoining the wrapped lines with spaces reproduces the input.
   assert.equal(lines.join(" "), long);
+});
+
+test("compactCommandReference: usage variants of one command dedupe to a single name (no 'key mint, key mint')", () => {
+  const { commands } = compactCommandReference(INV);
+  for (const [group, names] of Object.entries(commands)) {
+    const list = names.split(", ");
+    assert.deepEqual(list, [...new Set(list)], `group '${group}' repeats a command name: ${names}`);
+  }
+  // The concrete case that motivated this (U4 review nit): two key-mint usage variants, one name.
+  const apiKeys = commands["API keys"];
+  assert.ok(apiKeys.includes("key mint"), "key mint must remain discoverable");
+  assert.equal(apiKeys.match(/key mint/g)!.length, 1, `expected exactly one 'key mint': ${apiKeys}`);
 });

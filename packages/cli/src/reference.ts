@@ -324,7 +324,9 @@ export function compactCommandReference(invocation: string): {
 } {
   const commands: Record<string, string> = {};
   for (const { group, commands: refs } of COMMAND_GROUPS) {
-    commands[group] = refs.map((c) => commandName(c.usage)).join(", ");
+    // Set-dedupe: usage VARIANTS of one command (e.g. key mint self-serve vs --agent) collapse to
+    // the same name here, and a name-only view gains nothing from repeating it ("key mint, key mint").
+    commands[group] = [...new Set(refs.map((c) => commandName(c.usage)))].join(", ");
   }
   return {
     commands,

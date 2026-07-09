@@ -14482,7 +14482,7 @@ function commandName(usage) {
 function compactCommandReference(invocation) {
   const commands = {};
   for (const { group, commands: refs } of COMMAND_GROUPS) {
-    commands[group] = refs.map((c) => commandName(c.usage)).join(", ");
+    commands[group] = [...new Set(refs.map((c) => commandName(c.usage)))].join(", ");
   }
   return {
     commands,
