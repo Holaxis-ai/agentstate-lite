@@ -12,7 +12,7 @@
     "build": "npm run build -w @agentstate-lite/core -w @agentstate-lite/server -w @agentstate-lite/worker -w @agentstate-lite/viewer -w agentstate-lite",
     "typecheck": "npm run build -w @agentstate-lite/core -w @agentstate-lite/server -w @agentstate-lite/worker -w @agentstate-lite/viewer && npm run typecheck --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
-    "test:scripts": "node --test scripts/*.test.mjs",
+    "test:scripts": "node --test scripts/ci-version-bundle.test.mjs",
     "check": "npm run build && npm run typecheck && npm test --workspaces --if-present && npm run test:scripts && npm run check:skill -w agentstate-lite",
     "check:plugin-bundle": "npm run check:skill:bundle -w agentstate-lite && npm run check:bundle -w agentstate-lite"
   }
