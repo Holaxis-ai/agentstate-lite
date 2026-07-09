@@ -464,6 +464,79 @@ test("time-box fall-through: a REAL hanging remote is killed inside the budget a
   }
 });
 
+test("zero-at-the-fetch-boundary: a budget that decays to 0 AFTER the guard never reaches spawnSync (PR#24 MEDIUM)", async () => {
+  // The exact reported mechanism: the ffPull call site is guarded, but local ops run between the
+  // guard and the `remaining()` evaluation of the fetch slice — a scripted clock passes every
+  // guard (calls 1-4 stay at t0) and then jumps past the deadline, so the slice handed to the
+  // fetch is EXACTLY 0. Node's spawnSync treats timeout:0 as NO timeout, so without the
+  // runGitBytes floor this would hang on the hang:// helper for 60s, unpreemptable by any race.
+  const topo = await makeTwoCloneTopology();
+  const homeB = await tempHome();
+  const helperDir = await mkdtemp(path.join(tmpdir(), "aslite-zero-boundary-"));
+  const prevPath = process.env.PATH;
+  try {
+    const helper = path.join(helperDir, "git-remote-hang");
+    await writeFile(helper, "#!/bin/sh\nsleep 60\n");
+    chmodSync(helper, 0o755);
+    process.env.PATH = `${helperDir}${path.delimiter}${prevPath ?? ""}`;
+    git(topo.b.root, ["remote", "set-url", "origin", "hang://black.hole/repo"]);
+
+    const budgetMs = 5_000;
+    const t0real = Date.now();
+    let calls = 0;
+    // Calls 1-4: deadline mint, entry guard, provision slice, post-provision guard — all at t0.
+    // Call 5+ (the ffPull slice and after): past the deadline → remaining() clamps to exactly 0.
+    const scriptedNow = () => {
+      calls += 1;
+      return calls <= 4 ? t0real : t0real + budgetMs + 1_000;
+    };
+    const outcome = await withHome(homeB, () =>
+      sessionStartPull(topo.b.root, budgetMs, scriptedNow),
+    );
+    const elapsed = Date.now() - t0real;
+
+    assert.ok(elapsed < 5_000, `the 0 slice must classify immediately, never spawn (took ${elapsed}ms)`);
+    assert.ok(outcome, "a provisioned board yields an outcome");
+    assert.equal(outcome!.offline, true, "a zero-slice fetch is an offline outcome");
+    assert.ok(outcome!.boardPath, "decay must have hit the FETCH boundary, past the entry guard");
+    assert.equal(outcome!.refreshed, undefined, "no cache refresh on a floored pull");
+    // Marker refreshed (board confirmed), cursor NOT advanced (no successful pull).
+    const key = await withHome(homeB, async () => resolveBundleKey(topo.b.board));
+    assert.ok(await withHome(homeB, () => readMarker(key)));
+    assert.equal(await withHome(homeB, () => readCursor(key)), null);
+  } finally {
+    process.env.PATH = prevPath;
+    await rm(helperDir, { recursive: true, force: true });
+    await topo.cleanup();
+    await rm(homeB, { recursive: true, force: true });
+  }
+});
+
+test("zero budget at entry: the guard takes the offline path before ANY network op; render still appears", async () => {
+  const topo = await makeTwoCloneTopology();
+  const homeB = await tempHome();
+  const helperDir = await mkdtemp(path.join(tmpdir(), "aslite-zero-entry-"));
+  const prevPath = process.env.PATH;
+  try {
+    const helper = path.join(helperDir, "git-remote-hang");
+    await writeFile(helper, "#!/bin/sh\nsleep 60\n");
+    chmodSync(helper, 0o755);
+    process.env.PATH = `${helperDir}${path.delimiter}${prevPath ?? ""}`;
+    git(topo.b.root, ["remote", "set-url", "origin", "hang://black.hole/repo"]);
+
+    const t0 = Date.now();
+    const out = await runSessionStart(homeB, ["--dir", topo.b.root], { budgetMs: 0 });
+    assert.ok(Date.now() - t0 < 5_000, "zero budget must never wait on the network");
+    assert.match(out, /board sync offline — showing last known state/);
+    assert.match(out, /agentstate-lite/);
+  } finally {
+    process.env.PATH = prevPath;
+    await rm(helperDir, { recursive: true, force: true });
+    await topo.cleanup();
+    await rm(homeB, { recursive: true, force: true });
+  }
+});
+
 test("fall-through belt: an injected pull that NEVER resolves still renders home at the budget", async () => {
   const homeDir = await tempHome();
   try {

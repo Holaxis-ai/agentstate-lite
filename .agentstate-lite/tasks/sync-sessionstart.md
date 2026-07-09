@@ -63,10 +63,34 @@ description: >-
   slicing covers the network ops only); (b) hermeticity: tests that run
   home/session-start with DEFAULT deps read the real user HOME for the
   hook-freshness probe (this suite injects hookNeedsUpdate/swaps HOME; ad-hoc
-  default-deps runs on a dev machine may see the hook_update nag).
+  default-deps runs on a dev machine may see the hook_update nag). FIX ROUND
+  (PR#24 Codex review, MEDIUM, empirically verified): a budget slice that
+  decayed to 0 flowed into spawnSync{timeout: 0}, which Node treats as NO
+  timeout — an unpreemptable hang past the hook window. Mechanism: the provision
+  call site had NO budget guard at all, and the ffPull site's guard had a
+  check-to-use gap (readCursor + currentHead run between the guard and the
+  remaining() evaluation of the fetch slice; remaining() clamps at 0, making
+  exactly 0 the reachable poison value). Fixed at BOTH layers: (1) runGitBytes
+  chokepoint — timeoutMs <= 0 classifies as an immediate fired timeout
+  (TRANSIENT) without spawning, closing the class for every caller; (2)
+  session-start guards EVERY network boundary (new entry guard before provision;
+  MIN_USEFUL_BUDGET_MS exported and documented). ADJUDICATED CONTRACT (reviewer
+  suggestion 3): LOCAL ops are deliberately NOT budget-sliced —
+  rev-parse/status/symbolic-ref, the ff-only merge of already-fetched objects,
+  and state reads ride LOCAL_TIMEOUT (30s) unbudgeted; realistic latency is ms,
+  and slicing would turn slow-but-succeeding local ops into spurious failures.
+  Accepted residual: a pathological FS stall can exceed the 10s hook window,
+  where the hook harness kills the render (session unharmed). Stated in
+  session-start.ts's module header (BUDGET FLOOR + LOCAL-OP CONTRACT). Pinned:
+  runGitBytes floor unit test (timeoutMs 0 and -5 -> immediate TRANSIENT, git
+  init observably never ran); scripted-clock e2e forcing the slice to exactly 0
+  AT the ffPull boundary against a hanging remote helper (offline outcome,
+  boardPath present proving the decay hit the fetch boundary, marker refreshed,
+  cursor untouched, wall <5s vs the 60s hang without the floor);
+  zero-budget-at-entry render pin.
 actor: builder-u4
 assignee: brian-claude
-timestamp: '2026-07-09T00:28:14.726Z'
+timestamp: '2026-07-09T15:36:35.520Z'
 ---
 # U4 — SessionStart integration
 

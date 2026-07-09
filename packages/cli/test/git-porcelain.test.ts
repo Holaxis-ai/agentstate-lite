@@ -54,6 +54,7 @@ import {
 import {
   isProvisioned,
   provisionBoardWorktree,
+  runGit,
   detectStaleRebase,
   abortStaleRebase,
   stageAndCommit,
@@ -974,5 +975,34 @@ test("isProvisioned: false for a plain non-worktree .agentstate-lite dir (falls 
     assert.equal(isProvisioned(topo.b.root), true);
   } finally {
     await topo.cleanup();
+  }
+});
+
+// ── time-box floor: non-positive timeoutMs never reaches spawnSync (PR#24 review, MEDIUM) ─
+
+test("runGit timeoutMs <= 0: immediate TRANSIENT classification, NO child process spawned", async () => {
+  // Node's spawnSync treats `timeout: 0` as NO timeout (empirically: it waits for the child
+  // indefinitely), so a budget slice that decayed to 0 must never reach the spawn. The floor in
+  // runGitBytes classifies it as an immediate fired timeout instead. NO-SPAWN PROOF: `git init`
+  // has an observable side effect (creates `.git`) — after the call, the directory must be
+  // untouched; and the call must return in microseconds, not a child-process round trip.
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-timeout-floor-"));
+  try {
+    for (const timeoutMs of [0, -5]) {
+      const t0 = Date.now();
+      let err: unknown = null;
+      try {
+        runGit(dir, ["init", "-b", "main", "."], { timeoutMs });
+      } catch (e) {
+        err = e;
+      }
+      assert.ok(Date.now() - t0 < 1_000, `must not wait on any child (timeoutMs ${timeoutMs})`);
+      assert.ok(!existsSync(path.join(dir, ".git")), `git must never have run (timeoutMs ${timeoutMs})`);
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "TRANSIENT");
+      assert.match(err.message, /timed out/);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });

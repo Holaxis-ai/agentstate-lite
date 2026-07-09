@@ -153,6 +153,16 @@ export interface GitRunBytesResult {
  * string silently rewrites invalid sequences to U+FFFD.
  */
 export function runGitBytes(dir: string, args: string[], opts: RunOptions = {}): GitRunBytesResult {
+  // TIME-BOX FLOOR (PR#24 review, MEDIUM — empirically verified): Node's spawnSync treats
+  // `timeout: 0` as NO timeout at all (a zero waits for the child indefinitely), and a
+  // synchronous spawn cannot be preempted by any timer — so a caller whose sliced budget
+  // decayed to 0 between its own guard and this spawn would HANG the exact path the budget
+  // exists to bound. A non-positive timeout therefore classifies as an IMMEDIATE fired timeout
+  // (TRANSIENT) without ever spawning: one chokepoint closing the class for every caller,
+  // present and future, however their guard-to-spawn gaps decay.
+  if (opts.timeoutMs !== undefined && opts.timeoutMs <= 0) {
+    throw classifyGitError({ args, status: null, stdout: "", stderr: "", timedOut: true });
+  }
   const r = spawnSync("git", ["-C", dir, "-c", "core.quotepath=off", ...args], {
     env: gitEnv(opts.rebase ?? false, opts.connectTimeoutSeconds),
     timeout: opts.timeoutMs ?? LOCAL_TIMEOUT_MS,

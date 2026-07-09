@@ -11980,6 +11980,9 @@ function runGit(dir, args, opts = {}) {
   return { status: r.status, stdout: r.stdout.toString("utf8"), stderr: r.stderr };
 }
 function runGitBytes(dir, args, opts = {}) {
+  if (opts.timeoutMs !== void 0 && opts.timeoutMs <= 0) {
+    throw classifyGitError({ args, status: null, stdout: "", stderr: "", timedOut: true });
+  }
   const r = spawnSync("git", ["-C", dir, "-c", "core.quotepath=off", ...args], {
     env: gitEnv(opts.rebase ?? false, opts.connectTimeoutSeconds),
     timeout: opts.timeoutMs ?? LOCAL_TIMEOUT_MS,
@@ -15144,6 +15147,7 @@ async function sessionStartPull(dir, budgetMs = SESSION_START_PULL_BUDGET_MS, no
   const remaining = () => Math.max(0, deadline - now());
   try {
     const startDir = retargetBoardInterior(dir ?? process.cwd());
+    if (remaining() < MIN_USEFUL_BUDGET_MS) return { offline: true };
     let outcome;
     try {
       outcome = provisionBoardWorktree(startDir, {

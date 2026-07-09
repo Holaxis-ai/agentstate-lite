@@ -21,6 +21,20 @@
 // A pull that loses its time box is ABANDONED (its in-flight git op is killed); this run renders
 // the last-known cache with the pinned offline note, and the NEXT session's pull refreshes it.
 //
+// BUDGET FLOOR + LOCAL-OP CONTRACT (PR#24 review fix round — a stated contract, not an accident):
+//   • Every NETWORK boundary (the provision fetch, ffPull's fetch) is double-protected: a
+//     {@link MIN_USEFUL_BUDGET_MS} guard immediately before the op takes the offline path when
+//     the budget is effectively spent, AND git.ts's runGitBytes chokepoint treats a non-positive
+//     `timeoutMs` as an IMMEDIATE fired timeout without spawning — because Node's spawnSync
+//     treats `timeout: 0` as NO timeout, a slice that decays to 0 in the guard-to-spawn gap
+//     (local ops run between the check and the spawn) would otherwise hang unpreemptably.
+//   • LOCAL ops are deliberately NOT budget-sliced: rev-parse/status/symbolic-ref, the ff-only
+//     merge of already-fetched objects, and state-file reads ride git.ts's LOCAL_TIMEOUT (30s)
+//     unbudgeted. Realistic latency is milliseconds; slicing them would turn a slow-but-
+//     succeeding local op into a spurious failure. The accepted residual: a pathological
+//     filesystem stall can exceed the 10s hook window, in which case the hook harness kills the
+//     render (the session is unharmed). Recorded on tasks/sync-sessionstart.
+//
 // FAIL-SOFT MATRIX: every failure — no repo, no board, provisioning refusal, offline fetch, auth,
 // a held lock, a missing git binary, a thrown anything — is swallowed into the render. This
 // command NEVER exits nonzero for board reasons and the render ALWAYS appears (test-pinned).
@@ -64,8 +78,13 @@ import { parseOrUsage } from "../args.js";
 export const SESSION_START_PULL_BUDGET_MS = 7_000;
 /** ssh connect budget: ≤ 5s (plan §U4). */
 export const SESSION_START_CONNECT_TIMEOUT_SECONDS = 5;
-/** Below this remaining budget, skip the network pull outright (nothing useful can finish). */
-const MIN_USEFUL_BUDGET_MS = 250;
+/**
+ * The explicit budget floor: below this remaining budget, EVERY network boundary (the provision
+ * fetch and ffPull's fetch — both guarded) takes the offline path outright instead of spawning
+ * with a decayed slice. See the module header's BUDGET FLOOR contract; the runGitBytes
+ * non-positive-timeout floor closes the residual guard-to-spawn decay race.
+ */
+export const MIN_USEFUL_BUDGET_MS = 250;
 
 export const SESSION_START_USAGE = `agentstate-lite session-start — the SessionStart hook payload (pull the board, then render home)
 
@@ -114,6 +133,12 @@ export async function sessionStartPull(
   const remaining = () => Math.max(0, deadline - now());
   try {
     const startDir = retargetBoardInterior(dir ?? process.cwd());
+
+    // Budget guard at the FIRST network boundary (PR#24 fix round): retargetBoardInterior above
+    // already spent local-git time, and a tiny/zero injected budget can be spent at entry — never
+    // hand a decayed slice to the provision fetch. (The residual guard-to-spawn decay race is
+    // closed at the runGitBytes floor — see the module header.)
+    if (remaining() < MIN_USEFUL_BUDGET_MS) return { offline: true };
 
     // Provision if needed (self-healing first contact — sync's own step 1, detection-gated inside
     // provisionBoardWorktree: it probes origin/board and only then materializes the worktree).
