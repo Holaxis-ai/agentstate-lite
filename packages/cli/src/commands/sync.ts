@@ -127,6 +127,15 @@ If the push fails after a local commit already landed (offline, revoked/expired 
 locked repository), the receipt still reports what committed/pulled successfully — your work is
 saved locally either way, and re-running sync retries the push.
 
+Board-READING commands (\`list\`, \`doc read\`, \`status\`, \`home\`, \`link show\`) also keep a
+provisioned board fresh opportunistically: when the board's awareness state is older than ~5
+minutes, the read first runs the same fast-forward-only pull \`--pull-only\` uses (time-boxed to
+~2s; never a rebase, never provisioning, silent on any failure) and then serves fresh state — so
+the board checkout's HEAD can advance after a plain \`list\`. Reads never auto-push; sharing YOUR
+changes is always this verb. Set AGENTSTATE_LITE_NO_AUTOPULL to any non-empty value to disable
+the auto-pull (note: "0" disables it too — the variable's PRESENCE is the switch) for CI or
+scripted runs that must never touch the network.
+
 \`sync --migrate\` is the ONE-TIME move for a project whose board is a folder committed on the
 default branch: it creates a \`board\` branch carrying the folder's CURRENT files (files only —
 the folder's history stays where it is), pushes it to origin with tracking, and prepares ONE

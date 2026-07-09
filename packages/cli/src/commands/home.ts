@@ -39,9 +39,11 @@
 // pull every board-reading command shares. Everything the old guarantee protected still holds
 // structurally: the RENDER itself (everything below the trigger) is fs + local-git only and never
 // blocked by the pull (the trigger is bounded and fail-soft, and with the network off it degrades
-// to at most one bounded fetch attempt per staleness window); a `--remote`-scoped home, and a
-// session-start-driven render (which already pulled in-process, signaled by `deps.boardPull`),
-// never trigger it. Home still NEVER provisions and still exits 0 in every case.
+// to at most one bounded fetch attempt per staleness window); a `--remote`-scoped home never
+// triggers it, and neither does ANY session-start-driven render — session-start passes a defined
+// `deps.boardPull` on EVERY path, including its no-repo/no-board/pull-threw ones, precisely so
+// its own budget race stays the only network bound in that flow (test-pinned). Home still NEVER
+// provisions and still exits 0 in every case.
 //
 // PROJECT-BINDING PEEK (item 43 follow-on — `bundle.ts`'s `resolveProjectBinding`): home does NOT
 // call `resolveRemoteFlag` (see `bundle.ts`'s header — home is a THIRD deliberate exception,
@@ -155,7 +157,8 @@ export interface HomeDeps {
    * The opportunistic board-freshness trigger (see the module header's OPPORTUNISTIC FRESHNESS
    * note). Default: autopull.ts's `maybeAutoPull` with `requireBoardBundle: false` (home has no
    * single target bundle — it always renders the board block). Never runs when `boardPull` is
-   * present (session-start already pulled in-process) or for a `--remote`-scoped view.
+   * present — and session-start passes one on EVERY path, even no-board/failed ones — or for a
+   * `--remote`-scoped view.
    */
   autoPull: (dir?: string) => Promise<unknown>;
 }

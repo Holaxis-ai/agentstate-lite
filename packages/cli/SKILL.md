@@ -80,7 +80,7 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
 - `npx -y agentstate-lite ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
   — Boot the local web UI (board / doc detail / admin / graph) — same origin, loopback-only
 - `npx -y agentstate-lite sync [--pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
-  — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch
+  — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it
 
 ### Identity
 
@@ -232,6 +232,14 @@ npx -y agentstate-lite sync                                      # share it
 
 `sync --pull-only` picks up teammates' changes without publishing local ones. If a push fails
 (offline, auth), your work is already committed locally — re-running sync retries the push.
+
+Reads stay fresh on their own: board-reading commands (`list`, `doc read`, `status`, `home`,
+`link show`) automatically run the same fast-forward-only pull when the board's state is older
+than ~5 minutes — silent, time-boxed (~2s), never a rebase, never a push, and it never sets a
+board up (that stays `sync`'s job) — so a plain `list` can advance the board checkout's HEAD.
+Your OWN changes still only leave the machine when you run `sync`. To disable the auto-pull
+(CI, scripted runs), set `AGENTSTATE_LITE_NO_AUTOPULL` to any non-empty value — even `0`
+disables it; the variable's presence is the switch.
 
 On projects that share their board you may notice a `board` branch in the repo's GitHub —
 that's the board; never merge it into main.

@@ -163,7 +163,7 @@ export const COMMAND_GROUPS: CommandGroup[] = [
         // so the skill channels and the compact reference never teach it.
         usage: "sync [--pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]",
         summary:
-          "Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch",
+          "Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it",
       },
     ],
   },

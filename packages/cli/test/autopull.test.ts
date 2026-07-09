@@ -14,14 +14,23 @@
 //      bounded, and throttled so the SECOND read never pays it again inside the window.
 //   4. The hook-install hint's once-ness (per-clone `hookHintedAt`) and its suppression when a
 //      managed hook is installed.
+//   5. DETECTION-COST pins (fix round HIGH 1) via a PATH git-shim that counts real spawns: the
+//      non-triggering hot path is the tax every read pays, so its spawn budget is test-pinned —
+//      0 spawns on non-board paths, exactly 1 (the key's `remote get-url`) on a provisioned board
+//      with a fresh cache. Plus the session-start boardPull FENCE (fix round LOW 4): a
+//      session-start whose pull step resolved to NO outcome still hands home a defined boardPull,
+//      so home's own trigger can never run a network pull outside session-start's budget race.
+//      (The spawned-subprocess default-wiring pin lives in doc-cli-integration.test.ts — the one
+//      file that builds the real CLI.)
 //
 // NOTE the suite-wide knob: packages/cli's test script sets AGENTSTATE_LITE_NO_AUTOPULL=1 so the
 // DEFAULT trigger is inert for every other suite (hermetic on machines whose own checkout has a
 // provisioned, stale board). Tests here that want the real trigger inject `env: {}` explicitly.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { chmodSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -39,6 +48,7 @@ import { list } from "../src/commands/list.js";
 import { status } from "../src/commands/status.js";
 import { doc } from "../src/commands/doc.js";
 import { link } from "../src/commands/link.js";
+import { sessionStart } from "../src/commands/session-start.js";
 import {
   boardHead,
   commitBoard,
@@ -426,5 +436,114 @@ test("hookInstalled: false on empty bases; true after `hook install` writes the 
     assert.equal(hookInstalled([base]), true);
   } finally {
     await rm(base, { recursive: true, force: true });
+  }
+});
+
+// ── 5. detection-cost pins (fix round HIGH 1) + the session-start boardPull fence ──
+
+/**
+ * A PATH shim that intercepts every `git` spawn, logs its argv, and execs the REAL git — so a
+ * test can pin the trigger's spawn budget (a count of PROCESSES, the thing that actually costs
+ * milliseconds) without faking git's behavior. Install AFTER building any harness topology (the
+ * harness's own git calls would otherwise pollute the log).
+ */
+async function installGitSpawnShim(): Promise<{
+  spawns: () => Promise<string[]>;
+  reset: () => Promise<void>;
+  restore: () => Promise<void>;
+}> {
+  const realGit = execFileSync("/bin/sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  const shimDir = await mkdtemp(path.join(tmpdir(), "aslite-git-spawn-shim-"));
+  const logPath = path.join(shimDir, "spawns.log");
+  const shim = path.join(shimDir, "git");
+  await writeFile(shim, `#!/bin/sh\nprintf '%s\\n' "$*" >> "${logPath}"\nexec "${realGit}" "$@"\n`);
+  chmodSync(shim, 0o755);
+  const prevPath = process.env.PATH;
+  process.env.PATH = `${shimDir}${path.delimiter}${prevPath ?? ""}`;
+  return {
+    spawns: async () => {
+      try {
+        return (await readFile(logPath, "utf8")).split("\n").filter((l) => l.trim().length > 0);
+      } catch {
+        return [];
+      }
+    },
+    reset: () => writeFile(logPath, ""),
+    restore: async () => {
+      process.env.PATH = prevPath;
+      await rm(shimDir, { recursive: true, force: true });
+    },
+  };
+}
+
+test("detection cost: 0 spawns on non-board paths; exactly ONE (remote get-url) on a provisioned board with a fresh cache", async () => {
+  const topoProvisioned = await makeTwoCloneTopology();
+  const topoBare = await makeTwoCloneTopology({ provision: false });
+  const plain = await mkdtemp(path.join(tmpdir(), "aslite-autopull-cost-"));
+  const homeDir = await tempHome();
+  try {
+    await initBundle(plain);
+    // Seed a fresh cache on the provisioned clone BEFORE the shim starts counting.
+    assert.equal(
+      await withHome(homeDir, () => maybeAutoPull(topoProvisioned.b.board, { env: {}, now: at(0) })),
+      "pulled",
+    );
+
+    const shim = await installGitSpawnShim();
+    try {
+      assert.equal(await withHome(homeDir, () => maybeAutoPull(plain, { env: {} })), "no-board");
+      assert.equal((await shim.spawns()).length, 0, "a plain bundle outside any repo must spawn NOTHING");
+
+      assert.equal(await withHome(homeDir, () => maybeAutoPull(topoBare.a.root, { env: {} })), "no-board");
+      assert.equal((await shim.spawns()).length, 0, "an unprovisioned checkout must spawn NOTHING");
+
+      assert.equal(
+        await withHome(homeDir, () => maybeAutoPull(topoProvisioned.b.board, { env: {}, now: at(MIN) })),
+        "fresh",
+      );
+      const lines = await shim.spawns();
+      assert.equal(
+        lines.length,
+        1,
+        `a fresh cache must prove itself with ONE spawn (got ${lines.length}: ${lines.join(" | ")})`,
+      );
+      assert.match(lines[0]!, /remote get-url/, "…and that one spawn is the state key's remote component");
+    } finally {
+      await shim.restore();
+    }
+  } finally {
+    await topoProvisioned.cleanup();
+    await topoBare.cleanup();
+    await rm(plain, { recursive: true, force: true });
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("session-start fence: a pull step with NO outcome (no repo/no board/provision threw) still hands home a defined boardPull — zero fetches outside the budget race", async () => {
+  const topo = await makeTwoCloneTopology(); // a REAL provisioned, never-pulled (stale) board
+  const homeDir = await tempHome();
+  const prevKnob = process.env[NO_AUTOPULL_ENV];
+  // The FENCE, not the suite-wide knob, must be what prevents the pull — remove the knob.
+  delete process.env[NO_AUTOPULL_ENV];
+  const shim = await installGitSpawnShim();
+  try {
+    const cap = captureStdout();
+    // An injected pull resolving `undefined` is the whole no-outcome class, provision-THREW included.
+    await withHome(homeDir, () =>
+      sessionStart(["--dir", topo.b.root], { stdout: cap.stdout, pull: async () => undefined }),
+    );
+    assert.match(cap.text(), /agentstate-lite/, "the render still appeared");
+    const fetches = (await shim.spawns()).filter((l) => /(^|\s)fetch(\s|$)/.test(l));
+    assert.deepEqual(
+      fetches,
+      [],
+      "home under session-start must NEVER fetch — session-start's budget race is the only network bound",
+    );
+  } finally {
+    await shim.restore();
+    if (prevKnob === undefined) delete process.env[NO_AUTOPULL_ENV];
+    else process.env[NO_AUTOPULL_ENV] = prevKnob;
+    await topo.cleanup();
+    await rm(homeDir, { recursive: true, force: true });
   }
 });
