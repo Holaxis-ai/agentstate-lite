@@ -9,7 +9,7 @@ description: >-
   git-identity fallback, --help worktree language, single-branch refspec hint,
   code-repo linked-worktree raw fatal.
 actor: brian-claude
-timestamp: '2026-07-08T18:50:19.178Z'
+timestamp: '2026-07-09T21:17:43.713Z'
 ---
 From the PR#13 three-lane review (all empirical):
 1. Cross-run receipt under-report: fetch-succeeded-then-failed run → NEXT run
@@ -38,3 +38,12 @@ From the PR#13 three-lane review (all empirical):
 8. Two error strings in errors.ts (~:360, :370) still say "board worktree" while the
    sibling ffSwallowToError strings now say "board checkout" (U6 vocab sweep missed the
    classifyGitError pair) — same condition renders different vocabulary by path.
+9. (upgrades item 5; local-only review 2026-07-09) Narrowed-refspec clones now get an
+   AFFIRMATIVE false claim: the new local-only message says "no shared board branch
+   exists" while ls-remote shows one — hedge the wording ("no board branch is visible
+   to this clone") or widen the probe. Same fix family as item 5.
+10. (local-only review) The provision announcement says "materialized from
+   origin/board" even when provisioning came from a LOCAL board ref with no origin.
+11. (local-only review, docstring-only) hasLocalOnlyBundle notes "at the repo top" but
+   never names the nested-bundle miss (repo/pkg/.agentstate-lite reads as bare
+   "nothing to sync" even run from inside pkg) — one honest sentence.
