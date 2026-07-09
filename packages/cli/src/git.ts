@@ -906,6 +906,28 @@ export function push(boardPath: string): void {
   mustGit(boardPath, ["push", BOARD_REMOTE, BOARD_BRANCH], { timeoutMs: NETWORK_TIMEOUT_MS });
 }
 
+/**
+ * U5 (`sync --migrate`): publish the freshly created `board` branch WITH TRACKING —
+ * `git push -u origin board`, run from the repo TOP (during migration the branch exists only as a
+ * ref; it is not checked out anywhere). The `-u` is LOAD-BEARING (panel round 2): without it the
+ * migration machine's fresh `board` branch has no tracking config at all — sync itself always uses
+ * EXPLICIT `origin/board` refs precisely because that state exists, but the humans' own git
+ * (`status`, `branch -vv`) reads the tracking config, and the migration is the one moment the
+ * config can be written for free.
+ */
+export function pushBoardUpstream(top: string): void {
+  mustGit(top, ["push", "-u", BOARD_REMOTE, BOARD_BRANCH], { timeoutMs: NETWORK_TIMEOUT_MS });
+}
+
+/**
+ * Best-effort `git fetch origin` (tolerated nonzero — offline stays workable; the caller's local
+ * ref checks decide what the fetched/last-known state actually means). Returns whether the fetch
+ * itself succeeded, for callers that want to qualify freshness.
+ */
+export function fetchOriginTolerated(top: string): boolean {
+  return runGit(top, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS }).status === 0;
+}
+
 // ── ff-only pull (the fail-soft SessionStart path) ────────────────────────────
 
 export interface FfPullResult {

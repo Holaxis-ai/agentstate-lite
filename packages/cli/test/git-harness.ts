@@ -181,6 +181,43 @@ export async function makeTwoCloneTopology(options: TopologyOptions = {}): Promi
 }
 
 /**
+ * U5 (`sync --migrate`) topology: a bare origin + two clones of a project whose bundle is a PLAIN
+ * COMMITTED FOLDER on `main` — NO `board` branch exists anywhere (the pre-migration shape this
+ * repo itself is in). `BoardRepo.board` names `<root>/.agentstate-lite`, which here is just a
+ * committed directory, not a checkout of its own. Seeds the same user code and {@link SEED_DOCS}
+ * as {@link makeTwoCloneTopology} so post-migration assertions can check the docs survived.
+ */
+export async function makeCommittedFolderTopology(): Promise<TwoCloneTopology> {
+  const dir = await realpath(await mkdtemp(path.join(tmpdir(), "aslite-git-harness-")));
+  const origin = path.join(dir, "origin.git");
+  const seed = path.join(dir, "seed");
+
+  git(dir, ["init", "-b", "main", "seed"]);
+  await writeFile(path.join(seed, "README.md"), "# demo project\n");
+  await mkdir(path.join(seed, "src"), { recursive: true });
+  await writeFile(path.join(seed, "src", "app.js"), "export const x = 1;\n");
+  const bundleRoot = path.join(seed, BUNDLE_DIR);
+  await mkdir(bundleRoot, { recursive: true });
+  await initBundle(bundleRoot);
+  for (const d of SEED_DOCS) {
+    await writeDoc({ root: bundleRoot }, { id: d.id, frontmatter: d.frontmatter, body: d.body });
+  }
+  git(seed, ["add", "-A"]);
+  git(seed, ["commit", "-m", "initial project with the board committed on main"]);
+
+  git(dir, ["init", "--bare", "origin.git"]);
+  git(seed, ["remote", "add", "origin", origin]);
+  git(seed, ["push", "origin", "main"]);
+  git(origin, ["symbolic-ref", "HEAD", "refs/heads/main"]);
+
+  git(dir, ["clone", origin, "A"]);
+  git(dir, ["clone", origin, "B"]);
+  const a: BoardRepo = { name: "A", root: path.join(dir, "A"), board: path.join(dir, "A", BUNDLE_DIR) };
+  const b: BoardRepo = { name: "B", root: path.join(dir, "B"), board: path.join(dir, "B", BUNDLE_DIR) };
+  return { dir, origin, a, b, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+/**
  * Provision the board worktree for a clone: fetch, then check out `origin/board` as a linked
  * worktree at `.agentstate-lite/`. `--no-track` faithfully reproduces the migration machine's
  * empirical NO-tracking-config state (why the invariants use explicit `origin/board`, never `@{u}`).
