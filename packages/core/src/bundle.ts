@@ -465,9 +465,17 @@ export async function queryEdges(bundle: Bundle, filter: EdgeFilter = {}): Promi
  * generalization) — sorted `(from, to, text)` collapses to `(from, text)` here since
  * `to` is constant across every row, so this is byte-identical to the pre-generalization
  * sort.
+ *
+ * `queryEdges` treats a trailing `/` as a PREFIX selector — that capability belongs to
+ * `queryEdges`/the CLI's `link list`, never to `backlinks`, which is a per-concept "cited
+ * by" lookup and must stay EXACT-match only (its pre-generalization contract; `link
+ * show`, `status`'s backlink-count lints, and every other caller depend on this). A
+ * trailing slash on `target` is therefore stripped before delegating, so
+ * `backlinks(bundle, "tasks/")` still means the single concept `tasks` — never a prefix
+ * scan over everything under it.
  */
 export async function backlinks(bundle: Bundle, target: ConceptId): Promise<Link[]> {
-  return queryEdges(bundle, { to: target });
+  return queryEdges(bundle, { to: target.replace(/\/+$/, "") });
 }
 
 // ── blobs: opaque bytes + a content-type (Stage-1 Unit 2a Part A) ──────────────

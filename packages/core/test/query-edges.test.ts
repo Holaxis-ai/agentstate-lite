@@ -174,3 +174,28 @@ test("backlinks(bundle, target) stays byte-identical post-generalization (a thin
     );
   });
 });
+
+test("backlinks(bundle, 'tasks/') (a trailing slash) does NOT leak queryEdges' prefix rule — it stays EXACT-match, byte-identical to pre-generalization: [] here, not the 4 rows a prefix scan over tasks/* would return", async () => {
+  await withBundle(async (bundle) => {
+    await seedFixture(bundle); // roadmap-items/x -> tasks/a, roadmap-items/x -> tasks/b, tasks/a -> tasks/b, tasks/b -> tasks/a, tasks/a -> ghost
+    const withTrailingSlash = await backlinks(bundle, "tasks/");
+    assert.deepEqual(withTrailingSlash, [], "a trailing slash must NOT turn backlinks into a prefix scan");
+
+    // Meanwhile queryEdges({ to: "tasks/" }) itself STILL prefix-matches — the capability lives
+    // there (and in the CLI's `link list`), just never leaks into the exact-match `backlinks` API.
+    const prefixQuery = await queryEdges(bundle, { to: "tasks/" });
+    assert.equal(prefixQuery.length, 4, "queryEdges' OWN prefix rule must be unaffected by backlinks' guard");
+  });
+});
+
+test("queryEdges selector input normalization: a trailing '.md' and a leading './' both resolve to the same exact id as the bare id", async () => {
+  await withBundle(async (bundle) => {
+    await seedFixture(bundle);
+    const bare = await queryEdges(bundle, { to: "tasks/a" });
+    const withMdSuffix = await queryEdges(bundle, { to: "tasks/a.md" });
+    const withLeadingDotSlash = await queryEdges(bundle, { to: "./tasks/a" });
+    assert.deepEqual(withMdSuffix, bare);
+    assert.deepEqual(withLeadingDotSlash, bare);
+    assert.ok(bare.length > 0, "sanity: the bare-id query must actually match something");
+  });
+});

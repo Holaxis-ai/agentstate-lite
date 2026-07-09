@@ -497,6 +497,23 @@ test("link list --to <prefix/>: trailing-slash prefix matches every id starting 
   }
 });
 
+test("the prefix rule is confined to `link list` and never leaks into `link show`'s backlinks: `link show tasks/` reports backlink_count 0 (exact-match, byte-identical to pre-generalization), while `link list --to tasks/` on the SAME bundle still prefix-matches", async () => {
+  const { dir, cleanup } = await makeEdgeFixtureBundle();
+  try {
+    const shown = await linkShow(dir, ["tasks/"]);
+    assert.equal(shown.exists, false, "'tasks/' is not itself a written concept id");
+    assert.equal(shown.backlink_count, 0, "no prefix leak — 'tasks/' must NOT match every tasks/* edge");
+    assert.deepEqual(shown.backlinks, []);
+
+    // The SAME bundle's `link list --to tasks/` still prefix-matches — the capability lives there,
+    // confirming the fix scopes the guard to `backlinks`/`link show` only, not to queryEdges itself.
+    const listed = await linkList(dir, ["--to", "tasks/"]);
+    assert.equal(listed.count, 3);
+  } finally {
+    await cleanup();
+  }
+});
+
 test("link list --to <id>: exact match only, not a prefix", async () => {
   const { dir, cleanup } = await makeEdgeFixtureBundle();
   try {
