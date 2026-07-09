@@ -57,6 +57,7 @@ import {
   readDocVersioned,
   docVersions,
   loadKinds,
+  parseLinks,
   MemoryBackend,
   CONVENTION_TYPE,
   type Bundle,
@@ -272,6 +273,205 @@ test("doc write F1: a real NON-EMPTY stdin pipe IS an explicit source and does n
     assert.equal(result.doc, "written");
     const after = await readDoc({ root: dir }, "concepts/a");
     assert.equal(after.body, "Piped replacement.\n");
+  } finally {
+    await cleanup();
+  }
+});
+
+// ── Link-drop guard: a --body/--body-file full replace must not silently drop outbound links ──────
+//
+// SHORT-TERM guard (roadmap-items/link-model-body-safe supersedes it with preserve-by-default): OKF
+// cross-links live IN the body, so a full-body replace silently drops them unless the new body
+// happens to repeat them. Fires ONLY on real loss — an existing link SURVIVES (no refusal) when the
+// new body still carries a link to the same resolved target with the same text, which is what the
+// ordinary `doc read` -> edit -> `doc update --body` round trip produces (the anti-over-fire case).
+
+test("doc update --body: refuses when the new body would DROP an existing outbound link (USAGE, exit 2), names it, and leaves the doc UNCHANGED", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc(
+      { root: dir },
+      { id: "b", frontmatter: { type: "Concept", title: "B", timestamp: OLD_TS }, body: "Target." },
+    );
+    await writeDoc(
+      { root: dir },
+      { id: "a", frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS }, body: "Intro.\n\n[ref](b.md)\n" },
+    );
+
+    await assert.rejects(
+      () => doc(["update", "a", "--body", "New prose, no links.", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.match(err.message, /drop 1 outbound link/);
+        assert.match(err.message, /'ref' -> b/);
+        assert.match(err.message, /--replace-links/);
+        return true;
+      },
+    );
+
+    // Unchanged: same body, same single outbound link.
+    const after = await readDoc({ root: dir }, "a");
+    assert.equal(after.body, "Intro.\n\n[ref](b.md)\n");
+    assert.deepEqual(
+      parseLinks({ root: dir }, after).map((l) => ({ to: l.to, text: l.text })),
+      [{ to: "b", text: "ref" }],
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc update --body --replace-links: proceeds and deliberately drops the link", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc(
+      { root: dir },
+      { id: "a", frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS }, body: "Intro.\n\n[ref](b.md)\n" },
+    );
+
+    const result = await runDoc(["update", "a", "--body", "New prose, no links.", "--replace-links", "--dir", dir]);
+    assert.equal(result.doc, "updated");
+    assert.equal(result.changed, true);
+
+    const after = await readDoc({ root: dir }, "a");
+    assert.equal(after.body, "New prose, no links.\n");
+    assert.equal(parseLinks({ root: dir }, after).length, 0);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc update --body: a read-modify-write whose new body STILL contains the existing link does NOT false-refuse (anti-over-fire)", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc(
+      { root: dir },
+      { id: "a", frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS }, body: "Intro.\n\n[ref](b.md)\n" },
+    );
+
+    // Edit the prose but keep the exact same link markdown — the normal doc-read -> edit -> doc-update
+    // cycle, since `doc read` returns the body WITH its links.
+    const result = await runDoc([
+      "update",
+      "a",
+      "--body",
+      "Rewritten intro with more detail.\n\n[ref](b.md)\n",
+      "--dir",
+      dir,
+    ]);
+    assert.equal(result.doc, "updated");
+    assert.equal(result.changed, true);
+
+    const after = await readDoc({ root: dir }, "a");
+    assert.equal(after.body, "Rewritten intro with more detail.\n\n[ref](b.md)\n");
+    assert.deepEqual(
+      parseLinks({ root: dir }, after).map((l) => ({ to: l.to, text: l.text })),
+      [{ to: "b", text: "ref" }],
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc update: a FIELD-ONLY patch (no --body) is unaffected by the link-drop guard — no --replace-links needed, link preserved", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc(
+      { root: dir },
+      { id: "a", frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS }, body: "Intro.\n\n[ref](b.md)\n" },
+    );
+
+    const result = await runDoc(["update", "a", "--tag", "reviewed", "--dir", dir]);
+    assert.equal(result.doc, "updated");
+    assert.equal(result.changed, true);
+
+    const after = await readDoc({ root: dir }, "a");
+    assert.equal(after.body, "Intro.\n\n[ref](b.md)\n");
+    assert.equal(parseLinks({ root: dir }, after).length, 1);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc update --body-file: same guard behavior — refuses a dropping replace, proceeds with --replace-links", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc(
+      { root: dir },
+      { id: "a", frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS }, body: "Intro.\n\n[ref](b.md)\n" },
+    );
+    const bodyFile = path.join(dir, "new-body.md");
+    await writeFile(bodyFile, "New prose from a file, no links.", "utf8");
+
+    await assert.rejects(
+      () => doc(["update", "a", "--body-file", bodyFile, "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.match(err.message, /drop 1 outbound link/);
+        return true;
+      },
+    );
+    assert.equal((await readDoc({ root: dir }, "a")).body, "Intro.\n\n[ref](b.md)\n");
+
+    const result = await runDoc(["update", "a", "--body-file", bodyFile, "--replace-links", "--dir", dir]);
+    assert.equal(result.doc, "updated");
+    const after = await readDoc({ root: dir }, "a");
+    assert.equal(after.body, "New prose from a file, no links.\n");
+    assert.equal(parseLinks({ root: dir }, after).length, 0);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc write --body on an existing linked doc: same guard — refuses a dropping replace (USAGE, exit 2), proceeds with --replace-links", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc(
+      { root: dir },
+      { id: "a", frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS }, body: "Intro.\n\n[ref](b.md)\n" },
+    );
+
+    await assert.rejects(
+      () => doc(["write", "a", "--type", "Concept", "--body", "Blind overwrite, no links.", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.match(err.message, /drop 1 outbound link/);
+        return true;
+      },
+    );
+    assert.equal((await readDoc({ root: dir }, "a")).body, "Intro.\n\n[ref](b.md)\n");
+
+    const result = await runDoc([
+      "write",
+      "a",
+      "--type",
+      "Concept",
+      "--body",
+      "Blind overwrite, no links.",
+      "--replace-links",
+      "--dir",
+      dir,
+    ]);
+    assert.equal(result.doc, "written");
+    const after = await readDoc({ root: dir }, "a");
+    assert.equal(after.body, "Blind overwrite, no links.\n");
+    assert.equal(parseLinks({ root: dir }, after).length, 0);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc write: a NEW doc (no existing doc) is unaffected by the link-drop guard — nothing to lose", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    const result = await runDoc(["write", "concepts/brand-new", "--type", "Concept", "--body", "Fresh, no links.", "--dir", dir]);
+    assert.equal(result.doc, "written");
   } finally {
     await cleanup();
   }
@@ -1967,6 +2167,7 @@ test("each doc verb's --help is focused on THAT verb, not the whole family manua
   const writeHelp = await capture(["write", "--help"]);
   assert.match(writeHelp, /doc write —/);
   assert.match(writeHelp, /--blank-body/, "write help keeps its own flags");
+  assert.match(writeHelp, /--replace-links/, "write help documents the link-drop guard's opt-in");
   assert.doesNotMatch(writeHelp, /doc history —|doc delete —/, "write help does not carry other verbs' manuals");
 
   const readHelp = await capture(["read", "--help"]);

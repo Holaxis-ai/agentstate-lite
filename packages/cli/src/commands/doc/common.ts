@@ -3,6 +3,7 @@
 // Verb modules import from HERE, never from `../doc.js` (the thin entry re-exports FROM here, and a
 // verb importing back from the entry would create a circular import).
 import { fstatSync } from "node:fs";
+import { parseLinks, type Bundle, type OkfDocument } from "@agentstate-lite/core";
 import { CliError, classifyBundleError } from "../../errors.js";
 import { cliInvocation } from "../../invocation.js";
 
@@ -56,6 +57,11 @@ Options:
                        interactive TTY all count as "nothing given" here (pass --body "" to blank
                        explicitly instead). A NEW doc with no body source is always allowed — see
                        'doc update' to patch other fields while preserving the body.
+  --replace-links      Required to overwrite an EXISTING doc's body when the new body would silently
+                       DROP one or more of its outbound cross-links (links live in the body — OKF).
+                       Without it, a body replace that drops a link is refused (exit 2, naming the
+                       dropped link(s)); a new body that still contains the same link(s) never needs
+                       this flag. SHORT-TERM guard — see 'link add'/'link show' to manage links.
   --strict             If a kind convention governs --type, reject (exit 2) instead of writing with
                        warnings when the doc does not satisfy it (default: warn-and-write, exit 0 —
                        see 'agentstate-lite kinds')
@@ -94,6 +100,12 @@ Options:
                          patch that DOES pass another field flag (--title/--description/--tag/--type/
                          a kind field) never reads stdin, even without --body/--body-file: it patches
                          only the given fields and leaves the body untouched.
+  --replace-links         Required when a --body/--body-file replace would silently DROP one or more
+                         of the doc's existing outbound cross-links (links live in the body — OKF).
+                         Without it, such a replace is refused (exit 2, naming the dropped link(s));
+                         a new body that still contains the same link(s) — the ordinary read-edit-
+                         update cycle — never needs this flag. SHORT-TERM guard — see 'link add'/
+                         'link show' to manage links.
   --keep-timestamp       Preserve the existing timestamp (default: refresh to now, since a patch is
                          a meaningful change — matches 'link add's policy)
   --strict               If a kind convention governs the resulting type, reject (exit 2) instead of
@@ -251,6 +263,51 @@ export async function defaultReadStdin(): Promise<string | undefined> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks).toString("utf8");
+}
+
+/**
+ * Data-loss guard (SHORT-TERM — see `roadmap-items/link-model-body-safe` for the proper
+ * preserve-by-default fix this is standing in for): OKF cross-links are markdown links stored IN a
+ * doc's body, so a `--body`/`--body-file` FULL-BODY REPLACE (`doc write`/`doc update`) silently drops
+ * every outbound link the old body carried unless the new body happens to repeat it — the product's
+ * signature graph feature, lost with no error and no trace. Fires ONLY on REAL loss: an existing link
+ * survives (no refusal) when `nextBody` still contains a link to the SAME resolved target with the
+ * SAME text — the ordinary `doc read` -> edit -> `doc update --body` round trip, since `doc read`
+ * returns the body WITH its links, never fires here. Matches by resolved target (`to`, via core's ONE
+ * link resolver `parseLinks` — never a second parser) + link text, the same pair `link add`'s own
+ * idempotency check uses. `replaceLinks` (the caller's `--replace-links` flag) opts into the drop
+ * deliberately — no separate `link remove` needed, since a full-body replace already performs removal.
+ *
+ * Called BEFORE any write happens (the F1 guard's existing conditional read supplies `existing`), so
+ * a refusal here always leaves the stored doc byte-for-byte unchanged.
+ */
+export function guardDroppedLinks(
+  bundle: Bundle,
+  existing: OkfDocument,
+  nextBody: string,
+  replaceLinks: boolean,
+): void {
+  if (replaceLinks) return;
+  const existingLinks = parseLinks(bundle, existing);
+  if (existingLinks.length === 0) return; // nothing to lose
+  const nextLinks = parseLinks(bundle, { ...existing, body: nextBody });
+  const dropped = existingLinks.filter(
+    (el) => !nextLinks.some((nl) => nl.to === el.to && nl.text === el.text),
+  );
+  if (dropped.length === 0) return;
+  const named = dropped.map((l) => `'${l.text}' -> ${l.to}`).join(", ");
+  throw new CliError(
+    "USAGE",
+    `this body replace would silently drop ${dropped.length} outbound link(s) from '${existing.id}': ${named}. ` +
+      `OKF cross-links live in the document body, so a full-body replace removes any link the new body ` +
+      `doesn't repeat. Pass --replace-links to drop them deliberately, or keep them by including the same ` +
+      `markdown link(s) in the new body, or re-add them afterward with ` +
+      `'${cliInvocation()} link add ${existing.id} <to>'.`,
+    {
+      help: `${cliInvocation()} link add ${existing.id} <to>`,
+      details: { dropped_links: dropped.map((l) => ({ to: l.to, text: l.text })) },
+    },
+  );
 }
 
 /** Map a filesystem ENOENT (missing concept file) to NOT_FOUND; classify anything else via `classifyBundleError`. */

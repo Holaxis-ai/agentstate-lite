@@ -9,7 +9,7 @@ import { parseOrUsage } from "../../args.js";
 import { render, resolveMode } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
 import { mutateDoc } from "../../mutate.js";
-import { DOC_WRITE_USAGE, type DocCliDeps, defaultReadStdin } from "./common.js";
+import { DOC_WRITE_USAGE, type DocCliDeps, defaultReadStdin, guardDroppedLinks } from "./common.js";
 
 export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promise<void> {
   const stdout = deps.stdout ?? ((s: string) => void process.stdout.write(s));
@@ -29,6 +29,7 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
           body: { type: "string" },
           "body-file": { type: "string" },
           "blank-body": { type: "boolean" },
+          "replace-links": { type: "boolean" },
           strict: { type: "boolean" },
           actor: { type: "string" },
           dir: { type: "string" },
@@ -164,6 +165,13 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
         details: { existing_body_chars: existing.body.length },
       },
     );
+  }
+
+  // Link-drop guard (data loss): a full-body replace over an existing doc must not silently drop
+  // outbound cross-links the old body carried — see `guardDroppedLinks`'s own comment for the exact
+  // match rule and why a normal read-modify-write never fires it. `--replace-links` opts in.
+  if (existing) {
+    guardDroppedLinks(bundle, existing, body, Boolean(values["replace-links"]));
   }
 
   // If a kind convention governs `type`, validate against it — WARN-by-default (attach `warnings[]`
