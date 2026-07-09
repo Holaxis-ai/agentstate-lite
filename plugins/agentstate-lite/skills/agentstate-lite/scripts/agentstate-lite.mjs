@@ -5504,17 +5504,44 @@ async function queryHeads(bundle, filter = {}, options2 = {}) {
 function parseLinks(_bundle, doc2) {
   return parseLinksFromDoc(doc2);
 }
-async function backlinks(bundle, target) {
-  const normalizedTarget = toPosix(target).replace(/^\.?\//, "").replace(/\.md$/, "");
-  const docs = await query(bundle);
-  const inbound = [];
-  for (const doc2 of docs) {
-    for (const link2 of parseLinksFromDoc(doc2)) {
-      if (link2.to === normalizedTarget) inbound.push(link2);
+function normalizeEdgeSelector(raw) {
+  return toPosix(raw).replace(/^\.?\//, "");
+}
+function matchesEdgeSelector(value, selectors) {
+  if (selectors === void 0) return true;
+  for (const raw of selectors) {
+    const normalized = normalizeEdgeSelector(raw);
+    if (normalized.endsWith("/")) {
+      if (value.startsWith(normalized)) return true;
+    } else if (value === normalized.replace(/\.md$/, "")) {
+      return true;
     }
   }
-  inbound.sort((a, b) => a.from.localeCompare(b.from) || a.text.localeCompare(b.text));
-  return inbound;
+  return false;
+}
+function toSelectorList(v) {
+  if (v === void 0) return void 0;
+  return Array.isArray(v) ? v : [v];
+}
+async function queryEdges(bundle, filter = {}) {
+  const fromSelectors = toSelectorList(filter.from);
+  const toSelectors = toSelectorList(filter.to);
+  const docs = await query(bundle);
+  const edges = [];
+  for (const doc2 of docs) {
+    for (const link2 of parseLinksFromDoc(doc2)) {
+      if (!matchesEdgeSelector(link2.from, fromSelectors)) continue;
+      if (!matchesEdgeSelector(link2.to, toSelectors)) continue;
+      if (filter.text !== void 0 && link2.text !== filter.text) continue;
+      edges.push(link2);
+    }
+  }
+  edges.sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to) || a.text.localeCompare(b.text));
+  return edges;
+}
+async function backlinks(bundle, target) {
+  if (target.endsWith("/")) return [];
+  return queryEdges(bundle, { to: target });
 }
 async function readBlob(bundle, key2) {
   return backendFor(bundle).readBlob(key2);
@@ -9098,11 +9125,12 @@ function collectLinkDeclarations(registry) {
 }
 
 // src/commands/link.ts
-var LINK_USAGE = `agentstate-lite link \u2014 add a cross-link or show a concept's links + backlinks
+var LINK_USAGE = `agentstate-lite link \u2014 add a cross-link, show a concept's links + backlinks, or query the bundle's whole edge graph
 
 Usage:
   agentstate-lite link add <from> <to> [--text <t>]
   agentstate-lite link show <id> [--limit <n>] [--text <t>]
+  agentstate-lite link list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]
 
 Idempotent: re-adding a link the source already carries is a no-op \u2014 exit 0, changed:false, no
 duplicate link, no timestamp refresh.
@@ -9113,6 +9141,12 @@ kinds; a mismatch or a same-spelling-different-case near miss attaches a 'warnin
 success envelope (exit 0 \u2014 the link is already written). An untyped --text (no declared match, any
 casing) or a conventions-free bundle never warns.
 
+link list queries the WHOLE bundle's derived edge list (the same edges 'show' computes per-concept),
+filtered \u2014 the atom a blast-radius/containment/ontology question reduces to. --from/--to each accept
+a single concept id, a trailing-slash prefix ('tasks/' matches every id starting with that literal
+string \u2014 one rule, no glob), or are repeatable for a union (OR) within that one flag; giving BOTH
+--from and --to ANDs them. Dangling edges (a link to a doc that doesn't exist yet) are included.
+
 Options:
   --text <t>            (link add) Link display text (default: the target id)
                          (link show) Filter outbound links AND backlinks to those whose text is
@@ -9121,9 +9155,16 @@ Options:
                          totals when set. A filter that matches nothing is a valid empty result,
                          not an error \u2014 its help line names the distinct link texts that ARE
                          present, so a near-miss (typo/case) is visible.
+                         (link list) Same exact-match semantics, over the whole filtered edge set.
+  --from <id|prefix/>   (link list) Restrict to edges whose source matches this id or prefix
+                         (repeatable \u2014 union/OR across repeats)
+  --to <id|prefix/>     (link list) Restrict to edges whose target matches this id or prefix
+                         (repeatable \u2014 union/OR across repeats)
   --limit <n>          (link show) Cap each of the outbound/backlink lists (default: 50; 0 =
                          unlimited); outbound_count/backlink_count always report the true
                          (post-filter) totals
+                         (link list) Cap the returned edge rows (default: 100; 0 = unlimited);
+                         count always reports the true (post-filter) total
   --keep-timestamp      Preserve the source's existing timestamp (default: refresh to now,
                          since adding a cross-link is a meaningful change)
   --dir <path>          Bundle directory (default: discovered from the cwd)
@@ -9188,13 +9229,23 @@ async function link(argv, deps = {}) {
   const rest = argv.slice(1);
   if (sub === "add") return linkAdd(rest, stdout);
   if (sub === "show") return linkShow(rest, stdout);
+  if (sub === "list") return linkList(rest, stdout);
   if (sub === "-h" || sub === "--help" || sub === void 0) {
     stdout(LINK_USAGE);
     return;
   }
-  throw new CliError("USAGE", `unknown link subcommand: ${sub} (expected add|show)`, {
+  throw new CliError("USAGE", `unknown link subcommand: ${sub} (expected add|show|list)`, {
     help: `${cliInvocation()} link --help`
   });
+}
+function nearMissTextHint(textFilter, textsPresent, scope) {
+  if (textsPresent.length === 0) {
+    return `no links matched --text '${textFilter}'${scope} \u2014 this is a definitive empty result, not an error`;
+  }
+  const TEXTS_SHOWN = 8;
+  const shown = textsPresent.slice(0, TEXTS_SHOWN).map((t) => `'${t}'`).join(", ");
+  const more = textsPresent.length > TEXTS_SHOWN ? ` (+${textsPresent.length - TEXTS_SHOWN} more)` : "";
+  return `no links matched --text '${textFilter}'${scope} (exact match) \u2014 link texts present here: ${shown}${more}`;
 }
 async function addLink(bundle, from, to, opts = {}) {
   const text = opts.text?.trim() || to;
@@ -9402,15 +9453,8 @@ async function linkShow(argv, stdout) {
     );
   }
   if (textFilter !== void 0 && outbound.length === 0 && inboundMatched.length === 0) {
-    if (textsPresent.length > 0) {
-      const TEXTS_SHOWN = 8;
-      const shown = textsPresent.slice(0, TEXTS_SHOWN).map((t) => `'${t}'`).join(", ");
-      const more = textsPresent.length > TEXTS_SHOWN ? ` (+${textsPresent.length - TEXTS_SHOWN} more)` : "";
-      help.push(
-        `no links matched --text '${textFilter}' in either direction (exact match) \u2014 link texts present here: ${shown}${more}`
-      );
-    } else if (exists2) {
-      help.push(`no links matched --text '${textFilter}' in either direction \u2014 this is a definitive empty result, not an error`);
+    if (textsPresent.length > 0 || exists2) {
+      help.push(nearMissTextHint(textFilter, textsPresent, " in either direction"));
     }
   }
   if (!exists2) {
@@ -9420,6 +9464,90 @@ async function linkShow(argv, stdout) {
   }
   if (help.length > 0) payload.help = help;
   stdout(render(payload, resolveMode(values)));
+}
+async function linkList(argv, stdout) {
+  const { values } = parseOrUsage(
+    () => parseArgs11({
+      args: argv,
+      options: {
+        from: { type: "string", multiple: true },
+        to: { type: "string", multiple: true },
+        text: { type: "string" },
+        limit: { type: "string" },
+        dir: { type: "string" },
+        remote: { type: "string" },
+        json: { type: "boolean" },
+        help: { type: "boolean", short: "h" }
+      },
+      allowPositionals: true
+    }),
+    "link list"
+  );
+  if (values.help) {
+    stdout(LINK_USAGE);
+    return;
+  }
+  let textFilter;
+  if (values.text !== void 0) {
+    textFilter = values.text.trim();
+    if (!textFilter) {
+      throw new CliError("USAGE", "--text requires a non-empty value to filter on", {
+        help: `${cliInvocation()} link list --text <t>`
+      });
+    }
+  }
+  const fromValues = (values.from ?? []).map((v) => v.trim());
+  if (fromValues.some((v) => v === "")) {
+    throw new CliError("USAGE", "--from requires a non-empty id or prefix (got an empty/blank value)", {
+      help: `${cliInvocation()} link list --from <id|prefix/>`
+    });
+  }
+  const toValues = (values.to ?? []).map((v) => v.trim());
+  if (toValues.some((v) => v === "")) {
+    throw new CliError("USAGE", "--to requires a non-empty id or prefix (got an empty/blank value)", {
+      help: `${cliInvocation()} link list --to <id|prefix/>`
+    });
+  }
+  const DEFAULT_LIMIT3 = 100;
+  let limit = DEFAULT_LIMIT3;
+  if (values.limit !== void 0) {
+    const raw = values.limit.trim();
+    if (!/^\d+$/.test(raw)) {
+      throw new CliError("USAGE", "--limit must be a non-negative integer (0 = unlimited)", {
+        help: `${cliInvocation()} link list --limit 100`
+      });
+    }
+    limit = Number(raw);
+  }
+  const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
+  const scopeFilter = {};
+  if (fromValues.length > 0) scopeFilter.from = fromValues;
+  if (toValues.length > 0) scopeFilter.to = toValues;
+  let scopedEdges;
+  try {
+    scopedEdges = await queryEdges(bundle, scopeFilter);
+  } catch (err) {
+    throw classifyBundleError(err, values.remote);
+  }
+  const edges = textFilter !== void 0 ? scopedEdges.filter((e) => e.text === textFilter) : scopedEdges;
+  const rows = edges.map((e) => ({ from: e.from, to: e.to, text: e.text }));
+  const total = rows.length;
+  const shownRows = limit > 0 ? rows.slice(0, limit) : rows;
+  const truncated = shownRows.length < total;
+  const out = { count: total, edges: shownRows };
+  if (truncated) out.shown = shownRows.length;
+  const help = [];
+  if (truncated) {
+    help.push(
+      `showing ${shownRows.length} of ${total} \u2014 run \`${cliInvocation()} link list --limit 0\` (or a higher --limit) for all`
+    );
+  }
+  if (textFilter !== void 0 && total === 0) {
+    const textsPresent = [...new Set(scopedEdges.map((e) => e.text))].sort((a, b) => a.localeCompare(b));
+    help.push(nearMissTextHint(textFilter, textsPresent, ""));
+  }
+  if (help.length > 0) out.help = help;
+  stdout(render(out, resolveMode(values)));
 }
 
 // src/commands/list.ts
@@ -14565,8 +14693,8 @@ var COMMAND_GROUPS = [
         summary: "Query concepts over their frontmatter (alias: query) \u2014 a comma in --field's value is set membership (OR); --open excludes terminal instances (declared kinds only)"
       },
       {
-        usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>]) [--remote <url>]",
-        summary: "Add a cross-link, or show a concept's links + backlinks (each carrying link text; --text filters both directions by exact match)"
+        usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>] | list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]) [--remote <url>]",
+        summary: "Add a cross-link, show a concept's links + backlinks, or query the whole bundle's derived edge list filtered by from/to (id or prefix/, repeatable/union) and exact-match text"
       }
     ]
   },
