@@ -74,8 +74,12 @@ function waitForReceipt(child: UiChild): Promise<UiReceipt> {
 }
 
 async function bootUi(args: string[]): Promise<RunningUi> {
+  // Point the child's HOME at a throwaway dir so its `~/.agentstate/ui-url` write (0600 re-entry
+  // pointer) lands in an isolated home, never the real one.
+  const fakeHome = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-home-"));
   const child = spawn(process.execPath, [CLI_DIST, "ui", ...args, "--port", "0", "--json"], {
     stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome },
   });
   let stderr = "";
   child.stderr.on("data", (c: Buffer) => {
@@ -94,9 +98,11 @@ async function bootUi(args: string[]): Promise<RunningUi> {
         setTimeout(() => {
           if (!child.killed) child.kill("SIGKILL");
         }, 3_000).unref();
-      }).finally(() => {
-        if (stderr.trim()) console.error(`[ui stderr]\n${stderr}`);
-      }),
+      })
+        .finally(() => {
+          if (stderr.trim()) console.error(`[ui stderr]\n${stderr}`);
+        })
+        .finally(() => rm(fakeHome, { recursive: true, force: true })),
   };
 }
 

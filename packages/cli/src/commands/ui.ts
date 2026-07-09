@@ -20,6 +20,7 @@ import { openBundle, resolveRemoteFlag, API_KEY_ENV_VAR } from "../bundle.js";
 import { normalizeServer } from "../config.js";
 import { getApiKeyForOrigin } from "../credentials.js";
 import { bootUiServer as bootUiServerDefault, type UiServerHandle, type UiServerOptions } from "../ui/server.js";
+import { writeUiUrlFile, clearUiUrlFile, UI_URL_FILE_NAME } from "../ui/url-file.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
@@ -45,12 +46,16 @@ separate, unreviewed feature). The printed URL carries a per-run session token; 
 exchanges it for an HttpOnly, SameSite=Strict cookie — nothing is persisted beyond this process.
 `;
 
-/** Injectable seam so boot + shutdown wiring is unit-testable without real sockets/signals/spawns. */
+/** Injectable seam so boot + shutdown wiring is unit-testable without real sockets/signals/spawns/home-dir writes. */
 export interface UiCliDeps {
   stdout: (s: string) => void;
   bootUiServer: (options: UiServerOptions) => Promise<UiServerHandle>;
   waitForShutdown: () => Promise<void>;
   openBrowser: (url: string) => void;
+  /** Record the current tokenized URL for one-click re-entry (default: `~/.agentstate/ui-url`, 0600). Injectable so tests never touch the real home dir. */
+  writeUrlFile: (url: string) => Promise<void>;
+  /** Remove the URL file on clean shutdown (default: the real one, only if it still points at `url`). */
+  clearUrlFile: (url: string) => Promise<void>;
 }
 
 function defaultWaitForShutdown(): Promise<void> {
@@ -105,6 +110,8 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
   const bootUiServer = deps.bootUiServer ?? bootUiServerDefault;
   const waitForShutdown = deps.waitForShutdown ?? defaultWaitForShutdown;
   const openBrowser = deps.openBrowser ?? defaultOpenBrowser;
+  const writeUrlFile = deps.writeUrlFile ?? ((url: string) => writeUiUrlFile(url));
+  const clearUrlFile = deps.clearUrlFile ?? ((url: string) => clearUiUrlFile(url));
 
   const { values } = parseOrUsage(
     () =>
@@ -201,6 +208,10 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
 
   const url = `http://${handle.host}:${handle.port}/?token=${handle.token}`;
 
+  // Record this run's URL for one-click re-entry after a restart (0600 ~/.agentstate/ui-url). The
+  // per-run token still rotates — this is a transient pointer, not a persisted secret.
+  await writeUrlFile(url);
+
   stdout(
     render(
       {
@@ -212,6 +223,7 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
           "per-run session token embedded in the URL above; the first load exchanges it for an HttpOnly, SameSite=Strict cookie — nothing is persisted beyond this process",
         help: [
           `open ${url} in a browser`,
+          `URL saved to ~/.agentstate/${UI_URL_FILE_NAME} (0600) for one-click re-entry`,
           ...(usedStablePort
             ? [`this host:port is stable for this bundle — on restart, reopen the freshly-printed URL (the token rotates each run)`]
             : []),
@@ -227,4 +239,5 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
   // cleanly and this resolves — exit 0. No request logs to stdout by default.
   await waitForShutdown();
   await handle.close();
+  await clearUrlFile(url);
 }

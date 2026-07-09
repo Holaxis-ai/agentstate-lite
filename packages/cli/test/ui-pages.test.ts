@@ -6,7 +6,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -15,6 +15,7 @@ import { createRouter } from "@agentstate-lite/server";
 import { bootUiServer, type UiServerHandle } from "../src/ui/server.js";
 import { PageNonceRegistry, pageCsp } from "../src/ui/pages.js";
 import { diffSnapshots, isEmptyChange, type Snapshot } from "../src/ui/watch.js";
+import { writeUiUrlFile, clearUiUrlFile, uiUrlFilePath } from "../src/ui/url-file.js";
 
 // ── PageNonceRegistry ───────────────────────────────────────────────────────
 
@@ -54,6 +55,30 @@ test("pageCsp: locks the page to inert bytes — connect-src 'none', frame-ances
   assert.match(csp, /connect-src 'none'/);
   assert.match(csp, /default-src 'none'/);
   assert.match(csp, /frame-ancestors 'self'/);
+});
+
+// ── ui-url re-entry file (B6) ─────────────────────────────────────────────────
+
+test("uiUrlFile: writes the URL 0600, and clear removes it ONLY when it still points at that url", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-home-"));
+  try {
+    const url = "http://127.0.0.1:54237/?token=abc123";
+    await writeUiUrlFile(url, home);
+    const p = uiUrlFilePath(home);
+    assert.equal((await readFile(p, "utf8")).trim(), url);
+    // 0600 — owner rw only (mode low 9 bits).
+    assert.equal((await stat(p)).mode & 0o777, 0o600);
+
+    // A clear for a DIFFERENT url must NOT remove another instance's pointer.
+    await clearUiUrlFile("http://127.0.0.1:9/?token=someone-else", home);
+    assert.equal((await readFile(p, "utf8")).trim(), url, "a non-matching clear left the file intact");
+
+    // A clear for the matching url removes it.
+    await clearUiUrlFile(url, home);
+    await assert.rejects(() => readFile(p, "utf8"));
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });
 
 // ── diffSnapshots ─────────────────────────────────────────────────────────────
