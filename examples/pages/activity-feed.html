@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Activity feed</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --fg: #16181d; --muted: #6b7280; --card: #f6f7f9;
+    --border: #e5e7eb; --accent: #2563eb; --enter: #dbeafe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --fg: #e8e9ec; --muted: #9aa1ab; --card: #171a21;
+      --border: #262b33; --accent: #6ea8fe; --enter: #1d3352;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  header { padding: 1rem 1.25rem 0.4rem; }
+  h1 { margin: 0; font-size: 1.05rem; letter-spacing: -0.01em; }
+  .sub { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.8rem; }
+  ul { list-style: none; margin: 0; padding: 0.6rem 1rem 2rem; display: flex; flex-direction: column; gap: 0.4rem; }
+  li { display: flex; gap: 0.75rem; align-items: baseline; padding: 0.55rem 0.8rem;
+    border: 1px solid var(--border); background: var(--card); border-radius: 0.55rem; }
+  li.enter { animation: enter 0.9s ease; }
+  @keyframes enter {
+    0% { background: var(--enter); transform: translateY(-4px); }
+    100% { background: var(--card); transform: none; }
+  }
+  .type { flex: 0 0 auto; font-size: 0.66rem; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--accent); font-weight: 600; }
+  .main { flex: 1 1 auto; min-width: 0; }
+  .title { font-weight: 600; }
+  .id { color: var(--muted); font-family: ui-monospace, monospace; font-size: 0.72rem; overflow-wrap: anywhere; }
+  .when { flex: 0 0 auto; color: var(--muted); font-size: 0.72rem; white-space: nowrap; }
+  .empty { padding: 1rem 1.25rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Activity feed</h1>
+  <p class="sub" id="sub">Connecting…</p>
+</header>
+<ul id="feed"></ul>
+<p class="empty" id="empty" hidden>No documents in this bundle yet.</p>
+
+<script>
+/* ── bridge client (embedded copy; see examples/pages/BRIDGE.md) ──────────── */
+(function () {
+  var PROTO = "v0", seq = 0, pending = {}, subs = [];
+  function send(type, extra) {
+    return new Promise(function (resolve, reject) {
+      var id = String(++seq);
+      pending[id] = { resolve: resolve, reject: reject };
+      var msg = { bridge: PROTO, id: id, type: type };
+      if (extra) for (var k in extra) msg[k] = extra[k];
+      parent.postMessage(msg, "*");
+    });
+  }
+  window.addEventListener("message", function (e) {
+    if (e.source !== window.parent) return;
+    var m = e.data;
+    if (!m || m.bridge !== PROTO) return;
+    if (m.type === "change") { subs.forEach(function (cb) { cb(m.event); }); return; }
+    var p = pending[m.id];
+    if (!p) return;
+    delete pending[m.id];
+    if (m.type === "error") p.reject(new Error((m.error && m.error.message) || "bridge error"));
+    else p.resolve(m.result);
+  });
+  window.Bridge = {
+    hello: function () { return send("hello"); },
+    query: function (params) { return send("query", { params: params }); },
+    read: function (docId) { return send("read", { docId: docId }); },
+    subscribe: function (cb) { subs.push(cb); return send("subscribe"); }
+  };
+})();
+
+/* ── page ─────────────────────────────────────────────────────────────────── */
+(function () {
+  var feed = document.getElementById("feed");
+  var sub = document.getElementById("sub");
+  var empty = document.getElementById("empty");
+  var changed = {};
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c];
+    });
+  }
+  function when(ts) {
+    if (!ts) return "";
+    var d = new Date(ts);
+    return isNaN(d.getTime()) ? String(ts) : d.toLocaleString();
+  }
+  function render(rows) {
+    rows = rows.slice().sort(function (a, b) {
+      return String((b.frontmatter || {}).timestamp || "").localeCompare(String((a.frontmatter || {}).timestamp || ""));
+    });
+    empty.hidden = rows.length > 0;
+    feed.innerHTML = "";
+    rows.forEach(function (r) {
+      var fm = r.frontmatter || {};
+      var li = document.createElement("li");
+      if (changed[r.id]) li.className = "enter";
+      li.innerHTML =
+        '<span class="type">' + esc(fm.type || "?") + "</span>" +
+        '<span class="main"><span class="title">' + esc(fm.title || r.id) + "</span> " +
+        '<span class="id">' + esc(r.id) + "</span></span>" +
+        '<span class="when">' + esc(when(fm.timestamp)) + "</span>";
+      feed.appendChild(li);
+    });
+    changed = {};
+  }
+  function refresh() {
+    return Bridge.query({}).then(function (res) {
+      sub.textContent = res.count + " document" + (res.count === 1 ? "" : "s") + " · live";
+      render(res.rows);
+    });
+  }
+
+  Bridge.hello().then(function (h) {
+    document.title = "Activity · " + ((h.bundle && h.bundle.name) || "bundle");
+  }).catch(function () {});
+  refresh().catch(function (e) { sub.textContent = "error: " + e.message; });
+  Bridge.subscribe(function (ev) {
+    (ev.changes || []).forEach(function (c) { changed[c.id] = true; });
+    refresh().catch(function () {});
+  }).catch(function () {});
+})();
+</script>
+</body>
+</html>

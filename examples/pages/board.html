@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --fg: #16181d; --muted: #6b7280; --card: #f6f7f9;
+    --border: #e5e7eb; --accent: #2563eb; --enter: #dbeafe; --chip: #eef0f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --fg: #e8e9ec; --muted: #9aa1ab; --card: #171a21;
+      --border: #262b33; --accent: #6ea8fe; --enter: #1d3352; --chip: #20242c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  header { padding: 1rem 1.25rem 0.4rem; }
+  h1 { margin: 0; font-size: 1.05rem; letter-spacing: -0.01em; }
+  .sub { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.8rem; }
+  .columns { display: flex; gap: 0.85rem; align-items: flex-start;
+    overflow-x: auto; padding: 0.7rem 1.1rem 2rem; }
+  .col { flex: 0 0 16rem; min-width: 16rem; }
+  .col > h2 { margin: 0 0 0.5rem; font-size: 0.74rem; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; }
+  .count { font-size: 0.72rem; background: var(--chip); border-radius: 999px; padding: 0 0.45rem; }
+  .cards { display: flex; flex-direction: column; gap: 0.5rem; }
+  .card { border: 1px solid var(--border); background: var(--card);
+    border-radius: 0.55rem; padding: 0.6rem 0.75rem; }
+  .card.enter { animation: enter 0.9s ease; }
+  @keyframes enter {
+    0% { background: var(--enter); transform: translateY(-4px); }
+    100% { background: var(--card); transform: none; }
+  }
+  .card h3 { margin: 0 0 0.25rem; font-size: 0.9rem; }
+  .card .id { margin: 0; color: var(--muted); font-family: ui-monospace, monospace; font-size: 0.7rem; overflow-wrap: anywhere; }
+  .card .meta { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.7rem; display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .done-col { flex: 0 0 12rem; min-width: 12rem; }
+  .done-col .muted { color: var(--muted); font-size: 0.78rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Board</h1>
+  <p class="sub" id="sub">Connecting…</p>
+</header>
+<div class="columns" id="cols"></div>
+
+<script>
+/* ── bridge client (embedded copy; see examples/pages/BRIDGE.md) ──────────── */
+(function () {
+  var PROTO = "v0", seq = 0, pending = {}, subs = [];
+  function send(type, extra) {
+    return new Promise(function (resolve, reject) {
+      var id = String(++seq);
+      pending[id] = { resolve: resolve, reject: reject };
+      var msg = { bridge: PROTO, id: id, type: type };
+      if (extra) for (var k in extra) msg[k] = extra[k];
+      parent.postMessage(msg, "*");
+    });
+  }
+  window.addEventListener("message", function (e) {
+    if (e.source !== window.parent) return;
+    var m = e.data;
+    if (!m || m.bridge !== PROTO) return;
+    if (m.type === "change") { subs.forEach(function (cb) { cb(m.event); }); return; }
+    var p = pending[m.id];
+    if (!p) return;
+    delete pending[m.id];
+    if (m.type === "error") p.reject(new Error((m.error && m.error.message) || "bridge error"));
+    else p.resolve(m.result);
+  });
+  window.Bridge = {
+    hello: function () { return send("hello"); },
+    query: function (params) { return send("query", { params: params }); },
+    read: function (docId) { return send("read", { docId: docId }); },
+    subscribe: function (cb) { subs.push(cb); return send("subscribe"); }
+  };
+})();
+
+/* ── page ─────────────────────────────────────────────────────────────────── */
+(function () {
+  var COLUMNS = [["todo", "To do"], ["in_progress", "In progress"], ["blocked", "Blocked"]];
+  var TERMINAL = ["done", "canceled"];
+  var cols = document.getElementById("cols");
+  var sub = document.getElementById("sub");
+  var changed = {};
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c];
+    });
+  }
+  function statusOf(r) { return (r.frontmatter || {}).status || "(none)"; }
+
+  function render(rows) {
+    var byStatus = {};
+    rows.forEach(function (r) {
+      var s = statusOf(r);
+      (byStatus[s] = byStatus[s] || []).push(r);
+    });
+    cols.innerHTML = "";
+
+    COLUMNS.forEach(function (c) {
+      var list = byStatus[c[0]] || [];
+      var col = document.createElement("section");
+      col.className = "col";
+      col.innerHTML = '<h2>' + esc(c[1]) + ' <span class="count">' + list.length + "</span></h2>";
+      var wrap = document.createElement("div");
+      wrap.className = "cards";
+      list.forEach(function (r) {
+        var fm = r.frontmatter || {};
+        var card = document.createElement("article");
+        card.className = "card" + (changed[r.id] ? " enter" : "");
+        var meta = [];
+        if (fm.priority != null) meta.push("P" + esc(fm.priority));
+        if (fm.actor) meta.push(esc(fm.actor));
+        card.innerHTML =
+          "<h3>" + esc(fm.title || r.id) + "</h3>" +
+          '<p class="id">' + esc(r.id) + "</p>" +
+          (meta.length ? '<p class="meta">' + meta.map(function (m) { return "<span>" + m + "</span>"; }).join("") + "</p>" : "");
+        wrap.appendChild(card);
+      });
+      col.appendChild(wrap);
+      cols.appendChild(col);
+    });
+
+    var doneCount = 0;
+    TERMINAL.forEach(function (s) { doneCount += (byStatus[s] || []).length; });
+    var foot = document.createElement("section");
+    foot.className = "col done-col";
+    foot.innerHTML =
+      '<h2>Done / canceled <span class="count">' + doneCount + "</span></h2>" +
+      '<p class="muted">' + (doneCount ? "collapsed" : "none yet") + "</p>";
+    cols.appendChild(foot);
+
+    changed = {};
+  }
+  function refresh() {
+    return Bridge.query({ type: "Task" }).then(function (res) {
+      sub.textContent = res.count + " task" + (res.count === 1 ? "" : "s") + " · live";
+      render(res.rows);
+    });
+  }
+
+  Bridge.hello().then(function (h) {
+    document.title = "Board · " + ((h.bundle && h.bundle.name) || "bundle");
+  }).catch(function () {});
+  refresh().catch(function (e) { sub.textContent = "error: " + e.message; });
+  Bridge.subscribe(function (ev) {
+    (ev.changes || []).forEach(function (c) { changed[c.id] = true; });
+    refresh().catch(function () {});
+  }).catch(function () {});
+})();
+</script>
+</body>
+</html>
