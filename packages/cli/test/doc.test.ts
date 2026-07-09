@@ -375,6 +375,71 @@ test("doc update --body: a read-modify-write whose new body STILL contains the e
   }
 });
 
+test("doc update --body: a RETEXT (new body links the SAME target under different display text) does NOT fire — the guard is target-only, mirroring link add's own idempotency", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc(
+      { root: dir },
+      { id: "a", frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS }, body: "Intro.\n\n[ref](b.md)\n" },
+    );
+
+    // Same resolved target (b), different display text ("see also" instead of "ref") — the edge
+    // survives, so this must proceed with NO refusal and no need for --replace-links.
+    const result = await runDoc([
+      "update",
+      "a",
+      "--body",
+      "Rewritten intro.\n\n[see also](b.md)\n",
+      "--dir",
+      dir,
+    ]);
+    assert.equal(result.doc, "updated");
+    assert.equal(result.changed, true);
+
+    const after = await readDoc({ root: dir }, "a");
+    assert.deepEqual(
+      parseLinks({ root: dir }, after).map((l) => ({ to: l.to, text: l.text })),
+      [{ to: "b", text: "see also" }],
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc update --body: a REAL DROP (the target is absent from the new body entirely) still fires, even alongside an unrelated retext elsewhere", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc(
+      { root: dir },
+      {
+        id: "a",
+        frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS },
+        body: "Intro.\n\n[ref](b.md)\n\n[other](c.md)\n",
+      },
+    );
+
+    await assert.rejects(
+      // Retexts the `b` link (survives) but drops the `c` link entirely (fires).
+      () => doc(["update", "a", "--body", "Rewritten.\n\n[see also](b.md)\n", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.match(err.message, /drop 1 outbound link/);
+        assert.match(err.message, /'other' -> c/);
+        assert.doesNotMatch(err.message, /-> b\b/);
+        return true;
+      },
+    );
+
+    // Unchanged: both original links survive.
+    const after = await readDoc({ root: dir }, "a");
+    assert.equal(after.body, "Intro.\n\n[ref](b.md)\n\n[other](c.md)\n");
+  } finally {
+    await cleanup();
+  }
+});
+
 test("doc update: a FIELD-ONLY patch (no --body) is unaffected by the link-drop guard — no --replace-links needed, link preserved", async () => {
   const { dir, cleanup } = await makeBundle();
   try {
@@ -472,6 +537,39 @@ test("doc write: a NEW doc (no existing doc) is unaffected by the link-drop guar
   try {
     const result = await runDoc(["write", "concepts/brand-new", "--type", "Concept", "--body", "Fresh, no links.", "--dir", dir]);
     assert.equal(result.doc, "written");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc write --blank-body on a linked doc STILL requires --replace-links (double-gate: --blank-body only opts into the F1 blank-check, not the link-drop guard)", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc(
+      { root: dir },
+      { id: "a", frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS }, body: "Intro.\n\n[ref](b.md)\n" },
+    );
+
+    await assert.rejects(
+      () => doc(["write", "a", "--type", "Concept", "--blank-body", "--dir", dir, "--json"], { readStdin: async () => undefined }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.match(err.message, /drop 1 outbound link/);
+        return true;
+      },
+    );
+    assert.equal((await readDoc({ root: dir }, "a")).body, "Intro.\n\n[ref](b.md)\n");
+
+    // Both flags together: the deliberate blank proceeds and the link is gone.
+    const result = await runDoc(["write", "a", "--type", "Concept", "--blank-body", "--replace-links", "--dir", dir], {
+      readStdin: async () => undefined,
+    });
+    assert.equal(result.doc, "written");
+    const after = await readDoc({ root: dir }, "a");
+    assert.equal(after.body, "\n");
+    assert.equal(parseLinks({ root: dir }, after).length, 0);
   } finally {
     await cleanup();
   }

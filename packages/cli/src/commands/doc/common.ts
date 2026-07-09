@@ -271,12 +271,17 @@ export async function defaultReadStdin(): Promise<string | undefined> {
  * doc's body, so a `--body`/`--body-file` FULL-BODY REPLACE (`doc write`/`doc update`) silently drops
  * every outbound link the old body carried unless the new body happens to repeat it — the product's
  * signature graph feature, lost with no error and no trace. Fires ONLY on REAL loss: an existing link
- * survives (no refusal) when `nextBody` still contains a link to the SAME resolved target with the
- * SAME text — the ordinary `doc read` -> edit -> `doc update --body` round trip, since `doc read`
- * returns the body WITH its links, never fires here. Matches by resolved target (`to`, via core's ONE
- * link resolver `parseLinks` — never a second parser) + link text, the same pair `link add`'s own
- * idempotency check uses. `replaceLinks` (the caller's `--replace-links` flag) opts into the drop
- * deliberately — no separate `link remove` needed, since a full-body replace already performs removal.
+ * survives (no refusal) when `nextBody` still contains ANY link to the SAME resolved target — the
+ * ordinary `doc read` -> edit -> `doc update --body` round trip, since `doc read` returns the body
+ * WITH its links, never fires here. Matches by resolved target ONLY (`to`, via core's ONE link
+ * resolver `parseLinks` — never a second parser), mirroring `link add`'s own idempotency check
+ * (`link.ts`'s `parseLinks(...).some(l => l.to === normalizedTo)`, also target-only). A RETEXT — the
+ * new body relabels the same target under different display text — is NOT a drop: the guard's charter
+ * is EDGE loss, and the edge (the target relationship) survives a retext. Over-firing on relabeling
+ * would train agents to reflexively pass `--replace-links`, which hollows the guard for the drop case
+ * that actually matters (review adjudication, round 2). `replaceLinks` (the caller's `--replace-links`
+ * flag) opts into a real drop deliberately — no separate `link remove` needed, since a full-body
+ * replace already performs removal.
  *
  * Called BEFORE any write happens (the F1 guard's existing conditional read supplies `existing`), so
  * a refusal here always leaves the stored doc byte-for-byte unchanged.
@@ -291,9 +296,7 @@ export function guardDroppedLinks(
   const existingLinks = parseLinks(bundle, existing);
   if (existingLinks.length === 0) return; // nothing to lose
   const nextLinks = parseLinks(bundle, { ...existing, body: nextBody });
-  const dropped = existingLinks.filter(
-    (el) => !nextLinks.some((nl) => nl.to === el.to && nl.text === el.text),
-  );
+  const dropped = existingLinks.filter((el) => !nextLinks.some((nl) => nl.to === el.to));
   if (dropped.length === 0) return;
   const named = dropped.map((l) => `'${l.text}' -> ${l.to}`).join(", ");
   throw new CliError(
