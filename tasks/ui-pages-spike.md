@@ -3,7 +3,7 @@ type: Task
 title: >-
   UI pages spike: bundle-hosted HTML pages + sandboxed iframe bridge + live
   updates (evaluation build)
-status: blocked
+status: in_progress
 priority: '1'
 description: >-
   PAUSED 2026-07-09 (Mike): an external adversarial review of the hardened
@@ -12,7 +12,7 @@ description: >-
   overlap). Branch preserved, NOT killed. Full findings + launcher
   visual-system-only branding decision + resume plan in the body.
 actor: mike/claude
-timestamp: '2026-07-09T21:03:08.108Z'
+timestamp: '2026-07-09T21:09:52.937Z'
 ---
 # UI pages spike — PAUSED
 
