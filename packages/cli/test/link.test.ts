@@ -19,6 +19,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { initBundle, writeDoc, readDoc } from "@agentstate-lite/core";
+import { serve, type ServerHandle } from "@agentstate-lite/server";
 import { link } from "../src/commands/link.js";
 import { CliError } from "../src/errors.js";
 
@@ -52,6 +53,13 @@ async function linkAdd(dir: string, args: string[]): Promise<Record<string, unkn
 async function linkShow(dir: string, args: string[]): Promise<Record<string, unknown>> {
   let out = "";
   await link(["show", ...args, "--dir", dir, "--json"], { stdout: (s) => (out += s) });
+  return JSON.parse(out);
+}
+
+/** Run `link list` in-process against `dir`, capturing stdout and decoding the `--json` envelope. */
+async function linkList(dir: string, args: string[]): Promise<Record<string, unknown>> {
+  let out = "";
+  await link(["list", ...args, "--dir", dir, "--json"], { stdout: (s) => (out += s) });
   return JSON.parse(out);
 }
 
@@ -430,6 +438,264 @@ test("link show --text (no value at all): USAGE error, exit 2 — a bare parseAr
         assert.ok(err instanceof CliError);
         assert.equal(err.code, "USAGE");
         assert.equal(err.exitCode, 2);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── link list (graph-query-v0): the whole-bundle derived edge list, filtered ──────────────────
+
+/** A fixture with a small but representative edge graph: a prefix family (tasks/*), a
+ * cross-prefix citer (roadmap-items/x), a dangling target, and two differently-worded literal
+ * links between the same from/to (per-literal-link counting). */
+async function makeEdgeFixtureBundle(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-list-test-"));
+  const bundle = await initBundle(dir);
+  await writeDoc(bundle, {
+    id: "tasks/a",
+    frontmatter: { type: "Task", title: "A", timestamp: OLD_TS },
+    body: "[first](b.md) [second](b.md) [dangling](../ghost.md)",
+  });
+  await writeDoc(bundle, { id: "tasks/b", frontmatter: { type: "Task", title: "B", timestamp: OLD_TS }, body: "" });
+  await writeDoc(bundle, {
+    id: "roadmap-items/x",
+    frontmatter: { type: "Roadmap Item", title: "X", timestamp: OLD_TS },
+    body: "[contains](../tasks/a.md)",
+  });
+  return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+test("link list (no filter): every edge in the bundle, sorted (from, to, text), count matches the row count", async () => {
+  const { dir, cleanup } = await makeEdgeFixtureBundle();
+  try {
+    const result = await linkList(dir, []);
+    assert.equal(result.count, 4);
+    const edges = result.edges as { from: string; to: string; text: string }[];
+    assert.deepEqual(edges, [
+      { from: "roadmap-items/x", to: "tasks/a", text: "contains" },
+      { from: "tasks/a", to: "ghost", text: "dangling" },
+      { from: "tasks/a", to: "tasks/b", text: "first" },
+      { from: "tasks/a", to: "tasks/b", text: "second" },
+    ]);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link list --to <prefix/>: trailing-slash prefix matches every id starting with that literal string", async () => {
+  const { dir, cleanup } = await makeEdgeFixtureBundle();
+  try {
+    const result = await linkList(dir, ["--to", "tasks/"]);
+    assert.equal(result.count, 3);
+    const edges = result.edges as { to: string }[];
+    assert.ok(edges.every((e) => e.to.startsWith("tasks/")));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link list --to <id>: exact match only, not a prefix", async () => {
+  const { dir, cleanup } = await makeEdgeFixtureBundle();
+  try {
+    const result = await linkList(dir, ["--to", "tasks/a"]);
+    assert.equal(result.count, 1);
+    assert.deepEqual(result.edges, [{ from: "roadmap-items/x", to: "tasks/a", text: "contains" }]);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link list --to (repeatable): union (OR) across repeats, not AND", async () => {
+  const { dir, cleanup } = await makeEdgeFixtureBundle();
+  try {
+    const result = await linkList(dir, ["--to", "tasks/a", "--to", "ghost"]);
+    assert.equal(result.count, 2);
+    const tos = (result.edges as { to: string }[]).map((e) => e.to).sort();
+    assert.deepEqual(tos, ["ghost", "tasks/a"]);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link list --from and --to together: AND, not union", async () => {
+  const { dir, cleanup } = await makeEdgeFixtureBundle();
+  try {
+    // roadmap-items/x -> tasks/a exists; tasks/a -> tasks/b exists (x2); tasks/a -> ghost exists.
+    // Restricting to from=tasks/ AND to=tasks/b must exclude the roadmap-items/x edge entirely.
+    const result = await linkList(dir, ["--from", "tasks/", "--to", "tasks/b"]);
+    assert.equal(result.count, 2);
+    const edges = result.edges as { from: string; to: string }[];
+    assert.ok(edges.every((e) => e.from === "tasks/a" && e.to === "tasks/b"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link list --text: exact match only; a zero-match result carries a near-miss hint naming the texts present (scoped to the same --from/--to)", async () => {
+  const { dir, cleanup } = await makeEdgeFixtureBundle();
+  try {
+    const exact = await linkList(dir, ["--text", "contains"]);
+    assert.equal(exact.count, 1);
+
+    const substring = await linkList(dir, ["--text", "contain"]);
+    assert.equal(substring.count, 0);
+    const help = substring.help as string[];
+    assert.ok(
+      help.some((h) => /no links matched --text 'contain'/.test(h) && /link texts present here:/.test(h)),
+      `expected a near-miss hint, got: ${JSON.stringify(help)}`,
+    );
+    // The whole-bundle near-miss hint names every distinct text present.
+    assert.ok(help.some((h) => /'contains'/.test(h) && /'first'/.test(h) && /'second'/.test(h) && /'dangling'/.test(h)));
+
+    // Scoped near-miss: restricting --to tasks/b first, the hint must name ONLY texts present
+    // within that scope (first/second), not the whole bundle's 'contains'/'dangling'.
+    const scoped = await linkList(dir, ["--to", "tasks/b", "--text", "nope"]);
+    assert.equal(scoped.count, 0);
+    const scopedHelp = scoped.help as string[];
+    assert.ok(scopedHelp.some((h) => /'first'/.test(h) && /'second'/.test(h) && !/'contains'/.test(h)));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link list: per-literal-link counting — two differently-worded links between the SAME from/to are TWO rows", async () => {
+  const { dir, cleanup } = await makeEdgeFixtureBundle();
+  try {
+    const result = await linkList(dir, ["--from", "tasks/a", "--to", "tasks/b"]);
+    assert.equal(result.count, 2);
+    assert.deepEqual((result.edges as { text: string }[]).map((e) => e.text).sort(), ["first", "second"]);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link list: dangling edges (target has no document) are included", async () => {
+  const { dir, cleanup } = await makeEdgeFixtureBundle();
+  try {
+    const result = await linkList(dir, ["--to", "ghost"]);
+    assert.equal(result.count, 1);
+    assert.deepEqual(result.edges, [{ from: "tasks/a", to: "ghost", text: "dangling" }]);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link list --limit: caps the returned rows; count stays the true total; a truncated result carries a --limit 0 help hint", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-list-test-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, { id: "hub", frontmatter: { type: "T", timestamp: OLD_TS }, body: "" });
+    let body = "";
+    for (let i = 0; i < 5; i++) {
+      await writeDoc(bundle, { id: `t${i}`, frontmatter: { type: "T", timestamp: OLD_TS }, body: "" });
+      body += `[to t${i}](t${i}.md)\n`;
+    }
+    await writeDoc(bundle, { id: "hub", frontmatter: { type: "T", timestamp: OLD_TS }, body });
+
+    const result = await linkList(dir, ["--limit", "2"]);
+    assert.equal(result.count, 5, "count is the true total");
+    assert.equal((result.edges as unknown[]).length, 2, "rows are capped");
+    assert.equal(result.shown, 2);
+    const help = result.help as string[];
+    assert.ok(help.some((h) => /showing 2 of 5/.test(h) && /--limit 0/.test(h)));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("link list --limit 0: unlimited (no cap, no truncation help)", async () => {
+  const { dir, cleanup } = await makeEdgeFixtureBundle();
+  try {
+    const result = await linkList(dir, ["--limit", "0"]);
+    assert.equal(result.count, 4);
+    assert.equal((result.edges as unknown[]).length, 4);
+    assert.equal(result.shown, undefined);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link list --text '' (empty/blank value): USAGE error, exit 2", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-list-test-"));
+  try {
+    await initBundle(dir);
+    await assert.rejects(
+      () => link(["list", "--text", "  ", "--dir", dir, "--json"], { stdout: () => {} }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("link list --limit not-a-number: USAGE error, exit 2", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-list-test-"));
+  try {
+    await initBundle(dir);
+    await assert.rejects(
+      () => link(["list", "--limit", "abc", "--dir", dir, "--json"], { stdout: () => {} }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("link list on an empty bundle: count 0, empty edges array, no error", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-list-test-"));
+  try {
+    await initBundle(dir);
+    const result = await linkList(dir, []);
+    assert.equal(result.count, 0);
+    assert.deepEqual(result.edges, []);
+    assert.equal(result.help, undefined);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("link list over --remote: same result set as --dir against a live serve() (client-side over the existing readMany batch, no wire change)", async () => {
+  const { dir, cleanup } = await makeEdgeFixtureBundle();
+  try {
+    const handle: ServerHandle = await serve({ bundle: { root: dir }, port: 0 });
+    const url = `http://${handle.host}:${handle.port}`;
+    try {
+      const local = await linkList(dir, ["--to", "tasks/"]);
+      let out = "";
+      await link(["list", "--to", "tasks/", "--remote", url, "--json"], { stdout: (s) => (out += s) });
+      const remote = JSON.parse(out);
+      assert.deepEqual(remote, local);
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link list unknown subcommand message names 'list' among the known subcommands", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-list-test-"));
+  try {
+    await initBundle(dir);
+    await assert.rejects(
+      () => link(["bogus", "--dir", dir, "--json"], { stdout: () => {} }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /add\|show\|list/);
         return true;
       },
     );

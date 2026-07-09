@@ -26,6 +26,7 @@ import type {
   Bundle,
   ConceptId,
   DeleteOptions,
+  EdgeFilter,
   Frontmatter,
   HeadResult,
   InitBundleOptions,
@@ -379,25 +380,94 @@ export function parseLinks(_bundle: Bundle, doc: OkfDocument): Link[] {
 }
 
 /**
+ * Normalize a raw `from`/`to` {@link EdgeFilter} selector the same way a concept id is
+ * normalized everywhere else (posix-ify, strip a single leading `./` or `/` — mirroring
+ * {@link backlinks}'s pre-existing target normalization). A trailing slash is a deliberate
+ * prefix marker and is kept; it is stripped from nothing else.
+ */
+function normalizeEdgeSelector(raw: string): string {
+  return toPosix(raw).replace(/^\.?\//, "");
+}
+
+/**
+ * True when `value` (a resolved `from` or `to` concept id) matches ANY of `selectors` —
+ * union (OR) within one flag — or when `selectors` is `undefined` (the facet was never
+ * set, so it imposes no restriction). Each selector is either an EXACT id match (any
+ * trailing `.md` stripped) or, when it ends in `/`, a PREFIX match — one rule, no glob
+ * syntax, per {@link EdgeFilter}'s contract.
+ */
+function matchesEdgeSelector(value: ConceptId, selectors: string[] | undefined): boolean {
+  if (selectors === undefined) return true;
+  for (const raw of selectors) {
+    const normalized = normalizeEdgeSelector(raw);
+    if (normalized.endsWith("/")) {
+      if (value.startsWith(normalized)) return true;
+    } else if (value === normalized.replace(/\.md$/, "")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Coerce an {@link EdgeFilter} `from`/`to` facet to a selector list, or `undefined` when the
+ * facet is absent entirely (meaning "no restriction" — distinct from an empty array, which
+ * would restrict to nothing matching). A single selector is wrapped, an array passed through. */
+function toSelectorList(v: string | string[] | undefined): string[] | undefined {
+  if (v === undefined) return undefined;
+  return Array.isArray(v) ? v : [v];
+}
+
+/**
+ * The whole-bundle derived edge list, filtered (graph-query-v0). This is the ONE atom every
+ * edge-shaped question reduces to — {@link backlinks} below is now a thin call into it, and
+ * so is the CLI's `link list`. Edges are DERIVED by scanning every concept's outbound links,
+ * never stored (gate 2) — there is exactly one link resolver ({@link parseLinksFromDoc}, via
+ * {@link parseLinks}) and exactly one whole-bundle walk ({@link query}) underneath this, per
+ * gate 3.
+ *
+ * `filter.from`/`filter.to` each accept a single id, a trailing-slash prefix, or an array of
+ * either (union within the flag; providing BOTH facets ANDs them); `filter.text` is an exact
+ * match. Dangling edges are included: a link whose target has no document yet is still a real
+ * edge (the unresolved-link lint and pre-delete impact checks depend on seeing them) — `to`
+ * is the raw resolved concept id, not a proof the target exists. Per-literal-link counting: a
+ * source linking to the same target via two differently-worded links yields two rows (typed-
+ * edge reading v0's pinned semantics), matching {@link parseLinks}' own no-dedup granularity.
+ * Reserved files (`index.md`/`log.md`) can never be a link target ({@link parseLinksFromDoc}
+ * drops them at resolution) and reserved files are never a `from` either (they are excluded
+ * from every {@link query} scan) — so this never surfaces a phantom edge to/from a reserved
+ * concept id. Deterministic output: sorted by `(from, to, text)`.
+ */
+export async function queryEdges(bundle: Bundle, filter: EdgeFilter = {}): Promise<Link[]> {
+  const fromSelectors = toSelectorList(filter.from);
+  const toSelectors = toSelectorList(filter.to);
+  const docs = await query(bundle);
+  const edges: Link[] = [];
+  for (const doc of docs) {
+    for (const link of parseLinksFromDoc(doc)) {
+      if (!matchesEdgeSelector(link.from, fromSelectors)) continue;
+      if (!matchesEdgeSelector(link.to, toSelectors)) continue;
+      if (filter.text !== undefined && link.text !== filter.text) continue;
+      edges.push(link);
+    }
+  }
+  edges.sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to) || a.text.localeCompare(b.text));
+  return edges;
+}
+
+/**
  * "Cited by" set for a target concept — derived by reversing the resolved link
  * graph over the whole bundle. Backlinks are DERIVED, never stored (OKF has no
  * `cited_by` frontmatter field). Returns the full citing {@link Link} (carrying
  * `text`, the only relationship-type signal the bytes carry), not a bare source
  * id — a source citing the target via two differently-worded links yields two
  * rows, mirroring {@link parseLinks}'s own no-dedup-by-target granularity on the
- * outbound side. Sorted by source id, then link text, for determinism.
+ * outbound side. A thin `{ to: target }` call into {@link queryEdges} (graph-query-v0's
+ * generalization) — sorted `(from, to, text)` collapses to `(from, text)` here since
+ * `to` is constant across every row, so this is byte-identical to the pre-generalization
+ * sort.
  */
 export async function backlinks(bundle: Bundle, target: ConceptId): Promise<Link[]> {
-  const normalizedTarget = toPosix(target).replace(/^\.?\//, "").replace(/\.md$/, "");
-  const docs = await query(bundle);
-  const inbound: Link[] = [];
-  for (const doc of docs) {
-    for (const link of parseLinksFromDoc(doc)) {
-      if (link.to === normalizedTarget) inbound.push(link);
-    }
-  }
-  inbound.sort((a, b) => a.from.localeCompare(b.from) || a.text.localeCompare(b.text));
-  return inbound;
+  return queryEdges(bundle, { to: target });
 }
 
 // ── blobs: opaque bytes + a content-type (Stage-1 Unit 2a Part A) ──────────────
