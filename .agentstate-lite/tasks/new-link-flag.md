@@ -3,20 +3,23 @@ type: Task
 title: >-
   new --link "<type>=<target>": one-step create+link riding the declared
   vocabulary
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Field feedback (generic form): create-then-link is two steps and the one place
-  the data model fought the agent — it wanted a schema-required link and had to
-  settle for a required field plus a documented procedure. Two distinct asks
-  unbundled: (1) THIS task — ergonomics only: a repeatable --link
-  "<type>=<target-id>" on new, validated against the kind declared links
-  vocabulary, riding the same idempotent link-add path (new already TEACHES the
-  vocabulary at point of use; let it ACT on it). (2) Required-link SCHEMA
-  semantics — NOT this task; stays gated on the joint ontology session per
-  roadmap-items/typed-relationships (create ordering/circularity is why
-  create-then-link is two steps today).
+  SHIPPED in PR #23 (merge 7a81666, plugin 1.0.24; Brian rebased and merged).
+  Repeatable --link "<type>=<target-id>" on new: one-step create+link riding the
+  declared vocabulary. Core mutation extracted from link add into exported
+  addLink (byte-preserving — old suite untouched and green); fail-fast malformed
+  values before the doc write; best-effort per-entry processing after with
+  honest partial receipts (exactly one envelope, both output modes); undeclared
+  types warn (LINK_TYPE_UNDECLARED_FOR_KIND), dangling targets allowed; receipt
+  hints drop satisfied types; --remote parity verified. Known limitations
+  documented: a kind requiring a field literally named link is uncreatable via
+  new (doc write workaround); link add raw/normalized receipt quirk left as
+  separate cleanup candidate. Full loop: Sonnet builder, cold reviewer (verdict
+  MERGE zero fixes), +10 tests. Origin: external-agent field feedback
+  (create-then-link was two steps).
 actor: mike/claude
-timestamp: '2026-07-08T23:02:00.388Z'
+timestamp: '2026-07-09T15:14:10.078Z'
 ---
 
