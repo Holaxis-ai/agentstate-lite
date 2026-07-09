@@ -16,9 +16,9 @@ description: >-
   the opt-out knob suite-wide for hermeticity (reviewer adjudicating);
   board-parity test needs a provisioned checkout (filed:
   board-parity-test-post-migration).
-actor: builder-opppull
+actor: brian-claude
 assignee: brian-claude
-timestamp: '2026-07-09T21:16:34.917Z'
+timestamp: '2026-07-09T21:56:40.541Z'
 ---
 ## Design sketch (carried from the adjudication; builder refines, panel-vets if judged risky)
 
@@ -55,3 +55,15 @@ parked behind their own wake conditions.
 **Evidence trail:** real-time ladder parked in plans/sync-verb (rung 1 wake condition);
 Brian's ask 2026-07-09 is the demand signal; cron/launchd was drafted and rejected
 before install (records: this task's description).
+
+## Delta-review record (APPROVE, 2026-07-09) — two LOW observations, non-blocking
+
+- A perpetual-miss candidate (e.g. a bundle vendored AS a submodule, read via --dir)
+  pays the ~5-spawn verification on every read — refusal precedes the attempt-record so
+  the throttle never engages for that exotic shape. Deliberate (writing state keyed to
+  a foreign checkout would be worse).
+- findBoardCandidate's fs walk crosses git-repo boundaries upward (coherent with the
+  bundle-resolution walk), so `home` run inside a nested boardless repo can freshen an
+  ancestor project's board its own git-confined render probe does not display —
+  pull-without-render. Genuine board, ff-only, throttled; revisit only if nested-
+  worktree workflows make it noisy.
