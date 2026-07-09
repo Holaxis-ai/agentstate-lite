@@ -152,8 +152,10 @@ the rest of the line unchanged.
 
 ### Session
 
+- `"$ASLITE" session-start [--dir <path>]`
+  — The SessionStart hook payload: a time-boxed best-effort board pull, then the home view — every pull failure falls through to the render (exit 0)
 - `"$ASLITE" hook install|status|uninstall [--scope project|global]`
-  — Install the SessionStart home-view hook (Claude Code, Codex, OpenCode)
+  — Install the SessionStart hook (runs session-start: pull the board, then render) for Claude Code, Codex, OpenCode
 
 ## Workspaces — the project's bundle lives at `.agentstate-lite/` in the project root
 
@@ -286,8 +288,11 @@ Every remote-facing command ships in the SAME bundle, wired the same way as `--d
 - Mutations are idempotent: re-writing a doc or re-adding an existing link is a no-op (exit 0).
 - `new` and `doc update` accept a kind's declared fields as `--<field> <value>` (e.g. `--status done`);
   an unknown field or an out-of-enum value is rejected (exit 2). Run `kinds` to see a kind's fields.
-- `hook install` registers a SessionStart home-view hook for Claude Code, Codex, and OpenCode so a
-  new session starts with the bundle's state already in context.
+- `hook install` registers a SessionStart hook (Claude Code, Codex, OpenCode) that runs
+  `session-start`: a quick best-effort pull of the shared board, then the home view — so a new
+  session starts with the bundle's state AND any teammate changes already in context. Offline is
+  fine: the render always appears, labeled with the last known state. If you installed the hook
+  before `session-start` existed, re-run `hook install` once to upgrade it.
 - Edit a doc's body through `doc update --body-file` (or `--body`), never by pulling the raw file
   with `--out`, editing it with text tools, and re-promoting it — that risks corrupting the
   frontmatter (the engine rejects it, but the right tool avoids the dance entirely).

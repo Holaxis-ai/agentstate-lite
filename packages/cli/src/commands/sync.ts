@@ -68,6 +68,8 @@ import {
   bundleKey,
   readCursor,
   recordReanchor,
+  recordSelfActors,
+  refreshMarker,
   syncExportsDir,
   writeCache,
   writeCursor,
@@ -631,7 +633,7 @@ function retargetStaleBoardInteriorByPath(dir: string): string | null {
  * to its parent directory (the enclosing project), where the normal resolution — heal probe, then
  * provisioning's idempotent "already" branch — proceeds against the REAL board path.
  */
-function retargetBoardInterior(dir: string): string {
+export function retargetBoardInterior(dir: string): string {
   try {
     const top = repoTopLevel(dir);
     if (top && path.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
@@ -644,7 +646,7 @@ function retargetBoardInterior(dir: string): string {
 }
 
 /** The board worktree's current HEAD sha, via U1's exported `runGit` (no U1 op named this directly). */
-function currentHead(boardPath: string): string {
+export function currentHead(boardPath: string): string {
   const r = runGit(boardPath, ["rev-parse", "HEAD"]);
   if (r.status !== 0) {
     throw classifyGitError({ args: ["rev-parse", "HEAD"], status: r.status, stdout: r.stdout, stderr: r.stderr });
@@ -653,7 +655,7 @@ function currentHead(boardPath: string): string {
 }
 
 /** Count of lines in `git status --porcelain` — uncommitted (staged or not) changes in the worktree. */
-function countUncommitted(boardPath: string): number {
+export function countUncommitted(boardPath: string): number {
   const r = runGit(boardPath, ["status", "--porcelain"]);
   if (r.status !== 0) return 0;
   return r.stdout.split("\n").filter((l) => l.trim().length > 0).length;
@@ -754,7 +756,11 @@ export function originDocsBetween(boardPath: string, fromRef: string | null, toR
 }
 
 /**
- * The per-clone cursor/cache/marker key (U2's `bundleKey`) for THIS board worktree: keyed by the
+ * The per-clone cursor/cache/marker key (U2's `bundleKey`) for THIS board worktree — EXPORTED as
+ * THE one derivation (cache-per-clone review advisory (a): home/session-start REUSE this; a second
+ * independent derivation is the real state-split risk). NOTE for callers: this realpaths the board
+ * path itself (`realOrSame`) — pass the board worktree path as resolved from the repo top, and do
+ * NOT pre-normalize it differently. Keyed by the
  * `origin` remote URL (git worktrees share one remote config with their main worktree) with an
  * empty subpath (the board branch's root IS the bundle root — gate 2) PLUS the board worktree's
  * own realpath as the checkout identity — two clones of one origin on one machine must never
@@ -764,7 +770,7 @@ export function originDocsBetween(boardPath: string, fromRef: string | null, toR
  * `realOrSame`) keeps the key stable across symlinked spellings of one checkout (macOS
  * `/tmp` → `/private/tmp`, an aliased home) — same clone, same key, every invocation.
  */
-function resolveBundleKey(boardPath: string): string {
+export function resolveBundleKey(boardPath: string): string {
   const checkoutRoot = realOrSame(boardPath);
   const r = runGit(boardPath, ["remote", "get-url", BOARD_REMOTE]);
   if (r.status === 0 && r.stdout.trim().length > 0) {
@@ -885,6 +891,14 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   }
 
   const key = resolveBundleKey(boardPath);
+
+  // BOARD-PENDING MARKER (U4 inherited item 5 — plan §U2 "refreshed by every pull step"): the
+  // provisioning step above just CONFIRMED a board exists for this repo, which is exactly the
+  // marker's meaning — so it is refreshed here, BEFORE the pull, covering every path out of this
+  // run (clean, conflict, offline fetch failure, push failure) with one write. session-start's
+  // pull step refreshes it the same way.
+  await refreshMarker(key);
+
   const storedCursor = await readCursor(key);
   const startHead = currentHead(boardPath);
   // Finding 2's baseline: origin/board's OWN ref as this run understood it BEFORE its own
@@ -896,6 +910,12 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   let commitResult: CommitResult = { committed: false, docs: [] };
   if (!pullOnly) {
     commitResult = stageAndCommit(boardPath);
+    if (commitResult.committed && commitResult.docs.length > 0) {
+      // U4's "self" identity: the actors THIS clone just committed are recorded per-clone, so the
+      // home render can filter self-authored rows out of the human "since" count ("unknown" is
+      // dropped inside recordSelfActors — see its doc).
+      await recordSelfActors(key, commitResult.docs.map((d) => d.actor));
+    }
   }
 
   // STEP 3: pull. Full sync rebases with the CONVERGING conflict mechanic (U3b: keep upstream,

@@ -288,9 +288,18 @@ function renderNotesSection() {
   );
   lines.push("  an unknown field or an out-of-enum value is rejected (exit 2). Run `kinds` to see a kind's fields.");
   lines.push(
-    "- `hook install` registers a SessionStart home-view hook for Claude Code, Codex, and OpenCode so a",
+    "- `hook install` registers a SessionStart hook (Claude Code, Codex, OpenCode) that runs",
   );
-  lines.push("  new session starts with the bundle's state already in context.");
+  lines.push(
+    "  `session-start`: a quick best-effort pull of the shared board, then the home view — so a new",
+  );
+  lines.push(
+    "  session starts with the bundle's state AND any teammate changes already in context. Offline is",
+  );
+  lines.push(
+    "  fine: the render always appears, labeled with the last known state. If you installed the hook",
+  );
+  lines.push("  before `session-start` existed, re-run `hook install` once to upgrade it.");
   lines.push(
     "- Edit a doc's body through `doc update --body-file` (or `--body`), never by pulling the raw file",
   );

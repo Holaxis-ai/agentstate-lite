@@ -3344,8 +3344,8 @@ var require_excerpt = __commonJS({
       if (sep == null && (opts.excerpt === false || opts.excerpt == null)) {
         return file;
       }
-      const delimiter3 = typeof opts.excerpt === "string" ? opts.excerpt : sep || opts.delimiters[0];
-      const idx = file.content.indexOf(delimiter3);
+      const delimiter2 = typeof opts.excerpt === "string" ? opts.excerpt : sep || opts.delimiters[0];
+      const idx = file.content.indexOf(delimiter2);
       if (idx !== -1) {
         file.excerpt = file.content.slice(0, idx);
       }
@@ -3620,7 +3620,7 @@ function isValidUnquotedKey(key2) {
 function isIdentifierSegment(key2) {
   return /^[A-Z_]\w*$/i.test(key2);
 }
-function isSafeUnquoted(value, delimiter3 = DEFAULT_DELIMITER) {
+function isSafeUnquoted(value, delimiter2 = DEFAULT_DELIMITER) {
   if (!value) return false;
   if (value !== value.trim()) return false;
   if (isBooleanOrNullLiteral(value) || isNumericLike(value)) return false;
@@ -3628,7 +3628,7 @@ function isSafeUnquoted(value, delimiter3 = DEFAULT_DELIMITER) {
   if (value.includes('"') || value.includes("\\")) return false;
   if (/[[\]{}]/.test(value)) return false;
   if (/[\u0000-\u001F]/.test(value)) return false;
-  if (value.includes(delimiter3)) return false;
+  if (value.includes(delimiter2)) return false;
   if (value.startsWith("-")) return false;
   return true;
 }
@@ -3679,33 +3679,33 @@ function collectSingleKeyChain(startKey, startValue, maxDepth) {
 function buildFoldedKey(segments) {
   return segments.join(".");
 }
-function encodePrimitive(value, delimiter3) {
+function encodePrimitive(value, delimiter2) {
   if (value === null) return NULL_LITERAL;
   if (typeof value === "boolean") return String(value);
   if (typeof value === "number") return String(value);
-  return encodeStringLiteral(value, delimiter3);
+  return encodeStringLiteral(value, delimiter2);
 }
-function encodeStringLiteral(value, delimiter3 = DEFAULT_DELIMITER) {
-  if (isSafeUnquoted(value, delimiter3)) return value;
+function encodeStringLiteral(value, delimiter2 = DEFAULT_DELIMITER) {
+  if (isSafeUnquoted(value, delimiter2)) return value;
   return `"${escapeString(value)}"`;
 }
 function encodeKey(key2) {
   if (isValidUnquotedKey(key2)) return key2;
   return `"${escapeString(key2)}"`;
 }
-function encodeAndJoinPrimitives(values, delimiter3 = DEFAULT_DELIMITER) {
-  return values.map((v) => encodePrimitive(v, delimiter3)).join(delimiter3);
+function encodeAndJoinPrimitives(values, delimiter2 = DEFAULT_DELIMITER) {
+  return values.map((v) => encodePrimitive(v, delimiter2)).join(delimiter2);
 }
 function formatHeader(length, options2) {
   const key2 = options2?.key;
   const fields = options2?.fields;
-  const delimiter3 = options2?.delimiter ?? ",";
+  const delimiter2 = options2?.delimiter ?? ",";
   let header = "";
   if (key2 != null) header += encodeKey(key2);
-  header += `[${length}${delimiter3 !== DEFAULT_DELIMITER ? delimiter3 : ""}]`;
+  header += `[${length}${delimiter2 !== DEFAULT_DELIMITER ? delimiter2 : ""}]`;
   if (fields) {
     const quotedFields = fields.map((f) => encodeKey(f));
-    header += `{${quotedFields.join(delimiter3)}}`;
+    header += `{${quotedFields.join(delimiter2)}}`;
   }
   header += ":";
   return header;
@@ -3795,12 +3795,12 @@ function* encodeArrayOfArraysAsListItemsLines(prefix, values, depth, options2) {
     yield indentedListItem(depth + 1, arrayLine, options2.indent);
   }
 }
-function encodeInlineArrayLine(values, delimiter3, prefix) {
+function encodeInlineArrayLine(values, delimiter2, prefix) {
   const header = formatHeader(values.length, {
     key: prefix,
-    delimiter: delimiter3
+    delimiter: delimiter2
   });
-  const joinedValue = encodeAndJoinPrimitives(values, delimiter3);
+  const joinedValue = encodeAndJoinPrimitives(values, delimiter2);
   if (values.length === 0) return header;
   return `${header} ${joinedValue}`;
 }
@@ -3894,26 +3894,26 @@ function applyReplacer(root, replacer) {
   if (replacedRoot === void 0) return transformChildren(root, replacer, []);
   return transformChildren(normalizeValue(replacedRoot), replacer, []);
 }
-function transformChildren(value, replacer, path11) {
-  if (isJsonObject(value)) return transformObject(value, replacer, path11);
-  if (isJsonArray(value)) return transformArray(value, replacer, path11);
+function transformChildren(value, replacer, path12) {
+  if (isJsonObject(value)) return transformObject(value, replacer, path12);
+  if (isJsonArray(value)) return transformArray(value, replacer, path12);
   return value;
 }
-function transformObject(obj, replacer, path11) {
+function transformObject(obj, replacer, path12) {
   const result = {};
   for (const [key2, value] of Object.entries(obj)) {
-    const childPath = [...path11, key2];
+    const childPath = [...path12, key2];
     const replacedValue = replacer(key2, value, childPath);
     if (replacedValue === void 0) continue;
     result[key2] = transformChildren(normalizeValue(replacedValue), replacer, childPath);
   }
   return result;
 }
-function transformArray(arr, replacer, path11) {
+function transformArray(arr, replacer, path12) {
   const result = [];
   for (let i = 0; i < arr.length; i++) {
     const value = arr[i];
-    const childPath = [...path11, i];
+    const childPath = [...path12, i];
     const replacedValue = replacer(String(i), value, childPath);
     if (replacedValue === void 0) continue;
     const normalizedValue = normalizeValue(replacedValue);
@@ -3940,11 +3940,11 @@ function resolveOptions(options2) {
 }
 
 // ../../node_modules/axi-sdk-js/dist/output.js
-function collapseHomeDirectory(path11, homeDir = homedir()) {
-  if (!path11.startsWith(homeDir)) {
-    return path11;
+function collapseHomeDirectory(path12, homeDir = homedir()) {
+  if (!path12.startsWith(homeDir)) {
+    return path12;
   }
-  return `~${path11.slice(homeDir.length)}`;
+  return `~${path12.slice(homeDir.length)}`;
 }
 function homeHeaderOutput(options2) {
   return {
@@ -4048,7 +4048,7 @@ function isUpdateAvailable(current, latest) {
 }
 var nodeFs = {
   existsSync,
-  readFileSync: (path11, encoding) => readFileSync(path11, encoding)
+  readFileSync: (path12, encoding) => readFileSync(path12, encoding)
 };
 function readNearestPackageJson(startPath, fs11 = nodeFs) {
   let dir = dirname(startPath);
@@ -4075,36 +4075,36 @@ function readNearestPackageJson(startPath, fs11 = nodeFs) {
 }
 function detectInstallMethod(options2) {
   const env = options2.env ?? process.env;
-  const path11 = options2.entry.replaceAll("\\", "/");
-  if (path11.includes("/_npx/") || /\/dlx-[^/]+\//.test(path11) || path11.includes("/pnpm/dlx/") || path11.includes("/bun/install/cache/")) {
+  const path12 = options2.entry.replaceAll("\\", "/");
+  if (path12.includes("/_npx/") || /\/dlx-[^/]+\//.test(path12) || path12.includes("/pnpm/dlx/") || path12.includes("/bun/install/cache/")) {
     return { kind: "npx" };
   }
-  const homebrewFormula = homebrewFormulaFromPath(path11, env);
+  const homebrewFormula = homebrewFormulaFromPath(path12, env);
   if (homebrewFormula) {
     return { kind: "homebrew", formula: homebrewFormula };
   }
   const pnpmHome = normalizePathRoot(env.PNPM_HOME);
-  if (isPathInsideRoot(path11, pnpmHome) || isKnownPnpmGlobalStore(path11, env)) {
+  if (isPathInsideRoot(path12, pnpmHome) || isKnownPnpmGlobalStore(path12, env)) {
     return { kind: "pnpm-global" };
   }
-  if (isKnownNpmGlobalInstall(path11, env)) {
+  if (isKnownNpmGlobalInstall(path12, env)) {
     return { kind: "npm-global" };
   }
   return { kind: "unknown" };
 }
-function normalizePathRoot(path11) {
-  const normalized = path11?.replaceAll("\\", "/").replace(/\/+$/, "");
+function normalizePathRoot(path12) {
+  const normalized = path12?.replaceAll("\\", "/").replace(/\/+$/, "");
   return normalized && normalized.length > 0 ? normalized : void 0;
 }
-function isPathInsideRoot(path11, root) {
-  return root !== void 0 && (path11 === root || path11.startsWith(`${root}/`));
+function isPathInsideRoot(path12, root) {
+  return root !== void 0 && (path12 === root || path12.startsWith(`${root}/`));
 }
-function homebrewFormulaFromPath(path11, env) {
+function homebrewFormulaFromPath(path12, env) {
   for (const root of homebrewCellarRoots(env)) {
-    if (!isPathInsideRoot(path11, root)) {
+    if (!isPathInsideRoot(path12, root)) {
       continue;
     }
-    const relative = path11.slice(root.length).replace(/^\/+/, "");
+    const relative = path12.slice(root.length).replace(/^\/+/, "");
     const formula = relative.split("/")[0];
     if (formula) {
       return formula;
@@ -4132,12 +4132,12 @@ function homebrewCellarRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownPnpmGlobalStore(path11, env) {
+function isKnownPnpmGlobalStore(path12, env) {
   return pnpmGlobalStoreRoots(env).some((root) => {
-    if (!isPathInsideRoot(path11, root)) {
+    if (!isPathInsideRoot(path12, root)) {
       return false;
     }
-    const relative = path11.slice(root.length).replace(/^\/+/, "");
+    const relative = path12.slice(root.length).replace(/^\/+/, "");
     return /^\d+\/\.pnpm\//.test(relative);
   });
 }
@@ -4155,8 +4155,8 @@ function pnpmGlobalStoreRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownNpmGlobalInstall(path11, env) {
-  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path11, root)) || isKnownVersionManagerNpmGlobal(path11, env);
+function isKnownNpmGlobalInstall(path12, env) {
+  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path12, root)) || isKnownVersionManagerNpmGlobal(path12, env);
 }
 function npmGlobalNodeModulesRoots(env) {
   const roots = [
@@ -4182,8 +4182,8 @@ function npmGlobalNodeModulesRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownVersionManagerNpmGlobal(path11, env) {
-  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path11, root) && path11.includes("/lib/node_modules/"));
+function isKnownVersionManagerNpmGlobal(path12, env) {
+  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path12, root) && path12.includes("/lib/node_modules/"));
 }
 function versionManagerNodeRoots(env) {
   const roots = [];
@@ -4346,7 +4346,7 @@ async function defaultRunInstall(plan, stdout, context) {
   }
   stdout.write(`running: ${plan.command}
 `);
-  return new Promise((resolve4) => {
+  return new Promise((resolve3) => {
     const [command, ...args] = argv;
     const child = spawn(packageManagerExecutable(command, context.platform), args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -4359,10 +4359,10 @@ async function defaultRunInstall(plan, stdout, context) {
       process.stderr.write(chunk);
     });
     child.on("error", (error) => {
-      resolve4({ ok: false, message: error.message });
+      resolve3({ ok: false, message: error.message });
     });
     child.on("close", (code) => {
-      resolve4(code === 0 ? { ok: true } : { ok: false, message: `${plan.command} exited with code ${code}` });
+      resolve3(code === 0 ? { ok: true } : { ok: false, message: `${plan.command} exited with code ${code}` });
     });
   });
 }
@@ -4419,7 +4419,7 @@ async function runUpdate(options2) {
   const binName = binNameFromArgv(invokedAs);
   const mode = parseUpdateArgs(options2.args, binName);
   const platform = options2.platform ?? process.platform;
-  const realpath = options2.realpath ?? ((path11) => realpathSync(path11));
+  const realpath = options2.realpath ?? ((path12) => realpathSync(path12));
   const entry = resolveEntry(invokedAs, realpath);
   const fs11 = options2.fs ?? nodeFs;
   const fromPackageJson = entry ? readNearestPackageJson(entry, fs11) : {};
@@ -4665,10 +4665,6 @@ function mergeHomeHeader(header, output) {
 }
 
 // ../../node_modules/axi-sdk-js/dist/hooks.js
-import { existsSync as existsSync2, mkdirSync, readFileSync as readFileSync2, realpathSync as realpathSync2, statSync, writeFileSync } from "node:fs";
-import { homedir as homedir2 } from "node:os";
-import { basename as basename3, delimiter, dirname as dirname2, join as join2, resolve } from "node:path";
-var OPENCODE_PLUGIN_MANAGED_PREFIX = "axi-sdk-js managed opencode plugin:";
 function isManagedHook(hook2, marker) {
   return typeof hook2?.command === "string" && hook2.command.includes(marker);
 }
@@ -4775,272 +4771,10 @@ function computeCodexConfigUpdate(content) {
     true
   ];
 }
-function sanitizeOpenCodePluginFilePart(marker) {
-  return marker.replace(/[^A-Za-z0-9._-]+/g, "_");
-}
-function sanitizeOpenCodeExportName(marker) {
-  const name = marker.split(/[^A-Za-z0-9]+/).filter(Boolean).map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`).join("");
-  return `Axi${name || "Plugin"}AmbientContextPlugin`;
-}
-function buildOpenCodeAmbientPluginSource(marker, command, timeoutSeconds) {
-  const exportName = sanitizeOpenCodeExportName(marker);
-  const managedMarker = `${OPENCODE_PLUGIN_MANAGED_PREFIX} ${marker}`;
-  return `// ${managedMarker}
-// This file is generated by axi-sdk-js. It is safe to edit only if you remove the managed marker above.
-import { spawn } from "node:child_process";
-
-const command = ${JSON.stringify(command)};
-const marker = ${JSON.stringify(marker)};
-const ambientHeader = ${JSON.stringify(`## AXI ambient context: ${marker}`)};
-const timeoutMs = ${JSON.stringify(timeoutSeconds * 1e3)};
-
-function runAxiHomeView(cwd) {
-  return new Promise((resolve) => {
-    const child = spawn(command, [], {
-      cwd: directoryOrFallback(cwd),
-      env: process.env,
-      shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      child.kill("SIGTERM");
-      resolve("error: " + marker + " ambient context timed out after " + timeoutMs + "ms");
-    }, timeoutMs);
-
-    child.stdout?.setEncoding("utf-8");
-    child.stderr?.setEncoding("utf-8");
-    child.stdout?.on("data", (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr?.on("data", (chunk) => {
-      stderr += chunk;
-    });
-    child.on("error", (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve("error: " + marker + " ambient context failed: " + error.message);
-    });
-    child.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (code === 0) {
-        resolve(stdout.trim());
-        return;
-      }
-      const message = (stderr || stdout || marker + " exited with code " + code).trim();
-      resolve("error: " + marker + " ambient context failed: " + message);
-    });
-  });
-}
-
-function directoryOrFallback(directory) {
-  return typeof directory === "string" && directory.length > 0
-    ? directory
-    : process.cwd();
-}
-
-export const ${exportName} = async ({ directory }) => {
-  const sessionCache = new Map();
-
-  return {
-    "experimental.chat.system.transform": async (input, output) => {
-      const sessionID = input.sessionID ?? "__global__";
-      let homeView = sessionCache.get(sessionID);
-      if (homeView === undefined) {
-        homeView = await runAxiHomeView(directory);
-        sessionCache.set(sessionID, homeView);
-      }
-
-      if (homeView.length === 0) return;
-      output.system.push(ambientHeader + "\\n" + homeView);
-    },
-  };
-};
-`;
-}
-function installOpenCodeAmbientPlugin(home2, marker, command, timeoutSeconds, onError) {
-  const pluginPath = join2(home2, ".config", "opencode", "plugins", `axi-${sanitizeOpenCodePluginFilePart(marker)}.js`);
-  const managedMarker = `${OPENCODE_PLUGIN_MANAGED_PREFIX} ${marker}`;
-  const next = buildOpenCodeAmbientPluginSource(marker, command, timeoutSeconds);
-  try {
-    mkdirSync(dirname2(pluginPath), { recursive: true });
-    const current = existsSync2(pluginPath) ? readFileSync2(pluginPath, "utf-8") : void 0;
-    if (current !== void 0 && !current.includes(managedMarker)) {
-      onError?.(`${pluginPath}: refusing to overwrite unmanaged OpenCode plugin`);
-      return;
-    }
-    if (current !== next) {
-      writeFileSync(pluginPath, next, "utf-8");
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    onError?.(`${pluginPath}: ${message}`);
-  }
-}
-function resolvePortableHookCommand(execPath, binaryNames, marker, context) {
-  if (binaryNames.length === 0) {
-    return execPath;
-  }
-  const resolvedExec = context.resolveRealPath(execPath);
-  if (!resolvedExec) {
-    return execPath;
-  }
-  for (const name of binaryNames) {
-    if (!name.includes(marker)) {
-      continue;
-    }
-    for (const dir of context.pathEntries) {
-      if (!dir)
-        continue;
-      for (const ext of context.pathExtensions) {
-        const candidate = join2(dir, `${name}${ext}`);
-        const resolvedCandidate = context.resolveRealPath(candidate);
-        if (resolvedCandidate && resolvedCandidate === resolvedExec) {
-          return name;
-        }
-      }
-    }
-  }
-  return execPath;
-}
-function buildDefaultPortableCommandContext() {
-  const rawPath = process.env.PATH ?? process.env.Path ?? "";
-  const pathEntries = rawPath.split(delimiter).filter(Boolean);
-  const pathExtensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";") : [""];
-  return {
-    pathEntries,
-    pathExtensions,
-    resolveRealPath: (absolutePath) => {
-      try {
-        const stat = statSync(absolutePath);
-        if (!stat.isFile()) {
-          return void 0;
-        }
-        return realpathSync2(absolutePath);
-      } catch {
-        return void 0;
-      }
-    }
-  };
-}
-function shouldInstallHooksForNodeAxiExecPath(execPath, policy) {
-  const normalized = resolve(execPath).replaceAll("\\", "/");
-  if (!normalized.includes(policy.marker) || normalized.endsWith(".ts")) {
-    return false;
-  }
-  const fileName = basename3(normalized);
-  if (policy.binaryNames?.includes(fileName)) {
-    return true;
-  }
-  return policy.distEntrypoints?.some((entrypoint) => normalized.endsWith(entrypoint.replaceAll("\\", "/"))) ?? false;
-}
-function inferHookOptions(execPath) {
-  if (!execPath) {
-    return void 0;
-  }
-  const normalized = execPath.replaceAll("\\", "/");
-  const match = normalized.match(/(?:^|\/)dist\/bin\/([^/]+)\.js$/);
-  if (match?.[1]) {
-    const marker = match[1];
-    return {
-      execPath,
-      marker,
-      binaryNames: [marker],
-      distEntrypoints: [`dist/bin/${marker}.js`]
-    };
-  }
-  const fileName = normalized.split("/").pop() ?? "";
-  if (!fileName || fileName.includes(".") || fileName === "node") {
-    return void 0;
-  }
-  return {
-    execPath,
-    marker: fileName,
-    binaryNames: [fileName],
-    distEntrypoints: [`dist/bin/${fileName}.js`]
-  };
-}
-function buildInferredHookInstallPolicy(marker, options2, inferred) {
-  const binaryNames = options2.binaryNames ?? inferred.binaryNames;
-  const distEntrypoints = options2.distEntrypoints ?? inferred.distEntrypoints;
-  return (execPath) => shouldInstallHooksForNodeAxiExecPath(execPath, {
-    marker,
-    binaryNames,
-    distEntrypoints
-  });
-}
-function installSessionStartHooks(options2 = {}) {
-  const inferred = inferHookOptions(options2.execPath ?? process.argv[1]);
-  const marker = options2.marker ?? inferred?.marker;
-  if (!marker) {
-    return;
-  }
-  const execPath = resolve(options2.execPath ?? inferred?.execPath ?? process.argv[1] ?? "");
-  if (!execPath) {
-    return;
-  }
-  const defaultPolicyOptions = inferred ?? {
-    execPath,
-    marker,
-    binaryNames: [marker],
-    distEntrypoints: [`dist/bin/${marker}.js`]
-  };
-  const shouldInstall = options2.shouldInstall ?? buildInferredHookInstallPolicy(marker, options2, defaultPolicyOptions);
-  if (shouldInstall && !shouldInstall(execPath)) {
-    return;
-  }
-  const binaryNames = options2.binaryNames ?? inferred?.binaryNames ?? [];
-  const command = resolvePortableHookCommand(execPath, binaryNames, marker, buildDefaultPortableCommandContext());
-  const home2 = options2.homeDir ?? homedir2();
-  const jsonTargets = [
-    join2(home2, ".claude", "settings.json"),
-    join2(home2, ".codex", "hooks.json")
-  ];
-  const codexConfigPath = join2(home2, ".codex", "config.toml");
-  installOpenCodeAmbientPlugin(home2, marker, command, options2.timeoutSeconds ?? 10, options2.onError);
-  for (const target of jsonTargets) {
-    try {
-      mkdirSync(dirname2(target), { recursive: true });
-      const current = existsSync2(target) ? JSON.parse(readFileSync2(target, "utf-8")) : {};
-      const [updated, changed] = computeSessionStartHookUpdate(current, {
-        marker,
-        command,
-        timeoutSeconds: options2.timeoutSeconds
-      });
-      if (changed) {
-        writeFileSync(target, `${JSON.stringify(updated, null, 2)}
-`, "utf-8");
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      options2.onError?.(`${target}: ${message}`);
-    }
-  }
-  try {
-    mkdirSync(dirname2(codexConfigPath), { recursive: true });
-    const current = existsSync2(codexConfigPath) ? readFileSync2(codexConfigPath, "utf-8") : "";
-    const [updated, changed] = computeCodexConfigUpdate(current);
-    if (changed) {
-      writeFileSync(codexConfigPath, updated, "utf-8");
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    options2.onError?.(`${codexConfigPath}: ${message}`);
-  }
-}
 
 // src/commands/init.ts
 import { parseArgs } from "node:util";
-import { existsSync as existsSync3 } from "node:fs";
+import { existsSync as existsSync2 } from "node:fs";
 import path6 from "node:path";
 
 // ../core/src/bundle.ts
@@ -6020,7 +5754,7 @@ function retryDelayMs(attempt) {
   return backoff + Math.floor(Math.random() * RETRY_JITTER_MS);
 }
 function delay(ms) {
-  return new Promise((resolve4) => setTimeout(resolve4, ms));
+  return new Promise((resolve3) => setTimeout(resolve3, ms));
 }
 function encodeId(id) {
   return id.split("/").map((seg) => encodeURIComponent(seg)).join("/");
@@ -6322,13 +6056,13 @@ function describeShape(value) {
   if (typeof value === "object") return "an object";
   return typeof value;
 }
-function toStringArrayLenient(value, path11, docId, warnings) {
+function toStringArrayLenient(value, path12, docId, warnings) {
   if (!Array.isArray(value)) {
     if (value !== void 0) {
       warnings.push({
         code: "KIND_CONVENTION_BAD_SHAPE",
-        message: `kind convention '${docId}' has a non-list '${path11}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
-        field: path11,
+        message: `kind convention '${docId}' has a non-list '${path12}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
+        field: path12,
         severity: "warning"
       });
     }
@@ -6341,8 +6075,8 @@ function toStringArrayLenient(value, path11, docId, warnings) {
     } else {
       warnings.push({
         code: "KIND_CONVENTION_BAD_MEMBER",
-        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path11}'; skipping it.`,
-        field: path11,
+        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path12}'; skipping it.`,
+        field: path12,
         severity: "warning"
       });
     }
@@ -6542,10 +6276,10 @@ function parseConventionDoc(doc2) {
   }
   const sections = Array.isArray(fm.sections) ? fm.sections.filter((s) => typeof s === "string" && s.trim() !== "") : void 0;
   const title = typeof fm.title === "string" && fm.title.trim() !== "" ? fm.title.trim() : governs;
-  const path11 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
+  const path12 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
   const freshnessHorizon = typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== "" ? fm.freshness_horizon.trim() : void 0;
   const kind2 = { id: doc2.id, title, governs, fields: { required, optional, values, terminal } };
-  if (path11 !== void 0) kind2.path = path11;
+  if (path12 !== void 0) kind2.path = path12;
   if (links !== void 0) kind2.links = links;
   if (expectsInbound !== void 0) kind2.expectsInbound = expectsInbound;
   if (sections && sections.length > 0) kind2.sections = sections;
@@ -6713,13 +6447,13 @@ import path4 from "node:path";
 
 // src/invocation.ts
 import { fileURLToPath } from "node:url";
-import { realpathSync as realpathSync3 } from "node:fs";
-import { delimiter as delimiter2, join as join3 } from "node:path";
-import { homedir as homedir3 } from "node:os";
+import { realpathSync as realpathSync2 } from "node:fs";
+import { delimiter, join as join2 } from "node:path";
+import { homedir as homedir2 } from "node:os";
 var PACKAGE_NAME = "agentstate-lite";
 var BIN_NAMES = ["agentstate-lite", "aslite"];
 function collapseHomeDirectory2(p) {
-  const home2 = homedir3();
+  const home2 = homedir2();
   if (home2 && (p === home2 || p.startsWith(home2 + "/"))) {
     return "~" + p.slice(home2.length);
   }
@@ -6727,7 +6461,7 @@ function collapseHomeDirectory2(p) {
 }
 function realOrUndefined(p) {
   try {
-    return realpathSync3(p);
+    return realpathSync2(p);
   } catch {
     return void 0;
   }
@@ -6741,10 +6475,10 @@ function currentExecutableRealPath() {
 function binNameOnPath() {
   const exe = currentExecutableRealPath();
   if (!exe) return void 0;
-  const dirs = (process.env.PATH ?? "").split(delimiter2).filter(Boolean);
+  const dirs = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
   for (const name of BIN_NAMES) {
     for (const dir of dirs) {
-      const resolved = realOrUndefined(join3(dir, name));
+      const resolved = realOrUndefined(join2(dir, name));
       if (resolved && resolved === exe) return name;
     }
   }
@@ -6949,30 +6683,30 @@ function normalizeServer(raw) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`server URL must use http or https: ${raw}`);
   }
-  const path11 = url.pathname.replace(/\/+$/, "");
-  return { base: url.origin + path11, resource: url.origin };
+  const path12 = url.pathname.replace(/\/+$/, "");
+  return { base: url.origin + path12, resource: url.origin };
 }
 
 // src/credentials.ts
 import { chmod, mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { homedir as homedir4 } from "node:os";
-import { join as join4 } from "node:path";
+import { homedir as homedir3 } from "node:os";
+import { join as join3 } from "node:path";
 var CRED_DIR_NAME = ".agentstate";
 var CRED_FILE_NAME = "okf-config.json";
 var DIR_MODE = 448;
 var FILE_MODE = 384;
-function credentialsDir(home2 = homedir4()) {
-  return join4(home2, CRED_DIR_NAME);
+function credentialsDir(home2 = homedir3()) {
+  return join3(home2, CRED_DIR_NAME);
 }
-function credentialsPath(home2 = homedir4()) {
-  return join4(credentialsDir(home2), CRED_FILE_NAME);
+function credentialsPath(home2 = homedir3()) {
+  return join3(credentialsDir(home2), CRED_FILE_NAME);
 }
 async function writeFileAtomic0600(dir, fileName, content) {
   await mkdir(dir, { recursive: true, mode: DIR_MODE });
   await chmod(dir, DIR_MODE);
-  const path11 = join4(dir, fileName);
-  const tmpPath = join4(dir, `.${fileName}.${randomBytes(8).toString("hex")}.tmp`);
+  const path12 = join3(dir, fileName);
+  const tmpPath = join3(dir, `.${fileName}.${randomBytes(8).toString("hex")}.tmp`);
   const handle = await open(tmpPath, "wx", FILE_MODE);
   try {
     await handle.writeFile(content);
@@ -6981,21 +6715,21 @@ async function writeFileAtomic0600(dir, fileName, content) {
     await handle.close();
   }
   try {
-    await rename(tmpPath, path11);
+    await rename(tmpPath, path12);
   } catch (err) {
     await unlink(tmpPath).catch(() => {
     });
     throw err;
   }
 }
-async function saveCredentials(creds, home2 = homedir4()) {
+async function saveCredentials(creds, home2 = homedir3()) {
   await writeFileAtomic0600(
     credentialsDir(home2),
     CRED_FILE_NAME,
     JSON.stringify(creds, null, 2) + "\n"
   );
 }
-async function loadCredentials(home2 = homedir4()) {
+async function loadCredentials(home2 = homedir3()) {
   let raw;
   try {
     raw = await readFile(credentialsPath(home2), "utf8");
@@ -7017,12 +6751,12 @@ async function loadCredentials(home2 = homedir4()) {
 function isNonEmptyString(v) {
   return typeof v === "string" && v.length > 0;
 }
-async function getApiKeyForOrigin(origin, home2 = homedir4()) {
+async function getApiKeyForOrigin(origin, home2 = homedir3()) {
   const creds = await loadCredentials(home2);
   const key2 = creds?.remotes?.[origin]?.api_key;
   return isNonEmptyString(key2) ? key2 : void 0;
 }
-async function saveApiKeyForOrigin(origin, apiKey, home2 = homedir4()) {
+async function saveApiKeyForOrigin(origin, apiKey, home2 = homedir3()) {
   const existing = await loadCredentials(home2) ?? {};
   const next = {
     ...existing,
@@ -7674,7 +7408,7 @@ Options:
 function insideGitRepo(dir) {
   let cur = path6.resolve(dir);
   for (; ; ) {
-    if (existsSync3(path6.join(cur, ".git"))) return true;
+    if (existsSync2(path6.join(cur, ".git"))) return true;
     const parent = path6.dirname(cur);
     if (parent === cur) return false;
     cur = parent;
@@ -11707,10 +11441,10 @@ function buildRouter(backend) {
 import { createServer } from "node:http";
 function readBody(req) {
   if (req.method === "GET" || req.method === "HEAD") return Promise.resolve(void 0);
-  return new Promise((resolve4, reject) => {
+  return new Promise((resolve3, reject) => {
     const chunks = [];
     req.on("data", (chunk) => chunks.push(chunk));
-    req.on("end", () => resolve4(chunks.length > 0 ? Buffer.concat(chunks) : void 0));
+    req.on("end", () => resolve3(chunks.length > 0 ? Buffer.concat(chunks) : void 0));
     req.on("error", reject);
   });
 }
@@ -11740,7 +11474,7 @@ async function writeResponseToServerResponse(res, response) {
 function serve(options2) {
   const router = createRouter(options2.bundle);
   const host = options2.host ?? "127.0.0.1";
-  return new Promise((resolve4, reject) => {
+  return new Promise((resolve3, reject) => {
     const server = createServer((req, res) => {
       const origin = `http://${req.headers.host ?? `${host}:0`}`;
       requestFromIncomingMessage(req, origin).then((request) => router(request)).then((response) => writeResponseToServerResponse(res, response)).catch((err) => {
@@ -11755,7 +11489,7 @@ function serve(options2) {
         reject(new Error("failed to bind a TCP address"));
         return;
       }
-      resolve4({
+      resolve3({
         host,
         port: addr.port,
         close: () => new Promise((resolveClose, rejectClose) => {
@@ -11788,9 +11522,9 @@ direct local CLI write) over the SAME directory is still best-effort \u2014 see 
 `;
 var DEFAULT_SERVE_PORT = 4818;
 function defaultWaitForShutdown() {
-  return new Promise((resolve4) => {
-    process.once("SIGINT", () => resolve4());
-    process.once("SIGTERM", () => resolve4());
+  return new Promise((resolve3) => {
+    process.once("SIGINT", () => resolve3());
+    process.once("SIGTERM", () => resolve3());
   });
 }
 async function serve2(argv, deps = {}) {
@@ -12045,7 +11779,7 @@ async function handleRequest(req, res, options2, sessionSecret) {
 }
 function bootUiServer(options2) {
   const sessionSecret = options2.sessionSecret ?? mintSessionSecret();
-  return new Promise((resolve4, reject) => {
+  return new Promise((resolve3, reject) => {
     const server = createServer2((req, res) => {
       void handleRequest(req, res, options2, sessionSecret).catch((err) => {
         res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
@@ -12059,7 +11793,7 @@ function bootUiServer(options2) {
         reject(new Error("failed to bind a TCP address"));
         return;
       }
-      resolve4({
+      resolve3({
         host: HOST,
         port: addr.port,
         token: sessionSecret,
@@ -12090,9 +11824,9 @@ separate, unreviewed feature). The printed URL carries a per-run session token; 
 exchanges it for an HttpOnly, SameSite=Strict cookie \u2014 nothing is persisted beyond this process.
 `;
 function defaultWaitForShutdown2() {
-  return new Promise((resolve4) => {
-    process.once("SIGINT", () => resolve4());
-    process.once("SIGTERM", () => resolve4());
+  return new Promise((resolve3) => {
+    process.once("SIGINT", () => resolve3());
+    process.once("SIGTERM", () => resolve3());
   });
 }
 function defaultOpenBrowser(url) {
@@ -12203,7 +11937,7 @@ async function ui(argv, deps = {}) {
 }
 
 // src/commands/sync.ts
-import { existsSync as existsSync5, readFileSync as readFileSync4, realpathSync as realpathSync5, statSync as statSync3 } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync3, realpathSync as realpathSync4, statSync as statSync2 } from "node:fs";
 import { promises as fs10 } from "node:fs";
 import path10 from "node:path";
 import { parseArgs as parseArgs22 } from "node:util";
@@ -12211,14 +11945,14 @@ import { parseArgs as parseArgs22 } from "node:util";
 // src/git.ts
 import { spawnSync } from "node:child_process";
 import {
-  existsSync as existsSync4,
-  mkdirSync as mkdirSync2,
+  existsSync as existsSync3,
+  mkdirSync,
   readdirSync,
-  readFileSync as readFileSync3,
-  realpathSync as realpathSync4,
+  readFileSync as readFileSync2,
+  realpathSync as realpathSync3,
   rmdirSync,
-  statSync as statSync2,
-  writeFileSync as writeFileSync2
+  statSync,
+  writeFileSync
 } from "node:fs";
 import path9 from "node:path";
 var BOARD_BRANCH = "board";
@@ -12229,12 +11963,12 @@ var RELATIVE_WORKTREE_CONFIG = ["-c", "worktree.useRelativePaths=true"];
 var SCRUBBED_GIT_VARS = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"];
 var LOCAL_TIMEOUT_MS = 3e4;
 var NETWORK_TIMEOUT_MS = 6e4;
-function gitEnv(rebase) {
+function gitEnv(rebase, connectTimeoutSeconds = 10) {
   const env = { ...process.env };
   for (const v of SCRUBBED_GIT_VARS) delete env[v];
   env.LC_ALL = "C";
   env.GIT_TERMINAL_PROMPT = "0";
-  env.GIT_SSH_COMMAND = "ssh -o BatchMode=yes -o ConnectTimeout=10";
+  env.GIT_SSH_COMMAND = `ssh -o BatchMode=yes -o ConnectTimeout=${connectTimeoutSeconds}`;
   if (rebase) {
     env.GIT_EDITOR = "true";
     env.GIT_SEQUENCE_EDITOR = "true";
@@ -12247,7 +11981,7 @@ function runGit(dir, args, opts = {}) {
 }
 function runGitBytes(dir, args, opts = {}) {
   const r = spawnSync("git", ["-C", dir, "-c", "core.quotepath=off", ...args], {
-    env: gitEnv(opts.rebase ?? false),
+    env: gitEnv(opts.rebase ?? false, opts.connectTimeoutSeconds),
     timeout: opts.timeoutMs ?? LOCAL_TIMEOUT_MS,
     input: opts.input,
     maxBuffer: 32 * 1024 * 1024
@@ -12279,7 +12013,7 @@ function mustGit(dir, args, opts = {}) {
   return r.stdout;
 }
 function repoTopLevel(dir) {
-  if (!existsSync4(dir)) return null;
+  if (!existsSync3(dir)) return null;
   const r = runGit(dir, ["rev-parse", "--show-toplevel"]);
   if (r.status !== 0) return null;
   const top = r.stdout.trim();
@@ -12291,7 +12025,7 @@ function worktreeGitPath(boardPath, relative) {
 }
 function realOrSame(p) {
   try {
-    return realpathSync4(p);
+    return realpathSync3(p);
   } catch {
     return p;
   }
@@ -12318,9 +12052,9 @@ function worktreeRootResolvesForOwner(boardPath, ownerTop) {
 function rebaseWasFromBoardBranch(boardPath) {
   for (const state of ["rebase-merge", "rebase-apply"]) {
     const headNamePath = path9.join(worktreeGitPath(boardPath, state), "head-name");
-    if (!existsSync4(headNamePath)) continue;
+    if (!existsSync3(headNamePath)) continue;
     try {
-      if (readFileSync3(headNamePath, "utf8").trim() === `refs/heads/${BOARD_BRANCH}`) return true;
+      if (readFileSync2(headNamePath, "utf8").trim() === `refs/heads/${BOARD_BRANCH}`) return true;
     } catch {
     }
   }
@@ -12336,15 +12070,15 @@ function isProvisioned(dir) {
   const top = repoTopLevel(dir);
   if (!top) return false;
   const boardPath = path9.join(top, BUNDLE_DIR);
-  if (!existsSync4(boardPath) || !worktreeRootResolvesForOwner(boardPath, top)) return false;
+  if (!existsSync3(boardPath) || !worktreeRootResolvesForOwner(boardPath, top)) return false;
   const branch = runGit(boardPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
   return branch.status === 0 && branch.stdout.trim() === BOARD_BRANCH;
 }
 function hasWorktreeSignature(dir) {
   const gitPath = path9.join(dir, ".git");
-  if (!existsSync4(gitPath)) return false;
+  if (!existsSync3(gitPath)) return false;
   try {
-    return statSync2(gitPath).isFile();
+    return statSync(gitPath).isFile();
   } catch {
     return false;
   }
@@ -12359,16 +12093,19 @@ function shellQuote(s) {
 function moveAsideHelp(boardPath, note) {
   return `mv ${shellQuote(boardPath)} ${shellQuote(`${boardPath}.bak`)}  # ${note}`;
 }
-function provisionBoardWorktree(dir) {
+function provisionBoardWorktree(dir, budget = {}) {
   const top = repoTopLevel(dir);
   if (!top) return { kind: "no_repo" };
   const boardPath = path9.join(top, BUNDLE_DIR);
   if (isProvisioned(top)) return { kind: "already", boardPath };
-  runGit(top, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
+  runGit(top, ["fetch", BOARD_REMOTE], {
+    timeoutMs: budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS,
+    connectTimeoutSeconds: budget.connectTimeoutSeconds
+  });
   const hasLocal = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
   const hasRemote = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0;
   if (!hasLocal && !hasRemote) return { kind: "no_board" };
-  if (existsSync4(boardPath)) {
+  if (existsSync3(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
       const hadSignature = hasWorktreeSignature(boardPath);
       let reason = "foreign";
@@ -12432,7 +12169,7 @@ function provisionBoardWorktree(dir) {
   return { kind: "provisioned", boardPath };
 }
 function detectStaleRebase(boardPath) {
-  return existsSync4(worktreeGitPath(boardPath, "rebase-merge")) || existsSync4(worktreeGitPath(boardPath, "rebase-apply"));
+  return existsSync3(worktreeGitPath(boardPath, "rebase-merge")) || existsSync3(worktreeGitPath(boardPath, "rebase-apply"));
 }
 function abortStaleRebase(boardPath) {
   mustGit(boardPath, ["rebase", "--abort"], { rebase: true });
@@ -12534,15 +12271,15 @@ function fetchRebaseResolving(boardPath, exportDir) {
         const isDoc = isConceptDocPath(relPath);
         if (local.status === 0) {
           exportPath = path9.join(exportDir, relPath);
-          mkdirSync2(path9.dirname(exportPath), { recursive: true, mode: 448 });
-          writeFileSync2(exportPath, local.stdout, { mode: 384 });
+          mkdirSync(path9.dirname(exportPath), { recursive: true, mode: 448 });
+          writeFileSync(exportPath, local.stdout, { mode: 384 });
           if (isDoc) {
             try {
               const decoded = local.stdout.toString("utf8");
               if (Buffer.from(decoded, "utf8").equals(local.stdout)) {
                 const { body } = parseMarkdown(decoded, relPath);
                 bodyExportPath = exportPath.replace(/\.md$/, ".body.md");
-                writeFileSync2(bodyExportPath, body, { mode: 384 });
+                writeFileSync(bodyExportPath, body, { mode: 384 });
               }
             } catch {
               bodyExportPath = null;
@@ -12598,7 +12335,7 @@ function swallowReason(err) {
       return "runtime";
   }
 }
-function ffPull(boardPath) {
+function ffPull(boardPath, budget = {}) {
   try {
     if (!repoTopLevel(boardPath)) return { updated: false, swallowed: "not-a-repo" };
     if (runGit(boardPath, ["symbolic-ref", "-q", "HEAD"]).status !== 0) {
@@ -12606,7 +12343,10 @@ function ffPull(boardPath) {
     }
     const before = mustGit(boardPath, ["rev-parse", "HEAD"]).trim();
     let fetchReason;
-    const fetched = runGit(boardPath, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
+    const fetched = runGit(boardPath, ["fetch", BOARD_REMOTE], {
+      timeoutMs: budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS,
+      connectTimeoutSeconds: budget.connectTimeoutSeconds
+    });
     if (fetched.status !== 0) {
       fetchReason = swallowReason(classifyGitError(failureOf(["fetch"], fetched)));
     }
@@ -12659,8 +12399,8 @@ function unpushedCount(boardPath) {
 // src/cursor.ts
 import { chmod as chmod2, mkdir as mkdir2, readFile as readFile2 } from "node:fs/promises";
 import { createHash as createHash2 } from "node:crypto";
-import { homedir as homedir5 } from "node:os";
-import { basename as basename4, join as join6, resolve as resolve3 } from "node:path";
+import { homedir as homedir4 } from "node:os";
+import { basename as basename3, join as join5, resolve as resolve2 } from "node:path";
 var SYNC_STATE_DIR_NAME = "sync";
 var DIR_MODE2 = 448;
 var REANCHOR_NOTE = "delta unavailable (history rewritten)";
@@ -12677,24 +12417,25 @@ function bundleKey(src) {
     return `remote
 ${normalizeRemoteUrl(src.remoteUrl)}
 ${normalizeSubpath(src.subpath)}
-${resolve3(src.checkoutRoot)}`;
+${resolve2(src.checkoutRoot)}`;
   }
   return `path
-${resolve3(src.root)}`;
+${resolve2(src.root)}`;
 }
-function syncStateDir(home2 = homedir5()) {
-  return join6(credentialsDir(home2), SYNC_STATE_DIR_NAME);
+function syncStateDir(home2 = homedir4()) {
+  return join5(credentialsDir(home2), SYNC_STATE_DIR_NAME);
 }
 function keyDigest(key2) {
   return createHash2("sha256").update(key2, "utf8").digest("hex").slice(0, 32);
 }
-function syncStatePath(key2, home2 = homedir5()) {
-  return join6(syncStateDir(home2), `${keyDigest(key2)}.json`);
+function syncStatePath(key2, home2 = homedir4()) {
+  return join5(syncStateDir(home2), `${keyDigest(key2)}.json`);
 }
-function syncExportsDir(key2, home2 = homedir5()) {
-  return join6(syncStateDir(home2), "exports", keyDigest(key2));
+function syncExportsDir(key2, home2 = homedir4()) {
+  return join5(syncStateDir(home2), "exports", keyDigest(key2));
 }
-var EMPTY_STATE = { cursor: null, cache: null, marker: null };
+var SELF_ACTORS_CAP = 64;
+var EMPTY_STATE = { cursor: null, cache: null, marker: null, selfActors: null };
 function isRecord(v) {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -12738,7 +12479,12 @@ function asMarker(v) {
   if (!isTimestamp(v.updatedAt)) return null;
   return { ...v };
 }
-async function readSyncState(key2, home2 = homedir5()) {
+function asSelfActors(v) {
+  if (!Array.isArray(v)) return null;
+  if (!v.every((a) => typeof a === "string" && a.length > 0)) return null;
+  return [...v];
+}
+async function readSyncState(key2, home2 = homedir4()) {
   let raw;
   try {
     raw = await readFile2(syncStatePath(key2, home2), "utf8");
@@ -12756,34 +12502,36 @@ async function readSyncState(key2, home2 = homedir5()) {
   return {
     cursor: asCursor(parsed.cursor),
     cache: asCache(parsed.cache),
-    marker: asMarker(parsed.marker)
+    marker: asMarker(parsed.marker),
+    selfActors: asSelfActors(parsed.selfActors)
   };
 }
-async function readCursor(key2, home2 = homedir5()) {
+async function readCursor(key2, home2 = homedir4()) {
   return (await readSyncState(key2, home2)).cursor;
 }
-async function writeSyncState(key2, patch, home2 = homedir5()) {
+async function writeSyncState(key2, patch, home2 = homedir4()) {
   const next = { ...await readSyncState(key2, home2), ...patch };
   const parent = credentialsDir(home2);
   await mkdir2(parent, { recursive: true, mode: DIR_MODE2 });
   await chmod2(parent, DIR_MODE2);
-  const path11 = syncStatePath(key2, home2);
+  const path12 = syncStatePath(key2, home2);
   const record = {
     key: key2,
     cursor: next.cursor ?? void 0,
     cache: next.cache ?? void 0,
-    marker: next.marker ?? void 0
+    marker: next.marker ?? void 0,
+    selfActors: next.selfActors ?? void 0
   };
-  await writeFileAtomic0600(syncStateDir(home2), basename4(path11), JSON.stringify(record, null, 2) + "\n");
+  await writeFileAtomic0600(syncStateDir(home2), basename3(path12), JSON.stringify(record, null, 2) + "\n");
   return next;
 }
-async function writeCursor(key2, cursor, home2 = homedir5()) {
+async function writeCursor(key2, cursor, home2 = homedir4()) {
   if (asCursor(cursor) === null) {
     throw new TypeError("cursor must be { tier: non-empty string, token: non-empty string | finite number }");
   }
   await writeSyncState(key2, { cursor }, home2);
 }
-async function writeCache(key2, cache, home2 = homedir5()) {
+async function writeCache(key2, cache, home2 = homedir4()) {
   if (asCache(cache) === null) {
     throw new TypeError(
       "cache must carry { updatedAt: ISO timestamp, delta: AwarenessDeltaRow[], unpushedCount, uncommittedCount }"
@@ -12791,7 +12539,27 @@ async function writeCache(key2, cache, home2 = homedir5()) {
   }
   await writeSyncState(key2, { cache }, home2);
 }
-async function recordReanchor(key2, cursor, counts, home2 = homedir5(), now = () => /* @__PURE__ */ new Date()) {
+async function refreshMarker(key2, home2 = homedir4(), now = () => /* @__PURE__ */ new Date()) {
+  const current = (await readSyncState(key2, home2)).marker;
+  const marker = { ...current ?? {}, updatedAt: now().toISOString() };
+  await writeSyncState(key2, { marker }, home2);
+  return marker;
+}
+async function recordSelfActors(key2, actors, home2 = homedir4()) {
+  const current = (await readSyncState(key2, home2)).selfActors ?? [];
+  const merged = [...current];
+  for (const a of actors) {
+    if (typeof a !== "string" || a.length === 0 || a === "unknown") continue;
+    if (!merged.includes(a)) merged.push(a);
+  }
+  const capped = merged.slice(-SELF_ACTORS_CAP);
+  if (capped.length === current.length && capped.every((a, i) => a === current[i])) {
+    return current;
+  }
+  await writeSyncState(key2, { selfActors: capped }, home2);
+  return capped;
+}
+async function recordReanchor(key2, cursor, counts, home2 = homedir4(), now = () => /* @__PURE__ */ new Date()) {
   if (asCursor(cursor) === null) {
     throw new TypeError("cursor must be { tier: non-empty string, token: non-empty string | finite number }");
   }
@@ -12946,7 +12714,7 @@ function keptDocMeta(boardPath, relPath) {
 function frontmatterDiffKeys(boardPath, c) {
   if (!c.isDoc || c.exportPath === null || !c.landed) return [];
   try {
-    const local = parseMarkdown(readFileSync4(c.exportPath, "utf8"), c.relPath).frontmatter;
+    const local = parseMarkdown(readFileSync3(c.exportPath, "utf8"), c.relPath).frontmatter;
     const shown = runGit(boardPath, ["show", `HEAD:${c.relPath}`]);
     if (shown.status !== 0) return [];
     const kept = parseMarkdown(shown.stdout, c.relPath).frontmatter;
@@ -13048,7 +12816,7 @@ function ffSwallowToError(reason, inv) {
 }
 function realOrSame2(p) {
   try {
-    return realpathSync5(p);
+    return realpathSync4(p);
   } catch {
     return p;
   }
@@ -13058,7 +12826,7 @@ function healStaleRebaseBeforeProvisioning(dir) {
     const top = repoTopLevel(dir);
     if (!top) return;
     const candidateBoardPath = path10.join(top, BUNDLE_DIR);
-    if (!existsSync5(candidateBoardPath)) return;
+    if (!existsSync4(candidateBoardPath)) return;
     const boardTop = repoTopLevel(candidateBoardPath);
     if (!boardTop || realOrSame2(boardTop) !== realOrSame2(candidateBoardPath)) return;
     if (!isLinkedWorktree(candidateBoardPath)) return;
@@ -13078,7 +12846,7 @@ function isLinkedWorktree(p) {
 }
 function hasGitFileSignature(p) {
   try {
-    return statSync3(path10.join(p, ".git")).isFile();
+    return statSync2(path10.join(p, ".git")).isFile();
   } catch {
     return false;
   }
@@ -13252,12 +13020,16 @@ async function sync(argv, deps = {}) {
     healStaleRebaseBeforeProvisioning(dir);
   }
   const key2 = resolveBundleKey(boardPath);
+  await refreshMarker(key2);
   const storedCursor = await readCursor(key2);
   const startHead = currentHead(boardPath);
   const preFetchOriginRef = resolveOriginRef(boardPath);
   let commitResult = { committed: false, docs: [] };
   if (!pullOnly) {
     commitResult = stageAndCommit(boardPath);
+    if (commitResult.committed && commitResult.docs.length > 0) {
+      await recordSelfActors(key2, commitResult.docs.map((d) => d.actor));
+    }
   }
   if (pullOnly) {
     const ff = ffPull(boardPath);
@@ -13610,11 +13382,11 @@ async function toRemoteError(res) {
   const code = envelope?.error?.code ?? (res.status === 401 ? "AUTH_REQUIRED" : res.status >= 500 ? "RUNTIME" : "USAGE");
   return new RemoteError(message, code, res.status);
 }
-async function authRequest(base, path11, options2 = {}) {
+async function authRequest(base, path12, options2 = {}) {
   const headers = {};
   if (options2.body !== void 0) headers["content-type"] = "application/json";
   if (options2.authToken) headers["Authorization"] = `Bearer ${options2.authToken}`;
-  const request = new Request(`${base}${path11}`, {
+  const request = new Request(`${base}${path12}`, {
     method: options2.method ?? "GET",
     headers,
     body: options2.body !== void 0 ? JSON.stringify(options2.body) : void 0
@@ -13744,7 +13516,7 @@ Options:
   --json            Emit compact JSON instead of TOON
   -h, --help        Show this help
 `;
-async function join7(argv, deps = {}) {
+async function join6(argv, deps = {}) {
   const saveApiKey = deps.saveApiKey ?? ((origin2, apiKey) => saveApiKeyForOrigin(origin2, apiKey));
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const { values } = parseOrUsage(
@@ -14564,8 +14336,12 @@ var COMMAND_GROUPS = [
     group: "Session",
     commands: [
       {
+        usage: "session-start [--dir <path>]",
+        summary: "The SessionStart hook payload: a time-boxed best-effort board pull, then the home view \u2014 every pull failure falls through to the render (exit 0)"
+      },
+      {
         usage: "hook install|status|uninstall [--scope project|global]",
-        summary: "Install the SessionStart home-view hook (Claude Code, Codex, OpenCode)"
+        summary: "Install the SessionStart hook (runs session-start: pull the board, then render) for Claude Code, Codex, OpenCode"
       }
     ]
   }
@@ -14633,238 +14409,27 @@ function helpIndexText(invocation) {
 }
 
 // src/commands/home.ts
-import { parseArgs as parseArgs29 } from "node:util";
-var HOME_RECENT_LIMIT = 5;
-function rowTitle(id, title) {
-  return typeof title === "string" ? title : id.split("/").pop() ?? id;
-}
-function summarizeDocs(docs, root) {
-  const byType = {};
-  for (const d of docs) {
-    const t = typeof d.frontmatter.type === "string" ? d.frontmatter.type : "";
-    byType[t] = (byType[t] ?? 0) + 1;
-  }
-  const sortedByType = Object.fromEntries(
-    Object.entries(byType).sort(([ta, ca], [tb, cb]) => cb - ca || ta.localeCompare(tb))
-  );
-  const rows = docs.map((d) => ({
-    id: d.id,
-    type: typeof d.frontmatter.type === "string" ? d.frontmatter.type : "",
-    title: rowTitle(d.id, d.frontmatter.title),
-    timestamp: typeof d.frontmatter.timestamp === "string" ? d.frontmatter.timestamp : ""
-  }));
-  rows.sort((a, b) => {
-    if (a.timestamp && b.timestamp) {
-      if (a.timestamp !== b.timestamp) return a.timestamp < b.timestamp ? 1 : -1;
-    } else if (a.timestamp !== b.timestamp) {
-      return a.timestamp ? -1 : 1;
-    }
-    return a.id.localeCompare(b.id);
-  });
-  return {
-    root,
-    docs: docs.length,
-    byType: sortedByType,
-    recent: {
-      shown: Math.min(rows.length, HOME_RECENT_LIMIT),
-      total: rows.length,
-      rows: rows.slice(0, HOME_RECENT_LIMIT)
-    }
-  };
-}
-async function defaultSummarizeBundle(dir) {
-  let bundle;
-  try {
-    bundle = await openBundle(dir, void 0);
-  } catch {
-    return null;
-  }
-  try {
-    const docs = await queryHeads(bundle);
-    return summarizeDocs(docs, collapseHomeDirectory2(bundle.root));
-  } catch {
-    return { root: collapseHomeDirectory2(bundle.root), unreadable: true };
-  }
-}
-function buildHomeView(creds, deps, summary, remote, remoteKeyStored, binding, bindingError) {
-  const inv = deps.invocation();
-  let auth;
-  if (remote && remoteKeyStored) {
-    auth = {
-      status: "key-stored",
-      note: `an API key for this remote is stored locally; this home view is OFFLINE \u2014 run \`${inv} whoami --remote ${remote}\` to verify the live identity`
-    };
-  } else {
-    auth = {
-      status: "logged-out",
-      help: `not logged in to any remote \u2014 local bundles need no login; for a shared remote, get its URL + an invite from a teammate \u2192 \`${inv} join --remote <url> --invite <token>\``
-    };
-  }
-  const ref = commandReference(inv);
-  const view2 = {
-    "agentstate-lite": { bin: deps.binPath(), description: DESCRIPTION },
-    auth
-  };
-  if (remote) {
-    const remoteBlock = {
-      url: remote,
-      help: [
-        `${inv} whoami --remote ${remote}`,
-        `${inv} list --remote ${remote}`,
-        `${inv} status --remote ${remote}`
-      ]
-    };
-    if (binding && binding.target === remote) remoteBlock.via = binding.file;
-    view2.remote = remoteBlock;
-  } else if (summary && "unreadable" in summary) {
-    const bundleBlock = {
-      root: summary.root,
-      status: "unreadable",
-      help: `a document in this bundle could not be read \u2014 run \`${deps.invocation()} list\` to surface the parse error`
-    };
-    if (binding) bundleBlock.via = binding.file;
-    view2.bundle = bundleBlock;
-  } else if (summary) {
-    const bundleBlock = {
-      root: summary.root,
-      docs: summary.docs,
-      by_type: summary.byType
-    };
-    if (summary.docs > 0) {
-      bundleBlock.recent = summary.recent;
-      bundleBlock.next = [
-        `${deps.invocation()} list`,
-        `${deps.invocation()} status`,
-        `${deps.invocation()} view`
-      ];
-    } else {
-      bundleBlock.help = `${deps.invocation()} new "Context Note" <id> \u2026 | ${deps.invocation()} doc write \u2026 \u2014 create the first doc`;
-    }
-    if (binding) bundleBlock.via = binding.file;
-    view2.bundle = bundleBlock;
-  } else {
-    view2.getting_started = `no OKF bundle found in this directory \u2014 run \`${deps.invocation()} init\` to create one`;
-    if (binding) {
-      view2.getting_started += ` (project binding ${binding.file} -> ${binding.target} did not resolve to a bundle)`;
-    }
-  }
-  if (bindingError) {
-    view2.project_binding_error = bindingError;
-  }
-  if (!remote) {
-    const storedRemotes = creds?.remotes ? Object.keys(creds.remotes).sort() : [];
-    if (storedRemotes.length > 0) {
-      view2.remotes = {
-        stored: storedRemotes,
-        help: `you hold a key for these remote workspace(s) \u2014 reach one with \`${inv} list --remote <origin>\` (or \`${inv} whoami --remote <origin>\`)`
-      };
-    }
-  }
-  const compact = compactCommandReference(inv);
-  view2.commands = compact.commands;
-  view2.commands_help = compact.commands_help;
-  view2.kinds = ref.kinds;
-  view2.remote_env = ref.remoteEnv;
-  return view2;
-}
-async function home(argv, deps = {}) {
-  const loadCreds = deps.loadCreds ?? loadCredentials;
-  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
-  let remote;
-  let dir;
-  let jsonMode = false;
-  try {
-    const parsed = parseArgs29({
-      args: argv,
-      options: {
-        remote: { type: "string" },
-        dir: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    });
-    remote = parsed.values.remote;
-    dir = parsed.values.dir;
-    jsonMode = Boolean(parsed.values.json);
-  } catch {
-  }
-  let binding;
-  let bindingError;
-  if (!remote && !dir) {
-    try {
-      const found = await resolveProjectBinding();
-      if (found) {
-        binding = { file: found.file, target: found.target };
-        if (found.isRemote) {
-          remote = found.target;
-        } else {
-          dir = found.target;
-        }
-      }
-    } catch (err) {
-      bindingError = err instanceof Error ? err.message : String(err);
-    }
-  }
-  const summarize = deps.summarizeBundle ?? (() => defaultSummarizeBundle(dir));
-  let creds = null;
-  try {
-    creds = await loadCreds();
-  } catch {
-    creds = null;
-  }
-  let remoteKeyStored = false;
-  if (remote) {
-    try {
-      remoteKeyStored = Boolean(creds?.remotes?.[normalizeServer(remote).resource]);
-    } catch {
-    }
-  }
-  let summary = null;
-  if (!remote) {
-    try {
-      summary = await summarize();
-    } catch {
-      summary = null;
-    }
-  }
-  stdout(
-    render(
-      buildHomeView(
-        creds,
-        {
-          binPath: deps.binPath ?? binPath,
-          invocation: deps.invocation ?? cliInvocation
-        },
-        summary,
-        remote,
-        remoteKeyStored,
-        binding,
-        bindingError
-      ),
-      // Honor --json (JSON is equally offline/never-throw); default remains TOON, the format the
-      // SessionStart hook ingests as ambient context.
-      jsonMode ? "json" : "default"
-    )
-  );
-}
+import { parseArgs as parseArgs30 } from "node:util";
+import path11 from "node:path";
 
 // src/commands/hook.ts
-import { existsSync as existsSync6, readFileSync as readFileSync5, writeFileSync as writeFileSync3, rmSync } from "node:fs";
-import { homedir as homedir6 } from "node:os";
-import { join as join8, dirname as dirname4 } from "node:path";
-import { mkdirSync as mkdirSync3 } from "node:fs";
-import { parseArgs as parseArgs30 } from "node:util";
-var HOOK_USAGE = `agentstate-lite hook \u2014 manage the SessionStart home-view hook
+import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync2, rmSync } from "node:fs";
+import { homedir as homedir5 } from "node:os";
+import { join as join7, dirname as dirname3 } from "node:path";
+import { mkdirSync as mkdirSync2 } from "node:fs";
+import { parseArgs as parseArgs29 } from "node:util";
+var HOOK_USAGE = `agentstate-lite hook \u2014 manage the SessionStart board-aware hook
 
 Usage:
   agentstate-lite hook install   [--scope project|global]
   agentstate-lite hook status    [--scope project|global]
   agentstate-lite hook uninstall [--scope project|global]
 
-Installs (or removes) a SessionStart hook that runs the home view as ambient context at the start of
-every agent session \u2014 for Claude Code, Codex, AND OpenCode. Idempotent: re-installing the same hook
-is a no-op; uninstalling an absent hook is a no-op.
+Installs (or removes) a SessionStart hook that runs \`session-start\` \u2014 a time-boxed best-effort
+board pull, then the home view \u2014 as ambient context at the start of every agent session, for
+Claude Code, Codex, AND OpenCode. Idempotent: re-installing the same hook is a no-op; uninstalling
+an absent hook is a no-op. Re-run install after upgrading from a pre-session-start version: the
+old hook rendered the home view without pulling the board first.
 
 Options:
   --scope project   Write to the CURRENT project (default): .claude/, .codex/, .config/opencode/
@@ -14874,9 +14439,13 @@ Options:
 `;
 var HOOK_MARKER = "agentstate-lite";
 var HOOK_TIMEOUT_SECONDS = 10;
-var DIST_ENTRYPOINT = "dist/agentstate-lite.mjs";
+var HOOK_SUBCOMMAND = "session-start";
 var OPENCODE_PLUGIN_FILENAME = "axi-agentstate-lite.js";
 var OPENCODE_MANAGED_MARKER = `axi-sdk-js managed opencode plugin: ${HOOK_MARKER}`;
+function sessionStartHookCommand(base = hookCommand()) {
+  const quoted = /\s/.test(base) ? JSON.stringify(base) : base;
+  return `${quoted} ${HOOK_SUBCOMMAND}`;
+}
 function isManagedHook2(hook2) {
   return typeof hook2?.command === "string" && hook2.command.includes(HOOK_MARKER);
 }
@@ -14934,36 +14503,137 @@ function readHookStatus(settings) {
 }
 function targetsFor(base) {
   return {
-    claudeSettings: join8(base, ".claude", "settings.json"),
-    codexHooks: join8(base, ".codex", "hooks.json"),
-    opencodePlugin: join8(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
+    claudeSettings: join7(base, ".claude", "settings.json"),
+    codexHooks: join7(base, ".codex", "hooks.json"),
+    opencodePlugin: join7(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
   };
 }
-function readSettings(path11) {
-  if (!existsSync6(path11)) return {};
+function readSettings(path12) {
+  if (!existsSync5(path12)) return {};
   try {
-    return JSON.parse(readFileSync5(path11, "utf8"));
+    return JSON.parse(readFileSync4(path12, "utf8"));
   } catch {
     return {};
   }
 }
-function writeSettings(path11, settings) {
-  mkdirSync3(dirname4(path11), { recursive: true });
-  writeFileSync3(path11, `${JSON.stringify(settings, null, 2)}
+function writeSettings(path12, settings) {
+  mkdirSync2(dirname3(path12), { recursive: true });
+  writeFileSync2(path12, `${JSON.stringify(settings, null, 2)}
 `);
 }
-function opencodePluginInstalled(path11) {
-  if (!existsSync6(path11)) return false;
+function opencodePluginInstalled(path12) {
+  if (!existsSync5(path12)) return false;
   try {
-    return readFileSync5(path11, "utf8").includes(OPENCODE_MANAGED_MARKER);
+    return readFileSync4(path12, "utf8").includes(OPENCODE_MANAGED_MARKER);
   } catch {
     return false;
   }
 }
+function buildOpenCodePluginSource(base, timeoutSeconds = HOOK_TIMEOUT_SECONDS) {
+  return `// ${OPENCODE_MANAGED_MARKER}
+// Generated by \`agentstate-lite hook install\` (axi-sdk-js managed-marker compatible). It is safe
+// to edit only if you remove the managed marker above.
+import { spawn } from "node:child_process";
+
+const command = ${JSON.stringify(base)};
+const commandArgs = [${JSON.stringify(HOOK_SUBCOMMAND)}];
+const marker = ${JSON.stringify(HOOK_MARKER)};
+const ambientHeader = ${JSON.stringify(`## AXI ambient context: ${HOOK_MARKER}`)};
+const timeoutMs = ${JSON.stringify(timeoutSeconds * 1e3)};
+
+function runAxiSessionStart(cwd) {
+  return new Promise((resolve) => {
+    const child = spawn(command, commandArgs, {
+      cwd: directoryOrFallback(cwd),
+      env: process.env,
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGTERM");
+      resolve("error: " + marker + " ambient context timed out after " + timeoutMs + "ms");
+    }, timeoutMs);
+
+    child.stdout?.setEncoding("utf-8");
+    child.stderr?.setEncoding("utf-8");
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve("error: " + marker + " ambient context failed: " + error.message);
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve(stdout.trim());
+        return;
+      }
+      const message = (stderr || stdout || marker + " exited with code " + code).trim();
+      resolve("error: " + marker + " ambient context failed: " + message);
+    });
+  });
+}
+
+function directoryOrFallback(directory) {
+  return typeof directory === "string" && directory.length > 0
+    ? directory
+    : process.cwd();
+}
+
+export const AxiAgentstateLiteAmbientContextPlugin = async ({ directory }) => {
+  const sessionCache = new Map();
+
+  return {
+    "experimental.chat.system.transform": async (input, output) => {
+      const sessionID = input.sessionID ?? "__global__";
+      let homeView = sessionCache.get(sessionID);
+      if (homeView === undefined) {
+        homeView = await runAxiSessionStart(directory);
+        sessionCache.set(sessionID, homeView);
+      }
+
+      if (homeView.length === 0) return;
+      output.system.push(ambientHeader + "\\n" + homeView);
+    },
+  };
+};
+`;
+}
+function hookNeedsUpdate(bases = [process.cwd(), homedir5()]) {
+  for (const base of bases) {
+    const targets = targetsFor(base);
+    for (const p of [targets.claudeSettings, targets.codexHooks]) {
+      const s = readHookStatus(readSettings(p));
+      if (s.installed && s.command !== void 0 && !s.command.includes(HOOK_SUBCOMMAND)) return true;
+    }
+    if (opencodePluginInstalled(targets.opencodePlugin)) {
+      try {
+        if (!readFileSync4(targets.opencodePlugin, "utf8").includes(HOOK_SUBCOMMAND)) return true;
+      } catch {
+      }
+    }
+  }
+  return false;
+}
 async function hook(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const { values, positionals } = parseOrUsage(
-    () => parseArgs30({
+    () => parseArgs29({
       args: argv,
       options: {
         scope: { type: "string" },
@@ -14992,7 +14662,7 @@ async function hook(argv, deps = {}) {
       help: `${cliInvocation()} hook ${sub} --scope project|global`
     });
   }
-  const base = deps.base ?? (scope === "global" ? homedir6() : process.cwd());
+  const base = deps.base ?? (scope === "global" ? homedir5() : process.cwd());
   const targets = targetsFor(base);
   const mode = resolveMode(values);
   if (sub === "status") {
@@ -15009,7 +14679,7 @@ async function hook(argv, deps = {}) {
             claude_code: claude.installed,
             codex: codex.installed,
             opencode,
-            command: claude.command ? collapseHomeDirectory2(claude.command) : hookCommand(),
+            command: claude.command ? collapseHomeDirectory2(claude.command) : sessionStartHookCommand(),
             targets: {
               claude_code: collapseHomeDirectory2(targets.claudeSettings),
               codex: collapseHomeDirectory2(targets.codexHooks),
@@ -15024,20 +14694,48 @@ async function hook(argv, deps = {}) {
   }
   if (sub === "install") {
     const errors = [];
-    installSessionStartHooks({
-      marker: HOOK_MARKER,
-      binaryNames: [...BIN_NAMES],
-      distEntrypoints: [DIST_ENTRYPOINT],
-      homeDir: base,
-      timeoutSeconds: HOOK_TIMEOUT_SECONDS,
-      shouldInstall: () => true,
-      onError: (m) => errors.push(m)
-    });
+    const commandBase = hookCommand();
+    const command = sessionStartHookCommand(commandBase);
+    for (const target of [targets.claudeSettings, targets.codexHooks]) {
+      try {
+        const [updated, changed2] = computeSessionStartHookUpdate(readSettings(target), {
+          marker: HOOK_MARKER,
+          command,
+          timeoutSeconds: HOOK_TIMEOUT_SECONDS
+        });
+        if (changed2) writeSettings(target, updated);
+      } catch (err) {
+        errors.push(`${target}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    const codexConfigPath = join7(base, ".codex", "config.toml");
+    try {
+      const current = existsSync5(codexConfigPath) ? readFileSync4(codexConfigPath, "utf8") : "";
+      const [updated, changed2] = computeCodexConfigUpdate(current);
+      if (changed2) {
+        mkdirSync2(dirname3(codexConfigPath), { recursive: true });
+        writeFileSync2(codexConfigPath, updated);
+      }
+    } catch (err) {
+      errors.push(`${codexConfigPath}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    try {
+      mkdirSync2(dirname3(targets.opencodePlugin), { recursive: true });
+      const next = buildOpenCodePluginSource(commandBase);
+      const current = existsSync5(targets.opencodePlugin) ? readFileSync4(targets.opencodePlugin, "utf8") : void 0;
+      if (current !== void 0 && !current.includes(OPENCODE_MANAGED_MARKER)) {
+        errors.push(`${targets.opencodePlugin}: refusing to overwrite unmanaged OpenCode plugin`);
+      } else if (current !== next) {
+        writeFileSync2(targets.opencodePlugin, next);
+      }
+    } catch (err) {
+      errors.push(`${targets.opencodePlugin}: ${err instanceof Error ? err.message : String(err)}`);
+    }
     const out = {
       action: "install",
       scope,
       installed: true,
-      command: hookCommand(),
+      command,
       targets: {
         claude_code: collapseHomeDirectory2(targets.claudeSettings),
         codex: collapseHomeDirectory2(targets.codexHooks),
@@ -15049,10 +14747,10 @@ async function hook(argv, deps = {}) {
     return;
   }
   let changed = false;
-  for (const path11 of [targets.claudeSettings, targets.codexHooks]) {
-    const [updated, didChange] = computeHookUninstall(readSettings(path11));
+  for (const path12 of [targets.claudeSettings, targets.codexHooks]) {
+    const [updated, didChange] = computeHookUninstall(readSettings(path12));
     if (didChange) {
-      writeSettings(path11, updated);
+      writeSettings(path12, updated);
       changed = true;
     }
   }
@@ -15080,8 +14778,469 @@ async function hook(argv, deps = {}) {
   );
 }
 
-// src/cli.ts
+// src/commands/home.ts
+var HOME_RECENT_LIMIT = 5;
+function rowTitle(id, title) {
+  return typeof title === "string" ? title : id.split("/").pop() ?? id;
+}
+function summarizeDocs(docs, root) {
+  const byType = {};
+  for (const d of docs) {
+    const t = typeof d.frontmatter.type === "string" ? d.frontmatter.type : "";
+    byType[t] = (byType[t] ?? 0) + 1;
+  }
+  const sortedByType = Object.fromEntries(
+    Object.entries(byType).sort(([ta, ca], [tb, cb]) => cb - ca || ta.localeCompare(tb))
+  );
+  const rows = docs.map((d) => ({
+    id: d.id,
+    type: typeof d.frontmatter.type === "string" ? d.frontmatter.type : "",
+    title: rowTitle(d.id, d.frontmatter.title),
+    timestamp: typeof d.frontmatter.timestamp === "string" ? d.frontmatter.timestamp : ""
+  }));
+  rows.sort((a, b) => {
+    if (a.timestamp && b.timestamp) {
+      if (a.timestamp !== b.timestamp) return a.timestamp < b.timestamp ? 1 : -1;
+    } else if (a.timestamp !== b.timestamp) {
+      return a.timestamp ? -1 : 1;
+    }
+    return a.id.localeCompare(b.id);
+  });
+  return {
+    root,
+    docs: docs.length,
+    byType: sortedByType,
+    recent: {
+      shown: Math.min(rows.length, HOME_RECENT_LIMIT),
+      total: rows.length,
+      rows: rows.slice(0, HOME_RECENT_LIMIT)
+    }
+  };
+}
+async function defaultSummarizeBundle(dir) {
+  let bundle;
+  try {
+    bundle = await openBundle(dir, void 0);
+  } catch {
+    return null;
+  }
+  try {
+    const docs = await queryHeads(bundle);
+    return summarizeDocs(docs, collapseHomeDirectory2(bundle.root));
+  } catch {
+    return { root: collapseHomeDirectory2(bundle.root), unreadable: true };
+  }
+}
+var BOARD_UP_TO_DATE = "up to date";
+var BOARD_OFFLINE_NOTE = "board sync offline \u2014 showing last known state";
+var BOARD_CHANGES_SHOWN_LIMIT = 10;
+function boardFirstContactLine(inv) {
+  return `not yet provisioned \u2014 run \`${inv} sync\` to set it up`;
+}
+function hookUpdateNote(inv) {
+  return `the installed SessionStart hook predates \`session-start\` \u2014 re-run \`${inv} hook install\` to pick up the board-aware hook`;
+}
+function actorPhrase(rows) {
+  const actors = [];
+  for (const r of rows) if (!actors.includes(r.actor)) actors.push(r.actor);
+  if (actors.length <= 1) return actors[0] ?? "";
+  return `${actors.slice(0, -1).join(", ")} and ${actors[actors.length - 1]}`;
+}
+function sinceLine(rows) {
+  const n = rows.length;
+  return `${n} board ${n === 1 ? "change" : "changes"} from ${actorPhrase(rows)}`;
+}
+function docLine(row) {
+  const kindPart = row.kind && row.kind !== "unknown" ? `${row.kind} ` : "";
+  return `${row.actor} \xB7 ${row.verb} ${kindPart}"${row.title}"`;
+}
+function unpushedLine(n) {
+  return `${n} local board ${n === 1 ? "commit" : "commits"} not yet pushed \u2014 run sync when online`;
+}
+function uncommittedLine(n) {
+  return `${n} uncommitted board ${n === 1 ? "change" : "changes"} \u2014 run sync to share ${n === 1 ? "it" : "them"}`;
+}
+function countOr(live, cached) {
+  return live ?? cached ?? 0;
+}
+function buildBoardBlock(status2, pull2, inv) {
+  if (!status2) return {};
+  if (status2.state === "unprovisioned") return { firstContact: boardFirstContactLine(inv) };
+  const rec = {};
+  if (pull2?.announcement) Object.assign(rec, pull2.announcement);
+  const rows = status2.cache?.delta ?? [];
+  const visible = rows.filter((r) => !status2.selfActors.includes(r.actor));
+  if (visible.length > 0) {
+    rec.since_this_machine_last_synced = sinceLine(visible);
+    rec.changes = visible.slice(0, BOARD_CHANGES_SHOWN_LIMIT).map(docLine);
+  }
+  const unpushed = countOr(status2.unpushed, status2.cache?.unpushedCount);
+  const uncommitted = countOr(status2.uncommitted, status2.cache?.uncommittedCount);
+  if (unpushed > 0) rec.unpushed = unpushedLine(unpushed);
+  if (uncommitted > 0) rec.uncommitted = uncommittedLine(uncommitted);
+  const notes = [];
+  if (pull2?.offline) notes.push(BOARD_OFFLINE_NOTE);
+  if (pull2?.notes) notes.push(...pull2.notes);
+  if (status2.cache?.note) notes.push(status2.cache.note);
+  if (notes.length > 0) rec.note = notes.join("; ");
+  if (status2.cache && (!pull2 || pull2.offline) && Object.keys(rec).length > 0) {
+    rec.as_of = status2.cache.updatedAt;
+  }
+  if (Object.keys(rec).length === 0) return { block: BOARD_UP_TO_DATE };
+  return { block: rec };
+}
+async function defaultLoadBoardStatus(dir) {
+  try {
+    const top = repoTopLevel(retargetBoardInterior(dir ?? process.cwd()));
+    if (!top) return null;
+    const boardPath = path11.join(top, BUNDLE_DIR);
+    if (!isProvisioned(top)) {
+      const probed = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0 || runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
+      return probed ? { state: "unprovisioned" } : null;
+    }
+    const key2 = resolveBundleKey(boardPath);
+    const state = await readSyncState(key2);
+    let uncommitted;
+    try {
+      uncommitted = countUncommitted(boardPath);
+    } catch {
+      uncommitted = null;
+    }
+    return {
+      state: "provisioned",
+      cache: state.cache,
+      selfActors: state.selfActors ?? [],
+      unpushed: unpushedCount(boardPath),
+      uncommitted
+    };
+  } catch {
+    return null;
+  }
+}
+function buildHomeView(creds, deps, summary, remote, remoteKeyStored, binding, bindingError, board, hookUpdate) {
+  const inv = deps.invocation();
+  let auth;
+  if (remote && remoteKeyStored) {
+    auth = {
+      status: "key-stored",
+      note: `an API key for this remote is stored locally; this home view is OFFLINE \u2014 run \`${inv} whoami --remote ${remote}\` to verify the live identity`
+    };
+  } else {
+    auth = {
+      status: "logged-out",
+      help: `not logged in to any remote \u2014 local bundles need no login; for a shared remote, get its URL + an invite from a teammate \u2192 \`${inv} join --remote <url> --invite <token>\``
+    };
+  }
+  const ref = commandReference(inv);
+  const view2 = {
+    "agentstate-lite": { bin: deps.binPath(), description: DESCRIPTION },
+    auth
+  };
+  if (remote) {
+    const remoteBlock = {
+      url: remote,
+      help: [
+        `${inv} whoami --remote ${remote}`,
+        `${inv} list --remote ${remote}`,
+        `${inv} status --remote ${remote}`
+      ]
+    };
+    if (binding && binding.target === remote) remoteBlock.via = binding.file;
+    view2.remote = remoteBlock;
+  } else if (summary && "unreadable" in summary) {
+    const bundleBlock = {
+      root: summary.root,
+      status: "unreadable",
+      help: `a document in this bundle could not be read \u2014 run \`${deps.invocation()} list\` to surface the parse error`
+    };
+    if (binding) bundleBlock.via = binding.file;
+    view2.bundle = bundleBlock;
+  } else if (summary) {
+    const bundleBlock = {
+      root: summary.root,
+      docs: summary.docs,
+      by_type: summary.byType
+    };
+    if (summary.docs > 0) {
+      bundleBlock.recent = summary.recent;
+      bundleBlock.next = [
+        `${deps.invocation()} list`,
+        `${deps.invocation()} status`,
+        `${deps.invocation()} view`
+      ];
+    } else {
+      bundleBlock.help = `${deps.invocation()} new "Context Note" <id> \u2026 | ${deps.invocation()} doc write \u2026 \u2014 create the first doc`;
+    }
+    if (binding) bundleBlock.via = binding.file;
+    view2.bundle = bundleBlock;
+  } else if (!board?.firstContact && board?.block === void 0) {
+    view2.getting_started = `no OKF bundle found in this directory \u2014 run \`${deps.invocation()} init\` to create one`;
+    if (binding) {
+      view2.getting_started += ` (project binding ${binding.file} -> ${binding.target} did not resolve to a bundle)`;
+    }
+  }
+  if (board?.firstContact) {
+    view2.board = board.firstContact;
+  } else if (board?.block !== void 0) {
+    view2.board = board.block;
+  }
+  if (hookUpdate) {
+    view2.hook_update = hookUpdate;
+  }
+  if (bindingError) {
+    view2.project_binding_error = bindingError;
+  }
+  if (!remote) {
+    const storedRemotes = creds?.remotes ? Object.keys(creds.remotes).sort() : [];
+    if (storedRemotes.length > 0) {
+      view2.remotes = {
+        stored: storedRemotes,
+        help: `you hold a key for these remote workspace(s) \u2014 reach one with \`${inv} list --remote <origin>\` (or \`${inv} whoami --remote <origin>\`)`
+      };
+    }
+  }
+  const compact = compactCommandReference(inv);
+  view2.commands = compact.commands;
+  view2.commands_help = compact.commands_help;
+  view2.kinds = ref.kinds;
+  view2.remote_env = ref.remoteEnv;
+  return view2;
+}
+async function home(argv, deps = {}) {
+  const loadCreds = deps.loadCreds ?? loadCredentials;
+  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
+  let remote;
+  let dir;
+  let jsonMode = false;
+  try {
+    const parsed = parseArgs30({
+      args: argv,
+      options: {
+        remote: { type: "string" },
+        dir: { type: "string" },
+        json: { type: "boolean" },
+        help: { type: "boolean", short: "h" }
+      },
+      allowPositionals: true
+    });
+    remote = parsed.values.remote;
+    dir = parsed.values.dir;
+    jsonMode = Boolean(parsed.values.json);
+  } catch {
+  }
+  let binding;
+  let bindingError;
+  if (!remote && !dir) {
+    try {
+      const found = await resolveProjectBinding();
+      if (found) {
+        binding = { file: found.file, target: found.target };
+        if (found.isRemote) {
+          remote = found.target;
+        } else {
+          dir = found.target;
+        }
+      }
+    } catch (err) {
+      bindingError = err instanceof Error ? err.message : String(err);
+    }
+  }
+  const summarize = deps.summarizeBundle ?? (() => defaultSummarizeBundle(dir));
+  let creds = null;
+  try {
+    creds = await loadCreds();
+  } catch {
+    creds = null;
+  }
+  let remoteKeyStored = false;
+  if (remote) {
+    try {
+      remoteKeyStored = Boolean(creds?.remotes?.[normalizeServer(remote).resource]);
+    } catch {
+    }
+  }
+  let summary = null;
+  if (!remote) {
+    try {
+      summary = await summarize();
+    } catch {
+      summary = null;
+    }
+  }
+  const invocation = deps.invocation ?? cliInvocation;
+  let board;
+  if (!remote) {
+    try {
+      const status2 = await (deps.loadBoardStatus ?? defaultLoadBoardStatus)(dir);
+      board = buildBoardBlock(status2, deps.boardPull, invocation());
+    } catch {
+      board = void 0;
+    }
+  }
+  let hookUpdate;
+  try {
+    if ((deps.hookNeedsUpdate ?? hookNeedsUpdate)()) hookUpdate = hookUpdateNote(invocation());
+  } catch {
+    hookUpdate = void 0;
+  }
+  stdout(
+    render(
+      buildHomeView(
+        creds,
+        {
+          binPath: deps.binPath ?? binPath,
+          invocation
+        },
+        summary,
+        remote,
+        remoteKeyStored,
+        binding,
+        bindingError,
+        board,
+        hookUpdate
+      ),
+      // Honor --json (JSON is equally offline/never-throw); default remains TOON, the format the
+      // SessionStart hook ingests as ambient context.
+      jsonMode ? "json" : "default"
+    )
+  );
+}
+
+// src/commands/session-start.ts
 import { parseArgs as parseArgs31 } from "node:util";
+var SESSION_START_PULL_BUDGET_MS = 7e3;
+var SESSION_START_CONNECT_TIMEOUT_SECONDS = 5;
+var MIN_USEFUL_BUDGET_MS = 250;
+var SESSION_START_USAGE = `agentstate-lite session-start \u2014 the SessionStart hook payload (pull the board, then render home)
+
+Usage:
+  agentstate-lite session-start [--dir <path>] [--json]
+
+Runs a time-boxed, best-effort pull of this repo's shared board (provisioning the checkout from
+origin/board on a fresh clone \u2014 announced, never silent), then renders the home view with the
+board-awareness block: what changed since this machine last synced, attributed per teammate, plus
+the unpushed/uncommitted backstop. Every pull failure \u2014 offline, auth, a busy repo, a lost time
+box \u2014 falls through to the render (exit 0): you always get the last known state, honestly labeled.
+
+This is the command \`hook install\` wires as the SessionStart hook for Claude Code, Codex, and
+OpenCode. Run it directly to see exactly what a new session will see.
+
+Options:
+  --dir <path>   Directory to run from (default: the cwd)
+  --json         Emit compact JSON instead of TOON
+  -h, --help     Show this help
+`;
+var OFFLINE_REASONS = /* @__PURE__ */ new Set(["network", "auth", "busy", "git-missing"]);
+async function sessionStartPull(dir, budgetMs = SESSION_START_PULL_BUDGET_MS, now = Date.now) {
+  const deadline = now() + budgetMs;
+  const remaining = () => Math.max(0, deadline - now());
+  try {
+    const startDir = retargetBoardInterior(dir ?? process.cwd());
+    let outcome;
+    try {
+      outcome = provisionBoardWorktree(startDir, {
+        fetchTimeoutMs: remaining(),
+        connectTimeoutSeconds: SESSION_START_CONNECT_TIMEOUT_SECONDS
+      });
+    } catch {
+      return void 0;
+    }
+    if (outcome.kind === "no_repo" || outcome.kind === "no_board") return void 0;
+    const boardPath = outcome.boardPath;
+    const announcement = provisionAnnouncement(outcome);
+    const key2 = resolveBundleKey(boardPath);
+    await refreshMarker(key2);
+    if (remaining() < MIN_USEFUL_BUDGET_MS) {
+      return { offline: true, boardPath, ...announcement ? { announcement } : {} };
+    }
+    const storedCursor = await readCursor(key2);
+    const startHead = currentHead(boardPath);
+    const ff = ffPull(boardPath, {
+      fetchTimeoutMs: remaining(),
+      connectTimeoutSeconds: SESSION_START_CONNECT_TIMEOUT_SECONDS
+    });
+    if (ff.swallowed) {
+      if (OFFLINE_REASONS.has(ff.swallowed)) {
+        return { offline: true, boardPath, ...announcement ? { announcement } : {} };
+      }
+      return {
+        offline: false,
+        boardPath,
+        ...announcement ? { announcement } : {},
+        notes: [`board pull skipped (${ff.swallowed}) \u2014 run \`${cliInvocation()} sync\` to reconcile`]
+      };
+    }
+    const cursorToken = storedCursor && storedCursor.tier === "git" && typeof storedCursor.token === "string" ? storedCursor.token : void 0;
+    const postPullHead = currentHead(boardPath);
+    const delta = changesSince(boardPath, cursorToken ?? startHead);
+    if (delta.ok) {
+      await writeCursor(key2, { tier: "git", token: postPullHead });
+      await writeCache(key2, {
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        delta: toDeltaRows(delta.changes),
+        unpushedCount: unpushedCount(boardPath) ?? 0,
+        uncommittedCount: countUncommitted(boardPath)
+      });
+    } else {
+      await recordReanchor(
+        key2,
+        { tier: "git", token: postPullHead },
+        { unpushedCount: unpushedCount(boardPath) ?? 0, uncommittedCount: countUncommitted(boardPath) }
+      );
+    }
+    return { offline: false, boardPath, ...announcement ? { announcement } : {} };
+  } catch {
+    return { offline: true };
+  }
+}
+async function sessionStart(argv, deps = {}) {
+  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
+  const { values } = parseOrUsage(
+    () => parseArgs31({
+      args: argv,
+      options: {
+        dir: { type: "string" },
+        json: { type: "boolean" },
+        help: { type: "boolean", short: "h" }
+      },
+      allowPositionals: true
+    }),
+    "session-start"
+  );
+  if (values.help) {
+    stdout(SESSION_START_USAGE);
+    return;
+  }
+  const budgetMs = deps.budgetMs ?? SESSION_START_PULL_BUDGET_MS;
+  const pull2 = deps.pull ?? sessionStartPull;
+  let timer;
+  let outcome;
+  try {
+    const raced = await Promise.race([
+      Promise.resolve().then(() => pull2(values.dir, budgetMs)).catch(() => ({ offline: true })),
+      new Promise((resolve3) => {
+        timer = setTimeout(() => resolve3("timeout"), budgetMs);
+      })
+    ]);
+    outcome = raced === "timeout" ? { offline: true } : raced;
+  } catch {
+    outcome = { offline: true };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+  const homeArgv = [];
+  if (values.dir !== void 0) homeArgv.push("--dir", values.dir);
+  if (values.json) homeArgv.push("--json");
+  const boardPath = outcome?.boardPath;
+  await home(homeArgv, {
+    stdout,
+    boardPull: outcome,
+    ...values.dir !== void 0 && boardPath !== void 0 ? { summarizeBundle: () => defaultSummarizeBundle(boardPath) } : {}
+  });
+}
+
+// src/cli.ts
+import { parseArgs as parseArgs32 } from "node:util";
 var KNOWN_COMMANDS = [
   "init",
   "doc",
@@ -15108,7 +15267,8 @@ var KNOWN_COMMANDS = [
   "invite",
   "member",
   "key",
-  "hook"
+  "hook",
+  "session-start"
 ];
 function helpReference() {
   return helpIndexText(cliInvocation());
@@ -15124,7 +15284,7 @@ var wrap2 = (fn) => async (args) => {
 };
 function isGlobalOnlyHomeInvocation(argv) {
   try {
-    const { positionals } = parseArgs31({
+    const { positionals } = parseArgs32({
       args: argv,
       options: {
         remote: { type: "string" },
@@ -15142,7 +15302,7 @@ function isGlobalOnlyHomeInvocation(argv) {
 function hoistLeadingGlobalFlags(argv) {
   let tokens;
   try {
-    tokens = parseArgs31({
+    tokens = parseArgs32({
       args: argv,
       tokens: true,
       strict: false,
@@ -15226,11 +15386,13 @@ async function main(argv) {
       sync: wrap2(sync),
       login: wrap2(login),
       whoami: wrap2(whoami),
-      join: wrap2(join7),
+      join: wrap2(join6),
       invite: wrap2(invite),
       member: wrap2(member),
       key: wrap2(key),
       hook: wrap2(hook),
+      // The SessionStart hook payload: time-boxed board pull, then the home render — in-process.
+      "session-start": wrap2(sessionStart),
       // Explicit `home` handler so a SessionStart hook (or an agent) can also call `<bin> home`, not
       // only the bare zero-arg form. Not listed in COMMAND_GROUPS — the bare invocation is the primary
       // home surface (AXI §8); this is a defensive alias with identical output.

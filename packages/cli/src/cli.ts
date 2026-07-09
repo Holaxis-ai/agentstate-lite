@@ -42,6 +42,7 @@ import { member } from "./commands/member.js";
 import { key } from "./commands/key.js";
 import { home } from "./commands/home.js";
 import { hook } from "./commands/hook.js";
+import { sessionStart } from "./commands/session-start.js";
 import { CliError, toEnvelope, toExit } from "./errors.js";
 import { renderErrorEnvelope } from "./output.js";
 import { DESCRIPTION, helpIndexText } from "./reference.js";
@@ -75,6 +76,7 @@ export const KNOWN_COMMANDS = [
   "member",
   "key",
   "hook",
+  "session-start",
 ] as const;
 
 /**
@@ -272,6 +274,8 @@ export async function main(argv: string[]): Promise<void> {
       member: wrap(member),
       key: wrap(key),
       hook: wrap(hook),
+      // The SessionStart hook payload: time-boxed board pull, then the home render — in-process.
+      "session-start": wrap(sessionStart),
       // Explicit `home` handler so a SessionStart hook (or an agent) can also call `<bin> home`, not
       // only the bare zero-arg form. Not listed in COMMAND_GROUPS — the bare invocation is the primary
       // home surface (AXI §8); this is a defensive alias with identical output.

@@ -219,14 +219,30 @@ export interface BoardPendingMarker {
   [extra: string]: unknown;
 }
 
+/**
+ * The actors THIS CLONE has committed to the board (U4's "self" identity — how the home render
+ * knows which awareness-delta rows are self-authored and filters them from the human count). There
+ * is no machine-level identity to derive "self" from (adjudication F rejected git authorship as an
+ * attribution source), so self is DEFINED operationally: every actor that appeared in a doc THIS
+ * checkout's own `sync` committed is recorded here at commit time. A clone that never committed
+ * anything has an empty list and filters nothing — honest for a read-only session. `"unknown"`
+ * (core's absent-actor placeholder) is deliberately NEVER recorded: filtering it would also hide a
+ * TEAMMATE's unattributed changes, and hiding real incoming work is worse than showing your own
+ * unattributed rows. Capped ({@link SELF_ACTORS_CAP}, newest kept) so a pathological bundle cannot
+ * grow the state file unboundedly.
+ */
+export const SELF_ACTORS_CAP = 64;
+
 /** The whole per-bundle state record. Every piece is independently nullable. */
 export interface SyncState {
   cursor: SyncCursor | null;
   cache: AwarenessCache | null;
   marker: BoardPendingMarker | null;
+  /** See {@link SELF_ACTORS_CAP}'s doc — the actors this clone's own syncs have committed. */
+  selfActors: string[] | null;
 }
 
-const EMPTY_STATE: SyncState = { cursor: null, cache: null, marker: null };
+const EMPTY_STATE: SyncState = { cursor: null, cache: null, marker: null, selfActors: null };
 
 // ── validation (malformed → null, section-independent) ───────────────────────
 
@@ -284,6 +300,13 @@ function asMarker(v: unknown): BoardPendingMarker | null {
   return { ...v } as BoardPendingMarker;
 }
 
+/** Validate the self-actors SHAPE (an array of non-empty strings) — malformed reads as null. */
+function asSelfActors(v: unknown): string[] | null {
+  if (!Array.isArray(v)) return null;
+  if (!v.every((a) => typeof a === "string" && a.length > 0)) return null;
+  return [...v];
+}
+
 /** `null` when `updatedAt` is older than `maxAgeMs` (or unbounded when no max age is given). */
 function freshOrNull<T extends { updatedAt: string }>(
   value: T | null,
@@ -332,6 +355,7 @@ export async function readSyncState(key: string, home: string = homedir()): Prom
     cursor: asCursor(parsed.cursor),
     cache: asCache(parsed.cache),
     marker: asMarker(parsed.marker),
+    selfActors: asSelfActors(parsed.selfActors),
   };
 }
 
@@ -381,6 +405,7 @@ export async function writeSyncState(
     cursor: next.cursor ?? undefined,
     cache: next.cache ?? undefined,
     marker: next.marker ?? undefined,
+    selfActors: next.selfActors ?? undefined,
   };
   await writeFileAtomic0600(syncStateDir(home), basename(path), JSON.stringify(record, null, 2) + "\n");
   return next;
@@ -425,6 +450,37 @@ export async function refreshMarker(
   const marker: BoardPendingMarker = { ...(current ?? {}), updatedAt: now().toISOString() };
   await writeSyncState(key, { marker }, home);
   return marker;
+}
+
+/** The self-actor list for a bundle key, or `[]` (absent/malformed — never throws). */
+export async function readSelfActors(key: string, home: string = homedir()): Promise<string[]> {
+  return (await readSyncState(key, home)).selfActors ?? [];
+}
+
+/**
+ * Record actors THIS CLONE just committed (sync's commit step calls this — see
+ * {@link SELF_ACTORS_CAP}'s doc for the whole "self" identity story). Merge-union with the stored
+ * list, newest-last, deduped, capped to the NEWEST {@link SELF_ACTORS_CAP} entries. `"unknown"` and
+ * empty strings are dropped at this one chokepoint (recording the placeholder would make the U4
+ * render hide a teammate's unattributed changes too). A call that changes nothing skips the write.
+ */
+export async function recordSelfActors(
+  key: string,
+  actors: string[],
+  home: string = homedir(),
+): Promise<string[]> {
+  const current = (await readSyncState(key, home)).selfActors ?? [];
+  const merged = [...current];
+  for (const a of actors) {
+    if (typeof a !== "string" || a.length === 0 || a === "unknown") continue;
+    if (!merged.includes(a)) merged.push(a);
+  }
+  const capped = merged.slice(-SELF_ACTORS_CAP);
+  if (capped.length === current.length && capped.every((a, i) => a === current[i])) {
+    return current;
+  }
+  await writeSyncState(key, { selfActors: capped }, home);
+  return capped;
 }
 
 /**

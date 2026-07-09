@@ -237,8 +237,13 @@ export const COMMAND_GROUPS: CommandGroup[] = [
     group: "Session",
     commands: [
       {
+        usage: "session-start [--dir <path>]",
+        summary:
+          "The SessionStart hook payload: a time-boxed best-effort board pull, then the home view — every pull failure falls through to the render (exit 0)",
+      },
+      {
         usage: "hook install|status|uninstall [--scope project|global]",
-        summary: "Install the SessionStart home-view hook (Claude Code, Codex, OpenCode)",
+        summary: "Install the SessionStart hook (runs session-start: pull the board, then render) for Claude Code, Codex, OpenCode",
       },
     ],
   },

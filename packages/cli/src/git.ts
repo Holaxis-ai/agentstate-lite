@@ -91,16 +91,23 @@ interface RunOptions {
   input?: string;
   /** True for rebase ops: forces GIT_EDITOR/GIT_SEQUENCE_EDITOR=true so nothing interactive opens. */
   rebase?: boolean;
+  /**
+   * ssh ConnectTimeout override, in seconds (default 10). U4's SessionStart pull passes 5 — the
+   * plan's "connect ≤ 5s" budget — so a black-holed ssh host is abandoned inside the pull budget
+   * rather than eating it whole. The spawnSync `timeoutMs` kill is the HARD enforcement either
+   * way (https remotes never consult ssh); this only makes the ssh case fail faster and cleaner.
+   */
+  connectTimeoutSeconds?: number;
 }
 
 /** The hermetic environment for one invocation: ambient env, scrubbed, with the invariants forced. */
-function gitEnv(rebase: boolean): NodeJS.ProcessEnv {
+function gitEnv(rebase: boolean, connectTimeoutSeconds = 10): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const v of SCRUBBED_GIT_VARS) delete env[v];
   // Locale-pin git prose so classifyGitError's fallback matchers survive non-English hosts.
   env.LC_ALL = "C";
   env.GIT_TERMINAL_PROMPT = "0";
-  env.GIT_SSH_COMMAND = "ssh -o BatchMode=yes -o ConnectTimeout=10";
+  env.GIT_SSH_COMMAND = `ssh -o BatchMode=yes -o ConnectTimeout=${connectTimeoutSeconds}`;
   if (rebase) {
     env.GIT_EDITOR = "true";
     env.GIT_SEQUENCE_EDITOR = "true";
@@ -147,7 +154,7 @@ export interface GitRunBytesResult {
  */
 export function runGitBytes(dir: string, args: string[], opts: RunOptions = {}): GitRunBytesResult {
   const r = spawnSync("git", ["-C", dir, "-c", "core.quotepath=off", ...args], {
-    env: gitEnv(opts.rebase ?? false),
+    env: gitEnv(opts.rebase ?? false, opts.connectTimeoutSeconds),
     timeout: opts.timeoutMs ?? LOCAL_TIMEOUT_MS,
     input: opts.input,
     maxBuffer: 32 * 1024 * 1024,
@@ -395,7 +402,14 @@ function moveAsideHelp(boardPath: string, note: string): string {
  * repair simply could not fix, or one that genuinely IS the board checkout, as if either were a
  * directory that was never git's business to begin with).
  */
-export function provisionBoardWorktree(dir: string): ProvisionOutcome {
+export interface NetworkBudgetOptions {
+  /** Budget for the op's `git fetch` (default {@link NETWORK_TIMEOUT_MS}) — U4's pull slices this. */
+  fetchTimeoutMs?: number;
+  /** ssh ConnectTimeout override, in seconds — see {@link RunOptions.connectTimeoutSeconds}. */
+  connectTimeoutSeconds?: number;
+}
+
+export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions = {}): ProvisionOutcome {
   const top = repoTopLevel(dir);
   if (!top) return { kind: "no_repo" };
   const boardPath = path.join(top, BUNDLE_DIR);
@@ -403,7 +417,10 @@ export function provisionBoardWorktree(dir: string): ProvisionOutcome {
 
   // Fetch BEFORE referencing board — tolerated nonzero (offline / no remote): the local ref
   // checks below decide what is actually provisionable.
-  runGit(top, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
+  runGit(top, ["fetch", BOARD_REMOTE], {
+    timeoutMs: budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS,
+    connectTimeoutSeconds: budget.connectTimeoutSeconds,
+  });
 
   const hasLocal = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
   const hasRemote =
@@ -919,7 +936,7 @@ function swallowReason(err: CliError): string {
  * refusal, auth/network, a held lock, even a missing git binary. This is the SessionStart pull's
  * primitive: it must never throw and never block a render on repo state.
  */
-export function ffPull(boardPath: string): FfPullResult {
+export function ffPull(boardPath: string, budget: NetworkBudgetOptions = {}): FfPullResult {
   try {
     if (!repoTopLevel(boardPath)) return { updated: false, swallowed: "not-a-repo" };
     // Detached HEAD: an ff merge would move the detached HEAD, not the board branch — skip.
@@ -929,7 +946,10 @@ export function ffPull(boardPath: string): FfPullResult {
     const before = mustGit(boardPath, ["rev-parse", "HEAD"]).trim();
 
     let fetchReason: string | undefined;
-    const fetched = runGit(boardPath, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
+    const fetched = runGit(boardPath, ["fetch", BOARD_REMOTE], {
+      timeoutMs: budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS,
+      connectTimeoutSeconds: budget.connectTimeoutSeconds,
+    });
     if (fetched.status !== 0) {
       // Keep going: origin/board may exist from an earlier fetch; the merge is still meaningful.
       fetchReason = swallowReason(classifyGitError(failureOf(["fetch"], fetched)));
