@@ -150,7 +150,7 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
   } else {
     const bundle = await openBundle(values.dir);
     const router = createRouter(bundle);
-    options = { mode: "dir", port, router };
+    options = { mode: "dir", port, router, bundle };
     rootLabel = bundle.root;
   }
 
