@@ -156,6 +156,38 @@ test("P1: an SSE outage self-heals — a change made while the stream was down a
   }
 });
 
+test("P1: a session-rotating restart surfaces 'Connection lost' instead of staying silently stale (adversarial-review fold-in)", async ({ page }) => {
+  // The restart the review flagged: unlike the SSE-resilience test above (which pins the SAME
+  // secret across the restart to prove reconnect recovery), THIS restart mints a genuinely
+  // DIFFERENT secret — the real "stable port, rotated session" case. The open tab's cookie is
+  // now dead everywhere; the interceptor's 403 handling (queryClient.ts / interceptor.ts) must
+  // surface a clear recovery screen the moment ANY request the shell makes needs the session,
+  // not a per-view "could not load" banner (the review's "silently stale" finding).
+  const dir = await seedPagesBundle(TASKS);
+  const first = await bootUiServerInProcess({ dir, sessionSecret: "restart-403-first-secret" });
+  let second: Awaited<ReturnType<typeof bootUiServerInProcess>> | undefined;
+  try {
+    await page.goto(`http://127.0.0.1:${first.port}/?token=restart-403-first-secret`);
+    await page.locator('[data-page-id="pages-registry/board"]').click();
+    await expect(page.locator("iframe.page-frame-iframe")).toBeVisible();
+
+    // The server goes away and comes back on the SAME port with a DIFFERENT secret — the open
+    // tab's cookie no longer authenticates anything.
+    await first.close();
+    second = await bootUiServerInProcess({ dir, port: first.port, sessionSecret: "restart-403-second-secret" });
+
+    // The first request the dead cookie can no longer carry: navigating back to the launcher
+    // (mounting `pagesQuery`, which polls the new server directly regardless of SSE state).
+    await page.locator(".page-back").click();
+    await expect(page.getByRole("heading", { name: "Connection lost" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".relogin-screen")).toContainText(/reopen the url/i);
+  } finally {
+    await second?.close();
+    await first.close().catch(() => {}); // already closed on the happy path
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("P1: deleting an open page's registry doc revokes the frame — the iframe closes and the bridge goes with it", async ({ page }) => {
   const ui = await bootUiOverPagesBundle(TASKS);
   try {

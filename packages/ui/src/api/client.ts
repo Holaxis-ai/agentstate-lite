@@ -44,7 +44,8 @@ function versionOf(res: Response): string | undefined {
   return etag ? stripETagWrapper(etag) : undefined;
 }
 
-async function parseErrorEnvelope(res: Response): Promise<ApiError> {
+/** Exported so `pages.ts`'s shell-local (non-`/v0/`) fetches can throw the SAME typed {@link ApiError} on a non-2xx — a raw `fetch` there would otherwise lose the status code the interceptor needs to recognize a dead session (see `queryClient.ts`'s `onQueryError`). */
+export async function parseErrorEnvelope(res: Response): Promise<ApiError> {
   let envelope: WireErrorEnvelope | null = null;
   try {
     envelope = (await res.json()) as WireErrorEnvelope;

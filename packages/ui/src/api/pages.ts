@@ -9,7 +9,7 @@
  * A page's HTML never rides the model/query path: only its registry doc (frontmatter) is read
  * here; the bytes travel opaquely through the nonce route into the iframe.
  */
-import { listAllHeads } from "./client.js";
+import { listAllHeads, parseErrorEnvelope } from "./client.js";
 import type { Frontmatter } from "./types.js";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
 
@@ -38,7 +38,7 @@ function str(v: unknown): string | undefined {
 
 export async function fetchConfig(): Promise<UiConfig> {
   const res = await fetch("/__ui/config", { credentials: "same-origin" });
-  if (!res.ok) throw new Error(`config request failed with status ${res.status}`);
+  if (!res.ok) throw await parseErrorEnvelope(res);
   return (await res.json()) as UiConfig;
 }
 
@@ -101,7 +101,7 @@ export async function mintPageNonce(key: string): Promise<string> {
     headers: { "content-type": "application/json", "X-Requested-With": "agentstate-lite-ui" },
     body: JSON.stringify({ key }),
   });
-  if (!res.ok) throw new Error(`page-nonce mint failed with status ${res.status}`);
+  if (!res.ok) throw await parseErrorEnvelope(res);
   const data = (await res.json()) as { url: string };
   return data.url;
 }

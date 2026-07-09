@@ -10,11 +10,12 @@
  *      iframe (fresh nonce) when the page's own HTML blob changes.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getDoc, listAllHeads } from "../api/client.js";
+import { getDoc, listAllHeads, ApiError } from "../api/client.js";
 import { mintPageNonce, fetchConfig, fetchKinds, invalidateKinds } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { handleBridgeRequest, changeMessage, type BridgeDeps } from "../pages/bridge.js";
 import { navigate } from "../routing.js";
+import { setInterceptorStatus } from "../query/interceptor.js";
 
 const bridgeDeps: BridgeDeps = {
   config: fetchConfig,
@@ -68,6 +69,13 @@ export function PageFrame({ pageId }: { pageId: string }) {
       subscribedRef.current = false;
       setSrc(null);
       setEntryKey(null);
+      // A 403 from `getDoc`/`mintPageNonce` is this ui server's OWN session gate (both are
+      // `/v0/*` / `/__page/mint`, never the page-bytes route) — most commonly a stable-port
+      // restart minting a fresh secret out from under this open tab's cookie. These two calls
+      // are imperative, not TanStack-managed, so `queryClient.ts`'s `onQueryError` never sees
+      // them; trip the SAME global interceptor directly so the recovery screen shows instead of
+      // a per-view "could not open page" dead end (see `interceptor.ts`'s doc comment).
+      if (e instanceof ApiError && e.status === 403) setInterceptorStatus("session_expired");
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [pageId]);
