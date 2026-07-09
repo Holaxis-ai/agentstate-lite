@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDoc, listAllHeads } from "../api/client.js";
-import { mintPageNonce, fetchConfig } from "../api/pages.js";
+import { mintPageNonce, fetchConfig, fetchKinds, invalidateKinds } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { handleBridgeRequest, changeMessage, type BridgeDeps } from "../pages/bridge.js";
 import { navigate } from "../routing.js";
@@ -20,6 +20,7 @@ const bridgeDeps: BridgeDeps = {
   config: fetchConfig,
   query: ({ type, prefix }) => listAllHeads({ type, prefix }),
   read: (docId) => getDoc(docId).then((r) => r.doc),
+  kinds: fetchKinds,
 };
 
 export function PageFrame({ pageId }: { pageId: string }) {
@@ -102,6 +103,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
   // this page's own blob change.
   useEffect(() => {
     return subscribeToChanges((e) => {
+      invalidateKinds([...e.docs.changed.map((c) => c.id), ...e.docs.removed]);
       const frame = iframeRef.current;
       if (subscribedRef.current && frame?.contentWindow && (e.docs.changed.length > 0 || e.docs.removed.length > 0)) {
         frame.contentWindow.postMessage(changeMessage(e.docs.changed, e.docs.removed), "*");
@@ -122,6 +124,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
   // state (getDoc fails), and a changed blob comes back as fresh bytes.
   useEffect(() => {
     return subscribeToResync(() => {
+      invalidateKinds(); // anything may have changed during the gap, conventions included
       void loadPage();
     });
   }, [loadPage]);

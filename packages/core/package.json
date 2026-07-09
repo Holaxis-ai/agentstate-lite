@@ -12,6 +12,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./kinds": {
+      "types": "./dist/kinds.d.ts",
+      "default": "./dist/kinds.js"
     }
   },
   "files": [

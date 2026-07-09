@@ -28,10 +28,10 @@ import {
   freshnessHorizonMs,
   isTerminal,
   kindConventionDoc,
-  loadKinds,
   validateAgainstKind,
   type KindConvention,
 } from "../src/kinds.js";
+import { loadKinds } from "../src/kinds-load.js";
 import type { Bundle, OkfDocument } from "../src/types.js";
 
 const T = "2026-07-02T00:00:00.000Z";

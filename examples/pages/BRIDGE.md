@@ -48,8 +48,12 @@ frontmatter, never a body). `query` params:
 
 - `type` / `prefix` — server-side facets (a bundle-relative id prefix, a frontmatter `type`).
 - `field` — a client-side `key=value` filter; comma-separated values are OR (`status=todo,blocked`).
-- `open` — drop terminal rows. v0 uses the built-in Task-kind default (`status` ∈
-  `done`,`canceled`); a spike simplification, not a per-bundle derivation.
+- `open` — drop terminal rows, derived from the BUNDLE'S OWN kind conventions exactly like
+  `list --open`: a row is dropped iff the convention governing its `type` declares the row's
+  current field value(s) terminal (`fields.terminal`, e.g. the Task kind's `done`/`canceled`).
+  A row with no governing kind is kept; a bundle where no kind declares a terminal set filters
+  nothing. (The shell loads the registry once per change from the server, which builds it with
+  core's `loadKinds` — one registry, no bridge-side schema.)
 - `limit` — cap the row count after filtering.
 
 ### Shell → page (server-initiated)

@@ -8,9 +8,20 @@ import {
   type BridgeDeps,
 } from "./bridge.js";
 import type { DocHead, ReadDocResponse } from "../api/types.js";
+import type { KindConvention } from "@agentstate-lite/core/kinds";
 
 function head(id: string, frontmatter: Record<string, unknown>): DocHead {
   return { id, version: `v-${id}`, frontmatter: frontmatter as DocHead["frontmatter"] };
+}
+
+/** A minimal Task kind whose convention declares status done/canceled terminal — the shape the work-tracking recipe seeds. */
+function taskKind(): KindConvention {
+  return {
+    id: "conventions/task",
+    title: "Task",
+    governs: "Task",
+    fields: { required: ["title", "status"], optional: [], values: { status: ["todo", "in_progress", "blocked", "done", "canceled"] }, terminal: { status: ["done", "canceled"] } },
+  };
 }
 
 function stubDeps(overrides: Partial<BridgeDeps> = {}): BridgeDeps {
@@ -18,6 +29,7 @@ function stubDeps(overrides: Partial<BridgeDeps> = {}): BridgeDeps {
     config: vi.fn(async () => ({ root: "/tmp/b", name: "b", mode: "dir" })),
     query: vi.fn(async () => []),
     read: vi.fn(async (): Promise<ReadDocResponse> => ({ id: "x", frontmatter: { type: "Task" }, body: "" })),
+    kinds: vi.fn(async () => [taskKind()]),
     ...overrides,
   };
 }
@@ -53,11 +65,19 @@ describe("handleBridgeRequest", () => {
       { bridge: "v0", id: "7", type: "query", params: { type: "Task", prefix: "tasks/", open: true } },
       deps,
     );
-    // Server facets forwarded; terminal `done` row dropped by open.
+    // Server facets forwarded; the row the Task KIND marks terminal (done) dropped by open.
     expect(query).toHaveBeenCalledWith({ type: "Task", prefix: "tasks/" });
+    expect(deps.kinds).toHaveBeenCalled();
     const result = (reply as { result: { rows: DocHead[]; count: number } }).result;
     expect(result.count).toBe(2);
     expect(result.rows.map((r) => r.id)).toEqual(["tasks/a", "tasks/c"]);
+  });
+
+  it("query without open never loads the kind registry", async () => {
+    const deps = stubDeps({ query: vi.fn(async () => [head("tasks/a", { type: "Task", status: "done" })]) });
+    const { reply } = await handleBridgeRequest({ bridge: "v0", id: "8", type: "query", params: {} }, deps);
+    expect(deps.kinds).not.toHaveBeenCalled();
+    expect((reply as { result: { count: number } }).result.count).toBe(1);
   });
 
   it("read: returns the doc; a missing docId is a USAGE error", async () => {
@@ -101,18 +121,27 @@ describe("handleBridgeRequest", () => {
 
 describe("applyRowFilters", () => {
   const rows = [
-    head("a", { status: "todo" }),
-    head("b", { status: "blocked" }),
-    head("c", { status: "done" }),
-    head("d", { status: "canceled" }),
+    head("a", { type: "Task", status: "todo" }),
+    head("b", { type: "Task", status: "blocked" }),
+    head("c", { type: "Task", status: "done" }),
+    head("d", { type: "Task", status: "canceled" }),
   ];
 
   it("field: k=v with comma-OR", () => {
     expect(applyRowFilters(rows, { field: "status=todo,blocked" }).map((r) => r.id)).toEqual(["a", "b"]);
   });
 
-  it("open: drops the built-in terminal statuses", () => {
-    expect(applyRowFilters(rows, { open: true }).map((r) => r.id)).toEqual(["a", "b"]);
+  it("open: drops rows their OWN kind marks terminal (mirrors list --open; no hardcoded statuses)", () => {
+    expect(applyRowFilters(rows, { open: true }, [taskKind()]).map((r) => r.id)).toEqual(["a", "b"]);
+  });
+
+  it("open: a row with NO governing kind is kept, whatever its status", () => {
+    const ungoverned = [head("x", { type: "Memo", status: "done" }), ...rows];
+    expect(applyRowFilters(ungoverned, { open: true }, [taskKind()]).map((r) => r.id)).toEqual(["x", "a", "b"]);
+  });
+
+  it("open: a registry with no terminal declarations filters nothing (list --open's structural no-op)", () => {
+    expect(applyRowFilters(rows, { open: true }, []).map((r) => r.id)).toEqual(["a", "b", "c", "d"]);
   });
 
   it("limit: caps after filtering", () => {

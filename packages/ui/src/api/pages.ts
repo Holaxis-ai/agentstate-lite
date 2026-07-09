@@ -11,6 +11,7 @@
  */
 import { listAllHeads } from "./client.js";
 import type { Frontmatter } from "./types.js";
+import type { KindConvention } from "@agentstate-lite/core/kinds";
 
 /** `/__ui/config` shape (server `configResponse`). */
 export interface UiConfig {
@@ -63,6 +64,33 @@ function pageFromFrontmatter(id: string, version: string, fm: Frontmatter): Page
     actor: str(fm.actor),
     timestamp: str(fm.timestamp),
   };
+}
+
+/**
+ * `GET /__ui/kinds` — the bundle's kind registry, serialized by the server from core's
+ * `loadKinds` (gate 3: ONE registry; the browser consumes it, never re-implements discovery).
+ * Feeds the bridge's `open` filter. Cached until {@link invalidateKinds}; errors yield an empty
+ * registry (=> `open` filters nothing — `list --open`'s posture on a terminal-free bundle).
+ */
+let kindsCache: Promise<KindConvention[]> | null = null;
+
+export function fetchKinds(): Promise<KindConvention[]> {
+  kindsCache ??= (async () => {
+    try {
+      const res = await fetch("/__ui/kinds", { credentials: "same-origin" });
+      if (!res.ok) return [];
+      const body = (await res.json()) as { kinds?: KindConvention[] };
+      return Array.isArray(body.kinds) ? body.kinds : [];
+    } catch {
+      return [];
+    }
+  })();
+  return kindsCache;
+}
+
+/** Drop the cached kind registry when a `conventions/` doc moved (`ids` = changed+removed doc ids from a change event), or unconditionally when `ids` is omitted (the SSE-resync case: anything may have changed during the gap). */
+export function invalidateKinds(ids?: string[]): void {
+  if (ids === undefined || ids.some((id) => id.startsWith("conventions/"))) kindsCache = null;
 }
 
 /** Mint a nonce for `key` and return the relative page-bytes URL (`/__page/<nonce>`) to load in the iframe. */

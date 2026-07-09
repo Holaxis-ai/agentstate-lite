@@ -9,12 +9,11 @@
  * `read`, `subscribe`. This module is the pure router ({@link handleBridgeRequest}); the DOM
  * plumbing (source validation, posting, SSE fan-in, hot-reload) lives in `../views/PageFrame.tsx`.
  */
+import { isTerminal } from "@agentstate-lite/core/kinds";
+import type { KindConvention } from "@agentstate-lite/core/kinds";
 import type { DocHead, ReadDocResponse } from "../api/types.js";
 
 export const BRIDGE_PROTOCOL = "v0";
-
-/** Terminal `status` values excluded by a `query`'s `open: true` — the built-in Task-kind default (documented in examples/pages/BRIDGE.md); a spike simplification, not a per-bundle derivation. */
-export const DEFAULT_TERMINAL_STATUS = ["done", "canceled"];
 
 /** A page->shell request. `bridge`/`type` are always present; `id` correlates the reply; other keys are per-type. */
 export interface BridgeRequest {
@@ -40,6 +39,8 @@ export interface BridgeDeps {
   /** Fetch doc heads by server-side facets (`type`/`prefix`); the router applies `field`/`open`/`limit` after. */
   query: (params: { type?: string; prefix?: string }) => Promise<DocHead[]>;
   read: (docId: string) => Promise<ReadDocResponse>;
+  /** The bundle's kind registry (server-loaded via core's `loadKinds`) — feeds `open`'s terminal derivation. Only consulted when a query asks `open: true`. */
+  kinds: () => Promise<KindConvention[]>;
 }
 
 /** The router's decision: a reply object to post back (or `null` to ignore a non-bridge message), and whether this was a `subscribe` (the caller then streams `change` events to it). */
@@ -77,8 +78,14 @@ export function normalizeQueryParams(raw: unknown): QueryParams {
   return out;
 }
 
-/** Apply the shell-side `field` (k=v, comma=OR), `open`, and `limit` filters to server-returned rows. Pure. */
-export function applyRowFilters(rows: DocHead[], params: QueryParams): DocHead[] {
+/**
+ * Apply the shell-side `field` (k=v, comma=OR), `open`, and `limit` filters to server-returned
+ * rows. Pure. `open` mirrors `list --open` exactly (gate 3: one registry, one derivation): a row
+ * is dropped iff its OWN kind — the convention governing its `type`, from the bundle's registry —
+ * marks the row's current field value(s) terminal (core's `isTerminal`). A row with no governing
+ * kind is kept, and a bundle where no kind declares a terminal set filters nothing.
+ */
+export function applyRowFilters(rows: DocHead[], params: QueryParams, kinds: KindConvention[] = []): DocHead[] {
   let out = rows;
   if (params.field) {
     const eq = params.field.indexOf("=");
@@ -93,7 +100,11 @@ export function applyRowFilters(rows: DocHead[], params: QueryParams): DocHead[]
     }
   }
   if (params.open) {
-    out = out.filter((r) => !DEFAULT_TERMINAL_STATUS.includes(String(r.frontmatter.status ?? "")));
+    const byGoverns = new Map(kinds.map((k) => [k.governs, k]));
+    out = out.filter((r) => {
+      const kind = byGoverns.get(String(r.frontmatter.type ?? ""));
+      return !kind || !isTerminal(kind, r.frontmatter);
+    });
   }
   if (typeof params.limit === "number") out = out.slice(0, params.limit);
   return out;
@@ -116,7 +127,7 @@ export async function handleBridgeRequest(msg: unknown, deps: BridgeDeps): Promi
       case "query": {
         const params = normalizeQueryParams(msg.params);
         const rows = await deps.query({ type: params.type, prefix: params.prefix });
-        const filtered = applyRowFilters(rows, params);
+        const filtered = applyRowFilters(rows, params, params.open ? await deps.kinds() : []);
         return { reply: ok(id, type, { rows: filtered, count: filtered.length }) };
       }
       case "read": {

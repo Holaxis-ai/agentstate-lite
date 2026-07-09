@@ -169,7 +169,10 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
     }
     const envKey = process.env[API_KEY_ENV_VAR]?.trim();
     const apiKey = envKey || (await getApiKeyForOrigin(origin));
-    options = { mode: "remote", port, remoteBase: base, apiKey };
+    // Kind-registry loads (`/__ui/kinds`) ride the SAME engine-level RemoteBackend plumbing every
+    // other kind-aware command uses over --remote; the SPA's /v0 data path stays the raw proxy.
+    const kindsBundle = await openBundle(undefined, remoteFlag);
+    options = { mode: "remote", port, remoteBase: base, apiKey, kindsBundle };
     rootLabel = base;
   } else {
     const bundle = await openBundle(values.dir);

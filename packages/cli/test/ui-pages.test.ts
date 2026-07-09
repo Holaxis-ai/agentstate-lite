@@ -224,6 +224,17 @@ async function bootPagesServer(): Promise<{ handle: UiServerHandle; origin: stri
   await writeBlob(bundle, "pages/test.html", Buffer.from("<!doctype html><title>t</title><p>hi</p>"), "text/html; charset=utf-8");
   await writeBlob(bundle, "secrets/creds.bin", Buffer.from("TOP-SECRET"), "application/octet-stream");
   await writeDoc(bundle, { id: "pages-registry/test", frontmatter: { type: "Page", title: "Test", entry: "pages/test.html" }, body: "" });
+  // A kind convention with a terminal declaration — the /__ui/kinds endpoint's fixture.
+  await writeDoc(bundle, {
+    id: "conventions/task",
+    frontmatter: {
+      type: "Convention",
+      title: "Task",
+      governs: "Task",
+      fields: { required: ["title", "status"], values: { status: ["todo", "done", "canceled"] }, terminal: { status: ["done", "canceled"] } },
+    },
+    body: "# Task",
+  });
   const handle = await bootUiServer({ mode: "dir", port: 0, router: createRouter(bundle), bundle, sessionSecret: SECRET });
   const origin = `http://${handle.host}:${handle.port}`;
   return {
@@ -336,6 +347,63 @@ test("A1: mint is confined to REGISTERED page entries — an off-limits blob can
     assert.equal((await mintKey("pages/test.html")).status, 200);
   } finally {
     await cleanup();
+  }
+});
+
+test("kinds endpoint: session-gated, serves core's loadKinds registry (ONE registry — the bridge's open filter consumes it)", async () => {
+  const { origin, cleanup } = await bootPagesServer();
+  try {
+    // No session -> 403 (it is a data endpoint, not page bytes).
+    assert.equal((await fetch(`${origin}/__ui/kinds`)).status, 403);
+
+    const res = await fetch(`${origin}/__ui/kinds`, { headers: { cookie: `aslite_ui_session=${SECRET}` } });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { kinds: { governs: string; fields: { terminal: Record<string, string[]> } }[] };
+    const task = body.kinds.find((k) => k.governs === "Task");
+    assert.ok(task, "the bundle's Task convention is in the served registry");
+    assert.deepEqual(task.fields.terminal, { status: ["done", "canceled"] });
+  } finally {
+    await cleanup();
+  }
+});
+
+test("P2: remote mint paginates the Page registry to exhaustion — a page past the first wire page still opens", async () => {
+  // A fake remote whose type=Page listing spans TWO cursor pages; the target entry exists ONLY on
+  // the second. A first-page-only mint lookup (the old 500-doc ceiling) can never see it.
+  const server = createHttpServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    const json = (body: unknown): void => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(body));
+    };
+    if (url.searchParams.get("type") === "Page") {
+      if (url.searchParams.get("cursor") === "page-2") {
+        json({ docs: [{ id: "pages-registry/deep", version: "v1", frontmatter: { type: "Page", entry: "pages/deep.html" } }], next_cursor: null });
+      } else {
+        json({ docs: [{ id: "pages-registry/first", version: "v1", frontmatter: { type: "Page", entry: "pages/first.html" } }], next_cursor: "page-2" });
+      }
+      return;
+    }
+    json({ docs: [], next_cursor: null }); // the watcher's snapshot poll
+  });
+  const remoteOrigin = await listenOn(server);
+  try {
+    const handle = await bootUiServer({ mode: "remote", port: 0, remoteBase: remoteOrigin, sessionSecret: SECRET });
+    try {
+      const mint = (key: string) =>
+        fetch(`http://${handle.host}:${handle.port}/__page/mint`, {
+          method: "POST",
+          headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+          body: JSON.stringify({ key }),
+        });
+      assert.equal((await mint("pages/deep.html")).status, 200, "an entry on the SECOND wire page must mint");
+      assert.equal((await mint("pages/first.html")).status, 200);
+      assert.equal((await mint("pages/not-registered.html")).status, 403, "confinement is intact across pagination");
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    server.close();
   }
 });
 

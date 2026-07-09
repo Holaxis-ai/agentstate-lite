@@ -9,7 +9,7 @@
  */
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchConfig, listPages, type PageEntry } from "../api/pages.js";
+import { fetchConfig, listPages, invalidateKinds, type PageEntry } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { navigate } from "../routing.js";
 
@@ -26,6 +26,7 @@ export function Launcher() {
 
   useEffect(() => {
     return subscribeToChanges((e) => {
+      invalidateKinds([...e.docs.changed.map((c) => c.id), ...e.docs.removed]);
       if (e.docs.changed.length > 0 || e.docs.removed.length > 0) {
         void queryClient.invalidateQueries({ queryKey: ["pages"] });
       }
@@ -36,6 +37,7 @@ export function Launcher() {
   // the gap shows up (tasks/ui-pages-spike P1, connection resilience).
   useEffect(() => {
     return subscribeToResync(() => {
+      invalidateKinds();
       void queryClient.invalidateQueries({ queryKey: ["pages"] });
     });
   }, [queryClient]);

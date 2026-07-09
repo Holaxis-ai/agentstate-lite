@@ -16,7 +16,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { basename } from "node:path";
 import { requestFromIncomingMessage, writeResponseToServerResponse } from "@agentstate-lite/server";
-import { readBlob, queryHeads, assertSafeBlobKey, type Bundle } from "@agentstate-lite/core";
+import { readBlob, queryHeads, assertSafeBlobKey, loadKinds, type Bundle } from "@agentstate-lite/core";
 import { isAllowedHost } from "./host.js";
 import { checkAuth, mintSessionSecret, sessionCookieHeader } from "./session.js";
 import { serveAsset } from "./assets.js";
@@ -42,6 +42,13 @@ export interface UiServerOptions {
   remoteBase?: string;
   /** `--remote` mode only: the stored API key for that origin, if any (absent ⇒ no `Authorization` header is sent — the zero-cloud E2E's keyless case). */
   apiKey?: string;
+  /**
+   * `--remote` mode only: a `RemoteBackend`-backed bundle over the same origin, used EXCLUSIVELY
+   * for kind-registry loads (`/__ui/kinds` -> core's `loadKinds` — gate 3: one registry, consumed
+   * everywhere). The SPA's `/v0/*` data path stays the reverse proxy; this is the same
+   * engine-level plumbing every other kind-aware CLI command already rides for `--remote`.
+   */
+  kindsBundle?: Bundle;
   /** Injectable for tests; defaults to a fresh random secret per boot (never reused across runs). */
   sessionSecret?: string;
 }
@@ -130,20 +137,26 @@ async function registeredPageEntries(options: UiServerOptions): Promise<Set<stri
     }
     return entries;
   }
-  const url = new URL(`${options.remoteBase}/v0/bundles/${REMOTE_BUNDLE}/docs`);
-  url.searchParams.set("fields", "frontmatter");
-  url.searchParams.set("type", "Page");
-  url.searchParams.set("limit", "500");
+  // Paginate to EXHAUSTION, exactly like the launcher's own page listing — a mint-side ceiling
+  // would strand every page past it (listed but unopenable, failing closed for no reason).
   const headers: Record<string, string> = {};
   if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
-  const res = await fetch(url, { headers });
-  if (res.ok) {
-    const body = (await res.json()) as { docs: { frontmatter: Record<string, unknown> }[] };
+  let cursor: string | undefined;
+  do {
+    const url = new URL(`${options.remoteBase}/v0/bundles/${REMOTE_BUNDLE}/docs`);
+    url.searchParams.set("fields", "frontmatter");
+    url.searchParams.set("type", "Page");
+    url.searchParams.set("limit", "200");
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const res = await fetch(url, { headers });
+    if (!res.ok) break; // fail closed: an unreadable registry mints (and serves) nothing extra
+    const body = (await res.json()) as { docs: { frontmatter: Record<string, unknown> }[]; next_cursor?: string | null };
     for (const d of body.docs) {
       const entry = d.frontmatter.entry;
       if (typeof entry === "string" && entry) entries.add(entry);
     }
-  }
+    cursor = body.next_cursor ?? undefined;
+  } while (cursor);
   return entries;
 }
 
@@ -205,6 +218,30 @@ function configResponse(options: UiServerOptions): Response {
   );
 }
 
+/**
+ * The bundle's kind conventions for the shell's bridge `open` filter, derived by core's
+ * `loadKinds` — the ONE registry (gate 3) — over the mode-appropriate bundle. The browser never
+ * re-implements discovery/dedupe; it consumes this serialized registry plus core's pure
+ * `isTerminal`. Best-effort: a bundle that cannot be read (e.g. a remote hiccup) yields an empty
+ * registry, which makes `open` filter nothing — the same posture as `list --open` on a bundle
+ * with no terminal declarations (this endpoint feeds a display filter, not a security boundary).
+ */
+async function kindsResponse(options: UiServerOptions): Promise<Response> {
+  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
+  let kinds: unknown[] = [];
+  if (bundle) {
+    try {
+      kinds = Array.from((await loadKinds(bundle)).kinds.values());
+    } catch {
+      kinds = [];
+    }
+  }
+  return new Response(JSON.stringify({ kinds }), {
+    status: 200,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -259,6 +296,8 @@ async function handleRequest(
     response = await handleMint(request, runtime, options);
   } else if (url.pathname === "/__ui/config") {
     response = configResponse(options);
+  } else if (url.pathname === "/__ui/kinds") {
+    response = await kindsResponse(options);
   } else if (url.pathname.startsWith("/v0/")) {
     response =
       options.mode === "dir"
