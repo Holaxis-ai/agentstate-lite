@@ -4,7 +4,7 @@ title: >-
   The local-first daily loop: board in git, product-native discovery, session
   hooks
 status: active
-timestamp: '2026-07-09T17:40:20.185Z'
+timestamp: '2026-07-09T21:04:53.743Z'
 ---
 [contains](../tasks/project-binding.md)
 
@@ -59,3 +59,5 @@ timestamp: '2026-07-09T17:40:20.185Z'
 [contains](../tasks/sync-migrate-removal.md)
 
 [contains](../tasks/sync-local-only-degradation.md)
+
+[contains](../tasks/board-parity-test-post-migration.md)
