@@ -49,6 +49,7 @@ import {
   sessionStartHookCommand,
 } from "../src/commands/hook.js";
 import { readCursor, readMarker, readSelfActors, type AwarenessCache } from "../src/cursor.js";
+import { initBundle, writeDoc } from "@agentstate-lite/core";
 import {
   commitBoard,
   git,
@@ -178,12 +179,16 @@ test("buildBoardBlock: offline pull → pinned note + last-known delta labeled a
   assert.equal(rec.as_of, "2026-07-08T00:00:00.000Z");
 });
 
-test("buildBoardBlock: a render straight after a SUCCESSFUL pull carries no as_of label", () => {
+test("buildBoardBlock: ONLY a cache-refreshing pull skips as_of; a local-state swallow keeps it", () => {
   const status = provisionedStatus(cacheOf([row("mike")]));
-  const { block } = buildBoardBlock(status, { offline: false }, INV);
-  const rec = block as Record<string, unknown>;
-  assert.equal(rec.as_of, undefined);
-  assert.equal(rec.note, undefined);
+  // A SUCCESSFUL pull (refreshed: the cache was just rewritten) — no freshness label needed.
+  const fresh = buildBoardBlock(status, { offline: false, refreshed: true }, INV);
+  assert.equal((fresh.block as Record<string, unknown>).as_of, undefined);
+  assert.equal((fresh.block as Record<string, unknown>).note, undefined);
+  // A local-state-swallowed pull (diverged/dirty): offline:false but the cache was NOT refreshed
+  // — the as_of label must attach (review round: `!pull || pull.offline` let this read as fresh).
+  const swallowed = buildBoardBlock(status, { offline: false }, INV);
+  assert.equal((swallowed.block as Record<string, unknown>).as_of, "2026-07-08T00:00:00.000Z");
 });
 
 test("buildBoardBlock: self-authored rows are filtered from the human count", () => {
@@ -487,10 +492,13 @@ test("fail-soft: a THROWING injected pull still renders (offline outcome), exit 
   }
 });
 
-test("local-state swallow (diverged) → honest 'run sync' note, not the offline note", async () => {
+test("local-state swallow (diverged) → honest 'run sync' note, not the offline note; stale cache labeled as_of", async () => {
   const topo = await makeTwoCloneTopology();
   const homeB = await tempHome();
   try {
+    // A successful session start first, so a cache exists to be honestly labeled stale later.
+    await runSessionStart(homeB, ["--dir", topo.b.root]);
+
     // B commits locally; A pushes a different commit — origin and B diverge.
     await writeBoardDoc(topo.b, "tasks/b-local", {
       frontmatter: { type: "Task", title: "B local", actor: "brian" },
@@ -504,6 +512,9 @@ test("local-state swallow (diverged) → honest 'run sync' note, not the offline
     const out = await runSessionStart(homeB, ["--dir", topo.b.root]);
     assert.match(out, /board pull skipped \(diverged\) — run `.* sync` to reconcile/);
     assert.ok(!out.includes(BOARD_OFFLINE_NOTE), "a divergence is not an offline state");
+    // The swallowed pull did NOT refresh the cache — the render must carry the freshness label
+    // (review round: offline:false must not read as "just pulled").
+    assert.match(out, /as_of: /);
   } finally {
     await topo.cleanup();
     await rm(homeB, { recursive: true, force: true });
@@ -636,6 +647,35 @@ test("sessionStartHookCommand: bare base passes through; a spaced path is quoted
 });
 
 // ── 6. no-repo / boardless session-start stays serene ─────────────────────────
+
+test("session-start --dir on a BOARDLESS project with a committed bundle: dashboard, never 'run init'", async () => {
+  // THIS repo's own pre-migration shape: a plain `.agentstate-lite/` bundle committed on main,
+  // no `board` branch anywhere. The --dir bridge must fall back to home's DISCOVERY walk from
+  // the project dir — treating the project dir as a literal bundle root dangled a wrong `init`
+  // hint next to a real bundle (review round, fix 3).
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-committed-bundle-"));
+  const homeDir = await tempHome();
+  try {
+    git(dir, ["init", "-b", "main", "."]);
+    const bundleDir = path.join(dir, ".agentstate-lite");
+    await initBundle(bundleDir);
+    await writeDoc(
+      { root: bundleDir },
+      { id: "tasks/one", frontmatter: { type: "Task", title: "One" }, body: "x\n" },
+    );
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-m", "main: committed bundle, no board branch"]);
+
+    const out = await runSessionStart(homeDir, ["--dir", dir]);
+    assert.match(out, /docs: 1/);
+    assert.ok(!out.includes("getting_started"), "no init hint next to a real committed bundle");
+    assert.ok(!/run `[^`]*init`/.test(out), "no init hint may appear");
+    assert.ok(!out.includes("board sync offline"), "boardless is not an offline state");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
 
 test("session-start outside any git repo: no board block, plain home render, resolves cleanly", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "aslite-norepo-"));

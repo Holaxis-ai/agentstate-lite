@@ -50,10 +50,23 @@ description: >-
   skipped (<reason>) — run sync to reconcile', not the offline note — builder
   wording; (d) reviewer should hand-check the resolveBundleKey call path for
   realpath (harness realpaths its roots — advisory (b)); resolveBundleKey
-  realpaths internally, callers pass repo-top-derived paths.
+  realpaths internally, callers pass repo-top-derived paths. REVIEW ROUND
+  (APPROVE + 3 polish fixes, applied on top): CLAUDE.md gate-1 hook bullet
+  updated to the hand-rolled truth; as_of now keyed on an explicit
+  pull.refreshed flag (a local-state-swallowed pull no longer reads as fresh —
+  test-pinned pure + diverged e2e); the --dir bridge falls back to home's
+  DISCOVERY walk when no board resolved (a boardless project with a committed
+  .agentstate-lite no longer gets an init hint — test-pinned on this repo's
+  shape). KNOWN NOTES: (a) home's board probe's local git spawns inherit the 30s
+  LOCAL_TIMEOUT per op — realistic-case instant, but a pathological FS stall
+  could blow the 10s hook window (worst-case unbudgeted by design; the budget
+  slicing covers the network ops only); (b) hermeticity: tests that run
+  home/session-start with DEFAULT deps read the real user HOME for the
+  hook-freshness probe (this suite injects hookNeedsUpdate/swaps HOME; ad-hoc
+  default-deps runs on a dev machine may see the hook_update nag).
 actor: builder-u4
 assignee: brian-claude
-timestamp: '2026-07-09T00:02:05.258Z'
+timestamp: '2026-07-09T00:28:14.726Z'
 ---
 # U4 — SessionStart integration
 

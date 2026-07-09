@@ -56,7 +56,7 @@ import {
   retargetBoardInterior,
   toDeltaRows,
 } from "./sync.js";
-import { defaultSummarizeBundle, home, type BoardPullOutcome } from "./home.js";
+import { defaultSummarizeBundle, discoverSummarizeBundle, home, type BoardPullOutcome } from "./home.js";
 import { cliInvocation } from "../invocation.js";
 import { parseOrUsage } from "../args.js";
 
@@ -181,14 +181,15 @@ export async function sessionStartPull(
       });
     } else {
       // Dangling cursor (history rewritten) — U2's honest re-anchor: empty delta + note, never a
-      // silent skip, never fatal.
+      // silent skip, never fatal. (It writes a cache too, so `refreshed` below stays true.)
       await recordReanchor(
         key,
         { tier: "git", token: postPullHead },
         { unpushedCount: unpushedCount(boardPath) ?? 0, uncommittedCount: countUncommitted(boardPath) },
       );
     }
-    return { offline: false, boardPath, ...(announcement ? { announcement } : {}) };
+    // The ONE outcome that rewrote the cache — the render may skip its as_of freshness label.
+    return { offline: false, refreshed: true, boardPath, ...(announcement ? { announcement } : {}) };
   } catch {
     // The last defense of the fail-soft matrix: an unexpected throw means this run could not
     // verify the board's currency — render the last-known state with the offline note. (The note
@@ -255,19 +256,27 @@ export async function sessionStart(argv: string[], deps: Partial<SessionStartDep
   //
   // `--dir` SEMANTICS BRIDGE: this verb's `--dir` names the PROJECT directory to run from (sync's
   // semantics); home's `--dir` names a literal BUNDLE root. Forwarding a project path verbatim
-  // would make home's dashboard miss the bundle (and dangle an `init` hint next to a live board),
-  // so when the pull resolved a provisioned board, the dashboard is pointed at the BOARD bundle
-  // itself via the injectable summarizer. A bare (cwd) invocation — the installed hook's shape —
-  // keeps home's byte-identical conventional discovery instead.
+  // would make home's dashboard miss the project's bundle and dangle a wrong `init` hint next to
+  // it. So with an explicit --dir the dashboard's summarizer is redirected: board resolved →
+  // summarize the BOARD bundle itself; no board (a boardless project with a committed
+  // `.agentstate-lite/`, this repo's own pre-migration shape) → home's normal DISCOVERY walk,
+  // started from the given dir instead of the cwd. A bare (cwd) invocation — the installed
+  // hook's shape — keeps home's byte-identical conventional discovery.
   const homeArgv: string[] = [];
   if (values.dir !== undefined) homeArgv.push("--dir", values.dir);
   if (values.json) homeArgv.push("--json");
   const boardPath = outcome?.boardPath;
+  const projectDir = values.dir;
   await home(homeArgv, {
     stdout,
     boardPull: outcome,
-    ...(values.dir !== undefined && boardPath !== undefined
-      ? { summarizeBundle: () => defaultSummarizeBundle(boardPath) }
+    ...(projectDir !== undefined
+      ? {
+          summarizeBundle: () =>
+            boardPath !== undefined
+              ? defaultSummarizeBundle(boardPath)
+              : discoverSummarizeBundle(projectDir),
+        }
       : {}),
   });
 }

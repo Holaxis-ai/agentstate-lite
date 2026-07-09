@@ -54,8 +54,10 @@ Watch-points that are easy to regress here:
 - **Mutations are idempotent.** Re-writing a doc or re-adding an existing link must be a
   no-op that exits 0 (`link add` returns `changed:false` when the link already exists).
 - **The SessionStart hook targets Claude Code, Codex, AND OpenCode.** `hook install` writes a
-  REAL SessionStart hook to all three (via axi-sdk-js `installSessionStartHooks`) with a portable
-  command (the bare bin name when on PATH, else the absolute executable) — no phantom `dist/axi`.
+  REAL `<bin> session-start` hook to all three — hand-rolled over axi-sdk-js's exported pure
+  updaters (the SDK installer can't express argv; our args-aware OpenCode plugin stays
+  SDK-marker compatible) — with a portable command base (bare bin name when on PATH, else the
+  absolute executable) — no phantom `dist/axi`.
 
 ### 2. OKF-conformance for bundles
 

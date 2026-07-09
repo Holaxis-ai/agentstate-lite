@@ -14831,6 +14831,14 @@ async function defaultSummarizeBundle(dir) {
     return { root: collapseHomeDirectory2(bundle.root), unreadable: true };
   }
 }
+async function discoverSummarizeBundle(startDir) {
+  try {
+    const root = await findBundleRoot(path11.resolve(startDir));
+    return root ? defaultSummarizeBundle(root) : null;
+  } catch {
+    return null;
+  }
+}
 var BOARD_UP_TO_DATE = "up to date";
 var BOARD_OFFLINE_NOTE = "board sync offline \u2014 showing last known state";
 var BOARD_CHANGES_SHOWN_LIMIT = 10;
@@ -14883,7 +14891,7 @@ function buildBoardBlock(status2, pull2, inv) {
   if (pull2?.notes) notes.push(...pull2.notes);
   if (status2.cache?.note) notes.push(status2.cache.note);
   if (notes.length > 0) rec.note = notes.join("; ");
-  if (status2.cache && (!pull2 || pull2.offline) && Object.keys(rec).length > 0) {
+  if (status2.cache && !pull2?.refreshed && Object.keys(rec).length > 0) {
     rec.as_of = status2.cache.updatedAt;
   }
   if (Object.keys(rec).length === 0) return { block: BOARD_UP_TO_DATE };
@@ -15188,7 +15196,7 @@ async function sessionStartPull(dir, budgetMs = SESSION_START_PULL_BUDGET_MS, no
         { unpushedCount: unpushedCount(boardPath) ?? 0, uncommittedCount: countUncommitted(boardPath) }
       );
     }
-    return { offline: false, boardPath, ...announcement ? { announcement } : {} };
+    return { offline: false, refreshed: true, boardPath, ...announcement ? { announcement } : {} };
   } catch {
     return { offline: true };
   }
@@ -15232,10 +15240,13 @@ async function sessionStart(argv, deps = {}) {
   if (values.dir !== void 0) homeArgv.push("--dir", values.dir);
   if (values.json) homeArgv.push("--json");
   const boardPath = outcome?.boardPath;
+  const projectDir = values.dir;
   await home(homeArgv, {
     stdout,
     boardPull: outcome,
-    ...values.dir !== void 0 && boardPath !== void 0 ? { summarizeBundle: () => defaultSummarizeBundle(boardPath) } : {}
+    ...projectDir !== void 0 ? {
+      summarizeBundle: () => boardPath !== void 0 ? defaultSummarizeBundle(boardPath) : discoverSummarizeBundle(projectDir)
+    } : {}
   });
 }
 

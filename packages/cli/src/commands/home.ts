@@ -48,7 +48,7 @@ import { loadCredentials, type Credentials } from "../credentials.js";
 import { cliInvocation, binPath, collapseHomeDirectory } from "../invocation.js";
 import { DESCRIPTION, commandReference, compactCommandReference } from "../reference.js";
 import { render } from "../output.js";
-import { openBundle, resolveProjectBinding } from "../bundle.js";
+import { findBundleRoot, openBundle, resolveProjectBinding } from "../bundle.js";
 import { normalizeServer } from "../config.js";
 import { queryHeads, type OkfDocument } from "@agentstate-lite/core";
 import { parseArgs } from "node:util";
@@ -220,6 +220,25 @@ export async function defaultSummarizeBundle(dir?: string): Promise<BundleSummar
   }
 }
 
+/**
+ * `defaultSummarizeBundle` with DISCOVERY semantics: walk up from `startDir` for the nearest
+ * bundle root (a level's own `index.md`, else its conventional `.agentstate-lite/index.md` —
+ * bundle.ts's one walk) and summarize THAT. session-start's `--dir` bridge uses this when no
+ * board resolved: its `--dir` names a PROJECT directory, so treating it as a literal bundle root
+ * (what an explicit `--dir` means to `openBundle`) would miss a committed conventional bundle
+ * sitting right under it and dangle a wrong `init` hint next to a real bundle.
+ */
+export async function discoverSummarizeBundle(
+  startDir: string,
+): Promise<BundleSummary | UnreadableBundle | null> {
+  try {
+    const root = await findBundleRoot(path.resolve(startDir));
+    return root ? defaultSummarizeBundle(root) : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── board awareness (sync-verb §U4) ───────────────────────────────────────────
 
 /**
@@ -233,6 +252,13 @@ export interface BoardPullOutcome {
    * {@link BOARD_OFFLINE_NOTE}.
    */
   offline: boolean;
+  /**
+   * True ONLY when this run's pull SUCCEEDED and rewrote the awareness cache (including the
+   * re-anchor path — that writes a cache too). This is the explicit signal that lets the render
+   * skip the `as_of` freshness label; every other outcome — offline, a local-state swallow
+   * (diverged/dirty), a lost time box — leaves the cache as it was, so the label must attach.
+   */
+  refreshed?: boolean;
   /** Rider-2 provisioning announcements when THIS run provisioned/repaired the checkout. */
   announcement?: Record<string, string>;
   /** Additional honest condition lines (e.g. a non-network pull skip pointing at `sync`). */
@@ -321,8 +347,9 @@ function countOr(live: number | null, cached: number | undefined): number {
  * Returns `block` (a string — the pinned "up to date" — or the record of moment-(e) lines) for a
  * provisioned board, or `firstContact` (the "run sync, never init" line) for a detected-but-
  * unprovisioned one. Self-authored rows (actor ∈ selfActors) are filtered from the human count;
- * `as_of` labels a render that did NOT just complete a successful pull (plain home, or an offline
- * session-start) so a stale cache never reads as current.
+ * `as_of` labels every render whose pull did NOT refresh the cache (plain home, an offline
+ * session-start, a local-state-swallowed pull) so a stale cache never reads as current — only
+ * `pull.refreshed` skips it.
  */
 export function buildBoardBlock(
   status: BoardStatus | null,
@@ -351,8 +378,12 @@ export function buildBoardBlock(
   if (pull?.notes) notes.push(...pull.notes);
   if (status.cache?.note) notes.push(status.cache.note);
   if (notes.length > 0) rec.note = notes.join("; ");
-  // Freshness labeling: only a render straight after a SUCCESSFUL pull may skip it.
-  if (status.cache && (!pull || pull.offline) && Object.keys(rec).length > 0) {
+  // Freshness labeling: only a render straight after a SUCCESSFUL pull (pull.refreshed — the
+  // pull actually rewrote the cache) may skip it. Everything else — plain home, an offline pull,
+  // AND a local-state swallow (diverged/dirty: offline:false but the cache was NOT refreshed) —
+  // must label the cache's age (review round: the old `!pull || pull.offline` condition let the
+  // swallowed case masquerade as fresh).
+  if (status.cache && !pull?.refreshed && Object.keys(rec).length > 0) {
     rec.as_of = status.cache.updatedAt;
   }
   if (Object.keys(rec).length === 0) return { block: BOARD_UP_TO_DATE };

@@ -117,9 +117,12 @@ export const CONVENTIONAL_BUNDLE_DIR_NAME = ".agentstate-lite";
  * Walk up from `start` to the nearest bundle root; null if none. At EACH level, the
  * directory's own `index.md` is checked first (standing inside a bundle keeps winning),
  * then the conventional `.agentstate-lite/index.md` — so the nearest level wins overall,
- * and within a level an enclosing bundle beats the conventional folder.
+ * and within a level an enclosing bundle beats the conventional folder. EXPORTED for
+ * session-start's `--dir` bridge (home.ts `discoverSummarizeBundle`): its `--dir` names a
+ * PROJECT directory, so the dashboard needs THIS walk, not `openBundle`'s literal-root reading
+ * of an explicit dir.
  */
-async function findBundleRoot(start: string): Promise<string | null> {
+export async function findBundleRoot(start: string): Promise<string | null> {
   let dir = path.resolve(start);
   // eslint-disable-next-line no-constant-condition
   while (true) {
