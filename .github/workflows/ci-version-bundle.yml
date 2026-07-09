@@ -1,0 +1,61 @@
+name: CI version + bundle automation
+
+# Retires the PR-carried "bump both manifests + rebuild the committed skill bundle" tax
+# (see .agentstate-lite/tasks/ci-version-bundle-automation.md and CLAUDE.md's Working-here
+# section). On every push to main, regenerate the committed plugin artifacts and — only if that
+# regeneration actually changed something — bump the plugin version in both manifests, committing
+# artifact+manifests together (the plugin cache is version-keyed, so they must land atomically).
+#
+# LOOP SAFETY: the real guard is convergence, not this workflow's triggers. The bot's own commit
+# re-triggers this workflow, but scripts/ci-version-bundle.mjs regenerates against what it JUST
+# committed, finds no diff, and no-ops — see that script's header comment and its "convergence"
+# test. The `if: github.actor != 'github-actions[bot]'` below is only a cheap optimization to skip
+# a redundant job for the bot's own push; correctness does not depend on it.
+#
+# RACE SAFETY: `concurrency` serializes runs on main (never cancels one mid-push) and the checkout
+# below pins `ref: main` (not the triggering commit's fixed sha) so a queued run always operates on
+# the CURRENT tip when it executes — including any bump a prior queued run already pushed.
+#
+# NOTE: if branch protection is ever enabled on `main`, this workflow's plain `git push` (using the
+# default GITHUB_TOKEN) will start failing and needs a revisit (e.g. a bot PAT / app token with a
+# bypass rule, or switching this to open an auto-mergeable PR instead of pushing directly).
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-version-bundle-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bump-and-regen:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Regenerate committed plugin artifacts; bump version if anything changed
+        run: node scripts/ci-version-bundle.mjs
+
+      - name: Commit and push if anything changed
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "ci: bump plugin version + regenerate committed skill bundle"
+            git push origin HEAD:main
+          else
+            echo "no changes — committed plugin artifacts already match a fresh rebuild"
+          fi

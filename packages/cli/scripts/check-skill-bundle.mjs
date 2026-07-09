@@ -2,8 +2,13 @@
 //
 // Rebuilds the CLI with the SAME esbuild config used by build.mjs (scripts/build-bundle.mjs — one
 // bundler config, no duplication) into a scratch temp file, then byte-compares it against the
-// committed skill bundle. Exits 1 on any mismatch (missing committed file, or bytes differ) so CI
-// (root `npm run check`) catches a source edit that was never rebuilt.
+// committed skill bundle. Exits 1 on any mismatch (missing committed file, or bytes differ).
+//
+// NOT part of the root `npm run check` PR gate (2026-07-09): the committed bundle is version-keyed
+// plugin content that a CI bot now regenerates + bumps on merge to main
+// (scripts/ci-version-bundle.mjs), so a PR branch is not expected to carry a current rebuild. Run
+// this manually (or via `npm run check:plugin-bundle` at the repo root) to check drift by hand;
+// see CLAUDE.md's Working-here section for the full contract.
 //
 //   node scripts/check-skill-bundle.mjs
 //
