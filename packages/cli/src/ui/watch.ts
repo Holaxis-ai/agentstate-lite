@@ -83,8 +83,10 @@ export async function snapshotBundle(bundle: Bundle): Promise<Snapshot> {
  * Snapshot a remote over the wire: doc heads via the `GET /docs?fields=frontmatter` projection,
  * paginated to exhaustion. Remote page-blob hot-reload is a LABELED follow-up (v0 ships live DOC
  * updates over `--remote`; blob-change hot-reload stays local-mode only), so `blobs` is empty here.
+ * `signal` cancels an in-flight request — the watcher aborts it on `stop()` instead of leaving a
+ * dangling fetch past shutdown.
  */
-export async function snapshotRemote(base: string, apiKey?: string): Promise<Snapshot> {
+export async function snapshotRemote(base: string, apiKey?: string, signal?: AbortSignal): Promise<Snapshot> {
   const docs = new Map<string, string>();
   const headers: Record<string, string> = {};
   if (apiKey) headers.authorization = `Bearer ${apiKey}`;
@@ -94,7 +96,7 @@ export async function snapshotRemote(base: string, apiKey?: string): Promise<Sna
     url.searchParams.set("fields", "frontmatter");
     url.searchParams.set("limit", "200");
     if (cursor) url.searchParams.set("cursor", cursor);
-    const res = await fetch(url, { headers });
+    const res = await fetch(url, { headers, signal });
     if (!res.ok) throw new Error(`remote snapshot failed with status ${res.status}`);
     const body = (await res.json()) as { docs: { id: string; version: string }[]; next_cursor: string | null };
     for (const d of body.docs) docs.set(d.id, d.version);
@@ -116,8 +118,8 @@ export type WatcherOptions =
   | (CommonWatcherOptions & { mode: "dir"; bundle: Bundle; debounceMs?: number })
   | (CommonWatcherOptions & { mode: "remote"; remoteBase: string; apiKey?: string; pollMs?: number });
 
-async function takeSnapshot(opts: WatcherOptions): Promise<Snapshot> {
-  return opts.mode === "dir" ? snapshotBundle(opts.bundle) : snapshotRemote(opts.remoteBase, opts.apiKey);
+async function takeSnapshot(opts: WatcherOptions, signal?: AbortSignal): Promise<Snapshot> {
+  return opts.mode === "dir" ? snapshotBundle(opts.bundle) : snapshotRemote(opts.remoteBase, opts.apiKey, signal);
 }
 
 /**
@@ -125,20 +127,41 @@ async function takeSnapshot(opts: WatcherOptions): Promise<Snapshot> {
  * page blob's version token moves. `--dir` uses `fs.watch` recursively (debounced) with a 2s poll
  * fallback if the platform rejects a recursive watch; `--remote` polls on a fixed interval. Awaits
  * a baseline snapshot before resolving, so the first change is diffed against real state.
+ *
+ * Snapshot runs are SERIALIZED (tasks/ui-pages-spike P1 — remote concurrency): two overlapping
+ * runs could complete out of order — the LATER-started (fresher) one lands first, then the
+ * earlier (staler) one both emits a regression delta AND poisons `last` with the older state, so
+ * the next tick re-emits the same change (the observed C -> B -> C). A tick that fires while a
+ * run is in flight marks a rerun instead of overlapping; `stop()` aborts any in-flight remote
+ * request and suppresses every later emission.
  */
 export async function startWatcher(opts: WatcherOptions): Promise<WatcherHandle> {
-  let last = await takeSnapshot(opts);
+  const aborter = new AbortController();
+  let last = await takeSnapshot(opts, aborter.signal);
   let stopped = false;
+  let running = false;
+  let rerun = false;
 
   const emitDiff = async (): Promise<void> => {
     if (stopped) return;
+    if (running) {
+      rerun = true; // never overlap — the active run re-runs once it finishes
+      return;
+    }
+    running = true;
     try {
-      const next = await takeSnapshot(opts);
-      const change = diffSnapshots(last, next);
-      last = next;
-      if (!isEmptyChange(change)) opts.onChange(change);
+      do {
+        rerun = false;
+        const next = await takeSnapshot(opts, aborter.signal);
+        if (stopped) return;
+        const change = diffSnapshots(last, next);
+        last = next;
+        if (!isEmptyChange(change)) opts.onChange(change);
+      } while (rerun && !stopped);
     } catch (err) {
-      opts.onError?.(err);
+      if (!stopped) opts.onError?.(err);
+    } finally {
+      running = false;
     }
   };
 
@@ -178,6 +201,7 @@ export async function startWatcher(opts: WatcherOptions): Promise<WatcherHandle>
         if (timer) clearTimeout(timer);
         watcher?.close();
         if (pollFallback) clearInterval(pollFallback);
+        aborter.abort();
       },
     };
   }
@@ -189,6 +213,7 @@ export async function startWatcher(opts: WatcherOptions): Promise<WatcherHandle>
     stop: async () => {
       stopped = true;
       clearInterval(timer);
+      aborter.abort(); // cancel any in-flight snapshot request — nothing dangles past shutdown
     },
   };
 }

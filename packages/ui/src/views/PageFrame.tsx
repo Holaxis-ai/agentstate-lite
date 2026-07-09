@@ -9,10 +9,10 @@
  *   3. Fans SSE doc changes into the subscribed page as bridge `change` events, and HOT-RELOADS the
  *      iframe (fresh nonce) when the page's own HTML blob changes.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getDoc, listAllHeads } from "../api/client.js";
 import { mintPageNonce, fetchConfig } from "../api/pages.js";
-import { subscribeToChanges } from "../pages/pageEvents.js";
+import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { handleBridgeRequest, changeMessage, type BridgeDeps } from "../pages/bridge.js";
 import { navigate } from "../routing.js";
 
@@ -25,36 +25,62 @@ const bridgeDeps: BridgeDeps = {
 export function PageFrame({ pageId }: { pageId: string }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const subscribedRef = useRef(false);
+  // Bumped on every (re)load trigger, revoke, and unmount — a resolution that finishes after a
+  // newer one started (or after a revoke) must not clobber the newer state.
+  const loadSeqRef = useRef(0);
   const [src, setSrc] = useState<string | null>(null);
   const [entryKey, setEntryKey] = useState<string | null>(null);
   const [title, setTitle] = useState<string>(pageId);
   const [error, setError] = useState<string | null>(null);
 
-  // Resolve registry doc -> entry key -> nonce URL.
+  // P1 (doc-lifecycle revocation): tear the frame down to an explicit terminal state — the
+  // sandboxed iframe unmounts, so its bridge access ends WITH its registry doc, not after it.
+  const revoke = useCallback((reason: string) => {
+    loadSeqRef.current++;
+    subscribedRef.current = false;
+    setSrc(null);
+    setEntryKey(null);
+    setError(reason);
+  }, []);
+
+  /**
+   * Resolve registry doc -> entry key -> nonce URL and (re)load the frame. The ONE path for
+   * initial mount, registry-doc change (which may RETARGET `entry`), and blob hot-reload — so a
+   * reload always re-reads what the doc currently declares and re-mints against the live registry.
+   */
+  const loadPage = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
+    try {
+      const { doc } = await getDoc(pageId);
+      const entry = typeof doc.frontmatter.entry === "string" ? doc.frontmatter.entry : "";
+      const pageTitle = typeof doc.frontmatter.title === "string" ? doc.frontmatter.title : pageId;
+      if (!entry) throw new Error(`page '${pageId}' declares no 'entry' blob key`);
+      const url = await mintPageNonce(entry);
+      if (seq !== loadSeqRef.current) return;
+      subscribedRef.current = false;
+      setEntryKey(entry);
+      setTitle(pageTitle);
+      setError(null);
+      setSrc(url);
+    } catch (e) {
+      if (seq !== loadSeqRef.current) return;
+      subscribedRef.current = false;
+      setSrc(null);
+      setEntryKey(null);
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [pageId]);
+
+  // Resolve registry doc -> entry key -> nonce URL on mount / page switch.
   useEffect(() => {
-    let cancelled = false;
     subscribedRef.current = false;
     setSrc(null);
     setError(null);
-    void (async () => {
-      try {
-        const { doc } = await getDoc(pageId);
-        const entry = typeof doc.frontmatter.entry === "string" ? doc.frontmatter.entry : "";
-        const pageTitle = typeof doc.frontmatter.title === "string" ? doc.frontmatter.title : pageId;
-        if (!entry) throw new Error(`page '${pageId}' declares no 'entry' blob key`);
-        const url = await mintPageNonce(entry);
-        if (cancelled) return;
-        setEntryKey(entry);
-        setTitle(pageTitle);
-        setSrc(url);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      }
-    })();
+    void loadPage();
     return () => {
-      cancelled = true;
+      loadSeqRef.current++;
     };
-  }, [pageId]);
+  }, [loadPage]);
 
   // Broker page->shell bridge requests (source-validated, read-only).
   useEffect(() => {
@@ -70,21 +96,35 @@ export function PageFrame({ pageId }: { pageId: string }) {
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
-  // Live: push doc changes to the subscribed page; hot-reload on this page's own blob change.
+  // Live: push doc changes to the subscribed page; REVOKE when this page's registry doc is
+  // removed (P1 — an open frame must not keep reading through the bridge after its page is
+  // deleted); re-resolve on a registry-doc change (which may retarget `entry`); hot-reload on
+  // this page's own blob change.
   useEffect(() => {
     return subscribeToChanges((e) => {
       const frame = iframeRef.current;
       if (subscribedRef.current && frame?.contentWindow && (e.docs.changed.length > 0 || e.docs.removed.length > 0)) {
         frame.contentWindow.postMessage(changeMessage(e.docs.changed, e.docs.removed), "*");
       }
-      if (entryKey && e.blobs.changed.some((b) => b.key === entryKey)) {
-        void mintPageNonce(entryKey).then((url) => {
-          subscribedRef.current = false;
-          setSrc(url);
-        });
+      if (e.docs.removed.includes(pageId)) {
+        revoke("This page's registry doc was removed from the bundle — the page has been closed.");
+        return;
+      }
+      if (e.docs.changed.some((c) => c.id === pageId) || (entryKey !== null && e.blobs.changed.some((b) => b.key === entryKey))) {
+        void loadPage();
       }
     });
-  }, [entryKey]);
+  }, [entryKey, pageId, loadPage, revoke]);
+
+  // P1 (connection resilience): the SSE stream carries NO replay — anything that changed during a
+  // gap never arrives as a delta. On reconnect, re-resolve and RELOAD the frame outright: the page
+  // re-queries on boot (full catch-up), a registry doc deleted during the gap lands in the revoked
+  // state (getDoc fails), and a changed blob comes back as fresh bytes.
+  useEffect(() => {
+    return subscribeToResync(() => {
+      void loadPage();
+    });
+  }, [loadPage]);
 
   return (
     <div className="page-frame">
@@ -101,8 +141,10 @@ export function PageFrame({ pageId }: { pageId: string }) {
       {error ? (
         <p className="view-status view-status-error">Could not open page: {error}</p>
       ) : src ? (
-        // allow-scripts ONLY — no allow-same-origin: opaque origin, no data-API reach.
-        <iframe ref={iframeRef} className="page-frame-iframe" sandbox="allow-scripts" src={src} title={title} />
+        // allow-scripts ONLY — no allow-same-origin: opaque origin, no data-API reach. And NO
+        // referrer: the shell's URL (which carried ?token= before the scrub) must never reach the
+        // untrusted page as document.referrer (tasks/ui-pages-spike P1).
+        <iframe ref={iframeRef} className="page-frame-iframe" sandbox="allow-scripts" referrerPolicy="no-referrer" src={src} title={title} />
       ) : (
         <p className="view-status">Opening page…</p>
       )}

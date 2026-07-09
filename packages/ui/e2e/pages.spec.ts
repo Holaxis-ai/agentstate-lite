@@ -117,6 +117,55 @@ test("the sandboxed page cannot navigate its frame (or the top) to an external o
   }
 });
 
+test("P1: an SSE gap self-heals — a change made while the stream was down appears after reconnect (no permanent staleness)", async ({ page, context }) => {
+  const ui = await bootUiOverPagesBundle(TASKS);
+  try {
+    await page.goto(ui.url);
+    await page.locator('[data-page-id="pages-registry/board"]').click();
+    const frame = page.frameLocator("iframe.page-frame-iframe");
+    await expect(frame.locator(".col", { hasText: "To do" }).locator(".card h3", { hasText: "Alpha task" })).toBeVisible();
+
+    // Sever the network: the SSE stream drops, and every frame the server emits from here on is
+    // gone for good (no replay buffer server-side).
+    await context.setOffline(true);
+    await page.waitForTimeout(500); // let the client notice the drop
+
+    // The change happens DURING the gap — its SSE frame is lost.
+    execFileSync(process.execPath, [CLI_DIST, "doc", "update", "tasks/alpha", "--status", "in_progress", "--dir", ui.dir], {
+      stdio: "ignore",
+    });
+    await page.waitForTimeout(1_000); // the watcher broadcasts into the void while we're offline
+
+    // Restore the network: the stream reconnects and the resync reloads the page — the missed
+    // change must now be visible even though its delta frame never arrived.
+    await context.setOffline(false);
+    await expect(frame.locator(".col", { hasText: "In progress" }).locator(".card h3", { hasText: "Alpha task" })).toBeVisible({
+      timeout: 20_000,
+    });
+  } finally {
+    await ui.cleanup();
+  }
+});
+
+test("P1: deleting an open page's registry doc revokes the frame — the iframe closes and the bridge goes with it", async ({ page }) => {
+  const ui = await bootUiOverPagesBundle(TASKS);
+  try {
+    await page.goto(ui.url);
+    await page.locator('[data-page-id="pages-registry/board"]').click();
+    const frame = page.frameLocator("iframe.page-frame-iframe");
+    await expect(frame.locator(".card h3", { hasText: "Alpha task" })).toBeVisible();
+
+    // Delete the registry doc on disk via the CLI — the watcher pushes the removal over SSE.
+    execFileSync(process.execPath, [CLI_DIST, "doc", "delete", "pages-registry/board", "--dir", ui.dir], { stdio: "ignore" });
+
+    // The open frame is torn down (not merely stale) and an explicit revoked state shows.
+    await expect(page.locator("iframe.page-frame-iframe")).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.locator(".view-status-error")).toContainText("registry doc was removed");
+  } finally {
+    await ui.cleanup();
+  }
+});
+
 test("a status change streams live into the open page (card moves columns, no reload)", async ({ page }) => {
   const ui = await bootUiOverPagesBundle(TASKS);
   try {

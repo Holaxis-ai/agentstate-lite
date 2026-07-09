@@ -73,7 +73,7 @@ function pageError(status: number, message: string): Response {
   const body = `<!doctype html><meta charset="utf-8"><title>page unavailable</title><p>${message}</p>`;
   return new Response(body, {
     status,
-    headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": pageCsp() },
+    headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": pageCsp(), "referrer-policy": "no-referrer" },
   });
 }
 
@@ -100,6 +100,12 @@ async function readPageBlob(options: UiServerOptions, key: string): Promise<{ by
 async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonce: string): Promise<Response> {
   const key = runtime.nonces.resolve(nonce);
   if (!key) return pageError(403, "This page link is unknown or has expired. Reopen the page from the launcher.");
+  // Re-verify registration at SERVE time, not only at mint time: deleting/retargeting a page's
+  // registry doc revokes its live nonces immediately, instead of leaving a still-serving window
+  // for the rest of the nonce TTL (tasks/ui-pages-spike P1 — doc-lifecycle revocation).
+  if (!(await registeredPageEntries(options)).has(key)) {
+    return pageError(403, "This page is no longer registered in the bundle (its registry doc was removed or retargeted).");
+  }
   const blob = await readPageBlob(options, key);
   if (!blob) return pageError(404, `No page bytes found for '${key}'.`);
   return new Response(blob.bytes, {
@@ -109,6 +115,7 @@ async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonc
       "content-security-policy": pageCsp(),
       "x-content-type-options": "nosniff",
       "cache-control": "no-store",
+      "referrer-policy": "no-referrer",
     },
   });
 }

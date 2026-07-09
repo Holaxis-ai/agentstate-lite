@@ -51,6 +51,10 @@ export function serveAsset(pathname: string, acceptEncoding: string | null | und
     "content-type": asset.contentType,
     "content-security-policy": CSP_HEADER,
     "x-content-type-options": "nosniff",
+    // The shell document's URL may carry `?token=` on first load (before the SPA scrubs it via
+    // history.replaceState) — no request initiated by the shell, above all the untrusted page
+    // iframe's load, may ever carry that URL as a referrer (tasks/ui-pages-spike P1).
+    "referrer-policy": "no-referrer",
   };
   if (acceptsGzip(acceptEncoding)) {
     headers["content-encoding"] = "gzip";

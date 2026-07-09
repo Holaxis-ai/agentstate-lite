@@ -9,12 +9,13 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createServer as createHttpServer, type Server, type ServerResponse } from "node:http";
 
-import { initBundle, writeBlob, writeDoc, type Bundle } from "@agentstate-lite/core";
+import { deleteDoc, initBundle, writeBlob, writeDoc, type Bundle } from "@agentstate-lite/core";
 import { createRouter } from "@agentstate-lite/server";
 import { bootUiServer, type UiServerHandle } from "../src/ui/server.js";
 import { PageNonceRegistry, pageCsp } from "../src/ui/pages.js";
-import { diffSnapshots, isEmptyChange, type Snapshot } from "../src/ui/watch.js";
+import { diffSnapshots, isEmptyChange, startWatcher, type Snapshot } from "../src/ui/watch.js";
 import { writeUiUrlFile, clearUiUrlFile, uiUrlFilePath } from "../src/ui/url-file.js";
 
 // ── PageNonceRegistry ───────────────────────────────────────────────────────
@@ -111,11 +112,110 @@ test("isEmptyChange: true iff nothing moved on either side", () => {
   assert.equal(isEmptyChange(diffSnapshots(snap({ a: "v1" }), snap({ a: "v2" }))), false);
 });
 
+// ── remote watcher: serialized polls + abort on stop (P1 — remote concurrency) ─
+
+function listenOn(server: Server): Promise<string> {
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address() as { port: number };
+      resolve(`http://127.0.0.1:${addr.port}`);
+    });
+  });
+}
+
+async function waitFor(cond: () => boolean, ms = 5_000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > deadline) throw new Error("waitFor timed out");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
+test("P1: remote watcher polls NEVER overlap — a slow stale read cannot emit a C->B->C regression", async () => {
+  const staleDocs = [{ id: "doc", version: "vA" }];
+  const freshDocs = [{ id: "doc", version: "vB" }];
+  // Request 1 is the baseline (state A). Request 2 simulates a poll that STARTED before a write
+  // and answers with the STALE state only 250ms later. Every request after that sees the fresh
+  // state B immediately. Unserialized polls would interleave: a fast fresh poll lands (emit B),
+  // then the slow stale one lands (emit a REGRESSION back to A and poison `last`), then the next
+  // tick re-emits B — the observed C -> B -> C.
+  let requestNo = 0;
+  let active = 0;
+  let maxConcurrent = 0;
+  const server = createHttpServer((_req, res) => {
+    requestNo++;
+    active++;
+    maxConcurrent = Math.max(maxConcurrent, active);
+    const finish = (docs: { id: string; version: string }[]): void => {
+      active--;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ docs, next_cursor: null }));
+    };
+    if (requestNo === 1) finish(staleDocs);
+    else if (requestNo === 2) setTimeout(() => finish(staleDocs), 250);
+    else finish(freshDocs);
+  });
+  const origin = await listenOn(server);
+  try {
+    const emitted: string[] = [];
+    const watcher = await startWatcher({
+      mode: "remote",
+      remoteBase: origin,
+      pollMs: 30,
+      onChange: (e) => emitted.push(...e.docs.changed.map((c) => c.version)),
+    });
+    // Several poll ticks elapse WHILE request 2 is still held open, then plenty for the catch-up.
+    await new Promise((r) => setTimeout(r, 600));
+    await watcher.stop();
+
+    assert.equal(maxConcurrent, 1, "two snapshot requests must never be in flight at once");
+    assert.deepEqual(emitted, ["vB"], `exactly one forward change, no stale re-emission (got: ${emitted.join(",") || "none"})`);
+  } finally {
+    server.close();
+  }
+});
+
+test("P1: stop() ABORTS an in-flight snapshot request instead of leaving it dangling past shutdown", async () => {
+  let requestNo = 0;
+  let hungRes: ServerResponse | undefined;
+  let hungClosed = false;
+  const server = createHttpServer((_req, res) => {
+    requestNo++;
+    if (requestNo === 1) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ docs: [], next_cursor: null }));
+      return;
+    }
+    // Never answer — the ONLY way this request ends is the client tearing it down.
+    hungRes = res;
+    res.once("close", () => {
+      hungClosed = true;
+    });
+  });
+  const origin = await listenOn(server);
+  try {
+    const errors: unknown[] = [];
+    const watcher = await startWatcher({
+      mode: "remote",
+      remoteBase: origin,
+      pollMs: 20,
+      onChange: () => {},
+      onError: (err) => errors.push(err),
+    });
+    await waitFor(() => hungRes !== undefined); // a poll is now genuinely in flight
+    await watcher.stop();
+    await waitFor(() => hungClosed); // ...and the abort tore it down server-visibly
+    assert.equal(errors.length, 0, "an abort at shutdown is shutdown, not an error to report");
+  } finally {
+    server.close();
+  }
+});
+
 // ── privilege split (end-to-end over a real listener) ─────────────────────────
 
 const SECRET = "test-session-secret-pages-spike";
 
-async function bootPagesServer(): Promise<{ handle: UiServerHandle; origin: string; cleanup: () => Promise<void> }> {
+async function bootPagesServer(): Promise<{ handle: UiServerHandle; origin: string; dir: string; cleanup: () => Promise<void> }> {
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-pages-"));
   await initBundle(dir);
   const bundle: Bundle = { root: dir };
@@ -129,6 +229,7 @@ async function bootPagesServer(): Promise<{ handle: UiServerHandle; origin: stri
   return {
     handle,
     origin,
+    dir,
     cleanup: async () => {
       await handle.close();
       await rm(dir, { recursive: true, force: true });
@@ -246,6 +347,51 @@ test("B1: the shell asset CSP explicitly confines framing to same-origin (frame-
     const csp = res.headers.get("content-security-policy") ?? "";
     assert.match(csp, /frame-src 'self'/);
     assert.match(csp, /child-src 'self'/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("P1: deleting a page's registry doc revokes its LIVE nonce — page bytes stop serving immediately, not at TTL expiry", async () => {
+  const { origin, dir, cleanup } = await bootPagesServer();
+  try {
+    const mint = await fetch(`${origin}/__page/mint`, {
+      method: "POST",
+      headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+      body: JSON.stringify({ key: "pages/test.html" }),
+    });
+    assert.equal(mint.status, 200);
+    const { url } = (await mint.json()) as { url: string };
+
+    // The nonce serves while the registry doc lives...
+    assert.equal((await fetch(`${origin}${url}`)).status, 200);
+
+    // ...and stops the moment the doc is gone, with the nonce still inside its TTL.
+    await deleteDoc({ root: dir }, "pages-registry/test");
+    const revoked = await fetch(`${origin}${url}`);
+    assert.equal(revoked.status, 403);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("P1: shell assets AND page bytes both send Referrer-Policy: no-referrer (the tokenized shell URL must never ride a referrer)", async () => {
+  const { origin, cleanup } = await bootPagesServer();
+  try {
+    const shell = await fetch(`${origin}/`, { headers: { cookie: `aslite_ui_session=${SECRET}` } });
+    assert.equal(shell.status, 200);
+    assert.equal(shell.headers.get("referrer-policy"), "no-referrer");
+
+    const mint = await fetch(`${origin}/__page/mint`, {
+      method: "POST",
+      headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+      body: JSON.stringify({ key: "pages/test.html" }),
+    });
+    assert.equal(mint.status, 200);
+    const { url } = (await mint.json()) as { url: string };
+    const page = await fetch(`${origin}${url}`);
+    assert.equal(page.status, 200);
+    assert.equal(page.headers.get("referrer-policy"), "no-referrer");
   } finally {
     await cleanup();
   }

@@ -6,7 +6,7 @@
  * exactly what's under test.
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
-import { bootUiOverDirBundle } from "./harness.js";
+import { bootUiOverDirBundle, bootUiOverPagesBundle } from "./harness.js";
 
 test("a request with no token and no session cookie is rejected (403)", async () => {
   const instance = await bootUiOverDirBundle([]);
@@ -46,6 +46,34 @@ test("the tokenized URL exchanges for a session cookie that then authorizes plai
     }
   } finally {
     await instance.cleanup();
+  }
+});
+
+test("P1: the session token never reaches a framed page — address bar scrubbed, document.referrer empty inside the iframe", async ({ page }) => {
+  const ui = await bootUiOverPagesBundle([{ id: "tasks/alpha", frontmatter: { type: "Task", title: "Alpha task", status: "todo" }, body: "" }]);
+  try {
+    const token = new URL(ui.url).searchParams.get("token");
+    expect(token).toBeTruthy();
+
+    await page.goto(ui.url); // carries ?token= exactly once — the exchange request
+    // The SPA scrubbed the one-shot token from the address bar before rendering anything.
+    await expect
+      .poll(() => page.url(), { message: "the address bar should not keep the bootstrap token" })
+      .not.toContain(token as string);
+
+    // The session survives the scrub (cookie-auth'd from here on): open a page.
+    await page.locator('[data-page-id="pages-registry/board"]').click();
+    const handle = await page.waitForSelector("iframe.page-frame-iframe");
+    const frame = await handle.contentFrame();
+    if (!frame) throw new Error("iframe had no content frame");
+    await expect(page.frameLocator("iframe.page-frame-iframe").locator(".card h3", { hasText: "Alpha task" })).toBeVisible();
+
+    // Inside the untrusted page: NO referrer at all — above all, not the tokenized shell URL.
+    const referrer = await frame.evaluate(() => document.referrer);
+    expect(referrer).toBe("");
+    expect(referrer).not.toContain(token as string);
+  } finally {
+    await ui.cleanup();
   }
 });
 

@@ -10,7 +10,7 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchConfig, listPages, type PageEntry } from "../api/pages.js";
-import { subscribeToChanges } from "../pages/pageEvents.js";
+import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { navigate } from "../routing.js";
 
 function formatWhen(timestamp?: string): string | null {
@@ -29,6 +29,14 @@ export function Launcher() {
       if (e.docs.changed.length > 0 || e.docs.removed.length > 0) {
         void queryClient.invalidateQueries({ queryKey: ["pages"] });
       }
+    });
+  }, [queryClient]);
+
+  // A reconnected SSE stream replays nothing — refetch the list so a page promoted/removed during
+  // the gap shows up (tasks/ui-pages-spike P1, connection resilience).
+  useEffect(() => {
+    return subscribeToResync(() => {
+      void queryClient.invalidateQueries({ queryKey: ["pages"] });
     });
   }, [queryClient]);
 
