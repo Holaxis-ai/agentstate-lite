@@ -119,6 +119,63 @@ export async function bootUiOverDirBundle(seedTasks: SeedTask[]): Promise<Runnin
   };
 }
 
+/**
+ * Boot `ui --dir` over a fresh bundle seeded with the given Tasks AND the two seed pages
+ * (`examples/pages/{activity-feed,board}.html` blobs + their `type: Page` registry docs) — the
+ * fixture for the pages-spike e2e (tasks/ui-pages-spike). Returns the running instance plus the
+ * seeded dir and a cleanup.
+ */
+export async function bootUiOverPagesBundle(seedTasks: SeedTask[]): Promise<RunningUi & { dir: string; cleanup: () => Promise<void> }> {
+  const { initBundle, writeDoc, writeBlob } = await import("@agentstate-lite/core");
+  const { readFile } = await import("node:fs/promises");
+  const examples = path.resolve(here, "../../../examples/pages");
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-pages-e2e-"));
+  await initBundle(dir);
+  // The Task convention makes `doc update --status` patchable (the live-update driver) and gives
+  // the board page its status columns — mirrors this repo's own board.
+  await writeDoc(
+    { root: dir },
+    {
+      id: "conventions/task",
+      frontmatter: {
+        type: "Convention",
+        title: "Task",
+        governs: "Task",
+        path: "tasks/",
+        fields: {
+          required: ["title", "status"],
+          optional: ["priority", "assignee", "description"],
+          values: { status: ["todo", "in_progress", "blocked", "done", "canceled"] },
+          terminal: { status: ["done", "canceled"] },
+        },
+      },
+      body: "# Task",
+    },
+  );
+  for (const task of seedTasks) {
+    await writeDoc({ root: dir }, { id: task.id, frontmatter: task.frontmatter, body: task.body });
+  }
+  await writeDoc(
+    { root: dir },
+    { id: "pages-registry/activity-feed", frontmatter: { type: "Page", title: "Activity feed", entry: "pages/activity-feed.html", description: "Live document feed." }, body: "" },
+  );
+  await writeDoc(
+    { root: dir },
+    { id: "pages-registry/board", frontmatter: { type: "Page", title: "Board", entry: "pages/board.html", description: "Tasks in status columns." }, body: "" },
+  );
+  await writeBlob({ root: dir }, "pages/activity-feed.html", await readFile(path.join(examples, "activity-feed.html")), "text/html; charset=utf-8");
+  await writeBlob({ root: dir }, "pages/board.html", await readFile(path.join(examples, "board.html")), "text/html; charset=utf-8");
+  const running = await bootUi(["--dir", dir]);
+  return {
+    ...running,
+    dir,
+    cleanup: async () => {
+      await running.stop();
+      await rm(dir, { recursive: true, force: true });
+    },
+  };
+}
+
 /** Boot a local, keyless reference `serve()` instance, then `ui --remote <that url>` proxying it — proves conditional (absent) Bearer injection with zero cloud, per rev 3.2. */
 export async function bootUiOverRemote(seedTasks: SeedTask[]) {
   const { initBundle, writeDoc } = await import("@agentstate-lite/core");
