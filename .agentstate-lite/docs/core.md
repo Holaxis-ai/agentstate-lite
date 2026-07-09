@@ -46,7 +46,8 @@ are the product's generative layer. If it loses, the core above still stands on 
   registry, and the `StorageBackend` seam (filesystem default; versioning/CAS/attribution
   shaped for the hardest backend).
 - **`packages/cli`** — the product: AXI-shaped commands, recipes, the served loopback head
-  (safe local multi-agent), the project binding (in flight), git sharing (queued).
+  (safe local multi-agent), the project binding (in flight), git sharing (shipped — the
+  `sync` verb; this repo's own one-time migration is command-shipped, execution pending).
 - Plain text, standards-clean (OKF), local-first: everything works with the network off.
 
 ## Frozen (do NOT invest without an explicit human decision)

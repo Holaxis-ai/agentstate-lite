@@ -241,7 +241,7 @@ bundle-relative**.
   **Bundle commits are not code commits.** Board/bundle writes (records, claims, context
   notes, task updates — anything under `.agentstate-lite/` with no code alongside) are
   small `board:`-prefixed commits pushed DIRECTLY to main; their value is immediacy, and
-  `aslite sync` supersedes even that once the migration lands. Code ships via branch +
+  `aslite sync` supersedes even that once the founders execute the migration. Code ships via branch +
   PR + review gates, always. A board doc rides a PR only when it is ITSELF the reviewed
   deliverable (a plan under vetting, records that explain a code change they accompany).
 
@@ -294,8 +294,14 @@ the bundle):
   self-authored rows filtered, unpushed/uncommitted backstop, probe-gated "run sync — never
   init" first contact), wired by `hook install` across Claude Code/Codex/OpenCode
   (`commands/session-start.ts`, `commands/home.ts`'s board block, `commands/hook.ts`).
-  NOT yet shipped: `sync --migrate` (U5, Mike-gated) — THIS repo's own board still lives on
-  main, so the bundle-commit convention above still applies here.
+  The `sync --migrate` COMMAND (U5) is shipped as a TEMPORARY, founders-only flag — one-time
+  and `--yes`-gated (preview-first; files-not-history board branch pushed with tracking; the
+  folder-removal + gitignore commit prepared on a local `board-migration` branch for a
+  human-opened PR; never any `git clean`), surfaced in `sync --help` only (never taught in
+  the skill/reference channels), and SCHEDULED FOR REMOVAL in a follow-up PR once the
+  founders execute it. Its EXECUTION on this repo is that separate, human-timed act, still
+  pending: THIS repo's own board still lives on main, so the bundle-commit convention above
+  still applies here.
 
 Standing gates on future work:
 

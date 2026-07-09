@@ -75,6 +75,7 @@ import {
   writeCursor,
   type AwarenessDeltaRow,
 } from "../cursor.js";
+import { migrateBoard } from "./sync-migrate.js";
 import { CliError, asHandled, classifyGitError, toExit } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, renderErrorEnvelope, resolveMode } from "../output.js";
@@ -86,6 +87,7 @@ export const SYNC_USAGE = `agentstate-lite sync — share the board branch with 
 Usage:
   agentstate-lite sync [--pull-only] [--dir <path>] [--limit <n>] [--json]
   agentstate-lite sync --show-incoming <id> [--out <file>] [--dir <path>] [--json]
+  agentstate-lite sync --migrate [--yes] [--dir <path>] [--json]
 
 Shares this repo's board (\`.agentstate-lite\`, kept on its own \`board\` branch) with your
 teammates: commits any pending local doc changes, pulls theirs, and pushes yours — touching
@@ -122,9 +124,28 @@ If the push fails after a local commit already landed (offline, revoked/expired 
 locked repository), the receipt still reports what committed/pulled successfully — your work is
 saved locally either way, and re-running sync retries the push.
 
+\`sync --migrate\` is the ONE-TIME move for a project whose board is a folder committed on the
+default branch: it creates a \`board\` branch carrying the folder's CURRENT files (files only —
+the folder's history stays where it is), pushes it to origin with tracking, and prepares ONE
+local commit on a new \`board-migration\` branch that removes the folder from the current branch
+and gitignores it — you push that branch and open the PR yourself; nothing on the current branch
+is pushed or changed. Until that PR merges the old committed folder is a frozen snapshot: sync no
+longer updates it, so treat it as read-only. Without \`--yes\`, \`--migrate\` prints a preview (a
+dry run, including the rollout note to send teammates) and changes nothing. It refuses while
+\`.agentstate-lite/\` has uncommitted changes, when the current branch is behind origin on
+commits touching the folder (pull first — a teammate's board commit must never be stranded on
+the frozen copy), when origin is unreachable (the freshness check and the push both need it),
+and when any \`board/...\` branch exists locally or on the remote (git cannot create a \`board\`
+branch alongside them). It reports 'already migrated' (exit 0) once a board branch exists on
+origin — with state-aware guidance, including re-creating the folder-removal commit when an
+interrupted run left it missing. Coordinate first: every founder syncs (at minimum commits)
+their board work before anyone migrates.
+
 Options:
   --pull-only          Only fast-forward from origin (never rebase); skip commit + push
   --show-incoming <id> Print the upstream (origin/board) version of one doc, as of the last fetch
+  --migrate            One-time: move a committed .agentstate-lite/ folder onto its own board branch
+  --yes                Execute --migrate (without it, --migrate prints a preview and changes nothing)
   --out <file>         With --show-incoming: write the raw bytes to <file> ('-' = raw to stdout)
   --dir <path>         Directory to run sync from (default: the cwd) — must be inside a git repo
   --limit <n>          Cap the incoming-delta row list to <n> rows (default: 20; 0 = unlimited)
@@ -812,6 +833,8 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
         options: {
           "pull-only": { type: "boolean" },
           "show-incoming": { type: "string" },
+          migrate: { type: "boolean" },
+          yes: { type: "boolean" },
           out: { type: "string" },
           dir: { type: "string" },
           limit: { type: "string" },
@@ -825,6 +848,32 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   if (values.help) {
     stdout(SYNC_USAGE);
     return;
+  }
+
+  // `--migrate` (U5) is the one-time, --yes-gated move of a committed board folder onto its own
+  // board branch — dispatched before the everyday flow (it never commits/pulls/pushes the board).
+  // TEMPORARY: founders' one-time act, scheduled for removal post-execution; kept out of every
+  // taught surface (see sync-migrate.ts's header).
+  if (values.migrate) {
+    if (values["pull-only"]) {
+      throw new CliError("USAGE", "--migrate and --pull-only cannot be combined — migration never pulls");
+    }
+    if (values["show-incoming"] !== undefined) {
+      throw new CliError("USAGE", "--migrate and --show-incoming cannot be combined");
+    }
+    if (values.out !== undefined) {
+      throw new CliError("USAGE", "--out only applies to sync --show-incoming <id>", {
+        help: `${inv} sync --show-incoming <id> --out <file>`,
+      });
+    }
+    const migrateDir = retargetBoardInterior(values.dir ?? process.cwd());
+    await migrateBoard(migrateDir, { yes: Boolean(values.yes), ...(values.json !== undefined ? { json: values.json } : {}) }, stdout);
+    return;
+  }
+  if (values.yes) {
+    throw new CliError("USAGE", "--yes only applies to sync --migrate", {
+      help: `${inv} sync --migrate --yes`,
+    });
   }
 
   // `--show-incoming <id>` is the conflict VIEWER — a pure read of the last-fetched origin/board

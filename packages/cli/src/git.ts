@@ -439,6 +439,32 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
 
   if (existsSync(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
+      // U5 fix round (review MEDIUM 3): the PRE-MIGRATION WINDOW — the board branch already
+      // exists on the remote, but THIS clone's checked-out branch still TRACKS the folder (the
+      // committed pre-migration copy: the migration PR hasn't merged, or this clone hasn't
+      // pulled it). The generic "move it aside" advice below is DANGEROUS in exactly this state:
+      // moving a TRACKED folder aside and provisioning hand-builds the overlay hazard (the
+      // tracked paths read as phantom-deleted, the user's own `git checkout`/`git restore`
+      // re-writes the frozen copies into the board checkout, and the next sync pushes that
+      // stale content over a teammate's board update — reviewer-proven). The only safe advice
+      // is to finish the migration's own journey: merge, pull, sync.
+      if (
+        hasRemote &&
+        !hasWorktreeSignature(boardPath) &&
+        runGit(top, ["cat-file", "-e", `HEAD:${BUNDLE_DIR}`]).status === 0
+      ) {
+        throw new CliError(
+          "RUNTIME",
+          `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is ` +
+            `still the pre-migration folder committed on this branch — the migration PR hasn't ` +
+            `merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', then run ` +
+            `sync again`,
+          {
+            details: { path: boardPath, state: "pre-migration-window" },
+            help: "git pull  # after the migration PR merges, then re-run sync",
+          },
+        );
+      }
       // Non-empty and (per isProvisioned above) not currently a genuine `board` checkout: it may
       // STILL be the real board worktree, just wedged with stale pointers — try the structural
       // self-heal FIRST, reachable ONLY because the worktree signature is present (never for a
@@ -904,6 +930,59 @@ export function fetchRebaseResolving(boardPath: string, exportDir: string): Fetc
 /** `git push origin board`. Failures classify (AUTH exit 4 vs network exit 1, best-effort). */
 export function push(boardPath: string): void {
   mustGit(boardPath, ["push", BOARD_REMOTE, BOARD_BRANCH], { timeoutMs: NETWORK_TIMEOUT_MS });
+}
+
+/**
+ * U5 (`sync --migrate`): publish the freshly created `board` branch WITH TRACKING —
+ * `git push -u origin board`, run from the repo TOP (during migration the branch exists only as a
+ * ref; it is not checked out anywhere). The `-u` is LOAD-BEARING (panel round 2): without it the
+ * migration machine's fresh `board` branch has no tracking config at all — sync itself always uses
+ * EXPLICIT `origin/board` refs precisely because that state exists, but the humans' own git
+ * (`status`, `branch -vv`) reads the tracking config, and the migration is the one moment the
+ * config can be written for free.
+ */
+export function pushBoardUpstream(top: string): void {
+  mustGit(top, ["push", "-u", BOARD_REMOTE, BOARD_BRANCH], { timeoutMs: NETWORK_TIMEOUT_MS });
+}
+
+/**
+ * `git fetch origin`, returning whether it succeeded (nonzero tolerated at THIS layer — the
+ * CALLER decides what a dead fetch means). The migration path REFUSES on false (U5 fix round,
+ * review HIGH 1): a migration cannot complete offline anyway — the mandatory `push -u` would
+ * fail — and tolerating a dead fetch is exactly what would let a stale clone migrate while a
+ * teammate's board commit sat unseen on origin (the behind-origin freshness guard needs a LIVE
+ * origin to be worth anything). Renamed from `fetchOriginTolerated`: the old name described a
+ * tolerance its one real consumer no longer extends.
+ */
+export function fetchOrigin(top: string): boolean {
+  // `--prune` matters here (same D/F class as review adjudication 5): a STALE
+  // `refs/remotes/origin/board/<x>` tracking ref — left behind after the remote offender was
+  // deleted — would block the push's own local `refs/remotes/origin/board` tracking-ref update.
+  // Pruning against the live remote clears it before the namespace check even runs.
+  return runGit(top, ["fetch", "--prune", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS }).status === 0;
+}
+
+/**
+ * U5 fix round (review adjudication 5, empirically confirmed against THIS repo's own origin,
+ * which carried `board/sync-verb-tasks`): branch names under the `board/` namespace make
+ * `refs/heads/board` UNCREATABLE — git refs form a directory tree, so `refs/heads/board/<x>`
+ * (a directory) and `refs/heads/board` (a file) conflict, and the migration's `push -u` is
+ * rejected by the remote. This lists the REMOTE offenders (`ls-remote --heads origin board/*`)
+ * as short branch names; a failure to ask the remote throws classified (the migration path
+ * treats the remote as mandatory — see {@link fetchOrigin}).
+ */
+export function remoteBoardNamespaceBranches(top: string): string[] {
+  const r = runGit(top, ["ls-remote", "--heads", BOARD_REMOTE, `${BOARD_BRANCH}/*`], {
+    timeoutMs: NETWORK_TIMEOUT_MS,
+  });
+  if (r.status !== 0) throw classifyGitError(failureOf(["ls-remote"], r));
+  return r.stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .map((l) => l.split("\t")[1] ?? "")
+    .filter((ref) => ref.startsWith("refs/heads/"))
+    .map((ref) => ref.slice("refs/heads/".length));
 }
 
 // ── ff-only pull (the fail-soft SessionStart path) ────────────────────────────
