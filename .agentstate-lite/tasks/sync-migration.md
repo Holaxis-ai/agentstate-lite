@@ -18,9 +18,9 @@ description: >-
   lifecycle: removed in a follow-up PR after the founders execute; wake
   condition = a real external team asking for it. Task closes when the founders
   EXECUTE the migration. Deps: sync-command-core.
-actor: builder-u5
+actor: brian-claude
 assignee: brian-claude
-timestamp: '2026-07-09T17:58:49.183Z'
+timestamp: '2026-07-09T18:14:23.755Z'
 ---
 # U5 — migration of THIS repo's bundle (COMMAND SHIPPED; execution human-timed)
 
@@ -121,3 +121,10 @@ The founders EXECUTE the migration on this repo (run `sync --migrate --yes`, pus
 deletes the flag. Task stays in_progress until execution.
 
 [depends on](sync-command-core.md)
+
+- Residual (delta review, LOW, adjudicated non-blocking): the crash-window
+  discriminator ("local board branch exists") is spoofable by a teammate who checked
+  out the board branch during the open window — worst reachable outcome is a duplicate
+  no-op removal PR behind an explicit --yes; the freshness guard blocks the
+  removal-already-landed sub-case. A reliable discriminator needs a write-time marker
+  the ship-use-delete lifecycle does not warrant.
