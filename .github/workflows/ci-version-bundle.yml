@@ -12,9 +12,17 @@ name: CI version + bundle automation
 # test. The `if: github.actor != 'github-actions[bot]'` below is only a cheap optimization to skip
 # a redundant job for the bot's own push; correctness does not depend on it.
 #
-# RACE SAFETY: `concurrency` serializes runs on main (never cancels one mid-push) and the checkout
-# below pins `ref: main` (not the triggering commit's fixed sha) so a queued run always operates on
-# the CURRENT tip when it executes — including any bump a prior queued run already pushed.
+# RACE SAFETY: `concurrency` serializes THIS WORKFLOW's own runs against each other (never cancels
+# one mid-push) and the checkout below pins `ref: main` (not the triggering commit's fixed sha) so
+# a queued run always operates on the CURRENT tip when it executes — including any bump a prior
+# queued run already pushed. That does NOT cover this repo's board — `.agentstate-lite/` docs are
+# pushed DIRECTLY to main via plain git (CLAUDE.md's bundle-commit convention), completely outside
+# this workflow's concurrency group, and "constantly" per team review. A board push landing during
+# this job's ~1-2 minute checkout-to-push window makes this job's own `git push` a non-fast-forward
+# rejection. The final step below retries that case: fetch + hard-reset to the new tip, RE-RUN the
+# script fresh (safe — see that step's inline comment for why), and retry, a bounded number of
+# times before failing loud (acceptable as the terminal state: the next merge to main re-triggers
+# this workflow and picks up the same regen+bump).
 #
 # NOTE: if branch protection is ever enabled on `main`, this workflow's plain `git push` (using the
 # default GITHUB_TOKEN) will start failing and needs a revisit (e.g. a bot PAT / app token with a
@@ -45,17 +53,43 @@ jobs:
 
       - run: npm ci
 
-      - name: Regenerate committed plugin artifacts; bump version if anything changed
-        run: node scripts/ci-version-bundle.mjs
-
-      - name: Commit and push if anything changed
+      - name: Regenerate, bump if needed, commit, and push (retries if main moved under us)
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3; do
+            echo "::group::regenerate (attempt ${attempt}/3)"
+            node scripts/ci-version-bundle.mjs
+            echo "::endgroup::"
+
+            if [ -z "$(git status --porcelain)" ]; then
+              echo "no changes — committed plugin artifacts already match a fresh rebuild"
+              exit 0
+            fi
+
+            new_version=$(sed -nE 's/.*"version": *"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/p' .claude-plugin/marketplace.json | head -1)
             git add -A
-            git commit -m "ci: bump plugin version + regenerate committed skill bundle"
-            git push origin HEAD:main
-          else
-            echo "no changes — committed plugin artifacts already match a fresh rebuild"
-          fi
+            git commit -m "ci: plugin ${new_version} — regenerate bundle + SKILL (bot)"
+
+            if git push origin HEAD:main; then
+              echo "pushed plugin ${new_version} on attempt ${attempt}"
+              exit 0
+            fi
+
+            echo "push rejected — main moved (likely a direct board-branch commit landed mid-run); retrying against the new tip"
+            git fetch origin main
+            # SAFE, not a rebase: scripts/ci-version-bundle.mjs is STATE-BASED, not delta-based — it
+            # always regenerates fresh and diffs against WHATEVER is currently committed, never
+            # assuming a delta from a specific prior commit. Resetting straight to the new tip and
+            # re-running the script from scratch is therefore always correct, with no merge step.
+            # Do NOT "simplify" this into a `git rebase` — replaying THIS attempt's commit (which
+            # already contains a version bump computed from the OLD tip) onto the new tip risks a
+            # double bump or a conflict; re-running the script instead recomputes the right version
+            # relative to whatever actually landed on the new tip.
+            git reset --hard origin/main
+          done
+
+          echo "::error::failed to push after 3 attempts — main kept moving under us (likely concurrent board pushes). Not fatal: the next merge to main re-triggers this workflow and will pick up the same regen+bump."
+          exit 1
