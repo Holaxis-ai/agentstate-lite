@@ -1,26 +1,18 @@
 ---
 type: Task
 title: U5 migrate this repo's bundle to the board branch (Mike-gated)
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  COMMAND SHIPPED 2026-07-09, commits 2e6bc39 + fix round 9855b9b (TEMPORARY
-  flag; execution pending, human-timed): sync --migrate — --yes-gated with
-  structured preview; idempotent 'already migrated' with state-aware guidance
-  incl. crash-window recovery; refuses on uncommitted board changes, on a stale
-  (behind-origin) clone, on a dead fetch, and on board/-namespace branches;
-  rider 1 applied (files-not-history ROOT commit — the original subtree-split
-  step SUPERSEDED); git push -u origin board; PR-shaped removal on a local
-  board-migration branch per Brian's adjudication (nothing on the current branch
-  pushed by the command; both-worlds window named honestly, migration-aware sync
-  advice during it). Never runs git clean. Launch review REQUEST-CHANGES (2
-  empirical HIGHs + 1 MEDIUM) addressed same day — see body. Ship-use-DELETE
-  lifecycle: removed in a follow-up PR after the founders execute; wake
-  condition = a real external team asking for it. Task closes when the founders
-  EXECUTE the migration. Deps: sync-command-core.
-actor: brian-claude
+  EXECUTED 2026-07-09: board migrated to the board branch (root commit 608e1fb,
+  files-not-history per rider 1; removal PR #27 merged with tree-hash-verified
+  zero loss; both-worlds window ~1h). Command shipped via PR #26 after a launch
+  review + delta (2 HIGHs fixed pre-execution: behind-origin freshness guard,
+  crash-window recovery). This doc's own update is the first write through the
+  live board pipeline. Remaining: tasks/sync-migrate-removal (unblocked now).
+actor: brian
 assignee: brian-claude
-timestamp: '2026-07-09T18:14:23.755Z'
+timestamp: '2026-07-09T20:00:35.638Z'
 ---
 # U5 — migration of THIS repo's bundle (COMMAND SHIPPED; execution human-timed)
 
