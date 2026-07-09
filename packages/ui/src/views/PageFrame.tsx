@@ -52,8 +52,28 @@ export function PageFrame({ pageId }: { pageId: string }) {
    */
   const loadPage = useCallback(async () => {
     const seq = ++loadSeqRef.current;
+
+    // getDoc is split from the mint below because ONLY its 403 is trip-worthy: `/v0/*` has no
+    // other 403 source than this ui server's own session gate, so a 403 here is ALWAYS a dead
+    // session (most commonly a stable-port restart minting a fresh secret out from under this
+    // open tab's cookie) — imperative, not TanStack-managed, so `queryClient.ts`'s
+    // `onQueryError` never sees it; trip the SAME global interceptor directly (see
+    // `interceptor.ts`'s doc comment).
+    let loaded: Awaited<ReturnType<typeof getDoc>>;
     try {
-      const { doc } = await getDoc(pageId);
+      loaded = await getDoc(pageId);
+    } catch (e) {
+      if (seq !== loadSeqRef.current) return;
+      subscribedRef.current = false;
+      setSrc(null);
+      setEntryKey(null);
+      if (e instanceof ApiError && e.status === 403) setInterceptorStatus("session_expired");
+      setError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+
+    try {
+      const { doc } = loaded;
       const entry = typeof doc.frontmatter.entry === "string" ? doc.frontmatter.entry : "";
       const pageTitle = typeof doc.frontmatter.title === "string" ? doc.frontmatter.title : pageId;
       if (!entry) throw new Error(`page '${pageId}' declares no 'entry' blob key`);
@@ -69,13 +89,12 @@ export function PageFrame({ pageId }: { pageId: string }) {
       subscribedRef.current = false;
       setSrc(null);
       setEntryKey(null);
-      // A 403 from `getDoc`/`mintPageNonce` is this ui server's OWN session gate (both are
-      // `/v0/*` / `/__page/mint`, never the page-bytes route) — most commonly a stable-port
-      // restart minting a fresh secret out from under this open tab's cookie. These two calls
-      // are imperative, not TanStack-managed, so `queryClient.ts`'s `onQueryError` never sees
-      // them; trip the SAME global interceptor directly so the recovery screen shows instead of
-      // a per-view "could not open page" dead end (see `interceptor.ts`'s doc comment).
-      if (e instanceof ApiError && e.status === 403) setInterceptorStatus("session_expired");
+      // mintPageNonce's 403 is NOT trip-worthy like getDoc's above: `/__page/mint` also 403s
+      // (code FORBIDDEN) when this doc's `entry` is a confinement violation — outside `pages/`,
+      // or not any Page doc's registered entry (server.ts's `handleMint`) — a malformed-DOC
+      // problem, not a dead session. The launcher doesn't filter entries by prefix, so such a
+      // doc is clickable; tripping the terminal recovery screen for it would brick the whole tab
+      // with the WRONG advice over what's really just a dismissable per-view error.
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [pageId]);

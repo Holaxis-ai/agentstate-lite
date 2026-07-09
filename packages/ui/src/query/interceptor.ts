@@ -22,8 +22,11 @@
  * A plain module-level store (not a state library — rev 3.2 "no state library"): React
  * components read it via {@link useInterceptorStatus} (a `useSyncExternalStore` subscription,
  * the same idiom `routing.ts` uses for the URL). `queryClient.ts`'s `QueryCache.onError` writes
- * it for every TanStack-managed query; `PageFrame.tsx` also writes it directly for its own
- * imperative (non-query) page-resolution calls, using the same status values.
+ * it for every TanStack-managed query; `PageFrame.tsx` also writes it directly, but ONLY from its
+ * imperative `getDoc` call (a bare `/v0/*` read, so a 403 there has no cause OTHER than a dead
+ * session) — deliberately NOT from its `mintPageNonce` call, whose 403 can ALSO mean this doc's
+ * `entry` fails the mint confinement check (outside `pages/`, or not a registered Page's entry) —
+ * a malformed-doc problem, not a session-death one, and not worth bricking the whole tab over.
  */
 import { useSyncExternalStore } from "react";
 

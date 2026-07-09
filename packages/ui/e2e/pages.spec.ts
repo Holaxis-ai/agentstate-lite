@@ -8,6 +8,7 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { rm } from "node:fs/promises";
+import { writeDoc } from "@agentstate-lite/core";
 import { bootUiOverPagesBundle, bootUiServerInProcess, seedPagesBundle, CLI_DIST } from "./harness.js";
 
 const TASKS = [
@@ -185,6 +186,29 @@ test("P1: a session-rotating restart surfaces 'Connection lost' instead of stayi
     await second?.close();
     await first.close().catch(() => {}); // already closed on the happy path
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("F2 regression: a Page doc whose entry fails mint confinement shows a per-view error, NOT the terminal session-expired screen", async ({ page }) => {
+  // The bug the 403 fix above introduced: mintPageNonce also 403s (code FORBIDDEN) for a
+  // malformed Page doc — an `entry` outside `pages/`, or one no Page doc has registered — and
+  // such a doc IS clickable today (the launcher doesn't filter entries by prefix). Session-death
+  // and this confinement-refusal share nothing but the status code; only getDoc's 403 may trip
+  // the terminal recovery screen (PageFrame.tsx's loadPage).
+  const ui = await bootUiOverPagesBundle([]);
+  try {
+    await writeDoc(
+      { root: ui.dir },
+      { id: "pages-registry/bad", frontmatter: { type: "Page", title: "Bad page", entry: "not-a-page-prefix/oops.html" }, body: "" },
+    );
+
+    await page.goto(ui.url);
+    await page.locator('[data-page-id="pages-registry/bad"]').click();
+
+    await expect(page.locator(".view-status-error")).toContainText(/could not open page/i);
+    await expect(page.getByRole("heading", { name: "Connection lost" })).toHaveCount(0);
+  } finally {
+    await ui.cleanup();
   }
 });
 
