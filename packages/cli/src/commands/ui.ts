@@ -72,6 +72,22 @@ function defaultOpenBrowser(url: string): void {
   }
 }
 
+/**
+ * A deterministic loopback port in the IANA dynamic/private range ([49152, 65535]) derived from
+ * `seed` (the bundle root, or the remote base) via FNV-1a, so re-launching `ui` over the SAME
+ * bundle prefers the SAME host:port. Best-effort only — the caller falls back to an OS-assigned
+ * port if this one is busy, so two instances over one bundle still both start.
+ */
+function stablePortFor(seed: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  const span = 65536 - 49152;
+  return 49152 + (Math.abs(h) % span);
+}
+
 /** Map a raw `listen()` failure to a structured CliError — mirrors `serve.ts`'s `mapBootError` exactly. */
 function mapBootError(err: unknown, port: number): CliError {
   if (err instanceof CliError) return err;
@@ -112,6 +128,7 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
   }
 
   let port = 0; // rev 3.2: --port defaults to 0 (OS-assigned), unlike `serve`'s stable 4818 default
+  const explicitPort = values.port !== undefined;
   if (values.port !== undefined) {
     const raw = values.port.trim();
     if (!/^\d+$/.test(raw) || Number(raw) > 65535) {
@@ -154,11 +171,32 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
     rootLabel = bundle.root;
   }
 
+  // Tab-restart friendliness (tasks/ui-pages-spike): with no explicit --port, PREFER a stable
+  // per-bundle loopback port so a re-launched `ui` over the same bundle lands on the SAME
+  // host:port (the human's open tab/bookmark keeps working — it 403s until they reopen the
+  // freshly-printed URL, since the session token still rotates each run, but the ADDRESS is
+  // stable). If that port is taken, fall back to an OS-assigned one — never a hard failure.
+  let usedStablePort = false;
+  if (!explicitPort) {
+    options.port = stablePortFor(rootLabel);
+    usedStablePort = true;
+  }
+
   let handle: UiServerHandle;
   try {
     handle = await bootUiServer(options);
   } catch (err) {
-    throw mapBootError(err, port);
+    if (usedStablePort && (err as NodeJS.ErrnoException)?.code === "EADDRINUSE") {
+      options.port = 0; // stable port busy — retry ephemeral so the command still works
+      usedStablePort = false;
+      try {
+        handle = await bootUiServer(options);
+      } catch (err2) {
+        throw mapBootError(err2, 0);
+      }
+    } else {
+      throw mapBootError(err, options.port ?? port);
+    }
   }
 
   const url = `http://${handle.host}:${handle.port}/?token=${handle.token}`;
@@ -172,7 +210,12 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
         root: rootLabel,
         auth:
           "per-run session token embedded in the URL above; the first load exchanges it for an HttpOnly, SameSite=Strict cookie — nothing is persisted beyond this process",
-        help: [`open ${url} in a browser`],
+        help: [
+          `open ${url} in a browser`,
+          ...(usedStablePort
+            ? [`this host:port is stable for this bundle — on restart, reopen the freshly-printed URL (the token rotates each run)`]
+            : []),
+        ],
       },
       resolveMode(values),
     ),
