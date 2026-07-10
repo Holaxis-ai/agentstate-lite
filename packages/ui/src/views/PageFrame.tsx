@@ -3,9 +3,11 @@
  * bridge. The iframe is `sandbox="allow-scripts"` with NO `allow-same-origin`, so it runs at an
  * opaque origin — it cannot fetch the data API even if a token leaked, and its scripts talk to the
  * shell ONLY via postMessage. This component:
- *   1. Resolves the page's registry doc -> its `entry` blob key -> a minted nonce URL (the `src`).
+ *   1. Resolves the page's registry doc -> its `entry` blob key -> a minted nonce URL (the `src`),
+ *      and its declared `bridge` capability (fail-closed via {@link resolveBridgeCapability}).
  *   2. Listens for the page's postMessage requests, VALIDATING `event.source` is this iframe, and
- *      brokers them read-only through {@link handleBridgeRequest}.
+ *      brokers them read-only through {@link handleBridgeRequest} — gated by that capability, so
+ *      a `none` page is denied regardless of what the sandboxed page itself sends.
  *   3. Fans SSE doc changes into the subscribed page as bridge `change` events, and HOT-RELOADS the
  *      iframe (fresh nonce) when the page's own HTML blob changes.
  */
@@ -13,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getDoc, listAllHeads, ApiError } from "../api/client.js";
 import { mintPageNonce, fetchConfig, fetchKinds, fetchEdges, invalidateKinds } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
-import { handleBridgeRequest, changeMessage, type BridgeDeps } from "../pages/bridge.js";
+import { handleBridgeRequest, changeMessage, resolveBridgeCapability, type BridgeDeps, type BridgeCapability } from "../pages/bridge.js";
 import { navigate } from "../routing.js";
 import { setInterceptorStatus } from "../query/interceptor.js";
 
@@ -28,6 +30,10 @@ const bridgeDeps: BridgeDeps = {
 export function PageFrame({ pageId }: { pageId: string }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const subscribedRef = useRef(false);
+  // The framed page's ENFORCED capability, read by the bridge broker below (never trusting
+  // anything the sandboxed page itself sends). Fail-closed: starts (and, on revoke, reverts to)
+  // "none" so no in-flight bridge message is ever answered while no page is confirmed loaded.
+  const bridgeCapabilityRef = useRef<BridgeCapability>("none");
   // Bumped on every (re)load trigger, revoke, and unmount — a resolution that finishes after a
   // newer one started (or after a revoke) must not clobber the newer state.
   const loadSeqRef = useRef(0);
@@ -41,6 +47,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
   const revoke = useCallback((reason: string) => {
     loadSeqRef.current++;
     subscribedRef.current = false;
+    bridgeCapabilityRef.current = "none";
     setSrc(null);
     setEntryKey(null);
     setError(reason);
@@ -66,6 +73,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
     } catch (e) {
       if (seq !== loadSeqRef.current) return;
       subscribedRef.current = false;
+      bridgeCapabilityRef.current = "none";
       setSrc(null);
       setEntryKey(null);
       if (e instanceof ApiError && e.status === 403) setInterceptorStatus("session_expired");
@@ -77,10 +85,14 @@ export function PageFrame({ pageId }: { pageId: string }) {
       const { doc } = loaded;
       const entry = typeof doc.frontmatter.entry === "string" ? doc.frontmatter.entry : "";
       const pageTitle = typeof doc.frontmatter.title === "string" ? doc.frontmatter.title : pageId;
+      // Resolved from the SAME registry doc `entry` comes from, fail-closed — this is the
+      // enforcement gate's only input, and it is read here, never from the sandboxed page.
+      const capability = resolveBridgeCapability(doc.frontmatter.bridge);
       if (!entry) throw new Error(`page '${pageId}' declares no 'entry' blob key`);
       const url = await mintPageNonce(entry);
       if (seq !== loadSeqRef.current) return;
       subscribedRef.current = false;
+      bridgeCapabilityRef.current = capability;
       setEntryKey(entry);
       setTitle(pageTitle);
       setError(null);
@@ -88,6 +100,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
     } catch (e) {
       if (seq !== loadSeqRef.current) return;
       subscribedRef.current = false;
+      bridgeCapabilityRef.current = "none";
       setSrc(null);
       setEntryKey(null);
       // mintPageNonce's 403 is NOT trip-worthy like getDoc's above: `/__page/mint` also 403s
@@ -116,7 +129,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
     const onMessage = (ev: MessageEvent) => {
       const frame = iframeRef.current;
       if (!frame || ev.source !== frame.contentWindow) return;
-      void handleBridgeRequest(ev.data, bridgeDeps).then((outcome) => {
+      void handleBridgeRequest(ev.data, bridgeDeps, bridgeCapabilityRef.current).then((outcome) => {
         if (outcome.subscribed) subscribedRef.current = true;
         if (outcome.reply && frame.contentWindow) frame.contentWindow.postMessage(outcome.reply, "*");
       });

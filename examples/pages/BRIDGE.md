@@ -90,19 +90,37 @@ a change delta. The shell fans doc changes into subscribed pages as `change` eve
 **hot-reloads** a page's iframe (with a fresh nonce) when the page's own HTML blob changes. (Remote
 page-blob hot-reload is a labeled follow-up; live doc updates work in both modes.)
 
+## `bridge` — the enforced data/content split
+
+The registry doc's `bridge` field decides whether the shell will answer THIS page's bridge
+requests at all — and the shell, not the page, is what enforces it:
+
+- `bridge: bundle-read` — a **data page**. The shell answers `hello`/`query`/`read`/`edges`/
+  `subscribe` as described above.
+- `bridge: none` — a **content page**. The shell replies to EVERY request type with a `FORBIDDEN`
+  error, before touching any bundle data. Arbitrary self-contained HTML with no live data at all.
+- Absent, malformed, or any other value is treated as `bridge: none` — fail-closed. A page only
+  gets bundle access by declaring exactly `bundle-read`.
+
+The launcher groups pages by this same field: "Dashboards" for `bundle-read`, "Documents" for
+`none`.
+
 ## Authoring a page
 
-1. Write a self-contained `.html` (inline CSS/JS, no external hosts). Embed a copy of the ~30-line
-   bridge client below.
+1. Write a self-contained `.html` (inline CSS/JS, no external hosts). A data page embeds a copy of
+   the ~30-line bridge client below; a content page (`bridge: none`) has no use for it — every
+   call it made would come back `FORBIDDEN`.
 2. Promote it as a blob: `agentstate-lite promote my-page.html --doc-key pages/my-page.html`.
-3. Declare a registry doc: a `type: Page` doc with `title`, `entry: pages/my-page.html`, and an
-   optional `description`. Promote it: `--doc-key pages-registry/my-page.md`.
+3. Declare a registry doc: a `type: Page` doc with `title`, `entry: pages/my-page.html`, an
+   optional `description`, and `bridge: none` or `bridge: bundle-read`. Promote it:
+   `--doc-key pages-registry/my-page.md`.
 4. Declare the `Page` convention once per bundle (`conventions/page.md`, `governs: Page`).
 
-The two seed pages here (`pulse.html`, `roadmap.html`) are working examples — `roadmap.html` is the
-one that exercises the `edges` request end-to-end (a live graph view of Roadmap Items and the
-tasks each one `contains`); `demo.sh` (repo only) wires all of this over a scratch copy of this
-repo's own board.
+The seed pages here are working examples: `pulse.html`/`roadmap.html` are `bridge: bundle-read`
+data pages — `roadmap.html` is the one that exercises the `edges` request end-to-end (a live graph
+view of Roadmap Items and the tasks each one `contains`) — and `about.html` is a `bridge: none`
+content page (no bridge calls at all). `demo.sh` (repo only) wires all of this over a scratch copy
+of this repo's own board.
 
 ## The bridge client (embedded copy)
 

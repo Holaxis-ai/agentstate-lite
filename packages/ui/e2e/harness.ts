@@ -171,11 +171,19 @@ export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
   );
   await writeDoc(
     { root: dir },
-    { id: "pages-registry/pulse", frontmatter: { type: "Page", title: "Pulse — activity feed", entry: "pages/pulse.html", description: "Live document feed." }, body: "" },
+    {
+      id: "pages-registry/pulse",
+      frontmatter: { type: "Page", title: "Pulse — activity feed", entry: "pages/pulse.html", description: "Live document feed.", bridge: "bundle-read" },
+      body: "",
+    },
   );
   await writeDoc(
     { root: dir },
-    { id: "pages-registry/roadmap", frontmatter: { type: "Page", title: "Roadmap", entry: "pages/roadmap.html", description: "Roadmap items and their contained tasks." }, body: "" },
+    {
+      id: "pages-registry/roadmap",
+      frontmatter: { type: "Page", title: "Roadmap", entry: "pages/roadmap.html", description: "Roadmap items and their contained tasks.", bridge: "bundle-read" },
+      body: "",
+    },
   );
   await writeBlob({ root: dir }, "pages/pulse.html", await readFile(path.join(examples, "pulse.html")), "text/html; charset=utf-8");
   await writeBlob({ root: dir }, "pages/roadmap.html", await readFile(path.join(examples, "roadmap.html")), "text/html; charset=utf-8");

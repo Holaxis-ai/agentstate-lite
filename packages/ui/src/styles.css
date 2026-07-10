@@ -167,6 +167,24 @@ body {
   overflow-wrap: anywhere;
 }
 
+.launcher-section {
+  margin-bottom: 1.5rem;
+}
+
+.launcher-section:last-child {
+  margin-bottom: 0;
+}
+
+.launcher-section h3 {
+  margin: 0 0 0.6rem;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
 .launcher-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));

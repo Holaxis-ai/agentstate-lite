@@ -1,8 +1,13 @@
 /**
  * Launcher (tasks/ui-pages-spike): the ui command's SOLE landing surface. Shows the bundle summary
  * plus every `type: Page` registry doc as a card (title, description, entry key, and provenance —
- * actor + timestamp). Clicking a page card routes to `?view=page&id=<registry doc id>`, which mounts
- * a sandboxed {@link PageFrame}. (The old paused React board/doc/admin/graph views were removed.)
+ * actor + timestamp), grouped by the page's ENFORCED `bridge` capability: "Dashboards"
+ * (`bundle-read` — live bundle data) and "Documents" (`none` — arbitrary self-contained HTML,
+ * zero bundle access). The grouping is a read of the SAME field the bridge broker enforces
+ * (`../pages/bridge.js`'s `resolveBridgeCapability`) — it can never claim a page is one thing while
+ * the bridge treats it as another. Clicking a page card routes to `?view=page&id=<registry doc
+ * id>`, which mounts a sandboxed {@link PageFrame}. (The old paused React board/doc/admin/graph
+ * views were removed.)
  *
  * Live: a doc change over SSE may add/remove/retitle a Page doc, so the page list refetches on any
  * doc change — the launcher reflects a freshly-promoted page without a manual reload.
@@ -44,6 +49,8 @@ export function Launcher() {
 
   const config = configQuery.data;
   const pages = pagesQuery.data ?? [];
+  const dashboards = pages.filter((page) => page.bridge === "bundle-read");
+  const documents = pages.filter((page) => page.bridge === "none");
 
   return (
     <div className="launcher">
@@ -61,11 +68,27 @@ export function Launcher() {
         </p>
       </section>
 
-      <section className="launcher-grid">
-        {pages.map((page) => (
-          <PageCard key={page.id} page={page} />
-        ))}
-      </section>
+      {dashboards.length > 0 && (
+        <section className="launcher-section">
+          <h3>Dashboards</h3>
+          <div className="launcher-grid">
+            {dashboards.map((page) => (
+              <PageCard key={page.id} page={page} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {documents.length > 0 && (
+        <section className="launcher-section">
+          <h3>Documents</h3>
+          <div className="launcher-grid">
+            {documents.map((page) => (
+              <PageCard key={page.id} page={page} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {pagesQuery.isPending && <p className="view-status">Loading pages…</p>}
       {pagesQuery.isError && (
