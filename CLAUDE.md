@@ -177,6 +177,21 @@ bundle-relative**.
 
 ## Working here
 
+### Engineering discipline
+
+- Keep each PR to one coherent behavioral or policy claim. If its correctness depends on a
+  second decision, split it or make that decision explicit before implementation.
+- Keep source comments short. Explain only stable, non-obvious reasons; review-round history and
+  adjudication narrative belong in the PR or project bundle, not beside the code.
+- Treat words such as **canonical**, **parity**, and **gate** as testable claims. Use them only when
+  the implementation or an executable check directly proves the stated relationship.
+- Add deterministic adversarial tests for dangerous boundaries, including concurrency,
+  authentication, migration, reconnect/replay, and destructive writes.
+- Consolidation removes the superseded implementation, tests, and commentary in the same unit;
+  do not leave two paths with a comment declaring which one should win.
+- A recurring bug class is API-design feedback. Move the invariant into one owning primitive so
+  callers cannot reproduce the mistake; do not keep patching consumers or adding reminders.
+
 - Build/verify gate: `npm run build` and `npm run typecheck` must exit 0, and `npm test`
   (`--workspaces --if-present`: core + cli + server + viewer + worker + ui suites) must pass, before
   shipping. `npm run check` runs all of that plus this repo's own `scripts/` tests (`test:scripts`)
