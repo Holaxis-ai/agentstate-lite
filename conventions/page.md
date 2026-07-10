@@ -7,15 +7,15 @@ fields:
   required:
     - title
     - entry
+    - bridge
   optional:
     - description
-    - bridge
   values:
     bridge:
       - none
       - bundle-read
   terminal: {}
-timestamp: '2026-07-09T00:00:00.000Z'
+timestamp: '2026-07-10T21:00:00.000Z'
 ---
 # Page
 
@@ -27,8 +27,10 @@ the read-only postMessage bridge (BRIDGE.md, shipped alongside) — it never hol
 - `title` (required) — the launcher card's heading.
 - `entry` (required) — the HTML blob key, e.g. `pages/roadmap.html`.
 - `description` (optional) — one line shown on the launcher card.
-- `bridge` (optional) — `none | bundle-read`. ENFORCED by the shell, not cosmetic: absent,
-  malformed, or any value other than exactly `bundle-read` is treated as `none` — fail-closed.
+- `bridge` (required) — `none | bundle-read`. Every Page is intentionally classified. ENFORCED by
+  the shell, not cosmetic; and layered with a runtime fail-closed default: absent, malformed, or any
+  value other than exactly `bundle-read` is treated as `none` (defense for external/hand-edited docs
+  this convention does not govern).
   - `bundle-read` — a **data page**: the shell answers its bridge requests (`hello`/`query`/
     `read`/`edges`/`subscribe`) with live bundle data. Groups under the launcher's "Dashboards".
   - `none` — a **content page**: the shell DENIES every bridge request outright. Arbitrary
