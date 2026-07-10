@@ -4,17 +4,18 @@ title: 'Generative chat UI in the launcher: prompt -> live bundle page'
 status: todo
 priority: '2'
 description: >-
-  Founders' feature ask (Brian, 2026-07-10): the aslite ui launcher gains an
-  interactive chat input — the user types an arbitrary prompt ('show me open
-  tasks by assignee', 'a claims audit view') and an AI agent generates a UI
-  screen or element from it, appearing as a clickable page in the launcher.
-  GUARDRAILS ARE PART OF THE FEATURE: the serving agent is constrained to
-  aslite's own dynamic-UI primitives (self-contained HTML + the v0 read-only
-  bridge, promote + Page registry) and must NOT reach for harness-native output
-  channels (e.g. Claude's Artifacts feature) — enforced by tool/skill allowlist,
-  not just prompt. Details + open questions in the body.
+  JOINT founders' feature ask (Brian + Mike, discussed live 2026-07-10 before
+  filing — both fully in the loop): the aslite ui launcher gains an interactive
+  chat input — the user types an arbitrary prompt ('show me open tasks by
+  assignee', 'a claims audit view') and an AI agent generates a UI screen or
+  element from it, appearing as a clickable page in the launcher. GUARDRAILS ARE
+  PART OF THE FEATURE: the serving agent is constrained to aslite's own
+  dynamic-UI primitives (self-contained HTML + the v0 read-only bridge, promote
+  + Page registry) and must NOT reach for harness-native output channels (e.g.
+  Claude's Artifacts feature) — enforced by tool/skill allowlist, not just
+  prompt. Details + open questions in the body.
 actor: brian-claude
-timestamp: '2026-07-10T17:14:59.999Z'
+timestamp: '2026-07-10T19:55:44.494Z'
 ---
 ## The feature
 
