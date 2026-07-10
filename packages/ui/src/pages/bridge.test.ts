@@ -174,6 +174,14 @@ describe("applyRowFilters", () => {
   it("limit: caps after filtering", () => {
     expect(applyRowFilters(rows, { limit: 1 }).map((r) => r.id)).toEqual(["a"]);
   });
+
+  it("limit: 0 means UNLIMITED (matches CLI `list --limit 0`), never an empty slice", () => {
+    expect(applyRowFilters(rows, { limit: 0 }).map((r) => r.id)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("limit: absent returns every row", () => {
+    expect(applyRowFilters(rows, {}).map((r) => r.id)).toEqual(["a", "b", "c", "d"]);
+  });
 });
 
 describe("normalizeQueryParams", () => {
