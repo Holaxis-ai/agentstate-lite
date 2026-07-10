@@ -99,8 +99,11 @@ requests at all — and the shell, not the page, is what enforces it:
   `subscribe` as described above.
 - `bridge: none` — a **content page**. The shell replies to EVERY request type with a `FORBIDDEN`
   error, before touching any bundle data. Arbitrary self-contained HTML with no live data at all.
-- Absent, malformed, or any other value is treated as `bridge: none` — fail-closed. A page only
-  gets bundle access by declaring exactly `bundle-read`.
+- The `Page` convention declares `bridge` REQUIRED — every page is an intentional
+  classification, not a silent default. At runtime the shell still fails closed for a doc this
+  convention didn't govern (an external bundle, a hand-edited file that skipped the lint): absent,
+  malformed, or any other value is treated as `bridge: none`. A page only gets bundle access by
+  declaring exactly `bundle-read`.
 
 The launcher groups pages by this same field: "Dashboards" for `bundle-read`, "Documents" for
 `none`.
@@ -111,8 +114,8 @@ The launcher groups pages by this same field: "Dashboards" for `bundle-read`, "D
    the ~30-line bridge client below; a content page (`bridge: none`) has no use for it — every
    call it made would come back `FORBIDDEN`.
 2. Promote it as a blob: `agentstate-lite promote my-page.html --doc-key pages/my-page.html`.
-3. Declare a registry doc: a `type: Page` doc with `title`, `entry: pages/my-page.html`, an
-   optional `description`, and `bridge: none` or `bridge: bundle-read`. Promote it:
+3. Declare a registry doc: a `type: Page` doc with `title`, `entry: pages/my-page.html`, either
+   `bridge: none` or `bridge: bundle-read` (required), and an optional `description`. Promote it:
    `--doc-key pages-registry/my-page.md`.
 4. Declare the `Page` convention once per bundle (`conventions/page.md`, `governs: Page`).
 

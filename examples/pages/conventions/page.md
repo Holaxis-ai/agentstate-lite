@@ -7,9 +7,9 @@ fields:
   required:
     - title
     - entry
+    - bridge
   optional:
     - description
-    - bridge
   values:
     bridge:
       - none
@@ -27,8 +27,12 @@ the read-only postMessage bridge (BRIDGE.md, shipped alongside) — it never hol
 - `title` (required) — the launcher card's heading.
 - `entry` (required) — the HTML blob key, e.g. `pages/roadmap.html`.
 - `description` (optional) — one line shown on the launcher card.
-- `bridge` (optional) — `none | bundle-read`. ENFORCED by the shell, not cosmetic: absent,
-  malformed, or any value other than exactly `bundle-read` is treated as `none` — fail-closed.
+- `bridge` (required) — `none | bundle-read`. Required so every Page is an INTENTIONAL
+  classification, not a silent default — an author who forgets to declare it gets a clear
+  authoring-time lint, not a page that quietly renders empty against a full bundle. ENFORCED by
+  the shell too, not just linted: absent, malformed, or any value other than exactly
+  `bundle-read` is treated as `none` at runtime — fail-closed defense for a doc this convention
+  didn't govern (an external bundle, a hand-edited file that skipped the lint).
   - `bundle-read` — a **data page**: the shell answers its bridge requests (`hello`/`query`/
     `read`/`edges`/`subscribe`) with live bundle data. Groups under the launcher's "Dashboards".
   - `none` — a **content page**: the shell DENIES every bridge request outright. Arbitrary
