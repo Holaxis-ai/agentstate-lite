@@ -37,7 +37,8 @@ aslite recipe add roadmap            # its companion: Roadmap + Roadmap Item kin
                                      # (typed 'contains' links: roadmap → item → task)
 aslite hook install                  # agents orient automatically at session start
                                      # (Claude Code, Codex, OpenCode)
-# commit the .agentstate-lite/ folder — every clone's agents now find the bundle
+aslite sync --establish              # optional: share the board — creates the 'board'
+                                     # branch on origin; teammates just run 'aslite sync'
 ```
 
 The conventional `.agentstate-lite/` folder at the project root is discovered with zero
@@ -62,16 +63,24 @@ aslite list --type Task
 aslite doc update tasks/ship-parser --status in_progress --actor claude
 aslite doc history tasks/ship-parser   # who changed what, when
 aslite ui                              # the bundle, rendered — local server, no cloud
-aslite sync                            # share the board with teammates — commits yours,
-                                       # pulls theirs, pushes; touches nothing but the board
+aslite sync                            # ordinary shared-board updates — commits yours,
+                                       # pulls theirs, pushes; leaves code files untouched
 ```
 
-`sync` is for projects that share their board on a `board` branch of the repo's remote —
-there it is also the setup verb (a fresh clone's first `sync` provisions the board). A
-project that hasn't adopted it just gets `sync: nothing to sync`; keep committing the
-folder. When a doc changed on both sides, sync converges: your teammate's version is kept,
-yours is saved to an export file, and `sync --show-incoming <id>` + `doc update` reconcile —
-no git surgery.
+`init` always makes a LOCAL bundle; `sync` is the verb that establishes or joins a SHARED
+one. `sync --establish` is the one-time, explicit act that turns this project's local
+bundle into a shared board (a `board` branch on the repo's remote) — never automatic, so
+a bare `sync` never silently publishes a bundle nobody asked to share. Once a board
+exists (here or on a teammate's clone), plain `sync` is everyone's setup AND ongoing verb:
+a fresh clone's first `sync` provisions the board from origin; a project with no shared
+board yet just gets `sync: nothing to sync`. When a doc changed on both sides, sync
+converges: your teammate's version is kept, yours is saved to an export file, and
+`sync --show-incoming <id>` + `doc update` reconcile — no git surgery. (A project that
+committed the folder directly to its code branch instead of adopting `sync` — the
+original, still-valid convention — keeps working exactly as before.)
+
+Establishment also appends `.agentstate-lite/` to the root working-tree `.gitignore` and
+reports that uncommitted edit; ordinary sync does not modify code-project files.
 
 ## How it works
 

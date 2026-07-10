@@ -136,6 +136,7 @@ export async function sessionStartPull(
       outcome = provisionBoardWorktree(startDir, {
         fetchTimeoutMs: remaining(),
         connectTimeoutSeconds: SESSION_START_CONNECT_TIMEOUT_SECONDS,
+        allowLocalBranch: false,
       });
     } catch {
       // Provisioning refused (a stray non-board directory, unrepairable pointers, …): the render's
@@ -143,7 +144,7 @@ export async function sessionStartPull(
       // with real exit codes — this hook stays calm and renders.
       return undefined;
     }
-    if (outcome.kind === "no_repo" || outcome.kind === "no_board") return undefined;
+    if (outcome.kind === "no_repo" || outcome.kind === "no_board" || outcome.kind === "local_board") return undefined;
     const boardPath = outcome.boardPath;
     const announcement = provisionAnnouncement(outcome);
 

@@ -120,14 +120,13 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
 
   const receipt: Record<string, unknown> = { init: "ok", root: bundle.root, recipe: recipeApplied };
   if (warnings.length > 0) receipt.warnings = warnings;
-  // In-a-git-repo hint (plan §U6): `sync` is the setup verb for a project that already shares a
-  // board — `init` there mints a divergent second bundle. The probe is fs-only (`.git` up-tree,
-  // no git binary) and the hint is ADVISORY: it never blocks, never changes the exit code.
+  // `init` always creates a local bundle. Inside a Git repo, an advisory fs-only hint distinguishes
+  // joining an existing shared board from explicitly sharing this new one.
   if (insideGitRepo(root)) {
     receipt.hint =
-      "this directory is inside a git repo — if the project already shares a board, run " +
-      `\`${cliInvocation()} sync\` instead of init (sync sets up the existing shared board; ` +
-      "init creates a new bundle)";
+      "this bundle is local until shared — if the project already shares a board, " +
+      `\`${cliInvocation()} sync\` joins it (never init there, that mints a divergent second ` +
+      `bundle); to start sharing this one, \`${cliInvocation()} sync --establish\``;
   }
   // Surface the recipe catalog so a cold agent whose task needs a DIFFERENT kind (e.g. tasks) does
   // not have to guess that `recipes` exists — the study's C1 tester had to discover work-tracking
