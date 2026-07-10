@@ -5,13 +5,30 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { initBundle, loadKinds, readDoc, writeDoc, CONVENTION_TYPE } from "@agentstate-lite/core";
+import {
+  initBundle,
+  loadKinds,
+  readDoc,
+  writeDoc,
+  CONVENTION_TYPE,
+  MemoryBackend,
+  type Bundle,
+  type OkfDocument,
+  type Version,
+} from "@agentstate-lite/core";
+import { serve, type ServerHandle } from "@agentstate-lite/server";
 import { applyRecipe } from "../src/recipes.js";
 import { CONTEXT_NOTES_RECIPE } from "../src/recipe-source.js";
 import { kind } from "../src/commands/kind.js";
 import { list } from "../src/commands/list.js";
 import { status } from "../src/commands/status.js";
 import { CliError } from "../src/errors.js";
+
+/** Boot the reference server over `bundle` (a real socket listener, ephemeral port). */
+async function bootServerOverBundle(bundle: Bundle): Promise<{ url: string; close: () => Promise<void> }> {
+  const handle: ServerHandle = await serve({ bundle, port: 0 });
+  return { url: `http://${handle.host}:${handle.port}`, close: () => handle.close() };
+}
 
 async function seeded(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   const dir = await mkdtemp(path.join(tmpdir(), "aslite-kind-test-"));
@@ -196,6 +213,201 @@ test("schema-evolution journey: kind field add --required makes status re-lint E
     const removed = await runKind(["field", "Context Note", "remove", "priority", "--dir", dir]);
     assert.equal(removed.changed, true);
     assert.equal((await runStatus()).length, 0, "removing the field clears the lint");
+  } finally {
+    await cleanup();
+  }
+});
+
+// ── Defect A (mutation-boundary consolidation): kind field's lost-update bug ───────────────────────
+//
+// `kind field` used to do an UNVERSIONED readDoc -> in-memory edit -> unconditional writeDoc with NO
+// expectedVersion at all — a pure last-writer-wins race over the convention doc. Two concurrent `kind
+// field add` calls declaring DIFFERENT fields would silently lose one: both read the same starting
+// doc, both computed their own edit against it, and whichever write landed LAST won outright,
+// clobbering the other's change with no error and no warning. Now routed through `mutateDoc`'s
+// "patch" mode (a versioned read -> CAS write with a bounded conflict retry), the loser's retry
+// re-reads the winner's write and re-applies its OWN edit on top — both fields survive.
+
+// These two tests inject a competing write DETERMINISTICALLY at the exact moment our own write
+// attempts to land — the same `backend.write` wrapper technique `doc.test.ts`'s coupleRead racer
+// tests and `link.test.ts`'s addLink racer tests use — rather than relying on real concurrent
+// `Promise.all` timing, which does not reliably reproduce this race (two real HTTP round-trips
+// over loopback do not reliably overlap on the read/write critical section).
+
+test("kind field: a competing writer's field-add (a DIFFERENT field) lands between our read and write — Defect A: both fields survive, not just the last writer's", async () => {
+  const backend = new MemoryBackend();
+  const bundle: Bundle = { root: "mem://kind-field-merge-race", backend };
+  await applyRecipe(bundle, CONTEXT_NOTES_RECIPE); // declares the Context Note kind
+  const registry = await loadKinds(bundle);
+  const convId = registry.kinds.get("Context Note")!.id;
+
+  // The FIRST time our own write attempts a real CAS write for the convention doc, inject a race:
+  // a separate writer adds a DIFFERENT field first, using OUR OWN read's version (so it wins),
+  // leaving our own write's token stale.
+  const originalWrite = backend.write.bind(backend);
+  let injected = false;
+  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
+    if (id === convId && !injected && options?.expectedVersion) {
+      injected = true;
+      const current = await backend.read(convId);
+      const fm = current.doc.frontmatter;
+      const fields = { ...(fm.fields as Record<string, unknown>) };
+      const optional = Array.isArray(fields.optional) ? [...(fields.optional as string[])] : [];
+      optional.push("field-b");
+      await originalWrite(
+        convId,
+        { ...current.doc, frontmatter: { ...fm, fields: { ...fields, optional } } },
+        { expectedVersion: options.expectedVersion },
+      );
+    }
+    return originalWrite(id, d, options);
+  }) as typeof backend.write;
+
+  const server = await bootServerOverBundle(bundle);
+  try {
+    let out = "";
+    await kind(["field", "Context Note", "add", "field-a", "--remote", server.url, "--json"], { stdout: (s) => (out += s) });
+    const result = JSON.parse(out) as Record<string, unknown>;
+    assert.equal(result.changed, true);
+
+    // Both fields must be declared — a last-writer-wins (unversioned) write would show only
+    // ONE of them here, since our own write would have silently clobbered the competing one.
+    const conv = await readDoc(bundle, convId);
+    const optional = (conv.frontmatter.fields as Record<string, unknown>).optional as string[];
+    assert.ok(optional.includes("field-a"), "our own field survived");
+    assert.ok(optional.includes("field-b"), "the competing writer's field survived (Defect A fix)");
+  } finally {
+    await server.close();
+  }
+});
+
+test("kind field: a competing 'doc update'-style title edit lands between our read and write — never silently clobbered", async () => {
+  const backend = new MemoryBackend();
+  const bundle: Bundle = { root: "mem://kind-field-vs-title-race", backend };
+  await applyRecipe(bundle, CONTEXT_NOTES_RECIPE);
+  const registry = await loadKinds(bundle);
+  const convId = registry.kinds.get("Context Note")!.id;
+
+  // Same injection technique, but the competing write is an UNRELATED field (a title edit — the
+  // shape a concurrent `doc update` to the SAME convention would make), never touching `fields` at
+  // all — proving the fix isn't merely "two field edits happen to merge" but a genuine CAS retry.
+  const originalWrite = backend.write.bind(backend);
+  let injected = false;
+  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
+    if (id === convId && !injected && options?.expectedVersion) {
+      injected = true;
+      const current = await backend.read(convId);
+      await originalWrite(
+        convId,
+        { ...current.doc, frontmatter: { ...current.doc.frontmatter, title: "Raced title" } },
+        { expectedVersion: options.expectedVersion },
+      );
+    }
+    return originalWrite(id, d, options);
+  }) as typeof backend.write;
+
+  const server = await bootServerOverBundle(bundle);
+  try {
+    let out = "";
+    await kind(["field", "Context Note", "add", "field-c", "--remote", server.url, "--json"], { stdout: (s) => (out += s) });
+    const result = JSON.parse(out) as Record<string, unknown>;
+    assert.equal(result.changed, true);
+
+    const conv = await readDoc(bundle, convId);
+    const optional = (conv.frontmatter.fields as Record<string, unknown>).optional as string[];
+    assert.ok(optional.includes("field-c"), "our own field survived");
+    assert.equal(conv.frontmatter.title, "Raced title", "the competing writer's title edit survived");
+  } finally {
+    await server.close();
+  }
+});
+
+// ── P1 review finding: re-verifying a version-matched read is not the same as re-verifying the
+// DOMAIN invariant this command depends on ──────────────────────────────────────────────────────
+//
+// The Defect A fix above proves the field-edit MERGES across a race — but that only shows the
+// primitive's CAS pairing works, not that `kind field`'s own domain logic is race-safe. A second
+// review round found a real gap: `buildCandidate` re-read the convention on every attempt but never
+// re-checked it still GOVERNS the kind name the command was invoked with. A competing writer that
+// renames the SAME convention's `governs` between attempts (e.g. 'Context Note' -> 'Renamed Kind')
+// would have the retry silently re-splice field lists onto the RENAMED convention under the OLD kind
+// name — a version-safe write that is nonetheless a domain-wrong one. `buildCandidate` now re-checks
+// `governs === kindName` on EVERY attempt and refuses (STALE_HEAD) if it no longer holds.
+
+test("kind field: a competing writer renames the convention's 'governs' between attempts — refuses (STALE_HEAD) instead of editing the wrong kind's schema (P1 review fix)", async () => {
+  const backend = new MemoryBackend();
+  const bundle: Bundle = { root: "mem://kind-field-governs-rename-race", backend };
+  await applyRecipe(bundle, CONTEXT_NOTES_RECIPE);
+  const registry = await loadKinds(bundle);
+  const convId = registry.kinds.get("Context Note")!.id;
+
+  // The FIRST time our own write attempts a real CAS write for the convention doc, a competing
+  // writer renames its 'governs' first, using OUR OWN read's version (so it wins).
+  const originalWrite = backend.write.bind(backend);
+  let injected = false;
+  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
+    if (id === convId && !injected && options?.expectedVersion) {
+      injected = true;
+      const current = await backend.read(convId);
+      await originalWrite(
+        convId,
+        { ...current.doc, frontmatter: { ...current.doc.frontmatter, governs: "Renamed Kind" } },
+        { expectedVersion: options.expectedVersion },
+      );
+    }
+    return originalWrite(id, d, options);
+  }) as typeof backend.write;
+
+  const server = await bootServerOverBundle(bundle);
+  try {
+    await assert.rejects(
+      () =>
+        kind(["field", "Context Note", "add", "field-d", "--remote", server.url, "--json"], { stdout: () => {} }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "STALE_HEAD");
+        assert.match(err.message, /no longer governs 'Context Note'/);
+        assert.match(err.message, /Renamed Kind/);
+        return true;
+      },
+    );
+
+    // The rename survived, untouched — our field edit never landed on the wrong doc.
+    const conv = await readDoc(bundle, convId);
+    assert.equal(conv.frontmatter.governs, "Renamed Kind");
+    const fields = conv.frontmatter.fields as Record<string, unknown> | undefined;
+    const optional = (fields?.optional as string[] | undefined) ?? [];
+    assert.ok(!optional.includes("field-d"), "our own field must NOT have been added to the renamed convention");
+  } finally {
+    await server.close();
+  }
+});
+
+// ── P2 review finding: the enum-value no-op comparison used a collision-prone join(" ") ────────────
+//
+// `["a b","c"].join(" ")` and `["a","b c"].join(" ")` are BOTH `"a b c"` — so a naive join-based
+// equality check reports two GENUINELY DIFFERENT enum splits as identical, wrongly converging a real
+// change to `changed:false` (and silently keeping the STALE enum list on disk). Fixed to a
+// length + element-wise comparison, which no delimiter choice can ever collide on.
+
+test("kind field add --values: a DIFFERENT enum split that happens to join-collide with the existing one is NOT mistaken for a no-op (P2 review fix)", async () => {
+  const { dir, cleanup } = await seeded();
+  try {
+    // Seed with a split that collides via naive join(" ") with a DIFFERENT split below:
+    // ["a b","c"].join(" ") === ["a","b c"].join(" ") === "a b c".
+    const r1 = await runKind(["field", "Context Note", "add", "collide", "--values", "a b,c", "--dir", dir]);
+    assert.equal(r1.changed, true);
+    assert.deepEqual((r1.values as Record<string, string[]>).collide, ["a b", "c"]);
+
+    // A genuinely DIFFERENT enum split that joins identically must be reported changed:true, not
+    // mistaken for a no-op.
+    const r2 = await runKind(["field", "Context Note", "add", "collide", "--values", "a,b c", "--dir", dir]);
+    assert.equal(r2.changed, true, "a different enum split that join-collides must still be a real change");
+    assert.deepEqual((r2.values as Record<string, string[]>).collide, ["a", "b c"]);
+
+    // A TRUE no-op (re-adding the IDENTICAL split) still converges.
+    const r3 = await runKind(["field", "Context Note", "add", "collide", "--values", "a,b c", "--dir", dir]);
+    assert.equal(r3.changed, false);
   } finally {
     await cleanup();
   }

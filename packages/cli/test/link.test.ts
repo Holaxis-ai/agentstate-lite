@@ -18,10 +18,19 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { initBundle, writeDoc, readDoc } from "@agentstate-lite/core";
+import {
+  initBundle,
+  writeDoc,
+  readDoc,
+  parseLinks,
+  MemoryBackend,
+  type Bundle,
+  type OkfDocument,
+  type Version,
+} from "@agentstate-lite/core";
 import { serve, type ServerHandle } from "@agentstate-lite/server";
-import { link } from "../src/commands/link.js";
-import { CliError } from "../src/errors.js";
+import { link, addLink } from "../src/commands/link.js";
+import { CliError, toExit } from "../src/errors.js";
 
 const OLD_TS = "2020-01-01T00:00:00.000Z";
 
@@ -139,6 +148,128 @@ test("link add: re-adding an already-present link is an idempotent no-op (no wri
   } finally {
     await cleanup();
   }
+});
+
+// ── `addLink` onto the shared `versionedMutation` primitive: concurrent-writer racer tests ────────
+//
+// `addLink` (the core link-add mutation `link add`/`new --link` both call) now rides core's shared
+// read-decide-CAS-retry primitive instead of a hand-rolled loop (CLAUDE.md gate 3). These tests
+// exercise it directly against a `MemoryBackend` bundle (real enforced CAS), with a `backend.write`
+// wrapper that injects a competing write exactly when our own write attempts to land — the same
+// mechanism `doc.test.ts`'s coupleRead racer tests use for `mutateDoc`.
+
+test("link add: a competing writer adds the SAME link before our own write lands — converges to changed:false, no duplicate link, no timestamp re-refresh on the retry", async () => {
+  const backend = new MemoryBackend();
+  const bundle: Bundle = { root: "mem://link-add-same-race", backend };
+  await writeDoc(bundle, {
+    id: "a",
+    frontmatter: { type: "Concept", timestamp: OLD_TS },
+    body: "Intro.\n",
+  });
+  await writeDoc(bundle, { id: "b", frontmatter: { type: "Concept", timestamp: OLD_TS }, body: "" });
+
+  // The FIRST time our own write attempts a real CAS write for 'a', inject a race: a separate
+  // writer adds the EXACT SAME link first (using our own read's version, so it wins), leaving our
+  // own write's token stale.
+  const originalWrite = backend.write.bind(backend);
+  let injected = false;
+  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
+    if (id === "a" && !injected && options?.expectedVersion) {
+      injected = true;
+      const current = await backend.read("a");
+      await originalWrite(
+        "a",
+        { ...current.doc, body: `${current.doc.body.replace(/\s*$/, "")}\n\n[b](b.md)\n` },
+        { expectedVersion: options.expectedVersion },
+      );
+    }
+    return originalWrite(id, d, options);
+  }) as typeof backend.write;
+
+  const result = await addLink(bundle, "a", "b", { text: "b" });
+
+  // Converged to changed:false — the competing writer already made the exact change we wanted, so
+  // our retry's idempotency check sees it and never writes a duplicate link.
+  assert.equal(result.changed, false);
+  const after = await readDoc(bundle, "a");
+  assert.equal(parseLinks(bundle, after).filter((l) => l.to === "b").length, 1);
+});
+
+test("link add: a competing writer makes an UNRELATED change before our own write lands — our link lands on the retry, and the competing change survives (not silently clobbered)", async () => {
+  const backend = new MemoryBackend();
+  const bundle: Bundle = { root: "mem://link-add-unrelated-race", backend };
+  await writeDoc(bundle, {
+    id: "a",
+    frontmatter: { type: "Concept", title: "Old title", timestamp: OLD_TS },
+    body: "Intro.\n",
+  });
+  await writeDoc(bundle, { id: "b", frontmatter: { type: "Concept", timestamp: OLD_TS }, body: "" });
+
+  // The FIRST time our own write attempts a real CAS write for 'a', inject an UNRELATED competing
+  // change (a title edit, nothing to do with links) using our own read's version, so it wins.
+  const originalWrite = backend.write.bind(backend);
+  let injected = false;
+  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
+    if (id === "a" && !injected && options?.expectedVersion) {
+      injected = true;
+      const current = await backend.read("a");
+      await originalWrite(
+        "a",
+        { ...current.doc, frontmatter: { ...current.doc.frontmatter, title: "Raced title" } },
+        { expectedVersion: options.expectedVersion },
+      );
+    }
+    return originalWrite(id, d, options);
+  }) as typeof backend.write;
+
+  const result = await addLink(bundle, "a", "b", { text: "b" });
+
+  assert.equal(result.changed, true);
+  const after = await readDoc(bundle, "a");
+  // Our link landed on the retry...
+  assert.equal(parseLinks(bundle, after).some((l) => l.to === "b"), true);
+  // ...and the competing writer's title change was NOT silently clobbered — the retry's write
+  // built its candidate from the FRESH (post-race) doc, which already carried the raced title.
+  assert.equal(after.frontmatter.title, "Raced title");
+});
+
+test("link add: a genuine I/O failure (simulated ENOSPC) during the write surfaces as RUNTIME (exit 1), not USAGE (exit 2) (P3 review fix)", async () => {
+  // A prior version of addLink's write-error rethrow routed EVERY non-conflict write error
+  // (including a plain local Error with no typed shape) through `classifyBundleError`, whose
+  // fallback maps anything unrecognized to USAGE (exit 2, "fix your input") — wrong for a genuine
+  // I/O failure like a disk-full write, which is a RUNTIME condition, not user misuse. The fix
+  // classifies ONLY the known/typed `RemoteError` shape and rethrows anything else AS-IS, so it
+  // reaches the CLI's generic RUNTIME/exit-1 catch-all (`toExit`, exactly as `cli.ts`'s dispatcher
+  // applies it) instead of being silently downgraded.
+  const backend = new MemoryBackend();
+  const bundle: Bundle = { root: "mem://link-add-enospc", backend };
+  await writeDoc(bundle, { id: "a", frontmatter: { type: "Concept", timestamp: OLD_TS }, body: "" });
+  await writeDoc(bundle, { id: "b", frontmatter: { type: "Concept", timestamp: OLD_TS }, body: "" });
+
+  const originalWrite = backend.write.bind(backend);
+  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
+    if (id === "a") {
+      const err = new Error("ENOSPC: no space left on device, write") as NodeJS.ErrnoException;
+      err.code = "ENOSPC";
+      throw err;
+    }
+    return originalWrite(id, d, options);
+  }) as typeof backend.write;
+
+  let thrown: unknown;
+  try {
+    await addLink(bundle, "a", "b", { text: "b" });
+    assert.fail("expected addLink to reject on the simulated ENOSPC write failure");
+  } catch (err) {
+    thrown = err;
+  }
+  // NOT a CliError at this layer — addLink itself never classifies a plain local error (only a
+  // RemoteError gets mapped); classification into the exit-code taxonomy is the CLI dispatcher's
+  // job, exercised here exactly the way `cli.ts`'s `formatError` does it.
+  const exit = toExit(thrown);
+  assert.equal(exit.exitCode, 1);
+  assert.equal(exit.envelope.error.code, "RUNTIME");
+  assert.match(exit.envelope.error.message, /ENOSPC/);
 });
 
 test("link show --limit caps the outbound/backlink lists; counts stay the true totals (A5)", async () => {
