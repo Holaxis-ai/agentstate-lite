@@ -6,7 +6,7 @@ description: >-
   vs standalone content pages) and retire the static viewer (packages/viewer /
   view -> viz.html). Includes why, blast radius, sequencing, and open questions.
 actor: mike/claude
-timestamp: '2026-07-10T18:38:16.148Z'
+timestamp: '2026-07-10T18:38:54.016Z'
 ---
 # Human window: one page primitive, and retiring the static viewer
 
@@ -128,3 +128,7 @@ byte channel. Local HTML publishing is fully retained — it just goes through t
 - A second mechanism for content pages (they are just pages).
 - Keeping the viewer as a parallel engine.
 - Building snapshot export now (parked until a real need).
+
+[plan for](../tasks/deprecate-static-viewer.md)
+
+[realizes](../roadmap-items/ui-rethink.md)
