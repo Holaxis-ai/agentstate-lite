@@ -251,10 +251,16 @@ async function kindsResponse(options: UiServerOptions): Promise<Response> {
  * `RemoteBackend`-backed bundle `kindsResponse` already uses (`options.kindsBundle`) — `queryEdges`
  * rides `query`+`readMany` under the hood, so this costs no new wire route on the reference server.
  * `from`/`to` are repeatable query params (array-union, mirroring `link list --from/--to`); `text`
- * is exact-match. Best-effort like `kindsResponse`: an unreadable bundle yields an empty edge list
- * rather than a 500 — this is a read-only display query, not a write path. Row schema is
- * AXI-minimal (`{from, to, text}`), the SAME projection `link list` applies — core's `Link` also
- * carries `href` (the raw pre-resolution markdown target), an internal detail no page needs.
+ * is exact-match. Row schema is AXI-minimal (`{from, to, text}`), the SAME projection `link list`
+ * applies — core's `Link` also carries `href` (the raw pre-resolution markdown target), an
+ * internal detail no page needs.
+ *
+ * UNLIKE `kindsResponse` (an auxiliary display filter, correctly best-effort), edges is PRIMARY
+ * data — a page's backlinks panel, say — so a `queryEdges` failure (most commonly a `--remote`
+ * upstream outage) is mapped to a 502, mirroring `proxyToRemote`'s own transport-failure envelope,
+ * rather than swallowed into a 200 `{edges:[],count:0}`: a real outage must read as an error, not
+ * as "this bundle simply has no edges" (the branch's own silent-staleness standard, and the reason
+ * `fetchEdges` throws on any non-2xx rather than best-effort-emptying like `fetchKinds`).
  */
 async function edgesResponse(options: UiServerOptions, url: URL): Promise<Response> {
   const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
@@ -266,13 +272,11 @@ async function edgesResponse(options: UiServerOptions, url: URL): Promise<Respon
   const text = url.searchParams.get("text")?.trim();
   if (text) filter.text = text;
 
-  let links: Awaited<ReturnType<typeof queryEdges>> = [];
-  if (bundle) {
-    try {
-      links = await queryEdges(bundle, filter);
-    } catch {
-      links = [];
-    }
+  let links: Awaited<ReturnType<typeof queryEdges>>;
+  try {
+    links = bundle ? await queryEdges(bundle, filter) : [];
+  } catch (err) {
+    return jsonError(502, "RUNTIME", `could not read the bundle's edges (${err instanceof Error ? err.message : String(err)})`);
   }
   const edges = links.map((l) => ({ from: l.from, to: l.to, text: l.text }));
   return new Response(JSON.stringify({ edges, count: edges.length }), {

@@ -438,6 +438,34 @@ test("edges endpoint: serves core's queryEdges over a RemoteBackend bundle (remo
   }
 });
 
+test("edges endpoint: a remote-upstream OUTAGE surfaces as a non-2xx error, never a 200 {edges:[]} (review fold-in — edges is primary data, not a display filter)", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-edges-outage-"));
+  let uiHandle: UiServerHandle | undefined;
+  try {
+    // Boot a REAL reference server, note its origin, then close it — the origin now genuinely
+    // refuses connections (ECONNREFUSED), mirroring the review's exact repro ("killing the
+    // reference server").
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    const remoteHandle = await serve({ bundle, port: 0 });
+    const remoteBase = `http://${remoteHandle.host}:${remoteHandle.port}`;
+    await remoteHandle.close();
+
+    const kindsBundle: Bundle = { root: remoteBase, backend: new RemoteBackend({ baseUrl: remoteBase, bundle: "default" }) };
+    uiHandle = await bootUiServer({ mode: "remote", port: 0, remoteBase, kindsBundle, sessionSecret: SECRET });
+    const origin = `http://${uiHandle.host}:${uiHandle.port}`;
+
+    const res = await fetch(`${origin}/__ui/edges`, { headers: { cookie: `aslite_ui_session=${SECRET}` } });
+    assert.notEqual(res.status, 200, "an unreachable remote must NOT read as a successful empty edge list");
+    assert.ok(res.status >= 500, `expected an error status, got ${res.status}`);
+    const body = (await res.json()) as { error?: { code: string } };
+    assert.ok(body.error, "a non-2xx edges response carries the wire error envelope, not a bare {edges:[]}");
+  } finally {
+    await uiHandle?.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("P2: remote mint paginates the Page registry to exhaustion — a page past the first wire page still opens", async () => {
   // A fake remote whose type=Page listing spans TWO cursor pages; the target entry exists ONLY on
   // the second. A first-page-only mint lookup (the old 500-doc ceiling) can never see it.
