@@ -41,6 +41,7 @@ page's own iframe; the page drops any message whose `event.source` is not `windo
 | `hello`     | —                                                          | `{ bundle: { root, name }, mode, protocol: "v0", grant: "read" }` |
 | `query`     | `{ params: { type?, prefix?, field?, open?, limit? } }`    | `{ rows: DocHead[], count }`                               |
 | `read`      | `{ docId }`                                                | `{ id, frontmatter, body }`                                |
+| `edges`     | `{ params: { from?, to?, text? } }`                        | `{ edges: { from, to, text }[], count }`                   |
 | `subscribe` | —                                                          | `{ ok: true }`, then a stream of `change` events          |
 
 `DocHead` is `{ id, version, frontmatter }` — the same **head projection** `list` uses (full
@@ -55,6 +56,19 @@ frontmatter, never a body). `query` params:
   nothing. (The shell loads the registry once per change from the server, which builds it with
   core's `loadKinds` — one registry, no bridge-side schema.)
 - `limit` — cap the row count after filtering.
+
+`edges` is the general graph query — the ONE primitive every edge-shaped question reduces to
+(the same `queryEdges` atom `link list` is a CLI face over). `params`:
+
+- `from` / `to` — each an exact concept id, a bundle-relative `prefix/` (trailing slash), or an
+  array of either (union within the facet; giving both ANDs them). Omit a facet for "no
+  restriction" — an empty/blank value is treated as omitted, not "match nothing".
+- `text` — exact-match on the link's display text (never substring/regex).
+
+Backlinks are `edges({ to: docId })`; a container's contents are `edges({ from: itemId, text:
+"contains" })` (or whatever link text a bundle's convention uses) — there is no separate
+backlinks-only bridge call. A source linking to the same target twice with different text yields
+two rows (no dedup), matching `queryEdges`'s own granularity.
 
 ### Shell → page (server-initiated)
 
@@ -117,6 +131,7 @@ all of this over a scratch copy of this repo's own board.
     hello: function () { return send("hello"); },
     query: function (params) { return send("query", { params: params }); },
     read: function (docId) { return send("read", { docId: docId }); },
+    edges: function (params) { return send("edges", { params: params }); },
     subscribe: function (cb) { subs.push(cb); return send("subscribe"); }
   };
 })();

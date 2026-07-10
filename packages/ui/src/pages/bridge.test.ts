@@ -3,11 +3,12 @@ import {
   handleBridgeRequest,
   applyRowFilters,
   normalizeQueryParams,
+  normalizeEdgeParams,
   changeMessage,
   BRIDGE_PROTOCOL,
   type BridgeDeps,
 } from "./bridge.js";
-import type { DocHead, ReadDocResponse } from "../api/types.js";
+import type { DocHead, Edge, ReadDocResponse } from "../api/types.js";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
 
 function head(id: string, frontmatter: Record<string, unknown>): DocHead {
@@ -30,6 +31,7 @@ function stubDeps(overrides: Partial<BridgeDeps> = {}): BridgeDeps {
     query: vi.fn(async () => []),
     read: vi.fn(async (): Promise<ReadDocResponse> => ({ id: "x", frontmatter: { type: "Task" }, body: "" })),
     kinds: vi.fn(async () => [taskKind()]),
+    edges: vi.fn(async (): Promise<Edge[]> => []),
     ...overrides,
   };
 }
@@ -91,6 +93,30 @@ describe("handleBridgeRequest", () => {
     expect((bad.reply as { type: string; error: { code: string } }).type).toBe("error");
   });
 
+  it("edges: forwards normalized params to the dep and wraps the result with a count", async () => {
+    const rows: Edge[] = [
+      { from: "roadmap-items/a", to: "tasks/1", text: "contains" },
+      { from: "roadmap-items/a", to: "tasks/2", text: "contains" },
+    ];
+    const edges = vi.fn(async () => rows);
+    const deps = stubDeps({ edges });
+    const { reply } = await handleBridgeRequest(
+      { bridge: "v0", id: "10", type: "edges", params: { from: "roadmap-items/a", text: "contains" } },
+      deps,
+    );
+    expect(edges).toHaveBeenCalledWith({ from: "roadmap-items/a", text: "contains" });
+    const result = (reply as { result: { edges: Edge[]; count: number } }).result;
+    expect(result.count).toBe(2);
+    expect(result.edges).toEqual(rows);
+  });
+
+  it("edges: backlinks are a thin {to: docId} call — no separate bridge request needed", async () => {
+    const edges = vi.fn(async () => [{ from: "pages-registry/board", to: "docs/core", text: "cites" }]);
+    const deps = stubDeps({ edges });
+    await handleBridgeRequest({ bridge: "v0", id: "11", type: "edges", params: { to: "docs/core" } }, deps);
+    expect(edges).toHaveBeenCalledWith({ to: "docs/core" });
+  });
+
   it("subscribe: acks and flags a subscription", async () => {
     const { reply, subscribed } = await handleBridgeRequest({ bridge: "v0", id: "4", type: "subscribe" }, stubDeps());
     expect(subscribed).toBe(true);
@@ -108,6 +134,7 @@ describe("handleBridgeRequest", () => {
     // No handler exists for any of them, so nothing was fetched/read/mutated.
     expect(deps.query).not.toHaveBeenCalled();
     expect(deps.read).not.toHaveBeenCalled();
+    expect(deps.edges).not.toHaveBeenCalled();
   });
 
   it("surfaces a dep failure as a RUNTIME error reply (never throws)", async () => {
@@ -160,6 +187,40 @@ describe("normalizeQueryParams", () => {
   });
   it("returns empty for a non-object", () => {
     expect(normalizeQueryParams(null)).toEqual({});
+  });
+});
+
+describe("normalizeEdgeParams", () => {
+  it("passes through a single from/to id plus text", () => {
+    expect(normalizeEdgeParams({ from: "tasks/a", to: "tasks/b", text: "depends on" })).toEqual({
+      from: "tasks/a",
+      to: "tasks/b",
+      text: "depends on",
+    });
+  });
+
+  it("passes through an array-union from/to (a trailing-slash prefix mixed with an exact id)", () => {
+    expect(normalizeEdgeParams({ from: ["tasks/", "roadmap-items/a"] })).toEqual({ from: ["tasks/", "roadmap-items/a"] });
+  });
+
+  it("trims strings and drops blank array entries", () => {
+    expect(normalizeEdgeParams({ from: [" tasks/a ", "  ", ""], text: "  cites  " })).toEqual({
+      from: ["tasks/a"],
+      text: "cites",
+    });
+  });
+
+  it("an entirely-blank facet is 'no restriction', not 'match nothing'", () => {
+    expect(normalizeEdgeParams({ from: "   ", to: ["", "  "] })).toEqual({});
+  });
+
+  it("drops non-string array entries and junk keys", () => {
+    expect(normalizeEdgeParams({ from: ["tasks/a", 42, null], junk: 1 })).toEqual({ from: ["tasks/a"] });
+  });
+
+  it("returns empty for a non-object", () => {
+    expect(normalizeEdgeParams(null)).toEqual({});
+    expect(normalizeEdgeParams(undefined)).toEqual({});
   });
 });
 

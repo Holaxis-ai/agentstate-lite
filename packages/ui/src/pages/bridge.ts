@@ -6,12 +6,13 @@
  *
  * READ-ONLY BY CONSTRUCTION: there is no write/delete/update handler — an unknown request type
  * (including anything mutating) returns an error reply. v0 exposes exactly `hello`, `query`,
- * `read`, `subscribe`. This module is the pure router ({@link handleBridgeRequest}); the DOM
- * plumbing (source validation, posting, SSE fan-in, hot-reload) lives in `../views/PageFrame.tsx`.
+ * `read`, `edges`, `subscribe`. This module is the pure router ({@link handleBridgeRequest}); the
+ * DOM plumbing (source validation, posting, SSE fan-in, hot-reload) lives in
+ * `../views/PageFrame.tsx`.
  */
 import { isTerminal } from "@agentstate-lite/core/kinds";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
-import type { DocHead, ReadDocResponse } from "../api/types.js";
+import type { DocHead, Edge, ReadDocResponse } from "../api/types.js";
 
 export const BRIDGE_PROTOCOL = "v0";
 
@@ -33,6 +34,13 @@ export interface QueryParams {
   limit?: number;
 }
 
+/** Bridge `edges` params — the SAME selector shape core's `queryEdges` defines: `from`/`to` accept an id, a trailing-slash prefix, or an array-union of either (AND across the two facets); `text` is exact-match. */
+export interface EdgeParams {
+  from?: string | string[];
+  to?: string | string[];
+  text?: string;
+}
+
 /** What the shell can do on a page's behalf — READ ONLY. Injected so the router is testable without the DOM/network. */
 export interface BridgeDeps {
   config: () => Promise<{ root: string | null; name: string; mode: string }>;
@@ -41,6 +49,8 @@ export interface BridgeDeps {
   read: (docId: string) => Promise<ReadDocResponse>;
   /** The bundle's kind registry (server-loaded via core's `loadKinds`) — feeds `open`'s terminal derivation. Only consulted when a query asks `open: true`. */
   kinds: () => Promise<KindConvention[]>;
+  /** The bundle's derived edge list (server-loaded via core's `queryEdges`) — the general graph primitive backing backlinks (`{to: docId}`) and "contains" queries (`{from: itemId, text: "contains"}`) alike. */
+  edges: (params: EdgeParams) => Promise<Edge[]>;
 }
 
 /** The router's decision: a reply object to post back (or `null` to ignore a non-bridge message), and whether this was a `subscribe` (the caller then streams `change` events to it). */
@@ -75,6 +85,34 @@ export function normalizeQueryParams(raw: unknown): QueryParams {
   if (typeof p.field === "string" && p.field.trim()) out.field = p.field.trim();
   if (p.open === true) out.open = true;
   if (typeof p.limit === "number" && Number.isFinite(p.limit) && p.limit >= 0) out.limit = Math.floor(p.limit);
+  return out;
+}
+
+/** Sanitize one `from`/`to` facet from postMessage JSON: a string, an array of strings, or absent — trimmed, blanks dropped, and an entirely-blank result treated as "no restriction" (mirrors `normalizeQueryParams`'s own drop-if-blank posture, never core CLI's "an empty selector is a USAGE error" — a page's JSON has no human to report a typo to). */
+function normalizeSelector(raw: unknown): string | string[] | undefined {
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    return t ? t : undefined;
+  }
+  if (Array.isArray(raw)) {
+    const vals = raw
+      .filter((v): v is string => typeof v === "string")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    return vals.length > 0 ? vals : undefined;
+  }
+  return undefined;
+}
+
+/** Parse the loosely-typed `params` object of an `edges` request into an {@link EdgeParams} — the same selector shape core's `queryEdges` defines. */
+export function normalizeEdgeParams(raw: unknown): EdgeParams {
+  const p = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const out: EdgeParams = {};
+  const from = normalizeSelector(p.from);
+  if (from !== undefined) out.from = from;
+  const to = normalizeSelector(p.to);
+  if (to !== undefined) out.to = to;
+  if (typeof p.text === "string" && p.text.trim()) out.text = p.text.trim();
   return out;
 }
 
@@ -136,11 +174,16 @@ export async function handleBridgeRequest(msg: unknown, deps: BridgeDeps): Promi
         const doc = await deps.read(docId);
         return { reply: ok(id, type, doc) };
       }
+      case "edges": {
+        const params = normalizeEdgeParams(msg.params);
+        const edges = await deps.edges(params);
+        return { reply: ok(id, type, { edges, count: edges.length }) };
+      }
       case "subscribe": {
         return { reply: ok(id, type, { ok: true }), subscribed: true };
       }
       default:
-        return { reply: fail(id, "USAGE", `unknown bridge request '${type}' (v0 is read-only: hello, query, read, subscribe)`) };
+        return { reply: fail(id, "USAGE", `unknown bridge request '${type}' (v0 is read-only: hello, query, read, edges, subscribe)`) };
     }
   } catch (err) {
     return { reply: fail(id, "RUNTIME", err instanceof Error ? err.message : String(err)) };

@@ -41,6 +41,19 @@ export interface WriteDocResponse {
   version: string;
 }
 
+/** One row of `GET /__ui/edges` — hand-mirrors core's `Link` (bundle.ts) per this module's no-runtime-import convention. */
+export interface Edge {
+  from: string;
+  to: string;
+  text: string;
+}
+
+/** `GET /__ui/edges?from=&to=&text=` response shape (the shell-only endpoint the bridge's `edges` request proxies). */
+export interface EdgesResponse {
+  count: number;
+  edges: Edge[];
+}
+
 /** The wire-protocol JSON error envelope (`docs/WIRE-PROTOCOL.md` Conventions; `router.ts`'s `errorResponse`). */
 export interface WireErrorEnvelope {
   error: {

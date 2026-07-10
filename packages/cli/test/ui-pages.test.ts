@@ -11,8 +11,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer as createHttpServer, type Server, type ServerResponse } from "node:http";
 
-import { deleteDoc, initBundle, writeBlob, writeDoc, type Bundle } from "@agentstate-lite/core";
-import { createRouter } from "@agentstate-lite/server";
+import { deleteDoc, initBundle, writeBlob, writeDoc, RemoteBackend, type Bundle } from "@agentstate-lite/core";
+import { createRouter, serve, type ServerHandle } from "@agentstate-lite/server";
 import { bootUiServer, type UiServerHandle } from "../src/ui/server.js";
 import { PageNonceRegistry, pageCsp } from "../src/ui/pages.js";
 import { diffSnapshots, isEmptyChange, startWatcher, type Snapshot } from "../src/ui/watch.js";
@@ -235,6 +235,10 @@ async function bootPagesServer(): Promise<{ handle: UiServerHandle; origin: stri
     },
     body: "# Task",
   });
+  // Two linked docs — the /__ui/edges endpoint's fixture (mirrors core's own query-edges.test.ts fixture style).
+  await writeDoc(bundle, { id: "tasks/a", frontmatter: { type: "Task", title: "A" }, body: "See [also b](b.md)." });
+  await writeDoc(bundle, { id: "tasks/b", frontmatter: { type: "Task", title: "B" }, body: "" });
+  await writeDoc(bundle, { id: "roadmap-items/x", frontmatter: { type: "Roadmap Item", title: "X" }, body: "[contains](../tasks/a.md)." });
   const handle = await bootUiServer({ mode: "dir", port: 0, router: createRouter(bundle), bundle, sessionSecret: SECRET });
   const origin = `http://${handle.host}:${handle.port}`;
   return {
@@ -364,6 +368,73 @@ test("kinds endpoint: session-gated, serves core's loadKinds registry (ONE regis
     assert.deepEqual(task.fields.terminal, { status: ["done", "canceled"] });
   } finally {
     await cleanup();
+  }
+});
+
+test("edges endpoint: session-gated, serves core's queryEdges over the mounted bundle (dir mode)", async () => {
+  const { origin, cleanup } = await bootPagesServer();
+  try {
+    // No session -> 403 (it is a data endpoint, not page bytes).
+    assert.equal((await fetch(`${origin}/__ui/edges`)).status, 403);
+
+    const cookie = { cookie: `aslite_ui_session=${SECRET}` };
+
+    // No filter: every derived edge in the fixture bundle.
+    const all = await (await fetch(`${origin}/__ui/edges`, { headers: cookie })).json() as { edges: { from: string; to: string; text: string }[]; count: number };
+    assert.equal(all.count, 2);
+    assert.deepEqual(
+      all.edges.map((e) => [e.from, e.to, e.text]).sort(),
+      [
+        ["roadmap-items/x", "tasks/a", "contains"],
+        ["tasks/a", "tasks/b", "also b"],
+      ],
+    );
+
+    // `to` scopes to backlinks of one target.
+    const toA = await (await fetch(`${origin}/__ui/edges?to=tasks/a`, { headers: cookie })).json() as { edges: unknown[]; count: number };
+    assert.equal(toA.count, 1);
+    assert.deepEqual(toA.edges, [{ from: "roadmap-items/x", to: "tasks/a", text: "contains" }]);
+
+    // `from` + `text` (repeatable `from`, exact-match `text`) ANDs both facets.
+    const contains = await (
+      await fetch(`${origin}/__ui/edges?from=roadmap-items/&text=contains`, { headers: cookie })
+    ).json() as { edges: unknown[]; count: number };
+    assert.equal(contains.count, 1);
+
+    // A prefix `from` that matches nothing yields an empty (not error) result.
+    const none = await (await fetch(`${origin}/__ui/edges?from=nowhere/`, { headers: cookie })).json() as { edges: unknown[]; count: number };
+    assert.deepEqual(none, { edges: [], count: 0 });
+  } finally {
+    await cleanup();
+  }
+});
+
+test("edges endpoint: serves core's queryEdges over a RemoteBackend bundle (remote mode) — same plumbing kindsResponse uses", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-edges-remote-"));
+  let remoteHandle: ServerHandle | undefined;
+  let uiHandle: UiServerHandle | undefined;
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, { id: "tasks/a", frontmatter: { type: "Task", title: "A" }, body: "See [also b](b.md)." });
+    await writeDoc(bundle, { id: "tasks/b", frontmatter: { type: "Task", title: "B" }, body: "" });
+
+    remoteHandle = await serve({ bundle, port: 0 });
+    const remoteBase = `http://${remoteHandle.host}:${remoteHandle.port}`;
+    const kindsBundle: Bundle = { root: remoteBase, backend: new RemoteBackend({ baseUrl: remoteBase, bundle: "default" }) };
+
+    uiHandle = await bootUiServer({ mode: "remote", port: 0, remoteBase, kindsBundle, sessionSecret: SECRET });
+    const origin = `http://${uiHandle.host}:${uiHandle.port}`;
+
+    const res = await fetch(`${origin}/__ui/edges`, { headers: { cookie: `aslite_ui_session=${SECRET}` } });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { edges: { from: string; to: string; text: string }[]; count: number };
+    assert.equal(body.count, 1);
+    assert.deepEqual(body.edges, [{ from: "tasks/a", to: "tasks/b", text: "also b" }]);
+  } finally {
+    await uiHandle?.close();
+    await remoteHandle?.close();
+    await rm(dir, { recursive: true, force: true });
   }
 });
 

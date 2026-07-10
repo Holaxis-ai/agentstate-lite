@@ -16,7 +16,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { basename } from "node:path";
 import { requestFromIncomingMessage, writeResponseToServerResponse } from "@agentstate-lite/server";
-import { readBlob, queryHeads, assertSafeBlobKey, loadKinds, type Bundle } from "@agentstate-lite/core";
+import { readBlob, queryHeads, assertSafeBlobKey, loadKinds, queryEdges, type Bundle, type EdgeFilter } from "@agentstate-lite/core";
 import { isAllowedHost } from "./host.js";
 import { checkAuth, mintSessionSecret, sessionCookieHeader } from "./session.js";
 import { serveAsset } from "./assets.js";
@@ -43,10 +43,12 @@ export interface UiServerOptions {
   /** `--remote` mode only: the stored API key for that origin, if any (absent ⇒ no `Authorization` header is sent — the zero-cloud E2E's keyless case). */
   apiKey?: string;
   /**
-   * `--remote` mode only: a `RemoteBackend`-backed bundle over the same origin, used EXCLUSIVELY
-   * for kind-registry loads (`/__ui/kinds` -> core's `loadKinds` — gate 3: one registry, consumed
-   * everywhere). The SPA's `/v0/*` data path stays the reverse proxy; this is the same
-   * engine-level plumbing every other kind-aware CLI command already rides for `--remote`.
+   * `--remote` mode only: a `RemoteBackend`-backed bundle over the same origin, for engine-level
+   * reads the wire protocol has no bespoke route for — kind-registry loads (`/__ui/kinds` ->
+   * core's `loadKinds`) and the derived edge list (`/__ui/edges` -> core's `queryEdges`, which
+   * itself rides `query`+`readMany` under the hood, so it needs no wire route of its own either).
+   * The SPA's `/v0/*` data path stays the reverse proxy; this is the same engine-level plumbing
+   * every other kind/graph-aware CLI command already rides for `--remote`.
    */
   kindsBundle?: Bundle;
   /** Injectable for tests; defaults to a fresh random secret per boot (never reused across runs). */
@@ -242,6 +244,43 @@ async function kindsResponse(options: UiServerOptions): Promise<Response> {
   });
 }
 
+/**
+ * The bundle's derived edge list (graph-query-v0's `queryEdges`, gate 3: proxied, never
+ * reimplemented) for the bridge's `edges` request. Mode-aware exactly like `kindsResponse` above:
+ * dir mode calls `queryEdges` over the mounted `Bundle`; remote mode calls it over the SAME
+ * `RemoteBackend`-backed bundle `kindsResponse` already uses (`options.kindsBundle`) — `queryEdges`
+ * rides `query`+`readMany` under the hood, so this costs no new wire route on the reference server.
+ * `from`/`to` are repeatable query params (array-union, mirroring `link list --from/--to`); `text`
+ * is exact-match. Best-effort like `kindsResponse`: an unreadable bundle yields an empty edge list
+ * rather than a 500 — this is a read-only display query, not a write path. Row schema is
+ * AXI-minimal (`{from, to, text}`), the SAME projection `link list` applies — core's `Link` also
+ * carries `href` (the raw pre-resolution markdown target), an internal detail no page needs.
+ */
+async function edgesResponse(options: UiServerOptions, url: URL): Promise<Response> {
+  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
+  const filter: EdgeFilter = {};
+  const from = url.searchParams.getAll("from").map((v) => v.trim()).filter(Boolean);
+  if (from.length > 0) filter.from = from;
+  const to = url.searchParams.getAll("to").map((v) => v.trim()).filter(Boolean);
+  if (to.length > 0) filter.to = to;
+  const text = url.searchParams.get("text")?.trim();
+  if (text) filter.text = text;
+
+  let links: Awaited<ReturnType<typeof queryEdges>> = [];
+  if (bundle) {
+    try {
+      links = await queryEdges(bundle, filter);
+    } catch {
+      links = [];
+    }
+  }
+  const edges = links.map((l) => ({ from: l.from, to: l.to, text: l.text }));
+  return new Response(JSON.stringify({ edges, count: edges.length }), {
+    status: 200,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -298,6 +337,8 @@ async function handleRequest(
     response = configResponse(options);
   } else if (url.pathname === "/__ui/kinds") {
     response = await kindsResponse(options);
+  } else if (url.pathname === "/__ui/edges") {
+    response = await edgesResponse(options, url);
   } else if (url.pathname.startsWith("/v0/")) {
     response =
       options.mode === "dir"

@@ -10,7 +10,7 @@
  * here; the bytes travel opaquely through the nonce route into the iframe.
  */
 import { listAllHeads, parseErrorEnvelope } from "./client.js";
-import type { Frontmatter } from "./types.js";
+import type { Edge, EdgesResponse, Frontmatter } from "./types.js";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
 
 /** `/__ui/config` shape (server `configResponse`). */
@@ -91,6 +91,31 @@ export function fetchKinds(): Promise<KindConvention[]> {
 /** Drop the cached kind registry when a `conventions/` doc moved (`ids` = changed+removed doc ids from a change event), or unconditionally when `ids` is omitted (the SSE-resync case: anything may have changed during the gap). */
 export function invalidateKinds(ids?: string[]): void {
   if (ids === undefined || ids.some((id) => id.startsWith("conventions/"))) kindsCache = null;
+}
+
+/**
+ * `GET /__ui/edges?from=&to=&text=` — the bundle's derived edge list (core's `queryEdges`,
+ * server-proxied), for the bridge's `edges` request. `from`/`to` each accept an id, a
+ * trailing-slash prefix, or an array-union of either — sent as repeated query params (the
+ * server's `EdgeFilter` union, mirroring `link list --from/--to`); `text` is exact-match. Unlike
+ * `fetchKinds` (an auxiliary display filter, best-effort), this is primary data like `query`/`read`
+ * — a non-2xx throws the SAME typed {@link ApiError} they do, so a dead session (403) reaches the
+ * bridge's error reply / the interceptor instead of masquerading as "zero edges".
+ */
+export async function fetchEdges(params: { from?: string | string[]; to?: string | string[]; text?: string }): Promise<Edge[]> {
+  const query = new URLSearchParams();
+  for (const from of toArray(params.from)) query.append("from", from);
+  for (const to of toArray(params.to)) query.append("to", to);
+  if (params.text) query.set("text", params.text);
+  const res = await fetch(`/__ui/edges?${query.toString()}`, { credentials: "same-origin" });
+  if (!res.ok) throw await parseErrorEnvelope(res);
+  const body = (await res.json()) as EdgesResponse;
+  return Array.isArray(body.edges) ? body.edges : [];
+}
+
+function toArray(v: string | string[] | undefined): string[] {
+  if (v === undefined) return [];
+  return Array.isArray(v) ? v : [v];
 }
 
 /** Mint a nonce for `key` and return the relative page-bytes URL (`/__page/<nonce>`) to load in the iframe. */

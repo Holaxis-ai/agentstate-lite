@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDoc, listAllHeads, ApiError } from "../api/client.js";
-import { mintPageNonce, fetchConfig, fetchKinds, invalidateKinds } from "../api/pages.js";
+import { mintPageNonce, fetchConfig, fetchKinds, fetchEdges, invalidateKinds } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { handleBridgeRequest, changeMessage, type BridgeDeps } from "../pages/bridge.js";
 import { navigate } from "../routing.js";
@@ -22,6 +22,7 @@ const bridgeDeps: BridgeDeps = {
   query: ({ type, prefix }) => listAllHeads({ type, prefix }),
   read: (docId) => getDoc(docId).then((r) => r.doc),
   kinds: fetchKinds,
+  edges: fetchEdges,
 };
 
 export function PageFrame({ pageId }: { pageId: string }) {
