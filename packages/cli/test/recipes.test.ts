@@ -528,35 +528,42 @@ test("recipes: roadmap applied:false when only ONE of its two docs exists — ap
   }
 });
 
-// ── The board-parity drift gate: the built-in must stay faithful to the SOURCE conventions ─────
+// ── The board-parity drift gate: the built-in must stay faithful to the canonical conventions ──
+//
+// SOURCE OF TRUTH is a COMMITTED fixture — a byte-snapshot of this repo's hand-authored roadmap
+// conventions. Those conventions live on the `board` branch (mounted at `.agentstate-lite/` only in
+// a working checkout that has run `aslite sync`), so a fresh clone / isolated git worktree does NOT
+// carry them; reaching into `../../../.agentstate-lite/conventions` made this test ENOENT-fail in
+// any clean checkout. The fixture keeps the gate hermetic. If the board's roadmap convention design
+// is ever changed on purpose, update BOTH the recipe AND `fixtures/board-conventions/` in lockstep.
 
-const BOARD_CONVENTIONS = path.resolve(import.meta.dirname, "../../../.agentstate-lite/conventions");
+const CANONICAL_CONVENTIONS = path.resolve(import.meta.dirname, "fixtures/board-conventions");
 
-test("board parity: the roadmap recipe's kinds load IDENTICALLY to the repo board's hand-authored conventions/roadmap(-item).md (the extraction cannot drift from its source)", async () => {
+test("board parity: the roadmap recipe's kinds load IDENTICALLY to the canonical committed conventions/roadmap(-item).md fixture (the extraction cannot drift from its source)", async () => {
   const recipeDir = await tempDir();
-  const boardDir = await tempDir();
+  const canonicalDir = await tempDir();
   try {
     await initBundle(recipeDir);
     await recipe(["add", "roadmap", "--dir", recipeDir], { stdout: () => {} });
 
-    await initBundle(boardDir);
-    await mkdir(path.join(boardDir, "conventions"), { recursive: true });
+    await initBundle(canonicalDir);
+    await mkdir(path.join(canonicalDir, "conventions"), { recursive: true });
     for (const f of ["roadmap.md", "roadmap-item.md"]) {
-      await writeFile(path.join(boardDir, "conventions", f), await readFile(path.join(BOARD_CONVENTIONS, f), "utf8"));
+      await writeFile(path.join(canonicalDir, "conventions", f), await readFile(path.join(CANONICAL_CONVENTIONS, f), "utf8"));
     }
 
     const fromRecipe = await loadKinds({ root: recipeDir });
-    const fromBoard = await loadKinds({ root: boardDir });
+    const fromCanonical = await loadKinds({ root: canonicalDir });
     for (const governs of ["Roadmap", "Roadmap Item"]) {
       assert.deepEqual(
         fromRecipe.kinds.get(governs),
-        fromBoard.kinds.get(governs),
-        `the '${governs}' kind loaded from the built-in recipe must equal the board's hand-authored declaration`,
+        fromCanonical.kinds.get(governs),
+        `the '${governs}' kind loaded from the built-in recipe must equal the canonical committed convention`,
       );
     }
   } finally {
     await rm(recipeDir, { recursive: true, force: true });
-    await rm(boardDir, { recursive: true, force: true });
+    await rm(canonicalDir, { recursive: true, force: true });
   }
 });
 

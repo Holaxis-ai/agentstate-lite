@@ -258,10 +258,11 @@ bundle-relative**.
   nearly rebuilt a shipped unit), so: BEFORE building any "queued" item, grep the tree —
   records may lag the code. Work is CLAIMED before it is built: flip `tasks/<unit>` to
   `in_progress` with `--actor` — the CAS write IS the claim (see the bundle's Task convention).
-  **Bundle commits are not code commits.** Board/bundle writes (records, claims, context
-  notes, task updates — anything under `.agentstate-lite/` with no code alongside) are
-  small `board:`-prefixed commits pushed DIRECTLY to main; their value is immediacy, and
-  `aslite sync` supersedes even that once the founders execute the migration. Code ships via branch +
+  **Board writes are not code commits.** Board/bundle writes (records, claims, context
+  notes, task updates — anything under `.agentstate-lite/` with no code alongside) go through
+  `aslite sync`, which shares them on the repo's own `board` branch. The board was MIGRATED off
+  `main` (it is gitignored there now), so there is no longer a `board:`-prefixed direct-commit-to-main
+  path — `sync` is the one channel, and it touches nothing outside the board. Code ships via branch +
   PR + review gates, always. A board doc rides a PR only when it is ITSELF the reviewed
   deliverable (a plan under vetting, records that explain a code change they accompany).
 
@@ -314,14 +315,14 @@ the bundle):
   self-authored rows filtered, unpushed/uncommitted backstop, probe-gated "run sync — never
   init" first contact), wired by `hook install` across Claude Code/Codex/OpenCode
   (`commands/session-start.ts`, `commands/home.ts`'s board block, `commands/hook.ts`).
-  The `sync --migrate` COMMAND (U5) is shipped as a TEMPORARY, founders-only flag — one-time
+  The `sync --migrate` COMMAND (U5) was a TEMPORARY, founders-only flag — one-time
   and `--yes`-gated (preview-first; files-not-history board branch pushed with tracking; the
   folder-removal + gitignore commit prepared on a local `board-migration` branch for a
   human-opened PR; never any `git clean`), surfaced in `sync --help` only (never taught in
-  the skill/reference channels), and SCHEDULED FOR REMOVAL in a follow-up PR once the
-  founders execute it. Its EXECUTION on this repo is that separate, human-timed act, still
-  pending: THIS repo's own board still lives on main, so the bundle-commit convention above
-  still applies here.
+  the skill/reference channels). It has now been EXECUTED on this repo: the board lives on the
+  `board` branch and is gitignored on `main`, so the bundle-write convention above (share via
+  `aslite sync`) is the live path. The flag itself is SCHEDULED FOR REMOVAL in a follow-up PR
+  now that the migration is done.
 
 Standing gates on future work:
 
