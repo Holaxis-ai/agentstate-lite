@@ -29,12 +29,15 @@ import {
   writeDoc,
   parseLinks,
   backlinks,
+  queryEdges,
   relativeHref,
   isReservedFile,
   pathFromConceptId,
   loadKinds,
   VersionConflict,
   type Bundle,
+  type EdgeFilter,
+  type Link,
   type OkfDocument,
   type ValidationWarning,
   type Version,
@@ -47,11 +50,12 @@ import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 import { collectLinkDeclarations } from "../link-types.js";
 
-export const LINK_USAGE = `agentstate-lite link — add a cross-link or show a concept's links + backlinks
+export const LINK_USAGE = `agentstate-lite link — add a cross-link, show a concept's links + backlinks, or query the bundle's whole edge graph
 
 Usage:
   agentstate-lite link add <from> <to> [--text <t>]
   agentstate-lite link show <id> [--limit <n>] [--text <t>]
+  agentstate-lite link list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]
 
 Idempotent: re-adding a link the source already carries is a no-op — exit 0, changed:false, no
 duplicate link, no timestamp refresh.
@@ -62,6 +66,12 @@ kinds; a mismatch or a same-spelling-different-case near miss attaches a 'warnin
 success envelope (exit 0 — the link is already written). An untyped --text (no declared match, any
 casing) or a conventions-free bundle never warns.
 
+link list queries the WHOLE bundle's derived edge list (the same edges 'show' computes per-concept),
+filtered — the atom a blast-radius/containment/ontology question reduces to. --from/--to each accept
+a single concept id, a trailing-slash prefix ('tasks/' matches every id starting with that literal
+string — one rule, no glob), or are repeatable for a union (OR) within that one flag; giving BOTH
+--from and --to ANDs them. Dangling edges (a link to a doc that doesn't exist yet) are included.
+
 Options:
   --text <t>            (link add) Link display text (default: the target id)
                          (link show) Filter outbound links AND backlinks to those whose text is
@@ -70,9 +80,16 @@ Options:
                          totals when set. A filter that matches nothing is a valid empty result,
                          not an error — its help line names the distinct link texts that ARE
                          present, so a near-miss (typo/case) is visible.
+                         (link list) Same exact-match semantics, over the whole filtered edge set.
+  --from <id|prefix/>   (link list) Restrict to edges whose source matches this id or prefix
+                         (repeatable — union/OR across repeats)
+  --to <id|prefix/>     (link list) Restrict to edges whose target matches this id or prefix
+                         (repeatable — union/OR across repeats)
   --limit <n>          (link show) Cap each of the outbound/backlink lists (default: 50; 0 =
                          unlimited); outbound_count/backlink_count always report the true
                          (post-filter) totals
+                         (link list) Cap the returned edge rows (default: 100; 0 = unlimited);
+                         count always reports the true (post-filter) total
   --keep-timestamp      Preserve the source's existing timestamp (default: refresh to now,
                          since adding a cross-link is a meaningful change)
   --dir <path>          Bundle directory (default: discovered from the cwd)
@@ -174,13 +191,36 @@ export async function link(argv: string[], deps: Partial<LinkCliDeps> = {}): Pro
 
   if (sub === "add") return linkAdd(rest, stdout);
   if (sub === "show") return linkShow(rest, stdout, deps.autoPull);
+  if (sub === "list") return linkList(rest, stdout);
   if (sub === "-h" || sub === "--help" || sub === undefined) {
     stdout(LINK_USAGE);
     return;
   }
-  throw new CliError("USAGE", `unknown link subcommand: ${sub} (expected add|show)`, {
+  throw new CliError("USAGE", `unknown link subcommand: ${sub} (expected add|show|list)`, {
     help: `${cliInvocation()} link --help`,
   });
+}
+
+/**
+ * The near-miss hint for a `--text` filter that matched nothing: names the distinct link texts
+ * that ARE present (sorted), so a typo/case near-miss reads as "here's what's actually here"
+ * instead of "empty graph". Shared VERBATIM by `link show` and `link list` — one hint, never a
+ * second independently-worded near-miss message (gate 3's "one X" spirit applied to CLI prose,
+ * not just engine code). `scope` supplies the caller-specific qualifier `link show` needs
+ * ("in either direction", since it filters two link lists at once) that `link list`'s single
+ * filtered edge list has no equivalent for (pass "").
+ */
+function nearMissTextHint(textFilter: string, textsPresent: string[], scope: string): string {
+  if (textsPresent.length === 0) {
+    return `no links matched --text '${textFilter}'${scope} — this is a definitive empty result, not an error`;
+  }
+  const TEXTS_SHOWN = 8;
+  const shown = textsPresent
+    .slice(0, TEXTS_SHOWN)
+    .map((t) => `'${t}'`)
+    .join(", ");
+  const more = textsPresent.length > TEXTS_SHOWN ? ` (+${textsPresent.length - TEXTS_SHOWN} more)` : "";
+  return `no links matched --text '${textFilter}'${scope} (exact match) — link texts present here: ${shown}${more}`;
 }
 
 /** Options for {@link addLink} — a subset of `link add`'s own flags, since callers other than
@@ -503,18 +543,11 @@ async function linkShow(
     );
   }
   if (textFilter !== undefined && outbound.length === 0 && inboundMatched.length === 0) {
-    if (textsPresent.length > 0) {
-      const TEXTS_SHOWN = 8;
-      const shown = textsPresent
-        .slice(0, TEXTS_SHOWN)
-        .map((t) => `'${t}'`)
-        .join(", ");
-      const more = textsPresent.length > TEXTS_SHOWN ? ` (+${textsPresent.length - TEXTS_SHOWN} more)` : "";
-      help.push(
-        `no links matched --text '${textFilter}' in either direction (exact match) — link texts present here: ${shown}${more}`,
-      );
-    } else if (exists) {
-      help.push(`no links matched --text '${textFilter}' in either direction — this is a definitive empty result, not an error`);
+    // `exists:false` + zero texts present would otherwise render the plain "definitive empty
+    // result" branch of the hint below for a doc that has no document AT ALL — that case gets
+    // its own, more specific message from the `!exists` block further down instead.
+    if (textsPresent.length > 0 || exists) {
+      help.push(nearMissTextHint(textFilter, textsPresent, " in either direction"));
     }
   }
   if (!exists) {
@@ -526,4 +559,122 @@ async function linkShow(
   }
   if (help.length > 0) payload.help = help;
   stdout(render(payload, resolveMode(values)));
+}
+
+/**
+ * `link list` (graph-query-v0): the whole-bundle derived edge list, filtered — a thin CLI face
+ * over core `queryEdges`. Row schema is AXI-minimal (`{from, to, text}` + `count`), no `--fields`
+ * hatch (no consumer has asked for one yet). `--from`/`--to` are repeatable (union within the
+ * flag, AND across the two flags) and each accept an exact id or a trailing-slash prefix — the
+ * SAME one rule `queryEdges` itself defines, not a second CLI-side interpretation of it. Over
+ * `--remote`, `queryEdges` rides `query`'s existing whole-bundle `readMany` batch (exactly like
+ * `backlinks`/`link show` already do today) — one round trip, no wire change.
+ */
+async function linkList(argv: string[], stdout: (s: string) => void): Promise<void> {
+  const { values } = parseOrUsage(
+    () =>
+      parseArgs({
+        args: argv,
+        options: {
+          from: { type: "string", multiple: true },
+          to: { type: "string", multiple: true },
+          text: { type: "string" },
+          limit: { type: "string" },
+          dir: { type: "string" },
+          remote: { type: "string" },
+          json: { type: "boolean" },
+          help: { type: "boolean", short: "h" },
+        },
+        allowPositionals: true,
+      }),
+    "link list",
+  );
+  if (values.help) {
+    stdout(LINK_USAGE);
+    return;
+  }
+
+  // Exact match only (never substring/regex) — the same rule `link show --text` already applies,
+  // now over the whole filtered edge set instead of one concept's two link lists.
+  let textFilter: string | undefined;
+  if (values.text !== undefined) {
+    textFilter = values.text.trim();
+    if (!textFilter) {
+      throw new CliError("USAGE", "--text requires a non-empty value to filter on", {
+        help: `${cliInvocation()} link list --text <t>`,
+      });
+    }
+  }
+
+  // --from/--to: trim each repeated value and reject a blank/empty selector with USAGE rather than
+  // silently matching nothing — an empty string can never be a valid id/prefix selector, so
+  // `--from ''` is almost certainly a mistake, not a deliberate "match nothing" request.
+  const fromValues = (values.from ?? []).map((v) => v.trim());
+  if (fromValues.some((v) => v === "")) {
+    throw new CliError("USAGE", "--from requires a non-empty id or prefix (got an empty/blank value)", {
+      help: `${cliInvocation()} link list --from <id|prefix/>`,
+    });
+  }
+  const toValues = (values.to ?? []).map((v) => v.trim());
+  if (toValues.some((v) => v === "")) {
+    throw new CliError("USAGE", "--to requires a non-empty id or prefix (got an empty/blank value)", {
+      help: `${cliInvocation()} link list --to <id|prefix/>`,
+    });
+  }
+
+  // Row cap (AXI §9), mirroring `list`'s own default/semantics (this is a bundle-wide scan, the
+  // same shape of question) rather than `link show`'s smaller per-concept default of 50.
+  const DEFAULT_LIMIT = 100;
+  let limit = DEFAULT_LIMIT;
+  if (values.limit !== undefined) {
+    const raw = values.limit.trim();
+    if (!/^\d+$/.test(raw)) {
+      throw new CliError("USAGE", "--limit must be a non-negative integer (0 = unlimited)", {
+        help: `${cliInvocation()} link list --limit 100`,
+      });
+    }
+    limit = Number(raw);
+  }
+
+  const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
+
+  // The scope filter carries ONLY --from/--to, never --text: this fetches the from/to-scoped edge
+  // set in exactly ONE queryEdges call (one round trip over --remote) regardless of whether --text
+  // is also given. --text is then applied as a local exact-match filter over that same
+  // already-fetched list — so a zero-match --text query costs ONE scan, not two (the near-miss
+  // hint below reuses these SAME scoped edges for its "texts present" list rather than re-scanning).
+  const scopeFilter: EdgeFilter = {};
+  if (fromValues.length > 0) scopeFilter.from = fromValues;
+  if (toValues.length > 0) scopeFilter.to = toValues;
+
+  let scopedEdges: Link[];
+  try {
+    scopedEdges = await queryEdges(bundle, scopeFilter);
+  } catch (err) {
+    throw classifyBundleError(err, values.remote);
+  }
+
+  const edges = textFilter !== undefined ? scopedEdges.filter((e) => e.text === textFilter) : scopedEdges;
+  const rows = edges.map((e) => ({ from: e.from, to: e.to, text: e.text }));
+  const total = rows.length;
+  const shownRows = limit > 0 ? rows.slice(0, limit) : rows;
+  const truncated = shownRows.length < total;
+
+  const out: Record<string, unknown> = { count: total, edges: shownRows };
+  if (truncated) out.shown = shownRows.length;
+
+  const help: string[] = [];
+  if (truncated) {
+    help.push(
+      `showing ${shownRows.length} of ${total} — run \`${cliInvocation()} link list --limit 0\` (or a higher --limit) for all`,
+    );
+  }
+  // Zero-match with --text: name the distinct texts present among the SAME --from/--to-scoped
+  // edges already fetched above (no second scan) — the same near-miss hint `link show` gives.
+  if (textFilter !== undefined && total === 0) {
+    const textsPresent = [...new Set(scopedEdges.map((e) => e.text))].sort((a, b) => a.localeCompare(b));
+    help.push(nearMissTextHint(textFilter, textsPresent, ""));
+  }
+  if (help.length > 0) out.help = help;
+  stdout(render(out, resolveMode(values)));
 }

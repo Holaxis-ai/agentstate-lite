@@ -5504,17 +5504,44 @@ async function queryHeads(bundle, filter = {}, options2 = {}) {
 function parseLinks(_bundle, doc2) {
   return parseLinksFromDoc(doc2);
 }
-async function backlinks(bundle, target) {
-  const normalizedTarget = toPosix(target).replace(/^\.?\//, "").replace(/\.md$/, "");
-  const docs = await query(bundle);
-  const inbound = [];
-  for (const doc2 of docs) {
-    for (const link2 of parseLinksFromDoc(doc2)) {
-      if (link2.to === normalizedTarget) inbound.push(link2);
+function normalizeEdgeSelector(raw) {
+  return toPosix(raw).replace(/^\.?\//, "");
+}
+function matchesEdgeSelector(value, selectors) {
+  if (selectors === void 0) return true;
+  for (const raw of selectors) {
+    const normalized = normalizeEdgeSelector(raw);
+    if (normalized.endsWith("/")) {
+      if (value.startsWith(normalized)) return true;
+    } else if (value === normalized.replace(/\.md$/, "")) {
+      return true;
     }
   }
-  inbound.sort((a, b) => a.from.localeCompare(b.from) || a.text.localeCompare(b.text));
-  return inbound;
+  return false;
+}
+function toSelectorList(v) {
+  if (v === void 0) return void 0;
+  return Array.isArray(v) ? v : [v];
+}
+async function queryEdges(bundle, filter = {}) {
+  const fromSelectors = toSelectorList(filter.from);
+  const toSelectors = toSelectorList(filter.to);
+  const docs = await query(bundle);
+  const edges = [];
+  for (const doc2 of docs) {
+    for (const link2 of parseLinksFromDoc(doc2)) {
+      if (!matchesEdgeSelector(link2.from, fromSelectors)) continue;
+      if (!matchesEdgeSelector(link2.to, toSelectors)) continue;
+      if (filter.text !== void 0 && link2.text !== filter.text) continue;
+      edges.push(link2);
+    }
+  }
+  edges.sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to) || a.text.localeCompare(b.text));
+  return edges;
+}
+async function backlinks(bundle, target) {
+  if (target.endsWith("/")) return [];
+  return queryEdges(bundle, { to: target });
 }
 async function readBlob(bundle, key2) {
   return backendFor(bundle).readBlob(key2);
@@ -7522,6 +7549,11 @@ Options:
                        interactive TTY all count as "nothing given" here (pass --body "" to blank
                        explicitly instead). A NEW doc with no body source is always allowed \u2014 see
                        'doc update' to patch other fields while preserving the body.
+  --replace-links      Required to overwrite an EXISTING doc's body when the new body would silently
+                       DROP one or more of its outbound cross-links (links live in the body \u2014 OKF).
+                       Without it, a body replace that drops a link is refused (exit 2, naming the
+                       dropped link(s)); a new body that still contains the same link(s) never needs
+                       this flag. SHORT-TERM guard \u2014 see 'link add'/'link show' to manage links.
   --strict             If a kind convention governs --type, reject (exit 2) instead of writing with
                        warnings when the doc does not satisfy it (default: warn-and-write, exit 0 \u2014
                        see 'agentstate-lite kinds')
@@ -7559,6 +7591,12 @@ Options:
                          patch that DOES pass another field flag (--title/--description/--tag/--type/
                          a kind field) never reads stdin, even without --body/--body-file: it patches
                          only the given fields and leaves the body untouched.
+  --replace-links         Required when a --body/--body-file replace would silently DROP one or more
+                         of the doc's existing outbound cross-links (links live in the body \u2014 OKF).
+                         Without it, such a replace is refused (exit 2, naming the dropped link(s));
+                         a new body that still contains the same link(s) \u2014 the ordinary read-edit-
+                         update cycle \u2014 never needs this flag. SHORT-TERM guard \u2014 see 'link add'/
+                         'link show' to manage links.
   --keep-timestamp       Preserve the existing timestamp (default: refresh to now, since a patch is
                          a meaningful change \u2014 matches 'link add's policy)
   --strict               If a kind convention governs the resulting type, reject (exit 2) instead of
@@ -7673,6 +7711,52 @@ async function defaultReadStdin() {
   for await (const chunk of process.stdin) chunks.push(chunk);
   return Buffer.concat(chunks).toString("utf8");
 }
+function computeDroppedLinks(existingLinks, nextLinks) {
+  const nextByTarget = /* @__PURE__ */ new Map();
+  for (const l of nextLinks) {
+    const bucket = nextByTarget.get(l.to);
+    if (bucket) bucket.push(l);
+    else nextByTarget.set(l.to, [l]);
+  }
+  const existingByTarget = /* @__PURE__ */ new Map();
+  for (const l of existingLinks) {
+    const bucket = existingByTarget.get(l.to);
+    if (bucket) bucket.push(l);
+    else existingByTarget.set(l.to, [l]);
+  }
+  const dropped = [];
+  for (const [target, oldOccurrences] of existingByTarget) {
+    const available = [...nextByTarget.get(target) ?? []];
+    const unmatchedExact = [];
+    for (const old of oldOccurrences) {
+      const idx = available.findIndex((n) => n.text === old.text);
+      if (idx >= 0) available.splice(idx, 1);
+      else unmatchedExact.push(old);
+    }
+    for (const old of unmatchedExact) {
+      if (available.length > 0) available.shift();
+      else dropped.push(old);
+    }
+  }
+  return dropped;
+}
+function guardDroppedLinks(bundle, existing, nextBody, replaceLinks) {
+  if (replaceLinks) return;
+  const existingLinks = parseLinks(bundle, existing);
+  if (existingLinks.length === 0) return;
+  const nextLinks = parseLinks(bundle, { ...existing, body: nextBody });
+  const dropped = computeDroppedLinks(existingLinks, nextLinks);
+  if (dropped.length === 0) return;
+  const named = dropped.map((l) => `'${l.text}' -> ${l.to}`).join(", ");
+  throw new CliError(
+    "USAGE",
+    `this body replace would silently drop ${dropped.length} outbound link(s) from '${existing.id}': ${named}. OKF cross-links live in the document body, so a full-body replace removes any link the new body doesn't repeat. Pass --replace-links to drop them deliberately, or keep them by including the same markdown link(s) in the new body, or re-add them afterward with '${cliInvocation()} link add ${existing.id} <to>'.`,
+    {
+      help: `${cliInvocation()} link add ${existing.id} <to>`,
+      details: { dropped_links: dropped.map((l) => ({ to: l.to, text: l.text })) }
+    }
+  );
+}
 function readErrorToCliError(err, id, remoteUrl) {
   if (err?.code === "ENOENT") {
     return new CliError("NOT_FOUND", `no concept document at id '${id}'`, {
@@ -7754,7 +7838,7 @@ async function mutateDoc(opts) {
       throw classify(err, opts.remoteUrl);
     }
   }
-  if (mode === "overwrite") {
+  if (mode === "overwrite" && !opts.coupleRead) {
     const candidate = await buildCandidate(void 0);
     const warnings = validate(candidate);
     try {
@@ -7762,6 +7846,40 @@ async function mutateDoc(opts) {
       return { doc: saved, version, warnings };
     } catch (err) {
       throw classify(err, opts.remoteUrl);
+    }
+  }
+  if (mode === "overwrite") {
+    for (let attempt = 0; ; attempt++) {
+      let existing;
+      let version;
+      try {
+        const read = await readDocVersioned(bundle, id);
+        existing = read.doc;
+        version = read.version;
+      } catch (err) {
+        if (err?.code === "ENOENT") {
+          existing = void 0;
+          version = null;
+        } else {
+          throw classify(err, opts.remoteUrl);
+        }
+      }
+      const candidate = await buildCandidate(existing);
+      const warnings = validate(candidate);
+      try {
+        const { doc: saved, version: newVersion } = await writeDocVersioned(
+          bundle,
+          { id, ...candidate },
+          { expectedVersion: version, actor: opts.actor }
+        );
+        return { doc: saved, version: newVersion, warnings };
+      } catch (err) {
+        if (err instanceof VersionConflict) {
+          if (attempt < maxAttempts - 1) continue;
+          throw errors.staleHead ? errors.staleHead(err) : new CliError("STALE_HEAD", err.message);
+        }
+        throw classify(err, opts.remoteUrl);
+      }
     }
   }
   for (let attempt = 0; ; attempt++) {
@@ -7822,6 +7940,7 @@ async function docWrite(argv, deps) {
         body: { type: "string" },
         "body-file": { type: "string" },
         "blank-body": { type: "boolean" },
+        "replace-links": { type: "boolean" },
         strict: { type: "boolean" },
         actor: { type: "string" },
         dir: { type: "string" },
@@ -7913,18 +8032,29 @@ async function docWrite(argv, deps) {
       }
     );
   }
+  const replaceLinks = Boolean(values["replace-links"]);
   const registry = await loadKinds(bundle);
   const result = await mutateDoc({
     bundle,
     id,
     mode: "overwrite",
+    coupleRead: !replaceLinks,
     registry,
     remoteUrl: values.remote,
     strict: Boolean(values.strict),
     helpOnKindReject: `${cliInvocation()} kinds`,
     actor: values.actor?.trim(),
-    buildCandidate: () => ({ frontmatter, body }),
-    errors: {}
+    buildCandidate: (fresh) => {
+      if (fresh) guardDroppedLinks(bundle, fresh, body, replaceLinks);
+      return { frontmatter, body };
+    },
+    errors: {
+      staleHead: (err) => new CliError(
+        "STALE_HEAD",
+        `'${id}' changed concurrently while re-checking outbound links (moved since ${err.expected ?? "absent"}; now ${err.actual ?? "absent"}) \u2014 retries exhausted; re-run the write.`,
+        { help: `${cliInvocation()} doc read ${id}` }
+      )
+    }
   });
   const saved = result.doc;
   const receipt = {
@@ -7961,7 +8091,7 @@ var DOC_UPDATE_VALUE_FLAGS = /* @__PURE__ */ new Set([
   "expected-version",
   "actor"
 ]);
-var DOC_UPDATE_BOOLEAN_FLAGS = /* @__PURE__ */ new Set(["keep-timestamp", "strict", "json"]);
+var DOC_UPDATE_BOOLEAN_FLAGS = /* @__PURE__ */ new Set(["keep-timestamp", "strict", "json", "replace-links"]);
 function parseDocUpdateArgs(argv) {
   const { values: rawValues, tokens } = parseOrUsage(
     () => parseArgs3({
@@ -7983,6 +8113,7 @@ function parseDocUpdateArgs(argv) {
         tag: { type: "string", multiple: true },
         "keep-timestamp": { type: "boolean" },
         strict: { type: "boolean" },
+        "replace-links": { type: "boolean" },
         json: { type: "boolean" },
         help: { type: "boolean", short: "h" }
       }
@@ -8050,6 +8181,7 @@ function parseDocUpdateArgs(argv) {
     remote: std.remote,
     keepTimestamp: Boolean(rawValues["keep-timestamp"]),
     strict: Boolean(rawValues.strict),
+    replaceLinks: Boolean(rawValues["replace-links"]),
     title: std.title,
     description: std.description,
     tags: tags.length > 0 ? tags : void 0,
@@ -8137,6 +8269,7 @@ async function docUpdate(argv, deps) {
       if (p.body !== void 0) nextBody = p.body;
       else if (p.bodyFile) nextBody = await fs5.readFile(p.bodyFile, "utf8");
       else if (stdinBody !== void 0) nextBody = stdinBody;
+      guardDroppedLinks(bundle, existing, nextBody, p.replaceLinks);
       if (p.kindFields.size > 0) {
         const resultType = p.type !== void 0 ? p.type.trim() : String(existing.frontmatter.type);
         const kind2 = registry.kinds.get(resultType);
@@ -9098,11 +9231,12 @@ function collectLinkDeclarations(registry) {
 }
 
 // src/commands/link.ts
-var LINK_USAGE = `agentstate-lite link \u2014 add a cross-link or show a concept's links + backlinks
+var LINK_USAGE = `agentstate-lite link \u2014 add a cross-link, show a concept's links + backlinks, or query the bundle's whole edge graph
 
 Usage:
   agentstate-lite link add <from> <to> [--text <t>]
   agentstate-lite link show <id> [--limit <n>] [--text <t>]
+  agentstate-lite link list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]
 
 Idempotent: re-adding a link the source already carries is a no-op \u2014 exit 0, changed:false, no
 duplicate link, no timestamp refresh.
@@ -9113,6 +9247,12 @@ kinds; a mismatch or a same-spelling-different-case near miss attaches a 'warnin
 success envelope (exit 0 \u2014 the link is already written). An untyped --text (no declared match, any
 casing) or a conventions-free bundle never warns.
 
+link list queries the WHOLE bundle's derived edge list (the same edges 'show' computes per-concept),
+filtered \u2014 the atom a blast-radius/containment/ontology question reduces to. --from/--to each accept
+a single concept id, a trailing-slash prefix ('tasks/' matches every id starting with that literal
+string \u2014 one rule, no glob), or are repeatable for a union (OR) within that one flag; giving BOTH
+--from and --to ANDs them. Dangling edges (a link to a doc that doesn't exist yet) are included.
+
 Options:
   --text <t>            (link add) Link display text (default: the target id)
                          (link show) Filter outbound links AND backlinks to those whose text is
@@ -9121,9 +9261,16 @@ Options:
                          totals when set. A filter that matches nothing is a valid empty result,
                          not an error \u2014 its help line names the distinct link texts that ARE
                          present, so a near-miss (typo/case) is visible.
+                         (link list) Same exact-match semantics, over the whole filtered edge set.
+  --from <id|prefix/>   (link list) Restrict to edges whose source matches this id or prefix
+                         (repeatable \u2014 union/OR across repeats)
+  --to <id|prefix/>     (link list) Restrict to edges whose target matches this id or prefix
+                         (repeatable \u2014 union/OR across repeats)
   --limit <n>          (link show) Cap each of the outbound/backlink lists (default: 50; 0 =
                          unlimited); outbound_count/backlink_count always report the true
                          (post-filter) totals
+                         (link list) Cap the returned edge rows (default: 100; 0 = unlimited);
+                         count always reports the true (post-filter) total
   --keep-timestamp      Preserve the source's existing timestamp (default: refresh to now,
                          since adding a cross-link is a meaningful change)
   --dir <path>          Bundle directory (default: discovered from the cwd)
@@ -9188,13 +9335,23 @@ async function link(argv, deps = {}) {
   const rest = argv.slice(1);
   if (sub === "add") return linkAdd(rest, stdout);
   if (sub === "show") return linkShow(rest, stdout);
+  if (sub === "list") return linkList(rest, stdout);
   if (sub === "-h" || sub === "--help" || sub === void 0) {
     stdout(LINK_USAGE);
     return;
   }
-  throw new CliError("USAGE", `unknown link subcommand: ${sub} (expected add|show)`, {
+  throw new CliError("USAGE", `unknown link subcommand: ${sub} (expected add|show|list)`, {
     help: `${cliInvocation()} link --help`
   });
+}
+function nearMissTextHint(textFilter, textsPresent, scope) {
+  if (textsPresent.length === 0) {
+    return `no links matched --text '${textFilter}'${scope} \u2014 this is a definitive empty result, not an error`;
+  }
+  const TEXTS_SHOWN = 8;
+  const shown = textsPresent.slice(0, TEXTS_SHOWN).map((t) => `'${t}'`).join(", ");
+  const more = textsPresent.length > TEXTS_SHOWN ? ` (+${textsPresent.length - TEXTS_SHOWN} more)` : "";
+  return `no links matched --text '${textFilter}'${scope} (exact match) \u2014 link texts present here: ${shown}${more}`;
 }
 async function addLink(bundle, from, to, opts = {}) {
   const text = opts.text?.trim() || to;
@@ -9402,15 +9559,8 @@ async function linkShow(argv, stdout) {
     );
   }
   if (textFilter !== void 0 && outbound.length === 0 && inboundMatched.length === 0) {
-    if (textsPresent.length > 0) {
-      const TEXTS_SHOWN = 8;
-      const shown = textsPresent.slice(0, TEXTS_SHOWN).map((t) => `'${t}'`).join(", ");
-      const more = textsPresent.length > TEXTS_SHOWN ? ` (+${textsPresent.length - TEXTS_SHOWN} more)` : "";
-      help.push(
-        `no links matched --text '${textFilter}' in either direction (exact match) \u2014 link texts present here: ${shown}${more}`
-      );
-    } else if (exists2) {
-      help.push(`no links matched --text '${textFilter}' in either direction \u2014 this is a definitive empty result, not an error`);
+    if (textsPresent.length > 0 || exists2) {
+      help.push(nearMissTextHint(textFilter, textsPresent, " in either direction"));
     }
   }
   if (!exists2) {
@@ -9420,6 +9570,90 @@ async function linkShow(argv, stdout) {
   }
   if (help.length > 0) payload.help = help;
   stdout(render(payload, resolveMode(values)));
+}
+async function linkList(argv, stdout) {
+  const { values } = parseOrUsage(
+    () => parseArgs11({
+      args: argv,
+      options: {
+        from: { type: "string", multiple: true },
+        to: { type: "string", multiple: true },
+        text: { type: "string" },
+        limit: { type: "string" },
+        dir: { type: "string" },
+        remote: { type: "string" },
+        json: { type: "boolean" },
+        help: { type: "boolean", short: "h" }
+      },
+      allowPositionals: true
+    }),
+    "link list"
+  );
+  if (values.help) {
+    stdout(LINK_USAGE);
+    return;
+  }
+  let textFilter;
+  if (values.text !== void 0) {
+    textFilter = values.text.trim();
+    if (!textFilter) {
+      throw new CliError("USAGE", "--text requires a non-empty value to filter on", {
+        help: `${cliInvocation()} link list --text <t>`
+      });
+    }
+  }
+  const fromValues = (values.from ?? []).map((v) => v.trim());
+  if (fromValues.some((v) => v === "")) {
+    throw new CliError("USAGE", "--from requires a non-empty id or prefix (got an empty/blank value)", {
+      help: `${cliInvocation()} link list --from <id|prefix/>`
+    });
+  }
+  const toValues = (values.to ?? []).map((v) => v.trim());
+  if (toValues.some((v) => v === "")) {
+    throw new CliError("USAGE", "--to requires a non-empty id or prefix (got an empty/blank value)", {
+      help: `${cliInvocation()} link list --to <id|prefix/>`
+    });
+  }
+  const DEFAULT_LIMIT3 = 100;
+  let limit = DEFAULT_LIMIT3;
+  if (values.limit !== void 0) {
+    const raw = values.limit.trim();
+    if (!/^\d+$/.test(raw)) {
+      throw new CliError("USAGE", "--limit must be a non-negative integer (0 = unlimited)", {
+        help: `${cliInvocation()} link list --limit 100`
+      });
+    }
+    limit = Number(raw);
+  }
+  const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
+  const scopeFilter = {};
+  if (fromValues.length > 0) scopeFilter.from = fromValues;
+  if (toValues.length > 0) scopeFilter.to = toValues;
+  let scopedEdges;
+  try {
+    scopedEdges = await queryEdges(bundle, scopeFilter);
+  } catch (err) {
+    throw classifyBundleError(err, values.remote);
+  }
+  const edges = textFilter !== void 0 ? scopedEdges.filter((e) => e.text === textFilter) : scopedEdges;
+  const rows = edges.map((e) => ({ from: e.from, to: e.to, text: e.text }));
+  const total = rows.length;
+  const shownRows = limit > 0 ? rows.slice(0, limit) : rows;
+  const truncated = shownRows.length < total;
+  const out = { count: total, edges: shownRows };
+  if (truncated) out.shown = shownRows.length;
+  const help = [];
+  if (truncated) {
+    help.push(
+      `showing ${shownRows.length} of ${total} \u2014 run \`${cliInvocation()} link list --limit 0\` (or a higher --limit) for all`
+    );
+  }
+  if (textFilter !== void 0 && total === 0) {
+    const textsPresent = [...new Set(scopedEdges.map((e) => e.text))].sort((a, b) => a.localeCompare(b));
+    help.push(nearMissTextHint(textFilter, textsPresent, ""));
+  }
+  if (help.length > 0) out.help = help;
+  stdout(render(out, resolveMode(values)));
 }
 
 // src/commands/list.ts
@@ -14565,8 +14799,8 @@ var COMMAND_GROUPS = [
         summary: "Query concepts over their frontmatter (alias: query) \u2014 a comma in --field's value is set membership (OR); --open excludes terminal instances (declared kinds only)"
       },
       {
-        usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>]) [--remote <url>]",
-        summary: "Add a cross-link, or show a concept's links + backlinks (each carrying link text; --text filters both directions by exact match)"
+        usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>] | list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]) [--remote <url>]",
+        summary: "Add a cross-link, show a concept's links + backlinks, or query the whole bundle's derived edge list filtered by from/to (id or prefix/, repeatable/union) and exact-match text"
       }
     ]
   },

@@ -31,6 +31,7 @@ export type {
   InitBundleOptions,
   QueryFilter,
   Link,
+  EdgeFilter,
   FreshnessVerdict,
   FreshnessOptions,
   FreshnessResult,
@@ -52,6 +53,7 @@ export {
   query,
   parseLinks,
   backlinks,
+  queryEdges,
 } from "./bundle.js";
 
 // Version-surfacing engine API (additive; the seam's hard-case capabilities threaded

@@ -9,7 +9,7 @@ import { CliError } from "../../errors.js";
 import { render, resolveMode } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
 import { mutateDoc } from "../../mutate.js";
-import { DOC_UPDATE_USAGE, type DocCliDeps, defaultReadStdin } from "./common.js";
+import { DOC_UPDATE_USAGE, type DocCliDeps, defaultReadStdin, guardDroppedLinks } from "./common.js";
 
 /** The `doc update` STANDARD patch fields; excludes control flags (--keep-timestamp/--strict/--dir/--remote/…). */
 const DOC_UPDATE_FIELD_FLAGS = ["title", "description", "tag", "type", "body", "body-file"] as const;
@@ -27,7 +27,7 @@ const DOC_UPDATE_VALUE_FLAGS = new Set([
   "actor",
 ]);
 /** `doc update` standard boolean flags — no value; `--flag=value` on one of these is a USAGE error. */
-const DOC_UPDATE_BOOLEAN_FLAGS = new Set(["keep-timestamp", "strict", "json"]);
+const DOC_UPDATE_BOOLEAN_FLAGS = new Set(["keep-timestamp", "strict", "json", "replace-links"]);
 
 interface ParsedDocUpdateArgs {
   help: boolean;
@@ -36,6 +36,7 @@ interface ParsedDocUpdateArgs {
   remote?: string;
   keepTimestamp: boolean;
   strict: boolean;
+  replaceLinks: boolean;
   title?: string;
   description?: string;
   tags?: string[];
@@ -94,6 +95,7 @@ function parseDocUpdateArgs(argv: string[]): ParsedDocUpdateArgs {
           tag: { type: "string", multiple: true },
           "keep-timestamp": { type: "boolean" },
           strict: { type: "boolean" },
+          "replace-links": { type: "boolean" },
           json: { type: "boolean" },
           help: { type: "boolean", short: "h" },
         },
@@ -180,6 +182,7 @@ function parseDocUpdateArgs(argv: string[]): ParsedDocUpdateArgs {
     remote: std.remote,
     keepTimestamp: Boolean(rawValues["keep-timestamp"]),
     strict: Boolean(rawValues.strict),
+    replaceLinks: Boolean(rawValues["replace-links"]),
     title: std.title,
     description: std.description,
     tags: tags.length > 0 ? tags : undefined,
@@ -332,6 +335,13 @@ export async function docUpdate(argv: string[], deps: Partial<DocCliDeps>): Prom
       if (p.body !== undefined) nextBody = p.body;
       else if (p.bodyFile) nextBody = await fs.readFile(p.bodyFile, "utf8");
       else if (stdinBody !== undefined) nextBody = stdinBody;
+
+      // Link-drop guard (data loss): a body replace must not silently drop outbound cross-links the
+      // existing body carried — see `guardDroppedLinks`'s own comment for the exact match rule and
+      // why the ordinary read-modify-write cycle never fires it. A no-op re-run of `nextBody ===
+      // existing.body` (field-only patch, or a body flag that repeats the current body) trivially
+      // clears it (no dropped links vs. itself). `--replace-links` opts into the drop.
+      guardDroppedLinks(bundle, existing, nextBody, p.replaceLinks);
 
       // Dynamic kind-field patch (Facet 2): only accepted when a kind governs the RESULT type and
       // declares the field — the ONLY dynamic-field mechanism on this surface (matches `new`'s
