@@ -3,7 +3,7 @@ type: Task
 title: >-
   Page bridge query: limit:0 silently returns empty (diverges from CLI --limit 0
   = unlimited)
-status: todo
+status: done
 priority: '2'
 description: >-
   Cross-surface limit inconsistency (usability footgun, not security — local
@@ -23,6 +23,6 @@ description: >-
   rows, limit:3 -> 3 rows, limit absent -> all. One-line fix + test; ships via
   branch + PR + review gate. Surfaced from Brian's ui trial, 2026-07-10.
 actor: mike/claude
-timestamp: '2026-07-10T17:01:49.238Z'
+timestamp: '2026-07-10T18:10:30.266Z'
 ---
-
+**Shipped:** PR #38 (commit efb1e8d), live at plugin 1.0.35. Gated the bridge slice on `params.limit > 0` so 0/absent = unlimited (matches CLI `list --limit 0`); added applyRowFilters tests. Independent review APPROVE (bite-tested).
