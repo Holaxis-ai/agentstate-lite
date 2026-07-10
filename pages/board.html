@@ -137,8 +137,8 @@
   var DONE_CAP = 12;
   function render() {
     Promise.all([
-      Bridge.query({ type: "Task", limit: 0 }),
-      Bridge.query({ type: "Roadmap Item", limit: 0 })
+      Bridge.query({ type: "Task" }),
+      Bridge.query({ type: "Roadmap Item" })
     ]).then(function (res) {
       var tasks = res[0].rows || [], items = res[1].rows || [];
       var st = function (r) { return (r.frontmatter || {}).status || ""; };
