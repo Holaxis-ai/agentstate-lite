@@ -248,9 +248,12 @@ test("sync --migrate --yes: files-not-history board branch, PR-shaped removal, b
     git(topo.a.root, ["merge", "--ff-only", MIGRATION_BRANCH]);
     git(topo.a.root, ["push", "origin", "main"]);
     assert.equal(existsSync(path.join(topo.a.root, BUNDLE_DIR)), false, "folder vanished from A after the merge");
-    // 3. "'git pull', then 'sync'" on clone A: provisions LOUDLY, docs intact.
+    // 3. "'git pull', then 'sync'" on clone A: provisions LOUDLY, docs intact. Clone A materializes
+    // from its OWN local `board` branch here (review SHOULD-FIX: `provisionBoardWorktree`'s
+    // `hasLocal` arm fires — migrate itself created that local branch before pushing it) — not
+    // literally "from origin/board" (that's clone B's path below, which never created one locally).
     const afterA = await runSyncJson(homeA, ["--dir", topo.a.root]);
-    assert.match(String(afterA.provisioned), /materialized from origin\/board/);
+    assert.match(String(afterA.provisioned), /materialized from the local board branch/);
     assert.match(await readBoardFile(topo.a, "tasks/seed-one.md"), /Seed one/);
 
     // The OTHER founder's journey (clone B): pull → folder gone → sync provisions loudly → intact.

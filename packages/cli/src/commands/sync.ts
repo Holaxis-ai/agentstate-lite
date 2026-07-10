@@ -484,7 +484,14 @@ export function toConflictRows(boardPath: string, conflicts: LandedConflict[]): 
  */
 export function provisionAnnouncement(outcome: ProvisionOutcome): Record<string, string> | undefined {
   if (outcome.kind === "provisioned") {
-    return { provisioned: `${outcome.boardPath} — materialized from origin/board` };
+    // review SHOULD-FIX: `source` distinguishes the classic clone/join case (genuinely
+    // "materialized from origin/board") from the `hasLocal` arm — an ALREADY-EXISTING local
+    // `board` branch (greenfield combo 2's hand-built/crash-recovered boards, and establish's own
+    // empty-root branch) that never touched origin/board at all — so this never claims a remote
+    // origin for content that came from a purely local branch.
+    const detail =
+      outcome.source === "remote" ? "materialized from origin/board" : "materialized from the local board branch";
+    return { provisioned: `${outcome.boardPath} — ${detail}` };
   }
   if (outcome.kind === "repaired") {
     return { repaired: `${outcome.boardPath} — worktree pointers repaired` };
@@ -1139,6 +1146,30 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
       throw await throwPostCommitFailure(conflictErr, commitResult.committed, key, boardPath);
     }
     if (rebaseOutcome.status === "no_upstream") {
+      // REVIEW MUST-FIX 1 (a real auto-publish hole): `provisionBoardWorktree`'s `hasLocal` arm
+      // checks out WHATEVER local branch is literally named `board` — it carries no bundle-shape
+      // check at all, because the pre-establish world never needed one (a `board` branch only ever
+      // existed if IT was the bundle). Now that this "no_upstream" branch means PUBLISH, a repo
+      // with an unrelated local branch happening to be named `board` (a private WIP branch, say)
+      // would otherwise get silently published here — the exact "never auto-publish" class this
+      // whole feature exists to prevent. Same bundle-evidence establish's OWN ladder demands
+      // (sync-establish.ts's `assertPlainBundleFolder`): a root `index.md`. This ALSO closes
+      // establish's crash-window B for free (a crash after the empty-root branch exists but before
+      // its content is moved back in provisions an EMPTY board — no index.md either).
+      if (!existsSync(path.join(boardPath, "index.md"))) {
+        const noBundleErr = withProvisionAnnouncement(
+          new CliError(
+            "RUNTIME",
+            `'${boardPath}' is checked out on the '${BOARD_BRANCH}' branch but carries no root ` +
+              `index.md — this doesn't look like an OKF bundle, so sync refuses to publish it as ` +
+              `one. If '${BOARD_BRANCH}' here is unrelated to agentstate-lite, rename or delete it; ` +
+              `if it's a genuine bundle interrupted mid-establish, its content may be sitting in a ` +
+              `sibling '${BUNDLE_DIR}.establishing-<pid>' folder — move it back in, then re-run sync`,
+          ),
+          outcome,
+        );
+        throw await throwPostCommitFailure(noBundleErr, commitResult.committed, key, boardPath);
+      }
       willPublish = true;
     }
   }

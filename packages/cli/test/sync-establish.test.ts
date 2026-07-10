@@ -22,6 +22,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { initBundle } from "@agentstate-lite/core";
 import { sync } from "../src/commands/sync.js";
 import { init } from "../src/commands/init.js";
 import { recipe } from "../src/commands/recipe.js";
@@ -97,12 +98,15 @@ async function tempHome(): Promise<{ home: string; cleanup: () => Promise<void> 
 /**
  * Hand-build combo 2 (present locally / absent on origin) directly over git.ts's OWN establish
  * primitives — never through `--establish` itself: an empty-root board branch, provisioned as the
- * conventional worktree, carrying one real committed doc that was never pushed.
+ * conventional worktree, seeded with a root `index.md` (review MUST-FIX 1 — a REAL bundle, the
+ * same bundle-evidence sync's own publish guard now demands) carrying one real committed doc that
+ * was never pushed.
  */
 async function handBuildLocalOnlyBoard(repo: BoardRepo, id: string, body: string): Promise<void> {
   createEmptyRootBoardBranch(repo.root);
   const outcome = provisionBoardWorktree(repo.root);
   assert.equal(outcome.kind, "provisioned");
+  await initBundle(repo.board);
   await writeBoardDoc(repo, id, { frontmatter: { type: "Note", title: id }, body });
   const commit = stageAndCommit(repo.board);
   assert.equal(commit.committed, true);
@@ -320,6 +324,56 @@ test("combo 2: --pull-only pins the 'board not published yet' message (never pub
   }
 });
 
+test("combo 2: '--establish' on a hand-built local-only board notes 'already established' AND still publishes (the note folds into the SAME receipt)", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await handBuildLocalOnlyBoard(topo.a, "notes/local-only", "hand-built, never pushed");
+    const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(rec.establish, ESTABLISH_ALREADY, "combo 2 is already-established — establish mutates nothing itself");
+    assert.equal(rec.published, "origin/board (tracking set)", "…but falls through into the SAME ordinary sync, which still publishes");
+    assert.equal(
+      gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status,
+      0,
+      "origin now carries the board branch",
+    );
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+// ── MUST-FIX 1: never auto-publish a checkout that isn't actually a bundle ────
+
+test("MUST-FIX 1 repro: an unrelated local branch merely NAMED 'board' (private WIP, no bundle anywhere) is never auto-published", async () => {
+  // Before the fix: `provisionBoardWorktree`'s `hasLocal` arm checks out WHATEVER local branch is
+  // literally named `board`, with no bundle-shape check at all — a repo with a private WIP branch
+  // that happens to be named `board`, and NO `.agentstate-lite/` folder anywhere, would get that
+  // branch checked out at the conventional path and then PUBLISHED by bare sync's combo-2 path.
+  // That is exactly the "never auto-publish" class this whole feature exists to prevent.
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    git(topo.a.root, ["checkout", "-b", BOARD_BRANCH]);
+    await writeFile(path.join(topo.a.root, "wip.txt"), "someone's private work in progress\n");
+    git(topo.a.root, ["add", "-A"]);
+    git(topo.a.root, ["commit", "-m", "wip: private branch, unrelated to any bundle"]);
+    git(topo.a.root, ["checkout", "main"]);
+
+    const { err } = await runSync(home, ["--dir", topo.a.root]);
+    assert.equal(err?.code, "RUNTIME");
+    assert.match(err?.message ?? "", /no root index\.md/);
+    assert.equal(
+      gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status !== 0,
+      true,
+      "the private branch was NEVER published to origin",
+    );
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
 // ── the establish race (teammate publishes between this run's fetch and its push) ─
 
 test("race: a teammate's board lands on origin between establish's fetch and its push — nothing lost, converges", async () => {
@@ -403,6 +457,40 @@ test("crash state: the empty-root branch was created but the folder was never re
   }
 });
 
+test("crash window B (review MUST-FIX 2): branch created + folder renamed aside, but nothing has provisioned the conventional path yet — the bundle-evidence guard refuses an EMPTY board instead of silently publishing one", async () => {
+  // The false comment this pins the fix for (sync-establish.ts's old step-2 doc comment) claimed
+  // this window was "no local board branch" / "nothing to sync" / "recovered by hand". All three
+  // were wrong: the step-1 branch already exists, so the NEXT plain sync's own provisioning step
+  // materializes it (empty — no tree entries yet) and, before MUST-FIX 1, would have PUBLISHED
+  // that empty board. The bundle-evidence guard (no root index.md) now refuses it instead.
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await initPlainBundleDir(topo.a);
+    await writeBoardDoc(topo.a, "notes/hello", { frontmatter: { type: "Note", title: "Hello" }, body: "hi\n" });
+    createEmptyRootBoardBranch(topo.a.root);
+    const aside = `${topo.a.board}.establishing-crashtest`;
+    await rename(topo.a.board, aside);
+    // (deliberately no provisionBoardWorktree call here — that IS the crash point: the branch
+    // exists and the folder is renamed aside, but nothing has provisioned the conventional path
+    // yet; the NEXT plain sync is the one that does that provisioning itself.)
+
+    const { err } = await runSync(home, ["--dir", topo.a.root]);
+    assert.equal(err?.code, "RUNTIME");
+    assert.match(err?.message ?? "", /no root index\.md/);
+    assert.equal(
+      gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status !== 0,
+      true,
+      "nothing was published — the empty board never reached origin",
+    );
+    // Nothing was lost: the pre-establish content is still sitting in the aside folder, recoverable.
+    assert.equal(existsSync(path.join(aside, "notes", "hello.md")), true);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
 test("crash state: contents were moved into the provisioned worktree but never committed — plain sync's own commit step self-heals it", async () => {
   const topo = await makeGreenfieldTopology();
   const { home, cleanup } = await tempHome();
@@ -412,14 +500,12 @@ test("crash state: contents were moved into the provisioned worktree but never c
     const original = topo.a.board;
 
     // Replicate establish's mutation up through "move contents in", stopping BEFORE stageAndCommit.
+    // The rename is a literal directory move (mirrors establish's own `renameSync`) so index.md —
+    // the bundle evidence MUST-FIX 1 demands — travels with the rest of the content, exactly as it
+    // would in a real crash.
     createEmptyRootBoardBranch(topo.a.root);
     const aside = `${original}.establishing-crashtest`;
-    await rm(original, { recursive: true, force: true });
-    await mkdir(aside, { recursive: true });
-    await writeBoardDoc({ ...topo.a, board: aside }, "notes/hello", {
-      frontmatter: { type: "Note", title: "Hello" },
-      body: "hi\n",
-    });
+    await rename(original, aside);
     const outcome = provisionBoardWorktree(topo.a.root);
     assert.equal(outcome.kind, "provisioned");
     for (const name of await readdir(aside)) {
@@ -558,6 +644,24 @@ test("establish refusal: a 'board/…' namespace branch blocks (uncreatable-ref 
     assert.equal(err?.code, "RUNTIME");
     assert.deepEqual(err?.details?.conflicting_branches, [`${BOARD_BRANCH}/stray (local)`]);
   } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("establish refusal: a project binding (.agentstate.json) pointing elsewhere refuses — out of the git-sync tier by design", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  const elsewhere = await mkdtemp(path.join(tmpdir(), "aslite-establish-elsewhere-"));
+  try {
+    await initPlainBundleDir(topo.a);
+    await writeFile(path.join(topo.a.root, ".agentstate.json"), JSON.stringify({ bundle: elsewhere }));
+    const { err } = await runSync(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(err?.code, "RUNTIME");
+    assert.match(err?.message ?? "", /project binding/);
+    assert.match(err?.message ?? "", /out of the git-sync tier/);
+  } finally {
+    await rm(elsewhere, { recursive: true, force: true });
     await cleanup();
     await topo.cleanup();
   }

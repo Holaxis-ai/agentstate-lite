@@ -299,9 +299,16 @@ test("toIncomingRows / toDeltaRows: project DocChange into each consumer's own r
 });
 
 test("provisionAnnouncement: decisions/board-branch-sync rider 2 — a mutation is ALWAYS announceable, a no-op never is", () => {
-  assert.deepEqual(provisionAnnouncement({ kind: "provisioned", boardPath: "/x/.agentstate-lite" }), {
-    provisioned: "/x/.agentstate-lite — materialized from origin/board",
-  });
+  assert.deepEqual(
+    provisionAnnouncement({ kind: "provisioned", boardPath: "/x/.agentstate-lite", source: "remote" }),
+    { provisioned: "/x/.agentstate-lite — materialized from origin/board" },
+  );
+  // review SHOULD-FIX: a board materialized from an ALREADY-EXISTING local branch (greenfield
+  // combo 2 / establish's own empty-root branch) never claims a remote origin it never touched.
+  assert.deepEqual(
+    provisionAnnouncement({ kind: "provisioned", boardPath: "/x/.agentstate-lite", source: "local" }),
+    { provisioned: "/x/.agentstate-lite — materialized from the local board branch" },
+  );
   assert.deepEqual(provisionAnnouncement({ kind: "repaired", boardPath: "/x/.agentstate-lite" }), {
     repaired: "/x/.agentstate-lite — worktree pointers repaired",
   });

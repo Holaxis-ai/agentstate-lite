@@ -329,8 +329,15 @@ export function isProvisioned(dir: string): boolean {
 // ── provisioning (self-heal) ──────────────────────────────────────────────────
 
 export type ProvisionOutcome =
-  /** The worktree was created (fresh or self-healed clone). */
-  | { kind: "provisioned"; boardPath: string }
+  /**
+   * The worktree was created (fresh or self-healed clone). `source` names WHERE it materialized
+   * FROM — `remote` (the classic clone/join path: checked out from `refs/remotes/origin/board`) or
+   * `local` (the `hasLocal` arm: an ALREADY-EXISTING local `board` branch — greenfield combo 2's
+   * hand-built/crash-recovered boards, and establish's own empty-root branch, both provision here)
+   * — so an announcement never claims "materialized from origin/board" for a board that never
+   * touched origin at all (review SHOULD-FIX: that claim was FALSE for the local case).
+   */
+  | { kind: "provisioned"; boardPath: string; source: "local" | "remote" }
   /**
    * A pre-existing worktree carrying STALE pointers (the sandbox/mount-move field finding —
    * `.git` file / `worktrees/<name>/gitdir` still name the OLD absolute path) was structurally
@@ -550,7 +557,7 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
     }
     throw classifyGitError(failureOf(["worktree", "add"], r));
   }
-  return { kind: "provisioned", boardPath };
+  return { kind: "provisioned", boardPath, source: hasLocal ? "local" : "remote" };
 }
 
 // ── stale-rebase self-heal primitives (consumed at SYNC ENTRY by U3a, adjudication C) ─

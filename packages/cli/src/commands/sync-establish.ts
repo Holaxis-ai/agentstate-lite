@@ -17,9 +17,20 @@
 // is uncommitted; there is no tree object at HEAD to lift):
 //   1. create the `board` branch from EMPTY (`createEmptyRootBoardBranch` — object/ref writes only).
 //   2. rename the existing bundle folder ASIDE (`.agentstate-lite.establishing-<pid>`) — NEVER
-//      delete. A crash here leaves a plain, unclaimed folder under that name and no local `board`
-//      branch; the next PLAIN sync sees `no_repo`/`no_board` and reports "nothing to sync" — the
-//      folder is simply recovered by hand (rename it back, then re-run establish).
+//      delete. A crash HERE (after step 1, before step 4 moves the content back) leaves the local
+//      `board` branch from step 1 ALREADY extant — never "no board" — so review's crash-window B is
+//      NOT "nothing to sync": a plain sync self-heals via one of TWO pre-existing, safe refusals,
+//      never a silent empty publish. Crash before this rename completes: the conventional path is
+//      still non-empty and not yet a worktree, so `provisionBoardWorktree`'s OWN "foreign non-empty
+//      directory" self-heal refuses (move-it-aside guidance) — the SAME refusal that already exists
+//      for any stray directory sitting at the conventional path. Crash after this rename (before
+//      step 4 moves content back): the conventional path gets provisioned EMPTY (the step-1 branch
+//      has no tree entries yet), and a plain sync's bundle-evidence guard (git.ts's `no_upstream`
+//      check in sync.ts — the SAME one that stops publishing an unrelated local `board` branch)
+//      refuses an empty board with no root `index.md` rather than publishing it. Either halt is
+//      non-destructive: the pre-establish content is NEVER deleted, only ever renamed aside, and is
+//      recoverable by hand (moving the aside folder's contents back — which itself may re-trigger
+//      the foreign-directory refusal above, itself still safe, still non-destructive).
 //   3. `provisionBoardWorktree` — the folder's conventional path is now empty, so this is a clean
 //      `worktree add` of the fresh `board` branch (the existing self-heal `hasLocal` arm; no new
 //      provisioning logic).
