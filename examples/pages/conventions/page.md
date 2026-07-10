@@ -18,7 +18,7 @@ timestamp: "2026-07-09T00:00:00.000Z"
 A bundle-hosted UI page. A `type: Page` doc is a **registry entry**: it names a self-contained
 HTML blob (`entry`, a bundle-relative blob key under `pages/…`) that the `agentstate-lite ui`
 launcher renders in a sandboxed, opaque-origin iframe. The page reaches bundle data only through
-the read-only postMessage bridge (`examples/pages/BRIDGE.md`) — it never holds a credential.
+the read-only postMessage bridge (BRIDGE.md, shipped alongside) — it never holds a credential.
 
 - `title` (required) — the launcher card's heading.
 - `entry` (required) — the HTML blob key, e.g. `pages/roadmap.html`.

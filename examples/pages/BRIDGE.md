@@ -101,8 +101,8 @@ page-blob hot-reload is a labeled follow-up; live doc updates work in both modes
 
 The two seed pages here (`pulse.html`, `roadmap.html`) are working examples — `roadmap.html` is the
 one that exercises the `edges` request end-to-end (a live graph view of Roadmap Items and the
-tasks each one `contains`); `demo.sh` wires all of this over a scratch copy of this repo's own
-board.
+tasks each one `contains`); `demo.sh` (repo only) wires all of this over a scratch copy of this
+repo's own board.
 
 ## The bridge client (embedded copy)
 
