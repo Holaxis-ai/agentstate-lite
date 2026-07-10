@@ -267,6 +267,26 @@ function renderSyncSection(prefix) {
   );
   lines.push("");
   lines.push(
+    "Reads stay fresh on their own: board-reading commands (`list`, `doc read`, `status`, `home`,",
+  );
+  lines.push(
+    "`link show`) automatically run the same fast-forward-only pull when the board's state is older",
+  );
+  lines.push(
+    "than ~5 minutes — silent, time-boxed (~2s), never a rebase, never a push, and it never sets a",
+  );
+  lines.push(
+    "board up (that stays `sync`'s job) — so a plain `list` can advance the board checkout's HEAD.",
+  );
+  lines.push(
+    "Your OWN changes still only leave the machine when you run `sync`. To disable the auto-pull",
+  );
+  lines.push(
+    "(CI, scripted runs), set `AGENTSTATE_LITE_NO_AUTOPULL` to any non-empty value — even `0`",
+  );
+  lines.push("disables it; the variable's presence is the switch.");
+  lines.push("");
+  lines.push(
     "On projects that share their board you may notice a `board` branch in the repo's GitHub —",
   );
   lines.push("that's the board; never merge it into main.");

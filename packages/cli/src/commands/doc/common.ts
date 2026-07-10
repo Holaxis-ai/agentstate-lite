@@ -217,6 +217,11 @@ export interface DocCliDeps {
   stderr: (s: string) => void;
   writeStdoutBytes: (data: Uint8Array) => void;
   /**
+   * The opportunistic board-freshness trigger `doc read` (the READ verb only — never the
+   * mutations) runs before serving a LOCAL read (default: autopull.ts's `maybeAutoPull`).
+   */
+  autoPull?: (dir?: string) => Promise<unknown>;
+  /**
    * Resolves to the piped stdin content, or `undefined` when there is no real stdin data source at
    * all. The default impl (`defaultReadStdin`) fstats fd 0 and only reads when it is a FIFO, a
    * regular file, or a connected socket — an interactive TTY, a character device (notably an agent

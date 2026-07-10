@@ -36,6 +36,7 @@
 import { parseArgs } from "node:util";
 import { queryHeads, loadKinds, isTerminal, matchesFilter, type KindRegistry, type QueryFilter } from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
+import { maybeAutoPull } from "../autopull.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { CliError } from "../errors.js";
@@ -84,6 +85,8 @@ query of an ungoverned type, always keeps the minimal {id,type,title,timestamp} 
 
 export interface ListCliDeps {
   stdout: (s: string) => void;
+  /** The opportunistic board-freshness trigger (default {@link maybeAutoPull} — autopull.ts). */
+  autoPull: (dir?: string) => Promise<unknown>;
 }
 
 export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Promise<void> {
@@ -198,7 +201,13 @@ export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Pro
     .map((f) => f.trim())
     .filter((f) => f && !DEFAULT_KEYS.has(f));
 
-  const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
+  const remote = await resolveRemoteFlag(values.remote, values.dir);
+  // Opportunistic board freshness (autopull.ts): a LOCAL read of a provisioned board checkout
+  // whose awareness cache has gone stale runs the time-boxed ff-only pull FIRST, so this very
+  // read serves fresh state. Silent, fail-soft, detection-gated (never provisions), and skipped
+  // entirely for a --remote read (the board is a git-tier local concept).
+  if (!remote) await (deps.autoPull ?? maybeAutoPull)(values.dir);
+  const bundle = await openBundle(values.dir, remote);
   // A corrupt document (unparseable YAML frontmatter) is skipped and reported, never allowed to
   // fail the whole scan — one bad file must not blind the agent to every other doc (AXI §5/§6).
   // Head projections, not full docs: every row below reads only id + frontmatter, and over
