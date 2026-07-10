@@ -306,6 +306,55 @@ Every remote-facing command ships in the SAME bundle, wired the same way as `--d
 "$ASLITE" list --remote http://127.0.0.1:4818
 ```
 
+The wire-protocol v0.1 contract `serve` implements is documented as a project bundle doc, not
+(yet) shipped in this skill's references — `serve`'s own source is the authoritative reference
+implementation in the meantime.
+
+## Shipped references — worked examples & contracts alongside the CLI
+
+A few capabilities below (bundle pages, custom recipes) are backed by a full contract or a
+worked example shipped in this skill's `references/` folder rather than inlined here, so a
+plain session that never touches them pays nothing for them. Resolve the path once:
+
+```bash
+REFS="$(ls -d "$HOME"/.claude/skills/agentstate-lite/references \
+  "$HOME"/.claude/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite/references \
+  2>/dev/null | sort -V | tail -1)"
+```
+
+Every `$REFS/…` path below is a byte-for-byte copy of the matching file in the CLI's own repo —
+one authority, regenerated on every release, never hand-duplicated.
+
+## Bundle pages — ship a live UI as bundle content
+
+A **bundle page** is a self-contained HTML file living IN the bundle: promoted as a blob under
+`pages/…`, declared by a `type: Page` registry doc (`title`, `entry`), and rendered by
+`"$ASLITE" ui` inside a sandboxed, opaque-origin iframe (`sandbox="allow-scripts"`, no network
+access) — its only channel out is a **read-only** postMessage bridge to the shell.
+
+The bridge (protocol `v0`) has five request types: `hello` (bundle identity), `query`
+(frontmatter-filtered rows — the same head projection `list` uses), `read` (one doc), `edges`
+(the general from/to/text graph query — backlinks and containment both reduce to this), and
+`subscribe` (opt into a server-pushed `change` event whenever the watched bundle moves). There
+is no mutation message — read-only is enforced by construction, not convention.
+
+Author a page in four steps:
+
+```bash
+# 1. write a self-contained pages/my-page.html (inline CSS/JS, no external hosts),
+#    embedding the bridge client copied from the shipped contract below
+"$ASLITE" promote my-page.html --doc-key pages/my-page.html                        # 2. promote the HTML blob
+"$ASLITE" promote my-page-registry.md --doc-key pages-registry/my-page.md           # 3. promote its type: Page doc (title, entry)
+"$ASLITE" promote "$REFS/pages/conventions/page.md" --doc-key conventions/page.md   # 4. declare the Page convention (once per bundle, ready-made)
+```
+
+Full message shapes, the trust model, the copy-paste ~30-line bridge client, and two working
+examples (including a live graph view over Roadmap Items) are in the shipped contract:
+
+```bash
+cat "$REFS/pages/BRIDGE.md"
+```
+
 ## Notes
 
 - `doc read <id>` truncates a large body and points at `doc read <id> --out <file>`, which streams
@@ -321,3 +370,10 @@ Every remote-facing command ships in the SAME bundle, wired the same way as `--d
 - Edit a doc's body through `doc update --body-file` (or `--body`), never by pulling the raw file
   with `--out`, editing it with text tools, and re-promoting it — that risks corrupting the
   frontmatter (the engine rejects it, but the right tool avoids the dance entirely).
+- Writing a custom recipe: a worked example (the `Claim` kind — event-lifecycle findings with
+  provenance, composed from lite primitives) ships at `$REFS/recipes/claims/`; copy its shape,
+  then `"$ASLITE" recipe add <folder>` to apply it (built-in recipes are named directly, e.g.
+  `"$ASLITE" recipe add work-tracking`).
+- A full interop-shaped example bundle (externally-authored markdown: unquoted timestamps,
+  relative links, wrapped bullets) ships at `$REFS/sample-bundle/` — copy it and point `--dir` at
+  the copy to explore a populated bundle without writing one from scratch.
