@@ -144,7 +144,10 @@ export function applyRowFilters(rows: DocHead[], params: QueryParams, kinds: Kin
       return !kind || !isTerminal(kind, r.frontmatter);
     });
   }
-  if (typeof params.limit === "number") out = out.slice(0, params.limit);
+  // `limit > 0` caps; `limit: 0` (and absent) means UNLIMITED — matching the CLI's documented
+  // `list --limit 0 = unlimited` contract (commands/list.ts). Slicing at 0 would silently return
+  // an empty result with no error, exactly the footgun a page author hits by passing 0 for "all".
+  if (typeof params.limit === "number" && params.limit > 0) out = out.slice(0, params.limit);
   return out;
 }
 
