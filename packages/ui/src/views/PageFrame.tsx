@@ -116,6 +116,10 @@ export function PageFrame({ pageId }: { pageId: string }) {
   // Resolve registry doc -> entry key -> nonce URL on mount / page switch.
   useEffect(() => {
     subscribedRef.current = false;
+    // Reset the bridge capability to fail-closed BEFORE the new page resolves, so the gate never
+    // depends on iframe-unmount ordering to avoid answering page B with page A's capability —
+    // loadPage re-grants `bundle-read` only after reading the new registry doc.
+    bridgeCapabilityRef.current = "none";
     setSrc(null);
     setError(null);
     void loadPage();
