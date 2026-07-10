@@ -5369,6 +5369,26 @@ function parseLinksFromDoc(doc2) {
   return links;
 }
 
+// ../core/src/mutation.ts
+var CAS_MAX_ATTEMPTS = 5;
+async function versionedMutation(opts) {
+  const maxAttempts = opts.maxAttempts ?? CAS_MAX_ATTEMPTS;
+  for (let attempt = 0; ; attempt++) {
+    const { state, version } = await opts.read();
+    const decision = await opts.decide(state, attempt);
+    if (decision.action === "done") {
+      return { result: decision.result, version, wrote: false };
+    }
+    try {
+      const newVersion = await opts.write(decision.next, version);
+      return { result: decision.result, version: newVersion, wrote: true };
+    } catch (err) {
+      if (err instanceof VersionConflict && attempt < maxAttempts - 1) continue;
+      throw err;
+    }
+  }
+}
+
 // ../core/src/bundle.ts
 function backendFor(bundle) {
   return bundle.backend ?? new FilesystemBackend(bundle.root);
@@ -5383,7 +5403,13 @@ async function initBundle(root, options2 = {}) {
 
 An Open Knowledge Format bundle.
 `;
-    await backend.writeReserved("", "index.md", stringifyWithData({ okf_version: okfVersion }, body));
+    try {
+      await backend.writeReserved("", "index.md", stringifyWithData({ okf_version: okfVersion }, body), {
+        expectedVersion: null
+      });
+    } catch (err) {
+      if (!(err instanceof VersionConflict)) throw err;
+    }
   }
   return { root: resolved };
 }
@@ -5406,9 +5432,6 @@ async function writeDocVersioned(bundle, doc2, options2) {
   const saved = { id: doc2.id, frontmatter, body: doc2.body ?? "" };
   const version = await backendFor(bundle).write(doc2.id, saved, options2);
   return { doc: saved, version };
-}
-async function writeDoc(bundle, doc2, options2) {
-  return (await writeDocVersioned(bundle, doc2, options2)).doc;
 }
 async function readDocVersioned(bundle, id) {
   assertSafeConceptId(id);
@@ -7840,88 +7863,99 @@ async function mutateDoc(opts) {
       throw classify(err, opts.remoteUrl);
     }
   }
-  if (mode === "overwrite" && !opts.coupleRead) {
-    const candidate = await buildCandidate(void 0);
-    const warnings = validate(candidate);
+  const readExisting = async () => {
     try {
-      const { doc: saved, version } = await writeDocVersioned(bundle, { id, ...candidate }, opts.actor ? { actor: opts.actor } : void 0);
-      return { doc: saved, version, warnings };
+      const { doc: doc2, version } = await readDocVersioned(bundle, id);
+      return { state: doc2, version };
     } catch (err) {
+      if (err?.code === "ENOENT") return { state: void 0, version: null };
       throw classify(err, opts.remoteUrl);
     }
-  }
+  };
   if (mode === "overwrite") {
-    for (let attempt = 0; ; attempt++) {
-      let existing;
-      let version;
-      try {
-        const read = await readDocVersioned(bundle, id);
-        existing = read.doc;
-        version = read.version;
-      } catch (err) {
-        if (err?.code === "ENOENT") {
-          existing = void 0;
-          version = null;
-        } else {
-          throw classify(err, opts.remoteUrl);
-        }
-      }
-      const candidate = await buildCandidate(existing);
-      const warnings = validate(candidate);
-      try {
-        const { doc: saved, version: newVersion } = await writeDocVersioned(
-          bundle,
-          { id, ...candidate },
-          { expectedVersion: version, actor: opts.actor }
-        );
-        return { doc: saved, version: newVersion, warnings };
-      } catch (err) {
-        if (err instanceof VersionConflict) {
-          if (attempt < maxAttempts - 1) continue;
-          throw errors.staleHead ? errors.staleHead(err) : new CliError("STALE_HEAD", err.message);
-        }
-        throw classify(err, opts.remoteUrl);
-      }
-    }
-  }
-  for (let attempt = 0; ; attempt++) {
-    let existing;
-    let version;
+    let savedDoc2;
+    let warnings = [];
     try {
-      const read = await readDocVersioned(bundle, id);
-      existing = read.doc;
-      version = read.version;
-    } catch (err) {
-      if (err?.code === "ENOENT") {
-        if (onAbsent === "fail") {
-          throw errors.notFound ? errors.notFound() : new CliError("NOT_FOUND", `no concept document at id '${id}'`);
-        }
-        existing = void 0;
-        version = null;
-      } else {
-        throw classify(err, opts.remoteUrl);
-      }
-    }
-    if (opts.expectedVersion !== void 0 && version !== opts.expectedVersion) {
-      const conflict = new VersionConflict(id, opts.expectedVersion, version);
-      throw errors.staleHead ? errors.staleHead(conflict) : new CliError("STALE_HEAD", conflict.message);
-    }
-    const candidate = await buildCandidate(existing);
-    if (existing && isNoopPatch(existing, candidate, compareTimestamp)) {
-      return { doc: existing, changed: false, version, warnings: [] };
-    }
-    const warnings = validate(candidate);
-    const writeVersion = opts.expectedVersion !== void 0 ? opts.expectedVersion : version;
-    try {
-      const { doc: saved, version: newVersion } = await writeDocVersioned(bundle, { id, ...candidate }, { expectedVersion: writeVersion, actor: opts.actor });
-      return { doc: saved, changed: true, version: newVersion, warnings };
+      const outcome = await versionedMutation({
+        read: readExisting,
+        decide: async (existing) => {
+          const candidate = await buildCandidate(existing);
+          warnings = validate(candidate);
+          return { action: "write", next: { id, ...candidate }, result: void 0 };
+        },
+        write: async (next, expectedVersion) => {
+          try {
+            const { doc: saved, version } = await writeDocVersioned(bundle, next, {
+              expectedVersion,
+              actor: opts.actor
+            });
+            savedDoc2 = saved;
+            return version;
+          } catch (err) {
+            if (err instanceof VersionConflict) throw err;
+            throw classify(err, opts.remoteUrl);
+          }
+        },
+        maxAttempts
+      });
+      return { doc: savedDoc2, version: outcome.version, warnings };
     } catch (err) {
       if (err instanceof VersionConflict) {
-        if (opts.expectedVersion === void 0 && attempt < maxAttempts - 1) continue;
         throw errors.staleHead ? errors.staleHead(err) : new CliError("STALE_HEAD", err.message);
       }
-      throw classify(err, opts.remoteUrl);
+      throw err;
     }
+  }
+  let lastReadVersion = null;
+  let savedDoc;
+  const hardCas = opts.expectedVersion !== void 0;
+  try {
+    const outcome = await versionedMutation({
+      read: async () => {
+        const read = await readExisting();
+        lastReadVersion = read.version;
+        if (read.state === void 0 && onAbsent === "fail") {
+          throw errors.notFound ? errors.notFound() : new CliError("NOT_FOUND", `no concept document at id '${id}'`);
+        }
+        return read;
+      },
+      decide: async (existing) => {
+        if (hardCas && lastReadVersion !== opts.expectedVersion) {
+          const conflict = new VersionConflict(id, opts.expectedVersion, lastReadVersion);
+          throw errors.staleHead ? errors.staleHead(conflict) : new CliError("STALE_HEAD", conflict.message);
+        }
+        const candidate = await buildCandidate(existing);
+        if (existing && isNoopPatch(existing, candidate, compareTimestamp)) {
+          return { action: "done", result: { doc: existing, warnings: [] } };
+        }
+        const warnings = validate(candidate);
+        return { action: "write", next: { id, ...candidate }, result: { warnings } };
+      },
+      write: async (next, expectedVersion) => {
+        const writeVersion = hardCas ? opts.expectedVersion : expectedVersion;
+        try {
+          const { doc: saved, version } = await writeDocVersioned(bundle, next, {
+            expectedVersion: writeVersion,
+            actor: opts.actor
+          });
+          savedDoc = saved;
+          return version;
+        } catch (err) {
+          if (err instanceof VersionConflict) throw err;
+          throw classify(err, opts.remoteUrl);
+        }
+      },
+      // An EXPLICIT caller token makes a conflict terminal (hard CAS, no retry) — the whole point of
+      // an optimistic "claim: update IFF unchanged". Without one, keep the pre-existing bounded-retry
+      // behavior (a benign concurrent writer is retried, not failed).
+      maxAttempts: hardCas ? 1 : maxAttempts
+    });
+    return outcome.wrote ? { doc: savedDoc, changed: true, version: outcome.version, warnings: outcome.result.warnings } : { doc: outcome.result.doc, changed: false, version: outcome.version, warnings: [] };
+  } catch (err) {
+    if (err instanceof VersionConflict) {
+      throw errors.staleHead ? errors.staleHead(err) : new CliError("STALE_HEAD", err.message);
+    }
+    throw err;
   }
 }
 
@@ -8008,46 +8042,39 @@ async function docWrite(argv, deps) {
   }
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
   const isConventionPath = id.startsWith("conventions/");
-  let existing;
-  try {
-    existing = await readDoc(bundle, id);
-  } catch (err) {
-    if (err?.code !== "ENOENT") {
-      throw classifyBundleError(err, values.remote);
-    }
-  }
-  if (isConventionPath && existing && existing.frontmatter.type === "Convention") {
-    const governs = typeof existing.frontmatter.governs === "string" && existing.frontmatter.governs.trim() ? existing.frontmatter.governs : "(unknown)";
-    throw new CliError(
-      "USAGE",
-      `refusing to overwrite kind convention '${id}' with 'doc write' \u2014 it replaces the whole document and would drop the convention's schema (governs/fields/path), un-declaring the '${governs}' kind. To change its title/body, use 'doc update' (it preserves the schema). To change the schema fields, use '${cliInvocation()} kind field "${governs}" add/remove <name>' (or edit the convention's markdown frontmatter directly).`,
-      { help: `${cliInvocation()} doc update ${id} --title <t>` }
-    );
-  }
-  if (!bodySourceGiven && !blankBody && existing && existing.body.trim() !== "") {
-    throw new CliError(
-      "USAGE",
-      `'${id}' already has a non-empty body and no body source was given (--body, --body-file, or piped stdin) \u2014 refusing to silently blank it. Pass a body source, run '${cliInvocation()} doc update ${id}' to patch other fields while preserving the body, or pass --blank-body to blank it deliberately.`,
-      {
-        help: `${cliInvocation()} doc update ${id}`,
-        details: { existing_body_chars: existing.body.length }
-      }
-    );
-  }
   const replaceLinks = Boolean(values["replace-links"]);
   const registry = await loadKinds(bundle);
+  let droppedFields = [];
   const result = await mutateDoc({
     bundle,
     id,
     mode: "overwrite",
-    coupleRead: !replaceLinks,
     registry,
     remoteUrl: values.remote,
     strict: Boolean(values.strict),
     helpOnKindReject: `${cliInvocation()} kinds`,
     actor: values.actor?.trim(),
     buildCandidate: (fresh) => {
+      if (isConventionPath && fresh && fresh.frontmatter.type === "Convention") {
+        const governs = typeof fresh.frontmatter.governs === "string" && fresh.frontmatter.governs.trim() ? fresh.frontmatter.governs : "(unknown)";
+        throw new CliError(
+          "USAGE",
+          `refusing to overwrite kind convention '${id}' with 'doc write' \u2014 it replaces the whole document and would drop the convention's schema (governs/fields/path), un-declaring the '${governs}' kind. To change its title/body, use 'doc update' (it preserves the schema). To change the schema fields, use '${cliInvocation()} kind field "${governs}" add/remove <name>' (or edit the convention's markdown frontmatter directly).`,
+          { help: `${cliInvocation()} doc update ${id} --title <t>` }
+        );
+      }
+      if (!bodySourceGiven && !blankBody && fresh && fresh.body.trim() !== "") {
+        throw new CliError(
+          "USAGE",
+          `'${id}' already has a non-empty body and no body source was given (--body, --body-file, or piped stdin) \u2014 refusing to silently blank it. Pass a body source, run '${cliInvocation()} doc update ${id}' to patch other fields while preserving the body, or pass --blank-body to blank it deliberately.`,
+          {
+            help: `${cliInvocation()} doc update ${id}`,
+            details: { existing_body_chars: fresh.body.length }
+          }
+        );
+      }
       if (fresh) guardDroppedLinks(bundle, fresh, body, replaceLinks);
+      droppedFields = fresh ? Object.keys(fresh.frontmatter).filter((k) => k !== "timestamp" && !(k in frontmatter)) : [];
       return { frontmatter, body };
     },
     errors: {
@@ -8068,7 +8095,6 @@ async function docWrite(argv, deps) {
     // later optimistic doc update/delete (see also `doc history`).
     version: result.version
   };
-  const droppedFields = existing ? Object.keys(existing.frontmatter).filter((k) => k !== "timestamp" && !(k in frontmatter)) : [];
   if (droppedFields.length > 0) {
     receipt.dropped_fields = droppedFields;
     receipt.note = `'doc write' is a FULL replace and dropped ${droppedFields.length} frontmatter field(s) not re-supplied: ${droppedFields.join(", ")}. To change fields while preserving the rest (e.g. a status set by 'doc update' or 'new'), use '${cliInvocation()} doc update ${id}' instead.`;
@@ -11594,56 +11620,76 @@ async function addLink(bundle, from, to, opts = {}) {
       { help: `${cliInvocation()} list` }
     );
   }
-  for (let attempt = 0; ; attempt++) {
-    let source;
-    let version;
-    try {
-      ({ doc: source, version } = await readDocVersioned(bundle, from));
-    } catch (err) {
-      if (err?.code === "ENOENT") {
-        throw new CliError("NOT_FOUND", `no source concept at id '${from}'`, {
-          help: `${cliInvocation()} list`
-        });
-      }
-      throw classifyBundleError(err, opts.remoteUrl);
-    }
-    const already = parseLinks(bundle, source).some((l) => l.to === normalizedTo);
-    if (already) {
-      return { from: source.id, normalizedTo, href, text, changed: false };
-    }
-    const trimmed = source.body.replace(/\s*$/, "");
-    const nextBody = `${trimmed}${trimmed ? "\n\n" : ""}[${text}](${href})
+  let lastSource;
+  let savedDoc;
+  let sourceTypeAtWrite = "";
+  try {
+    const outcome = await versionedMutation({
+      read: async () => {
+        try {
+          const { doc: doc2, version } = await readDocVersioned(bundle, from);
+          return { state: doc2, version };
+        } catch (err) {
+          if (err?.code === "ENOENT") {
+            throw new CliError("NOT_FOUND", `no source concept at id '${from}'`, {
+              help: `${cliInvocation()} list`
+            });
+          }
+          throw classifyBundleError(err, opts.remoteUrl);
+        }
+      },
+      decide: (source) => {
+        lastSource = source;
+        const already = parseLinks(bundle, source).some((l) => l.to === normalizedTo);
+        if (already) return { action: "done", result: { changed: false } };
+        const trimmed = source.body.replace(/\s*$/, "");
+        const nextBody = `${trimmed}${trimmed ? "\n\n" : ""}[${text}](${href})
 `;
-    const nextFrontmatter = opts.keepTimestamp ? source.frontmatter : { ...source.frontmatter, timestamp: (/* @__PURE__ */ new Date()).toISOString() };
-    try {
-      const saved = await writeDoc(
-        bundle,
-        { ...source, frontmatter: nextFrontmatter, body: nextBody },
-        { expectedVersion: version }
-      );
-      const warnings = await lintLinkType(bundle, {
-        sourceType: docType(source),
-        text,
-        to: normalizedTo,
-        remoteUrl: opts.remoteUrl
-      });
-      return {
-        from: saved.id,
-        normalizedTo,
-        href,
-        text,
-        changed: true,
-        warnings: warnings.length > 0 ? warnings : void 0
-      };
-    } catch (err) {
-      if (err instanceof VersionConflict && attempt < LINK_ADD_MAX_ATTEMPTS - 1) continue;
-      if (err instanceof VersionConflict) {
-        throw new CliError("STALE_HEAD", err.message, {
-          help: `${cliInvocation()} link add ${from} ${to}`
-        });
-      }
-      throw err;
+        const nextFrontmatter = opts.keepTimestamp ? source.frontmatter : { ...source.frontmatter, timestamp: (/* @__PURE__ */ new Date()).toISOString() };
+        sourceTypeAtWrite = docType(source);
+        return {
+          action: "write",
+          next: { ...source, frontmatter: nextFrontmatter, body: nextBody },
+          result: { changed: true }
+        };
+      },
+      write: async (next, expectedVersion) => {
+        try {
+          const { doc: saved, version } = await writeDocVersioned(bundle, next, { expectedVersion });
+          savedDoc = saved;
+          return version;
+        } catch (err) {
+          if (err instanceof VersionConflict) throw err;
+          if (err instanceof RemoteError) throw classifyBundleError(err, opts.remoteUrl);
+          throw err;
+        }
+      },
+      maxAttempts: LINK_ADD_MAX_ATTEMPTS
+    });
+    if (!outcome.wrote) {
+      return { from: lastSource.id, normalizedTo, href, text, changed: false };
     }
+    const warnings = await lintLinkType(bundle, {
+      sourceType: sourceTypeAtWrite,
+      text,
+      to: normalizedTo,
+      remoteUrl: opts.remoteUrl
+    });
+    return {
+      from: savedDoc.id,
+      normalizedTo,
+      href,
+      text,
+      changed: true,
+      warnings: warnings.length > 0 ? warnings : void 0
+    };
+  } catch (err) {
+    if (err instanceof VersionConflict) {
+      throw new CliError("STALE_HEAD", err.message, {
+        help: `${cliInvocation()} link add ${from} ${to}`
+      });
+    }
+    throw err;
   }
 }
 async function linkAdd(argv, stdout) {
@@ -12691,58 +12737,76 @@ async function kind(argv, deps = {}) {
       { help: `${cliInvocation()} kinds` }
     );
   }
-  const conv = await readDoc(bundle, target.id);
-  const fm = conv.frontmatter;
-  const fieldsObj = fm.fields && typeof fm.fields === "object" && !Array.isArray(fm.fields) ? { ...fm.fields } : {};
-  const required = toStringList(fieldsObj.required);
-  const optional = toStringList(fieldsObj.optional);
-  const valuesMap = fieldsObj.values && typeof fieldsObj.values === "object" && !Array.isArray(fieldsObj.values) ? { ...fieldsObj.values } : {};
-  let changed = false;
-  if (action === "add") {
-    const targetList = values.required ? required : optional;
-    const otherList = values.required ? optional : required;
-    const otherIdx = otherList.indexOf(fieldName);
-    if (otherIdx >= 0) {
-      otherList.splice(otherIdx, 1);
-      changed = true;
-    }
-    if (!targetList.includes(fieldName)) {
-      targetList.push(fieldName);
-      changed = true;
-    }
-    if (enumVals) {
-      const prev = Array.isArray(valuesMap[fieldName]) ? valuesMap[fieldName].map(String) : void 0;
-      if (!prev || prev.join("\0") !== enumVals.join("\0")) {
-        valuesMap[fieldName] = enumVals;
-        changed = true;
+  let computedRequired = [];
+  let computedOptional = [];
+  let computedValues = {};
+  const result = await mutateDoc({
+    bundle,
+    id: target.id,
+    mode: "patch",
+    registry,
+    strict: false,
+    // this command EDITS the schema itself — it never validates against one
+    helpOnKindReject: `${cliInvocation()} kinds`,
+    actor: values.actor?.trim(),
+    buildCandidate: (existingDoc) => {
+      const existing = existingDoc;
+      const fm = existing.frontmatter;
+      const currentGoverns = typeof fm.governs === "string" ? fm.governs.trim() : "";
+      if (currentGoverns !== kindName) {
+        throw new CliError(
+          "STALE_HEAD",
+          `'${target.id}' no longer governs '${kindName}' \u2014 it was concurrently renamed to govern '${currentGoverns || "(missing)"}'. Refusing to edit the wrong kind's schema; re-run '${cliInvocation()} kinds' to see the current declarations and retry against the right name.`,
+          { help: `${cliInvocation()} kinds` }
+        );
       }
-    }
-  } else {
-    for (const list2 of [required, optional]) {
-      const idx = list2.indexOf(fieldName);
-      if (idx >= 0) {
-        list2.splice(idx, 1);
-        changed = true;
+      const fieldsObj = fm.fields && typeof fm.fields === "object" && !Array.isArray(fm.fields) ? { ...fm.fields } : {};
+      const required = toStringList(fieldsObj.required);
+      const optional = toStringList(fieldsObj.optional);
+      const valuesMap = fieldsObj.values && typeof fieldsObj.values === "object" && !Array.isArray(fieldsObj.values) ? { ...fieldsObj.values } : {};
+      if (action === "add") {
+        const targetList = values.required ? required : optional;
+        const otherList = values.required ? optional : required;
+        const otherIdx = otherList.indexOf(fieldName);
+        if (otherIdx >= 0) otherList.splice(otherIdx, 1);
+        if (!targetList.includes(fieldName)) targetList.push(fieldName);
+        if (enumVals) {
+          const vals = enumVals;
+          const prev = Array.isArray(valuesMap[fieldName]) ? valuesMap[fieldName].map(String) : void 0;
+          const same = !!prev && prev.length === vals.length && prev.every((v, i) => v === vals[i]);
+          if (!same) valuesMap[fieldName] = vals;
+        }
+      } else {
+        for (const list2 of [required, optional]) {
+          const idx = list2.indexOf(fieldName);
+          if (idx >= 0) list2.splice(idx, 1);
+        }
+        if (fieldName in valuesMap) delete valuesMap[fieldName];
       }
+      computedRequired = required;
+      computedOptional = optional;
+      computedValues = valuesMap;
+      const newFields = { ...fieldsObj };
+      if (required.length > 0) newFields.required = required;
+      else delete newFields.required;
+      if (optional.length > 0) newFields.optional = optional;
+      else delete newFields.optional;
+      if (Object.keys(valuesMap).length > 0) newFields.values = valuesMap;
+      else delete newFields.values;
+      const newFm = { ...fm };
+      if (Object.keys(newFields).length > 0) newFm.fields = newFields;
+      else delete newFm.fields;
+      return { frontmatter: newFm, body: existing.body };
+    },
+    errors: {
+      notFound: () => new CliError(
+        "NOT_FOUND",
+        `the '${kindName}' kind's governing convention doc ('${target.id}') is declared by the registry but missing`,
+        { help: `${cliInvocation()} kinds` }
+      )
     }
-    if (fieldName in valuesMap) {
-      delete valuesMap[fieldName];
-      changed = true;
-    }
-  }
-  if (changed) {
-    const newFields = { ...fieldsObj };
-    if (required.length > 0) newFields.required = required;
-    else delete newFields.required;
-    if (optional.length > 0) newFields.optional = optional;
-    else delete newFields.optional;
-    if (Object.keys(valuesMap).length > 0) newFields.values = valuesMap;
-    else delete newFields.values;
-    const newFm = { ...fm };
-    if (Object.keys(newFields).length > 0) newFm.fields = newFields;
-    else delete newFm.fields;
-    await writeDoc(bundle, { id: target.id, frontmatter: newFm, body: conv.body }, { actor: values.actor?.trim() });
-  }
+  });
+  const changed = result.changed ?? false;
   const after = changed ? (await loadKinds(bundle)).kinds.get(kindName) : target;
   const receipt = {
     kind: kindName,
@@ -12750,10 +12814,10 @@ async function kind(argv, deps = {}) {
     action,
     field: fieldName,
     convention: target.id,
-    required: after?.fields.required ?? required,
-    optional: after?.fields.optional ?? optional
+    required: after?.fields.required ?? computedRequired,
+    optional: after?.fields.optional ?? computedOptional
   };
-  const resultValues = after?.fields.values ?? {};
+  const resultValues = after?.fields.values ?? computedValues;
   if (Object.keys(resultValues).length > 0) receipt.values = resultValues;
   receipt.help = [`${cliInvocation()} kinds`];
   stdout(render(receipt, resolveMode(values)));
