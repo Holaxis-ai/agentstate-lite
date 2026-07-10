@@ -321,3 +321,94 @@ test("kind field: a competing 'doc update'-style title edit lands between our re
     await server.close();
   }
 });
+
+// ── P1 review finding: re-verifying a version-matched read is not the same as re-verifying the
+// DOMAIN invariant this command depends on ──────────────────────────────────────────────────────
+//
+// The Defect A fix above proves the field-edit MERGES across a race — but that only shows the
+// primitive's CAS pairing works, not that `kind field`'s own domain logic is race-safe. A second
+// review round found a real gap: `buildCandidate` re-read the convention on every attempt but never
+// re-checked it still GOVERNS the kind name the command was invoked with. A competing writer that
+// renames the SAME convention's `governs` between attempts (e.g. 'Context Note' -> 'Renamed Kind')
+// would have the retry silently re-splice field lists onto the RENAMED convention under the OLD kind
+// name — a version-safe write that is nonetheless a domain-wrong one. `buildCandidate` now re-checks
+// `governs === kindName` on EVERY attempt and refuses (STALE_HEAD) if it no longer holds.
+
+test("kind field: a competing writer renames the convention's 'governs' between attempts — refuses (STALE_HEAD) instead of editing the wrong kind's schema (P1 review fix)", async () => {
+  const backend = new MemoryBackend();
+  const bundle: Bundle = { root: "mem://kind-field-governs-rename-race", backend };
+  await applyRecipe(bundle, CONTEXT_NOTES_RECIPE);
+  const registry = await loadKinds(bundle);
+  const convId = registry.kinds.get("Context Note")!.id;
+
+  // The FIRST time our own write attempts a real CAS write for the convention doc, a competing
+  // writer renames its 'governs' first, using OUR OWN read's version (so it wins).
+  const originalWrite = backend.write.bind(backend);
+  let injected = false;
+  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
+    if (id === convId && !injected && options?.expectedVersion) {
+      injected = true;
+      const current = await backend.read(convId);
+      await originalWrite(
+        convId,
+        { ...current.doc, frontmatter: { ...current.doc.frontmatter, governs: "Renamed Kind" } },
+        { expectedVersion: options.expectedVersion },
+      );
+    }
+    return originalWrite(id, d, options);
+  }) as typeof backend.write;
+
+  const server = await bootServerOverBundle(bundle);
+  try {
+    await assert.rejects(
+      () =>
+        kind(["field", "Context Note", "add", "field-d", "--remote", server.url, "--json"], { stdout: () => {} }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "STALE_HEAD");
+        assert.match(err.message, /no longer governs 'Context Note'/);
+        assert.match(err.message, /Renamed Kind/);
+        return true;
+      },
+    );
+
+    // The rename survived, untouched — our field edit never landed on the wrong doc.
+    const conv = await readDoc(bundle, convId);
+    assert.equal(conv.frontmatter.governs, "Renamed Kind");
+    const fields = conv.frontmatter.fields as Record<string, unknown> | undefined;
+    const optional = (fields?.optional as string[] | undefined) ?? [];
+    assert.ok(!optional.includes("field-d"), "our own field must NOT have been added to the renamed convention");
+  } finally {
+    await server.close();
+  }
+});
+
+// ── P2 review finding: the enum-value no-op comparison used a collision-prone join(" ") ────────────
+//
+// `["a b","c"].join(" ")` and `["a","b c"].join(" ")` are BOTH `"a b c"` — so a naive join-based
+// equality check reports two GENUINELY DIFFERENT enum splits as identical, wrongly converging a real
+// change to `changed:false` (and silently keeping the STALE enum list on disk). Fixed to a
+// length + element-wise comparison, which no delimiter choice can ever collide on.
+
+test("kind field add --values: a DIFFERENT enum split that happens to join-collide with the existing one is NOT mistaken for a no-op (P2 review fix)", async () => {
+  const { dir, cleanup } = await seeded();
+  try {
+    // Seed with a split that collides via naive join(" ") with a DIFFERENT split below:
+    // ["a b","c"].join(" ") === ["a","b c"].join(" ") === "a b c".
+    const r1 = await runKind(["field", "Context Note", "add", "collide", "--values", "a b,c", "--dir", dir]);
+    assert.equal(r1.changed, true);
+    assert.deepEqual((r1.values as Record<string, string[]>).collide, ["a b", "c"]);
+
+    // A genuinely DIFFERENT enum split that joins identically must be reported changed:true, not
+    // mistaken for a no-op.
+    const r2 = await runKind(["field", "Context Note", "add", "collide", "--values", "a,b c", "--dir", dir]);
+    assert.equal(r2.changed, true, "a different enum split that join-collides must still be a real change");
+    assert.deepEqual((r2.values as Record<string, string[]>).collide, ["a", "b c"]);
+
+    // A TRUE no-op (re-adding the IDENTICAL split) still converges.
+    const r3 = await runKind(["field", "Context Note", "add", "collide", "--values", "a,b c", "--dir", dir]);
+    assert.equal(r3.changed, false);
+  } finally {
+    await cleanup();
+  }
+});

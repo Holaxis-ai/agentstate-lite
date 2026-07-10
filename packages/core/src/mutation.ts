@@ -8,12 +8,28 @@
  * the CLI's `mutateDoc` overwrite+patch modes, `link add`) — see CLAUDE.md gate 3: ONE
  * implementation, consumed everywhere, not a schema fork.
  *
- * The structural property that kills the "stale decision under a fresh token" bug class:
- * {@link VersionedMutationOptions.decide} is handed ONLY the state a fresh
+ * The structural property that kills the "stale decision paired with a fresher CAS token"
+ * bug class: {@link VersionedMutationOptions.decide} is handed ONLY the state a fresh
  * {@link VersionedMutationOptions.read} just produced — never a version token, never a
  * previous attempt's state — and {@link VersionedMutationOptions.write} CASes with THAT
- * SAME read's version. A caller cannot compute a decision once and merely retry the write
+ * SAME read's version. A caller cannot compute a decision once and merely retry the WRITE
  * with a newer token; each attempt re-derives its decision from its own fresh read.
+ *
+ * What this guarantees is VERSION-safety (a decision is always paired with the read that
+ * produced it), NOT domain-invariant-safety. `decide` receiving a fresh `state` every attempt
+ * means stale BYTES are structurally impossible to act on — it does NOT mean a consumer's
+ * decision logic automatically re-checks whatever assumption it made about that state BEFORE
+ * the retry loop started. A `decide` that only re-derives PART of its decision from `state`
+ * (e.g. re-splicing a field list while silently trusting an invariant — "this doc still
+ * governs kind X" — that was true when the caller looked the doc up, but is not re-verified
+ * against THIS attempt's fresh read) can still commit a change that is well-formed CAS-wise
+ * and wrong domain-wise. Every consumer's `decide` MUST derive its ENTIRE decision — including
+ * re-checking any mutable invariant it depends on — from the `state` it was just handed, not
+ * from anything captured before the loop began; the primitive cannot enforce this for a
+ * caller (see `kind.ts`'s `buildCandidate`, which re-verifies `governs` on every attempt for
+ * exactly this reason — a review finding on the first version of this fix, which re-spliced
+ * field lists per attempt but never re-checked that the convention still governed the kind
+ * being edited).
  */
 
 import { VersionConflict } from "./versioning.js";

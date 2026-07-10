@@ -183,6 +183,26 @@ export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Pro
     buildCandidate: (existingDoc) => {
       const existing = existingDoc!;
       const fm = existing.frontmatter;
+
+      // Domain-invariant re-check (P1 review finding, mutation-boundary consolidation): the
+      // primitive's CAS pairing guarantees this attempt's `existing` is a version-matched fresh
+      // read — it does NOT guarantee the doc still means what we assumed when we looked it up via
+      // `loadKinds` above. A concurrent writer could rename this SAME convention's `governs` (e.g.
+      // 'Context Note' -> 'Renamed Kind') between attempts; re-reading and re-splicing the field
+      // lists would then silently edit the RENAMED convention under the OLD kind name, reporting
+      // success. Re-verify the invariant this command depends on — `governs === kindName` — against
+      // EVERY attempt's fresh read, not just the one `loadKinds` saw before the loop started.
+      const currentGoverns = typeof fm.governs === "string" ? fm.governs.trim() : "";
+      if (currentGoverns !== kindName) {
+        throw new CliError(
+          "STALE_HEAD",
+          `'${target.id}' no longer governs '${kindName}' — it was concurrently renamed to govern ` +
+            `'${currentGoverns || "(missing)"}'. Refusing to edit the wrong kind's schema; re-run ` +
+            `'${cliInvocation()} kinds' to see the current declarations and retry against the right name.`,
+          { help: `${cliInvocation()} kinds` },
+        );
+      }
+
       const fieldsObj =
         fm.fields && typeof fm.fields === "object" && !Array.isArray(fm.fields)
           ? { ...(fm.fields as Record<string, unknown>) }
@@ -202,8 +222,15 @@ export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Pro
         if (otherIdx >= 0) otherList.splice(otherIdx, 1);
         if (!targetList.includes(fieldName)) targetList.push(fieldName);
         if (enumVals) {
+          const vals = enumVals;
           const prev = Array.isArray(valuesMap[fieldName]) ? (valuesMap[fieldName] as unknown[]).map(String) : undefined;
-          if (!prev || prev.join(" ") !== enumVals.join(" ")) valuesMap[fieldName] = enumVals;
+          // Collision-resistant comparison (P2 review fix): the old `prev.join(" ") !==
+          // vals.join(" ")` conflated DIFFERENT enum lists that happen to join to the same string
+          // — e.g. ["a b","c"] and ["a","b c"] BOTH become "a b c" — so `--values "a,b c"` over an
+          // existing ["a b","c"] wrongly reported changed:false. Length + element-wise instead; no
+          // delimiter choice can ever collide.
+          const same = !!prev && prev.length === vals.length && prev.every((v, i) => v === vals[i]);
+          if (!same) valuesMap[fieldName] = vals;
         }
       } else {
         for (const list of [required, optional]) {
