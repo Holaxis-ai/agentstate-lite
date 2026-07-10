@@ -34,14 +34,19 @@
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
+  lstatSync,
+  mkdtempSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
+  rmSync,
   rmdirSync,
   statSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { conceptIdFromPath, isReservedFile, parseMarkdown } from "@agentstate-lite/core";
@@ -98,12 +103,19 @@ interface RunOptions {
    * way (https remotes never consult ssh); this only makes the ssh case fail faster and cleaner.
    */
   connectTimeoutSeconds?: number;
+  /** Explicit temporary index used by snapshot plumbing; ambient GIT_INDEX_FILE stays scrubbed. */
+  indexFile?: string;
+  /** Explicit repository directory for a work tree rooted somewhere other than `dir`. */
+  gitDir?: string;
+  /** Explicit work-tree root paired with {@link gitDir}. */
+  workTree?: string;
 }
 
 /** The hermetic environment for one invocation: ambient env, scrubbed, with the invariants forced. */
-function gitEnv(rebase: boolean, connectTimeoutSeconds = 10): NodeJS.ProcessEnv {
+function gitEnv(rebase: boolean, connectTimeoutSeconds = 10, indexFile?: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const v of SCRUBBED_GIT_VARS) delete env[v];
+  if (indexFile) env.GIT_INDEX_FILE = indexFile;
   // Locale-pin git prose so classifyGitError's fallback matchers survive non-English hosts.
   env.LC_ALL = "C";
   env.GIT_TERMINAL_PROMPT = "0";
@@ -163,8 +175,12 @@ export function runGitBytes(dir: string, args: string[], opts: RunOptions = {}):
   if (opts.timeoutMs !== undefined && opts.timeoutMs <= 0) {
     throw classifyGitError({ args, status: null, stdout: "", stderr: "", timedOut: true });
   }
-  const r = spawnSync("git", ["-C", dir, "-c", "core.quotepath=off", ...args], {
-    env: gitEnv(opts.rebase ?? false, opts.connectTimeoutSeconds),
+  const repositoryArgs = [
+    ...(opts.gitDir ? [`--git-dir=${opts.gitDir}`] : []),
+    ...(opts.workTree ? [`--work-tree=${opts.workTree}`] : []),
+  ];
+  const r = spawnSync("git", ["-C", dir, "-c", "core.quotepath=off", ...repositoryArgs, ...args], {
+    env: gitEnv(opts.rebase ?? false, opts.connectTimeoutSeconds, opts.indexFile),
     timeout: opts.timeoutMs ?? LOCAL_TIMEOUT_MS,
     input: opts.input,
     maxBuffer: 32 * 1024 * 1024,
@@ -332,10 +348,9 @@ export type ProvisionOutcome =
   /**
    * The worktree was created (fresh or self-healed clone). `source` names WHERE it materialized
    * FROM — `remote` (the classic clone/join path: checked out from `refs/remotes/origin/board`) or
-   * `local` (the `hasLocal` arm: an ALREADY-EXISTING local `board` branch — greenfield combo 2's
-   * hand-built/crash-recovered boards, and establish's own empty-root branch, both provision here)
-   * — so an announcement never claims "materialized from origin/board" for a board that never
-   * touched origin at all (review SHOULD-FIX: that claim was FALSE for the local case).
+   * `local` (the `hasLocal` arm: an ALREADY-EXISTING local `board` branch, such as a legacy or
+   * manually prepared checkout) — so an announcement never claims "materialized from
+   * origin/board" for a branch that never touched origin.
    */
   | { kind: "provisioned"; boardPath: string; source: "local" | "remote" }
   /**
@@ -351,7 +366,9 @@ export type ProvisionOutcome =
   /** `dir` is not inside a git repository at all — the caller emits `sync: nothing to sync`. */
   | { kind: "no_repo" }
   /** A repo, but no `board` branch exists locally OR on origin — nothing to provision from. */
-  | { kind: "no_board" };
+  | { kind: "no_board" }
+  /** An unprovisioned local `board` branch exists, but this caller refuses to adopt it by name. */
+  | { kind: "local_board"; boardPath: string; remoteExists: boolean };
 
 /**
  * True when `<dir>/.git` exists as a FILE (never a directory) — the structural signature of git's
@@ -400,7 +417,7 @@ function moveAsideHelp(boardPath: string, note: string): string {
 
 /**
  * SELF-HEALING board-worktree provisioning (all branches empirically grounded, §U1):
- * `git fetch origin` runs BEFORE `board` is referenced (best-effort: offline provisioning still
+ * `git fetch --prune origin` runs BEFORE `board` is referenced (best-effort: offline provisioning still
  * works from a previously fetched `origin/board`); worktree absent but a board ref exists → a
  * fresh `git worktree add`; a pre-existing NON-EMPTY `.agentstate-lite/` that is NOT the board
  * worktree is REFUSED with guidance (never a blind add — a pre-existing EMPTY directory is the one
@@ -424,6 +441,8 @@ export interface NetworkBudgetOptions {
   fetchTimeoutMs?: number;
   /** ssh ConnectTimeout override, in seconds — see {@link RunOptions.connectTimeoutSeconds}. */
   connectTimeoutSeconds?: number;
+  /** False prevents a branch named `board` from being adopted without explicit user consent. */
+  allowLocalBranch?: boolean;
 }
 
 export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions = {}): ProvisionOutcome {
@@ -434,14 +453,20 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
 
   // Fetch BEFORE referencing board — tolerated nonzero (offline / no remote): the local ref
   // checks below decide what is actually provisionable.
-  runGit(top, ["fetch", BOARD_REMOTE], {
+  runGit(top, ["fetch", "--prune", BOARD_REMOTE], {
     timeoutMs: budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS,
     connectTimeoutSeconds: budget.connectTimeoutSeconds,
   });
 
-  const hasLocal = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
-  const hasRemote =
-    runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0;
+  const localBoard = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]);
+  const remoteBoard = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]);
+  const hasLocal = localBoard.status === 0;
+  const hasRemote = remoteBoard.status === 0;
+  const localMatchesRemote =
+    hasLocal &&
+    hasRemote &&
+    localBoard.stdout.trim().length > 0 &&
+    localBoard.stdout.trim() === remoteBoard.stdout.trim();
   if (!hasLocal && !hasRemote) return { kind: "no_board" };
 
   if (existsSync(boardPath)) {
@@ -528,9 +553,19 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
         help: messages[reason].help,
       });
     }
+    if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote) {
+      return { kind: "local_board", boardPath, remoteExists: hasRemote };
+    }
     // The one resolvable pre-existing state: an EMPTY directory. Remove it so worktree add can
     // create the path itself.
     rmdirSync(boardPath);
+  }
+
+  // A branch name alone is not provenance. Interactive sync and SessionStart adopt an
+  // unprovisioned local branch only when its commit exactly equals the freshly-pruned remote ref;
+  // that preserves migration recovery while refusing unrelated/private branches.
+  if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote) {
+    return { kind: "local_board", boardPath, remoteExists: hasRemote };
   }
 
   const r = hasLocal
@@ -631,12 +666,18 @@ function verbOf(letter: string): DocVerb | null {
  * for a landed change, the old tip for a deletion). Malformed frontmatter degrades to `unknown`
  * fields — a corrupt doc must never block a commit or the feed.
  */
-function enrichDocChange(boardPath: string, relPath: string, verb: DocVerb, rev: string): DocChange {
+function enrichDocChange(
+  boardPath: string,
+  relPath: string,
+  verb: DocVerb,
+  rev: string,
+  runOptions: RunOptions = {},
+): DocChange {
   const docId = conceptIdFromPath(relPath);
   let actor = UNKNOWN;
   let kind = UNKNOWN;
   let title = docId;
-  const shown = runGit(boardPath, ["show", `${rev}:${relPath}`]);
+  const shown = runGit(boardPath, ["show", `${rev}:${relPath}`], runOptions);
   if (shown.status === 0) {
     try {
       const { frontmatter } = parseMarkdown(shown.stdout, relPath);
@@ -716,6 +757,179 @@ export function stageAndCommit(boardPath: string): CommitResult {
   return { committed: true, sha, subject, docs };
 }
 
+/** A root commit assembled from a plain bundle without touching the real index or worktree. */
+export interface BundleSnapshotCommit extends CommitResult {
+  committed: true;
+  sha: string;
+  tree: string;
+}
+
+/** Enumerate the exact filesystem entries Git must capture; never follow symlinked directories. */
+function snapshotFilesystemFiles(root: string): string[] {
+  const files: string[] = [];
+  const visit = (dir: string, prefix: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.name.toLowerCase() === ".git") {
+        throw new CliError(
+          "RUNTIME",
+          `the bundle contains nested git control data at '${relPath}' — establish refuses because ` +
+            `Git can silently omit or collapse files below that boundary`,
+          { details: { nested_git_paths: [relPath] } },
+        );
+      }
+      if (entry.isDirectory()) visit(path.join(dir, entry.name), relPath);
+      else if (entry.isFile() || entry.isSymbolicLink()) files.push(relPath);
+      else {
+        throw new CliError(
+          "RUNTIME",
+          `the bundle contains an unsupported filesystem entry at '${relPath}' — only files, ` +
+            `directories, and symbolic links can be established safely`,
+        );
+      }
+    }
+  };
+  visit(root, "");
+  return files.sort();
+}
+
+/**
+ * Assert that a bundle directory's raw file/symlink bytes equal a commit, bypassing Git's clean
+ * and smudge views. This guards the destructive establishment boundary: attributes, EOL policy,
+ * and configured filters must never make a successful conversion discard the user's source bytes.
+ */
+export function assertBundleBytesMatchCommit(top: string, bundlePath: string, commit: string): void {
+  const listed = runGit(top, ["ls-tree", "-r", "-z", commit]);
+  if (listed.status !== 0) throw classifyGitError(failureOf(["ls-tree", "-r", "-z", commit], listed));
+  const mismatches: string[] = [];
+  for (const row of listed.stdout.split("\0").filter(Boolean)) {
+    const tab = row.indexOf("\t");
+    if (tab < 0) continue;
+    const [mode, type, oid] = row.slice(0, tab).split(" ");
+    const relPath = row.slice(tab + 1);
+    const absolute = path.resolve(bundlePath, relPath);
+    if (!absolute.startsWith(`${path.resolve(bundlePath)}${path.sep}`)) {
+      mismatches.push(relPath);
+      continue;
+    }
+    if (type !== "blob" || !oid) {
+      mismatches.push(relPath);
+      continue;
+    }
+    const stored = runGitBytes(top, ["cat-file", "blob", oid]);
+    if (stored.status !== 0) {
+      throw classifyGitError({
+        args: ["cat-file", "blob", oid],
+        status: stored.status,
+        stdout: stored.stdout.toString("utf8"),
+        stderr: stored.stderr,
+      });
+    }
+    try {
+      const stat = lstatSync(absolute);
+      const actual = mode === "120000" ? readlinkSync(absolute, { encoding: "buffer" }) : readFileSync(absolute);
+      if ((mode === "120000" && !stat.isSymbolicLink()) || (mode !== "120000" && !stat.isFile())) {
+        mismatches.push(relPath);
+      } else if (!Buffer.from(actual).equals(stored.stdout)) {
+        mismatches.push(relPath);
+      }
+    } catch {
+      mismatches.push(relPath);
+    }
+  }
+  if (mismatches.length > 0) {
+    throw new CliError(
+      "RUNTIME",
+      `bundle bytes differ from the Git snapshot at '${mismatches[0]}' — a Git attribute, ` +
+        `clean/smudge filter, EOL rule, or concurrent writer may be rewriting content; no source backup was removed`,
+      { details: { byte_mismatches: mismatches.slice(0, 20) } },
+    );
+  }
+}
+
+/**
+ * Snapshot a PLAIN bundle directory as a root commit using an isolated temporary Git index.
+ *
+ * This is the safe half of greenfield establishment: the source directory is read-only, the code
+ * worktree/index are untouched, and no `board` ref is created. The returned commit is initially
+ * unreachable except by its SHA; the caller either publishes that exact commit or lets normal Git
+ * object pruning collect it later. The commit message uses the same grammar as
+ * {@link stageAndCommit}, including per-document actor enrichment from the temporary stage.
+ */
+export function snapshotBundleCommit(top: string, bundlePath: string): BundleSnapshotCommit {
+  const gitDir = mustGit(top, ["rev-parse", "--absolute-git-dir"]).trim();
+  const filesystemFiles = snapshotFilesystemFiles(bundlePath);
+  const scratch = mkdtempSync(path.join(tmpdir(), "aslite-establish-index-"));
+  const indexFile = path.join(scratch, "index");
+  const snapshotOptions: RunOptions = { gitDir, workTree: bundlePath, indexFile };
+  try {
+    mustGit(bundlePath, ["read-tree", "--empty"], snapshotOptions);
+    // A project commonly ignores `.agentstate-lite/`, and users may also carry broad global or
+    // info/exclude rules. Establish snapshots the explicit bundle source, so ignore policy must
+    // not silently drop otherwise-valid bundle files from the first published commit.
+    mustGit(
+      bundlePath,
+      ["-c", "core.sparseCheckout=false", "-c", "core.sparseCheckoutCone=false", "add", "-f", "-A", "--", "."],
+      snapshotOptions,
+    );
+    const stagedRows = mustGit(bundlePath, ["ls-files", "--stage", "-z"], snapshotOptions)
+      .split("\0")
+      .filter(Boolean);
+    const gitlinks = stagedRows
+      .filter((row) => row.startsWith("160000 "))
+      .map((row) => row.slice(row.indexOf("\t") + 1));
+    if (gitlinks.length > 0) {
+      throw new CliError(
+        "RUNTIME",
+        `the bundle contains nested git checkout machinery at '${gitlinks[0]}' — establish ` +
+          `refuses because Git would publish only a gitlink and omit that directory's files`,
+        { details: { nested_git_paths: gitlinks } },
+      );
+    }
+    const stagedFiles = stagedRows.map((row) => row.slice(row.indexOf("\t") + 1)).sort();
+    if (
+      stagedFiles.length !== filesystemFiles.length ||
+      stagedFiles.some((file, index) => file !== filesystemFiles[index])
+    ) {
+      const staged = new Set(stagedFiles);
+      const filesystem = new Set(filesystemFiles);
+      throw new CliError("RUNTIME", "Git did not capture every bundle file; nothing was published", {
+        details: {
+          omitted_paths: filesystemFiles.filter((file) => !staged.has(file)).slice(0, 20),
+          unexpected_paths: stagedFiles.filter((file) => !filesystem.has(file)).slice(0, 20),
+        },
+      });
+    }
+    const tree = mustGit(bundlePath, ["write-tree"], snapshotOptions).trim();
+    const emptyTree = mustGit(top, ["mktree"], { input: "" }).trim();
+    const rows = nameStatusRows(
+      mustGit(
+        bundlePath,
+        ["diff", "--cached", "--name-status", "--no-renames", emptyTree],
+        snapshotOptions,
+      ),
+    );
+    const docs: DocChange[] = [];
+    for (const { letter, relPath } of rows) {
+      if (!isConceptDocPath(relPath)) continue;
+      const verb = verbOf(letter);
+      if (!verb) continue;
+      docs.push(enrichDocChange(bundlePath, relPath, verb, ":0", snapshotOptions));
+    }
+    const subject = commitSubject(docs);
+    const bodyLines =
+      docs.length > 0
+        ? docs.map((d) => `${d.verb} ${d.kind} ${d.docId}`)
+        : rows.map((r) => `${r.letter} ${r.relPath}`);
+    const message = `${subject}\n\n${bodyLines.join("\n")}\n`;
+    const sha = mustGit(top, ["commit-tree", tree], { input: message }).trim();
+    assertBundleBytesMatchCommit(top, bundlePath, sha);
+    return { committed: true, sha, tree, subject, docs };
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
 // ── fetch + rebase (conflict = DETECT ONLY, adjudication A) ───────────────────
 
 export type FetchRebaseOutcome =
@@ -728,14 +942,14 @@ export type FetchRebaseOutcome =
   | { status: "conflict"; conflictedDocIds: string[] };
 
 /**
- * `git fetch origin` then `git rebase origin/board` (explicit ref; editors forced non-interactive).
+ * `git fetch --prune origin` then `git rebase origin/board` (explicit ref; editors forced non-interactive).
  * On conflict: collect `diff --name-only --diff-filter=U`, `rebase --abort`, and REPORT — zero
  * data movement in U1 (the converging mechanic is U3b). Any other rebase failure (it should not
  * happen on the sync path — full sync commits first, so the rebase starts clean) is classified
  * and thrown.
  */
 export function fetchRebase(boardPath: string): FetchRebaseOutcome {
-  mustGit(boardPath, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
+  mustGit(boardPath, ["fetch", "--prune", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
   const r = runGit(boardPath, ["rebase", BOARD_REF], { rebase: true, timeoutMs: NETWORK_TIMEOUT_MS });
   if (r.status === 0) return { status: "clean" };
   if (detectStaleRebase(boardPath)) {
@@ -791,12 +1005,10 @@ export type FetchRebaseResolvingOutcome =
    */
   | { status: "resolved"; conflicts: ResolvedConflict[] }
   /**
-   * Greenfield combo 2 (present locally / absent on origin, plans/sync-greenfield-establish §D3):
-   * the fetch SUCCEEDED (a live, current view of the remote), but `origin/board` still doesn't
-   * resolve — there is nothing to rebase onto because nobody has ever pushed this board. This is a
-   * PUBLISH, not a pull: the caller pushes WITH tracking ({@link pushBoardUpstream}) instead of a
-   * plain {@link push}. Distinct from a genuinely dead/misconfigured remote, which still throws
-   * classified (`NO_UPSTREAM` et al.) from the fetch above.
+   * The fetch SUCCEEDED (a live, current view of the remote), but `origin/board` still doesn't
+   * resolve — there is nothing to rebase onto because nobody has published this local branch.
+   * The command layer refuses ordinary sync and routes the user to explicit `sync --establish`.
+   * Distinct from a dead/misconfigured remote, which throws from the fetch above.
    */
   | { status: "no_upstream" };
 
@@ -807,7 +1019,7 @@ export type FetchRebaseResolvingOutcome =
 const MAX_REBASE_STOPS = 1000;
 
 /**
- * `git fetch origin` then `git rebase origin/board`, RESOLVING same-doc conflicts with the
+ * `git fetch --prune origin` then `git rebase origin/board`, RESOLVING same-doc conflicts with the
  * CONVERGING mechanic (U3b — replaces U3a's detect-and-abort interim guard on the full-sync path;
  * {@link fetchRebase} keeps its detect-only shape for any consumer that must never move data).
  *
@@ -840,10 +1052,10 @@ const MAX_REBASE_STOPS = 1000;
  * per-bundle dir OUTSIDE the worktree (see cursor.ts `syncExportsDir`).
  */
 export function fetchRebaseResolving(boardPath: string, exportDir: string): FetchRebaseResolvingOutcome {
-  mustGit(boardPath, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
-  // Greenfield combo 2: the fetch above is a LIVE view of origin, but there is no `origin/board`
-  // to rebase onto at all — checked structurally (not by parsing rebase's own failure prose) so
-  // this never collides with the conflict-detection loop below.
+  mustGit(boardPath, ["fetch", "--prune", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
+  // The fetch above is a LIVE view of origin, but there is no `origin/board` to rebase onto —
+  // checked structurally (not by parsing rebase's failure prose) so this never collides with the
+  // conflict-detection loop below.
   if (runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
     return { status: "no_upstream" };
   }
@@ -968,6 +1180,22 @@ export function pushBoardUpstream(top: string): void {
 }
 
 /**
+ * Publish an exact, already-built root commit as `origin/board` without first creating a local
+ * `board` ref. This is the snapshot-first establishment write: a failed push leaves the source
+ * folder, code worktree, code index, and branch namespace untouched.
+ */
+export function pushBoardCommit(top: string, commit: string): void {
+  mustGit(top, ["push", BOARD_REMOTE, `${commit}:refs/heads/${BOARD_BRANCH}`], {
+    timeoutMs: NETWORK_TIMEOUT_MS,
+  });
+}
+
+/** Set the provisioned local board branch's upstream without another network write. */
+export function setBoardUpstream(boardPath: string): void {
+  mustGit(boardPath, ["branch", "--set-upstream-to", BOARD_REF, BOARD_BRANCH]);
+}
+
+/**
  * `git fetch origin`, returning whether it succeeded (nonzero tolerated at THIS layer — the
  * CALLER decides what a dead fetch means). The migration path REFUSES on false (U5 fix round,
  * review HIGH 1): a migration cannot complete offline anyway — the mandatory `push -u` would
@@ -982,6 +1210,11 @@ export function fetchOrigin(top: string): boolean {
   // deleted — would block the push's own local `refs/remotes/origin/board` tracking-ref update.
   // Pruning against the live remote clears it before the namespace check even runs.
   return runGit(top, ["fetch", "--prune", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS }).status === 0;
+}
+
+/** Fetch `origin` with pruning, preserving the classified auth/network failure for strict paths. */
+export function fetchOriginRequired(top: string): void {
+  mustGit(top, ["fetch", "--prune", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
 }
 
 /**
@@ -1010,9 +1243,7 @@ export function remoteBoardNamespaceBranches(top: string): string[] {
 /**
  * Branches under the `board/` namespace — locally OR on the remote — make `refs/heads/board`
  * UNCREATABLE (a ref directory/file conflict; empirically confirmed against this repo's own
- * origin, which once carried `board/sync-verb-tasks`). Shared by `sync --migrate` (U5) and
- * `sync --establish` (greenfield combo 1) — MOVED here from `sync-migrate.ts` (which re-imports
- * it) so establish's own precondition ladder can reuse the SAME check, not a second one.
+ * origin, which once carried `board/sync-verb-tasks`). Establish and migrate share this guard.
  */
 export function boardNamespaceConflicts(top: string): string[] {
   const local = runGit(top, ["for-each-ref", "--format=%(refname:short)", `refs/heads/${BOARD_BRANCH}/`]);
@@ -1035,10 +1266,8 @@ export const GITIGNORE_ENTRY = `${BUNDLE_DIR}/`;
 
 /**
  * Return `content` with {@link GITIGNORE_ENTRY} present — unchanged when any existing line already
- * ignores the folder (with or without leading/trailing slash), appended otherwise. MOVED here from
- * `sync-migrate.ts` (which re-imports it): `sync --establish`'s working-tree gitignore append
- * (decision 3 — the one deliberate softening of "sync touches only the board") needs the SAME
- * idempotent transform migrate already applies to the object-database blob it writes.
+ * ignores the folder (with or without leading/trailing slash), appended otherwise. Establish and
+ * migrate share the same idempotent transform.
  */
 export function withIgnoreEntry(content: string): string {
   const covered = content.split("\n").some((l) => {
@@ -1054,7 +1283,7 @@ export function withIgnoreEntry(content: string): string {
 }
 
 /**
- * `sync --establish`'s gitignore step (decision 3): append {@link GITIGNORE_ENTRY} to
+ * `sync --establish`'s gitignore step: append {@link GITIGNORE_ENTRY} to
  * `<top>/.gitignore` in the WORKING TREE ONLY — never committed to the code branch (unlike
  * migrate's version of this transform, which writes an object-database blob INTO a prepared
  * commit). Idempotent via {@link withIgnoreEntry}; a call that changes nothing reports
@@ -1073,28 +1302,6 @@ export function ensureBoardGitignoreWorkingTree(top: string): { changed: boolean
   if (updated === content) return { changed: false, path: gitignorePath };
   writeFileSync(gitignorePath, updated);
   return { changed: true, path: gitignorePath };
-}
-
-// ── establish: the empty-root board branch (greenfield combo 1, D3) ───────────
-
-/**
- * Create the `board` branch from EMPTY, as a fresh ROOT commit with no tree entries — the
- * establish mechanic's starting point (D3). Unlike migrate's `commit-tree HEAD:folder` (which
- * lifts an already-COMMITTED tree object), a greenfield bundle folder is UNCOMMITTED (or may not
- * exist at all yet), so there is no tree to lift — `git mktree` over EMPTY stdin produces the
- * well-known empty-tree object, and `commit-tree` over it with NO parents is the root commit.
- * Deliberately NOT `checkout --orphan`/`switch --orphan` (git >= 2.42): this never checks anything
- * out (object + ref writes only), so no git-version floor is introduced. The caller's working
- * tree/index are untouched; `provisionBoardWorktree`'s existing `hasLocal` arm checks this branch
- * out as the linked worktree right after.
- */
-export function createEmptyRootBoardBranch(top: string): string {
-  const emptyTree = mustGit(top, ["mktree"], { input: "" }).trim();
-  const sha = mustGit(top, ["commit-tree", emptyTree], {
-    input: "board: establish — empty root\n\nOne-time establish: the shared board branch's empty starting point.\n",
-  }).trim();
-  mustGit(top, ["branch", BOARD_BRANCH, sha]);
-  return sha;
 }
 
 // ── ff-only pull (the fail-soft SessionStart path) ────────────────────────────
@@ -1147,13 +1354,13 @@ export function ffPull(boardPath: string, budget: NetworkBudgetOptions = {}): Ff
     const before = mustGit(boardPath, ["rev-parse", "HEAD"]).trim();
 
     let fetchReason: string | undefined;
-    const fetched = runGit(boardPath, ["fetch", BOARD_REMOTE], {
+    const fetched = runGit(boardPath, ["fetch", "--prune", BOARD_REMOTE], {
       timeoutMs: budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS,
       connectTimeoutSeconds: budget.connectTimeoutSeconds,
     });
     if (fetched.status !== 0) {
       // Keep going: origin/board may exist from an earlier fetch; the merge is still meaningful.
-      fetchReason = swallowReason(classifyGitError(failureOf(["fetch"], fetched)));
+      fetchReason = swallowReason(classifyGitError(failureOf(["fetch", "--prune"], fetched)));
     }
 
     const merged = runGit(boardPath, ["merge", "--ff-only", BOARD_REF]);

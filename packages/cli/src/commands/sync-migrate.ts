@@ -57,10 +57,7 @@ import { cliInvocation } from "../invocation.js";
 /** The local branch the folder-removal commit is prepared on — the human pushes it and opens the PR. */
 export const MIGRATION_BRANCH = "board-migration";
 
-// `GITIGNORE_ENTRY` and `withIgnoreEntry` MOVED to git.ts (greenfield establish shares the SAME
-// idempotent transform for its own working-tree gitignore append) — re-exported here so this
-// module's existing consumers (its own tests) are unaffected, and so migrate's eventual removal
-// PR stays a pure deletion of THIS file.
+// Re-export the shared gitignore transform for existing migrate consumers.
 export { GITIGNORE_ENTRY, withIgnoreEntry } from "../git.js";
 
 // ── pinned strings (test-pinned; NO forbidden vocabulary — worktree/linked/subtree never appear) ─
@@ -215,8 +212,7 @@ function assertNotBehindOnBoard(top: string, inv: string, branch: string): void 
   }
 }
 
-// `boardNamespaceConflicts` MOVED to git.ts (greenfield establish's own precondition ladder needs
-// the SAME check) — imported above; re-exported here for the same reason as `withIgnoreEntry`.
+// Re-export the shared namespace guard for existing migrate consumers.
 export { boardNamespaceConflicts } from "../git.js";
 
 interface TreeEntry {

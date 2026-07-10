@@ -63,8 +63,8 @@ aslite list --type Task
 aslite doc update tasks/ship-parser --status in_progress --actor claude
 aslite doc history tasks/ship-parser   # who changed what, when
 aslite ui                              # the bundle, rendered — local server, no cloud
-aslite sync                            # share the board with teammates — commits yours,
-                                       # pulls theirs, pushes; touches nothing but the board
+aslite sync                            # ordinary shared-board updates — commits yours,
+                                       # pulls theirs, pushes; leaves code files untouched
 ```
 
 `init` always makes a LOCAL bundle; `sync` is the verb that establishes or joins a SHARED
@@ -78,6 +78,9 @@ converges: your teammate's version is kept, yours is saved to an export file, an
 `sync --show-incoming <id>` + `doc update` reconcile — no git surgery. (A project that
 committed the folder directly to its code branch instead of adopting `sync` — the
 original, still-valid convention — keeps working exactly as before.)
+
+Establishment also appends `.agentstate-lite/` to the root working-tree `.gitignore` and
+reports that uncommitted edit; ordinary sync does not modify code-project files.
 
 ## How it works
 

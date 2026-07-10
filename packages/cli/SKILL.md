@@ -220,8 +220,8 @@ npx -y agentstate-lite sync
 
 ## Sharing the board — `sync`
 
-`aslite sync` shares your board — commits your changes, pulls your teammate's, pushes yours,
-touching nothing but the board.
+Ordinary `aslite sync` shares your board — commits your changes, pulls your teammate's, pushes yours,
+while leaving code-project files untouched.
 
 Run it whenever you close a unit of work — a task finished, a decision recorded, a session
 ending. Recording work isn't done until it's shared. Two honest empty states (both exit 0): a
@@ -231,8 +231,9 @@ remote — but bare `sync` NEVER establishes on its own: that would silently pub
 nobody asked to share); a clean, already-current board prints `sync: already up to date`.
 
 `sync --establish` is the one explicit, one-time act that starts sharing a project's local
-bundle: it creates the `board` branch, moves the bundle onto it, and pushes — teammates then
-just run plain `sync` to join. Never run it on a project that already shares a board (it
+bundle: it snapshots and publishes the bundle, checks out the `board` branch at the same path,
+and appends that path to the root working-tree `.gitignore`; teammates then just run plain
+`sync` to join. Never run it on a project that already shares a board (it
 detects that state, notes `already established`, and proceeds as an ordinary sync instead of
 erroring).
 

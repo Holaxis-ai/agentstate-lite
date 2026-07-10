@@ -244,9 +244,9 @@ function renderSyncSection(prefix) {
   lines.push("## Sharing the board — `sync`");
   lines.push("");
   lines.push(
-    "`aslite sync` shares your board — commits your changes, pulls your teammate's, pushes yours,",
+    "Ordinary `aslite sync` shares your board — commits your changes, pulls your teammate's, pushes yours,",
   );
-  lines.push("touching nothing but the board.");
+  lines.push("while leaving code-project files untouched.");
   lines.push("");
   lines.push(
     "Run it whenever you close a unit of work — a task finished, a decision recorded, a session",
@@ -271,10 +271,13 @@ function renderSyncSection(prefix) {
     "`sync --establish` is the one explicit, one-time act that starts sharing a project's local",
   );
   lines.push(
-    "bundle: it creates the `board` branch, moves the bundle onto it, and pushes — teammates then",
+    "bundle: it snapshots and publishes the bundle, checks out the `board` branch at the same path,",
   );
   lines.push(
-    "just run plain `sync` to join. Never run it on a project that already shares a board (it",
+    "and appends that path to the root working-tree `.gitignore`; teammates then just run plain",
+  );
+  lines.push(
+    "`sync` to join. Never run it on a project that already shares a board (it",
   );
   lines.push(
     "detects that state, notes `already established`, and proceeds as an ordinary sync instead of",

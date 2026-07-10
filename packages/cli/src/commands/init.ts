@@ -120,12 +120,8 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
 
   const receipt: Record<string, unknown> = { init: "ok", root: bundle.root, recipe: recipeApplied };
   if (warnings.length > 0) receipt.warnings = warnings;
-  // In-a-git-repo hint (plan §U6, reworded for the greenfield-establish two-verb model): `init`
-  // always creates a LOCAL bundle — solo local use stays first-class, never redirected. The hint
-  // is purely informational about the two OTHER git-tier verbs: `sync` joins a board a project
-  // ALREADY shares (never init there — that mints a divergent second bundle); `sync --establish`
-  // is the separate, explicit act that starts sharing THIS one. The probe is fs-only (`.git`
-  // up-tree, no git binary) and the hint is ADVISORY: it never blocks, never changes the exit code.
+  // `init` always creates a local bundle. Inside a Git repo, an advisory fs-only hint distinguishes
+  // joining an existing shared board from explicitly sharing this new one.
   if (insideGitRepo(root)) {
     receipt.hint =
       "this bundle is local until shared — if the project already shares a board, " +

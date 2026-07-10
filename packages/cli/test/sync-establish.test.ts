@@ -1,24 +1,22 @@
-// Tests for `sync --establish` (greenfield combo 1) + the combo-2 "publish" branch bare `sync`
-// gains alongside it (plans/sync-greenfield-establish). Everything runs in SCRATCH topologies via
-// the U0 harness — the real repo's own board is never touched.
+// Tests for the explicit, snapshot-first `sync --establish` transition. Everything runs in
+// SCRATCH topologies via the U0 harness — the real repo's own board is never touched.
 //
 // The suite pins:
-//   • the 4-combination matrix's two NEW/CHANGED cells: combo 1 (absent/absent) requires the
-//     explicit `--establish` flag and produces the full establish receipt; combo 2 (present
-//     locally / absent on origin) is now a PUBLISH under bare `sync`, not the old dead-end;
+//   • first publication is explicit: bare sync never publishes a local-only `board` branch;
+//   • snapshot creation does not touch the code worktree, its index, or the source bundle;
 //   • decision 1 (LOCKED): bare `sync` on combo 1 keeps the pinned `sync: nothing to sync` string,
 //     only ADDING a routing hint — never auto-publishes;
 //   • decision 3 (LOCKED): the gitignore append lands in the WORKING TREE only, uncommitted;
 //   • the keystone first-contact journey end to end (clone A establishes, clone B joins);
-//   • the establish race (a teammate publishes between this run's own fetch and its push);
+//   • races, push failures, symlinks, staged bundle paths, and post-publish crash recovery;
 //   • idempotence: `--establish` re-run notes `already established` and behaves as an ordinary sync;
 //   • the precondition ladder's structured refusals (no repo, no origin, unreachable origin, no
 //     folder / empty / no index.md, a folder already committed at HEAD, a `board/…` namespace
 //     branch, a nested `.git`) and the USAGE flag-combination guards.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile, mkdir, readdir, rename } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { chmod, mkdtemp, rm, writeFile, mkdir, rename, symlink } from "node:fs/promises";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -37,10 +35,9 @@ import { CliError } from "../src/errors.js";
 import { cliInvocation } from "../src/invocation.js";
 import {
   BOARD_BRANCH,
-  createEmptyRootBoardBranch,
   provisionBoardWorktree,
-  pushBoardUpstream,
-  stageAndCommit,
+  pushBoardCommit,
+  snapshotBundleCommit,
 } from "../src/git.js";
 import {
   BUNDLE_DIR,
@@ -95,21 +92,26 @@ async function tempHome(): Promise<{ home: string; cleanup: () => Promise<void> 
   return { home, cleanup: () => rm(home, { recursive: true, force: true }) };
 }
 
+function establishMarkerPath(root: string): string {
+  return path.join(git(root, ["rev-parse", "--absolute-git-dir"]).trim(), "agentstate.establishCommit");
+}
+
+function plantEstablishMarker(root: string, commit: string): void {
+  writeFileSync(establishMarkerPath(root), `${commit}\n`, { mode: 0o600 });
+}
+
 /**
- * Hand-build combo 2 (present locally / absent on origin) directly over git.ts's OWN establish
- * primitives — never through `--establish` itself: an empty-root board branch, provisioned as the
- * conventional worktree, seeded with a root `index.md` (review MUST-FIX 1 — a REAL bundle, the
- * same bundle-evidence sync's own publish guard now demands) carrying one real committed doc that
- * was never pushed.
+ * Hand-build a legitimate local-only board without invoking `--establish`: snapshot a plain
+ * bundle, attach a local branch to that commit, then provision it at the conventional path.
  */
 async function handBuildLocalOnlyBoard(repo: BoardRepo, id: string, body: string): Promise<void> {
-  createEmptyRootBoardBranch(repo.root);
-  const outcome = provisionBoardWorktree(repo.root);
-  assert.equal(outcome.kind, "provisioned");
   await initBundle(repo.board);
   await writeBoardDoc(repo, id, { frontmatter: { type: "Note", title: id }, body });
-  const commit = stageAndCommit(repo.board);
-  assert.equal(commit.committed, true);
+  const snapshot = snapshotBundleCommit(repo.root, repo.board);
+  await rm(repo.board, { recursive: true, force: false });
+  git(repo.root, ["branch", BOARD_BRANCH, snapshot.sha]);
+  const outcome = provisionBoardWorktree(repo.root);
+  assert.equal(outcome.kind, "provisioned");
 }
 
 // ── pure string tests ──────────────────────────────────────────────────────────
@@ -200,7 +202,7 @@ test("combo 1: --establish — full receipt, origin gets the board, working-tree
     const headTree = gitTry(topo.a.root, ["cat-file", "-e", "HEAD:.gitignore"]);
     assert.notEqual(headTree.status, 0, ".gitignore must not be committed to the code branch");
 
-    // idempotent re-run: notes already-established, single lineage (no second empty-root commit).
+    // Idempotent re-run: notes already-established and keeps the same single lineage.
     const boardCommitsBefore = git(topo.a.board, ["rev-list", "--count", "HEAD"]).trim();
     const rerun = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
     assert.equal(rerun.establish, ESTABLISH_ALREADY);
@@ -268,105 +270,86 @@ test("keystone journey: clone A inits + recipe add work-tracking + --establish; 
   }
 });
 
-// ── combo 2: present locally / absent on origin — bare sync PUBLISHES ─────────
+// ── local-only board: publication always requires explicit consent ────────────
 
-test("combo 2: a hand-built local-only board — bare sync publishes with tracking; re-run is 'already up to date'", async () => {
+test("local-only board: bare sync and --pull-only refuse; --establish publishes explicitly", async () => {
   const topo = await makeGreenfieldTopology();
   const { home, cleanup } = await tempHome();
   try {
     await handBuildLocalOnlyBoard(topo.a, "notes/local-only", "hand-built, never pushed");
-    assert.equal(
-      gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status !== 0,
-      true,
-      "origin genuinely has no board yet",
-    );
+    for (const argv of [[], ["--pull-only"]]) {
+      const { err } = await runSync(home, [...argv, "--dir", topo.a.root]);
+      assert.equal(err?.code, "NO_UPSTREAM");
+      assert.match(err?.message ?? "", /sync --establish/);
+      assert.notEqual(
+        gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status,
+        0,
+      );
+    }
 
-    const rec = await runSyncJson(home, ["--dir", topo.a.root]);
-    assert.equal(rec.published, "origin/board (tracking set)");
-    assert.ok(typeof rec.pushed === "number" && (rec.pushed as number) >= 1);
-    assert.equal(typeof rec.gitignore, "string");
-
-    assert.equal(
-      gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status,
-      0,
-      "origin now carries the board branch",
-    );
+    const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(rec.established, ESTABLISH_DONE);
+    assert.equal(rec.pushed, "origin/board (tracking set)");
     assert.equal(
       git(topo.origin, ["rev-parse", BOARD_BRANCH]).trim(),
       git(topo.a.board, ["rev-parse", "HEAD"]).trim(),
     );
-
-    const rerun = await runSyncJson(home, ["--dir", topo.a.root]);
-    assert.equal(rerun.sync, "already up to date");
-    assert.equal("published" in rerun, false, "publishing is a one-time event, not repeated every run");
   } finally {
     await cleanup();
     await topo.cleanup();
   }
 });
 
-test("combo 2: --pull-only pins the 'board not published yet' message (never publishes)", async () => {
+test("stale origin/board tracking ref cannot make bare sync recreate a remotely deleted board", async () => {
   const topo = await makeGreenfieldTopology();
   const { home, cleanup } = await tempHome();
   try {
-    await handBuildLocalOnlyBoard(topo.a, "notes/local-only", "hand-built, never pushed");
-    const { err } = await runSync(home, ["--pull-only", "--dir", topo.a.root]);
-    assert.equal(err?.code, "NO_UPSTREAM");
-    assert.match(err?.message ?? "", /board not published yet/);
+    await handBuildLocalOnlyBoard(topo.a, "notes/private", "must remain local");
+    const localHead = git(topo.a.board, ["rev-parse", "HEAD"]).trim();
+    git(topo.a.board, ["push", "origin", `${localHead}:refs/heads/${BOARD_BRANCH}`]);
+    git(topo.a.root, ["fetch", "origin"]);
+    git(topo.origin, ["update-ref", "-d", `refs/heads/${BOARD_BRANCH}`]);
     assert.equal(
-      gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status !== 0,
-      true,
-      "--pull-only truly never publishes",
-    );
-  } finally {
-    await cleanup();
-    await topo.cleanup();
-  }
-});
-
-test("combo 2: '--establish' on a hand-built local-only board notes 'already established' AND still publishes (the note folds into the SAME receipt)", async () => {
-  const topo = await makeGreenfieldTopology();
-  const { home, cleanup } = await tempHome();
-  try {
-    await handBuildLocalOnlyBoard(topo.a, "notes/local-only", "hand-built, never pushed");
-    const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
-    assert.equal(rec.establish, ESTABLISH_ALREADY, "combo 2 is already-established — establish mutates nothing itself");
-    assert.equal(rec.published, "origin/board (tracking set)", "…but falls through into the SAME ordinary sync, which still publishes");
-    assert.equal(
-      gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status,
+      gitTry(topo.a.root, ["show-ref", "--verify", `refs/remotes/origin/${BOARD_BRANCH}`]).status,
       0,
-      "origin now carries the board branch",
+      "the clone begins with a genuinely stale tracking ref",
     );
+    assert.notEqual(gitTry(topo.origin, ["show-ref", "--verify", `refs/heads/${BOARD_BRANCH}`]).status, 0);
+
+    const { err } = await runSync(home, ["--dir", topo.a.root]);
+    assert.equal(err?.code, "NO_UPSTREAM");
+    assert.match(err?.message ?? "", /bare sync never creates/);
+    assert.notEqual(
+      gitTry(topo.origin, ["show-ref", "--verify", `refs/heads/${BOARD_BRANCH}`]).status,
+      0,
+      "ordinary sync must not recreate the deleted remote branch",
+    );
+    assert.equal(existsSync(path.join(topo.a.board, "notes", "private.md")), true);
   } finally {
     await cleanup();
     await topo.cleanup();
   }
 });
 
-// ── MUST-FIX 1: never auto-publish a checkout that isn't actually a bundle ────
-
-test("MUST-FIX 1 repro: an unrelated local branch merely NAMED 'board' (private WIP, no bundle anywhere) is never auto-published", async () => {
-  // Before the fix: `provisionBoardWorktree`'s `hasLocal` arm checks out WHATEVER local branch is
-  // literally named `board`, with no bundle-shape check at all — a repo with a private WIP branch
-  // that happens to be named `board`, and NO `.agentstate-lite/` folder anywhere, would get that
-  // branch checked out at the conventional path and then PUBLISHED by bare sync's combo-2 path.
-  // That is exactly the "never auto-publish" class this whole feature exists to prevent.
+test("privacy regression: bare sync never publishes an unrelated local branch named board, even when its root has index.md", async () => {
   const topo = await makeGreenfieldTopology();
   const { home, cleanup } = await tempHome();
   try {
     git(topo.a.root, ["checkout", "-b", BOARD_BRANCH]);
-    await writeFile(path.join(topo.a.root, "wip.txt"), "someone's private work in progress\n");
+    await writeFile(path.join(topo.a.root, "index.md"), "ordinary project index, not an OKF declaration\n");
+    await writeFile(path.join(topo.a.root, "private-plan.md"), "do not publish this branch\n");
     git(topo.a.root, ["add", "-A"]);
-    git(topo.a.root, ["commit", "-m", "wip: private branch, unrelated to any bundle"]);
+    git(topo.a.root, ["commit", "-m", "private branch unrelated to AgentState"]);
     git(topo.a.root, ["checkout", "main"]);
 
     const { err } = await runSync(home, ["--dir", topo.a.root]);
-    assert.equal(err?.code, "RUNTIME");
-    assert.match(err?.message ?? "", /no root index\.md/);
-    assert.equal(
-      gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status !== 0,
-      true,
-      "the private branch was NEVER published to origin",
+    assert.equal(err?.code, "NO_UPSTREAM");
+    assert.match(err?.message ?? "", /will not check it out/);
+    assert.equal(existsSync(topo.a.board), false, "bare sync does not even materialize the untrusted branch");
+    assert.notEqual(
+      gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status,
+      0,
+      "the unrelated private branch never crosses the network",
     );
   } finally {
     await cleanup();
@@ -374,148 +357,272 @@ test("MUST-FIX 1 repro: an unrelated local branch merely NAMED 'board' (private 
   }
 });
 
-// ── the establish race (teammate publishes between this run's fetch and its push) ─
-
-test("race: a teammate's board lands on origin between establish's fetch and its push — nothing lost, converges", async () => {
+test("privacy regression: an unrelated local board branch is not adopted when origin/board also exists", async () => {
   const topo = await makeGreenfieldTopology();
   const { home, cleanup } = await tempHome();
   try {
-    // Clone B races ahead and fully establishes+publishes first.
     await initPlainBundleDir(topo.b);
-    await writeBoardDoc(topo.b, "notes/from-b", {
-      frontmatter: { type: "Note", title: "From B", actor: "bob" },
-      body: "# From B\n\nteammate's doc\n",
+    await writeBoardDoc(topo.b, "notes/shared", {
+      frontmatter: { type: "Note", title: "Shared" },
+      body: "remote board\n",
     });
-    const bRec = await runSyncJson(home, ["--establish", "--dir", topo.b.root]);
-    assert.equal(bRec.established, ESTABLISH_DONE);
+    await runSyncJson(home, ["--establish", "--dir", topo.b.root]);
 
-    // Clone A independently reaches the SAME local state establish's own mutation would have —
-    // an empty-root board branch, provisioned, carrying a real commit — WITHOUT yet reaching the
-    // final push. This is the exact race window: A's own "no board yet" check is real (it ran
-    // before B published), but publishing is a race against the network, not a lock.
-    createEmptyRootBoardBranch(topo.a.root);
-    const outcome = provisionBoardWorktree(topo.a.root);
-    assert.equal(outcome.kind, "provisioned");
-    await writeBoardDoc(topo.a, "notes/from-a", {
-      frontmatter: { type: "Note", title: "From A", actor: "alice" },
-      body: "# From A\n\nmy own doc\n",
-    });
-    const commitResult = stageAndCommit(topo.a.board);
-    assert.equal(commitResult.committed, true);
-
-    // A's own push (mirroring establishBoard's final step) is rejected: origin/board now names
-    // B's UNRELATED history — never force-pushed.
-    git(topo.a.root, ["fetch", "origin"]);
-    assert.throws(() => pushBoardUpstream(topo.a.board));
-    assert.equal(existsSync(path.join(topo.a.board, "notes", "from-a.md")), true, "nothing lost locally");
-
-    // The documented fix: a plain sync (now combo 4 — both present, unrelated histories) converges.
-    // Either outcome is acceptable — a clean rebase (non-overlapping paths can replay cleanly even
-    // across unrelated roots) or a reported CONFLICT(5) — but it must NEVER be a raw/unclassified
-    // failure, and nothing may be force-pushed or lost.
-    const { out, err } = await runSync(home, ["--dir", topo.a.root, "--json"]);
-    if (err) {
-      assert.equal(err.code, "CONFLICT", "the converging mechanic's own terminal — never a raw git failure");
-    } else {
-      assert.ok(JSON.parse(out));
-    }
-    assert.equal(
-      existsSync(path.join(topo.a.board, "notes", "from-a.md")) ||
-        existsSync(path.join(topo.a.board, "notes", "from-b.md")),
-      true,
-      "at least one side's content is recoverable on disk either way",
-    );
-  } finally {
-    await cleanup();
-    await topo.cleanup();
-  }
-});
-
-// ── crash states (self-heal, never bespoke recovery) ──────────────────────────
-
-test("crash state: the empty-root branch was created but the folder was never renamed aside — plain sync's existing self-heal refuses safely, nothing lost", async () => {
-  // establish's own step order (D3) creates the empty-root branch FIRST, then renames the folder
-  // aside — so a crash between those two steps leaves a LOCAL `board` branch (empty root) alongside
-  // the STILL-PLAIN, still-populated conventional folder. This is exactly the shape
-  // `provisionBoardWorktree`'s pre-existing self-heal already refuses (a non-empty directory that
-  // is not itself the board worktree) — a SAFE, non-destructive, actionable halt, not a silent
-  // success; nothing here is bespoke recovery for establish specifically.
-  const topo = await makeGreenfieldTopology();
-  const { home, cleanup } = await tempHome();
-  try {
-    await initPlainBundleDir(topo.a);
-    await writeBoardDoc(topo.a, "notes/hello", { frontmatter: { type: "Note", title: "Hello" }, body: "hi\n" });
-    createEmptyRootBoardBranch(topo.a.root);
+    git(topo.a.root, ["checkout", "-b", BOARD_BRANCH]);
+    await writeFile(path.join(topo.a.root, "index.md"), "ordinary project index\n");
+    await writeFile(path.join(topo.a.root, "private-plan.md"), "never publish\n");
+    git(topo.a.root, ["add", "-A"]);
+    git(topo.a.root, ["commit", "-m", "private local branch"]);
+    git(topo.a.root, ["checkout", "main"]);
 
     const { err } = await runSync(home, ["--dir", topo.a.root]);
-    assert.equal(err?.code, "RUNTIME");
-    assert.match(err?.message ?? "", /move it aside/);
-    assert.equal(existsSync(path.join(topo.a.board, "notes", "hello.md")), true, "nothing was touched, let alone lost");
+    assert.equal(err?.code, "CONFLICT");
+    assert.match(err?.message ?? "", /will not guess which history is safe/);
+    assert.equal(existsSync(topo.a.board), false);
+    const remoteTree = git(topo.origin, ["ls-tree", "-r", "--name-only", BOARD_BRANCH]);
+    assert.doesNotMatch(remoteTree, /private-plan\.md/);
+    assert.match(remoteTree, /notes\/shared\.md/);
   } finally {
     await cleanup();
     await topo.cleanup();
   }
 });
 
-test("crash window B (review MUST-FIX 2): branch created + folder renamed aside, but nothing has provisioned the conventional path yet — the bundle-evidence guard refuses an EMPTY board instead of silently publishing one", async () => {
-  // The false comment this pins the fix for (sync-establish.ts's old step-2 doc comment) claimed
-  // this window was "no local board branch" / "nothing to sync" / "recovered by hand". All three
-  // were wrong: the step-1 branch already exists, so the NEXT plain sync's own provisioning step
-  // materializes it (empty — no tree entries yet) and, before MUST-FIX 1, would have PUBLISHED
-  // that empty board. The bundle-evidence guard (no root index.md) now refuses it instead.
+test("explicit establish may adopt and publish an unprovisioned local-only board branch", async () => {
   const topo = await makeGreenfieldTopology();
   const { home, cleanup } = await tempHome();
   try {
     await initPlainBundleDir(topo.a);
-    await writeBoardDoc(topo.a, "notes/hello", { frontmatter: { type: "Note", title: "Hello" }, body: "hi\n" });
-    createEmptyRootBoardBranch(topo.a.root);
-    const aside = `${topo.a.board}.establishing-crashtest`;
-    await rename(topo.a.board, aside);
-    // (deliberately no provisionBoardWorktree call here — that IS the crash point: the branch
-    // exists and the folder is renamed aside, but nothing has provisioned the conventional path
-    // yet; the NEXT plain sync is the one that does that provisioning itself.)
+    await writeBoardDoc(topo.a, "notes/local", {
+      frontmatter: { type: "Note", title: "Local" },
+      body: "explicitly shared\n",
+    });
+    const snapshot = snapshotBundleCommit(topo.a.root, topo.a.board);
+    await rm(topo.a.board, { recursive: true, force: false });
+    git(topo.a.root, ["branch", BOARD_BRANCH, snapshot.sha]);
 
-    const { err } = await runSync(home, ["--dir", topo.a.root]);
-    assert.equal(err?.code, "RUNTIME");
-    assert.match(err?.message ?? "", /no root index\.md/);
-    assert.equal(
-      gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status !== 0,
-      true,
-      "nothing was published — the empty board never reached origin",
-    );
-    // Nothing was lost: the pre-establish content is still sitting in the aside folder, recoverable.
-    assert.equal(existsSync(path.join(aside, "notes", "hello.md")), true);
+    const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(rec.established, ESTABLISH_DONE);
+    assert.equal(existsSync(path.join(topo.a.board, "notes", "local.md")), true);
+    assert.equal(git(topo.origin, ["rev-parse", BOARD_BRANCH]).trim(), snapshot.sha);
   } finally {
     await cleanup();
     await topo.cleanup();
   }
 });
 
-test("crash state: contents were moved into the provisioned worktree but never committed — plain sync's own commit step self-heals it", async () => {
+// ── snapshot isolation and destructive-boundary probes ───────────────────────
+
+test("snapshot primitive reads only the bundle and leaves the code worktree, real index, source, and refs untouched", async () => {
+  const topo = await makeGreenfieldTopology();
+  try {
+    await initPlainBundleDir(topo.a);
+    await writeBoardDoc(topo.a, "notes/hello", {
+      frontmatter: { type: "Note", title: "Hello", actor: "alice" },
+      body: "source bytes stay here\n",
+    });
+    await writeFile(path.join(topo.a.root, "src", "staged.js"), "export const staged = true;\n");
+    git(topo.a.root, ["add", "src/staged.js"]);
+    const stagedBefore = git(topo.a.root, ["diff", "--cached", "--name-only"]);
+    const sourceBefore = readFileSync(path.join(topo.a.board, "notes", "hello.md"), "utf8");
+
+    const snapshot = snapshotBundleCommit(topo.a.root, topo.a.board);
+
+    assert.equal(git(topo.a.root, ["diff", "--cached", "--name-only"]), stagedBefore);
+    assert.equal(readFileSync(path.join(topo.a.board, "notes", "hello.md"), "utf8"), sourceBefore);
+    assert.notEqual(gitTry(topo.a.root, ["show-ref", "--verify", `refs/heads/${BOARD_BRANCH}`]).status, 0);
+    const treePaths = git(topo.a.root, ["ls-tree", "-r", "--name-only", snapshot.sha]).trim().split("\n");
+    assert.deepEqual(treePaths.sort(), ["index.md", "notes/hello.md"]);
+    assert.equal(snapshot.docs[0]?.actor, "alice");
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("snapshot includes bundle files even when repository exclude rules match them", async () => {
+  const topo = await makeGreenfieldTopology();
+  try {
+    await initPlainBundleDir(topo.a);
+    await writeBoardDoc(topo.a, "notes/ignored-by-git", {
+      frontmatter: { type: "Note", title: "Still bundle data" },
+      body: "must be published\n",
+    });
+    const gitDir = git(topo.a.root, ["rev-parse", "--absolute-git-dir"]).trim();
+    await writeFile(path.join(gitDir, "info", "exclude"), "*.md\n");
+
+    const snapshot = snapshotBundleCommit(topo.a.root, topo.a.board);
+    const treePaths = git(topo.a.root, ["ls-tree", "-r", "--name-only", snapshot.sha]);
+    assert.match(treePaths, /^index\.md$/m);
+    assert.match(treePaths, /^notes\/ignored-by-git\.md$/m);
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("Git clean filters cannot rewrite bundle bytes during establishment", async () => {
   const topo = await makeGreenfieldTopology();
   const { home, cleanup } = await tempHome();
   try {
     await initPlainBundleDir(topo.a);
-    await writeBoardDoc(topo.a, "notes/hello", { frontmatter: { type: "Note", title: "Hello" }, body: "hi\n" });
-    const original = topo.a.board;
+    await writeBoardDoc(topo.a, "notes/private", {
+      frontmatter: { type: "Note", title: "Private" },
+      body: "PRIVATE original bytes\n",
+    });
+    const gitDir = git(topo.a.root, ["rev-parse", "--absolute-git-dir"]).trim();
+    await writeFile(path.join(gitDir, "info", "attributes"), "*.md filter=redact\n");
+    git(topo.a.root, ["config", "filter.redact.clean", "sed 's/PRIVATE/REDACTED/g'"]);
+    git(topo.a.root, ["config", "filter.redact.smudge", "cat"]);
 
-    // Replicate establish's mutation up through "move contents in", stopping BEFORE stageAndCommit.
-    // The rename is a literal directory move (mirrors establish's own `renameSync`) so index.md —
-    // the bundle evidence MUST-FIX 1 demands — travels with the rest of the content, exactly as it
-    // would in a real crash.
-    createEmptyRootBoardBranch(topo.a.root);
-    const aside = `${original}.establishing-crashtest`;
-    await rename(original, aside);
-    const outcome = provisionBoardWorktree(topo.a.root);
-    assert.equal(outcome.kind, "provisioned");
-    for (const name of await readdir(aside)) {
-      await rename(path.join(aside, name), path.join(original, name));
-    }
-    await rm(aside, { recursive: true, force: true });
-    // (deliberately no stageAndCommit / gitignore / push here — that's the crash point)
+    const { err } = await runSync(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(err?.code, "RUNTIME");
+    assert.match(err?.message ?? "", /bundle bytes differ from the Git snapshot/);
+    assert.match(readFileSync(path.join(topo.a.board, "notes", "private.md"), "utf8"), /PRIVATE original bytes/);
+    assert.notEqual(gitTry(topo.origin, ["show-ref", "--verify", `refs/heads/${BOARD_BRANCH}`]).status, 0);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
 
-    const rec = await runSyncJson(home, ["--dir", topo.a.root]);
-    assert.equal(rec.published, "origin/board (tracking set)", "the commit step picked up the moved content, then combo 2 published it");
+test("Git smudge filters cannot hide checkout byte changes before backup deletion", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await initPlainBundleDir(topo.a);
+    await writeBoardDoc(topo.a, "notes/private", {
+      frontmatter: { type: "Note", title: "Private" },
+      body: "PRIVATE original bytes\n",
+    });
+    const gitDir = git(topo.a.root, ["rev-parse", "--absolute-git-dir"]).trim();
+    await writeFile(path.join(gitDir, "info", "attributes"), "*.md filter=redact\n");
+    git(topo.a.root, ["config", "filter.redact.clean", "sed 's/REDACTED/PRIVATE/g'"]);
+    git(topo.a.root, ["config", "filter.redact.smudge", "sed 's/PRIVATE/REDACTED/g'"]);
+
+    const { err } = await runSync(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(err?.code, "RUNTIME");
+    const backup = `${topo.a.board}.establish-backup`;
+    assert.match(readFileSync(path.join(backup, "notes", "private.md"), "utf8"), /PRIVATE original bytes/);
+    assert.match(readFileSync(path.join(topo.a.board, "notes", "private.md"), "utf8"), /REDACTED original bytes/);
+    assert.equal(existsSync(establishMarkerPath(topo.a.root)), true);
+    assert.match(git(topo.origin, ["show", `${BOARD_BRANCH}:notes/private.md`]), /PRIVATE original bytes/);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("symlink regression: establish never follows a conventional-path symlink or moves its external target", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  const external = await mkdtemp(path.join(tmpdir(), "aslite-establish-external-"));
+  try {
+    await initBundle(external);
+    await writeFile(path.join(external, "secret.md"), "external bytes must stay put\n");
+    await symlink(external, topo.a.board, "dir");
+
+    const { err } = await runSync(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(err?.code, "RUNTIME");
+    assert.match(err?.message ?? "", /symlinks/);
+    assert.equal(readFileSync(path.join(external, "secret.md"), "utf8"), "external bytes must stay put\n");
+    assert.equal(existsSync(path.join(external, "index.md")), true);
+    assert.equal(existsSync(topo.a.board), true, "the symlink itself is untouched");
+  } finally {
+    await rm(external, { recursive: true, force: true });
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("nested git repo regression: establish refuses before Git can collapse its files into a gitlink", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await initPlainBundleDir(topo.a);
+    const nested = path.join(topo.a.board, "artifact-repo");
+    await mkdir(nested, { recursive: true });
+    git(nested, ["init", "-b", "main"]);
+    await writeFile(path.join(nested, "secret.txt"), "nested bytes must not disappear\n");
+    git(nested, ["add", "-A"]);
+    git(nested, ["commit", "-m", "nested content"]);
+
+    const { err } = await runSync(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(err?.code, "RUNTIME");
+    assert.match(err?.message ?? "", /silently omit or collapse files/);
+    assert.deepEqual(err?.details?.nested_git_paths, ["artifact-repo/.git"]);
+    assert.equal(readFileSync(path.join(nested, "secret.txt"), "utf8"), "nested bytes must not disappear\n");
+    assert.notEqual(gitTry(topo.origin, ["show-ref", "--verify", `refs/heads/${BOARD_BRANCH}`]).status, 0);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("plain nested .git control data is refused even when it is not a valid repository", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await initPlainBundleDir(topo.a);
+    const hidden = path.join(topo.a.board, "data", ".git");
+    await mkdir(hidden, { recursive: true });
+    await writeFile(path.join(hidden, "private"), "Git would silently omit this\n");
+
+    const { err } = await runSync(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(err?.code, "RUNTIME");
+    assert.match(err?.message ?? "", /nested git control data/);
+    assert.deepEqual(err?.details?.nested_git_paths, ["data/.git"]);
+    assert.equal(readFileSync(path.join(hidden, "private"), "utf8"), "Git would silently omit this\n");
+    assert.notEqual(gitTry(topo.origin, ["show-ref", "--verify", `refs/heads/${BOARD_BRANCH}`]).status, 0);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("staged bundle regression: establish refuses without altering the code index", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await initPlainBundleDir(topo.a);
+    git(topo.a.root, ["add", BUNDLE_DIR]);
+    const stagedBefore = git(topo.a.root, ["diff", "--cached", "--name-only"]);
+
+    const { err } = await runSync(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(err?.code, "RUNTIME");
+    assert.match(err?.message ?? "", /staged in the code branch's index/);
+    assert.equal(err?.help, `git restore --staged -- ${BUNDLE_DIR}`);
+    assert.equal(git(topo.a.root, ["diff", "--cached", "--name-only"]), stagedBefore);
+    assert.notEqual(gitTry(topo.origin, ["show-ref", "--verify", `refs/heads/${BOARD_BRANCH}`]).status, 0);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("push rejection preserves the classified auth error and leaves the source, index, and refs untouched", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await initPlainBundleDir(topo.a);
+    await writeBoardDoc(topo.a, "notes/hello", {
+      frontmatter: { type: "Note", title: "Hello" },
+      body: "must survive failed publication\n",
+    });
+    const sourceBefore = readFileSync(path.join(topo.a.board, "notes", "hello.md"), "utf8");
+    const hook = path.join(topo.a.root, ".git", "hooks", "pre-push");
+    await writeFile(hook, "#!/bin/sh\necho 'fatal: Authentication failed' >&2\nexit 1\n");
+    await chmod(hook, 0o755);
+
+    const { err } = await runSync(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(err?.code, "AUTH_REQUIRED");
+    assert.equal(readFileSync(path.join(topo.a.board, "notes", "hello.md"), "utf8"), sourceBefore);
+    assert.equal(git(topo.a.root, ["diff", "--cached", "--name-only"]), "");
+    assert.notEqual(gitTry(topo.a.root, ["show-ref", "--verify", `refs/heads/${BOARD_BRANCH}`]).status, 0);
+    assert.notEqual(gitTry(topo.origin, ["show-ref", "--verify", `refs/heads/${BOARD_BRANCH}`]).status, 0);
+    assert.equal(existsSync(establishMarkerPath(topo.a.root)), true, "failed publication retains recovery provenance");
+
+    await rm(hook);
+    const resumed = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(resumed.established, ESTABLISH_DONE);
     assert.equal(existsSync(path.join(topo.a.board, "notes", "hello.md")), true);
   } finally {
     await cleanup();
@@ -523,17 +630,192 @@ test("crash state: contents were moved into the provisioned worktree but never c
   }
 });
 
-test("crash state: provisioned + committed but never pushed — the next plain sync completes (publishes)", async () => {
+test("recovery markers are isolated between linked code worktrees", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  const siblingRoot = path.join(topo.dir, "A-sibling");
+  try {
+    git(topo.a.root, ["worktree", "add", "-b", "sibling-code", siblingRoot, "main"]);
+    const sibling: BoardRepo = {
+      name: "A-sibling",
+      root: siblingRoot,
+      board: path.join(siblingRoot, BUNDLE_DIR),
+    };
+    await initPlainBundleDir(topo.a);
+    await writeBoardDoc(topo.a, "notes/from-a", {
+      frontmatter: { type: "Note", title: "From A" },
+      body: "first snapshot\n",
+    });
+    await initPlainBundleDir(sibling);
+    await writeBoardDoc(sibling, "notes/from-sibling", {
+      frontmatter: { type: "Note", title: "From sibling" },
+      body: "second snapshot\n",
+    });
+    const hook = path.join(topo.a.root, ".git", "hooks", "pre-push");
+    await writeFile(hook, "#!/bin/sh\necho 'fatal: Authentication failed' >&2\nexit 1\n");
+    await chmod(hook, 0o755);
+
+    assert.equal((await runSync(home, ["--establish", "--dir", topo.a.root])).err?.code, "AUTH_REQUIRED");
+    assert.equal((await runSync(home, ["--establish", "--dir", siblingRoot])).err?.code, "AUTH_REQUIRED");
+    const markerA = establishMarkerPath(topo.a.root);
+    const markerSibling = establishMarkerPath(siblingRoot);
+    assert.notEqual(markerA, markerSibling);
+    assert.notEqual(readFileSync(markerA, "utf8"), readFileSync(markerSibling, "utf8"));
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("an unproven pre-existing backup blocks before publication", async () => {
   const topo = await makeGreenfieldTopology();
   const { home, cleanup } = await tempHome();
   try {
-    await handBuildLocalOnlyBoard(topo.a, "notes/crash-recovered", "committed, never pushed");
-    const rec = await runSyncJson(home, ["--dir", topo.a.root]);
-    assert.equal(rec.published, "origin/board (tracking set)");
-    assert.equal(
-      gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status,
-      0,
+    await initPlainBundleDir(topo.a);
+    const backup = `${topo.a.board}.establish-backup`;
+    await initBundle(backup);
+
+    const { err } = await runSync(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(err?.code, "RUNTIME");
+    assert.match(err?.message ?? "", /no matching establishment marker/);
+    assert.equal(existsSync(path.join(topo.a.board, "index.md")), true);
+    assert.equal(existsSync(path.join(backup, "index.md")), true);
+    assert.notEqual(gitTry(topo.origin, ["show-ref", "--verify", `refs/heads/${BOARD_BRANCH}`]).status, 0);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+// ── race and crash recovery: the marker is provenance, never branch heuristics ─
+
+test("race: a teammate publishes after our snapshot; re-run reports conflict and preserves both sides", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await initPlainBundleDir(topo.a);
+    await writeBoardDoc(topo.a, "notes/from-a", {
+      frontmatter: { type: "Note", title: "From A", actor: "alice" },
+      body: "A's local bytes\n",
+    });
+    const aSnapshot = snapshotBundleCommit(topo.a.root, topo.a.board);
+    plantEstablishMarker(topo.a.root, aSnapshot.sha);
+
+    await initPlainBundleDir(topo.b);
+    await writeBoardDoc(topo.b, "notes/from-b", {
+      frontmatter: { type: "Note", title: "From B", actor: "bob" },
+      body: "B's published bytes\n",
+    });
+    await runSyncJson(home, ["--establish", "--dir", topo.b.root]);
+
+    const { err } = await runSync(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(err?.code, "CONFLICT");
+    assert.match(err?.message ?? "", /different origin\/board/);
+    assert.equal(existsSync(path.join(topo.a.board, "notes", "from-a.md")), true);
+    assert.equal(git(topo.origin, ["ls-tree", "-r", "--name-only", BOARD_BRANCH]).includes("notes/from-b.md"), true);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("crash recovery: published snapshot + marker + original folder resumes conversion", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await initPlainBundleDir(topo.a);
+    await writeBoardDoc(topo.a, "notes/recovered", {
+      frontmatter: { type: "Note", title: "Recovered" },
+      body: "published before crash\n",
+    });
+    const snapshot = snapshotBundleCommit(topo.a.root, topo.a.board);
+    pushBoardCommit(topo.a.root, snapshot.sha);
+    plantEstablishMarker(topo.a.root, snapshot.sha);
+
+    const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(rec.established, ESTABLISH_DONE);
+    assert.equal(existsSync(path.join(topo.a.board, "notes", "recovered.md")), true);
+    assert.equal(git(topo.a.board, ["rev-parse", "HEAD"]).trim(), snapshot.sha);
+    assert.equal(existsSync(establishMarkerPath(topo.a.root)), false);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("crash recovery: renamed backup before provisioning is restored into a verified board worktree", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await initPlainBundleDir(topo.a);
+    await writeBoardDoc(topo.a, "notes/recovered", {
+      frontmatter: { type: "Note", title: "Recovered" },
+      body: "backup bytes\n",
+    });
+    const snapshot = snapshotBundleCommit(topo.a.root, topo.a.board);
+    pushBoardCommit(topo.a.root, snapshot.sha);
+    plantEstablishMarker(topo.a.root, snapshot.sha);
+    const backup = `${topo.a.board}.establish-backup`;
+    await rename(topo.a.board, backup);
+
+    const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(rec.established, ESTABLISH_DONE);
+    assert.equal(existsSync(path.join(topo.a.board, "notes", "recovered.md")), true);
+    assert.equal(existsSync(backup), false, "verified recovery removes its temporary backup");
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("concurrent backup write during provisioning is detected at the deletion boundary and preserved", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await initPlainBundleDir(topo.a);
+    await writeBoardDoc(topo.a, "notes/original", {
+      frontmatter: { type: "Note", title: "Original" },
+      body: "snapshot content\n",
+    });
+    const backup = `${topo.a.board}.establish-backup`;
+    const hook = path.join(topo.a.root, ".git", "hooks", "post-checkout");
+    await writeFile(
+      hook,
+      `#!/bin/sh\nmkdir -p '${backup}/notes'\nprintf '%s\\n' 'concurrent bytes' > '${backup}/notes/concurrent.md'\n`,
     );
+    await chmod(hook, 0o755);
+
+    const { err } = await runSync(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(err?.code, "CONFLICT");
+    assert.match(err?.message ?? "", /backup.*changed/);
+    assert.equal(readFileSync(path.join(backup, "notes", "concurrent.md"), "utf8"), "concurrent bytes\n");
+    assert.equal(existsSync(path.join(topo.a.board, "notes", "concurrent.md")), false);
+    assert.equal(existsSync(establishMarkerPath(topo.a.root)), true, "the marker stays so recovery remains explicit");
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("crash recovery: provisioned board plus verified backup is cleaned idempotently", async () => {
+  const topo = await makeGreenfieldTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await initPlainBundleDir(topo.a);
+    const snapshot = snapshotBundleCommit(topo.a.root, topo.a.board);
+    pushBoardCommit(topo.a.root, snapshot.sha);
+    plantEstablishMarker(topo.a.root, snapshot.sha);
+    const backup = `${topo.a.board}.establish-backup`;
+    await rename(topo.a.board, backup);
+    git(topo.a.root, ["fetch", "origin"]);
+    const provisioned = provisionBoardWorktree(topo.a.root);
+    assert.equal(provisioned.kind, "provisioned");
+
+    const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(rec.establish, ESTABLISH_ALREADY);
+    assert.equal(rec.sync, "already up to date");
+    assert.equal(existsSync(backup), false);
+    assert.equal(existsSync(establishMarkerPath(topo.a.root)), false);
   } finally {
     await cleanup();
     await topo.cleanup();
