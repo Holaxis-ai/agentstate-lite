@@ -3,22 +3,20 @@ type: Task
 title: >-
   Opportunistic board freshness: stale-cache pull on read commands (real-time
   ladder rung 1, product-native)
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Builder done (975ccf2 on feat/sync-opportunistic-pull), IN REVIEW. Shipped:
-  INLINE (adjudicated) stale-cache ff-only auto-pull on list/doc
-  read/status/home/link show — 5m threshold, 2s budget, attempt-side throttle,
-  AGENTSTATE_LITE_NO_AUTOPULL opt-out, default-on incl. non-TTY;
-  pullBoardAndRecord extracted from session-start as the ONE shared pull path
-  (no fork); sync receipt's one-time hook-install hint. 13 new tests, cli
-  661/661, check green, CI-convention compliant. Caveats: CLI test script sets
-  the opt-out knob suite-wide for hermeticity (reviewer adjudicating);
-  board-parity test needs a provisioned checkout (filed:
-  board-parity-test-post-migration).
-actor: brian-claude
+  DONE — merged as PR #28 (2026-07-09). Inline stale-cache ff-only auto-pull on
+  read commands: 5m threshold, 2s budget, attempt throttle,
+  AGENTSTATE_LITE_NO_AUTOPULL knob, default-on; pullBoardAndRecord extracted as
+  the one shared pull path; sync's one-time hook-install hint. Two review rounds
+  (hot-path tax found at +82ms/9 spawns, fixed to +12.5ms/1 spawn, spawn budgets
+  test-pinned 0/0/1); delta APPROVE with independent re-measurement. Two LOW
+  observations on the record body. Brian's freshness ask fully live: board
+  freshens at session start AND on reads.
+actor: brian
 assignee: brian-claude
-timestamp: '2026-07-09T21:56:40.541Z'
+timestamp: '2026-07-10T14:56:56.061Z'
 ---
 ## Design sketch (carried from the adjudication; builder refines, panel-vets if judged risky)
 

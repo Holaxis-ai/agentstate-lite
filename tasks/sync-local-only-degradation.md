@@ -6,18 +6,16 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  Builder done (f2150c3 on feat/sync-local-only), IN REVIEW. Shipped items 1-3:
-  the local-only empty state (pinned message + note — supported mode, changes
-  stay local, sync committed nothing, sharing conceptual since sync --share is
-  todo); degradation matrix documented per-site with dishonest wordings fixed
-  (--show-incoming got a viewer-specific no-ref message; --pull-only and
-  upstreamHelp name local-only as supported); skill Workspaces teaches the
-  trilogy. cli 650/650, check green, CI-convention compliant (no manifest/bundle
-  changes). Caveats: bundle detection = index.md at the conventional root; open
-  questions A/B untouched for founder adjudication.
-actor: builder-localonly
+  RESPIN IN PROGRESS: the approved unit (f2150c3) was never merged and main
+  evolved through #29-#36 — notably #36 shipped sync --establish, making the
+  note's 'sharing is planned' wording false. Verified: main still lacks the
+  empty-state split (core value stands). Respin: rebase onto post-#36 main,
+  point the note at the real establish verb, re-verify the matrix, coherent
+  skill trilogy. Original review APPROVE stands for the surviving content; delta
+  review after respin.
+actor: brian-claude
 assignee: brian-claude
-timestamp: '2026-07-09T21:16:34.803Z'
+timestamp: '2026-07-10T14:56:56.173Z'
 ---
 ## Audit findings (empirical, 2026-07-09, built CLI over a local-only git repo)
 
