@@ -3,6 +3,7 @@
 // Verb modules import from HERE, never from `../doc.js` (the thin entry re-exports FROM here, and a
 // verb importing back from the entry would create a circular import).
 import { fstatSync } from "node:fs";
+import { parseLinks, type Bundle, type Link, type OkfDocument } from "@agentstate-lite/core";
 import { CliError, classifyBundleError } from "../../errors.js";
 import { cliInvocation } from "../../invocation.js";
 
@@ -56,6 +57,11 @@ Options:
                        interactive TTY all count as "nothing given" here (pass --body "" to blank
                        explicitly instead). A NEW doc with no body source is always allowed — see
                        'doc update' to patch other fields while preserving the body.
+  --replace-links      Required to overwrite an EXISTING doc's body when the new body would silently
+                       DROP one or more of its outbound cross-links (links live in the body — OKF).
+                       Without it, a body replace that drops a link is refused (exit 2, naming the
+                       dropped link(s)); a new body that still contains the same link(s) never needs
+                       this flag. SHORT-TERM guard — see 'link add'/'link show' to manage links.
   --strict             If a kind convention governs --type, reject (exit 2) instead of writing with
                        warnings when the doc does not satisfy it (default: warn-and-write, exit 0 —
                        see 'agentstate-lite kinds')
@@ -94,6 +100,12 @@ Options:
                          patch that DOES pass another field flag (--title/--description/--tag/--type/
                          a kind field) never reads stdin, even without --body/--body-file: it patches
                          only the given fields and leaves the body untouched.
+  --replace-links         Required when a --body/--body-file replace would silently DROP one or more
+                         of the doc's existing outbound cross-links (links live in the body — OKF).
+                         Without it, such a replace is refused (exit 2, naming the dropped link(s));
+                         a new body that still contains the same link(s) — the ordinary read-edit-
+                         update cycle — never needs this flag. SHORT-TERM guard — see 'link add'/
+                         'link show' to manage links.
   --keep-timestamp       Preserve the existing timestamp (default: refresh to now, since a patch is
                          a meaningful change — matches 'link add's policy)
   --strict               If a kind convention governs the resulting type, reject (exit 2) instead of
@@ -251,6 +263,111 @@ export async function defaultReadStdin(): Promise<string | undefined> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks).toString("utf8");
+}
+
+/**
+ * Occurrence-aware drop detection (review round 3): core deliberately allows MULTIPLE links from the
+ * same source to the SAME target with DIFFERENT text — link text is the only relationship-type signal
+ * OKF's untyped edges carry (see `backlinks`/`link show --text`), so `[supports](b.md)` and
+ * `[contradicts](b.md)` in one doc are two distinct, independently meaningful edges, not duplicates. A
+ * plain "is target `b` still linked ANYWHERE in the new body" check (a bare `some()` over target) would
+ * therefore miss a drop when one of several same-target occurrences disappears but at least one
+ * survives — old `[supports](b)`+`[contradicts](b)`, new `[supports](b)` alone silently loses
+ * `contradicts` under a target-only `some()`.
+ *
+ * Matches per target in two passes so a RETEXT (same target, new text — the edge survives) never
+ * fires while a genuine occurrence loss always does: (1) EXACT (target,text) pairs are consumed first
+ * — an old occurrence whose exact text still appears is kept, unambiguously; (2) any old occurrence
+ * left over pairs with any UNCONSUMED same-target new occurrence, regardless of text (a retext); (3)
+ * an old occurrence still unpaired after both passes is a genuine drop. This degrades to simple
+ * target-presence for the single-occurrence-per-target case (the common one) and additionally catches
+ * the multi-occurrence case a bare `some()` missed.
+ */
+function computeDroppedLinks(existingLinks: Link[], nextLinks: Link[]): Link[] {
+  const nextByTarget = new Map<string, Link[]>();
+  for (const l of nextLinks) {
+    const bucket = nextByTarget.get(l.to);
+    if (bucket) bucket.push(l);
+    else nextByTarget.set(l.to, [l]);
+  }
+  const existingByTarget = new Map<string, Link[]>();
+  for (const l of existingLinks) {
+    const bucket = existingByTarget.get(l.to);
+    if (bucket) bucket.push(l);
+    else existingByTarget.set(l.to, [l]);
+  }
+
+  const dropped: Link[] = [];
+  for (const [target, oldOccurrences] of existingByTarget) {
+    const available = [...(nextByTarget.get(target) ?? [])]; // mutable, consumed as occurrences pair off
+    const unmatchedExact: Link[] = [];
+
+    // Pass 1: exact (target,text) — consume one matching new occurrence per old occurrence.
+    for (const old of oldOccurrences) {
+      const idx = available.findIndex((n) => n.text === old.text);
+      if (idx >= 0) available.splice(idx, 1);
+      else unmatchedExact.push(old);
+    }
+    // Pass 2: retext — any leftover old occurrence pairs with any leftover same-target occurrence,
+    // regardless of text; anything still left over after that is a real drop.
+    for (const old of unmatchedExact) {
+      if (available.length > 0) available.shift();
+      else dropped.push(old);
+    }
+  }
+  return dropped;
+}
+
+/**
+ * Data-loss guard (SHORT-TERM — see `roadmap-items/link-model-body-safe` for the proper
+ * preserve-by-default fix this is standing in for): OKF cross-links are markdown links stored IN a
+ * doc's body, so a `--body`/`--body-file` FULL-BODY REPLACE (`doc write`/`doc update`) silently drops
+ * every outbound link the old body carried unless the new body happens to repeat it — the product's
+ * signature graph feature, lost with no error and no trace. Fires ONLY on REAL loss: an existing link
+ * survives (no refusal) when `nextBody` still contains a link to the SAME resolved target with ONE
+ * FEWER OR EQUAL occurrences dropped — see `computeDroppedLinks`'s own comment for the exact
+ * occurrence-aware matching, which mirrors `link add`'s own idempotency check
+ * (`link.ts`'s `parseLinks(...).some(l => l.to === normalizedTo)`, target-only) for the common
+ * single-occurrence case while also catching a multi-occurrence (same target, different text) partial
+ * drop that a bare target-only `some()` would miss. A RETEXT — the new body relabels a target under
+ * different display text, with no occurrence actually lost — is NOT a drop: the guard's charter is
+ * EDGE loss, and the edge (the target relationship) survives a retext. Over-firing on relabeling would
+ * train agents to reflexively pass `--replace-links`, which hollows the guard for the drop case that
+ * actually matters (review adjudication, round 2). `replaceLinks` (the caller's `--replace-links` flag)
+ * opts into a real drop deliberately — no separate `link remove` needed, since a full-body replace
+ * already performs removal.
+ *
+ * Called BEFORE any write happens — see the P1 review fix (round 3): `doc write`'s caller now couples
+ * this guard's read to a compare-and-swap write (`mutateDoc`'s `coupleRead`) so a concurrent writer
+ * landing between the read this guard evaluates and the eventual write can never be silently
+ * clobbered — a refusal here always leaves the stored doc byte-for-byte unchanged, and a retry after a
+ * conflict re-evaluates against the doc's CURRENT state, not a stale snapshot.
+ */
+export function guardDroppedLinks(
+  bundle: Bundle,
+  existing: OkfDocument,
+  nextBody: string,
+  replaceLinks: boolean,
+): void {
+  if (replaceLinks) return;
+  const existingLinks = parseLinks(bundle, existing);
+  if (existingLinks.length === 0) return; // nothing to lose
+  const nextLinks = parseLinks(bundle, { ...existing, body: nextBody });
+  const dropped = computeDroppedLinks(existingLinks, nextLinks);
+  if (dropped.length === 0) return;
+  const named = dropped.map((l) => `'${l.text}' -> ${l.to}`).join(", ");
+  throw new CliError(
+    "USAGE",
+    `this body replace would silently drop ${dropped.length} outbound link(s) from '${existing.id}': ${named}. ` +
+      `OKF cross-links live in the document body, so a full-body replace removes any link the new body ` +
+      `doesn't repeat. Pass --replace-links to drop them deliberately, or keep them by including the same ` +
+      `markdown link(s) in the new body, or re-add them afterward with ` +
+      `'${cliInvocation()} link add ${existing.id} <to>'.`,
+    {
+      help: `${cliInvocation()} link add ${existing.id} <to>`,
+      details: { dropped_links: dropped.map((l) => ({ to: l.to, text: l.text })) },
+    },
+  );
 }
 
 /** Map a filesystem ENOENT (missing concept file) to NOT_FOUND; classify anything else via `classifyBundleError`. */

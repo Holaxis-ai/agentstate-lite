@@ -9,7 +9,7 @@ import { parseOrUsage } from "../../args.js";
 import { render, resolveMode } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
 import { mutateDoc } from "../../mutate.js";
-import { DOC_WRITE_USAGE, type DocCliDeps, defaultReadStdin } from "./common.js";
+import { DOC_WRITE_USAGE, type DocCliDeps, defaultReadStdin, guardDroppedLinks } from "./common.js";
 
 export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promise<void> {
   const stdout = deps.stdout ?? ((s: string) => void process.stdout.write(s));
@@ -29,6 +29,7 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
           body: { type: "string" },
           "body-file": { type: "string" },
           "blank-body": { type: "boolean" },
+          "replace-links": { type: "boolean" },
           strict: { type: "boolean" },
           actor: { type: "string" },
           dir: { type: "string" },
@@ -115,10 +116,13 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
 
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
 
-  // Read the EXISTING doc (if any) ONCE. Reused by every guard below: the schema-loss (convention)
-  // refusal, the F1 body-blank refusal, AND the dropped-frontmatter-fields warning. A create (ENOENT)
-  // leaves `existing` undefined and all three skip. One read on a mutation — not a hot path — and the
-  // dropped-fields warning (cold-start study r3) needs it on EVERY overwrite, not just the no-body case.
+  // Read the EXISTING doc (if any) ONCE. Reused by the schema-loss (convention) refusal, the F1
+  // body-blank refusal, AND the dropped-frontmatter-fields warning below — none of those depend on a
+  // concurrent writer landing between this peek and the eventual write, so a single upfront read is
+  // fine for them. A create (ENOENT) leaves `existing` undefined and all three skip. The LINK-DROP
+  // guard is the one exception: it re-reads its OWN fresh snapshot inside `mutateDoc`'s coupled
+  // "overwrite" loop below (never this peek), since a stale read there would let a race silently
+  // defeat the very guard this file exists to enforce — see the comment at the `coupleRead` call.
   const isConventionPath = id.startsWith("conventions/");
   let existing: OkfDocument | undefined;
   try {
@@ -166,6 +170,23 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
     );
   }
 
+  // Link-drop guard (data loss): a full-body replace over an existing doc must not silently drop
+  // outbound cross-links the old body carried — see `guardDroppedLinks`'s own comment for the exact
+  // match rule and why a normal read-modify-write never fires it. `--replace-links` opts in.
+  //
+  // P1 review fix: the guard's own decision must not be based on a STALE read. The peek above
+  // (`existing`) is read ONCE, before `loadKinds`/`mutateDoc` — a concurrent writer (e.g. another
+  // agent adding a link, or even creating this very doc from scratch) could land between that peek
+  // and this write, and an unconditional overwrite would silently clobber it regardless of what the
+  // guard decided from the now-stale snapshot. `coupleRead: true` below makes `mutateDoc` re-read the
+  // CURRENT doc (present or absent) immediately before EACH write attempt and hand it to
+  // `buildCandidate`, which re-runs the guard against THAT snapshot — so a concurrently-added link
+  // is visible and protected, and a concurrent absent -> created race is caught too (the write's CAS
+  // conflicts, `mutateDoc` re-reads, and the guard now sees the new doc's links). `--replace-links`
+  // still means "I accept dropping MY OWN read's links" — coupling is skipped entirely in that case,
+  // preserving the historical unconditional last-writer-wins write (nothing left to protect).
+  const replaceLinks = Boolean(values["replace-links"]);
+
   // If a kind convention governs `type`, validate against it — WARN-by-default (attach `warnings[]`
   // to the receipt, still write, exit 0); `--strict` upgrades a non-empty warning set to a USAGE
   // error (exit 2) that does NOT write. `mutateDoc`'s "overwrite" mode runs this decision (via
@@ -175,19 +196,32 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
   // bundle (no Convention docs) loads an empty registry, so this is a no-op.
   const registry = await loadKinds(bundle);
 
-  // "overwrite" mode: never re-reads (the F1 guard above already did the ONE conditional read this
-  // verb needs, and classified any error from it); writes unconditionally, last-writer-wins.
+  // "overwrite" mode, coupled (unless --replace-links): re-reads before each write attempt so the
+  // link-drop guard inside `buildCandidate` always sees a version-matched snapshot, bounded-retried on
+  // conflict (see the comment above and `MutateDocOptions.coupleRead`'s own doc).
   const result = await mutateDoc({
     bundle,
     id,
     mode: "overwrite",
+    coupleRead: !replaceLinks,
     registry,
     remoteUrl: values.remote,
     strict: Boolean(values.strict),
     helpOnKindReject: `${cliInvocation()} kinds`,
     actor: values.actor?.trim(),
-    buildCandidate: () => ({ frontmatter, body }),
-    errors: {},
+    buildCandidate: (fresh) => {
+      if (fresh) guardDroppedLinks(bundle, fresh, body, replaceLinks);
+      return { frontmatter, body };
+    },
+    errors: {
+      staleHead: (err) =>
+        new CliError(
+          "STALE_HEAD",
+          `'${id}' changed concurrently while re-checking outbound links (moved since ${err.expected ?? "absent"}; ` +
+            `now ${err.actual ?? "absent"}) — retries exhausted; re-run the write.`,
+          { help: `${cliInvocation()} doc read ${id}` },
+        ),
+    },
   });
 
   const saved = result.doc;
