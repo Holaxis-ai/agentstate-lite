@@ -61,10 +61,13 @@ import {
   MemoryBackend,
   CONVENTION_TYPE,
   type Bundle,
+  type OkfDocument,
+  type Version,
 } from "@agentstate-lite/core";
 import { serve, type ServerHandle } from "@agentstate-lite/server";
 
 import { doc, type DocCliDeps } from "../src/commands/doc.js";
+import { guardDroppedLinks } from "../src/commands/doc/common.js";
 import { mutateDoc } from "../src/mutate.js";
 import { CliError } from "../src/errors.js";
 import { cliInvocation } from "../src/invocation.js";
@@ -406,6 +409,46 @@ test("doc update --body: a RETEXT (new body links the SAME target under differen
   }
 });
 
+test("doc update --body: MULTIPLE links to the SAME target with different text (a same-source multi-edge) — dropping ONE occurrence while keeping another still fires (P2 review fix: occurrence-aware matching, not a bare target-only some())", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc(
+      { root: dir },
+      {
+        id: "a",
+        frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS },
+        body: "Two claims about b.\n\n[supports](b.md)\n\n[contradicts](b.md)\n",
+      },
+    );
+
+    // A bare target-only `some()` would see 'b' still linked (via 'supports') and wrongly exit 0 —
+    // silently losing the 'contradicts' occurrence. Occurrence-aware matching must still fire.
+    await assert.rejects(
+      () => doc(["update", "a", "--body", "Only one claim now.\n\n[supports](b.md)\n", "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.match(err.message, /drop 1 outbound link/);
+        assert.match(err.message, /'contradicts' -> b/);
+        return true;
+      },
+    );
+
+    // Unchanged: BOTH original occurrences survive.
+    const after = await readDoc({ root: dir }, "a");
+    assert.deepEqual(
+      parseLinks({ root: dir }, after).map((l) => ({ to: l.to, text: l.text })),
+      [
+        { to: "b", text: "supports" },
+        { to: "b", text: "contradicts" },
+      ],
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
 test("doc update --body: a REAL DROP (the target is absent from the new body entirely) still fires, even alongside an unrelated retext elsewhere", async () => {
   const { dir, cleanup } = await makeBundle();
   try {
@@ -573,6 +616,179 @@ test("doc write --blank-body on a linked doc STILL requires --replace-links (dou
   } finally {
     await cleanup();
   }
+});
+
+// ── Link-drop guard: P1 review fix — coupling the guard's read to a CAS write ──────────────────────
+//
+// `doc write`'s link-drop guard used to peek the existing doc ONCE, then hand off to `mutateDoc`'s
+// "overwrite" mode, which wrote UNCONDITIONALLY (no CAS). A concurrent writer landing between that
+// peek and the write (e.g. another agent adding a link, or even creating the doc from scratch) was
+// silently clobbered — the guard's decision was correct for the STALE snapshot it saw, but the doc it
+// actually overwrote on disk was a different, newer one. `mutateDoc`'s "overwrite" mode now supports
+// `coupleRead: true` (what `doc write` always passes unless `--replace-links`): it re-reads the
+// CURRENT doc immediately before each write attempt and hands it to `buildCandidate`, retrying bounded
+// on a `VersionConflict`. These tests exercise `mutateDoc` directly (mirroring this file's other
+// "mutate-level thread-through proof" tests) with a `MemoryBackend` (real enforced CAS) and a
+// backend.write wrapper that injects a concurrent write at the exact moment our own write attempts to
+// land — the same mechanism a genuinely concurrent agent would race through, made deterministic.
+
+test("mutateDoc overwrite (coupleRead): a concurrent writer's link addition between the read and the write is never silently clobbered — VersionConflict retries, re-reads, and buildCandidate (the guard) sees the FRESH doc", async () => {
+  const backend = new MemoryBackend();
+  const bundle: Bundle = { root: "mem://couple-read-existing-race", backend };
+  await writeDoc(bundle, {
+    id: "a",
+    frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS },
+    body: "Intro.\n\n[x](x.md)\n",
+  });
+  const registry = await loadKinds(bundle);
+
+  // The FIRST time our own write attempts a real (non-null) CAS write for 'a', inject a race: a
+  // separate writer adds a 'y' link FIRST, using the SAME expected version (it wins), so our own
+  // write's token is now stale and conflicts.
+  const originalWrite = backend.write.bind(backend);
+  let injected = false;
+  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
+    if (id === "a" && !injected && options?.expectedVersion) {
+      injected = true;
+      const current = await backend.read("a");
+      await originalWrite(
+        "a",
+        { ...current.doc, body: `${current.doc.body.replace(/\s*$/, "")}\n\n[y](y.md)\n` },
+        { expectedVersion: options.expectedVersion },
+      );
+    }
+    return originalWrite(id, d, options);
+  }) as typeof backend.write;
+
+  const seenExisting: (OkfDocument | undefined)[] = [];
+  await assert.rejects(
+    () =>
+      mutateDoc({
+        bundle,
+        id: "a",
+        mode: "overwrite",
+        coupleRead: true,
+        registry,
+        strict: false,
+        helpOnKindReject: "kinds",
+        buildCandidate: (existing) => {
+          seenExisting.push(existing);
+          // The REAL guard, exactly as `doc write` calls it — our candidate body only ever mentions x.
+          if (existing) guardDroppedLinks(bundle, existing, "Intro.\n\n[x](x.md)\n", false);
+          return { frontmatter: { type: "Concept", title: "A", timestamp: T }, body: "Intro.\n\n[x](x.md)\n" };
+        },
+        errors: {},
+      }),
+    (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "USAGE");
+      assert.match(err.message, /drop 1 outbound link/);
+      assert.match(err.message, /'y' -> y/);
+      return true;
+    },
+  );
+
+  // buildCandidate ran twice: once against the pre-race snapshot (1 link), once against the FRESH,
+  // post-race doc (2 links) — proving the retry re-reads rather than reusing the stale snapshot.
+  assert.equal(seenExisting.length, 2);
+  assert.equal(parseLinks(bundle, seenExisting[0]!).length, 1);
+  assert.equal(parseLinks(bundle, seenExisting[1]!).length, 2);
+
+  // The concurrently-added y link survived on disk — our own write never landed.
+  const after = await readDoc(bundle, "a");
+  assert.deepEqual(
+    parseLinks(bundle, after).map((l) => l.to).sort(),
+    ["x", "y"],
+  );
+});
+
+test("mutateDoc overwrite (coupleRead): the absent -> concurrently-created race is caught too — a create conflicts, re-reads, and the guard sees the NEW doc's links", async () => {
+  const backend = new MemoryBackend();
+  const bundle: Bundle = { root: "mem://couple-read-absent-race", backend };
+  const registry = await loadKinds(bundle);
+
+  // The FIRST time our own write attempts an expect-absent CREATE (expectedVersion: null) for 'a',
+  // inject a concurrent CREATE of 'a' from scratch, WITH a link — so our own create now conflicts
+  // (the doc exists where we expected absence).
+  const originalWrite = backend.write.bind(backend);
+  let injected = false;
+  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
+    if (id === "a" && !injected && options?.expectedVersion === null) {
+      injected = true;
+      await originalWrite(
+        "a",
+        { id: "a", frontmatter: { type: "Concept", timestamp: OLD_TS }, body: "Concurrently created.\n\n[z](z.md)\n" },
+        { expectedVersion: null },
+      );
+    }
+    return originalWrite(id, d, options);
+  }) as typeof backend.write;
+
+  const seenExisting: (OkfDocument | undefined)[] = [];
+  await assert.rejects(
+    () =>
+      mutateDoc({
+        bundle,
+        id: "a",
+        mode: "overwrite",
+        coupleRead: true,
+        registry,
+        strict: false,
+        helpOnKindReject: "kinds",
+        buildCandidate: (existing) => {
+          seenExisting.push(existing);
+          if (existing) guardDroppedLinks(bundle, existing, "Fresh content, no links.", false);
+          return { frontmatter: { type: "Concept", timestamp: T }, body: "Fresh content, no links." };
+        },
+        errors: {},
+      }),
+    (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.equal(err.code, "USAGE");
+      assert.match(err.message, /drop 1 outbound link/);
+      assert.match(err.message, /'z' -> z/);
+      return true;
+    },
+  );
+
+  // First attempt genuinely saw absence; the retry saw the concurrently-created doc (with its link).
+  assert.equal(seenExisting.length, 2);
+  assert.equal(seenExisting[0], undefined);
+  assert.ok(seenExisting[1]);
+  assert.equal(parseLinks(bundle, seenExisting[1]!).length, 1);
+
+  // The concurrently-created doc (and its link) survived — our own create never landed.
+  const after = await readDoc(bundle, "a");
+  assert.equal(parseLinks(bundle, after).length, 1);
+});
+
+test("mutateDoc overwrite (coupleRead: false, the --replace-links path): behaves exactly like the historical unconditional write — no extra read, a concurrent change is last-writer-wins as before", async () => {
+  const backend = new MemoryBackend();
+  const bundle: Bundle = { root: "mem://couple-read-disabled", backend };
+  await writeDoc(bundle, {
+    id: "a",
+    frontmatter: { type: "Concept", timestamp: OLD_TS },
+    body: "Intro.\n\n[x](x.md)\n",
+  });
+  const registry = await loadKinds(bundle);
+
+  let buildCandidateCalls = 0;
+  const result = await mutateDoc({
+    bundle,
+    id: "a",
+    mode: "overwrite",
+    coupleRead: false,
+    registry,
+    strict: false,
+    helpOnKindReject: "kinds",
+    buildCandidate: () => {
+      buildCandidateCalls++;
+      return { frontmatter: { type: "Concept", timestamp: T }, body: "Blind overwrite, no links." };
+    },
+    errors: {},
+  });
+  assert.equal(buildCandidateCalls, 1); // never re-read, never retried — unconditional, as before
+  assert.equal(result.doc.body, "Blind overwrite, no links.");
 });
 
 // ── doc write --actor (API consistency with doc update/delete) ─────────────────────────────────────

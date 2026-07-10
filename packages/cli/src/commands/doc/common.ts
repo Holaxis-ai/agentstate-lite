@@ -3,7 +3,7 @@
 // Verb modules import from HERE, never from `../doc.js` (the thin entry re-exports FROM here, and a
 // verb importing back from the entry would create a circular import).
 import { fstatSync } from "node:fs";
-import { parseLinks, type Bundle, type OkfDocument } from "@agentstate-lite/core";
+import { parseLinks, type Bundle, type Link, type OkfDocument } from "@agentstate-lite/core";
 import { CliError, classifyBundleError } from "../../errors.js";
 import { cliInvocation } from "../../invocation.js";
 
@@ -266,25 +266,82 @@ export async function defaultReadStdin(): Promise<string | undefined> {
 }
 
 /**
+ * Occurrence-aware drop detection (review round 3): core deliberately allows MULTIPLE links from the
+ * same source to the SAME target with DIFFERENT text — link text is the only relationship-type signal
+ * OKF's untyped edges carry (see `backlinks`/`link show --text`), so `[supports](b.md)` and
+ * `[contradicts](b.md)` in one doc are two distinct, independently meaningful edges, not duplicates. A
+ * plain "is target `b` still linked ANYWHERE in the new body" check (a bare `some()` over target) would
+ * therefore miss a drop when one of several same-target occurrences disappears but at least one
+ * survives — old `[supports](b)`+`[contradicts](b)`, new `[supports](b)` alone silently loses
+ * `contradicts` under a target-only `some()`.
+ *
+ * Matches per target in two passes so a RETEXT (same target, new text — the edge survives) never
+ * fires while a genuine occurrence loss always does: (1) EXACT (target,text) pairs are consumed first
+ * — an old occurrence whose exact text still appears is kept, unambiguously; (2) any old occurrence
+ * left over pairs with any UNCONSUMED same-target new occurrence, regardless of text (a retext); (3)
+ * an old occurrence still unpaired after both passes is a genuine drop. This degrades to simple
+ * target-presence for the single-occurrence-per-target case (the common one) and additionally catches
+ * the multi-occurrence case a bare `some()` missed.
+ */
+function computeDroppedLinks(existingLinks: Link[], nextLinks: Link[]): Link[] {
+  const nextByTarget = new Map<string, Link[]>();
+  for (const l of nextLinks) {
+    const bucket = nextByTarget.get(l.to);
+    if (bucket) bucket.push(l);
+    else nextByTarget.set(l.to, [l]);
+  }
+  const existingByTarget = new Map<string, Link[]>();
+  for (const l of existingLinks) {
+    const bucket = existingByTarget.get(l.to);
+    if (bucket) bucket.push(l);
+    else existingByTarget.set(l.to, [l]);
+  }
+
+  const dropped: Link[] = [];
+  for (const [target, oldOccurrences] of existingByTarget) {
+    const available = [...(nextByTarget.get(target) ?? [])]; // mutable, consumed as occurrences pair off
+    const unmatchedExact: Link[] = [];
+
+    // Pass 1: exact (target,text) — consume one matching new occurrence per old occurrence.
+    for (const old of oldOccurrences) {
+      const idx = available.findIndex((n) => n.text === old.text);
+      if (idx >= 0) available.splice(idx, 1);
+      else unmatchedExact.push(old);
+    }
+    // Pass 2: retext — any leftover old occurrence pairs with any leftover same-target occurrence,
+    // regardless of text; anything still left over after that is a real drop.
+    for (const old of unmatchedExact) {
+      if (available.length > 0) available.shift();
+      else dropped.push(old);
+    }
+  }
+  return dropped;
+}
+
+/**
  * Data-loss guard (SHORT-TERM — see `roadmap-items/link-model-body-safe` for the proper
  * preserve-by-default fix this is standing in for): OKF cross-links are markdown links stored IN a
  * doc's body, so a `--body`/`--body-file` FULL-BODY REPLACE (`doc write`/`doc update`) silently drops
  * every outbound link the old body carried unless the new body happens to repeat it — the product's
  * signature graph feature, lost with no error and no trace. Fires ONLY on REAL loss: an existing link
- * survives (no refusal) when `nextBody` still contains ANY link to the SAME resolved target — the
- * ordinary `doc read` -> edit -> `doc update --body` round trip, since `doc read` returns the body
- * WITH its links, never fires here. Matches by resolved target ONLY (`to`, via core's ONE link
- * resolver `parseLinks` — never a second parser), mirroring `link add`'s own idempotency check
- * (`link.ts`'s `parseLinks(...).some(l => l.to === normalizedTo)`, also target-only). A RETEXT — the
- * new body relabels the same target under different display text — is NOT a drop: the guard's charter
- * is EDGE loss, and the edge (the target relationship) survives a retext. Over-firing on relabeling
- * would train agents to reflexively pass `--replace-links`, which hollows the guard for the drop case
- * that actually matters (review adjudication, round 2). `replaceLinks` (the caller's `--replace-links`
- * flag) opts into a real drop deliberately — no separate `link remove` needed, since a full-body
- * replace already performs removal.
+ * survives (no refusal) when `nextBody` still contains a link to the SAME resolved target with ONE
+ * FEWER OR EQUAL occurrences dropped — see `computeDroppedLinks`'s own comment for the exact
+ * occurrence-aware matching, which mirrors `link add`'s own idempotency check
+ * (`link.ts`'s `parseLinks(...).some(l => l.to === normalizedTo)`, target-only) for the common
+ * single-occurrence case while also catching a multi-occurrence (same target, different text) partial
+ * drop that a bare target-only `some()` would miss. A RETEXT — the new body relabels a target under
+ * different display text, with no occurrence actually lost — is NOT a drop: the guard's charter is
+ * EDGE loss, and the edge (the target relationship) survives a retext. Over-firing on relabeling would
+ * train agents to reflexively pass `--replace-links`, which hollows the guard for the drop case that
+ * actually matters (review adjudication, round 2). `replaceLinks` (the caller's `--replace-links` flag)
+ * opts into a real drop deliberately — no separate `link remove` needed, since a full-body replace
+ * already performs removal.
  *
- * Called BEFORE any write happens (the F1 guard's existing conditional read supplies `existing`), so
- * a refusal here always leaves the stored doc byte-for-byte unchanged.
+ * Called BEFORE any write happens — see the P1 review fix (round 3): `doc write`'s caller now couples
+ * this guard's read to a compare-and-swap write (`mutateDoc`'s `coupleRead`) so a concurrent writer
+ * landing between the read this guard evaluates and the eventual write can never be silently
+ * clobbered — a refusal here always leaves the stored doc byte-for-byte unchanged, and a retry after a
+ * conflict re-evaluates against the doc's CURRENT state, not a stale snapshot.
  */
 export function guardDroppedLinks(
   bundle: Bundle,
@@ -296,7 +353,7 @@ export function guardDroppedLinks(
   const existingLinks = parseLinks(bundle, existing);
   if (existingLinks.length === 0) return; // nothing to lose
   const nextLinks = parseLinks(bundle, { ...existing, body: nextBody });
-  const dropped = existingLinks.filter((el) => !nextLinks.some((nl) => nl.to === el.to));
+  const dropped = computeDroppedLinks(existingLinks, nextLinks);
   if (dropped.length === 0) return;
   const named = dropped.map((l) => `'${l.text}' -> ${l.to}`).join(", ");
   throw new CliError(
