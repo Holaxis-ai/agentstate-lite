@@ -60,6 +60,15 @@ export function PageFrame({ pageId }: { pageId: string }) {
    */
   const loadPage = useCallback(async () => {
     const seq = ++loadSeqRef.current;
+    // Pre-revoke IMMEDIATELY, synchronously, before the async getDoc/mint round-trip below. This
+    // is the ONE entry point every re-resolution path shares (mount, page switch, a live
+    // registry-doc change, blob hot-reload, resync), so the OLD capability/subscription can never
+    // survive past this line: a bridge request arriving during the async gap below is answered
+    // fail-closed (denied), never under a grant this reload is already in the middle of revoking
+    // — closes the window where a live `bundle-read` -> `none` edit left the stale grant standing
+    // through the getDoc/mint round-trip (P1).
+    subscribedRef.current = false;
+    bridgeCapabilityRef.current = "none";
 
     // getDoc is split from the mint below because ONLY its 403 is trip-worthy: `/v0/*` has no
     // other 403 source than this ui server's own session gate, so a 403 here is ALWAYS a dead
@@ -113,13 +122,12 @@ export function PageFrame({ pageId }: { pageId: string }) {
     }
   }, [pageId]);
 
-  // Resolve registry doc -> entry key -> nonce URL on mount / page switch.
+  // Resolve registry doc -> entry key -> nonce URL on mount / page switch. The bridge-capability
+  // reset now happens unconditionally at the TOP of loadPage itself (every re-resolution path
+  // shares it), so this effect only owns the page-SWITCH UX: blank the frame immediately so a
+  // newly-selected page never shows the outgoing page's stale content while it resolves.
   useEffect(() => {
     subscribedRef.current = false;
-    // Reset the bridge capability to fail-closed BEFORE the new page resolves, so the gate never
-    // depends on iframe-unmount ordering to avoid answering page B with page A's capability —
-    // loadPage re-grants `bundle-read` only after reading the new registry doc.
-    bridgeCapabilityRef.current = "none";
     setSrc(null);
     setError(null);
     void loadPage();
@@ -133,7 +141,17 @@ export function PageFrame({ pageId }: { pageId: string }) {
     const onMessage = (ev: MessageEvent) => {
       const frame = iframeRef.current;
       if (!frame || ev.source !== frame.contentWindow) return;
-      void handleBridgeRequest(ev.data, bridgeDeps, bridgeCapabilityRef.current).then((outcome) => {
+      // Capture the epoch AND the capability at RECEIPT — the request is decided under whatever
+      // grant this iframe held the instant it asked. `handleBridgeRequest`'s dep calls are async,
+      // so a slow reply must be FENCED against a LATER reload before it's delivered: the SAME
+      // iframe DOM node (and its stable `contentWindow`) is reused across a reload/hot-reload/
+      // page-switch, so without this check a `bundle-read` reply computed for the OLD page could
+      // land in a SUBSEQUENTLY-loaded frame — including a `none` content page — just because the
+      // two shared one DOM node (P1).
+      const seq = loadSeqRef.current;
+      const capability = bridgeCapabilityRef.current;
+      void handleBridgeRequest(ev.data, bridgeDeps, capability).then((outcome) => {
+        if (seq !== loadSeqRef.current) return; // frame reloaded/revoked since receipt — drop it
         if (outcome.subscribed) subscribedRef.current = true;
         if (outcome.reply && frame.contentWindow) frame.contentWindow.postMessage(outcome.reply, "*");
       });
