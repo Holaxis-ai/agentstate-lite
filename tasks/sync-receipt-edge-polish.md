@@ -9,7 +9,7 @@ description: >-
   git-identity fallback, --help worktree language, single-branch refspec hint,
   code-repo linked-worktree raw fatal.
 actor: brian-claude
-timestamp: '2026-07-09T21:17:43.713Z'
+timestamp: '2026-07-10T15:33:27.388Z'
 ---
 From the PR#13 three-lane review (all empirical):
 1. Cross-run receipt under-report: fetch-succeeded-then-failed run → NEXT run
@@ -47,3 +47,7 @@ From the PR#13 three-lane review (all empirical):
 11. (local-only review, docstring-only) hasLocalOnlyBundle notes "at the repo top" but
    never names the nested-bundle miss (repo/pkg/.agentstate-lite reads as bare
    "nothing to sync" even run from inside pkg) — one honest sentence.
+12. (local-only delta review) With a RELATIVE origin URL, an establish re-run
+   misclassifies as AUTH_REQUIRED exit 4 (relative remotes resolve differently from
+   inside the linked board worktree) — pre-existing #36 behavior, git semantics; wording
+   or a realpath-at-establish-time fix.

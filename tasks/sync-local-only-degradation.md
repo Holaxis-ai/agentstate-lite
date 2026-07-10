@@ -6,16 +6,17 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  RESPIN IN PROGRESS: the approved unit (f2150c3) was never merged and main
-  evolved through #29-#36 — notably #36 shipped sync --establish, making the
-  note's 'sharing is planned' wording false. Verified: main still lacks the
-  empty-state split (core value stands). Respin: rebase onto post-#36 main,
-  point the note at the real establish verb, re-verify the matrix, coherent
-  skill trilogy. Original review APPROVE stands for the surviving content; delta
-  review after respin.
+  RESPUN and re-approved, awaiting merge: a166ea1 on feat/sync-local-only
+  (single commit on post-#36 main). Delta review REQUEST-CHANGES was two
+  one-line prose fixes (stale decision-1 header in sync-establish.test.ts;
+  README boardless sentence), applied and amended. Supersession of #36's hint
+  shape RULED LEGITIMATE (no consumers of the retired field; the
+  never-auto-publishes half preserved; diff-honest). Trilogy driven end-to-end.
+  Round-1+delta findings carried to receipt-edge-polish items 9-11 + a new
+  relative-origin-URL misclassification note.
 actor: brian-claude
 assignee: brian-claude
-timestamp: '2026-07-10T14:56:56.173Z'
+timestamp: '2026-07-10T15:33:25.036Z'
 ---
 ## Audit findings (empirical, 2026-07-09, built CLI over a local-only git repo)
 

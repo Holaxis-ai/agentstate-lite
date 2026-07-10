@@ -4,12 +4,13 @@ title: board-parity test breaks in board-less checkouts (CI hazard post-migratio
 status: done
 priority: '1'
 description: >-
-  Shipped in PR #32, merged as 79e4abdf37c41182502abd28f18a49f45938599b. The
-  roadmap recipe is code-owned; its loaded kind schema is checked against
-  tracked golden fixtures, not a live board mount. Independent exact-SHA review
-  found no issues, and npm run check passed from a clean checkout with no
-  .agentstate-lite worktree.
-actor: openai/codex
-timestamp: '2026-07-10T11:54:14.453Z'
+  CLOSED WITHOUT BUILD — fixed by Mike's PR #32
+  (fix/board-truth-and-hermetic-parity) before either side claimed this.
+  Empirically confirmed twice during the local-only respin review (2026-07-09):
+  the cli suite passes in a fresh worktree with NO board checkout and no
+  materialized conventions. The worktree-builder workaround (git show
+  origin/board:...) is retired.
+actor: brian
+timestamp: '2026-07-10T15:33:24.919Z'
 ---
 
