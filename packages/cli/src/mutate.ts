@@ -131,6 +131,21 @@ export interface MutateDocOptions {
    * patch keeps its pre-existing bounded-retry behavior unchanged.
    */
   expectedVersion?: Version;
+  /**
+   * "overwrite" mode only: couple the read `buildCandidate` needs to the WRITE via compare-and-swap,
+   * instead of writing unconditionally (the default when omitted/false — the historical
+   * last-writer-wins behavior, unchanged for any caller that doesn't set this). When true, reads the
+   * CURRENT doc (present OR absent) immediately before EACH write attempt and passes it to
+   * `buildCandidate`, so a per-write guard inside `buildCandidate` (e.g. `doc write`'s link-drop guard,
+   * `guardDroppedLinks`) always evaluates against a version-matched snapshot — never a stale read from
+   * before a concurrent writer's change. A `VersionConflict` (ANY concurrent writer moved the doc,
+   * INCLUDING a concurrent absent -> created race) re-reads, re-runs `buildCandidate` against the FRESH
+   * doc — so a guard inside it re-evaluates against what the write is actually about to clobber — and
+   * retries bounded (`maxAttempts`), the same shape "patch" mode's CAS loop uses minus its
+   * no-op-patch short-circuit (an overwrite always writes) and its onAbsent/notFound handling (an
+   * absent doc is a valid create in "overwrite" mode, exactly as the unconditional path always allowed).
+   */
+  coupleRead?: boolean;
   errors: MutateErrorHooks;
 }
 
@@ -218,7 +233,7 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
     }
   }
 
-  if (mode === "overwrite") {
+  if (mode === "overwrite" && !opts.coupleRead) {
     const candidate = await buildCandidate(undefined);
     const warnings = validate(candidate);
     try {
@@ -226,6 +241,46 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
       return { doc: saved, version, warnings };
     } catch (err) {
       throw classify(err, opts.remoteUrl);
+    }
+  }
+
+  if (mode === "overwrite") {
+    // coupleRead: true — read (present or absent) -> build -> validate -> CAS write, bounded-retried
+    // on conflict; see `MutateDocOptions.coupleRead`'s own comment for the full rationale (P1 review
+    // fix: closes a window where an unconditional overwrite could silently clobber a concurrent
+    // writer's change that a guard inside `buildCandidate` would otherwise have refused).
+    for (let attempt = 0; ; attempt++) {
+      let existing: OkfDocument | undefined;
+      let version: Version | null;
+      try {
+        const read = await readDocVersioned(bundle, id);
+        existing = read.doc;
+        version = read.version;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+          existing = undefined;
+          version = null; // expect-absent create
+        } else {
+          throw classify(err, opts.remoteUrl);
+        }
+      }
+
+      const candidate = await buildCandidate(existing);
+      const warnings = validate(candidate);
+      try {
+        const { doc: saved, version: newVersion } = await writeDocVersioned(
+          bundle,
+          { id, ...candidate },
+          { expectedVersion: version, actor: opts.actor },
+        );
+        return { doc: saved, version: newVersion, warnings };
+      } catch (err) {
+        if (err instanceof VersionConflict) {
+          if (attempt < maxAttempts - 1) continue;
+          throw errors.staleHead ? errors.staleHead(err) : new CliError("STALE_HEAD", err.message);
+        }
+        throw classify(err, opts.remoteUrl);
+      }
     }
   }
 

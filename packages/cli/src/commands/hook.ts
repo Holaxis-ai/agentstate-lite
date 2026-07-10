@@ -303,6 +303,25 @@ export function hookNeedsUpdate(bases: string[] = [process.cwd(), homedir()]): b
   return false;
 }
 
+/**
+ * True when ANY managed SessionStart hook is installed at any of the given scope bases (default:
+ * the cwd project scope and the user-home global scope) — Claude Code settings, Codex hooks, or
+ * the OpenCode plugin. Fs-only reads, tolerant of anything malformed. This is the onboarding
+ * last-mile signal sync's receipt hints on: no hook anywhere means new sessions never see the
+ * board until someone runs `hook install`. (Contrast {@link hookNeedsUpdate}: installed but
+ * PREDATING `session-start` — a different, self-clearing prompt on the home render.)
+ */
+export function hookInstalled(bases: string[] = [process.cwd(), homedir()]): boolean {
+  for (const base of bases) {
+    const targets = targetsFor(base);
+    for (const p of [targets.claudeSettings, targets.codexHooks]) {
+      if (readHookStatus(readSettings(p)).installed) return true;
+    }
+    if (opencodePluginInstalled(targets.opencodePlugin)) return true;
+  }
+  return false;
+}
+
 /** Injectable seam: scope base + stdout, defaulting to production. */
 export interface HookDeps {
   /** Override the scope base directory (for tests). Default: ~ (global) or cwd (project). */

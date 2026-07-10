@@ -240,9 +240,31 @@ export interface SyncState {
   marker: BoardPendingMarker | null;
   /** See {@link SELF_ACTORS_CAP}'s doc — the actors this clone's own syncs have committed. */
   selfActors: string[] | null;
+  /**
+   * ISO timestamp of the last OPPORTUNISTIC auto-pull ATTEMPT (autopull.ts — the stale-cache pull
+   * board-reading commands run). Recorded at attempt time, success or not, so a pull that CANNOT
+   * refresh the cache (offline, diverged, dirty) still backs the trigger off for a full staleness
+   * window instead of re-paying the network budget on every subsequent read. The cache's own
+   * `updatedAt` stays the success-side signal (written only by a successful pull — that contract
+   * is unchanged); this is the attempt-side throttle next to it.
+   */
+  autoPullAttemptAt: string | null;
+  /**
+   * ISO timestamp of the one-time hook-install onboarding hint (sync's receipt hints
+   * `hook install` when no SessionStart hook is installed — once per clone, never nagging).
+   * Presence = "already hinted"; the hint also self-suppresses once a hook IS installed.
+   */
+  hookHintedAt: string | null;
 }
 
-const EMPTY_STATE: SyncState = { cursor: null, cache: null, marker: null, selfActors: null };
+const EMPTY_STATE: SyncState = {
+  cursor: null,
+  cache: null,
+  marker: null,
+  selfActors: null,
+  autoPullAttemptAt: null,
+  hookHintedAt: null,
+};
 
 // ── validation (malformed → null, section-independent) ───────────────────────
 
@@ -356,6 +378,8 @@ export async function readSyncState(key: string, home: string = homedir()): Prom
     cache: asCache(parsed.cache),
     marker: asMarker(parsed.marker),
     selfActors: asSelfActors(parsed.selfActors),
+    autoPullAttemptAt: isTimestamp(parsed.autoPullAttemptAt) ? parsed.autoPullAttemptAt : null,
+    hookHintedAt: isTimestamp(parsed.hookHintedAt) ? parsed.hookHintedAt : null,
   };
 }
 
@@ -406,6 +430,8 @@ export async function writeSyncState(
     cache: next.cache ?? undefined,
     marker: next.marker ?? undefined,
     selfActors: next.selfActors ?? undefined,
+    autoPullAttemptAt: next.autoPullAttemptAt ?? undefined,
+    hookHintedAt: next.hookHintedAt ?? undefined,
   };
   await writeFileAtomic0600(syncStateDir(home), basename(path), JSON.stringify(record, null, 2) + "\n");
   return next;
@@ -510,4 +536,35 @@ export async function recordReanchor(
   };
   await writeSyncState(key, { cursor, cache }, home);
   return cache;
+}
+
+/** The last opportunistic auto-pull ATTEMPT timestamp, or `null` (absent/malformed — never throws). */
+export async function readAutoPullAttemptAt(key: string, home: string = homedir()): Promise<string | null> {
+  return (await readSyncState(key, home)).autoPullAttemptAt;
+}
+
+/**
+ * Record an opportunistic auto-pull ATTEMPT (autopull.ts calls this BEFORE its network op — see
+ * {@link SyncState.autoPullAttemptAt}: a failing/hanging pull must still back off for the window).
+ */
+export async function recordAutoPullAttempt(
+  key: string,
+  home: string = homedir(),
+  now: () => Date = () => new Date(),
+): Promise<void> {
+  await writeSyncState(key, { autoPullAttemptAt: now().toISOString() }, home);
+}
+
+/** The one-time hook-install hint's shown-at timestamp, or `null` (absent/malformed — never throws). */
+export async function readHookHintedAt(key: string, home: string = homedir()): Promise<string | null> {
+  return (await readSyncState(key, home)).hookHintedAt;
+}
+
+/** Record that sync's one-time hook-install hint was shown for this clone (never shown again). */
+export async function recordHookHinted(
+  key: string,
+  home: string = homedir(),
+  now: () => Date = () => new Date(),
+): Promise<void> {
+  await writeSyncState(key, { hookHintedAt: now().toISOString() }, home);
 }

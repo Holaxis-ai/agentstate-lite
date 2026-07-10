@@ -34,6 +34,7 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
 import { initBundle, writeDoc } from "@agentstate-lite/core";
+import { commitBoard, makeTwoCloneTopology, pushBoard, writeBoardDoc } from "./git-harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cliPackageRoot = path.resolve(here, "..");
@@ -244,5 +245,77 @@ test("built CLI: `doc update` with NO other field flags still accepts a real pip
     assert.match(after, /title: T/); // untouched
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── the opportunistic-pull DEFAULT-WIRING pin (autopull fix round, MEDIUM 3) ────────────────────
+//
+// Every IN-PROCESS suite either injects the `autoPull` seam or runs under the suite-wide
+// AGENTSTATE_LITE_NO_AUTOPULL=1 knob (packages/cli's test script) — so deleting the default
+// `deps.autoPull ?? maybeAutoPull` binding in the read commands would still pass all of them.
+// This test spawns the BUILT CLI with the knob explicitly DELETED from the child env, in a real
+// two-clone topology, and requires the read ITSELF to have pulled the teammate's pushed doc —
+// only the live default wiring can make that pass. The second half pins the documented knob
+// semantics: "0" is a non-empty value, so it DISABLES too (the variable's PRESENCE is the
+// switch). This file (the one place that builds the real CLI — a second concurrent `build.mjs`
+// in another test file would race on dist/) is deliberately where this pin lives.
+
+test("built CLI: default auto-pull wiring is LIVE — `list` pulls a stale board with the knob deleted from the child env; '0' still disables", async () => {
+  const topo = await makeTwoCloneTopology();
+  const childHomeA = await tempDir(); // isolated ~/.agentstate for the first child (no state → stale)
+  const childHomeB = await tempDir(); // …and a separate one for the knob="0" child (also stale)
+  try {
+    await writeBoardDoc(topo.a, "tasks/wired-in", {
+      frontmatter: { type: "Task", title: "Wired in", actor: "mike" },
+      body: "# Wired in\n",
+    });
+    commitBoard(topo.a, "board: A adds tasks/wired-in");
+    pushBoard(topo.a);
+
+    const env = { ...process.env, HOME: childHomeA, USERPROFILE: childHomeA };
+    delete env.AGENTSTATE_LITE_NO_AUTOPULL;
+    const r = spawnSync("node", [cliBin, "list", "--dir", topo.b.board], {
+      env,
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+    assert.equal(r.status, 0, `expected exit 0, got ${r.status}; stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.match(
+      r.stdout ?? "",
+      /tasks\/wired-in/,
+      "the DEFAULT-wired trigger must pull A's pushed doc into B before serving the read",
+    );
+
+    // Knob semantics: "0" is non-empty → disables. Fresh child HOME (no state → stale), so the
+    // pull WOULD fire here if "0" were ever treated as falsey.
+    await writeBoardDoc(topo.a, "tasks/knob-zero", {
+      frontmatter: { type: "Task", title: "Knob zero", actor: "mike" },
+      body: "# Knob zero\n",
+    });
+    commitBoard(topo.a, "board: A adds tasks/knob-zero");
+    pushBoard(topo.a);
+
+    const envZero = {
+      ...process.env,
+      HOME: childHomeB,
+      USERPROFILE: childHomeB,
+      AGENTSTATE_LITE_NO_AUTOPULL: "0",
+    };
+    const r2 = spawnSync("node", [cliBin, "list", "--dir", topo.b.board], {
+      env: envZero,
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+    assert.equal(r2.status, 0, `expected exit 0, got ${r2.status}; stdout=${r2.stdout} stderr=${r2.stderr}`);
+    assert.match(r2.stdout ?? "", /tasks\/wired-in/, "B still serves what the first read pulled");
+    assert.doesNotMatch(
+      r2.stdout ?? "",
+      /tasks\/knob-zero/,
+      "AGENTSTATE_LITE_NO_AUTOPULL='0' must DISABLE the pull — presence is the switch",
+    );
+  } finally {
+    await topo.cleanup();
+    await rm(childHomeA, { recursive: true, force: true });
+    await rm(childHomeB, { recursive: true, force: true });
   }
 });

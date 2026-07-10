@@ -30,6 +30,7 @@ import {
   validateAgainstKind,
 } from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
+import { maybeAutoPull } from "../autopull.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
@@ -109,6 +110,8 @@ Options:
 
 export interface StatusCliDeps {
   stdout: (s: string) => void;
+  /** The opportunistic board-freshness trigger (default {@link maybeAutoPull} — autopull.ts). */
+  autoPull: (dir?: string) => Promise<unknown>;
 }
 
 /** AXI list-cap default: 20 rows per finding category unless `--limit` overrides it (0 = unlimited). */
@@ -163,7 +166,10 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
     limit = Number(raw);
   }
 
-  const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
+  const remote = await resolveRemoteFlag(values.remote, values.dir);
+  // Opportunistic board freshness (autopull.ts): silent, fail-soft, detection-gated — see list.ts.
+  if (!remote) await (deps.autoPull ?? maybeAutoPull)(values.dir);
+  const bundle = await openBundle(values.dir, remote);
 
   // ONE registry load, ONE query — every finding below derives from these two results in memory.
   // A corrupt document (unparseable YAML frontmatter) is collected as its OWN finding rather than

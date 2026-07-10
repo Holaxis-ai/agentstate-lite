@@ -181,16 +181,16 @@ test("reads never throw: absent, garbage JSON, non-object JSON, foreign key, unr
     const key = bundleKey({ root: "/tmp/bundle-a" });
 
     // Absent.
-    assert.deepEqual(await readSyncState(key, home), { cursor: null, cache: null, marker: null, selfActors: null });
+    assert.deepEqual(await readSyncState(key, home), { cursor: null, cache: null, marker: null, selfActors: null, autoPullAttemptAt: null, hookHintedAt: null });
 
     // Garbage JSON.
     await mkdir(syncStateDir(home), { recursive: true });
     await writeFile(syncStatePath(key, home), "{ not json", "utf8");
-    assert.deepEqual(await readSyncState(key, home), { cursor: null, cache: null, marker: null, selfActors: null });
+    assert.deepEqual(await readSyncState(key, home), { cursor: null, cache: null, marker: null, selfActors: null, autoPullAttemptAt: null, hookHintedAt: null });
 
     // Valid JSON, wrong top-level shape.
     await writeFile(syncStatePath(key, home), "[1,2,3]\n", "utf8");
-    assert.deepEqual(await readSyncState(key, home), { cursor: null, cache: null, marker: null, selfActors: null });
+    assert.deepEqual(await readSyncState(key, home), { cursor: null, cache: null, marker: null, selfActors: null, autoPullAttemptAt: null, hookHintedAt: null });
 
     // FOREIGN KEY guard: a file at this key's path whose stored key names ANOTHER bundle (hash
     // collision / hand-copied file) reads as absent — never another bundle's state.
@@ -204,7 +204,7 @@ test("reads never throw: absent, garbage JSON, non-object JSON, foreign key, unr
     // Unreadable: the state path is a DIRECTORY (read error, not ENOENT) — still null, no throw.
     await rm(syncStatePath(key, home));
     await mkdir(syncStatePath(key, home));
-    assert.deepEqual(await readSyncState(key, home), { cursor: null, cache: null, marker: null, selfActors: null });
+    assert.deepEqual(await readSyncState(key, home), { cursor: null, cache: null, marker: null, selfActors: null, autoPullAttemptAt: null, hookHintedAt: null });
   } finally {
     await rm(home, { recursive: true, force: true });
   }
@@ -341,7 +341,7 @@ test("cross-bundle isolation: two bundles from two distinct origins get distinct
     await writeCursor(keyOne, { tier: "git", token: boardHead(topoOne.a) }, home);
     await writeCache(keyOne, sampleCache(), home);
     await refreshMarker(keyOne, home);
-    assert.deepEqual(await readSyncState(keyTwo, home), { cursor: null, cache: null, marker: null, selfActors: null });
+    assert.deepEqual(await readSyncState(keyTwo, home), { cursor: null, cache: null, marker: null, selfActors: null, autoPullAttemptAt: null, hookHintedAt: null });
 
     // Now write bundle TWO and mutate it — bundle ONE must be untouched.
     await writeCursor(keyTwo, { tier: "git", token: boardHead(topoTwo.a) }, home);

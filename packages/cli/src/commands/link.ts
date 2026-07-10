@@ -43,6 +43,7 @@ import {
   type Version,
 } from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
+import { maybeAutoPull } from "../autopull.js";
 import { CliError, classifyBundleError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
@@ -103,6 +104,11 @@ const LINK_ADD_MAX_ATTEMPTS = 5;
 
 export interface LinkCliDeps {
   stdout: (s: string) => void;
+  /**
+   * The opportunistic board-freshness trigger `link show` (the READ verb only — never `link add`)
+   * runs before serving a LOCAL read (default: autopull.ts's `maybeAutoPull`).
+   */
+  autoPull?: (dir?: string) => Promise<unknown>;
 }
 
 /** A doc's `type` field, or "" when absent/non-string (mirrors `status.ts`'s own `docType`). */
@@ -184,7 +190,7 @@ export async function link(argv: string[], deps: Partial<LinkCliDeps> = {}): Pro
   const rest = argv.slice(1);
 
   if (sub === "add") return linkAdd(rest, stdout);
-  if (sub === "show") return linkShow(rest, stdout);
+  if (sub === "show") return linkShow(rest, stdout, deps.autoPull);
   if (sub === "list") return linkList(rest, stdout);
   if (sub === "-h" || sub === "--help" || sub === undefined) {
     stdout(LINK_USAGE);
@@ -416,7 +422,11 @@ async function linkAdd(argv: string[], stdout: (s: string) => void): Promise<voi
   stdout(render(receipt, mode));
 }
 
-async function linkShow(argv: string[], stdout: (s: string) => void): Promise<void> {
+async function linkShow(
+  argv: string[],
+  stdout: (s: string) => void,
+  autoPull?: (dir?: string) => Promise<unknown>,
+): Promise<void> {
   const { values, positionals } = parseOrUsage(
     () =>
       parseArgs({
@@ -474,7 +484,10 @@ async function linkShow(argv: string[], stdout: (s: string) => void): Promise<vo
     });
   }
 
-  const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
+  const remote = await resolveRemoteFlag(values.remote, values.dir);
+  // Opportunistic board freshness (autopull.ts): silent, fail-soft, detection-gated — see list.ts.
+  if (!remote) await (autoPull ?? maybeAutoPull)(values.dir);
+  const bundle = await openBundle(values.dir, remote);
 
   // Outbound links come from the source doc (missing doc → NOT_FOUND). Backlinks are derived over the
   // whole bundle and are valid even for a not-yet-written target, so they are computed regardless.
