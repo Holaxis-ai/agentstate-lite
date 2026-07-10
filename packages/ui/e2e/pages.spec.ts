@@ -20,9 +20,9 @@ test("launcher lists the bundle's Page docs", async ({ page }) => {
   const ui = await bootUiOverPagesBundle([]);
   try {
     await page.goto(ui.url); // token -> cookie + SPA boot
-    await expect(page.locator('[data-page-id="pages-registry/activity-feed"]')).toBeVisible();
-    await expect(page.locator('[data-page-id="pages-registry/board"]')).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Activity feed" })).toBeVisible();
+    await expect(page.locator('[data-page-id="pages-registry/pulse"]')).toBeVisible();
+    await expect(page.locator('[data-page-id="pages-registry/roadmap"]')).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Pulse — activity feed" })).toBeVisible();
   } finally {
     await ui.cleanup();
   }
@@ -32,17 +32,18 @@ test("opening a page frames a sandboxed (allow-scripts only) iframe and the brid
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="pages-registry/board"]').click();
+    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
 
     const iframe = page.locator("iframe.page-frame-iframe");
     await expect(iframe).toBeVisible();
     // Opaque origin: allow-scripts and NOTHING else (no allow-same-origin).
     expect(await iframe.getAttribute("sandbox")).toBe("allow-scripts");
 
-    // The bridge query round-tripped: the seeded tasks rendered INSIDE the iframe.
+    // The bridge round-tripped BOTH the Roadmap Item query and the `edges` request: the seeded
+    // item renders, and its rollup counts the two seeded (non-terminal) tasks it `contains`.
     const frame = page.frameLocator("iframe.page-frame-iframe");
-    await expect(frame.locator(".card h3", { hasText: "Alpha task" })).toBeVisible();
-    await expect(frame.locator(".card h3", { hasText: "Beta task" })).toBeVisible();
+    await expect(frame.locator(".item .title", { hasText: "Spike work" })).toBeVisible();
+    await expect(frame.locator(".roll .count")).toHaveText("0/2 done");
   } finally {
     await ui.cleanup();
   }
@@ -52,7 +53,7 @@ test("the sandboxed page is structurally blocked from reaching the data API (con
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="pages-registry/board"]').click();
+    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
     const handle = await page.waitForSelector("iframe.page-frame-iframe");
     const frame = await handle.contentFrame();
     if (!frame) throw new Error("iframe had no content frame");
@@ -84,11 +85,11 @@ test("the sandboxed page cannot navigate its frame (or the top) to an external o
 
     await page.goto(ui.url);
     const topOriginBefore = new URL(page.url()).origin;
-    await page.locator('[data-page-id="pages-registry/board"]').click();
+    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
     const handle = await page.waitForSelector("iframe.page-frame-iframe");
     const frame = await handle.contentFrame();
     if (!frame) throw new Error("iframe had no content frame");
-    await expect(page.frameLocator("iframe.page-frame-iframe").locator(".col").first()).toBeVisible();
+    await expect(page.frameLocator("iframe.page-frame-iframe").locator(".item").first()).toBeVisible();
 
     // From inside the page, attempt to escape to an external origin — self-nav (blocked by the
     // shell's frame-src 'self') and top-nav (blocked by the sandbox: no allow-top-navigation).
@@ -131,23 +132,25 @@ test("P1: an SSE outage self-heals — a change made while the stream was down a
   let second: Awaited<ReturnType<typeof bootUiServerInProcess>> | undefined;
   try {
     await page.goto(`http://127.0.0.1:${first.port}/?token=${secret}`);
-    await page.locator('[data-page-id="pages-registry/board"]').click();
+    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
     const frame = page.frameLocator("iframe.page-frame-iframe");
-    await expect(frame.locator(".col", { hasText: "To do" }).locator(".card h3", { hasText: "Alpha task" })).toBeVisible();
+    const spike = frame.locator(".item", { hasText: "Spike work" });
+    // Neither seeded task is done/canceled yet.
+    await expect(spike.locator(".roll .count")).toHaveText("0/2 done");
 
     // The server goes away mid-session: the stream drops FOR REAL (socket severed).
     await first.close();
     await page.waitForTimeout(500); // let the client notice the drop
 
     // The change happens DURING the outage — its SSE frame is lost for good.
-    execFileSync(process.execPath, [CLI_DIST, "doc", "update", "tasks/alpha", "--status", "in_progress", "--dir", dir], {
+    execFileSync(process.execPath, [CLI_DIST, "doc", "update", "tasks/alpha", "--status", "done", "--dir", dir], {
       stdio: "ignore",
     });
 
     // Same bundle, same port, same secret: the stream reconnects and the resync must recover the
-    // missed change even though its delta frame never arrived.
+    // missed change even though its delta frame never arrived — the rollup counter moves.
     second = await bootUiServerInProcess({ dir, port: first.port, sessionSecret: secret });
-    await expect(frame.locator(".col", { hasText: "In progress" }).locator(".card h3", { hasText: "Alpha task" })).toBeVisible({
+    await expect(spike.locator(".roll .count")).toHaveText("1/2 done", {
       timeout: 20_000,
     });
   } finally {
@@ -169,7 +172,7 @@ test("P1: a session-rotating restart surfaces 'Connection lost' instead of stayi
   let second: Awaited<ReturnType<typeof bootUiServerInProcess>> | undefined;
   try {
     await page.goto(`http://127.0.0.1:${first.port}/?token=restart-403-first-secret`);
-    await page.locator('[data-page-id="pages-registry/board"]').click();
+    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
     await expect(page.locator("iframe.page-frame-iframe")).toBeVisible();
 
     // The server goes away and comes back on the SAME port with a DIFFERENT secret — the open
@@ -216,12 +219,12 @@ test("P1: deleting an open page's registry doc revokes the frame — the iframe 
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="pages-registry/board"]').click();
+    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
     const frame = page.frameLocator("iframe.page-frame-iframe");
-    await expect(frame.locator(".card h3", { hasText: "Alpha task" })).toBeVisible();
+    await expect(frame.locator(".item .title", { hasText: "Spike work" })).toBeVisible();
 
     // Delete the registry doc on disk via the CLI — the watcher pushes the removal over SSE.
-    execFileSync(process.execPath, [CLI_DIST, "doc", "delete", "pages-registry/board", "--dir", ui.dir], { stdio: "ignore" });
+    execFileSync(process.execPath, [CLI_DIST, "doc", "delete", "pages-registry/roadmap", "--dir", ui.dir], { stdio: "ignore" });
 
     // The open frame is torn down (not merely stale) and an explicit revoked state shows.
     await expect(page.locator("iframe.page-frame-iframe")).toHaveCount(0, { timeout: 10_000 });
@@ -231,23 +234,24 @@ test("P1: deleting an open page's registry doc revokes the frame — the iframe 
   }
 });
 
-test("a status change streams live into the open page (card moves columns, no reload)", async ({ page }) => {
+test("a status change streams live into the open page (roadmap rollup updates, no reload)", async ({ page }) => {
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="pages-registry/board"]').click();
+    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
 
     const frame = page.frameLocator("iframe.page-frame-iframe");
-    // Alpha starts in the To-do column.
-    await expect(frame.locator(".col", { hasText: "To do" }).locator(".card h3", { hasText: "Alpha task" })).toBeVisible();
+    const spike = frame.locator(".item", { hasText: "Spike work" });
+    // Neither seeded task (alpha: todo, beta: blocked) is done/canceled yet.
+    await expect(spike.locator(".roll .count")).toHaveText("0/2 done");
 
-    // Flip it on disk via the CLI — the ui server's fs.watch picks it up and pushes over SSE.
-    execFileSync(process.execPath, [CLI_DIST, "doc", "update", "tasks/alpha", "--status", "in_progress", "--dir", ui.dir], {
+    // Flip alpha to done on disk via the CLI — the ui server's fs.watch picks it up and pushes over SSE.
+    execFileSync(process.execPath, [CLI_DIST, "doc", "update", "tasks/alpha", "--status", "done", "--dir", ui.dir], {
       stdio: "ignore",
     });
 
-    // Within a moment the card is in the In-progress column, without a page reload.
-    await expect(frame.locator(".col", { hasText: "In progress" }).locator(".card h3", { hasText: "Alpha task" })).toBeVisible({
+    // Within a moment the item's rollup counts it, without a page reload.
+    await expect(spike.locator(".roll .count")).toHaveText("1/2 done", {
       timeout: 10_000,
     });
   } finally {

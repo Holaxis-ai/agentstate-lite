@@ -21,7 +21,7 @@ launcher renders in a sandboxed, opaque-origin iframe. The page reaches bundle d
 the read-only postMessage bridge (`examples/pages/BRIDGE.md`) — it never holds a credential.
 
 - `title` (required) — the launcher card's heading.
-- `entry` (required) — the HTML blob key, e.g. `pages/board.html`.
+- `entry` (required) — the HTML blob key, e.g. `pages/roadmap.html`.
 - `description` (optional) — one line shown on the launcher card.
 
 Pages sync, version, and attribute like any doc; the HTML bytes travel as an opaque blob via

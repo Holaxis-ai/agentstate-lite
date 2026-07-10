@@ -127,8 +127,10 @@ export async function bootUiOverDirBundle(seedTasks: SeedTask[]): Promise<Runnin
 
 /**
  * Seed a fresh temp bundle with the given Tasks AND the two seed pages
- * (`examples/pages/{activity-feed,board}.html` blobs + their `type: Page` registry docs) — the
- * fixture for the pages-spike e2e (tasks/ui-pages-spike). Returns the bundle dir.
+ * (`examples/pages/{pulse,roadmap}.html` blobs + their `type: Page` registry docs) — the
+ * fixture for the pages-spike e2e (tasks/ui-pages-spike). The tasks are wired into a single
+ * `roadmap-items/spike` doc via `contains` links, so the Roadmap page's `edges` request and
+ * rollup bar have real data to render. Returns the bundle dir.
  */
 export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
   const { initBundle, writeDoc, writeBlob } = await import("@agentstate-lite/core");
@@ -137,7 +139,7 @@ export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-pages-e2e-"));
   await initBundle(dir);
   // The Task convention makes `doc update --status` patchable (the live-update driver) and gives
-  // the board page its status columns — mirrors this repo's own board.
+  // the Pulse/Roadmap pages their status badges — mirrors this repo's own board.
   await writeDoc(
     { root: dir },
     {
@@ -160,16 +162,23 @@ export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
   for (const task of seedTasks) {
     await writeDoc({ root: dir }, { id: task.id, frontmatter: task.frontmatter, body: task.body });
   }
+  // One Roadmap Item `contains`-linking every seeded task (relative link, sibling directory) — the
+  // fixture the Roadmap page's `edges({ text: "contains" })` request and rollup bar render against.
+  const containsLinks = seedTasks.map((t) => `[contains](../${t.id}.md)`).join("\n\n");
   await writeDoc(
     { root: dir },
-    { id: "pages-registry/activity-feed", frontmatter: { type: "Page", title: "Activity feed", entry: "pages/activity-feed.html", description: "Live document feed." }, body: "" },
+    { id: "roadmap-items/spike", frontmatter: { type: "Roadmap Item", title: "Spike work", status: "active" }, body: containsLinks },
   );
   await writeDoc(
     { root: dir },
-    { id: "pages-registry/board", frontmatter: { type: "Page", title: "Board", entry: "pages/board.html", description: "Tasks in status columns." }, body: "" },
+    { id: "pages-registry/pulse", frontmatter: { type: "Page", title: "Pulse — activity feed", entry: "pages/pulse.html", description: "Live document feed." }, body: "" },
   );
-  await writeBlob({ root: dir }, "pages/activity-feed.html", await readFile(path.join(examples, "activity-feed.html")), "text/html; charset=utf-8");
-  await writeBlob({ root: dir }, "pages/board.html", await readFile(path.join(examples, "board.html")), "text/html; charset=utf-8");
+  await writeDoc(
+    { root: dir },
+    { id: "pages-registry/roadmap", frontmatter: { type: "Page", title: "Roadmap", entry: "pages/roadmap.html", description: "Roadmap items and their contained tasks." }, body: "" },
+  );
+  await writeBlob({ root: dir }, "pages/pulse.html", await readFile(path.join(examples, "pulse.html")), "text/html; charset=utf-8");
+  await writeBlob({ root: dir }, "pages/roadmap.html", await readFile(path.join(examples, "roadmap.html")), "text/html; charset=utf-8");
   return dir;
 }
 

@@ -62,11 +62,11 @@ test("P1: the session token never reaches a framed page — address bar scrubbed
       .not.toContain(token as string);
 
     // The session survives the scrub (cookie-auth'd from here on): open a page.
-    await page.locator('[data-page-id="pages-registry/board"]').click();
+    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
     const handle = await page.waitForSelector("iframe.page-frame-iframe");
     const frame = await handle.contentFrame();
     if (!frame) throw new Error("iframe had no content frame");
-    await expect(page.frameLocator("iframe.page-frame-iframe").locator(".card h3", { hasText: "Alpha task" })).toBeVisible();
+    await expect(page.frameLocator("iframe.page-frame-iframe").locator(".item .title", { hasText: "Spike work" })).toBeVisible();
 
     // Inside the untrusted page: NO referrer at all — above all, not the tokenized shell URL.
     const referrer = await frame.evaluate(() => document.referrer);

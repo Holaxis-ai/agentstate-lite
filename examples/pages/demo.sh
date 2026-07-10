@@ -22,18 +22,20 @@ fi
 SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/aslite-pages-demo.XXXXXX")"
 BUNDLE="$SCRATCH/bundle"
 mkdir -p "$BUNDLE"
-# Copy the repo's live board into the scratch bundle (contents, including dotfiles).
+# Copy the repo's live board into the scratch bundle (contents, including dotfiles) — this is why
+# the Roadmap page renders real content immediately: this repo's own board already carries Roadmap
+# Item docs with `contains` links to real tasks.
 cp -R "$REPO/.agentstate-lite/." "$BUNDLE/"
 
 echo "Seeding scratch bundle: $BUNDLE"
 
 # Convention first (so the registry docs validate against it), then the registry docs, then the
 # page blobs. .md keys route through the doc engine; other keys are opaque blobs.
-node "$CLI" promote "$HERE/conventions/page.md"               --doc-key conventions/page.md            --dir "$BUNDLE" >/dev/null
-node "$CLI" promote "$HERE/pages-registry/activity-feed.md"   --doc-key pages-registry/activity-feed.md --dir "$BUNDLE" >/dev/null
-node "$CLI" promote "$HERE/pages-registry/board.md"           --doc-key pages-registry/board.md         --dir "$BUNDLE" >/dev/null
-node "$CLI" promote "$HERE/activity-feed.html"                --doc-key pages/activity-feed.html        --dir "$BUNDLE" >/dev/null
-node "$CLI" promote "$HERE/board.html"                        --doc-key pages/board.html                --dir "$BUNDLE" >/dev/null
+node "$CLI" promote "$HERE/conventions/page.md"          --doc-key conventions/page.md            --dir "$BUNDLE" >/dev/null
+node "$CLI" promote "$HERE/pages-registry/pulse.md"      --doc-key pages-registry/pulse.md        --dir "$BUNDLE" >/dev/null
+node "$CLI" promote "$HERE/pages-registry/roadmap.md"    --doc-key pages-registry/roadmap.md      --dir "$BUNDLE" >/dev/null
+node "$CLI" promote "$HERE/pulse.html"                   --doc-key pages/pulse.html               --dir "$BUNDLE" >/dev/null
+node "$CLI" promote "$HERE/roadmap.html"                 --doc-key pages/roadmap.html             --dir "$BUNDLE" >/dev/null
 
 # Discover a 'todo' task id to demo a live status change.
 TASK_ID="$(node "$CLI" list --type Task --dir "$BUNDLE" --json \
@@ -41,24 +43,26 @@ TASK_ID="$(node "$CLI" list --type Task --dir "$BUNDLE" --json \
 [ -n "$TASK_ID" ] || TASK_ID="tasks/<some-todo-task>"
 
 echo
-echo "Seeded 2 pages (activity-feed, board) + the Page convention."
+echo "Seeded 2 pages (pulse, roadmap) + the Page convention."
 echo "──────────────────────────────────────────────────────────────────────────"
 echo "1) Launch the UI (foreground; it prints a tokenized http://127.0.0.1:PORT URL to open):"
 echo
 echo "   node $CLI ui --dir $BUNDLE --open"
 echo
-echo "   The landing is the LAUNCHER (the ui command's one surface): click 'Activity feed' or"
-echo "   'Board' to open that page in a sandboxed iframe."
+echo "   The landing is the LAUNCHER (the ui command's one surface): click 'Pulse — activity feed'"
+echo "   or 'Roadmap' to open that page in a sandboxed iframe. Roadmap is the one that exercises the"
+echo "   bridge's \`edges\` request — expand an item to see its contained tasks and rollup bar."
 echo
 echo "2) In a SECOND terminal, drive live updates against the SAME scratch bundle:"
 echo
-echo "   # move a task — watch the Board page slide the card to its new column (~1s):"
-echo "   node $CLI doc update $TASK_ID --status in_progress --dir $BUNDLE"
+echo "   # move a task to done — watch a Roadmap item's rollup bar shift, and the row land fresh"
+echo "   # in Pulse's feed (~1s):"
+echo "   node $CLI doc update $TASK_ID --status done --dir $BUNDLE"
 echo
 echo "   # edit a page's HTML and save — watch the iframe HOT-RELOAD with the new bytes:"
-echo "   printf '\\n<!-- edited %s -->\\n' \"\$(date)\" >> $BUNDLE/pages/activity-feed.html"
+echo "   printf '\\n<!-- edited %s -->\\n' \"\$(date)\" >> $BUNDLE/pages/pulse.html"
 echo
-echo "   # add a brand-new doc — watch it appear at the top of the Activity feed:"
+echo "   # add a brand-new doc — watch it appear at the top of the Pulse feed:"
 echo "   node $CLI new Task tasks/demo-live --title 'Live demo task' --status todo --dir $BUNDLE"
 echo "──────────────────────────────────────────────────────────────────────────"
 echo "Scratch bundle (safe to delete): $SCRATCH"
