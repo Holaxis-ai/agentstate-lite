@@ -7,10 +7,14 @@
 //
 //   - "create-only" (`new`): never reads. Writes with an expect-absent CAS (`expectedVersion: null`)
 //     — a pre-existing id throws `VersionConflict`, mapped to a caller-supplied ALREADY_EXISTS.
-//   - "overwrite" (`doc write`): never reads either. Any existing-doc peek a verb needs (e.g. `doc
-//     write`'s F1 body-blanking guard) is the VERB's OWN concern, run before calling this — it has
-//     its own conditional-read/error-classification shape that does not belong in a generic helper.
-//     Writes unconditionally (last-writer-wins), matching `writeDoc`'s historical default.
+//   - "overwrite" (`doc write`): ALWAYS reads (present or absent) immediately before EACH write
+//     attempt and hands the result to `buildCandidate`, so a read-dependent guard/decision inside it
+//     (e.g. `doc write`'s schema-loss refusal, F1 body-blanking guard, link-drop guard) evaluates
+//     against a version-matched snapshot — never a stale read from before a concurrent writer's
+//     change — and CASes the write against that same snapshot's version, bounded-retried on
+//     conflict (decision: coupling the read to the write is now UNCONDITIONAL for "overwrite" —
+//     there is no longer an uncoupled/unconditional-write posture; `doc write --replace-links`
+//     narrows only the link-drop guard's own decision, never the CAS itself).
 //   - "patch" (`doc update`): reads (versioned) inside a bounded CAS-retry loop, so a
 //     concurrent writer moving the doc between read and write is retried rather than lost. On an
 //     ABSENT doc: `onAbsent: "fail"` (`doc update`) throws a caller-supplied NOT_FOUND before
@@ -132,21 +136,6 @@ export interface MutateDocOptions {
    * patch keeps its pre-existing bounded-retry behavior unchanged.
    */
   expectedVersion?: Version;
-  /**
-   * "overwrite" mode only: couple the read `buildCandidate` needs to the WRITE via compare-and-swap,
-   * instead of writing unconditionally (the default when omitted/false — the historical
-   * last-writer-wins behavior, unchanged for any caller that doesn't set this). When true, reads the
-   * CURRENT doc (present OR absent) immediately before EACH write attempt and passes it to
-   * `buildCandidate`, so a per-write guard inside `buildCandidate` (e.g. `doc write`'s link-drop guard,
-   * `guardDroppedLinks`) always evaluates against a version-matched snapshot — never a stale read from
-   * before a concurrent writer's change. A `VersionConflict` (ANY concurrent writer moved the doc,
-   * INCLUDING a concurrent absent -> created race) re-reads, re-runs `buildCandidate` against the FRESH
-   * doc — so a guard inside it re-evaluates against what the write is actually about to clobber — and
-   * retries bounded (`maxAttempts`), the same shape "patch" mode's CAS loop uses minus its
-   * no-op-patch short-circuit (an overwrite always writes) and its onAbsent/notFound handling (an
-   * absent doc is a valid create in "overwrite" mode, exactly as the unconditional path always allowed).
-   */
-  coupleRead?: boolean;
   errors: MutateErrorHooks;
 }
 
@@ -234,17 +223,6 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
     }
   }
 
-  if (mode === "overwrite" && !opts.coupleRead) {
-    const candidate = await buildCandidate(undefined);
-    const warnings = validate(candidate);
-    try {
-      const { doc: saved, version } = await writeDocVersioned(bundle, { id, ...candidate }, opts.actor ? { actor: opts.actor } : undefined);
-      return { doc: saved, version, warnings };
-    } catch (err) {
-      throw classify(err, opts.remoteUrl);
-    }
-  }
-
   // A versioned read of `id`, shared by both remaining modes below: present -> {doc, version};
   // absent (ENOENT) -> {undefined, null} (an expect-absent CAS basis) — any OTHER read error is
   // classified and thrown immediately (never retried; only a `VersionConflict` from the WRITE
@@ -260,16 +238,16 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
   };
 
   if (mode === "overwrite") {
-    // coupleRead: true — read (present or absent) -> build -> validate -> CAS write, bounded-retried
-    // on conflict via the shared `versionedMutation` primitive (core's ONE read-decide-CAS-retry
-    // boundary — CLAUDE.md gate 3); see `MutateDocOptions.coupleRead`'s own comment for the full
-    // rationale (P1 review fix: closes a window where an unconditional overwrite could silently
-    // clobber a concurrent writer's change that a guard inside `buildCandidate` would otherwise have
-    // refused). `decide` re-runs `buildCandidate`/`validate` against EVERY attempt's fresh read —
-    // never a decision computed once and blindly retried with a newer token — which is exactly what
-    // lets a guard inside `buildCandidate` (e.g. `doc write`'s link-drop guard) see a concurrent
-    // writer's change instead of a stale snapshot. This mode never converges to a no-op (an
-    // overwrite always writes), so `decide` never returns `done`.
+    // Read (present or absent) -> build -> validate -> CAS write, bounded-retried on conflict via the
+    // shared `versionedMutation` primitive (core's ONE read-decide-CAS-retry boundary — CLAUDE.md
+    // gate 3) — UNCONDITIONALLY coupled (P1 review fix, made the only posture in the mutation-boundary
+    // consolidation: closes a window where an unconditional overwrite could silently clobber a
+    // concurrent writer's change that a guard inside `buildCandidate` would otherwise have refused).
+    // `decide` re-runs `buildCandidate`/`validate` against EVERY attempt's fresh read — never a
+    // decision computed once and blindly retried with a newer token — which is exactly what lets a
+    // guard inside `buildCandidate` (e.g. `doc write`'s link-drop guard) see a concurrent writer's
+    // change instead of a stale snapshot. This mode never converges to a no-op (an overwrite always
+    // writes), so `decide` never returns `done`.
     let savedDoc: OkfDocument | undefined;
     let warnings: ValidationWarning[] = [];
     try {

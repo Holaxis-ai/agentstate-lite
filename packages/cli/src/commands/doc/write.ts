@@ -2,9 +2,9 @@
 // the round-review stdin-detection fix this verb's body-source guard depends on.
 import { parseArgs } from "node:util";
 import { promises as fs } from "node:fs";
-import { readDoc, loadKinds, type Frontmatter, type OkfDocument } from "@agentstate-lite/core";
+import { loadKinds, type Frontmatter, type OkfDocument } from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../../bundle.js";
-import { CliError, classifyBundleError } from "../../errors.js";
+import { CliError } from "../../errors.js";
 import { parseOrUsage } from "../../args.js";
 import { render, resolveMode } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
@@ -115,76 +115,12 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
   }
 
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
-
-  // Read the EXISTING doc (if any) ONCE. Reused by the schema-loss (convention) refusal, the F1
-  // body-blank refusal, AND the dropped-frontmatter-fields warning below — none of those depend on a
-  // concurrent writer landing between this peek and the eventual write, so a single upfront read is
-  // fine for them. A create (ENOENT) leaves `existing` undefined and all three skip. The LINK-DROP
-  // guard is the one exception: it re-reads its OWN fresh snapshot inside `mutateDoc`'s coupled
-  // "overwrite" loop below (never this peek), since a stale read there would let a race silently
-  // defeat the very guard this file exists to enforce — see the comment at the `coupleRead` call.
   const isConventionPath = id.startsWith("conventions/");
-  let existing: OkfDocument | undefined;
-  try {
-    existing = await readDoc(bundle, id);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
-      throw classifyBundleError(err, values.remote);
-    }
-    // ENOENT: no existing doc — this is a creation, not an overwrite. Nothing to guard.
-  }
 
-  // SCHEMA-LOSS guard (cold-start study #3): `doc write` replaces the WHOLE document and carries only
-  // a fixed flag set (type/title/description/resource/tags/timestamp) — it has NO governs/fields
-  // flags. Overwriting an existing kind CONVENTION with it silently drops the convention's schema
-  // (governs/fields/path), un-declaring its kind with exit 0 and no warning. Refuse.
-  if (isConventionPath && existing && existing.frontmatter.type === "Convention") {
-    const governs =
-      typeof existing.frontmatter.governs === "string" && existing.frontmatter.governs.trim()
-        ? existing.frontmatter.governs
-        : "(unknown)";
-    throw new CliError(
-      "USAGE",
-      `refusing to overwrite kind convention '${id}' with 'doc write' — it replaces the whole document and ` +
-        `would drop the convention's schema (governs/fields/path), un-declaring the '${governs}' kind. To change ` +
-        `its title/body, use 'doc update' (it preserves the schema). To change the schema fields, use ` +
-        `'${cliInvocation()} kind field "${governs}" add/remove <name>' (or edit the convention's markdown frontmatter directly).`,
-      { help: `${cliInvocation()} doc update ${id} --title <t>` },
-    );
-  }
-
-  // F1 (P1, data loss) guard: an existing, non-empty body must not be silently blanked when no body
-  // source was given and the caller hasn't opted into blanking (--blank-body). A brand-new doc is
-  // always allowed through (an empty body is a valid creation).
-  if (!bodySourceGiven && !blankBody && existing && existing.body.trim() !== "") {
-    throw new CliError(
-      "USAGE",
-      `'${id}' already has a non-empty body and no body source was given (--body, --body-file, or ` +
-        `piped stdin) — refusing to silently blank it. Pass a body source, run ` +
-        `'${cliInvocation()} doc update ${id}' to patch other fields while preserving the body, or ` +
-        `pass --blank-body to blank it deliberately.`,
-      {
-        help: `${cliInvocation()} doc update ${id}`,
-        details: { existing_body_chars: existing.body.length },
-      },
-    );
-  }
-
-  // Link-drop guard (data loss): a full-body replace over an existing doc must not silently drop
-  // outbound cross-links the old body carried — see `guardDroppedLinks`'s own comment for the exact
-  // match rule and why a normal read-modify-write never fires it. `--replace-links` opts in.
-  //
-  // P1 review fix: the guard's own decision must not be based on a STALE read. The peek above
-  // (`existing`) is read ONCE, before `loadKinds`/`mutateDoc` — a concurrent writer (e.g. another
-  // agent adding a link, or even creating this very doc from scratch) could land between that peek
-  // and this write, and an unconditional overwrite would silently clobber it regardless of what the
-  // guard decided from the now-stale snapshot. `coupleRead: true` below makes `mutateDoc` re-read the
-  // CURRENT doc (present or absent) immediately before EACH write attempt and hand it to
-  // `buildCandidate`, which re-runs the guard against THAT snapshot — so a concurrently-added link
-  // is visible and protected, and a concurrent absent -> created race is caught too (the write's CAS
-  // conflicts, `mutateDoc` re-reads, and the guard now sees the new doc's links). `--replace-links`
-  // still means "I accept dropping MY OWN read's links" — coupling is skipped entirely in that case,
-  // preserving the historical unconditional last-writer-wins write (nothing left to protect).
+  // `--replace-links` narrows the LINK-DROP guard's own decision ("I accept dropping MY OWN read's
+  // links") — it no longer disables the CAS coupling itself (decision: `mutateDoc`'s "overwrite" mode
+  // is UNCONDITIONALLY coupled now; see mutate.ts). A full unconditional write is no longer a posture
+  // this verb has access to.
   const replaceLinks = Boolean(values["replace-links"]);
 
   // If a kind convention governs `type`, validate against it — WARN-by-default (attach `warnings[]`
@@ -196,21 +132,84 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
   // bundle (no Convention docs) loads an empty registry, so this is a no-op.
   const registry = await loadKinds(bundle);
 
-  // "overwrite" mode, coupled (unless --replace-links): re-reads before each write attempt so the
-  // link-drop guard inside `buildCandidate` always sees a version-matched snapshot, bounded-retried on
-  // conflict (see the comment above and `MutateDocOptions.coupleRead`'s own doc).
+  // `droppedFields` is set inside `buildCandidate` on the WINNING attempt (mutateDoc's "overwrite"
+  // mode calls it once per CAS attempt; the last call before a successful write is the one whose
+  // `existing` snapshot actually got replaced) — surfaced on the receipt below.
+  let droppedFields: string[] = [];
+
+  // "overwrite" mode: `mutateDoc` re-reads the CURRENT doc (present or absent) immediately before
+  // EACH write attempt and hands it to `buildCandidate` as `fresh` — so every read-dependent decision
+  // below (schema-loss refusal, F1 body-blank refusal, link-drop guard, dropped-fields) evaluates
+  // against a version-matched snapshot on EVERY attempt, never a stale read from before a concurrent
+  // writer's change (P1 review fix, generalized in the mutation-boundary consolidation: these three
+  // guards used to ride a single upfront peek taken before `mutateDoc` ever ran, so a Convention
+  // created concurrently between that peek and the write, or a competing writer filling/racing the
+  // body, could slip past a guard that decided from stale bytes). `--replace-links` still means "I
+  // accept dropping MY OWN read's links" — it disables ONLY `guardDroppedLinks`'s own check below,
+  // never the CAS coupling itself.
   const result = await mutateDoc({
     bundle,
     id,
     mode: "overwrite",
-    coupleRead: !replaceLinks,
     registry,
     remoteUrl: values.remote,
     strict: Boolean(values.strict),
     helpOnKindReject: `${cliInvocation()} kinds`,
     actor: values.actor?.trim(),
-    buildCandidate: (fresh) => {
+    buildCandidate: (fresh: OkfDocument | undefined) => {
+      // SCHEMA-LOSS guard (cold-start study #3): `doc write` replaces the WHOLE document and carries
+      // only a fixed flag set (type/title/description/resource/tags/timestamp) — it has NO
+      // governs/fields flags. Overwriting an existing kind CONVENTION with it silently drops the
+      // convention's schema (governs/fields/path), un-declaring its kind with exit 0 and no warning.
+      // Refuse.
+      if (isConventionPath && fresh && fresh.frontmatter.type === "Convention") {
+        const governs =
+          typeof fresh.frontmatter.governs === "string" && fresh.frontmatter.governs.trim()
+            ? fresh.frontmatter.governs
+            : "(unknown)";
+        throw new CliError(
+          "USAGE",
+          `refusing to overwrite kind convention '${id}' with 'doc write' — it replaces the whole document and ` +
+            `would drop the convention's schema (governs/fields/path), un-declaring the '${governs}' kind. To change ` +
+            `its title/body, use 'doc update' (it preserves the schema). To change the schema fields, use ` +
+            `'${cliInvocation()} kind field "${governs}" add/remove <name>' (or edit the convention's markdown frontmatter directly).`,
+          { help: `${cliInvocation()} doc update ${id} --title <t>` },
+        );
+      }
+
+      // F1 (P1, data loss) guard: an existing, non-empty body must not be silently blanked when no
+      // body source was given and the caller hasn't opted into blanking (--blank-body). A brand-new
+      // doc is always allowed through (an empty body is a valid creation).
+      if (!bodySourceGiven && !blankBody && fresh && fresh.body.trim() !== "") {
+        throw new CliError(
+          "USAGE",
+          `'${id}' already has a non-empty body and no body source was given (--body, --body-file, or ` +
+            `piped stdin) — refusing to silently blank it. Pass a body source, run ` +
+            `'${cliInvocation()} doc update ${id}' to patch other fields while preserving the body, or ` +
+            `pass --blank-body to blank it deliberately.`,
+          {
+            help: `${cliInvocation()} doc update ${id}`,
+            details: { existing_body_chars: fresh.body.length },
+          },
+        );
+      }
+
+      // Link-drop guard (data loss): a full-body replace over an existing doc must not silently drop
+      // outbound cross-links the old body carried — see `guardDroppedLinks`'s own comment for the
+      // exact match rule and why a normal read-modify-write never fires it. `--replace-links` opts in.
       if (fresh) guardDroppedLinks(bundle, fresh, body, replaceLinks);
+
+      // Dropped-frontmatter warning (cold-start study r3): `doc write` replaces the WHOLE document, so
+      // an overwrite (e.g. re-running the "same" write, expecting idempotency) silently REGRESSES
+      // frontmatter fields the existing doc carried that this write didn't re-supply — e.g. a `status`
+      // a prior `doc update`/`new` set. Computed fresh on EVERY attempt (never a stale upfront peek),
+      // so a competing writer's concurrent field addition is honestly reported too, not misreported
+      // from a snapshot the write is about to clobber. (Conventions are REFUSED above; this only
+      // reaches ordinary docs / kind instances.)
+      droppedFields = fresh
+        ? Object.keys(fresh.frontmatter).filter((k) => k !== "timestamp" && !(k in frontmatter))
+        : [];
+
       return { frontmatter, body };
     },
     errors: {
@@ -234,14 +233,6 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
     // later optimistic doc update/delete (see also `doc history`).
     version: result.version,
   };
-  // Dropped-frontmatter warning (cold-start study r3): `doc write` replaces the WHOLE document, so an
-  // overwrite (e.g. re-running the "same" write, expecting idempotency) silently REGRESSES frontmatter
-  // fields the existing doc carried that this write didn't re-supply — e.g. a `status` a prior
-  // `doc update`/`new` set. Surface it (never silent); `doc update` is the preserve-the-rest path.
-  // (Conventions are REFUSED above; this warns for ordinary docs / kind instances.)
-  const droppedFields = existing
-    ? Object.keys(existing.frontmatter).filter((k) => k !== "timestamp" && !(k in frontmatter))
-    : [];
   if (droppedFields.length > 0) {
     receipt.dropped_fields = droppedFields;
     receipt.note =
