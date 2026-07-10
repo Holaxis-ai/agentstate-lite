@@ -41,6 +41,7 @@
 import {
   readDocVersioned,
   writeDocVersioned,
+  versionedMutation,
   VersionConflict,
   type Bundle,
   type ConceptId,
@@ -244,100 +245,137 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
     }
   }
 
+  // A versioned read of `id`, shared by both remaining modes below: present -> {doc, version};
+  // absent (ENOENT) -> {undefined, null} (an expect-absent CAS basis) — any OTHER read error is
+  // classified and thrown immediately (never retried; only a `VersionConflict` from the WRITE
+  // half gets `versionedMutation`'s bounded-retry treatment).
+  const readExisting = async (): Promise<{ state: OkfDocument | undefined; version: Version | null }> => {
+    try {
+      const { doc, version } = await readDocVersioned(bundle, id);
+      return { state: doc, version };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return { state: undefined, version: null };
+      throw classify(err, opts.remoteUrl);
+    }
+  };
+
   if (mode === "overwrite") {
     // coupleRead: true — read (present or absent) -> build -> validate -> CAS write, bounded-retried
-    // on conflict; see `MutateDocOptions.coupleRead`'s own comment for the full rationale (P1 review
-    // fix: closes a window where an unconditional overwrite could silently clobber a concurrent
-    // writer's change that a guard inside `buildCandidate` would otherwise have refused).
-    for (let attempt = 0; ; attempt++) {
-      let existing: OkfDocument | undefined;
-      let version: Version | null;
-      try {
-        const read = await readDocVersioned(bundle, id);
-        existing = read.doc;
-        version = read.version;
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
-          existing = undefined;
-          version = null; // expect-absent create
-        } else {
-          throw classify(err, opts.remoteUrl);
-        }
+    // on conflict via the shared `versionedMutation` primitive (core's ONE read-decide-CAS-retry
+    // boundary — CLAUDE.md gate 3); see `MutateDocOptions.coupleRead`'s own comment for the full
+    // rationale (P1 review fix: closes a window where an unconditional overwrite could silently
+    // clobber a concurrent writer's change that a guard inside `buildCandidate` would otherwise have
+    // refused). `decide` re-runs `buildCandidate`/`validate` against EVERY attempt's fresh read —
+    // never a decision computed once and blindly retried with a newer token — which is exactly what
+    // lets a guard inside `buildCandidate` (e.g. `doc write`'s link-drop guard) see a concurrent
+    // writer's change instead of a stale snapshot. This mode never converges to a no-op (an
+    // overwrite always writes), so `decide` never returns `done`.
+    let savedDoc: OkfDocument | undefined;
+    let warnings: ValidationWarning[] = [];
+    try {
+      const outcome = await versionedMutation<OkfDocument, undefined>({
+        read: readExisting,
+        decide: async (existing) => {
+          const candidate = await buildCandidate(existing);
+          warnings = validate(candidate);
+          return { action: "write", next: { id, ...candidate }, result: undefined };
+        },
+        write: async (next, expectedVersion) => {
+          try {
+            const { doc: saved, version } = await writeDocVersioned(bundle, next, {
+              expectedVersion,
+              actor: opts.actor,
+            });
+            savedDoc = saved;
+            return version;
+          } catch (err) {
+            if (err instanceof VersionConflict) throw err; // let the primitive retry/exhaust
+            throw classify(err, opts.remoteUrl);
+          }
+        },
+        maxAttempts,
+      });
+      return { doc: savedDoc!, version: outcome.version!, warnings };
+    } catch (err) {
+      if (err instanceof VersionConflict) {
+        throw errors.staleHead ? errors.staleHead(err) : new CliError("STALE_HEAD", err.message);
       }
-
-      const candidate = await buildCandidate(existing);
-      const warnings = validate(candidate);
-      try {
-        const { doc: saved, version: newVersion } = await writeDocVersioned(
-          bundle,
-          { id, ...candidate },
-          { expectedVersion: version, actor: opts.actor },
-        );
-        return { doc: saved, version: newVersion, warnings };
-      } catch (err) {
-        if (err instanceof VersionConflict) {
-          if (attempt < maxAttempts - 1) continue;
-          throw errors.staleHead ? errors.staleHead(err) : new CliError("STALE_HEAD", err.message);
-        }
-        throw classify(err, opts.remoteUrl);
-      }
+      throw err; // already classified (readExisting/write's own classify, or a buildCandidate throw)
     }
   }
 
   // mode === "patch": versioned read -> build -> (idempotency) -> validate -> CAS write, with a
-  // bounded conflict retry — the exact shape `link add`/`doc update` already prove for this seam.
-  for (let attempt = 0; ; attempt++) {
-    let existing: OkfDocument | undefined;
-    let version: Version | null;
-    try {
-      const read = await readDocVersioned(bundle, id);
-      existing = read.doc;
-      version = read.version;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
-        if (onAbsent === "fail") {
+  // bounded conflict retry — the exact shape `link add` proves for this seam, now riding the same
+  // shared `versionedMutation` primitive `appendLog`/`regenerateIndex` (core) and the "overwrite"
+  // branch above both use.
+  //
+  // `lastReadVersion` is set by `readExisting` on every attempt and read by `decide` for the
+  // explicit-`--expected-version` precheck below: `decide` never receives a version token from
+  // `versionedMutation` itself (a decision is made over domain state only — the primitive owns CAS
+  // pairing), but THIS check is a caller-side claim comparison ("the doc must still be at version V"),
+  // not a domain decision, so the two closures share it via this attempt-scoped variable rather than
+  // threading it through the primitive's contract.
+  let lastReadVersion: Version | null = null;
+  let savedDoc: OkfDocument | undefined;
+  const hardCas = opts.expectedVersion !== undefined;
+
+  try {
+    const outcome = await versionedMutation<OkfDocument, { doc?: OkfDocument; warnings: ValidationWarning[] }>({
+      read: async () => {
+        const read = await readExisting();
+        lastReadVersion = read.version;
+        if (read.state === undefined && onAbsent === "fail") {
           throw errors.notFound ? errors.notFound() : new CliError("NOT_FOUND", `no concept document at id '${id}'`);
         }
-        existing = undefined;
-        version = null; // expect-absent create
-      } else {
-        throw classify(err, opts.remoteUrl);
-      }
+        return read;
+      },
+      decide: async (existing) => {
+        // Explicit-token hard CAS: the caller's claimed version must match what was just read — a
+        // mismatch here is a genuine stale claim, checked BEFORE the idempotency short-circuit so a
+        // stale token on an otherwise-unchanged doc still reports STALE_HEAD (the claim premise — "I
+        // am acting on version V" — is false even if V's content happens to equal the current content).
+        if (hardCas && lastReadVersion !== opts.expectedVersion) {
+          const conflict = new VersionConflict(id, opts.expectedVersion!, lastReadVersion);
+          throw errors.staleHead ? errors.staleHead(conflict) : new CliError("STALE_HEAD", conflict.message);
+        }
+
+        const candidate = await buildCandidate(existing);
+
+        if (existing && isNoopPatch(existing, candidate, compareTimestamp)) {
+          // No write — the doc's CURRENT version (from this attempt's read) is still its head.
+          return { action: "done", result: { doc: existing, warnings: [] } };
+        }
+
+        const warnings = validate(candidate);
+        return { action: "write", next: { id, ...candidate }, result: { warnings } };
+      },
+      write: async (next, expectedVersion) => {
+        const writeVersion = hardCas ? opts.expectedVersion! : expectedVersion;
+        try {
+          const { doc: saved, version } = await writeDocVersioned(bundle, next, {
+            expectedVersion: writeVersion,
+            actor: opts.actor,
+          });
+          savedDoc = saved;
+          return version;
+        } catch (err) {
+          if (err instanceof VersionConflict) throw err; // let the primitive retry/exhaust
+          throw classify(err, opts.remoteUrl);
+        }
+      },
+      // An EXPLICIT caller token makes a conflict terminal (hard CAS, no retry) — the whole point of
+      // an optimistic "claim: update IFF unchanged". Without one, keep the pre-existing bounded-retry
+      // behavior (a benign concurrent writer is retried, not failed).
+      maxAttempts: hardCas ? 1 : maxAttempts,
+    });
+
+    return outcome.wrote
+      ? { doc: savedDoc!, changed: true, version: outcome.version!, warnings: outcome.result.warnings }
+      : { doc: outcome.result.doc!, changed: false, version: outcome.version!, warnings: [] };
+  } catch (err) {
+    if (err instanceof VersionConflict) {
+      throw errors.staleHead ? errors.staleHead(err) : new CliError("STALE_HEAD", err.message);
     }
-
-    // Explicit-token hard CAS: the caller's claimed version must match what was just read — a
-    // mismatch here is a genuine stale claim, checked BEFORE the idempotency short-circuit so a
-    // stale token on an otherwise-unchanged doc still reports STALE_HEAD (the claim premise — "I
-    // am acting on version V" — is false even if V's content happens to equal the current content).
-    if (opts.expectedVersion !== undefined && version !== opts.expectedVersion) {
-      const conflict = new VersionConflict(id, opts.expectedVersion, version);
-      throw errors.staleHead ? errors.staleHead(conflict) : new CliError("STALE_HEAD", conflict.message);
-    }
-
-    const candidate = await buildCandidate(existing);
-
-    if (existing && isNoopPatch(existing, candidate, compareTimestamp)) {
-      // No write — the doc's CURRENT version (from the read above) is still its head. `version` is
-      // non-null here: a no-op requires an existing doc, so the read succeeded (only the
-      // onAbsent:"create" path leaves version null, and it never reaches this branch).
-      return { doc: existing, changed: false, version: version!, warnings: [] };
-    }
-
-    const warnings = validate(candidate);
-
-    const writeVersion = opts.expectedVersion !== undefined ? opts.expectedVersion : version;
-    try {
-      const { doc: saved, version: newVersion } = await writeDocVersioned(bundle, { id, ...candidate }, { expectedVersion: writeVersion, actor: opts.actor });
-      return { doc: saved, changed: true, version: newVersion, warnings };
-    } catch (err) {
-      if (err instanceof VersionConflict) {
-        // An EXPLICIT caller token makes a conflict terminal (hard CAS, no retry) — the whole
-        // point of an optimistic "claim: update IFF unchanged". Without one, keep the pre-existing
-        // bounded-retry behavior (a benign concurrent writer is retried, not failed).
-        if (opts.expectedVersion === undefined && attempt < maxAttempts - 1) continue;
-        throw errors.staleHead ? errors.staleHead(err) : new CliError("STALE_HEAD", err.message);
-      }
-      throw classify(err, opts.remoteUrl);
-    }
+    throw err; // already classified (readExisting/notFound/write's own classify, or a buildCandidate throw)
   }
 }
