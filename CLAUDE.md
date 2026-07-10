@@ -14,17 +14,19 @@ esbuild bundle that inlines core + viewer + server + the built UI assets + deps 
 self-contained ESM file. The filesystem is the
 DEFAULT local backend; the storage seam is pluggable (gate 3) and production runs D1/R2.
 
-Before changing anything, read the PROJECT BUNDLE — it lives IN-REPO at `.agentstate-lite/`
-(committed shared memory, discovered by the conventional-folder walk with zero config), so a
-bare `doc read docs/core` just works on any clone: `docs/core` (the ONE-PAGE
+Before changing anything, read the PROJECT BUNDLE — this repo's own knowledge bundle at
+`.agentstate-lite/`, shared on a dedicated `board` branch via `aslite sync` (gitignored on
+`main`, NOT committed with code). A fresh clone materializes it with one `sync` — the
+SessionStart hook does a best-effort pull for you — after which the conventional-folder walk
+discovers it with zero config, so a bare `doc read docs/core` just works: `docs/core` (the ONE-PAGE
 product statement + frozen-scope list; scope questions answer to it), the board for live
 state (`list --type Task`; per-unit records live in `tasks/<unit>` descriptions; the
 pre-2026-07-06 changelog lives in the PRIVATE out-of-repo board archive, with the other
 `visibility: private` docs), `docs/vision` (near-term design
 intent + OKF grounding) and `docs/north-star` (the future-state vision) as needed — then
-the packages' `src/`. The repo carries README + this file + code + the committed bundle
-(root `/docs/` stays gitignored; a `.agentstate.json` binding, also gitignored, is the
-local-only override and must NOT be committed here — the conventional folder is the
+the packages' `src/`. The repo carries README + this file + code; the bundle rides the
+`board` branch (root `/docs/` stays gitignored; a `.agentstate.json` binding, also gitignored,
+is the local-only override and must NOT be committed here — the conventional folder is the
 resolution path). Ground
 every change in the ACTUAL current code, not assumptions — including the claims in THIS
 file: when this guide and the code disagree, the code wins and this file gets fixed.
@@ -258,10 +260,11 @@ bundle-relative**.
   nearly rebuilt a shipped unit), so: BEFORE building any "queued" item, grep the tree —
   records may lag the code. Work is CLAIMED before it is built: flip `tasks/<unit>` to
   `in_progress` with `--actor` — the CAS write IS the claim (see the bundle's Task convention).
-  **Bundle commits are not code commits.** Board/bundle writes (records, claims, context
-  notes, task updates — anything under `.agentstate-lite/` with no code alongside) are
-  small `board:`-prefixed commits pushed DIRECTLY to main; their value is immediacy, and
-  `aslite sync` supersedes even that once the founders execute the migration. Code ships via branch +
+  **Board writes are not code commits.** Board/bundle writes (records, claims, context
+  notes, task updates — anything under `.agentstate-lite/` with no code alongside) go through
+  `aslite sync`, which shares them on the repo's own `board` branch. The board was MIGRATED off
+  `main` (it is gitignored there now), so there is no longer a `board:`-prefixed direct-commit-to-main
+  path — `sync` is the one channel, and it touches nothing outside the board. Code ships via branch +
   PR + review gates, always. A board doc rides a PR only when it is ITSELF the reviewed
   deliverable (a plan under vetting, records that explain a code change they accompany).
 
@@ -314,14 +317,14 @@ the bundle):
   self-authored rows filtered, unpushed/uncommitted backstop, probe-gated "run sync — never
   init" first contact), wired by `hook install` across Claude Code/Codex/OpenCode
   (`commands/session-start.ts`, `commands/home.ts`'s board block, `commands/hook.ts`).
-  The `sync --migrate` COMMAND (U5) is shipped as a TEMPORARY, founders-only flag — one-time
+  The `sync --migrate` COMMAND (U5) was a TEMPORARY, founders-only flag — one-time
   and `--yes`-gated (preview-first; files-not-history board branch pushed with tracking; the
   folder-removal + gitignore commit prepared on a local `board-migration` branch for a
   human-opened PR; never any `git clean`), surfaced in `sync --help` only (never taught in
-  the skill/reference channels), and SCHEDULED FOR REMOVAL in a follow-up PR once the
-  founders execute it. Its EXECUTION on this repo is that separate, human-timed act, still
-  pending: THIS repo's own board still lives on main, so the bundle-commit convention above
-  still applies here.
+  the skill/reference channels). It has now been EXECUTED on this repo: the board lives on the
+  `board` branch and is gitignored on `main`, so the bundle-write convention above (share via
+  `aslite sync`) is the live path. The flag itself is SCHEDULED FOR REMOVAL in a follow-up PR
+  now that the migration is done.
 
 Standing gates on future work:
 
