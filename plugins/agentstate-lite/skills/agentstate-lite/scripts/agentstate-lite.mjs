@@ -3894,26 +3894,26 @@ function applyReplacer(root, replacer) {
   if (replacedRoot === void 0) return transformChildren(root, replacer, []);
   return transformChildren(normalizeValue(replacedRoot), replacer, []);
 }
-function transformChildren(value, replacer, path13) {
-  if (isJsonObject(value)) return transformObject(value, replacer, path13);
-  if (isJsonArray(value)) return transformArray(value, replacer, path13);
+function transformChildren(value, replacer, path14) {
+  if (isJsonObject(value)) return transformObject(value, replacer, path14);
+  if (isJsonArray(value)) return transformArray(value, replacer, path14);
   return value;
 }
-function transformObject(obj, replacer, path13) {
+function transformObject(obj, replacer, path14) {
   const result = {};
   for (const [key2, value] of Object.entries(obj)) {
-    const childPath = [...path13, key2];
+    const childPath = [...path14, key2];
     const replacedValue = replacer(key2, value, childPath);
     if (replacedValue === void 0) continue;
     result[key2] = transformChildren(normalizeValue(replacedValue), replacer, childPath);
   }
   return result;
 }
-function transformArray(arr, replacer, path13) {
+function transformArray(arr, replacer, path14) {
   const result = [];
   for (let i = 0; i < arr.length; i++) {
     const value = arr[i];
-    const childPath = [...path13, i];
+    const childPath = [...path14, i];
     const replacedValue = replacer(String(i), value, childPath);
     if (replacedValue === void 0) continue;
     const normalizedValue = normalizeValue(replacedValue);
@@ -3940,11 +3940,11 @@ function resolveOptions(options2) {
 }
 
 // ../../node_modules/axi-sdk-js/dist/output.js
-function collapseHomeDirectory(path13, homeDir = homedir()) {
-  if (!path13.startsWith(homeDir)) {
-    return path13;
+function collapseHomeDirectory(path14, homeDir = homedir()) {
+  if (!path14.startsWith(homeDir)) {
+    return path14;
   }
-  return `~${path13.slice(homeDir.length)}`;
+  return `~${path14.slice(homeDir.length)}`;
 }
 function homeHeaderOutput(options2) {
   return {
@@ -4048,7 +4048,7 @@ function isUpdateAvailable(current, latest) {
 }
 var nodeFs = {
   existsSync,
-  readFileSync: (path13, encoding) => readFileSync(path13, encoding)
+  readFileSync: (path14, encoding) => readFileSync(path14, encoding)
 };
 function readNearestPackageJson(startPath, fs11 = nodeFs) {
   let dir = dirname(startPath);
@@ -4075,36 +4075,36 @@ function readNearestPackageJson(startPath, fs11 = nodeFs) {
 }
 function detectInstallMethod(options2) {
   const env = options2.env ?? process.env;
-  const path13 = options2.entry.replaceAll("\\", "/");
-  if (path13.includes("/_npx/") || /\/dlx-[^/]+\//.test(path13) || path13.includes("/pnpm/dlx/") || path13.includes("/bun/install/cache/")) {
+  const path14 = options2.entry.replaceAll("\\", "/");
+  if (path14.includes("/_npx/") || /\/dlx-[^/]+\//.test(path14) || path14.includes("/pnpm/dlx/") || path14.includes("/bun/install/cache/")) {
     return { kind: "npx" };
   }
-  const homebrewFormula = homebrewFormulaFromPath(path13, env);
+  const homebrewFormula = homebrewFormulaFromPath(path14, env);
   if (homebrewFormula) {
     return { kind: "homebrew", formula: homebrewFormula };
   }
   const pnpmHome = normalizePathRoot(env.PNPM_HOME);
-  if (isPathInsideRoot(path13, pnpmHome) || isKnownPnpmGlobalStore(path13, env)) {
+  if (isPathInsideRoot(path14, pnpmHome) || isKnownPnpmGlobalStore(path14, env)) {
     return { kind: "pnpm-global" };
   }
-  if (isKnownNpmGlobalInstall(path13, env)) {
+  if (isKnownNpmGlobalInstall(path14, env)) {
     return { kind: "npm-global" };
   }
   return { kind: "unknown" };
 }
-function normalizePathRoot(path13) {
-  const normalized = path13?.replaceAll("\\", "/").replace(/\/+$/, "");
+function normalizePathRoot(path14) {
+  const normalized = path14?.replaceAll("\\", "/").replace(/\/+$/, "");
   return normalized && normalized.length > 0 ? normalized : void 0;
 }
-function isPathInsideRoot(path13, root) {
-  return root !== void 0 && (path13 === root || path13.startsWith(`${root}/`));
+function isPathInsideRoot(path14, root) {
+  return root !== void 0 && (path14 === root || path14.startsWith(`${root}/`));
 }
-function homebrewFormulaFromPath(path13, env) {
+function homebrewFormulaFromPath(path14, env) {
   for (const root of homebrewCellarRoots(env)) {
-    if (!isPathInsideRoot(path13, root)) {
+    if (!isPathInsideRoot(path14, root)) {
       continue;
     }
-    const relative = path13.slice(root.length).replace(/^\/+/, "");
+    const relative = path14.slice(root.length).replace(/^\/+/, "");
     const formula = relative.split("/")[0];
     if (formula) {
       return formula;
@@ -4132,12 +4132,12 @@ function homebrewCellarRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownPnpmGlobalStore(path13, env) {
+function isKnownPnpmGlobalStore(path14, env) {
   return pnpmGlobalStoreRoots(env).some((root) => {
-    if (!isPathInsideRoot(path13, root)) {
+    if (!isPathInsideRoot(path14, root)) {
       return false;
     }
-    const relative = path13.slice(root.length).replace(/^\/+/, "");
+    const relative = path14.slice(root.length).replace(/^\/+/, "");
     return /^\d+\/\.pnpm\//.test(relative);
   });
 }
@@ -4155,8 +4155,8 @@ function pnpmGlobalStoreRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownNpmGlobalInstall(path13, env) {
-  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path13, root)) || isKnownVersionManagerNpmGlobal(path13, env);
+function isKnownNpmGlobalInstall(path14, env) {
+  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path14, root)) || isKnownVersionManagerNpmGlobal(path14, env);
 }
 function npmGlobalNodeModulesRoots(env) {
   const roots = [
@@ -4182,8 +4182,8 @@ function npmGlobalNodeModulesRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownVersionManagerNpmGlobal(path13, env) {
-  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path13, root) && path13.includes("/lib/node_modules/"));
+function isKnownVersionManagerNpmGlobal(path14, env) {
+  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path14, root) && path14.includes("/lib/node_modules/"));
 }
 function versionManagerNodeRoots(env) {
   const roots = [];
@@ -4419,7 +4419,7 @@ async function runUpdate(options2) {
   const binName = binNameFromArgv(invokedAs);
   const mode = parseUpdateArgs(options2.args, binName);
   const platform = options2.platform ?? process.platform;
-  const realpath = options2.realpath ?? ((path13) => realpathSync(path13));
+  const realpath = options2.realpath ?? ((path14) => realpathSync(path14));
   const entry = resolveEntry(invokedAs, realpath);
   const fs11 = options2.fs ?? nodeFs;
   const fromPackageJson = entry ? readNearestPackageJson(entry, fs11) : {};
@@ -6106,13 +6106,13 @@ function describeShape(value) {
   if (typeof value === "object") return "an object";
   return typeof value;
 }
-function toStringArrayLenient(value, path13, docId, warnings) {
+function toStringArrayLenient(value, path14, docId, warnings) {
   if (!Array.isArray(value)) {
     if (value !== void 0) {
       warnings.push({
         code: "KIND_CONVENTION_BAD_SHAPE",
-        message: `kind convention '${docId}' has a non-list '${path13}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
-        field: path13,
+        message: `kind convention '${docId}' has a non-list '${path14}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
+        field: path14,
         severity: "warning"
       });
     }
@@ -6125,8 +6125,8 @@ function toStringArrayLenient(value, path13, docId, warnings) {
     } else {
       warnings.push({
         code: "KIND_CONVENTION_BAD_MEMBER",
-        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path13}'; skipping it.`,
-        field: path13,
+        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path14}'; skipping it.`,
+        field: path14,
         severity: "warning"
       });
     }
@@ -6326,10 +6326,10 @@ function parseConventionDoc(doc2) {
   }
   const sections = Array.isArray(fm.sections) ? fm.sections.filter((s) => typeof s === "string" && s.trim() !== "") : void 0;
   const title = typeof fm.title === "string" && fm.title.trim() !== "" ? fm.title.trim() : governs;
-  const path13 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
+  const path14 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
   const freshnessHorizon = typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== "" ? fm.freshness_horizon.trim() : void 0;
   const kind2 = { id: doc2.id, title, governs, fields: { required, optional, values, terminal } };
-  if (path13 !== void 0) kind2.path = path13;
+  if (path14 !== void 0) kind2.path = path14;
   if (links !== void 0) kind2.links = links;
   if (expectsInbound !== void 0) kind2.expectsInbound = expectsInbound;
   if (sections && sections.length > 0) kind2.sections = sections;
@@ -6735,8 +6735,8 @@ function normalizeServer(raw) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`server URL must use http or https: ${raw}`);
   }
-  const path13 = url.pathname.replace(/\/+$/, "");
-  return { base: url.origin + path13, resource: url.origin };
+  const path14 = url.pathname.replace(/\/+$/, "");
+  return { base: url.origin + path14, resource: url.origin };
 }
 
 // src/credentials.ts
@@ -6757,7 +6757,7 @@ function credentialsPath(home2 = homedir3()) {
 async function writeFileAtomic0600(dir, fileName, content) {
   await mkdir(dir, { recursive: true, mode: DIR_MODE });
   await chmod(dir, DIR_MODE);
-  const path13 = join3(dir, fileName);
+  const path14 = join3(dir, fileName);
   const tmpPath = join3(dir, `.${fileName}.${randomBytes(8).toString("hex")}.tmp`);
   const handle = await open(tmpPath, "wx", FILE_MODE);
   try {
@@ -6767,7 +6767,7 @@ async function writeFileAtomic0600(dir, fileName, content) {
     await handle.close();
   }
   try {
-    await rename(tmpPath, path13);
+    await rename(tmpPath, path14);
   } catch (err) {
     await unlink(tmpPath).catch(() => {
     });
@@ -7520,7 +7520,7 @@ async function init(argv, deps = {}) {
   const receipt = { init: "ok", root: bundle.root, recipe: recipeApplied };
   if (warnings.length > 0) receipt.warnings = warnings;
   if (insideGitRepo(root)) {
-    receipt.hint = `this directory is inside a git repo \u2014 if the project already shares a board, run \`${cliInvocation()} sync\` instead of init (sync sets up the existing shared board; init creates a new bundle)`;
+    receipt.hint = `this bundle is local until shared \u2014 if the project already shares a board, \`${cliInvocation()} sync\` joins it (never init there, that mints a divergent second bundle); to start sharing this one, \`${cliInvocation()} sync --establish\``;
   }
   receipt.help = [
     `${cliInvocation()} new "Context Note" <id> --title <title>`,
@@ -8352,24 +8352,29 @@ async function docUpdate(argv, deps) {
 // src/commands/doc/read.ts
 import { parseArgs as parseArgs6 } from "node:util";
 import { promises as fs7 } from "node:fs";
-import path10 from "node:path";
+import path11 from "node:path";
 
 // src/autopull.ts
-import path9 from "node:path";
+import path10 from "node:path";
 import { realpathSync as realpathSync5, statSync as statSync3 } from "node:fs";
 
 // src/git.ts
 import { spawnSync } from "node:child_process";
 import {
   existsSync as existsSync3,
+  lstatSync,
+  mkdtempSync,
   mkdirSync,
   readdirSync,
   readFileSync as readFileSync2,
+  readlinkSync,
   realpathSync as realpathSync3,
+  rmSync,
   rmdirSync,
   statSync,
   writeFileSync
 } from "node:fs";
+import { tmpdir } from "node:os";
 import path7 from "node:path";
 var BOARD_BRANCH = "board";
 var BOARD_REMOTE = "origin";
@@ -8379,9 +8384,10 @@ var RELATIVE_WORKTREE_CONFIG = ["-c", "worktree.useRelativePaths=true"];
 var SCRUBBED_GIT_VARS = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"];
 var LOCAL_TIMEOUT_MS = 3e4;
 var NETWORK_TIMEOUT_MS = 6e4;
-function gitEnv(rebase, connectTimeoutSeconds = 10) {
+function gitEnv(rebase, connectTimeoutSeconds = 10, indexFile) {
   const env = { ...process.env };
   for (const v of SCRUBBED_GIT_VARS) delete env[v];
+  if (indexFile) env.GIT_INDEX_FILE = indexFile;
   env.LC_ALL = "C";
   env.GIT_TERMINAL_PROMPT = "0";
   env.GIT_SSH_COMMAND = `ssh -o BatchMode=yes -o ConnectTimeout=${connectTimeoutSeconds}`;
@@ -8399,8 +8405,12 @@ function runGitBytes(dir, args, opts = {}) {
   if (opts.timeoutMs !== void 0 && opts.timeoutMs <= 0) {
     throw classifyGitError({ args, status: null, stdout: "", stderr: "", timedOut: true });
   }
-  const r = spawnSync("git", ["-C", dir, "-c", "core.quotepath=off", ...args], {
-    env: gitEnv(opts.rebase ?? false, opts.connectTimeoutSeconds),
+  const repositoryArgs = [
+    ...opts.gitDir ? [`--git-dir=${opts.gitDir}`] : [],
+    ...opts.workTree ? [`--work-tree=${opts.workTree}`] : []
+  ];
+  const r = spawnSync("git", ["-C", dir, "-c", "core.quotepath=off", ...repositoryArgs, ...args], {
+    env: gitEnv(opts.rebase ?? false, opts.connectTimeoutSeconds, opts.indexFile),
     timeout: opts.timeoutMs ?? LOCAL_TIMEOUT_MS,
     input: opts.input,
     maxBuffer: 32 * 1024 * 1024
@@ -8517,12 +8527,15 @@ function provisionBoardWorktree(dir, budget = {}) {
   if (!top) return { kind: "no_repo" };
   const boardPath = path7.join(top, BUNDLE_DIR);
   if (isProvisioned(top)) return { kind: "already", boardPath };
-  runGit(top, ["fetch", BOARD_REMOTE], {
+  runGit(top, ["fetch", "--prune", BOARD_REMOTE], {
     timeoutMs: budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS,
     connectTimeoutSeconds: budget.connectTimeoutSeconds
   });
-  const hasLocal = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
-  const hasRemote = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0;
+  const localBoard = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]);
+  const remoteBoard = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]);
+  const hasLocal = localBoard.status === 0;
+  const hasRemote = remoteBoard.status === 0;
+  const localMatchesRemote = hasLocal && hasRemote && localBoard.stdout.trim().length > 0 && localBoard.stdout.trim() === remoteBoard.stdout.trim();
   if (!hasLocal && !hasRemote) return { kind: "no_board" };
   if (existsSync3(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
@@ -8576,7 +8589,13 @@ function provisionBoardWorktree(dir, budget = {}) {
         help: messages[reason].help
       });
     }
+    if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote) {
+      return { kind: "local_board", boardPath, remoteExists: hasRemote };
+    }
     rmdirSync(boardPath);
+  }
+  if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote) {
+    return { kind: "local_board", boardPath, remoteExists: hasRemote };
   }
   const r = hasLocal ? runGit(top, [...RELATIVE_WORKTREE_CONFIG, "worktree", "add", boardPath, BOARD_BRANCH]) : runGit(top, [
     ...RELATIVE_WORKTREE_CONFIG,
@@ -8595,7 +8614,7 @@ function provisionBoardWorktree(dir, budget = {}) {
     }
     throw classifyGitError(failureOf(["worktree", "add"], r));
   }
-  return { kind: "provisioned", boardPath };
+  return { kind: "provisioned", boardPath, source: hasLocal ? "local" : "remote" };
 }
 function detectStaleRebase(boardPath) {
   return existsSync3(worktreeGitPath(boardPath, "rebase-merge")) || existsSync3(worktreeGitPath(boardPath, "rebase-apply"));
@@ -8622,12 +8641,12 @@ function verbOf(letter) {
   if (letter === "D") return "deleted";
   return null;
 }
-function enrichDocChange(boardPath, relPath, verb, rev) {
+function enrichDocChange(boardPath, relPath, verb, rev, runOptions = {}) {
   const docId = conceptIdFromPath(relPath);
   let actor = UNKNOWN;
   let kind2 = UNKNOWN;
   let title = docId;
-  const shown = runGit(boardPath, ["show", `${rev}:${relPath}`]);
+  const shown = runGit(boardPath, ["show", `${rev}:${relPath}`], runOptions);
   if (shown.status === 0) {
     try {
       const { frontmatter } = parseMarkdown(shown.stdout, relPath);
@@ -8671,9 +8690,146 @@ ${bodyLines.join("\n")}
   const sha = mustGit(boardPath, ["rev-parse", "HEAD"]).trim();
   return { committed: true, sha, subject, docs };
 }
+function snapshotFilesystemFiles(root) {
+  const files = [];
+  const visit = (dir, prefix) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.name.toLowerCase() === ".git") {
+        throw new CliError(
+          "RUNTIME",
+          `the bundle contains nested git control data at '${relPath}' \u2014 establish refuses because Git can silently omit or collapse files below that boundary`,
+          { details: { nested_git_paths: [relPath] } }
+        );
+      }
+      if (entry.isDirectory()) visit(path7.join(dir, entry.name), relPath);
+      else if (entry.isFile() || entry.isSymbolicLink()) files.push(relPath);
+      else {
+        throw new CliError(
+          "RUNTIME",
+          `the bundle contains an unsupported filesystem entry at '${relPath}' \u2014 only files, directories, and symbolic links can be established safely`
+        );
+      }
+    }
+  };
+  visit(root, "");
+  return files.sort();
+}
+function assertBundleBytesMatchCommit(top, bundlePath, commit) {
+  const listed = runGit(top, ["ls-tree", "-r", "-z", commit]);
+  if (listed.status !== 0) throw classifyGitError(failureOf(["ls-tree", "-r", "-z", commit], listed));
+  const mismatches = [];
+  for (const row of listed.stdout.split("\0").filter(Boolean)) {
+    const tab = row.indexOf("	");
+    if (tab < 0) continue;
+    const [mode, type, oid] = row.slice(0, tab).split(" ");
+    const relPath = row.slice(tab + 1);
+    const absolute = path7.resolve(bundlePath, relPath);
+    if (!absolute.startsWith(`${path7.resolve(bundlePath)}${path7.sep}`)) {
+      mismatches.push(relPath);
+      continue;
+    }
+    if (type !== "blob" || !oid) {
+      mismatches.push(relPath);
+      continue;
+    }
+    const stored = runGitBytes(top, ["cat-file", "blob", oid]);
+    if (stored.status !== 0) {
+      throw classifyGitError({
+        args: ["cat-file", "blob", oid],
+        status: stored.status,
+        stdout: stored.stdout.toString("utf8"),
+        stderr: stored.stderr
+      });
+    }
+    try {
+      const stat = lstatSync(absolute);
+      const actual = mode === "120000" ? readlinkSync(absolute, { encoding: "buffer" }) : readFileSync2(absolute);
+      if (mode === "120000" && !stat.isSymbolicLink() || mode !== "120000" && !stat.isFile()) {
+        mismatches.push(relPath);
+      } else if (!Buffer.from(actual).equals(stored.stdout)) {
+        mismatches.push(relPath);
+      }
+    } catch {
+      mismatches.push(relPath);
+    }
+  }
+  if (mismatches.length > 0) {
+    throw new CliError(
+      "RUNTIME",
+      `bundle bytes differ from the Git snapshot at '${mismatches[0]}' \u2014 a Git attribute, clean/smudge filter, EOL rule, or concurrent writer may be rewriting content; no source backup was removed`,
+      { details: { byte_mismatches: mismatches.slice(0, 20) } }
+    );
+  }
+}
+function snapshotBundleCommit(top, bundlePath) {
+  const gitDir = mustGit(top, ["rev-parse", "--absolute-git-dir"]).trim();
+  const filesystemFiles = snapshotFilesystemFiles(bundlePath);
+  const scratch = mkdtempSync(path7.join(tmpdir(), "aslite-establish-index-"));
+  const indexFile = path7.join(scratch, "index");
+  const snapshotOptions = { gitDir, workTree: bundlePath, indexFile };
+  try {
+    mustGit(bundlePath, ["read-tree", "--empty"], snapshotOptions);
+    mustGit(
+      bundlePath,
+      ["-c", "core.sparseCheckout=false", "-c", "core.sparseCheckoutCone=false", "add", "-f", "-A", "--", "."],
+      snapshotOptions
+    );
+    const stagedRows = mustGit(bundlePath, ["ls-files", "--stage", "-z"], snapshotOptions).split("\0").filter(Boolean);
+    const gitlinks = stagedRows.filter((row) => row.startsWith("160000 ")).map((row) => row.slice(row.indexOf("	") + 1));
+    if (gitlinks.length > 0) {
+      throw new CliError(
+        "RUNTIME",
+        `the bundle contains nested git checkout machinery at '${gitlinks[0]}' \u2014 establish refuses because Git would publish only a gitlink and omit that directory's files`,
+        { details: { nested_git_paths: gitlinks } }
+      );
+    }
+    const stagedFiles = stagedRows.map((row) => row.slice(row.indexOf("	") + 1)).sort();
+    if (stagedFiles.length !== filesystemFiles.length || stagedFiles.some((file, index) => file !== filesystemFiles[index])) {
+      const staged = new Set(stagedFiles);
+      const filesystem = new Set(filesystemFiles);
+      throw new CliError("RUNTIME", "Git did not capture every bundle file; nothing was published", {
+        details: {
+          omitted_paths: filesystemFiles.filter((file) => !staged.has(file)).slice(0, 20),
+          unexpected_paths: stagedFiles.filter((file) => !filesystem.has(file)).slice(0, 20)
+        }
+      });
+    }
+    const tree = mustGit(bundlePath, ["write-tree"], snapshotOptions).trim();
+    const emptyTree = mustGit(top, ["mktree"], { input: "" }).trim();
+    const rows = nameStatusRows(
+      mustGit(
+        bundlePath,
+        ["diff", "--cached", "--name-status", "--no-renames", emptyTree],
+        snapshotOptions
+      )
+    );
+    const docs = [];
+    for (const { letter, relPath } of rows) {
+      if (!isConceptDocPath(relPath)) continue;
+      const verb = verbOf(letter);
+      if (!verb) continue;
+      docs.push(enrichDocChange(bundlePath, relPath, verb, ":0", snapshotOptions));
+    }
+    const subject = commitSubject(docs);
+    const bodyLines = docs.length > 0 ? docs.map((d) => `${d.verb} ${d.kind} ${d.docId}`) : rows.map((r) => `${r.letter} ${r.relPath}`);
+    const message = `${subject}
+
+${bodyLines.join("\n")}
+`;
+    const sha = mustGit(top, ["commit-tree", tree], { input: message }).trim();
+    assertBundleBytesMatchCommit(top, bundlePath, sha);
+    return { committed: true, sha, tree, subject, docs };
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
 var MAX_REBASE_STOPS = 1e3;
 function fetchRebaseResolving(boardPath, exportDir) {
-  mustGit(boardPath, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
+  mustGit(boardPath, ["fetch", "--prune", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
+  if (runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
+    return { status: "no_upstream" };
+  }
   const r = runGit(boardPath, ["rebase", BOARD_REF], { rebase: true, timeoutMs: NETWORK_TIMEOUT_MS });
   if (r.status === 0) return { status: "clean" };
   if (!detectStaleRebase(boardPath)) throw classifyGitError(failureOf(["rebase", BOARD_REF], r));
@@ -8749,8 +8905,19 @@ function push(boardPath) {
 function pushBoardUpstream(top) {
   mustGit(top, ["push", "-u", BOARD_REMOTE, BOARD_BRANCH], { timeoutMs: NETWORK_TIMEOUT_MS });
 }
+function pushBoardCommit(top, commit) {
+  mustGit(top, ["push", BOARD_REMOTE, `${commit}:refs/heads/${BOARD_BRANCH}`], {
+    timeoutMs: NETWORK_TIMEOUT_MS
+  });
+}
+function setBoardUpstream(boardPath) {
+  mustGit(boardPath, ["branch", "--set-upstream-to", BOARD_REF, BOARD_BRANCH]);
+}
 function fetchOrigin(top) {
   return runGit(top, ["fetch", "--prune", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS }).status === 0;
+}
+function fetchOriginRequired(top) {
+  mustGit(top, ["fetch", "--prune", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
 }
 function remoteBoardNamespaceBranches(top) {
   const r = runGit(top, ["ls-remote", "--heads", BOARD_REMOTE, `${BOARD_BRANCH}/*`], {
@@ -8758,6 +8925,39 @@ function remoteBoardNamespaceBranches(top) {
   });
   if (r.status !== 0) throw classifyGitError(failureOf(["ls-remote"], r));
   return r.stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0).map((l) => l.split("	")[1] ?? "").filter((ref) => ref.startsWith("refs/heads/")).map((ref) => ref.slice("refs/heads/".length));
+}
+function boardNamespaceConflicts(top) {
+  const local = runGit(top, ["for-each-ref", "--format=%(refname:short)", `refs/heads/${BOARD_BRANCH}/`]);
+  const localNames = local.status === 0 ? local.stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0).map((n) => `${n} (local)`) : [];
+  const remoteNames = remoteBoardNamespaceBranches(top).map((n) => `${n} (on ${BOARD_REMOTE})`);
+  return [...localNames, ...remoteNames];
+}
+var GITIGNORE_ENTRY = `${BUNDLE_DIR}/`;
+function withIgnoreEntry(content) {
+  const covered = content.split("\n").some((l) => {
+    const t = l.trim();
+    return t === BUNDLE_DIR || t === `${BUNDLE_DIR}/` || t === `/${BUNDLE_DIR}` || t === `/${BUNDLE_DIR}/`;
+  });
+  if (covered) return content;
+  let out = content;
+  if (out.length > 0 && !out.endsWith("\n")) out += "\n";
+  if (out.length > 0) out += "\n";
+  out += `# the shared board \u2014 managed on the '${BOARD_BRANCH}' branch by aslite sync
+${GITIGNORE_ENTRY}
+`;
+  return out;
+}
+function ensureBoardGitignoreWorkingTree(top) {
+  const gitignorePath = path7.join(top, ".gitignore");
+  let content = "";
+  try {
+    content = readFileSync2(gitignorePath, "utf8");
+  } catch {
+  }
+  const updated = withIgnoreEntry(content);
+  if (updated === content) return { changed: false, path: gitignorePath };
+  writeFileSync(gitignorePath, updated);
+  return { changed: true, path: gitignorePath };
 }
 function swallowReason(err) {
   switch (err.code) {
@@ -8785,12 +8985,12 @@ function ffPull(boardPath, budget = {}) {
     }
     const before = mustGit(boardPath, ["rev-parse", "HEAD"]).trim();
     let fetchReason;
-    const fetched = runGit(boardPath, ["fetch", BOARD_REMOTE], {
+    const fetched = runGit(boardPath, ["fetch", "--prune", BOARD_REMOTE], {
       timeoutMs: budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS,
       connectTimeoutSeconds: budget.connectTimeoutSeconds
     });
     if (fetched.status !== 0) {
-      fetchReason = swallowReason(classifyGitError(failureOf(["fetch"], fetched)));
+      fetchReason = swallowReason(classifyGitError(failureOf(["fetch", "--prune"], fetched)));
     }
     const merged = runGit(boardPath, ["merge", "--ff-only", BOARD_REF]);
     if (merged.status !== 0) {
@@ -8965,7 +9165,7 @@ async function writeSyncState(key2, patch, home2 = homedir4()) {
   const parent = credentialsDir(home2);
   await mkdir2(parent, { recursive: true, mode: DIR_MODE2 });
   await chmod2(parent, DIR_MODE2);
-  const path13 = syncStatePath(key2, home2);
+  const path14 = syncStatePath(key2, home2);
   const record = {
     key: key2,
     cursor: next.cursor ?? void 0,
@@ -8975,7 +9175,7 @@ async function writeSyncState(key2, patch, home2 = homedir4()) {
     autoPullAttemptAt: next.autoPullAttemptAt ?? void 0,
     hookHintedAt: next.hookHintedAt ?? void 0
   };
-  await writeFileAtomic0600(syncStateDir(home2), basename3(path13), JSON.stringify(record, null, 2) + "\n");
+  await writeFileAtomic0600(syncStateDir(home2), basename3(path14), JSON.stringify(record, null, 2) + "\n");
   return next;
 }
 async function writeCursor(key2, cursor, home2 = homedir4()) {
@@ -9037,13 +9237,13 @@ async function recordHookHinted(key2, home2 = homedir4(), now = () => /* @__PURE
 }
 
 // src/commands/sync.ts
-import { existsSync as existsSync5, readFileSync as readFileSync4, realpathSync as realpathSync4, statSync as statSync2 } from "node:fs";
+import { existsSync as existsSync6, readFileSync as readFileSync5, realpathSync as realpathSync4, statSync as statSync2 } from "node:fs";
 import { promises as fs6 } from "node:fs";
-import path8 from "node:path";
+import path9 from "node:path";
 import { parseArgs as parseArgs5 } from "node:util";
 
 // src/commands/hook.ts
-import { existsSync as existsSync4, readFileSync as readFileSync3, writeFileSync as writeFileSync2, rmSync } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync3, writeFileSync as writeFileSync2, rmSync as rmSync2 } from "node:fs";
 import { homedir as homedir5 } from "node:os";
 import { join as join5, dirname as dirname2 } from "node:path";
 import { mkdirSync as mkdirSync2 } from "node:fs";
@@ -9138,23 +9338,23 @@ function targetsFor(base) {
     opencodePlugin: join5(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
   };
 }
-function readSettings(path13) {
-  if (!existsSync4(path13)) return {};
+function readSettings(path14) {
+  if (!existsSync4(path14)) return {};
   try {
-    return JSON.parse(readFileSync3(path13, "utf8"));
+    return JSON.parse(readFileSync3(path14, "utf8"));
   } catch {
     return {};
   }
 }
-function writeSettings(path13, settings) {
-  mkdirSync2(dirname2(path13), { recursive: true });
-  writeFileSync2(path13, `${JSON.stringify(settings, null, 2)}
+function writeSettings(path14, settings) {
+  mkdirSync2(dirname2(path14), { recursive: true });
+  writeFileSync2(path14, `${JSON.stringify(settings, null, 2)}
 `);
 }
-function opencodePluginInstalled(path13) {
-  if (!existsSync4(path13)) return false;
+function opencodePluginInstalled(path14) {
+  if (!existsSync4(path14)) return false;
   try {
-    return readFileSync3(path13, "utf8").includes(OPENCODE_MANAGED_MARKER);
+    return readFileSync3(path14, "utf8").includes(OPENCODE_MANAGED_MARKER);
   } catch {
     return false;
   }
@@ -9387,15 +9587,15 @@ async function hook(argv, deps = {}) {
     return;
   }
   let changed = false;
-  for (const path13 of [targets.claudeSettings, targets.codexHooks]) {
-    const [updated, didChange] = computeHookUninstall(readSettings(path13));
+  for (const path14 of [targets.claudeSettings, targets.codexHooks]) {
+    const [updated, didChange] = computeHookUninstall(readSettings(path14));
     if (didChange) {
-      writeSettings(path13, updated);
+      writeSettings(path14, updated);
       changed = true;
     }
   }
   if (opencodePluginInstalled(targets.opencodePlugin)) {
-    rmSync(targets.opencodePlugin, { force: true });
+    rmSync2(targets.opencodePlugin, { force: true });
     changed = true;
   }
   stdout(
@@ -9420,7 +9620,6 @@ async function hook(argv, deps = {}) {
 
 // src/commands/sync-migrate.ts
 var MIGRATION_BRANCH = "board-migration";
-var GITIGNORE_ENTRY = `${BUNDLE_DIR}/`;
 var MIGRATE_PREVIEW = "preview \u2014 nothing has been changed; re-run with --yes to execute";
 var MIGRATE_ALREADY = "already migrated \u2014 a board branch already exists on origin";
 var MIGRATE_DONE = "the board branch is live on origin \u2014 push the migration branch and open its PR to finish";
@@ -9494,12 +9693,6 @@ function assertNotBehindOnBoard(top, inv, branch) {
     );
   }
 }
-function boardNamespaceConflicts(top) {
-  const local = runGit(top, ["for-each-ref", "--format=%(refname:short)", `refs/heads/${BOARD_BRANCH}/`]);
-  const localNames = local.status === 0 ? local.stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0).map((n) => `${n} (local)`) : [];
-  const remoteNames = remoteBoardNamespaceBranches(top).map((n) => `${n} (on ${BOARD_REMOTE})`);
-  return [...localNames, ...remoteNames];
-}
 function parseLsTreeZ(out) {
   return out.split("\0").filter((l) => l.length > 0).map((l) => {
     const tab = l.indexOf("	");
@@ -9509,20 +9702,6 @@ function parseLsTreeZ(out) {
 }
 function treeSortKey(e) {
   return e.type === "tree" ? `${e.name}/` : e.name;
-}
-function withIgnoreEntry(content) {
-  const covered = content.split("\n").some((l) => {
-    const t = l.trim();
-    return t === BUNDLE_DIR || t === `${BUNDLE_DIR}/` || t === `/${BUNDLE_DIR}` || t === `/${BUNDLE_DIR}/`;
-  });
-  if (covered) return content;
-  let out = content;
-  if (out.length > 0 && !out.endsWith("\n")) out += "\n";
-  if (out.length > 0) out += "\n";
-  out += `# the shared board \u2014 managed on the '${BOARD_BRANCH}' branch by aslite sync
-${GITIGNORE_ENTRY}
-`;
-  return out;
 }
 function boardCommitMessage(branch) {
   return `board: bundle migrated from '${branch}' (files only)
@@ -9717,19 +9896,417 @@ async function alreadyMigrated(top, inv, mode, yes, fetchOk, stdout) {
   stdout(render(rec, mode));
 }
 
+// src/commands/sync-establish.ts
+import {
+  existsSync as existsSync5,
+  lstatSync as lstatSync2,
+  readFileSync as readFileSync4,
+  readdirSync as readdirSync2,
+  renameSync,
+  rmSync as rmSync3,
+  unlinkSync,
+  writeFileSync as writeFileSync3
+} from "node:fs";
+import path8 from "node:path";
+var ESTABLISH_DONE = "the shared board is live \u2014 .agentstate-lite/ now syncs over the 'board' branch";
+var ESTABLISH_ALREADY = "already established";
+var ESTABLISH_MARKER_KEY = "agentstate.establishCommit";
+function establishNextSteps(inv) {
+  return [
+    `teammates just run '${inv} sync' \u2014 it provisions automatically`,
+    `'${inv} hook install' keeps session start board-aware`
+  ];
+}
+function failureOf3(args, r) {
+  return { args, status: r.status, stdout: r.stdout, stderr: r.stderr };
+}
+function mustGit3(dir, args, input) {
+  const r = runGit(dir, args, input !== void 0 ? { input } : {});
+  if (r.status !== 0) throw classifyGitError(failureOf3(args, r));
+  return r.stdout;
+}
+function refCommit(top, ref) {
+  const r = runGit(top, ["rev-parse", "--verify", "--quiet", ref]);
+  const value = r.stdout.trim();
+  return r.status === 0 && value ? value : void 0;
+}
+function treeOf(top, commit) {
+  return refCommit(top, `${commit}^{tree}`);
+}
+function isAncestor(top, ancestor, descendant) {
+  return runGit(top, ["merge-base", "--is-ancestor", ancestor, descendant]).status === 0;
+}
+function readEstablishMarker(top) {
+  try {
+    const value = readFileSync4(establishMarkerPath(top), "utf8").trim();
+    return /^[0-9a-f]{40,64}$/.test(value) ? value : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function writeEstablishMarker(top, commit) {
+  const markerPath = establishMarkerPath(top);
+  const temporary = `${markerPath}.tmp-${process.pid}`;
+  writeFileSync3(temporary, `${commit}
+`, { mode: 384 });
+  renameSync(temporary, markerPath);
+}
+function clearEstablishMarker(top) {
+  try {
+    unlinkSync(establishMarkerPath(top));
+  } catch {
+  }
+}
+function establishMarkerPath(top) {
+  return path8.join(mustGit3(top, ["rev-parse", "--absolute-git-dir"]).trim(), ESTABLISH_MARKER_KEY);
+}
+function folderCommittedAtHead(top) {
+  return runGit(top, ["cat-file", "-e", `HEAD:${BUNDLE_DIR}`]).status === 0;
+}
+function folderPresentInCodeIndex(top) {
+  const r = runGit(top, ["ls-files", "--", BUNDLE_DIR]);
+  return r.status === 0 && r.stdout.trim().length > 0;
+}
+function assertPlainBundleShape(bundlePath, inv) {
+  const runInitHelp = `${inv} init --dir ${BUNDLE_DIR}`;
+  if (!existsSync5(bundlePath)) {
+    throw new CliError(
+      "RUNTIME",
+      `no '${BUNDLE_DIR}/' folder here to establish \u2014 run '${runInitHelp}' first, then re-run establish`,
+      { help: runInitHelp }
+    );
+  }
+  const root = lstatSync2(bundlePath);
+  if (root.isSymbolicLink() || !root.isDirectory()) {
+    throw new CliError(
+      "RUNTIME",
+      `'${bundlePath}' must be a real, plain directory \u2014 symlinks and non-directories are never followed by establish`
+    );
+  }
+  if (existsSync5(path8.join(bundlePath, ".git"))) {
+    throw new CliError(
+      "RUNTIME",
+      `'${bundlePath}' already contains its own '.git' \u2014 establish only operates on a plain bundle folder`
+    );
+  }
+  if (readdirSync2(bundlePath).length === 0) {
+    throw new CliError("RUNTIME", `'${bundlePath}' is empty \u2014 run '${runInitHelp}' first`, {
+      help: runInitHelp
+    });
+  }
+  const indexPath = path8.join(bundlePath, "index.md");
+  if (!existsSync5(indexPath)) {
+    throw new CliError(
+      "RUNTIME",
+      `'${bundlePath}' doesn't look like an OKF bundle (no index.md) \u2014 run '${runInitHelp}' first`,
+      { help: runInitHelp }
+    );
+  }
+  const index = lstatSync2(indexPath);
+  if (index.isSymbolicLink() || !index.isFile()) {
+    throw new CliError("RUNTIME", `'${indexPath}' must be a real file \u2014 establish never follows it through a symlink`);
+  }
+}
+function assertFreshSource(top, boardPath, inv) {
+  assertPlainBundleShape(boardPath, inv);
+  if (folderCommittedAtHead(top)) {
+    throw new CliError(
+      "RUNTIME",
+      `'${BUNDLE_DIR}/' is already committed on this branch \u2014 use '${inv} sync --migrate' instead`,
+      { help: `${inv} sync --migrate` }
+    );
+  }
+  if (folderPresentInCodeIndex(top)) {
+    throw new CliError(
+      "RUNTIME",
+      `'${BUNDLE_DIR}/' is staged in the code branch's index \u2014 establish refuses to leave board files queued for a later code commit; unstage them, then re-run`,
+      { help: `git restore --staged -- ${BUNDLE_DIR}` }
+    );
+  }
+}
+async function assertNotBoundElsewhere(top, boardPath) {
+  const binding = await resolveProjectBinding(top);
+  if (!binding) return;
+  const boundIsConventional = !binding.isRemote && path8.resolve(binding.target) === boardPath;
+  if (boundIsConventional) return;
+  throw new CliError(
+    "RUNTIME",
+    `a project binding (${binding.file}) points this project's bundle out of the git-sync tier (the conventional path is '${BUNDLE_DIR}/')`,
+    { help: `fix or remove ${binding.file} if you want to share this bundle over the board branch` }
+  );
+}
+function gitignoreNote(top) {
+  const gi = ensureBoardGitignoreWorkingTree(top);
+  return gi.changed ? `${gi.path} \u2014 appended '${GITIGNORE_ENTRY}' (uncommitted; commit it so teammates' clones stay clean)` : `${gi.path} \u2014 already ignores '${BUNDLE_DIR}/'`;
+}
+function removeVerifiedBackup(top, backupPath, expectedCommit, inv) {
+  if (!existsSync5(backupPath)) return;
+  assertPlainBundleShape(backupPath, inv);
+  const backupSnapshot = snapshotBundleCommit(top, backupPath);
+  const expectedTree = treeOf(top, expectedCommit);
+  if (!expectedTree) throw new CliError("RUNTIME", `the establishment commit has no readable tree (${expectedCommit})`);
+  if (backupSnapshot.tree !== expectedTree) {
+    throw new CliError("CONFLICT", `the establishment backup at ${backupPath} changed; it was not removed`);
+  }
+  assertBundleBytesMatchCommit(top, backupPath, expectedCommit);
+  rmSync3(backupPath, { recursive: true, force: false });
+}
+function finishLocalConversion(top, sourcePath, publishedCommit, expectedTree, inv) {
+  const boardPath = path8.join(top, BUNDLE_DIR);
+  const backupPath = `${boardPath}.establish-backup`;
+  const remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
+  if (!remoteCommit || !isAncestor(top, publishedCommit, remoteCommit)) {
+    throw new CliError(
+      "CONFLICT",
+      `origin/${BOARD_BRANCH} no longer contains this establishment's published snapshot \u2014 the local bundle is untouched`
+    );
+  }
+  if (isProvisioned(top)) {
+    const current = mustGit3(boardPath, ["rev-parse", "HEAD"]).trim();
+    if (!isAncestor(top, publishedCommit, current)) {
+      throw new CliError("CONFLICT", "the provisioned board does not contain the establishment snapshot");
+    }
+    assertBundleBytesMatchCommit(top, boardPath, publishedCommit);
+    setBoardUpstream(boardPath);
+    const note = gitignoreNote(top);
+    removeVerifiedBackup(top, backupPath, publishedCommit, inv);
+    clearEstablishMarker(top);
+    return { boardPath, boardCommit: current, gitignore: note };
+  }
+  assertPlainBundleShape(sourcePath, inv);
+  const currentSnapshot = snapshotBundleCommit(top, sourcePath);
+  if (currentSnapshot.tree !== expectedTree) {
+    throw new CliError(
+      "CONFLICT",
+      `the local bundle changed after its establishment snapshot was created \u2014 nothing was moved; review the local changes, then re-run '${inv} sync --establish'`,
+      { details: { expected_tree: expectedTree, actual_tree: currentSnapshot.tree } }
+    );
+  }
+  if (sourcePath === boardPath) {
+    if (existsSync5(backupPath)) {
+      throw new CliError("RUNTIME", `establish recovery backup already exists at ${backupPath}; nothing was moved`);
+    }
+    renameSync(boardPath, backupPath);
+    sourcePath = backupPath;
+  }
+  try {
+    const outcome = provisionBoardWorktree(top);
+    if (outcome.kind !== "provisioned" && outcome.kind !== "already") {
+      throw new CliError("RUNTIME", `board provisioning returned '${outcome.kind}' after publication`);
+    }
+    const provisionedPath = outcome.boardPath;
+    const current = mustGit3(provisionedPath, ["rev-parse", "HEAD"]).trim();
+    if (!isAncestor(top, publishedCommit, current)) {
+      throw new CliError("CONFLICT", "the provisioned board does not contain the establishment snapshot");
+    }
+    if (runGit(provisionedPath, ["status", "--porcelain"]).stdout.trim()) {
+      throw new CliError("RUNTIME", "the newly provisioned board worktree is unexpectedly dirty");
+    }
+    assertBundleBytesMatchCommit(top, provisionedPath, publishedCommit);
+    setBoardUpstream(provisionedPath);
+    const note = gitignoreNote(top);
+    removeVerifiedBackup(top, sourcePath, publishedCommit, inv);
+    clearEstablishMarker(top);
+    return { boardPath: provisionedPath, boardCommit: current, gitignore: note };
+  } catch (err) {
+    if (!existsSync5(boardPath) && existsSync5(backupPath)) renameSync(backupPath, boardPath);
+    throw err;
+  }
+}
+async function renderEstablished(top, conversion, snapshot2, inv, mode, stdout, deps) {
+  const key2 = resolveBundleKey(conversion.boardPath);
+  await refreshMarker(key2);
+  if (snapshot2.docs.length > 0) await recordSelfActors(key2, snapshot2.docs.map((d) => d.actor));
+  await writeCursor(key2, { tier: "git", token: conversion.boardCommit });
+  await writeCache(key2, {
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    delta: [],
+    unpushedCount: unpushedCount(conversion.boardPath) ?? 0,
+    uncommittedCount: 0
+  });
+  const receipt = {
+    established: ESTABLISH_DONE,
+    board_commit: conversion.boardCommit,
+    committed: snapshot2.docs.length
+  };
+  const actor = singleActor(snapshot2.docs);
+  if (actor) receipt.actor = actor;
+  receipt.pushed = `${BOARD_REMOTE}/${BOARD_BRANCH} (tracking set)`;
+  receipt.gitignore = conversion.gitignore;
+  receipt.next_steps = establishNextSteps(inv);
+  const hint = await hookInstallHintOnce(key2, inv, deps.hookInstalled);
+  if (hint) receipt.hint = hint;
+  stdout(render(receipt, mode));
+  return { already: false };
+}
+async function establishBoard(dir, inv, mode, stdout, deps) {
+  const top = repoTopLevel(dir);
+  if (!top) {
+    throw new CliError("RUNTIME", "not inside a git repository \u2014 establish needs a repo with an 'origin' remote");
+  }
+  if (runGit(top, ["remote", "get-url", BOARD_REMOTE]).status !== 0) {
+    throw new CliError("RUNTIME", `this repository has no '${BOARD_REMOTE}' remote`);
+  }
+  fetchOriginRequired(top);
+  const boardPath = path8.join(top, BUNDLE_DIR);
+  const backupPath = `${boardPath}.establish-backup`;
+  let marker = readEstablishMarker(top);
+  let remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
+  const localCommit = refCommit(top, `refs/heads/${BOARD_BRANCH}`);
+  if (isProvisioned(top) && remoteCommit) {
+    if (marker) {
+      if (!isAncestor(top, marker, remoteCommit)) {
+        throw new CliError(
+          "CONFLICT",
+          `the provisioned board does not contain the interrupted establishment snapshot (${marker})`
+        );
+      }
+      const markerTree = treeOf(top, marker);
+      if (!markerTree) {
+        throw new CliError("RUNTIME", `the establishment marker names an unavailable tree (${marker})`);
+      }
+      setBoardUpstream(boardPath);
+      gitignoreNote(top);
+      assertBundleBytesMatchCommit(top, boardPath, marker);
+      removeVerifiedBackup(top, backupPath, marker, inv);
+      clearEstablishMarker(top);
+    }
+    return { already: true };
+  }
+  if (localCommit && !remoteCommit) {
+    if (!isProvisioned(top)) {
+      const provisioned = provisionBoardWorktree(top);
+      if (provisioned.kind !== "provisioned" && provisioned.kind !== "already") {
+        throw new CliError("RUNTIME", "the local board branch could not be provisioned for explicit establishment");
+      }
+    }
+    const indexPath = path8.join(boardPath, "index.md");
+    if (!existsSync5(indexPath) || lstatSync2(indexPath).isSymbolicLink() || !lstatSync2(indexPath).isFile()) {
+      throw new CliError("RUNTIME", `the local '${BOARD_BRANCH}' worktree is not a valid bundle (root index.md missing)`);
+    }
+    pushBoardUpstream(boardPath);
+    fetchOriginRequired(top);
+    remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
+    if (!remoteCommit) throw new CliError("RUNTIME", "board push succeeded but origin/board could not be verified");
+    const conversion2 = {
+      boardPath,
+      boardCommit: mustGit3(boardPath, ["rev-parse", "HEAD"]).trim(),
+      gitignore: gitignoreNote(top)
+    };
+    return renderEstablished(top, conversion2, { docs: [] }, inv, mode, stdout, deps);
+  }
+  const recoverySource = existsSync5(backupPath) ? backupPath : boardPath;
+  if (marker) {
+    const markerTree = treeOf(top, marker);
+    if (!markerTree) {
+      throw new CliError("RUNTIME", `the establishment marker names an unavailable commit (${marker}); nothing was moved`);
+    }
+    assertPlainBundleShape(recoverySource, inv);
+    const currentSnapshot = snapshotBundleCommit(top, recoverySource);
+    if (currentSnapshot.tree !== markerTree) {
+      throw new CliError("CONFLICT", "the local bundle changed since the interrupted establishment snapshot; nothing was moved");
+    }
+    if (!remoteCommit) {
+      try {
+        pushBoardCommit(top, marker);
+      } catch (err) {
+        if (fetchOrigin(top)) remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
+        if (!remoteCommit) {
+          throw err;
+        }
+      }
+      fetchOriginRequired(top);
+      remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
+    }
+    if (!remoteCommit || !isAncestor(top, marker, remoteCommit)) {
+      throw new CliError(
+        "CONFLICT",
+        `a different origin/${BOARD_BRANCH} appeared while establishing; the local bundle remains untouched`
+      );
+    }
+    const conversion2 = finishLocalConversion(top, recoverySource, marker, markerTree, inv);
+    return renderEstablished(top, conversion2, currentSnapshot, inv, mode, stdout, deps);
+  }
+  if (remoteCommit) {
+    if (existsSync5(boardPath) || existsSync5(backupPath)) {
+      throw new CliError(
+        "CONFLICT",
+        `origin/${BOARD_BRANCH} already exists while this clone also has a local bundle \u2014 establish will not guess that they are identical or replace either one`,
+        { help: `move the local folder aside, run '${inv} sync' to join, then reconcile deliberately` }
+      );
+    }
+    return { already: true };
+  }
+  if (localCommit) {
+    throw new CliError(
+      "RUNTIME",
+      `a local '${BOARD_BRANCH}' branch already exists but is not the conventional board worktree; nothing was published`
+    );
+  }
+  if (existsSync5(backupPath)) {
+    throw new CliError(
+      "RUNTIME",
+      `an establishment backup already exists at ${backupPath}, but this clone has no matching establishment marker; nothing was published or moved`
+    );
+  }
+  const namespaceConflicts = boardNamespaceConflicts(top);
+  if (namespaceConflicts.length > 0) {
+    throw new CliError("RUNTIME", `branches named '${BOARD_BRANCH}/\u2026' block establishment: ${namespaceConflicts.join(", ")}`, {
+      details: { conflicting_branches: namespaceConflicts }
+    });
+  }
+  assertFreshSource(top, boardPath, inv);
+  await assertNotBoundElsewhere(top, boardPath);
+  const snapshot2 = snapshotBundleCommit(top, boardPath);
+  writeEstablishMarker(top, snapshot2.sha);
+  marker = snapshot2.sha;
+  try {
+    pushBoardCommit(top, snapshot2.sha);
+  } catch (err) {
+    if (fetchOrigin(top)) remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
+    if (!remoteCommit) {
+      throw err;
+    }
+  }
+  fetchOriginRequired(top);
+  remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
+  if (!remoteCommit || !isAncestor(top, snapshot2.sha, remoteCommit)) {
+    throw new CliError(
+      "CONFLICT",
+      `a teammate published a different origin/${BOARD_BRANCH} first; the local bundle remains untouched`,
+      { details: { snapshot_commit: snapshot2.sha } }
+    );
+  }
+  const conversion = finishLocalConversion(top, boardPath, marker, snapshot2.tree, inv);
+  return renderEstablished(top, conversion, snapshot2, inv, mode, stdout, deps);
+}
+
 // src/commands/sync.ts
 var SYNC_USAGE = `agentstate-lite sync \u2014 share the board branch with a remote (git tier)
 
 Usage:
   agentstate-lite sync [--pull-only] [--dir <path>] [--limit <n>] [--json]
+  agentstate-lite sync --establish [--dir <path>] [--json]
   agentstate-lite sync --show-incoming <id> [--out <file>] [--dir <path>] [--json]
   agentstate-lite sync --migrate [--yes] [--dir <path>] [--json]
 
 Shares this repo's board (\`.agentstate-lite\`, kept on its own \`board\` branch) with your
-teammates: commits any pending local doc changes, pulls theirs, and pushes yours \u2014 touching
-nothing outside the board. \`--pull-only\` skips commit + push and only fast-forwards from origin
+teammates: ordinary sync commits pending local doc changes, pulls theirs, and pushes yours without
+touching code files. The one-time \`--establish\` transition also appends the board path to the
+root working-tree \`.gitignore\` and reports that edit. \`--pull-only\` skips commit + push and
+only fast-forwards from origin
 (never rebases) \u2014 the mode a read-only session uses to pick up incoming changes without
 publishing local ones.
+
+\`init\` creates a LOCAL bundle; sharing it is a separate, explicit act. \`sync --establish\` turns
+this project's local \`.agentstate-lite/\` into the shared board: it snapshots and publishes the
+bundle, then checks out the new \`board\` branch at the same path \u2014 never automatic, never inferred
+from a bare \`sync\` (which never publishes a bundle nobody has chosen to share). Once established
+(here or by a teammate), plain \`sync\` is everyone's setup AND ongoing verb: on a project that
+already shares a board, it provisions the local checkout, then commits, pulls, and pushes ordinary
+board changes.
+\`--establish\` on an already-established project is a safe no-op that notes \`already established\`
+and proceeds as an ordinary sync.
 
 On a repo that has never had the board checkout materialized locally (a fresh clone, or the first
 \`aslite\` invocation after one), sync provisions \`.agentstate-lite\` itself from \`origin/board\` \u2014
@@ -9788,6 +10365,7 @@ their board work before anyone migrates.
 
 Options:
   --pull-only          Only fast-forward from origin (never rebase); skip commit + push
+  --establish          Explicitly publish a local bundle as this project's shared board
   --show-incoming <id> Print the upstream (origin/board) version of one doc, as of the last fetch
   --migrate            One-time: move a committed .agentstate-lite/ folder onto its own board branch
   --yes                Execute --migrate (without it, --migrate prints a preview and changes nothing)
@@ -9808,7 +10386,7 @@ function pushFailureMessage(err) {
   return `committed to the board locally \u2014 your work is saved. ${err.message}`;
 }
 function upstreamHelp(inv) {
-  return `if a teammate has already set this project up for sharing, make sure your \`origin\` remote points at the SAME repository they pushed the \`board\` branch to; if not, someone needs to run the (human-gated) migration once before ${inv} sync can share it`;
+  return `if a teammate already shares this project's board, make sure your \`origin\` remote points at the SAME repository they pushed the \`board\` branch to; if nobody has started sharing this project's board yet, run \`${inv} sync --establish\` to start`;
 }
 function withUpstreamHelp(err, inv) {
   if (err.code === "NO_UPSTREAM" && err.help === void 0) {
@@ -9886,7 +10464,7 @@ function keptDocMeta(boardPath, relPath) {
 function frontmatterDiffKeys(boardPath, c) {
   if (!c.isDoc || c.exportPath === null || !c.landed) return [];
   try {
-    const local = parseMarkdown(readFileSync4(c.exportPath, "utf8"), c.relPath).frontmatter;
+    const local = parseMarkdown(readFileSync5(c.exportPath, "utf8"), c.relPath).frontmatter;
     const shown = runGit(boardPath, ["show", `HEAD:${c.relPath}`]);
     if (shown.status !== 0) return [];
     const kept = parseMarkdown(shown.stdout, c.relPath).frontmatter;
@@ -9911,7 +10489,8 @@ function toConflictRows(boardPath, conflicts) {
 }
 function provisionAnnouncement(outcome) {
   if (outcome.kind === "provisioned") {
-    return { provisioned: `${outcome.boardPath} \u2014 materialized from origin/board` };
+    const detail = outcome.source === "remote" ? "materialized from origin/board" : "materialized from the local board branch";
+    return { provisioned: `${outcome.boardPath} \u2014 ${detail}` };
   }
   if (outcome.kind === "repaired") {
     return { repaired: `${outcome.boardPath} \u2014 worktree pointers repaired` };
@@ -9933,18 +10512,27 @@ async function hookInstallHintOnce(key2, inv, installed = hookInstalled) {
     return void 0;
   }
 }
-function ffSwallowToError(reason, inv) {
+function ffSwallowToError(reason, inv, boardPath) {
   switch (reason) {
     case "git-missing":
       return new CliError("GIT_MISSING", "sync needs git, which isn't installed on this machine", {
         help: "install git (https://git-scm.com/downloads), then re-run the command"
       });
-    case "no-upstream":
+    case "no-upstream": {
+      const hasLocalBoard = boardPath !== void 0 && runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
+      if (hasLocalBoard) {
+        return new CliError(
+          "NO_UPSTREAM",
+          `board not published yet \u2014 run '${inv} sync --establish' to publish it explicitly`,
+          { help: `${inv} sync --establish` }
+        );
+      }
       return new CliError(
         "NO_UPSTREAM",
         "the board branch isn't linked to a remote yet \u2014 sync can't share it",
         { help: upstreamHelp(inv) }
       );
+    }
     case "auth":
       return new CliError(
         "AUTH_REQUIRED",
@@ -10007,8 +10595,8 @@ function healStaleRebaseBeforeProvisioning(dir) {
   try {
     const top = repoTopLevel(dir);
     if (!top) return;
-    const candidateBoardPath = path8.join(top, BUNDLE_DIR);
-    if (!existsSync5(candidateBoardPath)) return;
+    const candidateBoardPath = path9.join(top, BUNDLE_DIR);
+    if (!existsSync6(candidateBoardPath)) return;
     const boardTop = repoTopLevel(candidateBoardPath);
     if (!boardTop || realOrSame2(boardTop) !== realOrSame2(candidateBoardPath)) return;
     if (!isLinkedWorktree(candidateBoardPath)) return;
@@ -10023,23 +10611,23 @@ function isLinkedWorktree(p) {
   if (r.status !== 0) return false;
   const [gitDirRaw, commonDirRaw] = r.stdout.trim().split("\n");
   if (!gitDirRaw || !commonDirRaw) return false;
-  const commonDir = path8.isAbsolute(commonDirRaw) ? commonDirRaw : path8.resolve(p, commonDirRaw);
+  const commonDir = path9.isAbsolute(commonDirRaw) ? commonDirRaw : path9.resolve(p, commonDirRaw);
   return realOrSame2(gitDirRaw) !== realOrSame2(commonDir);
 }
 function hasGitFileSignature(p) {
   try {
-    return statSync2(path8.join(p, ".git")).isFile();
+    return statSync2(path9.join(p, ".git")).isFile();
   } catch {
     return false;
   }
 }
 function retargetStaleBoardInteriorByPath(dir) {
-  let cur = path8.resolve(dir);
+  let cur = path9.resolve(dir);
   for (; ; ) {
-    if (path8.basename(cur) === BUNDLE_DIR && hasGitFileSignature(cur)) {
-      return path8.dirname(cur);
+    if (path9.basename(cur) === BUNDLE_DIR && hasGitFileSignature(cur)) {
+      return path9.dirname(cur);
     }
-    const parent = path8.dirname(cur);
+    const parent = path9.dirname(cur);
     if (parent === cur) return null;
     cur = parent;
   }
@@ -10047,8 +10635,8 @@ function retargetStaleBoardInteriorByPath(dir) {
 function retargetBoardInterior(dir) {
   try {
     const top = repoTopLevel(dir);
-    if (top && path8.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
-      return path8.dirname(top);
+    if (top && path9.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
+      return path9.dirname(top);
     }
   } catch {
   }
@@ -10147,6 +10735,7 @@ async function sync(argv, deps = {}) {
       args: argv,
       options: {
         "pull-only": { type: "boolean" },
+        establish: { type: "boolean" },
         "show-incoming": { type: "string" },
         migrate: { type: "boolean" },
         yes: { type: "boolean" },
@@ -10167,6 +10756,9 @@ async function sync(argv, deps = {}) {
   if (values.migrate) {
     if (values["pull-only"]) {
       throw new CliError("USAGE", "--migrate and --pull-only cannot be combined \u2014 migration never pulls");
+    }
+    if (values.establish) {
+      throw new CliError("USAGE", "--migrate and --establish cannot be combined \u2014 they are two different one-time moves");
     }
     if (values["show-incoming"] !== void 0) {
       throw new CliError("USAGE", "--migrate and --show-incoming cannot be combined");
@@ -10195,6 +10787,9 @@ async function sync(argv, deps = {}) {
     if (values["pull-only"]) {
       throw new CliError("USAGE", "--show-incoming and --pull-only cannot be combined \u2014 the viewer never pulls");
     }
+    if (values.establish) {
+      throw new CliError("USAGE", "--show-incoming and --establish cannot be combined");
+    }
     await showIncoming(id, values, deps);
     return;
   }
@@ -10202,6 +10797,12 @@ async function sync(argv, deps = {}) {
     throw new CliError("USAGE", "--out only applies to sync --show-incoming <id>", {
       help: `${inv} sync --show-incoming <id> --out <file>`
     });
+  }
+  if (values.establish && values["pull-only"]) {
+    throw new CliError(
+      "USAGE",
+      "--establish and --pull-only cannot be combined \u2014 establishing always publishes"
+    );
   }
   let limit = DEFAULT_LIMIT;
   if (values.limit !== void 0) {
@@ -10214,13 +10815,45 @@ async function sync(argv, deps = {}) {
   const dir = retargetBoardInterior(values.dir ?? process.cwd());
   const pullOnly = Boolean(values["pull-only"]);
   const mode = resolveMode(values);
+  let establishAlreadyNote;
+  if (values.establish) {
+    const establishOutcome = await establishBoard(dir, inv, mode, stdout, deps);
+    if (!establishOutcome.already) return;
+    establishAlreadyNote = ESTABLISH_ALREADY;
+  }
   healStaleRebaseBeforeProvisioning(dir);
-  const outcome = provisionBoardWorktree(dir);
+  const outcome = provisionBoardWorktree(dir, { allowLocalBranch: false });
+  if (outcome.kind === "local_board") {
+    if (outcome.remoteExists) {
+      throw new CliError(
+        "CONFLICT",
+        `both a local '${BOARD_BRANCH}' branch and origin/${BOARD_BRANCH} exist, but the local branch is not the managed board checkout \u2014 bare sync will not guess which history is safe`,
+        {
+          help: `preserve or rename the local branch (for example: git branch -m ${BOARD_BRANCH} ${BOARD_BRANCH}-local-backup), then re-run '${inv} sync' to join origin/${BOARD_BRANCH}`
+        }
+      );
+    }
+    throw new CliError(
+      "NO_UPSTREAM",
+      `a local '${BOARD_BRANCH}' branch exists but has not been explicitly adopted or published \u2014 bare sync will not check it out or create origin/${BOARD_BRANCH}`,
+      { help: `${inv} sync --establish` }
+    );
+  }
   if (outcome.kind === "no_repo" || outcome.kind === "no_board") {
-    stdout(render({ sync: "nothing to sync" }, mode));
+    const rec = { sync: "nothing to sync" };
+    if (outcome.kind === "no_board") {
+      const top2 = repoTopLevel(dir);
+      const hasOrigin = top2 !== null && runGit(top2, ["remote", "get-url", BOARD_REMOTE]).status === 0;
+      const hasFolder = top2 !== null && existsSync6(path9.join(top2, BUNDLE_DIR, "index.md"));
+      if (hasOrigin && hasFolder) {
+        rec.hint = `this project has a local bundle but no shared board yet \u2014 run \`${inv} sync --establish\` to start sharing it over a '${BOARD_BRANCH}' branch on origin`;
+      }
+    }
+    stdout(render(rec, mode));
     return;
   }
   const boardPath = outcome.boardPath;
+  const top = path9.dirname(boardPath);
   if (outcome.kind === "repaired") {
     healStaleRebaseBeforeProvisioning(dir);
   }
@@ -10239,7 +10872,7 @@ async function sync(argv, deps = {}) {
   if (pullOnly) {
     const ff = ffPull(boardPath);
     if (ff.swallowed) {
-      throw withProvisionAnnouncement(ffSwallowToError(ff.swallowed, inv), outcome);
+      throw withProvisionAnnouncement(ffSwallowToError(ff.swallowed, inv, boardPath), outcome);
     }
   } else {
     let rebaseOutcome;
@@ -10261,6 +10894,17 @@ async function sync(argv, deps = {}) {
         outcome
       );
       throw await throwPostCommitFailure(conflictErr, commitResult.committed, key2, boardPath);
+    }
+    if (rebaseOutcome.status === "no_upstream") {
+      const noUpstream = withProvisionAnnouncement(
+        new CliError(
+          "NO_UPSTREAM",
+          `the local board has not been published \u2014 bare sync never creates origin/${BOARD_BRANCH}; run '${inv} sync --establish' to publish it explicitly`,
+          { help: `${inv} sync --establish` }
+        ),
+        outcome
+      );
+      throw await throwPostCommitFailure(noUpstream, commitResult.committed, key2, boardPath);
     }
   }
   const postFetchOriginRef = resolveOriginRef(boardPath);
@@ -10325,6 +10969,7 @@ async function sync(argv, deps = {}) {
   const hookHint = await hookInstallHintOnce(key2, inv, deps.hookInstalled);
   if (committedCount === 0 && pulledCount === 0 && pushedCount === 0 && !reanchorNote) {
     const rec = {};
+    if (establishAlreadyNote) rec.establish = establishAlreadyNote;
     const announcement2 = provisionAnnouncement(outcome);
     if (announcement2) Object.assign(rec, announcement2);
     rec.sync = "already up to date";
@@ -10333,6 +10978,7 @@ async function sync(argv, deps = {}) {
     return;
   }
   const receipt = {};
+  if (establishAlreadyNote) receipt.establish = establishAlreadyNote;
   const announcement = provisionAnnouncement(outcome);
   if (announcement) Object.assign(receipt, announcement);
   receipt.committed = committedCount;
@@ -10375,11 +11021,11 @@ async function showIncoming(id, values, deps) {
         { details: { state: "no-repo" } }
       );
     }
-    if (path8.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
+    if (path9.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
       throw new CliError("USAGE", `--show-incoming needs a repo-relative doc id or path without '..' segments: ${id}`);
     }
     if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
-      throw ffSwallowToError("no-upstream", inv);
+      throw ffSwallowToError("no-upstream", inv, top);
     }
     const candidates = [];
     let conceptIdOk = true;
@@ -10490,20 +11136,20 @@ function realOrSame3(p) {
 }
 function hasGitFileSignature2(p) {
   try {
-    return statSync3(path9.join(p, ".git")).isFile();
+    return statSync3(path10.join(p, ".git")).isFile();
   } catch {
     return false;
   }
 }
 function findBoardCandidate(start) {
-  let cur = path9.resolve(start);
+  let cur = path10.resolve(start);
   for (; ; ) {
-    if (path9.basename(cur) === BUNDLE_DIR && hasGitFileSignature2(cur)) {
-      return { top: path9.dirname(cur), boardPath: cur };
+    if (path10.basename(cur) === BUNDLE_DIR && hasGitFileSignature2(cur)) {
+      return { top: path10.dirname(cur), boardPath: cur };
     }
-    const candidate = path9.join(cur, BUNDLE_DIR);
+    const candidate = path10.join(cur, BUNDLE_DIR);
     if (hasGitFileSignature2(candidate)) return { top: cur, boardPath: candidate };
-    const parent = path9.dirname(cur);
+    const parent = path10.dirname(cur);
     if (parent === cur) return null;
     cur = parent;
   }
@@ -10548,7 +11194,7 @@ async function maybeAutoPull(dir, opts = {}) {
     if (!candidate) return "no-board";
     const boardPath = candidate.boardPath;
     if (opts.requireBoardBundle !== false) {
-      const root = dir !== void 0 ? path9.resolve(dir) : await findBundleRoot(start);
+      const root = dir !== void 0 ? path10.resolve(dir) : await findBundleRoot(start);
       if (!root || realOrSame3(root) !== realOrSame3(boardPath)) return "different-bundle";
     }
     const key2 = resolveBundleKey(boardPath);
@@ -10558,7 +11204,7 @@ async function maybeAutoPull(dir, opts = {}) {
     if (ageOk(state.cache?.updatedAt)) return "fresh";
     if (ageOk(state.autoPullAttemptAt)) return "throttled";
     const gitTop = repoTopLevel(candidate.top);
-    if (!gitTop || realOrSame3(path9.join(gitTop, BUNDLE_DIR)) !== realOrSame3(boardPath) || !isProvisioned(gitTop)) {
+    if (!gitTop || realOrSame3(path10.join(gitTop, BUNDLE_DIR)) !== realOrSame3(boardPath) || !isProvisioned(gitTop)) {
       return "no-board";
     }
     await recordAutoPullAttempt(key2, void 0, now);
@@ -10694,7 +11340,7 @@ async function docRead(argv, deps) {
       try {
         assertSafeConceptId(id);
         rel = pathFromConceptId(id);
-        bytes = await fs7.readFile(path10.join(bundle.root, rel));
+        bytes = await fs7.readFile(path11.join(bundle.root, rel));
       } catch (err) {
         throw readErrorToCliError(err, id, values.remote);
       }
@@ -10752,9 +11398,9 @@ function formatFieldValue(value) {
 }
 function inBundlePollutionWarning(bundle, out) {
   if (bundle.backend) return void 0;
-  const resolvedOut = path10.resolve(out);
+  const resolvedOut = path11.resolve(out);
   const root = bundle.root;
-  const isInside = resolvedOut === root || resolvedOut.startsWith(root + path10.sep);
+  const isInside = resolvedOut === root || resolvedOut.startsWith(root + path11.sep);
   if (!isInside) return void 0;
   if (isReservedFile(resolvedOut)) {
     return `--out ${out} resolves to ${resolvedOut}, which is INSIDE this bundle (${root}) at a reserved OKF filename \u2014 the write will CLOBBER that reserved file (index.md/log.md is never re-parsed as a concept doc). Pass a path outside the bundle if that is not intended.`;
@@ -13223,7 +13869,7 @@ import { parseArgs as parseArgs21 } from "node:util";
 
 // ../viewer/src/generate.ts
 import { promises as fs10 } from "node:fs";
-import * as path11 from "node:path";
+import * as path12 from "node:path";
 
 // ../viewer/src/bundle.ts
 function asString(value) {
@@ -13533,7 +14179,7 @@ async function generateVisualization(bundleSource, options2 = {}) {
   let data;
   let defaultOutDir;
   if (typeof bundleSource === "string") {
-    const root = path11.resolve(bundleSource);
+    const root = path12.resolve(bundleSource);
     const stat = await fs10.stat(root).catch(() => null);
     if (!stat || !stat.isDirectory()) {
       throw new Error("bundle directory not found: " + root);
@@ -13545,8 +14191,8 @@ async function generateVisualization(bundleSource, options2 = {}) {
     defaultOutDir = process.cwd();
   }
   const html = renderTemplate(data);
-  const out = path11.resolve(options2.out ?? path11.join(defaultOutDir, "viz.html"));
-  await fs10.mkdir(path11.dirname(out), { recursive: true });
+  const out = path12.resolve(options2.out ?? path12.join(defaultOutDir, "viz.html"));
+  await fs10.mkdir(path12.dirname(out), { recursive: true });
   const tmp = out + ".tmp-" + process.pid;
   await fs10.writeFile(tmp, html, "utf8");
   await fs10.rename(tmp, out);
@@ -15113,11 +15759,11 @@ async function toRemoteError(res) {
   const code = envelope?.error?.code ?? (res.status === 401 ? "AUTH_REQUIRED" : res.status >= 500 ? "RUNTIME" : "USAGE");
   return new RemoteError(message, code, res.status);
 }
-async function authRequest(base, path13, options2 = {}) {
+async function authRequest(base, path14, options2 = {}) {
   const headers = {};
   if (options2.body !== void 0) headers["content-type"] = "application/json";
   if (options2.authToken) headers["Authorization"] = `Bearer ${options2.authToken}`;
-  const request = new Request(`${base}${path13}`, {
+  const request = new Request(`${base}${path14}`, {
     method: options2.method ?? "GET",
     headers,
     body: options2.body !== void 0 ? JSON.stringify(options2.body) : void 0
@@ -15994,8 +16640,8 @@ var COMMAND_GROUPS = [
         // NOTE: `sync --migrate` (TEMPORARY, founders' one-time act — see commands/sync-migrate.ts)
         // is deliberately ABSENT here: it appears in `sync --help` only (discoverable, not taught),
         // so the skill channels and the compact reference never teach it.
-        usage: "sync [--pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]",
-        summary: "Share the board branch with a remote \u2014 commits, pulls, and pushes (git tier; --pull-only skips commit+push). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale \u2014 silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it"
+        usage: "sync [--establish | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]",
+        summary: "Share the board branch with a remote \u2014 commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale \u2014 silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it"
       }
     ]
   },
@@ -16144,7 +16790,7 @@ function helpIndexText(invocation) {
 
 // src/commands/home.ts
 import { parseArgs as parseArgs30 } from "node:util";
-import path12 from "node:path";
+import path13 from "node:path";
 var HOME_RECENT_LIMIT = 5;
 function rowTitle(id, title) {
   return typeof title === "string" ? title : id.split("/").pop() ?? id;
@@ -16199,7 +16845,7 @@ async function defaultSummarizeBundle(dir) {
 }
 async function discoverSummarizeBundle(startDir) {
   try {
-    const root = await findBundleRoot(path12.resolve(startDir));
+    const root = await findBundleRoot(path13.resolve(startDir));
     return root ? defaultSummarizeBundle(root) : null;
   } catch {
     return null;
@@ -16267,7 +16913,7 @@ async function defaultLoadBoardStatus(dir) {
   try {
     const top = repoTopLevel(retargetBoardInterior(dir ?? process.cwd()));
     if (!top) return null;
-    const boardPath = path12.join(top, BUNDLE_DIR);
+    const boardPath = path13.join(top, BUNDLE_DIR);
     if (!isProvisioned(top)) {
       const probed = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0 || runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
       return probed ? { state: "unprovisioned" } : null;
@@ -16521,12 +17167,13 @@ async function sessionStartPull(dir, budgetMs = SESSION_START_PULL_BUDGET_MS, no
     try {
       outcome = provisionBoardWorktree(startDir, {
         fetchTimeoutMs: remaining(),
-        connectTimeoutSeconds: SESSION_START_CONNECT_TIMEOUT_SECONDS
+        connectTimeoutSeconds: SESSION_START_CONNECT_TIMEOUT_SECONDS,
+        allowLocalBranch: false
       });
     } catch {
       return void 0;
     }
-    if (outcome.kind === "no_repo" || outcome.kind === "no_board") return void 0;
+    if (outcome.kind === "no_repo" || outcome.kind === "no_board" || outcome.kind === "local_board") return void 0;
     const boardPath = outcome.boardPath;
     const announcement = provisionAnnouncement(outcome);
     const key2 = resolveBundleKey(boardPath);
