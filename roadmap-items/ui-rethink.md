@@ -2,7 +2,7 @@
 type: Roadmap Item
 title: 'The human window rethink: what replaces the kanban primitive'
 status: queued
-timestamp: '2026-07-10T01:13:44.034Z'
+timestamp: '2026-07-10T17:15:00.113Z'
 ---
 [contains](../tasks/ui-v1.md)
 
@@ -13,3 +13,5 @@ timestamp: '2026-07-10T01:13:44.034Z'
 [brief](../plans/ui-orientation-brief.md)
 
 [contains](../tasks/deprecate-static-viewer.md)
+
+[contains](../tasks/ui-generative-chat.md)
