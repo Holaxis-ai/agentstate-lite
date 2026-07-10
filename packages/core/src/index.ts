@@ -107,6 +107,12 @@ export {
   stripETagWrapper,
 } from "./versioning.js";
 
+// The ONE versioned-mutation boundary (CLAUDE.md gate 3): a shared read-decide-CAS-retry
+// primitive, so `mutateDoc`/`addLink` (CLI) and `appendLog`/`regenerateIndex` (here in core)
+// consume the SAME loop instead of five independently hand-rolled copies of it.
+export { versionedMutation } from "./mutation.js";
+export type { MutationDecision, VersionedMutationOptions, VersionedMutationOutcome } from "./mutation.js";
+
 // ── Extensions (additive; do not break the contract) ──────────────────────────
 
 // `list` is an alias of `query` (the `list/query` API surface).
