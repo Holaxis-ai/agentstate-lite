@@ -1,5 +1,5 @@
 /**
- * Wire response shapes for the surface the Board slice consumes — hand-written against
+ * Wire response shapes for the surface the launcher + pages bridge consume — hand-written against
  * `packages/server/src/router.ts` directly (contract-first codegen is recorded future work,
  * `plans/ui-v1.md` rev 2's Package layout section). `Frontmatter` is the ONE shared type,
  * imported type-only so it is erased at compile time and never pulls `@agentstate-lite/core`
@@ -41,6 +41,19 @@ export interface WriteDocResponse {
   version: string;
 }
 
+/** One row of `GET /__ui/edges` — hand-mirrors core's `Link` (bundle.ts) per this module's no-runtime-import convention. */
+export interface Edge {
+  from: string;
+  to: string;
+  text: string;
+}
+
+/** `GET /__ui/edges?from=&to=&text=` response shape (the shell-only endpoint the bridge's `edges` request proxies). */
+export interface EdgesResponse {
+  count: number;
+  edges: Edge[];
+}
+
 /** The wire-protocol JSON error envelope (`docs/WIRE-PROTOCOL.md` Conventions; `router.ts`'s `errorResponse`). */
 export interface WireErrorEnvelope {
   error: {
@@ -50,6 +63,6 @@ export interface WireErrorEnvelope {
   };
 }
 
-// NOTE: no Task-specific enum here (a former `TASK_STATUSES`/`TaskStatus` lived in this file) —
-// which kind/enum the board renders is derived or defaulted entirely in `../kinds/boardShape.ts`;
-// this module stays generic wire shapes only. See that module's doc comment.
+// NOTE: no kind-specific enum here — this module stays GENERIC wire shapes only. Any kind/enum
+// interpretation (e.g. a page bucketing tasks by status) is the consuming page's own concern,
+// read off `DocHead.frontmatter`; the shell never bakes in a kind here.

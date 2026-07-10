@@ -13,6 +13,7 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,8 +21,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const cliPackageRoot = path.resolve(here, "..");
 const cliBin = path.join(cliPackageRoot, "dist", "agentstate-lite.mjs");
 
+// Build ONLY if the bundle is absent — the package `test` script builds once up front, so this is
+// a no-op under `npm test`/`npm run check`. That prevents this file and `doc-cli-integration` from
+// each kicking off a concurrent `vite build` (node --test runs files in parallel) that would race
+// on packages/ui/dist. Building here still supports running THIS file on its own.
 before(() => {
-  execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
+  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
 });
 
 function run(args: string[]): string {

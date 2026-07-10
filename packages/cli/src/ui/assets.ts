@@ -12,9 +12,18 @@
 import { gunzipSync } from "node:zlib";
 import { UI_ASSETS } from "../generated/ui-assets.generated.js";
 
-/** Strict CSP for every asset response (rev 3.2: "same-origin XSS here is key-equivalent"). No inline script/style, no framing, no plugins. */
+/**
+ * Strict CSP for every shell asset response (rev 3.2: "same-origin XSS here is key-equivalent").
+ * No inline script/style, no plugins, and — EXPLICITLY — `frame-src`/`child-src 'self'` so the
+ * shell can frame ONLY same-origin page-bytes URLs (tasks/ui-pages-spike B1). This is also the
+ * confinement that blocks a sandboxed page from self-navigating its own frame to an external
+ * origin: a nested frame's navigation is subject to the embedder's `frame-src`, so `'self'` here
+ * refuses any off-origin URL — closing an exfil channel the `connect-src 'none'` page CSP alone
+ * did not (navigation is not a fetch). Previously this rested on the ABSENCE of `frame-src`
+ * (falling back to `default-src 'self'`); it is now stated outright.
+ */
 export const CSP_HEADER =
-  "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+  "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; frame-src 'self'; child-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 
 export interface AssetResponse {
   status: number;
@@ -42,6 +51,10 @@ export function serveAsset(pathname: string, acceptEncoding: string | null | und
     "content-type": asset.contentType,
     "content-security-policy": CSP_HEADER,
     "x-content-type-options": "nosniff",
+    // The shell document's URL may carry `?token=` on first load (before the SPA scrubs it via
+    // history.replaceState) — no request initiated by the shell, above all the untrusted page
+    // iframe's load, may ever carry that URL as a referrer (tasks/ui-pages-spike P1).
+    "referrer-policy": "no-referrer",
   };
   if (acceptsGzip(acceptEncoding)) {
     headers["content-encoding"] = "gzip";

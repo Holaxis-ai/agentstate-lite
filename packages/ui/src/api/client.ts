@@ -44,7 +44,8 @@ function versionOf(res: Response): string | undefined {
   return etag ? stripETagWrapper(etag) : undefined;
 }
 
-async function parseErrorEnvelope(res: Response): Promise<ApiError> {
+/** Exported so `pages.ts`'s shell-local (non-`/v0/`) fetches can throw the SAME typed {@link ApiError} on a non-2xx — a raw `fetch` there would otherwise lose the status code the interceptor needs to recognize a dead session (see `queryClient.ts`'s `onQueryError`). */
+export async function parseErrorEnvelope(res: Response): Promise<ApiError> {
   let envelope: WireErrorEnvelope | null = null;
   try {
     envelope = (await res.json()) as WireErrorEnvelope;
@@ -81,7 +82,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<{
   return { data, res };
 }
 
-/** Filter facets for {@link listHeadsPage}/{@link listAllHeads} — generic over `type`/`prefix` so no caller (the board's kind-shape module, a future doc-detail/admin view) hardcodes a kind here. */
+/** Filter facets for {@link listHeadsPage}/{@link listAllHeads} — generic over `type`/`prefix` so no caller (the launcher, a page's bridge query) hardcodes a kind here. */
 export interface ListHeadsParams {
   /** Restrict to a frontmatter `type` (omit to list every doc). */
   type?: string;
@@ -99,7 +100,7 @@ export async function listHeadsPage(params: ListHeadsParams, cursor?: string): P
   return data;
 }
 
-/** Every matching doc's head (frontmatter + version), following `next_cursor` to exhaustion — a caller bucketing by an enum field (the board) needs the full set, not one page. */
+/** Every matching doc's head (frontmatter + version), following `next_cursor` to exhaustion — a caller bucketing by an enum field (a page's board view) needs the full set, not one page. */
 export async function listAllHeads(params: ListHeadsParams): Promise<DocHead[]> {
   const all: DocHead[] = [];
   let cursor: string | undefined;
@@ -121,7 +122,7 @@ export async function getDoc(id: string): Promise<{ doc: ReadDocResponse; versio
   return { doc: data, version };
 }
 
-/** `PUT .../docs/{id}` with a required CAS `If-Match` — the Board never writes unconditionally (every mutation here is a status change against a version it just read). Throws `ApiError` with `status === 412` on a lost race. */
+/** `PUT .../docs/{id}` with a required CAS `If-Match` — a write is never unconditional (every mutation is against a version just read). Part of the banked typed-client surface; the read-only pages spike has no live writer, but the method stays for a future write-capable surface. Throws `ApiError` with `status === 412` on a lost race. */
 export async function putDoc(
   id: string,
   payload: { frontmatter: Record<string, unknown>; body: string },

@@ -34,7 +34,7 @@
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "AGENTSTATE_LITE_NO_AUTOPULL=1 node --test --import ./test/ts-loader.mjs ./test/*.test.ts",
+    "test": "node build.mjs && AGENTSTATE_LITE_NO_AUTOPULL=1 node --test --import ./test/ts-loader.mjs ./test/*.test.ts",
     "gen:skill": "node scripts/gen-skill.mjs",
     "check:skill": "node scripts/gen-skill.mjs --check",
     "gen:skill:bundle": "node scripts/gen-skill.mjs --target skill",

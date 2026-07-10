@@ -9,15 +9,19 @@
  * window-touching store so routing logic is unit-testable without a DOM.
  */
 
-export type ViewName = "board" | "doc" | "admin" | "graph";
+export type ViewName = "launcher" | "page";
 
-const VIEW_NAMES: readonly ViewName[] = ["board", "doc", "admin", "graph"];
+const VIEW_NAMES: readonly ViewName[] = ["launcher", "page"];
 
 function isViewName(v: string | null): v is ViewName {
   return v !== null && (VIEW_NAMES as readonly string[]).includes(v);
 }
 
-/** The parsed route: a view name plus its params (e.g. `doc`'s `id`). Unknown/absent `view` defaults to `board`. */
+/**
+ * The parsed route: a view name plus its params. The pages-spike surface is exactly two views
+ * (tasks/ui-pages-spike) — `launcher` (the landing, and the fallback for any unknown/legacy `view`
+ * such as a stale `?view=board` deep link) and `page` (whose `id` is the registry doc to frame).
+ */
 export interface Route {
   view: ViewName;
   id?: string;
@@ -28,15 +32,15 @@ export function parseRoute(search: string): Route {
   const params = new URLSearchParams(search);
   const view = params.get("view");
   const id = params.get("id");
-  const route: Route = { view: isViewName(view) ? view : "board" };
+  const route: Route = { view: isViewName(view) ? view : "launcher" };
   if (id) route.id = id;
   return route;
 }
 
-/** Serialize a {@link Route} back to a `?`-prefixed search string (empty string for the bare board route). */
+/** Serialize a {@link Route} back to a `?`-prefixed search string (empty string for the bare launcher route). */
 export function routeToSearch(route: Route): string {
   const params = new URLSearchParams();
-  if (route.view !== "board") params.set("view", route.view);
+  if (route.view !== "launcher") params.set("view", route.view);
   if (route.id) params.set("id", route.id);
   const s = params.toString();
   return s ? `?${s}` : "";

@@ -155,13 +155,13 @@ export { parseMarkdown, stringifyDoc, stringifyWithData, MalformedDocumentError 
 export {
   CONVENTIONS_PREFIX,
   CONVENTION_TYPE,
-  loadKinds,
   validateAgainstKind,
   freshnessHorizonMs,
   kindConventionDoc,
   splitSections,
   isTerminal,
 } from "./kinds.js";
+export { loadKinds } from "./kinds-load.js";
 export type { KindConvention, KindFields, KindRegistry } from "./kinds.js";
 
 // Ported MIME utilities (holaxis-agentstate `packages/schemas/src/content-type.ts`).

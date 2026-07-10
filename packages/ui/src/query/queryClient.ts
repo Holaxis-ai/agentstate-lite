@@ -1,8 +1,8 @@
 /**
  * The ONE query layer (plans/ui-v1.md rev 2 Realtime / rev 3.2 Interceptor re-scope): a single
- * `QueryClient` whose `QueryCache.onError` is the ONE writer to the global interceptor
- * (`interceptor.ts`) — every query in the app funnels through it, so a 401/429 anywhere trips
- * the SAME terminal state, not a per-view copy of the same logic.
+ * `QueryClient` whose `QueryCache.onError` is the primary writer to the global interceptor
+ * (`interceptor.ts`) — every TanStack-managed query in the app funnels through it, so a
+ * 401/403/429 anywhere trips the SAME terminal state, not a per-view copy of the same logic.
  *
  * Polling: `refetchInterval` fires only while `getInterceptorStatus() === "ok"`; `--dir` mode
  * never trips it (no auth surface), so polling there is simply continuous. `refetchIntervalInBackground`
@@ -13,12 +13,17 @@ import { QueryCache, QueryClient } from "@tanstack/react-query";
 import { ApiError } from "../api/client.js";
 import { getInterceptorStatus, setInterceptorStatus } from "./interceptor.js";
 
-/** Board poll cadence. A local dev tool over a single machine's bundle — no need to be aggressive. */
+/** Launcher poll cadence (a fallback beneath the live SSE stream). A local dev tool over a single machine's bundle — no need to be aggressive. */
 export const POLL_INTERVAL_MS = 5_000;
 
 function onQueryError(err: unknown): void {
   if (!(err instanceof ApiError)) return;
   if (err.status === 401) setInterceptorStatus("unauthorized");
+  // 403 on a `/v0/*` (or shell-local `/__ui/*`, `/__page/mint`) route is ALWAYS this ui server's
+  // own session gate rejecting the cookie/token (see `interceptor.ts`'s doc comment for why this
+  // can never be the page-bytes route's own, unrelated 403) — most commonly a stable-port
+  // restart that minted a fresh secret out from under an already-open tab.
+  else if (err.status === 403) setInterceptorStatus("session_expired");
   else if (err.status === 429) setInterceptorStatus("rate_limited");
 }
 
