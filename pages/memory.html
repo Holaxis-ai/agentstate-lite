@@ -1,0 +1,270 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Memory &amp; Trust</title>
+<style>
+  :root {
+    --paper: #FAFAF7; --ink: #22271F; --muted: #6E756B; --line: #E3E3DA;
+    --card: #FFFFFF; --accent: #0E7C66; --accent-soft: #E3F0EB;
+    --amber: #9A6A14; --amber-soft: #F5ECD9; --red: #B3382E; --red-soft: #F6E4E2;
+    --chip: #F0F0E9; --lock: #4A5568; --lock-soft: #E8EBF0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #16191B; --ink: #E4E7E1; --muted: #8E958F; --line: #2B2F2D;
+      --card: #1D2123; --accent: #45B896; --accent-soft: #1C2E29;
+      --amber: #D9A24A; --amber-soft: #2E2718; --red: #E07A70; --red-soft: #33211F;
+      --chip: #252A28; --lock: #A9B4C4; --lock-soft: #232A33;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font: 14px/1.5 "Avenir Next", "Seravek", system-ui, sans-serif;
+    margin: 0; padding: 20px clamp(12px, 3vw, 36px) 48px;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+  h1 { font-size: 19px; font-weight: 600; margin: 0; }
+  h1 .mono { color: var(--accent); font-weight: 700; }
+  .live { font-size: 11.5px; color: var(--muted); }
+  .live .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 4px; }
+  .sub { color: var(--muted); font-size: 12.5px; margin: 4px 0 24px; }
+
+  .grid { display: grid; grid-template-columns: minmax(340px, 3fr) minmax(280px, 2fr); gap: 22px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  section { margin-bottom: 26px; }
+  h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); margin: 0 0 10px; }
+  h2 .n { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .cards { display: flex; flex-direction: column; gap: 7px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 3px; padding: 9px 11px 8px; }
+  .card .t { font-size: 13px; line-height: 1.4; margin: 0 0 6px; }
+  .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 5px; }
+  .pill { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 7px; border-radius: 8px; font-weight: 600; }
+  .pill.locked { background: var(--lock-soft); color: var(--lock); }
+  .pill.active { background: var(--accent-soft); color: var(--accent); }
+  .pill.challenged { background: var(--red-soft); color: var(--red); }
+  .pill.deprecated { background: var(--chip); color: var(--muted); }
+  .chain { font-size: 10.5px; color: var(--muted); }
+  .ev { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10px; color: var(--muted); background: var(--chip); border-radius: 2px; padding: 3px 6px; margin-top: 4px; overflow-x: auto; white-space: nowrap; }
+  .ev b { color: var(--accent); font-weight: 600; }
+  .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10px; color: var(--muted); overflow-wrap: anywhere; margin-top: 4px; }
+  .age { font-size: 10.5px; color: var(--muted); }
+  .age.stale { color: var(--red); font-weight: 600; }
+  .age.aging { color: var(--amber); font-weight: 600; }
+  .card.stale { border-left: 3px solid var(--red); }
+  .card.aging { border-left: 3px solid var(--amber); }
+  .card.fresh-ok { border-left: 3px solid var(--accent); }
+  .empty { color: var(--muted); font-size: 12.5px; font-style: italic; }
+  .allclear { color: var(--accent); font-size: 12.5px; }
+  .tag { font-size: 10px; color: var(--muted); background: var(--chip); padding: 1px 6px; border-radius: 8px; }
+  .who { font-size: 10.5px; color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>agentstate-lite <span class="mono">memory &amp; trust</span></h1>
+  <span class="live" id="live"><span class="dot"></span>connecting…</span>
+</header>
+<p class="sub">What this project claims, how it proves it, and which of its memory the bundle's own conventions say has gone stale.</p>
+
+<div class="grid">
+  <div>
+    <section>
+      <h2>Claims — current heads <span class="n" id="n-claims"></span></h2>
+      <div class="cards" id="c-claims"></div>
+    </section>
+    <section>
+      <h2>Latest handoffs (context notes) <span class="n" id="n-notes"></span></h2>
+      <div class="cards" id="c-notes"></div>
+    </section>
+  </div>
+  <div>
+    <section>
+      <h2>Freshness sweep — per the kinds' own horizons</h2>
+      <div class="cards" id="c-fresh"></div>
+    </section>
+    <section>
+      <h2>Wiring — open tasks no roadmap item contains</h2>
+      <div class="cards" id="c-orphans"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  var PROTO = "v0", seq = 0, pending = {}, subs = [];
+  function send(type, extra) {
+    return new Promise(function (resolve, reject) {
+      var id = String(++seq);
+      pending[id] = { resolve: resolve, reject: reject };
+      var msg = { bridge: PROTO, id: id, type: type };
+      if (extra) for (var k in extra) msg[k] = extra[k];
+      parent.postMessage(msg, "*"); // parent origin is opaque to us; the shell validates by source
+    });
+  }
+  window.addEventListener("message", function (e) {
+    if (e.source !== window.parent) return; // only trust the shell
+    var m = e.data;
+    if (!m || m.bridge !== PROTO) return;
+    if (m.type === "change") { subs.forEach(function (cb) { cb(m.event); }); return; }
+    var p = pending[m.id];
+    if (!p) return;
+    delete pending[m.id];
+    if (m.type === "error") p.reject(new Error((m.error && m.error.message) || "bridge error"));
+    else p.resolve(m.result);
+  });
+  window.Bridge = {
+    hello: function () { return send("hello"); },
+    query: function (params) { return send("query", { params: params }); },
+    read: function (docId) { return send("read", { docId: docId }); },
+    edges: function (params) { return send("edges", { params: params }); },
+    subscribe: function (cb) { subs.push(cb); return send("subscribe"); }
+  };
+})();
+
+(function () {
+  var esc = function (s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  };
+  var fm = function (r) { return r.frontmatter || {}; };
+  function parseHorizon(s) { // "24h" / "30d" -> ms
+    var m = /^(\d+)([hdm])$/.exec(String(s || "").trim());
+    if (!m) return null;
+    var n = +m[1];
+    return m[2] === "h" ? n * 3600e3 : m[2] === "d" ? n * 86400e3 : n * 60e3;
+  }
+  function ageOf(r) {
+    var t = Date.parse(fm(r).timestamp || "");
+    return isNaN(t) ? null : Date.now() - t;
+  }
+  function human(ms) {
+    if (ms == null) return "undated";
+    var h = ms / 3600e3;
+    if (h < 1) return Math.round(ms / 60e3) + "m ago";
+    if (h < 48) return Math.round(h) + "h ago";
+    return Math.round(h / 24) + "d ago";
+  }
+  function render() {
+    Promise.all([
+      Bridge.query({ type: "Claim" }),
+      Bridge.query({ type: "Context Note" }),
+      Bridge.query({ type: "Task" }),
+      Bridge.query({ type: "Roadmap Item" }),
+      Bridge.query({ type: "Convention" }),
+      Bridge.edges({ text: "supersedes" }),
+      Bridge.edges({ text: "contains" })
+    ]).then(function (res) {
+      var claims = res[0].rows || [], notes = res[1].rows || [], tasks = res[2].rows || [];
+      var convs = res[4].rows || [];
+      var supers = res[5].edges || [], contains = res[6].edges || [];
+
+      // horizons from the conventions themselves — the bundle defines its own decay
+      var horizons = {};
+      convs.forEach(function (c) {
+        var h = parseHorizon(fm(c).freshness_horizon);
+        if (h && fm(c).governs) horizons[fm(c).governs] = { ms: h, label: fm(c).freshness_horizon };
+      });
+
+      // ----- claims: supersession chains -> show heads (never-superseded) -----
+      var superseded = {};                       // old <- new: edge from NEW to OLD (supersedes)
+      supers.forEach(function (e) { superseded[e.to] = e.from; });
+      var isSupersededBySomething = {};
+      supers.forEach(function (e) { isSupersededBySomething[e.to] = true; });
+      function chainLen(id) {
+        var n = 0, cur = id, guard = 0;
+        var prevOf = {};                         // head -> its predecessor
+        supers.forEach(function (e) { prevOf[e.from] = e.to; });
+        while (prevOf[cur] && guard++ < 50) { n++; cur = prevOf[cur]; }
+        return n;
+      }
+      var heads = claims.filter(function (c) { return !isSupersededBySomething[c.id]; })
+        .sort(function (a, b) { return (fm(a).status === "locked" ? 0 : 1) - (fm(b).status === "locked" ? 0 : 1); });
+      document.getElementById("n-claims").textContent = heads.length + " of " + claims.length;
+      document.getElementById("c-claims").innerHTML = heads.map(function (c) {
+        var f = fm(c), st = f.status || "active";
+        var chain = chainLen(c.id);
+        var ev = "";
+        if (f.evidence_commit || f.evidence_command) {
+          ev = '<div class="ev">' + (f.evidence_commit ? "<b>@" + esc(f.evidence_commit) + "</b> " : "") +
+               esc(f.evidence_command || "") + "</div>";
+        }
+        return '<div class="card"><p class="t">' + esc(f.title || c.id) + "</p>" +
+          '<div class="meta"><span class="pill ' + esc(st) + '">' + esc(st) + "</span>" +
+          (chain ? '<span class="chain">supersedes ' + chain + " prior</span>" : "") +
+          '<span class="age">' + human(ageOf(c)) + "</span></div>" + ev +
+          '<div class="id">' + esc(c.id) + "</div></div>";
+      }).join("") || '<span class="empty">no claims</span>';
+
+      // ----- freshness sweep, per declared horizons -----
+      var sweep = [];
+      function sweepKind(rows, kind, openOnly) {
+        var hz = horizons[kind];
+        if (!hz) return;
+        rows.forEach(function (r) {
+          var st = fm(r).status || "";
+          if (openOnly && (st === "done" || st === "canceled")) return;
+          var age = ageOf(r);
+          if (age == null) return;
+          if (age > hz.ms) sweep.push({ r: r, kind: kind, age: age, ratio: age / hz.ms, label: hz.label });
+        });
+      }
+      sweepKind(notes, "Context Note", false);
+      sweepKind(tasks, "Task", true);
+      sweep.sort(function (a, b) { return b.ratio - a.ratio; });
+      document.getElementById("c-fresh").innerHTML = sweep.slice(0, 14).map(function (s) {
+        var cls = s.ratio > 3 ? "stale" : "aging";
+        return '<div class="card ' + cls + '"><p class="t">' + esc(fm(s.r).title || s.r.id) + "</p>" +
+          '<div class="meta"><span class="tag">' + esc(s.kind) + " · horizon " + esc(s.label) + "</span>" +
+          '<span class="age ' + cls + '">' + human(s.age) + "</span></div>" +
+          '<div class="id">' + esc(s.r.id) + "</div></div>";
+      }).join("") + (sweep.length > 14 ? '<div class="empty">+ ' + (sweep.length - 14) + " more past horizon</div>" : "") ||
+        '<span class="allclear">everything within its declared horizon</span>';
+
+      // ----- wiring: open tasks with no containing roadmap item -----
+      var containedIds = {};
+      contains.forEach(function (e) { containedIds[e.to] = true; });
+      var orphans = tasks.filter(function (t) {
+        var st = fm(t).status || "";
+        return st !== "done" && st !== "canceled" && !containedIds[t.id];
+      });
+      document.getElementById("c-orphans").innerHTML = orphans.map(function (t) {
+        return '<div class="card aging"><p class="t">' + esc(fm(t).title || t.id) + "</p>" +
+          '<div class="meta"><span class="tag">' + esc(fm(t).status) + "</span></div>" +
+          '<div class="id">' + esc(t.id) + "</div></div>";
+      }).join("") || '<span class="allclear">every open task is contained by a roadmap item</span>';
+
+      // ----- latest handoffs -----
+      var recent = notes.slice().sort(function (a, b) {
+        return (fm(b).timestamp || "") < (fm(a).timestamp || "") ? -1 : 1;
+      }).slice(0, 6);
+      document.getElementById("n-notes").textContent = notes.length;
+      document.getElementById("c-notes").innerHTML = recent.map(function (n) {
+        var f = fm(n);
+        var tags = String(f.tags || "").split(",").filter(Boolean).slice(0, 3).map(function (t) {
+          return '<span class="tag">' + esc(t.trim()) + "</span>";
+        }).join("");
+        var who = f.actor ? '<span class="who">' + esc(f.actor) + "</span>" : "";
+        return '<div class="card"><p class="t">' + esc(f.title || n.id) + "</p>" +
+          '<div class="meta">' + who + tags + '<span class="age">' + human(ageOf(n)) + "</span></div>" +
+          '<div class="id">' + esc(n.id) + "</div></div>";
+      }).join("") || '<span class="empty">no context notes</span>';
+    }).catch(function (e) {
+      document.getElementById("c-claims").innerHTML = '<span class="empty">bridge error: ' + esc(e.message) + "</span>";
+    });
+  }
+  Bridge.hello().then(function (h) {
+    document.getElementById("live").innerHTML = '<span class="dot"></span>live · ' + esc((h.bundle && h.bundle.name) || "bundle");
+    render();
+    return Bridge.subscribe(function () { render(); });
+  }).catch(function (e) {
+    document.getElementById("live").textContent = "bridge unavailable: " + e.message;
+  });
+})();
+</script>
+</body>
+</html>
