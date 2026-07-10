@@ -528,45 +528,42 @@ test("recipes: roadmap applied:false when only ONE of its two docs exists — ap
   }
 });
 
-// ── Canonical recipe-fixture contract (was: the "board-parity" gate) ────────────────────────────
+// ── Roadmap recipe schema fixture ───────────────────────────────────────────────────────────────
 //
-// This asserts the shipped `roadmap` recipe loads IDENTICALLY to a COMMITTED fixture — a
-// byte-snapshot of this repo's hand-authored roadmap conventions. It is a recipe-vs-golden-fixture
-// contract, NOT a live board-branch drift gate: it does NOT read the `board` branch, so a convention
-// changed only on the board can diverge from this fixture undetected. That live-drift check is a
-// separate operational concern whose home is `aslite sync` (where the board actually moves), tracked
-// apart from this test. The conventions live on the `board` branch (mounted at `.agentstate-lite/`
-// only after `aslite sync`), so the old `../../../.agentstate-lite/conventions` read ENOENT-failed in
-// any clean checkout; the committed fixture keeps this contract hermetic. If the roadmap conventions
-// are ever redesigned, update the recipe AND `fixtures/board-conventions/` in lockstep.
+// This asserts the shipped `roadmap` recipe's loaded kind schema against a committed golden fixture.
+// The built-in recipe is authoritative; this repo's board is an applied instance and may intentionally
+// diverge, so no live-board parity check is implied or required here. The fixture keeps the test
+// hermetic: the old `../../../.agentstate-lite/conventions` read failed in clean checkouts because the
+// board branch is mounted only after `aslite sync`. When the recipe schema changes intentionally,
+// update this expected fixture with it.
 
-const CANONICAL_CONVENTIONS = path.resolve(import.meta.dirname, "fixtures/board-conventions");
+const ROADMAP_SCHEMA_FIXTURE = path.resolve(import.meta.dirname, "fixtures/board-conventions");
 
-test("canonical recipe fixture: the roadmap recipe's kinds load IDENTICALLY to the committed conventions/roadmap(-item).md fixture (a recipe-vs-golden-fixture contract — live board-branch drift is checked elsewhere, not here)", async () => {
+test("roadmap recipe schema: loaded kinds match the committed golden fixture", async () => {
   const recipeDir = await tempDir();
-  const canonicalDir = await tempDir();
+  const expectedDir = await tempDir();
   try {
     await initBundle(recipeDir);
     await recipe(["add", "roadmap", "--dir", recipeDir], { stdout: () => {} });
 
-    await initBundle(canonicalDir);
-    await mkdir(path.join(canonicalDir, "conventions"), { recursive: true });
+    await initBundle(expectedDir);
+    await mkdir(path.join(expectedDir, "conventions"), { recursive: true });
     for (const f of ["roadmap.md", "roadmap-item.md"]) {
-      await writeFile(path.join(canonicalDir, "conventions", f), await readFile(path.join(CANONICAL_CONVENTIONS, f), "utf8"));
+      await writeFile(path.join(expectedDir, "conventions", f), await readFile(path.join(ROADMAP_SCHEMA_FIXTURE, f), "utf8"));
     }
 
     const fromRecipe = await loadKinds({ root: recipeDir });
-    const fromCanonical = await loadKinds({ root: canonicalDir });
+    const expected = await loadKinds({ root: expectedDir });
     for (const governs of ["Roadmap", "Roadmap Item"]) {
       assert.deepEqual(
         fromRecipe.kinds.get(governs),
-        fromCanonical.kinds.get(governs),
-        `the '${governs}' kind loaded from the built-in recipe must equal the canonical committed convention`,
+        expected.kinds.get(governs),
+        `the '${governs}' kind loaded from the built-in recipe must match its committed schema fixture`,
       );
     }
   } finally {
     await rm(recipeDir, { recursive: true, force: true });
-    await rm(canonicalDir, { recursive: true, force: true });
+    await rm(expectedDir, { recursive: true, force: true });
   }
 });
 
