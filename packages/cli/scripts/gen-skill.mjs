@@ -83,33 +83,44 @@ function renderWorkspaceLocation(prefix) {
     "Unless the user directs otherwise, a project's workspace bundle lives in a `.agentstate-lite/`",
   );
   lines.push(
-    "folder at the project root, and it is COMMITTED to the repo — the bundle is shared memory, and",
+    "folder at the project root. Two verbs, two different jobs — `init` always creates a LOCAL",
   );
   lines.push(
-    "sharing it is what lets two or more humans (and their agents) collaborate on it across",
+    "bundle (solo use is first-class, nothing forces sharing); `sync` is how a project's board",
   );
-  lines.push("clones. Setup depends on whether the project already has a workspace:");
+  lines.push("becomes — or stays — shared memory across clones and teammates:");
   lines.push("");
   lines.push(
     "- **Joining an existing project** — if `.agentstate-lite/` is already in the clone, there is",
   );
   lines.push(
-    "  NOTHING to set up. If it isn't but the project shares its board (the repo's remote has a",
+    "  NOTHING to set up. If it isn't but the project already shares its board (the repo's remote",
   );
   lines.push(
-    "  `board` branch), `sync` is the setup verb — run it once and it creates the folder and pulls",
+    "  has a `board` branch), `sync` is the setup verb — run it once and it creates the folder and",
   );
   lines.push(
-    "  the shared state. NEVER init a project that already has a workspace: that creates a",
+    "  pulls the shared state. NEVER init a project that already has a workspace: that creates a",
   );
   lines.push("  divergent second bundle.");
   lines.push(
     "- **Starting fresh (greenfield)** — `init` creates a bundle that doesn't exist anywhere yet.",
   );
+  lines.push(
+    "  It is LOCAL until you choose to share it: run `sync --establish` once to publish it (creates",
+  );
+  lines.push(
+    "  the `board` branch, pushes it) — teammates then just run `sync` to join. Never automatic:",
+  );
+  lines.push(
+    "  a bare `sync` never establishes on its own (it would silently publish a bundle nobody asked",
+  );
+  lines.push("  to share), though it hints at `--establish` when it looks like you meant to.");
   lines.push("");
   lines.push("```sh");
-  lines.push(`${prefix} sync                            # existing project — provisions the shared board, or reports "nothing to sync"`);
-  lines.push(`${prefix} init --dir .agentstate-lite     # greenfield only — idempotent; creates the bundle, or opens an existing one`);
+  lines.push(`${prefix} sync                            # existing shared project — provisions the board, or reports "nothing to sync"`);
+  lines.push(`${prefix} init --dir .agentstate-lite     # greenfield — idempotent; creates a LOCAL bundle, or opens an existing one`);
+  lines.push(`${prefix} sync --establish                # optional — start sharing a local bundle's board with teammates`);
   lines.push("```");
   lines.push("");
   lines.push(
@@ -126,15 +137,18 @@ function renderWorkspaceLocation(prefix) {
   lines.push("```");
   lines.push("");
   lines.push(
-    "The folder is shared with teammates via `aslite sync`, which commits and pushes board changes",
+    "The folder is LOCAL until you choose to share it: `aslite sync --establish` (once) publishes it",
   );
   lines.push(
-    "itself; until a project adopts sync, board changes are committed as their own small commits,",
+    "onto its own `board` branch — from then on `sync` commits and pushes board changes itself, never",
   );
   lines.push(
-    "not batched with code. (Only gitignore the folder if the user says the workspace should stay",
+    "batched with code. Until established, the bundle stays local — either left uncommitted, or",
   );
-  lines.push("private to this machine.)");
+  lines.push(
+    "committed directly on the code branch like any other file, whichever the user prefers. (Gitignore",
+  );
+  lines.push("the folder only if the workspace should stay private to this machine.)");
   lines.push("");
   lines.push(
     "Write with attribution: pass `--actor <your-name>` on `new` / `doc write` / `doc update`.",
@@ -196,7 +210,10 @@ function renderTypicalFlow(prefix) {
   lines.push("```sh");
   lines.push(`# One-time setup at the project root (see the Workspaces section) — run ONE of these:`);
   lines.push(`${prefix} sync                          # existing project that shares a board — sets up AND pulls the shared board`);
-  lines.push(`${prefix} init --dir .agentstate-lite   # GREENFIELD ONLY — never on a project that already has a workspace`);
+  lines.push(`${prefix} init --dir .agentstate-lite   # GREENFIELD — never on a project that already has a workspace; makes a LOCAL bundle`);
+  lines.push("");
+  lines.push(`# Optional, after a greenfield init: start sharing this bundle's board with teammates`);
+  lines.push(`${prefix} sync --establish`);
   lines.push("");
   lines.push(`# Everything after runs bare, from anywhere in the project tree`);
   lines.push(`# Create a context note (an OKF concept) for the next session`);
@@ -235,15 +252,34 @@ function renderSyncSection(prefix) {
     "Run it whenever you close a unit of work — a task finished, a decision recorded, a session",
   );
   lines.push(
-    "ending. Recording work isn't done until it's shared. Two honest empty states (both exit 0):",
+    "ending. Recording work isn't done until it's shared. Two honest empty states (both exit 0): a",
   );
   lines.push(
-    "a project that doesn't share a board yet prints `sync: nothing to sync` (keep committing the",
+    "project with no shared board yet prints `sync: nothing to sync` (with a `hint` naming",
   );
   lines.push(
-    "folder's changes as their own small commits there); a clean, already-current board prints",
+    "`--establish` when this project looks like a candidate — a local bundle, a git repo, an `origin`",
   );
-  lines.push("`sync: already up to date`.");
+  lines.push(
+    "remote — but bare `sync` NEVER establishes on its own: that would silently publish a bundle",
+  );
+  lines.push(
+    "nobody asked to share); a clean, already-current board prints `sync: already up to date`.",
+  );
+  lines.push("");
+  lines.push(
+    "`sync --establish` is the one explicit, one-time act that starts sharing a project's local",
+  );
+  lines.push(
+    "bundle: it creates the `board` branch, moves the bundle onto it, and pushes — teammates then",
+  );
+  lines.push(
+    "just run plain `sync` to join. Never run it on a project that already shares a board (it",
+  );
+  lines.push(
+    "detects that state, notes `already established`, and proceeds as an ordinary sync instead of",
+  );
+  lines.push("erroring).");
   lines.push("");
   lines.push(
     "When a doc changed on BOTH sides, sync converges instead of stopping: your teammate's version",

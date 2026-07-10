@@ -79,8 +79,8 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
   — Boot the reference wire-protocol server over a local bundle (loopback, no auth)
 - `npx -y agentstate-lite ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
   — Boot the local web UI: a launcher for the bundle's pages (type: Page docs rendered in sandboxed iframes, with live updates) — same origin, loopback-only
-- `npx -y agentstate-lite sync [--pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
-  — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it
+- `npx -y agentstate-lite sync [--establish | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
+  — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it
 
 ### Identity
 
@@ -127,20 +127,25 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
 ## Workspaces — the project's bundle lives at `.agentstate-lite/` in the project root
 
 Unless the user directs otherwise, a project's workspace bundle lives in a `.agentstate-lite/`
-folder at the project root, and it is COMMITTED to the repo — the bundle is shared memory, and
-sharing it is what lets two or more humans (and their agents) collaborate on it across
-clones. Setup depends on whether the project already has a workspace:
+folder at the project root. Two verbs, two different jobs — `init` always creates a LOCAL
+bundle (solo use is first-class, nothing forces sharing); `sync` is how a project's board
+becomes — or stays — shared memory across clones and teammates:
 
 - **Joining an existing project** — if `.agentstate-lite/` is already in the clone, there is
-  NOTHING to set up. If it isn't but the project shares its board (the repo's remote has a
-  `board` branch), `sync` is the setup verb — run it once and it creates the folder and pulls
-  the shared state. NEVER init a project that already has a workspace: that creates a
+  NOTHING to set up. If it isn't but the project already shares its board (the repo's remote
+  has a `board` branch), `sync` is the setup verb — run it once and it creates the folder and
+  pulls the shared state. NEVER init a project that already has a workspace: that creates a
   divergent second bundle.
 - **Starting fresh (greenfield)** — `init` creates a bundle that doesn't exist anywhere yet.
+  It is LOCAL until you choose to share it: run `sync --establish` once to publish it (creates
+  the `board` branch, pushes it) — teammates then just run `sync` to join. Never automatic:
+  a bare `sync` never establishes on its own (it would silently publish a bundle nobody asked
+  to share), though it hints at `--establish` when it looks like you meant to.
 
 ```sh
-npx -y agentstate-lite sync                            # existing project — provisions the shared board, or reports "nothing to sync"
-npx -y agentstate-lite init --dir .agentstate-lite     # greenfield only — idempotent; creates the bundle, or opens an existing one
+npx -y agentstate-lite sync                            # existing shared project — provisions the board, or reports "nothing to sync"
+npx -y agentstate-lite init --dir .agentstate-lite     # greenfield — idempotent; creates a LOCAL bundle, or opens an existing one
+npx -y agentstate-lite sync --establish                # optional — start sharing a local bundle's board with teammates
 ```
 
 That's the whole setup. The CLI discovers the conventional folder on its own (the way git
@@ -152,10 +157,11 @@ npx -y agentstate-lite list
 npx -y agentstate-lite doc read context-notes/cycle-1
 ```
 
-The folder is shared with teammates via `aslite sync`, which commits and pushes board changes
-itself; until a project adopts sync, board changes are committed as their own small commits,
-not batched with code. (Only gitignore the folder if the user says the workspace should stay
-private to this machine.)
+The folder is LOCAL until you choose to share it: `aslite sync --establish` (once) publishes it
+onto its own `board` branch — from then on `sync` commits and pushes board changes itself, never
+batched with code. Until established, the bundle stays local — either left uncommitted, or
+committed directly on the code branch like any other file, whichever the user prefers. (Gitignore
+the folder only if the workspace should stay private to this machine.)
 
 Write with attribution: pass `--actor <your-name>` on `new` / `doc write` / `doc update`.
 There is no default actor, so an unattributed write renders as unknown in teammates'
@@ -186,7 +192,10 @@ share this bundle? When the user's intent is ambiguous, ask rather than defaulti
 ```sh
 # One-time setup at the project root (see the Workspaces section) — run ONE of these:
 npx -y agentstate-lite sync                          # existing project that shares a board — sets up AND pulls the shared board
-npx -y agentstate-lite init --dir .agentstate-lite   # GREENFIELD ONLY — never on a project that already has a workspace
+npx -y agentstate-lite init --dir .agentstate-lite   # GREENFIELD — never on a project that already has a workspace; makes a LOCAL bundle
+
+# Optional, after a greenfield init: start sharing this bundle's board with teammates
+npx -y agentstate-lite sync --establish
 
 # Everything after runs bare, from anywhere in the project tree
 # Create a context note (an OKF concept) for the next session
@@ -215,10 +224,17 @@ npx -y agentstate-lite sync
 touching nothing but the board.
 
 Run it whenever you close a unit of work — a task finished, a decision recorded, a session
-ending. Recording work isn't done until it's shared. Two honest empty states (both exit 0):
-a project that doesn't share a board yet prints `sync: nothing to sync` (keep committing the
-folder's changes as their own small commits there); a clean, already-current board prints
-`sync: already up to date`.
+ending. Recording work isn't done until it's shared. Two honest empty states (both exit 0): a
+project with no shared board yet prints `sync: nothing to sync` (with a `hint` naming
+`--establish` when this project looks like a candidate — a local bundle, a git repo, an `origin`
+remote — but bare `sync` NEVER establishes on its own: that would silently publish a bundle
+nobody asked to share); a clean, already-current board prints `sync: already up to date`.
+
+`sync --establish` is the one explicit, one-time act that starts sharing a project's local
+bundle: it creates the `board` branch, moves the bundle onto it, and pushes — teammates then
+just run plain `sync` to join. Never run it on a project that already shares a board (it
+detects that state, notes `already established`, and proceeds as an ordinary sync instead of
+erroring).
 
 When a doc changed on BOTH sides, sync converges instead of stopping: your teammate's version
 is kept on the board, YOURS is saved to an export file named in the receipt, and the run

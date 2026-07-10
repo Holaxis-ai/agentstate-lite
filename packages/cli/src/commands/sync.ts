@@ -42,16 +42,20 @@ import {
   pathFromConceptId,
 } from "@agentstate-lite/core";
 import {
+  BOARD_BRANCH,
   BOARD_REF,
   BOARD_REMOTE,
   BUNDLE_DIR,
+  GITIGNORE_ENTRY,
   abortStaleRebase,
   changesSince,
   detectStaleRebase,
+  ensureBoardGitignoreWorkingTree,
   fetchRebaseResolving,
   ffPull,
   provisionBoardWorktree,
   push,
+  pushBoardUpstream,
   repoTopLevel,
   runGit,
   runGitBytes,
@@ -79,6 +83,7 @@ import {
 } from "../cursor.js";
 import { hookInstalled } from "./hook.js";
 import { migrateBoard } from "./sync-migrate.js";
+import { ESTABLISH_ALREADY, establishBoard } from "./sync-establish.js";
 import { CliError, asHandled, classifyGitError, toExit } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, renderErrorEnvelope, resolveMode } from "../output.js";
@@ -89,6 +94,7 @@ export const SYNC_USAGE = `agentstate-lite sync — share the board branch with 
 
 Usage:
   agentstate-lite sync [--pull-only] [--dir <path>] [--limit <n>] [--json]
+  agentstate-lite sync --establish [--dir <path>] [--json]
   agentstate-lite sync --show-incoming <id> [--out <file>] [--dir <path>] [--json]
   agentstate-lite sync --migrate [--yes] [--dir <path>] [--json]
 
@@ -97,6 +103,15 @@ teammates: commits any pending local doc changes, pulls theirs, and pushes yours
 nothing outside the board. \`--pull-only\` skips commit + push and only fast-forwards from origin
 (never rebases) — the mode a read-only session uses to pick up incoming changes without
 publishing local ones.
+
+\`init\` creates a LOCAL bundle; sharing it is a separate, explicit act. \`sync --establish\` turns
+this project's local \`.agentstate-lite/\` into the shared board: it creates the \`board\` branch,
+moves the bundle onto it, and pushes — never automatic, never inferred from a bare \`sync\` (which
+never publishes a bundle nobody has chosen to share). Once established (here or by a teammate),
+plain \`sync\` is everyone's setup AND ongoing verb: on a project that already shares a board, a
+bare \`sync\` provisions the local checkout and publishes/pulls exactly as it always has.
+\`--establish\` on an already-established project is a safe no-op that notes \`already established\`
+and proceeds as an ordinary sync.
 
 On a repo that has never had the board checkout materialized locally (a fresh clone, or the first
 \`aslite\` invocation after one), sync provisions \`.agentstate-lite\` itself from \`origin/board\` —
@@ -217,14 +232,17 @@ export function pushFailureMessage(err: CliError): string {
 /**
  * Help attached to a NO_UPSTREAM error encountered on the sync path (message pack (f) pins the
  * MESSAGE, not this help text — the exact wording here is a builder judgment call, flagged in the
- * report). Points at the two real fixes: this repo was never migrated onto a shared board, or the
- * local `origin` remote doesn't point at the same repo a teammate already migrated.
+ * report). D6 (greenfield establish): the old wording pointed at "the (human-gated) migration",
+ * which is false once establish exists — rewritten to the two-verb model. This case now fires only
+ * when `origin` itself isn't configured to point at a shared project's remote at all (the more
+ * common "board exists locally, absent on origin" state is intercepted earlier as a PUBLISH, not an
+ * error — see `fetchRebaseResolving`'s `no_upstream` outcome).
  */
 export function upstreamHelp(inv: string): string {
   return (
-    `if a teammate has already set this project up for sharing, make sure your \`origin\` remote ` +
-    `points at the SAME repository they pushed the \`board\` branch to; if not, someone needs to run ` +
-    `the (human-gated) migration once before ${inv} sync can share it`
+    `if a teammate already shares this project's board, make sure your \`origin\` remote points at ` +
+    `the SAME repository they pushed the \`board\` branch to; if nobody has started sharing this ` +
+    `project's board yet, run \`${inv} sync --establish\` to start`
   );
 }
 
@@ -518,19 +536,36 @@ export async function hookInstallHintOnce(
   }
 }
 
-/** Map an `FfPullResult.swallowed` reason (U1's fail-soft vocabulary) to the capped CliError taxonomy. */
-export function ffSwallowToError(reason: string, inv: string): CliError {
+/**
+ * Map an `FfPullResult.swallowed` reason (U1's fail-soft vocabulary) to the capped CliError
+ * taxonomy. `boardPath`, when given, disambiguates "no-upstream" (D6): a LOCAL `board` branch that
+ * simply hasn't been published yet (greenfield combo 2 under `--pull-only`, which never publishes)
+ * gets the specific "board not published yet" message; its absence falls back to the generic
+ * no-shared-project-yet wording ({@link upstreamHelp}).
+ */
+export function ffSwallowToError(reason: string, inv: string, boardPath?: string): CliError {
   switch (reason) {
     case "git-missing":
       return new CliError("GIT_MISSING", "sync needs git, which isn't installed on this machine", {
         help: "install git (https://git-scm.com/downloads), then re-run the command",
       });
-    case "no-upstream":
+    case "no-upstream": {
+      const hasLocalBoard =
+        boardPath !== undefined &&
+        runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
+      if (hasLocalBoard) {
+        return new CliError(
+          "NO_UPSTREAM",
+          "board not published yet — run sync to publish (--pull-only never publishes)",
+          { help: `${inv} sync` },
+        );
+      }
       return new CliError(
         "NO_UPSTREAM",
         "the board branch isn't linked to a remote yet — sync can't share it",
         { help: upstreamHelp(inv) },
       );
+    }
     case "auth":
       return new CliError(
         "AUTH_REQUIRED",
@@ -876,6 +911,7 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
         args: argv,
         options: {
           "pull-only": { type: "boolean" },
+          establish: { type: "boolean" },
           "show-incoming": { type: "string" },
           migrate: { type: "boolean" },
           yes: { type: "boolean" },
@@ -901,6 +937,9 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   if (values.migrate) {
     if (values["pull-only"]) {
       throw new CliError("USAGE", "--migrate and --pull-only cannot be combined — migration never pulls");
+    }
+    if (values.establish) {
+      throw new CliError("USAGE", "--migrate and --establish cannot be combined — they are two different one-time moves");
     }
     if (values["show-incoming"] !== undefined) {
       throw new CliError("USAGE", "--migrate and --show-incoming cannot be combined");
@@ -932,6 +971,9 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
     if (values["pull-only"]) {
       throw new CliError("USAGE", "--show-incoming and --pull-only cannot be combined — the viewer never pulls");
     }
+    if (values.establish) {
+      throw new CliError("USAGE", "--show-incoming and --establish cannot be combined");
+    }
     await showIncoming(id, values, deps);
     return;
   }
@@ -939,6 +981,12 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
     throw new CliError("USAGE", "--out only applies to sync --show-incoming <id>", {
       help: `${inv} sync --show-incoming <id> --out <file>`,
     });
+  }
+  if (values.establish && values["pull-only"]) {
+    throw new CliError(
+      "USAGE",
+      "--establish and --pull-only cannot be combined — establishing always publishes",
+    );
   }
 
   let limit = DEFAULT_LIMIT;
@@ -956,6 +1004,18 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   const pullOnly = Boolean(values["pull-only"]);
   const mode = resolveMode(values);
 
+  // `--establish` (greenfield combo 1) dispatches BEFORE the ordinary flow's own entry self-heal/
+  // provisioning: an "already established" state (any of combos 2/3/4) mutates NOTHING and falls
+  // through into the SAME ordinary flow below — never a second, bespoke path for a state the
+  // regular flow already handles — folding a note into whatever receipt this run ultimately
+  // renders; a genuinely fresh establish prints its OWN complete receipt and returns immediately.
+  let establishAlreadyNote: string | undefined;
+  if (values.establish) {
+    const establishOutcome = await establishBoard(dir, inv, mode, stdout, deps);
+    if (!establishOutcome.already) return;
+    establishAlreadyNote = ESTABLISH_ALREADY;
+  }
+
   // STEP 0: entry self-heal (adjudication C) — a stale mid-rebase state found at ENTRY (a
   // crashed/killed prior sync) is aborted BEFORE provisioning is even checked, let alone the
   // commit step (see the doc comment on {@link healStaleRebaseBeforeProvisioning} for why this
@@ -967,10 +1027,25 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   // definitive empty state: there is nothing to sync (exit 0).
   const outcome = provisionBoardWorktree(dir);
   if (outcome.kind === "no_repo" || outcome.kind === "no_board") {
-    stdout(render({ sync: "nothing to sync" }, mode));
+    const rec: Record<string, unknown> = { sync: "nothing to sync" };
+    // Greenfield combo-1 routing hint (decision 1): the pinned string above never changes; a bare
+    // `sync` against an establishABLE state (a git repo, an `origin` remote, and a local bundle
+    // folder already sitting there) just ADDS a hint naming `--establish` — never auto-publishes.
+    if (outcome.kind === "no_board") {
+      const top = repoTopLevel(dir);
+      const hasOrigin = top !== null && runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0;
+      const hasFolder = top !== null && existsSync(path.join(top, BUNDLE_DIR, "index.md"));
+      if (hasOrigin && hasFolder) {
+        rec.hint =
+          `this project has a local bundle but no shared board yet — run \`${inv} sync --establish\` ` +
+          `to start sharing it over a '${BOARD_BRANCH}' branch on origin`;
+      }
+    }
+    stdout(render(rec, mode));
     return;
   }
   const boardPath = outcome.boardPath;
+  const top = path.dirname(boardPath);
 
   // THE HEAL-ORDERING EDGE: `healStaleRebaseBeforeProvisioning` above ran BEFORE this worktree was
   // known to be sound — its own worktree-root guard correctly SKIPPED a worktree with stale
@@ -1016,10 +1091,16 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   // rebases) via the SAME `ffPull` primitive U4's SessionStart pull uses — but THIS caller
   // translates every swallowed reason into a real structured error instead of silently no-op'ing
   // (see the module header).
+  // Greenfield combo 2 (present locally / absent on origin): this run PUBLISHES rather than
+  // pulls — set below when `fetchRebaseResolving` reports `no_upstream`; STEP 4 pushes WITH
+  // tracking (`pushBoardUpstream`) instead of a plain push, and ensures the working-tree
+  // gitignore entry (the matrix's "ensure gitignore" — idempotent, covers a hand-built or
+  // establish-crash-recovered local board that never got the entry appended).
+  let willPublish = false;
   if (pullOnly) {
     const ff = ffPull(boardPath);
     if (ff.swallowed) {
-      throw withProvisionAnnouncement(ffSwallowToError(ff.swallowed, inv), outcome);
+      throw withProvisionAnnouncement(ffSwallowToError(ff.swallowed, inv, boardPath), outcome);
     }
   } else {
     let rebaseOutcome: FetchRebaseResolvingOutcome;
@@ -1056,6 +1137,9 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
       // message, and the cache is written with honest counts. When nothing new was committed this
       // run, the converge message passes through unchanged.
       throw await throwPostCommitFailure(conflictErr, commitResult.committed, key, boardPath);
+    }
+    if (rebaseOutcome.status === "no_upstream") {
+      willPublish = true;
     }
   }
 
@@ -1102,11 +1186,28 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   // message, then throws `asHandled` so the bin wrapper sets the exit code without a second
   // (conflicting) error envelope.
   let pushedCount = 0;
+  let publishedNote: string | undefined;
+  let gitignoreNote: string | undefined;
   if (!pullOnly) {
+    // Combo 2's own "ensure gitignore" (matrix): idempotent, runs whenever this is a first-time
+    // publish — covers a hand-built local board OR one an interrupted `--establish` left without
+    // ever reaching its own gitignore step (the crash self-heals here, on the next plain sync).
+    if (willPublish) {
+      const gi = ensureBoardGitignoreWorkingTree(top);
+      gitignoreNote = gi.changed
+        ? `${gi.path} — appended '${GITIGNORE_ENTRY}' (uncommitted; commit it so teammates' clones stay clean)`
+        : undefined;
+    }
     const ahead = unpushedCount(boardPath) ?? 0;
     try {
-      push(boardPath);
-      pushedCount = ahead;
+      if (willPublish) {
+        pushBoardUpstream(boardPath);
+        pushedCount = Number.parseInt(runGit(boardPath, ["rev-list", "--count", "HEAD"]).stdout.trim(), 10) || 0;
+        publishedNote = `${BOARD_REMOTE}/${BOARD_BRANCH} (tracking set)`;
+      } else {
+        push(boardPath);
+        pushedCount = ahead;
+      }
     } catch (err) {
       const classified = toCliError(err, "push");
       const warning = pushFailureMessage(classified);
@@ -1119,6 +1220,7 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
       partial.pulled = originDelta.length;
       const actor = singleActor(commitResult.docs);
       if (actor) partial.actor = actor;
+      if (gitignoreNote) partial.gitignore = gitignoreNote;
       partial.incoming = cap(toIncomingRows(originDelta), limit);
       if (reanchorNote) partial.note = reanchorNote;
       stdout(render(partial, mode));
@@ -1157,6 +1259,7 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
 
   if (committedCount === 0 && pulledCount === 0 && pushedCount === 0 && !reanchorNote) {
     const rec: Record<string, unknown> = {};
+    if (establishAlreadyNote) rec.establish = establishAlreadyNote;
     const announcement = provisionAnnouncement(outcome);
     if (announcement) Object.assign(rec, announcement);
     rec.sync = "already up to date";
@@ -1166,13 +1269,16 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   }
 
   const receipt: Record<string, unknown> = {};
+  if (establishAlreadyNote) receipt.establish = establishAlreadyNote;
   const announcement = provisionAnnouncement(outcome);
   if (announcement) Object.assign(receipt, announcement);
   receipt.committed = committedCount;
   receipt.pushed = pushedCount;
+  if (publishedNote) receipt.published = publishedNote;
   receipt.pulled = pulledCount;
   const actor = singleActor(commitResult.docs);
   if (actor) receipt.actor = actor;
+  if (gitignoreNote) receipt.gitignore = gitignoreNote;
   receipt.incoming = cap(toIncomingRows(originDelta), limit);
   // `conflicts` is OMITTED here rather than rendered empty: a conflicted run always THROWS above
   // (the converging branch's CONFLICT(5) envelope carries the populated rows in its details), so a
@@ -1251,7 +1357,7 @@ async function showIncoming(
     }
 
     if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
-      throw ffSwallowToError("no-upstream", inv);
+      throw ffSwallowToError("no-upstream", inv, top);
     }
 
     // id → repo-relative path, PROBE-FIRST (round-2 REQUIRED 2: no string-shape heuristic —

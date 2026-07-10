@@ -42,11 +42,13 @@ import {
   BOARD_REF,
   BOARD_REMOTE,
   BUNDLE_DIR,
+  GITIGNORE_ENTRY,
+  boardNamespaceConflicts,
   fetchOrigin,
   pushBoardUpstream,
-  remoteBoardNamespaceBranches,
   repoTopLevel,
   runGit,
+  withIgnoreEntry,
 } from "../git.js";
 import { CliError, classifyGitError, type GitFailure } from "../errors.js";
 import { render, resolveMode } from "../output.js";
@@ -55,8 +57,11 @@ import { cliInvocation } from "../invocation.js";
 /** The local branch the folder-removal commit is prepared on — the human pushes it and opens the PR. */
 export const MIGRATION_BRANCH = "board-migration";
 
-/** The .gitignore line the removal commit adds (the folder is ignored on the default branch). */
-export const GITIGNORE_ENTRY = `${BUNDLE_DIR}/`;
+// `GITIGNORE_ENTRY` and `withIgnoreEntry` MOVED to git.ts (greenfield establish shares the SAME
+// idempotent transform for its own working-tree gitignore append) — re-exported here so this
+// module's existing consumers (its own tests) are unaffected, and so migrate's eventual removal
+// PR stays a pure deletion of THIS file.
+export { GITIGNORE_ENTRY, withIgnoreEntry } from "../git.js";
 
 // ── pinned strings (test-pinned; NO forbidden vocabulary — worktree/linked/subtree never appear) ─
 
@@ -210,24 +215,9 @@ function assertNotBehindOnBoard(top: string, inv: string, branch: string): void 
   }
 }
 
-/**
- * U5 fix round (review adjudication 5): branches under the `board/` namespace — locally or on
- * the remote — make `refs/heads/board` uncreatable (ref directory/file conflict; empirically
- * confirmed against this repo's own origin). Returns the offenders, labeled by where they live.
- */
-function boardNamespaceConflicts(top: string): string[] {
-  const local = runGit(top, ["for-each-ref", "--format=%(refname:short)", `refs/heads/${BOARD_BRANCH}/`]);
-  const localNames =
-    local.status === 0
-      ? local.stdout
-          .split("\n")
-          .map((l) => l.trim())
-          .filter((l) => l.length > 0)
-          .map((n) => `${n} (local)`)
-      : [];
-  const remoteNames = remoteBoardNamespaceBranches(top).map((n) => `${n} (on ${BOARD_REMOTE})`);
-  return [...localNames, ...remoteNames];
-}
+// `boardNamespaceConflicts` MOVED to git.ts (greenfield establish's own precondition ladder needs
+// the SAME check) — imported above; re-exported here for the same reason as `withIgnoreEntry`.
+export { boardNamespaceConflicts } from "../git.js";
 
 interface TreeEntry {
   mode: string;
@@ -255,23 +245,6 @@ function parseLsTreeZ(out: string): TreeEntry[] {
  */
 function treeSortKey(e: TreeEntry): string {
   return e.type === "tree" ? `${e.name}/` : e.name;
-}
-
-/**
- * Return `content` with the {@link GITIGNORE_ENTRY} line present — unchanged when any existing
- * line already ignores the folder (with or without leading/trailing slash), appended otherwise.
- */
-export function withIgnoreEntry(content: string): string {
-  const covered = content.split("\n").some((l) => {
-    const t = l.trim();
-    return t === BUNDLE_DIR || t === `${BUNDLE_DIR}/` || t === `/${BUNDLE_DIR}` || t === `/${BUNDLE_DIR}/`;
-  });
-  if (covered) return content;
-  let out = content;
-  if (out.length > 0 && !out.endsWith("\n")) out += "\n";
-  if (out.length > 0) out += "\n";
-  out += `# the shared board — managed on the '${BOARD_BRANCH}' branch by aslite sync\n${GITIGNORE_ENTRY}\n`;
-  return out;
 }
 
 /** The board branch's one attributed root-commit message (attribution = the git author running it). */

@@ -120,14 +120,17 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
 
   const receipt: Record<string, unknown> = { init: "ok", root: bundle.root, recipe: recipeApplied };
   if (warnings.length > 0) receipt.warnings = warnings;
-  // In-a-git-repo hint (plan §U6): `sync` is the setup verb for a project that already shares a
-  // board — `init` there mints a divergent second bundle. The probe is fs-only (`.git` up-tree,
-  // no git binary) and the hint is ADVISORY: it never blocks, never changes the exit code.
+  // In-a-git-repo hint (plan §U6, reworded for the greenfield-establish two-verb model): `init`
+  // always creates a LOCAL bundle — solo local use stays first-class, never redirected. The hint
+  // is purely informational about the two OTHER git-tier verbs: `sync` joins a board a project
+  // ALREADY shares (never init there — that mints a divergent second bundle); `sync --establish`
+  // is the separate, explicit act that starts sharing THIS one. The probe is fs-only (`.git`
+  // up-tree, no git binary) and the hint is ADVISORY: it never blocks, never changes the exit code.
   if (insideGitRepo(root)) {
     receipt.hint =
-      "this directory is inside a git repo — if the project already shares a board, run " +
-      `\`${cliInvocation()} sync\` instead of init (sync sets up the existing shared board; ` +
-      "init creates a new bundle)";
+      "this bundle is local until shared — if the project already shares a board, " +
+      `\`${cliInvocation()} sync\` joins it (never init there, that mints a divergent second ` +
+      `bundle); to start sharing this one, \`${cliInvocation()} sync --establish\``;
   }
   // Surface the recipe catalog so a cold agent whose task needs a DIFFERENT kind (e.g. tasks) does
   // not have to guess that `recipes` exists — the study's C1 tester had to discover work-tracking

@@ -218,6 +218,50 @@ export async function makeCommittedFolderTopology(): Promise<TwoCloneTopology> {
 }
 
 /**
+ * Greenfield-establish topology (plans/sync-greenfield-establish): a bare origin + two clones of a
+ * project whose bundle DOESN'T EXIST YET anywhere — no `board` branch, local or on origin, and no
+ * `.agentstate-lite/` folder in either clone (`initPlainBundleDir` plants one after cloning, for
+ * whichever clone a test wants to establish from). Same seeded user code as
+ * {@link makeTwoCloneTopology} so `--establish`'s "touches nothing but the board" claim is checkable
+ * against real tracked files.
+ */
+export async function makeGreenfieldTopology(): Promise<TwoCloneTopology> {
+  const dir = await realpath(await mkdtemp(path.join(tmpdir(), "aslite-git-harness-")));
+  const origin = path.join(dir, "origin.git");
+  const seed = path.join(dir, "seed");
+
+  git(dir, ["init", "-b", "main", "seed"]);
+  await writeFile(path.join(seed, "README.md"), "# demo project\n");
+  await mkdir(path.join(seed, "src"), { recursive: true });
+  await writeFile(path.join(seed, "src", "app.js"), "export const x = 1;\n");
+  git(seed, ["add", "-A"]);
+  git(seed, ["commit", "-m", "initial project"]);
+
+  git(dir, ["init", "--bare", "origin.git"]);
+  git(seed, ["remote", "add", "origin", origin]);
+  git(seed, ["push", "origin", "main"]);
+  git(origin, ["symbolic-ref", "HEAD", "refs/heads/main"]);
+
+  git(dir, ["clone", origin, "A"]);
+  git(dir, ["clone", origin, "B"]);
+  const a: BoardRepo = { name: "A", root: path.join(dir, "A"), board: path.join(dir, "A", BUNDLE_DIR) };
+  const b: BoardRepo = { name: "B", root: path.join(dir, "B"), board: path.join(dir, "B", BUNDLE_DIR) };
+  return { dir, origin, a, b, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+/**
+ * Plant a PLAIN, uncommitted `.agentstate-lite/` folder (`init`'s own output — just the reserved
+ * root `index.md`, no docs) in a clone with no board branch anywhere yet — the establish
+ * precondition ladder's expected starting shape. Callers add docs afterward via
+ * {@link writeBoardDoc} (it only touches the filesystem, so it works before the folder is a
+ * worktree too).
+ */
+export async function initPlainBundleDir(repo: BoardRepo): Promise<void> {
+  await mkdir(repo.board, { recursive: true });
+  await initBundle(repo.board);
+}
+
+/**
  * Provision the board worktree for a clone: fetch, then check out `origin/board` as a linked
  * worktree at `.agentstate-lite/`. `--no-track` faithfully reproduces the migration machine's
  * empirical NO-tracking-config state (why the invariants use explicit `origin/board`, never `@{u}`).

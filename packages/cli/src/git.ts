@@ -782,7 +782,16 @@ export type FetchRebaseResolvingOutcome =
    * landed on top of `origin/board`. One entry per conflicted file (deduped across rebase stops:
    * a doc conflicting at several stops keeps its LAST export — the local FINAL content).
    */
-  | { status: "resolved"; conflicts: ResolvedConflict[] };
+  | { status: "resolved"; conflicts: ResolvedConflict[] }
+  /**
+   * Greenfield combo 2 (present locally / absent on origin, plans/sync-greenfield-establish §D3):
+   * the fetch SUCCEEDED (a live, current view of the remote), but `origin/board` still doesn't
+   * resolve — there is nothing to rebase onto because nobody has ever pushed this board. This is a
+   * PUBLISH, not a pull: the caller pushes WITH tracking ({@link pushBoardUpstream}) instead of a
+   * plain {@link push}. Distinct from a genuinely dead/misconfigured remote, which still throws
+   * classified (`NO_UPSTREAM` et al.) from the fetch above.
+   */
+  | { status: "no_upstream" };
 
 /**
  * Backstop against a converging loop that stops making progress (should be impossible: every
@@ -825,6 +834,12 @@ const MAX_REBASE_STOPS = 1000;
  */
 export function fetchRebaseResolving(boardPath: string, exportDir: string): FetchRebaseResolvingOutcome {
   mustGit(boardPath, ["fetch", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
+  // Greenfield combo 2: the fetch above is a LIVE view of origin, but there is no `origin/board`
+  // to rebase onto at all — checked structurally (not by parsing rebase's own failure prose) so
+  // this never collides with the conflict-detection loop below.
+  if (runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
+    return { status: "no_upstream" };
+  }
   const r = runGit(boardPath, ["rebase", BOARD_REF], { rebase: true, timeoutMs: NETWORK_TIMEOUT_MS });
   if (r.status === 0) return { status: "clean" };
   if (!detectStaleRebase(boardPath)) throw classifyGitError(failureOf(["rebase", BOARD_REF], r));
@@ -983,6 +998,96 @@ export function remoteBoardNamespaceBranches(top: string): string[] {
     .map((l) => l.split("\t")[1] ?? "")
     .filter((ref) => ref.startsWith("refs/heads/"))
     .map((ref) => ref.slice("refs/heads/".length));
+}
+
+/**
+ * Branches under the `board/` namespace — locally OR on the remote — make `refs/heads/board`
+ * UNCREATABLE (a ref directory/file conflict; empirically confirmed against this repo's own
+ * origin, which once carried `board/sync-verb-tasks`). Shared by `sync --migrate` (U5) and
+ * `sync --establish` (greenfield combo 1) — MOVED here from `sync-migrate.ts` (which re-imports
+ * it) so establish's own precondition ladder can reuse the SAME check, not a second one.
+ */
+export function boardNamespaceConflicts(top: string): string[] {
+  const local = runGit(top, ["for-each-ref", "--format=%(refname:short)", `refs/heads/${BOARD_BRANCH}/`]);
+  const localNames =
+    local.status === 0
+      ? local.stdout
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0)
+          .map((n) => `${n} (local)`)
+      : [];
+  const remoteNames = remoteBoardNamespaceBranches(top).map((n) => `${n} (on ${BOARD_REMOTE})`);
+  return [...localNames, ...remoteNames];
+}
+
+// ── gitignore entry (migrate + establish share the ONE idempotent transform) ──
+
+/** The `.gitignore` line that keeps the board folder out of the code branch's own index. */
+export const GITIGNORE_ENTRY = `${BUNDLE_DIR}/`;
+
+/**
+ * Return `content` with {@link GITIGNORE_ENTRY} present — unchanged when any existing line already
+ * ignores the folder (with or without leading/trailing slash), appended otherwise. MOVED here from
+ * `sync-migrate.ts` (which re-imports it): `sync --establish`'s working-tree gitignore append
+ * (decision 3 — the one deliberate softening of "sync touches only the board") needs the SAME
+ * idempotent transform migrate already applies to the object-database blob it writes.
+ */
+export function withIgnoreEntry(content: string): string {
+  const covered = content.split("\n").some((l) => {
+    const t = l.trim();
+    return t === BUNDLE_DIR || t === `${BUNDLE_DIR}/` || t === `/${BUNDLE_DIR}` || t === `/${BUNDLE_DIR}/`;
+  });
+  if (covered) return content;
+  let out = content;
+  if (out.length > 0 && !out.endsWith("\n")) out += "\n";
+  if (out.length > 0) out += "\n";
+  out += `# the shared board — managed on the '${BOARD_BRANCH}' branch by aslite sync\n${GITIGNORE_ENTRY}\n`;
+  return out;
+}
+
+/**
+ * `sync --establish`'s gitignore step (decision 3): append {@link GITIGNORE_ENTRY} to
+ * `<top>/.gitignore` in the WORKING TREE ONLY — never committed to the code branch (unlike
+ * migrate's version of this transform, which writes an object-database blob INTO a prepared
+ * commit). Idempotent via {@link withIgnoreEntry}; a call that changes nothing reports
+ * `changed: false`. Read/write failures are NOT swallowed — a caller that cannot write
+ * `.gitignore` needs to know, since the receipt promises to announce it.
+ */
+export function ensureBoardGitignoreWorkingTree(top: string): { changed: boolean; path: string } {
+  const gitignorePath = path.join(top, ".gitignore");
+  let content = "";
+  try {
+    content = readFileSync(gitignorePath, "utf8");
+  } catch {
+    /* absent .gitignore reads as empty */
+  }
+  const updated = withIgnoreEntry(content);
+  if (updated === content) return { changed: false, path: gitignorePath };
+  writeFileSync(gitignorePath, updated);
+  return { changed: true, path: gitignorePath };
+}
+
+// ── establish: the empty-root board branch (greenfield combo 1, D3) ───────────
+
+/**
+ * Create the `board` branch from EMPTY, as a fresh ROOT commit with no tree entries — the
+ * establish mechanic's starting point (D3). Unlike migrate's `commit-tree HEAD:folder` (which
+ * lifts an already-COMMITTED tree object), a greenfield bundle folder is UNCOMMITTED (or may not
+ * exist at all yet), so there is no tree to lift — `git mktree` over EMPTY stdin produces the
+ * well-known empty-tree object, and `commit-tree` over it with NO parents is the root commit.
+ * Deliberately NOT `checkout --orphan`/`switch --orphan` (git >= 2.42): this never checks anything
+ * out (object + ref writes only), so no git-version floor is introduced. The caller's working
+ * tree/index are untouched; `provisionBoardWorktree`'s existing `hasLocal` arm checks this branch
+ * out as the linked worktree right after.
+ */
+export function createEmptyRootBoardBranch(top: string): string {
+  const emptyTree = mustGit(top, ["mktree"], { input: "" }).trim();
+  const sha = mustGit(top, ["commit-tree", emptyTree], {
+    input: "board: establish — empty root\n\nOne-time establish: the shared board branch's empty starting point.\n",
+  }).trim();
+  mustGit(top, ["branch", BOARD_BRANCH, sha]);
+  return sha;
 }
 
 // ── ff-only pull (the fail-soft SessionStart path) ────────────────────────────
