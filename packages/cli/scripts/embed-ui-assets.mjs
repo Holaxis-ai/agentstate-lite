@@ -72,8 +72,19 @@ function walk(dir) {
   return out;
 }
 
-/** Rebuild `packages/ui`'s dist/ fresh via its own workspace script. Throws (uncaught, `execFileSync`'s default) — and so fails this whole build immediately — on any ui build error, e.g. a TypeScript or Vite failure. */
+/** Rebuild `packages/ui`'s dist/ fresh via its own workspace script. Builds its workspace dependency
+ * `@agentstate-lite/core` FIRST: the ui imports core's browser-safe `./kinds` slice, and npm does NOT
+ * build a workspace's deps on a single-workspace build, so core's `dist/` must already exist or Vite's
+ * production build fails to resolve `@agentstate-lite/core/kinds` (its target `dist/kinds.js` absent).
+ * Callers that go through root `npm run build` get this ordering for free; the version-bundle bot calls
+ * embedUiAssets() directly, so making this step self-sufficient is what keeps BOTH paths correct.
+ * Throws (uncaught, `execFileSync`'s default) — and so fails this whole build immediately — on any
+ * build error, e.g. a TypeScript or Vite failure. */
 function buildUiDist() {
+  execFileSync("npm", ["run", "build", "--workspace=@agentstate-lite/core"], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
   execFileSync("npm", ["run", "build", "--workspace=@agentstate-lite/ui"], {
     cwd: repoRoot,
     stdio: "inherit",
