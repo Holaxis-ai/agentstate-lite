@@ -528,18 +528,21 @@ test("recipes: roadmap applied:false when only ONE of its two docs exists — ap
   }
 });
 
-// ── The board-parity drift gate: the built-in must stay faithful to the canonical conventions ──
+// ── Canonical recipe-fixture contract (was: the "board-parity" gate) ────────────────────────────
 //
-// SOURCE OF TRUTH is a COMMITTED fixture — a byte-snapshot of this repo's hand-authored roadmap
-// conventions. Those conventions live on the `board` branch (mounted at `.agentstate-lite/` only in
-// a working checkout that has run `aslite sync`), so a fresh clone / isolated git worktree does NOT
-// carry them; reaching into `../../../.agentstate-lite/conventions` made this test ENOENT-fail in
-// any clean checkout. The fixture keeps the gate hermetic. If the board's roadmap convention design
-// is ever changed on purpose, update BOTH the recipe AND `fixtures/board-conventions/` in lockstep.
+// This asserts the shipped `roadmap` recipe loads IDENTICALLY to a COMMITTED fixture — a
+// byte-snapshot of this repo's hand-authored roadmap conventions. It is a recipe-vs-golden-fixture
+// contract, NOT a live board-branch drift gate: it does NOT read the `board` branch, so a convention
+// changed only on the board can diverge from this fixture undetected. That live-drift check is a
+// separate operational concern whose home is `aslite sync` (where the board actually moves), tracked
+// apart from this test. The conventions live on the `board` branch (mounted at `.agentstate-lite/`
+// only after `aslite sync`), so the old `../../../.agentstate-lite/conventions` read ENOENT-failed in
+// any clean checkout; the committed fixture keeps this contract hermetic. If the roadmap conventions
+// are ever redesigned, update the recipe AND `fixtures/board-conventions/` in lockstep.
 
 const CANONICAL_CONVENTIONS = path.resolve(import.meta.dirname, "fixtures/board-conventions");
 
-test("board parity: the roadmap recipe's kinds load IDENTICALLY to the canonical committed conventions/roadmap(-item).md fixture (the extraction cannot drift from its source)", async () => {
+test("canonical recipe fixture: the roadmap recipe's kinds load IDENTICALLY to the committed conventions/roadmap(-item).md fixture (a recipe-vs-golden-fixture contract — live board-branch drift is checked elsewhere, not here)", async () => {
   const recipeDir = await tempDir();
   const canonicalDir = await tempDir();
   try {

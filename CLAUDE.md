@@ -14,17 +14,19 @@ esbuild bundle that inlines core + viewer + server + the built UI assets + deps 
 self-contained ESM file. The filesystem is the
 DEFAULT local backend; the storage seam is pluggable (gate 3) and production runs D1/R2.
 
-Before changing anything, read the PROJECT BUNDLE — it lives IN-REPO at `.agentstate-lite/`
-(committed shared memory, discovered by the conventional-folder walk with zero config), so a
-bare `doc read docs/core` just works on any clone: `docs/core` (the ONE-PAGE
+Before changing anything, read the PROJECT BUNDLE — this repo's own knowledge bundle at
+`.agentstate-lite/`, shared on a dedicated `board` branch via `aslite sync` (gitignored on
+`main`, NOT committed with code). A fresh clone materializes it with one `sync` — the
+SessionStart hook does a best-effort pull for you — after which the conventional-folder walk
+discovers it with zero config, so a bare `doc read docs/core` just works: `docs/core` (the ONE-PAGE
 product statement + frozen-scope list; scope questions answer to it), the board for live
 state (`list --type Task`; per-unit records live in `tasks/<unit>` descriptions; the
 pre-2026-07-06 changelog lives in the PRIVATE out-of-repo board archive, with the other
 `visibility: private` docs), `docs/vision` (near-term design
 intent + OKF grounding) and `docs/north-star` (the future-state vision) as needed — then
-the packages' `src/`. The repo carries README + this file + code + the committed bundle
-(root `/docs/` stays gitignored; a `.agentstate.json` binding, also gitignored, is the
-local-only override and must NOT be committed here — the conventional folder is the
+the packages' `src/`. The repo carries README + this file + code; the bundle rides the
+`board` branch (root `/docs/` stays gitignored; a `.agentstate.json` binding, also gitignored,
+is the local-only override and must NOT be committed here — the conventional folder is the
 resolution path). Ground
 every change in the ACTUAL current code, not assumptions — including the claims in THIS
 file: when this guide and the code disagree, the code wins and this file gets fixed.
