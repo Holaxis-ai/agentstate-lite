@@ -1,7 +1,7 @@
 ---
 type: Task
 title: doc update/write --body silently drops a doc's outbound links (data loss)
-status: in_progress
+status: done
 priority: '1'
 description: >-
   HIGH — silent loss of the link graph (signature feature). Found by an agent
@@ -18,6 +18,6 @@ description: >-
   roadmap-items/link-model-body-safe, which supersedes this. Sonnet build +
   Fable review + PR.
 actor: mike/claude
-timestamp: '2026-07-09T23:29:18.498Z'
+timestamp: '2026-07-10T01:38:32.917Z'
 ---
 [proper fix](../roadmap-items/link-model-body-safe.md)

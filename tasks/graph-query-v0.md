@@ -3,7 +3,7 @@ type: Task
 title: >-
   Graph-query v0: queryEdges engine atom + link list CLI verb (woken — the UI is
   the consumer)
-status: in_progress
+status: done
 priority: '1'
 description: >-
   WOKEN from plans/graph-query-v0 (parked 2026-07-07 pending a live consumer).
@@ -21,6 +21,6 @@ description: >-
   ride-along or drop it. Sonnet build to the plan, Fable review. Builds in
   parallel with the UI branch (core/cli, not packages/ui).
 actor: mike/claude
-timestamp: '2026-07-09T22:51:21.893Z'
+timestamp: '2026-07-10T01:38:32.697Z'
 ---
 [implements](../plans/graph-query-v0.md)
