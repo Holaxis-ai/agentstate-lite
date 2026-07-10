@@ -6,8 +6,9 @@ description: >-
   The knowledge side of the board - current claim heads with their evidence and
   supersession chains, a freshness sweep driven by the kinds' own declared
   horizons, containment wiring lints, and the latest session handoffs.
-actor: brian-claude
-timestamp: '2026-07-10T17:05:00.000Z'
+actor: mike/claude
+bridge: bundle-read
+timestamp: '2026-07-10T19:58:57.755Z'
 ---
 
 The third dashboard: what the project CLAIMS (with the evidence command + commit that
