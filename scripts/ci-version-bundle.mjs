@@ -29,9 +29,9 @@
 // Exits 0 whether or not anything changed; exits 1 on any unexpected failure (regen error,
 // malformed manifest, etc.) — the workflow decides whether to commit by checking `git status`
 // after this script runs, not by parsing its output.
-import { readFile, writeFile, chmod } from "node:fs/promises";
+import { readFile, writeFile, chmod, readdir, stat } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, relative, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -44,6 +44,13 @@ export const REAL_PATHS = {
   pluginJson: resolve(repoRoot, "plugins/agentstate-lite/.codex-plugin/plugin.json"),
   skillMd: resolve(repoRoot, "plugins/agentstate-lite/skills/agentstate-lite/SKILL.md"),
   bundleMjs: resolve(repoRoot, "plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite.mjs"),
+  // The shipped contracts/examples manifest (src/skill-references.ts), synced by
+  // `gen-skill.mjs --target skill` alongside SKILL.md. LOAD-BEARING: without this in the
+  // before/after diff below, a references-only change (a new manifest entry, an edited source
+  // file it points at) would never register in `changed` — the version would silently never
+  // bump on a references-only commit, even though the workflow's own `git status` would still see
+  // (and commit) the regenerated files, decoupling the shipped version from what it now contains.
+  referencesDir: resolve(repoRoot, "plugins/agentstate-lite/skills/agentstate-lite/references"),
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -138,6 +145,55 @@ function buffersEqual(a, b) {
   return a.equals(b);
 }
 
+/** All files under `dir`, recursively, as absolute paths. Empty if `dir` doesn't exist. */
+async function listFilesRecursive(dir) {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if (err.code === "ENOENT") return [];
+    throw err;
+  }
+  const out = [];
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...(await listFilesRecursive(full)));
+    else out.push(full);
+  }
+  return out;
+}
+
+/**
+ * Snapshot every file under `dir` as a `relative/posix/path -> bytes` Map, or `null` if `dir`
+ * doesn't exist at all — `null` (not an empty Map) is what lets an absent -> present transition
+ * (the `references/` folder appearing for the first time) register as a change below, the same
+ * way `readBytesOrNull` distinguishes a missing single file from an empty one.
+ */
+async function snapshotDir(dir) {
+  try {
+    await stat(dir);
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err;
+  }
+  const snapshot = new Map();
+  for (const file of await listFilesRecursive(dir)) {
+    const rel = relative(dir, file).split(sep).join("/");
+    snapshot.set(rel, await readFile(file));
+  }
+  return snapshot;
+}
+
+function snapshotsEqual(a, b) {
+  if (a === null || b === null) return a === b;
+  if (a.size !== b.size) return false;
+  for (const [rel, bytes] of a) {
+    const other = b.get(rel);
+    if (!other || !bytes.equals(other)) return false;
+  }
+  return true;
+}
+
 /**
  * Regenerate the committed skill artifacts and, only if that changed something, bump the patch
  * version in both manifests. `regenerate` and `paths` are overridable for tests (production
@@ -148,15 +204,18 @@ function buffersEqual(a, b) {
 export async function run({ regenerate = regenerateArtifacts, paths = REAL_PATHS } = {}) {
   const beforeSkillMd = await readBytesOrNull(paths.skillMd);
   const beforeBundle = await readBytesOrNull(paths.bundleMjs);
+  const beforeReferences = await snapshotDir(paths.referencesDir);
 
   await regenerate(paths);
 
   const afterSkillMd = await readBytesOrNull(paths.skillMd);
   const afterBundle = await readBytesOrNull(paths.bundleMjs);
+  const afterReferences = await snapshotDir(paths.referencesDir);
 
   const skillMdChanged = !buffersEqual(beforeSkillMd, afterSkillMd);
   const bundleChanged = !buffersEqual(beforeBundle, afterBundle);
-  const changed = skillMdChanged || bundleChanged;
+  const referencesChanged = !snapshotsEqual(beforeReferences, afterReferences);
+  const changed = skillMdChanged || bundleChanged || referencesChanged;
 
   if (!changed) {
     console.log(
@@ -176,10 +235,10 @@ export async function run({ regenerate = regenerateArtifacts, paths = REAL_PATHS
   await writeFile(paths.pluginJson, replaceVersion(pluginText, newVersion, paths.pluginJson));
 
   console.log(
-    `ci-version-bundle: artifact changed (SKILL.md=${skillMdChanged}, bundle=${bundleChanged}); ` +
-      `version ${baseVersion} -> ${newVersion}`,
+    `ci-version-bundle: artifact changed (SKILL.md=${skillMdChanged}, bundle=${bundleChanged}, ` +
+      `references=${referencesChanged}); version ${baseVersion} -> ${newVersion}`,
   );
-  return { changed: true, baseVersion, newVersion, skillMdChanged, bundleChanged };
+  return { changed: true, baseVersion, newVersion, skillMdChanged, bundleChanged, referencesChanged };
 }
 
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);

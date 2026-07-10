@@ -1,34 +1,42 @@
-// Generate a SKILL.md from the CLI's single source of truth (src/reference.ts COMMAND_GROUPS).
+// Generate a SKILL.md from the CLI's single source of truth (src/reference.ts COMMAND_GROUPS,
+// rendered by src/skill-render.ts), and — for --target skill — sync this skill's `references/`
+// folder from its declared manifest (src/skill-references.ts SKILL_REFERENCES): a byte-for-byte
+// copy of each source file, with any stray file under references/ NOT named in the manifest
+// deleted. Idempotent/convergent, same discipline as the SKILL.md write itself.
 //
 // AXI §7 "single source of truth": every installable channel's command reference is DERIVED from
 // the same COMMAND_GROUPS the home view + `--help` render, so it can never drift. Two TARGETS:
 //
 //   --target npm   (default) → packages/cli/SKILL.md, examples prefixed `npx -y agentstate-lite`
 //                    (the published-package channel; installed with no bin-on-PATH assumption).
-//   --target skill            → plugins/agentstate-lite/skills/agentstate-lite/SKILL.md, examples prefixed `"$ASLITE"`
-//                    (the self-contained committed-bundle channel; see the resolver section it
-//                    generates — the bundle is not on PATH, so examples reference the resolved
-//                    shim path via the shell variable convention).
+//                    Carries no references/ sync — the npm tarball doesn't ship them yet (a known
+//                    parked gap; see src/skill-references.ts's header comment).
+//   --target skill            → plugins/agentstate-lite/skills/agentstate-lite/SKILL.md +
+//                    .../references/, examples prefixed `"$ASLITE"` (the self-contained
+//                    committed-bundle channel; see the resolver section it generates — the bundle
+//                    is not on PATH, so examples reference the resolved shim path via the shell
+//                    variable convention).
 //
 // The `## Commands` loop is IDENTICAL between targets (rendered by the same renderCommandsSection
 // helper, parameterized only by the invocation prefix) — the two SKILL.md files can describe
 // different distribution channels but can never list different commands.
 //
 //   node scripts/gen-skill.mjs [--target npm|skill]           → (re)write the target's SKILL.md
+//                                                                (+ sync references/ for skill)
 //   node scripts/gen-skill.mjs [--target npm|skill] --check   → exit 1 if stale (CI drift gate)
 //
-// reference.ts is pure data (no runtime imports), so we bundle it in-memory with esbuild and import
+// src/skill-render.ts (which transitively pulls in reference.ts + src/skill-references.ts) is pure
+// data + pure projections (no runtime imports), so we bundle it in-memory with esbuild and import
 // the result as a data: URL — no temp files, no pre-build.
 import { build } from "esbuild";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, relative, sep, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const referenceTs = resolve(here, "../src/reference.ts");
-const PKG = "agentstate-lite";
-const NPX = `npx -y ${PKG}`;
-const ASLITE = '"$ASLITE"';
+const skillRenderTs = resolve(here, "../src/skill-render.ts");
+// packages/cli/scripts -> repo root
+const repoRoot = resolve(here, "../../..");
 
 const targetArgIdx = process.argv.indexOf("--target");
 const TARGET = targetArgIdx !== -1 ? process.argv[targetArgIdx + 1] : "npm";
@@ -42,10 +50,12 @@ const skillPath =
     ? resolve(here, "../SKILL.md")
     // packages/cli/scripts -> repo root -> plugins/agentstate-lite/skills/agentstate-lite/SKILL.md
     : resolve(here, "../../../plugins/agentstate-lite/skills/agentstate-lite/SKILL.md");
+// packages/cli/scripts -> repo root -> plugins/agentstate-lite/skills/agentstate-lite/references
+const referencesDir = resolve(here, "../../../plugins/agentstate-lite/skills/agentstate-lite/references");
 
-async function loadReference() {
+async function loadSkillRender() {
   const out = await build({
-    entryPoints: [referenceTs],
+    entryPoints: [skillRenderTs],
     bundle: true,
     format: "esm",
     platform: "node",
@@ -56,510 +66,77 @@ async function loadReference() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Shared projections (single source: COMMAND_GROUPS), parameterized only by invocation prefix.
+// references/ sync — skill target only. One manifest (SKILL_REFERENCES), read via the same bundle
+// as the renderer, so a --check run and a real regen can never disagree about what "the manifest"
+// currently is.
 // ---------------------------------------------------------------------------------------------
 
-function renderCommandsSection(COMMAND_GROUPS, prefix) {
-  const lines = [];
-  lines.push("## Commands");
-  lines.push("");
-  for (const { group, commands } of COMMAND_GROUPS) {
-    lines.push(`### ${group}`);
-    lines.push("");
-    for (const { usage, summary } of commands) {
-      lines.push(`- \`${prefix} ${usage}\``);
-      lines.push(`  — ${summary}`);
-    }
-    lines.push("");
+/** All files under `dir`, recursively, as absolute paths (empty array if `dir` doesn't exist). */
+async function listFilesRecursive(dir) {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if (err.code === "ENOENT") return [];
+    throw err;
   }
-  return lines;
+  const out = [];
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...(await listFilesRecursive(full)));
+    else out.push(full);
+  }
+  return out;
 }
 
-function renderWorkspaceLocation(prefix) {
-  const lines = [];
-  lines.push("## Workspaces — the project's bundle lives at `.agentstate-lite/` in the project root");
-  lines.push("");
-  lines.push(
-    "Unless the user directs otherwise, a project's workspace bundle lives in a `.agentstate-lite/`",
-  );
-  lines.push(
-    "folder at the project root. Two verbs, two different jobs — `init` always creates a LOCAL",
-  );
-  lines.push(
-    "bundle (solo use is first-class, nothing forces sharing); `sync` is how a project's board",
-  );
-  lines.push("becomes — or stays — shared memory across clones and teammates:");
-  lines.push("");
-  lines.push(
-    "- **Joining an existing project** — if `.agentstate-lite/` is already in the clone, there is",
-  );
-  lines.push(
-    "  NOTHING to set up. If it isn't but the project already shares its board (the repo's remote",
-  );
-  lines.push(
-    "  has a `board` branch), `sync` is the setup verb — run it once and it creates the folder and",
-  );
-  lines.push(
-    "  pulls the shared state. NEVER init a project that already has a workspace: that creates a",
-  );
-  lines.push("  divergent second bundle.");
-  lines.push(
-    "- **Starting fresh (greenfield)** — `init` creates a bundle that doesn't exist anywhere yet.",
-  );
-  lines.push(
-    "  It is LOCAL until you choose to share it: run `sync --establish` once to publish it (creates",
-  );
-  lines.push(
-    "  the `board` branch, pushes it) — teammates then just run `sync` to join. Never automatic:",
-  );
-  lines.push(
-    "  a bare `sync` never establishes on its own (it would silently publish a bundle nobody asked",
-  );
-  lines.push("  to share), though it hints at `--establish` when it looks like you meant to.");
-  lines.push("");
-  lines.push("```sh");
-  lines.push(`${prefix} sync                            # existing shared project — provisions the board, or reports "nothing to sync"`);
-  lines.push(`${prefix} init --dir .agentstate-lite     # greenfield — idempotent; creates a LOCAL bundle, or opens an existing one`);
-  lines.push(`${prefix} sync --establish                # optional — start sharing a local bundle's board with teammates`);
-  lines.push("```");
-  lines.push("");
-  lines.push(
-    "That's the whole setup. The CLI discovers the conventional folder on its own (the way git",
-  );
-  lines.push(
-    "finds `.git`), so every command runs BARE from anywhere in the project tree — no flags, no",
-  );
-  lines.push("config files:");
-  lines.push("");
-  lines.push("```sh");
-  lines.push(`${prefix} list`);
-  lines.push(`${prefix} doc read context-notes/cycle-1`);
-  lines.push("```");
-  lines.push("");
-  lines.push(
-    "The folder is LOCAL until you choose to share it: `aslite sync --establish` (once) publishes it",
-  );
-  lines.push(
-    "onto its own `board` branch — from then on `sync` commits and pushes board changes itself, never",
-  );
-  lines.push(
-    "batched with code. Until established, the bundle stays local — either left uncommitted, or",
-  );
-  lines.push(
-    "committed directly on the code branch like any other file, whichever the user prefers. (Gitignore",
-  );
-  lines.push("the folder only if the workspace should stay private to this machine.)");
-  lines.push("");
-  lines.push(
-    "Write with attribution: pass `--actor <your-name>` on `new` / `doc write` / `doc update`.",
-  );
-  lines.push(
-    "There is no default actor, so an unattributed write renders as unknown in teammates'",
-  );
-  lines.push("awareness — the `--actor` you pass is what attributes your changes to you.");
-  lines.push("");
-  lines.push(
-    "Each invocation is stateless and resolves its bundle in this order: explicit `--dir`/`--remote`",
-  );
-  lines.push(
-    "flag → `AGENTSTATE_LITE_REMOTE` env (URL only) → nearest `.agentstate.json` binding up-tree →",
-  );
-  lines.push(
-    "the cwd walk, which at each ancestor checks the directory's own `index.md`, then its",
-  );
-  lines.push(
-    "conventional `.agentstate-lite/index.md`. Reserve `--dir` for the exceptions: a bundle outside",
-  );
-  lines.push("any project, a second workspace, or reaching another project's bundle from elsewhere.");
-  lines.push("");
-  lines.push("Two things override the default:");
-  lines.push("");
-  lines.push(
-    "1. **Explicit user direction** — the user names a directory or a `--remote`; use that. A",
-  );
-  lines.push(
-    "   `.agentstate.json` binding (`{ \"bundle\": \"<path-or-url>\" }` at the project root) is the",
-  );
-  lines.push("   durable form of that direction — it beats the conventional folder when both exist.");
-  lines.push(
-    "2. **An existing workspace** — if a bare command already resolves (a binding, an enclosing",
-  );
-  lines.push(
-    "   bundle, or a conventional folder exists up-tree), that IS this project's workspace — use",
-  );
-  lines.push("   it rather than creating a second one.");
-  lines.push("");
-  lines.push(
-    "If the user wants the workspace PRIVATE to their machine instead of shared (a personal",
-  );
-  lines.push(
-    "scratch workspace), keep the bundle OUT of the repo (e.g. under `~/.agentstate-lite/<name>/`)",
-  );
-  lines.push(
-    "and point a git-excluded `.agentstate.json` at it. Choose by one question: do teammates",
-  );
-  lines.push("share this bundle? When the user's intent is ambiguous, ask rather than defaulting silently.");
-  lines.push("");
-  return lines;
+/** Copy every manifest entry byte-for-byte into `referencesDir`, then delete any file under it not named in the manifest. */
+async function syncReferences(SKILL_REFERENCES) {
+  for (const { src, dest } of SKILL_REFERENCES) {
+    const bytes = await readFile(resolve(repoRoot, src));
+    const destPath = resolve(referencesDir, dest);
+    await mkdir(dirname(destPath), { recursive: true });
+    await writeFile(destPath, bytes);
+  }
+  const wanted = new Set(SKILL_REFERENCES.map((r) => r.dest));
+  for (const file of await listFilesRecursive(referencesDir)) {
+    const rel = relative(referencesDir, file).split(sep).join("/");
+    if (!wanted.has(rel)) await rm(file);
+  }
 }
 
-function renderTypicalFlow(prefix) {
-  const lines = [];
-  lines.push("## Typical flow");
-  lines.push("");
-  lines.push("```sh");
-  lines.push(`# One-time setup at the project root (see the Workspaces section) — run ONE of these:`);
-  lines.push(`${prefix} sync                          # existing project that shares a board — sets up AND pulls the shared board`);
-  lines.push(`${prefix} init --dir .agentstate-lite   # GREENFIELD — never on a project that already has a workspace; makes a LOCAL bundle`);
-  lines.push("");
-  lines.push(`# Optional, after a greenfield init: start sharing this bundle's board with teammates`);
-  lines.push(`${prefix} sync --establish`);
-  lines.push("");
-  lines.push(`# Everything after runs bare, from anywhere in the project tree`);
-  lines.push(`# Create a context note (an OKF concept) for the next session`);
-  lines.push(`${prefix} new "Context Note" cycle-1 --title "cycle-1" --actor <your-name>`);
-  lines.push(`${prefix} doc update context-notes/cycle-1 --body "What this session did and what's next" --actor <your-name>`);
-  lines.push("");
-  lines.push(`# Read it back`);
-  lines.push(`${prefix} doc read context-notes/cycle-1`);
-  lines.push("");
-  lines.push(`# Store a doc, cross-link it, and query the bundle`);
-  lines.push(`${prefix} doc write specs/auth --type Spec --title "Auth" --body "…" --actor <your-name>`);
-  lines.push(`${prefix} link add specs/auth context-notes/cycle-1`);
-  lines.push(`${prefix} list --type Spec`);
-  lines.push("");
-  lines.push(`# Bake a shareable, self-contained HTML view of the whole bundle`);
-  lines.push(`${prefix} view`);
-  lines.push("");
-  lines.push(`# Share the board — recording work isn't done until it's shared`);
-  lines.push(`# (safe everywhere: a project with no shared board just prints "sync: nothing to sync")`);
-  lines.push(`${prefix} sync`);
-  lines.push("```");
-  lines.push("");
-  return lines;
-}
-
-function renderSyncSection(prefix) {
-  const lines = [];
-  lines.push("## Sharing the board — `sync`");
-  lines.push("");
-  lines.push(
-    "Ordinary `aslite sync` shares your board — commits your changes, pulls your teammate's, pushes yours,",
-  );
-  lines.push("while leaving code-project files untouched.");
-  lines.push("");
-  lines.push(
-    "Run it whenever you close a unit of work — a task finished, a decision recorded, a session",
-  );
-  lines.push(
-    "ending. Recording work isn't done until it's shared. Two honest empty states (both exit 0): a",
-  );
-  lines.push(
-    "project with no shared board yet prints `sync: nothing to sync` (with a `hint` naming",
-  );
-  lines.push(
-    "`--establish` when this project looks like a candidate — a local bundle, a git repo, an `origin`",
-  );
-  lines.push(
-    "remote — but bare `sync` NEVER establishes on its own: that would silently publish a bundle",
-  );
-  lines.push(
-    "nobody asked to share); a clean, already-current board prints `sync: already up to date`.",
-  );
-  lines.push("");
-  lines.push(
-    "`sync --establish` is the one explicit, one-time act that starts sharing a project's local",
-  );
-  lines.push(
-    "bundle: it snapshots and publishes the bundle, checks out the `board` branch at the same path,",
-  );
-  lines.push(
-    "and appends that path to the root working-tree `.gitignore`; teammates then just run plain",
-  );
-  lines.push(
-    "`sync` to join. Never run it on a project that already shares a board (it",
-  );
-  lines.push(
-    "detects that state, notes `already established`, and proceeds as an ordinary sync instead of",
-  );
-  lines.push("erroring).");
-  lines.push("");
-  lines.push(
-    "When a doc changed on BOTH sides, sync converges instead of stopping: your teammate's version",
-  );
-  lines.push(
-    "is kept on the board, YOURS is saved to an export file named in the receipt, and the run",
-  );
-  lines.push("exits 5 with one row per conflicted doc. Reconcile with the doc verbs, never git:");
-  lines.push("");
-  lines.push("```sh");
-  lines.push(`${prefix} sync --show-incoming <id>                 # view the kept incoming version (as of the last fetch)`);
-  lines.push(`${prefix} doc update <id> --body-file <export-file> # write your merged version on top`);
-  lines.push(`${prefix} sync                                      # share it`);
-  lines.push("```");
-  lines.push("");
-  lines.push(
-    "`sync --pull-only` picks up teammates' changes without publishing local ones. If a push fails",
-  );
-  lines.push(
-    "(offline, auth), your work is already committed locally — re-running sync retries the push.",
-  );
-  lines.push("");
-  lines.push(
-    "Reads stay fresh on their own: board-reading commands (`list`, `doc read`, `status`, `home`,",
-  );
-  lines.push(
-    "`link show`) automatically run the same fast-forward-only pull when the board's state is older",
-  );
-  lines.push(
-    "than ~5 minutes — silent, time-boxed (~2s), never a rebase, never a push, and it never sets a",
-  );
-  lines.push(
-    "board up (that stays `sync`'s job) — so a plain `list` can advance the board checkout's HEAD.",
-  );
-  lines.push(
-    "Your OWN changes still only leave the machine when you run `sync`. To disable the auto-pull",
-  );
-  lines.push(
-    "(CI, scripted runs), set `AGENTSTATE_LITE_NO_AUTOPULL` to any non-empty value — even `0`",
-  );
-  lines.push("disables it; the variable's presence is the switch.");
-  lines.push("");
-  lines.push(
-    "On projects that share their board you may notice a `board` branch in the repo's GitHub —",
-  );
-  lines.push("that's the board; never merge it into main.");
-  lines.push("");
-  return lines;
-}
-
-function renderNotesSection() {
-  const lines = [];
-  lines.push("## Notes");
-  lines.push("");
-  lines.push(
-    "- `doc read <id>` truncates a large body and points at `doc read <id> --out <file>`, which streams",
-  );
-  lines.push("  the raw markdown bytes to disk without loading them into the model context window.");
-  lines.push("- Mutations are idempotent: re-writing a doc or re-adding an existing link is a no-op (exit 0).");
-  lines.push(
-    "- `new` and `doc update` accept a kind's declared fields as `--<field> <value>` (e.g. `--status done`);",
-  );
-  lines.push("  an unknown field or an out-of-enum value is rejected (exit 2). Run `kinds` to see a kind's fields.");
-  lines.push(
-    "- `hook install` registers a SessionStart hook (Claude Code, Codex, OpenCode) that runs",
-  );
-  lines.push(
-    "  `session-start`: a quick best-effort pull of the shared board, then the home view — so a new",
-  );
-  lines.push(
-    "  session starts with the bundle's state AND any teammate changes already in context. Offline is",
-  );
-  lines.push(
-    "  fine: the render always appears, labeled with the last known state. If you installed the hook",
-  );
-  lines.push("  before `session-start` existed, re-run `hook install` once to upgrade it.");
-  lines.push(
-    "- Edit a doc's body through `doc update --body-file` (or `--body`), never by pulling the raw file",
-  );
-  lines.push(
-    "  with `--out`, editing it with text tools, and re-promoting it — that risks corrupting the",
-  );
-  lines.push("  frontmatter (the engine rejects it, but the right tool avoids the dance entirely).");
-  lines.push("");
-  return lines;
+/** --check's references-side: every manifest file must byte-match, and nothing extra may exist. */
+async function checkReferences(SKILL_REFERENCES) {
+  const problems = [];
+  for (const { src, dest } of SKILL_REFERENCES) {
+    const srcPath = resolve(repoRoot, src);
+    const destPath = resolve(referencesDir, dest);
+    let wantBytes;
+    try {
+      wantBytes = await readFile(srcPath);
+    } catch (err) {
+      problems.push(`manifest source is missing: ${srcPath} (${err.message})`);
+      continue;
+    }
+    const haveBytes = await readFile(destPath).catch(() => null);
+    if (haveBytes === null || !wantBytes.equals(haveBytes)) {
+      problems.push(`${destPath} is stale or missing`);
+    }
+  }
+  const wanted = new Set(SKILL_REFERENCES.map((r) => r.dest));
+  for (const file of await listFilesRecursive(referencesDir)) {
+    const rel = relative(referencesDir, file).split(sep).join("/");
+    if (!wanted.has(rel)) problems.push(`${file} is not in the manifest (stray file)`);
+  }
+  return problems;
 }
 
 // ---------------------------------------------------------------------------------------------
-// npm target — packages/cli/SKILL.md, published-package channel.
-// ---------------------------------------------------------------------------------------------
 
-function renderNpm(DESCRIPTION, COMMAND_GROUPS) {
-  const lines = [];
-  lines.push("---");
-  lines.push(`name: ${PKG}`);
-  lines.push("description: >-");
-  lines.push(
-    "  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and a",
-  );
-  lines.push(
-    "  self-contained static-HTML view) from the shell via the agentstate-lite CLI. Use when an agent",
-  );
-  lines.push(
-    "  needs to persist a context note across sessions, store a decision/spec as a doc, link concepts,",
-  );
-  lines.push(
-    "  query a bundle, share the project's board with teammates (`sync`), or bake a shareable HTML",
-  );
-  lines.push(`  view. Runs standalone via \`${NPX}\`.`);
-  lines.push("---");
-  lines.push("");
-  lines.push(`# ${PKG}`);
-  lines.push("");
-  lines.push(`${DESCRIPTION}.`);
-  lines.push("");
-  lines.push(
-    `It is a standalone npm package. Every example below runs with no install via \`${NPX} …\`; if the`,
-  );
-  lines.push(
-    "tool is installed globally you can drop the `npx -y ` prefix and call `agentstate-lite …` (or the",
-  );
-  lines.push("short alias `aslite …`) directly.");
-  lines.push("");
-  lines.push("Output is TOON on stdout (a `--json` hatch exists). Errors are structured TOON on stdout with a");
-  lines.push("capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found, 1 runtime).");
-  lines.push("");
-  lines.push("<!-- GENERATED from src/reference.ts by scripts/gen-skill.mjs — do not edit by hand. -->");
-  lines.push("");
-  lines.push(...renderCommandsSection(COMMAND_GROUPS, NPX));
-  lines.push(...renderWorkspaceLocation(NPX));
-  lines.push(...renderTypicalFlow(NPX));
-  lines.push(...renderSyncSection(NPX));
-  lines.push(...renderNotesSection());
-  return lines.join("\n");
-}
-
-// ---------------------------------------------------------------------------------------------
-// skill target — plugins/agentstate-lite/skills/agentstate-lite/SKILL.md, self-contained committed-bundle channel
-// (`npx skills add`). Mirrors the resolver pattern of the reference `holaxis-agentstate` skill.
-// ---------------------------------------------------------------------------------------------
-
-function renderSkill(DESCRIPTION, COMMAND_GROUPS) {
-  const lines = [];
-  lines.push("---");
-  lines.push(`name: ${PKG}`);
-  lines.push("description: >-");
-  lines.push(
-    "  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and a",
-  );
-  lines.push(
-    "  self-contained static-HTML view) via the self-contained agentstate-lite CLI bundled in this",
-  );
-  lines.push(
-    "  skill (scripts/agentstate-lite — a committed, zero-dependency bundle; no npm install",
-  );
-  lines.push(
-    "  required). Use when an agent needs to persist a context note across sessions, store a",
-  );
-  lines.push(
-    "  decision/spec as a doc, link concepts, query a bundle, share the project's board with",
-  );
-  lines.push(
-    "  teammates (`sync`), run a local wire-protocol server (`serve` / `--remote`), or bake a",
-  );
-  lines.push("  shareable HTML view.");
-  lines.push("---");
-  lines.push("");
-  lines.push(`# ${PKG}`);
-  lines.push("");
-  lines.push(`${DESCRIPTION}.`);
-  lines.push("");
-  lines.push(
-    "This skill bundles a **self-contained** `agentstate-lite` CLI at `scripts/agentstate-lite` (a",
-  );
-  lines.push(
-    "committed, zero-dependency `.mjs` esbuild bundle, run through a small bash shim). It runs under",
-  );
-  lines.push(
-    "plain `node >= 20` — there is **no install step, no `npm install`, and no `node_modules`**. This",
-  );
-  lines.push(
-    "is a SEPARATE distribution channel from the published npm package (`npx -y agentstate-lite`);",
-  );
-  lines.push("both wrap the identical CLI source, so behavior and output are identical.");
-  lines.push("");
-  lines.push("## Invocation — it is NOT on PATH");
-  lines.push("");
-  lines.push(
-    "The bundle is **not** on your `PATH`, and it does **not** live at a fixed path — the bundle may",
-  );
-  lines.push(
-    "ship inside a version-keyed plugin cache, so a bare `scripts/agentstate-lite` does **not**",
-  );
-  lines.push(
-    "resolve from an arbitrary cwd. Resolve its absolute path once, with this one-line resolver, then",
-  );
-  lines.push(`use \`${ASLITE}\` in every command:`);
-  lines.push("");
-  lines.push("```bash");
-  lines.push('ASLITE="$(command -v agentstate-lite 2>/dev/null || ls -d \\');
-  lines.push('  "$HOME"/.claude/skills/agentstate-lite/scripts/agentstate-lite \\');
-  lines.push('  "$HOME"/.claude/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite/scripts/agentstate-lite \\');
-  lines.push("  2>/dev/null | sort -V | tail -1)\"");
-  lines.push(`${ASLITE} --help`);
-  lines.push("```");
-  lines.push("");
-  lines.push(
-    "`command -v` short-circuits if a future install ever puts `agentstate-lite` on `PATH`; otherwise",
-  );
-  lines.push(
-    "the glob checks both a direct skill install (`~/.claude/skills/…`) and a plugin-marketplace",
-  );
-  lines.push(
-    "cache install (`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/agentstate-lite/scripts/…` — the cache copies the PLUGIN DIR's contents, so there is no `plugins/` segment), and",
-  );
-  lines.push(
-    "`sort -V | tail -1` selects the highest installed version. This works from any cwd. Resolve to",
-  );
-  lines.push("the **shim** (not the `.mjs` directly) so the Node >= 20 floor guard runs first.");
-  lines.push("");
-  lines.push(
-    "> If your harness happens to export `${CLAUDE_PLUGIN_ROOT}` you may instead use",
-  );
-  lines.push(
-    '> `"$CLAUDE_PLUGIN_ROOT/skills/agentstate-lite/scripts/agentstate-lite"`, but it is **often unset**',
-  );
-  lines.push("> in an agent shell — do not rely on it; prefer the resolver above.");
-  lines.push("");
-  lines.push(
-    "**Runtime-hint note.** Every follow-up command the CLI itself prints (`help:` fields, error",
-  );
-  lines.push(
-    "hints) uses its own resolved invocation. Off `PATH`, running the skill bundle now prints its own",
-  );
-  lines.push(
-    "resolved absolute path there — directly runnable as printed, no substitution needed. If a bare",
-  );
-  lines.push(
-    "`agentstate-lite` or an `npx -y agentstate-lite …` prefix ever shows up instead (e.g. a",
-  );
-  lines.push(
-    `different install answered the \`PATH\` probe), swap that leading token for \`${ASLITE}\` and run`,
-  );
-  lines.push("the rest of the line unchanged.");
-  lines.push("");
-  lines.push(
-    "<!-- GENERATED from src/reference.ts by scripts/gen-skill.mjs --target skill — do not edit by hand. -->",
-  );
-  lines.push("");
-  lines.push(...renderCommandsSection(COMMAND_GROUPS, ASLITE));
-  lines.push(...renderWorkspaceLocation(ASLITE));
-  lines.push(...renderTypicalFlow(ASLITE));
-  lines.push(...renderSyncSection(ASLITE));
-  lines.push("## Remote (--remote, serve, identity, invites, keys)");
-  lines.push("");
-  lines.push(
-    "Every remote-facing command ships in the SAME bundle, wired the same way as `--dir` — `serve`,",
-  );
-  lines.push(
-    "`--remote <url>` on any bundle-facing command, plus `login` / `join` / `whoami` / `invite` /",
-  );
-  lines.push(`\`member\` / \`key\` all work identically through \`${ASLITE}\`. Credentials are stored at`);
-  lines.push("`~/.agentstate/` (0600/0700 discipline), never printed.");
-  lines.push("");
-  lines.push("```bash");
-  lines.push(`${ASLITE} serve --dir ./my-bundle --port 4818 &`);
-  lines.push(`${ASLITE} list --remote http://127.0.0.1:4818`);
-  lines.push("```");
-  lines.push("");
-  lines.push(...renderNotesSection());
-  return lines.join("\n");
-}
-
-const { DESCRIPTION, COMMAND_GROUPS } = await loadReference();
-const content = TARGET === "npm" ? renderNpm(DESCRIPTION, COMMAND_GROUPS) : renderSkill(DESCRIPTION, COMMAND_GROUPS);
+const { renderNpm, renderSkill, SKILL_REFERENCES } = await loadSkillRender();
+const content = TARGET === "npm" ? renderNpm() : renderSkill();
 
 if (process.argv.includes("--check")) {
+  let ok = true;
   let current = "";
   try {
     current = await readFile(skillPath, "utf8");
@@ -568,10 +145,22 @@ if (process.argv.includes("--check")) {
   }
   if (current !== content) {
     console.error(`${skillPath} is stale — run \`node scripts/gen-skill.mjs --target ${TARGET}\` to regenerate.`);
-    process.exit(1);
+    ok = false;
   }
+  if (TARGET === "skill") {
+    for (const problem of await checkReferences(SKILL_REFERENCES)) {
+      console.error(problem);
+      ok = false;
+    }
+    if (!ok) console.error(`run \`node scripts/gen-skill.mjs --target skill\` to regenerate references/.`);
+  }
+  if (!ok) process.exit(1);
   console.log(`${skillPath} is up to date.`);
 } else {
   await writeFile(skillPath, content);
   console.log(`wrote ${skillPath}`);
+  if (TARGET === "skill") {
+    await syncReferences(SKILL_REFERENCES);
+    console.log(`synced ${referencesDir}`);
+  }
 }

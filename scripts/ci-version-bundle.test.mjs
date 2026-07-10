@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, cp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -94,6 +94,10 @@ async function makeFixtureBundle({ marketplaceVersion = "1.2.3", pluginVersion =
     pluginJson: join(dir, "plugin.json"),
     skillMd: join(dir, "SKILL.md"),
     bundleMjs: join(dir, "agentstate-lite.mjs"),
+    // Deliberately left ABSENT here (most fixture tests below never touch it, exercising the
+    // pre-existing skillMd/bundleMjs diff paths unchanged); the "references/ snapshot" describe
+    // block below creates it itself where the point IS to exercise this path.
+    referencesDir: join(dir, "references"),
   };
   await writeFile(
     paths.marketplace,
@@ -186,6 +190,77 @@ describe("run() orchestration (fixtures, fake regenerate)", () => {
 });
 
 // ---------------------------------------------------------------------------------------------
+// references/ snapshot — LOAD-BEARING widening: without this, a references-only change (a new
+// SKILL_REFERENCES manifest entry, an edited source file it points at) would never register in
+// `changed`, so the version would never bump and the plugin's version-keyed cache would keep
+// serving stale — or entirely absent — references/ content forever. These three cases are exactly
+// what the distribution-completeness build spec calls out: changed, converged, and absent->present.
+// ---------------------------------------------------------------------------------------------
+
+describe("references/ snapshot (the load-bearing widening)", () => {
+  test("a references-only change bumps the version — SKILL.md and bundle both stay byte-identical", async () => {
+    const { dir, paths } = await makeFixtureBundle();
+    try {
+      await mkdir(paths.referencesDir, { recursive: true });
+      await writeFile(join(paths.referencesDir, "contract.md"), "v1\n");
+
+      const regen = async (p) => {
+        await writeFile(p.skillMd, "# SKILL v1\n"); // unchanged
+        await writeFile(p.bundleMjs, "console.log('bundle v1');\n"); // unchanged
+        await writeFile(join(p.referencesDir, "contract.md"), "v2 — content changed\n");
+      };
+      const result = await run({ regenerate: regen, paths });
+      assert.equal(result.changed, true);
+      assert.equal(result.skillMdChanged, false);
+      assert.equal(result.bundleChanged, false);
+      assert.equal(result.referencesChanged, true);
+      assert.equal(result.newVersion, "1.2.4");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("references/ reproduced byte-for-byte (converged) alongside unchanged SKILL.md/bundle stays a no-op", async () => {
+    const { dir, paths } = await makeFixtureBundle();
+    try {
+      await mkdir(paths.referencesDir, { recursive: true });
+      await writeFile(join(paths.referencesDir, "contract.md"), "steady state\n");
+
+      const identityRegen = async (p) => {
+        await writeFile(p.skillMd, "# SKILL v1\n");
+        await writeFile(p.bundleMjs, "console.log('bundle v1');\n");
+        await writeFile(join(p.referencesDir, "contract.md"), "steady state\n"); // reproduces exactly
+      };
+      const result = await run({ regenerate: identityRegen, paths });
+      assert.deepEqual(result, { changed: false });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("references/ appearing for the first time (absent -> present) counts as a change, not a no-op", async () => {
+    const { dir, paths } = await makeFixtureBundle();
+    try {
+      // paths.referencesDir does not exist yet — as if the manifest just gained its first entry.
+      const regenCreatesReferences = async (p) => {
+        await writeFile(p.skillMd, "# SKILL v1\n"); // unchanged
+        await writeFile(p.bundleMjs, "console.log('bundle v1');\n"); // unchanged
+        await mkdir(p.referencesDir, { recursive: true });
+        await writeFile(join(p.referencesDir, "contract.md"), "brand new\n");
+      };
+      const result = await run({ regenerate: regenCreatesReferences, paths });
+      assert.equal(result.changed, true);
+      assert.equal(result.skillMdChanged, false);
+      assert.equal(result.bundleChanged, false);
+      assert.equal(result.referencesChanged, true);
+      assert.equal(result.newVersion, "1.2.4");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
 // Real repo integration — proves the production wiring, not just the orchestration logic.
 // Any real mutation this makes to the committed repo files is restored in `finally`, so the test
 // suite never leaves the working tree dirty regardless of pass/fail or of the repo's state at
@@ -218,11 +293,19 @@ describe("real build (repo-tied)", () => {
 
   test("run() against the REAL repo paths converges to a no-op when the tree is already current", async () => {
     // Snapshot so this test can never leave the real committed files mutated, whatever the
-    // ambient repo state is at test time.
+    // ambient repo state is at test time. `referencesDir` is a DIRECTORY (unlike every other
+    // REAL_PATHS entry, which is a single file) — back it up with a recursive copy, not readFile.
+    const fileKeys = Object.keys(REAL_PATHS).filter((key) => key !== "referencesDir");
     const backup = {};
-    for (const [key, path] of Object.entries(REAL_PATHS)) {
-      backup[key] = await readFile(path);
+    for (const key of fileKeys) {
+      backup[key] = await readFile(REAL_PATHS[key]);
     }
+    const referencesExisted = await stat(REAL_PATHS.referencesDir).then(
+      () => true,
+      () => false,
+    );
+    const referencesBackupDir = await mkdtemp(join(tmpdir(), "ci-version-bundle-references-backup-"));
+    if (referencesExisted) await cp(REAL_PATHS.referencesDir, referencesBackupDir, { recursive: true });
     try {
       const result = await run(); // real regenerate, real paths — no overrides
       // If the repo is in its normal, already-converged state (the common case, and the state
@@ -232,9 +315,15 @@ describe("real build (repo-tied)", () => {
       // guarantees no lasting side effect either way.
       assert.equal(typeof result.changed, "boolean");
     } finally {
-      for (const [key, path] of Object.entries(REAL_PATHS)) {
-        await writeFile(path, backup[key]);
+      for (const key of fileKeys) {
+        await writeFile(REAL_PATHS[key], backup[key]);
       }
+      await rm(REAL_PATHS.referencesDir, { recursive: true, force: true });
+      if (referencesExisted) {
+        await mkdir(REAL_PATHS.referencesDir, { recursive: true });
+        await cp(referencesBackupDir, REAL_PATHS.referencesDir, { recursive: true });
+      }
+      await rm(referencesBackupDir, { recursive: true, force: true });
     }
   });
 });
