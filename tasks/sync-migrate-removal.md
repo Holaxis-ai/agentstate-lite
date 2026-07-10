@@ -6,15 +6,20 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  RESCOPED (Brian, 2026-07-09, superseding the ship-use-delete ruling after the
-  Broken-Leash analysis): the migration machinery is not deleted — it is
-  GENERALIZED. Board-branch creation is a permanent product need (any new repo
-  that wants a shared board), and --migrate was merely its hard case. This unit
-  ships the general verb and retires the migration framing. Sync remains an
-  explicit/manual action in this unit; transparent auto-sync is a later layer.
+  PR #36 is ready to merge at reviewed candidate
+  88f84643a51da6f918350c476f111af55bb9023f. Greenfield establishment is now
+  snapshot-first and explicit; bare sync cannot publish or adopt an untrusted
+  local board branch; ignored files, nested Git boundaries, byte-rewriting
+  filters, stale refs, linked-worktree marker collisions, ambiguous push
+  failures, concurrent backup writes, and crash recovery are covered by
+  deterministic adversarial tests. Independent review approved the exact SHA;
+  npm run check passed, including all workspaces and 13 browser E2E tests.
+  Remaining before this broader task closes: merge #36, then decide/ship the
+  still-separate committed-folder unification and --migrate spelling retirement
+  described in this task.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-07-10T12:50:39.036Z'
+timestamp: '2026-07-10T13:37:34.973Z'
 ---
 ## Why the rescope (the Broken-Leash analysis, 2026-07-09)
 
