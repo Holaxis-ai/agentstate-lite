@@ -26,7 +26,8 @@ import { parseArgs } from "node:util";
 import {
   readDoc,
   readDocVersioned,
-  writeDoc,
+  writeDocVersioned,
+  versionedMutation,
   parseLinks,
   backlinks,
   queryEdges,
@@ -35,12 +36,12 @@ import {
   pathFromConceptId,
   loadKinds,
   VersionConflict,
+  RemoteError,
   type Bundle,
   type EdgeFilter,
   type Link,
   type OkfDocument,
   type ValidationWarning,
-  type Version,
 } from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
 import { maybeAutoPull } from "../autopull.js";
@@ -280,77 +281,109 @@ export async function addLink(
     );
   }
 
-  // Versioned-read + compare-and-swap-write: read the source WITH its version, check idempotency,
-  // then write the appended link CONDITIONAL on that version. On a VersionConflict (a concurrent
-  // writer moved the doc between our read and write), re-read once, re-check idempotency (the
-  // racing write may have added this very link → converge to changed:false), and retry within a
-  // small bounded budget.
-  for (let attempt = 0; ; attempt++) {
-    let source: OkfDocument;
-    let version: Version;
-    try {
-      ({ doc: source, version } = await readDocVersioned(bundle, from));
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
-        throw new CliError("NOT_FOUND", `no source concept at id '${from}'`, {
-          help: `${cliInvocation()} list`,
-        });
-      }
-      // classifyBundleError passes an already-classified CliError through unchanged (e.g. a
-      // transport-error RUNTIME from a wrapped --remote fetchImpl, see bundle.ts) and maps a
-      // RemoteError by its own code instead of collapsing everything into USAGE.
-      throw classifyBundleError(err, opts.remoteUrl);
-    }
+  // Versioned-read + compare-and-swap-write, riding the shared `versionedMutation` primitive
+  // (core's ONE read-decide-CAS-retry boundary — CLAUDE.md gate 3, the same one
+  // `appendLog`/`regenerateIndex`/`mutateDoc` use): read the source WITH its version, check
+  // idempotency, then write the appended link CONDITIONAL on that version. On a `VersionConflict`
+  // (a concurrent writer moved the doc between our read and write), `decide` re-runs — re-reading
+  // and re-checking idempotency (the racing write may have added this very link → converge to
+  // `changed:false`) — within a small bounded budget.
+  let lastSource: OkfDocument | undefined;
+  let savedDoc: OkfDocument | undefined;
+  let sourceTypeAtWrite = "";
 
-    // Idempotent: if the source already links to this target (in either link form), re-adding is a
-    // no-op that exits 0 rather than appending a duplicate (AXI: mutations converge).
-    const already = parseLinks(bundle, source).some((l) => l.to === normalizedTo);
-    if (already) {
-      return { from: source.id, normalizedTo, href, text, changed: false };
-    }
+  try {
+    const outcome = await versionedMutation<OkfDocument, { changed: boolean }>({
+      read: async () => {
+        try {
+          const { doc, version } = await readDocVersioned(bundle, from);
+          return { state: doc, version };
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+            throw new CliError("NOT_FOUND", `no source concept at id '${from}'`, {
+              help: `${cliInvocation()} list`,
+            });
+          }
+          // classifyBundleError passes an already-classified CliError through unchanged (e.g. a
+          // transport-error RUNTIME from a wrapped --remote fetchImpl, see bundle.ts) and maps a
+          // RemoteError by its own code instead of collapsing everything into USAGE.
+          throw classifyBundleError(err, opts.remoteUrl);
+        }
+      },
+      decide: (source) => {
+        lastSource = source;
+        // Idempotent: if the source already links to this target (in either link form), re-adding
+        // is a no-op that exits 0 rather than appending a duplicate (AXI: mutations converge).
+        const already = parseLinks(bundle, source!).some((l) => l.to === normalizedTo);
+        if (already) return { action: "done", result: { changed: false } };
 
-    const trimmed = source.body.replace(/\s*$/, "");
-    const nextBody = `${trimmed}${trimmed ? "\n\n" : ""}[${text}](${href})\n`;
-    // Refresh `timestamp` to now() by default — adding a cross-link is a meaningful change and
-    // freshness must reflect it — unless `keepTimestamp` asks to preserve the source's existing
-    // value. Recomputed each CAS attempt (the source is re-read on retry) so a slow retry still lands
-    // a timestamp taken at write time, not at the first read.
-    const nextFrontmatter = opts.keepTimestamp
-      ? source.frontmatter
-      : { ...source.frontmatter, timestamp: new Date().toISOString() };
-    try {
-      const saved = await writeDoc(
-        bundle,
-        { ...source, frontmatter: nextFrontmatter, body: nextBody },
-        { expectedVersion: version },
-      );
-      // Write-time type-conformance lint (graph lints unit) — warn-only, never blocking: the link
-      // is already written by the time this runs. Skipped entirely on the idempotent no-op path
-      // above (a true no-op performs no registry load and no checks).
-      const warnings = await lintLinkType(bundle, {
-        sourceType: docType(source),
-        text,
-        to: normalizedTo,
-        remoteUrl: opts.remoteUrl,
+        const trimmed = source!.body.replace(/\s*$/, "");
+        const nextBody = `${trimmed}${trimmed ? "\n\n" : ""}[${text}](${href})\n`;
+        // Refresh `timestamp` to now() by default — adding a cross-link is a meaningful change and
+        // freshness must reflect it — unless `keepTimestamp` asks to preserve the source's existing
+        // value. Recomputed every attempt (`decide` re-runs against each fresh read) so a slow
+        // retry still lands a timestamp taken at write time, not at the first read.
+        const nextFrontmatter = opts.keepTimestamp
+          ? source!.frontmatter
+          : { ...source!.frontmatter, timestamp: new Date().toISOString() };
+        sourceTypeAtWrite = docType(source!);
+        return {
+          action: "write",
+          next: { ...source!, frontmatter: nextFrontmatter, body: nextBody },
+          result: { changed: true },
+        };
+      },
+      write: async (next, expectedVersion) => {
+        try {
+          const { doc: saved, version } = await writeDocVersioned(bundle, next, { expectedVersion });
+          savedDoc = saved;
+          return version;
+        } catch (err) {
+          if (err instanceof VersionConflict) throw err; // let the primitive retry/exhaust
+          // P3 review fix: an earlier version of this line routed EVERY non-conflict write error
+          // through `classifyBundleError` — but that function's fallback maps anything it doesn't
+          // recognize to USAGE (exit 2, "fix your input"), which is wrong for a genuine I/O failure
+          // (e.g. ENOSPC/EACCES from a real filesystem write): a disk-full condition is a RUNTIME
+          // failure, not user misuse. Classify ONLY the known/typed shape a `--remote` write can
+          // throw (`RemoteError`, carrying a server-derived code — AUTH_REQUIRED/FORBIDDEN/etc.
+          // should surface with the right taxonomy, exactly like the read side above); a plain local
+          // error is rethrown AS-IS, so it reaches the CLI's generic RUNTIME/exit-1 catch-all instead
+          // of being silently downgraded.
+          if (err instanceof RemoteError) throw classifyBundleError(err, opts.remoteUrl);
+          throw err;
+        }
+      },
+      maxAttempts: LINK_ADD_MAX_ATTEMPTS,
+    });
+
+    if (!outcome.wrote) {
+      return { from: lastSource!.id, normalizedTo, href, text, changed: false };
+    }
+    // Write-time type-conformance lint (graph lints unit) — warn-only, never blocking: the link is
+    // already written by the time this runs. Skipped entirely on the idempotent no-op path above (a
+    // true no-op performs no registry load and no checks).
+    const warnings = await lintLinkType(bundle, {
+      sourceType: sourceTypeAtWrite,
+      text,
+      to: normalizedTo,
+      remoteUrl: opts.remoteUrl,
+    });
+    return {
+      from: savedDoc!.id,
+      normalizedTo,
+      href,
+      text,
+      changed: true,
+      warnings: warnings.length > 0 ? warnings : undefined,
+    };
+  } catch (err) {
+    if (err instanceof VersionConflict) {
+      // Exhausted the retry budget: surface as a CONFLICT (exit 5) with a re-run fixing command.
+      throw new CliError("STALE_HEAD", err.message, {
+        help: `${cliInvocation()} link add ${from} ${to}`,
       });
-      return {
-        from: saved.id,
-        normalizedTo,
-        href,
-        text,
-        changed: true,
-        warnings: warnings.length > 0 ? warnings : undefined,
-      };
-    } catch (err) {
-      if (err instanceof VersionConflict && attempt < LINK_ADD_MAX_ATTEMPTS - 1) continue;
-      if (err instanceof VersionConflict) {
-        // Exhausted the retry budget: surface as a CONFLICT (exit 5) with a re-run fixing command.
-        throw new CliError("STALE_HEAD", err.message, {
-          help: `${cliInvocation()} link add ${from} ${to}`,
-        });
-      }
-      throw err;
     }
+    throw err; // already classified (the read/write closures' own classify, or the NOT_FOUND above)
   }
 }
 

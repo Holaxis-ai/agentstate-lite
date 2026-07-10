@@ -624,15 +624,17 @@ test("doc write --blank-body on a linked doc STILL requires --replace-links (dou
 // "overwrite" mode, which wrote UNCONDITIONALLY (no CAS). A concurrent writer landing between that
 // peek and the write (e.g. another agent adding a link, or even creating the doc from scratch) was
 // silently clobbered — the guard's decision was correct for the STALE snapshot it saw, but the doc it
-// actually overwrote on disk was a different, newer one. `mutateDoc`'s "overwrite" mode now supports
-// `coupleRead: true` (what `doc write` always passes unless `--replace-links`): it re-reads the
-// CURRENT doc immediately before each write attempt and hands it to `buildCandidate`, retrying bounded
-// on a `VersionConflict`. These tests exercise `mutateDoc` directly (mirroring this file's other
-// "mutate-level thread-through proof" tests) with a `MemoryBackend` (real enforced CAS) and a
-// backend.write wrapper that injects a concurrent write at the exact moment our own write attempts to
-// land — the same mechanism a genuinely concurrent agent would race through, made deterministic.
+// actually overwrote on disk was a different, newer one. `mutateDoc`'s "overwrite" mode now ALWAYS
+// couples the read to the write (mutation-boundary consolidation, decision 7.1: the old
+// `coupleRead: false` — "the --replace-links path" — posture is retired; `--replace-links` narrows
+// only the link-drop guard's OWN decision now, never the CAS): it re-reads the CURRENT doc immediately
+// before each write attempt and hands it to `buildCandidate`, retrying bounded on a `VersionConflict`.
+// These tests exercise `mutateDoc` directly (mirroring this file's other "mutate-level thread-through
+// proof" tests) with a `MemoryBackend` (real enforced CAS) and a backend.write wrapper that injects a
+// concurrent write at the exact moment our own write attempts to land — the same mechanism a
+// genuinely concurrent agent would race through, made deterministic.
 
-test("mutateDoc overwrite (coupleRead): a concurrent writer's link addition between the read and the write is never silently clobbered — VersionConflict retries, re-reads, and buildCandidate (the guard) sees the FRESH doc", async () => {
+test("mutateDoc overwrite: a concurrent writer's link addition between the read and the write is never silently clobbered — VersionConflict retries, re-reads, and buildCandidate (the guard) sees the FRESH doc", async () => {
   const backend = new MemoryBackend();
   const bundle: Bundle = { root: "mem://couple-read-existing-race", backend };
   await writeDoc(bundle, {
@@ -667,7 +669,6 @@ test("mutateDoc overwrite (coupleRead): a concurrent writer's link addition betw
         bundle,
         id: "a",
         mode: "overwrite",
-        coupleRead: true,
         registry,
         strict: false,
         helpOnKindReject: "kinds",
@@ -702,7 +703,7 @@ test("mutateDoc overwrite (coupleRead): a concurrent writer's link addition betw
   );
 });
 
-test("mutateDoc overwrite (coupleRead): the absent -> concurrently-created race is caught too — a create conflicts, re-reads, and the guard sees the NEW doc's links", async () => {
+test("mutateDoc overwrite: the absent -> concurrently-created race is caught too — a create conflicts, re-reads, and the guard sees the NEW doc's links", async () => {
   const backend = new MemoryBackend();
   const bundle: Bundle = { root: "mem://couple-read-absent-race", backend };
   const registry = await loadKinds(bundle);
@@ -731,7 +732,6 @@ test("mutateDoc overwrite (coupleRead): the absent -> concurrently-created race 
         bundle,
         id: "a",
         mode: "overwrite",
-        coupleRead: true,
         registry,
         strict: false,
         helpOnKindReject: "kinds",
@@ -762,9 +762,9 @@ test("mutateDoc overwrite (coupleRead): the absent -> concurrently-created race 
   assert.equal(parseLinks(bundle, after).length, 1);
 });
 
-test("mutateDoc overwrite (coupleRead: false, the --replace-links path): behaves exactly like the historical unconditional write — no extra read, a concurrent change is last-writer-wins as before", async () => {
+test("mutateDoc overwrite: the historical '--replace-links' shape (a candidate that ignores `existing` entirely, e.g. a deliberate blind overwrite) is STILL CAS-coupled now — decision 7.1: `--replace-links` narrows the link-drop guard's own check, it no longer buys an unconditional write; a concurrent writer's change is retried against, not silently clobbered", async () => {
   const backend = new MemoryBackend();
-  const bundle: Bundle = { root: "mem://couple-read-disabled", backend };
+  const bundle: Bundle = { root: "mem://replace-links-still-coupled", backend };
   await writeDoc(bundle, {
     id: "a",
     frontmatter: { type: "Concept", timestamp: OLD_TS },
@@ -772,23 +772,191 @@ test("mutateDoc overwrite (coupleRead: false, the --replace-links path): behaves
   });
   const registry = await loadKinds(bundle);
 
+  // Inject a concurrent writer's change (an UNRELATED title edit — the shape a competing `doc
+  // update` would make) the FIRST time our own write attempts a real CAS write for 'a'.
+  const originalWrite = backend.write.bind(backend);
+  let injected = false;
+  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
+    if (id === "a" && !injected && options?.expectedVersion) {
+      injected = true;
+      const current = await backend.read("a");
+      await originalWrite(
+        "a",
+        { ...current.doc, frontmatter: { ...current.doc.frontmatter, title: "Raced title" } },
+        { expectedVersion: options.expectedVersion },
+      );
+    }
+    return originalWrite(id, d, options);
+  }) as typeof backend.write;
+
   let buildCandidateCalls = 0;
   const result = await mutateDoc({
     bundle,
     id: "a",
     mode: "overwrite",
-    coupleRead: false,
     registry,
     strict: false,
     helpOnKindReject: "kinds",
+    // The historical --replace-links candidate: ignores `existing` entirely (no guard call), a
+    // deliberate blind overwrite of frontmatter+body.
     buildCandidate: () => {
       buildCandidateCalls++;
       return { frontmatter: { type: "Concept", timestamp: T }, body: "Blind overwrite, no links." };
     },
     errors: {},
   });
-  assert.equal(buildCandidateCalls, 1); // never re-read, never retried — unconditional, as before
+  // Re-read and retried (unlike the old coupleRead:false posture, which never re-read at all) — the
+  // conflict from the competing writer's title edit forced a second attempt.
+  assert.equal(buildCandidateCalls, 2);
+  // Our own overwrite still landed — --replace-links means "I accept dropping MY OWN read's links",
+  // not "skip CAS": the FINAL write is still the caller's full replace, exactly as before.
   assert.equal(result.doc.body, "Blind overwrite, no links.");
+});
+
+// ── Defect B (mutation-boundary consolidation): doc write's guards rode a single stale upfront peek ─
+//
+// `doc write` used to read the existing doc ONCE, before `mutateDoc` ever ran, and evaluate the
+// schema-loss refusal, the F1 body-blank refusal, and the dropped_fields receipt against that ONE
+// snapshot — only the link-drop guard (inside `buildCandidate`) re-evaluated per CAS attempt. A
+// competing writer landing between that peek and the eventual write could slip past a guard that
+// decided from stale bytes, or make the dropped_fields receipt understate what the write actually
+// clobbered. Fix B moves all three into `buildCandidate`, so every attempt sees the version-matched
+// `fresh` read `mutateDoc`'s CAS retry is actually about to replace. Each test below injects a
+// competing write deterministically (the same backend.write wrapper technique used throughout this
+// file) and is confirmed to FAIL against the pre-fix doc/write.ts (reproducing the exact defect) and
+// PASS with the fix.
+
+test("doc write F1 guard: re-evaluated on EVERY attempt — a competing writer fills an EMPTY body concurrently, and our own bodyless write refuses (USAGE) instead of silently blanking it", async () => {
+  const backend = new MemoryBackend();
+  const bundle: Bundle = { root: "mem://write-f1-race", backend };
+  await writeDoc(bundle, { id: "a", frontmatter: { type: "Concept", timestamp: OLD_TS }, body: "" });
+
+  // The FIRST time our own write attempts a real CAS write for 'a', a competing writer fills the
+  // (currently empty) body with non-empty content first, using OUR OWN read's version (so it wins).
+  const originalWrite = backend.write.bind(backend);
+  let injected = false;
+  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
+    if (id === "a" && !injected && options?.expectedVersion) {
+      injected = true;
+      const current = await backend.read("a");
+      await originalWrite(
+        "a",
+        { ...current.doc, body: "Competing non-empty body." },
+        { expectedVersion: options.expectedVersion },
+      );
+    }
+    return originalWrite(id, d, options);
+  }) as typeof backend.write;
+
+  const server = await bootServerOverBundle(bundle);
+  try {
+    await assert.rejects(
+      () =>
+        doc(["write", "a", "--type", "Concept", "--remote", server.url, "--json"], {
+          stdout: () => {},
+          readStdin: async () => undefined,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /non-empty body/);
+        return true;
+      },
+    );
+    // The competing writer's body was never blanked — our write refused before ever landing.
+    const after = await readDoc(bundle, "a");
+    assert.equal(after.body, "Competing non-empty body.");
+  } finally {
+    await server.close();
+  }
+});
+
+test("doc write schema-loss guard: re-evaluated on EVERY attempt — a competing writer concurrently creates the target as a real kind Convention, and our own (non-Convention) write refuses instead of silently overwriting its schema", async () => {
+  const backend = new MemoryBackend();
+  const bundle: Bundle = { root: "mem://write-schema-loss-race", backend };
+
+  // The FIRST time our own write attempts its expect-absent CREATE, a competing writer creates the
+  // SAME id as a real Convention doc first (also expect-absent, so it wins the race).
+  const originalWrite = backend.write.bind(backend);
+  let injected = false;
+  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
+    if (id === "conventions/widget" && !injected && options?.expectedVersion === null) {
+      injected = true;
+      await originalWrite(
+        "conventions/widget",
+        {
+          id: "conventions/widget",
+          frontmatter: {
+            type: "Convention",
+            governs: "Widget",
+            path: "widgets/",
+            fields: { required: ["title"] },
+            timestamp: OLD_TS,
+          },
+          body: "A widget kind.",
+        },
+        { expectedVersion: null },
+      );
+    }
+    return originalWrite(id, d, options);
+  }) as typeof backend.write;
+
+  const server = await bootServerOverBundle(bundle);
+  try {
+    await assert.rejects(
+      () =>
+        doc(["write", "conventions/widget", "--type", "Concept", "--remote", server.url, "--json"], {
+          stdout: () => {},
+          readStdin: async () => undefined,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /drop the convention's schema/);
+        return true;
+      },
+    );
+    // The concurrently-created convention survived, untouched — our write refused before landing.
+    const after = await readDoc(bundle, "conventions/widget");
+    assert.equal(after.frontmatter.type, "Convention");
+    assert.equal(after.frontmatter.governs, "Widget");
+  } finally {
+    await server.close();
+  }
+});
+
+test("doc write dropped_fields: re-evaluated on EVERY attempt — a competing writer concurrently adds a NEW frontmatter field, and the receipt honestly names it among the dropped fields instead of misreporting from a stale peek", async () => {
+  const backend = new MemoryBackend();
+  const bundle: Bundle = { root: "mem://write-dropped-fields-race", backend };
+  await writeDoc(bundle, { id: "a", frontmatter: { type: "Concept", status: "todo", timestamp: OLD_TS }, body: "" });
+
+  // The FIRST time our own write attempts a real CAS write, a competing writer adds a NEW field
+  // ('priority') on top of the existing one ('status'), using OUR OWN read's version (so it wins).
+  const originalWrite = backend.write.bind(backend);
+  let injected = false;
+  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
+    if (id === "a" && !injected && options?.expectedVersion) {
+      injected = true;
+      const current = await backend.read("a");
+      await originalWrite(
+        "a",
+        { ...current.doc, frontmatter: { ...current.doc.frontmatter, priority: "high" } },
+        { expectedVersion: options.expectedVersion },
+      );
+    }
+    return originalWrite(id, d, options);
+  }) as typeof backend.write;
+
+  const server = await bootServerOverBundle(bundle);
+  try {
+    const result = await runDoc(["write", "a", "--type", "Concept", "--remote", server.url]);
+    assert.equal(result.doc, "written");
+    // BOTH fields are reported dropped — 'priority' (added by the competing writer, AFTER our stale
+    // peek would have been taken) as well as 'status' (present from the start).
+    assert.deepEqual((result.dropped_fields as string[]).sort(), ["priority", "status"]);
+  } finally {
+    await server.close();
+  }
 });
 
 // ── doc write --actor (API consistency with doc update/delete) ─────────────────────────────────────

@@ -14,6 +14,7 @@ import path from "node:path";
 import { FilesystemBackend } from "./backend.js";
 import { MalformedDocumentError, parseMarkdown, stringifyWithData } from "./frontmatter.js";
 import { parseLinksFromDoc } from "./links.js";
+import { versionedMutation } from "./mutation.js";
 import {
   assertSafeConceptId,
   isReservedFile,
@@ -49,9 +50,6 @@ export interface WriteResult {
   version: Version;
 }
 
-/** Bounded compare-and-swap retry budget for the engine's read-modify-write paths (reserved files, `link add`). */
-const CAS_MAX_ATTEMPTS = 5;
-
 /** Resolve the backend a bundle operation should use (defaults to a filesystem adapter). */
 function backendFor(bundle: Bundle): StorageBackend {
   return bundle.backend ?? new FilesystemBackend(bundle.root);
@@ -73,7 +71,20 @@ export async function initBundle(root: string, options: InitBundleOptions = {}):
     const okfVersion = options.okfVersion ?? "0.1";
     const name = path.basename(resolved);
     const body = `# ${name}\n\nAn Open Knowledge Format bundle.\n`;
-    await backend.writeReserved("", "index.md", stringifyWithData({ okf_version: okfVersion }, body));
+    // Expect-absent create (Defect C hardening): a plain check-absent-then-unconditional-write
+    // leaves a benign TOCTOU window — two racing `init`s of the SAME fresh directory both see
+    // `null` and both write. Harmless in practice (both write byte-identical content, since `name`
+    // and `okfVersion` are deterministic from `root`/`options`), but the write itself should still
+    // go through the seam's CAS discipline rather than silently assume no one else got there
+    // first. `expectedVersion: null` makes that assumption explicit and a `VersionConflict` (the
+    // OTHER racer won) is swallowed — the loser's own bundle is equally initialized either way.
+    try {
+      await backend.writeReserved("", "index.md", stringifyWithData({ okf_version: okfVersion }, body), {
+        expectedVersion: null,
+      });
+    } catch (err) {
+      if (!(err instanceof VersionConflict)) throw err;
+    }
   }
   return { root: resolved };
 }
@@ -578,48 +589,43 @@ export async function appendLog(
   const line = `- ${opts.verb ? `**${opts.verb}** ` : ""}${opts.entry}`;
 
   // `log.md` is the provenance surface and the least-safe write path: a plain
-  // read-modify-write drops a concurrent writer's entry. Read the current bytes WITH
-  // their version, splice, then compare-and-swap; on a conflict re-read and re-splice
-  // (never overwriting the racing entry) up to a bounded budget. The first-ever create
-  // uses `expectedVersion: null` (expect-absent), so even the create path is guarded —
-  // if a concurrent writer created the file between our read and our write, the CAS
-  // rejects and the retry re-reads to append instead of clobbering.
-  for (let attempt = 0; ; attempt++) {
-    const prior = await backend.readReserved(dir, "log.md");
-    const existing = prior?.content ?? "# Log\n";
-    const lines = existing.split("\n");
+  // read-modify-write drops a concurrent writer's entry. `versionedMutation` (the ONE
+  // read-decide-CAS-retry primitive, `mutation.ts`) re-reads the current bytes WITH their
+  // version on EVERY attempt and re-splices against THAT read, never a stale one — a
+  // conflict re-reads and re-splices (never overwriting the racing entry) up to a bounded
+  // budget. The first-ever create uses `expectedVersion: null` (expect-absent), so even the
+  // create path is guarded — if a concurrent writer created the file between our read and
+  // our write, the CAS rejects and the retry re-reads to append instead of clobbering.
+  await versionedMutation<string, void>({
+    read: async () => {
+      const prior = await backend.readReserved(dir, "log.md");
+      return { state: prior?.content, version: prior?.version ?? null };
+    },
+    decide: (existing) => {
+      const content = existing ?? "# Log\n";
+      const lines = content.split("\n");
 
-    // Find an existing group for today's date.
-    const headingIdx = lines.findIndex((l) => l.trim() === heading);
-    let next: string;
-    if (headingIdx >= 0) {
-      lines.splice(headingIdx + 1, 0, line);
-      next = lines.join("\n");
-    } else {
-      // Insert a new date group directly after the top-of-file `# Log` title if present.
-      const titleIdx = lines.findIndex((l) => /^#\s+/.test(l.trim()));
-      const block = `${heading}\n\n${line}\n`;
-      if (titleIdx >= 0) {
-        lines.splice(titleIdx + 1, 0, "", block);
+      // Find an existing group for today's date.
+      const headingIdx = lines.findIndex((l) => l.trim() === heading);
+      let next: string;
+      if (headingIdx >= 0) {
+        lines.splice(headingIdx + 1, 0, line);
         next = lines.join("\n");
       } else {
-        next = `${block}\n${existing}`;
+        // Insert a new date group directly after the top-of-file `# Log` title if present.
+        const titleIdx = lines.findIndex((l) => /^#\s+/.test(l.trim()));
+        const block = `${heading}\n\n${line}\n`;
+        if (titleIdx >= 0) {
+          lines.splice(titleIdx + 1, 0, "", block);
+          next = lines.join("\n");
+        } else {
+          next = `${block}\n${content}`;
+        }
       }
-    }
-
-    try {
-      await backend.writeReserved(
-        dir,
-        "log.md",
-        next,
-        { expectedVersion: prior ? prior.version : null },
-      );
-      return;
-    } catch (err) {
-      if (err instanceof VersionConflict && attempt < CAS_MAX_ATTEMPTS - 1) continue;
-      throw err;
-    }
-  }
+      return { action: "write", next, result: undefined };
+    },
+    write: (next, expectedVersion) => backend.writeReserved(dir, "log.md", next, { expectedVersion }),
+  });
 }
 
 /**
@@ -680,31 +686,35 @@ export async function regenerateIndex(bundle: Bundle, dir = ""): Promise<string>
   const body = `# ${name}\n\n${sections.join("\n")}`.trimEnd() + "\n";
 
   // Bring the index write into the CAS model as well (the same read-modify-write hazard the
-  // log has): read the current index WITH its version, assemble the deterministic replacement
-  // (preserving the root okf_version declaration), and compare-and-swap; retry on a racing
-  // writer. The first-ever create uses `expectedVersion: null` (expect-absent) so the create
-  // path is guarded too.
-  for (let attempt = 0; ; attempt++) {
-    const prior = await backend.readReserved(dirRel, "index.md");
-    let content: string;
-    if (dirRel === "") {
-      // Preserve/refresh the root okf_version declaration (only the root index may carry frontmatter).
-      const priorOkf = prior ? parseMarkdown(prior.content).frontmatter.okf_version : undefined;
-      content = stringifyWithData({ okf_version: typeof priorOkf === "string" ? priorOkf : "0.1" }, body);
-    } else {
-      content = body; // nested index.md carries NO frontmatter (§3.1)
-    }
-    try {
-      await backend.writeReserved(
-        dirRel,
-        "index.md",
-        content,
-        { expectedVersion: prior ? prior.version : null },
-      );
-      return content;
-    } catch (err) {
-      if (err instanceof VersionConflict && attempt < CAS_MAX_ATTEMPTS - 1) continue;
-      throw err;
-    }
-  }
+  // log has): `versionedMutation` re-reads the current index WITH its version on EVERY attempt,
+  // assembles the deterministic replacement (preserving the root okf_version declaration), and
+  // compare-and-swaps; a conflict re-reads and re-assembles, bounded-retried. The first-ever
+  // create uses `expectedVersion: null` (expect-absent) so the create path is guarded too.
+  //
+  // NOTE (decision, deliberate — not a bug): the SCAN above (list + batch-read + `body`
+  // assembly) runs ONCE, outside this retry loop — a conflict here re-reads only the tiny
+  // `index.md` file, never re-scans the whole directory. A concept written concurrently with
+  // this regeneration can therefore be missing from the index this call produces even after a
+  // successful CAS retry; the index is self-healing (the next `regenerateIndex` call re-scans
+  // from scratch), and multiplying the scan cost per CAS attempt buys no durable correctness
+  // improvement over that self-healing property.
+  const outcome = await versionedMutation<string, string>({
+    read: async () => {
+      const prior = await backend.readReserved(dirRel, "index.md");
+      return { state: prior?.content, version: prior?.version ?? null };
+    },
+    decide: (priorContent) => {
+      let content: string;
+      if (dirRel === "") {
+        // Preserve/refresh the root okf_version declaration (only the root index may carry frontmatter).
+        const priorOkf = priorContent !== undefined ? parseMarkdown(priorContent).frontmatter.okf_version : undefined;
+        content = stringifyWithData({ okf_version: typeof priorOkf === "string" ? priorOkf : "0.1" }, body);
+      } else {
+        content = body; // nested index.md carries NO frontmatter (§3.1)
+      }
+      return { action: "write", next: content, result: content };
+    },
+    write: (next, expectedVersion) => backend.writeReserved(dirRel, "index.md", next, { expectedVersion }),
+  });
+  return outcome.result;
 }
