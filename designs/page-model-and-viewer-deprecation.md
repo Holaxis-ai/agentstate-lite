@@ -2,13 +2,11 @@
 type: Design
 title: 'Human window: one page primitive, and retiring the static viewer'
 description: >-
-  Plan of record (rev 2, review-hardened): unify local HTML onto the type:Page
-  primitive with an ENFORCED bridge: none|bundle-read field, add Page integrity
-  diagnostics, and retire the static viewer. Honest about deleted capabilities
-  (baked-data export, generic whole-bundle graph), byte vs sandboxed
-  portability, corrected storage model + expanded blast radius.
+  Plan of record (rev 3): unify local HTML onto type:Page with an ENFORCED
+  bridge:none|bundle-read field; retire the static viewer. Whole-bundle graph
+  decided (accept loss). Unit A (bridge capability) in progress.
 actor: mike/claude
-timestamp: '2026-07-10T18:59:58.612Z'
+timestamp: '2026-07-10T19:37:00.639Z'
 ---
 # Human window: one page primitive, and retiring the static viewer
 
@@ -17,7 +15,8 @@ incorporating a technical design review. Four corrections folded in: (1) make th
 distinction ENFORCED, not cosmetic; (2) be honest that the viewer's baked-data snapshot and its
 whole-bundle graph are being *removed*, not *subsumed*; (3) separate byte-portability from
 sandboxed-portability and add Page integrity diagnostics; (4) correct the storage model and
-expand the blast radius. Not yet executed.
+expand the blast radius. **Whole-bundle graph decision made (2026-07-10): accept its removal.**
+Execution started — Unit A in progress (see Execution status at the end).
 
 ## Why now
 
@@ -92,9 +91,9 @@ Two distinct claims, kept separate (my first draft conflated them):
    (canvas, scripts, subscriptions, readiness) is not a trivial generic transform.
 2. **The generic whole-bundle graph.** The viewer draws a whole-bundle graph for ANY bundle with
    zero authoring. The current Roadmap graph page is BESPOKE (roadmap items only), not a generic
-   substitute. **Decision required before deletion:** either (a) ship a generic **Explorer /
-   whole-bundle-graph Page**, or (b) explicitly accept losing generic whole-bundle graph
-   viewing. Do not delete the viewer until this is decided.
+   substitute. **DECIDED (2026-07-10, Mike): accept the loss** — we will NOT ship a generic
+   Explorer Page. The generic whole-bundle graph goes with the viewer; if graph viewing is wanted
+   later it is authored as an ordinary data page. This unblocks the deletion (step 3).
 
 **Blast radius** (viewer is a LEAF — only the CLI consumes it):
 
@@ -148,8 +147,8 @@ model. The honest options:
    launcher grouping + safe default), **Page integrity diagnostics** in `status`, and **one
    content-page fixture**. Update existing Page docs + examples in the same unit. Additive —
    nothing removed.
-2. **Decide** whole-bundle graph viewing: ship a generic Explorer Page, or intentionally remove
-   it. (Blocks step 3.)
+2. ~~Decide whole-bundle graph viewing~~ **DONE (2026-07-10): accept its removal** — no generic
+   Explorer Page. Step 3 is unblocked.
 3. **Delete** `packages/viewer` + `view` as one Builder → Review → PR unit, using the expanded
    blast-radius checklist; update CLAUDE.md gates 1/4 + the smoke test in the SAME unit (a gate
    owns the risk it guards).
@@ -168,10 +167,19 @@ model. The honest options:
 
 ## Open questions
 
-1. **Whole-bundle graph** — ship a generic Explorer Page, or accept its removal? (Blocks step 3.)
+1. ~~Whole-bundle graph~~ — **RESOLVED (2026-07-10): accepted as a loss**, no Explorer Page.
 2. **Snapshot export** — build the generic snapshot protocol later, or let it go?
 3. **Volume / storage** — which of the four options above for bulky content pages on a synced
    board?
+
+## Execution status
+
+- **In progress:** Unit A — enforce the `bridge: none | bundle-read` capability (Page convention
+  field + shell-side broker enforcement + launcher grouping + a content-page fixture). Builder
+  dispatched 2026-07-10 on `feat/page-bridge-capability`. Board-data migration (the board's own
+  Page docs + `conventions/page.md` gain `bridge: bundle-read`) is coordinated with that merge.
+- **Next:** Unit B — Page integrity diagnostics in `status`. Unit C — delete `packages/viewer` +
+  `view` (now unblocked by the graph decision).
 
 (Resolved by the review: launcher grouping is no longer an open question — it rides the enforced
 `bridge` field.)
