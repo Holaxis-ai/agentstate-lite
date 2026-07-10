@@ -3,7 +3,7 @@ type: Task
 title: >-
   sync --share: board-branch creation becomes a permanent affordance; --migrate
   spelling retires
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   RESCOPED (Brian, 2026-07-09, superseding the ship-use-delete ruling after the
@@ -12,8 +12,9 @@ description: >-
   that wants a shared board), and --migrate was merely its hard case. This unit
   ships the general verb and retires the migration framing. Sync remains an
   explicit/manual action in this unit; transparent auto-sync is a later layer.
-actor: codex
-timestamp: '2026-07-09T20:40:00.000Z'
+actor: openai/codex
+assignee: openai/codex
+timestamp: '2026-07-10T12:50:39.036Z'
 ---
 ## Why the rescope (the Broken-Leash analysis, 2026-07-09)
 
