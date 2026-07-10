@@ -1,0 +1,189 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Board</title>
+<style>
+  :root {
+    --paper: #FAFAF7; --ink: #22271F; --muted: #6E756B; --line: #E3E3DA;
+    --card: #FFFFFF; --accent: #0E7C66; --accent-soft: #E3F0EB;
+    --amber: #9A6A14; --red: #B3382E; --red-soft: #F6E4E2; --chip: #F0F0E9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #16191B; --ink: #E4E7E1; --muted: #8E958F; --line: #2B2F2D;
+      --card: #1D2123; --accent: #45B896; --accent-soft: #1C2E29;
+      --amber: #D9A24A; --red: #E07A70; --red-soft: #33211F; --chip: #252A28;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font: 14px/1.5 "Avenir Next", "Seravek", system-ui, sans-serif;
+    margin: 0; padding: 20px clamp(12px, 3vw, 36px) 48px;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+  h1 { font-size: 19px; font-weight: 600; margin: 0; }
+  h1 .mono { color: var(--accent); font-weight: 700; }
+  .live { font-size: 11.5px; color: var(--muted); }
+  .live .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 4px; }
+  .tally { color: var(--muted); font-size: 12.5px; margin: 4px 0 20px; }
+  .tally b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); margin: 0 0 10px; }
+  h2 .n { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .spine { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 26px; }
+  .ritem { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--card); border-radius: 3px; padding: 6px 10px; font-size: 12.5px; }
+  .dot2 { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .dot2.active { background: var(--accent); }
+  .dot2.other { background: transparent; border: 1.5px solid var(--muted); }
+  .ritem .st { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; }
+
+  .board { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 16px; align-items: start; }
+  @media (max-width: 1060px) { .board { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px)  { .board { grid-template-columns: 1fr; } }
+  .col.doing h2 { color: var(--amber); }
+  .col.blocked h2 { color: var(--red); }
+  .col.done h2 { color: var(--accent); }
+  .cards { display: flex; flex-direction: column; gap: 7px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 3px; padding: 9px 11px 8px; }
+  .card.doing { border-left: 3px solid var(--amber); }
+  .card.blocked { border-left: 3px solid var(--red); }
+  .card .t { font-size: 13px; line-height: 1.35; margin: 0 0 5px; }
+  .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 4px; }
+  .badge { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10px; padding: 1px 5px; border-radius: 2px; background: var(--chip); color: var(--muted); }
+  .badge.p1 { background: var(--red-soft); color: var(--red); font-weight: 700; }
+  .who { font-size: 10.5px; color: var(--accent); background: var(--accent-soft); padding: 1px 6px; border-radius: 8px; }
+  .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
+  .done .card .t { margin-bottom: 3px; color: var(--muted); font-size: 12.5px; }
+  .more { color: var(--muted); font-size: 12px; padding: 4px 2px; }
+  .empty { color: var(--muted); font-size: 12.5px; font-style: italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>agentstate-lite <span class="mono">board</span></h1>
+  <span class="live" id="live"><span class="dot"></span>connecting…</span>
+</header>
+<p class="tally" id="tally"></p>
+<section>
+  <h2>Roadmap spine</h2>
+  <div class="spine" id="spine"></div>
+</section>
+<div class="board">
+  <section class="col doing"><h2>In progress <span class="n" id="n-doing"></span></h2><div class="cards" id="c-doing"></div></section>
+  <section class="col"><h2>Up next <span class="n" id="n-todo"></span></h2><div class="cards" id="c-todo"></div></section>
+  <section class="col blocked"><h2>Blocked <span class="n" id="n-blocked"></span></h2><div class="cards" id="c-blocked"></div></section>
+  <section class="col done"><h2>Recently done <span class="n" id="n-done"></span></h2><div class="cards" id="c-done"></div></section>
+</div>
+
+<script>
+(function () {
+  var PROTO = "v0", seq = 0, pending = {}, subs = [];
+  function send(type, extra) {
+    return new Promise(function (resolve, reject) {
+      var id = String(++seq);
+      pending[id] = { resolve: resolve, reject: reject };
+      var msg = { bridge: PROTO, id: id, type: type };
+      if (extra) for (var k in extra) msg[k] = extra[k];
+      parent.postMessage(msg, "*"); // parent origin is opaque to us; the shell validates by source
+    });
+  }
+  window.addEventListener("message", function (e) {
+    if (e.source !== window.parent) return; // only trust the shell
+    var m = e.data;
+    if (!m || m.bridge !== PROTO) return;
+    if (m.type === "change") { subs.forEach(function (cb) { cb(m.event); }); return; }
+    var p = pending[m.id];
+    if (!p) return;
+    delete pending[m.id];
+    if (m.type === "error") p.reject(new Error((m.error && m.error.message) || "bridge error"));
+    else p.resolve(m.result);
+  });
+  window.Bridge = {
+    hello: function () { return send("hello"); },
+    query: function (params) { return send("query", { params: params }); },
+    read: function (docId) { return send("read", { docId: docId }); },
+    edges: function (params) { return send("edges", { params: params }); },
+    subscribe: function (cb) { subs.push(cb); return send("subscribe"); }
+  };
+})();
+
+(function () {
+  var esc = function (s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  };
+  function card(row, cls, showWho) {
+    var fm = row.frontmatter || {};
+    var p = fm.priority ? '<span class="badge' + (String(fm.priority) === "1" ? " p1" : "") + '">P' + esc(fm.priority) + "</span>" : "";
+    var who = showWho && fm.assignee ? '<span class="who">' + esc(fm.assignee) + "</span>" : "";
+    var meta = p || who ? '<div class="meta">' + p + who + "</div>" : "";
+    return '<div class="card ' + cls + '"><p class="t">' + esc(fm.title || row.id) + "</p>" + meta +
+      '<div class="id">' + esc(row.id) + "</div></div>";
+  }
+  function byPriorityThenTitle(a, b) {
+    var pa = (a.frontmatter || {}).priority || "9", pb = (b.frontmatter || {}).priority || "9";
+    if (pa !== pb) return pa < pb ? -1 : 1;
+    var ta = (a.frontmatter || {}).title || a.id, tb = (b.frontmatter || {}).title || b.id;
+    return ta < tb ? -1 : 1;
+  }
+  function byTimestampDesc(a, b) {
+    var ta = (a.frontmatter || {}).timestamp || "", tb = (b.frontmatter || {}).timestamp || "";
+    return ta > tb ? -1 : 1;
+  }
+  var DONE_CAP = 12;
+  function render() {
+    Promise.all([
+      Bridge.query({ type: "Task", limit: 0 }),
+      Bridge.query({ type: "Roadmap Item", limit: 0 })
+    ]).then(function (res) {
+      var tasks = res[0].rows || [], items = res[1].rows || [];
+      var st = function (r) { return (r.frontmatter || {}).status || ""; };
+      var doing = tasks.filter(function (r) { return st(r) === "in_progress"; }).sort(byPriorityThenTitle);
+      var todo = tasks.filter(function (r) { return st(r) === "todo"; }).sort(byPriorityThenTitle);
+      var blocked = tasks.filter(function (r) { return st(r) === "blocked"; }).sort(byPriorityThenTitle);
+      var done = tasks.filter(function (r) { return st(r) === "done"; }).sort(byTimestampDesc);
+      var canceled = tasks.filter(function (r) { return st(r) === "canceled"; });
+
+      document.getElementById("tally").innerHTML =
+        "<b>" + tasks.length + "</b> tasks — <b>" + done.length + "</b> done · <b>" + doing.length +
+        "</b> in progress · <b>" + todo.length + "</b> up next · <b>" + blocked.length + "</b> blocked" +
+        (canceled.length ? " · " + canceled.length + " canceled" : "");
+
+      var spine = items.sort(byPriorityThenTitle).map(function (r) {
+        var s = st(r) || (r.frontmatter || {}).stage || "";
+        var active = s === "active";
+        return '<span class="ritem"><span class="dot2 ' + (active ? "active" : "other") + '"></span>' +
+          esc((r.frontmatter || {}).title || r.id) + ' <span class="st">' + esc(s || "—") + "</span></span>";
+      }).join("");
+      document.getElementById("spine").innerHTML = spine || '<span class="empty">no roadmap items</span>';
+
+      function fill(idN, idC, rows, cls, showWho, cap) {
+        document.getElementById(idN).textContent = rows.length;
+        var slice = cap ? rows.slice(0, cap) : rows;
+        var html = slice.map(function (r) { return card(r, cls, showWho); }).join("");
+        if (cap && rows.length > cap) html += '<div class="more">+ ' + (rows.length - cap) + " more</div>";
+        document.getElementById(idC).innerHTML = html || '<span class="empty">none</span>';
+      }
+      fill("n-doing", "c-doing", doing, "doing", true);
+      fill("n-todo", "c-todo", todo, "", false);
+      fill("n-blocked", "c-blocked", blocked, "blocked", true);
+      fill("n-done", "c-done", done, "", false, DONE_CAP);
+    }).catch(function (e) {
+      document.getElementById("tally").textContent = "bridge error: " + e.message;
+    });
+  }
+  Bridge.hello().then(function (h) {
+    document.getElementById("live").innerHTML = '<span class="dot"></span>live · ' + esc((h.bundle && h.bundle.name) || "bundle");
+    render();
+    return Bridge.subscribe(function () { render(); });
+  }).catch(function (e) {
+    document.getElementById("live").textContent = "bridge unavailable: " + e.message;
+  });
+})();
+</script>
+</body>
+</html>
