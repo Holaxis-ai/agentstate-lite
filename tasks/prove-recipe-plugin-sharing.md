@@ -8,7 +8,7 @@ description: >-
   and version-refresh it across the founders' machines with reproducible
   evidence.
 actor: openai/codex
-timestamp: '2026-07-11T02:37:28.662Z'
+timestamp: '2026-07-11T02:59:45.923Z'
 ---
 # Objective
 
@@ -48,3 +48,5 @@ Prove the complete founder-to-founder distribution path for an AgentState recipe
 # Why this proof matters
 
 This validates the distribution mechanism behind a potential ecosystem: reusable agent workflows whose structure, operating knowledge, and interfaces can be installed conversationally while the user's resulting knowledge stays local, inspectable, and portable.
+
+[depends on](kind-field-descriptions.md)
