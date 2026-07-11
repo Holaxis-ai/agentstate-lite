@@ -3,6 +3,7 @@ type: Page
 title: Pulse — activity feed
 entry: pages/pulse.html
 description: Live activity feed — every bundle doc, newest first, with type filters, search, and a markdown detail pane.
+bridge: bundle-read
 actor: mike/claude
 timestamp: "2026-07-09T00:00:00.000Z"
 ---

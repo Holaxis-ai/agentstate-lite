@@ -3,6 +3,7 @@ type: Page
 title: Roadmap
 entry: pages/roadmap.html
 description: Live graph view — Roadmap Items grouped by status, each expandable to its contained tasks with a derived rollup bar.
+bridge: bundle-read
 actor: mike/claude
 timestamp: "2026-07-09T00:00:01.000Z"
 ---
