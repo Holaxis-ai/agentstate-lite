@@ -9,12 +9,33 @@
  * `read`, `edges`, `subscribe`. This module is the pure router ({@link handleBridgeRequest}); the
  * DOM plumbing (source validation, posting, SSE fan-in, hot-reload) lives in
  * `../views/PageFrame.tsx`.
+ *
+ * ENFORCED CAPABILITY (designs/page-model-and-viewer-deprecation): a page's Page-convention
+ * `bridge` field — `none | bundle-read` — gates ALL of the above, not just presentation. A
+ * `none` page (a content page: arbitrary self-contained HTML) gets an error reply for every
+ * request, before any dep is touched. The gate lives HERE, in the router, and is enforced by the
+ * caller passing the framed page's {@link BridgeCapability} — never by anything the sandboxed
+ * page itself claims.
  */
 import { isTerminal } from "@agentstate-lite/core/kinds";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
 import type { DocHead, Edge, ReadDocResponse } from "../api/types.js";
 
 export const BRIDGE_PROTOCOL = "v0";
+
+/** A page's bridge capability (the Page convention's `bridge` field), as enforced by the shell. */
+export type BridgeCapability = "none" | "bundle-read";
+
+/**
+ * Parse a Page doc's `bridge` frontmatter value, FAIL-CLOSED: only the exact string
+ * `"bundle-read"` grants bundle access — absent, malformed, a typo, or any value this build
+ * doesn't recognize denies (`"none"`). The ONE place this parse happens; `pages.ts`'s launcher
+ * projection and `PageFrame`'s enforcement gate both call it, so the launcher's grouping and the
+ * bridge's actual behavior can never disagree about a page's capability.
+ */
+export function resolveBridgeCapability(bridge: unknown): BridgeCapability {
+  return bridge === "bundle-read" ? "bundle-read" : "none";
+}
 
 /** A page->shell request. `bridge`/`type` are always present; `id` correlates the reply; other keys are per-type. */
 export interface BridgeRequest {
@@ -155,10 +176,21 @@ export function applyRowFilters(rows: DocHead[], params: QueryParams, kinds: Kin
  * Route ONE page->shell message. Returns `{ reply: null }` for anything that is not a valid v0
  * bridge request (the caller drops it). Every handler is read-only; an unrecognized `type` — which
  * is how any would-be mutation arrives, since none is defined — yields an error reply.
+ *
+ * `capability` gates the whole switch below: a page whose capability is not exactly
+ * `"bundle-read"` (the fail-closed default, `"none"`) gets a `FORBIDDEN` error reply for every
+ * request type, without a single dep call — the enforced content/data-page split.
  */
-export async function handleBridgeRequest(msg: unknown, deps: BridgeDeps): Promise<BridgeOutcome> {
+export async function handleBridgeRequest(
+  msg: unknown,
+  deps: BridgeDeps,
+  capability: BridgeCapability = "none",
+): Promise<BridgeOutcome> {
   if (!isBridgeRequest(msg)) return { reply: null };
   const { id, type } = msg;
+  if (capability !== "bundle-read") {
+    return { reply: fail(id, "FORBIDDEN", "this page declares bridge: none — no bundle access") };
+  }
   try {
     switch (type) {
       case "hello": {

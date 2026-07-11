@@ -3,9 +3,11 @@
  * bridge. The iframe is `sandbox="allow-scripts"` with NO `allow-same-origin`, so it runs at an
  * opaque origin — it cannot fetch the data API even if a token leaked, and its scripts talk to the
  * shell ONLY via postMessage. This component:
- *   1. Resolves the page's registry doc -> its `entry` blob key -> a minted nonce URL (the `src`).
+ *   1. Resolves the page's registry doc -> its `entry` blob key -> a minted nonce URL (the `src`),
+ *      and its declared `bridge` capability (fail-closed via {@link resolveBridgeCapability}).
  *   2. Listens for the page's postMessage requests, VALIDATING `event.source` is this iframe, and
- *      brokers them read-only through {@link handleBridgeRequest}.
+ *      brokers them read-only through {@link handleBridgeRequest} — gated by that capability, so
+ *      a `none` page is denied regardless of what the sandboxed page itself sends.
  *   3. Fans SSE doc changes into the subscribed page as bridge `change` events, and HOT-RELOADS the
  *      iframe (fresh nonce) when the page's own HTML blob changes.
  */
@@ -13,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getDoc, listAllHeads, ApiError } from "../api/client.js";
 import { mintPageNonce, fetchConfig, fetchKinds, fetchEdges, invalidateKinds } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
-import { handleBridgeRequest, changeMessage, type BridgeDeps } from "../pages/bridge.js";
+import { handleBridgeRequest, changeMessage, resolveBridgeCapability, type BridgeDeps, type BridgeCapability } from "../pages/bridge.js";
 import { navigate } from "../routing.js";
 import { setInterceptorStatus } from "../query/interceptor.js";
 
@@ -28,6 +30,10 @@ const bridgeDeps: BridgeDeps = {
 export function PageFrame({ pageId }: { pageId: string }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const subscribedRef = useRef(false);
+  // The framed page's ENFORCED capability, read by the bridge broker below (never trusting
+  // anything the sandboxed page itself sends). Fail-closed: starts (and, on revoke, reverts to)
+  // "none" so no in-flight bridge message is ever answered while no page is confirmed loaded.
+  const bridgeCapabilityRef = useRef<BridgeCapability>("none");
   // Bumped on every (re)load trigger, revoke, and unmount — a resolution that finishes after a
   // newer one started (or after a revoke) must not clobber the newer state.
   const loadSeqRef = useRef(0);
@@ -41,6 +47,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
   const revoke = useCallback((reason: string) => {
     loadSeqRef.current++;
     subscribedRef.current = false;
+    bridgeCapabilityRef.current = "none";
     setSrc(null);
     setEntryKey(null);
     setError(reason);
@@ -53,6 +60,15 @@ export function PageFrame({ pageId }: { pageId: string }) {
    */
   const loadPage = useCallback(async () => {
     const seq = ++loadSeqRef.current;
+    // Pre-revoke IMMEDIATELY, synchronously, before the async getDoc/mint round-trip below. This
+    // is the ONE entry point every re-resolution path shares (mount, page switch, a live
+    // registry-doc change, blob hot-reload, resync), so the OLD capability/subscription can never
+    // survive past this line: a bridge request arriving during the async gap below is answered
+    // fail-closed (denied), never under a grant this reload is already in the middle of revoking
+    // — closes the window where a live `bundle-read` -> `none` edit left the stale grant standing
+    // through the getDoc/mint round-trip (P1).
+    subscribedRef.current = false;
+    bridgeCapabilityRef.current = "none";
 
     // getDoc is split from the mint below because ONLY its 403 is trip-worthy: `/v0/*` has no
     // other 403 source than this ui server's own session gate, so a 403 here is ALWAYS a dead
@@ -66,6 +82,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
     } catch (e) {
       if (seq !== loadSeqRef.current) return;
       subscribedRef.current = false;
+      bridgeCapabilityRef.current = "none";
       setSrc(null);
       setEntryKey(null);
       if (e instanceof ApiError && e.status === 403) setInterceptorStatus("session_expired");
@@ -77,10 +94,14 @@ export function PageFrame({ pageId }: { pageId: string }) {
       const { doc } = loaded;
       const entry = typeof doc.frontmatter.entry === "string" ? doc.frontmatter.entry : "";
       const pageTitle = typeof doc.frontmatter.title === "string" ? doc.frontmatter.title : pageId;
+      // Resolved from the SAME registry doc `entry` comes from, fail-closed — this is the
+      // enforcement gate's only input, and it is read here, never from the sandboxed page.
+      const capability = resolveBridgeCapability(doc.frontmatter.bridge);
       if (!entry) throw new Error(`page '${pageId}' declares no 'entry' blob key`);
       const url = await mintPageNonce(entry);
       if (seq !== loadSeqRef.current) return;
       subscribedRef.current = false;
+      bridgeCapabilityRef.current = capability;
       setEntryKey(entry);
       setTitle(pageTitle);
       setError(null);
@@ -88,6 +109,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
     } catch (e) {
       if (seq !== loadSeqRef.current) return;
       subscribedRef.current = false;
+      bridgeCapabilityRef.current = "none";
       setSrc(null);
       setEntryKey(null);
       // mintPageNonce's 403 is NOT trip-worthy like getDoc's above: `/__page/mint` also 403s
@@ -100,7 +122,10 @@ export function PageFrame({ pageId }: { pageId: string }) {
     }
   }, [pageId]);
 
-  // Resolve registry doc -> entry key -> nonce URL on mount / page switch.
+  // Resolve registry doc -> entry key -> nonce URL on mount / page switch. The bridge-capability
+  // reset now happens unconditionally at the TOP of loadPage itself (every re-resolution path
+  // shares it), so this effect only owns the page-SWITCH UX: blank the frame immediately so a
+  // newly-selected page never shows the outgoing page's stale content while it resolves.
   useEffect(() => {
     subscribedRef.current = false;
     setSrc(null);
@@ -116,7 +141,17 @@ export function PageFrame({ pageId }: { pageId: string }) {
     const onMessage = (ev: MessageEvent) => {
       const frame = iframeRef.current;
       if (!frame || ev.source !== frame.contentWindow) return;
-      void handleBridgeRequest(ev.data, bridgeDeps).then((outcome) => {
+      // Capture the epoch AND the capability at RECEIPT — the request is decided under whatever
+      // grant this iframe held the instant it asked. `handleBridgeRequest`'s dep calls are async,
+      // so a slow reply must be FENCED against a LATER reload before it's delivered: the SAME
+      // iframe DOM node (and its stable `contentWindow`) is reused across a reload/hot-reload/
+      // page-switch, so without this check a `bundle-read` reply computed for the OLD page could
+      // land in a SUBSEQUENTLY-loaded frame — including a `none` content page — just because the
+      // two shared one DOM node (P1).
+      const seq = loadSeqRef.current;
+      const capability = bridgeCapabilityRef.current;
+      void handleBridgeRequest(ev.data, bridgeDeps, capability).then((outcome) => {
+        if (seq !== loadSeqRef.current) return; // frame reloaded/revoked since receipt — drop it
         if (outcome.subscribed) subscribedRef.current = true;
         if (outcome.reply && frame.contentWindow) frame.contentWindow.postMessage(outcome.reply, "*");
       });

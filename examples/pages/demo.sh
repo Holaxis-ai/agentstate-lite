@@ -34,8 +34,10 @@ echo "Seeding scratch bundle: $BUNDLE"
 node "$CLI" promote "$HERE/conventions/page.md"          --doc-key conventions/page.md            --dir "$BUNDLE" >/dev/null
 node "$CLI" promote "$HERE/pages-registry/pulse.md"      --doc-key pages-registry/pulse.md        --dir "$BUNDLE" >/dev/null
 node "$CLI" promote "$HERE/pages-registry/roadmap.md"    --doc-key pages-registry/roadmap.md      --dir "$BUNDLE" >/dev/null
+node "$CLI" promote "$HERE/pages-registry/about.md"      --doc-key pages-registry/about.md        --dir "$BUNDLE" >/dev/null
 node "$CLI" promote "$HERE/pulse.html"                   --doc-key pages/pulse.html               --dir "$BUNDLE" >/dev/null
 node "$CLI" promote "$HERE/roadmap.html"                 --doc-key pages/roadmap.html             --dir "$BUNDLE" >/dev/null
+node "$CLI" promote "$HERE/about.html"                   --doc-key pages/about.html               --dir "$BUNDLE" >/dev/null
 
 # Discover a 'todo' task id to demo a live status change.
 TASK_ID="$(node "$CLI" list --type Task --dir "$BUNDLE" --json \
@@ -43,15 +45,17 @@ TASK_ID="$(node "$CLI" list --type Task --dir "$BUNDLE" --json \
 [ -n "$TASK_ID" ] || TASK_ID="tasks/<some-todo-task>"
 
 echo
-echo "Seeded 2 pages (pulse, roadmap) + the Page convention."
+echo "Seeded 3 pages (pulse, roadmap, about) + the Page convention."
 echo "──────────────────────────────────────────────────────────────────────────"
 echo "1) Launch the UI (foreground; it prints a tokenized http://127.0.0.1:PORT URL to open):"
 echo
 echo "   node $CLI ui --dir $BUNDLE --open"
 echo
-echo "   The landing is the LAUNCHER (the ui command's one surface): click 'Pulse — activity feed'"
-echo "   or 'Roadmap' to open that page in a sandboxed iframe. Roadmap is the one that exercises the"
-echo "   bridge's \`edges\` request — expand an item to see its contained tasks and rollup bar."
+echo "   The landing is the LAUNCHER (the ui command's one surface), grouped into 'Dashboards'"
+echo "   (bridge: bundle-read) and 'Documents' (bridge: none): click 'Pulse — activity feed' or"
+echo "   'Roadmap' to open a data page in a sandboxed iframe — Roadmap is the one that exercises"
+echo "   the bridge's \`edges\` request, expanding an item to see its contained tasks and rollup"
+echo "   bar. 'About this bundle' is a content page: same iframe, zero bridge access."
 echo
 echo "2) In a SECOND terminal, drive live updates against the SAME scratch bundle:"
 echo

@@ -5,6 +5,7 @@ import {
   normalizeQueryParams,
   normalizeEdgeParams,
   changeMessage,
+  resolveBridgeCapability,
   BRIDGE_PROTOCOL,
   type BridgeDeps,
 } from "./bridge.js";
@@ -39,14 +40,14 @@ function stubDeps(overrides: Partial<BridgeDeps> = {}): BridgeDeps {
 describe("handleBridgeRequest", () => {
   it("ignores a non-bridge message (reply null)", async () => {
     const deps = stubDeps();
-    expect(await handleBridgeRequest({ hello: true }, deps)).toEqual({ reply: null });
-    expect(await handleBridgeRequest("nope", deps)).toEqual({ reply: null });
-    expect(await handleBridgeRequest({ bridge: "v1", type: "hello" }, deps)).toEqual({ reply: null });
+    expect(await handleBridgeRequest({ hello: true }, deps, "bundle-read")).toEqual({ reply: null });
+    expect(await handleBridgeRequest("nope", deps, "bundle-read")).toEqual({ reply: null });
+    expect(await handleBridgeRequest({ bridge: "v1", type: "hello" }, deps, "bundle-read")).toEqual({ reply: null });
   });
 
   it("hello: returns bundle summary + a read grant", async () => {
     const deps = stubDeps();
-    const { reply } = await handleBridgeRequest({ bridge: "v0", id: "1", type: "hello" }, deps);
+    const { reply } = await handleBridgeRequest({ bridge: "v0", id: "1", type: "hello" }, deps, "bundle-read");
     expect(reply).toMatchObject({
       bridge: "v0",
       id: "1",
@@ -66,6 +67,7 @@ describe("handleBridgeRequest", () => {
     const { reply } = await handleBridgeRequest(
       { bridge: "v0", id: "7", type: "query", params: { type: "Task", prefix: "tasks/", open: true } },
       deps,
+      "bundle-read",
     );
     // Server facets forwarded; the row the Task KIND marks terminal (done) dropped by open.
     expect(query).toHaveBeenCalledWith({ type: "Task", prefix: "tasks/" });
@@ -77,7 +79,7 @@ describe("handleBridgeRequest", () => {
 
   it("query without open never loads the kind registry", async () => {
     const deps = stubDeps({ query: vi.fn(async () => [head("tasks/a", { type: "Task", status: "done" })]) });
-    const { reply } = await handleBridgeRequest({ bridge: "v0", id: "8", type: "query", params: {} }, deps);
+    const { reply } = await handleBridgeRequest({ bridge: "v0", id: "8", type: "query", params: {} }, deps, "bundle-read");
     expect(deps.kinds).not.toHaveBeenCalled();
     expect((reply as { result: { count: number } }).result.count).toBe(1);
   });
@@ -85,11 +87,11 @@ describe("handleBridgeRequest", () => {
   it("read: returns the doc; a missing docId is a USAGE error", async () => {
     const read = vi.fn(async () => ({ id: "tasks/a", frontmatter: { type: "Task" }, body: "hi" }));
     const deps = stubDeps({ read });
-    const ok = await handleBridgeRequest({ bridge: "v0", id: "2", type: "read", docId: "tasks/a" }, deps);
+    const ok = await handleBridgeRequest({ bridge: "v0", id: "2", type: "read", docId: "tasks/a" }, deps, "bundle-read");
     expect((ok.reply as { type: string }).type).toBe("read:result");
     expect(read).toHaveBeenCalledWith("tasks/a");
 
-    const bad = await handleBridgeRequest({ bridge: "v0", id: "3", type: "read" }, deps);
+    const bad = await handleBridgeRequest({ bridge: "v0", id: "3", type: "read" }, deps, "bundle-read");
     expect((bad.reply as { type: string; error: { code: string } }).type).toBe("error");
   });
 
@@ -103,6 +105,7 @@ describe("handleBridgeRequest", () => {
     const { reply } = await handleBridgeRequest(
       { bridge: "v0", id: "10", type: "edges", params: { from: "roadmap-items/a", text: "contains" } },
       deps,
+      "bundle-read",
     );
     expect(edges).toHaveBeenCalledWith({ from: "roadmap-items/a", text: "contains" });
     const result = (reply as { result: { edges: Edge[]; count: number } }).result;
@@ -113,12 +116,12 @@ describe("handleBridgeRequest", () => {
   it("edges: backlinks are a thin {to: docId} call — no separate bridge request needed", async () => {
     const edges = vi.fn(async () => [{ from: "pages-registry/board", to: "docs/core", text: "cites" }]);
     const deps = stubDeps({ edges });
-    await handleBridgeRequest({ bridge: "v0", id: "11", type: "edges", params: { to: "docs/core" } }, deps);
+    await handleBridgeRequest({ bridge: "v0", id: "11", type: "edges", params: { to: "docs/core" } }, deps, "bundle-read");
     expect(edges).toHaveBeenCalledWith({ to: "docs/core" });
   });
 
   it("subscribe: acks and flags a subscription", async () => {
-    const { reply, subscribed } = await handleBridgeRequest({ bridge: "v0", id: "4", type: "subscribe" }, stubDeps());
+    const { reply, subscribed } = await handleBridgeRequest({ bridge: "v0", id: "4", type: "subscribe" }, stubDeps(), "bundle-read");
     expect(subscribed).toBe(true);
     expect((reply as { type: string }).type).toBe("subscribe:result");
   });
@@ -126,7 +129,7 @@ describe("handleBridgeRequest", () => {
   it("READ-ONLY BY CONSTRUCTION: a would-be mutation is an error reply and touches no dep", async () => {
     const deps = stubDeps();
     for (const type of ["write", "delete", "update", "putDoc", "promote"]) {
-      const { reply } = await handleBridgeRequest({ bridge: "v0", id: "9", type, docId: "tasks/a", frontmatter: {} }, deps);
+      const { reply } = await handleBridgeRequest({ bridge: "v0", id: "9", type, docId: "tasks/a", frontmatter: {} }, deps, "bundle-read");
       const r = reply as { type: string; error: { message: string } };
       expect(r.type).toBe("error");
       expect(r.error.message).toMatch(/read-only/);
@@ -139,10 +142,70 @@ describe("handleBridgeRequest", () => {
 
   it("surfaces a dep failure as a RUNTIME error reply (never throws)", async () => {
     const deps = stubDeps({ query: vi.fn(async () => { throw new Error("boom"); }) });
-    const { reply } = await handleBridgeRequest({ bridge: "v0", id: "5", type: "query", params: {} }, deps);
+    const { reply } = await handleBridgeRequest({ bridge: "v0", id: "5", type: "query", params: {} }, deps, "bundle-read");
     const r = reply as { type: string; error: { code: string; message: string } };
     expect(r.type).toBe("error");
     expect(r.error.message).toBe("boom");
+  });
+});
+
+describe("handleBridgeRequest: bridge capability enforcement", () => {
+  it("a 'none' capability denies EVERY v0 request type — FORBIDDEN, and touches no dep", async () => {
+    const requests: Record<string, unknown> = {
+      hello: { bridge: "v0", id: "h", type: "hello" },
+      query: { bridge: "v0", id: "q", type: "query", params: {} },
+      read: { bridge: "v0", id: "r", type: "read", docId: "tasks/a" },
+      edges: { bridge: "v0", id: "e", type: "edges", params: {} },
+      subscribe: { bridge: "v0", id: "s", type: "subscribe" },
+    };
+    for (const [type, msg] of Object.entries(requests)) {
+      const deps = stubDeps();
+      const { reply, subscribed } = await handleBridgeRequest(msg, deps, "none");
+      const r = reply as { type: string; error: { code: string; message: string } };
+      expect(r.type, `${type} should error`).toBe("error");
+      expect(r.error.code).toBe("FORBIDDEN");
+      expect(r.error.message).toMatch(/bridge: none/);
+      expect(subscribed).toBeUndefined();
+      expect(deps.config).not.toHaveBeenCalled();
+      expect(deps.query).not.toHaveBeenCalled();
+      expect(deps.read).not.toHaveBeenCalled();
+      expect(deps.kinds).not.toHaveBeenCalled();
+      expect(deps.edges).not.toHaveBeenCalled();
+    }
+  });
+
+  it("FAIL-CLOSED DEFAULT: an omitted capability argument denies, same as an explicit 'none'", async () => {
+    const deps = stubDeps();
+    const { reply } = await handleBridgeRequest({ bridge: "v0", id: "1", type: "hello" }, deps);
+    expect((reply as { type: string; error: { code: string } }).type).toBe("error");
+    expect((reply as { error: { code: string } }).error.code).toBe("FORBIDDEN");
+    expect(deps.config).not.toHaveBeenCalled();
+  });
+
+  it("a 'bundle-read' capability is answered exactly as before (no change to the happy path)", async () => {
+    const deps = stubDeps();
+    const { reply } = await handleBridgeRequest({ bridge: "v0", id: "1", type: "hello" }, deps, "bundle-read");
+    expect((reply as { type: string }).type).toBe("hello:result");
+    expect(deps.config).toHaveBeenCalled();
+  });
+});
+
+describe("resolveBridgeCapability", () => {
+  it("honors ONLY the exact string 'bundle-read'", () => {
+    expect(resolveBridgeCapability("bundle-read")).toBe("bundle-read");
+  });
+
+  it("FAIL-CLOSED: absent, malformed, or any other value denies ('none')", () => {
+    expect(resolveBridgeCapability(undefined)).toBe("none");
+    expect(resolveBridgeCapability(null)).toBe("none");
+    expect(resolveBridgeCapability("none")).toBe("none");
+    expect(resolveBridgeCapability("")).toBe("none");
+    expect(resolveBridgeCapability("Bundle-Read")).toBe("none"); // case-sensitive, no fuzzy match
+    expect(resolveBridgeCapability("bundle-write")).toBe("none");
+    expect(resolveBridgeCapability(true)).toBe("none");
+    expect(resolveBridgeCapability(1)).toBe("none");
+    expect(resolveBridgeCapability({})).toBe("none");
+    expect(resolveBridgeCapability(["bundle-read"])).toBe("none");
   });
 });
 
