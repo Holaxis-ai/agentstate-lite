@@ -3,10 +3,10 @@ type: Design
 title: 'Distribution boundary: npm executable, bundle-native knowledge, thin bootstrap'
 description: >-
   Make npm the executable authority, bundles the durable knowledge authority,
-  and plugins a minimal discovery/hook layer; transition only after
-  founder-to-founder proof.
+  and plugins a minimal bootstrap. Private extraction consumes published OSS
+  core AND server/wire packages; packages/server remains OSS.
 actor: codex
-timestamp: '2026-07-12T21:10:06.750Z'
+timestamp: '2026-07-12T22:57:48.930Z'
 ---
 # Distribution boundary: npm executable, bundle-native knowledge, thin bootstrap
 
@@ -90,3 +90,5 @@ Publishing core is a prerequisite for clean extraction. Converting the whole CLI
 [prerequisite](../tasks/publish-core-package.md)
 
 [may supersede](../tasks/dev-build-bundle-collision.md)
+
+[clarified by](../decisions/oss-wire-server-boundary.md)

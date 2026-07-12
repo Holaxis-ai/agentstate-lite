@@ -1,16 +1,14 @@
 ---
 type: Context Note
-title: 'Direction: park the remote/hosted stack for a PRIVATE SaaS repo (not deletion)'
+title: 'SUPERSEDED boundary detail: private SaaS direction (server stays OSS)'
 description: >-
-  Founder decision (2026-07-12): the peel is GO and the destination is a private
-  repo, not deletion. The HTTP remote/hosted/identity stack leaves the OSS CLI's
-  default surface and relocates to a private repo (the SaaS foundation). What
-  stays OSS (core + seam + FS/Memory backends + sync + the wire CLIENT as the
-  on-ramp) vs moves private (server, worker/D1R2, identity/auth, + net-new
-  tenancy/billing/admin). Parking discipline so the extraction stays clean.
-  Destination for codex's radical-simplification arc.
-actor: mike/claude
-timestamp: '2026-07-12T20:19:28.609Z'
+  Historical founder direction remains valid for the two-repository SaaS split,
+  but its statement that packages/server moves private is superseded by
+  decisions/oss-wire-server-boundary. Keep RemoteBackend, explicit --remote,
+  wire spec, and packages/server OSS; move packages/worker plus hosted
+  auth/deployment private.
+actor: codex
+timestamp: '2026-07-12T22:57:48.800Z'
 ---
 # Summary
 
@@ -87,3 +85,5 @@ so the private repo cannot `npm install` + pin it yet. This partially wakes the 
   [default-cli-local-only](../tasks/default-cli-local-only.md),
   [retire-hosted-control-plane-cli](../tasks/retire-hosted-control-plane-cli.md).
 - Decision record: [positioning](../tasks/positioning.md).
+
+[superseded by](../decisions/oss-wire-server-boundary.md)

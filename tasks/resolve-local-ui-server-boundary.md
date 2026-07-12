@@ -1,51 +1,40 @@
 ---
 type: Task
-title: Resolve the OSS local-UI versus moveable server package boundary
-status: in_progress
+title: 'Resolved: packages/server remains the OSS wire/router authority'
+status: done
 priority: '1'
 description: >-
-  Prerequisite design/implementation unit for hosted-package extraction.
+  RESOLVED WITHOUT A CODE PR on 2026-07-12.
 
 
-  Problem: the intended private-repo move says `packages/server` moves hosted,
-  but the shipped local Page UI imports `createRouter`,
-  `requestFromIncomingMessage`, and `writeResponseToServerResponse` from that
-  package. Moving it verbatim would break local UI; copying those semantics
-  would violate the one-router/one-engine discipline.
+  Decision: `packages/server` remains OSS as the shared Fetch-standard
+  wire/router and Node reference-server authority. The hosted extraction unit is
+  `packages/worker` plus D1/R2, Cloudflare deployment, identity/auth, and future
+  SaaS control-plane concerns.
 
 
-  Behavioral claim: local UI and the future private hosted server share one
-  explicit OSS protocol/router authority, and the deployable hosted wrapper can
-  move without a back-edge or duplicate implementation.
+  Why: local `ui --dir` and Worker already consume the same server router
+  authority. Moving it private would break local Pages or cause a forbidden
+  duplicate router. Core remains transport-agnostic.
 
 
-  Required decision:
+  Consequences:
 
-  - Prefer retaining/extracting a generic OSS wire/router package consumed by
-  both local UI and the private server wrapper, unless evidence shows a smaller
-  direct-core local adapter can avoid semantic duplication.
+  - Publish/version both `@agentstate-lite/core` and `@agentstate-lite/server`
+  before a private Worker repository consumes them.
 
-  - Distinguish the protocol/router primitive from deployable server packaging
-  and from Worker/auth concerns.
+  - Preserve RemoteBackend, explicit `--remote`, the wire spec, and reference
+  server in OSS.
+
+  - Fix UI's missing server dev dependency separately.
 
 
-  Acceptance:
-
-  - Dependency graph and package ownership are documented and executable.
-
-  - Local `ui --dir` behavior and security tests remain unchanged.
-
-  - Wire contract tests run against the same router authority the private
-  wrapper consumes.
-
-  - No HTTP concern moves into core merely for convenience; core remains
-  transport-agnostic.
-
-  - No second document/link/query interpretation is introduced.
-
-  - Builder -> independent reviewer -> QA before merge.
+  An attempted unpushed static boundary-checker branch was deliberately
+  discarded as disproportionate. It was never pushed, opened as a PR, or merged;
+  its worktree and branch were deleted. The durable deliverable is
+  `decisions/oss-wire-server-boundary`, not checker code.
 actor: codex
 assignee: codex
-timestamp: '2026-07-12T21:11:51.951Z'
+timestamp: '2026-07-12T22:57:48.677Z'
 ---
-
+[resolved by](../decisions/oss-wire-server-boundary.md)
