@@ -29,17 +29,30 @@ use `"$ASLITE"` in every command:
 
 ```bash
 ASLITE="$(command -v agentstate-lite 2>/dev/null || ls -d \
-  "$HOME"/.claude/skills/agentstate-lite/scripts/agentstate-lite \
-  "$HOME"/.claude/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite/scripts/agentstate-lite \
+  "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/skills/agentstate-lite/scripts/agentstate-lite \
+  "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite/scripts/agentstate-lite \
+  "${CODEX_HOME:-$HOME/.codex}"/skills/agentstate-lite/scripts/agentstate-lite \
+  "${CODEX_HOME:-$HOME/.codex}"/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite/scripts/agentstate-lite \
   2>/dev/null | sort -V | tail -1)"
+if [ -z "$ASLITE" ]; then
+  echo "agentstate-lite: plugin executable not found (checked PATH, Claude Code (CLAUDE_CONFIG_DIR or ~/.claude), and Codex (CODEX_HOME or ~/.codex) skill + plugin-cache installs)" >&2
+  return 1 2>/dev/null || exit 1
+fi
 "$ASLITE" --help
 ```
 
 `command -v` short-circuits if a future install ever puts `agentstate-lite` on `PATH`; otherwise
-the glob checks both a direct skill install (`~/.claude/skills/…`) and a plugin-marketplace
-cache install (`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/agentstate-lite/scripts/…` — the cache copies the PLUGIN DIR's contents, so there is no `plugins/` segment), and
-`sort -V | tail -1` selects the highest installed version. This works from any cwd. Resolve to
-the **shim** (not the `.mjs` directly) so the Node >= 20 floor guard runs first.
+the glob checks, for BOTH Claude Code and Codex, a direct skill install (`<host-home>/skills/…`) and
+a plugin-marketplace cache install (`<host-home>/plugins/cache/<marketplace>/<plugin>/<version>/skills/agentstate-lite/scripts/…` — the cache copies the PLUGIN DIR's contents, so there is no `plugins/` segment); each `<host-home>` honors that host's own relocation variable first (`CLAUDE_CONFIG_DIR` for Claude Code, `CODEX_HOME` for Codex) and falls back to `~/.claude`/`~/.codex`, and
+`sort -V | tail -1` picks whichever matched path sorts last — a true "highest version" pick
+only among matches sharing the same root (e.g. two versions under the same marketplace cache);
+across DIFFERENT roots (direct vs cache, Claude vs Codex) it's a best-effort, path-ordered pick,
+not a true cross-host version comparison. This works from any cwd. Resolve to
+the **shim** (not the `.mjs` directly) so the Node >= 20 floor guard runs first. OpenCode isn't
+in this glob: it never reads this file — its SessionStart integration bakes the CLI's path in
+directly at `hook install` time instead (see that command's own docs). If NONE of the checked
+installs match — an uncovered host, a corrupted install — the resolver fails LOUDLY to stderr
+and stops, rather than silently handing you an empty command.
 
 > If your harness happens to export `${CLAUDE_PLUGIN_ROOT}` you may instead use
 > `"$CLAUDE_PLUGIN_ROOT/skills/agentstate-lite/scripts/agentstate-lite"`, but it is **often unset**
@@ -317,13 +330,22 @@ worked example shipped in this skill's `references/` folder rather than inlined 
 plain session that never touches them pays nothing for them. Resolve the path once:
 
 ```bash
-REFS="$(ls -d "$HOME"/.claude/skills/agentstate-lite/references \
-  "$HOME"/.claude/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite/references \
+REFS="$(ls -d \
+  "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/skills/agentstate-lite/references \
+  "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite/references \
+  "${CODEX_HOME:-$HOME/.codex}"/skills/agentstate-lite/references \
+  "${CODEX_HOME:-$HOME/.codex}"/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite/references \
   2>/dev/null | sort -V | tail -1)"
+if [ -z "$REFS" ]; then
+  echo "agentstate-lite: shipped references not found (checked Claude Code (CLAUDE_CONFIG_DIR or ~/.claude) and Codex (CODEX_HOME or ~/.codex) skill + plugin-cache installs)" >&2
+  return 1 2>/dev/null || exit 1
+fi
 ```
 
 Every `$REFS/…` path below is a byte-for-byte copy of the matching file in the CLI's own repo —
-one authority, regenerated on every release, never hand-duplicated.
+one authority, regenerated on every release, never hand-duplicated. If the resolver
+comes up empty, the `references/` folder isn't installed where this skill can find it — an
+uncovered install must fail loudly here, never silently as an empty `$REFS`-rooted path later.
 
 ## Bundle pages — ship a live UI as bundle content
 
