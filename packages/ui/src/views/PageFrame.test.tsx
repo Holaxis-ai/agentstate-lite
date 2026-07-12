@@ -181,8 +181,8 @@ describe("PageFrame: bridge revocation race (P1)", () => {
     // The reload navigated the iframe — re-read its (now different, `none`-capability) window and
     // watch IT: this is exactly what the component's own `frame.contentWindow` read (at delivery
     // time, inside the broker's `.then()`) resolves to.
-    const secondContentWindow = iframe.contentWindow!;
-    expect(secondContentWindow).not.toBe(firstContentWindow);
+    const currentIframe = container.querySelector("iframe.page-frame-iframe") as HTMLIFrameElement;
+    const secondContentWindow = currentIframe.contentWindow!;
     const postSpy = vi.spyOn(secondContentWindow, "postMessage");
 
     // NOW the stale query's dep resolves — its reply was computed for the OLD (bundle-read)
@@ -250,6 +250,22 @@ describe("PageFrame: registered Page navigation", () => {
     await act(async () => { first.resolve(true); await flush(); });
     expect(push).toHaveBeenCalledTimes(1);
     expect(window.location.search).toContain("second");
+  });
+
+  it("ignores a second navigation message from the same old contentWindow after the first push", async () => {
+    const source = await mount();
+    const push = vi.spyOn(window.history, "pushState");
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent("message", { source, data: { bridge: "v0", type: "open-page", pageId: "pages-registry/first" } }));
+      await flush();
+    });
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent("message", { source, data: { bridge: "v0", type: "open-page", pageId: "pages-registry/second" } }));
+      await flush();
+    });
+    expect(resolvePageTarget).toHaveBeenCalledTimes(2);
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(window.location.search).toContain("first");
   });
 
   it("treats self-navigation as an idempotent no-op", async () => {

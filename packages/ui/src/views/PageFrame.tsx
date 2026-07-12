@@ -36,10 +36,14 @@ export function PageFrame({ pageId }: { pageId: string }) {
   // anything the sandboxed page itself sends). Fail-closed: starts (and, on revoke, reverts to)
   // "none" so no in-flight bridge message is ever answered while no page is confirmed loaded.
   const bridgeCapabilityRef = useRef<BridgeCapability>("none");
+  // A shell navigation consumes the currently framed document's right to navigate. Unlike the
+  // async-load epoch below, this remains locked while that old iframe can still post messages.
+  const navigationConsumedRef = useRef(false);
   // Bumped on every (re)load trigger, revoke, and unmount — a resolution that finishes after a
   // newer one started (or after a revoke) must not clobber the newer state.
   const loadSeqRef = useRef(0);
   const [src, setSrc] = useState<string | null>(null);
+  const [frameSeq, setFrameSeq] = useState<number | null>(null);
   const [entryKey, setEntryKey] = useState<string | null>(null);
   const [title, setTitle] = useState<string>(pageId);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +55,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
     subscribedRef.current = false;
     bridgeCapabilityRef.current = "none";
     setSrc(null);
+    setFrameSeq(null);
     setEntryKey(null);
     setError(reason);
   }, []);
@@ -86,6 +91,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
       subscribedRef.current = false;
       bridgeCapabilityRef.current = "none";
       setSrc(null);
+      setFrameSeq(null);
       setEntryKey(null);
       if (e instanceof ApiError && e.status === 403) setInterceptorStatus("session_expired");
       setError(e instanceof Error ? e.message : String(e));
@@ -103,12 +109,14 @@ export function PageFrame({ pageId }: { pageId: string }) {
       setEntryKey(registered.entry);
       setTitle(registered.title);
       setError(null);
+      setFrameSeq(seq);
       setSrc(url);
     } catch (e) {
       if (seq !== loadSeqRef.current) return;
       subscribedRef.current = false;
       bridgeCapabilityRef.current = "none";
       setSrc(null);
+      setFrameSeq(null);
       setEntryKey(null);
       // mintPageNonce's 403 is NOT trip-worthy like getDoc's above: `/__page/mint` also 403s
       // (code FORBIDDEN) when this doc's `entry` is a confinement violation — outside `pages/`,
@@ -127,6 +135,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
   useEffect(() => {
     subscribedRef.current = false;
     setSrc(null);
+    setFrameSeq(null);
     setError(null);
     void loadPage();
     return () => {
@@ -142,18 +151,19 @@ export function PageFrame({ pageId }: { pageId: string }) {
       // Capture the epoch AND the capability at RECEIPT — the request is decided under whatever
       // grant this iframe held the instant it asked. `handleBridgeRequest`'s dep calls are async,
       // so a slow reply must be FENCED against a LATER reload before it's delivered: the SAME
-      // iframe DOM node (and its stable `contentWindow`) is reused across a reload/hot-reload/
-      // page-switch, so without this check a `bundle-read` reply computed for the OLD page could
-      // land in a SUBSEQUENTLY-loaded frame — including a `none` content page — just because the
-      // two shared one DOM node (P1).
+      // framed document can be replaced by reload/hot-reload/page-switch while that work is in
+      // flight, so without this check a reply computed for the OLD page could cross the revoke
+      // boundary (P1).
       const seq = loadSeqRef.current;
       const capability = bridgeCapabilityRef.current;
       void handleBridgeRequest(ev.data, bridgeDeps, capability).then((outcome) => {
         if (seq !== loadSeqRef.current) return; // frame reloaded/revoked since receipt — drop it
         if (outcome.openPageId) {
           if (outcome.openPageId === pageId) return;
+          if (navigationConsumedRef.current) return;
           // End this source generation before changing history. Concurrent outcomes captured
           // under it then fail the fence above and cannot navigate a second time.
+          navigationConsumedRef.current = true;
           loadSeqRef.current++;
           subscribedRef.current = false;
           bridgeCapabilityRef.current = "none";
@@ -218,7 +228,20 @@ export function PageFrame({ pageId }: { pageId: string }) {
         // allow-scripts ONLY — no allow-same-origin: opaque origin, no data-API reach. And NO
         // referrer: the shell's URL (which carried ?token= before the scrub) must never reach the
         // untrusted page as document.referrer (tasks/ui-pages-spike P1).
-        <iframe ref={iframeRef} className="page-frame-iframe" sandbox="allow-scripts" referrerPolicy="no-referrer" src={src} title={title} />
+        <iframe
+          key={src}
+          ref={iframeRef}
+          className="page-frame-iframe"
+          sandbox="allow-scripts"
+          referrerPolicy="no-referrer"
+          src={src}
+          title={title}
+          onLoad={() => {
+            // Reset only after the nonce-backed document for the current load epoch is actually
+            // framed. A late load from the consumed source cannot reopen navigation.
+            if (frameSeq !== null && frameSeq === loadSeqRef.current) navigationConsumedRef.current = false;
+          }}
+        />
       ) : (
         <p className="view-status">Opening page…</p>
       )}
