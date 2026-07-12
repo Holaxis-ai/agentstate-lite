@@ -88,6 +88,14 @@ two rows (no dedup), matching `queryEdges`'s own granularity.
 `change` is pushed only to a page that has `subscribe`d. It is a **delta signal** — refetch with
 `query` against it rather than trusting it as a full state. Removed ids have been deleted.
 
+For live data pages, prefer `Bridge.watch(refresh)` over assembling the startup sequence yourself.
+It subscribes before the first snapshot, passes an ordered batch of raw `change` event payloads to
+each refresh, and never overlaps refresh calls. Events arriving during a refresh are coalesced into
+one follow-up batch. A failed refresh does not poison later event-driven refreshes; `watch` does not
+retry on a timer. Its returned Promise covers subscription plus the first refresh, so handle that
+Promise to surface startup failures. Raw `subscribe` remains available when a page needs the
+lower-level event stream.
+
 **There are no mutation messages in v0.** Read-only is enforced *by construction*: the shell
 defines no write/delete/update handler, so any such request returns an `error` reply.
 
@@ -153,6 +161,36 @@ of this repo's own board.
   function openPage(pageId) {
     parent.postMessage({ bridge: PROTO, type: "open-page", pageId: pageId }, "*");
   }
+  function watch(refresh) {
+    if (typeof refresh !== "function") return Promise.reject(new TypeError("Bridge.watch requires a refresh function"));
+    var active = true, ready = false, running = false, queued = [];
+    function schedule(initial) {
+      running = true;
+      var batch = queued.splice(0);
+      return Promise.resolve().then(function () { return refresh(batch); }).then(function (value) {
+        running = false;
+        if (queued.length) void schedule(false);
+        return value;
+      }, function (err) {
+        running = false;
+        if (queued.length) void schedule(false);
+        if (initial) throw err;
+        console.error("Bridge.watch refresh failed", err);
+      });
+    }
+    function onChange(event) {
+      if (!active) return;
+      queued.push(event);
+      if (ready && !running) void schedule(false);
+    }
+    return window.Bridge.subscribe(onChange).then(function () {
+      ready = true;
+      return schedule(true);
+    }, function (err) {
+      active = false;
+      throw err;
+    });
+  }
   window.addEventListener("message", function (e) {
     if (e.source !== window.parent) return; // only trust the shell
     var m = e.data;
@@ -170,7 +208,17 @@ of this repo's own board.
     read: function (docId) { return send("read", { docId: docId }); },
     edges: function (params) { return send("edges", { params: params }); },
     openPage: openPage,
-    subscribe: function (cb) { subs.push(cb); return send("subscribe"); }
+    subscribe: function (cb) { subs.push(cb); return send("subscribe"); },
+    watch: watch
   };
 })();
+```
+
+A live page supplies only its domain snapshot and render work:
+
+```js
+Bridge.watch(async function (events) {
+  var result = await Bridge.query({ type: "Task" });
+  render(result.rows, events);
+}).catch(showStartupError);
 ```

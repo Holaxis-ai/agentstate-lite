@@ -350,7 +350,7 @@ Author a page in four steps:
 "$ASLITE" promote "$REFS/pages/conventions/page.md" --doc-key conventions/page.md   # 4. declare the Page convention (once per bundle, ready-made)
 ```
 
-Full message shapes, the trust model, the copy-paste ~30-line bridge client, and two working
+Full message shapes, the trust model, the copy-paste bridge client with safe live-refresh
 examples (including a live graph view over Roadmap Items) are in the shipped contract:
 
 ```bash

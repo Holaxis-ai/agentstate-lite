@@ -136,6 +136,36 @@
     });
   }
   function openPage(pageId) { parent.postMessage({ bridge: PROTO, type: "open-page", pageId: pageId }, "*"); }
+  function watch(refresh) {
+    if (typeof refresh !== "function") return Promise.reject(new TypeError("Bridge.watch requires a refresh function"));
+    var active = true, ready = false, running = false, queued = [];
+    function schedule(initial) {
+      running = true;
+      var batch = queued.splice(0);
+      return Promise.resolve().then(function () { return refresh(batch); }).then(function (value) {
+        running = false;
+        if (queued.length) void schedule(false);
+        return value;
+      }, function (err) {
+        running = false;
+        if (queued.length) void schedule(false);
+        if (initial) throw err;
+        console.error("Bridge.watch refresh failed", err);
+      });
+    }
+    function onChange(event) {
+      if (!active) return;
+      queued.push(event);
+      if (ready && !running) void schedule(false);
+    }
+    return window.Bridge.subscribe(onChange).then(function () {
+      ready = true;
+      return schedule(true);
+    }, function (err) {
+      active = false;
+      throw err;
+    });
+  }
   window.addEventListener("message", function (e) {
     if (e.source !== window.parent) return;
     var m = e.data;
@@ -152,7 +182,8 @@
     query: function (params) { return send("query", { params: params }); },
     read: function (docId) { return send("read", { docId: docId }); },
     openPage: openPage,
-    subscribe: function (cb) { subs.push(cb); return send("subscribe"); }
+    subscribe: function (cb) { subs.push(cb); return send("subscribe"); },
+    watch: watch
   };
 })();
 
@@ -384,18 +415,19 @@
   }
   Bridge.hello().then(function (info) {
     document.getElementById("bundlename").textContent = (info.bundle && (info.bundle.name || info.bundle.root)) || "";
-    return refresh(null);
-  }).then(function () {
-    return Bridge.subscribe(function (event) {
-      var changed = (event.changes || []).map(function (c) { return c.id; });
-      refresh(changed).then(function () {
+  }).catch(function (err) { console.error("Bridge.hello failed", err); });
+  Bridge.watch(function (events) {
+      var changed = [];
+      events.forEach(function (event) {
+        (event.changes || []).forEach(function (c) { changed.push(c.id); });
+      });
+      return refresh(changed.length ? changed : null).then(function () {
         if (selId && changed.indexOf(selId) >= 0) {
           openDoc(selId, { push: false });
           setTimeout(function () { var n = document.getElementById("livenote"); if (n) n.style.display = "block"; }, 60);
         }
         if (follow && changed.length) openDoc(changed[0], { reset: true });
       });
-    });
   }).catch(function (err) {
     detailEl.innerHTML = '<div class="empty">bridge failed: ' + esc(err.message) + "</div>";
   });
