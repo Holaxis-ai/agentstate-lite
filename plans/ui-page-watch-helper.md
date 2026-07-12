@@ -2,7 +2,7 @@
 type: Plan
 title: Canonical Page live-refresh helper
 actor: openai/codex
-timestamp: '2026-07-12T02:50:00.945Z'
+timestamp: '2026-07-12T02:52:02.917Z'
 ---
 # Canonical Page live-refresh helper
 
@@ -29,10 +29,10 @@ Bridge.watch(async function (events) {
 - Refresh calls never overlap.
 - Events arriving while a refresh is running are queued in arrival order and delivered together to exactly one follow-up call.
 - Events arriving during that follow-up form the next batch. The helper does not drop event payloads or reinterpret them.
-- A refresh rejection consumes that call's batch and releases the scheduler. Already queued or later events may run another refresh; no rejection permanently poisons the watcher.
+- A refresh rejection consumes only that call's batch and releases the scheduler. If events were queued while the rejected refresh ran, their follow-up batch starts automatically; later events also refresh. No rejection permanently poisons the watcher and no queued batch is discarded because the prior call failed.
 - There is no automatic timer retry or infinite retry loop. A later refresh is driven only by queued/later change events.
 - The returned Promise represents subscription plus the first refresh and adopts that first refresh's resolution value or rejection. Later refresh failures cannot alter an already-settled Promise; they are caught and reported with `console.error` while the watcher remains usable.
-- A subscription failure rejects the returned Promise and no refresh runs.
+- A subscription failure rejects the returned Promise, permanently deactivates that watcher's registered callback, and no refresh runs. Raw `subscribe` has no unsubscribe, so `watch` owns an internal active flag: a callback left in the shared callback array after failure must remain inert even if another watcher later subscribes successfully and activates shell change delivery.
 - Invalid/non-function `refresh` is rejected clearly before a request is sent.
 - Multiple `watch` calls are permitted and independent: each owns its queue and serialization and uses the existing subscription path.
 - Existing `Bridge.subscribe(callback)` remains byte- and behavior-compatible.
@@ -77,11 +77,11 @@ Test:
 3. events before acknowledgement reach the first refresh batch;
 4. a deferred first refresh plus several events has maximum concurrency one and one ordered follow-up batch;
 5. events during a follow-up create the next batch;
-6. initial rejection rejects the returned Promise but a later event still refreshes;
-7. later rejection is caught/reported and a subsequent event still refreshes;
-8. subscription rejection runs no refresh;
+6. a deferred initial refresh rejects after an event queues; the returned Promise rejects, then the queued batch runs automatically with maximum concurrency one;
+7. a deferred later refresh rejects after another event queues; the failure is caught/reported, then the queued batch runs automatically and later events still refresh;
+8. a failed subscription permanently deactivates its watcher: reject watch A, acknowledge watch B, emit a change, and prove only B refreshes;
 9. raw `subscribe` still acknowledges and delivers the unchanged event;
-10. two watches schedule independently;
+10. two successful watches schedule independently;
 11. invalid refresh input sends no bridge request;
 12. the shipped reference/examples remain distribution-complete.
 
