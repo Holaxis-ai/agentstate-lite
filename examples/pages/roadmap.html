@@ -83,6 +83,36 @@
   function send(type, extra){ return new Promise(function(res,rej){ var id=String(++seq); pending[id]={res:res,rej:rej};
     var m={bridge:PROTO,id:id,type:type}; if(extra) for(var k in extra) m[k]=extra[k]; parent.postMessage(m,"*"); }); }
   function openPage(pageId){ parent.postMessage({bridge:PROTO,type:"open-page",pageId:pageId},"*"); }
+  function watch(refresh) {
+    if (typeof refresh !== "function") return Promise.reject(new TypeError("Bridge.watch requires a refresh function"));
+    var active = true, ready = false, running = false, queued = [];
+    function schedule(initial) {
+      running = true;
+      var batch = queued.splice(0);
+      return Promise.resolve().then(function () { return refresh(batch); }).then(function (value) {
+        running = false;
+        if (queued.length) void schedule(false);
+        return value;
+      }, function (err) {
+        running = false;
+        if (queued.length) void schedule(false);
+        if (initial) throw err;
+        console.error("Bridge.watch refresh failed", err);
+      });
+    }
+    function onChange(event) {
+      if (!active) return;
+      queued.push(event);
+      if (ready && !running) void schedule(false);
+    }
+    return window.Bridge.subscribe(onChange).then(function () {
+      ready = true;
+      return schedule(true);
+    }, function (err) {
+      active = false;
+      throw err;
+    });
+  }
   window.addEventListener("message",function(e){ if(e.source!==window.parent) return; var m=e.data; if(!m||m.bridge!==PROTO) return;
     if(m.type==="change"){ subs.forEach(function(cb){cb(m.event)}); return; }
     var p=pending[m.id]; if(!p) return; delete pending[m.id];
@@ -90,7 +120,8 @@
   window.Bridge={ hello:function(){return send("hello")}, query:function(params){return send("query",{params:params})},
     read:function(docId){return send("read",{docId:docId})}, edges:function(params){return send("edges",{params:params})},
     openPage:openPage,
-    subscribe:function(cb){subs.push(cb); return send("subscribe")} };
+    subscribe:function(cb){subs.push(cb); return send("subscribe")},
+    watch:watch };
 })();
 
 (function(){
@@ -181,13 +212,12 @@
 
   Bridge.hello().then(function(info){
     document.querySelector("header .chev").title=(info.bundle&&info.bundle.name)||"";
-    return load(null);
-  }).then(function(){
-    return Bridge.subscribe(function(ev){
-      var changed=(ev.changes||[]).map(function(c){return c.id});
-      load(changed);
-    });
-  });
+  }).catch(function(err){ console.error("Bridge.hello failed",err); });
+  Bridge.watch(function(events){
+    var changed=[];
+    events.forEach(function(ev){ (ev.changes||[]).forEach(function(c){changed.push(c.id)}); });
+    return load(changed.length?changed:null);
+  }).catch(function(err){ mainEl.innerHTML='<div class="empty">bridge failed: '+esc(err.message)+'</div>'; });
   setInterval(function(){ /* keep-live heartbeat noop */ },60000);
 })();
 </script>
