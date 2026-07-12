@@ -90,6 +90,66 @@ test("kind field remove: drops the field; idempotent when already absent", async
   }
 });
 
+test("kind field remove: deletes matching valid field guidance, preserves unrelated entries, and omits an emptied map", async () => {
+  const { dir, cleanup } = await seeded();
+  try {
+    const bundle: Bundle = { root: dir };
+    const convention = await readDoc(bundle, "conventions/context-note");
+    const fields = convention.frontmatter.fields as Record<string, unknown>;
+    fields.descriptions = { tags: "Searchable labels.", title: "A concise title." };
+    await writeDoc(bundle, convention);
+
+    await runKind(["field", "Context Note", "remove", "tags", "--dir", dir]);
+    let updated = await readDoc(bundle, "conventions/context-note");
+    assert.deepEqual((updated.frontmatter.fields as Record<string, unknown>).descriptions, {
+      title: "A concise title.",
+    });
+
+    await runKind(["field", "Context Note", "remove", "title", "--dir", dir]);
+    updated = await readDoc(bundle, "conventions/context-note");
+    assert.ok(!("descriptions" in (updated.frontmatter.fields as Record<string, unknown>)));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("kind field remove: preserves malformed fields.descriptions verbatim", async () => {
+  const { dir, cleanup } = await seeded();
+  try {
+    const bundle: Bundle = { root: dir };
+    const convention = await readDoc(bundle, "conventions/context-note");
+    const fields = convention.frontmatter.fields as Record<string, unknown>;
+    fields.descriptions = "malformed but unrelated raw data";
+    await writeDoc(bundle, convention);
+
+    await runKind(["field", "Context Note", "remove", "tags", "--dir", dir]);
+    const updated = await readDoc(bundle, "conventions/context-note");
+    assert.equal(
+      (updated.frontmatter.fields as Record<string, unknown>).descriptions,
+      "malformed but unrelated raw data",
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("kind field remove: an absent field does not normalize an existing empty descriptions map", async () => {
+  const { dir, cleanup } = await seeded();
+  try {
+    const bundle: Bundle = { root: dir };
+    const convention = await readDoc(bundle, "conventions/context-note");
+    (convention.frontmatter.fields as Record<string, unknown>).descriptions = {};
+    await writeDoc(bundle, convention);
+
+    const result = await runKind(["field", "Context Note", "remove", "absent", "--dir", dir]);
+    assert.equal(result.changed, false);
+    const updated = await readDoc(bundle, "conventions/context-note");
+    assert.deepEqual((updated.frontmatter.fields as Record<string, unknown>).descriptions, {});
+  } finally {
+    await cleanup();
+  }
+});
+
 test("kind field guards: unknown kind, reserved field name, and a bad action are all USAGE (exit 2)", async () => {
   const { dir, cleanup } = await seeded();
   try {

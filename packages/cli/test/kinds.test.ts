@@ -93,6 +93,39 @@ test("kinds: on a seeded bundle, lists the Context Note kind with its declared s
   }
 });
 
+test("kinds: conditionally projects kind and field descriptions", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await writeDoc({ root: dir }, {
+      id: "conventions/described",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Described",
+        description: "A kind with agent-readable guidance.",
+        fields: {
+          required: ["title"],
+          optional: ["status"],
+          descriptions: { title: "A concise summary.", status: "Current state." },
+        },
+        timestamp: T,
+      },
+      body: "",
+    });
+    const result = await runJson(kinds, ["--dir", dir]);
+    const rows = result.kinds as Array<Record<string, unknown>>;
+    const described = rows.find((row) => row.governs === "Described");
+    assert.ok(described);
+    assert.equal(described.description, "A kind with agent-readable guidance.");
+    assert.deepEqual(described.descriptions, { title: "A concise summary.", status: "Current state." });
+    const note = rows.find((row) => row.governs === "Context Note");
+    assert.ok(note);
+    assert.ok(!("description" in note));
+    assert.ok(!("descriptions" in note));
+  } finally {
+    await cleanup();
+  }
+});
+
 test("kinds: projects a convention's 'links' declaration (typed-edge vocabulary); rows without one carry no links key", async () => {
   const { dir, cleanup } = await makeSeededBundle();
   try {
@@ -308,21 +341,44 @@ test("new: a control flag (--dir/--remote) with no value (final argv token) is a
   }
 });
 
-test('new "<Kind>" --help shows THAT kind\'s schema (fields/enum/sections/path), not the generic usage (maturity: per-kind help)', async () => {
+test('new "<Kind>" --help shows deterministic described field rows, not the generic usage', async () => {
   const { dir, cleanup } = await makeSeededBundle();
   try {
+    await writeDoc({ root: dir }, {
+      id: "conventions/described",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Described",
+        description: "A guided record.",
+        path: "described/",
+        fields: {
+          required: ["title", "actor", "title"],
+          optional: ["status", "link", "title", "status"],
+          values: { status: ["draft", "done"] },
+          descriptions: { title: "A concise summary.", status: "Current state.", actor: "Filtered control." },
+        },
+        sections: ["Summary"],
+        timestamp: T,
+      },
+      body: "",
+    });
     let out = "";
-    await newCommand(["Context Note", "--help", "--dir", dir], { stdout: (s) => (out += s) });
-    assert.match(out, /create a Context Note instance/);
-    assert.match(out, /required:/);
-    assert.match(out, /--title/);
+    await newCommand(["Described", "--help", "--dir", dir], { stdout: (s) => (out += s) });
+    assert.match(out, /create a Described instance/);
+    assert.ok(out.indexOf("Description:  A guided record.") < out.indexOf("Fields (declared"));
+    assert.match(out, /--title <v>  required — A concise summary\./);
+    assert.match(out, /--status <v>  optional; allowed: draft \| done — Current state\./);
+    assert.equal((out.match(/--title <v>/g) ?? []).length, 1);
+    assert.equal((out.match(/--status <v>/g) ?? []).length, 1);
+    assert.doesNotMatch(out, /--actor <v>/);
+    assert.doesNotMatch(out, /--link <v>/);
     assert.match(out, /Summary/); // the kind's declared body section
-    assert.match(out, /context-notes\//); // the kind's declared path prefix
+    assert.match(out, /described\//); // the kind's declared path prefix
     // `new --help` with NO kind still shows the GENERIC reference (not a kind schema).
     let generic = "";
     await newCommand(["--help"], { stdout: (s) => (generic += s) });
     assert.match(generic, /create a new instance of a bundle-declared kind/);
-    assert.doesNotMatch(generic, /create a Context Note instance/);
+    assert.doesNotMatch(generic, /create a Described instance/);
   } finally {
     await cleanup();
   }

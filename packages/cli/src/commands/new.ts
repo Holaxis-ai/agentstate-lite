@@ -229,12 +229,22 @@ function kindIdPlaceholder(kind: KindConvention | undefined, governs: string): s
  * `kinds` round-trip (cold-start study: 2 testers had to cross-reference `kinds` before every `new`).
  */
 function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: string): string {
-  const req = kind.fields.required.filter((f) => f !== "actor" && f !== "link");
-  const opt = kind.fields.optional.filter((f) => f !== "actor" && f !== "link");
-  const flags = (fields: string[]) => (fields.length > 0 ? fields.map((f) => `--${f} <v>`).join("  ") : "(none)");
-  const enums = Object.entries(kind.fields.values ?? {})
-    .map(([f, vals]) => `  --${f} allowed:  ${vals.join(" | ")}`)
-    .join("\n");
+  const ordinary = (field: string) => field !== "actor" && field !== "link";
+  const req = [...new Set(kind.fields.required.filter(ordinary))];
+  const required = new Set(req);
+  const opt = [...new Set(kind.fields.optional.filter((field) => ordinary(field) && !required.has(field)))];
+  const fieldRows = [
+    ...req.map((field) => ({ field, requirement: "required" })),
+    ...opt.map((field) => ({ field, requirement: "optional" })),
+  ].map(({ field, requirement }) => {
+    const allowed = kind.fields.values[field];
+    const description = kind.fields.descriptions[field];
+    return (
+      `  --${field} <v>  ${requirement}` +
+      (allowed && allowed.length > 0 ? `; allowed: ${allowed.join(" | ")}` : "") +
+      (description ? ` — ${description}` : "")
+    );
+  });
   const sections = kind.sections && kind.sections.length > 0 ? kind.sections.join(", ") : "(none)";
   const pathLine = kind.path
     ? `Id:  auto-prefixed with '${kind.path.replace(/\/+$/, "")}/' unless <id> already carries it`
@@ -257,10 +267,9 @@ function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: strin
       : "";
   return (
     `${inv} new "${kind.governs}" <id> — create a ${kind.governs} instance\n\n` +
+    (kind.description ? `Description:  ${kind.description}\n` : "") +
     `Fields (declared by the '${kind.governs}' kind convention):\n` +
-    `  required:  ${flags(req)}\n` +
-    `  optional:  ${flags(opt)}\n` +
-    (enums ? enums + "\n" : "") +
+    (fieldRows.length > 0 ? fieldRows.join("\n") + "\n" : "  (none)\n") +
     `Body sections scaffolded:  ${sections}\n` +
     linksBlock +
     `${pathLine}\n\n` +

@@ -53,7 +53,13 @@ export const CONTEXT_NOTE_KIND: KindConvention = {
   title: CONTEXT_NOTE_TYPE,
   governs: CONTEXT_NOTE_TYPE,
   path: "context-notes/",
-  fields: { required: ["title", "timestamp"], optional: ["description", "tags"], values: {}, terminal: {} },
+  fields: {
+    required: ["title", "timestamp"],
+    optional: ["description", "tags"],
+    values: {},
+    terminal: {},
+    descriptions: {},
+  },
   sections: ["Summary"],
   freshnessHorizon: "24h",
 };
@@ -81,10 +87,12 @@ export const CONTEXT_NOTE_SEED_BODY =
   "FRONTMATTER is the only part core parses (this prose is not). Supported frontmatter keys:\n\n" +
   "- `governs` (required, non-empty) — the `type` value this convention governs.\n" +
   "- `title` (optional) — display title; defaults to `governs`.\n" +
+  "- `description` (optional) — the kind's purpose and intended use.\n" +
   "- `path` (optional) — canonical bundle-relative path prefix instances are scaffolded under " +
   "(e.g. `roadmap/`).\n" +
   "- `fields.required` — list of field names an instance MUST carry (non-empty).\n" +
   "- `fields.optional` — list of field names an instance MAY carry.\n" +
+  "- `fields.descriptions` — a MAP of `field name -> human guidance` for declared fields.\n" +
   "- `fields.values` — a MAP of `field name -> list of allowed values`. This is the ONLY place " +
   "an enum constraint goes — never a top-level `enum:`/`enums:`/`values:`/`constraints:` key, " +
   "and never a field named directly at the top level either.\n" +
@@ -98,12 +106,17 @@ export const CONTEXT_NOTE_SEED_BODY =
   "type: Convention\n" +
   "title: Roadmap Item\n" +
   "governs: Roadmap Item\n" +
+  "description: A durable line of work that groups related tasks.\n" +
   "path: roadmap/\n" +
   "fields:\n" +
   "  required: [title, status]\n" +
   "  optional: [horizon]\n" +
   "  values:\n" +
   "    status: [planned, active, done]\n" +
+  "  descriptions:\n" +
+  "    title: A concise summary of the outcome.\n" +
+  "    status: The roadmap item's current lifecycle state.\n" +
+  "    horizon: The expected delivery window.\n" +
   "sections: [Why, \"Done when\"]\n" +
   "freshness_horizon: 30d\n" +
   "---\n" +
@@ -131,10 +144,9 @@ const TASK_TYPE = "Task";
 
 /**
  * The `Task` kind convention — the first DOMAIN recipe on the pluggable-recipe foundation
- * (Recipes Unit B was the plumbing; this is the first thing built on it). This frontmatter shape
- * MUST match the hand-authored `conventions/task` doc already deployed on the reference remote
- * bundle (verified by pulling it — see the recipes test), so `recipe add work-tracking` against
- * that bundle is an idempotent no-op, not a second competing declaration of `Task`. No `sections`
+ * (Recipes Unit B was the plumbing; this is the first thing built on it). The built-in now carries
+ * agent-readable purpose and field guidance; recipe application remains expect-absent, so an
+ * existing hand-authored Task convention is preserved rather than upgraded in place. No `sections`
  * — unlike Context Note, a Task instance is not scaffolded around a fixed body shape; its body is
  * free-form task description, and declaring expected headings here would just be lint noise on
  * the common one-line task.
@@ -143,6 +155,7 @@ export const TASK_KIND: KindConvention = {
   id: "conventions/task",
   title: TASK_TYPE,
   governs: TASK_TYPE,
+  description: "A concrete unit of work that can be claimed, prioritized, assigned, and completed.",
   path: "tasks/",
   // The typed-edge vocabulary (decisions/typed-links-carrier): a task's dependency edge is a
   // link whose display text is exactly "depends on", targeting another Task. Declared here so
@@ -157,15 +170,20 @@ export const TASK_KIND: KindConvention = {
     // states past which a Task is no longer open — machinery (list --open, the status sweep's
     // exclusion + sort) ships together with the declaration for every new bundle.
     terminal: { status: ["done", "canceled"] },
+    descriptions: {
+      title: "A concise human-readable summary of the work.",
+      status: "The task's current lifecycle state.",
+      priority: "Relative urgency used to order the work; follow the bundle's adopted priority scale.",
+      assignee: "The person or agent currently responsible for the task.",
+      description: "The task's scope, context, acceptance criteria, and other working details.",
+    },
   },
   freshnessHorizon: "30d",
 };
 
 /**
- * The seed's prose body (`conventions/task.md`) — byte-identical to the hand-authored body on the
- * deployed reference bundle (frontmatter parity is the CONTRACT; matching the body too just avoids
- * a needless divergence between "the CLI's built-in" and "the worked example a human already
- * wrote"). Composed entirely from EXISTING lite primitives (link graph as DAG, CAS write as claim,
+ * The seed's prose body (`conventions/task.md`) explains how the generic primitives compose into
+ * task tracking. Composed entirely from EXISTING lite primitives (link graph as DAG, CAS write as claim,
  * `list --type`/`status` as query/lint) — no bespoke task engine, no new verb (CLAUDE.md scope-out:
  * kind-aware columns/claim/runnable-blocked are a separate concern, not part of this recipe).
  */
@@ -218,7 +236,7 @@ export const ROADMAP_KIND: KindConvention = {
   links: { contains: ROADMAP_ITEM_TYPE },
   // No status field on the spine, so nothing to declare terminal (Brian's ruling on the
   // task board's `tasks/status-terminal-declaration.md`).
-  fields: { required: ["title"], optional: [], values: {}, terminal: {} },
+  fields: { required: ["title"], optional: [], values: {}, terminal: {}, descriptions: {} },
 };
 
 /** The `conventions/roadmap.md` prose body. */
@@ -250,6 +268,7 @@ export const ROADMAP_ITEM_KIND: KindConvention = {
     // Brian's ruling (task board `tasks/status-terminal-declaration.md`): a done Roadmap Item
     // hides from `list --open`, consistent with Task's done/canceled.
     terminal: { status: ["done"] },
+    descriptions: {},
   },
 };
 

@@ -231,7 +231,13 @@ async function bootPagesServer(): Promise<{ handle: UiServerHandle; origin: stri
       type: "Convention",
       title: "Task",
       governs: "Task",
-      fields: { required: ["title", "status"], values: { status: ["todo", "done", "canceled"] }, terminal: { status: ["done", "canceled"] } },
+      description: "A unit of work.",
+      fields: {
+        required: ["title", "status"],
+        values: { status: ["todo", "done", "canceled"] },
+        terminal: { status: ["done", "canceled"] },
+        descriptions: { title: "A concise summary.", status: "Current state." },
+      },
     },
     body: "# Task",
   });
@@ -362,10 +368,18 @@ test("kinds endpoint: session-gated, serves core's loadKinds registry (ONE regis
 
     const res = await fetch(`${origin}/__ui/kinds`, { headers: { cookie: `aslite_ui_session=${SECRET}` } });
     assert.equal(res.status, 200);
-    const body = (await res.json()) as { kinds: { governs: string; fields: { terminal: Record<string, string[]> } }[] };
+    const body = (await res.json()) as {
+      kinds: {
+        governs: string;
+        description?: string;
+        fields: { terminal: Record<string, string[]>; descriptions: Record<string, string> };
+      }[];
+    };
     const task = body.kinds.find((k) => k.governs === "Task");
     assert.ok(task, "the bundle's Task convention is in the served registry");
     assert.deepEqual(task.fields.terminal, { status: ["done", "canceled"] });
+    assert.equal(task.description, "A unit of work.");
+    assert.deepEqual(task.fields.descriptions, { title: "A concise summary.", status: "Current state." });
   } finally {
     await cleanup();
   }

@@ -197,7 +197,7 @@ test("recipes: lists ALL THREE built-ins — context-notes, work-tracking, roadm
   }
 });
 
-test("recipe add work-tracking: applies conventions/task.md, frontmatter matches the deployed reference bundle's hand-authored conventions/task modulo timestamp", async () => {
+test("recipe add work-tracking: applies the current built-in Task convention with descriptions", async () => {
   const dir = await tempDir();
   try {
     await initBundle(dir);
@@ -219,6 +219,7 @@ test("recipe add work-tracking: applies conventions/task.md, frontmatter matches
       type: CONVENTION_TYPE,
       title: "Task",
       governs: "Task",
+      description: "A concrete unit of work that can be claimed, prioritized, assigned, and completed.",
       path: "tasks/",
       links: { "depends on": "Task" },
       fields: {
@@ -226,6 +227,13 @@ test("recipe add work-tracking: applies conventions/task.md, frontmatter matches
         optional: ["priority", "assignee", "description"],
         values: { status: ["todo", "in_progress", "blocked", "done", "canceled"] },
         terminal: { status: ["done", "canceled"] },
+        descriptions: {
+          title: "A concise human-readable summary of the work.",
+          status: "The task's current lifecycle state.",
+          priority: "Relative urgency used to order the work; follow the bundle's adopted priority scale.",
+          assignee: "The person or agent currently responsible for the task.",
+          description: "The task's scope, context, acceptance criteria, and other working details.",
+        },
       },
       freshness_horizon: "30d",
     });
@@ -250,6 +258,17 @@ test("kinds: reports Task with required/optional/values/horizon after recipe add
     assert.deepEqual(kind!.fields.optional, ["priority", "assignee", "description"]);
     assert.deepEqual(kind!.fields.values.status, ["todo", "in_progress", "blocked", "done", "canceled"]);
     assert.deepEqual(kind!.fields.terminal.status, ["done", "canceled"]);
+    assert.equal(
+      kind!.description,
+      "A concrete unit of work that can be claimed, prioritized, assigned, and completed.",
+    );
+    assert.deepEqual(Object.keys(kind!.fields.descriptions).sort(), [
+      "assignee",
+      "description",
+      "priority",
+      "status",
+      "title",
+    ]);
     assert.equal(kind!.path, "tasks/");
     assert.equal(kind!.freshnessHorizon, "30d");
     assert.deepEqual(kind!.links, { "depends on": "Task" }, "the seeded Task kind declares its typed-edge vocabulary");

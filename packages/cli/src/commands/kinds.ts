@@ -18,16 +18,18 @@ Usage:
   agentstate-lite kinds [--dir <path>] [--remote <url>]
 
 A kind convention is a plain OKF doc (type: Convention) under conventions/ declaring a document
-kind's required/optional fields, allowed enum values, typed-link vocabulary, expected body
+kind's purpose, required/optional fields and their descriptions, allowed enum values, typed-link vocabulary, expected body
 sections, and an optional freshness horizon. See 'agentstate-lite new --help' to create an
 instance of a declared kind.
 
 Declaring a kind convention (frontmatter keys core reads — everything else is unread prose):
   governs              string   required — the 'type' value this convention governs
   title                string   optional — display title (defaults to governs)
+  description          string   optional — the kind's purpose and intended use
   path                 string   optional — bundle-relative path prefix for instances
   fields.required      list     field names an instance MUST carry
   fields.optional      list     field names an instance MAY carry
+  fields.descriptions  map      field name -> human guidance for a declared field
   fields.values        map      field name -> list of allowed values — the ONLY place an enum
                                  constraint goes; never a top-level enum/enums/values/constraints key
   fields.terminal      map      field name -> subset of that field's values marking an instance
@@ -75,6 +77,8 @@ function toRow(kind: KindConvention): Record<string, unknown> {
     required: kind.fields.required,
     optional: kind.fields.optional,
   };
+  if (kind.description) row.description = kind.description;
+  if (Object.keys(kind.fields.descriptions).length > 0) row.descriptions = kind.fields.descriptions;
   if (Object.keys(kind.fields.values).length > 0) row.values = kind.fields.values;
   if (Object.keys(kind.fields.terminal).length > 0) row.terminal = kind.fields.terminal;
   if (kind.links && Object.keys(kind.links).length > 0) row.links = kind.links;

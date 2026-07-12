@@ -48,13 +48,13 @@ export async function loadKinds(bundle: Bundle): Promise<KindRegistry> {
       });
       continue;
     }
-    const { kind, reservedFieldsIgnored } = parsed;
+    const { kind, reservedFieldsIgnored, reservedFieldPaths } = parsed;
     warnings.push(...parsed.warnings);
     if (reservedFieldsIgnored.length > 0) {
       warnings.push({
         code: "KIND_RESERVED_FIELD",
         message: `kind convention '${doc.id}' declares reserved field name(s) ${reservedFieldsIgnored.join(", ")} (reserved by the CLI: type/dir/remote/json/help); ignoring them.`,
-        field: reservedFieldsIgnored.join(","),
+        field: reservedFieldPaths.join(","),
         severity: "warning",
       });
     }
