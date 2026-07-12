@@ -28,6 +28,7 @@ import {
   freshnessHorizonMs,
   isTerminal,
   kindConventionDoc,
+  parseConventionDoc,
   validateAgainstKind,
   type KindConvention,
 } from "../src/kinds.js";
@@ -47,8 +48,15 @@ const NOTE_KIND_FIXTURE: KindConvention = {
   id: "conventions/context-note",
   title: "Context Note",
   governs: "Context Note",
+  description: "A durable cross-session orientation note.",
   path: "context-notes/",
-  fields: { required: ["title", "timestamp"], optional: ["description", "tags"], values: {}, terminal: {} },
+  fields: {
+    required: ["title", "timestamp"],
+    optional: ["description", "tags"],
+    values: {},
+    terminal: {},
+    descriptions: { title: "A concise summary.", tags: "Searchable labels." },
+  },
   sections: ["Summary"],
   freshnessHorizon: "24h",
 };
@@ -60,11 +68,13 @@ const ROADMAP_KIND_DOC: OkfDocument = {
     type: CONVENTION_TYPE,
     title: "Roadmap Item",
     governs: "Roadmap Item",
+    description: "  A durable line of work.  ",
     path: "roadmap/",
     fields: {
       required: ["title", "status"],
       optional: ["horizon"],
       values: { status: ["planned", "active", "done"] },
+      descriptions: { title: "  A concise outcome.  ", status: "Current lifecycle state." },
     },
     sections: ["Why", "Done when"],
     freshness_horizon: "30d",
@@ -102,9 +112,14 @@ for (const [name, run] of RUNNERS) {
       assert.ok(kind);
       assert.equal(kind!.id, "conventions/roadmap-item");
       assert.equal(kind!.path, "roadmap/");
+      assert.equal(kind!.description, "A durable line of work.");
       assert.deepEqual(kind!.fields.required, ["title", "status"]);
       assert.deepEqual(kind!.fields.optional, ["horizon"]);
       assert.deepEqual(kind!.fields.values, { status: ["planned", "active", "done"] });
+      assert.deepEqual(kind!.fields.descriptions, {
+        title: "A concise outcome.",
+        status: "Current lifecycle state.",
+      });
       assert.deepEqual(kind!.sections, ["Why", "Done when"]);
       assert.equal(kind!.freshnessHorizon, "30d");
       assert.equal(freshnessHorizonMs(kind!), 30 * 86_400_000);
@@ -212,6 +227,85 @@ for (const [name, run] of RUNNERS) {
     });
   });
 }
+
+test("loadKinds: absent descriptions normalize empty; malformed descriptions warn and skip; undeclared guidance is retained", async () => {
+  await withMemBundle(async (bundle) => {
+    await writeDoc(bundle, {
+      id: "conventions/described",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Described",
+        description: "   ",
+        fields: {
+          required: ["title"],
+          optional: ["note"],
+          descriptions: {
+            title: "  Human title.  ",
+            note: 42,
+            extra: "Retained guidance for an undeclared field.",
+            type: "Reserved guidance.",
+          },
+        },
+        timestamp: T,
+      },
+      body: "",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/non-map",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Non-map",
+        description: false,
+        fields: { required: ["title"], descriptions: ["wrong"] },
+        timestamp: T,
+      },
+      body: "",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/absent",
+      frontmatter: { type: CONVENTION_TYPE, governs: "Absent", fields: { required: ["title"] }, timestamp: T },
+      body: "",
+    });
+
+    const registry = await loadKinds(bundle);
+    assert.equal(registry.kinds.get("Described")!.description, undefined);
+    assert.deepEqual(registry.kinds.get("Described")!.fields.descriptions, {
+      title: "Human title.",
+      extra: "Retained guidance for an undeclared field.",
+    });
+    assert.equal(registry.kinds.get("Non-map")!.description, undefined);
+    assert.deepEqual(registry.kinds.get("Non-map")!.fields.descriptions, {});
+    assert.deepEqual(registry.kinds.get("Absent")!.fields.descriptions, {});
+    assert.equal(registry.warnings.filter((w) => w.code === "KIND_RESERVED_FIELD").length, 1);
+    const reserved = registry.warnings.find((w) => w.code === "KIND_RESERVED_FIELD");
+    assert.equal(reserved?.field, "fields.descriptions.type");
+    assert.ok(
+      !registry.warnings.some(
+        (w) =>
+          w.code === "KIND_CONVENTION_UNDECLARED_DESCRIPTION_FIELD" &&
+          w.field === "fields.descriptions.type",
+      ),
+    );
+    assert.ok(registry.warnings.some((w) => w.code === "KIND_CONVENTION_BAD_SHAPE" && w.field === "description"));
+    assert.ok(
+      registry.warnings.some(
+        (w) => w.code === "KIND_CONVENTION_BAD_SHAPE" && w.field === "fields.descriptions",
+      ),
+    );
+    assert.ok(
+      registry.warnings.some(
+        (w) => w.code === "KIND_CONVENTION_BAD_MEMBER" && w.field === "fields.descriptions.note",
+      ),
+    );
+    assert.ok(
+      registry.warnings.some(
+        (w) =>
+          w.code === "KIND_CONVENTION_UNDECLARED_DESCRIPTION_FIELD" &&
+          w.field === "fields.descriptions.extra",
+      ),
+    );
+  });
+});
 
 // ── convention-doc shape warnings (usability finding F2: agents fed 8 wrong YAML shapes for enum
 // constraints and every one was silently accepted, enforcing nothing; a required list fed OBJECTS
@@ -332,7 +426,7 @@ test("kindConventionDoc: a links declaration round-trips through write/loadKinds
       id: "conventions/linked-kind",
       title: "Linked Kind",
       governs: "Linked Kind",
-      fields: { required: ["title"], optional: [], values: {}, terminal: {} },
+      fields: { required: ["title"], optional: [], values: {}, terminal: {}, descriptions: {} },
       links: { contains: "Task" },
     };
     await writeDoc(bundle, kindConventionDoc(kind, "prose.", T));
@@ -418,7 +512,7 @@ test("kindConventionDoc: an expects_inbound declaration round-trips through writ
       id: "conventions/expecting-kind",
       title: "Expecting Kind",
       governs: "Expecting Kind",
-      fields: { required: ["title"], optional: [], values: {}, terminal: {} },
+      fields: { required: ["title"], optional: [], values: {}, terminal: {}, descriptions: {} },
       expectsInbound: { contains: "Crate" },
     };
     await writeDoc(bundle, kindConventionDoc(kind, "prose.", T));
@@ -593,6 +687,7 @@ test("kindConventionDoc: a 'fields.terminal' declaration round-trips through wri
         optional: [],
         values: { stage: ["open", "resolved"] },
         terminal: { stage: ["resolved"] },
+        descriptions: {},
       },
     };
     await writeDoc(bundle, kindConventionDoc(kind, "prose.", T));
@@ -627,7 +722,7 @@ test("isTerminal: truth table — declared+terminal, declared+non-terminal, unde
     id: "conventions/plain",
     title: "Plain",
     governs: "Plain",
-    fields: { required: ["title"], optional: [], values: {}, terminal: {} },
+    fields: { required: ["title"], optional: [], values: {}, terminal: {}, descriptions: {} },
   };
   assert.equal(isTerminal(undeclaredKind, { type: "Plain", stage: "resolved" }), false);
 });
@@ -766,7 +861,7 @@ test("validateAgainstKind: enum comparison tolerates a YAML-1.1-coerced non-stri
     id: "conventions/flagged",
     title: "Flagged",
     governs: "Flagged",
-    fields: { required: [], optional: [], values: { flag: [false, true] as unknown as string[] }, terminal: {} },
+    fields: { required: [], optional: [], values: { flag: [false, true] as unknown as string[] }, terminal: {}, descriptions: {} },
   };
   const doc: OkfDocument = { id: "flagged/x", frontmatter: { type: "Flagged", flag: false, timestamp: T }, body: "" };
   assert.deepEqual(validateAgainstKind(doc, kind), []); // 'false' coerces to allowed 'false'
@@ -782,7 +877,7 @@ test("validateAgainstKind: an enum-restricted field carrying an ARRAY is a KIND_
     id: "conventions/roadmap-item",
     title: "Roadmap Item",
     governs: "Roadmap Item",
-    fields: { required: ["title", "status"], optional: ["labels"], values: { status: ["planned", "active", "done"] }, terminal: {} },
+    fields: { required: ["title", "status"], optional: ["labels"], values: { status: ["planned", "active", "done"] }, terminal: {}, descriptions: {} },
   };
 
   // Two ALLOWED members still violate arity — each passes the element-wise membership
@@ -826,10 +921,55 @@ test("kindConventionDoc: round-trips through write/loadKinds to the same KindCon
     const kind = registry.kinds.get("Context Note");
     assert.ok(kind);
     assert.equal(kind!.path, "context-notes/");
+    assert.equal(kind!.description, "A durable cross-session orientation note.");
     assert.deepEqual(kind!.fields.required, ["title", "timestamp"]);
     assert.deepEqual(kind!.fields.optional, ["description", "tags"]);
+    assert.deepEqual(kind!.fields.descriptions, { title: "A concise summary.", tags: "Searchable labels." });
     assert.equal(kind!.freshnessHorizon, "24h");
   });
+});
+
+test("kindConventionDoc: sanitizes programmatic description metadata before it can create registry warnings", () => {
+  const described: KindConvention = {
+    id: "conventions/programmatic",
+    title: "Programmatic",
+    governs: "Programmatic",
+    description: "  Useful purpose.  ",
+    fields: {
+      required: ["title"],
+      optional: [],
+      values: {},
+      terminal: {},
+      descriptions: {
+        title: "  Human title.  ",
+        blank: "   ",
+        number: 42 as unknown as string,
+      },
+    },
+  };
+  const doc = kindConventionDoc(described, "", T);
+  assert.equal(doc.frontmatter.description, "Useful purpose.");
+  assert.deepEqual((doc.frontmatter.fields as Record<string, unknown>).descriptions, {
+    title: "Human title.",
+  });
+  const parsed = parseConventionDoc(doc);
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(parsed.warnings, []);
+
+  const invalidOnly = kindConventionDoc(
+    {
+      ...described,
+      description: 42 as unknown as string,
+      fields: { ...described.fields, descriptions: { blank: " " } },
+    },
+    "",
+    T,
+  );
+  assert.ok(!("description" in invalidOnly.frontmatter));
+  assert.ok(!("descriptions" in (invalidOnly.frontmatter.fields as Record<string, unknown>)));
+  const parsedInvalidOnly = parseConventionDoc(invalidOnly);
+  assert.equal(parsedInvalidOnly.ok, true);
+  assert.deepEqual(parsedInvalidOnly.warnings, []);
 });
 
 // ── core never seeds (Recipes Unit A, CLAUDE.md gate 3) ──────────────────────────
@@ -865,6 +1005,7 @@ test("query: a Convention doc's frontmatter.fields survives query() as a plain n
       required: ["title", "status"],
       optional: ["horizon"],
       values: { status: ["planned", "active", "done"] },
+      descriptions: { title: "  A concise outcome.  ", status: "Current lifecycle state." },
     });
   });
 });

@@ -213,6 +213,11 @@ export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Pro
         fieldsObj.values && typeof fieldsObj.values === "object" && !Array.isArray(fieldsObj.values)
           ? { ...(fieldsObj.values as Record<string, unknown>) }
           : {};
+      const descriptionsMap: Record<string, unknown> | undefined =
+        fieldsObj.descriptions && typeof fieldsObj.descriptions === "object" && !Array.isArray(fieldsObj.descriptions)
+          ? { ...(fieldsObj.descriptions as Record<string, unknown>) }
+          : undefined;
+      let descriptionDeleted = false;
 
       if (action === "add") {
         const targetList = values.required ? required : optional;
@@ -238,6 +243,10 @@ export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Pro
           if (idx >= 0) list.splice(idx, 1);
         }
         if (fieldName in valuesMap) delete valuesMap[fieldName];
+        if (descriptionsMap && fieldName in descriptionsMap) {
+          delete descriptionsMap[fieldName];
+          descriptionDeleted = true;
+        }
       }
 
       computedRequired = required;
@@ -258,6 +267,10 @@ export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Pro
       else delete newFields.optional;
       if (Object.keys(valuesMap).length > 0) newFields.values = valuesMap;
       else delete newFields.values;
+      if (descriptionsMap && descriptionDeleted) {
+        if (Object.keys(descriptionsMap).length > 0) newFields.descriptions = descriptionsMap;
+        else delete newFields.descriptions;
+      }
       const newFm: Frontmatter = { ...fm };
       if (Object.keys(newFields).length > 0) newFm.fields = newFields;
       else delete newFm.fields;

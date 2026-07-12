@@ -47,6 +47,8 @@ export interface KindFields {
    * `status` sweep's exclusion + sort) calls. Empty map when the kind declares no terminal set.
    */
   terminal: Record<string, string[]>;
+  /** Human guidance for declared fields: `fieldName -> description`. */
+  descriptions: Record<string, string>;
 }
 
 /** A parsed kind convention: the governed `type` plus its declared shape. */
@@ -57,6 +59,8 @@ export interface KindConvention {
   title: string;
   /** The `type` value this convention governs (required, non-empty — malformed docs are skipped). */
   governs: string;
+  /** Human-readable purpose and intended use of this kind. */
+  description?: string;
   /** Canonical bundle-relative path prefix for instances of this kind, if declared. */
   path?: string;
   fields: KindFields;
@@ -161,7 +165,7 @@ function toStringArrayLenient(
 const RESERVED_FIELD_NAMES = new Set(["type", "dir", "remote", "json", "help"]);
 
 /** The only recognized keys inside a convention doc's `fields:` block. */
-const VALID_FIELDS_KEYS = new Set(["required", "optional", "values", "terminal"]);
+const VALID_FIELDS_KEYS = new Set(["required", "optional", "values", "terminal", "descriptions"]);
 
 /**
  * Top-level convention-doc keys that are near-misses for the ONE correct enum-constraint shape
@@ -196,7 +200,7 @@ export function splitSections(body: string): Record<string, string> {
 export function parseConventionDoc(
   doc: OkfDocument,
 ): (
-  | { ok: true; kind: KindConvention; reservedFieldsIgnored: string[] }
+  | { ok: true; kind: KindConvention; reservedFieldsIgnored: string[]; reservedFieldPaths: string[] }
   | { ok: false; reason: string }
 ) & { warnings: ValidationWarning[] } {
   const fm = doc.frontmatter as Record<string, unknown>;
@@ -227,7 +231,7 @@ export function parseConventionDoc(
   } else if (!isPlainObject(fieldsSource)) {
     warnings.push({
       code: "KIND_CONVENTION_BAD_SHAPE",
-      message: `kind convention '${doc.id}' has a non-map 'fields' key (${describeShape(fieldsSource)}; expected a map with required/optional/values); ignoring it.`,
+      message: `kind convention '${doc.id}' has a non-map 'fields' key (${describeShape(fieldsSource)}; expected a map with required/optional/values/descriptions); ignoring it.`,
       field: "fields",
       severity: "warning",
     });
@@ -237,7 +241,7 @@ export function parseConventionDoc(
       if (!VALID_FIELDS_KEYS.has(key)) {
         warnings.push({
           code: "KIND_CONVENTION_UNKNOWN_FIELDS_KEY",
-          message: `kind convention '${doc.id}' declares an unrecognized key 'fields.${key}' (valid keys: fields.required, fields.optional, fields.values, fields.terminal); ignoring it.`,
+          message: `kind convention '${doc.id}' declares an unrecognized key 'fields.${key}' (valid keys: fields.required, fields.optional, fields.values, fields.terminal, fields.descriptions); ignoring it.`,
           field: `fields.${key}`,
           severity: "warning",
         });
@@ -246,16 +250,18 @@ export function parseConventionDoc(
   }
 
   const reservedFieldsIgnored = new Set<string>();
-  const dropReserved = (name: string): boolean => {
+  const reservedFieldPaths = new Set<string>();
+  const dropReserved = (name: string, semanticPath: string): boolean => {
     if (!RESERVED_FIELD_NAMES.has(name)) return false;
     reservedFieldsIgnored.add(name);
+    reservedFieldPaths.add(semanticPath);
     return true;
   };
   const required = toStringArrayLenient(fieldsRaw.required, "fields.required", doc.id, warnings).filter(
-    (f) => !dropReserved(f),
+    (f) => !dropReserved(f, `fields.required.${f}`),
   );
   const optional = toStringArrayLenient(fieldsRaw.optional, "fields.optional", doc.id, warnings).filter(
-    (f) => !dropReserved(f),
+    (f) => !dropReserved(f, `fields.optional.${f}`),
   );
 
   const valuesSource = fieldsRaw.values;
@@ -270,7 +276,7 @@ export function parseConventionDoc(
       });
     } else {
       for (const [field, allowed] of Object.entries(valuesSource)) {
-        if (dropReserved(field)) continue;
+        if (dropReserved(field, `fields.values.${field}`)) continue;
         values[field] = toStringArrayLenient(allowed, `fields.values.${field}`, doc.id, warnings);
       }
     }
@@ -292,6 +298,41 @@ export function parseConventionDoc(
     }
   }
 
+  const descriptionsSource = fieldsRaw.descriptions;
+  const descriptions: Record<string, string> = {};
+  if (descriptionsSource !== undefined) {
+    if (!isPlainObject(descriptionsSource)) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc.id}' has a non-map 'fields.descriptions' (${describeShape(descriptionsSource)}; expected a map of field name -> non-empty description); ignoring it.`,
+        field: "fields.descriptions",
+        severity: "warning",
+      });
+    } else {
+      for (const [field, rawDescription] of Object.entries(descriptionsSource)) {
+        if (dropReserved(field, `fields.descriptions.${field}`)) continue;
+        if (typeof rawDescription !== "string" || rawDescription.trim() === "") {
+          warnings.push({
+            code: "KIND_CONVENTION_BAD_MEMBER",
+            message: `kind convention '${doc.id}' has a malformed 'fields.descriptions.${field}' (${describeShape(rawDescription)}; expected a non-empty string); skipping it.`,
+            field: `fields.descriptions.${field}`,
+            severity: "warning",
+          });
+          continue;
+        }
+        descriptions[field] = rawDescription.trim();
+        if (!declaredFieldNames.has(field)) {
+          warnings.push({
+            code: "KIND_CONVENTION_UNDECLARED_DESCRIPTION_FIELD",
+            message: `kind convention '${doc.id}' declares 'fields.descriptions.${field}' but '${field}' is not in fields.required or fields.optional.`,
+            field: `fields.descriptions.${field}`,
+            severity: "warning",
+          });
+        }
+      }
+    }
+  }
+
   // `fields.terminal` — the subset of values (per field) that mark an instance "done" (task board
   // `tasks/status-terminal-declaration.md`). EXACTLY the lenient posture of `fields.values` above:
   // absent is normal, a non-map shape warns+ignores, a non-scalar member warns+skips.
@@ -307,7 +348,7 @@ export function parseConventionDoc(
       });
     } else {
       for (const [field, terminalValues] of Object.entries(terminalSource)) {
-        if (dropReserved(field)) continue;
+        if (dropReserved(field, `fields.terminal.${field}`)) continue;
         terminal[field] = toStringArrayLenient(terminalValues, `fields.terminal.${field}`, doc.id, warnings);
       }
     }
@@ -411,19 +452,44 @@ export function parseConventionDoc(
     : undefined;
 
   const title = typeof fm.title === "string" && fm.title.trim() !== "" ? fm.title.trim() : governs;
+  let description: string | undefined;
+  if (fm.description !== undefined) {
+    if (typeof fm.description === "string" && fm.description.trim() !== "") {
+      description = fm.description.trim();
+    } else {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc.id}' has an invalid 'description' (${describeShape(fm.description)}; expected a non-empty string); ignoring it.`,
+        field: "description",
+        severity: "warning",
+      });
+    }
+  }
   const path = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : undefined;
   const freshnessHorizon =
     typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== ""
       ? fm.freshness_horizon.trim()
       : undefined;
 
-  const kind: KindConvention = { id: doc.id, title, governs, fields: { required, optional, values, terminal } };
+  const kind: KindConvention = {
+    id: doc.id,
+    title,
+    governs,
+    fields: { required, optional, values, terminal, descriptions },
+  };
+  if (description !== undefined) kind.description = description;
   if (path !== undefined) kind.path = path;
   if (links !== undefined) kind.links = links;
   if (expectsInbound !== undefined) kind.expectsInbound = expectsInbound;
   if (sections && sections.length > 0) kind.sections = sections;
   if (freshnessHorizon !== undefined) kind.freshnessHorizon = freshnessHorizon;
-  return { ok: true, kind, reservedFieldsIgnored: [...reservedFieldsIgnored].sort(), warnings };
+  return {
+    ok: true,
+    kind,
+    reservedFieldsIgnored: [...reservedFieldsIgnored].sort(),
+    reservedFieldPaths: [...reservedFieldPaths].sort(),
+    warnings,
+  };
 }
 
 
@@ -563,8 +629,17 @@ export function kindConventionDoc(kind: KindConvention, prose: string, timestamp
   const fields: Record<string, unknown> = { required: kind.fields.required, optional: kind.fields.optional };
   if (Object.keys(kind.fields.values).length > 0) fields.values = kind.fields.values;
   if (Object.keys(kind.fields.terminal).length > 0) fields.terminal = kind.fields.terminal;
+  const descriptions = Object.fromEntries(
+    Object.entries(kind.fields.descriptions)
+      .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim() !== "")
+      .map(([field, description]) => [field, description.trim()]),
+  );
+  if (Object.keys(descriptions).length > 0) fields.descriptions = descriptions;
 
   const frontmatter: Frontmatter = { type: CONVENTION_TYPE, title: kind.title, governs: kind.governs, timestamp };
+  if (typeof kind.description === "string" && kind.description.trim() !== "") {
+    frontmatter.description = kind.description.trim();
+  }
   if (kind.path !== undefined) frontmatter.path = kind.path;
   if (kind.links && Object.keys(kind.links).length > 0) frontmatter.links = kind.links;
   if (kind.expectsInbound && Object.keys(kind.expectsInbound).length > 0) {
