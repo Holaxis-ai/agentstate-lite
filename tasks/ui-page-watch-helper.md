@@ -1,14 +1,14 @@
 ---
 type: Task
 title: 'Bundle Pages: canonical Bridge.watch live-refresh helper'
-status: in_progress
+status: done
 priority: '1'
 assignee: openai/codex
 description: >-
   Make correct subscribe-before-snapshot live Page behavior a one-line optional
   client primitive.
 actor: openai/codex
-timestamp: '2026-07-12T03:09:30.194Z'
+timestamp: '2026-07-12T11:19:29.451Z'
 ---
 # Objective
 
@@ -39,9 +39,10 @@ Design review → isolated implementation → independent code review → exact-
 - Independent design review approved after pinning failed-watcher deactivation and queued-batch recovery after rejection.
 - Independent code review approved with no findings.
 - Final QA passed 26/26 literal-client scheduler tests, the full repository gate, Chromium Page tests, built CLI smoke, and standalone package-install smoke.
-- Draft pull request: https://github.com/Holaxis-ai/agentstate-lite/pull/41
+- Pull request https://github.com/Holaxis-ai/agentstate-lite/pull/41 merged as `77dec2e5e72ee12fde715da8e0d5af5b384d2e57`.
+- Post-merge automation regenerated the installed skill, Page references, and compiled bundle as plugin `1.0.38` at `6a7e00c`.
 
-The task remains `in_progress` until the PR merges.
+Shipped.
 
 [depends on](review-request-workflow.md)
 

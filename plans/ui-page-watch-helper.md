@@ -2,11 +2,11 @@
 type: Plan
 title: Canonical Page live-refresh helper
 actor: openai/codex
-timestamp: '2026-07-12T03:09:30.067Z'
+timestamp: '2026-07-12T11:19:29.320Z'
 ---
 # Canonical Page live-refresh helper
 
-Status: independently reviewed and implemented at `c8c6b197ff09ebb351210cb3c35c05d1f27ae00a`; draft PR #41 awaits merge.
+Status: shipped through PR #41 as merge commit `77dec2e5e72ee12fde715da8e0d5af5b384d2e57`; plugin `1.0.38` regenerated successfully at `6a7e00c`.
 
 ## Decision
 
