@@ -6134,7 +6134,7 @@ function toStringArrayLenient(value, path14, docId, warnings) {
   return out;
 }
 var RESERVED_FIELD_NAMES = /* @__PURE__ */ new Set(["type", "dir", "remote", "json", "help"]);
-var VALID_FIELDS_KEYS = /* @__PURE__ */ new Set(["required", "optional", "values", "terminal"]);
+var VALID_FIELDS_KEYS = /* @__PURE__ */ new Set(["required", "optional", "values", "terminal", "descriptions"]);
 var MISPLACED_TOP_LEVEL_KEYS = /* @__PURE__ */ new Set(["enum", "enums", "values", "constraints"]);
 var H1_RE = /^#\s+(.+?)\s*$/gm;
 function splitSections(body) {
@@ -6172,7 +6172,7 @@ function parseConventionDoc(doc2) {
   } else if (!isPlainObject2(fieldsSource)) {
     warnings.push({
       code: "KIND_CONVENTION_BAD_SHAPE",
-      message: `kind convention '${doc2.id}' has a non-map 'fields' key (${describeShape(fieldsSource)}; expected a map with required/optional/values); ignoring it.`,
+      message: `kind convention '${doc2.id}' has a non-map 'fields' key (${describeShape(fieldsSource)}; expected a map with required/optional/values/descriptions); ignoring it.`,
       field: "fields",
       severity: "warning"
     });
@@ -6182,7 +6182,7 @@ function parseConventionDoc(doc2) {
       if (!VALID_FIELDS_KEYS.has(key2)) {
         warnings.push({
           code: "KIND_CONVENTION_UNKNOWN_FIELDS_KEY",
-          message: `kind convention '${doc2.id}' declares an unrecognized key 'fields.${key2}' (valid keys: fields.required, fields.optional, fields.values, fields.terminal); ignoring it.`,
+          message: `kind convention '${doc2.id}' declares an unrecognized key 'fields.${key2}' (valid keys: fields.required, fields.optional, fields.values, fields.terminal, fields.descriptions); ignoring it.`,
           field: `fields.${key2}`,
           severity: "warning"
         });
@@ -6190,16 +6190,18 @@ function parseConventionDoc(doc2) {
     }
   }
   const reservedFieldsIgnored = /* @__PURE__ */ new Set();
-  const dropReserved = (name) => {
+  const reservedFieldPaths = /* @__PURE__ */ new Set();
+  const dropReserved = (name, semanticPath) => {
     if (!RESERVED_FIELD_NAMES.has(name)) return false;
     reservedFieldsIgnored.add(name);
+    reservedFieldPaths.add(semanticPath);
     return true;
   };
   const required = toStringArrayLenient(fieldsRaw.required, "fields.required", doc2.id, warnings).filter(
-    (f) => !dropReserved(f)
+    (f) => !dropReserved(f, `fields.required.${f}`)
   );
   const optional = toStringArrayLenient(fieldsRaw.optional, "fields.optional", doc2.id, warnings).filter(
-    (f) => !dropReserved(f)
+    (f) => !dropReserved(f, `fields.optional.${f}`)
   );
   const valuesSource = fieldsRaw.values;
   const values = {};
@@ -6213,7 +6215,7 @@ function parseConventionDoc(doc2) {
       });
     } else {
       for (const [field, allowed] of Object.entries(valuesSource)) {
-        if (dropReserved(field)) continue;
+        if (dropReserved(field, `fields.values.${field}`)) continue;
         values[field] = toStringArrayLenient(allowed, `fields.values.${field}`, doc2.id, warnings);
       }
     }
@@ -6229,6 +6231,40 @@ function parseConventionDoc(doc2) {
       });
     }
   }
+  const descriptionsSource = fieldsRaw.descriptions;
+  const descriptions = {};
+  if (descriptionsSource !== void 0) {
+    if (!isPlainObject2(descriptionsSource)) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc2.id}' has a non-map 'fields.descriptions' (${describeShape(descriptionsSource)}; expected a map of field name -> non-empty description); ignoring it.`,
+        field: "fields.descriptions",
+        severity: "warning"
+      });
+    } else {
+      for (const [field, rawDescription] of Object.entries(descriptionsSource)) {
+        if (dropReserved(field, `fields.descriptions.${field}`)) continue;
+        if (typeof rawDescription !== "string" || rawDescription.trim() === "") {
+          warnings.push({
+            code: "KIND_CONVENTION_BAD_MEMBER",
+            message: `kind convention '${doc2.id}' has a malformed 'fields.descriptions.${field}' (${describeShape(rawDescription)}; expected a non-empty string); skipping it.`,
+            field: `fields.descriptions.${field}`,
+            severity: "warning"
+          });
+          continue;
+        }
+        descriptions[field] = rawDescription.trim();
+        if (!declaredFieldNames.has(field)) {
+          warnings.push({
+            code: "KIND_CONVENTION_UNDECLARED_DESCRIPTION_FIELD",
+            message: `kind convention '${doc2.id}' declares 'fields.descriptions.${field}' but '${field}' is not in fields.required or fields.optional.`,
+            field: `fields.descriptions.${field}`,
+            severity: "warning"
+          });
+        }
+      }
+    }
+  }
   const terminalSource = fieldsRaw.terminal;
   const terminal = {};
   if (terminalSource !== void 0) {
@@ -6241,7 +6277,7 @@ function parseConventionDoc(doc2) {
       });
     } else {
       for (const [field, terminalValues] of Object.entries(terminalSource)) {
-        if (dropReserved(field)) continue;
+        if (dropReserved(field, `fields.terminal.${field}`)) continue;
         terminal[field] = toStringArrayLenient(terminalValues, `fields.terminal.${field}`, doc2.id, warnings);
       }
     }
@@ -6326,15 +6362,40 @@ function parseConventionDoc(doc2) {
   }
   const sections = Array.isArray(fm.sections) ? fm.sections.filter((s) => typeof s === "string" && s.trim() !== "") : void 0;
   const title = typeof fm.title === "string" && fm.title.trim() !== "" ? fm.title.trim() : governs;
+  let description;
+  if (fm.description !== void 0) {
+    if (typeof fm.description === "string" && fm.description.trim() !== "") {
+      description = fm.description.trim();
+    } else {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc2.id}' has an invalid 'description' (${describeShape(fm.description)}; expected a non-empty string); ignoring it.`,
+        field: "description",
+        severity: "warning"
+      });
+    }
+  }
   const path14 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
   const freshnessHorizon = typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== "" ? fm.freshness_horizon.trim() : void 0;
-  const kind2 = { id: doc2.id, title, governs, fields: { required, optional, values, terminal } };
+  const kind2 = {
+    id: doc2.id,
+    title,
+    governs,
+    fields: { required, optional, values, terminal, descriptions }
+  };
+  if (description !== void 0) kind2.description = description;
   if (path14 !== void 0) kind2.path = path14;
   if (links !== void 0) kind2.links = links;
   if (expectsInbound !== void 0) kind2.expectsInbound = expectsInbound;
   if (sections && sections.length > 0) kind2.sections = sections;
   if (freshnessHorizon !== void 0) kind2.freshnessHorizon = freshnessHorizon;
-  return { ok: true, kind: kind2, reservedFieldsIgnored: [...reservedFieldsIgnored].sort(), warnings };
+  return {
+    ok: true,
+    kind: kind2,
+    reservedFieldsIgnored: [...reservedFieldsIgnored].sort(),
+    reservedFieldPaths: [...reservedFieldPaths].sort(),
+    warnings
+  };
 }
 var HORIZON_RE = /^(\d+)(m|h|d)$/;
 var HORIZON_UNIT_MS = { m: 6e4, h: 36e5, d: 864e5 };
@@ -6420,7 +6481,14 @@ function kindConventionDoc(kind2, prose, timestamp) {
   const fields = { required: kind2.fields.required, optional: kind2.fields.optional };
   if (Object.keys(kind2.fields.values).length > 0) fields.values = kind2.fields.values;
   if (Object.keys(kind2.fields.terminal).length > 0) fields.terminal = kind2.fields.terminal;
+  const descriptions = Object.fromEntries(
+    Object.entries(kind2.fields.descriptions).filter((entry) => typeof entry[1] === "string" && entry[1].trim() !== "").map(([field, description]) => [field, description.trim()])
+  );
+  if (Object.keys(descriptions).length > 0) fields.descriptions = descriptions;
   const frontmatter = { type: CONVENTION_TYPE, title: kind2.title, governs: kind2.governs, timestamp };
+  if (typeof kind2.description === "string" && kind2.description.trim() !== "") {
+    frontmatter.description = kind2.description.trim();
+  }
   if (kind2.path !== void 0) frontmatter.path = kind2.path;
   if (kind2.links && Object.keys(kind2.links).length > 0) frontmatter.links = kind2.links;
   if (kind2.expectsInbound && Object.keys(kind2.expectsInbound).length > 0) {
@@ -6455,13 +6523,13 @@ async function loadKinds(bundle) {
       });
       continue;
     }
-    const { kind: kind2, reservedFieldsIgnored } = parsed;
+    const { kind: kind2, reservedFieldsIgnored, reservedFieldPaths } = parsed;
     warnings.push(...parsed.warnings);
     if (reservedFieldsIgnored.length > 0) {
       warnings.push({
         code: "KIND_RESERVED_FIELD",
         message: `kind convention '${doc2.id}' declares reserved field name(s) ${reservedFieldsIgnored.join(", ")} (reserved by the CLI: type/dir/remote/json/help); ignoring them.`,
-        field: reservedFieldsIgnored.join(","),
+        field: reservedFieldPaths.join(","),
         severity: "warning"
       });
     }
@@ -7051,11 +7119,17 @@ var CONTEXT_NOTE_KIND = {
   title: CONTEXT_NOTE_TYPE,
   governs: CONTEXT_NOTE_TYPE,
   path: "context-notes/",
-  fields: { required: ["title", "timestamp"], optional: ["description", "tags"], values: {}, terminal: {} },
+  fields: {
+    required: ["title", "timestamp"],
+    optional: ["description", "tags"],
+    values: {},
+    terminal: {},
+    descriptions: {}
+  },
   sections: ["Summary"],
   freshnessHorizon: "24h"
 };
-var CONTEXT_NOTE_SEED_BODY = '# Context Note\n\nAn agent\'s cross-session orientation note: what happened, what was decided, and what\'s still open. Create one with `new "Context Note" <id>` (scaffolds the `# Summary` section under `context-notes/`), read it with `doc read`, and edit it with `doc update` / `doc write`. `status` surfaces this kind\'s 24h freshness horizon across the bundle.\n\n## Declaring a kind convention\n\nA kind convention is a plain OKF doc (`type: Convention`) living under `conventions/`. Its FRONTMATTER is the only part core parses (this prose is not). Supported frontmatter keys:\n\n- `governs` (required, non-empty) \u2014 the `type` value this convention governs.\n- `title` (optional) \u2014 display title; defaults to `governs`.\n- `path` (optional) \u2014 canonical bundle-relative path prefix instances are scaffolded under (e.g. `roadmap/`).\n- `fields.required` \u2014 list of field names an instance MUST carry (non-empty).\n- `fields.optional` \u2014 list of field names an instance MAY carry.\n- `fields.values` \u2014 a MAP of `field name -> list of allowed values`. This is the ONLY place an enum constraint goes \u2014 never a top-level `enum:`/`enums:`/`values:`/`constraints:` key, and never a field named directly at the top level either.\n- `sections` \u2014 list of expected level-1 (`# Heading`) body-section names. Declare only the headings EVERY instance must carry (this Context Note kind declares just `Summary`, the one section `new "Context Note"` scaffolds and every instance carries).\n- `freshness_horizon` \u2014 `<n>(m|h|d)`, e.g. `24h`, `30d`, `15m`.\n\nWorked example (a `Roadmap Item` kind, with an enum-restricted field and expected sections):\n\n```yaml\n---\ntype: Convention\ntitle: Roadmap Item\ngoverns: Roadmap Item\npath: roadmap/\nfields:\n  required: [title, status]\n  optional: [horizon]\n  values:\n    status: [planned, active, done]\nsections: [Why, "Done when"]\nfreshness_horizon: 30d\n---\n```\n';
+var CONTEXT_NOTE_SEED_BODY = '# Context Note\n\nAn agent\'s cross-session orientation note: what happened, what was decided, and what\'s still open. Create one with `new "Context Note" <id>` (scaffolds the `# Summary` section under `context-notes/`), read it with `doc read`, and edit it with `doc update` / `doc write`. `status` surfaces this kind\'s 24h freshness horizon across the bundle.\n\n## Declaring a kind convention\n\nA kind convention is a plain OKF doc (`type: Convention`) living under `conventions/`. Its FRONTMATTER is the only part core parses (this prose is not). Supported frontmatter keys:\n\n- `governs` (required, non-empty) \u2014 the `type` value this convention governs.\n- `title` (optional) \u2014 display title; defaults to `governs`.\n- `description` (optional) \u2014 the kind\'s purpose and intended use.\n- `path` (optional) \u2014 canonical bundle-relative path prefix instances are scaffolded under (e.g. `roadmap/`).\n- `fields.required` \u2014 list of field names an instance MUST carry (non-empty).\n- `fields.optional` \u2014 list of field names an instance MAY carry.\n- `fields.descriptions` \u2014 a MAP of `field name -> human guidance` for declared fields.\n- `fields.values` \u2014 a MAP of `field name -> list of allowed values`. This is the ONLY place an enum constraint goes \u2014 never a top-level `enum:`/`enums:`/`values:`/`constraints:` key, and never a field named directly at the top level either.\n- `sections` \u2014 list of expected level-1 (`# Heading`) body-section names. Declare only the headings EVERY instance must carry (this Context Note kind declares just `Summary`, the one section `new "Context Note"` scaffolds and every instance carries).\n- `freshness_horizon` \u2014 `<n>(m|h|d)`, e.g. `24h`, `30d`, `15m`.\n\nWorked example (a `Roadmap Item` kind, with an enum-restricted field and expected sections):\n\n```yaml\n---\ntype: Convention\ntitle: Roadmap Item\ngoverns: Roadmap Item\ndescription: A durable line of work that groups related tasks.\npath: roadmap/\nfields:\n  required: [title, status]\n  optional: [horizon]\n  values:\n    status: [planned, active, done]\n  descriptions:\n    title: A concise summary of the outcome.\n    status: The roadmap item\'s current lifecycle state.\n    horizon: The expected delivery window.\nsections: [Why, "Done when"]\nfreshness_horizon: 30d\n---\n```\n';
 var CONTEXT_NOTES_SUMMARY = "Declares the built-in Context Note kind convention (title/timestamp required, 24h freshness horizon)";
 var RECIPE_DESC_BODY = "# Context Notes\n\nInstalls the `Context Note` kind convention: a lightweight cross-session orientation note \u2014 what happened, what was decided, what's still open. Declares the `Context Note` type's required fields, the `# Summary` scaffold section, and a 24h freshness horizon.\n\nApplied by default on `init` (opt out with `init --recipe none`), or on demand with `recipe add context-notes`.\n";
 var TASK_TYPE = "Task";
@@ -7063,6 +7137,7 @@ var TASK_KIND = {
   id: "conventions/task",
   title: TASK_TYPE,
   governs: TASK_TYPE,
+  description: "A concrete unit of work that can be claimed, prioritized, assigned, and completed.",
   path: "tasks/",
   // The typed-edge vocabulary (decisions/typed-links-carrier): a task's dependency edge is a
   // link whose display text is exactly "depends on", targeting another Task. Declared here so
@@ -7076,7 +7151,14 @@ var TASK_KIND = {
     // The terminal declaration (tasks/status-terminal-declaration.md): done/canceled are the
     // states past which a Task is no longer open — machinery (list --open, the status sweep's
     // exclusion + sort) ships together with the declaration for every new bundle.
-    terminal: { status: ["done", "canceled"] }
+    terminal: { status: ["done", "canceled"] },
+    descriptions: {
+      title: "A concise human-readable summary of the work.",
+      status: "The task's current lifecycle state.",
+      priority: "Relative urgency used to order the work; follow the bundle's adopted priority scale.",
+      assignee: "The person or agent currently responsible for the task.",
+      description: "The task's scope, context, acceptance criteria, and other working details."
+    }
   },
   freshnessHorizon: "30d"
 };
@@ -7095,7 +7177,7 @@ var ROADMAP_KIND = {
   links: { contains: ROADMAP_ITEM_TYPE },
   // No status field on the spine, so nothing to declare terminal (Brian's ruling on the
   // task board's `tasks/status-terminal-declaration.md`).
-  fields: { required: ["title"], optional: [], values: {}, terminal: {} }
+  fields: { required: ["title"], optional: [], values: {}, terminal: {}, descriptions: {} }
 };
 var ROADMAP_SEED_BODY = "# Roadmap\n\nThe spine document: a single top-level roadmap doc that CONTAINS the bundle's Roadmap\nItems via typed links carrying the text `contains` (`link add <roadmap> <item> --text\ncontains`), making the whole roadmap \u2192 item \u2192 task chain one filtered query per hop\n(`link show <id> --text contains`). Progress is DERIVED, never stored: list the\ncontained items and read their statuses.\n";
 var ROADMAP_ITEM_KIND = {
@@ -7110,7 +7192,8 @@ var ROADMAP_ITEM_KIND = {
     values: { status: ["queued", "active", "done"] },
     // Brian's ruling (task board `tasks/status-terminal-declaration.md`): a done Roadmap Item
     // hides from `list --open`, consistent with Task's done/canceled.
-    terminal: { status: ["done"] }
+    terminal: { status: ["done"] },
+    descriptions: {}
   }
 };
 var ROADMAP_ITEM_SEED_BODY = '# Roadmap Item\n\nA durable line of work spanning multiple tasks \u2014 the granular form of the single\nroadmap spine doc. An item CONTAINS its tasks via links carrying the text `contains`;\nbacklinks from a task answer "which item owns this". An item\'s progress is DERIVED,\nnever stored: list its contained tasks and read their statuses (the rollup). `status`\ntracks the item itself: `queued` (not started) \u2192 `active` (any contained task moving)\n\u2192 `done` (all contained tasks done or canceled).\n';
@@ -12921,10 +13004,18 @@ function kindIdPlaceholder(kind2, governs) {
   return `${prefix}<${slug}>`;
 }
 function renderKindHelp(kind2, registry, inv) {
-  const req = kind2.fields.required.filter((f) => f !== "actor" && f !== "link");
-  const opt = kind2.fields.optional.filter((f) => f !== "actor" && f !== "link");
-  const flags = (fields) => fields.length > 0 ? fields.map((f) => `--${f} <v>`).join("  ") : "(none)";
-  const enums = Object.entries(kind2.fields.values ?? {}).map(([f, vals]) => `  --${f} allowed:  ${vals.join(" | ")}`).join("\n");
+  const ordinary = (field) => field !== "actor" && field !== "link";
+  const req = [...new Set(kind2.fields.required.filter(ordinary))];
+  const required = new Set(req);
+  const opt = [...new Set(kind2.fields.optional.filter((field) => ordinary(field) && !required.has(field)))];
+  const fieldRows = [
+    ...req.map((field) => ({ field, requirement: "required" })),
+    ...opt.map((field) => ({ field, requirement: "optional" }))
+  ].map(({ field, requirement }) => {
+    const allowed = kind2.fields.values[field];
+    const description = kind2.fields.descriptions[field];
+    return `  --${field} <v>  ${requirement}` + (allowed && allowed.length > 0 ? `; allowed: ${allowed.join(" | ")}` : "") + (description ? ` \u2014 ${description}` : "");
+  });
   const sections = kind2.sections && kind2.sections.length > 0 ? kind2.sections.join(", ") : "(none)";
   const pathLine = kind2.path ? `Id:  auto-prefixed with '${kind2.path.replace(/\/+$/, "")}/' unless <id> already carries it` : "Id:  used as-is (this kind declares no path prefix)";
   const outboundLines = Object.entries(kind2.links ?? {}).map(
@@ -12937,10 +13028,9 @@ function renderKindHelp(kind2, registry, inv) {
 ` + [...outboundLines, ...inboundLines].join("\n") + "\n" : "";
   return `${inv} new "${kind2.governs}" <id> \u2014 create a ${kind2.governs} instance
 
-Fields (declared by the '${kind2.governs}' kind convention):
-  required:  ${flags(req)}
-  optional:  ${flags(opt)}
-` + (enums ? enums + "\n" : "") + `Body sections scaffolded:  ${sections}
+` + (kind2.description ? `Description:  ${kind2.description}
+` : "") + `Fields (declared by the '${kind2.governs}' kind convention):
+` + (fieldRows.length > 0 ? fieldRows.join("\n") + "\n" : "  (none)\n") + `Body sections scaffolded:  ${sections}
 ` + linksBlock + `${pathLine}
 
 Repeat a flag to set an array value (e.g. --tag a --tag b). Validation is STRICT.
@@ -13174,16 +13264,18 @@ Usage:
   agentstate-lite kinds [--dir <path>] [--remote <url>]
 
 A kind convention is a plain OKF doc (type: Convention) under conventions/ declaring a document
-kind's required/optional fields, allowed enum values, typed-link vocabulary, expected body
+kind's purpose, required/optional fields and their descriptions, allowed enum values, typed-link vocabulary, expected body
 sections, and an optional freshness horizon. See 'agentstate-lite new --help' to create an
 instance of a declared kind.
 
 Declaring a kind convention (frontmatter keys core reads \u2014 everything else is unread prose):
   governs              string   required \u2014 the 'type' value this convention governs
   title                string   optional \u2014 display title (defaults to governs)
+  description          string   optional \u2014 the kind's purpose and intended use
   path                 string   optional \u2014 bundle-relative path prefix for instances
   fields.required      list     field names an instance MUST carry
   fields.optional      list     field names an instance MAY carry
+  fields.descriptions  map      field name -> human guidance for a declared field
   fields.values        map      field name -> list of allowed values \u2014 the ONLY place an enum
                                  constraint goes; never a top-level enum/enums/values/constraints key
   fields.terminal      map      field name -> subset of that field's values marking an instance
@@ -13225,6 +13317,8 @@ function toRow(kind2) {
     required: kind2.fields.required,
     optional: kind2.fields.optional
   };
+  if (kind2.description) row.description = kind2.description;
+  if (Object.keys(kind2.fields.descriptions).length > 0) row.descriptions = kind2.fields.descriptions;
   if (Object.keys(kind2.fields.values).length > 0) row.values = kind2.fields.values;
   if (Object.keys(kind2.fields.terminal).length > 0) row.terminal = kind2.fields.terminal;
   if (kind2.links && Object.keys(kind2.links).length > 0) row.links = kind2.links;
@@ -13410,6 +13504,8 @@ async function kind(argv, deps = {}) {
       const required = toStringList(fieldsObj.required);
       const optional = toStringList(fieldsObj.optional);
       const valuesMap = fieldsObj.values && typeof fieldsObj.values === "object" && !Array.isArray(fieldsObj.values) ? { ...fieldsObj.values } : {};
+      const descriptionsMap = fieldsObj.descriptions && typeof fieldsObj.descriptions === "object" && !Array.isArray(fieldsObj.descriptions) ? { ...fieldsObj.descriptions } : void 0;
+      let descriptionDeleted = false;
       if (action === "add") {
         const targetList = values.required ? required : optional;
         const otherList = values.required ? optional : required;
@@ -13428,6 +13524,10 @@ async function kind(argv, deps = {}) {
           if (idx >= 0) list2.splice(idx, 1);
         }
         if (fieldName in valuesMap) delete valuesMap[fieldName];
+        if (descriptionsMap && fieldName in descriptionsMap) {
+          delete descriptionsMap[fieldName];
+          descriptionDeleted = true;
+        }
       }
       computedRequired = required;
       computedOptional = optional;
@@ -13439,6 +13539,10 @@ async function kind(argv, deps = {}) {
       else delete newFields.optional;
       if (Object.keys(valuesMap).length > 0) newFields.values = valuesMap;
       else delete newFields.values;
+      if (descriptionsMap && descriptionDeleted) {
+        if (Object.keys(descriptionsMap).length > 0) newFields.descriptions = descriptionsMap;
+        else delete newFields.descriptions;
+      }
       const newFm = { ...fm };
       if (Object.keys(newFields).length > 0) newFm.fields = newFields;
       else delete newFm.fields;
@@ -16609,7 +16713,7 @@ var COMMAND_GROUPS = [
       },
       {
         usage: "kinds [--remote <url>]",
-        summary: "List the kind conventions this bundle declares (required/optional fields, typed-link vocabulary, horizon)"
+        summary: "List the kind conventions this bundle declares (purpose, described fields, typed-link vocabulary, horizon)"
       },
       {
         usage: 'kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]',

@@ -98,7 +98,7 @@ the rest of the line unchanged.
 - `"$ASLITE" new "<Kind>" <id> --<field> <value> [...] [--link "<type>=<target-id>" ...] [--no-prefix] [--actor <n>] [--remote <url>]`
   — Create a new instance of a bundle-declared kind — e.g. new "Context Note" <id> for a note (validates strictly); repeatable --link wires typed cross-links in the same step
 - `"$ASLITE" kinds [--remote <url>]`
-  — List the kind conventions this bundle declares (required/optional fields, typed-link vocabulary, horizon)
+  — List the kind conventions this bundle declares (purpose, described fields, typed-link vocabulary, horizon)
 - `"$ASLITE" kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]`
   — Edit a kind's schema — add/remove a declared field or enum value on its convention (idempotent)
 - `"$ASLITE" recipes [--remote <url>]`
