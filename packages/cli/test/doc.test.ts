@@ -46,7 +46,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -2330,6 +2330,358 @@ test("doc read --field over --remote: parity with the identical field read local
   }
 });
 
+// ── doc read --body-out: composable body-only edit channel ─────────────────────────────────────
+
+test("doc read --body-out writes ONLY parsed body bytes and returns the version from that read", async () => {
+  const { dir, cleanup } = await makeBundle();
+  const outDir = await tempDir();
+  try {
+    await writeDoc(
+      { root: dir },
+      {
+        id: "concepts/a",
+        frontmatter: { type: "Concept", title: "A", tags: ["keep"], timestamp: T },
+        body: "# Body\n\nSee [B](b.md).\n",
+      },
+    );
+    const expected = await readDocVersioned({ root: dir }, "concepts/a");
+    const target = path.join(outDir, "body.md");
+    const result = await runDoc(["read", "concepts/a", "--body-out", target, "--dir", dir]);
+    const bytes = await readFile(target);
+
+    assert.equal(bytes.toString("utf8"), expected.doc.body);
+    assert.doesNotMatch(bytes.toString("utf8"), /---|type: Concept|title: A/);
+    assert.equal(result.doc, "read");
+    assert.equal(result.id, "concepts/a");
+    assert.equal(result.body_out, target);
+    assert.equal(result.size_bytes, bytes.byteLength);
+    assert.equal(result.content_type, "text/markdown; charset=utf-8");
+    assert.equal(result.version, expected.version);
+  } finally {
+    await cleanup();
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("doc read --body-out literal receipt workflow updates body with CAS while preserving frontmatter and links", async () => {
+  const { dir, cleanup } = await makeBundle();
+  const outDir = await tempDir();
+  try {
+    await writeDoc(
+      { root: dir },
+      {
+        id: "concepts/a",
+        frontmatter: { type: "Concept", title: "Keep title", tags: ["keep"], custom: "keep", timestamp: T },
+        body: "See [B](b.md).\n",
+      },
+    );
+    const target = path.join(outDir, "body.md");
+    const receipt = await runDoc(["read", "concepts/a", "--body-out", target, "--dir", dir]);
+    await writeFile(target, `${await readFile(target, "utf8")}\nAdded safely.\n`);
+    const updated = await runDoc([
+      "update",
+      "concepts/a",
+      "--body-file",
+      target,
+      "--expected-version",
+      receipt.version as string,
+      "--dir",
+      dir,
+    ]);
+
+    assert.equal(updated.changed, true);
+    const after = await readDoc({ root: dir }, "concepts/a");
+    assert.equal(after.frontmatter.type, "Concept");
+    assert.equal(after.frontmatter.title, "Keep title");
+    assert.deepEqual(after.frontmatter.tags, ["keep"]);
+    assert.equal((after.frontmatter as Record<string, unknown>).custom, "keep");
+    assert.match(after.body, /\[B\]\(b\.md\)/);
+    assert.match(after.body, /Added safely\./);
+    const raw = await readFile(path.join(dir, "concepts", "a.md"), "utf8");
+    assert.equal((raw.match(/^---$/gm) ?? []).length, 2, "frontmatter remains one YAML block, never nested into the body");
+  } finally {
+    await cleanup();
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("doc read --body-out receipt version rejects a stale edit after a concurrent write", async () => {
+  const { dir, cleanup } = await makeBundle();
+  const outDir = await tempDir();
+  try {
+    await writeDoc({ root: dir }, { id: "concepts/a", frontmatter: { type: "Concept", timestamp: T }, body: "v1\n" });
+    const target = path.join(outDir, "body.md");
+    const receipt = await runDoc(["read", "concepts/a", "--body-out", target, "--dir", dir]);
+    await writeDoc({ root: dir }, { id: "concepts/a", frontmatter: { type: "Concept", timestamp: T }, body: "concurrent\n" });
+    await writeFile(target, "stale edit\n");
+
+    await assert.rejects(
+      () =>
+        doc(
+          [
+            "update",
+            "concepts/a",
+            "--body-file",
+            target,
+            "--expected-version",
+            receipt.version as string,
+            "--dir",
+            dir,
+            "--json",
+          ],
+          { readStdin: async () => undefined },
+        ),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "STALE_HEAD");
+        assert.equal(err.exitCode, 5);
+        return true;
+      },
+    );
+    assert.match((await readDoc({ root: dir }, "concepts/a")).body, /concurrent/);
+  } finally {
+    await cleanup();
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("doc read --body-out - keeps stdout body-only and has local/remote parity", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc(
+      { root: dir },
+      { id: "concepts/a", frontmatter: { type: "Concept", title: "never stdout", timestamp: T }, body: "Body only.\n" },
+    );
+    const server = await bootServerOverBundle({ root: dir });
+    try {
+      const capture = async (location: string[]): Promise<{ body: Buffer; receipt: Record<string, unknown> }> => {
+        const chunks: Uint8Array[] = [];
+        let stderrOut = "";
+        let textStdout = "";
+        await doc(["read", "concepts/a", "--body-out", "-", ...location, "--json"], {
+          stdout: (s) => (textStdout += s),
+          stderr: (s) => (stderrOut += s),
+          writeStdoutBytes: (bytes) => chunks.push(bytes),
+        });
+        assert.equal(textStdout, "");
+        return { body: Buffer.concat(chunks), receipt: JSON.parse(stderrOut) as Record<string, unknown> };
+      };
+      const local = await capture(["--dir", dir]);
+      const remote = await capture(["--remote", server.url]);
+      assert.equal(local.body.toString("utf8"), (await readDoc({ root: dir }, "concepts/a")).body);
+      assert.deepEqual(remote.body, local.body);
+      assert.equal(remote.receipt.version, local.receipt.version);
+      assert.equal(remote.receipt.size_bytes, local.receipt.size_bytes);
+      assert.equal(remote.receipt.body_out, "-");
+    } finally {
+      await server.close();
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc read --body-out - emits missing and malformed errors ONLY on stderr", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await mkdir(path.join(dir, "concepts"), { recursive: true });
+    await writeFile(path.join(dir, "concepts", "bad.md"), "---\ntype: [unclosed\n---\nbody\n");
+    for (const [id, code] of [["concepts/missing", "NOT_FOUND"], ["concepts/bad", "RUNTIME"]] as const) {
+      const byteChunks: Uint8Array[] = [];
+      let stdoutOut = "";
+      let stderrOut = "";
+      await assert.rejects(
+        () =>
+          doc(["read", id, "--body-out", "-", "--dir", dir, "--json"], {
+            stdout: (s) => (stdoutOut += s),
+            stderr: (s) => (stderrOut += s),
+            writeStdoutBytes: (bytes) => byteChunks.push(bytes),
+          }),
+        (err: unknown) => {
+          assert.ok(err instanceof CliError);
+          assert.equal(err.code, code);
+          assert.equal(err.handled, true);
+          return true;
+        },
+      );
+      assert.equal(stdoutOut, "");
+      assert.equal(Buffer.concat(byteChunks).byteLength, 0);
+      assert.match(stderrOut, new RegExp(`code: ${code}`));
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc read raw stdout boundary catches early parse/usage/open failures before any stdout emission (split and = forms)", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    const cases: Array<{ argv: string[]; code: string }> = [
+      { argv: ["read", "--body-out", "-", "--dir", dir, "--json"], code: "USAGE" }, // missing id
+      { argv: ["read", "concepts/a", "--body-out=-", "--unknown", "--dir", dir], code: "USAGE" },
+      { argv: ["read", "concepts/a", "--body-out", " - ", "--unknown", "--dir", dir], code: "USAGE" },
+      { argv: ["read", "concepts/a", "--body-out= - ", "--unknown", "--dir", dir], code: "USAGE" },
+      { argv: ["read", "concepts/a", "--body-out", "-", "--body-out", "", "--dir", dir], code: "USAGE" },
+      { argv: ["read", "concepts/a", "--body-out", "-", "--field", "title", "--dir", dir], code: "USAGE" },
+      { argv: ["read", "concepts/a", "--body-out=-", "--dir", path.join(dir, "absent")], code: "NOT_FOUND" },
+      { argv: ["read", "concepts/a", "--out=-", "--unknown", "--dir", dir], code: "USAGE" },
+      { argv: ["read", "concepts/a", "--out", " - ", "--unknown", "--dir", dir], code: "USAGE" },
+      { argv: ["read", "concepts/a", "--out= - ", "--unknown", "--dir", dir], code: "USAGE" },
+    ];
+    for (const { argv, code } of cases) {
+      const chunks: Uint8Array[] = [];
+      let stdoutOut = "";
+      let stderrOut = "";
+      await assert.rejects(
+        () =>
+          doc(argv, {
+            stdout: (s) => (stdoutOut += s),
+            stderr: (s) => (stderrOut += s),
+            writeStdoutBytes: (bytes) => chunks.push(bytes),
+            autoPull: async () => undefined,
+          }),
+        (err: unknown) => {
+          assert.ok(err instanceof CliError);
+          assert.equal(err.code, code);
+          assert.equal(err.handled, true);
+          return true;
+        },
+      );
+      assert.equal(stdoutOut, "");
+      assert.equal(Buffer.concat(chunks).byteLength, 0);
+      assert.equal((stderrOut.match(new RegExp(`code: ${code}`, "g")) ?? []).length, 1);
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc read raw stdout boundary catches an auto-pull failure before bundle opening", async () => {
+  let stdoutOut = "";
+  let stderrOut = "";
+  const chunks: Uint8Array[] = [];
+  await assert.rejects(
+    () =>
+      doc(["read", "concepts/a", "--body-out", "-", "--dir", "/does/not/matter"], {
+        stdout: (s) => (stdoutOut += s),
+        stderr: (s) => (stderrOut += s),
+        writeStdoutBytes: (bytes) => chunks.push(bytes),
+        autoPull: async () => {
+          throw new Error("pull exploded");
+        },
+      }),
+    (err: unknown) => err instanceof CliError && err.code === "RUNTIME" && err.handled,
+  );
+  assert.equal(stdoutOut, "");
+  assert.equal(Buffer.concat(chunks).byteLength, 0);
+  assert.equal((stderrOut.match(/code: RUNTIME/g) ?? []).length, 1);
+  assert.match(stderrOut, /pull exploded/);
+});
+
+test("doc read --body-out validates blank and mutually-exclusive channels as USAGE", async () => {
+  for (const args of [
+    ["--body-out", ""],
+    ["--body-out", "body.md", "--out", "whole.md"],
+    ["--body-out", "body.md", "--field", "title"],
+  ]) {
+    await assert.rejects(
+      () => doc(["read", "concepts/a", ...args, "--dir", "/does/not/matter", "--json"], {}),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        return true;
+      },
+    );
+  }
+});
+
+test("doc read --body-out - accepts an exactly empty parsed body as zero stdout bytes", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await mkdir(path.join(dir, "concepts"), { recursive: true });
+    await writeFile(path.join(dir, "concepts", "empty.md"), "---\ntype: Concept\ntimestamp: 2026-07-01T00:00:00.000Z\n---");
+    const chunks: Uint8Array[] = [];
+    let stderrOut = "";
+    await doc(["read", "concepts/empty", "--body-out", "-", "--dir", dir, "--json"], {
+      writeStdoutBytes: (bytes) => chunks.push(bytes),
+      stderr: (s) => (stderrOut += s),
+    });
+    assert.equal(Buffer.concat(chunks).byteLength, 0);
+    const receipt = JSON.parse(stderrOut) as Record<string, unknown>;
+    assert.equal(receipt.size_bytes, 0);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc read --body-out refuses a generic in-bundle .md target before writing", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc({ root: dir }, { id: "concepts/a", frontmatter: { type: "Concept", timestamp: T }, body: "Body.\n" });
+    const target = path.join(dir, "body-copy.md");
+    await assert.rejects(
+      () => doc(["read", "concepts/a", "--body-out", target, "--dir", dir, "--json"], {}),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /\.md path INSIDE this bundle/);
+        assert.match(err.message, /no OKF frontmatter/);
+        return true;
+      },
+    );
+    await assert.rejects(() => readFile(target), (err: NodeJS.ErrnoException) => err.code === "ENOENT");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc read --body-out uses paired lexical/effective path facts across symlinks without false positives", async () => {
+  const { dir, cleanup } = await makeBundle();
+  const outDir = await tempDir();
+  try {
+    await writeDoc(
+      { root: dir },
+      { id: "concepts/a", frontmatter: { type: "Concept", title: "Must survive", timestamp: T }, body: "Body.\n" },
+    );
+    const source = path.join(dir, "concepts", "a.md");
+    const before = await readFile(source);
+    await assert.rejects(
+      () => doc(["read", "concepts/a", "--body-out", source, "--dir", dir, "--json"], {}),
+      (err: unknown) => err instanceof CliError && err.code === "USAGE",
+    );
+    const alias = path.join(outDir, "source-alias.md");
+    await symlink(source, alias);
+    await assert.rejects(
+      () => doc(["read", "concepts/a", "--body-out", alias, "--dir", dir, "--json"], {}),
+      (err: unknown) => err instanceof CliError && err.code === "USAGE",
+      "an outside-looking symlink must not bypass the in-bundle clobber refusal",
+    );
+    const extensionlessAlias = path.join(outDir, "source-alias");
+    await symlink(source, extensionlessAlias);
+    await assert.rejects(
+      () => doc(["read", "concepts/a", "--body-out", extensionlessAlias, "--dir", dir, "--json"], {}),
+      (err: unknown) => err instanceof CliError && err.code === "USAGE",
+      "the effective in-bundle .md target controls even when the external symlink has no extension",
+    );
+    assert.deepEqual(await readFile(source), before);
+
+    // The inverse pairing must NOT over-fire: the lexical path is external (despite ending .md),
+    // while the effective in-bundle target is an inert .txt file. Neither unsafe pair is true.
+    const scratch = path.join(dir, "scratch.txt");
+    await writeFile(scratch, "old scratch");
+    const inertAlias = path.join(outDir, "scratch-alias.md");
+    await symlink(scratch, inertAlias);
+    const allowed = await runDoc(["read", "concepts/a", "--body-out", inertAlias, "--dir", dir]);
+    assert.equal(allowed.body_out, inertAlias);
+    assert.equal(await readFile(scratch, "utf8"), (await readDoc({ root: dir }, "concepts/a")).body);
+    assert.deepEqual(await readFile(source), before, "the source doc remains unchanged after the allowed inert write");
+  } finally {
+    await cleanup();
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
 // ── F3: doc read --out bundle-pollution warning ─────────────────────────────────────────────────
 
 test("doc read F3: --out resolving INSIDE the open bundle carries a loud `warning` field on the receipt (write still proceeds)", async () => {
@@ -2654,6 +3006,8 @@ test("each doc verb's --help is focused on THAT verb, not the whole family manua
 
   const readHelp = await capture(["read", "--help"]);
   assert.match(readHelp, /doc read —/);
+  assert.match(readHelp, /--body-out/);
+  assert.match(readHelp, /--body-file \.\/body\.md \\\n\s+--expected-version <version>/, "read help teaches the literal body-only CAS edit cycle");
   assert.doesNotMatch(readHelp, /--blank-body/, "read help does not leak write-only flags");
   assert.doesNotMatch(readHelp, /doc delete —/);
 
@@ -2665,5 +3019,6 @@ test("each doc verb's --help is focused on THAT verb, not the whole family manua
   const familyHelp = await capture(["--help"]);
   assert.match(familyHelp, /doc write/);
   assert.match(familyHelp, /doc read/);
+  assert.match(familyHelp, /--body-out/);
   assert.match(familyHelp, /doc <verb> --help/);
 });

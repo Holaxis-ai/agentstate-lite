@@ -316,6 +316,13 @@ function renderNotesSection(extraBullets: string[] = []): string[] {
     "- `doc read <id>` truncates a large body and points at `doc read <id> --out <file>`, which streams",
   );
   lines.push("  the raw markdown bytes to disk without loading them into the model context window.");
+  lines.push(
+    "- To revise body prose without parsing YAML, run `doc read <id> --body-out <file> --json`; edit the",
+  );
+  lines.push(
+    "  file, then pass it to `doc update <id> --body-file <file> --expected-version <receipt-version>`.",
+  );
+  lines.push("  The body-out receipt's version comes from the same read, so this is a safe CAS edit cycle.");
   lines.push("- Mutations are idempotent: re-writing a doc or re-adding an existing link is a no-op (exit 0).");
   lines.push(
     "- `new` and `doc update` accept a kind's declared fields as `--<field> <value>` (e.g. `--status done`);",

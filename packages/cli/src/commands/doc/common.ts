@@ -24,7 +24,7 @@ export const DOC_USAGE = `agentstate-lite doc — write, patch, read, or delete 
 Usage:
   agentstate-lite doc write   <id> --type <t> [options]        Create/overwrite a concept doc
   agentstate-lite doc update  <id> [options]                   Patch given fields of an existing doc
-  agentstate-lite doc read    <id> [--out (<path> | -)]        Read a doc (or pull its raw bytes)
+  agentstate-lite doc read    <id> [--out <p> | --body-out <p>] Read a doc (raw/body byte channels)
   agentstate-lite doc history <id>                             Show a doc's attributed version chain
   agentstate-lite doc delete  <id> [--expected-version <v>]    Hard-delete a doc (idempotent)
 
@@ -136,9 +136,9 @@ Examples:
 export const DOC_READ_USAGE = `agentstate-lite doc read — read a concept document (or pull its raw markdown bytes)
 
 Usage:
-  agentstate-lite doc read <id> [--out (<path> | -)] [options]
+  agentstate-lite doc read <id> [--out (<path> | -) | --body-out (<path> | -)] [options]
 
-The default (no --out) render shows EVERY frontmatter field — the standard keys plus any
+The default (no --out/--body-out) render shows EVERY frontmatter field — the standard keys plus any
 kind-declared fields like status/priority — and truncates a large body (pointing at --out).
 
 Options:
@@ -152,6 +152,17 @@ Options:
                        filename (index.md/log.md) will instead CLOBBER that file outright; any
                        other (non-.md) path is inert (no warning) — the write still proceeds in
                        every case; not applicable to --out - or to --remote.
+  --body-out <path>    Write ONLY the parsed markdown body (no YAML frontmatter) as UTF-8. The
+                       receipt includes the version from the SAME read, so the safe edit cycle is:
+                         agentstate-lite doc read <id> --body-out ./body.md --json
+                         # edit ./body.md; copy the receipt's version
+                         agentstate-lite doc update <id> --body-file ./body.md \\
+                           --expected-version <version>
+                       Use --body-out - to stream body bytes to stdout (receipt/errors go to stderr).
+                       An empty body is a valid zero-byte result. A .md target inside a local bundle
+                       is refused: body-only markdown has no OKF frontmatter and would corrupt or
+                       clobber bundle content. Choose a path outside the bundle (an in-bundle non-.md
+                       target is inert and remains allowed).
   --field <name>       Print ONE frontmatter field's raw value to stdout, newline-terminated, no
                        TOON envelope and no other output — for scripting, e.g. capturing
                        head_version for a follow-up --expected-version write. A scalar prints
@@ -159,13 +170,14 @@ Options:
                        head_version work too (head_version is the store's CAS token, not
                        frontmatter). An absent field, or a missing doc, reports the error to
                        STDERR instead (stdout stays reserved for the raw value); an absent field's
-                       error lists the fields that DO exist. Mutually exclusive with --out (both
-                       reserve stdout).
+                       error lists the fields that DO exist. Mutually exclusive with --out and
+                       --body-out.
 ${COMMON_OPTIONS}
 
 Examples:
   agentstate-lite doc read concepts/auth
   agentstate-lite doc read concepts/auth --out ./auth.md
+  agentstate-lite doc read concepts/auth --body-out ./auth-body.md
   agentstate-lite doc read concepts/auth --field head_version
 `;
 
