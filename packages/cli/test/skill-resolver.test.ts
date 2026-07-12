@@ -6,6 +6,10 @@
  * silently broken on one of its three declared hosts. There were no tests for either resolver at
  * all before this file.
  *
+ * A second round found the same class of bug one level up: both hosts support RELOCATING their
+ * home (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`), and the resolvers hardcoded `$HOME/.<host>` — a
+ * relocated install resolved NOT_FOUND. See the "relocated host homes" tests below.
+ *
  * These tests run the REAL emitted bash — extracted verbatim from `renderSkill()`'s output via
  * {@link extractBashBlock}, never a re-implementation of the resolver logic — against a fake `$HOME`
  * tree via `bash -c` with `HOME` set to it, so a future change to the resolver prose is pinned by
@@ -14,7 +18,8 @@
  *
  * Host coverage mirrors `SKILL_HOST_ROOTS` (the single source both resolvers derive their globs
  * from, see skill-render.ts): Claude Code direct + marketplace-cache, Codex direct +
- * marketplace-cache. OpenCode is intentionally absent — see that constant's doc comment for why.
+ * marketplace-cache, each honoring its relocation variable. OpenCode is intentionally absent — see
+ * that constant's doc comment for why.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -45,10 +50,10 @@ const REFS_BLOCK = extractBashBlock(rendered, 'REFS="$(ls -d');
 // deliberate edit to this list, not just to skill-render.ts.
 test("SKILL_HOST_ROOTS covers exactly the intended hosts (pinned by literal, not derived from itself)", () => {
   assert.deepEqual(SKILL_HOST_ROOTS, [
-    '"$HOME"/.claude/skills/agentstate-lite',
-    '"$HOME"/.claude/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite',
-    '"$HOME"/.codex/skills/agentstate-lite',
-    '"$HOME"/.codex/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite',
+    '"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/skills/agentstate-lite',
+    '"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite',
+    '"${CODEX_HOME:-$HOME/.codex}"/skills/agentstate-lite',
+    '"${CODEX_HOME:-$HOME/.codex}"/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite',
   ]);
 });
 
@@ -58,9 +63,17 @@ test("SKILL_HOST_ROOTS covers exactly the intended hosts (pinned by literal, not
 const ASLITE_RESOLVE_ONLY = ASLITE_BLOCK.replace(/\n"\$ASLITE" --help\s*$/, "");
 assert.notEqual(ASLITE_RESOLVE_ONLY, ASLITE_BLOCK, "expected to find and strip the trailing \"$ASLITE\" --help line");
 
-/** Replace `"$HOME"` with a real directory and each glob `*` with a concrete fake segment. */
-function concretizeRoot(root: string, home: string): string {
-  let out = root.replace('"$HOME"', home);
+/**
+ * Concretize a SKILL_HOST_ROOTS entry into a real filesystem path under `home`, mirroring bash's
+ * own `${VAR:-$HOME/...}` fallback in plain JS: `envOverrides` supplies a relocated host home
+ * (CLAUDE_CONFIG_DIR / CODEX_HOME) exactly as the resolver itself would see it; absent an override,
+ * falls back to `home/.claude` or `home/.codex` — the default-host-home case the earlier per-host
+ * tests exercise. Each glob `*` becomes a concrete fake marketplace/version segment.
+ */
+function concretizeRoot(root: string, home: string, envOverrides: NodeJS.ProcessEnv = {}): string {
+  let out = root
+    .replace('"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"', envOverrides.CLAUDE_CONFIG_DIR ?? `${home}/.claude`)
+    .replace('"${CODEX_HOME:-$HOME/.codex}"', envOverrides.CODEX_HOME ?? `${home}/.codex`);
   const fakeSegments = ["some-marketplace", "1.0.39"];
   let i = 0;
   out = out.replace(/\*/g, () => fakeSegments[i++] ?? "x");
@@ -83,13 +96,17 @@ function fakeEnv(home: string): NodeJS.ProcessEnv {
   return { HOME: home, PATH: "/usr/bin:/bin" };
 }
 
-function withFakeHome<T>(fn: (home: string) => T): T {
-  const home = mkdtempSync(join(tmpdir(), "aslite-resolver-"));
+function withTempDir<T>(prefix: string, fn: (dir: string) => T): T {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
   try {
-    return fn(home);
+    return fn(dir);
   } finally {
-    rmSync(home, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true });
   }
+}
+
+function withFakeHome<T>(fn: (home: string) => T): T {
+  return withTempDir("aslite-resolver-home-", fn);
 }
 
 function runBash(script: string, env: NodeJS.ProcessEnv) {
@@ -179,8 +196,8 @@ test("$REFS resolver's failure guard fires loudly when nothing matches", () => {
 test("$ASLITE resolver selects the highest version when multiple are installed", () => {
   withFakeHome((home) => {
     const cacheRoot = SKILL_HOST_ROOTS.find((r) => r.includes("plugins/cache") && r.includes(".claude"))!;
-    const older = join(cacheRoot.replace('"$HOME"', home).replace("*", "some-marketplace").replace("*", "1.0.2"), "scripts", "agentstate-lite");
-    const newer = join(cacheRoot.replace('"$HOME"', home).replace("*", "some-marketplace").replace("*", "1.0.39"), "scripts", "agentstate-lite");
+    const older = join(cacheRoot.replace("*", "some-marketplace").replace("*", "1.0.2").replace('"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"', `${home}/.claude`), "scripts", "agentstate-lite");
+    const newer = join(cacheRoot.replace("*", "some-marketplace").replace("*", "1.0.39").replace('"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"', `${home}/.claude`), "scripts", "agentstate-lite");
     plantExecutable(older);
     plantExecutable(newer);
 
@@ -188,5 +205,73 @@ test("$ASLITE resolver selects the highest version when multiple are installed",
 
     assert.equal(result.status, 0, `stderr: ${result.stderr}`);
     assert.equal(result.stdout, newer);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Relocated host homes — CLAUDE_CONFIG_DIR / CODEX_HOME must be honored, not just $HOME/.<host>.
+// Reviewer repro: an empty $HOME + CODEX_HOME pointing at the real cache resolved NOT_FOUND before
+// this fix (SKILL_HOST_ROOTS hardcoded $HOME/.codex and $HOME/.claude). Verified these four tests
+// fail against the pre-fix $HOME-only SKILL_HOST_ROOTS (reverted it locally, reran, saw them fail;
+// restored, reran, saw them pass) — the exact "must fail without the fix" sanity check.
+// ---------------------------------------------------------------------------------------------
+
+test("$ASLITE resolver honors a relocated Codex home via CODEX_HOME (empty $HOME)", () => {
+  withFakeHome((home) => {
+    withTempDir("aslite-resolver-codex-home-", (codexHome) => {
+      const planted = join(codexHome, "skills", "agentstate-lite", "scripts", "agentstate-lite");
+      plantExecutable(planted);
+
+      const env = { HOME: home, CODEX_HOME: codexHome, PATH: "/usr/bin:/bin" };
+      const result = runBash(`${ASLITE_RESOLVE_ONLY}\nprintf '%s' "$ASLITE"`, env);
+
+      assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+      assert.equal(result.stdout, planted);
+    });
+  });
+});
+
+test("$ASLITE resolver honors a relocated Claude Code home via CLAUDE_CONFIG_DIR (empty $HOME)", () => {
+  withFakeHome((home) => {
+    withTempDir("aslite-resolver-claude-home-", (claudeHome) => {
+      const planted = join(claudeHome, "skills", "agentstate-lite", "scripts", "agentstate-lite");
+      plantExecutable(planted);
+
+      const env = { HOME: home, CLAUDE_CONFIG_DIR: claudeHome, PATH: "/usr/bin:/bin" };
+      const result = runBash(`${ASLITE_RESOLVE_ONLY}\nprintf '%s' "$ASLITE"`, env);
+
+      assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+      assert.equal(result.stdout, planted);
+    });
+  });
+});
+
+test("$REFS resolver honors a relocated Codex home via CODEX_HOME (empty $HOME)", () => {
+  withFakeHome((home) => {
+    withTempDir("aslite-resolver-codex-home-", (codexHome) => {
+      const planted = join(codexHome, "skills", "agentstate-lite", "references");
+      plantDir(planted);
+
+      const env = { HOME: home, CODEX_HOME: codexHome, PATH: "/usr/bin:/bin" };
+      const result = runBash(`${REFS_BLOCK}\nprintf '%s' "$REFS"`, env);
+
+      assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+      assert.equal(result.stdout, planted);
+    });
+  });
+});
+
+test("$REFS resolver honors a relocated Claude Code home via CLAUDE_CONFIG_DIR (empty $HOME)", () => {
+  withFakeHome((home) => {
+    withTempDir("aslite-resolver-claude-home-", (claudeHome) => {
+      const planted = join(claudeHome, "skills", "agentstate-lite", "references");
+      plantDir(planted);
+
+      const env = { HOME: home, CLAUDE_CONFIG_DIR: claudeHome, PATH: "/usr/bin:/bin" };
+      const result = runBash(`${REFS_BLOCK}\nprintf '%s' "$REFS"`, env);
+
+      assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+      assert.equal(result.stdout, planted);
+    });
   });
 });
