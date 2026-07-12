@@ -13,9 +13,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDoc, listAllHeads, ApiError } from "../api/client.js";
-import { mintPageNonce, fetchConfig, fetchKinds, fetchEdges, invalidateKinds } from "../api/pages.js";
+import { mintPageNonce, fetchConfig, fetchKinds, fetchEdges, invalidateKinds, resolvePageTarget } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
-import { handleBridgeRequest, changeMessage, resolveBridgeCapability, type BridgeDeps, type BridgeCapability } from "../pages/bridge.js";
+import { handleBridgeRequest, changeMessage, type BridgeDeps } from "../pages/bridge.js";
+import { parseRegisteredPage, type BridgeCapability } from "../pages/registry.js";
 import { navigate } from "../routing.js";
 import { setInterceptorStatus } from "../query/interceptor.js";
 
@@ -25,6 +26,7 @@ const bridgeDeps: BridgeDeps = {
   read: (docId) => getDoc(docId).then((r) => r.doc),
   kinds: fetchKinds,
   edges: fetchEdges,
+  resolvePage: resolvePageTarget,
 };
 
 export function PageFrame({ pageId }: { pageId: string }) {
@@ -92,18 +94,14 @@ export function PageFrame({ pageId }: { pageId: string }) {
 
     try {
       const { doc } = loaded;
-      const entry = typeof doc.frontmatter.entry === "string" ? doc.frontmatter.entry : "";
-      const pageTitle = typeof doc.frontmatter.title === "string" ? doc.frontmatter.title : pageId;
-      // Resolved from the SAME registry doc `entry` comes from, fail-closed — this is the
-      // enforcement gate's only input, and it is read here, never from the sandboxed page.
-      const capability = resolveBridgeCapability(doc.frontmatter.bridge);
-      if (!entry) throw new Error(`page '${pageId}' declares no 'entry' blob key`);
-      const url = await mintPageNonce(entry);
+      const registered = parseRegisteredPage(pageId, doc.frontmatter);
+      if (!registered) throw new Error(`page '${pageId}' is not a usable registered Page`);
+      const url = await mintPageNonce(registered.entry);
       if (seq !== loadSeqRef.current) return;
       subscribedRef.current = false;
-      bridgeCapabilityRef.current = capability;
-      setEntryKey(entry);
-      setTitle(pageTitle);
+      bridgeCapabilityRef.current = registered.bridge;
+      setEntryKey(registered.entry);
+      setTitle(registered.title);
       setError(null);
       setSrc(url);
     } catch (e) {
@@ -152,13 +150,23 @@ export function PageFrame({ pageId }: { pageId: string }) {
       const capability = bridgeCapabilityRef.current;
       void handleBridgeRequest(ev.data, bridgeDeps, capability).then((outcome) => {
         if (seq !== loadSeqRef.current) return; // frame reloaded/revoked since receipt — drop it
+        if (outcome.openPageId) {
+          if (outcome.openPageId === pageId) return;
+          // End this source generation before changing history. Concurrent outcomes captured
+          // under it then fail the fence above and cannot navigate a second time.
+          loadSeqRef.current++;
+          subscribedRef.current = false;
+          bridgeCapabilityRef.current = "none";
+          navigate({ view: "page", id: outcome.openPageId });
+          return;
+        }
         if (outcome.subscribed) subscribedRef.current = true;
         if (outcome.reply && frame.contentWindow) frame.contentWindow.postMessage(outcome.reply, "*");
       });
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, []);
+  }, [pageId]);
 
   // Live: push doc changes to the subscribed page; REVOKE when this page's registry doc is
   // removed (P1 — an open frame must not keep reading through the bridge after its page is

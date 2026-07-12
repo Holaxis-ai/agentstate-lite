@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { pageFromFrontmatter } from "./pages.js";
+import { describe, expect, it, vi } from "vitest";
+import { getDoc } from "./client.js";
+import { pageFromFrontmatter, resolvePageTarget } from "./pages.js";
 import type { Frontmatter } from "./types.js";
+
+vi.mock("./client.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./client.js")>();
+  return { ...actual, getDoc: vi.fn() };
+});
 
 describe("pageFromFrontmatter", () => {
   it("defaults 'bridge' to none when the field is absent", () => {
@@ -23,5 +29,26 @@ describe("pageFromFrontmatter", () => {
   it("still returns null when 'entry' is missing, regardless of 'bridge'", () => {
     const fm: Frontmatter = { type: "Page", title: "No entry", bridge: "bundle-read" };
     expect(pageFromFrontmatter("pages-registry/bad", "v1", fm)).toBeNull();
+  });
+
+  it("filters launcher entries through the complete registered-Page definition", () => {
+    const valid: Frontmatter = { type: "Page", title: "P", entry: "pages/p.html", bridge: "none" };
+    expect(pageFromFrontmatter("docs/p", "v1", valid)).toBeNull();
+    expect(pageFromFrontmatter("pages-registry/p", "v1", { ...valid, type: "Design" })).toBeNull();
+    expect(pageFromFrontmatter("pages-registry/p", "v1", { ...valid, entry: "other/p.html" })).toBeNull();
+  });
+});
+
+describe("resolvePageTarget", () => {
+  it("returns only a boolean from the same registered-Page authority", async () => {
+    vi.mocked(getDoc).mockResolvedValue({ doc: { id: "pages-registry/p", frontmatter: { type: "Page", entry: "pages/p.html", bridge: "none" }, body: "secret" }, version: "v1" });
+    expect(await resolvePageTarget("pages-registry/p")).toBe(true);
+    vi.mocked(getDoc).mockResolvedValue({ doc: { id: "pages-registry/p", frontmatter: { type: "Design", entry: "pages/p.html" }, body: "" }, version: "v2" });
+    expect(await resolvePageTarget("pages-registry/p")).toBe(false);
+  });
+
+  it("turns missing documents into a false target result", async () => {
+    vi.mocked(getDoc).mockRejectedValue(new Error("not found"));
+    expect(await resolvePageTarget("pages-registry/missing")).toBe(false);
   });
 });

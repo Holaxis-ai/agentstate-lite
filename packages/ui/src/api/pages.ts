@@ -9,10 +9,10 @@
  * A page's HTML never rides the model/query path: only its registry doc (frontmatter) is read
  * here; the bytes travel opaquely through the nonce route into the iframe.
  */
-import { listAllHeads, parseErrorEnvelope } from "./client.js";
+import { getDoc, listAllHeads, parseErrorEnvelope } from "./client.js";
 import type { Edge, EdgesResponse, Frontmatter } from "./types.js";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
-import { resolveBridgeCapability, type BridgeCapability } from "../pages/bridge.js";
+import { parseRegisteredPage, type BridgeCapability } from "../pages/registry.js";
 
 /** `/__ui/config` shape (server `configResponse`). */
 export interface UiConfig {
@@ -35,10 +35,6 @@ export interface PageEntry {
   bridge: BridgeCapability;
 }
 
-function str(v: unknown): string | undefined {
-  return typeof v === "string" && v.trim() ? v : undefined;
-}
-
 export async function fetchConfig(): Promise<UiConfig> {
   const res = await fetch("/__ui/config", { credentials: "same-origin" });
   if (!res.ok) throw await parseErrorEnvelope(res);
@@ -57,18 +53,28 @@ export async function listPages(): Promise<PageEntry[]> {
 
 /** Exported for the `bridge` fail-closed-default unit test (pages.test.ts) — not otherwise a public API. */
 export function pageFromFrontmatter(id: string, version: string, fm: Frontmatter): PageEntry | null {
-  const entry = str(fm.entry);
-  if (!entry) return null;
+  const page = parseRegisteredPage(id, fm);
+  if (!page) return null;
   return {
-    id,
+    id: page.id,
     version,
-    title: str(fm.title) ?? id,
-    entry,
-    description: str(fm.description),
-    actor: str(fm.actor),
-    timestamp: str(fm.timestamp),
-    bridge: resolveBridgeCapability(fm.bridge),
+    title: page.title,
+    entry: page.entry,
+    description: page.description,
+    actor: page.actor,
+    timestamp: page.timestamp,
+    bridge: page.bridge,
   };
+}
+
+/** Narrow navigation resolver: return only whether an id is a usable registered Page. */
+export async function resolvePageTarget(pageId: string): Promise<boolean> {
+  try {
+    const { doc } = await getDoc(pageId);
+    return parseRegisteredPage(doc.id, doc.frontmatter) !== null;
+  } catch {
+    return false;
+  }
 }
 
 /**

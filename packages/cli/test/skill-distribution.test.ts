@@ -90,6 +90,12 @@ test("every SKILL_REFERENCES.src exists on disk (from the repo root)", () => {
   }
 });
 
+test("the shipped Page examples include capability-independent navigation from a content Page", () => {
+  for (const dest of ["pages/about.html", "pages/pages-registry/about.md", "pages/BRIDGE.md"]) {
+    assert.ok(MANIFEST_DESTS.has(dest), `Page navigation reference missing from SKILL_REFERENCES: ${dest}`);
+  }
+});
+
 // ---------------------------------------------------------------------------------------------
 // (4)+(5) Render the skill-target SKILL.md in memory and check it against the manifest in BOTH
 // directions: every capability pattern fires and is backed (dead pattern = fail), every shipped

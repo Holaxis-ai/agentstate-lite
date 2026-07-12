@@ -30,13 +30,15 @@ export interface SkillReference {
 }
 
 export const SKILL_REFERENCES: SkillReference[] = [
-  // Bundle pages — the postMessage-bridge contract + two worked examples (gate 4, tasks/ui-pages-spike).
+  // Bundle pages — the postMessage-bridge contract + three worked examples (gate 4, tasks/ui-pages-spike).
   { src: "examples/pages/BRIDGE.md", dest: "pages/BRIDGE.md" },
   { src: "examples/pages/pulse.html", dest: "pages/pulse.html" },
   { src: "examples/pages/roadmap.html", dest: "pages/roadmap.html" },
+  { src: "examples/pages/about.html", dest: "pages/about.html" },
   { src: "examples/pages/conventions/page.md", dest: "pages/conventions/page.md" },
   { src: "examples/pages/pages-registry/pulse.md", dest: "pages/pages-registry/pulse.md" },
   { src: "examples/pages/pages-registry/roadmap.md", dest: "pages/pages-registry/roadmap.md" },
+  { src: "examples/pages/pages-registry/about.md", dest: "pages/pages-registry/about.md" },
 
   // Writing a custom recipe — a worked example (the Claim kind: event-lifecycle findings with
   // provenance), composed entirely from lite primitives.

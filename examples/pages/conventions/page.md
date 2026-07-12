@@ -35,9 +35,12 @@ the read-only postMessage bridge (BRIDGE.md, shipped alongside) — it never hol
   didn't govern (an external bundle, a hand-edited file that skipped the lint).
   - `bundle-read` — a **data page**: the shell answers its bridge requests (`hello`/`query`/
     `read`/`edges`/`subscribe`) with live bundle data. Groups under the launcher's "Dashboards".
-  - `none` — a **content page**: the shell DENIES every bridge request outright. Arbitrary
-    self-contained HTML with zero bundle access — a report, a rendered design doc, a diagram.
-    Groups under the launcher's "Documents".
+  - `none` — a **content page**: the shell DENIES every bundle-data request. Arbitrary
+    self-contained HTML with zero bundle-data access — a report, a rendered design doc, a diagram.
+    It may still ask the shell to open another registered Page. Groups under "Documents".
+
+Both capabilities may use `open-page` to navigate to another valid `pages-registry/…` Page. This
+shell action returns no target content or metadata and grants no bundle-data capability.
 
 Pages sync, version, and attribute like any doc; the HTML bytes travel as an opaque blob via
 `promote`/`pull`, never through the model context window.

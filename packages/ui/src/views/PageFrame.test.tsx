@@ -15,6 +15,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { PageFrame } from "./PageFrame.js";
 import { getDoc, listAllHeads } from "../api/client.js";
+import { mintPageNonce, resolvePageTarget } from "../api/pages.js";
 import { subscribeToChanges } from "../pages/pageEvents.js";
 import { __resetInterceptorForTests } from "../query/interceptor.js";
 
@@ -33,6 +34,7 @@ vi.mock("../api/pages.js", () => ({
   fetchKinds: vi.fn(async () => []),
   fetchEdges: vi.fn(async () => []),
   invalidateKinds: vi.fn(),
+  resolvePageTarget: vi.fn(async () => true),
 }));
 
 // `subscribeToChanges`/`subscribeToResync` open a real EventSource on first subscribe (jsdom ships
@@ -71,6 +73,7 @@ describe("PageFrame: bridge revocation race (P1)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     __resetInterceptorForTests();
+    window.history.replaceState(null, "", "/");
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -193,5 +196,95 @@ describe("PageFrame: bridge revocation race (P1)", () => {
     // drops it before `postMessage` is ever called for it.
     const leaked = postSpy.mock.calls.find(([msg]) => (msg as { id?: string; type?: string }).id === "q1");
     expect(leaked).toBeUndefined();
+  });
+});
+
+describe("PageFrame: registered Page navigation", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    __resetInterceptorForTests();
+    window.history.replaceState(null, "", "/");
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  async function mount(overrides: Record<string, unknown> = {}) {
+    vi.mocked(getDoc).mockResolvedValue(pageDoc(overrides));
+    await act(async () => {
+      root.render(<PageFrame pageId="pages-registry/p" />);
+      await flush();
+    });
+    return (container.querySelector("iframe.page-frame-iframe") as HTMLIFrameElement).contentWindow!;
+  }
+
+  it("allows a bridge:none Page to navigate through the shell", async () => {
+    const source = await mount({ bridge: "none" });
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent("message", { source, data: { bridge: "v0", type: "open-page", pageId: "pages-registry/target" } }));
+      await flush();
+    });
+    expect(resolvePageTarget).toHaveBeenCalledWith("pages-registry/target");
+    expect(window.location.search).toBe("?view=page&id=pages-registry%2Ftarget");
+  });
+
+  it("navigates at most once per source generation when resolutions race", async () => {
+    const source = await mount();
+    const first = deferred<boolean>();
+    const second = deferred<boolean>();
+    vi.mocked(resolvePageTarget).mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise);
+    const push = vi.spyOn(window.history, "pushState");
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", { source, data: { bridge: "v0", type: "open-page", pageId: "pages-registry/first" } }));
+      window.dispatchEvent(new MessageEvent("message", { source, data: { bridge: "v0", type: "open-page", pageId: "pages-registry/second" } }));
+    });
+    await act(async () => { second.resolve(true); await flush(); });
+    await act(async () => { first.resolve(true); await flush(); });
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(window.location.search).toContain("second");
+  });
+
+  it("treats self-navigation as an idempotent no-op", async () => {
+    const source = await mount();
+    const push = vi.spyOn(window.history, "pushState");
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent("message", { source, data: { bridge: "v0", type: "open-page", pageId: "pages-registry/p" } }));
+      await flush();
+    });
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("drops navigation whose source generation became stale during validation", async () => {
+    const source = await mount();
+    const pending = deferred<boolean>();
+    vi.mocked(resolvePageTarget).mockImplementationOnce(() => pending.promise);
+    const push = vi.spyOn(window.history, "pushState");
+    act(() => window.dispatchEvent(new MessageEvent("message", { source, data: { bridge: "v0", type: "open-page", pageId: "pages-registry/target" } })));
+    const reload = deferred<ReturnType<typeof pageDoc>>();
+    vi.mocked(getDoc).mockImplementationOnce(() => reload.promise);
+    act(() => vi.mocked(subscribeToChanges).mock.calls[0]![0]({ docs: { changed: [{ id: "pages-registry/p", version: "v2" }], removed: [] }, blobs: { changed: [], removed: [] } }));
+    await act(async () => { pending.resolve(true); await flush(); });
+    expect(push).not.toHaveBeenCalled();
+    reload.resolve(pageDoc());
+    await act(async () => await flush());
+  });
+
+  it("revalidates at mount and refuses a non-Page deep link even when its entry is safe", async () => {
+    vi.mocked(getDoc).mockResolvedValue(pageDoc({ type: "Design", entry: "pages/p.html" }));
+    await act(async () => {
+      root.render(<PageFrame pageId="pages-registry/p" />);
+      await flush();
+    });
+    expect(mintPageNonce).not.toHaveBeenCalled();
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.textContent).toContain("not a usable registered Page");
   });
 });
