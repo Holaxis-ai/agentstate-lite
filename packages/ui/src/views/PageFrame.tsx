@@ -39,6 +39,9 @@ export function PageFrame({ pageId }: { pageId: string }) {
   // A shell navigation consumes the currently framed document's right to navigate. Unlike the
   // async-load epoch below, this remains locked while that old iframe can still post messages.
   const navigationConsumedRef = useRef(false);
+  // The generation whose iframe has actually completed loading. Advancing loadSeq invalidates
+  // the still-mounted old document immediately, including capability-independent shell actions.
+  const activeFrameSeqRef = useRef<number | null>(null);
   // Bumped on every (re)load trigger, revoke, and unmount — a resolution that finishes after a
   // newer one started (or after a revoke) must not clobber the newer state.
   const loadSeqRef = useRef(0);
@@ -148,6 +151,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
     const onMessage = (ev: MessageEvent) => {
       const frame = iframeRef.current;
       if (!frame || ev.source !== frame.contentWindow) return;
+      if (activeFrameSeqRef.current !== loadSeqRef.current) return;
       // Capture the epoch AND the capability at RECEIPT — the request is decided under whatever
       // grant this iframe held the instant it asked. `handleBridgeRequest`'s dep calls are async,
       // so a slow reply must be FENCED against a LATER reload before it's delivered: the SAME
@@ -239,7 +243,10 @@ export function PageFrame({ pageId }: { pageId: string }) {
           onLoad={() => {
             // Reset only after the nonce-backed document for the current load epoch is actually
             // framed. A late load from the consumed source cannot reopen navigation.
-            if (frameSeq !== null && frameSeq === loadSeqRef.current) navigationConsumedRef.current = false;
+            if (frameSeq !== null && frameSeq === loadSeqRef.current) {
+              activeFrameSeqRef.current = frameSeq;
+              navigationConsumedRef.current = false;
+            }
           }}
         />
       ) : (

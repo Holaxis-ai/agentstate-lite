@@ -66,6 +66,10 @@ async function flush() {
   await new Promise((r) => setTimeout(r, 0));
 }
 
+function activateFrame(iframe: HTMLIFrameElement): void {
+  act(() => iframe.dispatchEvent(new Event("load")));
+}
+
 describe("PageFrame: bridge revocation race (P1)", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -97,6 +101,7 @@ describe("PageFrame: bridge revocation race (P1)", () => {
 
     const iframe = container.querySelector("iframe.page-frame-iframe") as HTMLIFrameElement;
     expect(iframe).toBeTruthy();
+    activateFrame(iframe);
     const contentWindow = iframe.contentWindow!;
     const postSpy = vi.spyOn(contentWindow, "postMessage");
 
@@ -125,13 +130,10 @@ describe("PageFrame: bridge revocation race (P1)", () => {
     });
     await flush();
 
-    // Denied outright — no dep touched, no real data ever fetched for this request.
+    // The old document is no longer active as soon as reload advances the generation: no dep and
+    // no diagnostic reply cross the boundary.
     expect(listAllHeads).not.toHaveBeenCalled();
-    const forbidden = postSpy.mock.calls.find(([msg]) => (msg as { id?: string }).id === "q1");
-    expect(forbidden).toBeTruthy();
-    const [reply] = forbidden!;
-    expect((reply as { type: string }).type).toBe("error");
-    expect((reply as { error: { code: string } }).error.code).toBe("FORBIDDEN");
+    expect(postSpy.mock.calls.find(([msg]) => (msg as { id?: string }).id === "q1")).toBeUndefined();
 
     // Let the reload settle so no promise is left dangling.
     pending.resolve(pageDoc({ bridge: "none" }));
@@ -149,6 +151,7 @@ describe("PageFrame: bridge revocation race (P1)", () => {
     });
 
     const iframe = container.querySelector("iframe.page-frame-iframe") as HTMLIFrameElement;
+    activateFrame(iframe);
     const firstContentWindow = iframe.contentWindow!;
 
     // A `query` request arrives while this page is still `bundle-read` — captured (correctly) at
@@ -223,7 +226,9 @@ describe("PageFrame: registered Page navigation", () => {
       root.render(<PageFrame pageId="pages-registry/p" />);
       await flush();
     });
-    return (container.querySelector("iframe.page-frame-iframe") as HTMLIFrameElement).contentWindow!;
+    const iframe = container.querySelector("iframe.page-frame-iframe") as HTMLIFrameElement;
+    activateFrame(iframe);
+    return iframe.contentWindow!;
   }
 
   it("allows a bridge:none Page to navigate through the shell", async () => {
@@ -263,7 +268,7 @@ describe("PageFrame: registered Page navigation", () => {
       window.dispatchEvent(new MessageEvent("message", { source, data: { bridge: "v0", type: "open-page", pageId: "pages-registry/second" } }));
       await flush();
     });
-    expect(resolvePageTarget).toHaveBeenCalledTimes(2);
+    expect(resolvePageTarget).toHaveBeenCalledTimes(1);
     expect(push).toHaveBeenCalledTimes(1);
     expect(window.location.search).toContain("first");
   });
@@ -289,6 +294,24 @@ describe("PageFrame: registered Page navigation", () => {
     act(() => vi.mocked(subscribeToChanges).mock.calls[0]![0]({ docs: { changed: [{ id: "pages-registry/p", version: "v2" }], removed: [] }, blobs: { changed: [], removed: [] } }));
     await act(async () => { pending.resolve(true); await flush(); });
     expect(push).not.toHaveBeenCalled();
+    reload.resolve(pageDoc());
+    await act(async () => await flush());
+  });
+
+  it("rejects a fresh open-page from the old document while registry reload is unresolved", async () => {
+    const source = await mount();
+    const reload = deferred<ReturnType<typeof pageDoc>>();
+    vi.mocked(getDoc).mockImplementationOnce(() => reload.promise);
+    const push = vi.spyOn(window.history, "pushState");
+    act(() => vi.mocked(subscribeToChanges).mock.calls[0]![0]({ docs: { changed: [{ id: "pages-registry/p", version: "v2" }], removed: [] }, blobs: { changed: [], removed: [] } }));
+
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent("message", { source, data: { bridge: "v0", type: "open-page", pageId: "pages-registry/target" } }));
+      await flush();
+    });
+    expect(resolvePageTarget).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+
     reload.resolve(pageDoc());
     await act(async () => await flush());
   });
