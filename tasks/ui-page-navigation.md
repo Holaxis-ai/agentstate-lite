@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'Bundle Pages: navigate to another registered Page'
-status: in_progress
+status: done
 priority: '2'
 assignee: openai/codex
 description: >-
@@ -9,7 +9,7 @@ description: >-
   navigation while preserving each target Page's independent sandbox and bridge
   capability.
 actor: openai/codex
-timestamp: '2026-07-12T01:28:25.064Z'
+timestamp: '2026-07-12T01:39:54.848Z'
 ---
 # Objective
 
@@ -56,6 +56,7 @@ Let any bundle Page ask the trusted UI shell to navigate to another registered P
 - Implementation: complete on `codex/ui-page-navigation` at `5c05de1d92faffab2d31c76bb14224dcb24bcf4c`.
 - Code review: independently approved after three review-driven boundary fixes covering one-shot consumption, stale-frame requests, and startup message ordering.
 - QA: passed on the exact reviewed SHA. Full `npm run check` passed, including 1,246 package/script tests and 14 Chromium E2E tests; built-CLI and standalone-package smoke tests also passed.
-- Pull request: https://github.com/Holaxis-ai/agentstate-lite/pull/40 (draft; awaiting merge).
+- Manual acceptance: a fresh disposable local bundle with two newly authored `bridge: none` Pages was opened in the real local UI; Source → Target navigation rendered the independently registered target and browser Back restored Source.
+- Pull request: https://github.com/Holaxis-ai/agentstate-lite/pull/40 merged into `main` as `53cac48ffdbec8a7726d07d0b8a4418d3b11f501` on 2026-07-12.
 
-The task remains `in_progress` until the PR is merged.
+Shipped.
