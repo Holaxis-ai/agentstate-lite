@@ -1,7 +1,7 @@
 ---
 type: Task
 title: Retire hosted identity/admin commands from the default CLI
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   PR 1 of the local-first CLI simplification.
@@ -50,6 +50,7 @@ description: >-
 
   - Builder -> independent reviewer -> QA before merge.
 actor: codex
-timestamp: '2026-07-12T20:01:58.264Z'
+assignee: codex
+timestamp: '2026-07-12T22:58:05.556Z'
 ---
 
