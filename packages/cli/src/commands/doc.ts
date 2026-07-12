@@ -51,6 +51,8 @@
 // `doc read <id>` prints the parsed doc, OR with `--out <path>` writes the doc's RAW markdown bytes to
 // disk (the pull pattern retargeted locally) so large docs never enter the model context window;
 // `--out -` streams the raw bytes to stdout with the receipt on stderr (byte stream stays pure).
+// `--body-out <path|->` is the composable edit channel: it writes only the parsed body and returns
+// the version from that same read for a follow-up `doc update --body-file --expected-version`.
 // Usability finding F3 (P2, bundle pollution): for a LOCAL bundle, an `--out` path that resolves
 // INSIDE the open bundle's root gets silently re-ingested as a new concept doc on the next bundle
 // walk. The write is still allowed (a deliberate in-bundle copy is conceivable) but the receipt now

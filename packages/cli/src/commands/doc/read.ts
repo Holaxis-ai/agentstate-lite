@@ -24,6 +24,24 @@ import { cliInvocation } from "../../invocation.js";
 import { DOC_READ_USAGE, type DocCliDeps, BODY_PREVIEW_LIMIT, readErrorToCliError } from "./common.js";
 
 export async function docRead(argv: string[], deps: Partial<DocCliDeps>): Promise<void> {
+  const stderr = deps.stderr ?? ((s: string) => void process.stderr.write(s));
+  const rawStdoutReserved = requestsStdoutByteChannel(argv);
+  if (!rawStdoutReserved) return docReadInner(argv, deps);
+
+  // Detect the raw-stdout contract from argv BEFORE parseArgs, bundle discovery, or any I/O. That
+  // makes the channel invariant unconditional: even an unknown option, missing positional, bundle
+  // resolution failure, or malformed stored doc can only emit its envelope on stderr. The handled
+  // check prevents double emission if a deeper shared helper has already routed the error itself.
+  try {
+    await docReadInner(argv, deps);
+  } catch (err) {
+    const { envelope, handled } = toExit(err);
+    if (!handled) stderr(renderErrorEnvelope(envelope));
+    throw handled ? err : asHandled(err);
+  }
+}
+
+async function docReadInner(argv: string[], deps: Partial<DocCliDeps>): Promise<void> {
   const stdout = deps.stdout ?? ((s: string) => void process.stdout.write(s));
   const stderr = deps.stderr ?? ((s: string) => void process.stderr.write(s));
   const writeStdoutBytes = deps.writeStdoutBytes ?? ((d: Uint8Array) => void process.stdout.write(d));
@@ -34,6 +52,7 @@ export async function docRead(argv: string[], deps: Partial<DocCliDeps>): Promis
         args: argv,
         options: {
           out: { type: "string" },
+          "body-out": { type: "string" },
           field: { type: "string" },
           dir: { type: "string" },
           remote: { type: "string" },
@@ -54,6 +73,26 @@ export async function docRead(argv: string[], deps: Partial<DocCliDeps>): Promis
     throw new CliError("USAGE", "doc read requires a concept <id> positional", {
       help: `${cliInvocation()} doc read <id>`,
     });
+  }
+
+  const bodyOutValue = values["body-out"];
+  const bodyOutPresent = bodyOutValue !== undefined;
+  const outPresent = values.out !== undefined;
+  const fieldPresent = values.field !== undefined;
+
+  if (bodyOutPresent && (outPresent || fieldPresent)) {
+    throw new CliError(
+      "USAGE",
+      "--body-out cannot be combined with --out or --field — each selects a different read channel.",
+      { help: `${cliInvocation()} doc read ${id} --body-out (<path> | -)` },
+    );
+  }
+  if (bodyOutPresent && bodyOutValue.trim() === "") {
+    throw new CliError(
+      "USAGE",
+      "--body-out was given an empty value — pass a file path or '-' for stdout.",
+      { help: `${cliInvocation()} doc read ${id} --body-out (<path> | -)` },
+    );
   }
 
   // --field and --out both reserve stdout for a single raw payload — combining them is ambiguous
@@ -83,6 +122,45 @@ export async function docRead(argv: string[], deps: Partial<DocCliDeps>): Promis
   // Runs on the READ verb only (never doc write/update/delete — the trigger is for reads).
   if (!remote) await (deps.autoPull ?? maybeAutoPull)(values.dir);
   const bundle = await openBundle(values.dir, remote);
+
+  // Body-only byte channel: one versioned read owns BOTH the semantic parsed body and the CAS token
+  // in the receipt. The resulting file is therefore safe to edit and pass straight to
+  // `doc update --body-file ... --expected-version <version>` without parsing frontmatter or racing
+  // a second version lookup. This intentionally promises parsed-body semantics, not preservation of
+  // the source document's original YAML/newline bytes.
+  if (bodyOutPresent) {
+    const bodyOut = bodyOutValue.trim();
+    const streamMode = bodyOut === "-";
+    if (!streamMode) await assertSafeBodyOutTarget(bundle, bodyOut, id);
+    const runToTarget = async (): Promise<void> => {
+      let parsed: OkfDocument;
+      let version: Version;
+      try {
+        ({ doc: parsed, version } = await readDocVersioned(bundle, id));
+      } catch (err) {
+        throw readErrorToCliError(err, id, values.remote);
+      }
+      const bytes = Buffer.from(parsed.body, "utf8");
+      const result: Record<string, unknown> = {
+        doc: "read",
+        id,
+        body_out: bodyOut,
+        size_bytes: bytes.byteLength,
+        content_type: "text/markdown; charset=utf-8",
+        version,
+      };
+      if (streamMode) {
+        writeStdoutBytes(bytes);
+        stderr(render(result, resolveMode(values)));
+        return;
+      }
+      await fs.writeFile(bodyOut, bytes);
+      stdout(render(result, resolveMode(values)));
+    };
+
+    await runToTarget();
+    return;
+  }
 
   // --field <name>: print ONE raw value for scripting (the headline case is `--field head_version`,
   // capturing the CAS token for a follow-up --expected-version write without shelling out through
@@ -216,19 +294,59 @@ export async function docRead(argv: string[], deps: Partial<DocCliDeps>): Promis
     stdout(render(result, resolveMode(values)));
   };
 
-  if (!streamMode) {
-    await runToTarget();
-    return;
-  }
+  await runToTarget();
+}
 
-  // --out -: route any error envelope to STDERR (stdout is reserved for raw bytes), then rethrow as
-  // `handled` so the bin wrapper sets the exit code WITHOUT re-emitting the envelope on stdout.
-  try {
-    await runToTarget();
-  } catch (err) {
-    const { envelope } = toExit(err);
-    stderr(renderErrorEnvelope(envelope));
-    throw asHandled(err);
+/** True when raw argv reserves stdout for document/body bytes (split and --flag=- forms). */
+function requestsStdoutByteChannel(argv: string[]): boolean {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if ((arg === "--out" || arg === "--body-out") && argv[i + 1]?.trim() === "-") return true;
+    if (arg?.startsWith("--out=") && arg.slice("--out=".length).trim() === "-") return true;
+    if (arg?.startsWith("--body-out=") && arg.slice("--body-out=".length).trim() === "-") return true;
+  }
+  return false;
+}
+
+/**
+ * A body-only markdown file is not an OKF concept document. Refuse a local in-bundle `.md` target
+ * before writing, including the source doc itself and reserved index/log files: allowing it would
+ * either clobber valid content or make the next bundle walk fail on missing frontmatter.
+ */
+async function assertSafeBodyOutTarget(bundle: Bundle, bodyOut: string, id: string): Promise<void> {
+  if (bundle.backend) return;
+  const lexicalTarget = path.resolve(bodyOut);
+  const rootReal = await fs.realpath(path.resolve(bundle.root)).catch(() => path.resolve(bundle.root));
+  // Resolve the final path when it exists (including a symlink whose own name has no extension).
+  // For a not-yet-created target, anchor its full missing suffix under the nearest existing real
+  // ancestor so symlinked parent directories cannot hide where fs.writeFile would actually land.
+  const effectiveTarget = await effectiveOutputPath(lexicalTarget);
+  const inside = (candidate: string, base: string): boolean =>
+    candidate === base || candidate.startsWith(base + path.sep);
+  const unsafeLexical = inside(lexicalTarget, rootReal) && lexicalTarget.endsWith(".md");
+  const unsafeEffective = inside(effectiveTarget, rootReal) && effectiveTarget.endsWith(".md");
+  if (!unsafeLexical && !unsafeEffective) return;
+  throw new CliError(
+    "USAGE",
+    `--body-out ${bodyOut} targets ${effectiveTarget}, a .md path INSIDE this bundle (${rootReal}); ` +
+      "body-only markdown has no OKF frontmatter and cannot be written into the bundle.",
+    { help: `${cliInvocation()} doc read ${id} --body-out <path-outside-bundle>` },
+  );
+}
+
+/** Resolve an output's effective path even when one or more final path segments do not exist yet. */
+async function effectiveOutputPath(absoluteTarget: string): Promise<string> {
+  let probe = absoluteTarget;
+  const missingSuffix: string[] = [];
+  while (true) {
+    try {
+      return path.join(await fs.realpath(probe), ...missingSuffix);
+    } catch {
+      const parent = path.dirname(probe);
+      if (parent === probe) return absoluteTarget;
+      missingSuffix.unshift(path.basename(probe));
+      probe = parent;
+    }
   }
 }
 
@@ -293,7 +411,10 @@ function formatFieldValue(value: unknown): string {
  * won't trigger this in the common case, since it won't be `.md`-shaped — see `pull.ts`'s usage text
  * on the asymmetry with `doc read --out`).
  */
-export function inBundlePollutionWarning(bundle: Bundle, out: string): string | undefined {
+export function inBundlePollutionWarning(
+  bundle: Bundle,
+  out: string,
+): string | undefined {
   if (bundle.backend) return undefined;
   const resolvedOut = path.resolve(out);
   const root = bundle.root;

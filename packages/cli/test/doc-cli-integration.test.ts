@@ -54,6 +54,28 @@ before(() => {
   if (!existsSync(cliBin)) execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
 });
 
+test("built CLI: raw doc-read channels route early missing-id and unknown-option envelopes only to stderr", () => {
+  const cases = [
+    ["doc", "read", "--body-out", "-"],
+    ["doc", "read", "concepts/a", "--body-out=-", "--unknown"],
+    ["doc", "read", "concepts/a", "--body-out", " - ", "--unknown"],
+    ["doc", "read", "concepts/a", "--body-out= - ", "--unknown"],
+    ["doc", "read", "concepts/a", "--out=-", "--unknown"],
+    ["doc", "read", "concepts/a", "--out", " - ", "--unknown"],
+    ["doc", "read", "concepts/a", "--out= - ", "--unknown"],
+  ];
+  for (const args of cases) {
+    const result = spawnSync("node", [cliBin, ...args], {
+      stdio: ["ignore", "pipe", "pipe"],
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 2, `expected USAGE exit 2 for ${args.join(" ")}`);
+    assert.equal(result.stdout, "", "stdout remains a pure, empty byte channel on early failure");
+    assert.match(result.stderr, /code: USAGE/);
+    assert.equal((result.stderr.match(/code: USAGE/g) ?? []).length, 1, "the envelope is emitted exactly once");
+  }
+});
+
 test("built CLI: doc write guard refuses to blank an EXISTING doc's body when stdin is redirected from /dev/null (agent-harness shape — no TTY, no real pipe, isTTY undefined)", async () => {
   const dir = await tempDir();
   try {

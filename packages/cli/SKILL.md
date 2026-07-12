@@ -38,8 +38,8 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
   — Write a generic OKF concept document
 - `npx -y agentstate-lite doc update <id> [--<field> <value> ...] [--title <t>] [--tag <t>] [--type <t>] [--body <s> | --body-file <p>] [--expected-version <v>] [--actor <n>] [--remote <url>]`
   — Patch given fields (incl. kind-declared fields like --status) of an existing doc, preserving the rest; optimistic-CAS with --expected-version
-- `npx -y agentstate-lite doc read <id> [--out (<path> | -) | --field <name>] [--remote <url>]`
-  — Read a doc (or pull its raw markdown bytes to disk, or print one raw field for scripting)
+- `npx -y agentstate-lite doc read <id> [--out (<path> | -) | --body-out (<path> | -) | --field <name>] [--remote <url>]`
+  — Read a doc, export its raw markdown, export its body with a same-read CAS version, or print one raw field for scripting
 - `npx -y agentstate-lite doc history <id> [--remote <url>]`
   — Show a doc's attributed version history (newest first) — the tokens for --expected-version
 - `npx -y agentstate-lite doc delete <id> [--expected-version <v>] [--remote <url>]`
@@ -265,6 +265,9 @@ that's the board; never merge it into main.
 
 - `doc read <id>` truncates a large body and points at `doc read <id> --out <file>`, which streams
   the raw markdown bytes to disk without loading them into the model context window.
+- To revise body prose without parsing YAML, run `doc read <id> --body-out <file> --json`; edit the
+  file, then pass it to `doc update <id> --body-file <file> --expected-version <receipt-version>`.
+  The body-out receipt's version comes from the same read, so this is a safe CAS edit cycle.
 - Mutations are idempotent: re-writing a doc or re-adding an existing link is a no-op (exit 0).
 - `new` and `doc update` accept a kind's declared fields as `--<field> <value>` (e.g. `--status done`);
   an unknown field or an out-of-enum value is rejected (exit 2). Run `kinds` to see a kind's fields.
