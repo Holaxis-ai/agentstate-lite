@@ -6,7 +6,7 @@ description: >-
   Make Kinds communicate the meaning of concepts, fields, relationships, and
   lifecycle values through the one registry and at the point of agent action.
 actor: openai/codex
-timestamp: '2026-07-11T22:53:06.772Z'
+timestamp: '2026-07-12T01:50:28.027Z'
 ---
 # Vision
 
@@ -49,3 +49,5 @@ An agent unfamiliar with an installed recipe can use ordinary CLI discovery to e
 [contains](../tasks/kind-enum-value-descriptions.md)
 
 [contains](../tasks/kind-section-descriptions-examples.md)
+
+[contains](../tasks/review-request-workflow.md)
