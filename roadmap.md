@@ -1,7 +1,7 @@
 ---
 type: Roadmap
 title: agentstate-lite — Roadmap (near-term spine)
-timestamp: '2026-07-11T22:53:06.296Z'
+timestamp: '2026-07-12T01:11:54.493Z'
 ---
 # agentstate-lite — Roadmap (near-term spine)
 
@@ -137,3 +137,5 @@ items the same way, so the whole chain (roadmap → item → task) is one filter
 [contains](roadmap-items/recipe-plugins.md)
 
 [contains](roadmap-items/self-describing-domain-models.md)
+
+[contains](roadmap-items/radical-simplification.md)
