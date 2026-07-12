@@ -7625,7 +7625,7 @@ var DOC_USAGE = `agentstate-lite doc \u2014 write, patch, read, or delete a gene
 Usage:
   agentstate-lite doc write   <id> --type <t> [options]        Create/overwrite a concept doc
   agentstate-lite doc update  <id> [options]                   Patch given fields of an existing doc
-  agentstate-lite doc read    <id> [--out (<path> | -)]        Read a doc (or pull its raw bytes)
+  agentstate-lite doc read    <id> [--out <p> | --body-out <p>] Read a doc (raw/body byte channels)
   agentstate-lite doc history <id>                             Show a doc's attributed version chain
   agentstate-lite doc delete  <id> [--expected-version <v>]    Hard-delete a doc (idempotent)
 
@@ -7734,9 +7734,9 @@ Examples:
 var DOC_READ_USAGE = `agentstate-lite doc read \u2014 read a concept document (or pull its raw markdown bytes)
 
 Usage:
-  agentstate-lite doc read <id> [--out (<path> | -)] [options]
+  agentstate-lite doc read <id> [--out (<path> | -) | --body-out (<path> | -)] [options]
 
-The default (no --out) render shows EVERY frontmatter field \u2014 the standard keys plus any
+The default (no --out/--body-out) render shows EVERY frontmatter field \u2014 the standard keys plus any
 kind-declared fields like status/priority \u2014 and truncates a large body (pointing at --out).
 
 Options:
@@ -7750,6 +7750,17 @@ Options:
                        filename (index.md/log.md) will instead CLOBBER that file outright; any
                        other (non-.md) path is inert (no warning) \u2014 the write still proceeds in
                        every case; not applicable to --out - or to --remote.
+  --body-out <path>    Write ONLY the parsed markdown body (no YAML frontmatter) as UTF-8. The
+                       receipt includes the version from the SAME read, so the safe edit cycle is:
+                         agentstate-lite doc read <id> --body-out ./body.md --json
+                         # edit ./body.md; copy the receipt's version
+                         agentstate-lite doc update <id> --body-file ./body.md \\
+                           --expected-version <version>
+                       Use --body-out - to stream body bytes to stdout (receipt/errors go to stderr).
+                       An empty body is a valid zero-byte result. A .md target inside a local bundle
+                       is refused: body-only markdown has no OKF frontmatter and would corrupt or
+                       clobber bundle content. Choose a path outside the bundle (an in-bundle non-.md
+                       target is inert and remains allowed).
   --field <name>       Print ONE frontmatter field's raw value to stdout, newline-terminated, no
                        TOON envelope and no other output \u2014 for scripting, e.g. capturing
                        head_version for a follow-up --expected-version write. A scalar prints
@@ -7757,13 +7768,14 @@ Options:
                        head_version work too (head_version is the store's CAS token, not
                        frontmatter). An absent field, or a missing doc, reports the error to
                        STDERR instead (stdout stays reserved for the raw value); an absent field's
-                       error lists the fields that DO exist. Mutually exclusive with --out (both
-                       reserve stdout).
+                       error lists the fields that DO exist. Mutually exclusive with --out and
+                       --body-out.
 ${COMMON_OPTIONS}
 
 Examples:
   agentstate-lite doc read concepts/auth
   agentstate-lite doc read concepts/auth --out ./auth.md
+  agentstate-lite doc read concepts/auth --body-out ./auth-body.md
   agentstate-lite doc read concepts/auth --field head_version
 `;
 var DOC_HISTORY_USAGE = `agentstate-lite doc history \u2014 show a doc's attributed version chain (newest first)
@@ -11309,6 +11321,18 @@ async function maybeAutoPull(dir, opts = {}) {
 
 // src/commands/doc/read.ts
 async function docRead(argv, deps) {
+  const stderr = deps.stderr ?? ((s) => void process.stderr.write(s));
+  const rawStdoutReserved = requestsStdoutByteChannel(argv);
+  if (!rawStdoutReserved) return docReadInner(argv, deps);
+  try {
+    await docReadInner(argv, deps);
+  } catch (err) {
+    const { envelope, handled } = toExit(err);
+    if (!handled) stderr(renderErrorEnvelope(envelope));
+    throw handled ? err : asHandled(err);
+  }
+}
+async function docReadInner(argv, deps) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const stderr = deps.stderr ?? ((s) => void process.stderr.write(s));
   const writeStdoutBytes = deps.writeStdoutBytes ?? ((d) => void process.stdout.write(d));
@@ -11317,6 +11341,7 @@ async function docRead(argv, deps) {
       args: argv,
       options: {
         out: { type: "string" },
+        "body-out": { type: "string" },
         field: { type: "string" },
         dir: { type: "string" },
         remote: { type: "string" },
@@ -11337,6 +11362,24 @@ async function docRead(argv, deps) {
       help: `${cliInvocation()} doc read <id>`
     });
   }
+  const bodyOutValue = values["body-out"];
+  const bodyOutPresent = bodyOutValue !== void 0;
+  const outPresent = values.out !== void 0;
+  const fieldPresent = values.field !== void 0;
+  if (bodyOutPresent && (outPresent || fieldPresent)) {
+    throw new CliError(
+      "USAGE",
+      "--body-out cannot be combined with --out or --field \u2014 each selects a different read channel.",
+      { help: `${cliInvocation()} doc read ${id} --body-out (<path> | -)` }
+    );
+  }
+  if (bodyOutPresent && bodyOutValue.trim() === "") {
+    throw new CliError(
+      "USAGE",
+      "--body-out was given an empty value \u2014 pass a file path or '-' for stdout.",
+      { help: `${cliInvocation()} doc read ${id} --body-out (<path> | -)` }
+    );
+  }
   if (values.field !== void 0 && values.out !== void 0 && values.out.trim() !== "") {
     throw new CliError(
       "USAGE",
@@ -11355,6 +11398,38 @@ async function docRead(argv, deps) {
   const remote = await resolveRemoteFlag(values.remote, values.dir);
   if (!remote) await (deps.autoPull ?? maybeAutoPull)(values.dir);
   const bundle = await openBundle(values.dir, remote);
+  if (bodyOutPresent) {
+    const bodyOut = bodyOutValue.trim();
+    const streamMode2 = bodyOut === "-";
+    if (!streamMode2) await assertSafeBodyOutTarget(bundle, bodyOut, id);
+    const runToTarget2 = async () => {
+      let parsed;
+      let version;
+      try {
+        ({ doc: parsed, version } = await readDocVersioned(bundle, id));
+      } catch (err) {
+        throw readErrorToCliError(err, id, values.remote);
+      }
+      const bytes = Buffer.from(parsed.body, "utf8");
+      const result = {
+        doc: "read",
+        id,
+        body_out: bodyOut,
+        size_bytes: bytes.byteLength,
+        content_type: "text/markdown; charset=utf-8",
+        version
+      };
+      if (streamMode2) {
+        writeStdoutBytes(bytes);
+        stderr(render(result, resolveMode(values)));
+        return;
+      }
+      await fs7.writeFile(bodyOut, bytes);
+      stdout(render(result, resolveMode(values)));
+    };
+    await runToTarget2();
+    return;
+  }
   if (field) {
     try {
       let parsed;
@@ -11446,16 +11521,44 @@ async function docRead(argv, deps) {
     await fs7.writeFile(out, bytes);
     stdout(render(result, resolveMode(values)));
   };
-  if (!streamMode) {
-    await runToTarget();
-    return;
+  await runToTarget();
+}
+function requestsStdoutByteChannel(argv) {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if ((arg === "--out" || arg === "--body-out") && argv[i + 1]?.trim() === "-") return true;
+    if (arg?.startsWith("--out=") && arg.slice("--out=".length).trim() === "-") return true;
+    if (arg?.startsWith("--body-out=") && arg.slice("--body-out=".length).trim() === "-") return true;
   }
-  try {
-    await runToTarget();
-  } catch (err) {
-    const { envelope } = toExit(err);
-    stderr(renderErrorEnvelope(envelope));
-    throw asHandled(err);
+  return false;
+}
+async function assertSafeBodyOutTarget(bundle, bodyOut, id) {
+  if (bundle.backend) return;
+  const lexicalTarget = path11.resolve(bodyOut);
+  const rootReal = await fs7.realpath(path11.resolve(bundle.root)).catch(() => path11.resolve(bundle.root));
+  const effectiveTarget = await effectiveOutputPath(lexicalTarget);
+  const inside = (candidate, base) => candidate === base || candidate.startsWith(base + path11.sep);
+  const unsafeLexical = inside(lexicalTarget, rootReal) && lexicalTarget.endsWith(".md");
+  const unsafeEffective = inside(effectiveTarget, rootReal) && effectiveTarget.endsWith(".md");
+  if (!unsafeLexical && !unsafeEffective) return;
+  throw new CliError(
+    "USAGE",
+    `--body-out ${bodyOut} targets ${effectiveTarget}, a .md path INSIDE this bundle (${rootReal}); body-only markdown has no OKF frontmatter and cannot be written into the bundle.`,
+    { help: `${cliInvocation()} doc read ${id} --body-out <path-outside-bundle>` }
+  );
+}
+async function effectiveOutputPath(absoluteTarget) {
+  let probe = absoluteTarget;
+  const missingSuffix = [];
+  while (true) {
+    try {
+      return path11.join(await fs7.realpath(probe), ...missingSuffix);
+    } catch {
+      const parent = path11.dirname(probe);
+      if (parent === probe) return absoluteTarget;
+      missingSuffix.unshift(path11.basename(probe));
+      probe = parent;
+    }
   }
 }
 function resolveField(parsed, version, field, id) {
@@ -16662,8 +16765,8 @@ var COMMAND_GROUPS = [
         summary: "Patch given fields (incl. kind-declared fields like --status) of an existing doc, preserving the rest; optimistic-CAS with --expected-version"
       },
       {
-        usage: "doc read <id> [--out (<path> | -) | --field <name>] [--remote <url>]",
-        summary: "Read a doc (or pull its raw markdown bytes to disk, or print one raw field for scripting)"
+        usage: "doc read <id> [--out (<path> | -) | --body-out (<path> | -) | --field <name>] [--remote <url>]",
+        summary: "Read a doc, export its raw markdown, export its body with a same-read CAS version, or print one raw field for scripting"
       },
       {
         usage: "doc history <id> [--remote <url>]",
