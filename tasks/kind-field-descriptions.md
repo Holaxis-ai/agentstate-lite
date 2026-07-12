@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'Kinds: machine-readable Kind and field descriptions'
-status: in_progress
+status: done
 priority: '1'
 description: >-
   Make shared Kinds self-teaching by carrying concept and field meaning through
@@ -9,7 +9,7 @@ description: >-
   Implementation: https://github.com/Holaxis-ai/agentstate-lite/pull/42
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-07-12T12:12:09.403Z'
+timestamp: '2026-07-12T15:48:01.724Z'
 ---
 # Objective
 
