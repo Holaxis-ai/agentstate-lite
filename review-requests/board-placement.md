@@ -10,7 +10,7 @@ question: >-
   config plus a thin adapter over git.ts — and are the config-home, discovery,
   and commit-on-main decisions sound enough to schedule the build?
 actor: mike/claude
-timestamp: '2026-07-12T02:55:16.666Z'
+timestamp: '2026-07-12T02:56:25.282Z'
 ---
 # Context
 
@@ -23,8 +23,9 @@ niceties from the placement** via a committed `placement: main | branch` config 
 placement adapter over `git.ts` (shared collaboration logic + placement-specific provisioning /
 ref-targeting) — a factoring, not a rewrite, and the first concrete sync-strategy seam.
 
-Full design + subtleties: [designs/board-placement](../designs/board-placement.md). This is the
-sync domain Brian has been driving (git-sharing, `--migrate`/`--establish`, local-only degradation,
+The full design + subtleties are in the design doc this request
+[reviews design](../designs/board-placement.md) (`designs/board-placement`). It is the sync domain
+Brian has been driving (git-sharing, `--migrate`/`--establish`, local-only degradation,
 board-parity), which is why the judgment is routed here.
 
 # Requested decision
