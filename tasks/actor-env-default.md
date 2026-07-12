@@ -71,8 +71,38 @@ description: >-
   link mutation. Delete, recipe, initialization, promotion, blob, and
   reserved-file attribution have distinct semantics and are not implicitly
   broadened by the phrase “all writes.”
+
+
+  Implementation candidate ready in PR #45:
+  https://github.com/Holaxis-ai/agentstate-lite/pull/45
+
+
+  Reviewed candidate: `e4dfed5a90cf7efcc62061166958a9646fef35fe`.
+
+
+  Workflow record:
+
+  - Builder implemented the unit in an isolated worktree and passed focused
+  tests plus the full repository gate.
+
+  - Independent review rejected the first candidate for help text that conflated
+  absence of the advisory actor label with absence of backend-owned attribution.
+  The wording and regression tests were corrected; the amended exact SHA was
+  approved.
+
+  - Independent QA passed on the approved exact SHA: full unpiped `npm run
+  check` exit 0 (CLI 830/830; core 250; server 5; UI 78; viewer 4; worker 117;
+  scripts 15; Playwright 14/14 first attempt), built local and
+  reference-remote/MemoryBackend attribution and no-op probes, standard CLI
+  smoke, and standalone npm-package smoke.
+
+  - No bot-owned plugin bundle or manifest is included; merge automation owns
+  regeneration/versioning.
+
+
+  Status remains in progress until PR #45 merges.
 actor: codex
 assignee: codex
-timestamp: '2026-07-12T18:31:12.794Z'
+timestamp: '2026-07-12T19:02:20.565Z'
 ---
 
