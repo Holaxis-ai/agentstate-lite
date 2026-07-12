@@ -12,7 +12,7 @@
  */
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -63,6 +63,23 @@ test("built CLI: the bare (home) view is UNCHANGED by the --help rewrite — sti
   const out = run([]);
   assert.match(out, /^"agentstate-lite":\n {2}bin: /);
   assert.doesNotMatch(out, /\nBundle:\n {2}init /, "home must not have picked up the --help prose format");
+  assert.doesNotMatch(out, /^auth:/m, "home must not project hosted credential identity");
+  assert.doesNotMatch(out, /^remotes:/m, "home must not enumerate stored hosted credentials");
+  for (const group of ["Identity", "Invites & members (admin)", "API keys"]) {
+    assert.doesNotMatch(out, new RegExp(`^ {2}${group}:`, "m"), `${group} must be absent from compact home`);
+  }
+});
+
+const RETIRED = ["login", "join", "whoami", "invite", "member", "key"];
+
+test("built CLI: hosted control-plane command families are absent from help and unreachable", () => {
+  const help = run(["--help"]);
+  for (const command of RETIRED) {
+    assert.doesNotMatch(help, new RegExp(`^  ${command}(?: |$)`, "m"));
+    const result = spawnSync("node", [cliBin, command], { encoding: "utf8" });
+    assert.equal(result.status, 2, `${command} must route to the ordinary unknown-command boundary`);
+    assert.match(`${result.stdout}${result.stderr}`, new RegExp(`unknown command: ${command}`));
+  }
 });
 
 test("built CLI: a subcommand's own `--help` (e.g. `new --help`) is UNCHANGED by the top-level rewrite", () => {

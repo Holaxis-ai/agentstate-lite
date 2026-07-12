@@ -20,7 +20,7 @@
  *
  * Auth: mirrors `bundle.ts`'s `openRemoteBundle` API-key sourcing exactly —
  * `AGENTSTATE_LITE_API_KEY` env var first, else the origin-keyed credentials-file entry
- * (`login --remote <url> --api-key <key>`, or a key `join` itself just stored). `POST
+ * (`AGENTSTATE_LITE_API_KEY`, or an already-provisioned stored per-origin key). `POST
  * /v0/join` is the ONE route in this module that sends NO `Authorization` header (the
  * invite token in the request body IS the credential).
  *

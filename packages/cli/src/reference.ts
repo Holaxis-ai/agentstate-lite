@@ -16,7 +16,7 @@
 // praised by the same agent. Help is prose an agent READS, not data it parses — TOON stays the
 // default for actual data surfaces (`list`, `status`, …), never for this index. `home` keeps
 // rendering `compactCommandReference()`'s command NAMES as TOON (it is real per-session state —
-// bundle summary, auth status — not a help manual), so this is a renderer change scoped to `--help`
+// bundle summary — not a help manual), so this is a renderer change scoped to `--help`
 // alone; the registry (`COMMAND_GROUPS`) and `commandReference()`'s projection are untouched.
 //
 // Adapted from holaxis-agentstate `packages/cli/src/reference.ts`, retargeted from the promote/pull
@@ -174,75 +174,6 @@ export const COMMAND_GROUPS: CommandGroup[] = [
     ],
   },
   {
-    group: "Identity",
-    commands: [
-      {
-        usage: "login --remote <url> --api-key <key>",
-        summary: "Store an API key for a gated --remote deployment (keyed by origin; join redeems an invite instead)",
-      },
-      {
-        usage: "join --remote <url> --invite <token> [--display <name>]",
-        summary: "Redeem an invite token to join a remote bundle (stores the returned API key; never prints it)",
-      },
-      {
-        usage: "whoami [--remote <url>]",
-        summary:
-          "List the remote origins you hold a key for (offline), or (with --remote) the live remote identity + bundle memberships",
-      },
-    ],
-  },
-  {
-    group: "Invites & members (admin)",
-    commands: [
-      {
-        usage:
-          "invite create --remote <url> --role <admin|writer|reader> [--expires-in <hours>] [--display-hint <s>]",
-        summary: "Create a join invite for a remote bundle (prints the token once)",
-      },
-      {
-        usage: "invite list --remote <url> [--fields <a,b|all>]",
-        summary: "List invites (minimal id/role/expires/status by default; --fields all for the full record)",
-      },
-      {
-        usage: "invite revoke --remote <url> <invite_id>",
-        summary: "Revoke an invite (idempotent)",
-      },
-      {
-        usage: "member list --remote <url>",
-        summary: "List a remote bundle's members and their roles",
-      },
-      {
-        usage: "member set-role --remote <url> <user_id> <role>",
-        summary: "Change a member's role (idempotent)",
-      },
-      {
-        usage: "member remove --remote <url> <user_id>",
-        summary: "Remove a member and revoke all their API keys (idempotent)",
-      },
-    ],
-  },
-  {
-    group: "API keys",
-    commands: [
-      {
-        usage: "key mint --remote <url> [--label <s>]",
-        summary: "Mint an API key for YOURSELF (self-serve; any member may do this)",
-      },
-      {
-        usage: "key mint --remote <url> --agent <name> [--label <s>]",
-        summary: "Mint a NEW agent user's first key (admin-only; prints the key once)",
-      },
-      {
-        usage: "key list --remote <url> [--fields <a,b|all>]",
-        summary: "List API keys (minimal id/prefix/label/status; --fields all for more — never the secret)",
-      },
-      {
-        usage: "key revoke --remote <url> <key_id>",
-        summary: "Revoke an API key you own, or (admin) any key (idempotent)",
-      },
-    ],
-  },
-  {
     group: "Session",
     commands: [
       {
@@ -346,8 +277,7 @@ export function compactCommandReference(invocation: string): {
 } {
   const commands: Record<string, string> = {};
   for (const { group, commands: refs } of COMMAND_GROUPS) {
-    // Set-dedupe: usage VARIANTS of one command (e.g. key mint self-serve vs --agent) collapse to
-    // the same name here, and a name-only view gains nothing from repeating it ("key mint, key mint").
+    // Set-dedupe usage variants of one command: a name-only view gains nothing from repeating it.
     commands[group] = [...new Set(refs.map((c) => commandName(c.usage)))].join(", ");
   }
   return {

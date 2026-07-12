@@ -61,7 +61,7 @@
 // gate, `packages/worker/src/auth.ts`): `openRemoteBundle` sources a bearer token for the
 // resolved remote's ORIGIN in priority order — (1) the `AGENTSTATE_LITE_API_KEY` env var
 // (a session-wide override, no credentials-file write needed for scripts/CI), then (2) the
-// origin-keyed entry `login --remote <url> --api-key <key>` stored (`credentials.ts`'s
+// already-provisioned origin-keyed entry stored (`credentials.ts`'s
 // `getApiKeyForOrigin`). Neither is required: the reference `serve()` ignores the
 // `Authorization` header entirely (no auth enforced there), so an ungated local bundle works
 // exactly as before with no key configured.
@@ -241,12 +241,12 @@ export const API_KEY_ENV_VAR = "AGENTSTATE_LITE_API_KEY";
 /**
  * Resolve a `--remote <url>` bundle: a `RemoteBackend` wired to the wire-protocol v0 reference
  * server, using the same http(s) URL discipline `config.ts`'s `normalizeServer` applies to
- * `login --remote` (a malformed/non-http(s) URL is a USAGE error, exit 2). The bundle-path segment
+ * remote credential lookup (a malformed/non-http(s) URL is a USAGE error, exit 2). The bundle-path segment
  * is a fixed `"default"` — the single-bundle reference router ignores it; meaningful only for a
  * future multi-bundle deployment (no `--bundle` flag exists yet; out of scope).
  *
  * Sources a bearer `authToken` for the resolved origin: `AGENTSTATE_LITE_API_KEY` env var first,
- * else the origin-keyed credentials-file entry (`login --remote <url> --api-key <key>`). Neither
+ * else an already-provisioned origin-keyed credentials-file entry. Neither
  * is required — an ungated bundle (the reference `serve()`) ignores the header either way.
  */
 async function openRemoteBundle(remoteFlag: string): Promise<Bundle> {

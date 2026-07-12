@@ -4,12 +4,12 @@
 // offline. Per AXI §8 ("no-args shows live content, not a manual"), it leads with a compact,
 // LIVE dashboard of the CWD's bundle when one is discoverable — total doc count, counts by type,
 // and a small capped list of the most recent docs in the minimal list schema — and falls back to
-// today's identity + auth + command-reference view when no bundle is discoverable. It ALWAYS
-// exits 0, whether logged in OR out, whether a bundle is present OR not, and whether the bundle
-// read succeeds OR fails (it never throws).
+// today's identity + command-reference view when no bundle is discoverable. It ALWAYS exits 0,
+// whether a bundle is present OR not and whether the bundle read succeeds OR fails (it never
+// throws).
 //
-// OFFLINE GUARANTEE (structural, extended): this module imports `credentials.ts` (a single
-// creds-file read), `reference.ts` (pure data), `invocation.ts` (path resolution), `output.ts`
+// OFFLINE GUARANTEE (structural, extended): this module imports `reference.ts` (pure data),
+// `invocation.ts` (path resolution), `output.ts`
 // (TOON) — and now also `bundle.ts`'s `openBundle` + core's `query`, for a LOCAL bundle read.
 // `openBundle(undefined, undefined)` (no `--dir`, no `--remote`) is structurally network-free: it
 // only ever constructs a `RemoteBackend` when a truthy `remoteFlag` is passed, and home never
@@ -56,12 +56,10 @@
 // surfacing a visible `project_binding_error` note instead of throwing (see `buildHomeView`).
 //
 // Adapted from holaxis-agentstate `packages/cli/src/commands/home.ts`.
-import { loadCredentials, type Credentials } from "../credentials.js";
 import { cliInvocation, binPath, collapseHomeDirectory } from "../invocation.js";
 import { DESCRIPTION, commandReference, compactCommandReference } from "../reference.js";
 import { render } from "../output.js";
 import { findBundleRoot, openBundle, resolveProjectBinding } from "../bundle.js";
-import { normalizeServer } from "../config.js";
 import { queryHeads, type OkfDocument } from "@agentstate-lite/core";
 import { parseArgs } from "node:util";
 import path from "node:path";
@@ -125,7 +123,6 @@ const HOME_RECENT_LIMIT = 5;
 
 /** Injectable seam so the offline view is unit-testable without real I/O. */
 export interface HomeDeps {
-  loadCreds: () => Promise<Credentials | null>;
   /** The home-collapsed absolute path of the running executable (the `bin:` identity field). */
   binPath: () => string;
   /** The runnable command prefix for emitted next-step hints (bare bin, else `npx -y …`). */
@@ -459,7 +456,7 @@ export async function defaultLoadBoardStatus(dir?: string): Promise<BoardStatus 
 /**
  * Build the home view object (PURE — no I/O). Insertion order is the rendered TOON field order:
  * identity header FIRST (AXI §10 — identify the tool before live data; a one-line identity header
- * is not "the manual"), then auth status, then the LIVE `bundle` dashboard (when present — AXI
+ * is not "the manual"), then the LIVE `bundle` dashboard (when present — AXI
  * §8, content above the manual), then the command reference (the manual, now demoted below live
  * content), then the static kind/remote-env pointers. When no bundle is discoverable, `bundle` is
  * omitted and a `getting_started` hint (pointing at `init`) is inserted just before `commands`.
@@ -470,41 +467,19 @@ export async function defaultLoadBoardStatus(dir?: string): Promise<BoardStatus 
  * exception, since home must never crash) renders as a standalone `project_binding_error` note.
  */
 export function buildHomeView(
-  creds: Credentials | null,
   deps: { binPath: () => string; invocation: () => string },
   summary?: BundleSummary | UnreadableBundle | null,
   remote?: string,
-  remoteKeyStored?: boolean,
   binding?: HomeBindingNote,
   bindingError?: string,
   board?: { block?: string | Record<string, unknown>; firstContact?: string },
   hookUpdate?: string,
 ): Record<string, unknown> {
   const inv = deps.invocation();
-  // Auth status is purely "is a per-origin API key stored for this --remote?" (`remoteKeyStored`,
-  // derived from `creds` in the caller). home is OFFLINE (never fetches), so when a key IS stored it
-  // reports `key-stored` and points at `whoami --remote` for the LIVE identity; otherwise
-  // `logged-out` with join guidance. (`creds` is also read below for the un-scoped `remotes.stored`
-  // discovery block.)
-  let auth: Record<string, unknown>;
-  if (remote && remoteKeyStored) {
-    // The REAL wire-protocol auth: a per-origin API key is stored for this --remote. home is
-    // OFFLINE, so verify live via whoami.
-    auth = {
-      status: "key-stored",
-      note: `an API key for this remote is stored locally; this home view is OFFLINE — run \`${inv} whoami --remote ${remote}\` to verify the live identity`,
-    };
-  } else {
-    auth = {
-      status: "logged-out",
-      help: `not logged in to any remote — local bundles need no login; for a shared remote, get its URL + an invite from a teammate → \`${inv} join --remote <url> --invite <token>\``,
-    };
-  }
   const ref = commandReference(inv);
 
   const view: Record<string, unknown> = {
     "agentstate-lite": { bin: deps.binPath(), description: DESCRIPTION },
-    auth,
   };
 
   if (remote) {
@@ -515,7 +490,6 @@ export function buildHomeView(
     const remoteBlock: Record<string, unknown> = {
       url: remote,
       help: [
-        `${inv} whoami --remote ${remote}`,
         `${inv} list --remote ${remote}`,
         `${inv} status --remote ${remote}`,
       ],
@@ -587,18 +561,6 @@ export function buildHomeView(
     view.project_binding_error = bindingError;
   }
 
-  // When NOT scoped to a specific --remote, surface the remotes you already hold a stored key for, so
-  // a cold agent handed no URL can DISCOVER a reachable shared workspace from this first-contact view
-  // (cold-start study r3: `whoami` listed them but the home view did not, so discovery was luck).
-  if (!remote) {
-    const storedRemotes = creds?.remotes ? Object.keys(creds.remotes).sort() : [];
-    if (storedRemotes.length > 0) {
-      view.remotes = {
-        stored: storedRemotes,
-        help: `you hold a key for these remote workspace(s) — reach one with \`${inv} list --remote <origin>\` (or \`${inv} whoami --remote <origin>\`)`,
-      };
-    }
-  }
   // Compact command list (names per group + a `--help` pointer) — the home view is the SessionStart
   // hook payload, so it stays token-lean; the FULL usage/summary reference is the `--help` view.
   const compact = compactCommandReference(inv);
@@ -610,12 +572,11 @@ export function buildHomeView(
 }
 
 /**
- * CLI entry for the zero-arg home view. Reads creds (file only) and the live bundle summary (LOCAL
- * only, double-guarded), builds the view, writes TOON. Exits 0 in EVERY case — auth state, bundle
- * present/absent/unreadable — never throws, so a SessionStart hook can never fail a session.
+ * CLI entry for the zero-arg home view. Reads the live bundle summary (LOCAL only,
+ * double-guarded), builds the view, and writes TOON. Exits 0 in EVERY case — bundle
+ * present/absent/unreadable — so a SessionStart hook can never fail a session.
  */
 export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promise<void> {
-  const loadCreds = deps.loadCreds ?? loadCredentials;
   const stdout = deps.stdout ?? ((s: string) => void process.stdout.write(s));
 
   // Parse the home-compatible global flags. Best-effort — an unknown/bad flag just yields the bare
@@ -682,25 +643,6 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
 
   const summarize = deps.summarizeBundle ?? (() => defaultSummarizeBundle(dir));
 
-  let creds: Credentials | null = null;
-  try {
-    creds = await loadCreds();
-  } catch {
-    creds = null; // belt + suspenders: an injected/real creds read must never fail the session either
-  }
-
-  // OFFLINE check (no fetch, no extra I/O — reads the already-loaded creds): is a per-origin API
-  // key stored for the --remote origin? Lets the auth block report "key-stored" instead of the old
-  // misleading "logged-out" when the key is present and valid (cold-start study #2).
-  let remoteKeyStored = false;
-  if (remote) {
-    try {
-      remoteKeyStored = Boolean(creds?.remotes?.[normalizeServer(remote).resource]);
-    } catch {
-      /* malformed --remote URL — leave false; the remote block still orients */
-    }
-  }
-
   // A --remote scope does NOT summarize (offline guarantee — the remote block orients toward the
   // fetching commands instead). Local / `--dir` scopes read the bundle as before.
   let summary: BundleSummary | UnreadableBundle | null = null;
@@ -737,14 +679,12 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
   stdout(
     render(
       buildHomeView(
-        creds,
         {
           binPath: deps.binPath ?? binPath,
           invocation,
         },
         summary,
         remote,
-        remoteKeyStored,
         binding,
         bindingError,
         board,

@@ -6,7 +6,7 @@
 // is retargeted from the promote/pull set to the OKF-native bundle set.
 //
 // The help family is SPLIT: bare `axi` (no args) renders the offline home view (identity header +
-// creds-file-only auth status + command reference), while `--help`/`-h`/`help` render the
+// live local bundle state + command reference), while `--help`/`-h`/`help` render the
 // COMMAND_GROUPS reference. Neither hardcodes a command list — both derive from reference.ts
 // (COMMAND_GROUPS), the single source of truth. The `hook` command manages the SessionStart home-view
 // hook.
@@ -34,12 +34,6 @@ import { view } from "./commands/view.js";
 import { serve } from "./commands/serve.js";
 import { ui } from "./commands/ui.js";
 import { sync } from "./commands/sync.js";
-import { login } from "./commands/login.js";
-import { whoami } from "./commands/whoami.js";
-import { join } from "./commands/join.js";
-import { invite } from "./commands/invite.js";
-import { member } from "./commands/member.js";
-import { key } from "./commands/key.js";
 import { home } from "./commands/home.js";
 import { hook } from "./commands/hook.js";
 import { sessionStart } from "./commands/session-start.js";
@@ -69,12 +63,6 @@ export const KNOWN_COMMANDS = [
   "serve",
   "ui",
   "sync",
-  "login",
-  "whoami",
-  "join",
-  "invite",
-  "member",
-  "key",
   "hook",
   "session-start",
 ] as const;
@@ -191,8 +179,8 @@ export function hoistLeadingGlobalFlags(argv: string[]): string[] | null {
 export async function main(argv: string[]): Promise<void> {
   const command = argv[0];
 
-  // Bare `axi` (no args): the offline-safe home view — identity header, auth status read purely from
-  // the creds file, and the command reference. Always exits 0 (logged in OR out).
+  // Bare `axi` (no args): the offline-safe home view — identity header, live local state, and the
+  // command reference. Always exits 0.
   if (command === undefined) {
     await home(argv);
     return;
@@ -267,12 +255,6 @@ export async function main(argv: string[]): Promise<void> {
       serve: wrap(serve),
       ui: wrap(ui),
       sync: wrap(sync),
-      login: wrap(login),
-      whoami: wrap(whoami),
-      join: wrap(join),
-      invite: wrap(invite),
-      member: wrap(member),
-      key: wrap(key),
       hook: wrap(hook),
       // The SessionStart hook payload: time-boxed board pull, then the home render — in-process.
       "session-start": wrap(sessionStart),

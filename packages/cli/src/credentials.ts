@@ -25,7 +25,7 @@ export interface Credentials {
    * (`new URL(remoteUrl).origin`, e.g. `https://my-worker.example.workers.dev`) — origin-keyed
    * from birth (a recorded design commitment: a single-slot shape would break the moment a
    * caller talks to more than one gated remote, e.g. a staging + a production deployment).
-   * Written by `login --remote <url> --api-key <key>` / `join`; read by `bundle.ts`'s `--remote`
+   * Provisioned outside the default CLI; read by `bundle.ts`'s `--remote`
    * resolution to source the `RemoteBackend` `authToken`. This is the SOLE credential shape — the
    * legacy `server`/`access_token` bearer fields were removed (the live remote auth is a per-origin
    * API key, not a stored bearer token).
@@ -142,8 +142,8 @@ export async function getApiKeyForOrigin(
 
 /**
  * Persist an API key for `origin`, MERGING with (never clobbering) any existing credentials
- * file — every OTHER origin's stored key survives. `login --remote <url> --api-key <key>` (and
- * `join`) are the writers.
+ * file — every OTHER origin's stored key survives. Non-default provisioning integrations are the
+ * writers.
  */
 export async function saveApiKeyForOrigin(
   origin: string,

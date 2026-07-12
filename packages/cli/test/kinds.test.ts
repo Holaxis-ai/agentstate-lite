@@ -71,7 +71,7 @@ test("kindsPointer: interpolated with the CALLER's resolved invocation, not a ha
 
   // buildHomeView (home.ts) threads deps.invocation() through to commandReference() the same way.
   // (The 2-arg call omits the 3rd `summary` param — optional, so this stays the no-bundle path.)
-  const home = buildHomeView(null, { binPath: () => "/bin/agentstate-lite", invocation: () => "npx -y agentstate-lite" });
+  const home = buildHomeView({ binPath: () => "/bin/agentstate-lite", invocation: () => "npx -y agentstate-lite" });
   assert.equal(home.kinds, "kinds are declared per-bundle — run `npx -y agentstate-lite kinds` to list them");
 });
 

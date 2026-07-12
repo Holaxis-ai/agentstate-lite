@@ -1,7 +1,7 @@
 // Server URL normalization for the `--remote` wire-protocol flow.
 //
 // `normalizeServer` validates + normalizes a `--remote <url>` into a {base, resource(=origin)} — the
-// origin is the key under which `login --remote --api-key`/`join` store a per-origin API key, and the
+// origin is the key under which a non-default provisioning integration stores a per-origin API key, and the
 // base is what `RemoteBackend` targets. This is the ONLY server-URL helper: the legacy bearer-flow
 // (`login --token`/`--server` + `AGENTSTATE_MCP_URL`) was removed — the live remote auth is a
 // per-origin API key against a gated wire-protocol deployment, not a stored bearer token.

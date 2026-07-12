@@ -2,8 +2,8 @@
  * CLI integration: `--remote` against a GATED worker-entry-style handler (Stage-1 Unit 2b Part
  * C) — the end-to-end proof that a real command's error path now closes the documented
  * misclassification (`docs/WIRE-PROTOCOL.md`'s formerly-open "client-side error envelope
- * carries no code" gap): a wrong/missing API key surfaces as `AUTH_REQUIRED`/exit 4 with a
- * `login --remote` fixing hint, and a genuine server-side failure (an unconfigured gate,
+ * carries no code" gap): a wrong/missing API key surfaces as `AUTH_REQUIRED`/exit 4 with an
+ * `AGENTSTATE_LITE_API_KEY` fixing hint, and a genuine server-side failure (an unconfigured gate,
  * mirroring `packages/worker/src/auth.ts`'s fail-closed 500) surfaces as `RUNTIME`/exit 1 — NOT
  * the pre-existing generic `USAGE`/exit 2 every command's catch-all used to produce for any
  * non-CliError throw.
@@ -147,14 +147,15 @@ async function exitOf(run: () => Promise<void>): Promise<ReturnType<typeof toExi
   throw new Error("expected run() to throw");
 }
 
-test("--remote against a gated handler: wrong API key -> AUTH_REQUIRED, exit 4, help names login --remote", async () => {
+test("--remote against a gated handler: wrong API key -> AUTH_REQUIRED, exit 4, help names the supported env credential and no retired verb", async () => {
   const router = await freshRouter();
   await withApiKeyEnv("totally-wrong-key", () =>
     withGatedFetch(gate(router, CORRECT_KEY), async () => {
       const { exitCode, envelope } = await exitOf(() => list(["--remote", REMOTE_URL, "--json"], {}));
       assert.equal(exitCode, 4);
       assert.equal(envelope.error.code, "AUTH_REQUIRED");
-      assert.match(envelope.error.help ?? "", /login --remote/);
+      assert.match(envelope.error.help ?? "", /AGENTSTATE_LITE_API_KEY=<key>/);
+      assert.doesNotMatch(envelope.error.help ?? "", /\b(?:login|join|whoami)\s+--remote\b/);
     }),
   );
 });
@@ -166,6 +167,8 @@ test("--remote against a gated handler: MISSING API key (env unset, no credentia
       const { exitCode, envelope } = await exitOf(() => list(["--remote", REMOTE_URL, "--json"], {}));
       assert.equal(exitCode, 4);
       assert.equal(envelope.error.code, "AUTH_REQUIRED");
+      assert.match(envelope.error.help ?? "", /AGENTSTATE_LITE_API_KEY=<key>/);
+      assert.doesNotMatch(envelope.error.help ?? "", /\b(?:login|join|whoami)\s+--remote\b/);
     }),
   );
 });
@@ -200,6 +203,8 @@ test("--remote against a gated handler, via a command WITH its own catch-all (do
       const { exitCode, envelope } = await exitOf(() => doc(["read", "concepts/alpha", "--remote", REMOTE_URL, "--json"], {}));
       assert.equal(exitCode, 4);
       assert.equal(envelope.error.code, "AUTH_REQUIRED");
+      assert.match(envelope.error.help ?? "", /AGENTSTATE_LITE_API_KEY=<key>/);
+      assert.doesNotMatch(envelope.error.help ?? "", /\b(?:login|join|whoami)\s+--remote\b/);
     }),
   );
 });
@@ -211,7 +216,8 @@ test("--remote against a gated handler, via `link list` (graph-query-v0's queryE
       const { exitCode, envelope } = await exitOf(() => link(["list", "--remote", REMOTE_URL, "--json"], {}));
       assert.equal(exitCode, 4);
       assert.equal(envelope.error.code, "AUTH_REQUIRED");
-      assert.match(envelope.error.help ?? "", /login --remote/);
+      assert.match(envelope.error.help ?? "", /AGENTSTATE_LITE_API_KEY=<key>/);
+      assert.doesNotMatch(envelope.error.help ?? "", /\b(?:login|join|whoami)\s+--remote\b/);
       assert.match(
         envelope.error.help ?? "",
         new RegExp(REMOTE_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),

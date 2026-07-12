@@ -322,7 +322,6 @@ test("home wiring: plain local home triggers; a session-start render (boardPull 
   };
   const inert = {
     stdout: () => {},
-    loadCreds: async () => null,
     summarizeBundle: async () => null,
     loadBoardStatus: async () => null,
     hookNeedsUpdate: () => false,

@@ -115,7 +115,7 @@ export interface MutateDocOptions {
   /**
    * The `--remote <url>` value, when this is a remote mutation — threaded into
    * {@link classifyBundleError} so an `AUTH_REQUIRED` (e.g. a revoked key mid-write) carries a
-   * copy-pastable `login --remote <url>` hint. Optional: a local (`--dir`) mutation omits it and
+   * actionable `AGENTSTATE_LITE_API_KEY` hint. Optional: a local (`--dir`) mutation omits it and
    * the classification is identical bar the hint's placeholder URL.
    */
   remoteUrl?: string;

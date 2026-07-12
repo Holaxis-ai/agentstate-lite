@@ -12,7 +12,6 @@
 // Ported verbatim from holaxis-agentstate `packages/cli/src/errors.ts` — the 0/1/2/4/5/6 exit taxonomy
 // is PRESERVED intact.
 import { MalformedDocumentError, RemoteError } from "@agentstate-lite/core";
-import { cliInvocation } from "./invocation.js";
 
 /** Stable, documented error codes. Finer than the exit table; rides alongside it in the envelope. */
 export type CliErrorCode =
@@ -37,8 +36,8 @@ export type CliErrorCode =
    */
   | "FORBIDDEN"
   /**
-   * Stage-2 auth Part B: the wire's `409 LAST_ADMIN` — a well-formed `member set-role`/
-   * `member remove` request that would strip a bundle of its last real admin
+   * Stage-2 auth Part B: the wire's `409 LAST_ADMIN` — a well-formed membership mutation that
+   * would strip a bundle of its last real admin
    * (`packages/worker/src/auth-routes.ts`'s `wouldRemoveLastAdmin` guard). A genuine
    * precondition conflict, same taxonomy bucket as `STALE_HEAD`/`ALREADY_EXISTS`.
    */
@@ -172,8 +171,8 @@ export function toEnvelope(err: CliError): ErrorEnvelope {
  *    through UNCHANGED.
  *  - A `RemoteError` (`core/src/remote-backend.ts` — any non-2xx, non-404, non-412 wire response, OR
  *    a response `RemoteBackend` itself rejected client-side) maps by ITS `code`: `AUTH_REQUIRED` ->
- *    the AUTH exit-code taxonomy (4) with a `login --remote` fixing hint (using `remoteUrl` when the
- *    caller has it in scope, for a copy-pastable command; a placeholder otherwise); `RUNTIME` AND
+ *    the AUTH exit-code taxonomy (4) with an `AGENTSTATE_LITE_API_KEY` fixing hint (using
+ *    `remoteUrl` when the caller has it in scope; a placeholder otherwise); `RUNTIME` AND
  *    `VERSION_MISSING` -> RUNTIME (1) — the regression this closes, and (for `VERSION_MISSING`,
  *    Stage-1 Unit 2b production repair) a response that arrived with no version header is almost
  *    always an intermediary (a CDN/compressing proxy) stripping it in transit, not a caller mistake,
@@ -183,8 +182,8 @@ export function toEnvelope(err: CliError): ErrorEnvelope {
  *    mislead); `NOT_FOUND` -> `NOT_FOUND` (exit 6 — safe here specifically because every EXISTING
  *    bundle-scoped read already intercepts its own 404 before it can reach this function, see
  *    `RemoteBackend`'s `read`/`readMany`/`readReserved`/`readBlob`/`exists`/`existsBlob`; only the
- *    NEW auth-route surface's 404s, e.g. `invite revoke`/`key revoke` on an absent id, flow through
- *    here); `LAST_ADMIN` (Stage-2 auth Part B — `member set-role`/`member remove`'s `409` guard
+ *    NEW auth-route surface's 404s for absent administrative resources flow through here);
+ *    `LAST_ADMIN` (Stage-2 auth Part B — the membership mutation `409` guard
  *    against stripping a bundle of its last admin) -> `LAST_ADMIN`, the CONFLICT exit code (5);
  *    anything else (e.g. the envelope's own `USAGE`) -> USAGE (2), the pre-existing default.
  *  - Any other thrown value (a LOCAL engine's plain `Error`, e.g. an OKF validation rejection,
@@ -208,7 +207,9 @@ export function classifyBundleError(err: unknown, remoteUrl?: string): CliError 
   if (err instanceof RemoteError) {
     if (err.code === "AUTH_REQUIRED") {
       return new CliError("AUTH_REQUIRED", err.message, {
-        help: `${cliInvocation()} login --remote ${remoteUrl ?? "<url>"} --api-key <key>`,
+        help:
+          `set AGENTSTATE_LITE_API_KEY=<key> and retry the same command against --remote ${remoteUrl ?? "<url>"}; ` +
+          "an already-provisioned stored per-origin credential is also accepted",
       });
     }
     if (err.code === "RUNTIME" || err.code === "VERSION_MISSING") {
