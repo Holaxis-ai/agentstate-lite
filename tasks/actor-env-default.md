@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'AGENTSTATE_LITE_ACTOR: env default for --actor (flag > env > absent)'
-status: in_progress
+status: done
 priority: '2'
 description: >-
   Implement one CLI actor-resolution boundary and route the document mutation
@@ -100,9 +100,12 @@ description: >-
   regeneration/versioning.
 
 
-  Status remains in progress until PR #45 merges.
+  SHIPPED 2026-07-12: PR #45 merged to main as
+  `0d1451788e24024bcc07cc33ad5d0b5ce100e342` from reviewed candidate
+  `e4dfed5a90cf7efcc62061166958a9646fef35fe`. Post-merge plugin
+  regeneration/versioning remains bot-owned.
 actor: codex
 assignee: codex
-timestamp: '2026-07-12T19:02:20.565Z'
+timestamp: '2026-07-12T19:28:41.880Z'
 ---
 
