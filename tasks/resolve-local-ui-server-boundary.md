@@ -1,7 +1,7 @@
 ---
 type: Task
 title: Resolve the OSS local-UI versus moveable server package boundary
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   Prerequisite design/implementation unit for hosted-package extraction.
@@ -45,6 +45,7 @@ description: >-
 
   - Builder -> independent reviewer -> QA before merge.
 actor: codex
-timestamp: '2026-07-12T21:09:49.763Z'
+assignee: codex
+timestamp: '2026-07-12T21:11:51.951Z'
 ---
 
