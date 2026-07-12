@@ -2,40 +2,31 @@
  * The postMessage bridge, shell side (tasks/ui-pages-spike, "The bridge"). A sandboxed,
  * opaque-origin page cannot reach the data API directly (no same-origin, `connect-src 'none'`);
  * its ONLY channel is `postMessage` to the shell, which brokers a NARROW, READ-ONLY, versioned
- * (`bridge: 'v0'`) request set on its behalf and posts results back.
+ * (`bridge: 'v0'`) read-only data set plus registered-Page shell navigation on its behalf.
  *
  * READ-ONLY BY CONSTRUCTION: there is no write/delete/update handler — an unknown request type
- * (including anything mutating) returns an error reply. v0 exposes exactly `hello`, `query`,
- * `read`, `edges`, `subscribe`. This module is the pure router ({@link handleBridgeRequest}); the
+ * (including anything mutating) returns an error reply. v0 exposes data operations `hello`,
+ * `query`, `read`, `edges`, `subscribe`, plus the `open-page` shell action. This module is the pure router ({@link handleBridgeRequest}); the
  * DOM plumbing (source validation, posting, SSE fan-in, hot-reload) lives in
  * `../views/PageFrame.tsx`.
  *
  * ENFORCED CAPABILITY (designs/page-model-and-viewer-deprecation): a page's Page-convention
- * `bridge` field — `none | bundle-read` — gates ALL of the above, not just presentation. A
- * `none` page (a content page: arbitrary self-contained HTML) gets an error reply for every
- * request, before any dep is touched. The gate lives HERE, in the router, and is enforced by the
+ * `bridge` field — `none | bundle-read` — gates all bundle-data operations. A `none` page may
+ * navigate to another registered Page but gets an error reply for every data request. The data
+ * gate lives HERE, in the router, and is enforced by the
  * caller passing the framed page's {@link BridgeCapability} — never by anything the sandboxed
  * page itself claims.
  */
 import { isTerminal } from "@agentstate-lite/core/kinds";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
 import type { DocHead, Edge, ReadDocResponse } from "../api/types.js";
+import { isPageRegistryId, type BridgeCapability } from "./registry.js";
 
 export const BRIDGE_PROTOCOL = "v0";
 
 /** A page's bridge capability (the Page convention's `bridge` field), as enforced by the shell. */
-export type BridgeCapability = "none" | "bundle-read";
-
-/**
- * Parse a Page doc's `bridge` frontmatter value, FAIL-CLOSED: only the exact string
- * `"bundle-read"` grants bundle access — absent, malformed, a typo, or any value this build
- * doesn't recognize denies (`"none"`). The ONE place this parse happens; `pages.ts`'s launcher
- * projection and `PageFrame`'s enforcement gate both call it, so the launcher's grouping and the
- * bridge's actual behavior can never disagree about a page's capability.
- */
-export function resolveBridgeCapability(bridge: unknown): BridgeCapability {
-  return bridge === "bundle-read" ? "bundle-read" : "none";
-}
+export { resolveBridgeCapability } from "./registry.js";
+export type { BridgeCapability } from "./registry.js";
 
 /** A page->shell request. `bridge`/`type` are always present; `id` correlates the reply; other keys are per-type. */
 export interface BridgeRequest {
@@ -44,6 +35,7 @@ export interface BridgeRequest {
   type: string;
   params?: unknown;
   docId?: unknown;
+  pageId?: unknown;
 }
 
 /** Bridge `query` params: server-side `type`/`prefix`, then shell-side `field` (k=v, comma=OR), `open`, `limit` post-filters. */
@@ -72,12 +64,15 @@ export interface BridgeDeps {
   kinds: () => Promise<KindConvention[]>;
   /** The bundle's derived edge list (server-loaded via core's `queryEdges`) — the general graph primitive backing backlinks (`{to: docId}`) and "contains" queries (`{from: itemId, text: "contains"}`) alike. */
   edges: (params: EdgeParams) => Promise<Edge[]>;
+  /** Validate one caller-supplied id as a usable registered Page; exposes no target metadata. */
+  resolvePage: (pageId: string) => Promise<boolean>;
 }
 
 /** The router's decision: a reply object to post back (or `null` to ignore a non-bridge message), and whether this was a `subscribe` (the caller then streams `change` events to it). */
 export interface BridgeOutcome {
   reply: Record<string, unknown> | null;
   subscribed?: boolean;
+  openPageId?: string;
 }
 
 function isBridgeRequest(msg: unknown): msg is BridgeRequest {
@@ -177,9 +172,10 @@ export function applyRowFilters(rows: DocHead[], params: QueryParams, kinds: Kin
  * bridge request (the caller drops it). Every handler is read-only; an unrecognized `type` — which
  * is how any would-be mutation arrives, since none is defined — yields an error reply.
  *
- * `capability` gates the whole switch below: a page whose capability is not exactly
+ * `open-page` is handled before the data-capability gate. For every other type, `capability`
+ * gates the switch below: a page whose capability is not exactly
  * `"bundle-read"` (the fail-closed default, `"none"`) gets a `FORBIDDEN` error reply for every
- * request type, without a single dep call — the enforced content/data-page split.
+ * data request, without a single data-dep call — the enforced content/data-page split.
  */
 export async function handleBridgeRequest(
   msg: unknown,
@@ -188,6 +184,19 @@ export async function handleBridgeRequest(
 ): Promise<BridgeOutcome> {
   if (!isBridgeRequest(msg)) return { reply: null };
   const { id, type } = msg;
+  if (type === "open-page") {
+    if (!isPageRegistryId(msg.pageId)) {
+      return { reply: fail(id, "USAGE", "open-page requires a valid pages-registry/<id> pageId") };
+    }
+    try {
+      if (!(await deps.resolvePage(msg.pageId))) {
+        return { reply: fail(id, "NOT_FOUND", `page '${msg.pageId}' is not a usable registered Page`) };
+      }
+      return { reply: null, openPageId: msg.pageId };
+    } catch (err) {
+      return { reply: fail(id, "RUNTIME", err instanceof Error ? err.message : String(err)) };
+    }
+  }
   if (capability !== "bundle-read") {
     return { reply: fail(id, "FORBIDDEN", "this page declares bridge: none — no bundle access") };
   }
@@ -218,7 +227,7 @@ export async function handleBridgeRequest(
         return { reply: ok(id, type, { ok: true }), subscribed: true };
       }
       default:
-        return { reply: fail(id, "USAGE", `unknown bridge request '${type}' (v0 is read-only: hello, query, read, edges, subscribe)`) };
+        return { reply: fail(id, "USAGE", `unknown bridge request '${type}' (v0: open-page; read-only data: hello, query, read, edges, subscribe)`) };
     }
   } catch (err) {
     return { reply: fail(id, "RUNTIME", err instanceof Error ? err.message : String(err)) };

@@ -43,6 +43,15 @@ page's own iframe; the page drops any message whose `event.source` is not `windo
 | `read`      | `{ docId }`                                                | `{ id, frontmatter, body }`                                |
 | `edges`     | `{ params: { from?, to?, text? } }`                        | `{ edges: { from, to, text }[], count }`                   |
 | `subscribe` | —                                                          | `{ ok: true }`, then a stream of `change` events          |
+| `open-page` | `{ pageId: "pages-registry/…" }`                           | none; fire-and-forget shell navigation                    |
+
+`open-page` is the sole capability-independent action: both `bridge: none` and
+`bridge: bundle-read` Pages may ask the shell to open another usable registered Page. The shell
+accepts only a conservative `pages-registry/…` concept id, validates that it resolves to a
+`type: Page` with a safe `pages/…` entry, and mounts the target normally with its own sandbox,
+nonce, and bridge capability. It returns no target body, frontmatter, entry, HTML, or nonce. A
+failed attempt can reveal that one caller-supplied registry id is not usable; this bounded
+existence oracle is the only information exposed by navigation.
 
 `DocHead` is `{ id, version, frontmatter }` — the same **head projection** `list` uses (full
 frontmatter, never a body). `query` params:
@@ -97,8 +106,8 @@ requests at all — and the shell, not the page, is what enforces it:
 
 - `bridge: bundle-read` — a **data page**. The shell answers `hello`/`query`/`read`/`edges`/
   `subscribe` as described above.
-- `bridge: none` — a **content page**. The shell replies to EVERY request type with a `FORBIDDEN`
-  error, before touching any bundle data. Arbitrary self-contained HTML with no live data at all.
+- `bridge: none` — a **content page**. The shell replies to every bundle-data request with a
+  `FORBIDDEN` error, before touching any bundle data. It may still use `open-page` navigation.
 - The `Page` convention declares `bridge` REQUIRED — every page is an intentional
   classification, not a silent default. At runtime the shell still fails closed for a doc this
   convention didn't govern (an external bundle, a hand-edited file that skipped the lint): absent,
@@ -111,8 +120,8 @@ The launcher groups pages by this same field: "Dashboards" for `bundle-read`, "D
 ## Authoring a page
 
 1. Write a self-contained `.html` (inline CSS/JS, no external hosts). A data page embeds a copy of
-   the ~30-line bridge client below; a content page (`bridge: none`) has no use for it — every
-   call it made would come back `FORBIDDEN`.
+   the bridge client below. A content page (`bridge: none`) may use only its fire-and-forget
+   `openPage` helper; its bundle-data calls would come back `FORBIDDEN`.
 2. Promote it as a blob: `agentstate-lite promote my-page.html --doc-key pages/my-page.html`.
 3. Declare a registry doc: a `type: Page` doc with `title`, `entry: pages/my-page.html`, either
    `bridge: none` or `bridge: bundle-read` (required), and an optional `description`. Promote it:
@@ -139,6 +148,11 @@ of this repo's own board.
       parent.postMessage(msg, "*"); // parent origin is opaque to us; the shell validates by source
     });
   }
+  // A shell action, deliberately separate from send(): the source frame may unload immediately,
+  // so openPage is void/fire-and-forget and must not be awaited.
+  function openPage(pageId) {
+    parent.postMessage({ bridge: PROTO, type: "open-page", pageId: pageId }, "*");
+  }
   window.addEventListener("message", function (e) {
     if (e.source !== window.parent) return; // only trust the shell
     var m = e.data;
@@ -155,6 +169,7 @@ of this repo's own board.
     query: function (params) { return send("query", { params: params }); },
     read: function (docId) { return send("read", { docId: docId }); },
     edges: function (params) { return send("edges", { params: params }); },
+    openPage: openPage,
     subscribe: function (cb) { subs.push(cb); return send("subscribe"); }
   };
 })();

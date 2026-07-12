@@ -41,7 +41,7 @@
     font-family: var(--mono); background: var(--accent-soft); color: var(--ink);
     padding: 0.1rem 0.35rem; border-radius: 5px; font-size: 0.85em;
   }
-  #toggle {
+  #toggle, #open-roadmap {
     border: 1px solid var(--line); background: var(--panel); color: var(--ink);
     border-radius: 8px; padding: 0.4rem 0.9rem; font-size: 0.85rem; cursor: pointer;
   }
@@ -57,9 +57,8 @@
     This page is a <strong>content page</strong>: a self-contained HTML file that carries no
     bundle data of its own and asks the shell for none. It is promoted and served exactly like
     any other bundle page — versioned, attributed, and portable as a plain HTML file — but it
-    declares <code>bridge: none</code> in its registry doc, so the shell refuses every bridge
-    request on its behalf. Open this file directly in a browser and it looks identical, because
-    there was never anything to fetch.
+    declares <code>bridge: none</code> in its registry doc, so the shell refuses every bundle-data
+    request on its behalf. It may still ask the trusted shell to open another registered Page.
   </p>
 
   <div class="card">
@@ -74,19 +73,28 @@
   </div>
 
   <button id="toggle" type="button">Why no bridge call here?</button>
+  <button id="open-roadmap" type="button">Open the Roadmap Page</button>
   <div id="detail">
     <p>
       Nothing below was fetched from anywhere — it is inert markup toggled by a few lines of
       inline JS. A content page may still use scripts for local interaction (this button, for
       instance); what it cannot do is reach the bundle's data API, because the shell denies every
-      bridge request a <code>bridge: none</code> page sends, regardless of what the page's own
-      script asks for.
+      bundle-data request a <code>bridge: none</code> page sends, regardless of what the page's own
+      script asks for. Page navigation reveals only whether the requested registered Page exists;
+      it does not expose that Page's data or HTML.
     </p>
   </div>
 
   <script>
+    var PROTO = "v0";
+    function openPage(pageId) {
+      parent.postMessage({ bridge: PROTO, type: "open-page", pageId: pageId }, "*");
+    }
     document.getElementById("toggle").addEventListener("click", function () {
       document.getElementById("detail").classList.toggle("open");
+    });
+    document.getElementById("open-roadmap").addEventListener("click", function () {
+      openPage("pages-registry/roadmap");
     });
   </script>
 </main>

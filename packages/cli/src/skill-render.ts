@@ -444,7 +444,7 @@ function renderBundlePagesSection(): string[] {
   lines.push("access) — its only channel out is a **read-only** postMessage bridge to the shell.");
   lines.push("");
   lines.push(
-    "The bridge (protocol `v0`) has five request types: `hello` (bundle identity), `query`",
+    "The bridge (protocol `v0`) has five read-only data request types: `hello` (bundle identity), `query`",
   );
   lines.push(
     "(frontmatter-filtered rows — the same head projection `list` uses), `read` (one doc), `edges`",
@@ -455,7 +455,9 @@ function renderBundlePagesSection(): string[] {
   lines.push(
     "`subscribe` (opt into a server-pushed `change` event whenever the watched bundle moves). There",
   );
-  lines.push("is no mutation message — read-only is enforced by construction, not convention.");
+  lines.push("is no mutation message — read-only is enforced by construction, not convention. `open-page`");
+  lines.push("is a separate fire-and-forget shell action available to either Page capability; it opens only");
+  lines.push("another valid registered Page and returns none of that target's content or metadata.");
   lines.push("");
   lines.push("Author a page in four steps:");
   lines.push("");

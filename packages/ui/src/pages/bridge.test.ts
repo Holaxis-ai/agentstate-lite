@@ -33,6 +33,7 @@ function stubDeps(overrides: Partial<BridgeDeps> = {}): BridgeDeps {
     read: vi.fn(async (): Promise<ReadDocResponse> => ({ id: "x", frontmatter: { type: "Task" }, body: "" })),
     kinds: vi.fn(async () => [taskKind()]),
     edges: vi.fn(async (): Promise<Edge[]> => []),
+    resolvePage: vi.fn(async () => true),
     ...overrides,
   };
 }
@@ -54,6 +55,35 @@ describe("handleBridgeRequest", () => {
       type: "hello:result",
       result: { bundle: { root: "/tmp/b", name: "b" }, mode: "dir", protocol: "v0", grant: "read" },
     });
+  });
+
+  it.each(["none", "bundle-read"] as const)("open-page is available to %s pages and returns only a shell-navigation outcome", async (capability) => {
+    const resolvePage = vi.fn(async () => true);
+    const deps = stubDeps({ resolvePage });
+    const outcome = await handleBridgeRequest(
+      { bridge: "v0", id: "nav", type: "open-page", pageId: "pages-registry/reviews/architecture.v2" },
+      deps,
+      capability,
+    );
+    expect(outcome).toEqual({ reply: null, openPageId: "pages-registry/reviews/architecture.v2" });
+    expect(resolvePage).toHaveBeenCalledWith("pages-registry/reviews/architecture.v2");
+    expect(deps.config).not.toHaveBeenCalled();
+    expect(deps.query).not.toHaveBeenCalled();
+    expect(deps.read).not.toHaveBeenCalled();
+  });
+
+  it("open-page rejects malformed ids before resolving and reports unusable targets without metadata", async () => {
+    const resolvePage = vi.fn(async () => false);
+    const deps = stubDeps({ resolvePage });
+    for (const pageId of [undefined, "", "pages-registry/", "pages-registryevil/x", "docs/x", "/pages-registry/x", "pages-registry/x.md", "pages-registry/../x", "pages-registry/x%2f", "pages-registry/x?y", "https://example.test/x", "pages/x.html"]) {
+      const { reply } = await handleBridgeRequest({ bridge: "v0", id: "bad", type: "open-page", pageId }, deps, "none");
+      expect((reply as { error: { code: string } }).error.code, String(pageId)).toBe("USAGE");
+    }
+    expect(resolvePage).not.toHaveBeenCalled();
+
+    const { reply } = await handleBridgeRequest({ bridge: "v0", id: "missing", type: "open-page", pageId: "pages-registry/missing" }, deps, "none");
+    expect((reply as { error: { code: string }; result?: unknown }).error.code).toBe("NOT_FOUND");
+    expect(reply).not.toHaveProperty("result");
   });
 
   it("query: fetches by server facets, then applies field/open/limit before replying", async () => {

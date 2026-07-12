@@ -126,8 +126,8 @@ export async function bootUiOverDirBundle(seedTasks: SeedTask[]): Promise<Runnin
 }
 
 /**
- * Seed a fresh temp bundle with the given Tasks AND the two seed pages
- * (`examples/pages/{pulse,roadmap}.html` blobs + their `type: Page` registry docs) — the
+ * Seed a fresh temp bundle with the given Tasks AND the three seed pages
+ * (`examples/pages/{pulse,roadmap,about}.html` blobs + their `type: Page` registry docs) — the
  * fixture for the pages-spike e2e (tasks/ui-pages-spike). The tasks are wired into a single
  * `roadmap-items/spike` doc via `contains` links, so the Roadmap page's `edges` request and
  * rollup bar have real data to render. Returns the bundle dir.
@@ -185,8 +185,17 @@ export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
       body: "",
     },
   );
+  await writeDoc(
+    { root: dir },
+    {
+      id: "pages-registry/about",
+      frontmatter: { type: "Page", title: "About this bundle", entry: "pages/about.html", description: "Content-page navigation example.", bridge: "none" },
+      body: "",
+    },
+  );
   await writeBlob({ root: dir }, "pages/pulse.html", await readFile(path.join(examples, "pulse.html")), "text/html; charset=utf-8");
   await writeBlob({ root: dir }, "pages/roadmap.html", await readFile(path.join(examples, "roadmap.html")), "text/html; charset=utf-8");
+  await writeBlob({ root: dir }, "pages/about.html", await readFile(path.join(examples, "about.html")), "text/html; charset=utf-8");
   return dir;
 }
 

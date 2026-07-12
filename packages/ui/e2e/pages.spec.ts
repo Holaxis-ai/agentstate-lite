@@ -28,7 +28,7 @@ test("launcher lists the bundle's Page docs", async ({ page }) => {
   }
 });
 
-test("opening a page frames a sandboxed (allow-scripts only) iframe and the bridge delivers data", async ({ page }) => {
+test("a directly opened data Page completes its startup bridge queries before iframe load", async ({ page }) => {
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
@@ -39,11 +39,44 @@ test("opening a page frames a sandboxed (allow-scripts only) iframe and the brid
     // Opaque origin: allow-scripts and NOTHING else (no allow-same-origin).
     expect(await iframe.getAttribute("sandbox")).toBe("allow-scripts");
 
-    // The bridge round-tripped BOTH the Roadmap Item query and the `edges` request: the seeded
+    // These requests are posted by Roadmap's inline startup script, before the parent sees the
+    // iframe load event. The bridge round-tripped BOTH the Roadmap Item query and `edges` request:
     // item renders, and its rollup counts the two seeded (non-terminal) tasks it `contains`.
     const frame = page.frameLocator("iframe.page-frame-iframe");
     await expect(frame.locator(".item .title", { hasText: "Spike work" })).toBeVisible();
     await expect(frame.locator(".roll .count")).toHaveText("0/2 done");
+  } finally {
+    await ui.cleanup();
+  }
+});
+
+test("About navigation opens Roadmap and its startup bridge queries under the target capability, with browser history", async ({ page }) => {
+  const ui = await bootUiOverPagesBundle(TASKS);
+  try {
+    await page.goto(ui.url);
+    await page.locator('[data-page-id="pages-registry/about"]').click();
+    const about = page.frameLocator("iframe.page-frame-iframe");
+    await expect(about.getByRole("heading", { name: "About this bundle" })).toBeVisible();
+
+    // Malformed/nonexistent targets stay put; the shell never constructs a route from them.
+    const before = page.url();
+    await about.locator("body").evaluate(() => {
+      (window as unknown as { openPage: (id: string) => void }).openPage("pages-registry/missing");
+    });
+    await page.waitForTimeout(100);
+    expect(page.url()).toBe(before);
+
+    await about.getByRole("button", { name: "Open the Roadmap Page" }).click();
+    await expect(page).toHaveURL(/view=page&id=pages-registry%2Froadmap/);
+    const roadmap = page.frameLocator("iframe.page-frame-iframe");
+    // Target capability is resolved independently: Roadmap receives bundle data although About
+    // was bridge:none.
+    await expect(roadmap.locator(".item .title", { hasText: "Spike work" })).toBeVisible();
+
+    await page.goBack();
+    await expect(page.frameLocator("iframe.page-frame-iframe").getByRole("heading", { name: "About this bundle" })).toBeVisible();
+    await page.goForward();
+    await expect(page.frameLocator("iframe.page-frame-iframe").locator(".item .title", { hasText: "Spike work" })).toBeVisible();
   } finally {
     await ui.cleanup();
   }
@@ -192,7 +225,7 @@ test("P1: a session-rotating restart surfaces 'Connection lost' instead of stayi
   }
 });
 
-test("F2 regression: a Page doc whose entry fails mint confinement shows a per-view error, NOT the terminal session-expired screen", async ({ page }) => {
+test("F2 regression: a malformed Page deep link shows a per-view error, NOT the terminal session-expired screen", async ({ page }) => {
   // The bug the 403 fix above introduced: mintPageNonce also 403s (code FORBIDDEN) for a
   // malformed Page doc — an `entry` outside `pages/`, or one no Page doc has registered — and
   // such a doc IS clickable today (the launcher doesn't filter entries by prefix). Session-death
@@ -205,8 +238,9 @@ test("F2 regression: a Page doc whose entry fails mint confinement shows a per-v
       { id: "pages-registry/bad", frontmatter: { type: "Page", title: "Bad page", entry: "not-a-page-prefix/oops.html" }, body: "" },
     );
 
-    await page.goto(ui.url);
-    await page.locator('[data-page-id="pages-registry/bad"]').click();
+    await page.goto(ui.url); // establish the session cookie; malformed entries are filtered from the launcher
+    const origin = new URL(ui.url).origin;
+    await page.goto(`${origin}/?view=page&id=pages-registry%2Fbad`);
 
     await expect(page.locator(".view-status-error")).toContainText(/could not open page/i);
     await expect(page.getByRole("heading", { name: "Connection lost" })).toHaveCount(0);
