@@ -1,34 +1,26 @@
 ---
 type: Task
 title: >-
-  Bundle pages: harden bridge capability transition boundaries (upgrade race +
-  one-frame change push)
+  Bundle pages: fence the one-frame change-push to a downgrading page (Finding
+  A; B closed by #40)
 status: todo
-priority: '2'
+priority: '3'
 description: >-
-  Two LOW residual findings from the PR #39 re-review (the P1 downgrade race +
-  reply mis-delivery are FIXED and merged in #39; these are the remaining
-  transition-boundary edges, both sandbox-contained). (A) change-push ordering:
-  the subscribeToChanges handler posts changeMessage (metadata-only
-  {id,version}+removed) reading subscribedRef.current BEFORE loadPage()'s
-  pre-revoke, so exactly ONE boundary frame reaches a page in the instant it is
-  downgraded/removed. Fix: move the removed.includes(pageId)/changed(pageId)
-  checks above the push and skip when the event touches the page's own registry
-  doc. (B) UPGRADE-direction mirror (PRE-EXISTING since da093e2, not a #39
-  regression): loadPage installs the NEW capability + swaps src before the new
-  document commits in the reused iframe element; in a real browser contentWindow
-  is a stable WindowProxy across navigation, so during the navigate window the
-  OLD document still runs, passes the ev.source check, and its requests are
-  answered under the NEW grant — a none->bundle-read live edit lets a content
-  page briefly read. Non-exploitable in practice (connect-src 'none', no popups,
-  doomed document = no exfil), but a real fail-closed edge. Fix: defer
-  bridgeCapabilityRef.current=capability to the iframe 'load' event
-  (pending-capability keyed by seq), so a grant activates only once its document
-  is actually in the frame. Ship as one unit WITH a component test for the
-  upgrade race (the existing bite-tested harness covers the downgrade direction;
-  note jsdom mints a fresh contentWindow per navigation, so the test must model
-  the WindowProxy-stability the real bug depends on).
+  TRIMMED after the #40 rework (page navigation). FINDING B (upgrade-direction
+  race) is now CLOSED on main: #40 added activeFrameSeqRef — the bridge
+  generation OWNED by the keyed iframe DOM node, invalidated the instant loadSeq
+  advances — so a still-mounted old document's requests are dropped (PageFrame
+  onMessage ~line 164). That is the structural fix the re-review proposed; my
+  #39 fail-closed enforcement + both P1 race tests were preserved. REMAINING =
+  Finding A ONLY (LOW): the change-event handler (PageFrame subscribeToChanges,
+  ~lines 203-205) still posts changeMessage reading subscribedRef.current BEFORE
+  the removed.includes(pageId)/revoke and the reload, so exactly ONE
+  metadata-only frame ({id,version}+removed ids, no bodies) reaches a page in
+  the instant it is downgraded/removed. Sandbox-contained (connect-src none,
+  doomed doc). Cheap fix: move the removed.includes(pageId)/changed(pageId)
+  checks above the push and skip the push when the event touches the page's own
+  registry doc.
 actor: mike/claude
-timestamp: '2026-07-10T20:56:59.436Z'
+timestamp: '2026-07-12T11:44:28.325Z'
 ---
 
