@@ -7668,8 +7668,10 @@ Options:
   --actor <name>       Attribute this write: persisted as the doc's own 'actor' frontmatter field
                        (the per-doc attribution sync and its receipts read) and recorded in version
                        history by a persisting backend. Note doc write is a FULL replace: omitting
-                       --actor on an overwrite drops any existing actor field (reported in
-                       dropped_fields). A present-but-blank value is a USAGE error (exit 2).
+                       both --actor and AGENTSTATE_LITE_ACTOR on an overwrite drops any existing
+                       actor field (reported in dropped_fields). Precedence: --actor >
+                       AGENTSTATE_LITE_ACTOR > absent. A present-but-blank flag or environment value
+                       is a USAGE error (exit 2).
 ${COMMON_OPTIONS}
 
 Examples:
@@ -7718,11 +7720,12 @@ Options:
                          (from a prior read/write/history receipt) \u2014 a conflict is STALE_HEAD (exit
                          5), NOT retried. Omit for a normal (auto-retrying) update. A present-but-
                          blank value is a USAGE error (exit 2), not "no CAS".
-  --actor <name>         Attribute this write: sets the doc's 'actor' frontmatter field (overwriting
-                         a previous actor; omitted = the existing actor is preserved verbatim) and
-                         threads to version history (see 'doc history'). Not a patch by itself \u2014
-                         pass it alongside the field(s) you are changing. A present-but-blank value
-                         is a USAGE error (exit 2).
+  --actor <name>         Attribute a substantive patch: sets the doc's 'actor' frontmatter field
+                         (overwriting a previous actor) and threads to version history (see 'doc
+                         history'). Precedence: --actor > AGENTSTATE_LITE_ACTOR > absent. With
+                         neither source, the existing actor is preserved. Attribution is not a
+                         patch by itself and cannot turn an identical patch into a write. A
+                         present-but-blank flag or environment value is a USAGE error (exit 2).
 
 Passing NO patchable field at all is a USAGE error (exit 2) \u2014 there is nothing to do.
 ${COMMON_OPTIONS}
@@ -7784,14 +7787,14 @@ Usage:
   agentstate-lite doc history <id> [options]
 
 Lists version + actor + timestamp (and agent, when recorded) per revision, with a count. A
-history-keeping backend (a remote deployment) returns the full chain and the real per-write
---actor; on an AUTH'D remote, actor is your authenticated principal (server-set, unforgeable) and
-agent is the --actor label you declared under it. A local --dir bundle keeps no history, so it
-returns just the single current revision and reports the file's OS owner as the actor (the
-filesystem backend keeps no per-write history for --actor; the doc's own 'actor' frontmatter
-field \u2014 which every write path persists when --actor is given \u2014 is where per-doc attribution
-lives). The newest version is the token to pass to --expected-version for an optimistic doc
-update/delete.
+history-keeping backend (a remote deployment) returns the full chain and its real per-write
+attribution; on an AUTH'D remote, actor is your authenticated principal (server-set, unforgeable)
+and agent is the resolved advisory actor label from --actor or AGENTSTATE_LITE_ACTOR. A local
+--dir bundle keeps no history, so it returns just the single current revision and reports the
+file's OS owner as the actor (the filesystem backend keeps no per-write advisory actor label in
+history; the doc's own 'actor' frontmatter field \u2014 persisted from --actor or
+AGENTSTATE_LITE_ACTOR \u2014 is where per-doc attribution lives). The newest version is the token to
+pass to --expected-version for an optimistic doc update/delete.
 ${COMMON_OPTIONS}
 
 Examples:
@@ -7939,6 +7942,10 @@ function isNoopPatch(existing, candidate, compareTimestamp) {
   const { timestamp: _b, ...restCandidate } = candidate.frontmatter;
   return valuesEqual(restExisting, restCandidate);
 }
+function attributeCandidate(candidate, actor, persistActor) {
+  if (!persistActor || actor === void 0) return candidate;
+  return { ...candidate, frontmatter: { ...candidate.frontmatter, actor } };
+}
 async function mutateDoc(opts) {
   const { bundle, id, mode, registry, strict, helpOnKindReject, buildCandidate, errors } = opts;
   const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
@@ -7946,7 +7953,7 @@ async function mutateDoc(opts) {
   const compareTimestamp = opts.compareTimestamp ?? false;
   const validate = (candidate) => defaultTimestampAndValidateKind({ id, ...candidate }, registry, { strict, helpOnReject: helpOnKindReject });
   if (mode === "create-only") {
-    const candidate = await buildCandidate(void 0);
+    const candidate = attributeCandidate(await buildCandidate(void 0), opts.actor, opts.persistActor ?? false);
     const warnings = validate(candidate);
     try {
       const { doc: saved, version } = await writeDocVersioned(bundle, { id, ...candidate }, { expectedVersion: null, actor: opts.actor });
@@ -7974,7 +7981,11 @@ async function mutateDoc(opts) {
       const outcome = await versionedMutation({
         read: readExisting,
         decide: async (existing) => {
-          const candidate = await buildCandidate(existing);
+          const candidate = attributeCandidate(
+            await buildCandidate(existing),
+            opts.actor,
+            opts.persistActor ?? false
+          );
           warnings = validate(candidate);
           return { action: "write", next: { id, ...candidate }, result: void 0 };
         },
@@ -8023,8 +8034,9 @@ async function mutateDoc(opts) {
         if (existing && isNoopPatch(existing, candidate, compareTimestamp)) {
           return { action: "done", result: { doc: existing, warnings: [] } };
         }
-        const warnings = validate(candidate);
-        return { action: "write", next: { id, ...candidate }, result: { warnings } };
+        const attributed = attributeCandidate(candidate, opts.actor, opts.persistActor ?? false);
+        const warnings = validate(attributed);
+        return { action: "write", next: { id, ...attributed }, result: { warnings } };
       },
       write: async (next, expectedVersion) => {
         const writeVersion = hardCas ? opts.expectedVersion : expectedVersion;
@@ -8052,6 +8064,25 @@ async function mutateDoc(opts) {
     }
     throw err;
   }
+}
+
+// src/actor.ts
+var ACTOR_ENV = "AGENTSTATE_LITE_ACTOR";
+function resolveActor(explicit, opts = {}) {
+  const env = opts.env ?? process.env;
+  const hasEnv = Object.prototype.hasOwnProperty.call(env, ACTOR_ENV);
+  const source = explicit !== void 0 ? "--actor" : hasEnv ? ACTOR_ENV : void 0;
+  const raw = explicit !== void 0 ? explicit : hasEnv ? env[ACTOR_ENV] ?? "" : void 0;
+  if (raw === void 0) return void 0;
+  const actor = raw.trim();
+  if (!actor) {
+    throw new CliError(
+      "USAGE",
+      `${source} was given an empty value \u2014 pass an actor identity or ${source === "--actor" ? "omit the flag" : `unset ${ACTOR_ENV}`}.`,
+      opts.help ? { help: opts.help } : {}
+    );
+  }
+  return actor;
 }
 
 // src/commands/doc/write.ts
@@ -8099,11 +8130,7 @@ async function docWrite(argv, deps) {
       help: `${cliInvocation()} doc write ${id} --type <t>`
     });
   }
-  if (values.actor !== void 0 && values.actor.trim() === "") {
-    throw new CliError("USAGE", "--actor was given an empty value \u2014 pass an actor identity or omit the flag.", {
-      help: `${cliInvocation()} doc write ${id} --actor <name>`
-    });
-  }
+  const actor = resolveActor(values.actor, { help: `${cliInvocation()} doc write ${id} --actor <name>` });
   let body;
   let bodySourceGiven;
   if (values.body !== void 0) {
@@ -8123,7 +8150,6 @@ async function docWrite(argv, deps) {
   if (values.description !== void 0) frontmatter.description = values.description;
   if (values.resource !== void 0) frontmatter.resource = values.resource;
   if (values.tag && values.tag.length > 0) frontmatter.tags = values.tag;
-  if (values.actor !== void 0) frontmatter.actor = values.actor.trim();
   if (values.timestamp?.trim()) {
     const ts = values.timestamp.trim();
     if (Number.isNaN(Date.parse(ts))) {
@@ -8148,7 +8174,8 @@ async function docWrite(argv, deps) {
     remoteUrl: values.remote,
     strict: Boolean(values.strict),
     helpOnKindReject: `${cliInvocation()} kinds`,
-    actor: values.actor?.trim(),
+    actor,
+    persistActor: true,
     buildCandidate: (fresh) => {
       if (isConventionPath && fresh && fresh.frontmatter.type === "Convention") {
         const governs = typeof fresh.frontmatter.governs === "string" && fresh.frontmatter.governs.trim() ? fresh.frontmatter.governs : "(unknown)";
@@ -8169,7 +8196,9 @@ async function docWrite(argv, deps) {
         );
       }
       if (fresh) guardDroppedLinks(bundle, fresh, body, replaceLinks);
-      droppedFields = fresh ? Object.keys(fresh.frontmatter).filter((k) => k !== "timestamp" && !(k in frontmatter)) : [];
+      droppedFields = fresh ? Object.keys(fresh.frontmatter).filter(
+        (k) => k !== "timestamp" && !(k in frontmatter) && !(k === "actor" && actor !== void 0)
+      ) : [];
       return { frontmatter, body };
     },
     errors: {
@@ -8345,11 +8374,7 @@ async function docUpdate(argv, deps) {
       { help: `${cliInvocation()} doc update ${id} --expected-version <v>` }
     );
   }
-  if (p.actor !== void 0 && p.actor.trim() === "") {
-    throw new CliError("USAGE", "--actor was given an empty value \u2014 pass an actor identity or omit the flag.", {
-      help: `${cliInvocation()} doc update ${id} --actor <name>`
-    });
-  }
+  const actor = resolveActor(p.actor, { help: `${cliInvocation()} doc update ${id} --actor <name>` });
   const otherFieldGiven = p.title !== void 0 || p.description !== void 0 || p.tags !== void 0 && p.tags.length > 0 || p.type !== void 0 || p.kindFields.size > 0;
   let stdinBody;
   if (p.body === void 0 && !p.bodyFile && !otherFieldGiven) {
@@ -8377,7 +8402,8 @@ async function docUpdate(argv, deps) {
     remoteUrl: p.remote,
     strict,
     helpOnKindReject: `${cliInvocation()} kinds`,
-    actor: p.actor?.trim(),
+    actor,
+    persistActor: true,
     expectedVersion: p.expectedVersion?.trim(),
     buildCandidate: async (existingDoc) => {
       const existing = existingDoc;
@@ -8386,7 +8412,6 @@ async function docUpdate(argv, deps) {
       if (p.description !== void 0) nextFrontmatter.description = p.description;
       if (p.tags && p.tags.length > 0) nextFrontmatter.tags = p.tags;
       if (p.type !== void 0) nextFrontmatter.type = p.type.trim();
-      if (p.actor !== void 0) nextFrontmatter.actor = p.actor.trim();
       if (!p.keepTimestamp) nextFrontmatter.timestamp = (/* @__PURE__ */ new Date()).toISOString();
       let nextBody = existing.body;
       if (p.body !== void 0) nextBody = p.body;
@@ -12322,7 +12347,7 @@ function collectLinkDeclarations(registry) {
 var LINK_USAGE = `agentstate-lite link \u2014 add a cross-link, show a concept's links + backlinks, or query the bundle's whole edge graph
 
 Usage:
-  agentstate-lite link add <from> <to> [--text <t>]
+  agentstate-lite link add <from> <to> [--text <t>] [--actor <name>]
   agentstate-lite link show <id> [--limit <n>] [--text <t>]
   agentstate-lite link list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]
 
@@ -12361,6 +12386,8 @@ Options:
                          count always reports the true (post-filter) total
   --keep-timestamp      Preserve the source's existing timestamp (default: refresh to now,
                          since adding a cross-link is a meaningful change)
+  --actor <name>        Attribute a newly-added link in the source doc and backend history.
+                         Falls back to AGENTSTATE_LITE_ACTOR; an existing link remains a true no-op.
   --dir <path>          Bundle directory (default: discovered from the cwd)
   --remote <url>        Talk to a wire-protocol server instead of a local bundle
                          (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
@@ -12477,7 +12504,9 @@ async function addLink(bundle, from, to, opts = {}) {
         const trimmed = source.body.replace(/\s*$/, "");
         const nextBody = `${trimmed}${trimmed ? "\n\n" : ""}[${text}](${href})
 `;
-        const nextFrontmatter = opts.keepTimestamp ? source.frontmatter : { ...source.frontmatter, timestamp: (/* @__PURE__ */ new Date()).toISOString() };
+        const nextFrontmatter = { ...source.frontmatter };
+        if (!opts.keepTimestamp) nextFrontmatter.timestamp = (/* @__PURE__ */ new Date()).toISOString();
+        if (opts.actor !== void 0) nextFrontmatter.actor = opts.actor;
         sourceTypeAtWrite = docType(source);
         return {
           action: "write",
@@ -12487,7 +12516,10 @@ async function addLink(bundle, from, to, opts = {}) {
       },
       write: async (next, expectedVersion) => {
         try {
-          const { doc: saved, version } = await writeDocVersioned(bundle, next, { expectedVersion });
+          const { doc: saved, version } = await writeDocVersioned(bundle, next, {
+            expectedVersion,
+            actor: opts.actor
+          });
           savedDoc = saved;
           return version;
         } catch (err) {
@@ -12531,6 +12563,7 @@ async function linkAdd(argv, stdout) {
       options: {
         text: { type: "string" },
         "keep-timestamp": { type: "boolean" },
+        actor: { type: "string" },
         dir: { type: "string" },
         remote: { type: "string" },
         json: { type: "boolean" },
@@ -12551,12 +12584,14 @@ async function linkAdd(argv, stdout) {
       help: `${cliInvocation()} link add <from> <to>`
     });
   }
+  const actor = resolveActor(values.actor, { help: `${cliInvocation()} link add ${from} ${to} --actor <name>` });
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
   const mode = resolveMode(values);
   const result = await addLink(bundle, from, to, {
     text: values.text,
     keepTimestamp: values["keep-timestamp"],
-    remoteUrl: values.remote
+    remoteUrl: values.remote,
+    actor
   });
   if (!result.changed) {
     stdout(
@@ -13024,7 +13059,8 @@ Options:
                          (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
   --actor <name>         Attribute this write: persisted as the doc's own 'actor' frontmatter field
                          (the per-doc attribution sync and its receipts read) and recorded in version
-                         history by a persisting backend. Omitted = no actor field. A present-but-blank
+                         history by a persisting backend. Precedence: --actor >
+                         AGENTSTATE_LITE_ACTOR > absent. A present-but-blank flag or environment
                          value is a USAGE error (exit 2).
   --link "<type>=<target-id>"
                          Repeatable. After the doc is created, add an outbound cross-link of this
@@ -13140,7 +13176,7 @@ Repeat a flag to set an array value (e.g. --tag a --tag b). Validation is STRICT
 To ADD a field to this kind, edit its convention doc (${inv} kinds names it; then pull \u2192 edit fields.optional \u2192 promote).
 
 Options:
-  --actor <name>   Attribute the write (persisted as the doc's 'actor' frontmatter field)
+  --actor <name>   Attribute the write (overrides AGENTSTATE_LITE_ACTOR)
   --link "<type>=<target-id>"
                    Repeatable: after creating this instance, add an outbound link of type
                    <type> to <target-id> (same idempotent path as 'link add'; a dangling
@@ -13245,12 +13281,9 @@ async function newCommand(argv, deps = {}) {
       { help: `${cliInvocation()} new "<Kind>" <id> --<field> <value>` }
     );
   }
-  const actor = values.actor;
-  if (actor !== void 0 && actor.trim() === "") {
-    throw new CliError("USAGE", "--actor was given an empty value \u2014 pass an actor identity or omit the flag.", {
-      help: `${cliInvocation()} new "<Kind>" <id> --actor <name>`
-    });
-  }
+  const actor = resolveActor(values.actor, {
+    help: `${cliInvocation()} new "<Kind>" <id> --actor <name>`
+  });
   const linkFlags = values.link ?? [];
   const parsedLinks = linkFlags.map(parseLinkFlagValue);
   const frontmatter = { type: kind2.governs };
@@ -13259,7 +13292,6 @@ async function newCommand(argv, deps = {}) {
     if (vals === void 0 || vals.length === 0) continue;
     frontmatter[field] = vals.length === 1 ? vals[0] : vals;
   }
-  if (actor !== void 0) frontmatter.actor = actor.trim();
   const body = (kind2.sections ?? []).map((heading) => `# ${heading}
 `).join("\n");
   const targetId = values["no-prefix"] ? id : resolveInstanceId(kind2, id);
@@ -13272,7 +13304,8 @@ async function newCommand(argv, deps = {}) {
     remoteUrl: remote,
     strict: true,
     helpOnKindReject: `${cliInvocation()} kinds`,
-    actor: actor?.trim(),
+    actor,
+    persistActor: true,
     buildCandidate: () => ({ frontmatter, body }),
     errors: {
       alreadyExists: () => new CliError(
@@ -13310,7 +13343,7 @@ async function newCommand(argv, deps = {}) {
       });
     }
     try {
-      const added = await addLink(bundle, saved.id, target, { text: type, remoteUrl: remote });
+      const added = await addLink(bundle, saved.id, target, { text: type, remoteUrl: remote, actor });
       if (added.warnings) warnings.push(...added.warnings);
       linkResults.push({
         type,
@@ -16781,7 +16814,7 @@ var COMMAND_GROUPS = [
         summary: "Query concepts over their frontmatter (alias: query) \u2014 a comma in --field's value is set membership (OR); --open excludes terminal instances (declared kinds only)"
       },
       {
-        usage: "link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>] | list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]) [--remote <url>]",
+        usage: "link (add <from> <to> [--text <t>] [--actor <n>] | show <id> [--limit <n>] [--text <t>] | list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]) [--remote <url>]",
         summary: "Add a cross-link, show a concept's links + backlinks, or query the whole bundle's derived edge list filtered by from/to (id or prefix/, repeatable/union) and exact-match text"
       }
     ]
