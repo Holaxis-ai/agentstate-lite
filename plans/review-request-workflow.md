@@ -2,11 +2,11 @@
 type: Plan
 title: Review Request workflow
 actor: openai/codex
-timestamp: '2026-07-12T01:58:52.205Z'
+timestamp: '2026-07-12T02:28:01.865Z'
 ---
 # Board-native Review Request workflow
 
-Status: proposed for independent review before implementation.
+Status: independently reviewed, implemented, and live-tested on 2026-07-12.
 
 ## Behavioral claim
 
@@ -183,3 +183,16 @@ Live browser on the real board:
 ## Smallest cognitive-ecosystem buildlist
 
 The Convention is the promoted coordination primitive; status and reviewer stabilize the handoff; existing Kind/link validation provides the deterministic substrate; independent artifact review plus CLI and browser probes verify primitive boundaries; the shared request routes human-agent coordination. Defer recipes, writable bridges, transition enforcement, identity authorization, polymorphic links, description implementation, migration/version machinery, and general automation until Brian's use produces evidence that they are needed.
+
+## Implementation record
+
+- Convention: `conventions/review-request`
+- Generic Page: `pages-registry/reviews` → `pages/reviews.html`
+- Architecture Page: `pages-registry/architecture-kinds` → `pages/architecture-kinds.html`
+- First real request: `review-requests/kinds-and-descriptions-architecture`, left `requested` for Brian
+- Design review: approved after closing the subscribe/bootstrap race and specifying a CAS-safe response path
+- Artifact review: approved after adding full evidence bodies, null-prototype edge grouping, accessible dark-mode contrast, and trailing-only graph-footer elision
+- Live board QA: empty state → subscribed request arrival without refresh; eight linked artifacts; full evidence disclosure; dynamic architecture navigation; browser Back/Forward; explainer navigation back to Reviews
+- Disposable QA: delayed subscribe acknowledgement proof; adversarial `__proto__` relationship; escaped XSS payloads; missing/invalid Kind rejection; one attributed CAS response update with preserved context and live decided-state refresh
+
+No AgentState source code changed. Brian's actual response is the next operational moment and the generative test for whether this primitive should later become a reusable recipe.

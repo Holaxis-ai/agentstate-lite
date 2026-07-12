@@ -1,14 +1,14 @@
 ---
 type: Task
 title: Board-native human review workflow
-status: in_progress
+status: done
 priority: '1'
 assignee: openai/codex
 description: >-
   Prove reusable human review through a Review Request Kind, linked evidence, an
   architecture explainer Page, and a generic review Page.
 actor: openai/codex
-timestamp: '2026-07-12T01:50:40.359Z'
+timestamp: '2026-07-12T02:28:02.002Z'
 ---
 # Objective
 
@@ -37,5 +37,18 @@ An agent can create one structured Review Request and a human can open one gener
 # Workflow
 
 Design → independent design review → board implementation → independent artifact review → live browser QA → sync.
+
+# Outcome
+
+Shipped entirely in the shared bundle:
+
+- `Review Request` Convention with a compact requested/in-review/changes-requested/approved/canceled lifecycle, typed evidence relationships, four required body sections, terminal states, and human-readable semantics.
+- Generic `pages-registry/reviews` read-only Page with subscribe-before-query bootstrapping, generation fencing, generic request selection, dynamic edge grouping, safe full-document evidence views, and registered Page navigation.
+- `pages-registry/architecture-kinds` content Page explaining the current architecture, project values, planned description semantics, unlocked capabilities, hypotheses, and honest boundaries.
+- Real `review-requests/kinds-and-descriptions-architecture` assigned to Brian Derfer and linked to two designs, one roadmap item, four description tasks, and the architecture Page.
+
+Independent design and artifact reviews approved the final artifacts. Review findings drove fixes for a no-replay bootstrap race, an unproven response path, truncated evidence, prototype-key grouping, dark-mode contrast, and graph-link footer rendering.
+
+Live QA proved empty-state subscription, request arrival without refresh, all evidence, full artifact expansion, Page navigation, browser history, and absence of mutation controls. Disposable QA proved the exact bootstrap race, malformed edge text, XSS escaping, Kind validation, and a CAS-safe attributed decision update that preserved the original body. Brian's real request remains `requested`; this implementation task is complete.
 
 [plan](../plans/review-request-workflow.md)

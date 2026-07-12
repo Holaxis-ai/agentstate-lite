@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review requests</title>
+<style>
+  :root{--bg:#f4f2ed;--paper:#fffefa;--ink:#19212b;--muted:#68727d;--line:#d9d6ce;--navy:#173b57;--blue:#236c91;--blue-soft:#e5f0f5;--amber:#a96f16;--red:#a8463d;--green:#24705a;--mono:ui-monospace,"SFMono-Regular",Menlo,monospace;--serif:Iowan Old Style,Georgia,serif}
+  @media(prefers-color-scheme:dark){:root{--bg:#111820;--paper:#17212a;--ink:#edf1f4;--muted:#a3afb9;--line:#34414c;--navy:#173b57;--blue:#79bddb;--blue-soft:#203846;--amber:#e2ad56;--red:#ef8f85;--green:#69c5a5}}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}button,select{font:inherit}
+  header{background:var(--navy);color:#fff;padding:24px clamp(18px,4vw,48px)}header h1{font:500 32px/1.1 var(--serif);margin:0 0 5px}.eyebrow{font:600 11px/1.3 var(--mono);letter-spacing:.12em;text-transform:uppercase;opacity:.75}.header-line{display:flex;align-items:end;justify-content:space-between;gap:20px}.live{font:12px var(--mono);white-space:nowrap}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#7be1b7;margin-right:6px}
+  main{max-width:1180px;margin:auto;padding:26px clamp(18px,4vw,48px) 70px}.toolbar{display:grid;grid-template-columns:minmax(240px,1fr) auto;gap:16px;align-items:end;margin-bottom:18px}.toolbar label{display:block;color:var(--muted);font-size:12px;margin-bottom:5px}.toolbar select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink)}.count{font:12px var(--mono);color:var(--muted);padding-bottom:11px}
+  .panel{background:var(--paper);border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-bottom:18px}.summary{padding:22px}.summary-top{display:flex;justify-content:space-between;gap:16px;align-items:start}.summary h2{font:500 27px/1.2 var(--serif);margin:0 0 6px}.id{font:11px var(--mono);color:var(--muted);overflow-wrap:anywhere}.badge{display:inline-block;padding:4px 9px;border-radius:999px;background:var(--blue-soft);color:var(--blue);font:700 11px var(--mono);text-transform:uppercase;letter-spacing:.04em}.badge.approved{color:var(--green)}.badge.changes_requested,.badge.canceled{color:var(--red)}.badge.in_review{color:var(--amber)}
+  .facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 25px;margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}.fact dt{color:var(--muted);font:10px var(--mono);text-transform:uppercase;letter-spacing:.08em}.fact dd{margin:3px 0 0}.question{grid-column:1/-1;font:500 20px/1.45 var(--serif)}
+  .notice{padding:13px 16px;background:var(--blue-soft);border-left:3px solid var(--blue);color:var(--muted)}.notice strong{color:var(--ink)}
+  .section-title{padding:13px 18px;border-bottom:1px solid var(--line);font:700 11px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}.markdown{padding:18px 22px;overflow-wrap:anywhere}.markdown h1,.markdown h2,.markdown h3{font-family:var(--serif);font-weight:500;line-height:1.25;margin:1.1em 0 .45em}.markdown h1:first-child,.markdown h2:first-child{margin-top:0}.markdown p{margin:.65em 0}.markdown ul,.markdown ol{padding-left:1.4em}.markdown pre{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);padding:12px;border-radius:6px;font:12px/1.5 var(--mono)}.markdown code{font:12px var(--mono);background:var(--bg);padding:1px 4px;border-radius:3px}
+  .group{margin-bottom:18px}.group h3{font:600 12px var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:0 0 8px}.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}.artifact{background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:15px;display:flex;flex-direction:column;min-height:145px}.artifact .type{color:var(--blue);font:700 10px var(--mono);text-transform:uppercase}.artifact h4{font:500 19px/1.25 var(--serif);margin:5px 0}.artifact .meta{font:11px var(--mono);color:var(--muted);overflow-wrap:anywhere}.artifact .excerpt{color:var(--muted);font-size:13px;margin:10px 0}.artifact details{margin-top:10px;border-top:1px solid var(--line);padding-top:9px}.artifact summary{color:var(--blue);font-weight:650;cursor:pointer}.artifact details .markdown{padding:10px 0 0;font-size:13px}.artifact button{margin-top:auto;align-self:start;border:1px solid var(--blue);background:transparent;color:var(--blue);border-radius:5px;padding:6px 10px;cursor:pointer}.artifact button:hover{background:var(--blue-soft)}
+  .empty,.error{padding:12vh 20px;text-align:center;color:var(--muted);font:20px var(--serif)}.error{color:var(--red)}.hidden{display:none}.loading{opacity:.6;pointer-events:none}@media(max-width:650px){.toolbar{grid-template-columns:1fr}.facts{grid-template-columns:1fr}.question{grid-column:auto}.summary-top{display:block}.badge{margin-top:10px}}
+</style>
+</head>
+<body>
+<header><div class="eyebrow">durable human decisions</div><div class="header-line"><h1>Review requests</h1><div class="live" id="live"><span class="dot"></span>connecting</div></div></header>
+<main id="app"><div class="empty">Subscribing before reading…</div></main>
+<script>
+(function(){
+  var PROTO="v0",seq=0,pending={},subs=[];
+  function send(type,extra){return new Promise(function(resolve,reject){var id=String(++seq);pending[id]={resolve:resolve,reject:reject};var msg={bridge:PROTO,id:id,type:type};if(extra)for(var k in extra)msg[k]=extra[k];parent.postMessage(msg,"*")})}
+  function openPage(pageId){parent.postMessage({bridge:PROTO,type:"open-page",pageId:pageId},"*")}
+  window.addEventListener("message",function(e){if(e.source!==window.parent)return;var m=e.data;if(!m||m.bridge!==PROTO)return;if(m.type==="change"){subs.slice().forEach(function(cb){cb(m.event)});return}var p=pending[m.id];if(!p)return;delete pending[m.id];if(m.type==="error")p.reject(new Error(m.error&&m.error.message||"bridge error"));else p.resolve(m.result)});
+  window.Bridge={query:function(params){return send("query",{params:params})},read:function(docId){return send("read",{docId:docId})},edges:function(params){return send("edges",{params:params})},openPage:openPage,subscribe:function(cb){subs.push(cb);return send("subscribe")}};
+})();
+
+(function(){
+  "use strict";
+  var app=document.getElementById("app"),live=document.getElementById("live"),generation=0,selectedId=null,heads=[];
+  function esc(value){return String(value==null?"":value).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+  function fm(doc){return doc&&doc.frontmatter||{}}
+  function dateValue(doc){var n=Date.parse(fm(doc).timestamp||"");return Number.isFinite(n)?n:0}
+  function inline(text){return esc(text).replace(/`([^`]+)`/g,"<code>$1</code>").replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>")}
+  function markdown(body){
+    var lines=String(body||"").replace(/\r/g,"").split("\n"),out=[],list=null,inCode=false,code=[];
+    function closeList(){if(list){out.push("</"+list+">");list=null}}
+    lines.forEach(function(line){
+      if(/^```/.test(line)){closeList();if(inCode){out.push("<pre><code>"+esc(code.join("\n"))+"</code></pre>");code=[]}inCode=!inCode;return}
+      if(inCode){code.push(line);return}
+      var h=line.match(/^(#{1,3})\s+(.+)$/);if(h){closeList();out.push("<h"+h[1].length+">"+inline(h[2])+"</h"+h[1].length+">");return}
+      var ul=line.match(/^\s*[-*]\s+(.+)$/),ol=line.match(/^\s*\d+[.)]\s+(.+)$/);if(ul||ol){var wanted=ul?"ul":"ol";if(list!==wanted){closeList();list=wanted;out.push("<"+list+">")}out.push("<li>"+inline((ul||ol)[1])+"</li>");return}
+      closeList();if(line.trim())out.push("<p>"+inline(line.trim())+"</p>")
+    });closeList();if(inCode)out.push("<pre><code>"+esc(code.join("\n"))+"</code></pre>");return out.join("")
+  }
+  function withoutGraphLinkParagraphs(body){
+    var lines=String(body||"").replace(/\r/g,"").split("\n"),index=lines.length-1,sawLink=false;
+    function isBundleLinkOnly(line){var match=line.match(/^\s*\[[^\]]+\]\(([^)\s]+)(?:\s+"[^"]*")?\)\s*$/);if(!match)return false;var target=match[1].replace(/^<|>$/g,"");return !/^[a-z][a-z0-9+.-]*:/i.test(target)&&target.charAt(0)!=="#"&&/\.md(?:#.*)?$/i.test(target)}
+    while(index>=0){if(!lines[index].trim()){index--;continue}if(isBundleLinkOnly(lines[index])){sawLink=true;index--;continue}break}
+    return sawLink?lines.slice(0,index+1).join("\n"):lines.join("\n")
+  }
+  function statusClass(s){return String(s||"").replace(/[^a-z_]/g,"")}
+  function isPage(doc){return fm(doc).type==="Page"&&/^pages-registry\//.test(doc.id||"")}
+  function renderShell(all,openIds){
+    var options=all.map(function(h){var f=fm(h);return '<option value="'+esc(h.id)+'"'+(h.id===selectedId?' selected':'')+'>'+esc(f.title||h.id)+' — '+esc(f.status||"unknown")+'</option>'}).join("");
+    app.innerHTML='<div class="toolbar"><div><label for="request-select">Review request</label><select id="request-select">'+options+'</select></div><div class="count">'+openIds.size+' open · '+all.length+' total</div></div><div id="detail"><div class="empty">Loading request and evidence…</div></div>';
+    document.getElementById("request-select").addEventListener("change",function(e){selectedId=e.target.value;loadDetail(selectedId)})
+  }
+  function artifactCard(edge,doc){var f=fm(doc),page=isPage(doc),body=String(doc.body||""),summary=body.replace(/[#*`\n]+/g," ").trim().slice(0,220)||"No body content";return '<article class="artifact"><div class="type">'+esc(f.type||"Document")+'</div><h4>'+esc(f.title||doc.id)+'</h4><div class="meta">'+esc(doc.id)+'</div>'+(page?'':'<div class="excerpt">'+esc(summary)+'</div><details><summary>Read full artifact</summary><div class="markdown">'+markdown(body)+'</div></details>')+(page?'<button type="button" data-open-page="'+esc(doc.id)+'">Open Page</button>':'')+'</article>'}
+  function renderDetail(request,edges,targetDocs){
+    var f=fm(request),groups=Object.create(null);edges.forEach(function(edge){var key=String(edge.text==null?"":edge.text);if(!Object.prototype.hasOwnProperty.call(groups,key))groups[key]=[];groups[key].push(edge)});
+    var evidence=Object.keys(groups).sort().map(function(text){return '<section class="group"><h3>'+esc(text)+'</h3><div class="cards">'+groups[text].map(function(edge){var doc=targetDocs[edge.to];return doc?artifactCard(edge,doc):'<article class="artifact"><div class="type">Unavailable</div><h4>'+esc(edge.to)+'</h4><div class="meta">The linked document could not be read.</div></article>'}).join("")+'</div></section>'}).join("");
+    var decided=(f.decision_summary||f.decided_at)?'<div class="notice"><strong>Persisted decision:</strong> '+esc(f.decision_summary||"No summary supplied")+(f.decided_at?' · '+esc(f.decided_at):'')+'</div>':'';
+    document.getElementById("detail").innerHTML='<section class="panel summary" data-testid="review-detail"><div class="summary-top"><div><h2>'+esc(f.title||request.id)+'</h2><div class="id">'+esc(request.id)+'</div></div><span class="badge '+statusClass(f.status)+'">'+esc(f.status||"unknown")+'</span></div><dl class="facts"><div class="fact"><dt>Reviewer</dt><dd>'+esc(f.reviewer||"Not named")+'</dd></div><div class="fact"><dt>Requested by</dt><dd>'+esc(f.requested_by||"Not named")+'</dd></div><div class="fact question"><dt>Review question</dt><dd>'+esc(f.question||"No question supplied")+'</dd></div></dl></section>'+decided+'<section class="panel"><div class="section-title">Request record</div><div class="markdown" data-testid="request-body">'+markdown(withoutGraphLinkParagraphs(request.body))+'</div></section><div class="notice"><strong>Read-only workflow:</strong> record a response through an attributed agent or CLI update on this durable request. This Page exposes no approval or mutation control.</div><div class="section-title" style="border:0;padding-left:0;margin-top:22px">Linked evidence · '+edges.length+'</div>'+(evidence||'<section class="panel"><div class="empty" style="padding:35px">No outbound evidence is linked.</div></section>');
+    document.querySelectorAll("[data-open-page]").forEach(function(button){button.addEventListener("click",function(){Bridge.openPage(button.getAttribute("data-open-page"))})})
+  }
+  function loadDetail(id){
+    var mine=++generation,detail=document.getElementById("detail");if(detail)detail.innerHTML='<div class="empty">Loading request and evidence…</div>';
+    return Promise.all([Bridge.read(id),Bridge.edges({from:id})]).then(function(result){if(mine!==generation)return;var request=result[0],edges=result[1].edges||[],ids=[];edges.forEach(function(e){if(ids.indexOf(e.to)<0)ids.push(e.to)});return Promise.all(ids.map(function(target){return Bridge.read(target).then(function(doc){return{target:target,doc:doc}},function(){return{target:target,doc:null}})})).then(function(rows){if(mine!==generation)return;var docs={};rows.forEach(function(row){if(row.doc)docs[row.target]=row.doc});renderDetail(request,edges,docs)})}).catch(function(err){if(mine!==generation)return;detail=document.getElementById("detail");if(detail)detail.innerHTML='<div class="error">Could not load this review: '+esc(err.message)+'</div>'})
+  }
+  function reload(){
+    var mine=++generation;live.innerHTML='<span class="dot"></span>refreshing';app.classList.add("loading");
+    return Promise.all([Bridge.query({type:"Review Request"}),Bridge.query({type:"Review Request",open:true})]).then(function(result){if(mine!==generation)return;heads=(result[0].rows||[]).slice().sort(function(a,b){return dateValue(b)-dateValue(a)||String(a.id).localeCompare(String(b.id))});var open=(result[1].rows||[]).slice().sort(function(a,b){return dateValue(b)-dateValue(a)}),ids=new Set(heads.map(function(h){return h.id}));if(!selectedId||!ids.has(selectedId))selectedId=(open[0]||heads[0]||{}).id||null;app.classList.remove("loading");live.innerHTML='<span class="dot"></span>live';if(!selectedId){app.innerHTML='<div class="empty" data-testid="empty-state">No Review Requests yet. This Page will update when one is created.</div>';return}renderShell(heads,new Set(open.map(function(h){return h.id})));return loadDetail(selectedId)}).catch(function(err){if(mine!==generation)return;app.classList.remove("loading");live.textContent="read failed";app.innerHTML='<div class="error">Could not read review requests: '+esc(err.message)+'</div>'})
+  }
+  // Bridge v0 has no replay. Register first, await the acknowledgement, then take a full snapshot.
+  Bridge.subscribe(function(){reload()}).then(function(){return reload()}).catch(function(err){live.textContent="subscription failed";app.innerHTML='<div class="error">Could not subscribe: '+esc(err.message)+'</div>'});
+})();
+</script>
+</body>
+</html>
