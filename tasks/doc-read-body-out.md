@@ -1,16 +1,16 @@
 ---
 type: Task
 title: 'doc read: body-only byte output for safe edit round-trips'
-status: in_progress
+status: done
 priority: '1'
 assignee: openai/codex
 description: >-
-  Add --body-out <path|-> so agents can extract only the parsed Markdown body
-  and feed it literally to doc update --body-file with the same-read CAS
-  version. Implemented and independently reviewed at
-  https://github.com/Holaxis-ai/agentstate-lite/pull/44
+  Shipped in https://github.com/Holaxis-ai/agentstate-lite/pull/44 (merge
+  9d6a1b4): body-only parsed Markdown output, same-read CAS version, raw stdout
+  discipline, and in-bundle/symlink clobber protection. Independent exact-SHA
+  review and final clean QA passed.
 actor: openai/codex
-timestamp: '2026-07-12T17:54:15.744Z'
+timestamp: '2026-07-12T18:19:59.762Z'
 ---
 # Scope
 
