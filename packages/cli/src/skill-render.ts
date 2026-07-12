@@ -624,7 +624,16 @@ export function renderSkill(): string {
     "a plugin-marketplace cache install (`~/.<host>/plugins/cache/<marketplace>/<plugin>/<version>/skills/agentstate-lite/scripts/…` — the cache copies the PLUGIN DIR's contents, so there is no `plugins/` segment), and",
   );
   lines.push(
-    "`sort -V | tail -1` selects the highest installed version. This works from any cwd. Resolve to",
+    "`sort -V | tail -1` picks whichever matched path sorts last — a true \"highest version\" pick",
+  );
+  lines.push(
+    "only among matches sharing the same root (e.g. two versions under the same marketplace cache);",
+  );
+  lines.push(
+    "across DIFFERENT roots (direct vs cache, Claude vs Codex) it's a best-effort, path-ordered pick,",
+  );
+  lines.push(
+    "not a true cross-host version comparison. This works from any cwd. Resolve to",
   );
   lines.push(
     "the **shim** (not the `.mjs` directly) so the Node >= 20 floor guard runs first. OpenCode isn't",
