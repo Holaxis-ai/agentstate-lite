@@ -17,13 +17,34 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { initBundle, writeDoc, readDoc, CONVENTION_TYPE, type Bundle } from "@agentstate-lite/core";
+import {
+  initBundle,
+  writeDoc,
+  readDoc,
+  docVersions,
+  MemoryBackend,
+  CONVENTION_TYPE,
+  type Bundle,
+} from "@agentstate-lite/core";
 import { serve, type ServerHandle } from "@agentstate-lite/server";
 
 import { newCommand } from "../src/commands/new.js";
 import { CliError } from "../src/errors.js";
 
 const T = "2026-07-01T00:00:00.000Z";
+
+async function withActorEnv<T>(value: string | undefined, run: () => Promise<T>): Promise<T> {
+  const had = Object.prototype.hasOwnProperty.call(process.env, "AGENTSTATE_LITE_ACTOR");
+  const previous = process.env.AGENTSTATE_LITE_ACTOR;
+  if (value === undefined) delete process.env.AGENTSTATE_LITE_ACTOR;
+  else process.env.AGENTSTATE_LITE_ACTOR = value;
+  try {
+    return await run();
+  } finally {
+    if (had) process.env.AGENTSTATE_LITE_ACTOR = previous;
+    else delete process.env.AGENTSTATE_LITE_ACTOR;
+  }
+}
 
 async function tempDir(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "agentstate-lite-new-link-test-"));
@@ -89,6 +110,58 @@ test("new --link: a single declared-type link is added through the SAME machiner
     assert.match(written.body, /\[depends on\]\(t1\.md\)/);
   } finally {
     await cleanup();
+  }
+});
+
+test("new --link: one resolved actor consistently attributes both create and link writes over remote", async () => {
+  const bundle: Bundle = { root: "mem://new-link-actor", backend: new MemoryBackend() };
+  await writeDoc(bundle, {
+    id: "conventions/task",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      title: "Task",
+      governs: "Task",
+      path: "tasks/",
+      fields: { required: ["title"], optional: [] },
+      links: { "depends on": "Task" },
+      timestamp: T,
+    },
+    body: "A unit of work.",
+  });
+  const handle: ServerHandle = await serve({ bundle, port: 0 });
+  const url = `http://${handle.host}:${handle.port}`;
+  try {
+    await withActorEnv(" env-new ", async () => {
+      await runJson(newCommand, ["Task", "t1", "--title", "T1", "--remote", url]);
+      await runJson(newCommand, [
+        "Task",
+        "t2",
+        "--title",
+        "T2",
+        "--link",
+        "depends on=tasks/t1",
+        "--remote",
+        url,
+      ]);
+      await runJson(newCommand, [
+        "Task",
+        "t3",
+        "--title",
+        "T3",
+        "--link",
+        "depends on=tasks/t1",
+        "--actor",
+        "flag-new",
+        "--remote",
+        url,
+      ]);
+    });
+    assert.equal((await readDoc(bundle, "tasks/t2")).frontmatter.actor, "env-new");
+    assert.deepEqual((await docVersions(bundle, "tasks/t2")).map((v) => v.actor), ["env-new", "env-new"]);
+    assert.equal((await readDoc(bundle, "tasks/t3")).frontmatter.actor, "flag-new");
+    assert.deepEqual((await docVersions(bundle, "tasks/t3")).map((v) => v.actor), ["flag-new", "flag-new"]);
+  } finally {
+    await handle.close();
   }
 });
 

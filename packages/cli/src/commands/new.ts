@@ -61,6 +61,7 @@ import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 import { mutateDoc } from "../mutate.js";
+import { resolveActor } from "../actor.js";
 import { addLink } from "./link.js";
 
 export const NEW_USAGE = `agentstate-lite new — create a new instance of a bundle-declared kind
@@ -87,7 +88,8 @@ Options:
                          (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
   --actor <name>         Attribute this write: persisted as the doc's own 'actor' frontmatter field
                          (the per-doc attribution sync and its receipts read) and recorded in version
-                         history by a persisting backend. Omitted = no actor field. A present-but-blank
+                         history by a persisting backend. Precedence: --actor >
+                         AGENTSTATE_LITE_ACTOR > absent. A present-but-blank flag or environment
                          value is a USAGE error (exit 2).
   --link "<type>=<target-id>"
                          Repeatable. After the doc is created, add an outbound cross-link of this
@@ -276,7 +278,7 @@ function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: strin
     `Repeat a flag to set an array value (e.g. --tag a --tag b). Validation is STRICT.\n` +
     `To ADD a field to this kind, edit its convention doc (${inv} kinds names it; then pull → edit fields.optional → promote).\n\n` +
     `Options:\n` +
-    `  --actor <name>   Attribute the write (persisted as the doc's 'actor' frontmatter field)\n` +
+    `  --actor <name>   Attribute the write (overrides AGENTSTATE_LITE_ACTOR)\n` +
     `  --link "<type>=<target-id>"\n` +
     `                   Repeatable: after creating this instance, add an outbound link of type\n` +
     `                   <type> to <target-id> (same idempotent path as 'link add'; a dangling\n` +
@@ -422,12 +424,9 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     );
   }
 
-  const actor = values.actor as string | undefined;
-  if (actor !== undefined && actor.trim() === "") {
-    throw new CliError("USAGE", "--actor was given an empty value — pass an actor identity or omit the flag.", {
-      help: `${cliInvocation()} new "<Kind>" <id> --actor <name>`,
-    });
-  }
+  const actor = resolveActor(values.actor as string | undefined, {
+    help: `${cliInvocation()} new "<Kind>" <id> --actor <name>`,
+  });
 
   // Parse EVERY --link value up front, before any write — a malformed value is a caller mistake,
   // not a partial-success case, so it must reject cleanly with NOTHING created (see
@@ -441,12 +440,8 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     if (vals === undefined || vals.length === 0) continue;
     frontmatter[field] = vals.length === 1 ? vals[0]! : vals;
   }
-  // `--actor` persists as the instance's `actor` frontmatter field — the per-doc attribution
-  // sync's enrichment reads (adjudication F; same policy as `doc write`/`doc update`). Because
-  // `--actor` is a CONTROL flag (see the file header), this is ALSO the one route that satisfies a
-  // kind declaring `actor` among its fields. Omitted → no field. Kind validation is unaffected: an
-  // undeclared frontmatter key trips no warning (OKF §9), so strict mode stays green.
-  if (actor !== undefined) frontmatter.actor = actor.trim();
+  // `mutateDoc` applies the resolved actor to frontmatter before strict validation, so the actor
+  // control flag (or environment default) still satisfies a kind that declares actor as required.
   // `mutateDoc`'s validate step (strict:true below) defaults `frontmatter.timestamp` in place if
   // still absent BEFORE validating — so a kind that declares `timestamp` required (e.g. the seeded
   // Context Note kind) validates against a value that is actually present, not "missing because the
@@ -473,7 +468,8 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     remoteUrl: remote,
     strict: true,
     helpOnKindReject: `${cliInvocation()} kinds`,
-    actor: actor?.trim(),
+    actor,
+    persistActor: true,
     buildCandidate: () => ({ frontmatter, body }),
     errors: {
       alreadyExists: () =>
@@ -535,7 +531,7 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
       });
     }
     try {
-      const added = await addLink(bundle, saved.id, target, { text: type, remoteUrl: remote });
+      const added = await addLink(bundle, saved.id, target, { text: type, remoteUrl: remote, actor });
       if (added.warnings) warnings.push(...added.warnings);
       linkResults.push({
         type,

@@ -120,12 +120,22 @@ function renderWorkspaceLocation(prefix: string): string[] {
   lines.push("the folder only if the workspace should stay private to this machine.)");
   lines.push("");
   lines.push(
-    "Write with attribution: pass `--actor <your-name>` on `new` / `doc write` / `doc update`.",
+    "Write with attribution: set `AGENTSTATE_LITE_ACTOR=<your-name>` once for `new`, `doc write`,",
   );
   lines.push(
-    "There is no default actor, so an unattributed write renders as unknown in teammates'",
+    "`doc update`, and `link add`, or pass `--actor <your-name>` per command (the flag wins).",
   );
-  lines.push("awareness — the `--actor` you pass is what attributes your changes to you.");
+  lines.push(
+    "With neither source, no advisory actor label is stored in frontmatter or sent as an agent label;",
+  );
+  lines.push(
+    "backend history still reports its own principal (for example, the local OS owner or an",
+  );
+  lines.push(
+    "authenticated remote user). A present-but-blank flag or environment value is a usage error.",
+  );
+  lines.push("Advisory attribution describes a real mutation and never creates a no-op write.");
+  lines.push("Actor labels are advisory metadata, not authentication or authorization credentials.");
   lines.push("");
   lines.push(
     "Each invocation is stateless and resolves its bundle in this order: explicit `--dir`/`--remote`",

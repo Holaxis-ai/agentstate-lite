@@ -77,6 +77,19 @@ import { CONTEXT_NOTES_RECIPE } from "../src/recipe-source.js";
 const OLD_TS = "2020-01-01T00:00:00.000Z";
 const T = "2026-07-01T00:00:00.000Z";
 
+async function withActorEnv<T>(value: string | undefined, run: () => Promise<T>): Promise<T> {
+  const had = Object.prototype.hasOwnProperty.call(process.env, "AGENTSTATE_LITE_ACTOR");
+  const previous = process.env.AGENTSTATE_LITE_ACTOR;
+  if (value === undefined) delete process.env.AGENTSTATE_LITE_ACTOR;
+  else process.env.AGENTSTATE_LITE_ACTOR = value;
+  try {
+    return await run();
+  } finally {
+    if (had) process.env.AGENTSTATE_LITE_ACTOR = previous;
+    else delete process.env.AGENTSTATE_LITE_ACTOR;
+  }
+}
+
 async function tempDir(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "agentstate-lite-doc-test-"));
 }
@@ -1011,6 +1024,49 @@ test("doc write --actor: recorded in version history on a PERSISTING backend (Me
   assert.equal(history[0]!.actor, "alice");
 });
 
+test("doc write: AGENTSTATE_LITE_ACTOR fallback reaches frontmatter and remote version history; flag wins", async () => {
+  const bundle: Bundle = { root: "mem://doc-write-actor-env", backend: new MemoryBackend() };
+  const server = await bootServerOverBundle(bundle);
+  try {
+    await withActorEnv(" env-user ", async () => {
+      await runDoc(["write", "concepts/env", "--type", "Concept", "--body", "env", "--remote", server.url]);
+      await runDoc([
+        "write",
+        "concepts/flag",
+        "--type",
+        "Concept",
+        "--body",
+        "flag",
+        "--actor",
+        "flag-user",
+        "--remote",
+        server.url,
+      ]);
+    });
+    assert.equal((await readDoc(bundle, "concepts/env")).frontmatter.actor, "env-user");
+    assert.equal((await docVersions(bundle, "concepts/env"))[0]!.actor, "env-user");
+    assert.equal((await readDoc(bundle, "concepts/flag")).frontmatter.actor, "flag-user");
+    assert.equal((await docVersions(bundle, "concepts/flag"))[0]!.actor, "flag-user");
+  } finally {
+    await server.close();
+  }
+});
+
+test("doc write: a present-but-blank AGENTSTATE_LITE_ACTOR is USAGE and writes nothing", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await withActorEnv("   ", async () => {
+      await assert.rejects(
+        () => runDoc(["write", "concepts/a", "--type", "Concept", "--body", "b", "--dir", dir]),
+        (err: unknown) => err instanceof CliError && err.code === "USAGE" && /AGENTSTATE_LITE_ACTOR/.test(err.message),
+      );
+    });
+    await assert.rejects(() => readDoc({ root: dir }, "concepts/a"));
+  } finally {
+    await cleanup();
+  }
+});
+
 // ── --actor persists into frontmatter (sync attribution — adjudication F / PR#13 item 3) ─────────
 
 test("doc write --actor: persists the actor as the doc's OWN frontmatter field (the per-doc attribution sync reads)", async () => {
@@ -1024,10 +1080,12 @@ test("doc write --actor: persists the actor as the doc's OWN frontmatter field (
   }
 });
 
-test("doc write WITHOUT --actor: no actor frontmatter field appears (absent stays absent — no default, no env fallback)", async () => {
+test("doc write with neither flag nor environment: no actor frontmatter field appears", async () => {
   const { dir, cleanup } = await makeBundle();
   try {
-    await runDoc(["write", "concepts/plain", "--type", "Concept", "--body", "b", "--dir", dir]);
+    await withActorEnv(undefined, () =>
+      runDoc(["write", "concepts/plain", "--type", "Concept", "--body", "b", "--dir", dir]),
+    );
     const saved = await readDoc({ root: dir }, "concepts/plain");
     assert.ok(!("actor" in saved.frontmatter), "no actor key must be persisted when --actor was not given");
   } finally {
@@ -1951,6 +2009,41 @@ test("doc update --actor: an identical patch with the SAME actor stays a no-op (
     assert.equal((await readDoc({ root: dir }, "tasks/x")).frontmatter.timestamp, tsAfterFirst, "no timestamp refresh on the no-op");
   } finally {
     await cleanup();
+  }
+});
+
+test("doc update: ambient actor attributes a substantive patch but never manufactures an identical or empty update", async () => {
+  const bundle: Bundle = { root: "mem://doc-update-env-noop", backend: new MemoryBackend() };
+  await writeDoc(
+    bundle,
+    { id: "tasks/x", frontmatter: { type: "Task", title: "X", status: "todo", actor: "alice", timestamp: T }, body: "" },
+    { actor: "alice" },
+  );
+  const server = await bootServerOverBundle(bundle);
+  try {
+    await withActorEnv("bob", async () => {
+      const before = await readDocVersioned(bundle, "tasks/x");
+      const historyBefore = await docVersions(bundle, "tasks/x");
+      const noOp = await runDoc(["update", "tasks/x", "--title", "X", "--remote", server.url]);
+      assert.equal(noOp.changed, false);
+      const afterNoOp = await readDocVersioned(bundle, "tasks/x");
+      assert.equal(afterNoOp.version, before.version);
+      assert.equal(afterNoOp.doc.frontmatter.actor, "alice");
+      assert.equal((await docVersions(bundle, "tasks/x")).length, historyBefore.length);
+
+      await assert.rejects(
+        () => runDoc(["update", "tasks/x", "--remote", server.url]),
+        (err: unknown) => err instanceof CliError && err.code === "USAGE" && /at least one field/.test(err.message),
+      );
+
+      const changed = await runDoc(["update", "tasks/x", "--title", "Y", "--remote", server.url]);
+      assert.equal(changed.changed, true);
+    });
+    const saved = await readDoc(bundle, "tasks/x");
+    assert.equal(saved.frontmatter.actor, "bob");
+    assert.equal((await docVersions(bundle, "tasks/x"))[0]!.actor, "bob");
+  } finally {
+    await server.close();
   }
 });
 
@@ -3014,6 +3107,11 @@ test("each doc verb's --help is focused on THAT verb, not the whole family manua
   const deleteHelp = await capture(["delete", "--help"]);
   assert.match(deleteHelp, /doc delete —/);
   assert.doesNotMatch(deleteHelp, /--blank-body|--title/, "delete help stays minimal");
+
+  const historyHelp = await capture(["history", "--help"]);
+  assert.match(historyHelp, /resolved advisory actor label from --actor or AGENTSTATE_LITE_ACTOR/);
+  assert.match(historyHelp, /authenticated principal \(server-set, unforgeable\)/);
+  assert.match(historyHelp, /file's OS owner as the actor/);
 
   // The bare `doc --help` remains the family INDEX (lists every verb, points at per-verb help).
   const familyHelp = await capture(["--help"]);

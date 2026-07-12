@@ -105,6 +105,15 @@ test("the shipped Page examples include capability-independent navigation from a
 
 const rendered = renderSkill();
 
+test("actor guidance distinguishes advisory labels from backend-owned attribution", () => {
+  assert.match(
+    rendered,
+    /no advisory actor label is stored in frontmatter or sent as an agent label/,
+  );
+  assert.match(rendered, /backend history still reports its own principal/);
+  assert.match(rendered, /local OS owner or an\s+authenticated remote user/);
+});
+
 test("no CAPABILITY_PATTERNS entry is dead — each must match somewhere in the rendered SKILL.md", () => {
   for (const { pattern, requires } of CAPABILITY_PATTERNS) {
     assert.ok(

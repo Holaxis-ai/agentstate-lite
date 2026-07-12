@@ -9,6 +9,7 @@ import { parseOrUsage } from "../../args.js";
 import { render, resolveMode } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
 import { mutateDoc } from "../../mutate.js";
+import { resolveActor } from "../../actor.js";
 import { DOC_WRITE_USAGE, type DocCliDeps, defaultReadStdin, guardDroppedLinks } from "./common.js";
 
 export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promise<void> {
@@ -58,11 +59,7 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
       help: `${cliInvocation()} doc write ${id} --type <t>`,
     });
   }
-  if (values.actor !== undefined && values.actor.trim() === "") {
-    throw new CliError("USAGE", "--actor was given an empty value — pass an actor identity or omit the flag.", {
-      help: `${cliInvocation()} doc write ${id} --actor <name>`,
-    });
-  }
+  const actor = resolveActor(values.actor, { help: `${cliInvocation()} doc write ${id} --actor <name>` });
 
   // Body source: --body wins, then --body-file, then piped stdin. `bodySourceGiven` tracks whether
   // the caller supplied a body source at all: --body (even --body "") and --body-file always count,
@@ -90,14 +87,6 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
   if (values.description !== undefined) frontmatter.description = values.description;
   if (values.resource !== undefined) frontmatter.resource = values.resource;
   if (values.tag && values.tag.length > 0) frontmatter.tags = values.tag;
-  // `--actor` persists as the doc's OWN `actor` frontmatter field — the per-doc attribution that
-  // sync's change enrichment reads (frontmatter is the ONLY per-doc source; engine version
-  // attribution below is a separate channel a plain filesystem bundle never surfaces). Sync-verb
-  // review adjudication F / PR#13 item 3: without this, every CLI-authored doc rendered actor
-  // "unknown" in sync receipts, commit subjects, and incoming rows. No `--actor` → no field (no
-  // default, no env fallback); kind conventions are unaffected (validateAgainstKind is not a
-  // top-level-key linter — OKF §9 permits undeclared frontmatter).
-  if (values.actor !== undefined) frontmatter.actor = values.actor.trim();
   if (values.timestamp?.trim()) {
     // Validate an explicit --timestamp at the input boundary: gate 2 derives freshness/staleness and
     // list-sort from it, so an un-parseable value would silently poison those (it was previously
@@ -155,7 +144,8 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
     remoteUrl: values.remote,
     strict: Boolean(values.strict),
     helpOnKindReject: `${cliInvocation()} kinds`,
-    actor: values.actor?.trim(),
+    actor,
+    persistActor: true,
     buildCandidate: (fresh: OkfDocument | undefined) => {
       // SCHEMA-LOSS guard (cold-start study #3): `doc write` replaces the WHOLE document and carries
       // only a fixed flag set (type/title/description/resource/tags/timestamp) — it has NO
@@ -207,7 +197,9 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
       // from a snapshot the write is about to clobber. (Conventions are REFUSED above; this only
       // reaches ordinary docs / kind instances.)
       droppedFields = fresh
-        ? Object.keys(fresh.frontmatter).filter((k) => k !== "timestamp" && !(k in frontmatter))
+        ? Object.keys(fresh.frontmatter).filter(
+            (k) => k !== "timestamp" && !(k in frontmatter) && !(k === "actor" && actor !== undefined),
+          )
         : [];
 
       return { frontmatter, body };

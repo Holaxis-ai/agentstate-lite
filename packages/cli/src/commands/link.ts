@@ -50,11 +50,12 @@ import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 import { collectLinkDeclarations } from "../link-types.js";
+import { resolveActor } from "../actor.js";
 
 export const LINK_USAGE = `agentstate-lite link — add a cross-link, show a concept's links + backlinks, or query the bundle's whole edge graph
 
 Usage:
-  agentstate-lite link add <from> <to> [--text <t>]
+  agentstate-lite link add <from> <to> [--text <t>] [--actor <name>]
   agentstate-lite link show <id> [--limit <n>] [--text <t>]
   agentstate-lite link list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]
 
@@ -93,6 +94,8 @@ Options:
                          count always reports the true (post-filter) total
   --keep-timestamp      Preserve the source's existing timestamp (default: refresh to now,
                          since adding a cross-link is a meaningful change)
+  --actor <name>        Attribute a newly-added link in the source doc and backend history.
+                         Falls back to AGENTSTATE_LITE_ACTOR; an existing link remains a true no-op.
   --dir <path>          Bundle directory (default: discovered from the cwd)
   --remote <url>        Talk to a wire-protocol server instead of a local bundle
                          (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
@@ -234,6 +237,8 @@ export interface AddLinkOptions {
   /** Threaded into `classifyBundleError` so a `--remote` mutation's AUTH_REQUIRED carries a
    * copy-pastable hint (mirrors every other bundle-mutating command). */
   remoteUrl?: string;
+  /** Advisory attribution, already resolved at the CLI boundary. */
+  actor?: string;
 }
 
 export interface AddLinkResult {
@@ -323,9 +328,9 @@ export async function addLink(
         // freshness must reflect it — unless `keepTimestamp` asks to preserve the source's existing
         // value. Recomputed every attempt (`decide` re-runs against each fresh read) so a slow
         // retry still lands a timestamp taken at write time, not at the first read.
-        const nextFrontmatter = opts.keepTimestamp
-          ? source!.frontmatter
-          : { ...source!.frontmatter, timestamp: new Date().toISOString() };
+        const nextFrontmatter = { ...source!.frontmatter };
+        if (!opts.keepTimestamp) nextFrontmatter.timestamp = new Date().toISOString();
+        if (opts.actor !== undefined) nextFrontmatter.actor = opts.actor;
         sourceTypeAtWrite = docType(source!);
         return {
           action: "write",
@@ -335,7 +340,10 @@ export async function addLink(
       },
       write: async (next, expectedVersion) => {
         try {
-          const { doc: saved, version } = await writeDocVersioned(bundle, next, { expectedVersion });
+          const { doc: saved, version } = await writeDocVersioned(bundle, next, {
+            expectedVersion,
+            actor: opts.actor,
+          });
           savedDoc = saved;
           return version;
         } catch (err) {
@@ -395,6 +403,7 @@ async function linkAdd(argv: string[], stdout: (s: string) => void): Promise<voi
         options: {
           text: { type: "string" },
           "keep-timestamp": { type: "boolean" },
+          actor: { type: "string" },
           dir: { type: "string" },
           remote: { type: "string" },
           json: { type: "boolean" },
@@ -416,6 +425,7 @@ async function linkAdd(argv: string[], stdout: (s: string) => void): Promise<voi
       help: `${cliInvocation()} link add <from> <to>`,
     });
   }
+  const actor = resolveActor(values.actor, { help: `${cliInvocation()} link add ${from} ${to} --actor <name>` });
 
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
   const mode = resolveMode(values);
@@ -424,6 +434,7 @@ async function linkAdd(argv: string[], stdout: (s: string) => void): Promise<voi
     text: values.text,
     keepTimestamp: values["keep-timestamp"],
     remoteUrl: values.remote,
+    actor,
   });
 
   if (!result.changed) {

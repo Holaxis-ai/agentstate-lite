@@ -58,9 +58,10 @@ collaborator's agents work against the same workspace.
 Then, day to day:
 
 ```sh
+export AGENTSTATE_LITE_ACTOR=claude    # optional default; per-command --actor wins
 aslite new "Task" ship-parser --title "Ship the parser" --status todo
 aslite list --type Task
-aslite doc update tasks/ship-parser --status in_progress --actor claude
+aslite doc update tasks/ship-parser --status in_progress
 aslite doc history tasks/ship-parser   # who changed what, when
 aslite ui                              # the bundle, rendered — local server, no cloud
 aslite sync                            # ordinary shared-board updates — commits yours,

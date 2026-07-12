@@ -46,7 +46,7 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
   — Hard-delete a doc (idempotent: absent -> deleted:false, exit 0)
 - `npx -y agentstate-lite list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--open] [--limit <n>] [--remote <url>]`
   — Query concepts over their frontmatter (alias: query) — a comma in --field's value is set membership (OR); --open excludes terminal instances (declared kinds only)
-- `npx -y agentstate-lite link (add <from> <to> [--text <t>] | show <id> [--limit <n>] [--text <t>] | list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]) [--remote <url>]`
+- `npx -y agentstate-lite link (add <from> <to> [--text <t>] [--actor <n>] | show <id> [--limit <n>] [--text <t>] | list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]) [--remote <url>]`
   — Add a cross-link, show a concept's links + backlinks, or query the whole bundle's derived edge list filtered by from/to (id or prefix/, repeatable/union) and exact-match text
 
 ### Artifacts
@@ -163,9 +163,13 @@ batched with code. Until established, the bundle stays local — either left unc
 committed directly on the code branch like any other file, whichever the user prefers. (Gitignore
 the folder only if the workspace should stay private to this machine.)
 
-Write with attribution: pass `--actor <your-name>` on `new` / `doc write` / `doc update`.
-There is no default actor, so an unattributed write renders as unknown in teammates'
-awareness — the `--actor` you pass is what attributes your changes to you.
+Write with attribution: set `AGENTSTATE_LITE_ACTOR=<your-name>` once for `new`, `doc write`,
+`doc update`, and `link add`, or pass `--actor <your-name>` per command (the flag wins).
+With neither source, no advisory actor label is stored in frontmatter or sent as an agent label;
+backend history still reports its own principal (for example, the local OS owner or an
+authenticated remote user). A present-but-blank flag or environment value is a usage error.
+Advisory attribution describes a real mutation and never creates a no-op write.
+Actor labels are advisory metadata, not authentication or authorization credentials.
 
 Each invocation is stateless and resolves its bundle in this order: explicit `--dir`/`--remote`
 flag → `AGENTSTATE_LITE_REMOTE` env (URL only) → nearest `.agentstate.json` binding up-tree →

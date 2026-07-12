@@ -22,6 +22,8 @@ import {
   initBundle,
   writeDoc,
   readDoc,
+  readDocVersioned,
+  docVersions,
   parseLinks,
   MemoryBackend,
   type Bundle,
@@ -33,6 +35,19 @@ import { link, addLink } from "../src/commands/link.js";
 import { CliError, toExit } from "../src/errors.js";
 
 const OLD_TS = "2020-01-01T00:00:00.000Z";
+
+async function withActorEnv<T>(value: string | undefined, run: () => Promise<T>): Promise<T> {
+  const had = Object.prototype.hasOwnProperty.call(process.env, "AGENTSTATE_LITE_ACTOR");
+  const previous = process.env.AGENTSTATE_LITE_ACTOR;
+  if (value === undefined) delete process.env.AGENTSTATE_LITE_ACTOR;
+  else process.env.AGENTSTATE_LITE_ACTOR = value;
+  try {
+    return await run();
+  } finally {
+    if (had) process.env.AGENTSTATE_LITE_ACTOR = previous;
+    else delete process.env.AGENTSTATE_LITE_ACTOR;
+  }
+}
 
 /** A fresh temp OKF bundle with `concepts/a` and `concepts/b`, both stamped at OLD_TS. */
 async function makeFixtureBundle(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
@@ -147,6 +162,54 @@ test("link add: re-adding an already-present link is an idempotent no-op (no wri
     assert.equal(afterSecond.body, afterFirst.body);
   } finally {
     await cleanup();
+  }
+});
+
+test("link add: environment attribution reaches local+remote content/history; a no-op never rewrites actor", async () => {
+  const local = await makeFixtureBundle();
+  const remoteBundle: Bundle = { root: "mem://link-actor-env", backend: new MemoryBackend() };
+  await writeDoc(remoteBundle, {
+    id: "concepts/a",
+    frontmatter: { type: "Concept", title: "A", actor: "old", timestamp: OLD_TS },
+    body: "Body A.",
+  });
+  await writeDoc(remoteBundle, {
+    id: "concepts/b",
+    frontmatter: { type: "Concept", title: "B", timestamp: OLD_TS },
+    body: "Body B.",
+  });
+  const handle: ServerHandle = await serve({ bundle: remoteBundle, port: 0 });
+  const url = `http://${handle.host}:${handle.port}`;
+  try {
+    await withActorEnv(" env-link ", async () => {
+      assert.equal((await linkAdd(local.dir, ["concepts/a", "concepts/b"])).changed, true);
+      let out = "";
+      await link(["add", "concepts/a", "concepts/b", "--remote", url, "--json"], {
+        stdout: (s) => (out += s),
+      });
+      assert.equal((JSON.parse(out) as { changed: boolean }).changed, true);
+    });
+    assert.equal((await readDoc({ root: local.dir }, "concepts/a")).frontmatter.actor, "env-link");
+    assert.equal((await readDoc(remoteBundle, "concepts/a")).frontmatter.actor, "env-link");
+    assert.equal((await docVersions(remoteBundle, "concepts/a"))[0]!.actor, "env-link");
+
+    const beforeNoOp = await readDocVersioned(remoteBundle, "concepts/a");
+    const historyLength = (await docVersions(remoteBundle, "concepts/a")).length;
+    let noOpOut = "";
+    await withActorEnv("ignored-env", () =>
+      link(
+        ["add", "concepts/a", "concepts/b", "--actor", "flag-must-not-rewrite", "--remote", url, "--json"],
+        { stdout: (s) => (noOpOut += s) },
+      ),
+    );
+    assert.equal((JSON.parse(noOpOut) as { changed: boolean }).changed, false);
+    const afterNoOp = await readDocVersioned(remoteBundle, "concepts/a");
+    assert.equal(afterNoOp.version, beforeNoOp.version);
+    assert.equal(afterNoOp.doc.frontmatter.actor, "env-link");
+    assert.equal((await docVersions(remoteBundle, "concepts/a")).length, historyLength);
+  } finally {
+    await handle.close();
+    await local.cleanup();
   }
 });
 
