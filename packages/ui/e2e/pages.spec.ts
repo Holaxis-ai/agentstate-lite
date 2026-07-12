@@ -28,7 +28,7 @@ test("launcher lists the bundle's Page docs", async ({ page }) => {
   }
 });
 
-test("opening a page frames a sandboxed (allow-scripts only) iframe and the bridge delivers data", async ({ page }) => {
+test("a directly opened data Page completes its startup bridge queries before iframe load", async ({ page }) => {
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
@@ -39,7 +39,8 @@ test("opening a page frames a sandboxed (allow-scripts only) iframe and the brid
     // Opaque origin: allow-scripts and NOTHING else (no allow-same-origin).
     expect(await iframe.getAttribute("sandbox")).toBe("allow-scripts");
 
-    // The bridge round-tripped BOTH the Roadmap Item query and the `edges` request: the seeded
+    // These requests are posted by Roadmap's inline startup script, before the parent sees the
+    // iframe load event. The bridge round-tripped BOTH the Roadmap Item query and `edges` request:
     // item renders, and its rollup counts the two seeded (non-terminal) tasks it `contains`.
     const frame = page.frameLocator("iframe.page-frame-iframe");
     await expect(frame.locator(".item .title", { hasText: "Spike work" })).toBeVisible();
@@ -49,7 +50,7 @@ test("opening a page frames a sandboxed (allow-scripts only) iframe and the brid
   }
 });
 
-test("a content Page opens a registered data Page under the target's capability, with browser history", async ({ page }) => {
+test("About navigation opens Roadmap and its startup bridge queries under the target capability, with browser history", async ({ page }) => {
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);

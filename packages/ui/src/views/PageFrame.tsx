@@ -39,8 +39,9 @@ export function PageFrame({ pageId }: { pageId: string }) {
   // A shell navigation consumes the currently framed document's right to navigate. Unlike the
   // async-load epoch below, this remains locked while that old iframe can still post messages.
   const navigationConsumedRef = useRef(false);
-  // The generation whose iframe has actually completed loading. Advancing loadSeq invalidates
-  // the still-mounted old document immediately, including capability-independent shell actions.
+  // The generation owned by the currently keyed iframe DOM node. Ref assignment happens before
+  // child scripts execute, so startup bridge requests are accepted; advancing loadSeq invalidates
+  // the still-mounted old document immediately.
   const activeFrameSeqRef = useRef<number | null>(null);
   // Bumped on every (re)load trigger, revoke, and unmount — a resolution that finishes after a
   // newer one started (or after a revoke) must not clobber the newer state.
@@ -50,6 +51,15 @@ export function PageFrame({ pageId }: { pageId: string }) {
   const [entryKey, setEntryKey] = useState<string | null>(null);
   const [title, setTitle] = useState<string>(pageId);
   const [error, setError] = useState<string | null>(null);
+
+  const ownFrame = useCallback((node: HTMLIFrameElement | null) => {
+    iframeRef.current = node;
+    if (!node) return;
+    if (frameSeq !== null && frameSeq === loadSeqRef.current) {
+      activeFrameSeqRef.current = frameSeq;
+      navigationConsumedRef.current = false;
+    }
+  }, [frameSeq]);
 
   // P1 (doc-lifecycle revocation): tear the frame down to an explicit terminal state — the
   // sandboxed iframe unmounts, so its bridge access ends WITH its registry doc, not after it.
@@ -234,20 +244,12 @@ export function PageFrame({ pageId }: { pageId: string }) {
         // untrusted page as document.referrer (tasks/ui-pages-spike P1).
         <iframe
           key={src}
-          ref={iframeRef}
+          ref={ownFrame}
           className="page-frame-iframe"
           sandbox="allow-scripts"
           referrerPolicy="no-referrer"
           src={src}
           title={title}
-          onLoad={() => {
-            // Reset only after the nonce-backed document for the current load epoch is actually
-            // framed. A late load from the consumed source cannot reopen navigation.
-            if (frameSeq !== null && frameSeq === loadSeqRef.current) {
-              activeFrameSeqRef.current = frameSeq;
-              navigationConsumedRef.current = false;
-            }
-          }}
         />
       ) : (
         <p className="view-status">Opening page…</p>

@@ -66,10 +66,6 @@ async function flush() {
   await new Promise((r) => setTimeout(r, 0));
 }
 
-function activateFrame(iframe: HTMLIFrameElement): void {
-  act(() => iframe.dispatchEvent(new Event("load")));
-}
-
 describe("PageFrame: bridge revocation race (P1)", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -101,7 +97,6 @@ describe("PageFrame: bridge revocation race (P1)", () => {
 
     const iframe = container.querySelector("iframe.page-frame-iframe") as HTMLIFrameElement;
     expect(iframe).toBeTruthy();
-    activateFrame(iframe);
     const contentWindow = iframe.contentWindow!;
     const postSpy = vi.spyOn(contentWindow, "postMessage");
 
@@ -151,7 +146,6 @@ describe("PageFrame: bridge revocation race (P1)", () => {
     });
 
     const iframe = container.querySelector("iframe.page-frame-iframe") as HTMLIFrameElement;
-    activateFrame(iframe);
     const firstContentWindow = iframe.contentWindow!;
 
     // A `query` request arrives while this page is still `bundle-read` — captured (correctly) at
@@ -227,7 +221,6 @@ describe("PageFrame: registered Page navigation", () => {
       await flush();
     });
     const iframe = container.querySelector("iframe.page-frame-iframe") as HTMLIFrameElement;
-    activateFrame(iframe);
     return iframe.contentWindow!;
   }
 
