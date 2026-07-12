@@ -3,85 +3,100 @@ type: Roadmap Item
 title: 'Local-first CLI surface: park the HTTP remote/hosted stack'
 status: active
 description: >-
-  DECIDED 2026-07-12 — the shipped product surface becomes a SINGLE local-first
-  tier: local OKF bundles, the local Page UI, and git board sharing through
-  `sync`.
+  DECIDED 2026-07-12 — the OSS product becomes local-first + git-shared, while
+  the hosted control plane is extracted toward a private SaaS repository.
+  Extract means relocate behind a clean boundary, not delete.
 
 
-  Terminology is load-bearing: “HTTP remote” means `--remote <url>` and the
-  hosted/wire control plane. It does NOT mean a git remote. The entire git tier
-  remains central: `sync`, the board branch, SessionStart pull, awareness, and
-  ordinary git-based collaboration are kept.
+  Terminology is load-bearing:
+
+  - A git remote belongs to `sync` and remains central to the OSS collaboration
+  story.
+
+  - The HTTP wire client (`RemoteBackend` and an explicit `--remote <url>`)
+  remains OSS as the intentional on-ramp to the future hosted service.
+
+  - The hosted control plane means server deployment, Cloudflare Worker/D1/R2,
+  identity/admin, and future tenancy/billing/collaboration UI; that moves
+  private.
 
 
-  Remove from the default CLI surface:
+  The default experience remains local:
 
-  - HTTP bundle targeting through `--remote`, `AGENTSTATE_LITE_REMOTE`, and
-  URL-valued project bindings.
+  - Bare commands discover a local bundle or explicit `--dir`.
 
-  - Hosted identity/admin commands: `login`, `join`, `whoami`, `invite`,
-  `member`, and `key`.
+  - The local Page UI and git `sync` are first-class.
 
-  - `ui --remote` and the public `serve` command.
+  - Ambient HTTP activation is reduced: `AGENTSTATE_LITE_REMOTE` and committed
+  URL bindings should not silently flip an ordinary local session into hosted
+  mode.
 
-  - Hosted/auth state and instructions in home, help, README, and generated
-  skill output.
-
-
-  Keep on main behind a non-default, tested boundary:
-
-  - The `StorageBackend` seam and `RemoteBackend` adapter.
-
-  - `packages/server`, the wire protocol, and their contract/parity tests.
-
-  - `packages/worker`, D1/R2, and the deployed auth/control-plane
-  implementation, frozen and dormant.
-
-  - Auth/credential CLI implementation needed by an internal remote-enabled
-  profile or future reactivation.
+  - Explicit `--remote` remains functional and documented as an advanced hosted
+  connection path rather than repeated as the product's default story.
 
 
-  Keep in the shipped CLI:
+  Keep OSS:
 
-  - Local bundle discovery, explicit `--dir`, and local-path `.agentstate.json`
-  bindings.
+  - Engine + `StorageBackend`, FilesystemBackend, MemoryBackend.
 
-  - `sync` and the entire git-sharing tier.
+  - `RemoteBackend`, explicit `--remote`, and a coherent versioned wire
+  protocol/spec.
 
-  - Local `ui --dir` and bundle Pages.
+  - CLI, local Pages, local artifact verbs, and the entire git-sharing tier.
 
-  - Local `promote`, `pull`, `blobs`, and `delete`.
-
-  - The server library code local UI uses internally; hiding the public `serve`
-  command does not imply deleting that dependency.
+  - Whatever generic wire/router primitive local UI demonstrably needs; do not
+  duplicate it merely to move a package.
 
 
-  Architecture rule: one executable CLI capability/profile authority controls
-  command registration, help/skill projection, and bundle-target resolution. Do
-  not hand-maintain a “hidden” implementation through scattered comments or
-  preserve it only on a branch. Default-surface tests must prove hosted
-  affordances are absent/disabled, while an internal test path keeps the parked
-  implementation callable enough to prevent silent rot.
+  Move toward the private SaaS repository:
+
+  - Deployable server/Worker/D1R2 and hosted identity/auth/control-plane code.
+
+  - Net-new multi-tenancy, organizations, billing, per-bundle authorization, and
+  hosted administration/collaboration UI.
+
+  - Hosted identity commands may remain as a thin OSS/cloud client or move to a
+  SaaS plugin; that business/interface choice must be explicit before deletion.
 
 
-  This supersedes the earlier removal proposal and the two-tier product framing
-  recorded by `tasks/positioning`; those remain historical records. It is a
-  scope transition from FROZEN-and-advertised to PARKED-and-not-shipped, not
-  code deletion.
+  Prerequisites and boundary work:
+
+  - Publish `@agentstate-lite/core` as a real versioned package consumable from
+  another repository.
+
+  - Resolve the current local UI dependency on `packages/server`: either
+  preserve a generic OSS reference/router package or extract one shared
+  protocol/router primitive before moving deployable server code. No parallel
+  router.
+
+  - Keep dependencies one-directional: core imports nothing from hosted
+  packages.
+
+  - Keep wire and backend parity tests as the executable OSS/private contract.
+
+
+  Distribution direction is recorded in `designs/npm-bundle-bootstrap`: npm
+  becomes the executable authority; bundle content carries durable meaning; a
+  thin plugin supplies bootstrap/hooks. This is a parallel simplification and
+  supports the private-repo boundary.
 
 
   Delivery sequence:
 
-  1. Retire hosted identity/admin commands from the default CLI.
+  1. Retire hosted identity/admin commands from the default everyday surface
+  without deleting their implementation or prematurely deciding thin OSS client
+  versus SaaS plugin.
 
-  2. Make the shipped CLI local-only by disabling HTTP bundle targets at one
-  capability boundary and cleaning every shipped surface.
+  2. Make local the unquestioned default while preserving explicit `--remote` as
+  the OSS SaaS on-ramp.
 
-  3. Park the HTTP reference/deployment stack behind a non-default test/build
-  boundary; slim the shipped bundle only if the separation is cheap and does not
-  disturb local UI.
+  3. Publish `@agentstate-lite/core` and resolve the local UI/server package
+  boundary.
+
+  4. Extract hosted deployment/control-plane units toward the private
+  repository, leaving the OSS wire client/spec and proven boundary intact.
 actor: codex
-timestamp: '2026-07-12T20:02:08.494Z'
+timestamp: '2026-07-12T21:10:06.006Z'
 ---
 [contains](../tasks/deprecate-static-viewer.md)
 
@@ -92,3 +107,7 @@ timestamp: '2026-07-12T20:02:08.494Z'
 [contains](../tasks/default-cli-local-only.md)
 
 [contains](../tasks/park-http-remote-stack.md)
+
+[contains](../tasks/publish-core-package.md)
+
+[contains](../tasks/resolve-local-ui-server-boundary.md)

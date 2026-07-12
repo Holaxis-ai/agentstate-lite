@@ -1,62 +1,69 @@
 ---
 type: Task
-title: 'Make the shipped CLI local-only: disable HTTP bundle targets'
+title: Make the CLI local-first by default while preserving the explicit HTTP on-ramp
 status: todo
 priority: '1'
 description: >-
   PR 2 of the local-first CLI simplification.
 
 
-  Behavioral claim: the default shipped CLI can target only local bundles;
-  HTTP-hosted bundle targeting is disabled through one capability authority,
-  while git `sync` remains fully supported.
+  Behavioral claim: ordinary AgentState use resolves locally by default, while
+  an explicit `--remote <url>` remains a functional OSS on-ramp to the future
+  hosted service. “Local-first” does not mean closing the wire client.
 
 
   Scope:
 
-  - Introduce one CLI capability/profile authority with HTTP remote disabled in
-  the shipped profile.
+  - Keep explicit `--remote` and `RemoteBackend` working for bundle commands.
 
-  - Make explicit `--remote`, `AGENTSTATE_LITE_REMOTE`, URL-valued
-  `.agentstate.json` bindings, and `ui --remote` fail consistently with a
-  structured, actionable message directing users to local bundles or git `sync`.
+  - Remove or deprecate ambient `AGENTSTATE_LITE_REMOTE` activation so a shell
+  environment cannot silently redirect bare commands.
 
-  - Remove HTTP-remote flags and prose from every shipped command help surface,
-  top-level reference, README, and generated npm/plugin skill.
+  - Stop URL-valued `.agentstate.json` bindings from silently changing a cloned
+  project's default target. A future explicit `cloud connect` flow may introduce
+  a separately named, deliberate connection record.
 
-  - Keep explicit `--dir`, local discovery, local-path bindings, local `ui`, and
-  all git `sync` behavior unchanged.
+  - Remove `ui --remote` from the default local Page product unless the private
+  SaaS interface explicitly chooses to consume it; this proxy is distinct from
+  the generic RemoteBackend on-ramp.
 
-  - Keep local `promote`, `pull`, `blobs`, and `delete` available.
+  - Reframe top-level help, README, home, and generated skill around local
+  bundles + git `sync`; document explicit `--remote` once as an advanced hosted
+  connection path without making it the default product story.
 
-  - Resolve capabilities at the CLI boundary; core/storage remains
-  environment-agnostic.
+  - Keep explicit `--dir`, local discovery, local-path bindings, local `ui`,
+  local artifact verbs, and all git `sync` behavior unchanged.
+
+  - Keep core/storage environment-agnostic.
 
 
-  Retractability/evidence:
+  Evidence:
 
-  - Default-surface tests prove no shipped help or generated skill advertises
-  HTTP remote use.
+  - Bare commands remain local even when old ambient configuration is present,
+  with a clear migration message rather than silent fallback.
 
-  - Adversarial tests cover flag, environment, URL binding, and `ui --remote`
-  rejection with no network request.
+  - Explicit `--remote` still passes real local/reference-server round-trip
+  tests and backend parity tests.
 
-  - Local and git-sync regression tests remain green.
+  - URL-binding and environment transition behavior is deterministic and
+  documented.
 
-  - A non-default/internal test path still exercises the retained HTTP adapter
-  so the parked implementation does not silently rot.
+  - Local, Page UI, and git-sync regression tests remain green.
+
+  - Generated help/skill lead with the local daily loop while retaining one
+  discoverable hosted on-ramp.
 
   - Builder -> independent reviewer -> QA before merge.
 
 
   Non-goals:
 
-  - Do not delete `RemoteBackend`, the wire protocol, server, Worker, auth code,
-  or credentials.
+  - Do not delete or disable `RemoteBackend`, explicit `--remote`, the wire
+  protocol, server, Worker, auth code, credentials, or git `sync`.
 
-  - Do not confuse HTTP remote removal with removing the repository's git remote
-  or `sync`.
+  - Do not decide the final SaaS connection UX beyond preserving the explicit
+  on-ramp.
 actor: codex
-timestamp: '2026-07-12T20:01:58.396Z'
+timestamp: '2026-07-12T21:09:49.389Z'
 ---
 [depends on](retire-hosted-control-plane-cli.md)

@@ -1,57 +1,67 @@
 ---
 type: Task
-title: Park the HTTP reference/deployment stack behind a non-default boundary
+title: Extract hosted control-plane units behind the OSS wire boundary
 status: todo
 priority: '2'
 description: >-
-  PR 3 of the local-first CLI simplification; begin only after the default CLI
-  is demonstrably local-only.
+  Hosted extraction coordination task; begin only after its public-package and
+  local-UI boundary prerequisites are resolved.
 
 
-  Behavioral claim: the retained HTTP reference/deployment implementation is
-  parked behind an explicit non-default boundary and no longer appears as a
-  shipped product affordance.
+  Behavioral claim: deployable hosted/control-plane units can move toward a
+  private SaaS repository through a one-directional, versioned OSS boundary,
+  without deleting the OSS wire client or duplicating the local UI router.
 
 
   Scope:
 
-  - Remove the public `serve` command from the default dispatcher/help/skill
-  surface.
+  - Preserve `RemoteBackend`, explicit `--remote`, and the wire protocol/spec in
+  OSS as the hosted-service on-ramp.
 
-  - Establish the smallest internal entry point, build profile, or test harness
-  that keeps RemoteBackend, wire, auth, and reference-server behavior callable
-  for parity and future reactivation.
+  - Publish/consume `@agentstate-lite/core` rather than aliasing another
+  repository directly to OSS source.
 
-  - Evaluate whether remote/auth-only modules can be excluded from the default
-  CLI bundle without disturbing local Page UI. Bundle slimming is optional and
-  evidence-gated.
+  - Move or prepare to move hosted deployment units: Worker/D1R2, hosted
+  identity/auth/control plane, and any deployable server wrapper that is not
+  required as an OSS reference primitive.
 
-  - Keep `packages/server` where local UI needs its router; hiding `serve` is
-  not permission to duplicate or delete the server primitives local UI consumes.
+  - Resolve `packages/server` carefully: local UI currently imports its
+  router/request bridge. Either retain a generic OSS reference/router package or
+  extract one shared protocol/router primitive before moving deployable code.
+  Never create a second router.
 
-  - Keep `packages/worker`, D1/R2, migrations, wire protocol, and
-  contract/parity tests on main, frozen and dormant.
+  - Keep Worker migrations, deployment history, and production data intact until
+  an explicit private-repository migration procedure exists. No destructive
+  production action is authorized by this task.
 
-  - Update `docs/core`, North Star, CLAUDE.md, README, and package descriptions
-  from “hosted tier is available/frozen” to “HTTP stack is parked, non-default,
-  and not part of the shipped product surface.”
+  - Update `docs/core`, North Star, CLAUDE.md, README, package descriptions, and
+  the public wire spec to state the two-repository boundary honestly.
+
+  - Record the open-core license and public-wire-spec business calls without
+  blocking mechanical boundary preparation.
 
 
   Acceptance:
 
-  - Default CLI cannot discover or invoke `serve`.
+  - Dependency graph remains one-directional from hosted packages to published
+  OSS core/protocol; core has no hosted back-edge.
 
-  - Retained remote/reference tests have a named execution command and pass
-  independently of the shipped CLI profile.
+  - Local CLI, local Page UI, and git `sync` remain fully functional.
 
-  - The default bundle contains no remote-only code only if a measured,
-  low-complexity separation proves worthwhile; otherwise inaccessible retained
-  bytes are an accepted temporary cost.
+  - The OSS explicit-remote client passes contract tests against the
+  retained/moved server implementation.
 
-  - No production deployment or data is destroyed.
+  - The private-repository extraction steps are mechanical and documented; no
+  source-only cross-repo imports.
 
-  - Builder -> independent reviewer -> QA before merge.
+  - Builder -> independent reviewer -> QA for every concrete PR; this
+  coordination task may decompose further as repository boundaries become
+  concrete.
 actor: codex
-timestamp: '2026-07-12T20:01:58.524Z'
+timestamp: '2026-07-12T21:10:06.257Z'
 ---
 [depends on](default-cli-local-only.md)
+
+[depends on](publish-core-package.md)
+
+[depends on](resolve-local-ui-server-boundary.md)
