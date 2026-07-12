@@ -332,11 +332,13 @@ A **bundle page** is a self-contained HTML file living IN the bundle: promoted a
 `"$ASLITE" ui` inside a sandboxed, opaque-origin iframe (`sandbox="allow-scripts"`, no network
 access) — its only channel out is a **read-only** postMessage bridge to the shell.
 
-The bridge (protocol `v0`) has five request types: `hello` (bundle identity), `query`
+The bridge (protocol `v0`) has five read-only data request types: `hello` (bundle identity), `query`
 (frontmatter-filtered rows — the same head projection `list` uses), `read` (one doc), `edges`
 (the general from/to/text graph query — backlinks and containment both reduce to this), and
 `subscribe` (opt into a server-pushed `change` event whenever the watched bundle moves). There
-is no mutation message — read-only is enforced by construction, not convention.
+is no mutation message — read-only is enforced by construction, not convention. `open-page`
+is a separate fire-and-forget shell action available to either Page capability; it opens only
+another valid registered Page and returns none of that target's content or metadata.
 
 Author a page in four steps:
 

@@ -135,6 +135,7 @@
       parent.postMessage(msg, "*");
     });
   }
+  function openPage(pageId) { parent.postMessage({ bridge: PROTO, type: "open-page", pageId: pageId }, "*"); }
   window.addEventListener("message", function (e) {
     if (e.source !== window.parent) return;
     var m = e.data;
@@ -150,6 +151,7 @@
     hello: function () { return send("hello"); },
     query: function (params) { return send("query", { params: params }); },
     read: function (docId) { return send("read", { docId: docId }); },
+    openPage: openPage,
     subscribe: function (cb) { subs.push(cb); return send("subscribe"); }
   };
 })();

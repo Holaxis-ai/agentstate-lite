@@ -82,12 +82,14 @@
   var PROTO="v0", seq=0, pending={}, subs=[];
   function send(type, extra){ return new Promise(function(res,rej){ var id=String(++seq); pending[id]={res:res,rej:rej};
     var m={bridge:PROTO,id:id,type:type}; if(extra) for(var k in extra) m[k]=extra[k]; parent.postMessage(m,"*"); }); }
+  function openPage(pageId){ parent.postMessage({bridge:PROTO,type:"open-page",pageId:pageId},"*"); }
   window.addEventListener("message",function(e){ if(e.source!==window.parent) return; var m=e.data; if(!m||m.bridge!==PROTO) return;
     if(m.type==="change"){ subs.forEach(function(cb){cb(m.event)}); return; }
     var p=pending[m.id]; if(!p) return; delete pending[m.id];
     if(m.type==="error") p.rej(new Error((m.error&&m.error.message)||"bridge error")); else p.res(m.result); });
   window.Bridge={ hello:function(){return send("hello")}, query:function(params){return send("query",{params:params})},
     read:function(docId){return send("read",{docId:docId})}, edges:function(params){return send("edges",{params:params})},
+    openPage:openPage,
     subscribe:function(cb){subs.push(cb); return send("subscribe")} };
 })();
 
