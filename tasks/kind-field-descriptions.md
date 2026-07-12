@@ -1,13 +1,14 @@
 ---
 type: Task
 title: 'Kinds: machine-readable Kind and field descriptions'
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   Make shared Kinds self-teaching by carrying concept and field meaning through
   the one registry into discovery, creation help, recipes, and Pages.
 actor: openai/codex
-timestamp: '2026-07-11T22:53:05.347Z'
+assignee: openai/codex
+timestamp: '2026-07-12T11:37:43.587Z'
 ---
 # Objective
 
