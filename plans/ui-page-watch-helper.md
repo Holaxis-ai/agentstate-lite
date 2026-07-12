@@ -2,11 +2,11 @@
 type: Plan
 title: Canonical Page live-refresh helper
 actor: openai/codex
-timestamp: '2026-07-12T02:52:02.917Z'
+timestamp: '2026-07-12T03:09:30.067Z'
 ---
 # Canonical Page live-refresh helper
 
-Status: proposed for independent review before implementation.
+Status: independently reviewed and implemented at `c8c6b197ff09ebb351210cb3c35c05d1f27ae00a`; draft PR #41 awaits merge.
 
 ## Decision
 
@@ -96,3 +96,12 @@ Run the existing real Chromium Page tests after migration, especially Roadmap st
 - No mutation capability.
 - No implicit adoption by arbitrary existing bundle Pages.
 - No claim that `watch` replaces a future snapshot-plus-cursor event contract.
+
+## Implementation record
+
+- Pull request: https://github.com/Holaxis-ai/agentstate-lite/pull/41
+- Exact reviewed/QA commit: `c8c6b197ff09ebb351210cb3c35c05d1f27ae00a`
+- Literal emitted-client scheduler suite: 26/26
+- Full repository check, Chromium Page tests, built CLI smoke, and standalone package-install smoke passed
+- Pulse and Roadmap use the helper while retaining startup, highlighting, follow-live, rollup, recovery, and navigation behavior
+- Generated plugin references, compiled bundle, and version manifests remain owned by the post-merge bot

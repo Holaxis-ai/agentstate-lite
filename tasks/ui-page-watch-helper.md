@@ -8,7 +8,7 @@ description: >-
   Make correct subscribe-before-snapshot live Page behavior a one-line optional
   client primitive.
 actor: openai/codex
-timestamp: '2026-07-12T02:46:09.821Z'
+timestamp: '2026-07-12T03:09:30.194Z'
 ---
 # Objective
 
@@ -32,6 +32,16 @@ The generic Review Requests Page had to hand-author subscribe-before-snapshot an
 # Workflow
 
 Design review → isolated implementation → independent code review → exact-SHA QA → PR.
+
+# Implementation status
+
+- Implemented on `codex/page-watch-helper` at `c8c6b197ff09ebb351210cb3c35c05d1f27ae00a`.
+- Independent design review approved after pinning failed-watcher deactivation and queued-batch recovery after rejection.
+- Independent code review approved with no findings.
+- Final QA passed 26/26 literal-client scheduler tests, the full repository gate, Chromium Page tests, built CLI smoke, and standalone package-install smoke.
+- Draft pull request: https://github.com/Holaxis-ai/agentstate-lite/pull/41
+
+The task remains `in_progress` until the PR merges.
 
 [depends on](review-request-workflow.md)
 
