@@ -9,6 +9,7 @@ import { CliError } from "../../errors.js";
 import { render, resolveMode } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
 import { mutateDoc } from "../../mutate.js";
+import { resolveActor } from "../../actor.js";
 import { DOC_UPDATE_USAGE, type DocCliDeps, defaultReadStdin, guardDroppedLinks } from "./common.js";
 
 /** The `doc update` STANDARD patch fields; excludes control flags (--keep-timestamp/--strict/--dir/--remote/…). */
@@ -233,11 +234,7 @@ export async function docUpdate(argv: string[], deps: Partial<DocCliDeps>): Prom
       { help: `${cliInvocation()} doc update ${id} --expected-version <v>` },
     );
   }
-  if (p.actor !== undefined && p.actor.trim() === "") {
-    throw new CliError("USAGE", "--actor was given an empty value — pass an actor identity or omit the flag.", {
-      help: `${cliInvocation()} doc update ${id} --actor <name>`,
-    });
-  }
+  const actor = resolveActor(p.actor, { help: `${cliInvocation()} doc update ${id} --actor <name>` });
 
   // A patchable field OTHER than body, given via a flag — title/description/tag/type/kind fields.
   // Computed BEFORE the stdin read below: a FIELD-ONLY patch (one of these given, no --body/
@@ -308,7 +305,8 @@ export async function docUpdate(argv: string[], deps: Partial<DocCliDeps>): Prom
     remoteUrl: p.remote,
     strict,
     helpOnKindReject: `${cliInvocation()} kinds`,
-    actor: p.actor?.trim(),
+    actor,
+    persistActor: true,
     expectedVersion: p.expectedVersion?.trim(),
     buildCandidate: async (existingDoc) => {
       const existing = existingDoc!;
@@ -317,14 +315,9 @@ export async function docUpdate(argv: string[], deps: Partial<DocCliDeps>): Prom
       if (p.description !== undefined) nextFrontmatter.description = p.description;
       if (p.tags && p.tags.length > 0) nextFrontmatter.tags = p.tags;
       if (p.type !== undefined) nextFrontmatter.type = p.type.trim();
-      // `--actor` persists into the doc's `actor` frontmatter field — the per-doc attribution
-      // sync's enrichment reads (adjudication F). Overwrites a previous actor (this write's
-      // attribution supersedes the last writer's); omitted → the existing value is preserved
-      // verbatim via the spread above (no default, no env fallback). Still a MODIFIER, not a
-      // patchable field by itself: `--actor` alone keeps rejecting as "nothing to patch" (changing
-      // that would either re-open the held-open-stdin hang class or silently stop consuming a
-      // piped body — see the stdin guards above).
-      if (p.actor !== undefined) nextFrontmatter.actor = p.actor.trim();
+      // Actor attribution is applied by `mutateDoc` only after this candidate has proven
+      // substantive. The spread preserves the previous actor on a no-op; ambient attribution can
+      // never turn an identical patch into a write.
       // `timestamp` means "last meaningful change" (OKF + VISION); a patch IS one, so refresh it by
       // default — `--keep-timestamp` opts back into preserving the existing value (mirrors `link
       // add`). `mutateDoc`'s ignoring-timestamp idempotency check decides whether this refreshed

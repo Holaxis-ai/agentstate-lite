@@ -120,13 +120,13 @@ export interface MutateDocOptions {
    */
   remoteUrl?: string;
   /**
-   * Attribution for the write (`WriteOptions.actor`). Threaded on every mode's `writeDoc` call.
-   * This is ONLY the engine/version-history channel: the CLI verbs each ALSO persist `--actor`
-   * into `frontmatter.actor` in their own candidate construction (the per-doc attribution sync
-   * reads — adjudication F), because frontmatter is document CONTENT with per-verb semantics
-   * (patch preserves, overwrite full-replaces, create scaffolds) — not a pipeline concern.
+   * Resolved CLI attribution, threaded to `WriteOptions.actor` only when a write actually occurs.
+   * With `persistActor`, it is also applied to frontmatter after patch no-op detection, so
+   * attribution can describe a substantive mutation but can never manufacture one.
    */
   actor?: string;
+  /** Persist the resolved actor in document frontmatter as well as backend history. */
+  persistActor?: boolean;
   /**
    * "patch" mode only: an EXPLICIT optimistic compare-and-swap token. When set, the patch is a
    * HARD single-shot CAS — the read version must equal this token (else `STALE_HEAD`, checked
@@ -196,6 +196,16 @@ function isNoopPatch(existing: OkfDocument, candidate: MutateCandidate, compareT
   return valuesEqual(restExisting, restCandidate);
 }
 
+/** Attach advisory attribution to document content without mutating the caller's candidate. */
+function attributeCandidate(
+  candidate: MutateCandidate,
+  actor: string | undefined,
+  persistActor: boolean,
+): MutateCandidate {
+  if (!persistActor || actor === undefined) return candidate;
+  return { ...candidate, frontmatter: { ...candidate.frontmatter, actor } };
+}
+
 export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
   const { bundle, id, mode, registry, strict, helpOnKindReject, buildCandidate, errors } = opts;
   const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
@@ -210,7 +220,7 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
     defaultTimestampAndValidateKind({ id, ...candidate }, registry, { strict, helpOnReject: helpOnKindReject });
 
   if (mode === "create-only") {
-    const candidate = await buildCandidate(undefined);
+    const candidate = attributeCandidate(await buildCandidate(undefined), opts.actor, opts.persistActor ?? false);
     const warnings = validate(candidate);
     try {
       const { doc: saved, version } = await writeDocVersioned(bundle, { id, ...candidate }, { expectedVersion: null, actor: opts.actor });
@@ -254,7 +264,11 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
       const outcome = await versionedMutation<OkfDocument, undefined>({
         read: readExisting,
         decide: async (existing) => {
-          const candidate = await buildCandidate(existing);
+          const candidate = attributeCandidate(
+            await buildCandidate(existing),
+            opts.actor,
+            opts.persistActor ?? false,
+          );
           warnings = validate(candidate);
           return { action: "write", next: { id, ...candidate }, result: undefined };
         },
@@ -324,8 +338,9 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
           return { action: "done", result: { doc: existing, warnings: [] } };
         }
 
-        const warnings = validate(candidate);
-        return { action: "write", next: { id, ...candidate }, result: { warnings } };
+        const attributed = attributeCandidate(candidate, opts.actor, opts.persistActor ?? false);
+        const warnings = validate(attributed);
+        return { action: "write", next: { id, ...attributed }, result: { warnings } };
       },
       write: async (next, expectedVersion) => {
         const writeVersion = hardCas ? opts.expectedVersion! : expectedVersion;
