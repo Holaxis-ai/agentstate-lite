@@ -4,53 +4,64 @@ title: Retire hosted identity/admin commands from the default CLI
 status: in_progress
 priority: '1'
 description: >-
-  PR 1 of the local-first CLI simplification.
+  PR #46 READY: https://github.com/Holaxis-ai/agentstate-lite/pull/46
 
 
-  Behavioral claim: the default shipped CLI no longer exposes the hosted
-  identity or administration control plane.
+  Behavioral result: the default CLI no longer registers or advertises `login`,
+  `join`, `whoami`, `invite`, `member`, or `key`. Hosted credential/account
+  state is removed from home and SessionStart orientation. The underlying
+  command modules, auth client, credential store support, and their direct tests
+  remain on main for a future SaaS client/plugin.
 
 
-  Scope:
+  Preserved deliberately:
 
-  - Remove `login`, `join`, `whoami`, `invite`, `member`, and `key` from the
-  default command registry, known-command list, top-level help, compact home
-  command list, generated npm/plugin skill, and README guidance.
+  - Explicit `--remote` bundle access and `serve`.
 
-  - Remove hosted credential/login status from the default home/session-start
-  surface.
+  - `AGENTSTATE_LITE_API_KEY` and already-provisioned stored per-origin
+  credentials.
 
-  - Retain the command implementations, auth client, credentials store support,
-  and focused tests on main for a non-default/internal remote profile.
+  - RemoteBackend, server, Worker, local UI, local bundles, and git `sync`.
 
-  - Do not delete or rewrite stored user credentials.
+  - Stored credential files: home/session neither read, project, rewrite, nor
+  delete them.
 
 
-  Non-goals:
+  Review record:
 
-  - This PR does not yet disable generic `--remote` bundle access.
+  - Builder candidate was independently reviewed.
 
-  - It does not change local bundle behavior, local `ui`, or git `sync`.
+  - First review rejected stale AUTH_REQUIRED guidance that still recommended
+  the now-unregistered `login` command and found missing npm-skill replacement
+  guidance.
 
-  - It does not delete Worker/server/core remote code.
+  - Amended exact SHA `3da59bdce4526cb513a60bbe17d583e7c26cc7d6` replaced that
+  with supported environment/stored-key guidance through one shared npm/plugin
+  skill renderer.
+
+  - Independent rereview approved the amended SHA with no findings.
 
 
-  Acceptance:
+  QA on the approved exact SHA:
 
-  - The six hosted-only command names are absent from every default
-  discoverability surface and reject through the normal unknown/disabled-command
-  boundary.
+  - Full unpiped `npm run check` exit 0: CLI 845, core 250, server 5, UI 78,
+  viewer 4, Worker 117, scripts 15, Playwright 14/14 first attempt.
 
-  - Generated skill/reference drift gates pin the absence.
+  - Built CLI and npm tarball contain no retired default command surface.
 
-  - Local home/session-start remains useful and fully offline.
+  - Environment-key and stored-key authenticated remote round-trips passed;
+  missing/wrong key errors are actionable without retired commands.
 
-  - Retained remote-control-plane implementation remains covered by focused
-  internal tests.
+  - Credential FIFO/non-mutation probes, local bundle, sync, UI, and standalone
+  package smoke passed.
 
-  - Builder -> independent reviewer -> QA before merge.
+  - Direct tests for the retained unregistered modules remain green.
+
+
+  Status remains in progress until PR #46 merges. Bot-owned plugin
+  bundle/version regeneration remains merge automation's responsibility.
 actor: codex
 assignee: codex
-timestamp: '2026-07-12T22:58:05.556Z'
+timestamp: '2026-07-12T23:28:47.947Z'
 ---
 
