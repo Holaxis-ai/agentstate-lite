@@ -476,7 +476,7 @@ function renderBundlePagesSection(): string[] {
   lines.push("```");
   lines.push("");
   lines.push(
-    "Full message shapes, the trust model, the copy-paste ~30-line bridge client, and two working",
+    "Full message shapes, the trust model, the copy-paste bridge client with safe live-refresh",
   );
   lines.push("examples (including a live graph view over Roadmap Items) are in the shipped contract:");
   lines.push("");
