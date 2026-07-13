@@ -19,7 +19,7 @@ Usage:
 Options:
   --dir <path>         Bundle directory (default: discovered from the cwd)
   --remote <url>       Talk to a wire-protocol server instead of a local bundle
-                       (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set).
+                       (mutually exclusive with --dir; remote access is always explicit).
                        --out then defaults to ./viz.html in the current directory — viz.html is
                        always written LOCALLY.
   --out <path>         Output HTML path (default: <root>/viz.html, or ./viz.html for --remote)

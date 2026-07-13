@@ -608,7 +608,8 @@ test("promote/pull are registered in KNOWN_COMMANDS and the command reference", 
   const artifacts = ref.commands["Artifacts"] ?? [];
   assert.ok(artifacts.some((l) => l.startsWith("promote ")));
   assert.ok(artifacts.some((l) => l.startsWith("pull ")));
-  assert.match(ref.remoteEnv, /AGENTSTATE_LITE_REMOTE/);
+  assert.match(ref.remoteEnv, /HTTP is activated only by explicit --remote/);
+  assert.match(ref.remoteEnv, /retired AGENTSTATE_LITE_REMOTE/);
 });
 
 // ── A8: the edit-iterate acceptance loop ────────────────────────────────────
@@ -753,9 +754,9 @@ test("A8 acceptance (REMOTE, canonical demo per A12): the SAME edit-iterate loop
   }
 });
 
-// ── A9: AGENTSTATE_LITE_REMOTE env fallback for promote/pull ────────────────
+// ── retired AGENTSTATE_LITE_REMOTE migration boundary ──────────────────────
 
-test("promote/pull honor AGENTSTATE_LITE_REMOTE as a session remote default (neither --remote nor --dir given)", async () => {
+test("promote/pull reject legacy AGENTSTATE_LITE_REMOTE instead of activating HTTP", async () => {
   const dir = await tempDir();
   const work = await tempDir();
   const prior = process.env.AGENTSTATE_LITE_REMOTE;
@@ -767,14 +768,18 @@ test("promote/pull honor AGENTSTATE_LITE_REMOTE as a session remote default (nei
       await writeFile(file, "hello");
 
       process.env.AGENTSTATE_LITE_REMOTE = server.url;
-      // No --remote flag at all — resolved purely from the env fallback (A9).
-      const p = await runPromote([file, "--doc-key", "artifacts/x.txt"]);
-      assert.equal(p.promote, "written");
-
-      const out = path.join(work, "pulled.txt");
-      const pl = await runPull(["--doc-key", "artifacts/x.txt", "--out", out]);
-      assert.equal(await readFile(out, "utf8"), "hello");
-      assert.equal(pl.version, p.version);
+      for (const run of [
+        () => runPromote([file, "--doc-key", "artifacts/x.txt"]),
+        () => runPull(["--doc-key", "artifacts/x.txt", "--out", path.join(work, "pulled.txt")]),
+      ]) {
+        await assert.rejects(run, (err: unknown) => {
+          assert.ok(err instanceof CliError);
+          assert.equal(err.code, "USAGE");
+          assert.match(err.message, /AGENTSTATE_LITE_REMOTE ambient remote selection is retired/);
+          assert.match(err.help ?? "", new RegExp(`--remote ${server.url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+          return true;
+        });
+      }
     } finally {
       await server.close();
     }

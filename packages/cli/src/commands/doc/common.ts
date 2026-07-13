@@ -11,7 +11,7 @@ import { cliInvocation } from "../../invocation.js";
 const COMMON_OPTIONS = `Common options:
   --dir <path>         Bundle directory (default: discovered from the cwd)
   --remote <url>       Talk to a wire-protocol server instead of a local bundle
-                       (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                       (mutually exclusive with --dir; remote access is always explicit)
   --json               Emit compact JSON instead of TOON
   -h, --help           Show this help`;
 

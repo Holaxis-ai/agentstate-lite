@@ -3,9 +3,8 @@
 // reference router mounted in-process over a local bundle (`--dir`) or a reverse proxy onto a
 // deployed remote (`--remote`) with conditional Bearer injection. The SPA never knows which.
 //
-// Source resolution follows the house ambient rules exactly like every other remote-capable
-// command (`resolveRemoteFlag`: explicit `--remote` wins, else `AGENTSTATE_LITE_REMOTE` unless
-// `--dir` was passed explicitly, else local bundle discovery) — EXCEPT `ui` builds its OWN
+// Source resolution follows the explicit-only remote rule (`resolveRemoteFlag`: only `--remote`
+// activates HTTP; otherwise local bundle discovery) — EXCEPT `ui` builds its OWN
 // remote handling (a reverse proxy, `packages/cli/src/ui/proxy.ts`) rather than routing through
 // `openBundle`'s `RemoteBackend` path, since the SPA needs the raw `/v0/*` wire surface
 // same-origin, not the engine-level `StorageBackend` abstraction.
@@ -34,8 +33,7 @@ Usage:
 Options:
   --dir <path>          Bundle directory (default: discovered from the cwd) — mounts the
                          reference router in-process
-  --remote <url>         Reverse-proxy /v0/* to a deployed remote instead (also honors
-                         AGENTSTATE_LITE_REMOTE when neither flag is given and --dir is not)
+  --remote <url>         Reverse-proxy /v0/* to a deployed remote instead (explicit only)
   --port <p>            Port to bind (default: 0 — an OS-assigned ephemeral port)
   --open                Open the printed URL in a browser once the server is listening
   --json                Emit compact JSON instead of TOON

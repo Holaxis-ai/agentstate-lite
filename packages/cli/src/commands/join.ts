@@ -8,8 +8,8 @@
 // --api-key` uses) so every subsequent `--remote <url>` command against this origin
 // authenticates automatically — the key itself is NEVER printed.
 //
-// `join` resolves `--remote` the same way every other remote-capable command does
-// (falling back to `AGENTSTATE_LITE_REMOTE`), but does NOT go through `openBundle`/
+// `join` requires explicit `--remote`, like every other remote-capable command, but does NOT go
+// through `openBundle`/
 // `RemoteBackend`: there is no bundle to open yet, and the caller isn't a member of
 // anything until this call succeeds — it is a NEW top-level command (like `login`), not a
 // bundle subcommand.
@@ -32,8 +32,7 @@ remote's origin — it is NEVER printed. Every subsequent --remote command again
 origin then authenticates automatically (the same lookup 'login --remote --api-key' uses).
 
 Options:
-  --remote <url>    Base URL of the auth-gated remote deployment
-                    (falls back to AGENTSTATE_LITE_REMOTE if set)
+  --remote <url>    Base URL of the auth-gated remote deployment (required explicitly)
   --invite <token>  The invite token to redeem                              [required]
   --display <name>  Display name to record for the new user
   --json            Emit compact JSON instead of TOON

@@ -48,9 +48,10 @@ collaborator's agents work against the same workspace.
 
 **Two overrides when the default doesn't fit:**
 
-- **`.agentstate.json` binding:** a committed pointer (`{ "bundle": "<path-or-url>" }`) for
-  anything unconventional — a remote URL, an out-of-tree directory. Beats the conventional
-  folder when both exist.
+- **`.agentstate.json` binding:** a committed local pointer (`{ "bundle": "<path>" }`) for an
+  out-of-tree directory. Beats the conventional folder when both exist. Remote access is never
+  ambient: pass `--remote <url>` explicitly. Legacy URL bindings and `AGENTSTATE_LITE_REMOTE`
+  fail with migration guidance instead of activating HTTP.
 - **Personal workspace (keep it private):** the bundle lives in your home directory
   (`~/.agentstate-lite/<name>/`); a git-excluded binding points at it, and nothing enters
   the repo.

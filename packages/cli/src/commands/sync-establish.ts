@@ -183,7 +183,7 @@ function assertFreshSource(top: string, boardPath: string, inv: string): void {
 async function assertNotBoundElsewhere(top: string, boardPath: string): Promise<void> {
   const binding = await resolveProjectBinding(top);
   if (!binding) return;
-  const boundIsConventional = !binding.isRemote && path.resolve(binding.target) === boardPath;
+  const boundIsConventional = path.resolve(binding.target) === boardPath;
   if (boundIsConventional) return;
   throw new CliError(
     "RUNTIME",

@@ -33,8 +33,7 @@ server also refuses to demote or remove the LAST admin of a bundle (409, surface
 a USAGE error — see 'invite'/'member' usage text for the deployment's single-bundle scope).
 
 Options:
-  --remote <url>   Base URL of the auth-gated remote deployment
-                   (falls back to AGENTSTATE_LITE_REMOTE if set)
+  --remote <url>   Base URL of the auth-gated remote deployment (required explicitly)
   --json           Emit compact JSON instead of TOON
   -h, --help       Show this help
 `;

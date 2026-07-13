@@ -38,8 +38,7 @@ Options:
                          for the full record (bundle, created_by, redeemed_by, redeemed_at, …)
   --expires-in <hours>   Invite lifetime in hours (default: server default, one week)
   --display-hint <s>     Suggested display name shown to the redeemer
-  --remote <url>         Base URL of the auth-gated remote deployment
-                         (falls back to AGENTSTATE_LITE_REMOTE if set)
+  --remote <url>         Base URL of the auth-gated remote deployment (required explicitly)
   --json                 Emit compact JSON instead of TOON
   -h, --help             Show this help
 `;

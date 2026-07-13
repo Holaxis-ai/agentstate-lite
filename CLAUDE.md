@@ -307,7 +307,7 @@ the bundle):
   cross-process best-effort — NOT safe under multi-writer contention across processes),
   Memory (enforced), Remote (wire client, typed `RemoteError` with server-derived codes),
   D1R2 (enforced, production). Quad parity tests pin byte-identical version tokens.
-- **`--remote <url>` on every bundle command** (or `AGENTSTATE_LITE_REMOTE`); `serve` boots the
+- **Explicit `--remote <url>` on every bundle command** is the only HTTP activation path; `serve` boots the
   reference server locally; `promote`/`pull`/`blobs`/`delete` are the byte channel. Known
   divergence (recorded in `docs/WIRE-PROTOCOL.md` open questions): a concept doc's RAW bytes
   don't cross the wire — `doc read --out --remote` re-serializes via `stringifyDoc` (canonical

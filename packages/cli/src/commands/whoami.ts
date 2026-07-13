@@ -1,7 +1,7 @@
 // `agentstate-lite whoami` — show which remotes you hold a stored key for, or (with --remote) the
 // live remote identity.
 //
-// Without --remote (and no AGENTSTATE_LITE_REMOTE default): OFFLINE — it reads
+// Without --remote: OFFLINE — it reads
 // ~/.agentstate/okf-config.json and lists the remote ORIGINS you hold a per-origin API key for
 // (stored by `join` / `login --remote --api-key`), WITHOUT a network call and WITHOUT printing any
 // key value. A definitive empty state (`logged_in:false`, exit 0) when none is stored.
@@ -13,11 +13,7 @@
 // reports the resolved identity, its per-bundle memberships, and whether it authenticated
 // as the root bootstrap identity. This is a genuine network call, unlike the local path.
 //
-// A committed `.agentstate.json` naming an http(s) URL (item 43 follow-on, `bundle.ts`'s
-// `resolveRemoteFlag`) is ALSO consumed here, exactly like the AGENTSTATE_LITE_REMOTE env
-// default it sits alongside in the precedence chain — so a bare `whoami` in a bound project
-// goes LIVE via that URL. The offline listing (reached only when no --remote/env/URL-binding
-// resolved at all) additionally notes any DIRECTORY-type binding it finds — irrelevant to
+// The offline listing additionally notes any local-path binding it finds — irrelevant to
 // whoami's own job, but a courtesy so a cold agent isn't left wondering why a binding visibly
 // committed in the repo didn't change this listing.
 import { parseArgs } from "node:util";
@@ -34,17 +30,16 @@ export const WHOAMI_USAGE = `agentstate-lite whoami — show which remotes you h
 Usage:
   agentstate-lite whoami [--remote <url>]
 
-Without --remote (and no AGENTSTATE_LITE_REMOTE default): OFFLINE — lists the remote origins
+Without --remote: OFFLINE — lists the remote origins
 you hold a stored key for, without a network call.
 
-With --remote <url> (or an AGENTSTATE_LITE_REMOTE default): GETs /v0/whoami against the
+With --remote <url>: GETs /v0/whoami against the
 gated remote, using the ORIGIN-KEYED API key stored by 'join' or 'login --remote
 --api-key' (or AGENTSTATE_LITE_API_KEY) — reports the resolved identity, its role per
 bundle membership, and whether it authenticated as the root bootstrap identity.
 
 Options:
   --remote <url>   Show the LIVE remote identity instead of the local credential file
-                   (falls back to AGENTSTATE_LITE_REMOTE if set)
   --json           Emit compact JSON instead of TOON
   -h, --help       Show this help
 `;
@@ -78,9 +73,7 @@ export async function whoami(argv: string[], deps: Partial<WhoamiCliDeps> = {}):
     return;
   }
 
-  // Explicit --remote wins; otherwise AGENTSTATE_LITE_REMOTE (explicit beats ambient, same
-  // rule every other remote-capable command follows — see bundle.ts's resolveRemoteFlag).
-  // whoami has no --dir concept, so there is nothing for an ambient default to conflict with.
+  // Only an explicit --remote activates the live identity path.
   const remote = await resolveRemoteFlag(values.remote, undefined);
   if (remote) {
     return whoamiRemote(remote, resolveMode(values), stdout);
@@ -93,9 +86,7 @@ export async function whoami(argv: string[], deps: Partial<WhoamiCliDeps> = {}):
   const creds = await loadCreds();
   const remoteOrigins = creds?.remotes ? Object.keys(creds.remotes).sort() : [];
 
-  // A courtesy note (item 43 follow-on): `resolveRemoteFlag` above already consumed a URL-type
-  // `.agentstate.json` binding (routing into `whoamiRemote` instead) — so ANY binding still found
-  // at this point is necessarily the directory-type half, which is irrelevant to whoami's own
+  // A courtesy note for a local `.agentstate.json` binding, which is irrelevant to whoami's own
   // remote-identity job but worth surfacing so a cold agent isn't left wondering why a binding it
   // can see committed in the repo didn't change this listing. Best-effort: a malformed file would
   // already have been surfaced by `resolveRemoteFlag` above, so a throw here (a TOCTOU race) is not
