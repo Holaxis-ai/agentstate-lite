@@ -1,13 +1,23 @@
 ---
 type: Task
 title: 'Kinds: machine-readable enum-value descriptions'
-status: todo
+status: in_progress
 priority: '2'
 description: >-
-  Explain lifecycle and other enum values so agents select them by domain
-  meaning rather than label similarity.
-actor: openai/codex
-timestamp: '2026-07-11T22:53:05.827Z'
+  Implement optional enum-value descriptions through the existing Kind
+  authority. Add fields.value_descriptions keyed by a declared fields.values
+  field and one of its allowed values; malformed/undeclared entries warn and
+  skip. Carry through the one parser, KindConvention registry,
+  serializer/recipes, kinds output, per-Kind creation help, and existing UI
+  transport. Prove real value on the Claim status lifecycle
+  (active/challenged/locked/deprecated); do not populate obvious enums for
+  completeness. No transitions, guards, side effects, aliases, migrations,
+  localization, schema-authoring CLI, or workflow behavior. Ordinary code tier:
+  builder + exact-SHA independent review + full repository gate; dedicated QA
+  only if review escalates.
+actor: codex
+assignee: codex
+timestamp: '2026-07-13T03:23:01.051Z'
 ---
 # Objective
 
