@@ -4,20 +4,40 @@ title: 'Kinds: machine-readable enum-value descriptions'
 status: in_progress
 priority: '2'
 description: >-
-  Implement optional enum-value descriptions through the existing Kind
-  authority. Add fields.value_descriptions keyed by a declared fields.values
-  field and one of its allowed values; malformed/undeclared entries warn and
-  skip. Carry through the one parser, KindConvention registry,
-  serializer/recipes, kinds output, per-Kind creation help, and existing UI
-  transport. Prove real value on the Claim status lifecycle
-  (active/challenged/locked/deprecated); do not populate obvious enums for
-  completeness. No transitions, guards, side effects, aliases, migrations,
-  localization, schema-authoring CLI, or workflow behavior. Ordinary code tier:
-  builder + exact-SHA independent review + full repository gate; dedicated QA
-  only if review escalates.
+  PR #52 READY: https://github.com/Holaxis-ai/agentstate-lite/pull/52
+
+
+  Behavioral result: Kinds may optionally explain allowed enum values through
+  fields.value_descriptions. The one parser, KindConvention registry,
+  serializer/recipe path, kinds output, creation help, and existing UI Kinds
+  transport carry the metadata. Undescribed enums retain compact help; described
+  enums render structured value/description rows. A test-only Claim lifecycle
+  proves active/challenged/locked/deprecated through ordinary recipe
+  application. Enum validation and all workflow behavior remain unchanged; no
+  schema-authoring CLI or plugin-reference content is included.
+
+
+  Reviewed head: 6e4c7bf07b6f918aae4cae48c585d71782ad98b8
+
+  Base: c92497ae9d9761752a34f9dad9966666f73b5d93
+
+
+  Independent review rejected the first candidate because inherited prototype
+  field names could crash help and raw multiline/pipe-bearing descriptions were
+  ambiguous inline. The amendment own-checks adjacent maps and uses structured
+  JSON-quoted rows with help-only whitespace normalization. Reviewer approved
+  exact SHA after special-key, partial-description, punctuation,
+  stored-metadata, serialization, UI, and recipe probes; dedicated QA was not
+  warranted under the ordinary-code risk tier.
+
+
+  Evidence: core 44/44, focused CLI 98/98, UI bridge 34/34, build/typecheck
+  green, built smoke including view 4 nodes/7 edges, full unpiped npm run check
+  exit 0 with two unrelated configured Playwright retries, diff check clean, no
+  bot artifacts. Status remains in progress until merge.
 actor: codex
 assignee: codex
-timestamp: '2026-07-13T03:23:01.051Z'
+timestamp: '2026-07-13T03:52:45.981Z'
 ---
 # Objective
 
