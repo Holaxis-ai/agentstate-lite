@@ -1,39 +1,34 @@
 ---
 type: Task
 title: 'Kinds: machine-readable relationship descriptions'
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  PR #51 READY: https://github.com/Holaxis-ai/agentstate-lite/pull/51
+  Shipped in PR #51: https://github.com/Holaxis-ai/agentstate-lite/pull/51
 
 
-  Behavioral result: Kinds may optionally explain each declared outbound
-  relationship through source-owned link_descriptions. The existing parser,
-  KindConvention registry, serializer/recipes, kinds output, creation help,
-  reverse-derived inbound help, and UI Kinds transport carry the metadata.
-  Roadmap contains -> Task is the real recipe proof. Link storage, validation,
-  cardinality, workflow, receipts, and Page mutation remain unchanged.
-
+  Merge commit: f7f84f67cf871952f6700eca0ecd6599aa2ed5f6
 
   Reviewed head: 0480399ed3ed7c2481c3dbb310434e8dee5e73f2
 
-  Base: 472cc72f648ccd0bea0f753a6d73e2e73c96069d
+
+  Kinds may optionally explain source-owned declared relationships through
+  link_descriptions. The one parser, KindConvention registry, serializer/recipe
+  path, kinds output, creation help, reverse-derived inbound help, and existing
+  UI Kinds transport carry the metadata. Roadmap contains -> Task is the real
+  recipe proof. Link storage, validation, cardinality, workflow, receipts, and
+  Page mutation remain unchanged.
 
 
-  Independent review rejected the first candidate because inherited
-  Object.prototype names could masquerade as declared relationships. The amended
-  parser and serializer share a prototype-safe own-property boundary;
-  adversarial toString and __proto__ regressions pin warning/skip behavior while
-  explicitly declared own keys remain valid. Reviewer approved exact amended SHA
-  and found dedicated QA unnecessary under the risk-tier policy.
-
-
-  Evidence: focused core 42/42, focused CLI 95/95, build/typecheck green, full
-  unpiped npm run check exit 0 with Playwright 14/14 first attempt, diff check
-  clean, no bot artifacts. Status remains in progress until merge.
+  Independent review caught and closed inherited Object.prototype keys
+  masquerading as declared relationships. Parser and serializer now share a
+  prototype-safe own-property boundary, pinned by toString and __proto__
+  regressions. Focused core 42/42, CLI 95/95, build/typecheck, full npm run
+  check, Playwright 14/14 first attempt, and diff checks passed. Dedicated QA
+  was not warranted under the ordinary-code risk tier.
 actor: codex
 assignee: codex
-timestamp: '2026-07-13T03:15:59.935Z'
+timestamp: '2026-07-13T03:17:16.686Z'
 ---
 # Objective
 

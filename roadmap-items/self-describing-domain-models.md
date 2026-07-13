@@ -6,7 +6,7 @@ description: >-
   Make Kinds communicate the meaning of concepts, fields, relationships, and
   lifecycle values through the one registry and at the point of agent action.
 actor: codex
-timestamp: '2026-07-13T02:53:17.314Z'
+timestamp: '2026-07-13T03:17:16.811Z'
 ---
 # Vision
 
@@ -30,9 +30,9 @@ consume the same authority.
 
 1. **Shipped — Kind and field descriptions (P1 foundation).** PR #42 carries meaning through the one
    parser and registry into CLI discovery/help, recipes, and UI transport.
-2. **Next — Relationship descriptions (P1).** Explain what each declared edge asserts and why its
-   direction matters, using the same registry and reverse lookup.
-3. **Later — Enum-value descriptions (P2).** Explain lifecycle and other values whose labels alone do
+2. **Shipped — Relationship descriptions (P1).** PR #51 explains what each declared edge asserts
+   and why its direction matters through the same registry and source-owned reverse lookup.
+3. **Next — Enum-value descriptions (P2).** Explain lifecycle and other values whose labels alone do
    not communicate domain meaning.
 4. **Evidence-gated — Section descriptions and examples (P3 evaluation).** Implement only if
    dogfooding demonstrates semantic misuse that the first three layers cannot address.
