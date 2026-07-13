@@ -96,7 +96,7 @@ description: >-
   4. Extract hosted deployment/control-plane units toward the private
   repository, leaving the OSS wire client/spec and proven boundary intact.
 actor: codex
-timestamp: '2026-07-13T02:14:50.331Z'
+timestamp: '2026-07-13T02:34:32.169Z'
 ---
 [contains](../tasks/deprecate-static-viewer.md)
 
@@ -117,3 +117,5 @@ timestamp: '2026-07-13T02:14:50.331Z'
 [contains](../tasks/ui-declare-server-dev-dependency.md)
 
 [contains](../tasks/package-core-external-proof.md)
+
+[contains](../tasks/risk-tiered-review-gates.md)
