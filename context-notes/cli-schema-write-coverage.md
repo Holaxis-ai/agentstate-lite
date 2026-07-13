@@ -1,20 +1,22 @@
 ---
 type: Context Note
 title: >-
-  CLI covers instance authoring but not schema authoring — the descriptions
-  write-gap + the meta-kind option
+  CLI covers instance authoring, not schema authoring — descriptions write-gap
+  (RESOLVED: no meta-kind, evidence-gated)
 description: >-
-  kind/field descriptions (#42) shipped read-only: no CLI write path (kind field
-  add has no --description; hand-edit YAML only). Broader pattern: new/doc
-  update auto-expose --<field> from a kind (instances = auto-covered), but the
-  kind command edits only add/remove+required+values (schema = partial);
-  descriptions/terminal/links/sections/kind-description are hand-edited. Root
-  cause: the convention FORMAT is hardcoded (VALID_FIELDS_KEYS), not a
-  self-describing meta-kind, so its editing surface can't auto-generate. Two
-  paths: patch the ~4 write flags, or model the convention format as a meta-kind
-  (kinds all the way down).
+  kind/field descriptions (#42) shipped read-only (no CLI write path; hand-edit
+  YAML). Broader pattern: instances are auto-covered (new/doc update derive
+  --<field> from a kind), schema is partial (kind field =
+  add/remove+required+values). RESOLVED with codex 2026-07-12: do NOT build a
+  meta-kind or comprehensive CLI schema-parity — the asymmetry is likely healthy
+  (schemas are low-volume, whole-document-reviewed). Evidence-gated; trigger to
+  watch = agents producing malformed/silently-skipped conventions when authoring
+  directly (risk rises with the agents-author-operational-systems thesis). If
+  triggered, the answer is a safe whole-document author+HARD-validate flow, not
+  a meta-kind. One small completion regardless: --description on the existing
+  kind field add.
 actor: mike/claude
-timestamp: '2026-07-13T03:12:02.261Z'
+timestamp: '2026-07-13T03:33:09.139Z'
 ---
 # Summary
 
@@ -23,6 +25,10 @@ worth naming: **the CLI auto-covers authoring *instances* of a kind, but only *p
 authoring the *schema* (conventions) — because the convention format itself is CODE, not a
 self-describing kind.** Found 2026-07-12 while adding descriptions to the `Review Request`
 convention: the only way to add a description today is hand-editing the convention YAML.
+
+**Resolved (2026-07-12, with codex): do NOT build a meta-kind or comprehensive CLI schema-parity.
+The asymmetry is likely healthy; the remaining gap is evidence-gated. See Resolution below.** The
+diagnostic below (the gap, the pattern, the crux) still stands as observation.
 
 ## The concrete gap
 
@@ -63,30 +69,47 @@ That Set IS the meta-schema, but it lives in TypeScript, not in a convention. So
 from their kind, but kinds derive from nothing self-describing; the schema-of-schemas is hardcoded,
 which is exactly why its editing surface can't auto-generate.
 
-## Two paths forward
+## Resolution (2026-07-12, with codex)
 
-1. **Patch the gaps (pragmatic near-term).** Hand-add the ~4 missing write flags:
-   `kind field add --description`, a `kind describe "<Kind>" "<text>"` for the kind-level
-   description, and complete `terminal` / `links` / `sections` editing. Small — each roughly an
-   afternoon with tests. (The `--description` one is nearly trivial: #42 already did the model,
-   serialization, reads, and remove-cleanup; only the add-write flag is missing.)
-2. **Meta-kind — "kinds all the way down" (strategic).** Model the convention format ITSELF as a
-   self-describing meta-kind (a "Convention convention": `required[]`, `optional[]`, `values{}`,
-   `descriptions{}`, `terminal{}`, `links{}`, `sections[]`). Then the `kind` editing command
-   generates itself the way `new` does today, and EVERY future schema dimension gets a CLI write
-   path automatically — collapsing the instance/schema asymmetry. This is the natural next rung of
-   the self-describing-domain-models thread.
+Discussed with codex and landed here — the diagnostic above is a useful observation, not a build
+request:
 
-**AXI caveat (both paths):** some hand-curation of the agent-facing surface is DELIBERATE — you do
-not auto-expose a flag per internal field. Even full auto-generation must still curate what an agent
-sees.
+- **No meta-kind, and no comprehensive CLI schema-authoring parity.** A dedicated mutation command
+  per schema dimension (`kind describe`, `kind field describe`, `kind link add/describe`,
+  `kind enum describe`, `kind section add`, terminal/path editing) would be SPRAWL that recreates a
+  schema-management DSL around a format whose whole advantage is that it is readable text. Rejected.
+- **The asymmetry is likely HEALTHY, not a defect.** Instances are high-volume and benefit from
+  ergonomic per-field commands; conventions are low-volume and benefit from being authored and
+  reviewed as COMPLETE documents. The sufficient boundary: *agents author the complete Convention as
+  text; AgentState deterministically parses, validates, versions, installs, and exposes it.*
+  "Deterministic" does NOT require every edit decomposed into a bespoke flag.
+- **Evidence-gated.** Revisit only when real dogfooding (recipe creation, founder-to-founder
+  transfer) shows editing the Convention document directly is genuinely painful or unsafe. Keep
+  `kind field add/remove` as the convenience for the most common structural edit; continue
+  descriptions through the model + discovery surfaces (next layer: enum-value descriptions); let
+  agents author richer Conventions directly.
 
-## Decision framing
+**The specific trigger to watch (the one sharpening):** not "is editing painful," but **do agents
+produce malformed / silently-skipped conventions when authoring them directly.** Today a malformed
+convention is skipped-with-a-warning (gate 3), so a fumbled nested-YAML edit yields a kind that
+SILENTLY does not govern — the silent-failure class we keep fighting. And that risk RISES with
+schema-authoring volume, which the product's own "agents author operational systems / recipes
+package operating systems" thesis pushes UP. So "asymmetry is healthy" holds *as long as
+schema-authoring stays low-volume and human-reviewed*; the agents-author-kinds direction is exactly
+what could break that assumption.
 
-This is not just a chore vs a rewrite — it is *patch the four gaps now* vs *make the schema layer
-self-describing so gaps cannot recur*. The second is legitimately strategic (it is the meta-level
-of the exact self-describing thesis the product is betting on), so it deserves a real decision, not
-a default.
+**If that trigger fires, the response is NOT a meta-kind** — it is a safe whole-document
+**author → HARD-validate → CAS-write** flow for conventions (reject on malformed rather than
+skip-with-warning). Most of the byte channel already exists (`promote`); the missing piece is hard
+validation-on-write.
+
+**One small completion worth doing regardless:** `--description` on the EXISTING `kind field add`
+(which already takes `--required`/`--values`). #42 already shipped the model, reads, serialization,
+and remove-cleanup — only the add-write flag is missing, so this finishes an endorsed convenience
+command rather than opening the sprawl. Still optional; reasonable to defer.
+
+**AXI note:** some hand-curation of the agent-facing surface is DELIBERATE regardless — you do not
+auto-expose a flag per internal field.
 
 ## Relationships
 
