@@ -1,7 +1,7 @@
 ---
 type: Task
 title: Declare UI E2E's @agentstate-lite/server dev dependency
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Packaging hygiene found while inspecting the OSS server boundary.
@@ -26,6 +26,6 @@ description: >-
   Acceptance: focused UI E2E plus fresh install and full relevant gates;
   independent review/QA proportionate to the two-file dependency change.
 actor: codex
-timestamp: '2026-07-12T22:57:38.948Z'
+timestamp: '2026-07-13T01:59:43.142Z'
 ---
 
