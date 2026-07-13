@@ -4,18 +4,36 @@ title: 'Kinds: machine-readable relationship descriptions'
 status: in_progress
 priority: '1'
 description: >-
-  Implement machine-readable relationship descriptions through the existing Kind
-  authority. Add optional link_descriptions keyed by declared links; preserve
-  links storage and validation. Carry descriptions through the one parser,
-  KindConvention registry, serializer/recipes, kinds output, per-Kind creation
-  help, reverse-derived inbound help, and existing UI transport. Prove a real
-  ambiguous relationship such as contains. No cardinality, required-link,
-  workflow, Page mutation, or second-schema behavior. Ordinary code tier:
-  builder + exact-SHA independent review + full repository gate; dedicated
-  adversarial QA only if review finds or escalates a consequential boundary.
+  PR #51 READY: https://github.com/Holaxis-ai/agentstate-lite/pull/51
+
+
+  Behavioral result: Kinds may optionally explain each declared outbound
+  relationship through source-owned link_descriptions. The existing parser,
+  KindConvention registry, serializer/recipes, kinds output, creation help,
+  reverse-derived inbound help, and UI Kinds transport carry the metadata.
+  Roadmap contains -> Task is the real recipe proof. Link storage, validation,
+  cardinality, workflow, receipts, and Page mutation remain unchanged.
+
+
+  Reviewed head: 0480399ed3ed7c2481c3dbb310434e8dee5e73f2
+
+  Base: 472cc72f648ccd0bea0f753a6d73e2e73c96069d
+
+
+  Independent review rejected the first candidate because inherited
+  Object.prototype names could masquerade as declared relationships. The amended
+  parser and serializer share a prototype-safe own-property boundary;
+  adversarial toString and __proto__ regressions pin warning/skip behavior while
+  explicitly declared own keys remain valid. Reviewer approved exact amended SHA
+  and found dedicated QA unnecessary under the risk-tier policy.
+
+
+  Evidence: focused core 42/42, focused CLI 95/95, build/typecheck green, full
+  unpiped npm run check exit 0 with Playwright 14/14 first attempt, diff check
+  clean, no bot artifacts. Status remains in progress until merge.
 actor: codex
 assignee: codex
-timestamp: '2026-07-13T02:57:17.932Z'
+timestamp: '2026-07-13T03:15:59.935Z'
 ---
 # Objective
 
