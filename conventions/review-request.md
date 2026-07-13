@@ -3,6 +3,7 @@ type: Convention
 title: Review Request
 governs: Review Request
 path: review-requests/
+description: A durable request for a named human to judge a defined question against linked evidence — the workflow authority for a decision that must survive chat history.
 links:
   reviews design: Design
   reviews task: Task
@@ -29,6 +30,14 @@ fields:
     status:
       - approved
       - canceled
+  descriptions:
+    title: A concise label for the review outcome being sought.
+    status: The persisted review lifecycle state (requested -> in_review -> changes_requested -> approved/canceled), not an activity update.
+    reviewer: The human expected to make the judgment. Coordination metadata only, not an authorization grant and not license for an agent to act as that person.
+    requested_by: The human accountable for the scope and evidence supplied to the reviewer.
+    question: The exact judgment the reviewer is being asked to make.
+    decision_summary: A concise persisted outcome recorded after the review; absent while no decision exists.
+    decided_at: ISO 8601 timestamp at which the persisted decision was made.
 sections:
   - Context
   - Requested decision
