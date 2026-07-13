@@ -4,53 +4,61 @@ title: Make the CLI local-first by default while preserving the explicit HTTP on
 status: in_progress
 priority: '1'
 description: >-
-  PR 2 of the local-first CLI simplification.
+  PR #47 READY: https://github.com/Holaxis-ai/agentstate-lite/pull/47
 
 
-  Behavioral claim: bare bundle commands resolve only local targets. Explicit
-  --remote <url> remains the sole HTTP activation path and stays fully
-  functional.
+  Behavioral result: bare bundle commands resolve only local targets. HTTP is
+  activated only by explicit --remote <url>.
+
+
+  Shipped candidate exact SHA: b83a27ce639393a72c1ba9d7fd842591fd7785ae
+
+  Base: b5a586ff6f580655e17d29b091761dbd299e4769
 
 
   Scope:
 
-  - Preserve explicit --remote and RemoteBackend for bundle commands.
+  - AGENTSTATE_LITE_REMOTE no longer selects a backend; without an explicit
+  target it produces actionable migration guidance.
 
-  - Remove AGENTSTATE_LITE_REMOTE as an ambient backend selector.
+  - URL- and URI-shaped .agentstate.json bindings no longer activate HTTP or
+  degrade into local paths; users are directed to explicit --remote.
 
-  - Reject URL-valued .agentstate.json bindings with a deterministic migration
-  message directing users to explicit --remote; preserve local-path bindings.
+  - Local-path bindings, conventional discovery, explicit --dir, explicit
+  --remote, RemoteBackend, serve, local UI, ui --remote, git sync, server,
+  Worker, and credential internals remain.
 
-  - Update the directly affected help, generated skill/reference text, and tests
-  so resolution precedence is explicit and truthful.
-
-  - Keep explicit --dir, local discovery, local-path bindings, local ui,
-  artifact verbs, git sync, server, Worker, auth/credential internals, and core
-  behavior unchanged.
+  - Help, README, CLAUDE.md, and generated npm skill guidance are truthful.
 
 
-  Evidence required:
+  Review record:
 
-  - A bare command cannot be redirected by AGENTSTATE_LITE_REMOTE.
+  - Independent review rejected the first candidate because empty explicit
+  remote values could fall through to local state and malformed URI bindings
+  could be misclassified as paths.
 
-  - URL bindings fail clearly rather than silently selecting HTTP.
+  - Re-review found and closed a one-letter URI versus Windows-drive
+  discriminator gap.
 
-  - Explicit --remote passes a real reference-server round trip.
-
-  - Local discovery and local-path binding regressions stay green.
-
-  - Full Builder -> independent Reviewer -> QA sequence.
+  - Independent reviewer approved exact SHA b83a27ce with no remaining findings.
 
 
-  Non-goals:
+  QA on approved exact SHA:
 
-  - Do not remove ui --remote in this PR; that is a distinct follow-up surface.
+  - Fresh npm ci and full unpiped npm run check exit 0.
 
-  - Do not add a generic profile or extension framework.
+  - CLI 851, core 250, server 5, UI 78, viewer 4, Worker 117, scripts 15,
+  Playwright 14/14 first attempt with no flakes.
 
-  - Do not delete RemoteBackend, the wire protocol, server, Worker, credentials,
-  or git sync.
+  - Built adversarial transition/binding matrix, explicit reference-server
+  remote, local and remote UI, sync under hostile legacy env, standard smoke,
+  documentation truth scans, and standalone npm tarball all passed.
+
+  - Candidate contains no bot-owned plugin artifact or manifest.
+
+
+  Status remains in progress until PR #47 merges.
 actor: codex
-timestamp: '2026-07-13T00:37:09.163Z'
+timestamp: '2026-07-13T01:21:47.911Z'
 ---
 [depends on](retire-hosted-control-plane-cli.md)
