@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Status</title>
+<style>
+  :root {
+    --surface: #fcfcfb; --panel: #f5f4f1; --ink: #0b0b0b; --ink-2: #52514e;
+    --ink-3: #8a8880; --line: #e4e2dc;
+    --accent: #2a78d6; --accent-ink: #1c5cab;
+    --good: #0ca30c; --blocked: #ec835a; --queued: #d8d6cf;
+    --accent-soft: #e8f0fb; --blocked-soft: #fdeee7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface: #1a1a19; --panel: #232322; --ink: #ffffff; --ink-2: #c3c2b7;
+      --ink-3: #8a897f; --line: #34342f;
+      --accent: #3987e5; --accent-ink: #7db3f0;
+      --good: #0ca30c; --blocked: #d95926; --queued: #3d3d39;
+      --accent-soft: #1d2b3d; --blocked-soft: #35221a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--surface); color: var(--ink); margin: 0; padding: 0 20px 64px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14.5px; line-height: 1.5;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
+  .wrap { max-width: 920px; margin: 0 auto; }
+
+  header { padding: 26px 0 16px; border-bottom: 1px solid var(--line); }
+  .headrow { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+       font-size: 21px; font-weight: 600; margin: 0; }
+  .live { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+          font-size: 11.5px; color: var(--ink-3); }
+  .live .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+               background: var(--good); margin-right: 5px; }
+
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+          gap: 10px; margin: 18px 0 6px; }
+  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+         padding: 10px 13px 9px; }
+  .kpi .num { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+              font-variant-numeric: tabular-nums; font-size: 23px; font-weight: 600; line-height: 1.1; }
+  .kpi .lbl { font-size: 11.5px; color: var(--ink-2); margin-top: 3px; }
+  .kpi.k-done .num { color: var(--good); }
+  .kpi.k-flight .num { color: var(--accent); }
+  .kpi.k-blocked .num { color: var(--blocked); }
+
+  .bar { display: flex; gap: 2px; height: 12px; }
+  .bar .seg { min-width: 3px; }
+  .bar .seg:first-child { border-radius: 4px 0 0 4px; }
+  .bar .seg:last-child { border-radius: 0 4px 4px 0; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; font-size: 12px;
+            color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .legend .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+                margin-right: 5px; position: relative; top: .5px; }
+
+  section { margin-top: 32px; }
+  h2 { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+       font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+       color: var(--ink-2); margin: 0 0 12px; }
+  h2 .count { color: var(--ink-3); font-weight: 400; letter-spacing: 0; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+  .card { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px;
+          background: var(--panel); border-left: 3px solid var(--accent); }
+  .card.c-blocked { border-left-color: var(--blocked); }
+  .card .id { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+              font-size: 11.5px; color: var(--ink-3); margin-bottom: 4px; overflow-wrap: anywhere; }
+  .card .t { font-weight: 600; font-size: 13.5px; line-height: 1.35; }
+  .pill { display: inline-block; font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+          font-size: 10.5px; letter-spacing: .05em; padding: 1.5px 8px; border-radius: 999px; margin-bottom: 6px; }
+  .pill.p-flight { background: var(--accent-soft); color: var(--accent-ink); }
+  .pill.p-blocked { background: var(--blocked-soft); color: var(--blocked); }
+  .pill.p-queued { background: var(--panel); color: var(--ink-3); border: 1px solid var(--line); }
+  .empty { color: var(--ink-3); font-size: 13px; }
+
+  .rmi { border-top: 1px solid var(--line); padding: 13px 0 15px; }
+  .rmi:last-child { border-bottom: 1px solid var(--line); }
+  .rmi .top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .rmi .name { font-weight: 600; font-size: 14px; }
+  .rmi .idm { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+              font-size: 11.5px; color: var(--ink-3); }
+  .rmi .bar { height: 9px; max-width: 540px; }
+  .rmi .stats { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+                font-variant-numeric: tabular-nums; font-size: 11.5px; color: var(--ink-2); margin-top: 6px; }
+  .rmi .pill { margin-bottom: 0; }
+
+  ul.plain { list-style: none; padding: 0; margin: 0; }
+  ul.plain li { padding: 6px 0; border-top: 1px solid var(--line);
+                display: flex; gap: 12px; align-items: baseline; }
+  ul.plain li:last-child { border-bottom: 1px solid var(--line); }
+  ul.plain .when { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+                   font-variant-numeric: tabular-nums; font-size: 11.5px; color: var(--ink-3);
+                   flex: 0 0 46px; }
+  ul.plain .what { font-size: 13.5px; }
+  ul.plain .idm { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+                  font-size: 11.5px; color: var(--ink-3); }
+
+  .foot { margin-top: 30px; font-size: 11.5px; color: var(--ink-3);
+          font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="headrow">
+      <h1>status</h1>
+      <span class="live"><span class="dot"></span><span id="live-label">connecting…</span></span>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div id="allbar" style="margin-top:12px"></div>
+  </header>
+
+  <section>
+    <h2>In flight &amp; blocked <span class="count" id="flight-count"></span></h2>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section>
+    <h2>Roadmap items <span class="count" id="rmi-count"></span></h2>
+    <div id="rmis"></div>
+  </section>
+
+  <section>
+    <h2>Recently done <span class="count">latest 8</span></h2>
+    <ul class="plain" id="recent"></ul>
+  </section>
+
+  <section>
+    <h2>Queue <span class="count" id="queue-count"></span></h2>
+    <ul class="plain" id="queue"></ul>
+  </section>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+/* ---- bridge client (v0, from references/pages/BRIDGE.md) ---- */
+(function () {
+  var PROTO = "v0", seq = 0, pending = {}, subs = [];
+  function send(type, extra) {
+    return new Promise(function (resolve, reject) {
+      var id = String(++seq);
+      pending[id] = { resolve: resolve, reject: reject };
+      var msg = { bridge: PROTO, id: id, type: type };
+      if (extra) for (var k in extra) msg[k] = extra[k];
+      parent.postMessage(msg, "*");
+    });
+  }
+  window.addEventListener("message", function (e) {
+    if (e.source !== window.parent) return;
+    var m = e.data;
+    if (!m || m.bridge !== PROTO) return;
+    if (m.type === "change") { subs.forEach(function (cb) { cb(m.event); }); return; }
+    var p = pending[m.id];
+    if (!p) return;
+    delete pending[m.id];
+    if (m.type === "error") p.reject(new Error((m.error && m.error.message) || "bridge error"));
+    else p.resolve(m.result);
+  });
+  window.Bridge = {
+    hello: function () { return send("hello"); },
+    query: function (params) { return send("query", { params: params }); },
+    read: function (docId) { return send("read", { docId: docId }); },
+    edges: function (params) { return send("edges", { params: params }); },
+    subscribe: function (cb) { subs.push(cb); return send("subscribe"); }
+  };
+})();
+
+/* ---- dashboard ---- */
+(function () {
+  var COLORS = {
+    done: "var(--good)", in_progress: "var(--accent)",
+    blocked: "var(--blocked)", todo: "var(--queued)"
+  };
+  var bundleName = "";
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function fm(row, key) { return (row.frontmatter && row.frontmatter[key]) || ""; }
+  function shortId(id) { return id.replace(/^tasks\//, ""); }
+  function day(ts) { return typeof ts === "string" ? ts.slice(5, 10) : ""; }
+
+  function segBar(counts, height) {
+    var bar = el("div", "bar");
+    if (height) bar.style.height = height;
+    ["done", "in_progress", "blocked", "todo"].forEach(function (s) {
+      if (!counts[s]) return;
+      var seg = el("div", "seg");
+      seg.style.background = COLORS[s];
+      seg.style.flex = String(counts[s]);
+      seg.title = s.replace("_", " ") + " · " + counts[s];
+      bar.appendChild(seg);
+    });
+    return bar;
+  }
+
+  function tally(rows) {
+    var c = { done: 0, in_progress: 0, blocked: 0, todo: 0, canceled: 0, other: 0, total: rows.length };
+    rows.forEach(function (r) {
+      var s = fm(r, "status");
+      if (c[s] != null) c[s]++; else c.other++;
+    });
+    return c;
+  }
+
+  function render(tasks, items, edges) {
+    var c = tally(tasks);
+
+    /* KPIs */
+    var kpis = document.getElementById("kpis");
+    kpis.textContent = "";
+    var pct = c.total ? Math.round((c.done / c.total) * 100) : 0;
+    var activeItems = items.filter(function (i) { return fm(i, "status") === "active"; }).length;
+    [
+      ["k-done", c.done, "tasks done (" + pct + "%)"],
+      ["k-flight", c.in_progress, "in flight"],
+      ["k-blocked", c.blocked, "blocked"],
+      ["", c.todo, "queued (todo)"],
+      ["", activeItems + "/" + items.length, "roadmap items active"]
+    ].forEach(function (k) {
+      var box = el("div", "kpi " + k[0]);
+      box.appendChild(el("div", "num", String(k[1])));
+      box.appendChild(el("div", "lbl", k[2]));
+      kpis.appendChild(box);
+    });
+
+    /* overall bar + legend */
+    var allbar = document.getElementById("allbar");
+    allbar.textContent = "";
+    allbar.appendChild(segBar(c));
+    var legend = el("div", "legend");
+    [["done", c.done], ["in flight", c.in_progress], ["blocked", c.blocked], ["queued", c.todo]]
+      .forEach(function (pair, i) {
+        var key = ["done", "in_progress", "blocked", "todo"][i];
+        var span = el("span", null, pair[0] + " · " + pair[1]);
+        var sw = el("span", "sw");
+        sw.style.background = COLORS[key];
+        span.insertBefore(sw, span.firstChild);
+        legend.appendChild(span);
+      });
+    if (c.canceled) legend.appendChild(el("span", null, "+ " + c.canceled + " canceled"));
+    allbar.appendChild(legend);
+
+    /* in flight & blocked cards */
+    var cards = document.getElementById("cards");
+    cards.textContent = "";
+    var hot = tasks.filter(function (t) { return fm(t, "status") === "in_progress"; })
+      .concat(tasks.filter(function (t) { return fm(t, "status") === "blocked"; }));
+    document.getElementById("flight-count").textContent = String(hot.length);
+    if (!hot.length) cards.appendChild(el("p", "empty", "Nothing claimed right now — the queue below is up for grabs."));
+    hot.forEach(function (t) {
+      var blocked = fm(t, "status") === "blocked";
+      var card = el("div", "card" + (blocked ? " c-blocked" : ""));
+      card.appendChild(el("div", "id", t.id));
+      card.appendChild(el("span", "pill " + (blocked ? "p-blocked" : "p-flight"), fm(t, "status")));
+      card.appendChild(el("div", "t", fm(t, "title") || t.id));
+      cards.appendChild(card);
+    });
+
+    /* roadmap items */
+    var byId = {};
+    tasks.forEach(function (t) { byId[t.id] = t; });
+    var contains = {};
+    edges.forEach(function (e) { (contains[e.from] = contains[e.from] || []).push(e.to); });
+    var rmis = document.getElementById("rmis");
+    rmis.textContent = "";
+    document.getElementById("rmi-count").textContent = String(items.length);
+    var sorted = items.slice().sort(function (a, b) {
+      var sa = fm(a, "status") === "active" ? 0 : 1, sb = fm(b, "status") === "active" ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return (contains[b.id] || []).length - (contains[a.id] || []).length;
+    });
+    sorted.forEach(function (item) {
+      var kids = (contains[item.id] || []).map(function (id) { return byId[id]; }).filter(Boolean);
+      var kc = tally(kids);
+      var row = el("div", "rmi");
+      var top = el("div", "top");
+      top.appendChild(el("span", "name", fm(item, "title") || item.id));
+      top.appendChild(el("span", "idm", item.id));
+      var st = fm(item, "status");
+      top.appendChild(el("span", "pill " + (st === "active" ? "p-flight" : "p-queued"), st || "?"));
+      row.appendChild(top);
+      if (kids.length) {
+        row.appendChild(segBar(kc, "9px"));
+        var pctI = Math.round((kc.done / kids.length) * 100);
+        var bits = [kc.done + " done"];
+        if (kc.in_progress) bits.push(kc.in_progress + " in flight");
+        if (kc.blocked) bits.push(kc.blocked + " blocked");
+        if (kc.todo) bits.push(kc.todo + " queued");
+        if (kc.canceled) bits.push(kc.canceled + " canceled");
+        row.appendChild(el("div", "stats", bits.join(" · ") + " — " + kids.length + " tasks, " + pctI + "% done"));
+      } else {
+        row.appendChild(el("div", "stats", "no tasks yet"));
+      }
+      rmis.appendChild(row);
+    });
+
+    /* recently done */
+    var recent = document.getElementById("recent");
+    recent.textContent = "";
+    tasks.filter(function (t) { return fm(t, "status") === "done"; })
+      .sort(function (a, b) { return String(fm(b, "timestamp")).localeCompare(String(fm(a, "timestamp"))); })
+      .slice(0, 8)
+      .forEach(function (t) {
+        var li = el("li");
+        li.appendChild(el("span", "when", day(fm(t, "timestamp"))));
+        var what = el("span", "what", (fm(t, "title") || t.id) + " ");
+        what.appendChild(el("span", "idm", shortId(t.id)));
+        li.appendChild(what);
+        recent.appendChild(li);
+      });
+
+    /* queue */
+    var queue = document.getElementById("queue");
+    queue.textContent = "";
+    var todos = tasks.filter(function (t) { return fm(t, "status") === "todo"; })
+      .sort(function (a, b) { return String(fm(b, "timestamp")).localeCompare(String(fm(a, "timestamp"))); });
+    document.getElementById("queue-count").textContent = String(todos.length);
+    todos.forEach(function (t) {
+      var li = el("li");
+      li.appendChild(el("span", "when", day(fm(t, "timestamp"))));
+      var what = el("span", "what", (fm(t, "title") || t.id) + " ");
+      what.appendChild(el("span", "idm", shortId(t.id)));
+      li.appendChild(what);
+      queue.appendChild(li);
+    });
+
+    /* footer + live label */
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2, "0"),
+        mm = String(now.getMinutes()).padStart(2, "0"),
+        ss = String(now.getSeconds()).padStart(2, "0");
+    document.getElementById("live-label").textContent = "live · updated " + hh + ":" + mm + ":" + ss;
+    document.getElementById("foot").textContent =
+      (bundleName ? bundleName + " · " : "") + c.total + " tasks · " + items.length +
+      " roadmap items · read-only bridge v0 · re-renders on every synced change";
+  }
+
+  function refresh() {
+    return Promise.all([
+      Bridge.query({ type: "Task", limit: 1000 }),
+      Bridge.query({ type: "Roadmap Item", limit: 1000 }),
+      Bridge.edges({ from: "roadmap-items/", text: "contains" })
+    ]).then(function (r) {
+      render(r[0].rows, r[1].rows, r[2].edges);
+    }).catch(function (err) {
+      document.getElementById("live-label").textContent = "error · " + err.message;
+    });
+  }
+
+  var timer = null;
+  Bridge.hello().then(function (h) {
+    bundleName = (h.bundle && h.bundle.name) || "";
+    return refresh();
+  }).then(function () {
+    return Bridge.subscribe(function () {
+      clearTimeout(timer);
+      timer = setTimeout(refresh, 250);
+    });
+  });
+})();
+</script>
+</body>
+</html>
