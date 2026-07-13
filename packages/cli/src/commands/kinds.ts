@@ -45,6 +45,9 @@ Declaring a kind convention (frontmatter keys core reads — everything else is 
                                  typed edge; every other link is an untyped citation. Write typed
                                  edges with 'link add <from> <to> --text <type>' and query them
                                  with 'link show <id> --text <type>'
+  link_descriptions    map      link type name -> human guidance for a relationship declared in
+                                 this kind's links map. Guidance only; it adds no link requirement
+                                 or graph-validation behavior
   expects_inbound      map      link type name -> expected SOURCE kind, declared on the kind the
                                  expectation is ABOUT (the link TARGET) — e.g. a 'Task' declaring
                                  {contains: "Roadmap Item"} expects every Task to have an inbound
@@ -82,6 +85,9 @@ function toRow(kind: KindConvention): Record<string, unknown> {
   if (Object.keys(kind.fields.values).length > 0) row.values = kind.fields.values;
   if (Object.keys(kind.fields.terminal).length > 0) row.terminal = kind.fields.terminal;
   if (kind.links && Object.keys(kind.links).length > 0) row.links = kind.links;
+  if (kind.linkDescriptions && Object.keys(kind.linkDescriptions).length > 0) {
+    row.link_descriptions = kind.linkDescriptions;
+  }
   if (kind.expectsInbound && Object.keys(kind.expectsInbound).length > 0) row.expects_inbound = kind.expectsInbound;
   if (kind.path) row.path = kind.path;
   if (kind.sections && kind.sections.length > 0) row.sections = kind.sections;

@@ -406,6 +406,7 @@ test("recipe add roadmap: applies conventions/roadmap.md AND conventions/roadmap
       governs: "Roadmap Item",
       path: "roadmap-items/",
       links: { contains: "Task" },
+      link_descriptions: { contains: "Tasks whose delivery is governed by this roadmap commitment." },
       fields: {
         required: ["title", "status"],
         optional: ["description", "sequence"],
@@ -420,7 +421,7 @@ test("recipe add roadmap: applies conventions/roadmap.md AND conventions/roadmap
   }
 });
 
-test("kinds: reports Roadmap + Roadmap Item with the contains vocabulary and the item status enum after recipe add roadmap", async () => {
+test("kinds: reports Roadmap + Roadmap Item with contains guidance and the item status enum after recipe add roadmap", async () => {
   const dir = await tempDir();
   try {
     await initBundle(dir);
@@ -437,6 +438,9 @@ test("kinds: reports Roadmap + Roadmap Item with the contains vocabulary and the
     assert.ok(itemKind);
     assert.equal(itemKind!.path, "roadmap-items/");
     assert.deepEqual(itemKind!.links, { contains: "Task" });
+    assert.deepEqual(itemKind!.linkDescriptions, {
+      contains: "Tasks whose delivery is governed by this roadmap commitment.",
+    });
     assert.deepEqual(itemKind!.fields.required, ["title", "status"]);
     assert.deepEqual(itemKind!.fields.optional, ["description", "sequence"]);
     assert.deepEqual(itemKind!.fields.values.status, ["queued", "active", "done"]);

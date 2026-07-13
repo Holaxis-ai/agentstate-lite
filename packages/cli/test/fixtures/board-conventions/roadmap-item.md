@@ -5,6 +5,8 @@ governs: Roadmap Item
 path: roadmap-items/
 links:
   contains: Task
+link_descriptions:
+  contains: Tasks whose delivery is governed by this roadmap commitment.
 fields:
   required:
     - title

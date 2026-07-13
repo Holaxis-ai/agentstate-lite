@@ -232,6 +232,8 @@ async function bootPagesServer(): Promise<{ handle: UiServerHandle; origin: stri
       title: "Task",
       governs: "Task",
       description: "A unit of work.",
+      links: { "depends on": "Task" },
+      link_descriptions: { "depends on": "A prerequisite task that must be completed first." },
       fields: {
         required: ["title", "status"],
         values: { status: ["todo", "done", "canceled"] },
@@ -372,6 +374,7 @@ test("kinds endpoint: session-gated, serves core's loadKinds registry (ONE regis
       kinds: {
         governs: string;
         description?: string;
+        linkDescriptions?: Record<string, string>;
         fields: { terminal: Record<string, string[]>; descriptions: Record<string, string> };
       }[];
     };
@@ -379,6 +382,9 @@ test("kinds endpoint: session-gated, serves core's loadKinds registry (ONE regis
     assert.ok(task, "the bundle's Task convention is in the served registry");
     assert.deepEqual(task.fields.terminal, { status: ["done", "canceled"] });
     assert.equal(task.description, "A unit of work.");
+    assert.deepEqual(task.linkDescriptions, {
+      "depends on": "A prerequisite task that must be completed first.",
+    });
     assert.deepEqual(task.fields.descriptions, { title: "A concise summary.", status: "Current state." });
   } finally {
     await cleanup();

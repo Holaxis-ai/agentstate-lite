@@ -261,6 +261,7 @@ export const ROADMAP_ITEM_KIND: KindConvention = {
   governs: ROADMAP_ITEM_TYPE,
   path: "roadmap-items/",
   links: { contains: "Task" },
+  linkDescriptions: { contains: "Tasks whose delivery is governed by this roadmap commitment." },
   fields: {
     required: ["title", "status"],
     optional: ["description", "sequence"],

@@ -126,7 +126,7 @@ test("kinds: conditionally projects kind and field descriptions", async () => {
   }
 });
 
-test("kinds: projects a convention's 'links' declaration (typed-edge vocabulary); rows without one carry no links key", async () => {
+test("kinds: projects links and link_descriptions; rows without them carry neither key", async () => {
   const { dir, cleanup } = await makeSeededBundle();
   try {
     await writeDoc({ root: dir }, {
@@ -138,6 +138,7 @@ test("kinds: projects a convention's 'links' declaration (typed-edge vocabulary)
         path: "roadmap-items/",
         fields: { required: ["title", "status"], optional: [], values: { status: ["queued", "active", "done"] } },
         links: { contains: "Task" },
+        link_descriptions: { contains: "Tasks governed by this roadmap commitment." },
         timestamp: T,
       },
       body: "A kind declaring its typed-edge vocabulary.",
@@ -147,10 +148,12 @@ test("kinds: projects a convention's 'links' declaration (typed-edge vocabulary)
     const roadmap = rows.find((r) => r.governs === "Roadmap Item");
     assert.ok(roadmap, "expected the Roadmap Item kind row");
     assert.deepEqual(roadmap!.links, { contains: "Task" });
+    assert.deepEqual(roadmap!.link_descriptions, { contains: "Tasks governed by this roadmap commitment." });
     // The seeded Context Note kind declares no links — its row must not carry the key at all.
     const note = rows.find((r) => r.governs === "Context Note");
     assert.ok(note);
     assert.ok(!("links" in note!), "a kind without a links declaration gets no links key");
+    assert.ok(!("link_descriptions" in note!), "a kind without relationship guidance gets no link_descriptions key");
   } finally {
     await cleanup();
   }
@@ -234,6 +237,8 @@ test("new: point-of-use link teaching is GENERIC — per-kind help shows both di
         path: "services/",
         fields: { required: ["title"], optional: [] },
         links: { "runs on": "Service" },
+        link_descriptions: { "runs on": "The runtime service this service is deployed on." },
+        expects_inbound: { affects: "Incident" },
         timestamp: T,
       },
       body: "",
@@ -246,6 +251,7 @@ test("new: point-of-use link teaching is GENERIC — per-kind help shows both di
         path: "incidents/",
         fields: { required: ["title"], optional: [] },
         links: { affects: "Service" },
+        link_descriptions: { affects: "The service whose reliability or operation is impacted." },
         timestamp: T,
       },
       body: "",
@@ -255,14 +261,29 @@ test("new: point-of-use link teaching is GENERIC — per-kind help shows both di
     // "affects" -> Service). The self-declaration appears outbound only, never echoed inbound.
     let helpOut = "";
     await newCommand(["Service", "--help", "--dir", dir], { stdout: (s) => (helpOut += s) });
-    assert.match(helpOut, /this kind may link:\s+"runs on" → Service/);
-    assert.match(helpOut, /other kinds link here:\s+Incident "affects" → Service/);
+    assert.match(
+      helpOut,
+      /this kind may link:\s+"runs on" → Service — The runtime service this service is deployed on\./,
+    );
+    assert.match(
+      helpOut,
+      /other kinds link here:\s+Incident "affects" → Service — The service whose reliability or operation is impacted\./,
+    );
     assert.ok(!/other kinds link here:\s+Service/.test(helpOut), "self-declaration must not echo inbound");
+
+    // The inbound prose above comes from Incident's outbound declaration. It is never copied onto
+    // Service or sourced from Service's expects_inbound lint declaration.
+    const discovery = await runJson(kinds, ["--dir", dir]);
+    const service = (discovery.kinds as Array<Record<string, unknown>>).find((row) => row.governs === "Service");
+    assert.deepEqual(service!.link_descriptions, {
+      "runs on": "The runtime service this service is deployed on.",
+    });
 
     // Moment 2 — the create receipt: complete, placeholder-parameterized link-add commands in
     // BOTH directions, derived purely from the registry.
     const receipt = await runJson(newCommand, ["Service", "api", "--title", "API", "--dir", dir]);
     const hints = receipt.help as string[];
+    assert.ok(!hints.some((h) => /reliability|runtime service/.test(h)), "creation receipts stay compact");
     assert.ok(
       hints.some((h) => /link from a Incident:/.test(h) && /link add incidents\/<incident> services\/api --text "affects"/.test(h)),
       `expected the inbound alignment hint, got: ${JSON.stringify(hints)}`,

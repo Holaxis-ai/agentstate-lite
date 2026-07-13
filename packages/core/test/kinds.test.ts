@@ -420,6 +420,164 @@ test("loadKinds: parses a 'links' declaration (typed-edge vocabulary); wrong sha
   });
 });
 
+test("loadKinds: link_descriptions keeps declared non-empty guidance; malformed and undeclared entries warn precisely and are skipped", async () => {
+  await withMemBundle(async (bundle) => {
+    await writeDoc(bundle, {
+      id: "conventions/described-links",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Described Links",
+        links: { contains: "Task", "depends on": "Task" },
+        link_descriptions: {
+          contains: "  Work governed by this commitment.  ",
+          "depends on": "",
+          blocks: "A relationship that is not declared.",
+          numbered: 42,
+        },
+        timestamp: T,
+      },
+      body: "A convention with relationship guidance.",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/descriptions-as-list",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Descriptions As List",
+        links: { contains: "Task" },
+        link_descriptions: ["contains"],
+        timestamp: T,
+      },
+      body: "link_descriptions as a list, not a map.",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/no-link-descriptions",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "No Link Descriptions",
+        links: { contains: "Task" },
+        timestamp: T,
+      },
+      body: "No relationship guidance.",
+    });
+
+    const registry = await loadKinds(bundle);
+    assert.deepEqual(registry.kinds.get("Described Links")!.linkDescriptions, {
+      contains: "Work governed by this commitment.",
+    });
+    assert.ok(
+      registry.warnings.some(
+        (w) => w.code === "KIND_CONVENTION_BAD_MEMBER" && w.field === "link_descriptions.depends on",
+      ),
+    );
+    assert.ok(
+      registry.warnings.some(
+        (w) => w.code === "KIND_CONVENTION_BAD_MEMBER" && w.field === "link_descriptions.numbered",
+      ),
+    );
+    assert.ok(
+      registry.warnings.some(
+        (w) =>
+          w.code === "KIND_CONVENTION_UNDECLARED_LINK_DESCRIPTION" &&
+          w.field === "link_descriptions.blocks" &&
+          /not declared in links/.test(w.message),
+      ),
+    );
+    assert.equal(registry.kinds.get("Descriptions As List")!.linkDescriptions, undefined);
+    assert.ok(
+      registry.warnings.some(
+        (w) => w.code === "KIND_CONVENTION_BAD_SHAPE" && w.field === "link_descriptions",
+      ),
+    );
+    assert.equal(registry.kinds.get("No Link Descriptions")!.linkDescriptions, undefined);
+    assert.ok(!registry.warnings.some((w) => /no-link-descriptions/.test(w.message)));
+  });
+});
+
+test("parseConventionDoc: link_descriptions requires an own links declaration, including prototype-looking keys", () => {
+  const undeclaredDescriptions = Object.fromEntries([
+    ["toString", "Must not match Object.prototype."],
+    ["__proto__", "Must not receive special treatment."],
+  ]);
+  const parsed = parseConventionDoc({
+    id: "conventions/prototype-link-descriptions",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      governs: "Prototype Link Descriptions",
+      links: { contains: "Task" },
+      link_descriptions: undeclaredDescriptions,
+      timestamp: T,
+    },
+    body: "",
+  });
+
+  assert.ok(parsed.kind);
+  assert.equal(parsed.kind!.linkDescriptions, undefined);
+  assert.deepEqual(
+    parsed.warnings
+      .filter((warning) => warning.code === "KIND_CONVENTION_UNDECLARED_LINK_DESCRIPTION")
+      .map((warning) => warning.field)
+      .sort(),
+    ["link_descriptions.__proto__", "link_descriptions.toString"],
+  );
+
+  const ownSpecialLink = Object.fromEntries([["toString", "Task"]]);
+  const ownSpecialDescription = Object.fromEntries([["toString", "An explicitly declared special-looking link."]]);
+  const declared = parseConventionDoc({
+    id: "conventions/declared-special-link",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      governs: "Declared Special Link",
+      links: ownSpecialLink,
+      link_descriptions: ownSpecialDescription,
+      timestamp: T,
+    },
+    body: "",
+  });
+
+  assert.deepEqual(declared.kind?.links, ownSpecialLink);
+  assert.deepEqual(declared.kind?.linkDescriptions, ownSpecialDescription);
+  assert.equal(declared.warnings.length, 0);
+});
+
+test("kindConventionDoc: never serializes relationship guidance for inherited or undeclared special-looking keys", () => {
+  const linkDescriptions = Object.fromEntries([
+    ["toString", "Must not match Object.prototype."],
+    ["__proto__", "Must not receive special treatment."],
+  ]);
+  const doc = kindConventionDoc(
+    {
+      id: "conventions/prototype-serialization",
+      title: "Prototype Serialization",
+      governs: "Prototype Serialization",
+      fields: { required: [], optional: [], values: {}, terminal: {}, descriptions: {} },
+      links: { contains: "Task" },
+      linkDescriptions,
+    },
+    "",
+    T,
+  );
+
+  assert.equal(doc.frontmatter.link_descriptions, undefined);
+
+  const declaredSpecialLink = Object.fromEntries([["toString", "Task"]]);
+  const declaredSpecialDescription = Object.fromEntries([
+    ["toString", "An explicitly declared special-looking link."],
+  ]);
+  const declaredDoc = kindConventionDoc(
+    {
+      id: "conventions/declared-special-serialization",
+      title: "Declared Special Serialization",
+      governs: "Declared Special Serialization",
+      fields: { required: [], optional: [], values: {}, terminal: {}, descriptions: {} },
+      links: declaredSpecialLink,
+      linkDescriptions: declaredSpecialDescription,
+    },
+    "",
+    T,
+  );
+  assert.deepEqual(declaredDoc.frontmatter.link_descriptions, declaredSpecialDescription);
+});
+
 test("kindConventionDoc: a links declaration round-trips through write/loadKinds", async () => {
   await withMemBundle(async (bundle) => {
     const kind: KindConvention = {
@@ -428,10 +586,14 @@ test("kindConventionDoc: a links declaration round-trips through write/loadKinds
       governs: "Linked Kind",
       fields: { required: ["title"], optional: [], values: {}, terminal: {}, descriptions: {} },
       links: { contains: "Task" },
+      linkDescriptions: { contains: "  Work governed by this kind.  " },
     };
     await writeDoc(bundle, kindConventionDoc(kind, "prose.", T));
     const registry = await loadKinds(bundle);
     assert.deepEqual(registry.kinds.get("Linked Kind")!.links, { contains: "Task" });
+    assert.deepEqual(registry.kinds.get("Linked Kind")!.linkDescriptions, {
+      contains: "Work governed by this kind.",
+    });
     assert.equal(registry.warnings.length, 0);
   });
 });
