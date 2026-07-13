@@ -47,6 +47,6 @@ description: >-
 
   - Builder -> independent reviewer -> QA before publication.
 actor: codex
-timestamp: '2026-07-12T21:09:49.639Z'
+timestamp: '2026-07-13T02:14:50.463Z'
 ---
-
+[depends on](package-core-external-proof.md)

@@ -4,28 +4,25 @@ title: Declare UI E2E's @agentstate-lite/server dev dependency
 status: in_progress
 priority: '2'
 description: >-
-  Packaging hygiene found while inspecting the OSS server boundary.
+  PR #48 READY: https://github.com/Holaxis-ai/agentstate-lite/pull/48
 
 
-  `packages/ui/e2e/harness.ts` imports `@agentstate-lite/server`, but
-  `packages/ui/package.json` does not declare it. Hoisted monorepo resolution
-  hides the missing edge.
+  Behavioral result: no runtime change. The private UI workspace now explicitly
+  declares the @agentstate-lite/server dev dependency already imported by its
+  E2E harness.
 
 
-  Small fix:
+  Reviewed head: 2a26a5c65198526b573a715833057290f36a859a
 
-  - Add `@agentstate-lite/server` as the correct dev dependency and update the
-  lockfile.
-
-  - Prove a fresh workspace install/build and the UI E2E harness resolve without
-  relying on an undeclared package.
-
-  - No architecture checker, runtime refactor, or remote behavior change.
+  Base: aa76ec109f5c7542b0ab742bf8200dda910d2702
 
 
-  Acceptance: focused UI E2E plus fresh install and full relevant gates;
-  independent review/QA proportionate to the two-file dependency change.
+  Independent review approved with no findings. Fresh isolated QA passed npm ci,
+  dependency ownership/integrity, identical omit-dev graphs, harness import, UI
+  unit 78/78, Chromium E2E 14/14, full unpiped npm run check, and byte-identical
+  base/candidate CLI tarballs. Exact diff is package.json plus lockfile; no
+  bot-owned artifacts. Status remains in progress until merge.
 actor: codex
-timestamp: '2026-07-13T01:59:43.142Z'
+timestamp: '2026-07-13T02:14:35.822Z'
 ---
 
