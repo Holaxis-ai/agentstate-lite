@@ -133,6 +133,102 @@ test("kind field remove: preserves malformed fields.descriptions verbatim", asyn
   }
 });
 
+test("kind field mutation keeps valid enum value descriptions coherent", async () => {
+  const { dir, cleanup } = await seeded();
+  try {
+    const bundle: Bundle = { root: dir };
+    const convention = await readDoc(bundle, "conventions/context-note");
+    const fields = convention.frontmatter.fields as Record<string, unknown>;
+    fields.values = { title: ["short"], tags: ["keep", "drop"] };
+    fields.value_descriptions = {
+      title: { short: "Title guidance." },
+      tags: { keep: "Keep guidance.", drop: "Drop guidance." },
+    };
+    await writeDoc(bundle, convention);
+
+    await runKind(["field", "Context Note", "add", "tags", "--values", "keep,new", "--dir", dir]);
+    let updated = await readDoc(bundle, "conventions/context-note");
+    assert.deepEqual((updated.frontmatter.fields as Record<string, any>).value_descriptions, {
+      title: { short: "Title guidance." },
+      tags: { keep: "Keep guidance." },
+    });
+
+    await runKind(["field", "Context Note", "remove", "tags", "--dir", dir]);
+    updated = await readDoc(bundle, "conventions/context-note");
+    assert.deepEqual((updated.frontmatter.fields as Record<string, any>).value_descriptions, {
+      title: { short: "Title guidance." },
+    });
+    const registry = await loadKinds(bundle);
+    assert.ok(!registry.warnings.some((w) => w.field?.startsWith("fields.value_descriptions.tags")));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("kind field mutation preserves malformed outer and target-inner value-description maps", async () => {
+  const { dir, cleanup } = await seeded();
+  try {
+    const bundle: Bundle = { root: dir };
+    for (const shape of ["outer", "inner"] as const) {
+      const convention = await readDoc(bundle, "conventions/context-note");
+      const fields = convention.frontmatter.fields as Record<string, unknown>;
+      fields.values = { tags: ["a", "b"], title: ["short"] };
+      fields.value_descriptions = shape === "outer"
+        ? new Date("2026-07-01T00:00:00.000Z")
+        : { tags: new Date("2026-07-01T00:00:00.000Z"), title: { short: "Unrelated sibling." } };
+      await writeDoc(bundle, convention);
+
+      await runKind(["field", "Context Note", "add", "tags", "--values", "a", "--dir", dir]);
+      let updated = await readDoc(bundle, "conventions/context-note");
+      let raw = (updated.frontmatter.fields as Record<string, unknown>).value_descriptions;
+      if (shape === "outer") assert.ok(raw instanceof Date);
+      else {
+        assert.ok((raw as Record<string, unknown>).tags instanceof Date);
+        assert.deepEqual((raw as Record<string, unknown>).title, { short: "Unrelated sibling." });
+      }
+      const warningField = shape === "outer" ? "fields.value_descriptions" : "fields.value_descriptions.tags";
+      assert.ok((await loadKinds(bundle)).warnings.some((w) => w.code === "KIND_CONVENTION_BAD_SHAPE" && w.field === warningField));
+
+      await runKind(["field", "Context Note", "remove", "tags", "--dir", dir]);
+      updated = await readDoc(bundle, "conventions/context-note");
+      raw = (updated.frontmatter.fields as Record<string, unknown>).value_descriptions;
+      if (shape === "outer") assert.ok(raw instanceof Date);
+      else {
+        assert.ok((raw as Record<string, unknown>).tags instanceof Date);
+        assert.deepEqual((raw as Record<string, unknown>).title, { short: "Unrelated sibling." });
+      }
+      assert.ok((await loadKinds(bundle)).warnings.some((w) => w.code === "KIND_CONVENTION_BAD_SHAPE" && w.field === warningField));
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("kind field add/remove treats prototype-looking names as own data keys", async () => {
+  const { dir, cleanup } = await seeded();
+  try {
+    const bundle: Bundle = { root: dir };
+    for (const field of ["__proto__", "constructor", "toString"]) {
+      await runKind(["field", "Context Note", "add", field, "--values", "yes,no", "--dir", dir]);
+      let convention = await readDoc(bundle, "conventions/context-note");
+      let fields = convention.frontmatter.fields as Record<string, any>;
+      assert.equal(Object.prototype.hasOwnProperty.call(fields.values, field), true);
+      assert.deepEqual(fields.values[field], ["yes", "no"]);
+      assert.equal(Object.getPrototypeOf(fields.values), Object.prototype);
+
+      fields.value_descriptions = Object.fromEntries([[field, { yes: "Yes guidance." }]]);
+      await writeDoc(bundle, convention);
+      await runKind(["field", "Context Note", "remove", field, "--dir", dir]);
+      convention = await readDoc(bundle, "conventions/context-note");
+      fields = convention.frontmatter.fields as Record<string, any>;
+      assert.equal(Object.prototype.hasOwnProperty.call(fields.values ?? {}, field), false);
+      assert.equal(Object.prototype.hasOwnProperty.call(fields.value_descriptions ?? {}, field), false);
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
 test("kind field remove: an absent field does not normalize an existing empty descriptions map", async () => {
   const { dir, cleanup } = await seeded();
   try {

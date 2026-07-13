@@ -112,6 +112,16 @@ export interface NewCliDeps {
   stdout: (s: string) => void;
 }
 
+/** Define a kind-authored field name without invoking the legacy `__proto__` setter. */
+function setOwn(record: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(record, key, { value, enumerable: true, configurable: true, writable: true });
+}
+
+/** Prototype-safe own-key check for kind-authored maps. */
+function hasOwn(record: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
 /**
  * Bundle-selection + output-control flags for `new`, shared by BOTH parse phases. NOT `strict` —
  * `new` is ALWAYS strict, so a literal `--strict` token must remain an "unknown field" (falls into
@@ -231,7 +241,6 @@ function kindIdPlaceholder(kind: KindConvention | undefined, governs: string): s
  * `kinds` round-trip (cold-start study: 2 testers had to cross-reference `kinds` before every `new`).
  */
 function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: string): string {
-  const hasOwn = (record: object, key: PropertyKey) => Object.prototype.hasOwnProperty.call(record, key);
   const oneLine = (value: string) => value.trim().replace(/\s+/g, " ");
   const ownDescription = (record: Record<string, string> | undefined, key: string): string | undefined => {
     if (!record || !hasOwn(record, key) || typeof record[key] !== "string") return undefined;
@@ -250,8 +259,9 @@ function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: strin
       ? kind.fields.values[field]
       : undefined;
     const description = ownDescription(kind.fields.descriptions, field);
-    const valueDescriptions = hasOwn(kind.fields.valueDescriptions ?? {}, field)
-      ? kind.fields.valueDescriptions[field]
+    const descriptionsByValue = kind.fields.valueDescriptions;
+    const valueDescriptions = descriptionsByValue && hasOwn(descriptionsByValue, field)
+      ? descriptionsByValue[field]
       : undefined;
     const describedValues = allowed?.map((value) => ({ value, description: ownDescription(valueDescriptions, value) }));
     const hasValueDescriptions = describedValues?.some((entry) => entry.description !== undefined) ?? false;
@@ -279,14 +289,16 @@ function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: strin
   // the kind's own outbound types, plus the reverse lookup — other kinds declaring edges INTO this
   // one. The inbound side is the alignment cue (e.g. a new Task learns Roadmap Items contain Tasks).
   const outboundLines = Object.entries(kind.links ?? {}).map(([t, target]) => {
-    const description = kind.linkDescriptions?.[t];
+    const description = ownDescription(kind.linkDescriptions, t);
     return `  this kind may link:     "${t}" → ${target}${description ? ` — ${description}` : ""}`;
   });
-  const inboundLines = inboundLinkDecls(registry, kind).map(
-    ({ source, linkType }) =>
+  const inboundLines = inboundLinkDecls(registry, kind).map(({ source, linkType }) => {
+    const description = ownDescription(source.linkDescriptions, linkType);
+    return (
       `  other kinds link here:  ${source.governs} "${linkType}" → ${kind.governs}` +
-      (source.linkDescriptions?.[linkType] ? ` — ${source.linkDescriptions[linkType]}` : ""),
-  );
+      (description ? ` — ${description}` : "")
+    );
+  });
   const linksBlock =
     outboundLines.length + inboundLines.length > 0
       ? `Links (typed edges declared by this bundle's conventions; write with --link "<type>=<target-id>" ` +
@@ -388,12 +400,13 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     fieldNames.map((f) => [f, { type: "string", multiple: true } as const]),
   );
 
-  const { values, positionals } = parseOrUsage(() => {
+  const { values, positionals, tokens } = parseOrUsage(() => {
     try {
       return parseArgs({
         args: argv,
         allowPositionals: true,
         strict: true,
+        tokens: true,
         options: { ...fieldOptions, ...NEW_CONTROL_OPTIONS },
       });
     } catch (err) {
@@ -429,11 +442,16 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
       throw err; // parseOrUsage -> translated USAGE (missing value, takes-no-value, …)
     }
   }, "new");
-  // `values`'s inferred type is keyed off the STATIC control-options literal (TypeScript can't see
-  // through the runtime-built `fieldOptions` spread), so a dynamic kind-field lookup below needs an
-  // explicit index-signature view — the runtime shape is exactly `{ [field]: string[] | undefined }`
-  // for a `{ type: "string", multiple: true }` option, which is what every field option above is.
-  const dynamicValues = values as unknown as Record<string, string[] | string | boolean | undefined>;
+  // Node accepts and tokenizes `--__proto__`, but deliberately omits that key from `values`.
+  // The validated token stream is therefore the authority for every kind-defined field.
+  const dynamicValues = new Map<string, string[]>();
+  const dynamicFieldNames = new Set(fieldNames);
+  for (const token of tokens) {
+    if (token.kind !== "option" || !dynamicFieldNames.has(token.name) || token.value === undefined) continue;
+    const accumulated = dynamicValues.get(token.name) ?? [];
+    accumulated.push(token.value);
+    dynamicValues.set(token.name, accumulated);
+  }
 
   const id = (positionals[1] as string | undefined)?.trim();
   if (!id) {
@@ -463,9 +481,9 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
 
   const frontmatter: Frontmatter = { type: kind.governs };
   for (const field of fieldNames) {
-    const vals = dynamicValues[field] as string[] | undefined;
+    const vals = dynamicValues.get(field);
     if (vals === undefined || vals.length === 0) continue;
-    frontmatter[field] = vals.length === 1 ? vals[0]! : vals;
+    setOwn(frontmatter, field, vals.length === 1 ? vals[0]! : vals);
   }
   // `mutateDoc` applies the resolved actor to frontmatter before strict validation, so the actor
   // control flag (or environment default) still satisfies a kind that declares actor as required.
@@ -549,7 +567,7 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     // Teach when this kind declares an outbound link vocabulary and `type` isn't in it — warn,
     // never block: a hard reject here would be incoherent given a DANGLING target (below) is
     // unconditionally allowed, so a merely-undeclared TYPE can't be held to a stricter standard.
-    if (kind.links && Object.keys(kind.links).length > 0 && !(type in kind.links)) {
+    if (kind.links && Object.keys(kind.links).length > 0 && !hasOwn(kind.links, type)) {
       warnings.push({
         code: "LINK_TYPE_UNDECLARED_FOR_KIND",
         message: `'${type}' is not declared in the '${kind.governs}' kind's link vocabulary (declared: ${Object.keys(kind.links).join(", ")}) — added anyway.`,

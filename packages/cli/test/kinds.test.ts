@@ -467,7 +467,7 @@ test('new "Claim" --help explains the real lifecycle values while undescribed en
   }
 });
 
-test('new help treats prototype-looking field names as enums/descriptions only when explicitly own', async () => {
+test('new help treats prototype-looking field and link names as declarations/guidance only when explicitly own', async () => {
   const { dir, cleanup } = await makeSeededBundle();
   try {
     await writeDoc({ root: dir }, {
@@ -517,6 +517,43 @@ test('new help treats prototype-looking field names as enums/descriptions only w
       /- value: "plain"\n        description: "An explicit \| value \(not syntax\): safe — association\."/,
     );
     assert.match(own, /--__proto__ <v>  optional; allowed: special\n/);
+
+    await writeDoc({ root: dir }, {
+      id: "conventions/help-target",
+      frontmatter: { type: CONVENTION_TYPE, governs: "Help Target", fields: {}, timestamp: T },
+      body: "",
+    });
+    await writeDoc({ root: dir }, {
+      id: "conventions/help-source",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Help Source",
+        fields: {},
+        links: Object.fromEntries([
+          ["toString", "Help Target"],
+          ["constructor", "Help Target"],
+          ["described", "Help Target"],
+        ]),
+        link_descriptions: Object.fromEntries([
+          ["constructor", "  Explicit\n constructor guidance.  "],
+          ["described", "Ordinary guidance."],
+        ]),
+        timestamp: T,
+      },
+      body: "",
+    });
+    let linkHelp = "";
+    await newCommand(["Help Target", "--help", "--dir", dir], { stdout: (chunk) => (linkHelp += chunk) });
+    assert.match(linkHelp, /Help Source "toString" → Help Target\n/);
+    assert.doesNotMatch(linkHelp, /Help Source "toString" → Help Target —/);
+    assert.doesNotMatch(linkHelp, /function toString|\[native code\]/);
+    assert.match(linkHelp, /Help Source "constructor" → Help Target — Explicit constructor guidance\./);
+
+    let outboundHelp = "";
+    await newCommand(["Help Source", "--help", "--dir", dir], { stdout: (chunk) => (outboundHelp += chunk) });
+    assert.match(outboundHelp, /this kind may link:     "toString" → Help Target\n/);
+    assert.doesNotMatch(outboundHelp, /this kind may link:     "toString" → Help Target —/);
+    assert.match(outboundHelp, /this kind may link:     "constructor" → Help Target — Explicit constructor guidance\./);
   } finally {
     await cleanup();
   }
@@ -847,6 +884,47 @@ test("new: a repeated --<field> becomes an array", async () => {
     });
     const saved = await readDoc(bundle, "x");
     assert.deepEqual(saved.frontmatter.tag, ["a", "b"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("new: prototype-looking declared fields persist as exact own properties and remain normally required", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    const cases = [
+      { field: "__proto__", args: ["--__proto__", "proto-value"], expected: "proto-value", values: ["proto-value"] },
+      { field: "constructor", args: ["--constructor=ctor-value"], expected: "ctor-value", values: ["ctor-value"] },
+      { field: "toString", args: ["--toString", "first", "--toString", "second"], expected: ["first", "second"] },
+    ];
+    for (const entry of cases) {
+      const kindName = `Special ${entry.field}`;
+      const values = entry.values ? Object.fromEntries([[entry.field, entry.values]]) : {};
+      await writeDoc(bundle, {
+        id: `conventions/special-${entry.field.replaceAll("_", "dash")}`,
+        frontmatter: {
+          type: CONVENTION_TYPE,
+          governs: kindName,
+          fields: { required: [entry.field], values },
+          timestamp: T,
+        },
+        body: "",
+      });
+      const presentId = `present-${entry.field.replaceAll("_", "dash")}`;
+      const missingId = `missing-${entry.field.replaceAll("_", "dash")}`;
+      await newCommand([kindName, presentId, ...entry.args, "--dir", dir], { stdout: () => {} });
+      const saved = await readDoc(bundle, presentId);
+      assert.equal(Object.prototype.hasOwnProperty.call(saved.frontmatter, entry.field), true);
+      assert.deepEqual((saved.frontmatter as Record<string, unknown>)[entry.field], entry.expected);
+      assert.equal(Object.getPrototypeOf(saved.frontmatter), Object.prototype);
+      await assert.rejects(
+        () => newCommand([kindName, missingId, "--dir", dir], { stdout: () => {} }),
+        (err: unknown) => err instanceof CliError && err.code === "USAGE" && err.message.includes(entry.field),
+      );
+      await assert.rejects(() => readDoc(bundle, missingId));
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

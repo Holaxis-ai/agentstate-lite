@@ -224,6 +224,55 @@ test("new --link: a type NOT in the kind's declared link vocabulary warns (teach
   }
 });
 
+test("new --link: inherited names are undeclared while explicit own special-looking link types work", async () => {
+  const dir = await tempDir();
+  const bundle: Bundle = { root: dir };
+  try {
+    await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/special-links",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Special Links",
+        fields: { required: ["title"] },
+        links: Object.fromEntries([
+          ["declared", "Special Links"],
+          ["__proto__", "Special Links"],
+        ]),
+        timestamp: T,
+      },
+      body: "",
+    });
+
+    const inherited = await runJson(newCommand, [
+      "Special Links",
+      "inherited",
+      "--title",
+      "Inherited",
+      "--link",
+      "constructor=missing-target",
+      "--dir",
+      dir,
+    ]);
+    const inheritedWarnings = ((inherited.links as Array<Record<string, unknown>>)[0]!.warnings ?? []) as Array<Record<string, unknown>>;
+    assert.equal(inheritedWarnings[0]?.code, "LINK_TYPE_UNDECLARED_FOR_KIND");
+
+    const explicit = await runJson(newCommand, [
+      "Special Links",
+      "explicit",
+      "--title",
+      "Explicit",
+      "--link",
+      "__proto__=missing-target",
+      "--dir",
+      dir,
+    ]);
+    assert.equal((explicit.links as Array<Record<string, unknown>>)[0]!.warnings, undefined);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("new --link: a dangling target (no document there yet) is allowed, same as `link add` today", async () => {
   const { dir, bundle, cleanup } = await makeTaskBundle();
   try {
