@@ -409,6 +409,29 @@ function renderNotesSection(extraBullets: string[] = []): string[] {
   return lines;
 }
 
+/** Shared remote-access guidance for both published skill channels. */
+function renderRemoteAccessSection(invocation: string): string[] {
+  const lines: string[] = [];
+  lines.push("## Remote bundle access (--remote, serve)");
+  lines.push("");
+  lines.push(
+    "Remote bundle access remains explicit and wired the same way as `--dir`: use `serve` to expose",
+  );
+  lines.push(
+    "a local bundle over the wire protocol, or pass `--remote <url>` to a bundle-facing command.",
+  );
+  lines.push("For an authenticated remote, provide `AGENTSTATE_LITE_API_KEY`; an already-provisioned");
+  lines.push("stored per-origin credential is also consumed when present. Account and admin credential");
+  lines.push("provisioning is outside the default CLI surface.");
+  lines.push("");
+  lines.push("```bash");
+  lines.push(`${invocation} serve --dir ./my-bundle --port 4818 &`);
+  lines.push(`${invocation} list --remote http://127.0.0.1:4818`);
+  lines.push("```");
+  lines.push("");
+  return lines;
+}
+
 // ---------------------------------------------------------------------------------------------
 // npm target — packages/cli/SKILL.md, published-package channel.
 // ---------------------------------------------------------------------------------------------
@@ -454,6 +477,7 @@ export function renderNpm(): string {
   lines.push(...renderWorkspaceLocation(NPX));
   lines.push(...renderTypicalFlow(NPX));
   lines.push(...renderSyncSection(NPX));
+  lines.push(...renderRemoteAccessSection(NPX));
   lines.push(...renderNotesSection());
   return lines.join("\n");
 }
@@ -709,22 +733,7 @@ export function renderSkill(): string {
   lines.push(...renderWorkspaceLocation(ASLITE));
   lines.push(...renderTypicalFlow(ASLITE));
   lines.push(...renderSyncSection(ASLITE));
-  lines.push("## Remote (--remote, serve, identity, invites, keys)");
-  lines.push("");
-  lines.push(
-    "Every remote-facing command ships in the SAME bundle, wired the same way as `--dir` — `serve`,",
-  );
-  lines.push(
-    "`--remote <url>` on any bundle-facing command, plus `login` / `join` / `whoami` / `invite` /",
-  );
-  lines.push(`\`member\` / \`key\` all work identically through \`${ASLITE}\`. Credentials are stored at`);
-  lines.push("`~/.agentstate/` (0600/0700 discipline), never printed.");
-  lines.push("");
-  lines.push("```bash");
-  lines.push(`${ASLITE} serve --dir ./my-bundle --port 4818 &`);
-  lines.push(`${ASLITE} list --remote http://127.0.0.1:4818`);
-  lines.push("```");
-  lines.push("");
+  lines.push(...renderRemoteAccessSection(ASLITE));
   lines.push(
     "The wire-protocol v0.1 contract `serve` implements is documented as a project bundle doc, not",
   );

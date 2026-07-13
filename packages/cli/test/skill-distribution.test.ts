@@ -29,7 +29,7 @@ import path from "node:path";
 
 import { COMMAND_GROUPS, commandName } from "../src/reference.js";
 import { SKILL_REFERENCES, COMMAND_CONTRACTS, CAPABILITY_PATTERNS } from "../src/skill-references.js";
-import { renderSkill } from "../src/skill-render.js";
+import { renderNpm, renderSkill } from "../src/skill-render.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(here, "../../..");
@@ -104,6 +104,18 @@ test("the shipped Page examples include capability-independent navigation from a
 // ---------------------------------------------------------------------------------------------
 
 const rendered = renderSkill();
+const renderedNpm = renderNpm();
+
+test("npm and plugin skill channels share the authenticated-remote access contract", () => {
+  for (const text of [renderedNpm, rendered]) {
+    assert.match(text, /## Remote bundle access \(--remote, serve\)/);
+    assert.match(text, /AGENTSTATE_LITE_API_KEY/);
+    assert.match(text, /already-provisioned\s+stored per-origin credential/);
+    assert.match(text, /provisioning is outside the default CLI surface/);
+    assert.doesNotMatch(text, /\b(?:login|join|whoami)\s+--remote\b/);
+    assert.doesNotMatch(text, /\b(?:invite|member|key)\s+(?:create|list|revoke|set-role|remove|mint)\b/);
+  }
+});
 
 test("actor guidance distinguishes advisory labels from backend-owned attribution", () => {
   assert.match(

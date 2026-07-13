@@ -131,6 +131,10 @@ Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPla
 - **The hosted multi-user deployment** exists (Cloudflare, enforced CAS, API keys,
   invites/roles) but is single-bundle and deliberately frozen in scope while the
   local-first product solidifies.
+  The default CLI exposes only the local/git product. Explicit wire-protocol access
+  (`serve` and bundle commands with `--remote`) remains available. Authenticated remotes
+  accept `AGENTSTATE_LITE_API_KEY` or an already-provisioned stored per-origin credential;
+  hosted identity and account administration stay off the surface.
 - **Wire protocol v0.1** is evolving. One recorded caveat: a document's raw bytes
   re-serialize to canonical form over the wire; blobs are the byte-exact channel.
 - **Filesystem CAS is best-effort across processes** (atomic within one). For multiple

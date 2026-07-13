@@ -28,12 +28,9 @@ import {
   type HomeRow,
   type UnreadableBundle,
 } from "../src/commands/home.js";
-import type { Credentials } from "../src/credentials.js";
 
 const INVOKE = "npx -y agentstate-lite";
 const BASE_DEPS = { binPath: () => "/bin/agentstate-lite", invocation: () => INVOKE };
-
-const LOGGED_OUT: Credentials | null = null;
 
 function row(id: string, timestamp: string): HomeRow {
   return { id, type: "Note", title: id.split("/").pop() ?? id, timestamp };
@@ -69,7 +66,7 @@ async function tempDir(): Promise<string> {
 test("A1.1 dashboard: bundle present, docs>0 — bundle block content", () => {
   const rows = [row("notes/a", "2026-07-02T00:00:00.000Z")];
   const summary = summaryWithDocs(rows);
-  const view = buildHomeView(LOGGED_OUT, BASE_DEPS, summary);
+  const view = buildHomeView(BASE_DEPS, summary);
   const bundle = view.bundle as Record<string, unknown>;
   assert.equal(bundle.root, "~/bundle");
   assert.equal(bundle.docs, 1);
@@ -82,18 +79,17 @@ test("A1.1 dashboard: bundle present, docs>0 — bundle block content", () => {
   assert.equal(view.getting_started, undefined);
 });
 
-test("A1.2 ordering: identity -> auth -> bundle -> commands (live content before the manual)", () => {
+test("A1.2 ordering: identity -> bundle -> commands (live content before the manual)", () => {
   const summary = summaryWithDocs([row("notes/a", "2026-07-02T00:00:00.000Z")]);
-  const view = buildHomeView(LOGGED_OUT, BASE_DEPS, summary);
+  const view = buildHomeView(BASE_DEPS, summary);
   const keys = Object.keys(view);
   assert.equal(keys[0], "agentstate-lite");
-  assert.equal(keys[1], "auth");
-  assert.ok(keys.indexOf("bundle") > keys.indexOf("auth"));
+  assert.equal(keys[1], "bundle");
   assert.ok(keys.indexOf("commands") > keys.indexOf("bundle"));
 });
 
 test("A1.3 no-bundle fallback: no bundle block, getting_started hint, commands present, resolves", async () => {
-  const view = buildHomeView(LOGGED_OUT, BASE_DEPS, null);
+  const view = buildHomeView(BASE_DEPS, null);
   assert.equal(view.bundle, undefined);
   assert.equal(typeof view.getting_started, "string");
   assert.match(view.getting_started as string, new RegExp(`${INVOKE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} init`));
@@ -102,7 +98,6 @@ test("A1.3 no-bundle fallback: no bundle block, getting_started hint, commands p
   // home() itself must resolve (never reject) with a null summarizer.
   let out = "";
   await home([], {
-    loadCreds: async () => null,
     binPath: () => "/bin/agentstate-lite",
     invocation: () => INVOKE,
     stdout: (s) => (out += s),
@@ -113,10 +108,10 @@ test("A1.3 no-bundle fallback: no bundle block, getting_started hint, commands p
 
 test("home --json is honored (renders valid JSON, not silently ignored TOON)", async () => {
   let toon = "";
-  await home([], { loadCreds: async () => null, binPath: () => "/bin/agentstate-lite", invocation: () => INVOKE, stdout: (s) => (toon += s), summarizeBundle: async () => null });
+  await home([], { binPath: () => "/bin/agentstate-lite", invocation: () => INVOKE, stdout: (s) => (toon += s), summarizeBundle: async () => null });
 
   let jsonOut = "";
-  await home(["--json"], { loadCreds: async () => null, binPath: () => "/bin/agentstate-lite", invocation: () => INVOKE, stdout: (s) => (jsonOut += s), summarizeBundle: async () => null });
+  await home(["--json"], { binPath: () => "/bin/agentstate-lite", invocation: () => INVOKE, stdout: (s) => (jsonOut += s), summarizeBundle: async () => null });
 
   // --json actually changes the format (was previously declared-but-ignored) and parses as JSON.
   assert.notEqual(jsonOut, toon);
@@ -125,7 +120,7 @@ test("home --json is honored (renders valid JSON, not silently ignored TOON)", a
 });
 
 test("A1.4 empty bundle (present, 0 docs): distinct from no-bundle", () => {
-  const view = buildHomeView(LOGGED_OUT, BASE_DEPS, EMPTY_BUNDLE);
+  const view = buildHomeView(BASE_DEPS, EMPTY_BUNDLE);
   const bundle = view.bundle as Record<string, unknown>;
   assert.equal(bundle.docs, 0);
   assert.equal(bundle.recent, undefined);
@@ -139,7 +134,6 @@ test("A1.5 bundle-read-error -> offline fallback, home() still resolves (never r
   let threw = false;
   try {
     await home([], {
-      loadCreds: async () => null,
       binPath: () => "/bin/agentstate-lite",
       invocation: () => INVOKE,
       stdout: (s) => (out += s),
@@ -209,7 +203,7 @@ test("A1.7 recent ordering + cap (REAL summarizeDocs): timestamp desc, missing l
     ["notes/newest", "notes/new", "notes/mid", "notes/extra", "notes/old"],
   );
   // …and buildHomeView renders that real summary faithfully.
-  const recent = (buildHomeView(LOGGED_OUT, BASE_DEPS, summary).bundle as Record<string, unknown>)
+  const recent = (buildHomeView(BASE_DEPS, summary).bundle as Record<string, unknown>)
     .recent as BundleSummary["recent"];
   assert.equal(recent.total, 7);
 });
@@ -226,67 +220,22 @@ test("A1.7b byType ordering (REAL summarizeDocs): count desc, then type asc", ()
   assert.deepEqual(Object.keys(summary.byType), ["Concept", "Design", "Note"]);
 });
 
-test("A1.8 auth is logged-out (no per-origin key for the scope) in both branches — with and without a bundle", () => {
-  // Without a --remote whose key is stored, home reports logged-out regardless of the bundle branch.
-  const withBundle = buildHomeView(LOGGED_OUT, BASE_DEPS, summaryWithDocs([row("a", "2026-07-02T00:00:00.000Z")]));
-  assert.equal((withBundle.auth as Record<string, unknown>).status, "logged-out");
+test("A1.8 home omits hosted credential identity while an explicit remote still orients bundle reads", () => {
+  const local = buildHomeView(BASE_DEPS, null);
+  assert.equal(local.auth, undefined);
+  assert.equal(local.remotes, undefined);
 
-  const withoutBundle = buildHomeView(LOGGED_OUT, BASE_DEPS, null);
-  assert.equal((withoutBundle.auth as Record<string, unknown>).status, "logged-out");
-});
-
-test("A1.8b logged-out auth help points at the real remote-onboarding path, NOT the dead `login --token` hint (cold-start study #1)", () => {
-  const help = (buildHomeView(LOGGED_OUT, BASE_DEPS, null).auth as Record<string, unknown>).help as string;
-  assert.doesNotMatch(help, /login --token/); // the old hint led cold agents to a dead placeholder endpoint
-  assert.match(help, /join --remote/); // the actual way to reach a shared remote
-});
-
-test("A1.8c home --remote with a stored per-origin key reports key-stored (offline), not the old misleading logged-out (cold-start study #2)", () => {
-  const withKey: Credentials = { remotes: { "https://ex.workers.dev": { api_key: "k" } } };
-  const auth = buildHomeView(withKey, BASE_DEPS, null, "https://ex.workers.dev", true).auth as Record<string, unknown>;
-  assert.equal(auth.status, "key-stored");
-  assert.match(auth.note as string, /whoami --remote/); // home is offline — point at the live-identity check
-  // No misreport the other way: with no stored key for the origin it still falls back to logged-out.
-  const noKey = buildHomeView(LOGGED_OUT, BASE_DEPS, null, "https://ex.workers.dev", false);
-  assert.equal((noKey.auth as Record<string, unknown>).status, "logged-out");
-});
-
-test("A1.8d bare home surfaces the remote origins you hold a stored key for — the no-URL discovery path (cold-start study r3)", () => {
-  const withRemotes: Credentials = {
-    remotes: { "https://ex.workers.dev": { api_key: "k" }, "https://staging.example": { api_key: "k2" } },
-  };
-  const view = buildHomeView(withRemotes, BASE_DEPS, null); // bare home, NOT scoped to a --remote
-  const remotes = view.remotes as Record<string, unknown>;
-  assert.deepEqual(remotes.stored, ["https://ex.workers.dev", "https://staging.example"]);
-  assert.match(remotes.help as string, /--remote/);
-  // Scoped to a specific --remote, the stored-list is omitted (that view has its own remote block).
-  const scoped = buildHomeView(withRemotes, BASE_DEPS, null, "https://ex.workers.dev", true);
-  assert.equal(scoped.remotes, undefined);
-});
-
-test("A1.9 hook-safety hardening: a throwing loadCreds still resolves with a fallback, never rejects", async () => {
-  let out = "";
-  let threw = false;
-  try {
-    await home([], {
-      loadCreds: async () => {
-        throw new Error("creds file unreadable");
-      },
-      binPath: () => "/bin/agentstate-lite",
-      invocation: () => INVOKE,
-      stdout: (s) => (out += s),
-      summarizeBundle: async () => null,
-    });
-  } catch {
-    threw = true;
-  }
-  assert.equal(threw, false);
-  assert.ok(out.length > 0);
+  const scoped = buildHomeView(BASE_DEPS, null, "https://ex.workers.dev");
+  assert.equal(scoped.auth, undefined);
+  assert.deepEqual((scoped.remote as Record<string, unknown>).help, [
+    `${INVOKE} list --remote https://ex.workers.dev`,
+    `${INVOKE} status --remote https://ex.workers.dev`,
+  ]);
 });
 
 test("A1.10 unreadable bundle (present but a doc failed to read): status:unreadable, NOT the init hint", () => {
   const unreadable: UnreadableBundle = { root: "~/bundle", unreadable: true };
-  const view = buildHomeView(LOGGED_OUT, BASE_DEPS, unreadable);
+  const view = buildHomeView(BASE_DEPS, unreadable);
   const bundle = view.bundle as Record<string, unknown>;
   assert.equal(bundle.root, "~/bundle");
   assert.equal(bundle.status, "unreadable");
@@ -311,7 +260,7 @@ test("A1.11 default summarizer distinguishes unreadable from no-bundle: a malfor
       let out = "";
       let threw = false;
       try {
-        await home([], { loadCreds: async () => null, stdout: (s) => (out += s) });
+        await home([], { stdout: (s) => (out += s) });
       } catch {
         threw = true;
       }
@@ -343,7 +292,7 @@ test("A1.12 project binding (directory-type, item 43 follow-on): home's dashboar
     try {
       process.chdir(projectDir);
       let out = "";
-      await home([], { loadCreds: async () => null, stdout: (s) => (out += s) });
+      await home([], { stdout: (s) => (out += s) });
       assert.ok(out.includes("notes/hello"), "the dashboard should reflect the BOUND directory, not the (bundle-less) project dir");
       assert.ok(out.includes(".agentstate.json"), "the bundle block should note which file drove resolution");
     } finally {
@@ -365,7 +314,7 @@ test("A1.13 project binding (URL-type, item 43 follow-on): home shows the offlin
     try {
       process.chdir(projectDir);
       let out = "";
-      await home([], { loadCreds: async () => null, stdout: (s) => (out += s) });
+      await home([], { stdout: (s) => (out += s) });
       assert.ok(out.includes("http://127.0.0.1:1"));
       assert.ok(out.includes(".agentstate.json"));
       assert.ok(!out.includes("getting_started"));
@@ -388,7 +337,7 @@ test("A1.14 malformed project binding: home NEVER throws (SessionStart hook safe
       let out = "";
       let threw = false;
       try {
-        await home([], { loadCreds: async () => null, stdout: (s) => (out += s) });
+        await home([], { stdout: (s) => (out += s) });
       } catch {
         threw = true;
       }
