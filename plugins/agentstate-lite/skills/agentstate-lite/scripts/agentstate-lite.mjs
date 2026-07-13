@@ -18,9 +18,9 @@ var __commonJS = (cb, mod) => function __require2() {
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
-    for (let key2 of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key2) && key2 !== except)
-        __defProp(to, key2, { get: () => from[key2], enumerable: !(desc = __getOwnPropDesc(from, key2)) || desc.enumerable });
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
   }
   return to;
 };
@@ -183,14 +183,14 @@ var require_extend_shallow = __commonJS({
       return o;
     };
     function assign(a, b) {
-      for (var key2 in b) {
-        if (hasOwn(b, key2)) {
-          a[key2] = b[key2];
+      for (var key in b) {
+        if (hasOwn(b, key)) {
+          a[key] = b[key];
         }
       }
     }
-    function hasOwn(obj, key2) {
-      return Object.prototype.hasOwnProperty.call(obj, key2);
+    function hasOwn(obj, key) {
+      return Object.prototype.hasOwnProperty.call(obj, key);
     }
   }
 });
@@ -318,12 +318,12 @@ var require_common = __commonJS({
       return [sequence];
     }
     function extend(target, source) {
-      var index, length, key2, sourceKeys;
+      var index, length, key, sourceKeys;
       if (source) {
         sourceKeys = Object.keys(source);
         for (index = 0, length = sourceKeys.length; index < length; index += 1) {
-          key2 = sourceKeys[index];
-          target[key2] = source[key2];
+          key = sourceKeys[index];
+          target[key] = source[key];
         }
       }
       return target;
@@ -1228,10 +1228,10 @@ var require_set = __commonJS({
     var _hasOwnProperty = Object.prototype.hasOwnProperty;
     function resolveYamlSet(data) {
       if (data === null) return true;
-      var key2, object = data;
-      for (key2 in object) {
-        if (_hasOwnProperty.call(object, key2)) {
-          if (object[key2] !== null) return false;
+      var key, object = data;
+      for (key in object) {
+        if (_hasOwnProperty.call(object, key)) {
+          if (object[key] !== null) return false;
         }
       }
       return true;
@@ -1492,16 +1492,16 @@ var require_loader = __commonJS({
         (c - 65536 & 1023) + 56320
       );
     }
-    function setProperty(object, key2, value) {
-      if (key2 === "__proto__") {
-        Object.defineProperty(object, key2, {
+    function setProperty(object, key, value) {
+      if (key === "__proto__") {
+        Object.defineProperty(object, key, {
           configurable: true,
           enumerable: true,
           writable: true,
           value
         });
       } else {
-        object[key2] = value;
+        object[key] = value;
       }
     }
     var simpleEscapeCheck = new Array(256);
@@ -1605,19 +1605,19 @@ var require_loader = __commonJS({
       }
     }
     function mergeMappings(state, destination, source, overridableKeys) {
-      var sourceKeys, key2, index, quantity;
+      var sourceKeys, key, index, quantity;
       if (!common.isObject(source)) {
         throwError(state, "cannot merge mappings; the provided source object is unacceptable");
       }
       sourceKeys = Object.keys(source);
       for (index = 0, quantity = sourceKeys.length; index < quantity; index += 1) {
-        key2 = sourceKeys[index];
+        key = sourceKeys[index];
         if (state.maxTotalMergeKeys !== -1 && ++state.totalMergeKeys > state.maxTotalMergeKeys) {
           throwError(state, "merge keys exceeded maxTotalMergeKeys (" + state.maxTotalMergeKeys + ")");
         }
-        if (!_hasOwnProperty.call(destination, key2)) {
-          setProperty(destination, key2, source[key2]);
-          overridableKeys[key2] = true;
+        if (!_hasOwnProperty.call(destination, key)) {
+          setProperty(destination, key, source[key]);
+          overridableKeys[key] = true;
         }
       }
     }
@@ -3187,8 +3187,8 @@ var require_utils = __commonJS({
     "use strict";
     var stripBom = require_strip_bom_string();
     var typeOf = require_kind_of();
-    exports2.define = function(obj, key2, val) {
-      Reflect.defineProperty(obj, key2, {
+    exports2.define = function(obj, key, val) {
+      Reflect.defineProperty(obj, key, {
         enumerable: false,
         configurable: true,
         writable: true,
@@ -3581,7 +3581,7 @@ function normalizeValue(value) {
   if (value instanceof Map) return Object.fromEntries(Array.from(value, ([k, v]) => [String(k), normalizeValue(v)]));
   if (isPlainObject(value)) {
     const encodedValues = {};
-    for (const key2 in value) if (Object.hasOwn(value, key2)) encodedValues[key2] = normalizeValue(value[key2]);
+    for (const key in value) if (Object.hasOwn(value, key)) encodedValues[key] = normalizeValue(value[key]);
     return encodedValues;
   }
   return null;
@@ -3614,11 +3614,11 @@ function isArrayOfObjects(value) {
 }
 var NUMERIC_LIKE_PATTERN = /^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i;
 var LEADING_ZERO_PATTERN = /^0\d+$/;
-function isValidUnquotedKey(key2) {
-  return /^[A-Z_][\w.]*$/i.test(key2);
+function isValidUnquotedKey(key) {
+  return /^[A-Z_][\w.]*$/i.test(key);
 }
-function isIdentifierSegment(key2) {
-  return /^[A-Z_]\w*$/i.test(key2);
+function isIdentifierSegment(key) {
+  return /^[A-Z_]\w*$/i.test(key);
 }
 function isSafeUnquoted(value, delimiter2 = DEFAULT_DELIMITER) {
   if (!value) return false;
@@ -3636,10 +3636,10 @@ function isNumericLike(value) {
   return NUMERIC_LIKE_PATTERN.test(value) || LEADING_ZERO_PATTERN.test(value);
 }
 var QUOTED_KEY_MARKER = Symbol("quotedKey");
-function tryFoldKeyChain(key2, value, siblings, options2, rootLiteralKeys, pathPrefix, flattenDepth) {
+function tryFoldKeyChain(key, value, siblings, options2, rootLiteralKeys, pathPrefix, flattenDepth) {
   if (options2.keyFolding !== "safe") return;
   if (!isJsonObject(value)) return;
-  const { segments, tail, leafValue } = collectSingleKeyChain(key2, value, flattenDepth ?? options2.flattenDepth);
+  const { segments, tail, leafValue } = collectSingleKeyChain(key, value, flattenDepth ?? options2.flattenDepth);
   if (segments.length < 2) return;
   if (!segments.every((seg) => isIdentifierSegment(seg))) return;
   const foldedKey = buildFoldedKey(segments);
@@ -3689,19 +3689,19 @@ function encodeStringLiteral(value, delimiter2 = DEFAULT_DELIMITER) {
   if (isSafeUnquoted(value, delimiter2)) return value;
   return `"${escapeString(value)}"`;
 }
-function encodeKey(key2) {
-  if (isValidUnquotedKey(key2)) return key2;
-  return `"${escapeString(key2)}"`;
+function encodeKey(key) {
+  if (isValidUnquotedKey(key)) return key;
+  return `"${escapeString(key)}"`;
 }
 function encodeAndJoinPrimitives(values, delimiter2 = DEFAULT_DELIMITER) {
   return values.map((v) => encodePrimitive(v, delimiter2)).join(delimiter2);
 }
 function formatHeader(length, options2) {
-  const key2 = options2?.key;
+  const key = options2?.key;
   const fields = options2?.fields;
   const delimiter2 = options2?.delimiter ?? ",";
   let header = "";
-  if (key2 != null) header += encodeKey(key2);
+  if (key != null) header += encodeKey(key);
   header += `[${length}${delimiter2 !== DEFAULT_DELIMITER ? delimiter2 : ""}]`;
   if (fields) {
     const quotedFields = fields.map((f) => encodeKey(f));
@@ -3723,13 +3723,13 @@ function* encodeObjectLines(value, depth, options2, rootLiteralKeys, pathPrefix,
   const keys = Object.keys(value);
   if (depth === 0 && !rootLiteralKeys) rootLiteralKeys = new Set(keys.filter((k) => k.includes(".")));
   const effectiveFlattenDepth = remainingDepth ?? options2.flattenDepth;
-  for (const [key2, val] of Object.entries(value)) yield* encodeKeyValuePairLines(key2, val, depth, options2, keys, rootLiteralKeys, pathPrefix, effectiveFlattenDepth);
+  for (const [key, val] of Object.entries(value)) yield* encodeKeyValuePairLines(key, val, depth, options2, keys, rootLiteralKeys, pathPrefix, effectiveFlattenDepth);
 }
-function* encodeKeyValuePairLines(key2, value, depth, options2, siblings, rootLiteralKeys, pathPrefix, flattenDepth) {
-  const currentPath = pathPrefix ? `${pathPrefix}.${key2}` : key2;
+function* encodeKeyValuePairLines(key, value, depth, options2, siblings, rootLiteralKeys, pathPrefix, flattenDepth) {
+  const currentPath = pathPrefix ? `${pathPrefix}.${key}` : key;
   const effectiveFlattenDepth = flattenDepth ?? options2.flattenDepth;
   if (options2.keyFolding === "safe" && siblings) {
-    const foldResult = tryFoldKeyChain(key2, value, siblings, options2, rootLiteralKeys, pathPrefix, effectiveFlattenDepth);
+    const foldResult = tryFoldKeyChain(key, value, siblings, options2, rootLiteralKeys, pathPrefix, effectiveFlattenDepth);
     if (foldResult) {
       const { foldedKey, remainder, leafValue, segmentCount } = foldResult;
       const encodedFoldedKey = encodeKey(foldedKey);
@@ -3754,36 +3754,36 @@ function* encodeKeyValuePairLines(key2, value, depth, options2, siblings, rootLi
       }
     }
   }
-  const encodedKey = encodeKey(key2);
+  const encodedKey = encodeKey(key);
   if (isJsonPrimitive(value)) yield indentedLine(depth, `${encodedKey}: ${encodePrimitive(value, options2.delimiter)}`, options2.indent);
-  else if (isJsonArray(value)) yield* encodeArrayLines(key2, value, depth, options2);
+  else if (isJsonArray(value)) yield* encodeArrayLines(key, value, depth, options2);
   else if (isJsonObject(value)) {
     yield indentedLine(depth, `${encodedKey}:`, options2.indent);
     if (!isEmptyObject(value)) yield* encodeObjectLines(value, depth + 1, options2, rootLiteralKeys, currentPath, effectiveFlattenDepth);
   }
 }
-function* encodeArrayLines(key2, value, depth, options2) {
+function* encodeArrayLines(key, value, depth, options2) {
   if (value.length === 0) {
-    yield indentedLine(depth, key2 != null ? `${encodeKey(key2)}: []` : "[]", options2.indent);
+    yield indentedLine(depth, key != null ? `${encodeKey(key)}: []` : "[]", options2.indent);
     return;
   }
   if (isArrayOfPrimitives(value)) {
-    yield indentedLine(depth, encodeInlineArrayLine(value, options2.delimiter, key2), options2.indent);
+    yield indentedLine(depth, encodeInlineArrayLine(value, options2.delimiter, key), options2.indent);
     return;
   }
   if (isArrayOfArrays(value)) {
     if (value.every((arr) => isArrayOfPrimitives(arr))) {
-      yield* encodeArrayOfArraysAsListItemsLines(key2, value, depth, options2);
+      yield* encodeArrayOfArraysAsListItemsLines(key, value, depth, options2);
       return;
     }
   }
   if (isArrayOfObjects(value)) {
     const header = extractTabularHeader(value);
-    if (header) yield* encodeArrayOfObjectsAsTabularLines(key2, value, header, depth, options2);
-    else yield* encodeMixedArrayAsListItemsLines(key2, value, depth, options2);
+    if (header) yield* encodeArrayOfObjectsAsTabularLines(key, value, header, depth, options2);
+    else yield* encodeMixedArrayAsListItemsLines(key, value, depth, options2);
     return;
   }
-  yield* encodeMixedArrayAsListItemsLines(key2, value, depth, options2);
+  yield* encodeMixedArrayAsListItemsLines(key, value, depth, options2);
 }
 function* encodeArrayOfArraysAsListItemsLines(prefix, values, depth, options2) {
   yield indentedLine(depth, formatHeader(values.length, {
@@ -3822,15 +3822,15 @@ function extractTabularHeader(rows) {
 function isTabularArray(rows, header) {
   for (const row of rows) {
     if (Object.keys(row).length !== header.length) return false;
-    for (const key2 of header) {
-      if (!(key2 in row)) return false;
-      if (!isJsonPrimitive(row[key2])) return false;
+    for (const key of header) {
+      if (!(key in row)) return false;
+      if (!isJsonPrimitive(row[key])) return false;
     }
   }
   return true;
 }
 function* writeTabularRowsLines(rows, header, depth, options2) {
-  for (const row of rows) yield indentedLine(depth, encodeAndJoinPrimitives(header.map((key2) => row[key2]), options2.delimiter), options2.indent);
+  for (const row of rows) yield indentedLine(depth, encodeAndJoinPrimitives(header.map((key) => row[key]), options2.delimiter), options2.indent);
 }
 function* encodeMixedArrayAsListItemsLines(prefix, items, depth, options2) {
   yield indentedLine(depth, formatHeader(items.length, {
@@ -3901,11 +3901,11 @@ function transformChildren(value, replacer, path14) {
 }
 function transformObject(obj, replacer, path14) {
   const result = {};
-  for (const [key2, value] of Object.entries(obj)) {
-    const childPath = [...path14, key2];
-    const replacedValue = replacer(key2, value, childPath);
+  for (const [key, value] of Object.entries(obj)) {
+    const childPath = [...path14, key];
+    const replacedValue = replacer(key, value, childPath);
     if (replacedValue === void 0) continue;
-    result[key2] = transformChildren(normalizeValue(replacedValue), replacer, childPath);
+    result[key] = transformChildren(normalizeValue(replacedValue), replacer, childPath);
   }
   return result;
 }
@@ -4789,11 +4789,11 @@ import { randomUUID } from "node:crypto";
 var import_gray_matter = __toESM(require_gray_matter(), 1);
 function normalizeFrontmatter(data) {
   const out = { ...data };
-  for (const [key2, value] of Object.entries(out)) {
+  for (const [key, value] of Object.entries(out)) {
     if (value instanceof Date) {
-      out[key2] = value.toISOString();
-    } else if (key2 === "timestamp" && typeof value === "number" && Number.isFinite(value)) {
-      out[key2] = new Date(value).toISOString();
+      out[key] = value.toISOString();
+    } else if (key === "timestamp" && typeof value === "number" && Number.isFinite(value)) {
+      out[key] = new Date(value).toISOString();
     }
   }
   return out;
@@ -4885,9 +4885,9 @@ function inferContentTypeFromDocKey(docKey) {
   return EXTENSION_CONTENT_TYPES[ext];
 }
 var DEFAULT_BLOB_CONTENT_TYPE = "application/octet-stream";
-function resolveContentType(key2, override) {
+function resolveContentType(key, override) {
   if (typeof override === "string" && override.trim() !== "") return override;
-  return inferContentTypeFromDocKey(key2) ?? DEFAULT_BLOB_CONTENT_TYPE;
+  return inferContentTypeFromDocKey(key) ?? DEFAULT_BLOB_CONTENT_TYPE;
 }
 
 // ../core/src/paths.ts
@@ -4919,28 +4919,28 @@ function assertSafeConceptId(id) {
     throw new Error(`Concept id must not contain '..' segments: '${id}'.`);
   }
 }
-function assertSafeBlobKey(key2) {
-  if (typeof key2 !== "string" || key2.trim() === "") {
+function assertSafeBlobKey(key) {
+  if (typeof key !== "string" || key.trim() === "") {
     throw new Error("Blob key must be a non-empty string.");
   }
-  const norm = toPosix(key2);
+  const norm = toPosix(key);
   if (norm.startsWith("/")) {
-    throw new Error(`Blob key must be bundle-relative, got absolute '${key2}'.`);
+    throw new Error(`Blob key must be bundle-relative, got absolute '${key}'.`);
   }
   const segments = norm.split("/");
   if (segments.some((seg) => seg === "..")) {
-    throw new Error(`Blob key must not contain '..' segments: '${key2}'.`);
+    throw new Error(`Blob key must not contain '..' segments: '${key}'.`);
   }
   if (segments.some((seg) => seg.startsWith("."))) {
-    throw new Error(`Blob key must not contain dot-prefixed segments: '${key2}'.`);
+    throw new Error(`Blob key must not contain dot-prefixed segments: '${key}'.`);
   }
   const last = segments[segments.length - 1] ?? "";
   if (last === "") {
-    throw new Error(`Blob key must name a file, not end with '/': '${key2}'.`);
+    throw new Error(`Blob key must name a file, not end with '/': '${key}'.`);
   }
   if (segments.some((seg) => seg.toLowerCase().endsWith(".md"))) {
     throw new Error(
-      `Blob key '${key2}' has a path segment ending in '.md' (checked case-insensitively, at any depth), which collides with the concept-document namespace \u2014 write it as a doc instead.`
+      `Blob key '${key}' has a path segment ending in '.md' (checked case-insensitively, at any depth), which collides with the concept-document namespace \u2014 write it as a doc instead.`
     );
   }
 }
@@ -5126,17 +5126,17 @@ var FilesystemBackend = class _FilesystemBackend {
    * it drains and no newer waiter has replaced it, so a long-lived `serve` process
    * does not accumulate one `Map` entry per ever-written file.
    */
-  withLock(key2, fn) {
+  withLock(key, fn) {
     const locks = _FilesystemBackend.locks;
-    const tail = locks.get(key2) ?? Promise.resolve();
+    const tail = locks.get(key) ?? Promise.resolve();
     const run = tail.then(fn, fn);
     const settled = run.then(
       () => void 0,
       () => void 0
     );
-    locks.set(key2, settled);
+    locks.set(key, settled);
     void settled.then(() => {
-      if (locks.get(key2) === settled) locks.delete(key2);
+      if (locks.get(key) === settled) locks.delete(key);
     });
     return run;
   }
@@ -5268,47 +5268,47 @@ var FilesystemBackend = class _FilesystemBackend {
       throw err;
     }
   }
-  async readBlob(key2) {
-    assertSafeBlobKey(key2);
+  async readBlob(key) {
+    assertSafeBlobKey(key);
     let bytes;
     try {
-      bytes = await fs.readFile(this.abs(key2));
+      bytes = await fs.readFile(this.abs(key));
     } catch (err) {
       if (isAbsentFileError(err)) return null;
       throw err;
     }
-    return { bytes, contentType: resolveContentType(key2), version: blobVersion(bytes) };
+    return { bytes, contentType: resolveContentType(key), version: blobVersion(bytes) };
   }
-  async writeBlob(key2, bytes, _contentType, options2 = {}) {
-    assertSafeBlobKey(key2);
-    const target = this.abs(key2);
+  async writeBlob(key, bytes, _contentType, options2 = {}) {
+    assertSafeBlobKey(key);
+    const target = this.abs(key);
     return this.withLock(target, async () => {
       if (options2.expectedVersion !== void 0) {
         const current = await this.currentBlobVersionAt(target);
         if (current !== options2.expectedVersion) {
-          throw new VersionConflict(key2, options2.expectedVersion, current);
+          throw new VersionConflict(key, options2.expectedVersion, current);
         }
       }
       await atomicWrite(target, bytes);
       return blobVersion(bytes);
     });
   }
-  async deleteBlob(key2, options2 = {}) {
-    assertSafeBlobKey(key2);
-    const target = this.abs(key2);
+  async deleteBlob(key, options2 = {}) {
+    assertSafeBlobKey(key);
+    const target = this.abs(key);
     return this.withLock(target, async () => {
       const current = await this.currentBlobVersionAt(target);
       if (current === null) return false;
       if (options2.expectedVersion !== void 0 && current !== options2.expectedVersion) {
-        throw new VersionConflict(key2, options2.expectedVersion, current);
+        throw new VersionConflict(key, options2.expectedVersion, current);
       }
       await fs.unlink(target);
       return true;
     });
   }
-  async existsBlob(key2) {
-    assertSafeBlobKey(key2);
-    return pathIsFile(this.abs(key2));
+  async existsBlob(key) {
+    assertSafeBlobKey(key);
+    return pathIsFile(this.abs(key));
   }
   async listBlobs(prefix) {
     const keys = await walkBlobs(this.root);
@@ -5566,17 +5566,17 @@ async function backlinks(bundle, target) {
   if (target.endsWith("/")) return [];
   return queryEdges(bundle, { to: target });
 }
-async function readBlob(bundle, key2) {
-  return backendFor(bundle).readBlob(key2);
+async function readBlob(bundle, key) {
+  return backendFor(bundle).readBlob(key);
 }
-async function writeBlob(bundle, key2, bytes, contentType, options2) {
-  return backendFor(bundle).writeBlob(key2, bytes, contentType, options2);
+async function writeBlob(bundle, key, bytes, contentType, options2) {
+  return backendFor(bundle).writeBlob(key, bytes, contentType, options2);
 }
 async function listBlobs(bundle, prefix) {
   return backendFor(bundle).listBlobs(prefix);
 }
-async function deleteBlob(bundle, key2, options2) {
-  return backendFor(bundle).deleteBlob(key2, options2);
+async function deleteBlob(bundle, key, options2) {
+  return backendFor(bundle).deleteBlob(key, options2);
 }
 
 // ../core/src/freshness.ts
@@ -5706,51 +5706,51 @@ var MemoryBackend = class {
   }
   async writeReserved(dir, name, content, options2 = {}) {
     assertSafeReservedDir(dir);
-    const key2 = reservedKey(dir, name);
-    const existing = this.reserved.get(key2);
+    const key = reservedKey(dir, name);
+    const existing = this.reserved.get(key);
     const current = existing === void 0 ? null : versionOfBytes(existing);
     if (options2.expectedVersion !== void 0 && options2.expectedVersion !== current) {
-      throw new VersionConflict(key2, options2.expectedVersion, current);
+      throw new VersionConflict(key, options2.expectedVersion, current);
     }
-    this.reserved.set(key2, content);
+    this.reserved.set(key, content);
     return versionOfBytes(content);
   }
   // ── blobs: opaque bytes + a content-type ──────────────────────────────────
-  async readBlob(key2) {
-    assertSafeBlobKey(key2);
-    const entry = this.blobs.get(key2);
+  async readBlob(key) {
+    assertSafeBlobKey(key);
+    const entry = this.blobs.get(key);
     if (!entry) return null;
     return { bytes: new Uint8Array(entry.bytes), contentType: entry.contentType, version: entry.version };
   }
-  async writeBlob(key2, bytes, contentType, options2 = {}) {
-    assertSafeBlobKey(key2);
-    const existing = this.blobs.get(key2);
+  async writeBlob(key, bytes, contentType, options2 = {}) {
+    assertSafeBlobKey(key);
+    const existing = this.blobs.get(key);
     const current = existing?.version ?? null;
     if (options2.expectedVersion !== void 0 && options2.expectedVersion !== current) {
-      throw new VersionConflict(key2, options2.expectedVersion, current);
+      throw new VersionConflict(key, options2.expectedVersion, current);
     }
     const version = blobVersion(bytes);
-    const resolvedType = resolveContentType(key2, contentType);
+    const resolvedType = resolveContentType(key, contentType);
     if (existing && existing.version === version && existing.contentType === resolvedType) {
       return version;
     }
-    this.blobs.set(key2, { bytes: new Uint8Array(bytes), contentType: resolvedType, version });
+    this.blobs.set(key, { bytes: new Uint8Array(bytes), contentType: resolvedType, version });
     return version;
   }
-  async deleteBlob(key2, options2 = {}) {
-    assertSafeBlobKey(key2);
-    const existing = this.blobs.get(key2);
+  async deleteBlob(key, options2 = {}) {
+    assertSafeBlobKey(key);
+    const existing = this.blobs.get(key);
     const current = existing?.version ?? null;
     if (current === null) return false;
     if (options2.expectedVersion !== void 0 && current !== options2.expectedVersion) {
-      throw new VersionConflict(key2, options2.expectedVersion, current);
+      throw new VersionConflict(key, options2.expectedVersion, current);
     }
-    this.blobs.delete(key2);
+    this.blobs.delete(key);
     return true;
   }
-  async existsBlob(key2) {
-    assertSafeBlobKey(key2);
-    return this.blobs.has(key2);
+  async existsBlob(key) {
+    assertSafeBlobKey(key);
+    return this.blobs.has(key);
   }
   async listBlobs(prefix) {
     const keys = [...this.blobs.keys()].filter((k) => !prefix || k.startsWith(prefix));
@@ -5809,8 +5809,8 @@ function delay(ms) {
 function encodeId(id) {
   return id.split("/").map((seg) => encodeURIComponent(seg)).join("/");
 }
-function encodeBlobKey(key2) {
-  return key2.split("/").map((seg) => encodeURIComponent(seg)).join("/");
+function encodeBlobKey(key) {
+  return key.split("/").map((seg) => encodeURIComponent(seg)).join("/");
 }
 var RemoteBackend = class {
   baseUrl;
@@ -6031,45 +6031,45 @@ var RemoteBackend = class {
   // No `Buffer` anywhere in this module, so it stays CF-Worker-clean end to end.
   // Content-type rides `Content-Type`; the version rides `X-Version`/`ETag` (extractVersion),
   // exactly like docs.
-  async readBlob(key2) {
-    const res = await this.send(`/blobs/${encodeBlobKey(key2)}`, { method: "GET" });
+  async readBlob(key) {
+    const res = await this.send(`/blobs/${encodeBlobKey(key)}`, { method: "GET" });
     if (res.status === 404) return null;
-    if (!res.ok) throw await this.toError(res, key2);
-    const version = extractVersion(res, `GET /blobs/${key2}`);
+    if (!res.ok) throw await this.toError(res, key);
+    const version = extractVersion(res, `GET /blobs/${key}`);
     const contentType = res.headers.get("content-type") ?? DEFAULT_BLOB_CONTENT_TYPE;
     const bytes = new Uint8Array(await res.arrayBuffer());
     return { bytes, contentType, version };
   }
-  async writeBlob(key2, bytes, contentType, options2 = {}) {
+  async writeBlob(key, bytes, contentType, options2 = {}) {
     assertValidExpectedVersion(options2.expectedVersion);
     const headers = {};
     if (contentType) headers["content-type"] = contentType;
     if (options2.expectedVersion === null) headers["If-None-Match"] = "*";
     else if (options2.expectedVersion !== void 0) headers["If-Match"] = options2.expectedVersion;
     if (options2.actor) headers["X-Actor"] = options2.actor;
-    const res = await this.send(`/blobs/${encodeBlobKey(key2)}`, {
+    const res = await this.send(`/blobs/${encodeBlobKey(key)}`, {
       method: "PUT",
       headers,
       body: bytes
     });
-    if (!res.ok) throw await this.toError(res, key2);
+    if (!res.ok) throw await this.toError(res, key);
     const payload = await res.json();
     return payload.version;
   }
   /** `DELETE /blobs/{key}`, mirroring `delete`'s `If-Match`/no-404/no-actor posture exactly. */
-  async deleteBlob(key2, options2 = {}) {
+  async deleteBlob(key, options2 = {}) {
     assertValidExpectedVersion(options2.expectedVersion);
     const headers = {};
     if (options2.expectedVersion !== void 0) headers["If-Match"] = options2.expectedVersion;
-    const res = await this.send(`/blobs/${encodeBlobKey(key2)}`, { method: "DELETE", headers });
-    if (!res.ok) throw await this.toError(res, key2);
+    const res = await this.send(`/blobs/${encodeBlobKey(key)}`, { method: "DELETE", headers });
+    if (!res.ok) throw await this.toError(res, key);
     const payload = await res.json();
     return payload.deleted;
   }
-  async existsBlob(key2) {
-    const res = await this.send(`/blobs/${encodeBlobKey(key2)}`, { method: "HEAD" });
+  async existsBlob(key) {
+    const res = await this.send(`/blobs/${encodeBlobKey(key)}`, { method: "HEAD" });
     if (res.status === 404) return false;
-    if (!res.ok) throw await this.toError(res, key2);
+    if (!res.ok) throw await this.toError(res, key);
     return true;
   }
   async listBlobs(prefix) {
@@ -6156,12 +6156,12 @@ function parseConventionDoc(doc2) {
     return { ok: false, reason: "missing or empty 'governs' field", warnings: [] };
   }
   const warnings = [];
-  for (const key2 of MISPLACED_TOP_LEVEL_KEYS) {
-    if (key2 in fm) {
+  for (const key of MISPLACED_TOP_LEVEL_KEYS) {
+    if (key in fm) {
       warnings.push({
         code: "KIND_CONVENTION_MISPLACED_KEY",
-        message: `kind convention '${doc2.id}' declares a top-level '${key2}' key, which core does not read; enum constraints go under 'fields.values.<field>: [...]', not '${key2}'.`,
-        field: key2,
+        message: `kind convention '${doc2.id}' declares a top-level '${key}' key, which core does not read; enum constraints go under 'fields.values.<field>: [...]', not '${key}'.`,
+        field: key,
         severity: "warning"
       });
     }
@@ -6178,12 +6178,12 @@ function parseConventionDoc(doc2) {
     });
   } else {
     fieldsRaw = fieldsSource;
-    for (const key2 of Object.keys(fieldsRaw)) {
-      if (!VALID_FIELDS_KEYS.has(key2)) {
+    for (const key of Object.keys(fieldsRaw)) {
+      if (!VALID_FIELDS_KEYS.has(key)) {
         warnings.push({
           code: "KIND_CONVENTION_UNKNOWN_FIELDS_KEY",
-          message: `kind convention '${doc2.id}' declares an unrecognized key 'fields.${key2}' (valid keys: fields.required, fields.optional, fields.values, fields.terminal, fields.descriptions); ignoring it.`,
-          field: `fields.${key2}`,
+          message: `kind convention '${doc2.id}' declares an unrecognized key 'fields.${key}' (valid keys: fields.required, fields.optional, fields.values, fields.terminal, fields.descriptions); ignoring it.`,
+          field: `fields.${key}`,
           severity: "warning"
         });
       }
@@ -6555,75 +6555,9 @@ async function loadKinds(bundle) {
   return { kinds: kinds2, warnings };
 }
 
-// ../core/src/auth-wire.ts
-var ROLES = ["admin", "writer", "reader"];
-function isRole(value) {
-  return ROLES.includes(value);
-}
-
 // src/bundle.ts
 import { promises as fs2 } from "node:fs";
 import path4 from "node:path";
-
-// src/invocation.ts
-import { fileURLToPath } from "node:url";
-import { realpathSync as realpathSync2 } from "node:fs";
-import { delimiter, join as join2 } from "node:path";
-import { homedir as homedir2 } from "node:os";
-var PACKAGE_NAME = "agentstate-lite";
-var BIN_NAMES = ["agentstate-lite", "aslite"];
-function collapseHomeDirectory2(p) {
-  const home2 = homedir2();
-  if (home2 && (p === home2 || p.startsWith(home2 + "/"))) {
-    return "~" + p.slice(home2.length);
-  }
-  return p;
-}
-function realOrUndefined(p) {
-  try {
-    return realpathSync2(p);
-  } catch {
-    return void 0;
-  }
-}
-function currentExecutableRealPath() {
-  const fromModule = realOrUndefined(fileURLToPath(import.meta.url));
-  if (fromModule) return fromModule;
-  const argv1 = process.argv[1];
-  return argv1 ? realOrUndefined(argv1) : void 0;
-}
-function binNameOnPath() {
-  const exe = currentExecutableRealPath();
-  if (!exe) return void 0;
-  const dirs = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
-  for (const name of BIN_NAMES) {
-    for (const dir of dirs) {
-      const resolved = realOrUndefined(join2(dir, name));
-      if (resolved && resolved === exe) return name;
-    }
-  }
-  return void 0;
-}
-function isSkillBundlePath(exe) {
-  const parts = exe.split("/");
-  const base = parts[parts.length - 1];
-  const parentDir = parts[parts.length - 2];
-  return base === "agentstate-lite.mjs" && parentDir === "scripts";
-}
-function cliInvocation() {
-  const onPath = binNameOnPath();
-  if (onPath) return onPath;
-  const exe = currentExecutableRealPath();
-  if (exe && isSkillBundlePath(exe)) return collapseHomeDirectory2(exe);
-  return `npx -y ${PACKAGE_NAME}`;
-}
-function binPath() {
-  const exe = currentExecutableRealPath();
-  return exe ? collapseHomeDirectory2(exe) : PACKAGE_NAME;
-}
-function hookCommand() {
-  return binNameOnPath() ?? currentExecutableRealPath() ?? PACKAGE_NAME;
-}
 
 // src/errors.ts
 var EXIT = {
@@ -6688,7 +6622,7 @@ function classifyBundleError(err, remoteUrl) {
   if (err instanceof RemoteError) {
     if (err.code === "AUTH_REQUIRED") {
       return new CliError("AUTH_REQUIRED", err.message, {
-        help: `${cliInvocation()} login --remote ${remoteUrl ?? "<url>"} --api-key <key>`
+        help: `set AGENTSTATE_LITE_API_KEY=<key> and retry the same command against --remote ${remoteUrl ?? "<url>"}; an already-provisioned stored per-origin credential is also accepted`
       });
     }
     if (err.code === "RUNTIME" || err.code === "VERSION_MISSING") {
@@ -6792,6 +6726,66 @@ function asHandled(err) {
   return new CliError("RUNTIME", message, { handled: true });
 }
 
+// src/invocation.ts
+import { fileURLToPath } from "node:url";
+import { realpathSync as realpathSync2 } from "node:fs";
+import { delimiter, join as join2 } from "node:path";
+import { homedir as homedir2 } from "node:os";
+var PACKAGE_NAME = "agentstate-lite";
+var BIN_NAMES = ["agentstate-lite", "aslite"];
+function collapseHomeDirectory2(p) {
+  const home2 = homedir2();
+  if (home2 && (p === home2 || p.startsWith(home2 + "/"))) {
+    return "~" + p.slice(home2.length);
+  }
+  return p;
+}
+function realOrUndefined(p) {
+  try {
+    return realpathSync2(p);
+  } catch {
+    return void 0;
+  }
+}
+function currentExecutableRealPath() {
+  const fromModule = realOrUndefined(fileURLToPath(import.meta.url));
+  if (fromModule) return fromModule;
+  const argv1 = process.argv[1];
+  return argv1 ? realOrUndefined(argv1) : void 0;
+}
+function binNameOnPath() {
+  const exe = currentExecutableRealPath();
+  if (!exe) return void 0;
+  const dirs = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+  for (const name of BIN_NAMES) {
+    for (const dir of dirs) {
+      const resolved = realOrUndefined(join2(dir, name));
+      if (resolved && resolved === exe) return name;
+    }
+  }
+  return void 0;
+}
+function isSkillBundlePath(exe) {
+  const parts = exe.split("/");
+  const base = parts[parts.length - 1];
+  const parentDir = parts[parts.length - 2];
+  return base === "agentstate-lite.mjs" && parentDir === "scripts";
+}
+function cliInvocation() {
+  const onPath = binNameOnPath();
+  if (onPath) return onPath;
+  const exe = currentExecutableRealPath();
+  if (exe && isSkillBundlePath(exe)) return collapseHomeDirectory2(exe);
+  return `npx -y ${PACKAGE_NAME}`;
+}
+function binPath() {
+  const exe = currentExecutableRealPath();
+  return exe ? collapseHomeDirectory2(exe) : PACKAGE_NAME;
+}
+function hookCommand() {
+  return binNameOnPath() ?? currentExecutableRealPath() ?? PACKAGE_NAME;
+}
+
 // src/config.ts
 function normalizeServer(raw) {
   let url;
@@ -6842,13 +6836,6 @@ async function writeFileAtomic0600(dir, fileName, content) {
     throw err;
   }
 }
-async function saveCredentials(creds, home2 = homedir3()) {
-  await writeFileAtomic0600(
-    credentialsDir(home2),
-    CRED_FILE_NAME,
-    JSON.stringify(creds, null, 2) + "\n"
-  );
-}
 async function loadCredentials(home2 = homedir3()) {
   let raw;
   try {
@@ -6873,16 +6860,8 @@ function isNonEmptyString(v) {
 }
 async function getApiKeyForOrigin(origin, home2 = homedir3()) {
   const creds = await loadCredentials(home2);
-  const key2 = creds?.remotes?.[origin]?.api_key;
-  return isNonEmptyString(key2) ? key2 : void 0;
-}
-async function saveApiKeyForOrigin(origin, apiKey, home2 = homedir3()) {
-  const existing = await loadCredentials(home2) ?? {};
-  const next = {
-    ...existing,
-    remotes: { ...existing.remotes ?? {}, [origin]: { api_key: apiKey } }
-  };
-  await saveCredentials(next, home2);
+  const key = creds?.remotes?.[origin]?.api_key;
+  return isNonEmptyString(key) ? key : void 0;
 }
 
 // src/bundle.ts
@@ -7278,12 +7257,12 @@ function parseRecipeFiles(files, source) {
     };
   }
   const warnings = [];
-  for (const key2 of RESERVED_MANIFEST_KEYS) {
-    if (key2 in manifest) {
+  for (const key of RESERVED_MANIFEST_KEYS) {
+    if (key in manifest) {
       warnings.push({
         code: "RECIPE_MANIFEST_RESERVED_KEY",
-        message: `recipe '${id}' declares '${key2}:' in recipe.md, which this version does not apply (reserved for a future composition surface) \u2014 it is declared but NOT applied, not silently ignored.`,
-        field: key2,
+        message: `recipe '${id}' declares '${key}:' in recipe.md, which this version does not apply (reserved for a future composition surface) \u2014 it is declared but NOT applied, not silently ignored.`,
+        field: key,
         severity: "warning"
       });
     }
@@ -9187,14 +9166,14 @@ ${resolve(src.root)}`;
 function syncStateDir(home2 = homedir4()) {
   return join4(credentialsDir(home2), SYNC_STATE_DIR_NAME);
 }
-function keyDigest(key2) {
-  return createHash2("sha256").update(key2, "utf8").digest("hex").slice(0, 32);
+function keyDigest(key) {
+  return createHash2("sha256").update(key, "utf8").digest("hex").slice(0, 32);
 }
-function syncStatePath(key2, home2 = homedir4()) {
-  return join4(syncStateDir(home2), `${keyDigest(key2)}.json`);
+function syncStatePath(key, home2 = homedir4()) {
+  return join4(syncStateDir(home2), `${keyDigest(key)}.json`);
 }
-function syncExportsDir(key2, home2 = homedir4()) {
-  return join4(syncStateDir(home2), "exports", keyDigest(key2));
+function syncExportsDir(key, home2 = homedir4()) {
+  return join4(syncStateDir(home2), "exports", keyDigest(key));
 }
 var SELF_ACTORS_CAP = 64;
 var EMPTY_STATE = {
@@ -9253,10 +9232,10 @@ function asSelfActors(v) {
   if (!v.every((a) => typeof a === "string" && a.length > 0)) return null;
   return [...v];
 }
-async function readSyncState(key2, home2 = homedir4()) {
+async function readSyncState(key, home2 = homedir4()) {
   let raw;
   try {
-    raw = await readFile2(syncStatePath(key2, home2), "utf8");
+    raw = await readFile2(syncStatePath(key, home2), "utf8");
   } catch {
     return { ...EMPTY_STATE };
   }
@@ -9267,7 +9246,7 @@ async function readSyncState(key2, home2 = homedir4()) {
     return { ...EMPTY_STATE };
   }
   if (!isRecord(parsed)) return { ...EMPTY_STATE };
-  if (parsed.key !== key2) return { ...EMPTY_STATE };
+  if (parsed.key !== key) return { ...EMPTY_STATE };
   return {
     cursor: asCursor(parsed.cursor),
     cache: asCache(parsed.cache),
@@ -9277,17 +9256,17 @@ async function readSyncState(key2, home2 = homedir4()) {
     hookHintedAt: isTimestamp(parsed.hookHintedAt) ? parsed.hookHintedAt : null
   };
 }
-async function readCursor(key2, home2 = homedir4()) {
-  return (await readSyncState(key2, home2)).cursor;
+async function readCursor(key, home2 = homedir4()) {
+  return (await readSyncState(key, home2)).cursor;
 }
-async function writeSyncState(key2, patch, home2 = homedir4()) {
-  const next = { ...await readSyncState(key2, home2), ...patch };
+async function writeSyncState(key, patch, home2 = homedir4()) {
+  const next = { ...await readSyncState(key, home2), ...patch };
   const parent = credentialsDir(home2);
   await mkdir2(parent, { recursive: true, mode: DIR_MODE2 });
   await chmod2(parent, DIR_MODE2);
-  const path14 = syncStatePath(key2, home2);
+  const path14 = syncStatePath(key, home2);
   const record = {
-    key: key2,
+    key,
     cursor: next.cursor ?? void 0,
     cache: next.cache ?? void 0,
     marker: next.marker ?? void 0,
@@ -9298,28 +9277,28 @@ async function writeSyncState(key2, patch, home2 = homedir4()) {
   await writeFileAtomic0600(syncStateDir(home2), basename3(path14), JSON.stringify(record, null, 2) + "\n");
   return next;
 }
-async function writeCursor(key2, cursor, home2 = homedir4()) {
+async function writeCursor(key, cursor, home2 = homedir4()) {
   if (asCursor(cursor) === null) {
     throw new TypeError("cursor must be { tier: non-empty string, token: non-empty string | finite number }");
   }
-  await writeSyncState(key2, { cursor }, home2);
+  await writeSyncState(key, { cursor }, home2);
 }
-async function writeCache(key2, cache, home2 = homedir4()) {
+async function writeCache(key, cache, home2 = homedir4()) {
   if (asCache(cache) === null) {
     throw new TypeError(
       "cache must carry { updatedAt: ISO timestamp, delta: AwarenessDeltaRow[], unpushedCount, uncommittedCount }"
     );
   }
-  await writeSyncState(key2, { cache }, home2);
+  await writeSyncState(key, { cache }, home2);
 }
-async function refreshMarker(key2, home2 = homedir4(), now = () => /* @__PURE__ */ new Date()) {
-  const current = (await readSyncState(key2, home2)).marker;
+async function refreshMarker(key, home2 = homedir4(), now = () => /* @__PURE__ */ new Date()) {
+  const current = (await readSyncState(key, home2)).marker;
   const marker = { ...current ?? {}, updatedAt: now().toISOString() };
-  await writeSyncState(key2, { marker }, home2);
+  await writeSyncState(key, { marker }, home2);
   return marker;
 }
-async function recordSelfActors(key2, actors, home2 = homedir4()) {
-  const current = (await readSyncState(key2, home2)).selfActors ?? [];
+async function recordSelfActors(key, actors, home2 = homedir4()) {
+  const current = (await readSyncState(key, home2)).selfActors ?? [];
   const merged = [...current];
   for (const a of actors) {
     if (typeof a !== "string" || a.length === 0 || a === "unknown") continue;
@@ -9329,10 +9308,10 @@ async function recordSelfActors(key2, actors, home2 = homedir4()) {
   if (capped.length === current.length && capped.every((a, i) => a === current[i])) {
     return current;
   }
-  await writeSyncState(key2, { selfActors: capped }, home2);
+  await writeSyncState(key, { selfActors: capped }, home2);
   return capped;
 }
-async function recordReanchor(key2, cursor, counts, home2 = homedir4(), now = () => /* @__PURE__ */ new Date()) {
+async function recordReanchor(key, cursor, counts, home2 = homedir4(), now = () => /* @__PURE__ */ new Date()) {
   if (asCursor(cursor) === null) {
     throw new TypeError("cursor must be { tier: non-empty string, token: non-empty string | finite number }");
   }
@@ -9343,17 +9322,17 @@ async function recordReanchor(key2, cursor, counts, home2 = homedir4(), now = ()
     uncommittedCount: counts.uncommittedCount,
     note: REANCHOR_NOTE
   };
-  await writeSyncState(key2, { cursor, cache }, home2);
+  await writeSyncState(key, { cursor, cache }, home2);
   return cache;
 }
-async function recordAutoPullAttempt(key2, home2 = homedir4(), now = () => /* @__PURE__ */ new Date()) {
-  await writeSyncState(key2, { autoPullAttemptAt: now().toISOString() }, home2);
+async function recordAutoPullAttempt(key, home2 = homedir4(), now = () => /* @__PURE__ */ new Date()) {
+  await writeSyncState(key, { autoPullAttemptAt: now().toISOString() }, home2);
 }
-async function readHookHintedAt(key2, home2 = homedir4()) {
-  return (await readSyncState(key2, home2)).hookHintedAt;
+async function readHookHintedAt(key, home2 = homedir4()) {
+  return (await readSyncState(key, home2)).hookHintedAt;
 }
-async function recordHookHinted(key2, home2 = homedir4(), now = () => /* @__PURE__ */ new Date()) {
-  await writeSyncState(key2, { hookHintedAt: now().toISOString() }, home2);
+async function recordHookHinted(key, home2 = homedir4(), now = () => /* @__PURE__ */ new Date()) {
+  await writeSyncState(key, { hookHintedAt: now().toISOString() }, home2);
 }
 
 // src/commands/sync.ts
@@ -10234,11 +10213,11 @@ function finishLocalConversion(top, sourcePath, publishedCommit, expectedTree, i
   }
 }
 async function renderEstablished(top, conversion, snapshot2, inv, mode, stdout, deps) {
-  const key2 = resolveBundleKey(conversion.boardPath);
-  await refreshMarker(key2);
-  if (snapshot2.docs.length > 0) await recordSelfActors(key2, snapshot2.docs.map((d) => d.actor));
-  await writeCursor(key2, { tier: "git", token: conversion.boardCommit });
-  await writeCache(key2, {
+  const key = resolveBundleKey(conversion.boardPath);
+  await refreshMarker(key);
+  if (snapshot2.docs.length > 0) await recordSelfActors(key, snapshot2.docs.map((d) => d.actor));
+  await writeCursor(key, { tier: "git", token: conversion.boardCommit });
+  await writeCache(key, {
     updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
     delta: [],
     unpushedCount: unpushedCount(conversion.boardPath) ?? 0,
@@ -10254,7 +10233,7 @@ async function renderEstablished(top, conversion, snapshot2, inv, mode, stdout, 
   receipt.pushed = `${BOARD_REMOTE}/${BOARD_BRANCH} (tracking set)`;
   receipt.gitignore = conversion.gitignore;
   receipt.next_steps = establishNextSteps(inv);
-  const hint = await hookInstallHintOnce(key2, inv, deps.hookInstalled);
+  const hint = await hookInstallHintOnce(key, inv, deps.hookInstalled);
   if (hint) receipt.hint = hint;
   stdout(render(receipt, mode));
   return { already: false };
@@ -10518,10 +10497,10 @@ function toCliError(err, op) {
   if (err instanceof CliError) return err;
   return classifyGitError({ args: [op], status: null, stdout: "", stderr: err instanceof Error ? err.message : String(err) });
 }
-async function throwPostCommitFailure(err, committedThisRun, key2, boardPath) {
+async function throwPostCommitFailure(err, committedThisRun, key, boardPath) {
   if (!committedThisRun) throw err;
   const wrapped = new CliError(err.code, pushFailureMessage(err), { details: err.details, help: err.help });
-  await writeCache(key2, {
+  await writeCache(key, {
     updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
     delta: [],
     unpushedCount: unpushedCount(boardPath) ?? 0,
@@ -10622,11 +10601,11 @@ function withProvisionAnnouncement(err, outcome) {
   if (!announcement) return err;
   return new CliError(err.code, err.message, { details: { ...err.details, ...announcement }, help: err.help });
 }
-async function hookInstallHintOnce(key2, inv, installed = hookInstalled) {
+async function hookInstallHintOnce(key, inv, installed = hookInstalled) {
   try {
     if (installed()) return void 0;
-    if (await readHookHintedAt(key2) !== null) return void 0;
-    await recordHookHinted(key2);
+    if (await readHookHintedAt(key) !== null) return void 0;
+    await recordHookHinted(key);
     return `no SessionStart hook is installed \u2014 run \`${inv} hook install\` once and every new agent session will start with the board pulled and rendered`;
   } catch {
     return void 0;
@@ -10977,16 +10956,16 @@ async function sync(argv, deps = {}) {
   if (outcome.kind === "repaired") {
     healStaleRebaseBeforeProvisioning(dir);
   }
-  const key2 = resolveBundleKey(boardPath);
-  await refreshMarker(key2);
-  const storedCursor = await readCursor(key2);
+  const key = resolveBundleKey(boardPath);
+  await refreshMarker(key);
+  const storedCursor = await readCursor(key);
   const startHead = currentHead(boardPath);
   const preFetchOriginRef = resolveOriginRef(boardPath);
   let commitResult = { committed: false, docs: [] };
   if (!pullOnly) {
     commitResult = stageAndCommit(boardPath);
     if (commitResult.committed && commitResult.docs.length > 0) {
-      await recordSelfActors(key2, commitResult.docs.map((d) => d.actor));
+      await recordSelfActors(key, commitResult.docs.map((d) => d.actor));
     }
   }
   if (pullOnly) {
@@ -10997,10 +10976,10 @@ async function sync(argv, deps = {}) {
   } else {
     let rebaseOutcome;
     try {
-      rebaseOutcome = fetchRebaseResolving(boardPath, syncExportsDir(key2));
+      rebaseOutcome = fetchRebaseResolving(boardPath, syncExportsDir(key));
     } catch (rawErr) {
       const enriched = withProvisionAnnouncement(withUpstreamHelp(toCliError(rawErr, "rebase"), inv), outcome);
-      throw await throwPostCommitFailure(enriched, commitResult.committed, key2, boardPath);
+      throw await throwPostCommitFailure(enriched, commitResult.committed, key, boardPath);
     }
     if (rebaseOutcome.status === "resolved") {
       const conflicts = annotateLanded(boardPath, rebaseOutcome.conflicts);
@@ -11013,7 +10992,7 @@ async function sync(argv, deps = {}) {
         }),
         outcome
       );
-      throw await throwPostCommitFailure(conflictErr, commitResult.committed, key2, boardPath);
+      throw await throwPostCommitFailure(conflictErr, commitResult.committed, key, boardPath);
     }
     if (rebaseOutcome.status === "no_upstream") {
       const noUpstream = withProvisionAnnouncement(
@@ -11024,7 +11003,7 @@ async function sync(argv, deps = {}) {
         ),
         outcome
       );
-      throw await throwPostCommitFailure(noUpstream, commitResult.committed, key2, boardPath);
+      throw await throwPostCommitFailure(noUpstream, commitResult.committed, key, boardPath);
     }
   }
   const postFetchOriginRef = resolveOriginRef(boardPath);
@@ -11036,12 +11015,12 @@ async function sync(argv, deps = {}) {
   let reanchorNote;
   if (delta.ok) {
     changes = delta.changes;
-    await writeCursor(key2, { tier: "git", token: postPullHead });
+    await writeCursor(key, { tier: "git", token: postPullHead });
   } else {
     changes = [];
     reanchorNote = REANCHOR_NOTE;
     await recordReanchor(
-      key2,
+      key,
       { tier: "git", token: postPullHead },
       { unpushedCount: unpushedCount(boardPath) ?? 0, uncommittedCount: countUncommitted(boardPath) }
     );
@@ -11067,7 +11046,7 @@ async function sync(argv, deps = {}) {
       partial.incoming = cap(toIncomingRows(originDelta), limit);
       if (reanchorNote) partial.note = reanchorNote;
       stdout(render(partial, mode));
-      await writeCache(key2, {
+      await writeCache(key, {
         updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
         delta: toDeltaRows(changes),
         unpushedCount: unpushedCount(boardPath) ?? 0,
@@ -11077,7 +11056,7 @@ async function sync(argv, deps = {}) {
       throw asHandled(new CliError(classified.code, warning, { details: classified.details }));
     }
   }
-  await writeCache(key2, {
+  await writeCache(key, {
     updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
     delta: toDeltaRows(changes),
     unpushedCount: unpushedCount(boardPath) ?? 0,
@@ -11086,7 +11065,7 @@ async function sync(argv, deps = {}) {
   });
   const committedCount = commitResult.docs.length;
   const pulledCount = originDelta.length;
-  const hookHint = await hookInstallHintOnce(key2, inv, deps.hookInstalled);
+  const hookHint = await hookInstallHintOnce(key, inv, deps.hookInstalled);
   if (committedCount === 0 && pulledCount === 0 && pushedCount === 0 && !reanchorNote) {
     const rec = {};
     if (establishAlreadyNote) rec.establish = establishAlreadyNote;
@@ -11215,13 +11194,13 @@ async function showIncoming(id, values, deps) {
       if (parsed) {
         const KNOWN_ORDER = ["type", "title", "description", "resource", "tags", "timestamp"];
         const RESERVED_OUTPUT = /* @__PURE__ */ new Set(["id", "as_of", "body", "body_truncated", "body_chars", "help"]);
-        for (const key2 of KNOWN_ORDER) {
-          if (parsed.frontmatter[key2] !== void 0 && parsed.frontmatter[key2] !== null) rec[key2] = parsed.frontmatter[key2];
+        for (const key of KNOWN_ORDER) {
+          if (parsed.frontmatter[key] !== void 0 && parsed.frontmatter[key] !== null) rec[key] = parsed.frontmatter[key];
         }
-        for (const key2 of Object.keys(parsed.frontmatter)) {
-          if (KNOWN_ORDER.includes(key2) || RESERVED_OUTPUT.has(key2)) continue;
-          if (parsed.frontmatter[key2] === void 0 || parsed.frontmatter[key2] === null) continue;
-          rec[key2] = parsed.frontmatter[key2];
+        for (const key of Object.keys(parsed.frontmatter)) {
+          if (KNOWN_ORDER.includes(key) || RESERVED_OUTPUT.has(key)) continue;
+          if (parsed.frontmatter[key] === void 0 || parsed.frontmatter[key] === null) continue;
+          rec[key] = parsed.frontmatter[key];
         }
       }
       rec.as_of = SHOW_INCOMING_AS_OF;
@@ -11274,8 +11253,8 @@ function findBoardCandidate(start) {
     cur = parent;
   }
 }
-async function pullBoardAndRecord(boardPath, key2, budget = {}, now = () => /* @__PURE__ */ new Date()) {
-  const storedCursor = await readCursor(key2);
+async function pullBoardAndRecord(boardPath, key, budget = {}, now = () => /* @__PURE__ */ new Date()) {
+  const storedCursor = await readCursor(key);
   const startHead = currentHead(boardPath);
   const ff = ffPull(boardPath, budget);
   if (ff.swallowed) {
@@ -11285,8 +11264,8 @@ async function pullBoardAndRecord(boardPath, key2, budget = {}, now = () => /* @
   const postPullHead = currentHead(boardPath);
   const delta = changesSince(boardPath, cursorToken ?? startHead);
   if (delta.ok) {
-    await writeCursor(key2, { tier: "git", token: postPullHead });
-    await writeCache(key2, {
+    await writeCursor(key, { tier: "git", token: postPullHead });
+    await writeCache(key, {
       updatedAt: now().toISOString(),
       delta: toDeltaRows(delta.changes),
       unpushedCount: unpushedCount(boardPath) ?? 0,
@@ -11294,7 +11273,7 @@ async function pullBoardAndRecord(boardPath, key2, budget = {}, now = () => /* @
     });
   } else {
     await recordReanchor(
-      key2,
+      key,
       { tier: "git", token: postPullHead },
       { unpushedCount: unpushedCount(boardPath) ?? 0, uncommittedCount: countUncommitted(boardPath) },
       void 0,
@@ -11317,8 +11296,8 @@ async function maybeAutoPull(dir, opts = {}) {
       const root = dir !== void 0 ? path10.resolve(dir) : await findBundleRoot(start);
       if (!root || realOrSame3(root) !== realOrSame3(boardPath)) return "different-bundle";
     }
-    const key2 = resolveBundleKey(boardPath);
-    const state = await readSyncState(key2);
+    const key = resolveBundleKey(boardPath);
+    const state = await readSyncState(key);
     const nowMs = now().getTime();
     const ageOk = (iso) => typeof iso === "string" && nowMs - Date.parse(iso) <= staleMs;
     if (ageOk(state.cache?.updatedAt)) return "fresh";
@@ -11327,11 +11306,11 @@ async function maybeAutoPull(dir, opts = {}) {
     if (!gitTop || realOrSame3(path10.join(gitTop, BUNDLE_DIR)) !== realOrSame3(boardPath) || !isProvisioned(gitTop)) {
       return "no-board";
     }
-    await recordAutoPullAttempt(key2, void 0, now);
-    await refreshMarker(key2, void 0, now);
+    await recordAutoPullAttempt(key, void 0, now);
+    await refreshMarker(key, void 0, now);
     const result = await pullBoardAndRecord(
       boardPath,
-      key2,
+      key,
       {
         fetchTimeoutMs: opts.budgetMs ?? AUTO_PULL_BUDGET_MS,
         connectTimeoutSeconds: opts.connectTimeoutSeconds ?? AUTO_PULL_CONNECT_TIMEOUT_SECONDS
@@ -11485,13 +11464,13 @@ async function docReadInner(argv, deps) {
     const rec = { id: parsed.id };
     const KNOWN_ORDER = ["type", "title", "description", "resource", "tags", "timestamp"];
     const RESERVED_OUTPUT = /* @__PURE__ */ new Set(["id", "head_version", "body", "body_truncated", "body_chars", "help"]);
-    for (const key2 of KNOWN_ORDER) {
-      if (fm[key2] !== void 0 && fm[key2] !== null) rec[key2] = fm[key2];
+    for (const key of KNOWN_ORDER) {
+      if (fm[key] !== void 0 && fm[key] !== null) rec[key] = fm[key];
     }
-    for (const key2 of Object.keys(fm)) {
-      if (KNOWN_ORDER.includes(key2) || RESERVED_OUTPUT.has(key2)) continue;
-      if (fm[key2] === void 0 || fm[key2] === null) continue;
-      rec[key2] = fm[key2];
+    for (const key of Object.keys(fm)) {
+      if (KNOWN_ORDER.includes(key) || RESERVED_OUTPUT.has(key)) continue;
+      if (fm[key] === void 0 || fm[key] === null) continue;
+      rec[key] = fm[key];
     }
     rec.head_version = version;
     const body = parsed.body;
@@ -11594,7 +11573,7 @@ function resolveField(parsed, version, field, id) {
   const available = [
     "id",
     "head_version",
-    ...Object.keys(fm).filter((key2) => fm[key2] !== void 0 && fm[key2] !== null)
+    ...Object.keys(fm).filter((key) => fm[key] !== void 0 && fm[key] !== null)
   ];
   throw new CliError("NOT_FOUND", `'${id}' has no field '${field}' \u2014 fields present: ${available.join(", ")}`, {
     help: `${cliInvocation()} doc read ${id}`,
@@ -11815,8 +11794,8 @@ Options:
   --json                    Emit compact JSON instead of TOON
   -h, --help                Show this help
 `;
-function isDocRouteKey(key2) {
-  return key2.toLowerCase().endsWith(".md");
+function isDocRouteKey(key) {
+  return key.toLowerCase().endsWith(".md");
 }
 async function promote(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
@@ -11847,17 +11826,17 @@ async function promote(argv, deps = {}) {
       help: `${cliInvocation()} promote <file> --doc-key <key>`
     });
   }
-  const key2 = values["doc-key"]?.trim();
-  if (!key2) {
+  const key = values["doc-key"]?.trim();
+  if (!key) {
     throw new CliError("USAGE", "--doc-key <key> is required", {
       help: `${cliInvocation()} promote ${file} --doc-key <key>`
     });
   }
-  const docRoute = isDocRouteKey(key2);
+  const docRoute = isDocRouteKey(key);
   if (docRoute && values["content-type"] !== void 0) {
     throw new CliError(
       "USAGE",
-      `--content-type is a blob-route-only option; '${key2}' ends in '.md' and routes through the doc engine, which passes through the file's OWN frontmatter instead (I9)`,
+      `--content-type is a blob-route-only option; '${key}' ends in '.md' and routes through the doc engine, which passes through the file's OWN frontmatter instead (I9)`,
       { help: `${cliInvocation()} promote --help` }
     );
   }
@@ -11865,12 +11844,12 @@ async function promote(argv, deps = {}) {
   const mode = resolveMode(values);
   const expectedVersion = values["expected-version"] ?? null;
   if (docRoute) {
-    await promoteDoc(file, key2, bundle, { expectedVersion, strict: Boolean(values.strict) }, stdout, mode, values.remote);
+    await promoteDoc(file, key, bundle, { expectedVersion, strict: Boolean(values.strict) }, stdout, mode, values.remote);
     return;
   }
-  await promoteBlob(file, key2, bundle, { expectedVersion, contentType: values["content-type"] }, stdout, mode, values.remote);
+  await promoteBlob(file, key, bundle, { expectedVersion, contentType: values["content-type"] }, stdout, mode, values.remote);
 }
-async function promoteDoc(file, key2, bundle, opts, stdout, mode, remoteUrl) {
+async function promoteDoc(file, key, bundle, opts, stdout, mode, remoteUrl) {
   let raw;
   try {
     raw = await fs8.readFile(file, "utf8");
@@ -11885,7 +11864,7 @@ async function promoteDoc(file, key2, bundle, opts, stdout, mode, remoteUrl) {
       { help: `${cliInvocation()} new --help` }
     );
   }
-  const canonicalPath = key2.slice(0, -3) + ".md";
+  const canonicalPath = key.slice(0, -3) + ".md";
   const id = conceptIdFromPath(canonicalPath);
   const candidate = { id, frontmatter, body };
   const registry = await loadKinds(bundle);
@@ -11897,22 +11876,22 @@ async function promoteDoc(file, key2, bundle, opts, stdout, mode, remoteUrl) {
   try {
     ({ version } = await writeDocVersioned(bundle, candidate, { expectedVersion: opts.expectedVersion }));
   } catch (err) {
-    throw promoteWriteErrorToCliError(err, key2, file, remoteUrl);
+    throw promoteWriteErrorToCliError(err, key, file, remoteUrl);
   }
   const receipt = {
     promote: "written",
     route: "doc",
-    key: key2,
+    key,
     id: candidate.id,
     type: candidate.frontmatter.type,
     version,
     size_bytes: Buffer.byteLength(raw, "utf8")
   };
   if (warnings.length > 0) receipt.warnings = warnings;
-  receipt.help = [`${cliInvocation()} pull --doc-key ${key2} --out <path>`];
+  receipt.help = [`${cliInvocation()} pull --doc-key ${key} --out <path>`];
   stdout(render(receipt, mode));
 }
-async function promoteBlob(file, key2, bundle, opts, stdout, mode, remoteUrl) {
+async function promoteBlob(file, key, bundle, opts, stdout, mode, remoteUrl) {
   let bytes;
   try {
     bytes = await fs8.readFile(file);
@@ -11921,21 +11900,21 @@ async function promoteBlob(file, key2, bundle, opts, stdout, mode, remoteUrl) {
   }
   let version;
   try {
-    version = await writeBlob(bundle, key2, bytes, opts.contentType, { expectedVersion: opts.expectedVersion });
+    version = await writeBlob(bundle, key, bytes, opts.contentType, { expectedVersion: opts.expectedVersion });
   } catch (err) {
-    throw promoteWriteErrorToCliError(err, key2, file, remoteUrl);
+    throw promoteWriteErrorToCliError(err, key, file, remoteUrl);
   }
   const receipt = {
     promote: "written",
     route: "blob",
-    key: key2,
+    key,
     // The SAME resolution `writeBlob` used internally (`resolveContentType`, the ONE MIME source,
     // core's content-type.ts) — no extra round trip to read the blob back just to report it.
-    content_type: resolveContentType(key2, opts.contentType),
+    content_type: resolveContentType(key, opts.contentType),
     version,
     size_bytes: bytes.byteLength
   };
-  receipt.help = [`${cliInvocation()} pull --doc-key ${key2} --out <path>`];
+  receipt.help = [`${cliInvocation()} pull --doc-key ${key} --out <path>`];
   stdout(render(receipt, mode));
 }
 function promoteFileReadError(err, file) {
@@ -11946,25 +11925,25 @@ function promoteFileReadError(err, file) {
   }
   return new CliError("USAGE", err instanceof Error ? err.message : String(err));
 }
-function promoteWriteErrorToCliError(err, key2, file, remoteUrl) {
+function promoteWriteErrorToCliError(err, key, file, remoteUrl) {
   if (err instanceof CliError) return err;
   if (err instanceof VersionConflict) {
     const current = err.actual;
     if (err.expected === null) {
       return new CliError(
         "ALREADY_EXISTS",
-        `'${key2}' already exists \u2014 promote with no --expected-version means expect-absent CREATE, not an overwrite. Pass --expected-version ${current ?? "<token>"} (from a prior pull/promote receipt) to update it.`,
+        `'${key}' already exists \u2014 promote with no --expected-version means expect-absent CREATE, not an overwrite. Pass --expected-version ${current ?? "<token>"} (from a prior pull/promote receipt) to update it.`,
         {
-          help: `${cliInvocation()} promote ${file} --doc-key ${key2} --expected-version ${current ?? "<token>"}`,
+          help: `${cliInvocation()} promote ${file} --doc-key ${key} --expected-version ${current ?? "<token>"}`,
           details: { expected: err.expected, actual: err.actual }
         }
       );
     }
     return new CliError(
       "STALE_HEAD",
-      `'${key2}' has moved since --expected-version ${err.expected} was read (current: ${current ?? "absent"}) \u2014 re-pull, re-apply your edit, and re-promote with the current version.`,
+      `'${key}' has moved since --expected-version ${err.expected} was read (current: ${current ?? "absent"}) \u2014 re-pull, re-apply your edit, and re-promote with the current version.`,
       {
-        help: `${cliInvocation()} pull --doc-key ${key2} --out <path>`,
+        help: `${cliInvocation()} pull --doc-key ${key} --out <path>`,
         details: { expected: err.expected, actual: err.actual }
       }
     );
@@ -12008,11 +11987,11 @@ Options:
   --json                Emit compact JSON instead of TOON
   -h, --help            Show this help
 `;
-function isDocRouteKey2(key2) {
-  return key2.toLowerCase().endsWith(".md");
+function isDocRouteKey2(key) {
+  return key.toLowerCase().endsWith(".md");
 }
-async function pullDoc(bundle, key2, remoteUrl) {
-  const canonicalPath = key2.slice(0, -3) + ".md";
+async function pullDoc(bundle, key, remoteUrl) {
+  const canonicalPath = key.slice(0, -3) + ".md";
   const id = conceptIdFromPath(canonicalPath);
   let result;
   try {
@@ -12033,23 +12012,23 @@ async function pullDoc(bundle, key2, remoteUrl) {
     }
   };
 }
-async function pullBlob(bundle, key2, remoteUrl) {
+async function pullBlob(bundle, key, remoteUrl) {
   let result;
   try {
-    result = await readBlob(bundle, key2);
+    result = await readBlob(bundle, key);
   } catch (err) {
     throw classifyBundleError(err, remoteUrl);
   }
   if (result === null) {
-    throw new CliError("NOT_FOUND", `no blob at key '${key2}'`, {
-      help: `${cliInvocation()} promote <file> --doc-key ${key2}`
+    throw new CliError("NOT_FOUND", `no blob at key '${key}'`, {
+      help: `${cliInvocation()} promote <file> --doc-key ${key}`
     });
   }
   const actual = blobVersion(result.bytes);
   if (actual !== result.version) {
     throw new CliError(
       "INTEGRITY_MISMATCH",
-      `pulled bytes for '${key2}' hash to ${actual}, but the store reported ${result.version} \u2014 the transfer may have been corrupted; retry the pull`,
+      `pulled bytes for '${key}' hash to ${actual}, but the store reported ${result.version} \u2014 the transfer may have been corrupted; retry the pull`,
       { details: { expected: result.version, actual } }
     );
   }
@@ -12093,8 +12072,8 @@ async function pull(argv, deps = {}) {
       { help: `${cliInvocation()} pull --doc-key <key> --out <path>` }
     );
   }
-  const key2 = values["doc-key"]?.trim();
-  if (!key2) {
+  const key = values["doc-key"]?.trim();
+  if (!key) {
     throw new CliError("USAGE", "--doc-key <key> is required", {
       help: `${cliInvocation()} pull --doc-key <key> --out <path>`
     });
@@ -12102,19 +12081,19 @@ async function pull(argv, deps = {}) {
   const out = values.out?.trim();
   if (!out) {
     throw new CliError("USAGE", "--out (<path> | -) is required", {
-      help: `${cliInvocation()} pull --doc-key ${key2} --out <path>`
+      help: `${cliInvocation()} pull --doc-key ${key} --out <path>`
     });
   }
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
   const mode = resolveMode(values);
   const streamMode = out === "-";
-  const docRoute = isDocRouteKey2(key2);
+  const docRoute = isDocRouteKey2(key);
   const runToTarget = async () => {
-    const result = docRoute ? await pullDoc(bundle, key2, values.remote) : await pullBlob(bundle, key2, values.remote);
-    const receipt = { pull: "read", key: key2, ...result.fields, out };
+    const result = docRoute ? await pullDoc(bundle, key, values.remote) : await pullBlob(bundle, key, values.remote);
+    const receipt = { pull: "read", key, ...result.fields, out };
     const version = result.fields.version;
     const fileHint = streamMode ? "<file>" : out;
-    receipt.help = [`${cliInvocation()} promote ${fileHint} --doc-key ${key2} --expected-version ${version}`];
+    receipt.help = [`${cliInvocation()} promote ${fileHint} --doc-key ${key} --expected-version ${version}`];
     if (streamMode) {
       writeStdoutBytes(result.bytes);
       stderr(render(receipt, mode));
@@ -12241,8 +12220,8 @@ Options:
   --json                    Emit compact JSON instead of TOON
   -h, --help                Show this help
 `;
-function isDocRouteKey3(key2) {
-  return key2.toLowerCase().endsWith(".md");
+function isDocRouteKey3(key) {
+  return key.toLowerCase().endsWith(".md");
 }
 async function deleteCommand(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
@@ -12272,8 +12251,8 @@ async function deleteCommand(argv, deps = {}) {
       { help: `${cliInvocation()} delete --doc-key <key>` }
     );
   }
-  const key2 = values["doc-key"]?.trim();
-  if (!key2) {
+  const key = values["doc-key"]?.trim();
+  if (!key) {
     throw new CliError("USAGE", "--doc-key <key> is required", {
       help: `${cliInvocation()} delete --doc-key <key>`
     });
@@ -12283,42 +12262,42 @@ async function deleteCommand(argv, deps = {}) {
     throw new CliError(
       "USAGE",
       "--expected-version was given an empty value \u2014 pass a real version token (from a prior read/write/pull receipt) or omit the flag for an unconditional delete.",
-      { help: `${cliInvocation()} delete --doc-key ${key2} --expected-version <v>` }
+      { help: `${cliInvocation()} delete --doc-key ${key} --expected-version <v>` }
     );
   }
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
   const mode = resolveMode(values);
   const expectedVersion = rawExpected?.trim();
-  const docRoute = isDocRouteKey3(key2);
+  const docRoute = isDocRouteKey3(key);
   let deleted;
   try {
     if (docRoute) {
-      const canonicalPath = key2.slice(0, -3) + ".md";
+      const canonicalPath = key.slice(0, -3) + ".md";
       const id = conceptIdFromPath(canonicalPath);
       deleted = await deleteDoc(bundle, id, expectedVersion ? { expectedVersion } : void 0);
     } else {
-      deleted = await deleteBlob(bundle, key2, expectedVersion ? { expectedVersion } : void 0);
+      deleted = await deleteBlob(bundle, key, expectedVersion ? { expectedVersion } : void 0);
     }
   } catch (err) {
-    throw deleteErrorToCliError(err, key2, values.remote);
+    throw deleteErrorToCliError(err, key, values.remote);
   }
   const receipt = {
     delete: "deleted",
     route: docRoute ? "doc" : "blob",
-    key: key2,
+    key,
     deleted
   };
   receipt.help = [`${cliInvocation()} list`];
   stdout(render(receipt, mode));
 }
-function deleteErrorToCliError(err, key2, remoteUrl) {
+function deleteErrorToCliError(err, key, remoteUrl) {
   if (err instanceof CliError) return err;
   if (err instanceof VersionConflict) {
     return new CliError(
       "STALE_HEAD",
-      `'${key2}' has moved since --expected-version ${err.expected} was read (current: ${err.actual ?? "absent"}) \u2014 re-read and retry with the current version.`,
+      `'${key}' has moved since --expected-version ${err.expected} was read (current: ${err.actual ?? "absent"}) \u2014 re-read and retry with the current version.`,
       {
-        help: `${cliInvocation()} delete --doc-key ${key2} --expected-version ${err.actual ?? "<token>"}`,
+        help: `${cliInvocation()} delete --doc-key ${key} --expected-version ${err.actual ?? "<token>"}`,
         details: { expected: err.expected, actual: err.actual }
       }
     );
@@ -12878,8 +12857,8 @@ async function list(argv, deps = {}) {
   if (values.field && values.field.length > 0) {
     for (const entry of values.field) {
       const eq = entry.indexOf("=");
-      const key2 = eq >= 0 ? entry.slice(0, eq).trim() : "";
-      if (eq < 0 || key2 === "") {
+      const key = eq >= 0 ? entry.slice(0, eq).trim() : "";
+      if (eq < 0 || key === "") {
         throw new CliError("USAGE", `--field expects key=value (got '${entry}')`, {
           help: `${cliInvocation()} list --field status=done`
         });
@@ -12890,22 +12869,22 @@ async function list(argv, deps = {}) {
         if (!rawValue.includes(",")) {
           throw new CliError(
             "USAGE",
-            `--field ${key2} has an empty value \u2014 expected --field ${key2}=<value>, or comma-separated set membership --field ${key2}=a,b`,
+            `--field ${key} has an empty value \u2014 expected --field ${key}=<value>, or comma-separated set membership --field ${key}=a,b`,
             { help: `${cliInvocation()} list --field status=done` }
           );
         }
         throw new CliError(
           "USAGE",
-          `--field ${key2} has an empty member in '${rawValue}' (comma is the set-membership separator \u2014 use 'a,b', not 'a,,b' or a leading/trailing comma)`,
+          `--field ${key} has an empty member in '${rawValue}' (comma is the set-membership separator \u2014 use 'a,b', not 'a,,b' or a leading/trailing comma)`,
           { help: `${cliInvocation()} list --field status=todo,in_progress` }
         );
       }
       if (members.length > 1) {
-        orFieldSets[key2] = members;
-        delete singleFields[key2];
+        orFieldSets[key] = members;
+        delete singleFields[key];
       } else {
-        singleFields[key2] = rawValue;
-        delete orFieldSets[key2];
+        singleFields[key] = rawValue;
+        delete orFieldSets[key];
       }
     }
     if (Object.keys(singleFields).length > 0) filter.fields = singleFields;
@@ -14147,9 +14126,9 @@ async function buildBundleData(source, name) {
   for (const doc2 of docs) {
     for (const link2 of parseLinksFromDoc(doc2)) {
       if (!known.has(link2.to) || link2.to === doc2.id) continue;
-      const key2 = `${doc2.id} ${link2.to}`;
-      if (seen.has(key2)) continue;
-      seen.add(key2);
+      const key = `${doc2.id} ${link2.to}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       edges.push({ source: doc2.id, target: link2.to });
     }
   }
@@ -14716,42 +14695,42 @@ function buildRouter(backend) {
     const status2 = options2.expectedVersion === null ? 201 : 200;
     return jsonResponse(status2, { version }, versionHeaders(version));
   }
-  async function handleReadBlob(key2) {
-    assertSafeBlobKey(key2);
-    const result = await backend.readBlob(key2);
-    if (result === null) return errorResponse(404, "NOT_FOUND", `no blob '${key2}'`);
+  async function handleReadBlob(key) {
+    assertSafeBlobKey(key);
+    const result = await backend.readBlob(key);
+    if (result === null) return errorResponse(404, "NOT_FOUND", `no blob '${key}'`);
     return new Response(result.bytes, {
       status: 200,
       headers: { "content-type": result.contentType, ...versionHeaders(result.version) }
     });
   }
-  async function handleHeadBlob(key2) {
+  async function handleHeadBlob(key) {
     try {
-      assertSafeBlobKey(key2);
+      assertSafeBlobKey(key);
     } catch {
       return new Response(null, { status: 400 });
     }
-    const result = await backend.readBlob(key2);
+    const result = await backend.readBlob(key);
     if (result === null) return new Response(null, { status: 404 });
     return new Response(null, {
       status: 200,
       headers: { "content-type": result.contentType, ...versionHeaders(result.version) }
     });
   }
-  async function handleWriteBlob(key2, req) {
-    assertSafeBlobKey(key2);
+  async function handleWriteBlob(key, req) {
+    assertSafeBlobKey(key);
     const bytes = new Uint8Array(await req.arrayBuffer());
     const contentTypeHeader = req.headers.get("content-type");
     const contentType = contentTypeHeader && contentTypeHeader.trim() !== "" ? contentTypeHeader : void 0;
     const options2 = writeOptionsFromHeaders(req);
-    const version = await backend.writeBlob(key2, bytes, contentType, options2);
+    const version = await backend.writeBlob(key, bytes, contentType, options2);
     const status2 = options2.expectedVersion === null ? 201 : 200;
     return jsonResponse(status2, { version }, versionHeaders(version));
   }
-  async function handleDeleteBlob(key2, req) {
-    assertSafeBlobKey(key2);
+  async function handleDeleteBlob(key, req) {
+    assertSafeBlobKey(key);
     const options2 = deleteOptionsFromHeaders(req);
-    const deleted = await backend.deleteBlob(key2, options2);
+    const deleted = await backend.deleteBlob(key, options2);
     return jsonResponse(200, { deleted });
   }
   async function handleListBlobs(url) {
@@ -14843,11 +14822,11 @@ function buildRouter(backend) {
         return errorResponse(400, "USAGE", `unsupported method ${req.method} for /blobs`);
       }
       if (rest.startsWith("blobs/")) {
-        const key2 = decodeBlobKey(rest.slice("blobs/".length));
-        if (req.method === "GET") return await handleReadBlob(key2);
-        if (req.method === "PUT") return await handleWriteBlob(key2, req);
-        if (req.method === "HEAD") return await handleHeadBlob(key2);
-        if (req.method === "DELETE") return await handleDeleteBlob(key2, req);
+        const key = decodeBlobKey(rest.slice("blobs/".length));
+        if (req.method === "GET") return await handleReadBlob(key);
+        if (req.method === "PUT") return await handleWriteBlob(key, req);
+        if (req.method === "HEAD") return await handleHeadBlob(key);
+        if (req.method === "DELETE") return await handleDeleteBlob(key, req);
         return errorResponse(400, "USAGE", `unsupported method ${req.method} for a blob route`);
       }
       return errorResponse(404, "NOT_FOUND", `no route for ${url.pathname}`);
@@ -14871,12 +14850,12 @@ function readBody(req) {
 async function requestFromIncomingMessage(req, origin) {
   const url = new URL(req.url ?? "/", origin);
   const headers = new Headers();
-  for (const [key2, value] of Object.entries(req.headers)) {
+  for (const [key, value] of Object.entries(req.headers)) {
     if (value === void 0) continue;
     if (Array.isArray(value)) {
-      for (const v of value) headers.append(key2, v);
+      for (const v of value) headers.append(key, v);
     } else {
-      headers.set(key2, value);
+      headers.set(key, value);
     }
   }
   const body = await readBody(req);
@@ -14884,8 +14863,8 @@ async function requestFromIncomingMessage(req, origin) {
 }
 async function writeResponseToServerResponse(res, response) {
   const headers = {};
-  response.headers.forEach((value, key2) => {
-    headers[key2] = value;
+  response.headers.forEach((value, key) => {
+    headers[key] = value;
   });
   res.writeHead(response.status, headers);
   const bytes = response.body ? Buffer.from(await response.arrayBuffer()) : void 0;
@@ -15124,12 +15103,12 @@ var HOP_BY_HOP = /* @__PURE__ */ new Set([
 var RESPONSE_DROP = /* @__PURE__ */ new Set(["content-encoding", "content-length"]);
 function copyHeaders(from, opts = {}) {
   const out = new Headers();
-  for (const [key2, value] of from) {
-    const lower = key2.toLowerCase();
+  for (const [key, value] of from) {
+    const lower = key.toLowerCase();
     if (HOP_BY_HOP.has(lower)) continue;
     if (opts.dropCookie && lower === "cookie") continue;
     if (opts.dropContentCoding && RESPONSE_DROP.has(lower)) continue;
-    out.set(key2, value);
+    out.set(key, value);
   }
   return out;
 }
@@ -15175,7 +15154,7 @@ var PageNonceRegistry = class {
     this.maxEntries = Math.max(1, maxEntries);
   }
   /** Mint a fresh nonce authorizing exactly `key`. 32 random bytes, base64url. Sweeps expired entries and enforces the cap first. */
-  mint(key2) {
+  mint(key) {
     this.sweepExpired();
     while (this.map.size >= this.maxEntries) {
       const oldest = this.map.keys().next().value;
@@ -15183,7 +15162,7 @@ var PageNonceRegistry = class {
       this.map.delete(oldest);
     }
     const nonce = randomBytes3(32).toString("base64url");
-    this.map.set(nonce, { key: key2, expiresAt: Date.now() + this.ttlMs });
+    this.map.set(nonce, { key, expiresAt: Date.now() + this.ttlMs });
     return nonce;
   }
   /** Resolve a nonce to its authorized blob key, or `null` if unknown/expired (an expired entry is deleted on read). */
@@ -15304,12 +15283,12 @@ function diffSnapshots(prev, next) {
     if (!next.docs.has(id)) docsRemoved.push(id);
   }
   const blobsChanged = [];
-  for (const [key2, version] of next.blobs) {
-    if (prev.blobs.get(key2) !== version) blobsChanged.push({ key: key2, version });
+  for (const [key, version] of next.blobs) {
+    if (prev.blobs.get(key) !== version) blobsChanged.push({ key, version });
   }
   const blobsRemoved = [];
-  for (const key2 of prev.blobs.keys()) {
-    if (!next.blobs.has(key2)) blobsRemoved.push(key2);
+  for (const key of prev.blobs.keys()) {
+    if (!next.blobs.has(key)) blobsRemoved.push(key);
   }
   return {
     docs: { changed: docsChanged, removed: docsRemoved },
@@ -15329,10 +15308,10 @@ async function snapshotBundle(bundle) {
   } catch {
     keys = [];
   }
-  for (const key2 of keys) {
+  for (const key of keys) {
     try {
-      const r = await readBlob(bundle, key2);
-      if (r) blobs2.set(key2, r.version);
+      const r = await readBlob(bundle, key);
+      if (r) blobs2.set(key, r.version);
     } catch {
     }
   }
@@ -15453,15 +15432,15 @@ function pageError(status2, message) {
     headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": pageCsp(), "referrer-policy": "no-referrer" }
   });
 }
-function encodeBlobKeyPath(key2) {
-  return key2.split("/").map(encodeURIComponent).join("/");
+function encodeBlobKeyPath(key) {
+  return key.split("/").map(encodeURIComponent).join("/");
 }
-async function readPageBlob(options2, key2) {
+async function readPageBlob(options2, key) {
   if (options2.mode === "dir") {
-    const r = await readBlob(options2.bundle, key2);
+    const r = await readBlob(options2.bundle, key);
     return r ? { bytes: r.bytes, contentType: r.contentType } : null;
   }
-  const target = `${options2.remoteBase}/v0/bundles/${REMOTE_BUNDLE2}/blobs/${encodeBlobKeyPath(key2)}`;
+  const target = `${options2.remoteBase}/v0/bundles/${REMOTE_BUNDLE2}/blobs/${encodeBlobKeyPath(key)}`;
   const headers = {};
   if (options2.apiKey) headers.authorization = `Bearer ${options2.apiKey}`;
   const res = await fetch(target, { headers });
@@ -15469,13 +15448,13 @@ async function readPageBlob(options2, key2) {
   return { bytes: new Uint8Array(await res.arrayBuffer()), contentType: res.headers.get("content-type") ?? "application/octet-stream" };
 }
 async function servePageBytes(options2, runtime, nonce) {
-  const key2 = runtime.nonces.resolve(nonce);
-  if (!key2) return pageError(403, "This page link is unknown or has expired. Reopen the page from the launcher.");
-  if (!(await registeredPageEntries(options2)).has(key2)) {
+  const key = runtime.nonces.resolve(nonce);
+  if (!key) return pageError(403, "This page link is unknown or has expired. Reopen the page from the launcher.");
+  if (!(await registeredPageEntries(options2)).has(key)) {
     return pageError(403, "This page is no longer registered in the bundle (its registry doc was removed or retargeted).");
   }
-  const blob = await readPageBlob(options2, key2);
-  if (!blob) return pageError(404, `No page bytes found for '${key2}'.`);
+  const blob = await readPageBlob(options2, key);
+  if (!blob) return pageError(404, `No page bytes found for '${key}'.`);
   return new Response(blob.bytes, {
     status: 200,
     headers: {
@@ -15523,21 +15502,21 @@ async function handleMint(req, runtime, options2) {
   } catch {
     return jsonError(400, "USAGE", "request body must be JSON { key }");
   }
-  const key2 = typeof payload.key === "string" ? payload.key.trim() : "";
-  if (!key2) return jsonError(400, "USAGE", "request body must include a non-empty page key");
+  const key = typeof payload.key === "string" ? payload.key.trim() : "";
+  if (!key) return jsonError(400, "USAGE", "request body must include a non-empty page key");
   try {
-    assertSafeBlobKey(key2);
+    assertSafeBlobKey(key);
   } catch (err) {
-    return jsonError(400, "USAGE", err instanceof Error ? err.message : `unsafe page key '${key2}'`);
+    return jsonError(400, "USAGE", err instanceof Error ? err.message : `unsafe page key '${key}'`);
   }
-  if (!key2.startsWith(PAGE_BLOB_PREFIX)) {
-    return jsonError(403, "FORBIDDEN", `page keys must live under '${PAGE_BLOB_PREFIX}'; '${key2}' does not`);
+  if (!key.startsWith(PAGE_BLOB_PREFIX)) {
+    return jsonError(403, "FORBIDDEN", `page keys must live under '${PAGE_BLOB_PREFIX}'; '${key}' does not`);
   }
   const entries = await registeredPageEntries(options2);
-  if (!entries.has(key2)) {
-    return jsonError(403, "FORBIDDEN", `'${key2}' is not a registered page (no type:Page doc declares it as 'entry')`);
+  if (!entries.has(key)) {
+    return jsonError(403, "FORBIDDEN", `'${key}' is not a registered page (no type:Page doc declares it as 'entry')`);
   }
-  const nonce = runtime.nonces.mint(key2);
+  const nonce = runtime.nonces.mint(key);
   return new Response(JSON.stringify({ nonce, url: `/__page/${nonce}` }), {
     status: 200,
     headers: { "content-type": "application/json; charset=utf-8" }
@@ -15885,887 +15864,6 @@ async function ui(argv, deps = {}) {
   await clearUrlFile(url);
 }
 
-// src/commands/login.ts
-import { parseArgs as parseArgs24 } from "node:util";
-var LOGIN_USAGE = `agentstate-lite login \u2014 store an API key for a gated remote (offline write)
-
-Usage:
-  agentstate-lite login --remote <url> --api-key <key>
-
-Stores an API key for a gated wire-protocol remote (a Cloudflare Worker deployment), keyed by the
-remote's ORIGIN \u2014 one key per remote, so a staging and a production deployment can each carry their
-own. The key is sent as Authorization: Bearer <key> on every --remote request to this origin. A
-subsequent 'login --remote <url> --api-key' for the SAME origin overwrites only that origin's key;
-every other stored origin survives. (To JOIN a bundle via an invite instead, use 'join'.)
-
-Options:
-  --remote <url>   Base URL of the gated remote (required)
-  --api-key <key>  Opaque API key, stored verbatim (required)
-  --json           Emit compact JSON instead of TOON
-  -h, --help       Show this help
-`;
-async function login(argv, deps = {}) {
-  const saveApiKey = deps.saveApiKey ?? ((origin2, apiKey2) => saveApiKeyForOrigin(origin2, apiKey2));
-  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
-  const { values } = parseOrUsage(
-    () => parseArgs24({
-      args: argv,
-      options: {
-        remote: { type: "string" },
-        "api-key": { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    }),
-    "login"
-  );
-  if (values.help) {
-    stdout(LOGIN_USAGE);
-    return;
-  }
-  const remote = values.remote?.trim();
-  const apiKey = values["api-key"]?.trim();
-  if (!remote || !apiKey) {
-    throw new CliError("USAGE", "login requires --remote <url> and --api-key <key>", {
-      help: `${cliInvocation()} login --remote <url> --api-key <key>`
-    });
-  }
-  let origin;
-  try {
-    origin = normalizeServer(remote).resource;
-  } catch (err) {
-    throw new CliError("USAGE", err instanceof Error ? err.message : String(err), {
-      help: `${cliInvocation()} login --remote http://127.0.0.1:4818 --api-key <key>`
-    });
-  }
-  await saveApiKey(origin, apiKey);
-  stdout(
-    render(
-      { login: "ok", remote: origin, help: [`${cliInvocation()} list --remote ${origin}`] },
-      resolveMode(values)
-    )
-  );
-}
-
-// src/commands/whoami.ts
-import { parseArgs as parseArgs25 } from "node:util";
-
-// src/auth-client.ts
-async function resolveRemoteOnly(remoteFlag) {
-  const remote = await resolveRemoteFlag(remoteFlag, void 0);
-  if (!remote) {
-    throw new CliError("USAGE", "--remote <url> is required (or set AGENTSTATE_LITE_REMOTE)", {
-      help: `${cliInvocation()} <command> --remote <url>`
-    });
-  }
-  try {
-    const resolved = normalizeServer(remote);
-    return { base: resolved.base, origin: resolved.resource };
-  } catch (err) {
-    throw new CliError("USAGE", err instanceof Error ? err.message : String(err), {
-      help: `${cliInvocation()} <command> --remote https://your-worker.example.workers.dev`
-    });
-  }
-}
-async function resolveAuthToken(origin) {
-  const envKey = process.env[API_KEY_ENV_VAR]?.trim();
-  if (envKey) return envKey;
-  return getApiKeyForOrigin(origin);
-}
-async function resolveAuthContext(remoteFlag) {
-  const { base, origin } = await resolveRemoteOnly(remoteFlag);
-  const authToken = await resolveAuthToken(origin);
-  return { base, origin, authToken };
-}
-async function safeFetch(request) {
-  try {
-    return await globalThis.fetch(request);
-  } catch (err) {
-    throw new CliError(
-      "RUNTIME",
-      `could not reach ${request.url} (${err instanceof Error ? err.message : String(err)})`
-    );
-  }
-}
-async function toRemoteError(res) {
-  let envelope = null;
-  try {
-    envelope = await res.json();
-  } catch {
-    envelope = null;
-  }
-  const message = envelope?.error?.message ?? `request failed with status ${res.status}`;
-  const code = envelope?.error?.code ?? (res.status === 401 ? "AUTH_REQUIRED" : res.status >= 500 ? "RUNTIME" : "USAGE");
-  return new RemoteError(message, code, res.status);
-}
-async function authRequest(base, path14, options2 = {}) {
-  const headers = {};
-  if (options2.body !== void 0) headers["content-type"] = "application/json";
-  if (options2.authToken) headers["Authorization"] = `Bearer ${options2.authToken}`;
-  const request = new Request(`${base}${path14}`, {
-    method: options2.method ?? "GET",
-    headers,
-    body: options2.body !== void 0 ? JSON.stringify(options2.body) : void 0
-  });
-  const res = await safeFetch(request);
-  if (!res.ok) throw await toRemoteError(res);
-  return await res.json();
-}
-
-// src/commands/whoami.ts
-var WHOAMI_USAGE = `agentstate-lite whoami \u2014 show which remotes you hold a key for, or (with --remote) the live remote identity
-
-Usage:
-  agentstate-lite whoami [--remote <url>]
-
-Without --remote (and no AGENTSTATE_LITE_REMOTE default): OFFLINE \u2014 lists the remote origins
-you hold a stored key for, without a network call.
-
-With --remote <url> (or an AGENTSTATE_LITE_REMOTE default): GETs /v0/whoami against the
-gated remote, using the ORIGIN-KEYED API key stored by 'join' or 'login --remote
---api-key' (or AGENTSTATE_LITE_API_KEY) \u2014 reports the resolved identity, its role per
-bundle membership, and whether it authenticated as the root bootstrap identity.
-
-Options:
-  --remote <url>   Show the LIVE remote identity instead of the local credential file
-                   (falls back to AGENTSTATE_LITE_REMOTE if set)
-  --json           Emit compact JSON instead of TOON
-  -h, --help       Show this help
-`;
-async function whoami(argv, deps = {}) {
-  const loadCreds = deps.loadCreds ?? loadCredentials;
-  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
-  const { values } = parseOrUsage(
-    () => parseArgs25({
-      args: argv,
-      options: {
-        remote: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    }),
-    "whoami"
-  );
-  if (values.help) {
-    stdout(WHOAMI_USAGE);
-    return;
-  }
-  const remote = await resolveRemoteFlag(values.remote, void 0);
-  if (remote) {
-    return whoamiRemote(remote, resolveMode(values), stdout);
-  }
-  const creds = await loadCreds();
-  const remoteOrigins = creds?.remotes ? Object.keys(creds.remotes).sort() : [];
-  let projectBinding;
-  try {
-    const found = await resolveProjectBinding();
-    if (found) projectBinding = { file: found.file, target: found.target };
-  } catch {
-  }
-  if (remoteOrigins.length === 0) {
-    const rec2 = {
-      logged_in: false,
-      remotes: [],
-      help: [
-        `${cliInvocation()} whoami --remote <url>  (check a gated remote identity)`,
-        `${cliInvocation()} join --remote <url> --invite <token>  (join a shared bundle)`
-      ]
-    };
-    if (projectBinding) rec2.project_binding = projectBinding;
-    stdout(render(rec2, resolveMode(values)));
-    return;
-  }
-  const rec = {
-    logged_in: true,
-    remotes: remoteOrigins,
-    help: [`${cliInvocation()} whoami --remote ${remoteOrigins[0]}`]
-  };
-  if (projectBinding) rec.project_binding = projectBinding;
-  stdout(render(rec, resolveMode(values)));
-}
-async function whoamiRemote(remoteFlag, mode, stdout) {
-  const { base, origin } = await resolveRemoteOnly(remoteFlag);
-  const authToken = await resolveAuthToken(origin);
-  let body;
-  try {
-    body = await authRequest(base, "/v0/whoami", { authToken });
-  } catch (err) {
-    const classified = classifyBundleError(err, remoteFlag);
-    if (classified.code === "AUTH_REQUIRED") {
-      throw new CliError("AUTH_REQUIRED", classified.message, {
-        help: `${cliInvocation()} join --remote ${origin} --invite <token> (or, if you already have a key: ${cliInvocation()} login --remote ${origin} --api-key <key>)`
-      });
-    }
-    throw classified;
-  }
-  const rec = {
-    remote: origin,
-    user_id: body.user_id,
-    display: body.display,
-    method: body.method,
-    memberships: body.memberships
-  };
-  if (body.bootstrap) {
-    rec.bootstrap = true;
-    rec.bootstrap_note = "no members are provisioned on this deployment yet \u2014 every valid key authenticates as the root admin; provision members (invite create / member set-role) to lock it down";
-  }
-  stdout(render(rec, mode));
-}
-
-// src/commands/join.ts
-import { parseArgs as parseArgs26 } from "node:util";
-var JOIN_USAGE = `agentstate-lite join \u2014 redeem an invite token to join a remote bundle
-
-Usage:
-  agentstate-lite join --remote <url> --invite <token> [--display <name>]
-
-On success, the returned API key is stored in the local credentials file, keyed to the
-remote's origin \u2014 it is NEVER printed. Every subsequent --remote command against this
-origin then authenticates automatically (the same lookup 'login --remote --api-key' uses).
-
-Options:
-  --remote <url>    Base URL of the auth-gated remote deployment
-                    (falls back to AGENTSTATE_LITE_REMOTE if set)
-  --invite <token>  The invite token to redeem                              [required]
-  --display <name>  Display name to record for the new user
-  --json            Emit compact JSON instead of TOON
-  -h, --help        Show this help
-`;
-async function join8(argv, deps = {}) {
-  const saveApiKey = deps.saveApiKey ?? ((origin2, apiKey) => saveApiKeyForOrigin(origin2, apiKey));
-  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
-  const { values } = parseOrUsage(
-    () => parseArgs26({
-      args: argv,
-      options: {
-        remote: { type: "string" },
-        invite: { type: "string" },
-        display: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    }),
-    "join"
-  );
-  if (values.help) {
-    stdout(JOIN_USAGE);
-    return;
-  }
-  const inviteToken = values.invite?.trim();
-  if (!inviteToken) {
-    throw new CliError("USAGE", "--invite <token> is required", {
-      help: `${cliInvocation()} join --remote <url> --invite <token>`
-    });
-  }
-  const { base, origin } = await resolveRemoteOnly(values.remote);
-  const display = values.display?.trim();
-  let result;
-  try {
-    result = await authRequest(base, "/v0/join", {
-      method: "POST",
-      body: { invite_token: inviteToken, ...display ? { display } : {} }
-    });
-  } catch (err) {
-    if (err instanceof CliError) throw err;
-    if (err instanceof RemoteError && err.code === "INVITE_INVALID") {
-      throw new CliError("USAGE", `${err.message} \u2014 ask an admin for a new invite`);
-    }
-    throw classifyBundleError(err, values.remote);
-  }
-  await saveApiKey(origin, result.api_key);
-  stdout(
-    render(
-      {
-        joined: true,
-        remote: origin,
-        user_id: result.user_id,
-        role: result.role,
-        bundle: result.bundle,
-        key_prefix: result.key_prefix,
-        help: [`${cliInvocation()} whoami --remote ${origin}`]
-      },
-      resolveMode(values)
-    )
-  );
-}
-
-// src/commands/invite.ts
-import { parseArgs as parseArgs27 } from "node:util";
-var INVITE_USAGE = `agentstate-lite invite \u2014 create, list, or revoke join invites for a remote bundle
-
-Usage:
-  agentstate-lite invite create --remote <url> --role <admin|writer|reader> [--expires-in <hours>] [--display-hint <s>]
-  agentstate-lite invite list   --remote <url> [--fields <a,b,... | all>]
-  agentstate-lite invite revoke --remote <url> <invite_id>
-
-Requires an admin membership on the target remote (or the root bootstrap identity).
-'invite create' prints the invite TOKEN once \u2014 it is the shareable secret; anyone holding
-it can run 'join' to redeem it (unlike an API key, printing it here is correct: the
-token IS meant to be handed to the intended joiner). 'invite revoke' is idempotent
-(changed:false if already revoked or absent).
-
-Options:
-  --role <r>             Role the redeemer receives: admin | writer | reader  [create; required]
-  --fields <a,b|all>     [list] Add columns to the minimal {id,role,expires_at,status} row, or 'all'
-                         for the full record (bundle, created_by, redeemed_by, redeemed_at, \u2026)
-  --expires-in <hours>   Invite lifetime in hours (default: server default, one week)
-  --display-hint <s>     Suggested display name shown to the redeemer
-  --remote <url>         Base URL of the auth-gated remote deployment
-                         (falls back to AGENTSTATE_LITE_REMOTE if set)
-  --json                 Emit compact JSON instead of TOON
-  -h, --help             Show this help
-`;
-async function invite(argv, deps = {}) {
-  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
-  const sub = argv[0];
-  const rest = argv.slice(1);
-  if (sub === "create") return inviteCreate(rest, stdout);
-  if (sub === "list") return inviteList(rest, stdout);
-  if (sub === "revoke") return inviteRevoke(rest, stdout);
-  if (sub === "-h" || sub === "--help" || sub === void 0) {
-    stdout(INVITE_USAGE);
-    return;
-  }
-  throw new CliError("USAGE", `unknown invite subcommand: ${sub} (expected create|list|revoke)`, {
-    help: `${cliInvocation()} invite --help`
-  });
-}
-async function inviteCreate(argv, stdout) {
-  const { values } = parseOrUsage(
-    () => parseArgs27({
-      args: argv,
-      options: {
-        role: { type: "string" },
-        "expires-in": { type: "string" },
-        "display-hint": { type: "string" },
-        remote: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    }),
-    "invite create"
-  );
-  if (values.help) {
-    stdout(INVITE_USAGE);
-    return;
-  }
-  const role = values.role?.trim();
-  if (!role || !isRole(role)) {
-    throw new CliError("USAGE", `--role <r> is required and must be one of: ${ROLES.join(", ")}`, {
-      help: `${cliInvocation()} invite create --remote <url> --role writer`
-    });
-  }
-  let expiresInHours;
-  if (values["expires-in"] !== void 0) {
-    const n = Number(values["expires-in"]);
-    if (!Number.isFinite(n) || n <= 0) {
-      throw new CliError("USAGE", "--expires-in <hours> must be a positive number", {
-        help: `${cliInvocation()} invite create --remote <url> --role ${role} --expires-in 24`
-      });
-    }
-    expiresInHours = n;
-  }
-  const displayHint = values["display-hint"]?.trim();
-  const { base, origin, authToken } = await resolveAuthContext(values.remote);
-  let result;
-  try {
-    result = await authRequest(base, "/v0/invites", {
-      method: "POST",
-      authToken,
-      body: {
-        role,
-        ...expiresInHours !== void 0 ? { expires_in_hours: expiresInHours } : {},
-        ...displayHint ? { display_hint: displayHint } : {}
-      }
-    });
-  } catch (err) {
-    throw classifyBundleError(err, values.remote);
-  }
-  const rec = {
-    invite_id: result.invite_id,
-    bundle: result.bundle,
-    role: result.role,
-    expires_at: result.expires_at,
-    token: result.token,
-    help: [`${cliInvocation()} join --remote ${origin} --invite ${result.token}`]
-  };
-  if (result.bootstrap) rec.bootstrap = true;
-  stdout(render(rec, resolveMode(values)));
-}
-var INVITE_DEFAULT_COLS = ["id", "role", "expires_at", "status"];
-var INVITE_ALL_COLS = [
-  ...INVITE_DEFAULT_COLS,
-  "bundle",
-  "created_by",
-  "redeemed_by",
-  "redeemed_at",
-  "display_hint"
-];
-function inviteStatus(inv) {
-  if (inv.revokedAt) return "revoked";
-  if (inv.redeemedAt || inv.redeemedBy) return "redeemed";
-  return "pending";
-}
-function inviteCols(fieldsFlag) {
-  if (fieldsFlag === void 0) return INVITE_DEFAULT_COLS;
-  const req = fieldsFlag.trim().toLowerCase();
-  if (req === "all" || req === "*") return INVITE_ALL_COLS;
-  const extra = fieldsFlag.split(",").map((f) => f.trim()).filter((f) => f && !INVITE_DEFAULT_COLS.includes(f));
-  return [...INVITE_DEFAULT_COLS, ...extra];
-}
-async function inviteList(argv, stdout) {
-  const { values } = parseOrUsage(
-    () => parseArgs27({
-      args: argv,
-      options: {
-        fields: { type: "string" },
-        remote: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    }),
-    "invite list"
-  );
-  if (values.help) {
-    stdout(INVITE_USAGE);
-    return;
-  }
-  const { base, authToken } = await resolveAuthContext(values.remote);
-  let result;
-  try {
-    result = await authRequest(base, "/v0/invites", { authToken });
-  } catch (err) {
-    throw classifyBundleError(err, values.remote);
-  }
-  const cols = inviteCols(values.fields);
-  const rows = result.invites.map((inv) => {
-    const full = {
-      id: inv.id,
-      role: inv.role,
-      expires_at: inv.expiresAt,
-      status: inviteStatus(inv),
-      bundle: inv.bundle,
-      created_by: inv.createdBy,
-      redeemed_by: inv.redeemedBy ?? "",
-      redeemed_at: inv.redeemedAt ?? "",
-      display_hint: inv.displayHint ?? ""
-    };
-    const row = {};
-    for (const c of cols) if (c in full) row[c] = full[c];
-    return row;
-  });
-  const rec = { count: result.count, invites: rows };
-  if (result.bootstrap) rec.bootstrap = true;
-  const remote = values.remote ?? "<url>";
-  rec.help = result.count === 0 ? [`no invites yet \u2014 create one with \`${cliInvocation()} invite create --remote ${remote} --role writer\``] : [
-    `${cliInvocation()} invite revoke --remote ${remote} <invite_id>`,
-    `pass \`--fields all\` for the full record (created_by, redeemed_by, \u2026)`
-  ];
-  stdout(render(rec, resolveMode(values)));
-}
-async function inviteRevoke(argv, stdout) {
-  const { values, positionals } = parseOrUsage(
-    () => parseArgs27({
-      args: argv,
-      options: {
-        remote: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    }),
-    "invite revoke"
-  );
-  if (values.help) {
-    stdout(INVITE_USAGE);
-    return;
-  }
-  const id = positionals[0]?.trim();
-  if (!id) {
-    throw new CliError("USAGE", "invite revoke requires an <invite_id> positional", {
-      help: `${cliInvocation()} invite revoke --remote <url> <invite_id>`
-    });
-  }
-  const { base, authToken } = await resolveAuthContext(values.remote);
-  let result;
-  try {
-    result = await authRequest(base, `/v0/invites/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-      authToken
-    });
-  } catch (err) {
-    throw classifyBundleError(err, values.remote);
-  }
-  const rec = { invite_id: result.invite_id, changed: result.changed };
-  if (result.bootstrap) rec.bootstrap = true;
-  stdout(render(rec, resolveMode(values)));
-}
-
-// src/commands/member.ts
-import { parseArgs as parseArgs28 } from "node:util";
-var MEMBER_USAGE = `agentstate-lite member \u2014 list, change the role of, or remove a remote bundle's members
-
-Usage:
-  agentstate-lite member list     --remote <url>
-  agentstate-lite member set-role --remote <url> <user_id> <role>
-  agentstate-lite member remove   --remote <url> <user_id>
-
-Requires an admin membership on the target remote (or the root bootstrap identity).
-'member set-role' and 'member remove' are idempotent (changed:false on a repeat that
-changes nothing). 'member remove' also revokes EVERY API key the removed user holds,
-deployment-wide (single-bundle scope today) \u2014 see the returned revoked_keys count. The
-server also refuses to demote or remove the LAST admin of a bundle (409, surfaced here as
-a USAGE error \u2014 see 'invite'/'member' usage text for the deployment's single-bundle scope).
-
-Options:
-  --remote <url>   Base URL of the auth-gated remote deployment
-                   (falls back to AGENTSTATE_LITE_REMOTE if set)
-  --json           Emit compact JSON instead of TOON
-  -h, --help       Show this help
-`;
-async function member(argv, deps = {}) {
-  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
-  const sub = argv[0];
-  const rest = argv.slice(1);
-  if (sub === "list") return memberList(rest, stdout);
-  if (sub === "set-role") return memberSetRole(rest, stdout);
-  if (sub === "remove") return memberRemove(rest, stdout);
-  if (sub === "-h" || sub === "--help" || sub === void 0) {
-    stdout(MEMBER_USAGE);
-    return;
-  }
-  throw new CliError("USAGE", `unknown member subcommand: ${sub} (expected list|set-role|remove)`, {
-    help: `${cliInvocation()} member --help`
-  });
-}
-async function memberList(argv, stdout) {
-  const { values } = parseOrUsage(
-    () => parseArgs28({
-      args: argv,
-      options: {
-        remote: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    }),
-    "member list"
-  );
-  if (values.help) {
-    stdout(MEMBER_USAGE);
-    return;
-  }
-  const { base, authToken } = await resolveAuthContext(values.remote);
-  let result;
-  try {
-    result = await authRequest(base, "/v0/members", { authToken });
-  } catch (err) {
-    throw classifyBundleError(err, values.remote);
-  }
-  const rec = { count: result.count, members: result.members };
-  if (result.bootstrap) rec.bootstrap = true;
-  const remote = values.remote ?? "<url>";
-  if (result.count > 0) {
-    rec.help = [
-      `${cliInvocation()} member set-role --remote ${remote} <user_id> <role>`,
-      `${cliInvocation()} member remove --remote ${remote} <user_id>`
-    ];
-  }
-  stdout(render(rec, resolveMode(values)));
-}
-async function memberSetRole(argv, stdout) {
-  const { values, positionals } = parseOrUsage(
-    () => parseArgs28({
-      args: argv,
-      options: {
-        remote: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    }),
-    "member set-role"
-  );
-  if (values.help) {
-    stdout(MEMBER_USAGE);
-    return;
-  }
-  const userId = positionals[0]?.trim();
-  const role = positionals[1]?.trim();
-  if (!userId || !role) {
-    throw new CliError("USAGE", "member set-role requires <user_id> and <role> positionals", {
-      help: `${cliInvocation()} member set-role --remote <url> <user_id> <role>`
-    });
-  }
-  if (!isRole(role)) {
-    throw new CliError("USAGE", `<role> must be one of: ${ROLES.join(", ")}`, {
-      help: `${cliInvocation()} member set-role --remote <url> ${userId} writer`
-    });
-  }
-  const { base, authToken } = await resolveAuthContext(values.remote);
-  let result;
-  try {
-    result = await authRequest(base, `/v0/members/${encodeURIComponent(userId)}/role`, {
-      method: "PUT",
-      authToken,
-      body: { role }
-    });
-  } catch (err) {
-    throw classifyBundleError(err, values.remote);
-  }
-  const rec = {
-    user_id: result.user_id,
-    bundle: result.bundle,
-    role: result.role,
-    changed: result.changed
-  };
-  if (result.bootstrap) rec.bootstrap = true;
-  stdout(render(rec, resolveMode(values)));
-}
-async function memberRemove(argv, stdout) {
-  const { values, positionals } = parseOrUsage(
-    () => parseArgs28({
-      args: argv,
-      options: {
-        remote: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    }),
-    "member remove"
-  );
-  if (values.help) {
-    stdout(MEMBER_USAGE);
-    return;
-  }
-  const userId = positionals[0]?.trim();
-  if (!userId) {
-    throw new CliError("USAGE", "member remove requires a <user_id> positional", {
-      help: `${cliInvocation()} member remove --remote <url> <user_id>`
-    });
-  }
-  const { base, authToken } = await resolveAuthContext(values.remote);
-  let result;
-  try {
-    result = await authRequest(base, `/v0/members/${encodeURIComponent(userId)}`, {
-      method: "DELETE",
-      authToken
-    });
-  } catch (err) {
-    throw classifyBundleError(err, values.remote);
-  }
-  const rec = {
-    user_id: result.user_id,
-    bundle: result.bundle,
-    changed: result.changed,
-    revoked_keys: result.revoked_keys
-  };
-  if (result.bootstrap) rec.bootstrap = true;
-  stdout(render(rec, resolveMode(values)));
-}
-
-// src/commands/key.ts
-import { parseArgs as parseArgs29 } from "node:util";
-var KEY_USAGE = `agentstate-lite key \u2014 mint, list, or revoke API keys for a remote bundle
-
-Usage:
-  agentstate-lite key mint   --remote <url> [--label <s>]
-  agentstate-lite key mint   --remote <url> --agent <name> [--label <s>]
-  agentstate-lite key list   --remote <url> [--fields <a,b,... | all>]
-  agentstate-lite key revoke --remote <url> <key_id>
-
-A bare 'key mint' mints a key for the CALLER (self-mint; any member may do this).
-'key mint --agent <name>' is admin-only: it creates a brand-new synthetic agent user and
-mints its first key \u2014 there is no way to mint a credential for an EXISTING user (a human
-joins via an invite only; see 'join').
-
-The minted secret is printed EXACTLY ONCE in the mint receipt and is NEVER stored
-automatically \u2014 save it yourself, e.g. via
-'agentstate-lite login --remote <url> --api-key <key>' (substituting the printed value),
-or your own secret store. 'key list' never shows the secret (prefix/last_four only).
-'key revoke' is idempotent (changed:false if already revoked or absent).
-
-Options:
-  --label <s>     Human-readable label for the minted key
-  --fields <a,b|all>  [list] Add columns to the minimal {id,key_prefix,label,status} row, or 'all'
-                  for the full record (last_four, user_id, created_by, created_at, \u2026) \u2014 never the secret
-  --agent <name>  Mint a NEW agent user's first key (admin-only)
-  --remote <url>  Base URL of the auth-gated remote deployment
-                  (falls back to AGENTSTATE_LITE_REMOTE if set)
-  --json          Emit compact JSON instead of TOON
-  -h, --help      Show this help
-`;
-async function key(argv, deps = {}) {
-  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
-  const sub = argv[0];
-  const rest = argv.slice(1);
-  if (sub === "mint") return keyMint(rest, stdout);
-  if (sub === "list") return keyList(rest, stdout);
-  if (sub === "revoke") return keyRevoke(rest, stdout);
-  if (sub === "-h" || sub === "--help" || sub === void 0) {
-    stdout(KEY_USAGE);
-    return;
-  }
-  throw new CliError("USAGE", `unknown key subcommand: ${sub} (expected mint|list|revoke)`, {
-    help: `${cliInvocation()} key --help`
-  });
-}
-async function keyMint(argv, stdout) {
-  const { values } = parseOrUsage(
-    () => parseArgs29({
-      args: argv,
-      options: {
-        label: { type: "string" },
-        agent: { type: "string" },
-        remote: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    }),
-    "key mint"
-  );
-  if (values.help) {
-    stdout(KEY_USAGE);
-    return;
-  }
-  const label = values.label?.trim();
-  const agent = values.agent?.trim();
-  const { base, authToken } = await resolveAuthContext(values.remote);
-  let result;
-  try {
-    result = await authRequest(base, "/v0/keys", {
-      method: "POST",
-      authToken,
-      body: {
-        ...agent ? { new_agent_label: agent } : {},
-        ...label ? { label } : {}
-      }
-    });
-  } catch (err) {
-    throw classifyBundleError(err, values.remote);
-  }
-  const rec = {
-    id: result.id,
-    user_id: result.user_id,
-    label: result.label,
-    key_prefix: result.key_prefix,
-    last_four: result.last_four,
-    api_key: result.api_key,
-    note: `save this key now \u2014 it will not be shown again. Store it with '${cliInvocation()} login --remote <url> --api-key <key>' (substitute the real url/key) or your own secret store.`
-  };
-  if (result.bootstrap) rec.bootstrap = true;
-  stdout(render(rec, resolveMode(values)));
-}
-var KEY_DEFAULT_COLS = ["id", "key_prefix", "label", "status"];
-var KEY_ALL_COLS = [
-  ...KEY_DEFAULT_COLS,
-  "last_four",
-  "user_id",
-  "created_by",
-  "created_at",
-  "revoked_at"
-];
-function keyCols(fieldsFlag) {
-  if (fieldsFlag === void 0) return KEY_DEFAULT_COLS;
-  const req = fieldsFlag.trim().toLowerCase();
-  if (req === "all" || req === "*") return KEY_ALL_COLS;
-  const extra = fieldsFlag.split(",").map((f) => f.trim()).filter((f) => f && !KEY_DEFAULT_COLS.includes(f));
-  return [...KEY_DEFAULT_COLS, ...extra];
-}
-async function keyList(argv, stdout) {
-  const { values } = parseOrUsage(
-    () => parseArgs29({
-      args: argv,
-      options: {
-        fields: { type: "string" },
-        remote: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    }),
-    "key list"
-  );
-  if (values.help) {
-    stdout(KEY_USAGE);
-    return;
-  }
-  const { base, authToken } = await resolveAuthContext(values.remote);
-  let result;
-  try {
-    result = await authRequest(base, "/v0/keys", { authToken });
-  } catch (err) {
-    throw classifyBundleError(err, values.remote);
-  }
-  const cols = keyCols(values.fields);
-  const rows = result.keys.map((k) => {
-    const full = {
-      id: k.id,
-      key_prefix: k.keyPrefix,
-      label: k.label ?? "",
-      status: k.revokedAt ? "revoked" : "active",
-      last_four: k.lastFour,
-      user_id: k.userId,
-      created_by: k.createdBy,
-      created_at: k.createdAt,
-      revoked_at: k.revokedAt ?? ""
-    };
-    const row = {};
-    for (const c of cols) if (c in full) row[c] = full[c];
-    return row;
-  });
-  const rec = { count: result.count, keys: rows };
-  if (result.bootstrap) rec.bootstrap = true;
-  const remote = values.remote ?? "<url>";
-  rec.help = result.count === 0 ? [`no API keys yet \u2014 mint one with \`${cliInvocation()} key mint --remote ${remote}\``] : [
-    `${cliInvocation()} key revoke --remote ${remote} <key_id>`,
-    `pass \`--fields all\` for the full record (user_id, created_at, \u2026)`
-  ];
-  stdout(render(rec, resolveMode(values)));
-}
-async function keyRevoke(argv, stdout) {
-  const { values, positionals } = parseOrUsage(
-    () => parseArgs29({
-      args: argv,
-      options: {
-        remote: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    }),
-    "key revoke"
-  );
-  if (values.help) {
-    stdout(KEY_USAGE);
-    return;
-  }
-  const id = positionals[0]?.trim();
-  if (!id) {
-    throw new CliError("USAGE", "key revoke requires a <key_id> positional", {
-      help: `${cliInvocation()} key revoke --remote <url> <key_id>`
-    });
-  }
-  const { base, authToken } = await resolveAuthContext(values.remote);
-  let result;
-  try {
-    result = await authRequest(base, `/v0/keys/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-      authToken
-    });
-  } catch (err) {
-    throw classifyBundleError(err, values.remote);
-  }
-  stdout(render({ id: result.id, changed: result.changed }, resolveMode(values)));
-}
-
 // src/reference.ts
 var DESCRIPTION = "read and write a local OKF knowledge bundle (context notes, docs, cross-links, static-HTML view)";
 var COMMAND_GROUPS = [
@@ -16886,73 +15984,6 @@ var COMMAND_GROUPS = [
     ]
   },
   {
-    group: "Identity",
-    commands: [
-      {
-        usage: "login --remote <url> --api-key <key>",
-        summary: "Store an API key for a gated --remote deployment (keyed by origin; join redeems an invite instead)"
-      },
-      {
-        usage: "join --remote <url> --invite <token> [--display <name>]",
-        summary: "Redeem an invite token to join a remote bundle (stores the returned API key; never prints it)"
-      },
-      {
-        usage: "whoami [--remote <url>]",
-        summary: "List the remote origins you hold a key for (offline), or (with --remote) the live remote identity + bundle memberships"
-      }
-    ]
-  },
-  {
-    group: "Invites & members (admin)",
-    commands: [
-      {
-        usage: "invite create --remote <url> --role <admin|writer|reader> [--expires-in <hours>] [--display-hint <s>]",
-        summary: "Create a join invite for a remote bundle (prints the token once)"
-      },
-      {
-        usage: "invite list --remote <url> [--fields <a,b|all>]",
-        summary: "List invites (minimal id/role/expires/status by default; --fields all for the full record)"
-      },
-      {
-        usage: "invite revoke --remote <url> <invite_id>",
-        summary: "Revoke an invite (idempotent)"
-      },
-      {
-        usage: "member list --remote <url>",
-        summary: "List a remote bundle's members and their roles"
-      },
-      {
-        usage: "member set-role --remote <url> <user_id> <role>",
-        summary: "Change a member's role (idempotent)"
-      },
-      {
-        usage: "member remove --remote <url> <user_id>",
-        summary: "Remove a member and revoke all their API keys (idempotent)"
-      }
-    ]
-  },
-  {
-    group: "API keys",
-    commands: [
-      {
-        usage: "key mint --remote <url> [--label <s>]",
-        summary: "Mint an API key for YOURSELF (self-serve; any member may do this)"
-      },
-      {
-        usage: "key mint --remote <url> --agent <name> [--label <s>]",
-        summary: "Mint a NEW agent user's first key (admin-only; prints the key once)"
-      },
-      {
-        usage: "key list --remote <url> [--fields <a,b|all>]",
-        summary: "List API keys (minimal id/prefix/label/status; --fields all for more \u2014 never the secret)"
-      },
-      {
-        usage: "key revoke --remote <url> <key_id>",
-        summary: "Revoke an API key you own, or (admin) any key (idempotent)"
-      }
-    ]
-  },
-  {
     group: "Session",
     commands: [
       {
@@ -17029,7 +16060,7 @@ function helpIndexText(invocation) {
 }
 
 // src/commands/home.ts
-import { parseArgs as parseArgs30 } from "node:util";
+import { parseArgs as parseArgs24 } from "node:util";
 import path13 from "node:path";
 var HOME_RECENT_LIMIT = 5;
 function rowTitle(id, title) {
@@ -17158,8 +16189,8 @@ async function defaultLoadBoardStatus(dir) {
       const probed = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0 || runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
       return probed ? { state: "unprovisioned" } : null;
     }
-    const key2 = resolveBundleKey(boardPath);
-    const state = await readSyncState(key2);
+    const key = resolveBundleKey(boardPath);
+    const state = await readSyncState(key);
     let uncommitted;
     try {
       uncommitted = countUncommitted(boardPath);
@@ -17177,30 +16208,16 @@ async function defaultLoadBoardStatus(dir) {
     return null;
   }
 }
-function buildHomeView(creds, deps, summary, remote, remoteKeyStored, binding, bindingError, board, hookUpdate) {
+function buildHomeView(deps, summary, remote, binding, bindingError, board, hookUpdate) {
   const inv = deps.invocation();
-  let auth;
-  if (remote && remoteKeyStored) {
-    auth = {
-      status: "key-stored",
-      note: `an API key for this remote is stored locally; this home view is OFFLINE \u2014 run \`${inv} whoami --remote ${remote}\` to verify the live identity`
-    };
-  } else {
-    auth = {
-      status: "logged-out",
-      help: `not logged in to any remote \u2014 local bundles need no login; for a shared remote, get its URL + an invite from a teammate \u2192 \`${inv} join --remote <url> --invite <token>\``
-    };
-  }
   const ref = commandReference(inv);
   const view2 = {
-    "agentstate-lite": { bin: deps.binPath(), description: DESCRIPTION },
-    auth
+    "agentstate-lite": { bin: deps.binPath(), description: DESCRIPTION }
   };
   if (remote) {
     const remoteBlock = {
       url: remote,
       help: [
-        `${inv} whoami --remote ${remote}`,
         `${inv} list --remote ${remote}`,
         `${inv} status --remote ${remote}`
       ]
@@ -17250,15 +16267,6 @@ function buildHomeView(creds, deps, summary, remote, remoteKeyStored, binding, b
   if (bindingError) {
     view2.project_binding_error = bindingError;
   }
-  if (!remote) {
-    const storedRemotes = creds?.remotes ? Object.keys(creds.remotes).sort() : [];
-    if (storedRemotes.length > 0) {
-      view2.remotes = {
-        stored: storedRemotes,
-        help: `you hold a key for these remote workspace(s) \u2014 reach one with \`${inv} list --remote <origin>\` (or \`${inv} whoami --remote <origin>\`)`
-      };
-    }
-  }
   const compact = compactCommandReference(inv);
   view2.commands = compact.commands;
   view2.commands_help = compact.commands_help;
@@ -17267,13 +16275,12 @@ function buildHomeView(creds, deps, summary, remote, remoteKeyStored, binding, b
   return view2;
 }
 async function home(argv, deps = {}) {
-  const loadCreds = deps.loadCreds ?? loadCredentials;
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   let remote;
   let dir;
   let jsonMode = false;
   try {
-    const parsed = parseArgs30({
+    const parsed = parseArgs24({
       args: argv,
       options: {
         remote: { type: "string" },
@@ -17312,19 +16319,6 @@ async function home(argv, deps = {}) {
     }
   }
   const summarize = deps.summarizeBundle ?? (() => defaultSummarizeBundle(dir));
-  let creds = null;
-  try {
-    creds = await loadCreds();
-  } catch {
-    creds = null;
-  }
-  let remoteKeyStored = false;
-  if (remote) {
-    try {
-      remoteKeyStored = Boolean(creds?.remotes?.[normalizeServer(remote).resource]);
-    } catch {
-    }
-  }
   let summary = null;
   if (!remote) {
     try {
@@ -17352,14 +16346,12 @@ async function home(argv, deps = {}) {
   stdout(
     render(
       buildHomeView(
-        creds,
         {
           binPath: deps.binPath ?? binPath,
           invocation
         },
         summary,
         remote,
-        remoteKeyStored,
         binding,
         bindingError,
         board,
@@ -17373,7 +16365,7 @@ async function home(argv, deps = {}) {
 }
 
 // src/commands/session-start.ts
-import { parseArgs as parseArgs31 } from "node:util";
+import { parseArgs as parseArgs25 } from "node:util";
 var SESSION_START_PULL_BUDGET_MS = 7e3;
 var SESSION_START_CONNECT_TIMEOUT_SECONDS = 5;
 var MIN_USEFUL_BUDGET_MS = 250;
@@ -17416,12 +16408,12 @@ async function sessionStartPull(dir, budgetMs = SESSION_START_PULL_BUDGET_MS, no
     if (outcome.kind === "no_repo" || outcome.kind === "no_board" || outcome.kind === "local_board") return void 0;
     const boardPath = outcome.boardPath;
     const announcement = provisionAnnouncement(outcome);
-    const key2 = resolveBundleKey(boardPath);
-    await refreshMarker(key2);
+    const key = resolveBundleKey(boardPath);
+    await refreshMarker(key);
     if (remaining() < MIN_USEFUL_BUDGET_MS) {
       return { offline: true, boardPath, ...announcement ? { announcement } : {} };
     }
-    const pulled = await pullBoardAndRecord(boardPath, key2, {
+    const pulled = await pullBoardAndRecord(boardPath, key, {
       fetchTimeoutMs: remaining(),
       connectTimeoutSeconds: SESSION_START_CONNECT_TIMEOUT_SECONDS
     });
@@ -17444,7 +16436,7 @@ async function sessionStartPull(dir, budgetMs = SESSION_START_PULL_BUDGET_MS, no
 async function sessionStart(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const { values } = parseOrUsage(
-    () => parseArgs31({
+    () => parseArgs25({
       args: argv,
       options: {
         dir: { type: "string" },
@@ -17497,7 +16489,7 @@ async function sessionStart(argv, deps = {}) {
 }
 
 // src/cli.ts
-import { parseArgs as parseArgs32 } from "node:util";
+import { parseArgs as parseArgs26 } from "node:util";
 var KNOWN_COMMANDS = [
   "init",
   "doc",
@@ -17518,12 +16510,6 @@ var KNOWN_COMMANDS = [
   "serve",
   "ui",
   "sync",
-  "login",
-  "whoami",
-  "join",
-  "invite",
-  "member",
-  "key",
   "hook",
   "session-start"
 ];
@@ -17541,7 +16527,7 @@ var wrap2 = (fn) => async (args) => {
 };
 function isGlobalOnlyHomeInvocation(argv) {
   try {
-    const { positionals } = parseArgs32({
+    const { positionals } = parseArgs26({
       args: argv,
       options: {
         remote: { type: "string" },
@@ -17559,7 +16545,7 @@ function isGlobalOnlyHomeInvocation(argv) {
 function hoistLeadingGlobalFlags(argv) {
   let tokens;
   try {
-    tokens = parseArgs32({
+    tokens = parseArgs26({
       args: argv,
       tokens: true,
       strict: false,
@@ -17641,12 +16627,6 @@ async function main(argv) {
       serve: wrap2(serve2),
       ui: wrap2(ui),
       sync: wrap2(sync),
-      login: wrap2(login),
-      whoami: wrap2(whoami),
-      join: wrap2(join8),
-      invite: wrap2(invite),
-      member: wrap2(member),
-      key: wrap2(key),
       hook: wrap2(hook),
       // The SessionStart hook payload: time-boxed board pull, then the home render — in-process.
       "session-start": wrap2(sessionStart),

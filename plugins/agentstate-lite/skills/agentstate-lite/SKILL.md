@@ -128,41 +128,6 @@ the rest of the line unchanged.
 - `"$ASLITE" sync [--establish | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
   — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it
 
-### Identity
-
-- `"$ASLITE" login --remote <url> --api-key <key>`
-  — Store an API key for a gated --remote deployment (keyed by origin; join redeems an invite instead)
-- `"$ASLITE" join --remote <url> --invite <token> [--display <name>]`
-  — Redeem an invite token to join a remote bundle (stores the returned API key; never prints it)
-- `"$ASLITE" whoami [--remote <url>]`
-  — List the remote origins you hold a key for (offline), or (with --remote) the live remote identity + bundle memberships
-
-### Invites & members (admin)
-
-- `"$ASLITE" invite create --remote <url> --role <admin|writer|reader> [--expires-in <hours>] [--display-hint <s>]`
-  — Create a join invite for a remote bundle (prints the token once)
-- `"$ASLITE" invite list --remote <url> [--fields <a,b|all>]`
-  — List invites (minimal id/role/expires/status by default; --fields all for the full record)
-- `"$ASLITE" invite revoke --remote <url> <invite_id>`
-  — Revoke an invite (idempotent)
-- `"$ASLITE" member list --remote <url>`
-  — List a remote bundle's members and their roles
-- `"$ASLITE" member set-role --remote <url> <user_id> <role>`
-  — Change a member's role (idempotent)
-- `"$ASLITE" member remove --remote <url> <user_id>`
-  — Remove a member and revoke all their API keys (idempotent)
-
-### API keys
-
-- `"$ASLITE" key mint --remote <url> [--label <s>]`
-  — Mint an API key for YOURSELF (self-serve; any member may do this)
-- `"$ASLITE" key mint --remote <url> --agent <name> [--label <s>]`
-  — Mint a NEW agent user's first key (admin-only; prints the key once)
-- `"$ASLITE" key list --remote <url> [--fields <a,b|all>]`
-  — List API keys (minimal id/prefix/label/status; --fields all for more — never the secret)
-- `"$ASLITE" key revoke --remote <url> <key_id>`
-  — Revoke an API key you own, or (admin) any key (idempotent)
-
 ### Session
 
 - `"$ASLITE" session-start [--dir <path>]`
@@ -311,12 +276,13 @@ disables it; the variable's presence is the switch.
 On projects that share their board you may notice a `board` branch in the repo's GitHub —
 that's the board; never merge it into main.
 
-## Remote (--remote, serve, identity, invites, keys)
+## Remote bundle access (--remote, serve)
 
-Every remote-facing command ships in the SAME bundle, wired the same way as `--dir` — `serve`,
-`--remote <url>` on any bundle-facing command, plus `login` / `join` / `whoami` / `invite` /
-`member` / `key` all work identically through `"$ASLITE"`. Credentials are stored at
-`~/.agentstate/` (0600/0700 discipline), never printed.
+Remote bundle access remains explicit and wired the same way as `--dir`: use `serve` to expose
+a local bundle over the wire protocol, or pass `--remote <url>` to a bundle-facing command.
+For an authenticated remote, provide `AGENTSTATE_LITE_API_KEY`; an already-provisioned
+stored per-origin credential is also consumed when present. Account and admin credential
+provisioning is outside the default CLI surface.
 
 ```bash
 "$ASLITE" serve --dir ./my-bundle --port 4818 &
