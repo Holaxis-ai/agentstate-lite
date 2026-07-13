@@ -6898,13 +6898,23 @@ async function findBundleRoot(start) {
   }
 }
 var PROJECT_BINDING_FILE_NAME = ".agentstate.json";
-function isHttpUrl(value) {
+function bindingUriIntent(value) {
+  if (/^[A-Za-z]:(?!\/\/)/.test(value)) return null;
+  if (value.startsWith("//")) {
+    return { detail: `protocol-relative URL ${value}` };
+  }
+  const match = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(value);
+  if (!match) return null;
+  const scheme = match[1].toLowerCase();
+  if (scheme !== "http" && scheme !== "https") {
+    return { detail: `unsupported URI scheme "${scheme}" in ${value}` };
+  }
   try {
     const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
+    if (url.protocol === `${scheme}:`) return { detail: `remote URL ${value}`, suggestedRemote: value };
   } catch {
-    return false;
   }
+  return { detail: `invalid ${scheme} URL ${value}` };
 }
 async function resolveProjectBinding(startDir = process.cwd()) {
   const dir = await findAncestorWithFile(startDir, PROJECT_BINDING_FILE_NAME);
@@ -6934,15 +6944,21 @@ async function resolveProjectBinding(startDir = process.cwd()) {
   if (typeof rawBundle !== "string" || rawBundle.trim() === "") {
     throw new CliError(
       "USAGE",
-      `malformed project binding ${file}: "bundle" must be a non-empty string (an http(s) URL or a filesystem path)`,
+      `malformed project binding ${file}: "bundle" must be a non-empty filesystem path`,
       { help: `fix or remove ${file}` }
     );
   }
   const trimmed = rawBundle.trim();
-  if (isHttpUrl(trimmed)) {
-    return { file, target: trimmed, isRemote: true };
+  const uriIntent = bindingUriIntent(trimmed);
+  if (uriIntent) {
+    const remote = uriIntent.suggestedRemote ?? "<url>";
+    throw new CliError(
+      "USAGE",
+      `project binding ${file} cannot use ${uriIntent.detail}; URL bindings no longer activate remotes \u2014 pass --remote ${remote} explicitly or replace "bundle" with a filesystem path`,
+      { help: `${cliInvocation()} <command> --remote ${remote}` }
+    );
   }
-  return { file, target: path4.resolve(dir, trimmed), isRemote: false };
+  return { file, target: path4.resolve(dir, trimmed) };
 }
 function wrapTransportErrors(remote) {
   return async (request) => {
@@ -6982,16 +6998,22 @@ async function openRemoteBundle(remoteFlag) {
 }
 var REMOTE_ENV_VAR = "AGENTSTATE_LITE_REMOTE";
 async function resolveRemoteFlag(remoteFlag, dirFlag) {
-  if (remoteFlag) return remoteFlag;
-  if (dirFlag) return void 0;
-  const env = process.env[REMOTE_ENV_VAR]?.trim();
-  if (env) return env;
-  const binding = await resolveProjectBinding();
-  return binding?.isRemote ? binding.target : void 0;
+  if (remoteFlag !== void 0) return remoteFlag;
+  if (dirFlag !== void 0) return void 0;
+  if (process.env[REMOTE_ENV_VAR] !== void 0) {
+    const legacy = process.env[REMOTE_ENV_VAR]?.trim();
+    throw new CliError(
+      "USAGE",
+      `${REMOTE_ENV_VAR} ambient remote selection is retired; pass --remote <url> explicitly`,
+      { help: `${cliInvocation()} <command> --remote ${legacy || "<url>"}` }
+    );
+  }
+  await resolveProjectBinding();
+  return void 0;
 }
 async function openBundle(dirFlag, remoteFlag) {
-  if (remoteFlag) {
-    if (dirFlag) {
+  if (remoteFlag !== void 0) {
+    if (dirFlag !== void 0) {
       throw new CliError(
         "USAGE",
         "--remote and --dir are mutually exclusive",
@@ -7000,7 +7022,7 @@ async function openBundle(dirFlag, remoteFlag) {
     }
     return openRemoteBundle(remoteFlag);
   }
-  if (dirFlag) {
+  if (dirFlag !== void 0) {
     const root2 = path4.resolve(dirFlag);
     if (!await exists(path4.join(root2, "index.md"))) {
       throw new CliError("NOT_FOUND", `no OKF bundle at ${root2} (no index.md)`, {
@@ -7010,7 +7032,7 @@ async function openBundle(dirFlag, remoteFlag) {
     return { root: root2 };
   }
   const binding = await resolveProjectBinding();
-  if (binding && !binding.isRemote) {
+  if (binding) {
     const root2 = binding.target;
     if (!await exists(path4.join(root2, "index.md"))) {
       throw new CliError(
@@ -7596,7 +7618,7 @@ import { fstatSync } from "node:fs";
 var COMMON_OPTIONS = `Common options:
   --dir <path>         Bundle directory (default: discovered from the cwd)
   --remote <url>       Talk to a wire-protocol server instead of a local bundle
-                       (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                       (mutually exclusive with --dir; remote access is always explicit)
   --json               Emit compact JSON instead of TOON
   -h, --help           Show this help`;
 var DOC_USAGE = `agentstate-lite doc \u2014 write, patch, read, or delete a generic OKF concept document
@@ -10126,7 +10148,7 @@ function assertFreshSource(top, boardPath, inv) {
 async function assertNotBoundElsewhere(top, boardPath) {
   const binding = await resolveProjectBinding(top);
   if (!binding) return;
-  const boundIsConventional = !binding.isRemote && path8.resolve(binding.target) === boardPath;
+  const boundIsConventional = path8.resolve(binding.target) === boardPath;
   if (boundIsConventional) return;
   throw new CliError(
     "RUNTIME",
@@ -11790,7 +11812,7 @@ Options:
                             kind convention governs the doc's type and it does not satisfy it
   --dir <path>              Bundle directory (default: discovered from the cwd)
   --remote <url>            Talk to a wire-protocol server instead of a local bundle (mutually
-                            exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                            exclusive with --dir; remote access is always explicit)
   --json                    Emit compact JSON instead of TOON
   -h, --help                Show this help
 `;
@@ -11983,7 +12005,7 @@ Options:
   --out -               Stream raw bytes to stdout; receipt -> stderr
   --dir <path>          Bundle directory (default: discovered from the cwd)
   --remote <url>        Talk to a wire-protocol server instead of a local bundle (mutually
-                         exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                         exclusive with --dir; remote access is always explicit)
   --json                Emit compact JSON instead of TOON
   -h, --help            Show this help
 `;
@@ -12134,7 +12156,7 @@ Options:
                   reports 'shown' alongside the total 'count'.
   --dir <path>    Bundle directory (default: discovered from the cwd)
   --remote <url>  Talk to a wire-protocol server instead of a local bundle
-                  (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                  (mutually exclusive with --dir; remote access is always explicit)
   --json          Emit compact JSON instead of TOON
   -h, --help      Show this help
 `;
@@ -12216,7 +12238,7 @@ Options:
                             token is a CONFLICT, exit 5; omit for an unconditional delete)
   --dir <path>              Bundle directory (default: discovered from the cwd)
   --remote <url>            Talk to a wire-protocol server instead of a local bundle (mutually
-                            exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                            exclusive with --dir; remote access is always explicit)
   --json                    Emit compact JSON instead of TOON
   -h, --help                Show this help
 `;
@@ -12369,7 +12391,7 @@ Options:
                          Falls back to AGENTSTATE_LITE_ACTOR; an existing link remains a true no-op.
   --dir <path>          Bundle directory (default: discovered from the cwd)
   --remote <url>        Talk to a wire-protocol server instead of a local bundle
-                         (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                         (mutually exclusive with --dir; remote access is always explicit)
   --json                Emit compact JSON instead of TOON
   -h, --help            Show this help
 `;
@@ -12814,7 +12836,7 @@ Options:
                        result reports \`shown\` alongside the total \`count\`.
   --dir <path>         Bundle directory (default: discovered from the cwd)
   --remote <url>       Talk to a wire-protocol server instead of a local bundle
-                       (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                       (mutually exclusive with --dir; remote access is always explicit)
   --json               Emit compact JSON instead of TOON
   -h, --help           Show this help
 
@@ -13035,7 +13057,7 @@ write' to overwrite it outright and deliberately.
 Options:
   --dir <path>          Bundle directory (default: discovered from the cwd)
   --remote <url>        Talk to a wire-protocol server instead of a local bundle
-                         (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                         (mutually exclusive with --dir; remote access is always explicit)
   --actor <name>         Attribute this write: persisted as the doc's own 'actor' frontmatter field
                          (the per-doc attribution sync and its receipts read) and recorded in version
                          history by a persisting backend. Precedence: --actor >
@@ -13422,7 +13444,7 @@ output), never a silent no-op. See 'agentstate-lite doc read conventions/context
 Options:
   --dir <path>          Bundle directory (default: discovered from the cwd)
   --remote <url>        Talk to a wire-protocol server instead of a local bundle
-                         (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                         (mutually exclusive with --dir; remote access is always explicit)
   --json                Emit compact JSON instead of TOON
   -h, --help            Show this help
 `;
@@ -13705,7 +13727,7 @@ passed. See 'agentstate-lite kinds' for the LIVE per-bundle registry a recipe's 
 Options:
   --dir <path>          Bundle directory (default: discovered from the cwd)
   --remote <url>        Talk to a wire-protocol server instead of a local bundle
-                         (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                         (mutually exclusive with --dir; remote access is always explicit)
   --json                Emit compact JSON instead of TOON
   -h, --help            Show this help
 `;
@@ -13774,7 +13796,7 @@ kinds' for the resulting live per-bundle registry.
 Options:
   --dir <path>          Bundle directory (default: discovered from the cwd)
   --remote <url>        Talk to a wire-protocol server instead of a local bundle
-                         (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                         (mutually exclusive with --dir; remote access is always explicit)
   --json                Emit compact JSON instead of TOON
   -h, --help            Show this help
 `;
@@ -13908,7 +13930,7 @@ Options:
   --limit <n>             Cap each finding category's row list to <n> rows (default: 20; 0 = unlimited)
   --dir <path>            Bundle directory (default: discovered from the cwd)
   --remote <url>          Talk to a wire-protocol server instead of a local bundle
-                         (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                         (mutually exclusive with --dir; remote access is always explicit)
   --json                  Emit compact JSON instead of TOON
   -h, --help              Show this help
 `;
@@ -14427,7 +14449,7 @@ Usage:
 Options:
   --dir <path>         Bundle directory (default: discovered from the cwd)
   --remote <url>       Talk to a wire-protocol server instead of a local bundle
-                       (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set).
+                       (mutually exclusive with --dir; remote access is always explicit).
                        --out then defaults to ./viz.html in the current directory \u2014 viz.html is
                        always written LOCALLY.
   --out <path>         Output HTML path (default: <root>/viz.html, or ./viz.html for --remote)
@@ -15704,8 +15726,7 @@ Usage:
 Options:
   --dir <path>          Bundle directory (default: discovered from the cwd) \u2014 mounts the
                          reference router in-process
-  --remote <url>         Reverse-proxy /v0/* to a deployed remote instead (also honors
-                         AGENTSTATE_LITE_REMOTE when neither flag is given and --dir is not)
+  --remote <url>         Reverse-proxy /v0/* to a deployed remote instead (explicit only)
   --port <p>            Port to bind (default: 0 \u2014 an OS-assigned ephemeral port)
   --open                Open the printed URL in a browser once the server is listening
   --json                Emit compact JSON instead of TOON
@@ -16001,7 +16022,7 @@ function kindsPointer(invocation) {
   return `kinds are declared per-bundle \u2014 run \`${invocation} kinds\` to list them`;
 }
 function remoteEnvPointer() {
-  return `bundle resolution, in order: an explicit --remote/--dir flag wins outright; else AGENTSTATE_LITE_REMOTE=<url> sets a session remote default; else a committed .agentstate.json ({ "bundle": "<url-or-path>" }) at or above the cwd is read (a URL resolves like --remote, a path like --dir, relative to the file's own directory); else local discovery walks up from the cwd for index.md. Explicit beats ambient beats committed beats discovered: an explicit --dir always wins over BOTH the env default and the project binding, silently, no error \u2014 only an explicit --remote together with an explicit --dir is still a conflict`;
+  return "bundle resolution: HTTP is activated only by explicit --remote <url>; otherwise an explicit --dir wins, then a committed .agentstate.json local-path binding at or above the cwd, then local discovery walks up for an enclosing or conventional project bundle. URL-valued bindings and the retired AGENTSTATE_LITE_REMOTE ambient default fail with guidance to pass --remote explicitly";
 }
 function commandReference(invocation) {
   const commands = {};
@@ -16302,11 +16323,7 @@ async function home(argv, deps = {}) {
       const found = await resolveProjectBinding();
       if (found) {
         binding = { file: found.file, target: found.target };
-        if (found.isRemote) {
-          remote = found.target;
-        } else {
-          dir = found.target;
-        }
+        dir = found.target;
       }
     } catch (err) {
       bindingError = err instanceof Error ? err.message : String(err);

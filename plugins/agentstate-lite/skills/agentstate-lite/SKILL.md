@@ -182,17 +182,19 @@ authenticated remote user). A present-but-blank flag or environment value is a u
 Advisory attribution describes a real mutation and never creates a no-op write.
 Actor labels are advisory metadata, not authentication or authorization credentials.
 
-Each invocation is stateless and resolves its bundle in this order: explicit `--dir`/`--remote`
-flag → `AGENTSTATE_LITE_REMOTE` env (URL only) → nearest `.agentstate.json` binding up-tree →
-the cwd walk, which at each ancestor checks the directory's own `index.md`, then its
+Each invocation is stateless. HTTP is activated only by explicit `--remote <url>`.
+Otherwise bundle resolution stays local: explicit `--dir` → nearest `.agentstate.json`
+local-path binding up-tree → the cwd walk, which at each ancestor checks the
+directory's own `index.md`, then its
 conventional `.agentstate-lite/index.md`. Reserve `--dir` for the exceptions: a bundle outside
 any project, a second workspace, or reaching another project's bundle from elsewhere.
 
 Two things override the default:
 
-1. **Explicit user direction** — the user names a directory or a `--remote`; use that. A
-   `.agentstate.json` binding (`{ "bundle": "<path-or-url>" }` at the project root) is the
+1. **Explicit user direction** — the user names a directory or a `--remote`; use that. A local
+   `.agentstate.json` binding (`{ "bundle": "<path>" }` at the project root) is the
    durable form of that direction — it beats the conventional folder when both exist.
+   Remote URLs are never durable ambient bindings; pass `--remote <url>` per invocation.
 2. **An existing workspace** — if a bare command already resolves (a binding, an enclosing
    bundle, or a conventional folder exists up-tree), that IS this project's workspace — use
    it rather than creating a second one.
