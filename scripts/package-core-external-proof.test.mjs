@@ -1,0 +1,214 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { mkdir, readdir, readFile, rm, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+import test from "node:test";
+
+const execFileAsync = promisify(execFile);
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+async function run(command, args, cwd) {
+  return execFileAsync(command, args, { cwd, maxBuffer: 10 * 1024 * 1024 });
+}
+
+function npmInvocation(args, env = process.env) {
+  const npmCli = env.npm_execpath?.trim();
+  if (!npmCli) {
+    throw new Error("npm_execpath is required; run this proof through the repository's npm test:scripts gate");
+  }
+  return { command: process.execPath, args: [npmCli, ...args] };
+}
+
+async function runNpm(args, cwd) {
+  const invocation = npmInvocation(args);
+  return run(invocation.command, invocation.args, cwd);
+}
+
+async function filesUnder(root, relative = "") {
+  const entries = await readdir(path.join(root, relative), { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const child = path.join(relative, entry.name);
+    if (entry.isDirectory()) files.push(...(await filesUnder(root, child)));
+    else if (entry.isFile()) files.push(child.split(path.sep).join("/"));
+  }
+  return files.sort();
+}
+
+test("npm is launched shell-free through its CLI JavaScript path", () => {
+  const npmCli = "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js";
+  assert.deepEqual(npmInvocation(["pack", "--json"], { npm_execpath: npmCli }), {
+    command: process.execPath,
+    args: [npmCli, "pack", "--json"],
+  });
+  assert.throws(() => npmInvocation([], {}), /npm_execpath is required/);
+});
+
+test("packed core installs, typechecks, and runs outside the monorepo", async () => {
+  const scratch = await mkdtemp(path.join(tmpdir(), "agentstate-lite-core-consumer-"));
+  const packDir = path.join(scratch, "pack");
+  try {
+    await mkdir(packDir);
+    await runNpm(["run", "build", "-w", "@agentstate-lite/core"], repoRoot);
+    const packed = await runNpm(
+      ["pack", "-w", "@agentstate-lite/core", "--json", "--pack-destination", packDir],
+      repoRoot,
+    );
+    const [receipt] = JSON.parse(packed.stdout);
+    const paths = receipt.files.map((file) => file.path).sort();
+    assert.ok(paths.includes("package.json"));
+    assert.ok(paths.includes("dist/index.js"));
+    assert.ok(paths.includes("dist/index.d.ts"));
+    assert.ok(paths.includes("dist/kinds.js"));
+    assert.ok(paths.includes("dist/kinds.d.ts"));
+    assert.ok(paths.every((file) => file === "package.json" || file.startsWith("dist/")));
+
+    await writeFile(
+      path.join(scratch, "package.json"),
+      JSON.stringify({ name: "core-external-proof", private: true, type: "module" }, null, 2),
+    );
+    await runNpm(
+      [
+        "install",
+        "--offline",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund",
+        "--no-package-lock",
+        "--no-save",
+        path.join(packDir, receipt.filename),
+      ],
+      scratch,
+    );
+
+    await writeFile(
+      path.join(scratch, "consumer.ts"),
+      `import {
+  FilesystemBackend,
+  MemoryBackend,
+  RemoteBackend,
+  type OkfDocument,
+  type StorageBackend,
+} from "@agentstate-lite/core";
+import { isTerminal, type KindConvention } from "@agentstate-lite/core/kinds";
+
+const document: OkfDocument = { id: "proof", frontmatter: { type: "Proof" }, body: "works" };
+const backends: StorageBackend[] = [
+  new FilesystemBackend("."),
+  new MemoryBackend(),
+  new RemoteBackend({ baseUrl: "http://127.0.0.1:1", bundle: "default", maxRetries: 0 }),
+];
+const kind: KindConvention = {
+  id: "conventions/task",
+  title: "Task",
+  governs: "Task",
+  fields: {
+    required: [],
+    optional: ["status"],
+    values: { status: ["done"] },
+    terminal: { status: ["done"] },
+    descriptions: {},
+  },
+};
+const terminal: boolean = isTerminal(kind, { type: "Task", status: "done" });
+void [document, backends, terminal];
+`,
+    );
+    await writeFile(
+      path.join(scratch, "tsconfig.json"),
+      JSON.stringify(
+        {
+          compilerOptions: {
+            target: "ES2022",
+            lib: ["ES2022", "DOM"],
+            module: "NodeNext",
+            moduleResolution: "NodeNext",
+            strict: true,
+            noEmit: true,
+            skipLibCheck: false,
+          },
+          include: ["consumer.ts"],
+        },
+        null,
+        2,
+      ),
+    );
+    await run(
+      process.execPath,
+      [path.join(repoRoot, "node_modules", "typescript", "bin", "tsc"), "-p", "tsconfig.json"],
+      scratch,
+    );
+
+    await writeFile(
+      path.join(scratch, "consumer.mjs"),
+      `import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import {
+  FilesystemBackend,
+  MemoryBackend,
+  RemoteBackend,
+  initBundle,
+  readDoc,
+  writeDoc,
+} from "@agentstate-lite/core";
+import { freshnessHorizonMs } from "@agentstate-lite/core/kinds";
+
+const root = await mkdtemp(path.join(tmpdir(), "core-packed-runtime-"));
+try {
+  const bundle = await initBundle(root);
+  await writeDoc(bundle, { id: "filesystem/proof", frontmatter: { type: "Proof" }, body: "works" });
+  if ((await readDoc(bundle, "filesystem/proof")).body.trim() !== "works") throw new Error("filesystem engine failed");
+  if (!(await new FilesystemBackend(root).exists("filesystem/proof"))) throw new Error("filesystem backend failed");
+
+  const memory = new MemoryBackend();
+  await memory.write("memory/proof", { id: "memory/proof", frontmatter: { type: "Proof" }, body: "works" });
+  if ((await memory.read("memory/proof")).doc.body !== "works") throw new Error("memory backend failed");
+
+  const remote = new RemoteBackend({
+    baseUrl: "http://external-proof.invalid",
+    bundle: "default",
+    maxRetries: 0,
+    fetchImpl: async () => new Response(null, { status: 404 }),
+  });
+  if (await remote.exists("missing")) throw new Error("remote backend failed");
+  const kind = {
+    id: "conventions/proof",
+    title: "Proof",
+    governs: "Proof",
+    freshnessHorizon: "2h",
+    fields: { required: [], optional: [], values: {}, terminal: {}, descriptions: {} },
+  };
+  if (freshnessHorizonMs(kind) !== 7_200_000) throw new Error("kinds subpath failed");
+} finally {
+  await rm(root, { recursive: true, force: true });
+}
+`,
+    );
+    await run(process.execPath, ["consumer.mjs"], scratch);
+
+    const installed = path.join(scratch, "node_modules", "@agentstate-lite", "core");
+    const installedManifest = JSON.parse(await readFile(path.join(installed, "package.json"), "utf8"));
+    assert.equal(installedManifest.private, true);
+    assert.deepEqual(installedManifest.files, ["dist"]);
+    assert.ok(installedManifest.exports["."]);
+    assert.ok(installedManifest.exports["./kinds"]);
+    const installedFiles = await filesUnder(installed);
+    assert.ok(installedFiles.every((file) => file === "package.json" || file.startsWith("dist/")));
+
+    const importPattern = /(?:from\s+|import\s*\()\s*["']([^"']+)["']/g;
+    for (const file of installedFiles.filter((name) => /\.(?:js|d\.ts)$/.test(name))) {
+      const source = await readFile(path.join(installed, file), "utf8");
+      for (const match of source.matchAll(importPattern)) {
+        const specifier = match[1];
+        assert.ok(!specifier.startsWith("@agentstate-lite/"), `${file} imports workspace package ${specifier}`);
+        assert.ok(!/(^|\/)src(?:\/|$)/.test(specifier), `${file} imports source path ${specifier}`);
+      }
+    }
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+});
