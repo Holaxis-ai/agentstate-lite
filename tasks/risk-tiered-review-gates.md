@@ -1,42 +1,25 @@
 ---
 type: Task
 title: Replace universal review ceremony with risk-tiered shipping gates
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  PR #50 READY: https://github.com/Holaxis-ai/agentstate-lite/pull/50
+  Shipped in PR #50: https://github.com/Holaxis-ai/agentstate-lite/pull/50
 
 
-  Policy result: universal Builder -> Reviewer -> QA ceremony is replaced with
-  consequence-based tiers while the full pre-ship repository gate and
-  dangerous-boundary safeguards remain.
-
-
-  - Trivial correction-only docs/metadata/dependency/test changes with no
-  runtime or consequential mechanism change: author validation + relevant
-  automated checks.
-
-  - Ordinary code: independent exact-SHA review + repository gate; dedicated QA
-  based on risk/findings.
-
-  - High-risk security/auth, concurrency, destructive writes,
-  migrations/deployments, remote targeting, reconnect/replay, or equivalent
-  consequential mechanics: independent review + adversarial QA.
-
-  - Tier gaming by relabeling/splitting is prohibited; reviewers may escalate.
-
+  Merge commit: 472cc72f648ccd0bea0f753a6d73e2e73c96069d
 
   Reviewed head: 675fd431ab44400263272a9b478c79a97cd58190
 
-  Base: aa76ec109f5c7542b0ab742bf8200dda910d2702
 
-
-  Exact diff is CLAUDE.md only, 14 additions/3 deletions. Builder full check
-  passed. Focused independent review approved. Proportionate document QA passed
-  Markdown, consistency, surrounding safeguards, and ownership checks. No
-  product/code/package/generated artifacts. Status remains in progress until
-  merge.
+  CLAUDE.md now uses consequence-based review tiers: trivial non-runtime
+  corrections use author validation and relevant automation; ordinary code
+  requires independent exact-SHA review and the repository gate; high-risk
+  boundaries require independent review and adversarial QA. Tier gaming is
+  prohibited and reviewers can escalate. The full pre-ship gate,
+  dangerous-boundary tests, security disclosure, and useful review conventions
+  remain.
 actor: codex
-timestamp: '2026-07-13T02:42:04.490Z'
+timestamp: '2026-07-13T02:44:56.561Z'
 ---
 
