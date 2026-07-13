@@ -71,6 +71,8 @@ export interface KindConvention {
    * citation). Discovery-only at this layer — write-time validation is a future consumer.
    */
   links?: Record<string, string>;
+  /** Human guidance for declared outbound relationships: `link type name -> description`. */
+  linkDescriptions?: Record<string, string>;
   /**
    * Inbound-link expectations this kind declares on ITSELF as link TARGET: `link type name ->
    * expected SOURCE kind` (e.g. a `Task` declaring `expects_inbound: {contains: "Roadmap Item"}`
@@ -97,6 +99,11 @@ export interface KindRegistry {
 /** True for a plain YAML/JSON map (excludes arrays, `null`, and non-object scalars). */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Prototype-safe own-key check for user-authored YAML maps. */
+function hasOwn(record: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
 }
 
 /** True for a scalar YAML value (string/number/boolean) — the shape an enum/field-name member should be. */
@@ -414,6 +421,48 @@ export function parseConventionDoc(
     }
   }
 
+  // Relationship descriptions belong to the SOURCE kind's `links` declaration. They are
+  // guidance only: malformed or undeclared entries warn and are skipped, never becoming a
+  // second link vocabulary or changing validation/storage behavior.
+  const linkDescriptionsSource = fm.link_descriptions;
+  let linkDescriptions: Record<string, string> | undefined;
+  if (linkDescriptionsSource !== undefined) {
+    if (!isPlainObject(linkDescriptionsSource)) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc.id}' has a non-map 'link_descriptions' key (${describeShape(linkDescriptionsSource)}; expected a map of declared link type name -> non-empty description); ignoring it.`,
+        field: "link_descriptions",
+        severity: "warning",
+      });
+    } else {
+      const parsed: Record<string, string> = {};
+      for (const [linkType, rawDescription] of Object.entries(linkDescriptionsSource)) {
+        const name = linkType.trim();
+        const semanticPath = `link_descriptions.${linkType}`;
+        if (name === "" || typeof rawDescription !== "string" || rawDescription.trim() === "") {
+          warnings.push({
+            code: "KIND_CONVENTION_BAD_MEMBER",
+            message: `kind convention '${doc.id}' has a malformed '${semanticPath}' (${describeShape(rawDescription)}; expected a declared link type name with a non-empty string description); skipping it.`,
+            field: semanticPath,
+            severity: "warning",
+          });
+          continue;
+        }
+        if (!links || !hasOwn(links, name)) {
+          warnings.push({
+            code: "KIND_CONVENTION_UNDECLARED_LINK_DESCRIPTION",
+            message: `kind convention '${doc.id}' declares '${semanticPath}' but '${name}' is not declared in links.`,
+            field: semanticPath,
+            severity: "warning",
+          });
+          continue;
+        }
+        parsed[name] = rawDescription.trim();
+      }
+      if (Object.keys(parsed).length > 0) linkDescriptions = parsed;
+    }
+  }
+
   // `expects_inbound:` — inbound-link expectations this kind declares on ITSELF as link TARGET
   // (see the KindConvention.expectsInbound doc comment). Same lenient posture as `links`: absent
   // is normal (no warning), a non-map shape warns and is ignored, a malformed entry warns and is
@@ -480,6 +529,7 @@ export function parseConventionDoc(
   if (description !== undefined) kind.description = description;
   if (path !== undefined) kind.path = path;
   if (links !== undefined) kind.links = links;
+  if (linkDescriptions !== undefined) kind.linkDescriptions = linkDescriptions;
   if (expectsInbound !== undefined) kind.expectsInbound = expectsInbound;
   if (sections && sections.length > 0) kind.sections = sections;
   if (freshnessHorizon !== undefined) kind.freshnessHorizon = freshnessHorizon;
@@ -642,6 +692,17 @@ export function kindConventionDoc(kind: KindConvention, prose: string, timestamp
   }
   if (kind.path !== undefined) frontmatter.path = kind.path;
   if (kind.links && Object.keys(kind.links).length > 0) frontmatter.links = kind.links;
+  const linkDescriptions = Object.fromEntries(
+    Object.entries(kind.linkDescriptions ?? {})
+      .filter(
+        (entry): entry is [string, string] =>
+          Boolean(kind.links && hasOwn(kind.links, entry[0])) &&
+          typeof entry[1] === "string" &&
+          entry[1].trim() !== "",
+      )
+      .map(([linkType, description]) => [linkType, description.trim()]),
+  );
+  if (Object.keys(linkDescriptions).length > 0) frontmatter.link_descriptions = linkDescriptions;
   if (kind.expectsInbound && Object.keys(kind.expectsInbound).length > 0) {
     frontmatter.expects_inbound = kind.expectsInbound;
   }

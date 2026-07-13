@@ -254,11 +254,14 @@ function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: strin
   // Typed-link vocabulary, BOTH directions (declared-only; a bundle declaring none gets no block):
   // the kind's own outbound types, plus the reverse lookup — other kinds declaring edges INTO this
   // one. The inbound side is the alignment cue (e.g. a new Task learns Roadmap Items contain Tasks).
-  const outboundLines = Object.entries(kind.links ?? {}).map(
-    ([t, target]) => `  this kind may link:     "${t}" → ${target}`,
-  );
+  const outboundLines = Object.entries(kind.links ?? {}).map(([t, target]) => {
+    const description = kind.linkDescriptions?.[t];
+    return `  this kind may link:     "${t}" → ${target}${description ? ` — ${description}` : ""}`;
+  });
   const inboundLines = inboundLinkDecls(registry, kind).map(
-    ({ source, linkType }) => `  other kinds link here:  ${source.governs} "${linkType}" → ${kind.governs}`,
+    ({ source, linkType }) =>
+      `  other kinds link here:  ${source.governs} "${linkType}" → ${kind.governs}` +
+      (source.linkDescriptions?.[linkType] ? ` — ${source.linkDescriptions[linkType]}` : ""),
   );
   const linksBlock =
     outboundLines.length + inboundLines.length > 0
