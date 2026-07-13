@@ -3,36 +3,49 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kinds, relationships, and self-description</title>
+<title>AgentState domain architecture: Kinds, relationships, and self-description</title>
 <style>
   :root{--cream:#f5f1e8;--paper:#fffdf7;--ink:#17232d;--muted:#66727a;--line:#d8d2c5;--navy:#173b57;--cyan:#2c8195;--gold:#b07b29;--coral:#b75c4c;--green:#34745f;--sans:system-ui,-apple-system,"Segoe UI",sans-serif;--serif:Iowan Old Style,Georgia,serif;--mono:ui-monospace,"SFMono-Regular",Menlo,monospace}
   @media(prefers-color-scheme:dark){:root{--cream:#101820;--paper:#17222b;--ink:#edf1ef;--muted:#a4b0b8;--line:#34434c;--navy:#173b57;--cyan:#72c2d1;--gold:#deb366;--coral:#ed9285;--green:#75c2a5}}
   *{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--ink);font:15px/1.6 var(--sans)}main{max-width:1120px;margin:auto;padding:48px clamp(18px,5vw,58px) 90px}h1,h2,h3{font-family:var(--serif);font-weight:500;line-height:1.15}h1{font-size:clamp(38px,6vw,66px);letter-spacing:-.025em;max-width:870px;margin:12px 0 18px}h2{font-size:32px;margin:0 0 15px}h3{font-size:20px;margin:0 0 7px}p{color:var(--muted);max-width:76ch}.kicker{font:700 11px var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--cyan)}.lede{font:21px/1.55 var(--serif);color:var(--ink);max-width:780px}.actions{display:flex;gap:10px;align-items:center;margin:26px 0 52px}.actions button{border:0;border-radius:5px;background:var(--navy);color:#fff;padding:11px 16px;font-weight:650;cursor:pointer}.actions span{font:11px var(--mono);color:var(--muted)}section{margin:58px 0}.rule{height:1px;background:var(--line);margin:50px 0}
   .labels{display:flex;gap:9px;flex-wrap:wrap;margin:17px 0}.tag{border:1px solid currentColor;border-radius:999px;padding:3px 9px;font:700 10px var(--mono);text-transform:uppercase;letter-spacing:.05em}.current{color:var(--green)}.planned{color:var(--gold)}.hypothesis{color:var(--coral)}
   .flow{display:grid;grid-template-columns:1fr 42px 1fr 42px 1fr;align-items:stretch;margin-top:25px}.node{background:var(--paper);border:1px solid var(--line);border-top:4px solid var(--cyan);border-radius:7px;padding:20px}.node small{font:700 10px var(--mono);text-transform:uppercase;color:var(--cyan)}.arrow{display:grid;place-items:center;color:var(--muted);font-size:26px}.node p{font-size:13px;margin-bottom:0}
+  .pipeline{display:grid;grid-template-columns:1fr 24px 1fr 24px 1fr 24px 1fr 24px 1fr;align-items:stretch;margin-top:25px}.stage{position:relative;background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:15px}.stage b{display:block;font:700 10px var(--mono);text-transform:uppercase;color:var(--cyan);margin-bottom:6px}.stage p{font-size:12px;margin:0}.pipe-arrow{display:grid;place-items:center;color:var(--muted);font-size:20px}.shipped{border-left:4px solid var(--green)}
   .authority{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:22px}.authority .card,.grid .card{background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:18px}.authority .card b{display:block;font:700 11px var(--mono);text-transform:uppercase;color:var(--cyan);margin-bottom:7px}.authority .card p,.grid .card p{font-size:13px;margin:0}.authority .wide{grid-column:span 2}.authority .bridge{border-top:3px solid var(--gold)}
   .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:22px}.grid .card{border-left:3px solid var(--cyan)}.grid .card.planned-card{border-left-color:var(--gold)}.grid .card.hyp-card{border-left-color:var(--coral)}
-  .semantic{display:grid;grid-template-columns:190px 1fr;gap:0;margin:25px 0;background:var(--paper);border:1px solid var(--line);border-radius:8px;overflow:hidden}.semantic dt,.semantic dd{margin:0;padding:14px 17px;border-bottom:1px solid var(--line)}.semantic dt{font:700 11px var(--mono);text-transform:uppercase;color:var(--gold);background:color-mix(in srgb,var(--gold) 7%,transparent)}.semantic dd{color:var(--muted)}.semantic dt:last-of-type,.semantic dd:last-of-type{border-bottom:0}
-  .boundary{display:grid;grid-template-columns:1fr 1fr;gap:14px}.boundary article{background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:18px}.boundary ul{color:var(--muted);padding-left:1.25em}.boundary li{margin:.35em 0}.callout{border-left:4px solid var(--navy);padding:5px 0 5px 19px;margin:25px 0}.callout strong{font-family:var(--serif);font-size:20px;font-weight:500}.source{font:11px/1.5 var(--mono);color:var(--muted);margin-top:50px}@media(max-width:780px){.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg);height:35px}.authority,.grid,.boundary{grid-template-columns:1fr}.authority .wide{grid-column:auto}.semantic{grid-template-columns:1fr}.semantic dt{border-bottom:0}.semantic dd{padding-top:0}}
+  .semantic{display:grid;grid-template-columns:190px 1fr;gap:0;margin:25px 0;background:var(--paper);border:1px solid var(--line);border-radius:8px;overflow:hidden}.semantic dt,.semantic dd{margin:0;padding:14px 17px;border-bottom:1px solid var(--line)}.semantic dt{font:700 11px var(--mono);text-transform:uppercase;color:var(--gold);background:color-mix(in srgb,var(--gold) 7%,transparent)}.semantic dt.done{color:var(--green);background:color-mix(in srgb,var(--green) 7%,transparent)}.semantic dd{color:var(--muted)}.semantic dd strong{color:var(--ink)}.semantic dt:last-of-type,.semantic dd:last-of-type{border-bottom:0}
+  .boundary{display:grid;grid-template-columns:1fr 1fr;gap:14px}.boundary article{background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:18px}.boundary ul{color:var(--muted);padding-left:1.25em}.boundary li{margin:.35em 0}.callout{border-left:4px solid var(--navy);padding:5px 0 5px 19px;margin:25px 0}.callout strong{font-family:var(--serif);font-size:20px;font-weight:500}.source{font:11px/1.5 var(--mono);color:var(--muted);margin-top:50px}@media(max-width:900px){.pipeline{grid-template-columns:1fr}.pipe-arrow{transform:rotate(90deg);height:24px}}@media(max-width:780px){.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg);height:35px}.authority,.grid,.boundary{grid-template-columns:1fr}.authority .wide{grid-column:auto}.semantic{grid-template-columns:1fr}.semantic dt{border-bottom:0}.semantic dd{padding-top:0}}
 </style>
 </head>
 <body><main>
-  <div class="kicker">Architecture review · content-only Page</div>
+  <div class="kicker">Post-implementation architecture review · content-only Page</div>
   <h1>A domain model agents can use without owning your data</h1>
-  <p class="lede">Kinds and relationship vocabulary define a relatively stable language. Documents, values, links, and artifacts change continuously. One generic CLI makes changes deterministic; Pages make the shared state visible.</p>
+  <p class="lede">Kinds and relationship vocabulary define a relatively stable language. Documents, values, links, and artifacts change continuously. The first self-description layer now ships through the same registry and CLI—evidence that the model can transfer meaning without creating a second schema.</p>
   <div class="labels"><span class="tag current">Current</span><span class="tag planned">Planned</span><span class="tag hypothesis">Hypothesis</span></div>
   <div class="actions"><button id="open-reviews" type="button">Open review request</button><span>navigates to the registered Review Requests Page</span></div>
 
   <section>
     <div class="kicker current">Current</div><h2>Stable vocabulary over changing state</h2>
     <div class="flow">
-      <div class="node"><small>Domain model</small><h3>Kind conventions + relationship vocabulary</h3><p>Required and optional fields, enum values, body sections, link shapes, placement, lifecycle terminal states, and freshness.</p></div>
+      <div class="node"><small>Domain model</small><h3>Kind conventions + relationship vocabulary</h3><p>Structure plus machine-readable Kind and field meaning; relationship and enum meaning are the next proposed layers.</p></div>
       <div class="arrow">→</div>
       <div class="node"><small>Deterministic boundary</small><h3>Generic CLI operations</h3><p>Discover Kinds; create and validate documents; query fields; add and traverse typed links; use version-guarded, attributed writes.</p></div>
       <div class="arrow">→</div>
       <div class="node"><small>Living world</small><h3>Documents, values, links, blobs</h3><p>Continuously changing bundle-owned state, rendered by agents and Pages for the person and task at hand.</p></div>
     </div>
     <div class="callout"><strong>Validation says what an agent may write. Description says what the write means.</strong></div>
+  </section>
+
+  <section>
+    <div class="kicker current">Current data flow</div><h2>One description, one path to every consumer</h2>
+    <p>PR #42 proved the architecture end to end without adding another parser, registry, endpoint, or domain-specific command.</p>
+    <div class="pipeline" role="img" aria-label="Convention Markdown flows through parseConventionDoc into the Kind registry, then into CLI and UI discovery, then to agents and Pages">
+      <div class="stage shipped"><b>Bundle authority</b><p>Convention Markdown carries structure, Kind description, and field descriptions.</p></div><div class="pipe-arrow">→</div>
+      <div class="stage"><b>One parser</b><p><code>parseConventionDoc</code> validates and normalizes optional semantic metadata.</p></div><div class="pipe-arrow">→</div>
+      <div class="stage"><b>One registry</b><p><code>KindConvention</code> is the shared in-memory contract.</p></div><div class="pipe-arrow">→</div>
+      <div class="stage"><b>Operational surfaces</b><p><code>kinds</code>, <code>new --help</code>, recipes, and the existing UI transport consume it.</p></div><div class="pipe-arrow">→</div>
+      <div class="stage"><b>Human + agent use</b><p>Agents choose concepts and fields correctly; Pages can project the same meaning.</p></div>
+    </div>
   </section>
 
   <section>
@@ -62,14 +75,14 @@
   </section>
 
   <section>
-    <div class="kicker planned">Planned</div><h2>Self-description makes the model transferable</h2>
-    <p>The existing registry transfers structure. Optional semantic descriptions would let an unfamiliar agent understand intent at the operational moment where it chooses a Kind, field, relationship, or enum value.</p>
+    <div class="kicker">Program status</div><h2>The foundation shipped; semantic glue comes next</h2>
+    <p>The registry now transfers concept and field meaning at the operational moment where an unfamiliar agent chooses a Kind and supplies values. The remaining roadmap extends that proven path rather than introducing new machinery.</p>
     <dl class="semantic">
-      <dt>Kind description</dt><dd>What an instance represents, when to create it, and how it differs from neighboring Kinds.</dd>
-      <dt>Field descriptions</dt><dd>What information belongs in each field. A valid value should not be semantically misapplied.</dd>
-      <dt>Relationship descriptions</dt><dd>What an outbound link asserts and in which direction—ownership, evidence, decomposition, dependency, or something else.</dd>
-      <dt>Enum descriptions</dt><dd>The domain meaning of lifecycle, confidence, approval, quality, and publication values—not merely their spelling.</dd>
-      <dt>Sections + examples</dt><dd>Deferred until dogfooding shows that the first four layers do not prevent real misuse. Examples carry maintenance and sedimentation risk.</dd>
+      <dt class="done">Shipped · Kind</dt><dd><strong>PR #42.</strong> What an instance represents, when to create it, and how it differs from neighboring Kinds.</dd>
+      <dt class="done">Shipped · Fields</dt><dd><strong>PR #42.</strong> What information belongs in each field, surfaced through discovery and creation help.</dd>
+      <dt>Next · Relationships</dt><dd>What an outbound link asserts and in which direction—ownership, evidence, decomposition, dependency, or something else.</dd>
+      <dt>Later · Enums</dt><dd>The domain meaning of lifecycle, confidence, approval, quality, and publication values—not merely their spelling.</dd>
+      <dt>Evidence-gated</dt><dd>Section descriptions and examples only if dogfooding shows that the first four layers do not prevent real misuse.</dd>
     </dl>
     <div class="grid">
       <div class="card planned-card"><h3>Better agent authoring</h3><p>Meaning appears during Kind discovery and creation, reducing structurally valid but conceptually wrong records.</p></div>
@@ -94,12 +107,12 @@
   <section>
     <div class="kicker">Honest boundaries</div><h2>What this does not claim</h2>
     <div class="boundary">
-      <article><h3>Implemented now</h3><ul><li>Plain bundle-owned Convention docs and one Kind registry</li><li>Generic Kind-aware CLI creation, validation, queries, and typed links</li><li>Version tokens, compare-and-swap writes, attribution, and history</li><li>Sandboxed Pages with explicit content-only or read-only bridge capability</li><li>Live invalidation and Page-to-Page registered navigation</li><li>Data-only, expect-absent recipe application</li></ul></article>
-      <article><h3>Not implemented now</h3><ul><li>Machine-readable Kind, field, relationship, or enum descriptions</li><li>Page mutation controls or human identity authorization</li><li>A durable, ordered, replayable event journal</li><li>Complete recipe packages with automatic skill/Page/hook adoption</li><li>Recipe upgrade, migration, dependency, or rollback machinery</li><li>A general workflow or ontology engine</li></ul></article>
+      <article><h3>Implemented now</h3><ul><li>Plain bundle-owned Convention docs and one Kind registry</li><li>Machine-readable Kind and field descriptions through parser, registry, CLI discovery/help, recipes, and UI transport</li><li>Generic Kind-aware CLI creation, validation, queries, and typed links</li><li>Version tokens, compare-and-swap writes, attribution, and history</li><li>Sandboxed Pages with explicit content-only or read-only bridge capability</li><li>Live invalidation and Page-to-Page registered navigation</li><li>Data-only, expect-absent recipe application</li></ul></article>
+      <article><h3>Not implemented now</h3><ul><li>Machine-readable relationship or enum-value descriptions</li><li>Section descriptions or examples without dogfood evidence</li><li>Page mutation controls or human identity authorization</li><li>A durable, ordered, replayable event journal</li><li>Complete recipe packages with automatic skill/Page/hook adoption</li><li>Recipe upgrade, migration, dependency, or rollback machinery</li><li>A general workflow or ontology engine</li></ul></article>
     </div>
   </section>
 
-  <p class="source">Grounded in bundle designs: “Self-describing Kinds: a semantic contract for agent-managed domains” and “AgentState as a Portable Cognitive Ecosystem.” Labels describe the implementation state stated by those documents as of July 2026.</p>
+  <p class="source">Grounded in the shipped Kind/field-description unit (PR #42), “Self-describing Kinds: a semantic contract for agent-managed domains,” and “AgentState as a Portable Cognitive Ecosystem.” Current/Next/Later labels reflect the project board as of July 2026.</p>
 </main>
 <script>
   (function(){var PROTO="v0";document.getElementById("open-reviews").addEventListener("click",function(){parent.postMessage({bridge:PROTO,type:"open-page",pageId:"pages-registry/reviews"},"*")})})();

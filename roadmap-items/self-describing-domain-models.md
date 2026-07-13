@@ -5,14 +5,18 @@ status: active
 description: >-
   Make Kinds communicate the meaning of concepts, fields, relationships, and
   lifecycle values through the one registry and at the point of agent action.
-actor: openai/codex
-timestamp: '2026-07-12T01:50:28.027Z'
+actor: codex
+timestamp: '2026-07-13T02:53:17.314Z'
 ---
 # Vision
 
-Make AgentState's stable domain model understandable to unfamiliar humans and agents. Kinds already define valid structure; this roadmap makes them explain the meaning of their concepts, fields, relationships, and lifecycle values through the one registry and at the point of use.
+Make AgentState's stable domain model understandable to unfamiliar humans and agents. Kinds already
+define valid structure; this roadmap makes them explain the meaning of their concepts, fields,
+relationships, and lifecycle values through the one registry and at the point of use.
 
-The goal is not more schema machinery. It is an executable shared language: the bundle declares stable semantics, the generic CLI applies them deterministically to changing state, and Pages and skills consume the same authority.
+The goal is not more schema machinery. It is an executable shared language: the bundle declares stable
+semantics, the generic CLI applies them deterministically to changing state, and Pages and skills
+consume the same authority.
 
 # Why this is foundational
 
@@ -24,14 +28,20 @@ The goal is not more schema machinery. It is an executable shared language: the 
 
 # Sequence
 
-1. Kind and field descriptions — P1 foundation.
-2. Relationship descriptions — P1 follow-up for the model's glue.
-3. Enum-value descriptions — P2 lifecycle semantics.
-4. Section descriptions and examples — P3 evaluation, implemented only after dogfooding demonstrates remaining misuse.
+1. **Shipped — Kind and field descriptions (P1 foundation).** PR #42 carries meaning through the one
+   parser and registry into CLI discovery/help, recipes, and UI transport.
+2. **Next — Relationship descriptions (P1).** Explain what each declared edge asserts and why its
+   direction matters, using the same registry and reverse lookup.
+3. **Later — Enum-value descriptions (P2).** Explain lifecycle and other values whose labels alone do
+   not communicate domain meaning.
+4. **Evidence-gated — Section descriptions and examples (P3 evaluation).** Implement only if
+   dogfooding demonstrates semantic misuse that the first three layers cannot address.
 
 # Success condition
 
-An agent unfamiliar with an installed recipe can use ordinary CLI discovery to explain each relevant Kind, create correct instances, choose lifecycle values, and wire declared relationships without oral guidance or a parallel schema. The same metadata reaches Pages through the existing Kind registry.
+An agent unfamiliar with an installed recipe can use ordinary CLI discovery to explain each relevant
+Kind, create correct instances, choose lifecycle values, and wire declared relationships without oral
+guidance or a parallel schema. The same metadata reaches Pages through the existing Kind registry.
 
 # Constraints
 
