@@ -209,23 +209,15 @@ export function kindsPointer(invocation: string): string {
 }
 
 /**
- * Static pointer describing the full bundle-resolution precedence chain (Stage-1 Unit 2a Part C,
- * A9's `AGENTSTATE_LITE_REMOTE`, extended by item 43's committed `.agentstate.json` project
- * binding) — shown alongside the command reference in BOTH `--help` and the home view (no bundle
- * I/O needed to state it), so an agent that has already run `serve`, or is working in a bound
- * project it just cloned, discovers the bare-command shortcut without re-reading every
- * remote-capable command's full usage text. No `invocation` parameter (unlike {@link kindsPointer}):
- * the message names the env var/file itself, not a runnable command.
+ * Static pointer describing explicit remote activation and local bundle resolution, shown in BOTH
+ * `--help` and home without bundle I/O.
  */
 export function remoteEnvPointer(): string {
   return (
-    "bundle resolution, in order: an explicit --remote/--dir flag wins outright; else " +
-    "AGENTSTATE_LITE_REMOTE=<url> sets a session remote default; else a committed .agentstate.json " +
-    '({ "bundle": "<url-or-path>" }) at or above the cwd is read (a URL resolves like --remote, a ' +
-    "path like --dir, relative to the file's own directory); else local discovery walks up from the " +
-    "cwd for index.md. Explicit beats ambient beats committed beats discovered: an explicit --dir " +
-    "always wins over BOTH the env default and the project binding, silently, no error — only an " +
-    "explicit --remote together with an explicit --dir is still a conflict"
+    "bundle resolution: HTTP is activated only by explicit --remote <url>; otherwise an explicit " +
+    "--dir wins, then a committed .agentstate.json local-path binding at or above the cwd, then local " +
+    "discovery walks up for an enclosing or conventional project bundle. URL-valued bindings and the " +
+    "retired AGENTSTATE_LITE_REMOTE ambient default fail with guidance to pass --remote explicitly"
   );
 }
 

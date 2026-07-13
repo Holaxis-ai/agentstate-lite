@@ -1,16 +1,9 @@
 /**
  * `bundle.ts` — the project-binding resolution rung (item 43 follow-on): a committed
- * `.agentstate.json` (`{ "bundle": "<url-or-path>" }`) discovered by walking up from the cwd,
- * sitting between the `AGENTSTATE_LITE_REMOTE` env fallback and plain cwd `index.md` discovery in
- * the precedence chain: explicit `--remote`/`--dir` flags -> env -> project binding -> cwd walk.
+ * `.agentstate.json` (`{ "bundle": "<path>" }`) discovered by walking up from the cwd.
  *
- * Covers `resolveProjectBinding` (discovery, parsing, URL-vs-path classification, relative-path
- * resolution against the FILE's own directory, malformed-file errors) directly, then the two
- * consumers that split the binding's two halves: `resolveRemoteFlag` (the URL half, plus the full
- * precedence matrix) and `openBundle` (the directory half, plus explicit-`--dir` suppression and
- * the "reached with no remote concept at all" shape `serve`/`home`/`ui`'s local branch use). A final
- * end-to-end test drives a real command bare against a real served bundle, keyless, to prove the
- * whole chain works, not just its parts.
+ * Covers local-path resolution, URL rejection, the retired env migration error, explicit flag
+ * precedence, and end-to-end proof that a bare command never activates HTTP.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -19,7 +12,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { initBundle, writeDoc } from "@agentstate-lite/core";
-import { serve, type ServerHandle } from "@agentstate-lite/server";
 
 import {
   resolveProjectBinding,
@@ -86,7 +78,6 @@ test("resolveProjectBinding: finds a binding in the cwd itself; a relative path 
       const binding = await resolveProjectBinding();
       assert.ok(binding);
       assert.equal(binding!.file, path.join(projectDir, PROJECT_BINDING_FILE_NAME));
-      assert.equal(binding!.isRemote, false);
       // Resolved against the BINDING FILE's directory (projectDir), which is where "../shared-bundle"
       // actually lands — NOT wherever the cwd happens to be when a NESTED cwd is used (see the next
       // test), and not some other unrelated interpretation.
@@ -100,10 +91,10 @@ test("resolveProjectBinding: finds a binding in the cwd itself; a relative path 
 test("resolveProjectBinding: walk-up discovery from a nested cwd — the NEAREST ancestor's binding wins, not a further one", async () => {
   const root = await tempDir();
   try {
-    await writeBinding(root, "http://far.example");
+    await writeBinding(root, "../far");
     const mid = path.join(root, "mid");
     await mkdir(mid, { recursive: true });
-    await writeBinding(mid, "http://near.example");
+    await writeBinding(mid, "../near");
     const deep = path.join(mid, "deep", "deeper");
     await mkdir(deep, { recursive: true }); // no binding file directly here — must walk up
 
@@ -111,36 +102,56 @@ test("resolveProjectBinding: walk-up discovery from a nested cwd — the NEAREST
       const binding = await resolveProjectBinding();
       assert.ok(binding);
       assert.equal(binding!.file, path.join(mid, PROJECT_BINDING_FILE_NAME));
-      assert.equal(binding!.target, "http://near.example");
+      assert.equal(binding!.target, path.resolve(mid, "../near"));
     });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("resolveProjectBinding: an http(s) bundle value classifies as isRemote:true, target passed through raw (unnormalized)", async () => {
+test("resolveProjectBinding: valid, malformed, unsupported, and protocol-relative URI shapes are rejected as URI intent", async () => {
   const dir = await tempDir();
   try {
-    await writeBinding(dir, "http://127.0.0.1:9999");
-    await inDir(dir, async () => {
-      const binding = await resolveProjectBinding();
-      assert.ok(binding);
-      assert.equal(binding!.isRemote, true);
-      assert.equal(binding!.target, "http://127.0.0.1:9999");
-    });
+    const cases = [
+      { value: "http://127.0.0.1:9999", detail: /remote URL/ },
+      { value: "https://worker.example.workers.dev", detail: /remote URL/ },
+      { value: "http://", detail: /invalid http URL/ },
+      { value: "https://", detail: /invalid https URL/ },
+      { value: "http://[::1", detail: /invalid http URL/ },
+      { value: "ftp://files.example", detail: /unsupported URI scheme "ftp"/ },
+      { value: "x://remote.example/bundle", detail: /unsupported URI scheme "x"/ },
+      { value: "C://remote.example/bundle", detail: /unsupported URI scheme "c"/ },
+      { value: "//example.com/bundle", detail: /protocol-relative URL/ },
+    ];
+    for (const { value, detail } of cases) {
+      await writeBinding(dir, value);
+      await inDir(dir, async () => {
+        await assert.rejects(() => resolveProjectBinding(), (err: unknown) => {
+          assert.ok(err instanceof CliError);
+          assert.equal(err.code, "USAGE");
+          assert.match(err.message, detail);
+          assert.match(err.message, /URL bindings no longer activate remotes/);
+          assert.match(err.message, /pass --remote/);
+          assert.ok(err.message.includes(value));
+          return true;
+        });
+      });
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("resolveProjectBinding: an https URL also classifies as remote", async () => {
+test("resolveProjectBinding: Windows drive paths remain filesystem intent, never unsupported one-letter URI schemes", async () => {
   const dir = await tempDir();
   try {
-    await writeBinding(dir, "https://worker.example.workers.dev");
-    await inDir(dir, async () => {
-      const binding = await resolveProjectBinding();
-      assert.equal(binding!.isRemote, true);
-    });
+    for (const value of ["C:\\workspace\\bundle", "D:/workspace/bundle", "E:relative-bundle", "F:/"]) {
+      await writeBinding(dir, value);
+      await inDir(dir, async () => {
+        const binding = await resolveProjectBinding();
+        assert.equal(binding?.target, path.resolve(dir, value));
+      });
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -227,15 +238,20 @@ test("resolveRemoteFlag precedence: an explicit --dir suppresses BOTH the env de
   }
 });
 
-test("resolveRemoteFlag precedence: AGENTSTATE_LITE_REMOTE env wins over a URL project binding when neither flag nor dir is given", async () => {
+test("resolveRemoteFlag: legacy AGENTSTATE_LITE_REMOTE is a deterministic migration error when no explicit target is given", async () => {
   const dir = await tempDir();
   const prior = process.env.AGENTSTATE_LITE_REMOTE;
   try {
     await writeBinding(dir, "http://binding.example");
     process.env.AGENTSTATE_LITE_REMOTE = "http://env.example";
     await inDir(dir, async () => {
-      const resolved = await resolveRemoteFlag(undefined, undefined);
-      assert.equal(resolved, "http://env.example");
+      await assert.rejects(() => resolveRemoteFlag(undefined, undefined), (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /AGENTSTATE_LITE_REMOTE ambient remote selection is retired/);
+        assert.match(err.help ?? "", /--remote http:\/\/env\.example/);
+        return true;
+      });
     });
   } finally {
     if (prior === undefined) delete process.env.AGENTSTATE_LITE_REMOTE;
@@ -244,15 +260,39 @@ test("resolveRemoteFlag precedence: AGENTSTATE_LITE_REMOTE env wins over a URL p
   }
 });
 
-test("resolveRemoteFlag precedence: a URL project binding applies when no flag, no env, and no --dir", async () => {
+test("resolveRemoteFlag: even a blank-but-present legacy env value errors instead of silently falling through local", async () => {
+  const dir = await tempDir();
+  const prior = process.env.AGENTSTATE_LITE_REMOTE;
+  try {
+    process.env.AGENTSTATE_LITE_REMOTE = "   ";
+    await inDir(dir, async () => {
+      await assert.rejects(() => resolveRemoteFlag(undefined, undefined), (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.help ?? "", /--remote <url>/);
+        return true;
+      });
+    });
+  } finally {
+    if (prior === undefined) delete process.env.AGENTSTATE_LITE_REMOTE;
+    else process.env.AGENTSTATE_LITE_REMOTE = prior;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveRemoteFlag: a reached URL project binding errors instead of activating HTTP", async () => {
   const dir = await tempDir();
   const prior = process.env.AGENTSTATE_LITE_REMOTE;
   try {
     delete process.env.AGENTSTATE_LITE_REMOTE;
     await writeBinding(dir, "http://binding.example");
     await inDir(dir, async () => {
-      const resolved = await resolveRemoteFlag(undefined, undefined);
-      assert.equal(resolved, "http://binding.example");
+      await assert.rejects(() => resolveRemoteFlag(undefined, undefined), (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /pass --remote http:\/\/binding\.example explicitly/);
+        return true;
+      });
     });
   } finally {
     if (prior === undefined) delete process.env.AGENTSTATE_LITE_REMOTE;
@@ -398,21 +438,17 @@ test("openBundle: an explicit --dir to a NON-bundle path is the plain NOT_FOUND 
   }
 });
 
-test("openBundle: a URL-type binding reached with NEITHER --dir nor --remote (the serve/home/ui-local shape) is silently ignored, falling through to plain cwd discovery", async () => {
+test("openBundle: a reached URL binding errors actionably instead of silently falling through", async () => {
   const dir = await tempDir();
   try {
     await writeBinding(dir, "http://127.0.0.1:1"); // nothing need listen here — never fetched
     await inDir(dir, async () => {
-      // openBundle(dir, undefined) with remoteFlag omitted entirely mirrors serve.ts's/home's/
-      // ui's-local-branch's call shape (they never call resolveRemoteFlag). If the URL binding were
-      // (wrongly) promoted to a RemoteBackend here, this would resolve successfully instead of
-      // rejecting — this assertion is the falsifiable check.
       await assert.rejects(
         () => openBundle(undefined, undefined),
         (err: unknown) => {
           assert.ok(err instanceof CliError);
-          assert.equal(err.code, "NOT_FOUND");
-          assert.doesNotMatch(err.message, /project binding/);
+          assert.equal(err.code, "USAGE");
+          assert.match(err.message, /pass --remote/);
           return true;
         },
       );
@@ -422,35 +458,31 @@ test("openBundle: a URL-type binding reached with NEITHER --dir nor --remote (th
   }
 });
 
-// ── end-to-end: a URL binding drives a real command against a real served bundle, keyless ─
+// ── end-to-end: a URL binding cannot drive a bare command ─
 
-test("end-to-end: a bare command (no --remote/--dir) resolves a real served bundle purely via a committed URL binding, keyless", async () => {
-  const bundleDir = await tempDir();
+test("end-to-end: a bare command with a URL binding fails before any HTTP request", async () => {
   const projectDir = await tempDir();
-  let handle: ServerHandle | undefined;
+  const originalFetch = globalThis.fetch;
+  let fetches = 0;
   try {
-    await initBundle(bundleDir);
-    await writeDoc(
-      { root: bundleDir },
-      { id: "notes/hello", frontmatter: { type: "Note", title: "Hello", timestamp: "2026-07-02T00:00:00.000Z" }, body: "hi" },
-    );
-    handle = await serve({ bundle: { root: bundleDir }, port: 0 });
-    const url = `http://${handle.host}:${handle.port}`;
+    const url = "http://must-not-fetch.example";
     await writeBinding(projectDir, url);
+    globalThis.fetch = (async () => {
+      fetches += 1;
+      throw new Error("unexpected fetch");
+    }) as typeof fetch;
 
     await inDir(projectDir, async () => {
-      let out = "";
-      // No --remote, no --dir: resolution must come ENTIRELY from the committed binding, and no
-      // AGENTSTATE_LITE_API_KEY / stored credentials exist in this test process — the reference
-      // server is keyless (no auth enforced), so this must succeed with no key configured at all.
-      await list(["--json"], { stdout: (s) => (out += s) });
-      const parsed = JSON.parse(out) as { count: number; docs: Array<{ id: string }> };
-      assert.equal(parsed.count, 1);
-      assert.equal(parsed.docs[0]!.id, "notes/hello");
+      await assert.rejects(() => list(["--json"], {}), (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /pass --remote/);
+        return true;
+      });
+      assert.equal(fetches, 0);
     });
   } finally {
-    await handle?.close();
-    await rm(bundleDir, { recursive: true, force: true });
+    globalThis.fetch = originalFetch;
     await rm(projectDir, { recursive: true, force: true });
   }
 });
@@ -478,7 +510,7 @@ test("whoami offline listing notes a directory-type project binding as a courtes
   }
 });
 
-test("whoami: a URL-type project binding is NOT merely noted — it drives whoami LIVE, exactly like the env default already does", async () => {
+test("whoami: a URL project binding errors before the live identity request", async () => {
   // The bundle-scoped reference server (`@agentstate-lite/server`'s `serve()`) does not implement
   // the Stage-2 `/v0/whoami` auth-routes surface (that's `packages/worker`-only) — so, mirroring
   // `auth-cli.test.ts`'s own "mock over globalThis.fetch" style, a minimal fetch mock stands in for
@@ -500,15 +532,12 @@ test("whoami: a URL-type project binding is NOT merely noted — it drives whoam
 
   try {
     await inDir(projectDir, async () => {
-      let out = "";
-      await whoami(["--json"], { loadCreds: async () => null, stdout: (s) => (out += s) });
-      const parsed = JSON.parse(out) as { remote?: string; logged_in?: boolean; user_id?: string };
-      // A real network round trip (through the mock) reaching the LIVE /v0/whoami report (a
-      // `remote`/`user_id` field), not the offline {logged_in:false} shape — proving
-      // `resolveRemoteFlag`'s binding rung actually drove this, not just a cosmetic note.
-      assert.equal(parsed.remote, origin);
-      assert.equal(parsed.user_id, "root");
-      assert.equal(parsed.logged_in, undefined);
+      await assert.rejects(() => whoami(["--json"], { loadCreds: async () => null }), (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /pass --remote/);
+        return true;
+      });
     });
   } finally {
     globalThis.fetch = originalFetch;

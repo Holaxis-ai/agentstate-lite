@@ -85,7 +85,7 @@ write' to overwrite it outright and deliberately.
 Options:
   --dir <path>          Bundle directory (default: discovered from the cwd)
   --remote <url>        Talk to a wire-protocol server instead of a local bundle
-                         (mutually exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                         (mutually exclusive with --dir; remote access is always explicit)
   --actor <name>         Attribute this write: persisted as the doc's own 'actor' frontmatter field
                          (the per-doc attribution sync and its receipts read) and recorded in version
                          history by a persisting backend. Precedence: --actor >

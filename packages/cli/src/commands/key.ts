@@ -51,8 +51,7 @@ Options:
   --fields <a,b|all>  [list] Add columns to the minimal {id,key_prefix,label,status} row, or 'all'
                   for the full record (last_four, user_id, created_by, created_at, …) — never the secret
   --agent <name>  Mint a NEW agent user's first key (admin-only)
-  --remote <url>  Base URL of the auth-gated remote deployment
-                  (falls back to AGENTSTATE_LITE_REMOTE if set)
+  --remote <url>  Base URL of the auth-gated remote deployment (required explicitly)
   --json          Emit compact JSON instead of TOON
   -h, --help      Show this help
 `;

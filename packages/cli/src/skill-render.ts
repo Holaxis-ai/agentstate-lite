@@ -183,15 +183,12 @@ function renderWorkspaceLocation(prefix: string): string[] {
   lines.push("Advisory attribution describes a real mutation and never creates a no-op write.");
   lines.push("Actor labels are advisory metadata, not authentication or authorization credentials.");
   lines.push("");
+  lines.push("Each invocation is stateless. HTTP is activated only by explicit `--remote <url>`.");
   lines.push(
-    "Each invocation is stateless and resolves its bundle in this order: explicit `--dir`/`--remote`",
+    "Otherwise bundle resolution stays local: explicit `--dir` → nearest `.agentstate.json`",
   );
-  lines.push(
-    "flag → `AGENTSTATE_LITE_REMOTE` env (URL only) → nearest `.agentstate.json` binding up-tree →",
-  );
-  lines.push(
-    "the cwd walk, which at each ancestor checks the directory's own `index.md`, then its",
-  );
+  lines.push("local-path binding up-tree → the cwd walk, which at each ancestor checks the");
+  lines.push("directory's own `index.md`, then its");
   lines.push(
     "conventional `.agentstate-lite/index.md`. Reserve `--dir` for the exceptions: a bundle outside",
   );
@@ -200,12 +197,13 @@ function renderWorkspaceLocation(prefix: string): string[] {
   lines.push("Two things override the default:");
   lines.push("");
   lines.push(
-    "1. **Explicit user direction** — the user names a directory or a `--remote`; use that. A",
+    "1. **Explicit user direction** — the user names a directory or a `--remote`; use that. A local",
   );
   lines.push(
-    "   `.agentstate.json` binding (`{ \"bundle\": \"<path-or-url>\" }` at the project root) is the",
+    "   `.agentstate.json` binding (`{ \"bundle\": \"<path>\" }` at the project root) is the",
   );
   lines.push("   durable form of that direction — it beats the conventional folder when both exist.");
+  lines.push("   Remote URLs are never durable ambient bindings; pass `--remote <url>` per invocation.");
   lines.push(
     "2. **An existing workspace** — if a bare command already resolves (a binding, an enclosing",
   );

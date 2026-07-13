@@ -15,47 +15,26 @@
 // flag and an EXPLICIT `--dir` flag remain mutually exclusive (a USAGE error) — that combination
 // contradicts the caller's own stated intent and cannot be silently resolved either way.
 //
-// `AGENTSTATE_LITE_REMOTE` (Stage-1 Unit 2a Part C, A9; semantics finalized in the post-ship
-// review) is a session-wide fallback for `--remote` — but ONLY when NEITHER `--remote` NOR `--dir`
-// was passed explicitly. An explicit `--dir` ALWAYS wins over the ambient env default (silently,
-// no error) — explicit beats ambient. See `resolveRemoteFlag` below. Every remote-capable command
-// resolves its `--remote` value through that function (passing its OWN `--dir` value too) before
-// calling `openBundle` — `init`/`serve` are the two deliberate exceptions.
+// HTTP activation is explicit: only `--remote <url>` produces a RemoteBackend. The retired
+// `AGENTSTATE_LITE_REMOTE` variable is detected after explicit flags and rejected with migration
+// guidance; an explicit `--dir` or `--remote` remains authoritative and suppresses that legacy
+// ambient state.
 //
 // `.agentstate.json` (item 43 follow-on — the "project-binding resolution rung") is a COMMITTED,
-// project-scoped pointer: `{ "bundle": "<url-or-path>" }` at a project root, discovered by walking
+// project-scoped LOCAL pointer: `{ "bundle": "<path>" }` at a project root, discovered by walking
 // UP from the cwd (nearest ancestor wins — same shape `findBundleRoot` uses for `index.md`; see
-// `resolveProjectBinding`). It sits BETWEEN the env var and cwd discovery in the precedence chain:
-// explicit `--remote`/`--dir` flags -> `AGENTSTATE_LITE_REMOTE` env -> the project binding file ->
-// the cwd walk (which checks each ancestor's own `index.md` FIRST, then its conventional
-// `.agentstate-lite/index.md` — see `CONVENTIONAL_BUNDLE_DIR_NAME`/`findBundleRoot`). Explicit
-// beats ambient beats committed beats discovered, and within discovery an enclosing bundle beats
-// the conventional project folder at the same level. The
-// binding's `bundle` value is EITHER an http(s) URL (resolved exactly like `--remote <url>`) OR a
-// filesystem path (resolved exactly like `--dir <path>`; a RELATIVE path resolves against the
-// DIRECTORY CONTAINING `.agentstate.json`, never the cwd — a committed pointer must be
-// clone-portable, and the cwd is not). A malformed file (unreadable, invalid JSON, missing/empty/
+// `resolveProjectBinding`). It sits between explicit flags and cwd discovery: explicit
+// `--remote`/`--dir` -> the local project binding -> the cwd walk (which checks each ancestor's own
+// `index.md` first, then its conventional `.agentstate-lite/index.md`). Explicit beats committed
+// beats discovered, and within discovery an enclosing bundle beats the conventional project folder
+// at the same level. A relative binding path resolves against the directory containing
+// `.agentstate.json`, never the cwd, so committed pointers stay clone-portable. A malformed file
+// (unreadable, invalid JSON, missing/empty/
 // non-string `bundle`) is a USAGE CliError naming the file — never a silent fallthrough to the next
 // rung, because a committed-but-broken binding is a real repo mistake the user must see.
 //
-// The two halves of the binding are consumed at TWO DIFFERENT points, deliberately not one:
-//   - A URL-type binding is consumed by `resolveRemoteFlag` (below), the SAME function that already
-//     resolves the env-var ambient default — so it is picked up by every command that already calls
-//     `resolveRemoteFlag`, and by NONE of the three that deliberately don't (`init`, `serve`, and
-//     `home`'s local dashboard read) for the exact reason those three already skip the env default:
-//     `serve` can only ever boot a server over a FILESYSTEM bundle (a URL binding here would be
-//     nonsensical — there is nothing local to serve), and `home`'s zero-arg dashboard has a hardened
-//     OFFLINE GUARANTEE (`commands/home.ts`) that must never silently start fetching just because a
-//     committed file happens to name a URL. Both instead peek at `resolveProjectBinding` themselves,
-//     where relevant, purely to ANNOTATE their output — never to change whether they fetch.
-//   - A DIRECTORY-type binding is consumed by `openBundle`'s OWN cwd-discovery fallback (below),
-//     reached only when neither an explicit/ambient/committed `--remote` NOR an explicit `--dir`
-//     applies — so it benefits EVERY caller that reaches that fallback, `serve`/`home`/`ui`'s local
-//     branch included, because picking a different LOCAL directory is always network-free. If that
-//     same fallback happens to find a URL-type binding instead (only possible for the three callers
-//     above, since everyone else already had it consumed by `resolveRemoteFlag` first), it is
-//     silently ignored and cwd discovery proceeds as if no binding existed at all — never promoted
-//     to a `RemoteBackend` there, which would violate `serve`/`home`'s local-only contract.
+// URL-valued bindings are rejected at the parser with an explicit-`--remote` migration hint. Local
+// bindings are consumed by `openBundle`'s cwd-discovery fallback, which keeps bare commands local.
 //
 // API-key sourcing (Stage-1 Unit 2b Part C — the Cloudflare Worker deployment's `withApiKey`
 // gate, `packages/worker/src/auth.ts`): `openRemoteBundle` sources a bearer token for the
@@ -144,22 +123,33 @@ export const PROJECT_BINDING_FILE_NAME = ".agentstate.json";
 export interface ProjectBinding {
   /** Absolute path to the `.agentstate.json` file this was read from (surfaced in errors/notes). */
   file: string;
-  /**
-   * The resolved target: the raw URL string when `isRemote`, else an ABSOLUTE directory path (a
-   * relative `bundle` value in the file is resolved against `file`'s own directory, not the cwd).
-   */
+  /** Absolute directory target; relative values resolve against the binding file's directory. */
   target: string;
-  /** true when `target` is an http(s) URL (resolve like `--remote`); false when a directory (`--dir`). */
-  isRemote: boolean;
 }
 
-function isHttpUrl(value: string): boolean {
+interface BindingUriIntent {
+  detail: string;
+  suggestedRemote?: string;
+}
+
+function bindingUriIntent(value: string): BindingUriIntent | null {
+  if (/^[A-Za-z]:(?!\/\/)/.test(value)) return null;
+  if (value.startsWith("//")) {
+    return { detail: `protocol-relative URL ${value}` };
+  }
+  const match = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(value);
+  if (!match) return null;
+  const scheme = match[1]!.toLowerCase();
+  if (scheme !== "http" && scheme !== "https") {
+    return { detail: `unsupported URI scheme "${scheme}" in ${value}` };
+  }
   try {
     const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
+    if (url.protocol === `${scheme}:`) return { detail: `remote URL ${value}`, suggestedRemote: value };
   } catch {
-    return false;
+    // The scheme establishes URI intent even when the URL itself is malformed.
   }
+  return { detail: `invalid ${scheme} URL ${value}` };
 }
 
 /**
@@ -168,9 +158,9 @@ function isHttpUrl(value: string): boolean {
  * NOT an error). When one IS found, it is read and validated immediately: an unreadable file (a
  * TOCTOU race between the walk's `exists` check and the read), invalid JSON, or a missing/empty/
  * non-string `bundle` field is a real committed mistake — thrown as a USAGE CliError (exit 2)
- * naming the file, never swallowed into a silent `null`. A well-formed `bundle` value is classified
- * as a remote URL (`isHttpUrl`) or else treated as a filesystem path and resolved against the
- * binding file's OWN directory (never the cwd — see the module header on clone-portability).
+ * naming the file, never swallowed into a silent `null`. A URL value is rejected: remote access
+ * requires an explicit `--remote`. A filesystem path is resolved against the binding file's OWN
+ * directory (never the cwd — see the module header on clone-portability).
  */
 export async function resolveProjectBinding(startDir: string = process.cwd()): Promise<ProjectBinding | null> {
   const dir = await findAncestorWithFile(startDir, PROJECT_BINDING_FILE_NAME);
@@ -201,15 +191,21 @@ export async function resolveProjectBinding(startDir: string = process.cwd()): P
   if (typeof rawBundle !== "string" || rawBundle.trim() === "") {
     throw new CliError(
       "USAGE",
-      `malformed project binding ${file}: "bundle" must be a non-empty string (an http(s) URL or a filesystem path)`,
+      `malformed project binding ${file}: "bundle" must be a non-empty filesystem path`,
       { help: `fix or remove ${file}` },
     );
   }
   const trimmed = rawBundle.trim();
-  if (isHttpUrl(trimmed)) {
-    return { file, target: trimmed, isRemote: true };
+  const uriIntent = bindingUriIntent(trimmed);
+  if (uriIntent) {
+    const remote = uriIntent.suggestedRemote ?? "<url>";
+    throw new CliError(
+      "USAGE",
+      `project binding ${file} cannot use ${uriIntent.detail}; URL bindings no longer activate remotes — pass --remote ${remote} explicitly or replace "bundle" with a filesystem path`,
+      { help: `${cliInvocation()} <command> --remote ${remote}` },
+    );
   }
-  return { file, target: path.resolve(dir, trimmed), isRemote: false };
+  return { file, target: path.resolve(dir, trimmed) };
 }
 
 /**
@@ -272,25 +268,14 @@ async function openRemoteBundle(remoteFlag: string): Promise<Bundle> {
   return { root: base, backend };
 }
 
-/** The session-wide remote-default environment variable (A9). See {@link resolveRemoteFlag}. */
+/** Retired remote-default environment variable, retained only for an actionable migration error. */
 export const REMOTE_ENV_VAR = "AGENTSTATE_LITE_REMOTE";
 
 /**
- * Resolve the effective `--remote` value for a remote-capable command: an explicit `--remote` flag
- * always wins outright. Otherwise, EXPLICIT BEATS AMBIENT (design resolution, Stage-1 Unit 2a
- * post-ship review — supersedes an earlier draft where an ambient env default could conflict with
- * an explicit `--dir`): if the caller passed `--dir` themselves, that is a deliberate, explicit
- * choice to go local, and BOTH the `AGENTSTATE_LITE_REMOTE` env fallback AND the project-binding
- * fallback (below) are SUPPRESSED — no conflict, no error, `--dir` just wins silently, exactly as
- * if neither existed. Absent an explicit `--dir`, the env fallback applies next (so a caller who
- * already ran `serve` doesn't have to repeat `--remote <url>` on every subsequent bare command —
- * A9, reversing Unit 3's skipped implementer's-call); a blank/whitespace-only env value is treated
- * as unset. Only once BOTH are absent does a committed `.agentstate.json` binding apply (item 43
- * follow-on — see the module header): if the nearest one up-tree names an http(s) URL, it resolves
- * exactly like an ambient `--remote` default; a directory-type binding is NOT a remote value at
- * all, so this returns `undefined` for one (it is `openBundle`'s cwd-discovery fallback that
- * consumes that half — see below). This function is async specifically so that fs-backed check can
- * run; a malformed binding file throws a USAGE CliError here rather than silently falling through.
+ * Resolve the effective `--remote` value. Only an explicit flag can return a URL. An explicit
+ * `--dir` wins locally. With neither flag, a present legacy `AGENTSTATE_LITE_REMOTE` is rejected
+ * with migration guidance, and a reached project binding is parsed solely to reject malformed or
+ * URL-valued bindings before local discovery consumes a valid path binding.
  *
  * `openBundle`'s `--remote`/`--dir` mutual-exclusion check therefore only ever fires for an
  * explicit `--remote` FLAG (not an env- or binding-derived one) alongside an explicit `--dir` — the
@@ -306,12 +291,18 @@ export async function resolveRemoteFlag(
   remoteFlag: string | undefined,
   dirFlag: string | undefined,
 ): Promise<string | undefined> {
-  if (remoteFlag) return remoteFlag;
-  if (dirFlag) return undefined; // explicit --dir wins over an ambient env/binding default, no conflict
-  const env = process.env[REMOTE_ENV_VAR]?.trim();
-  if (env) return env;
-  const binding = await resolveProjectBinding();
-  return binding?.isRemote ? binding.target : undefined;
+  if (remoteFlag !== undefined) return remoteFlag;
+  if (dirFlag !== undefined) return undefined; // explicit --dir wins over legacy ambient state
+  if (process.env[REMOTE_ENV_VAR] !== undefined) {
+    const legacy = process.env[REMOTE_ENV_VAR]?.trim();
+    throw new CliError(
+      "USAGE",
+      `${REMOTE_ENV_VAR} ambient remote selection is retired; pass --remote <url> explicitly`,
+      { help: `${cliInvocation()} <command> --remote ${legacy || "<url>"}` },
+    );
+  }
+  await resolveProjectBinding();
+  return undefined;
 }
 
 /**
@@ -323,15 +314,12 @@ export async function resolveRemoteFlag(
  * the cwd. Throws a NOT_FOUND CliError (exit 6) when no LOCAL bundle is found — the fixing command
  * points at `axi init`.
  *
- * Callers pass `remoteFlag` through {@link resolveRemoteFlag} first, which already suppresses the
- * `AGENTSTATE_LITE_REMOTE` env fallback (and the project-binding fallback) whenever `dirFlag` is
- * set — so by the time `remoteFlag` reaches HERE truthy alongside a truthy `dirFlag`, it can only be
- * because the caller passed an EXPLICIT `--remote` flag (not an ambient default), and the
- * mutual-exclusion error below is accurate without needing to know which source it came from.
+ * Callers pass `remoteFlag` through {@link resolveRemoteFlag} first, so any truthy value here is an
+ * explicit `--remote` flag and the mutual-exclusion error below is unambiguous.
  */
 export async function openBundle(dirFlag: string | undefined, remoteFlag?: string): Promise<Bundle> {
-  if (remoteFlag) {
-    if (dirFlag) {
+  if (remoteFlag !== undefined) {
+    if (dirFlag !== undefined) {
       throw new CliError(
         "USAGE",
         "--remote and --dir are mutually exclusive",
@@ -340,7 +328,7 @@ export async function openBundle(dirFlag: string | undefined, remoteFlag?: strin
     }
     return openRemoteBundle(remoteFlag);
   }
-  if (dirFlag) {
+  if (dirFlag !== undefined) {
     const root = path.resolve(dirFlag);
     if (!(await exists(path.join(root, "index.md")))) {
       throw new CliError("NOT_FOUND", `no OKF bundle at ${root} (no index.md)`, {
@@ -349,14 +337,9 @@ export async function openBundle(dirFlag: string | undefined, remoteFlag?: strin
     }
     return { root };
   }
-  // Neither an explicit/ambient/committed --remote NOR an explicit --dir applies: a directory-type
-  // project binding wins over plain cwd discovery (see the module header). A URL-type binding found
-  // HERE (only possible for a caller that never calls `resolveRemoteFlag` at all — `serve`, `home`'s
-  // local read, `ui`'s local branch — since every other caller already had it consumed above) is
-  // silently ignored rather than promoted to a `RemoteBackend`, which would violate those callers'
-  // local-only contract; cwd discovery proceeds exactly as if no binding existed.
+  // Neither explicit flag applies: a local project binding wins over plain cwd discovery.
   const binding = await resolveProjectBinding();
-  if (binding && !binding.isRemote) {
+  if (binding) {
     const root = binding.target;
     if (!(await exists(path.join(root, "index.md")))) {
       throw new CliError(

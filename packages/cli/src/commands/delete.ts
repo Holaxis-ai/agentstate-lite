@@ -50,7 +50,7 @@ Options:
                             token is a CONFLICT, exit 5; omit for an unconditional delete)
   --dir <path>              Bundle directory (default: discovered from the cwd)
   --remote <url>            Talk to a wire-protocol server instead of a local bundle (mutually
-                            exclusive with --dir; falls back to AGENTSTATE_LITE_REMOTE if set)
+                            exclusive with --dir; remote access is always explicit)
   --json                    Emit compact JSON instead of TOON
   -h, --help                Show this help
 `;

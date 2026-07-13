@@ -303,11 +303,10 @@ test("A1.12 project binding (directory-type, item 43 follow-on): home's dashboar
   }
 });
 
-test("A1.13 project binding (URL-type, item 43 follow-on): home shows the offline remote pointer annotated with a `via` note, never fetching (OFFLINE GUARANTEE preserved)", async () => {
+test("A1.13 project binding URL: home surfaces explicit --remote migration guidance and never fetches", async () => {
   const projectDir = await tempDir();
   try {
-    // Nothing listens on this port — if home ever actually fetched, this test would hang/error
-    // instead of resolving promptly with a clean offline pointer.
+    // Nothing listens on this port — home must only render the local-safe migration error.
     await writeFile(path.join(projectDir, ".agentstate.json"), JSON.stringify({ bundle: "http://127.0.0.1:1" }));
 
     const origCwd = process.cwd();
@@ -317,7 +316,9 @@ test("A1.13 project binding (URL-type, item 43 follow-on): home shows the offlin
       await home([], { stdout: (s) => (out += s) });
       assert.ok(out.includes("http://127.0.0.1:1"));
       assert.ok(out.includes(".agentstate.json"));
-      assert.ok(!out.includes("getting_started"));
+      assert.ok(out.includes("project_binding_error"));
+      assert.ok(out.includes("pass --remote"));
+      assert.ok(out.includes("getting_started"));
     } finally {
       process.chdir(origCwd);
     }

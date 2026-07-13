@@ -45,15 +45,9 @@
 // its own budget race stays the only network bound in that flow (test-pinned). Home still NEVER
 // provisions and still exits 0 in every case.
 //
-// PROJECT-BINDING PEEK (item 43 follow-on — `bundle.ts`'s `resolveProjectBinding`): home does NOT
-// call `resolveRemoteFlag` (see `bundle.ts`'s header — home is a THIRD deliberate exception,
-// alongside `init`/`serve`), so a committed `.agentstate.json` naming a remote URL can never make
-// home fetch. Instead `home()` peeks at `resolveProjectBinding` itself, fs-only, purely to decide
-// WHICH local directory to summarize (a directory-type binding) or to annotate the existing offline
-// `view.remote` pointer block with where it came from (a URL-type binding — shown, never
-// dereferenced, exactly like an explicit `--remote` flag already is). A malformed binding file is
-// never allowed to crash the SessionStart hook either: the peek is wrapped in its own try/catch,
-// surfacing a visible `project_binding_error` note instead of throwing (see `buildHomeView`).
+// PROJECT-BINDING PEEK: home consults `.agentstate.json` only when no explicit flag is present. A
+// local path scopes the dashboard; a URL binding is rejected by `resolveProjectBinding` and shown as
+// a non-fatal `project_binding_error`, preserving SessionStart's render-always contract.
 //
 // Adapted from holaxis-agentstate `packages/cli/src/commands/home.ts`.
 import { cliInvocation, binPath, collapseHomeDirectory } from "../invocation.js";
@@ -109,8 +103,8 @@ export interface UnreadableBundle {
 
 /**
  * A committed `.agentstate.json` binding home resolved for ITSELF (see the module header's
- * PROJECT-BINDING PEEK) — surfaced as a `via` annotation on whichever block (`remote` or `bundle`)
- * the binding actually drove, so the view stays honest about where a non-cwd-walk resolution came
+ * PROJECT-BINDING PEEK) — surfaced as a `via` annotation on the local bundle block it drove, so the
+ * view stays honest about where a non-cwd-walk resolution came
  * from without changing byte-identical output for the common no-binding case.
  */
 export interface HomeBindingNote {
@@ -535,10 +529,7 @@ export function buildHomeView(
     // second-bundle footgun.
     view.getting_started = `no OKF bundle found in this directory — run \`${deps.invocation()} init\` to create one`;
     if (binding) {
-      // A URL-type binding always routes into the `if (remote)` branch above instead (home's own
-      // pre-check sets `remote`, never reaching here) — so a `binding` present at THIS point is
-      // always the directory-type half, resolved to a location with no bundle. Say so rather than
-      // leaving the `init` hint looking like there was never a binding at all.
+      // A reached binding is always local; URL bindings are rejected before this pure renderer.
       view.getting_started += ` (project binding ${binding.file} -> ${binding.target} did not resolve to a bundle)`;
     }
   }
@@ -607,9 +598,8 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
   // A committed project binding (see the module header's PROJECT-BINDING PEEK) is consulted ONLY
   // when the caller passed NEITHER --remote NOR --dir themselves — the same suppression rule every
   // other rung already follows. Fs-only; never a fetch, preserving the OFFLINE GUARANTEE regardless
-  // of what the binding names. A URL-type binding scopes the view exactly like an explicit --remote
-  // flag would (still offline — see the `if (remote)` branch in buildHomeView); a directory-type
-  // binding scopes the local summarize() call instead. A malformed file must never crash the
+  // of what the binding names. A local binding scopes the summarize() call; a URL or malformed file
+  // must never crash the
   // SessionStart hook, so it is caught here and surfaced as a visible `bindingError` note instead.
   let binding: HomeBindingNote | undefined;
   let bindingError: string | undefined;
@@ -618,11 +608,7 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
       const found = await resolveProjectBinding();
       if (found) {
         binding = { file: found.file, target: found.target };
-        if (found.isRemote) {
-          remote = found.target;
-        } else {
-          dir = found.target;
-        }
+        dir = found.target;
       }
     } catch (err) {
       bindingError = err instanceof Error ? err.message : String(err);

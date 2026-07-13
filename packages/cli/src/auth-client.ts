@@ -70,9 +70,8 @@ export type {
 
 /**
  * Resolve a `--remote <url>` flag into `{base, origin}` for the auth-route surface: the
- * SAME "explicit beats ambient" `AGENTSTATE_LITE_REMOTE`/project-binding fallback every
- * other remote-capable command uses (`bundle.ts`'s `resolveRemoteFlag`, called here with no
- * `--dir` concept to suppress), then the same http(s) URL discipline the `--remote` bundle
+ * same explicit-only resolver every other remote-capable command uses, then the same http(s) URL
+ * discipline the `--remote` bundle
  * commands apply (`config.ts`'s `normalizeServer`). Throws a USAGE
  * CliError (exit 2) when no remote can be resolved at all, or when the resolved value is a
  * malformed/non-http(s) URL.
@@ -80,7 +79,7 @@ export type {
 export async function resolveRemoteOnly(remoteFlag: string | undefined): Promise<{ base: string; origin: string }> {
   const remote = await resolveRemoteFlag(remoteFlag, undefined);
   if (!remote) {
-    throw new CliError("USAGE", "--remote <url> is required (or set AGENTSTATE_LITE_REMOTE)", {
+    throw new CliError("USAGE", "--remote <url> is required", {
       help: `${cliInvocation()} <command> --remote <url>`,
     });
   }
