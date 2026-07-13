@@ -40,6 +40,8 @@ export interface KindFields {
   optional: string[];
   /** `fieldName -> allowed values` for fields restricted to an enumerated set. */
   values: Record<string, string[]>;
+  /** Human guidance for allowed enum values: `fieldName -> value -> description`. */
+  valueDescriptions?: Record<string, Record<string, string>>;
   /**
    * `fieldName -> terminal values` (a subset of that field's `values` enum, when declared) — the
    * states past which an instance is "done" (task board `tasks/status-terminal-declaration.md`).
@@ -96,14 +98,21 @@ export interface KindRegistry {
   warnings: ValidationWarning[];
 }
 
-/** True for a plain YAML/JSON map (excludes arrays, `null`, and non-object scalars). */
+/** True for a plain YAML/JSON map (excludes arrays, `null`, dates, and other object instances). */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 /** Prototype-safe own-key check for user-authored YAML maps. */
 function hasOwn(record: object, key: PropertyKey): boolean {
   return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+/** Define an arbitrary user-authored key without invoking the legacy `__proto__` setter. */
+function setOwn<T>(record: Record<string, T>, key: string, value: T): void {
+  Object.defineProperty(record, key, { value, enumerable: true, configurable: true, writable: true });
 }
 
 /** True for a scalar YAML value (string/number/boolean) — the shape an enum/field-name member should be. */
@@ -172,7 +181,14 @@ function toStringArrayLenient(
 const RESERVED_FIELD_NAMES = new Set(["type", "dir", "remote", "json", "help"]);
 
 /** The only recognized keys inside a convention doc's `fields:` block. */
-const VALID_FIELDS_KEYS = new Set(["required", "optional", "values", "terminal", "descriptions"]);
+const VALID_FIELDS_KEYS = new Set([
+  "required",
+  "optional",
+  "values",
+  "value_descriptions",
+  "terminal",
+  "descriptions",
+]);
 
 /**
  * Top-level convention-doc keys that are near-misses for the ONE correct enum-constraint shape
@@ -198,7 +214,7 @@ export function splitSections(body: string): Record<string, string> {
     const name = (current[1] ?? "").trim();
     const start = (current.index ?? 0) + current[0].length;
     const end = i + 1 < matches.length ? (matches[i + 1]!.index ?? body.length) : body.length;
-    out[name] = body.slice(start, end).trim();
+    setOwn(out, name, body.slice(start, end).trim());
   }
   return out;
 }
@@ -238,7 +254,7 @@ export function parseConventionDoc(
   } else if (!isPlainObject(fieldsSource)) {
     warnings.push({
       code: "KIND_CONVENTION_BAD_SHAPE",
-      message: `kind convention '${doc.id}' has a non-map 'fields' key (${describeShape(fieldsSource)}; expected a map with required/optional/values/descriptions); ignoring it.`,
+      message: `kind convention '${doc.id}' has a non-map 'fields' key (${describeShape(fieldsSource)}; expected a map with required/optional/values/value_descriptions/descriptions); ignoring it.`,
       field: "fields",
       severity: "warning",
     });
@@ -248,7 +264,7 @@ export function parseConventionDoc(
       if (!VALID_FIELDS_KEYS.has(key)) {
         warnings.push({
           code: "KIND_CONVENTION_UNKNOWN_FIELDS_KEY",
-          message: `kind convention '${doc.id}' declares an unrecognized key 'fields.${key}' (valid keys: fields.required, fields.optional, fields.values, fields.terminal, fields.descriptions); ignoring it.`,
+          message: `kind convention '${doc.id}' declares an unrecognized key 'fields.${key}' (valid keys: fields.required, fields.optional, fields.values, fields.value_descriptions, fields.terminal, fields.descriptions); ignoring it.`,
           field: `fields.${key}`,
           severity: "warning",
         });
@@ -284,7 +300,7 @@ export function parseConventionDoc(
     } else {
       for (const [field, allowed] of Object.entries(valuesSource)) {
         if (dropReserved(field, `fields.values.${field}`)) continue;
-        values[field] = toStringArrayLenient(allowed, `fields.values.${field}`, doc.id, warnings);
+        setOwn(values, field, toStringArrayLenient(allowed, `fields.values.${field}`, doc.id, warnings));
       }
     }
   }
@@ -302,6 +318,66 @@ export function parseConventionDoc(
         field: `fields.values.${field}`,
         severity: "warning",
       });
+    }
+  }
+
+  const valueDescriptionsSource = fieldsRaw.value_descriptions;
+  const valueDescriptions: Record<string, Record<string, string>> = {};
+  if (valueDescriptionsSource !== undefined) {
+    if (!isPlainObject(valueDescriptionsSource)) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc.id}' has a non-map 'fields.value_descriptions' (${describeShape(valueDescriptionsSource)}; expected a map of enum field -> allowed value -> non-empty description); ignoring it.`,
+        field: "fields.value_descriptions",
+        severity: "warning",
+      });
+    } else {
+      for (const [field, rawValueDescriptions] of Object.entries(valueDescriptionsSource)) {
+        const fieldPath = `fields.value_descriptions.${field}`;
+        if (!isPlainObject(rawValueDescriptions)) {
+          warnings.push({
+            code: "KIND_CONVENTION_BAD_SHAPE",
+            message: `kind convention '${doc.id}' has a non-map '${fieldPath}' (${describeShape(rawValueDescriptions)}; expected a map of allowed value -> non-empty description); ignoring it.`,
+            field: fieldPath,
+            severity: "warning",
+          });
+          continue;
+        }
+        if (!hasOwn(values, field)) {
+          warnings.push({
+            code: "KIND_CONVENTION_UNDECLARED_VALUE_DESCRIPTION_FIELD",
+            message: `kind convention '${doc.id}' declares '${fieldPath}' but '${field}' has no 'fields.values.${field}' enum declared; skipping it.`,
+            field: fieldPath,
+            severity: "warning",
+          });
+          continue;
+        }
+        const allowed = values[field]!;
+        const parsed: Record<string, string> = {};
+        for (const [value, rawDescription] of Object.entries(rawValueDescriptions)) {
+          const valuePath = `${fieldPath}.${value}`;
+          if (typeof rawDescription !== "string" || rawDescription.trim() === "") {
+            warnings.push({
+              code: "KIND_CONVENTION_BAD_MEMBER",
+              message: `kind convention '${doc.id}' has a malformed '${valuePath}' (${describeShape(rawDescription)}; expected a non-empty string); skipping it.`,
+              field: valuePath,
+              severity: "warning",
+            });
+            continue;
+          }
+          if (!allowed.includes(value)) {
+            warnings.push({
+              code: "KIND_CONVENTION_UNDECLARED_VALUE_DESCRIPTION_VALUE",
+              message: `kind convention '${doc.id}' declares '${valuePath}' but '${value}' is not one of the declared 'fields.values.${field}' values (${allowed.join(", ")}); skipping it.`,
+              field: valuePath,
+              severity: "warning",
+            });
+            continue;
+          }
+          setOwn(parsed, value, rawDescription.trim());
+        }
+        if (Object.keys(parsed).length > 0) setOwn(valueDescriptions, field, parsed);
+      }
     }
   }
 
@@ -327,7 +403,7 @@ export function parseConventionDoc(
           });
           continue;
         }
-        descriptions[field] = rawDescription.trim();
+        setOwn(descriptions, field, rawDescription.trim());
         if (!declaredFieldNames.has(field)) {
           warnings.push({
             code: "KIND_CONVENTION_UNDECLARED_DESCRIPTION_FIELD",
@@ -356,7 +432,7 @@ export function parseConventionDoc(
     } else {
       for (const [field, terminalValues] of Object.entries(terminalSource)) {
         if (dropReserved(field, `fields.terminal.${field}`)) continue;
-        terminal[field] = toStringArrayLenient(terminalValues, `fields.terminal.${field}`, doc.id, warnings);
+        setOwn(terminal, field, toStringArrayLenient(terminalValues, `fields.terminal.${field}`, doc.id, warnings));
       }
     }
   }
@@ -367,8 +443,7 @@ export function parseConventionDoc(
   // values (only checked when the field's enum IS declared, to avoid double-warning the same
   // mistake two different ways).
   for (const field of Object.keys(terminal)) {
-    const allowed = values[field];
-    if (!allowed) {
+    if (!hasOwn(values, field)) {
       warnings.push({
         code: "KIND_CONVENTION_TERMINAL_UNDECLARED_FIELD",
         message: `kind convention '${doc.id}' declares 'fields.terminal.${field}' but '${field}' has no 'fields.values.${field}' enum declared.`,
@@ -377,6 +452,7 @@ export function parseConventionDoc(
       });
       continue;
     }
+    const allowed = values[field]!;
     for (const v of terminal[field]!) {
       if (!allowed.includes(v)) {
         warnings.push({
@@ -415,7 +491,7 @@ export function parseConventionDoc(
           });
           continue;
         }
-        parsed[name] = String(target).trim();
+        setOwn(parsed, name, String(target).trim());
       }
       if (Object.keys(parsed).length > 0) links = parsed;
     }
@@ -457,7 +533,7 @@ export function parseConventionDoc(
           });
           continue;
         }
-        parsed[name] = rawDescription.trim();
+        setOwn(parsed, name, rawDescription.trim());
       }
       if (Object.keys(parsed).length > 0) linkDescriptions = parsed;
     }
@@ -490,7 +566,7 @@ export function parseConventionDoc(
           });
           continue;
         }
-        parsed[name] = String(source).trim();
+        setOwn(parsed, name, String(source).trim());
       }
       if (Object.keys(parsed).length > 0) expectsInbound = parsed;
     }
@@ -524,7 +600,7 @@ export function parseConventionDoc(
     id: doc.id,
     title,
     governs,
-    fields: { required, optional, values, terminal, descriptions },
+    fields: { required, optional, values, valueDescriptions, terminal, descriptions },
   };
   if (description !== undefined) kind.description = description;
   if (path !== undefined) kind.path = path;
@@ -584,7 +660,7 @@ export function validateAgainstKind(doc: OkfDocument, kind: KindConvention): Val
   const fm = doc.frontmatter as Record<string, unknown>;
 
   for (const field of kind.fields.required) {
-    if (!isPresent(fm[field])) {
+    if (!hasOwn(fm, field) || !isPresent(fm[field])) {
       warnings.push({
         code: "KIND_FIELD_MISSING",
         message: `'${kind.governs}' requires a non-empty '${field}' field (declared by ${kind.id}).`,
@@ -595,6 +671,7 @@ export function validateAgainstKind(doc: OkfDocument, kind: KindConvention): Val
   }
 
   for (const [field, allowed] of Object.entries(kind.fields.values)) {
+    if (!hasOwn(fm, field)) continue;
     const raw = fm[field];
     if (raw === undefined || raw === null) continue;
     // Arity: a `fields.values`-constrained field has SCALAR semantics by construction
@@ -633,7 +710,7 @@ export function validateAgainstKind(doc: OkfDocument, kind: KindConvention): Val
   if (kind.sections && kind.sections.length > 0) {
     const sections = splitSections(doc.body ?? "");
     for (const heading of kind.sections) {
-      if (!(heading in sections)) {
+      if (!hasOwn(sections, heading)) {
         warnings.push({
           code: "KIND_SECTION_MISSING",
           message: `'${kind.governs}' expects a '# ${heading}' body section (declared by ${kind.id}).`,
@@ -661,6 +738,7 @@ export function validateAgainstKind(doc: OkfDocument, kind: KindConvention): Val
 export function isTerminal(kind: KindConvention, frontmatter: Frontmatter): boolean {
   const fm = frontmatter as Record<string, unknown>;
   for (const [field, terminalValues] of Object.entries(kind.fields.terminal)) {
+    if (!hasOwn(fm, field)) continue;
     const raw = fm[field];
     if (raw === undefined || raw === null) continue;
     const actual = (Array.isArray(raw) ? raw : [raw]).map((v) => String(v));
@@ -678,6 +756,27 @@ export function isTerminal(kind: KindConvention, frontmatter: Frontmatter): bool
 export function kindConventionDoc(kind: KindConvention, prose: string, timestamp: string): OkfDocument {
   const fields: Record<string, unknown> = { required: kind.fields.required, optional: kind.fields.optional };
   if (Object.keys(kind.fields.values).length > 0) fields.values = kind.fields.values;
+  const valueDescriptions = Object.fromEntries(
+    Object.entries(kind.fields.valueDescriptions ?? {})
+      .filter(([field]) => hasOwn(kind.fields.values, field))
+      .map(([field, descriptions]) => {
+        const allowed = kind.fields.values[field]!;
+        const validDescriptions = Object.fromEntries(
+          Object.entries(descriptions)
+            .filter(
+              ([value, description]) =>
+                hasOwn(descriptions, value) &&
+                allowed.includes(value) &&
+                typeof description === "string" &&
+                description.trim() !== "",
+            )
+            .map(([value, description]) => [value, description.trim()]),
+        );
+        return [field, validDescriptions] as const;
+      })
+      .filter(([, descriptions]) => Object.keys(descriptions).length > 0),
+  );
+  if (Object.keys(valueDescriptions).length > 0) fields.value_descriptions = valueDescriptions;
   if (Object.keys(kind.fields.terminal).length > 0) fields.terminal = kind.fields.terminal;
   const descriptions = Object.fromEntries(
     Object.entries(kind.fields.descriptions)

@@ -90,7 +90,14 @@ export function parseMarkdown(
 
 /** Serialize an arbitrary YAML-mapping + body to OKF markdown (used for reserved files). */
 export function stringifyWithData(data: Record<string, unknown>, body: string): string {
-  return matter.stringify(body ?? "", data);
+  const engines = (matter as typeof matter & {
+    engines: { yaml: { stringify(value: object): string } };
+  }).engines;
+  const yaml = engines.yaml.stringify(data).trim();
+  const content = body ?? "";
+  const newline = (value: string): string => (value.endsWith("\n") ? value : `${value}\n`);
+  if (yaml === "{}") return newline(content);
+  return `---\n${newline(yaml)}---\n${newline(content)}`;
 }
 
 /** Serialize a concept document's frontmatter + body to OKF-conformant markdown. */

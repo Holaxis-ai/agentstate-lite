@@ -56,6 +56,30 @@ function toStringList(v: unknown): string[] {
   return Array.isArray(v) ? v.map((x) => String(x)) : [];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function hasOwn(record: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+function setOwn(record: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(record, key, { value, enumerable: true, configurable: true, writable: true });
+}
+
+function cloneRecord(record: Record<string, unknown>): Record<string, unknown> {
+  const clone: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) setOwn(clone, key, value);
+  return clone;
+}
+
+function deleteOwn(record: Record<string, unknown>, key: string): boolean {
+  return hasOwn(record, key) && delete record[key];
+}
+
 export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Promise<void> {
   const stdout = deps.stdout ?? ((s: string) => void process.stdout.write(s));
 
@@ -203,20 +227,22 @@ export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Pro
         );
       }
 
-      const fieldsObj =
-        fm.fields && typeof fm.fields === "object" && !Array.isArray(fm.fields)
-          ? { ...(fm.fields as Record<string, unknown>) }
-          : {};
+      const fieldsObj = isRecord(fm.fields) ? cloneRecord(fm.fields) : {};
       const required = toStringList(fieldsObj.required);
       const optional = toStringList(fieldsObj.optional);
       const valuesMap: Record<string, unknown> =
-        fieldsObj.values && typeof fieldsObj.values === "object" && !Array.isArray(fieldsObj.values)
-          ? { ...(fieldsObj.values as Record<string, unknown>) }
+        hasOwn(fieldsObj, "values") && isRecord(fieldsObj.values)
+          ? cloneRecord(fieldsObj.values)
           : {};
       const descriptionsMap: Record<string, unknown> | undefined =
-        fieldsObj.descriptions && typeof fieldsObj.descriptions === "object" && !Array.isArray(fieldsObj.descriptions)
-          ? { ...(fieldsObj.descriptions as Record<string, unknown>) }
+        hasOwn(fieldsObj, "descriptions") && isRecord(fieldsObj.descriptions)
+          ? cloneRecord(fieldsObj.descriptions)
           : undefined;
+      const rawValueDescriptions = hasOwn(fieldsObj, "value_descriptions")
+        ? fieldsObj.value_descriptions
+        : undefined;
+      let valueDescriptionsMap: Record<string, unknown> | undefined;
+      let valueDescriptionsChanged = false;
       let descriptionDeleted = false;
 
       if (action === "add") {
@@ -228,24 +254,47 @@ export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Pro
         if (!targetList.includes(fieldName)) targetList.push(fieldName);
         if (enumVals) {
           const vals = enumVals;
-          const prev = Array.isArray(valuesMap[fieldName]) ? (valuesMap[fieldName] as unknown[]).map(String) : undefined;
+          const prev = hasOwn(valuesMap, fieldName) && Array.isArray(valuesMap[fieldName])
+            ? (valuesMap[fieldName] as unknown[]).map(String)
+            : undefined;
           // Collision-resistant comparison (P2 review fix): the old `prev.join(" ") !==
           // vals.join(" ")` conflated DIFFERENT enum lists that happen to join to the same string
           // — e.g. ["a b","c"] and ["a","b c"] BOTH become "a b c" — so `--values "a,b c"` over an
           // existing ["a b","c"] wrongly reported changed:false. Length + element-wise instead; no
           // delimiter choice can ever collide.
           const same = !!prev && prev.length === vals.length && prev.every((v, i) => v === vals[i]);
-          if (!same) valuesMap[fieldName] = vals;
+          if (!same) setOwn(valuesMap, fieldName, vals);
+
+          if (isRecord(rawValueDescriptions) && hasOwn(rawValueDescriptions, fieldName)) {
+            const rawFieldDescriptions = rawValueDescriptions[fieldName];
+            if (isRecord(rawFieldDescriptions)) {
+              const retained: Record<string, unknown> = {};
+              for (const [value, description] of Object.entries(rawFieldDescriptions)) {
+                if (vals.includes(value)) setOwn(retained, value, description);
+              }
+              if (Object.keys(retained).length !== Object.keys(rawFieldDescriptions).length) {
+                valueDescriptionsMap = cloneRecord(rawValueDescriptions);
+                if (Object.keys(retained).length > 0) setOwn(valueDescriptionsMap, fieldName, retained);
+                else deleteOwn(valueDescriptionsMap, fieldName);
+                valueDescriptionsChanged = true;
+              }
+            }
+          }
         }
       } else {
         for (const list of [required, optional]) {
           const idx = list.indexOf(fieldName);
           if (idx >= 0) list.splice(idx, 1);
         }
-        if (fieldName in valuesMap) delete valuesMap[fieldName];
-        if (descriptionsMap && fieldName in descriptionsMap) {
-          delete descriptionsMap[fieldName];
-          descriptionDeleted = true;
+        deleteOwn(valuesMap, fieldName);
+        if (descriptionsMap) descriptionDeleted = deleteOwn(descriptionsMap, fieldName);
+        if (isRecord(rawValueDescriptions) && hasOwn(rawValueDescriptions, fieldName)) {
+          const rawFieldDescriptions = rawValueDescriptions[fieldName];
+          if (isRecord(rawFieldDescriptions)) {
+            valueDescriptionsMap = cloneRecord(rawValueDescriptions);
+            deleteOwn(valueDescriptionsMap, fieldName);
+            valueDescriptionsChanged = true;
+          }
         }
       }
 
@@ -270,6 +319,10 @@ export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Pro
       if (descriptionsMap && descriptionDeleted) {
         if (Object.keys(descriptionsMap).length > 0) newFields.descriptions = descriptionsMap;
         else delete newFields.descriptions;
+      }
+      if (valueDescriptionsMap && valueDescriptionsChanged) {
+        if (Object.keys(valueDescriptionsMap).length > 0) newFields.value_descriptions = valueDescriptionsMap;
+        else delete newFields.value_descriptions;
       }
       const newFm: Frontmatter = { ...fm };
       if (Object.keys(newFields).length > 0) newFm.fields = newFields;

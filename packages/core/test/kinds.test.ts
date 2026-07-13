@@ -11,7 +11,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -29,11 +29,12 @@ import {
   isTerminal,
   kindConventionDoc,
   parseConventionDoc,
+  splitSections,
   validateAgainstKind,
   type KindConvention,
 } from "../src/kinds.js";
 import { loadKinds } from "../src/kinds-load.js";
-import type { Bundle, OkfDocument } from "../src/types.js";
+import type { Bundle, Frontmatter, OkfDocument } from "../src/types.js";
 
 const T = "2026-07-02T00:00:00.000Z";
 
@@ -54,6 +55,7 @@ const NOTE_KIND_FIXTURE: KindConvention = {
     required: ["title", "timestamp"],
     optional: ["description", "tags"],
     values: {},
+    valueDescriptions: {},
     terminal: {},
     descriptions: { title: "A concise summary.", tags: "Searchable labels." },
   },
@@ -116,6 +118,7 @@ for (const [name, run] of RUNNERS) {
       assert.deepEqual(kind!.fields.required, ["title", "status"]);
       assert.deepEqual(kind!.fields.optional, ["horizon"]);
       assert.deepEqual(kind!.fields.values, { status: ["planned", "active", "done"] });
+      assert.deepEqual(kind!.fields.valueDescriptions, {});
       assert.deepEqual(kind!.fields.descriptions, {
         title: "A concise outcome.",
         status: "Current lifecycle state.",
@@ -305,6 +308,339 @@ test("loadKinds: absent descriptions normalize empty; malformed descriptions war
       ),
     );
   });
+});
+
+test("parseConventionDoc: fields.value_descriptions keeps only declared enum values and warns precisely", () => {
+  const parsed = parseConventionDoc({
+    id: "conventions/described-enum",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      governs: "Described Enum",
+      fields: {
+        required: ["status"],
+        optional: ["note"],
+        values: { status: ["active", "challenged", "locked", "deprecated"] },
+        value_descriptions: {
+          status: {
+            active: "  Supported, but still open to revision.  ",
+            challenged: "",
+            locked: 42,
+            deprecated: "Retained for history but not for new reliance.",
+            invented: "Not an allowed lifecycle value.",
+          },
+          note: { short: "A declared field, but not an enum field." },
+          missing: { anything: "Not a declared field." },
+        },
+      },
+      timestamp: T,
+    },
+    body: "",
+  });
+
+  assert.ok(parsed.kind);
+  assert.deepEqual(parsed.kind!.fields.valueDescriptions, {
+    status: {
+      active: "Supported, but still open to revision.",
+      deprecated: "Retained for history but not for new reliance.",
+    },
+  });
+  assert.ok(
+    parsed.warnings.some(
+      (warning) =>
+        warning.code === "KIND_CONVENTION_BAD_MEMBER" &&
+        warning.field === "fields.value_descriptions.status.challenged",
+    ),
+  );
+  assert.ok(
+    parsed.warnings.some(
+      (warning) =>
+        warning.code === "KIND_CONVENTION_BAD_MEMBER" &&
+        warning.field === "fields.value_descriptions.status.locked",
+    ),
+  );
+  assert.ok(
+    parsed.warnings.some(
+      (warning) =>
+        warning.code === "KIND_CONVENTION_UNDECLARED_VALUE_DESCRIPTION_VALUE" &&
+        warning.field === "fields.value_descriptions.status.invented",
+    ),
+  );
+  for (const field of ["note", "missing"]) {
+    assert.ok(
+      parsed.warnings.some(
+        (warning) =>
+          warning.code === "KIND_CONVENTION_UNDECLARED_VALUE_DESCRIPTION_FIELD" &&
+          warning.field === `fields.value_descriptions.${field}`,
+      ),
+    );
+  }
+
+  const badOuter = parseConventionDoc({
+    id: "conventions/value-descriptions-list",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      governs: "Value Descriptions List",
+      fields: { required: ["status"], values: { status: ["active"] }, value_descriptions: ["active"] },
+      timestamp: T,
+    },
+    body: "",
+  });
+  assert.deepEqual(badOuter.kind?.fields.valueDescriptions, {});
+  assert.ok(
+    badOuter.warnings.some(
+      (warning) => warning.code === "KIND_CONVENTION_BAD_SHAPE" && warning.field === "fields.value_descriptions",
+    ),
+  );
+
+  const badInner = parseConventionDoc({
+    id: "conventions/value-descriptions-inner-list",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      governs: "Value Descriptions Inner List",
+      fields: {
+        required: ["status"],
+        values: { status: ["active"] },
+        value_descriptions: { status: ["active"] },
+      },
+      timestamp: T,
+    },
+    body: "",
+  });
+  assert.deepEqual(badInner.kind?.fields.valueDescriptions, {});
+  assert.ok(
+    badInner.warnings.some(
+      (warning) =>
+        warning.code === "KIND_CONVENTION_BAD_SHAPE" &&
+        warning.field === "fields.value_descriptions.status",
+    ),
+  );
+
+  const absent = parseConventionDoc({
+    id: "conventions/no-value-descriptions",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      governs: "No Value Descriptions",
+      fields: { required: ["status"], values: { status: ["active"] } },
+      timestamp: T,
+    },
+    body: "",
+  });
+  assert.deepEqual(absent.kind?.fields.valueDescriptions, {});
+  assert.equal(absent.warnings.length, 0);
+});
+
+test("loadKinds: YAML timestamps are rejected as outer and nested value-description maps", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-kind-date-map-"));
+  try {
+    await initBundle(dir);
+    await mkdir(path.join(dir, "conventions"), { recursive: true });
+    await writeFile(
+      path.join(dir, "conventions", "outer-date.md"),
+      `---\ntype: Convention\ngoverns: Outer Date\nfields:\n  required: [status]\n  values:\n    status: [active]\n  value_descriptions: 2026-07-01T00:00:00.000Z\n---\n`,
+    );
+    await writeFile(
+      path.join(dir, "conventions", "inner-date.md"),
+      `---\ntype: Convention\ngoverns: Inner Date\nfields:\n  required: [status]\n  values:\n    status: [active]\n  value_descriptions:\n    status: 2026-07-01T00:00:00.000Z\n---\n`,
+    );
+
+    const registry = await loadKinds({ root: dir });
+    assert.deepEqual(registry.kinds.get("Outer Date")!.fields.valueDescriptions, {});
+    assert.deepEqual(registry.kinds.get("Inner Date")!.fields.valueDescriptions, {});
+    assert.ok(registry.warnings.some((w) => w.code === "KIND_CONVENTION_BAD_SHAPE" && w.field === "fields.value_descriptions"));
+    assert.ok(registry.warnings.some((w) => w.code === "KIND_CONVENTION_BAD_SHAPE" && w.field === "fields.value_descriptions.status"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("kindConventionDoc: public literals may omit valueDescriptions while parsed output stays normalized", () => {
+  const legacy: KindConvention = {
+    id: "conventions/legacy",
+    title: "Legacy",
+    governs: "Legacy",
+    fields: { required: [], optional: ["status"], values: { status: ["done"] }, terminal: {}, descriptions: {} },
+  };
+  const reparsed = parseConventionDoc(kindConventionDoc(legacy, "", T));
+  assert.ok(reparsed.ok);
+  assert.deepEqual(reparsed.kind.fields.valueDescriptions, {});
+});
+
+test("value descriptions use own declarations for prototype-looking fields and values in parser and serializer", () => {
+  const undeclared = parseConventionDoc({
+    id: "conventions/prototype-value-descriptions",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      governs: "Prototype Value Descriptions",
+      fields: {
+        required: ["status"],
+        values: { status: ["active"] },
+        value_descriptions: Object.fromEntries([
+          ["status", Object.fromEntries([
+            ["toString", "Must not match Object.prototype."],
+            ["__proto__", "Must not receive special treatment."],
+          ])],
+          ["toString", { active: "Must not match Object.prototype." }],
+          ["__proto__", { active: "Must not receive special treatment." }],
+        ]),
+      },
+      timestamp: T,
+    },
+    body: "",
+  });
+  assert.deepEqual(undeclared.kind?.fields.valueDescriptions, {});
+  assert.deepEqual(
+    undeclared.warnings
+      .filter((warning) => warning.code === "KIND_CONVENTION_UNDECLARED_VALUE_DESCRIPTION_FIELD")
+      .map((warning) => warning.field)
+      .sort(),
+    ["fields.value_descriptions.__proto__", "fields.value_descriptions.toString"],
+  );
+  assert.deepEqual(
+    undeclared.warnings
+      .filter((warning) => warning.code === "KIND_CONVENTION_UNDECLARED_VALUE_DESCRIPTION_VALUE")
+      .map((warning) => warning.field)
+      .sort(),
+    ["fields.value_descriptions.status.__proto__", "fields.value_descriptions.status.toString"],
+  );
+
+  const rejectedSerialization = kindConventionDoc(
+    {
+      id: "conventions/rejected-prototype-values",
+      title: "Rejected Prototype Values",
+      governs: "Rejected Prototype Values",
+      fields: {
+        required: ["status"],
+        optional: [],
+        values: { status: ["active"] },
+        valueDescriptions: Object.fromEntries([
+          ["status", Object.fromEntries([
+            ["toString", "Must not match Object.prototype."],
+            ["__proto__", "Must not receive special treatment."],
+          ])],
+          ["toString", { active: "Must not match Object.prototype." }],
+          ["__proto__", { active: "Must not receive special treatment." }],
+        ]),
+        terminal: {},
+        descriptions: {},
+      },
+    },
+    "",
+    T,
+  );
+  assert.ok(!("value_descriptions" in (rejectedSerialization.frontmatter.fields as Record<string, unknown>)));
+
+  const specialFields = Object.fromEntries([
+    ["toString", ["__proto__"]],
+    ["__proto__", ["toString"]],
+  ]);
+  const specialDescriptions = Object.fromEntries([
+    ["toString", Object.fromEntries([["__proto__", "A declared special-looking value."]])],
+    ["__proto__", Object.fromEntries([["toString", "Another declared special-looking value."]])],
+  ]);
+  const declared = parseConventionDoc({
+    id: "conventions/declared-prototype-values",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      governs: "Declared Prototype Values",
+      fields: {
+        required: ["toString", "__proto__"],
+        values: specialFields,
+        value_descriptions: specialDescriptions,
+      },
+      timestamp: T,
+    },
+    body: "",
+  });
+  assert.deepEqual(declared.kind?.fields.values, specialFields);
+  assert.deepEqual(declared.kind?.fields.valueDescriptions, specialDescriptions);
+  assert.equal(declared.warnings.length, 0);
+
+  const serialized = kindConventionDoc(
+    {
+      id: "conventions/serialized-prototype-values",
+      title: "Serialized Prototype Values",
+      governs: "Serialized Prototype Values",
+      fields: {
+        required: ["toString", "__proto__"],
+        optional: [],
+        values: specialFields,
+        valueDescriptions: {
+          ...specialDescriptions,
+          status: { active: "An undeclared field must not serialize." },
+        },
+        terminal: {},
+        descriptions: {},
+      },
+    },
+    "",
+    T,
+  );
+  assert.deepEqual((serialized.frontmatter.fields as Record<string, unknown>).value_descriptions, specialDescriptions);
+  const reparsed = parseConventionDoc(serialized);
+  assert.deepEqual(reparsed.kind?.fields.valueDescriptions, specialDescriptions);
+  assert.equal(reparsed.warnings.length, 0);
+});
+
+test("parseConventionDoc preserves prototype-looking field maps as own keys with ordinary prototypes", () => {
+  for (const field of ["__proto__", "constructor", "toString"]) {
+    const parsed = parseConventionDoc({
+      id: `conventions/special-${field}`,
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: `Special ${field}`,
+        fields: {
+          required: [field],
+          values: Object.fromEntries([[field, ["open", "done"]]]),
+          terminal: Object.fromEntries([[field, ["done"]]]),
+          descriptions: Object.fromEntries([[field, `Description for ${field}.`]]),
+        },
+        timestamp: T,
+      },
+      body: "",
+    });
+    assert.ok(parsed.ok);
+    for (const map of [parsed.kind.fields.values, parsed.kind.fields.terminal, parsed.kind.fields.descriptions]) {
+      assert.equal(Object.prototype.hasOwnProperty.call(map, field), true);
+      assert.equal(Object.getPrototypeOf(map), Object.prototype);
+    }
+    assert.deepEqual(parsed.kind.fields.values[field], ["open", "done"]);
+    assert.deepEqual(parsed.kind.fields.terminal[field], ["done"]);
+    assert.equal(parsed.kind.fields.descriptions[field], `Description for ${field}.`);
+    assert.equal(parsed.warnings.length, 0);
+
+    const missing: Frontmatter = { type: parsed.kind.governs };
+    assert.equal(isTerminal(parsed.kind, missing), false);
+    const authored = { type: parsed.kind.governs } as Record<string, unknown>;
+    Object.defineProperty(authored, field, { value: "done", enumerable: true, configurable: true, writable: true });
+    assert.equal(isTerminal(parsed.kind, authored as Frontmatter), true);
+  }
+});
+
+test("prototype-looking terminal fields without values parse safely and warn at the exact path", () => {
+  for (const field of ["__proto__", "constructor", "toString"]) {
+    const parsed = parseConventionDoc({
+      id: `conventions/terminal-without-values-${field}`,
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: `Terminal Without Values ${field}`,
+        fields: {
+          required: [field],
+          terminal: Object.fromEntries([[field, ["done"]]]),
+        },
+        timestamp: T,
+      },
+      body: "",
+    });
+
+    assert.ok(parsed.ok);
+    assert.equal(Object.getPrototypeOf(parsed.kind.fields.terminal), Object.prototype);
+    assert.equal(Object.prototype.hasOwnProperty.call(parsed.kind.fields.terminal, field), true);
+    assert.deepEqual(parsed.kind.fields.terminal[field], ["done"]);
+    assert.deepEqual(
+      parsed.warnings.map(({ code, field: warningField }) => ({ code, field: warningField })),
+      [{ code: "KIND_CONVENTION_TERMINAL_UNDECLARED_FIELD", field: `fields.terminal.${field}` }],
+    );
+  }
 });
 
 // ── convention-doc shape warnings (usability finding F2: agents fed 8 wrong YAML shapes for enum
@@ -684,6 +1020,41 @@ test("kindConventionDoc: an expects_inbound declaration round-trips through writ
   });
 });
 
+test("special-looking relationship keys survive parse/serialize round-trip as own data properties", () => {
+  const special = ["__proto__", "constructor", "toString"];
+  const links = Object.fromEntries(special.map((key) => [key, `Target ${key}`]));
+  const linkDescriptions = Object.fromEntries(special.map((key) => [key, `Guidance for ${key}.`]));
+  const expectsInbound = Object.fromEntries(special.map((key) => [key, `Source ${key}`]));
+  const first = parseConventionDoc({
+    id: "conventions/special-relationships",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      governs: "Special Relationships",
+      fields: {},
+      links,
+      link_descriptions: linkDescriptions,
+      expects_inbound: expectsInbound,
+      timestamp: T,
+    },
+    body: "",
+  });
+  assert.ok(first.ok);
+  assert.equal(first.warnings.length, 0);
+
+  const reparsed = parseConventionDoc(kindConventionDoc(first.kind, "", T));
+  assert.ok(reparsed.ok);
+  assert.equal(reparsed.warnings.length, 0);
+  for (const [actual, expected] of [
+    [reparsed.kind.links, links],
+    [reparsed.kind.linkDescriptions, linkDescriptions],
+    [reparsed.kind.expectsInbound, expectsInbound],
+  ] as const) {
+    assert.deepEqual(actual, expected);
+    assert.equal(Object.getPrototypeOf(actual!), Object.prototype);
+    for (const key of special) assert.equal(Object.prototype.hasOwnProperty.call(actual, key), true);
+  }
+});
+
 test("loadKinds: a 'fields.values' key naming a field NOT in required/optional warns (a declared constraint on an undeclared field)", async () => {
   await withMemBundle(async (bundle) => {
     await writeDoc(bundle, {
@@ -889,6 +1260,28 @@ test("isTerminal: truth table — declared+terminal, declared+non-terminal, unde
   assert.equal(isTerminal(undeclaredKind, { type: "Plain", stage: "resolved" }), false);
 });
 
+test("prototype-looking fields require own properties for required, enum, and terminal semantics", () => {
+  for (const field of ["__proto__", "constructor", "toString"]) {
+    const inherited = String(({} as Record<string, unknown>)[field]);
+    const values = Object.fromEntries([[field, [inherited]]]);
+    const terminal = Object.fromEntries([[field, [inherited]]]);
+    const kind: KindConvention = {
+      id: `conventions/${field}`,
+      title: field,
+      governs: field,
+      fields: { required: [field], optional: [], values, terminal, descriptions: {} },
+    };
+    const missing: OkfDocument = { id: field, frontmatter: { type: field }, body: "" };
+    assert.deepEqual(validateAgainstKind(missing, kind).map((w) => w.code), ["KIND_FIELD_MISSING"]);
+    assert.equal(isTerminal(kind, missing.frontmatter), false);
+
+    const frontmatter = { type: field } as Record<string, unknown>;
+    Object.defineProperty(frontmatter, field, { value: inherited, enumerable: true, configurable: true, writable: true });
+    assert.deepEqual(validateAgainstKind({ id: `${field}-own`, frontmatter: frontmatter as Frontmatter, body: "" }, kind), []);
+    assert.equal(isTerminal(kind, frontmatter as Frontmatter), true);
+  }
+});
+
 test("loadKinds: a top-level near-miss constraint key ('enum'/'enums'/'values'/'constraints') warns 'did you mean fields.values?'", async () => {
   await withMemBundle(async (bundle) => {
     await writeDoc(bundle, {
@@ -1012,6 +1405,28 @@ test("validateAgainstKind: required/enum/section warnings, incl. the optional-em
   assert.equal(noTitleWarnings.length, 1);
   assert.equal(noTitleWarnings[0]!.code, "KIND_FIELD_MISSING");
   assert.equal(noTitleWarnings[0]!.field, "title");
+});
+
+test("special-looking required sections require authored headings and splitSections keeps own keys", () => {
+  const headings = ["__proto__", "constructor", "toString"];
+  const kind: KindConvention = {
+    id: "conventions/special-sections",
+    title: "Special Sections",
+    governs: "Special Sections",
+    fields: { required: [], optional: [], values: {}, terminal: {}, descriptions: {} },
+    sections: headings,
+  };
+  const empty: OkfDocument = { id: "empty", frontmatter: { type: kind.governs }, body: "" };
+  assert.deepEqual(validateAgainstKind(empty, kind).map((warning) => warning.field), headings);
+
+  const body = headings.map((heading) => `# ${heading}\n\nBody for ${heading}.`).join("\n\n");
+  const sections = splitSections(body);
+  assert.equal(Object.getPrototypeOf(sections), Object.prototype);
+  for (const heading of headings) {
+    assert.equal(Object.prototype.hasOwnProperty.call(sections, heading), true);
+    assert.equal(sections[heading], `Body for ${heading}.`);
+  }
+  assert.deepEqual(validateAgainstKind({ ...empty, body }, kind), []);
 });
 
 test("validateAgainstKind: enum comparison tolerates a YAML-1.1-coerced non-string allowed value (unquoted 'no'/'on' etc.)", () => {

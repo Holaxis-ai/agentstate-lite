@@ -93,7 +93,7 @@ test("kinds: on a seeded bundle, lists the Context Note kind with its declared s
   }
 });
 
-test("kinds: conditionally projects kind and field descriptions", async () => {
+test("kinds: conditionally projects kind, field, and enum-value descriptions", async () => {
   const { dir, cleanup } = await makeSeededBundle();
   try {
     await writeDoc({ root: dir }, {
@@ -105,7 +105,9 @@ test("kinds: conditionally projects kind and field descriptions", async () => {
         fields: {
           required: ["title"],
           optional: ["status"],
+          values: { status: ["draft", "done"] },
           descriptions: { title: "A concise summary.", status: "Current state." },
+          value_descriptions: { status: { draft: "Still open to revision." } },
         },
         timestamp: T,
       },
@@ -117,10 +119,12 @@ test("kinds: conditionally projects kind and field descriptions", async () => {
     assert.ok(described);
     assert.equal(described.description, "A kind with agent-readable guidance.");
     assert.deepEqual(described.descriptions, { title: "A concise summary.", status: "Current state." });
+    assert.deepEqual(described.value_descriptions, { status: { draft: "Still open to revision." } });
     const note = rows.find((row) => row.governs === "Context Note");
     assert.ok(note);
     assert.ok(!("description" in note));
     assert.ok(!("descriptions" in note));
+    assert.ok(!("value_descriptions" in note));
   } finally {
     await cleanup();
   }
@@ -400,6 +404,156 @@ test('new "<Kind>" --help shows deterministic described field rows, not the gene
     await newCommand(["--help"], { stdout: (s) => (generic += s) });
     assert.match(generic, /create a new instance of a bundle-declared kind/);
     assert.doesNotMatch(generic, /create a Described instance/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('new "Claim" --help explains the real lifecycle values while undescribed enum values stay compact', async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await writeDoc({ root: dir }, {
+      id: "conventions/claim",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Claim",
+        description: "A falsifiable assertion whose reliability matters to downstream work.",
+        path: "claims/",
+        fields: {
+          required: ["title", "status", "reason"],
+          optional: ["confidence"],
+          values: {
+            status: ["active", "challenged", "locked", "deprecated"],
+            confidence: ["low", "high"],
+          },
+          value_descriptions: {
+            status: {
+              active: "Supported,\n but still open | revision (provisional): evidence-led — not final.",
+              locked: "Verified (required): downstream | reliance — permitted.",
+            },
+          },
+        },
+        timestamp: T,
+      },
+      body: "",
+    });
+
+    let out = "";
+    await newCommand(["Claim", "--help", "--dir", dir], { stdout: (chunk) => (out += chunk) });
+    assert.match(out, /--status <v>  required\n    allowed values:/);
+    assert.match(
+      out,
+      /- value: "active"\n        description: "Supported, but still open \| revision \(provisional\): evidence-led — not final\."/,
+    );
+    assert.match(out, /- value: "challenged"\n      - value: "locked"/);
+    assert.match(
+      out,
+      /- value: "locked"\n        description: "Verified \(required\): downstream \| reliance — permitted\."/,
+    );
+    assert.match(out, /- value: "deprecated"/);
+    assert.match(out, /--confidence <v>  optional; allowed: low \| high\n/);
+    assert.doesNotMatch(out, /allowed: active \| challenged/);
+
+    const discovery = await runJson(kinds, ["--dir", dir]);
+    const claim = (discovery.kinds as Array<Record<string, unknown>>).find((row) => row.governs === "Claim");
+    assert.deepEqual(claim?.value_descriptions, {
+      status: {
+        active: "Supported,\n but still open | revision (provisional): evidence-led — not final.",
+        locked: "Verified (required): downstream | reliance — permitted.",
+      },
+    });
+  } finally {
+    await cleanup();
+  }
+});
+
+test('new help treats prototype-looking field and link names as declarations/guidance only when explicitly own', async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await writeDoc({ root: dir }, {
+      id: "conventions/inherited-special-fields",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Inherited Special Fields",
+        fields: { required: ["toString"], optional: ["__proto__"] },
+        timestamp: T,
+      },
+      body: "",
+    });
+    let inherited = "";
+    await newCommand(["Inherited Special Fields", "--help", "--dir", dir], {
+      stdout: (chunk) => (inherited += chunk),
+    });
+    assert.match(inherited, /--toString <v>  required\n/);
+    assert.match(inherited, /--__proto__ <v>  optional\n/);
+    assert.doesNotMatch(inherited, /function toString|allowed values|; allowed:/);
+
+    await writeDoc({ root: dir }, {
+      id: "conventions/own-special-fields",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Own Special Fields",
+        fields: {
+          required: ["toString"],
+          optional: ["__proto__"],
+          values: Object.fromEntries([
+            ["toString", ["plain"]],
+            ["__proto__", ["special"]],
+          ]),
+          descriptions: Object.fromEntries([["toString", "An explicit\n special field."]]),
+          value_descriptions: Object.fromEntries([
+            ["toString", { plain: "An explicit | value (not syntax): safe — association." }],
+          ]),
+        },
+        timestamp: T,
+      },
+      body: "",
+    });
+    let own = "";
+    await newCommand(["Own Special Fields", "--help", "--dir", dir], { stdout: (chunk) => (own += chunk) });
+    assert.match(own, /--toString <v>  required — An explicit special field\.\n    allowed values:/);
+    assert.match(
+      own,
+      /- value: "plain"\n        description: "An explicit \| value \(not syntax\): safe — association\."/,
+    );
+    assert.match(own, /--__proto__ <v>  optional; allowed: special\n/);
+
+    await writeDoc({ root: dir }, {
+      id: "conventions/help-target",
+      frontmatter: { type: CONVENTION_TYPE, governs: "Help Target", fields: {}, timestamp: T },
+      body: "",
+    });
+    await writeDoc({ root: dir }, {
+      id: "conventions/help-source",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Help Source",
+        fields: {},
+        links: Object.fromEntries([
+          ["toString", "Help Target"],
+          ["constructor", "Help Target"],
+          ["described", "Help Target"],
+        ]),
+        link_descriptions: Object.fromEntries([
+          ["constructor", "  Explicit\n constructor guidance.  "],
+          ["described", "Ordinary guidance."],
+        ]),
+        timestamp: T,
+      },
+      body: "",
+    });
+    let linkHelp = "";
+    await newCommand(["Help Target", "--help", "--dir", dir], { stdout: (chunk) => (linkHelp += chunk) });
+    assert.match(linkHelp, /Help Source "toString" → Help Target\n/);
+    assert.doesNotMatch(linkHelp, /Help Source "toString" → Help Target —/);
+    assert.doesNotMatch(linkHelp, /function toString|\[native code\]/);
+    assert.match(linkHelp, /Help Source "constructor" → Help Target — Explicit constructor guidance\./);
+
+    let outboundHelp = "";
+    await newCommand(["Help Source", "--help", "--dir", dir], { stdout: (chunk) => (outboundHelp += chunk) });
+    assert.match(outboundHelp, /this kind may link:     "toString" → Help Target\n/);
+    assert.doesNotMatch(outboundHelp, /this kind may link:     "toString" → Help Target —/);
+    assert.match(outboundHelp, /this kind may link:     "constructor" → Help Target — Explicit constructor guidance\./);
   } finally {
     await cleanup();
   }
@@ -730,6 +884,47 @@ test("new: a repeated --<field> becomes an array", async () => {
     });
     const saved = await readDoc(bundle, "x");
     assert.deepEqual(saved.frontmatter.tag, ["a", "b"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("new: prototype-looking declared fields persist as exact own properties and remain normally required", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    const cases = [
+      { field: "__proto__", args: ["--__proto__", "proto-value"], expected: "proto-value", values: ["proto-value"] },
+      { field: "constructor", args: ["--constructor=ctor-value"], expected: "ctor-value", values: ["ctor-value"] },
+      { field: "toString", args: ["--toString", "first", "--toString", "second"], expected: ["first", "second"] },
+    ];
+    for (const entry of cases) {
+      const kindName = `Special ${entry.field}`;
+      const values = entry.values ? Object.fromEntries([[entry.field, entry.values]]) : {};
+      await writeDoc(bundle, {
+        id: `conventions/special-${entry.field.replaceAll("_", "dash")}`,
+        frontmatter: {
+          type: CONVENTION_TYPE,
+          governs: kindName,
+          fields: { required: [entry.field], values },
+          timestamp: T,
+        },
+        body: "",
+      });
+      const presentId = `present-${entry.field.replaceAll("_", "dash")}`;
+      const missingId = `missing-${entry.field.replaceAll("_", "dash")}`;
+      await newCommand([kindName, presentId, ...entry.args, "--dir", dir], { stdout: () => {} });
+      const saved = await readDoc(bundle, presentId);
+      assert.equal(Object.prototype.hasOwnProperty.call(saved.frontmatter, entry.field), true);
+      assert.deepEqual((saved.frontmatter as Record<string, unknown>)[entry.field], entry.expected);
+      assert.equal(Object.getPrototypeOf(saved.frontmatter), Object.prototype);
+      await assert.rejects(
+        () => newCommand([kindName, missingId, "--dir", dir], { stdout: () => {} }),
+        (err: unknown) => err instanceof CliError && err.code === "USAGE" && err.message.includes(entry.field),
+      );
+      await assert.rejects(() => readDoc(bundle, missingId));
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

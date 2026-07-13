@@ -22,7 +22,7 @@ function taskKind(): KindConvention {
     id: "conventions/task",
     title: "Task",
     governs: "Task",
-    fields: { required: ["title", "status"], optional: [], values: { status: ["todo", "in_progress", "blocked", "done", "canceled"] }, terminal: { status: ["done", "canceled"] }, descriptions: {} },
+    fields: { required: ["title", "status"], optional: [], values: { status: ["todo", "in_progress", "blocked", "done", "canceled"] }, valueDescriptions: {}, terminal: { status: ["done", "canceled"] }, descriptions: {} },
   };
 }
 
