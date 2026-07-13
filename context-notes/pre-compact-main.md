@@ -1,30 +1,33 @@
 ---
 type: Context Note
-title: 'pre-compact-main: sync-verb planning arc closed 2026-07-07'
-timestamp: '2026-07-07T21:29:25.228Z'
+title: 'pre-compact-main: PR #52 review orientation 2026-07-13'
+actor: codex
+timestamp: '2026-07-13T16:57:58.421Z'
 ---
 # Summary
 
-Session 2026-07-07 (Brian + orchestrator + agent team) closed the sync-verb planning arc.
-State at this note: design v2.2 FINAL (two-round 4-reviewer panel + DevX pass; all
-verdicts CONFIRM after adjudication); canonical implementation plan is
-[plans/sync-verb-implementation](../plans/sync-verb-implementation.md) (vetted Phase B —
-read THAT, not the conversation, to build); 9 task docs created under tasks/sync-* +
-tasks/roadmap-recipe, all todo, contains-linked from roadmap-items/local-first-loop
-(roadmap-recipe from claims-provenance), depends-on edges carry the build order.
+Resumed 2026-07-13 for an independent review of GitHub PR #52. The previous
+pre-compact note (2026-07-07) was stale. The latest durable project frame read
+at orientation is context-notes/session-merges-and-invariant-frame: PRs through
+#36 had merged by 2026-07-10, including opportunistic read-side board pulls,
+bundle pages, the versioned mutation boundary, and snapshot-first
+`sync --establish`. The mutation primitive guarantees version safety; callers
+still own mutable domain-invariant rechecks. Sharing remains explicit, and the
+board branch must never be merged into main.
 
-Load-bearing adjudications a future session must not re-litigate casually:
-- Conflict staging: U3a ships DETECT+clean-abort+CONFLICT(5) interim guard (zero data
-  movement); U3b ships the converging keep-upstream mechanic with the EXACT explicit-ref
-  sequence (rebase INVERTS ours/theirs — export `git show :3:` first, then
-  `checkout origin/board --`) + the 3-assert byte-level convergence test. Evidence:
-  [research/sync-verb-review](../research/sync-verb-review.md).
-- Explicit origin/board refs everywhere, never @{u}. One in-process pull-then-render
-  SessionStart subcommand (≤7s budget, guaranteed fall-through).
-- tasks/git-sharing stays in_progress; U5 (Mike-gated: decisions/board-branch-sync)
-  closes it and updates docs/core.
+The newest context note on the board is
+context-notes/cli-schema-write-coverage (2026-07-13), which records the schema
+description write-gap as resolved without a meta-kind. Main was clean at this
+session's initial status check.
 
-Next actions: (1) Brian opens the PR for branch board/sync-verb-tasks (description
-delivered in-session); (2) Mike confirms decisions/board-branch-sync; (3) first build
-unit = tasks/sync-test-harness (no deps, no gates). Session-restart orientation: read
-this note, then `list --type Task --field status=todo`, then the canonical plan.
+Current unit of work: review PR #52 against current `main`, including its PR
+discussion, changed behavior, tests, and board/sync invariants. Unverified at
+this boundary: PR #52's exact scope, whether its head is current with main,
+and whether the full test suite passes. Those must be established from the PR
+head and an isolated worktree before conclusions are recorded.
+
+The earlier sync design remains available in
+[plans/sync-verb-implementation](../plans/sync-verb-implementation.md), with
+its review evidence in
+[research/sync-verb-review](../research/sync-verb-review.md). This refreshed
+note supersedes the old session status, not those design artifacts.
