@@ -1,67 +1,32 @@
 ---
 type: Task
 title: Retire hosted identity/admin commands from the default CLI
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  PR #46 READY: https://github.com/Holaxis-ai/agentstate-lite/pull/46
+  Shipped in PR #46: https://github.com/Holaxis-ai/agentstate-lite/pull/46
 
 
-  Behavioral result: the default CLI no longer registers or advertises `login`,
-  `join`, `whoami`, `invite`, `member`, or `key`. Hosted credential/account
-  state is removed from home and SessionStart orientation. The underlying
-  command modules, auth client, credential store support, and their direct tests
-  remain on main for a future SaaS client/plugin.
+  Merge commit: 121751e5dc65423de9c1968e59e622f05fbcc0b7
+
+  Reviewed head: 3da59bdce4526cb513a60bbe17d583e7c26cc7d6
 
 
-  Preserved deliberately:
-
-  - Explicit `--remote` bundle access and `serve`.
-
-  - `AGENTSTATE_LITE_API_KEY` and already-provisioned stored per-origin
-  credentials.
-
-  - RemoteBackend, server, Worker, local UI, local bundles, and git `sync`.
-
-  - Stored credential files: home/session neither read, project, rewrite, nor
-  delete them.
+  The default CLI no longer registers or advertises login, join, whoami, invite,
+  member, or key, and home/session orientation no longer projects hosted account
+  state. The underlying hosted command modules, auth client, credential support,
+  RemoteBackend, reference server, Worker, explicit --remote access, serve,
+  local UI, local bundles, and git sync remain intact for later extraction or
+  composition.
 
 
-  Review record:
-
-  - Builder candidate was independently reviewed.
-
-  - First review rejected stale AUTH_REQUIRED guidance that still recommended
-  the now-unregistered `login` command and found missing npm-skill replacement
-  guidance.
-
-  - Amended exact SHA `3da59bdce4526cb513a60bbe17d583e7c26cc7d6` replaced that
-  with supported environment/stored-key guidance through one shared npm/plugin
-  skill renderer.
-
-  - Independent rereview approved the amended SHA with no findings.
-
-
-  QA on the approved exact SHA:
-
-  - Full unpiped `npm run check` exit 0: CLI 845, core 250, server 5, UI 78,
-  viewer 4, Worker 117, scripts 15, Playwright 14/14 first attempt.
-
-  - Built CLI and npm tarball contain no retired default command surface.
-
-  - Environment-key and stored-key authenticated remote round-trips passed;
-  missing/wrong key errors are actionable without retired commands.
-
-  - Credential FIFO/non-mutation probes, local bundle, sync, UI, and standalone
-  package smoke passed.
-
-  - Direct tests for the retained unregistered modules remain green.
-
-
-  Status remains in progress until PR #46 merges. Bot-owned plugin
-  bundle/version regeneration remains merge automation's responsibility.
+  Independent review approved the amended exact SHA after stale authentication
+  guidance was corrected. QA passed the full unpiped npm run check plus built
+  CLI, npm tarball, authenticated remote, credential non-mutation, local bundle,
+  sync, UI, and standalone-package probes. Bot-owned plugin regeneration remains
+  merge automation responsibility.
 actor: codex
 assignee: codex
-timestamp: '2026-07-12T23:28:47.947Z'
+timestamp: '2026-07-13T00:15:33.658Z'
 ---
 
