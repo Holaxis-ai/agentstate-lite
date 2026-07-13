@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@agentstate-lite/core": "*",
+    "@agentstate-lite/server": "*",
     "@playwright/test": "^1.49.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
