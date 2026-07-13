@@ -1,13 +1,21 @@
 ---
 type: Task
 title: 'Kinds: machine-readable relationship descriptions'
-status: todo
+status: in_progress
 priority: '1'
 description: >-
-  Explain what each declared relationship asserts and surface that meaning
-  through the one registry at creation, linking, and Page generation.
-actor: openai/codex
-timestamp: '2026-07-11T22:53:05.584Z'
+  Implement machine-readable relationship descriptions through the existing Kind
+  authority. Add optional link_descriptions keyed by declared links; preserve
+  links storage and validation. Carry descriptions through the one parser,
+  KindConvention registry, serializer/recipes, kinds output, per-Kind creation
+  help, reverse-derived inbound help, and existing UI transport. Prove a real
+  ambiguous relationship such as contains. No cardinality, required-link,
+  workflow, Page mutation, or second-schema behavior. Ordinary code tier:
+  builder + exact-SHA independent review + full repository gate; dedicated
+  adversarial QA only if review finds or escalates a consequential boundary.
+actor: codex
+assignee: codex
+timestamp: '2026-07-13T02:57:17.932Z'
 ---
 # Objective
 
