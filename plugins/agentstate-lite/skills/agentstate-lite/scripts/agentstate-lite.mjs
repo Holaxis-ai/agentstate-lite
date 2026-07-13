@@ -184,12 +184,12 @@ var require_extend_shallow = __commonJS({
     };
     function assign(a, b) {
       for (var key in b) {
-        if (hasOwn(b, key)) {
+        if (hasOwn2(b, key)) {
           a[key] = b[key];
         }
       }
     }
-    function hasOwn(obj, key) {
+    function hasOwn2(obj, key) {
       return Object.prototype.hasOwnProperty.call(obj, key);
     }
   }
@@ -6097,6 +6097,9 @@ var CONVENTION_TYPE = "Convention";
 function isPlainObject2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+function hasOwn(record, key) {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
 function isScalar(value) {
   return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
 }
@@ -6332,6 +6335,44 @@ function parseConventionDoc(doc2) {
       if (Object.keys(parsed).length > 0) links = parsed;
     }
   }
+  const linkDescriptionsSource = fm.link_descriptions;
+  let linkDescriptions;
+  if (linkDescriptionsSource !== void 0) {
+    if (!isPlainObject2(linkDescriptionsSource)) {
+      warnings.push({
+        code: "KIND_CONVENTION_BAD_SHAPE",
+        message: `kind convention '${doc2.id}' has a non-map 'link_descriptions' key (${describeShape(linkDescriptionsSource)}; expected a map of declared link type name -> non-empty description); ignoring it.`,
+        field: "link_descriptions",
+        severity: "warning"
+      });
+    } else {
+      const parsed = {};
+      for (const [linkType, rawDescription] of Object.entries(linkDescriptionsSource)) {
+        const name = linkType.trim();
+        const semanticPath = `link_descriptions.${linkType}`;
+        if (name === "" || typeof rawDescription !== "string" || rawDescription.trim() === "") {
+          warnings.push({
+            code: "KIND_CONVENTION_BAD_MEMBER",
+            message: `kind convention '${doc2.id}' has a malformed '${semanticPath}' (${describeShape(rawDescription)}; expected a declared link type name with a non-empty string description); skipping it.`,
+            field: semanticPath,
+            severity: "warning"
+          });
+          continue;
+        }
+        if (!links || !hasOwn(links, name)) {
+          warnings.push({
+            code: "KIND_CONVENTION_UNDECLARED_LINK_DESCRIPTION",
+            message: `kind convention '${doc2.id}' declares '${semanticPath}' but '${name}' is not declared in links.`,
+            field: semanticPath,
+            severity: "warning"
+          });
+          continue;
+        }
+        parsed[name] = rawDescription.trim();
+      }
+      if (Object.keys(parsed).length > 0) linkDescriptions = parsed;
+    }
+  }
   const expectsInboundSource = fm.expects_inbound;
   let expectsInbound;
   if (expectsInboundSource !== void 0) {
@@ -6386,6 +6427,7 @@ function parseConventionDoc(doc2) {
   if (description !== void 0) kind2.description = description;
   if (path14 !== void 0) kind2.path = path14;
   if (links !== void 0) kind2.links = links;
+  if (linkDescriptions !== void 0) kind2.linkDescriptions = linkDescriptions;
   if (expectsInbound !== void 0) kind2.expectsInbound = expectsInbound;
   if (sections && sections.length > 0) kind2.sections = sections;
   if (freshnessHorizon !== void 0) kind2.freshnessHorizon = freshnessHorizon;
@@ -6491,6 +6533,12 @@ function kindConventionDoc(kind2, prose, timestamp) {
   }
   if (kind2.path !== void 0) frontmatter.path = kind2.path;
   if (kind2.links && Object.keys(kind2.links).length > 0) frontmatter.links = kind2.links;
+  const linkDescriptions = Object.fromEntries(
+    Object.entries(kind2.linkDescriptions ?? {}).filter(
+      (entry) => Boolean(kind2.links && hasOwn(kind2.links, entry[0])) && typeof entry[1] === "string" && entry[1].trim() !== ""
+    ).map(([linkType, description]) => [linkType, description.trim()])
+  );
+  if (Object.keys(linkDescriptions).length > 0) frontmatter.link_descriptions = linkDescriptions;
   if (kind2.expectsInbound && Object.keys(kind2.expectsInbound).length > 0) {
     frontmatter.expects_inbound = kind2.expectsInbound;
   }
@@ -7187,6 +7235,7 @@ var ROADMAP_ITEM_KIND = {
   governs: ROADMAP_ITEM_TYPE,
   path: "roadmap-items/",
   links: { contains: "Task" },
+  linkDescriptions: { contains: "Tasks whose delivery is governed by this roadmap commitment." },
   fields: {
     required: ["title", "status"],
     optional: ["description", "sequence"],
@@ -13158,11 +13207,12 @@ function renderKindHelp(kind2, registry, inv) {
   });
   const sections = kind2.sections && kind2.sections.length > 0 ? kind2.sections.join(", ") : "(none)";
   const pathLine = kind2.path ? `Id:  auto-prefixed with '${kind2.path.replace(/\/+$/, "")}/' unless <id> already carries it` : "Id:  used as-is (this kind declares no path prefix)";
-  const outboundLines = Object.entries(kind2.links ?? {}).map(
-    ([t, target]) => `  this kind may link:     "${t}" \u2192 ${target}`
-  );
+  const outboundLines = Object.entries(kind2.links ?? {}).map(([t, target]) => {
+    const description = kind2.linkDescriptions?.[t];
+    return `  this kind may link:     "${t}" \u2192 ${target}${description ? ` \u2014 ${description}` : ""}`;
+  });
   const inboundLines = inboundLinkDecls(registry, kind2).map(
-    ({ source, linkType }) => `  other kinds link here:  ${source.governs} "${linkType}" \u2192 ${kind2.governs}`
+    ({ source, linkType }) => `  other kinds link here:  ${source.governs} "${linkType}" \u2192 ${kind2.governs}` + (source.linkDescriptions?.[linkType] ? ` \u2014 ${source.linkDescriptions[linkType]}` : "")
   );
   const linksBlock = outboundLines.length + inboundLines.length > 0 ? `Links (typed edges declared by this bundle's conventions; write with --link "<type>=<target-id>" at create time, or link add --text "<type>" after the fact):
 ` + [...outboundLines, ...inboundLines].join("\n") + "\n" : "";
@@ -13428,6 +13478,9 @@ Declaring a kind convention (frontmatter keys core reads \u2014 everything else 
                                  typed edge; every other link is an untyped citation. Write typed
                                  edges with 'link add <from> <to> --text <type>' and query them
                                  with 'link show <id> --text <type>'
+  link_descriptions    map      link type name -> human guidance for a relationship declared in
+                                 this kind's links map. Guidance only; it adds no link requirement
+                                 or graph-validation behavior
   expects_inbound      map      link type name -> expected SOURCE kind, declared on the kind the
                                  expectation is ABOUT (the link TARGET) \u2014 e.g. a 'Task' declaring
                                  {contains: "Roadmap Item"} expects every Task to have an inbound
@@ -13459,6 +13512,9 @@ function toRow(kind2) {
   if (Object.keys(kind2.fields.values).length > 0) row.values = kind2.fields.values;
   if (Object.keys(kind2.fields.terminal).length > 0) row.terminal = kind2.fields.terminal;
   if (kind2.links && Object.keys(kind2.links).length > 0) row.links = kind2.links;
+  if (kind2.linkDescriptions && Object.keys(kind2.linkDescriptions).length > 0) {
+    row.link_descriptions = kind2.linkDescriptions;
+  }
   if (kind2.expectsInbound && Object.keys(kind2.expectsInbound).length > 0) row.expects_inbound = kind2.expectsInbound;
   if (kind2.path) row.path = kind2.path;
   if (kind2.sections && kind2.sections.length > 0) row.sections = kind2.sections;
