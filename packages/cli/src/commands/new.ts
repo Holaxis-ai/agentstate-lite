@@ -231,6 +231,13 @@ function kindIdPlaceholder(kind: KindConvention | undefined, governs: string): s
  * `kinds` round-trip (cold-start study: 2 testers had to cross-reference `kinds` before every `new`).
  */
 function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: string): string {
+  const hasOwn = (record: object, key: PropertyKey) => Object.prototype.hasOwnProperty.call(record, key);
+  const oneLine = (value: string) => value.trim().replace(/\s+/g, " ");
+  const ownDescription = (record: Record<string, string> | undefined, key: string): string | undefined => {
+    if (!record || !hasOwn(record, key) || typeof record[key] !== "string") return undefined;
+    const description = oneLine(record[key]);
+    return description === "" ? undefined : description;
+  };
   const ordinary = (field: string) => field !== "actor" && field !== "link";
   const req = [...new Set(kind.fields.required.filter(ordinary))];
   const required = new Set(req);
@@ -239,12 +246,29 @@ function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: strin
     ...req.map((field) => ({ field, requirement: "required" })),
     ...opt.map((field) => ({ field, requirement: "optional" })),
   ].map(({ field, requirement }) => {
-    const allowed = kind.fields.values[field];
-    const description = kind.fields.descriptions[field];
+    const allowed = hasOwn(kind.fields.values, field) && Array.isArray(kind.fields.values[field])
+      ? kind.fields.values[field]
+      : undefined;
+    const description = ownDescription(kind.fields.descriptions, field);
+    const valueDescriptions = hasOwn(kind.fields.valueDescriptions ?? {}, field)
+      ? kind.fields.valueDescriptions[field]
+      : undefined;
+    const describedValues = allowed?.map((value) => ({ value, description: ownDescription(valueDescriptions, value) }));
+    const hasValueDescriptions = describedValues?.some((entry) => entry.description !== undefined) ?? false;
+    const fieldLine = `  --${field} <v>  ${requirement}`;
+    if (!allowed || allowed.length === 0) return fieldLine + (description ? ` — ${description}` : "");
+    if (!hasValueDescriptions) {
+      return `${fieldLine}; allowed: ${allowed.join(" | ")}` + (description ? ` — ${description}` : "");
+    }
+    const valueRows = describedValues!.flatMap((entry) => [
+      `      - value: ${JSON.stringify(entry.value)}`,
+      ...(entry.description ? [`        description: ${JSON.stringify(entry.description)}`] : []),
+    ]);
     return (
-      `  --${field} <v>  ${requirement}` +
-      (allowed && allowed.length > 0 ? `; allowed: ${allowed.join(" | ")}` : "") +
-      (description ? ` — ${description}` : "")
+      fieldLine +
+      (description ? ` — ${description}` : "") +
+      "\n    allowed values:\n" +
+      valueRows.join("\n")
     );
   });
   const sections = kind.sections && kind.sections.length > 0 ? kind.sections.join(", ") : "(none)";

@@ -25,7 +25,16 @@ import { mkdtemp, rm, readFile, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { initBundle, writeDoc, parseMarkdown, loadKinds, CONVENTION_TYPE, type Bundle } from "@agentstate-lite/core";
+import {
+  initBundle,
+  writeDoc,
+  parseMarkdown,
+  loadKinds,
+  kindConventionDoc,
+  CONVENTION_TYPE,
+  type Bundle,
+  type KindConvention,
+} from "@agentstate-lite/core";
 import { serve, type ServerHandle } from "@agentstate-lite/server";
 
 import { init } from "../src/commands/init.js";
@@ -711,6 +720,52 @@ test("recipe add <path>: an EXTERNAL recipe folder loads via filesRecipeSource -
     const bundle: Bundle = { root: dir };
     const registry = await loadKinds(bundle);
     assert.ok(registry.kinds.has("Term"), "kinds must report the new governs after an external recipe apply");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("applyRecipe carries serialized Claim lifecycle descriptions through the ordinary recipe path", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const claim: KindConvention = {
+      id: "conventions/claim",
+      title: "Claim",
+      governs: "Claim",
+      fields: {
+        required: ["title", "status", "reason"],
+        optional: [],
+        values: { status: ["active", "challenged", "locked", "deprecated"] },
+        valueDescriptions: {
+          status: {
+            active: "Supported, but still open to revision.",
+            challenged: "Contrary evidence or reasoning requires resolution.",
+            locked: "Verified at the required standard for downstream reliance.",
+            deprecated: "Retained for history but not for new reliance.",
+          },
+        },
+        terminal: {},
+        descriptions: {},
+      },
+    };
+    const result = await applyRecipe(
+      { root: dir },
+      {
+        id: "described-claims",
+        title: "Described Claims",
+        version: "1",
+        summary: "Test-only Claim lifecycle semantics.",
+        source: "test",
+        docs: [kindConventionDoc(claim, "", T)],
+        governs: ["Claim"],
+        warnings: [],
+      },
+      T,
+    );
+    assert.equal(result.changed, true);
+    const registry = await loadKinds({ root: dir });
+    assert.deepEqual(registry.kinds.get("Claim")?.fields.valueDescriptions, claim.fields.valueDescriptions);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

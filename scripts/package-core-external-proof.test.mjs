@@ -109,6 +109,7 @@ const kind: KindConvention = {
     required: [],
     optional: ["status"],
     values: { status: ["done"] },
+    valueDescriptions: {},
     terminal: { status: ["done"] },
     descriptions: {},
   },

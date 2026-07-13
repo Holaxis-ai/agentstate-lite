@@ -243,6 +243,27 @@ async function bootPagesServer(): Promise<{ handle: UiServerHandle; origin: stri
     },
     body: "# Task",
   });
+  await writeDoc(bundle, {
+    id: "conventions/claim",
+    frontmatter: {
+      type: "Convention",
+      title: "Claim",
+      governs: "Claim",
+      fields: {
+        required: ["title", "status"],
+        values: { status: ["active", "challenged", "locked", "deprecated"] },
+        value_descriptions: {
+          status: {
+            active: "Supported, but still open to revision.",
+            challenged: "Contrary evidence or reasoning requires resolution.",
+            locked: "Verified at the required standard for downstream reliance.",
+            deprecated: "Retained for history but not for new reliance.",
+          },
+        },
+      },
+    },
+    body: "# Claim",
+  });
   // Two linked docs — the /__ui/edges endpoint's fixture (mirrors core's own query-edges.test.ts fixture style).
   await writeDoc(bundle, { id: "tasks/a", frontmatter: { type: "Task", title: "A" }, body: "See [also b](b.md)." });
   await writeDoc(bundle, { id: "tasks/b", frontmatter: { type: "Task", title: "B" }, body: "" });
@@ -375,7 +396,11 @@ test("kinds endpoint: session-gated, serves core's loadKinds registry (ONE regis
         governs: string;
         description?: string;
         linkDescriptions?: Record<string, string>;
-        fields: { terminal: Record<string, string[]>; descriptions: Record<string, string> };
+        fields: {
+          terminal: Record<string, string[]>;
+          descriptions: Record<string, string>;
+          valueDescriptions: Record<string, Record<string, string>>;
+        };
       }[];
     };
     const task = body.kinds.find((k) => k.governs === "Task");
@@ -386,6 +411,15 @@ test("kinds endpoint: session-gated, serves core's loadKinds registry (ONE regis
       "depends on": "A prerequisite task that must be completed first.",
     });
     assert.deepEqual(task.fields.descriptions, { title: "A concise summary.", status: "Current state." });
+    const claim = body.kinds.find((kind) => kind.governs === "Claim");
+    assert.deepEqual(claim?.fields.valueDescriptions, {
+      status: {
+        active: "Supported, but still open to revision.",
+        challenged: "Contrary evidence or reasoning requires resolution.",
+        locked: "Verified at the required standard for downstream reliance.",
+        deprecated: "Retained for history but not for new reliance.",
+      },
+    });
   } finally {
     await cleanup();
   }

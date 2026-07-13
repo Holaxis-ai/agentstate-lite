@@ -93,7 +93,7 @@ test("kinds: on a seeded bundle, lists the Context Note kind with its declared s
   }
 });
 
-test("kinds: conditionally projects kind and field descriptions", async () => {
+test("kinds: conditionally projects kind, field, and enum-value descriptions", async () => {
   const { dir, cleanup } = await makeSeededBundle();
   try {
     await writeDoc({ root: dir }, {
@@ -105,7 +105,9 @@ test("kinds: conditionally projects kind and field descriptions", async () => {
         fields: {
           required: ["title"],
           optional: ["status"],
+          values: { status: ["draft", "done"] },
           descriptions: { title: "A concise summary.", status: "Current state." },
+          value_descriptions: { status: { draft: "Still open to revision." } },
         },
         timestamp: T,
       },
@@ -117,10 +119,12 @@ test("kinds: conditionally projects kind and field descriptions", async () => {
     assert.ok(described);
     assert.equal(described.description, "A kind with agent-readable guidance.");
     assert.deepEqual(described.descriptions, { title: "A concise summary.", status: "Current state." });
+    assert.deepEqual(described.value_descriptions, { status: { draft: "Still open to revision." } });
     const note = rows.find((row) => row.governs === "Context Note");
     assert.ok(note);
     assert.ok(!("description" in note));
     assert.ok(!("descriptions" in note));
+    assert.ok(!("value_descriptions" in note));
   } finally {
     await cleanup();
   }
@@ -400,6 +404,119 @@ test('new "<Kind>" --help shows deterministic described field rows, not the gene
     await newCommand(["--help"], { stdout: (s) => (generic += s) });
     assert.match(generic, /create a new instance of a bundle-declared kind/);
     assert.doesNotMatch(generic, /create a Described instance/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('new "Claim" --help explains the real lifecycle values while undescribed enum values stay compact', async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await writeDoc({ root: dir }, {
+      id: "conventions/claim",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Claim",
+        description: "A falsifiable assertion whose reliability matters to downstream work.",
+        path: "claims/",
+        fields: {
+          required: ["title", "status", "reason"],
+          optional: ["confidence"],
+          values: {
+            status: ["active", "challenged", "locked", "deprecated"],
+            confidence: ["low", "high"],
+          },
+          value_descriptions: {
+            status: {
+              active: "Supported,\n but still open | revision (provisional): evidence-led — not final.",
+              locked: "Verified (required): downstream | reliance — permitted.",
+            },
+          },
+        },
+        timestamp: T,
+      },
+      body: "",
+    });
+
+    let out = "";
+    await newCommand(["Claim", "--help", "--dir", dir], { stdout: (chunk) => (out += chunk) });
+    assert.match(out, /--status <v>  required\n    allowed values:/);
+    assert.match(
+      out,
+      /- value: "active"\n        description: "Supported, but still open \| revision \(provisional\): evidence-led — not final\."/,
+    );
+    assert.match(out, /- value: "challenged"\n      - value: "locked"/);
+    assert.match(
+      out,
+      /- value: "locked"\n        description: "Verified \(required\): downstream \| reliance — permitted\."/,
+    );
+    assert.match(out, /- value: "deprecated"/);
+    assert.match(out, /--confidence <v>  optional; allowed: low \| high\n/);
+    assert.doesNotMatch(out, /allowed: active \| challenged/);
+
+    const discovery = await runJson(kinds, ["--dir", dir]);
+    const claim = (discovery.kinds as Array<Record<string, unknown>>).find((row) => row.governs === "Claim");
+    assert.deepEqual(claim?.value_descriptions, {
+      status: {
+        active: "Supported,\n but still open | revision (provisional): evidence-led — not final.",
+        locked: "Verified (required): downstream | reliance — permitted.",
+      },
+    });
+  } finally {
+    await cleanup();
+  }
+});
+
+test('new help treats prototype-looking field names as enums/descriptions only when explicitly own', async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    await writeDoc({ root: dir }, {
+      id: "conventions/inherited-special-fields",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Inherited Special Fields",
+        fields: { required: ["toString"], optional: ["__proto__"] },
+        timestamp: T,
+      },
+      body: "",
+    });
+    let inherited = "";
+    await newCommand(["Inherited Special Fields", "--help", "--dir", dir], {
+      stdout: (chunk) => (inherited += chunk),
+    });
+    assert.match(inherited, /--toString <v>  required\n/);
+    assert.match(inherited, /--__proto__ <v>  optional\n/);
+    assert.doesNotMatch(inherited, /function toString|allowed values|; allowed:/);
+
+    await writeDoc({ root: dir }, {
+      id: "conventions/own-special-fields",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Own Special Fields",
+        fields: {
+          required: ["toString"],
+          optional: ["__proto__"],
+          values: Object.fromEntries([
+            ["toString", ["plain"]],
+            ["__proto__", ["special"]],
+          ]),
+          descriptions: Object.fromEntries([["toString", "An explicit\n special field."]]),
+          value_descriptions: Object.fromEntries([
+            ["toString", { plain: "An explicit | value (not syntax): safe — association." }],
+          ]),
+        },
+        timestamp: T,
+      },
+      body: "",
+    });
+    let own = "";
+    await newCommand(["Own Special Fields", "--help", "--dir", dir], { stdout: (chunk) => (own += chunk) });
+    assert.match(own, /--toString <v>  required — An explicit special field\.\n    allowed values:/);
+    assert.match(
+      own,
+      /- value: "plain"\n        description: "An explicit \| value \(not syntax\): safe — association\."/,
+    );
+    assert.match(own, /--__proto__ <v>  optional; allowed: special\n/);
   } finally {
     await cleanup();
   }
