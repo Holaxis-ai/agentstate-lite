@@ -1,69 +1,56 @@
 ---
 type: Task
 title: Make the CLI local-first by default while preserving the explicit HTTP on-ramp
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   PR 2 of the local-first CLI simplification.
 
 
-  Behavioral claim: ordinary AgentState use resolves locally by default, while
-  an explicit `--remote <url>` remains a functional OSS on-ramp to the future
-  hosted service. “Local-first” does not mean closing the wire client.
+  Behavioral claim: bare bundle commands resolve only local targets. Explicit
+  --remote <url> remains the sole HTTP activation path and stays fully
+  functional.
 
 
   Scope:
 
-  - Keep explicit `--remote` and `RemoteBackend` working for bundle commands.
+  - Preserve explicit --remote and RemoteBackend for bundle commands.
 
-  - Remove or deprecate ambient `AGENTSTATE_LITE_REMOTE` activation so a shell
-  environment cannot silently redirect bare commands.
+  - Remove AGENTSTATE_LITE_REMOTE as an ambient backend selector.
 
-  - Stop URL-valued `.agentstate.json` bindings from silently changing a cloned
-  project's default target. A future explicit `cloud connect` flow may introduce
-  a separately named, deliberate connection record.
+  - Reject URL-valued .agentstate.json bindings with a deterministic migration
+  message directing users to explicit --remote; preserve local-path bindings.
 
-  - Remove `ui --remote` from the default local Page product unless the private
-  SaaS interface explicitly chooses to consume it; this proxy is distinct from
-  the generic RemoteBackend on-ramp.
+  - Update the directly affected help, generated skill/reference text, and tests
+  so resolution precedence is explicit and truthful.
 
-  - Reframe top-level help, README, home, and generated skill around local
-  bundles + git `sync`; document explicit `--remote` once as an advanced hosted
-  connection path without making it the default product story.
-
-  - Keep explicit `--dir`, local discovery, local-path bindings, local `ui`,
-  local artifact verbs, and all git `sync` behavior unchanged.
-
-  - Keep core/storage environment-agnostic.
+  - Keep explicit --dir, local discovery, local-path bindings, local ui,
+  artifact verbs, git sync, server, Worker, auth/credential internals, and core
+  behavior unchanged.
 
 
-  Evidence:
+  Evidence required:
 
-  - Bare commands remain local even when old ambient configuration is present,
-  with a clear migration message rather than silent fallback.
+  - A bare command cannot be redirected by AGENTSTATE_LITE_REMOTE.
 
-  - Explicit `--remote` still passes real local/reference-server round-trip
-  tests and backend parity tests.
+  - URL bindings fail clearly rather than silently selecting HTTP.
 
-  - URL-binding and environment transition behavior is deterministic and
-  documented.
+  - Explicit --remote passes a real reference-server round trip.
 
-  - Local, Page UI, and git-sync regression tests remain green.
+  - Local discovery and local-path binding regressions stay green.
 
-  - Generated help/skill lead with the local daily loop while retaining one
-  discoverable hosted on-ramp.
-
-  - Builder -> independent reviewer -> QA before merge.
+  - Full Builder -> independent Reviewer -> QA sequence.
 
 
   Non-goals:
 
-  - Do not delete or disable `RemoteBackend`, explicit `--remote`, the wire
-  protocol, server, Worker, auth code, credentials, or git `sync`.
+  - Do not remove ui --remote in this PR; that is a distinct follow-up surface.
 
-  - Do not decide the final SaaS connection UX beyond preserving the explicit
-  on-ramp.
+  - Do not add a generic profile or extension framework.
+
+  - Do not delete RemoteBackend, the wire protocol, server, Worker, credentials,
+  or git sync.
 actor: codex
-timestamp: '2026-07-12T21:09:49.389Z'
+timestamp: '2026-07-13T00:37:09.163Z'
 ---
 [depends on](retire-hosted-control-plane-cli.md)
