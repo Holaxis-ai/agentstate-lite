@@ -246,9 +246,20 @@ bundle-relative**.
   the public remote (github.com/Holaxis-ai/agentstate-lite) after each committed unit. The
   pre-public development history lives on the local `archive/pre-public` branch — NEVER push
   it (it predates the open-source scrub).
-- **Every unit ships Builder → independent Reviewer → QA — never Build → QA.** Subagent code
-  review is a required gate before QA and before any merge, even when the orchestrator applied
-  the changes directly. Review-process conventions:
+- **Review and QA are risk-tiered.** Every PR remains one coherent claim and must pass the
+  relevant automated and pre-ship gates above. Apply judgment to the whole change and its
+  consequences, not its label:
+  - Trivial docs, metadata, dependency, or test-only corrections with no runtime-behavior or
+    consequential-mechanism change may ship after author validation and the relevant automated
+    checks; independent review and dedicated QA are not mandatory.
+  - Ordinary code changes require independent review of the exact SHA plus the repository gate;
+    dedicated QA is optional based on the change's risk and the review findings.
+  - High-risk boundaries — security/auth, concurrency, destructive writes, migrations/deployments,
+    remote-target selection, reconnect/replay, or similarly consequential mechanics — require
+    Builder → independent review → adversarial QA.
+  - Do not game a lower tier by splitting or relabeling a consequential change. A reviewer may
+    escalate the tier when evidence or findings justify it.
+- **When independent review or QA is required, use these review-process conventions:**
   - Agents that touch git or run tests work in an ISOLATED worktree/checkout, never the
     shared working tree; reviewers detach onto the exact sha under review.
   - A risky mechanic and the test that makes it safe ship in the SAME reviewed unit —
