@@ -1,15 +1,15 @@
 ---
 type: Task
 title: 'Portable recipe packages v1: install content-free Kinds and Pages'
-status: in_progress
+status: done
 priority: '1'
 assignee: codex
 description: >-
   Extend recipe add so a definitions-only recipe can safely carry explicit Page
   registry/HTML assets alongside Kinds, proven by a content-free Review Request
   package.
-actor: codex
-timestamp: '2026-07-14T03:52:36.651Z'
+actor: codex-main
+timestamp: '2026-07-14T17:22:47.242Z'
 ---
 # Objective
 

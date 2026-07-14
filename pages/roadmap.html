@@ -46,6 +46,7 @@
   .badge.queued { color:var(--slate); background:var(--mist); }
   .badge.candidate { color:var(--amber); background:color-mix(in srgb,var(--amber) 15%,transparent); }
   .badge.done { color:var(--slate); background:var(--mist); }
+  .badge.stale { color:var(--amber); background:color-mix(in srgb,var(--amber) 15%,transparent); border:1px dashed var(--amber); }
   .roll { display:flex; align-items:center; gap:9px; padding:0 16px 12px; }
   .bar { flex:1; height:5px; background:var(--mist); border-radius:3px; overflow:hidden; display:flex; }
   .bar i { height:100%; display:block; }
@@ -134,6 +135,7 @@
         html+='<div class="head" data-toggle="'+esc(id)+'"><span class="caret">&rsaquo;</span>'+
               '<span class="title">'+esc(f.title||id)+'</span>'+
               '<span class="badge '+(g.key==="candidate"?"candidate":(f.status||"queued"))+'">'+(g.key==="candidate"?"candidate":esc(f.status||"queued"))+'</span></div>';
+        if(f.status==="active" && total>0 && done===total){ html=html.replace(/<\/div>$/,'<span class="badge stale" title="every contained task is closed — status may be stale">&#9888; no open tasks</span></div>'); }
         // rollup
         html+='<div class="roll">';
         if(total){ var wd=Math.round(done/total*100), wp=Math.round(prog/total*100);
