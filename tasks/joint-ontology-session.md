@@ -14,7 +14,7 @@ description: >-
   decisions land as a decisions/ doc; rung c then either becomes buildable tasks
   or is explicitly retired. Assignees: both founders (scheduling is the work).
 actor: brian
-timestamp: '2026-07-14T19:08:53.072Z'
+timestamp: '2026-07-14T19:13:21.386Z'
 ---
 ## The decision agenda — plain-language edition (v2, 2026-07-14, after Brian's review)
 
@@ -142,10 +142,16 @@ give it a consumer or relabel it documentation; both reports flag it independent
 CANDIDATE CATEGORY 6 — INHERITANCE ("X is a kind of Y"; Brian, 2026-07-14): distinct
 from hierarchy (part-of vs is-a — the classic taxonomy/partonomy split; naming both
 protects each from absorbing the other). Two flavors with different realizations:
-(a) BETWEEN DOCS — a taxonomy edge in the knowledge graph. Transitive, acyclic,
-directional; corpus evidence today is thin (the coined "extends"/"realizes" labels are
-spec-family, not is-a) — so per the lazy rule: ratify the category name, build no
-consumer until real edges demand one.
+(a) BETWEEN DOCS — REFINED BY BRIAN (2026-07-14): is-a holds between CONCEPTS, not
+artifacts, and docs do not map 1:1 to the concepts they contain — so doc-level is-a is
+only COHERENT under a one-doc-one-concept convention (a Concept kind, wiki/Zettelkasten
+discipline), and is a category error on aboutness-style docs (research, notes). The
+thin corpus evidence is STRUCTURAL, not lack of demand. This also names the general
+principle: the existing categories work because they operate on kinds where the doc
+CONSTITUTES the entity (a task doc IS the task; a claim doc IS the claim) — link
+classes should declare which side of that line their endpoints live on. Verdict for
+the session: no doc-level is-a on this board; legitimate only inside a future Concept
+kind/vault recipe (connects to decision 5's territory).
 (b) BETWEEN KINDS — schema subtyping ("Bug extends Task": inherits fields, terminal
 set, link vocabulary, AND consumers — Bugs would appear on the Board page and in
 --open automatically). NOT a link class: realized in the kinds registry (an extends:
