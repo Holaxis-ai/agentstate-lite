@@ -6,17 +6,19 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  RESPUN and re-approved, awaiting merge: a166ea1 on feat/sync-local-only
-  (single commit on post-#36 main). Delta review REQUEST-CHANGES was two
-  one-line prose fixes (stale decision-1 header in sync-establish.test.ts;
-  README boardless sentence), applied and amended. Supersession of #36's hint
-  shape RULED LEGITIMATE (no consumers of the retired field; the
-  never-auto-publishes half preserved; diff-honest). Trilogy driven end-to-end.
-  Round-1+delta findings carried to receipt-edge-polish items 9-11 + a new
-  relative-origin-URL misclassification note.
-actor: brian-claude
+  PR #53 updated and review-ready at 309b8e8 on feat/sync-local-only.
+  Provisioning now distinguishes known remote-board absence from an unavailable
+  check, explicitly discovers board through restricted fetch refspecs, removes
+  impossible stale origin/board child refs only after exact remote proof, and
+  degrades hard network timeouts to unknown without suggesting publication.
+  Historical review-round commentary was removed from this PR delta.
+  Verification: focused sync suites 151/151, full npm run check green including
+  browser E2E 14/14, independent exact-SHA review approved, and adversarial QA
+  passed unreachable, absent, no-origin, restricted-refspec, stale-ref, and
+  timeout scenarios. Awaiting merge.
+actor: mike/codex
 assignee: brian-claude
-timestamp: '2026-07-10T15:33:25.036Z'
+timestamp: '2026-07-14T03:17:52.824Z'
 ---
 ## Audit findings (empirical, 2026-07-09, built CLI over a local-only git repo)
 
