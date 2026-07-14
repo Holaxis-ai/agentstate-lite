@@ -14,7 +14,7 @@ description: >-
   decisions land as a decisions/ doc; rung c then either becomes buildable tasks
   or is explicitly retired. Assignees: both founders (scheduling is the work).
 actor: brian
-timestamp: '2026-07-14T20:10:54.071Z'
+timestamp: '2026-07-14T20:30:38.415Z'
 ---
 ## The decision agenda — plain-language edition (v2, 2026-07-14, after Brian's review)
 
@@ -151,10 +151,29 @@ behavior follows scaffolding. Demand measured under the old regime undercounts d
 under the new one. As founders of a category-defining system, demand is partly a
 CHOICE: committing to grounding sweeps and blocked/runnable as product bets flips the
 break-even math, because its key input was an absence the founders have authority to
-end. THE SESSION SHOULD OPEN HERE: decide whether this ontology is demand-following
-(lazy rule as written) or demand-setting (declare the wanted consumers as product
-commitments now, sequenced by the invariant findings). Everything else calibrates off
-that stance.
+end. BRIAN'S RESOLUTION (2026-07-14, for Mike to ratify — a third answer that dissolves
+the dichotomy): the product is DEMAND-ENABLING. Product statement: "We don't know your
+domain or workflow; we provide flexible infrastructure for you and your agents to
+define and leverage them" — deliberately between a thoroughly-specified system (rigid)
+and a blank canvas (no affordances): JUST ENOUGH affordances to let people and agents
+quickly bend and extend the system to how they work.
+
+Division of labor: HUMANS DECIDE ontology extensions (rare, deliberate — the panel's
+"curation act", agreed: agents won't independently coin relationship semantics);
+AGENTS IMPLEMENT them (frequent, cheap — which promotes the derive one-liner, the
+near-miss hints, and the teaching surfaces from nice-to-haves to THE core product
+surface; the panel was really reviewing whether the extension affordance is cheap
+enough, and found it isn't yet).
+
+Consequences: (a) the kernel classes are affordances, not features — small by design,
+per the continuum; (b) built-in class consumers (blocked/runnable, evidence-staleness)
+ship as REFERENCE DEMONSTRATIONS the way work-tracking/context-notes recipes do — an
+affordance without a worked example is invisible, and examples are the one channel
+agents demonstrably learn from; (c) the lazy rule survives but re-scoped: it governs
+speculative machinery (extension validators, label-doc migration), not the affordance
+surface itself; (d) precedent: this entire week's pages sprint IS the model working —
+human decided board/roadmap/memory/drawer, agents implemented same-day within existing
+affordances, zero product changes. The relationship system should feel like that.
 
 FRAME v2 REVIEW PANEL — SYNTHESIS (2026-07-14; skeptic round 2 + mechanism reviewer +
 agent-experience reviewer, all read-only, all empirical against the corpus and code.
