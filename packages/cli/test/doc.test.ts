@@ -391,7 +391,7 @@ test("doc update --body: a read-modify-write whose new body STILL contains the e
   }
 });
 
-test("doc update --body: a RETEXT (new body links the SAME target under different display text) does NOT fire — the guard is target-only, mirroring link add's own idempotency", async () => {
+test("doc update --body: a RETEXT (new body links the SAME target under different display text) does NOT fire — the body guard preserves target-presence semantics", async () => {
   const { dir, cleanup } = await makeBundle();
   try {
     await writeDoc(

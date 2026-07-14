@@ -7,8 +7,9 @@
 // `timestamp` means "last meaningful change" (OKF + VISION); appending a cross-link IS one, so by
 // default `link add` REFRESHES `frontmatter.timestamp` to now() on the outgoing write (freshness must
 // see the change) — `--keep-timestamp` opts back into core `writeDoc`'s normal preserve-if-present
-// behavior. The idempotent no-op path (source already links to the target) never touches the
-// timestamp: re-adding an existing link is a true no-op. `link show <id>` reports the concept's
+// behavior. The idempotent no-op path (source already carries the same target + exact text) never
+// touches the timestamp: re-adding that same semantic edge is a true no-op. `link show <id>` reports
+// the concept's
 // outbound links (core `parseLinks`) and its "cited by" set (core `backlinks`), each row carrying
 // the citing/cited link's `text` — the only relationship-type signal OKF's untyped edges carry.
 // `link show --text <t>` filters BOTH directions to links whose text EXACTLY matches `<t>` (not a
@@ -32,6 +33,7 @@ import {
   backlinks,
   queryEdges,
   relativeHref,
+  resolveConceptId,
   isReservedFile,
   pathFromConceptId,
   loadKinds,
@@ -59,8 +61,9 @@ Usage:
   agentstate-lite link show <id> [--limit <n>] [--text <t>]
   agentstate-lite link list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]
 
-Idempotent: re-adding a link the source already carries is a no-op — exit 0, changed:false, no
-duplicate link, no timestamp refresh.
+Idempotent: re-adding the same target with the same exact display text is a no-op — exit 0,
+changed:false, no duplicate link, no timestamp refresh. Different text to the same target is a
+distinct semantic edge and is added.
 
 Graph lint (link add only): if this bundle declares a kind's 'links' vocabulary (see 'kinds --help')
 and --text matches a declared type, the just-written link is checked against the actual source/target
@@ -248,7 +251,7 @@ export interface AddLinkResult {
   normalizedTo: string;
   href: string;
   text: string;
-  /** false on the idempotent no-op path (the source already links to this target). */
+  /** false when the source already carries this normalized target + exact display text. */
   changed: boolean;
   /** Present only when the write-time type-conformance lint (graph lints unit) attached one. */
   warnings?: ValidationWarning[];
@@ -269,12 +272,14 @@ export async function addLink(
 ): Promise<AddLinkResult> {
   const text = opts.text?.trim() || to;
   const href = relativeHref(from, to);
-  const normalizedTo = to.replace(/^\/+/, "").replace(/\.md$/, "");
+  // Resolve the href we actually emit through core's one link resolver. This collapses equivalent
+  // target spellings (`x`, `./x`, `/x.md`, repeated separators) onto the same concept identity.
+  const normalizedTo = resolveConceptId(from, href) ?? to.replace(/^\/+/, "").replace(/\.md$/, "");
 
   // Reserved files (index.md/log.md, any directory level) are never concept documents, so they
   // can never be a link target — core's `resolveConceptId` now drops such a link from the parsed
   // edge set entirely (it never becomes a concept edge), which would otherwise silently break the
-  // idempotency check below (`parseLinks(...).some(l => l.to === normalizedTo)` could never
+  // idempotency check below (the parsed edge could never match the target + text identity and
   // observe a link it can no longer see, so a re-run would append a duplicate link on every
   // invocation instead of converging to `changed:false`). Reject up front with a structured error
   // instead — a pure, no-I/O check via the SAME reserved-name predicate core uses.
@@ -317,9 +322,9 @@ export async function addLink(
       },
       decide: (source) => {
         lastSource = source;
-        // Idempotent: if the source already links to this target (in either link form), re-adding
-        // is a no-op that exits 0 rather than appending a duplicate (AXI: mutations converge).
-        const already = parseLinks(bundle, source!).some((l) => l.to === normalizedTo);
+        // Link text is the relationship-type signal, so identity is target + exact text. Re-adding
+        // that edge is a no-op; different text to the same target is a distinct semantic edge.
+        const already = parseLinks(bundle, source!).some((l) => l.to === normalizedTo && l.text === text);
         if (already) return { action: "done", result: { changed: false } };
 
         const trimmed = source!.body.replace(/\s*$/, "");

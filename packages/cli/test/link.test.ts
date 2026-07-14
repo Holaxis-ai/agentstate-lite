@@ -7,7 +7,7 @@
  * NOT re-tested here. What IS tested here is the CLI's `link add`, which is the bug this
  * finding identified: appending a cross-link is a meaningful change, so by default it must
  * refresh the timestamp on its outgoing write, EXCEPT on the idempotent no-op path (the
- * source already links to the target) where nothing is written at all.
+ * source already carries the same target + exact text) where nothing is written at all.
  *
  * Runs the command function in-process (no subprocess) against a real temp filesystem
  * bundle, mirroring `packages/core/test`'s node:test + ts-loader pattern.
@@ -160,6 +160,54 @@ test("link add: re-adding an already-present link is an idempotent no-op (no wri
     const afterSecond = await readDoc({ root: dir }, "concepts/a");
     assert.equal(afterSecond.frontmatter.timestamp, refreshedTs);
     assert.equal(afterSecond.body, afterFirst.body);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link add: different exact text to the same target creates a second semantic edge; exact repeats remain no-ops", async () => {
+  const { dir, cleanup } = await makeFixtureBundle();
+  try {
+    const cites = await linkAdd(dir, ["concepts/a", "concepts/b", "--text", "cites"]);
+    assert.equal(cites.changed, true);
+
+    const dependsOn = await linkAdd(dir, ["concepts/a", "concepts/b", "--text", "depends on"]);
+    assert.equal(dependsOn.changed, true, "different text to the same target is a distinct edge");
+
+    const exactRepeat = await linkAdd(dir, ["concepts/a", "concepts/b", "--text", "depends on"]);
+    assert.equal(exactRepeat.changed, false, "the exact target + text edge remains idempotent");
+
+    const doc = await readDoc({ root: dir }, "concepts/a");
+    assert.deepEqual(
+      parseLinks({ root: dir }, doc).map((link) => ({ to: link.to, text: link.text })),
+      [
+        { to: "concepts/b", text: "cites" },
+        { to: "concepts/b", text: "depends on" },
+      ],
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link add: equivalent target spellings share one normalized target + exact-text identity", async () => {
+  const { dir, cleanup } = await makeFixtureBundle();
+  try {
+    assert.equal((await linkAdd(dir, ["concepts/a", "concepts/b", "--text", "cites"])).changed, true);
+    assert.equal(
+      (await linkAdd(dir, ["concepts/a", "./concepts/b", "--text", "cites"])).changed,
+      false,
+    );
+    assert.equal(
+      (await linkAdd(dir, ["concepts/a", "/concepts/b.md", "--text", "cites"])).changed,
+      false,
+    );
+
+    const doc = await readDoc({ root: dir }, "concepts/a");
+    assert.deepEqual(
+      parseLinks({ root: dir }, doc).map((link) => ({ to: link.to, text: link.text })),
+      [{ to: "concepts/b", text: "cites" }],
+    );
   } finally {
     await cleanup();
   }
