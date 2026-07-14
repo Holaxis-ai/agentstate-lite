@@ -13,8 +13,8 @@ description: >-
   rung-c enforcement wake condition. DONE WHEN: the session happens and its
   decisions land as a decisions/ doc; rung c then either becomes buildable tasks
   or is explicitly retired. Assignees: both founders (scheduling is the work).
-actor: brian
-timestamp: '2026-07-14T18:50:57.664Z'
+actor: brian-claude
+timestamp: '2026-07-14T18:58:31.258Z'
 ---
 ## The decision agenda — plain-language edition (v2, 2026-07-14, after Brian's review)
 
@@ -92,6 +92,52 @@ blocked/runnable once, every future dependency-class label gets it free.
 If adopted, this frame mostly answers decision 4 too (class definitions are naturally
 central; label declarations stay per-kind and recipe-friendly) and gives 2/3 a cleaner
 enforcement target (key on class).
+
+PANEL FINDINGS ON THE FRAME (2026-07-14 — researcher + adversarial skeptic, both
+grounded in the live corpus: 284 edges, ~20 agent-invented free-text labels):
+
+WHERE THEY CONVERGE (treat as settled input):
+- The four categories are genuinely clarifying AS VOCABULARY — the skeptic could not
+  break them as a way to talk and teach. Adopt the map.
+- Do NOT build class-generic dispatch machinery now. The precedent claim was FALSE
+  (checked in code: expects_inbound keys on the literal label string, not any class —
+  no class-dispatch exists anywhere in the codebase), and the break-even math fails
+  (~1.5 behavioral labels per class vs ~3 needed). Rule adopted from the skeptic:
+  build a class's generic consumer LAZILY, when it earns its second behavioral label
+  with proven-identical semantics (dependency = depends-on + gates is the candidate).
+- A bare {class} tag is under-specified against links agents ALREADY wrote: "informs"
+  is a SOFT dependency (blocked/runnable on it = wrong); "may supersede" is hedged
+  succession (head-collapse on it hides a live doc). Declarations need more axes.
+- Agents pattern-match nearby examples, not convention registries ("superseded by" and
+  "may supersede" were coined right next to the active "supersedes"). Whatever is
+  decided, the TEACHING CHANNEL (point-of-use hints, examples in docs) outweighs the
+  declaration itself.
+
+THE RESEARCHER'S TWO SUBSTANTIVE AMENDMENTS (the session's real new content):
+1. SPLIT ANNOTATION. It is silently absorbing two families that should drive behavior:
+   GROUNDING ("X is warranted by Y" — the evidence edges; arguably the product's
+   defining relation, and today untyped free text) and SPEC/GOVERNANCE ("X is
+   specified/decided by Y" — the corpus's biggest undeclared family: design, plan,
+   decision, realizes, implements, ~22 edges). Proposed: five categories — hierarchy,
+   dependency, succession, grounding (evidence+spec), and a truly-inert ASIDE.
+   Grounding is also what decision 6 needs: without it, "a Decision should be
+   reachable from what it decided" has nothing typed to enforce against.
+2. DECLARE THE FOUR PROPERTIES. Bigger gap than any class: each relation should
+   declare (a) inverse label (the corpus carries "supersedes" AND "superseded by" as
+   unrelated strings a consumer would miss), (b) transitivity (rollups and
+   head-collapse already silently assume it), (c) acyclicity (one generic cycle check
+   instead of three hand-rolled), (d) cardinality (can a Task be contained by TWO
+   items? whose progress bar owns it? — plus the recorded CLI bug that parallel
+   distinct-label edges to one target can't be created).
+
+VALIDATED BOUNDARY (both reports): stateful relationships belong in DOC FIELDS, not
+edge classes — the reviews-* family reduces (verdict lives as status on the
+Review-Request doc; the edge is mere grounding). And the declared NON-GOALS: no
+blessed "relates to" class (free text IS that escape hatch), no OWL reasoner, no edge
+attributes, no mention-derived relations.
+
+STANDALONE ITEM SURFACED (does not wait for the session): depends-on's inertness —
+give it a consumer or relabel it documentation; both reports flag it independently.
 
 ### 2. Should the tool ever push back on a link label it doesn't recognize?
 
