@@ -14,7 +14,7 @@ description: >-
   decisions land as a decisions/ doc; rung c then either becomes buildable tasks
   or is explicitly retired. Assignees: both founders (scheduling is the work).
 actor: brian-claude
-timestamp: '2026-07-14T17:50:12.994Z'
+timestamp: '2026-07-14T17:58:09.272Z'
 ---
 ## The decision agenda — plain-language edition (v2, 2026-07-14, after Brian's review)
 
@@ -141,3 +141,5 @@ roadmap-items/typed-relationships) or explicitly deferred with a wake condition;
 decision 5 is scheduled, deferred, or folded in at the founders' discretion; and rung c
 consequently becomes buildable tasks or is retired with the reasoning recorded on the
 roadmap item.
+
+[depends on](../docs/relationships.md)
