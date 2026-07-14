@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'Kinds: show exact required Markdown headings before authoring'
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Dogfood found that kinds reports section names while validation requires
@@ -10,7 +10,7 @@ description: >-
   convention registry, without adding a second schema or changing validation
   semantics. Update generated CLI/skill reference only through its source
   authority and pin output with tests.
-actor: codex
-timestamp: '2026-07-14T21:01:16.370Z'
+actor: mike/codex
+timestamp: '2026-07-14T21:12:35.187Z'
 ---
 
