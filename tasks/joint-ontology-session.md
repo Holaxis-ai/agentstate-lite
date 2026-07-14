@@ -14,7 +14,7 @@ description: >-
   decisions land as a decisions/ doc; rung c then either becomes buildable tasks
   or is explicitly retired. Assignees: both founders (scheduling is the work).
 actor: brian
-timestamp: '2026-07-14T19:13:21.386Z'
+timestamp: '2026-07-14T19:23:46.215Z'
 ---
 ## The decision agenda — plain-language edition (v2, 2026-07-14, after Brian's review)
 
@@ -138,6 +138,35 @@ attributes, no mention-derived relations.
 
 STANDALONE ITEM SURFACED (does not wait for the session): depends-on's inertness —
 give it a consumer or relabel it documentation; both reports flag it independently.
+
+BRIAN'S UNIFIED FRAME v2 (2026-07-14, supersedes the candidate-6 framing below —
+INHERITANCE IS THE META-MECHANISM, NOT A CATEGORY): the structure we want is —
+(1) a small visible kernel of semantic classes, each stating the behaviors its
+semantics entail, surfaced WHERE AGENTS AUTHOR (link-creation hints, kinds output —
+per the panel: agents copy examples, not registries);
+(2) two low-ceremony authoring paths — use the class name itself as the label
+(zero declaration), or coin a clearer label and declare ONE derivation: e.g. a
+convention stating "evidence" is-a "grounding", after which the system treats every
+evidence edge exactly as grounding (same sweeps, lints, freshness logic).
+Relationship labels derive from relationship classes; doc kinds derive from doc kinds
+(Bug extends Task) — one derivation principle, two registries.
+
+WHY THIS IS COHERENT WHERE DOC-LEVEL IS-A WASN'T: derivation edges live between
+CONVENTION docs, the one corner of the bundle that is one-doc-one-concept by
+construction (the "evidence" convention constitutes the definition of "evidence") —
+Brian's own constitutive/aboutness principle makes the convention layer the legal home
+for is-a.
+
+THE GUARDRAIL (defuses the skeptic's misfire attack): derivation is WHOLESALE — no
+behavior overrides. Accept the base class's behavior entirely or you are not deriving
+(you're proposing a new class, or misfiling). Test case from the corpus: "may
+supersede" CANNOT derive from succession (head-collapse would hide a live doc) — the
+rule forces that honesty at declaration time instead of as a later view bug.
+
+CONSEQUENCE FOR DECISION 4: classes live centrally (small ontology doc, few,
+product-adjacent); derivations live per-convention (recipe-friendly). The derivation
+edge ties the layers. The skeptic's lazy-machine rule still governs WHEN class-keyed
+consumers get built; this frame governs the SHAPE they key on when they do.
 
 CANDIDATE CATEGORY 6 — INHERITANCE ("X is a kind of Y"; Brian, 2026-07-14): distinct
 from hierarchy (part-of vs is-a — the classic taxonomy/partonomy split; naming both
