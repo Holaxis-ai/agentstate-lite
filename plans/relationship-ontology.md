@@ -4,7 +4,7 @@ title: >-
   Proposal: relationship classes as a demand-enabling affordance (kernel + cheap
   extension)
 actor: brian-claude
-timestamp: '2026-07-14T22:05:52.656Z'
+timestamp: '2026-07-14T22:15:50.159Z'
 ---
 ## The product thesis this rests on
 
@@ -90,9 +90,21 @@ NOW — the teaching surfaces (each small, none require new machinery):
    are permanently opaque. Teach BOTH forms: a meaningful --text when the relationship
    has one, and the explicit aside form when it genuinely doesn't — do not teach
    agents to invent fake semantics for see-also links.
-2. Annotate class names onto the existing point-of-use link hints (new/link receipts).
+2. Annotate class names onto the existing point-of-use link hints (new/link
+   receipts). Value: this is how the class vocabulary gets into agents' heads AT ALL —
+   classes are currently surfaced nowhere an agent looks, and agents demonstrably
+   learn from what's in front of them mid-work, not from registries. A few added
+   words per existing hint ("depends on — a DEPENDENCY link: feeds the blocked-work
+   view") and every agent absorbs the categories as a side effect of normal work.
 3. A status VOCABULARY line: labels total / class-mapped / free text / id-default —
-   the drift self-audit.
+   the drift self-audit. Value: the four-number gauge for the whole effort. Junk
+   count climbing = the teaching fix isn't working; free-text piling up = the
+   demand-signal queue of coinages awaiting promotion (the governance loop's
+   observation step); mapped share growing = adoption is real. Turns "is the
+   vocabulary converging or drifting?" from a research project (our audit took an
+   agent an afternoon) into a glance — and keeps this proposal honest: if we ship
+   everything and these numbers don't move, the proposal was wrong and the numbers
+   will say so.
 4. A relationship legend on a bundle page: each class, its one-liner, its labels, and
    the unmapped-label list.
 
