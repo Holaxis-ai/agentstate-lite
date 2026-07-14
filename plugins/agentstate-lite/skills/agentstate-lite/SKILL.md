@@ -117,7 +117,7 @@ the rest of the line unchanged.
 - `"$ASLITE" recipes [--remote <url>]`
   — List built-in recipes and whether each is already applied to this bundle
 - `"$ASLITE" recipe add <name-or-path> [--remote <url>]`
-  — Apply a recipe's (built-in name or folder path) convention docs to the bundle (idempotent)
+  — Apply a recipe's content-free definitions — Kinds and optional declared Pages — idempotently
 
 ### Remote
 
@@ -382,6 +382,10 @@ cat "$REFS/pages/BRIDGE.md"
   provenance, composed from lite primitives) ships at `$REFS/recipes/claims/`; copy its shape,
   then `"$ASLITE" recipe add <folder>` to apply it (built-in recipes are named directly, e.g.
   `"$ASLITE" recipe add work-tracking`).
+- Packaging a content-free cognitive ecosystem: `$REFS/recipes/review-workflow/` carries a
+  self-describing Review Request kind plus a generic live Page, but no review instances. A
+  definitions-only recipe may contain only its manifest, convention docs, and explicitly
+  declared Page registry/HTML pairs; install it with the same `recipe add <folder>` command.
 - A full interop-shaped example bundle (externally-authored markdown: unquoted timestamps,
   relative links, wrapped bullets) ships at `$REFS/sample-bundle/` — copy it and point `--dir` at
   the copy to explore a populated bundle without writing one from scratch.
