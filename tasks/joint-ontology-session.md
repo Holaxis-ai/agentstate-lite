@@ -14,7 +14,7 @@ description: >-
   decisions land as a decisions/ doc; rung c then either becomes buildable tasks
   or is explicitly retired. Assignees: both founders (scheduling is the work).
 actor: brian-claude
-timestamp: '2026-07-14T17:58:54.270Z'
+timestamp: '2026-07-14T18:31:29.813Z'
 ---
 ## The decision agenda — plain-language edition (v2, 2026-07-14, after Brian's review)
 
@@ -43,6 +43,23 @@ bar and directly caused the confusion that spawned this whole thread. Keep this 
 LIGHT: ratify the four, define each one's direction in a sentence, add "gates/blocks"
 if wanted, and agree how future labels get added. Thirty minutes, not a philosophy
 seminar.
+
+WHAT INCLUSION ACTUALLY ENTAILS (added 2026-07-14; see docs/relationships for the
+tier model): "in the set" is a per-relationship choice of tier, and ratification only
+grants tier 1 automatically. Concretely, including a relationship means:
+
+- TIER 1 (automatic): write it into the declaring kinds' links maps with a description
+  stating meaning and direction — one convention-doc edit, no product code. Buys
+  discovery (kinds), teaching (new --link), and lint (target-kind + case variants).
+- TIER INTENT (the decision's real content): label each relation either
+  "documentation relation" (tier 1 by design — meaningful to readers, inert to the
+  system; fine for e.g. reviews-*) or "mechanism relation" (tier 3 — something must
+  CONSUME it), so nobody repeats the depends-on surprise (declared, assumed to
+  schedule work, actually inert).
+- CONSUMER TASKS: for every relation labeled mechanism, name the consumer — shipped
+  page/code, or a filed task (e.g. depends-on -> blocked/runnable derivation).
+- AMENDMENT RULE: agree how future labels join the set (edit a convention freely? a
+  decisions/ doc first?) — this is the governance half.
 
 ### 2. Should the tool ever push back on a link label it doesn't recognize?
 
