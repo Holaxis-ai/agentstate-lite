@@ -1,33 +1,15 @@
 ---
 type: Context Note
-title: 'pre-compact-main: PR #52 review orientation 2026-07-13'
-actor: codex
-timestamp: '2026-07-13T16:57:58.421Z'
+title: 'pre-compact-main: current session checkpoint'
+actor: codex-main
+timestamp: '2026-07-14T15:51:05.925Z'
 ---
 # Summary
 
-Resumed 2026-07-13 for an independent review of GitHub PR #52. The previous
-pre-compact note (2026-07-07) was stale. The latest durable project frame read
-at orientation is context-notes/session-merges-and-invariant-frame: PRs through
-#36 had merged by 2026-07-10, including opportunistic read-side board pulls,
-bundle pages, the versioned mutation boundary, and snapshot-first
-`sync --establish`. The mutation primitive guarantees version safety; callers
-still own mutable domain-invariant rechecks. Sharing remains explicit, and the
-board branch must never be merged into main.
+Session checkpoint: independent evaluation of PR #54 completed against stable base `69a0627b70fe0539815207d34ea56a20721ddb35` and head `e27e2314fb25461ce957dee21da513e153e60df8`. Verdict: changes requested for two contract defects; all repository gates otherwise passed.
 
-The newest context note on the board is
-context-notes/cli-schema-write-coverage (2026-07-13), which records the schema
-description write-gap as resolved without a meta-kind. Main was clean at this
-session's initial status check.
+The durable review record is [PR #54 independent review](./pr-54-review.md). The [portable recipe task](../tasks/portable-recipe-packages-v1.md) should remain `in_progress` until hardening and independent review of the replacement SHA.
 
-Current unit of work: review PR #52 against current `main`, including its PR
-discussion, changed behavior, tests, and board/sync invariants. Unverified at
-this boundary: PR #52's exact scope, whether its head is current with main,
-and whether the full test suite passes. Those must be established from the PR
-head and an isolated worktree before conclusions are recorded.
+Skills loaded for this session: holaxis-self-awareness, holaxis-cognitive-ecosystem, and agentstate-lite. Repository guide CLAUDE.md was read in full. The project `.agentstate-lite` board remains the sole cognitive ecosystem; Holaxis CE tasks/vault are not in use.
 
-The earlier sync design remains available in
-[plans/sync-verb-implementation](../plans/sync-verb-implementation.md), with
-its review evidence in
-[research/sync-verb-review](../research/sync-verb-review.md). This refreshed
-note supersedes the old session status, not those design artifacts.
+Related authority: [portable recipe design](../designs/portable-recipe-packages.md). Prior continuity links: [sync implementation plan](../plans/sync-verb-implementation.md) and [sync review research](../research/sync-verb-review.md).
