@@ -13,8 +13,10 @@ description: >-
   Acceptance: body+links are present after one command; receipt version equals a
   same-read head; invalid input does not leave a misleading success receipt;
   local and remote command paths remain aligned; deterministic tests pin the
-  observed failure.
-actor: codex
-timestamp: '2026-07-14T21:01:16.128Z'
+  observed failure. Implemented in PR #57:
+  https://github.com/Holaxis-ai/agentstate-lite/pull/57; exact-SHA adversarial
+  review approved.
+actor: mike/codex
+timestamp: '2026-07-14T21:23:45.345Z'
 ---
 
