@@ -293,9 +293,9 @@ export async function defaultReadStdin(): Promise<string | undefined> {
  * plain "is target `b` still linked ANYWHERE in the new body" check (a bare `some()` over target) would
  * therefore miss a drop when one of several same-target occurrences disappears but at least one
  * survives — old `[supports](b)`+`[contradicts](b)`, new `[supports](b)` alone silently loses
- * `contradicts` under a target-only `some()`.
+ * `contradicts` under a target-only check.
  *
- * Matches per target in two passes so a RETEXT (same target, new text — the edge survives) never
+ * Matches per target in two passes so a RETEXT (same target, new text — the destination survives) never
  * fires while a genuine occurrence loss always does: (1) EXACT (target,text) pairs are consumed first
  * — an old occurrence whose exact text still appears is kept, unambiguously; (2) any old occurrence
  * left over pairs with any UNCONSUMED same-target new occurrence, regardless of text (a retext); (3)
@@ -346,12 +346,10 @@ function computeDroppedLinks(existingLinks: Link[], nextLinks: Link[]): Link[] {
  * signature graph feature, lost with no error and no trace. Fires ONLY on REAL loss: an existing link
  * survives (no refusal) when `nextBody` still contains a link to the SAME resolved target with ONE
  * FEWER OR EQUAL occurrences dropped — see `computeDroppedLinks`'s own comment for the exact
- * occurrence-aware matching, which mirrors `link add`'s own idempotency check
- * (`link.ts`'s `parseLinks(...).some(l => l.to === normalizedTo)`, target-only) for the common
- * single-occurrence case while also catching a multi-occurrence (same target, different text) partial
- * drop that a bare target-only `some()` would miss. A RETEXT — the new body relabels a target under
- * different display text, with no occurrence actually lost — is NOT a drop: the guard's charter is
- * EDGE loss, and the edge (the target relationship) survives a retext. Over-firing on relabeling would
+ * occurrence-aware matching. This guard deliberately protects destination presence, not typed-edge
+ * identity: a RETEXT is explicit content in the replacement body, so it is not a silent drop. The
+ * occurrence-aware check still catches a same-target partial drop that a bare target-only `some()`
+ * would miss. Over-firing on relabeling would
  * train agents to reflexively pass `--replace-links`, which hollows the guard for the drop case that
  * actually matters (review adjudication, round 2). `replaceLinks` (the caller's `--replace-links` flag)
  * opts into a real drop deliberately — no separate `link remove` needed, since a full-body replace

@@ -196,6 +196,43 @@ test("new --link: repeatable — two --link flags both land, each reported in th
   }
 });
 
+test("new --link: different types to the same target both land while an exact repeat is a no-op", async () => {
+  const { dir, bundle, cleanup } = await makeTaskBundle();
+  try {
+    await runJson(newCommand, ["Task", "t1", "--title", "T1", "--dir", dir]);
+    const result = await runJson(newCommand, [
+      "Task",
+      "t2",
+      "--title",
+      "T2",
+      "--link",
+      "depends on=tasks/t1",
+      "--link",
+      "blocks=tasks/t1",
+      "--link",
+      "depends on=tasks/t1",
+      "--dir",
+      dir,
+    ]);
+
+    const links = result.links as Array<Record<string, unknown>>;
+    assert.deepEqual(
+      links.map((link) => [link.type, link.target, link.changed]),
+      [
+        ["depends on", "tasks/t1", true],
+        ["blocks", "tasks/t1", true],
+        ["depends on", "tasks/t1", false],
+      ],
+    );
+
+    const written = await readDoc(bundle, "tasks/t2");
+    assert.equal((written.body.match(/\[depends on\]\(t1\.md\)/g) ?? []).length, 1);
+    assert.equal((written.body.match(/\[blocks\]\(t1\.md\)/g) ?? []).length, 1);
+  } finally {
+    await cleanup();
+  }
+});
+
 test("new --link: a type NOT in the kind's declared link vocabulary warns (teach) but still adds the link", async () => {
   const { dir, cleanup } = await makeTaskBundle();
   try {
