@@ -1,13 +1,13 @@
 ---
 type: Roadmap Item
 title: 'Recipe plugins: share installable agent operating systems'
-status: queued
+status: active
 description: >-
   Package Kinds, agent instructions, and optional Pages as
   marketplace-distributed plugins while keeping adopted knowledge local and
   portable.
-actor: openai/codex
-timestamp: '2026-07-11T22:53:17.430Z'
+actor: codex
+timestamp: '2026-07-14T03:52:36.653Z'
 ---
 # Vision
 
@@ -42,3 +42,5 @@ The long-term product unit is not merely a schema. It is a portable agent operat
 One founder can publish a recipe plugin and the other can install it from the real marketplace, apply it to a fresh local bundle without checking out the recipe's source repository, create validated instances, and see the same domain behavior. The handoff should be reproducible enough to become the reference packaging pattern for community recipe plugins.
 
 [contains](../tasks/prove-recipe-plugin-sharing.md)
+
+[contains](../tasks/portable-recipe-packages-v1.md)
