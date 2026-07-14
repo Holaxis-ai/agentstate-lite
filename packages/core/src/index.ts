@@ -164,6 +164,7 @@ export {
   validateAgainstKind,
   freshnessHorizonMs,
   kindConventionDoc,
+  parseConventionDoc,
   splitSections,
   isTerminal,
 } from "./kinds.js";

@@ -146,7 +146,7 @@ export const COMMAND_GROUPS: CommandGroup[] = [
       },
       {
         usage: "recipe add <name-or-path> [--remote <url>]",
-        summary: "Apply a recipe's (built-in name or folder path) convention docs to the bundle (idempotent)",
+        summary: "Apply a recipe's content-free definitions — Kinds and optional declared Pages — idempotently",
       },
     ],
   },

@@ -23,7 +23,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -94,6 +94,35 @@ test("the shipped Page examples include capability-independent navigation from a
   for (const dest of ["pages/about.html", "pages/pages-registry/about.md", "pages/BRIDGE.md"]) {
     assert.ok(MANIFEST_DESTS.has(dest), `Page navigation reference missing from SKILL_REFERENCES: ${dest}`);
   }
+});
+
+function relativeFileInventory(root: string, prefix = ""): string[] {
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    return entry.isDirectory()
+      ? relativeFileInventory(path.join(root, entry.name), relative)
+      : [relative];
+  });
+}
+
+test("the shipped review-workflow references exactly mirror the complete recipe folder", () => {
+  const sourcePrefix = "examples/recipes/review-workflow/";
+  const destPrefix = "recipes/review-workflow/";
+  const inventory = relativeFileInventory(path.join(REPO_ROOT, sourcePrefix)).sort();
+  const expected = inventory.map((relative) => ({
+    src: `${sourcePrefix}${relative}`,
+    dest: `${destPrefix}${relative}`,
+  }));
+  const actual = SKILL_REFERENCES
+    .filter(({ src, dest }) => src.startsWith(sourcePrefix) || dest.startsWith(destPrefix))
+    .sort((a, b) => a.src.localeCompare(b.src));
+  assert.deepEqual(actual, expected);
+});
+
+test("the portable recipe carries the canonical Page convention byte-for-byte", () => {
+  const canonical = readFileSync(path.join(REPO_ROOT, "examples/pages/conventions/page.md"));
+  const portable = readFileSync(path.join(REPO_ROOT, "examples/recipes/review-workflow/conventions/page.md"));
+  assert.deepEqual(portable, canonical);
 });
 
 // ---------------------------------------------------------------------------------------------

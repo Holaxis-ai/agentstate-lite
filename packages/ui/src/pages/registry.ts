@@ -1,4 +1,8 @@
-/** The one browser-side definition of a usable registered bundle Page. */
+/** Browser-side parsing for a usable registered bundle Page. */
+
+import { isPageEntryKey, isPageRegistryId } from "@agentstate-lite/core/page";
+
+export { isPageEntryKey, isPageRegistryId } from "@agentstate-lite/core/page";
 
 export type BridgeCapability = "none" | "bundle-read";
 
@@ -14,25 +18,6 @@ export interface RegisteredPage {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-function hasSafeSegments(value: string, prefix: string): boolean {
-  if (!value.startsWith(prefix) || value.length === prefix.length) return false;
-  if (value.startsWith("/") || /[\\%?#]/.test(value)) return false;
-  const segments = value.slice(prefix.length).split("/");
-  return segments.every(
-    (segment) => segment !== "." && segment !== ".." && /^[A-Za-z0-9._-]+$/.test(segment),
-  );
-}
-
-/** Strict concept-id grammar for Page registry documents. Nested ids and ordinary dots are valid. */
-export function isPageRegistryId(id: unknown): id is string {
-  return typeof id === "string" && !id.endsWith(".md") && hasSafeSegments(id, "pages-registry/");
-}
-
-/** Strict blob-key grammar for executable Page entries. */
-export function isPageEntryKey(entry: unknown): entry is string {
-  return typeof entry === "string" && hasSafeSegments(entry, "pages/");
 }
 
 /** Only the exact grant string enables bundle reads; every other value fails closed. */

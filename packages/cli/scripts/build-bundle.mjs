@@ -40,6 +40,9 @@ export async function buildCliBundle(outfile) {
     // the full library surface the CLI uses (index.ts only re-exports it and adds the standalone
     // CLI).
     alias: {
+      // List browser-safe core subpaths before the package root so esbuild does not append the
+      // subpath to `index.ts` (which would resolve as the impossible `index.ts/page`).
+      "@agentstate-lite/core/page": r("../core/src/page.ts"),
       "@agentstate-lite/core": r("../core/src/index.ts"),
       "@agentstate-lite/viewer": r("../viewer/src/generate.ts"),
       // server/src/index.ts is guard-free re-exports (createRouter + serve) — its only deps are

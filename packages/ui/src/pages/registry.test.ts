@@ -9,6 +9,7 @@ describe("Page registry authority", () => {
     for (const invalid of [
       "", "pages-registry/", "pages-registryevil/x", "docs/x", "/pages-registry/x",
       "pages-registry/x.md", "pages-registry/./x", "pages-registry/../x", "pages-registry/x//y",
+      "pages-registry/.hidden", "pages-registry/reviews/.draft",
       "pages-registry/x\\y", "pages-registry/x%2fy", "pages-registry/x?y", "pages-registry/x#y",
       "pages-registry/http:x", "pages-registry/has space", "https://example.test/pages-registry/x",
     ]) expect(isPageRegistryId(invalid), invalid).toBe(false);
@@ -17,7 +18,10 @@ describe("Page registry authority", () => {
   it("applies the same segment grammar to entries strictly under pages/", () => {
     expect(isPageEntryKey("pages/about.html")).toBe(true);
     expect(isPageEntryKey("pages/reviews/architecture.v2.html")).toBe(true);
-    for (const invalid of ["pages/", "pagesevil/x", "/pages/x", "pages/../x", "pages/x%2f.html", "pages/x?raw"]) {
+    for (const invalid of [
+      "pages/", "pagesevil/x", "/pages/x", "pages/../x", "pages/.hidden.html",
+      "pages/reviews/.draft.html", "pages/x%2f.html", "pages/x?raw",
+    ]) {
       expect(isPageEntryKey(invalid), invalid).toBe(false);
     }
   });

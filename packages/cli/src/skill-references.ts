@@ -45,6 +45,26 @@ export const SKILL_REFERENCES: SkillReference[] = [
   { src: "examples/recipes/claims/recipe.md", dest: "recipes/claims/recipe.md" },
   { src: "examples/recipes/claims/conventions/claim.md", dest: "recipes/claims/conventions/claim.md" },
 
+  // A content-free cognitive ecosystem: one Kind plus its generic live Page, with no instances.
+  // This is both a useful Review Workflow package and the reference for portable Page assets.
+  { src: "examples/recipes/review-workflow/recipe.md", dest: "recipes/review-workflow/recipe.md" },
+  {
+    src: "examples/recipes/review-workflow/conventions/review-request.md",
+    dest: "recipes/review-workflow/conventions/review-request.md",
+  },
+  {
+    src: "examples/recipes/review-workflow/conventions/page.md",
+    dest: "recipes/review-workflow/conventions/page.md",
+  },
+  {
+    src: "examples/recipes/review-workflow/pages-registry/review-workflow-reviews.md",
+    dest: "recipes/review-workflow/pages-registry/review-workflow-reviews.md",
+  },
+  {
+    src: "examples/recipes/review-workflow/pages/review-workflow/reviews.html",
+    dest: "recipes/review-workflow/pages/review-workflow/reviews.html",
+  },
+
   // The interop fixture — an externally-shaped OKF bundle (unquoted timestamps, relative links,
   // wrapped bullets) — same one CLAUDE.md pins the round-trip contract against.
   { src: "examples/sample-bundle/index.md", dest: "sample-bundle/index.md" },
@@ -96,7 +116,7 @@ export const COMMAND_CONTRACTS: Record<string, string[]> = {
   kinds: [],
   "kind field": [],
   recipes: [],
-  "recipe add": ["recipes/claims/recipe.md"],
+  "recipe add": ["recipes/claims/recipe.md", "recipes/review-workflow/recipe.md"],
   serve: [],
   ui: ["pages/BRIDGE.md"],
   sync: [],
@@ -121,5 +141,8 @@ export interface CapabilityPattern {
  */
 export const CAPABILITY_PATTERNS: CapabilityPattern[] = [
   { pattern: /type:\s*Page|bundle page|postMessage|sandboxed iframe/i, requires: ["pages/BRIDGE.md"] },
-  { pattern: /recipe/i, requires: ["recipes/claims/recipe.md"] },
+  {
+    pattern: /recipe/i,
+    requires: ["recipes/claims/recipe.md", "recipes/review-workflow/recipe.md"],
+  },
 ];
