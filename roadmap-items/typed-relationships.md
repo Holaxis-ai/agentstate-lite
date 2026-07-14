@@ -13,7 +13,7 @@ description: >-
   ontology session happens, or real demand for write-time link-type validation
   appears. Zero open tasks by design, not by neglect.
 actor: brian
-timestamp: '2026-07-14T17:20:26.389Z'
+timestamp: '2026-07-14T17:25:12.028Z'
 ---
 [contains](../tasks/typed-links-read-path.md)
 
@@ -30,3 +30,5 @@ timestamp: '2026-07-14T17:20:26.389Z'
 [contains](../tasks/status-terminal-declaration.md)
 
 [contains](../tasks/new-link-flag.md)
+
+[contains](../tasks/joint-ontology-session.md)

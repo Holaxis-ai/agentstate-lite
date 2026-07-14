@@ -13,6 +13,8 @@ description: >-
   Sequencing + adoption is a joint Mike/Brian decision; status flips to active
   when committed.
 actor: mike/claude
-timestamp: '2026-07-09T21:35:14.510Z'
+timestamp: '2026-07-14T17:25:12.282Z'
 ---
 [informed by](../research/real-time-event-backbone.md)
+
+[contains](../tasks/real-time-backbone-verdict.md)
