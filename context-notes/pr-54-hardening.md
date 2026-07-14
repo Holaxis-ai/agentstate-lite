@@ -2,7 +2,7 @@
 type: Context Note
 title: 'PR #54 hardening state'
 actor: codex-main
-timestamp: '2026-07-14T17:06:22.355Z'
+timestamp: '2026-07-14T17:59:23.104Z'
 ---
 # Summary
 
@@ -30,3 +30,9 @@ what_worked: Independent adversarial review caught three raw-vs-normalized contr
 what_didnt: The first correction addressed the reviewer headline but missed its adjacent manifest-path observation, causing one avoidable extra review loop.
 would_change: Convert every reviewer finding and adjacent example into explicit tests before issuing the replacement SHA, then audit all fields crossing the same normalization seam as one class.
 [/ORCHESTRATION-REFLECTION]
+
+## Merge receipt
+
+PR #54 merged into `main` at `2026-07-14T17:21:24Z`. GitHub reports merge commit
+`288e989dd47962236de311896fcb5058b6fc8161`; the reviewed PR head was
+`7804a87d55e374c2ae913622cb36417c5e93bfe9`. The portable-recipe task is complete.

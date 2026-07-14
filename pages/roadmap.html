@@ -233,9 +233,13 @@
     return out.join("");
   }
   function inline(t) {
-    return esc(t)
+    var s = esc(t)
       .replace(/`([^`]+)`/g, '<code style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:rgba(127,127,127,.14);border-radius:2px;padding:0 4px">$1</code>')
       .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+    return s.replace(/\[([^\]]{1,120})\]\(([^)\s]+\.md)\)/g, function (m, label, href) {
+      var docId = href.replace(/^(\.\.\/)+/, "").replace(/^\.\//, "").replace(/\.md$/, "");
+      return '<span class="dd-doclink" data-doc="' + docId + '" style="color:var(--accent,#2b7a68);text-decoration:underline;text-underline-offset:2px;cursor:pointer">' + label + "</span>";
+    });
   }
   function close() { dd.style.display = "none"; veil.style.display = "none"; }
   veil.addEventListener("click", close);
@@ -266,9 +270,9 @@
     });
   };
   document.addEventListener("click", function (e) {
-    var el = e.target && e.target.closest ? e.target.closest(".id, .tid") : null;
+    var el = e.target && e.target.closest ? e.target.closest(".id, .tid, .dd-doclink") : null;
     if (!el) return;
-    var docId = (el.textContent || "").split("·")[0].trim();
+    var docId = el.getAttribute("data-doc") || (el.textContent || "").split("·")[0].trim();
     if (!docId) return;
     e.preventDefault();
     window.__openDoc(docId);
