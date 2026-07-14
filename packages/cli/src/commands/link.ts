@@ -33,6 +33,7 @@ import {
   backlinks,
   queryEdges,
   relativeHref,
+  resolveConceptId,
   isReservedFile,
   pathFromConceptId,
   loadKinds,
@@ -271,7 +272,9 @@ export async function addLink(
 ): Promise<AddLinkResult> {
   const text = opts.text?.trim() || to;
   const href = relativeHref(from, to);
-  const normalizedTo = to.replace(/^\/+/, "").replace(/\.md$/, "");
+  // Resolve the href we actually emit through core's one link resolver. This collapses equivalent
+  // target spellings (`x`, `./x`, `/x.md`, repeated separators) onto the same concept identity.
+  const normalizedTo = resolveConceptId(from, href) ?? to.replace(/^\/+/, "").replace(/\.md$/, "");
 
   // Reserved files (index.md/log.md, any directory level) are never concept documents, so they
   // can never be a link target — core's `resolveConceptId` now drops such a link from the parsed

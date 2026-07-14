@@ -190,6 +190,29 @@ test("link add: different exact text to the same target creates a second semanti
   }
 });
 
+test("link add: equivalent target spellings share one normalized target + exact-text identity", async () => {
+  const { dir, cleanup } = await makeFixtureBundle();
+  try {
+    assert.equal((await linkAdd(dir, ["concepts/a", "concepts/b", "--text", "cites"])).changed, true);
+    assert.equal(
+      (await linkAdd(dir, ["concepts/a", "./concepts/b", "--text", "cites"])).changed,
+      false,
+    );
+    assert.equal(
+      (await linkAdd(dir, ["concepts/a", "/concepts/b.md", "--text", "cites"])).changed,
+      false,
+    );
+
+    const doc = await readDoc({ root: dir }, "concepts/a");
+    assert.deepEqual(
+      parseLinks({ root: dir }, doc).map((link) => ({ to: link.to, text: link.text })),
+      [{ to: "concepts/b", text: "cites" }],
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
 test("link add: environment attribution reaches local+remote content/history; a no-op never rewrites actor", async () => {
   const local = await makeFixtureBundle();
   const remoteBundle: Bundle = { root: "mem://link-actor-env", backend: new MemoryBackend() };

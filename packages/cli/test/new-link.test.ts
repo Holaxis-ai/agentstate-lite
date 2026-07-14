@@ -210,7 +210,7 @@ test("new --link: different types to the same target both land while an exact re
       "--link",
       "blocks=tasks/t1",
       "--link",
-      "depends on=tasks/t1",
+      "depends on=./tasks/t1",
       "--dir",
       dir,
     ]);
@@ -221,7 +221,7 @@ test("new --link: different types to the same target both land while an exact re
       [
         ["depends on", "tasks/t1", true],
         ["blocks", "tasks/t1", true],
-        ["depends on", "tasks/t1", false],
+        ["depends on", "./tasks/t1", false],
       ],
     );
 
