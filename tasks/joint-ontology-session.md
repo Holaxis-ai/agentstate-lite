@@ -13,8 +13,8 @@ description: >-
   rung-c enforcement wake condition. DONE WHEN: the session happens and its
   decisions land as a decisions/ doc; rung c then either becomes buildable tasks
   or is explicitly retired. Assignees: both founders (scheduling is the work).
-actor: brian-claude
-timestamp: '2026-07-14T18:31:29.813Z'
+actor: brian
+timestamp: '2026-07-14T18:40:58.686Z'
 ---
 ## The decision agenda — plain-language edition (v2, 2026-07-14, after Brian's review)
 
@@ -60,6 +60,29 @@ grants tier 1 automatically. Concretely, including a relationship means:
   page/code, or a filed task (e.g. depends-on -> blocked/runnable derivation).
 - AMENDMENT RULE: agree how future labels join the set (edit a convention freely? a
   decisions/ doc first?) — this is the governance half.
+
+BRIAN'S PROPOSED FRAME (2026-07-14, pre-session position for Mike to react to): the
+primitives are relationship SEMANTIC CLASSES, not labels. A minimal kernel — hierarchy
+(contains-like: rollups, orphan checks), dependency (gates/depends-on-like:
+blocked/runnable), succession (supersedes-like: head-collapse), annotation
+(documentation-only, always legal) — plus one extension rule: a new label declares
+{target kind, direction, class}, and system behavior keys on the CLASS via generic
+consumers, never on the label. Labels stay free and expressive; behavior stays
+predictable and rule-governed.
+
+Precedent: this is the shipped fields pattern extended to links — `terminal` is a
+declared property consumed by one generic mechanism (list --open, sweeps), and
+`expects_inbound` already works exactly this way for links. Same architecture rule as
+the repo's own engineering discipline (one owning primitive).
+
+Honest caveat: classes amortize tier-3 work, they don't erase it — one generic
+consumer must be built PER CLASS (the dependency-class consumer is the missing one
+today, which is why depends-on is inert). The win is convergence: build
+blocked/runnable once, every future dependency-class label gets it free.
+
+If adopted, this frame mostly answers decision 4 too (class definitions are naturally
+central; label declarations stay per-kind and recipe-friendly) and gives 2/3 a cleaner
+enforcement target (key on class).
 
 ### 2. Should the tool ever push back on a link label it doesn't recognize?
 
