@@ -3,22 +3,22 @@ type: Task
 title: >-
   Local-only first-class: graceful degradation + clear communication when no
   remote exists (founders' requirement)
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  PR #53 updated and review-ready at 309b8e8 on feat/sync-local-only.
-  Provisioning now distinguishes known remote-board absence from an unavailable
+  Shipped in PR #53. Reviewed head 309b8e8 merged to main as c8cef9d.
+  Provisioning distinguishes known remote-board absence from an unavailable
   check, explicitly discovers board through restricted fetch refspecs, removes
   impossible stale origin/board child refs only after exact remote proof, and
   degrades hard network timeouts to unknown without suggesting publication.
-  Historical review-round commentary was removed from this PR delta.
+  Historical review-round commentary was removed from the PR delta.
   Verification: focused sync suites 151/151, full npm run check green including
   browser E2E 14/14, independent exact-SHA review approved, and adversarial QA
   passed unreachable, absent, no-origin, restricted-refspec, stale-ref, and
-  timeout scenarios. Awaiting merge.
+  timeout scenarios.
 actor: mike/codex
 assignee: brian-claude
-timestamp: '2026-07-14T03:17:52.824Z'
+timestamp: '2026-07-14T03:21:27.746Z'
 ---
 ## Audit findings (empirical, 2026-07-09, built CLI over a local-only git repo)
 
