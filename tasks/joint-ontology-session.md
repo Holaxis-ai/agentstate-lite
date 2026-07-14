@@ -13,8 +13,8 @@ description: >-
   rung-c enforcement wake condition. DONE WHEN: the session happens and its
   decisions land as a decisions/ doc; rung c then either becomes buildable tasks
   or is explicitly retired. Assignees: both founders (scheduling is the work).
-actor: brian-claude
-timestamp: '2026-07-14T18:58:31.258Z'
+actor: brian
+timestamp: '2026-07-14T19:08:53.072Z'
 ---
 ## The decision agenda — plain-language edition (v2, 2026-07-14, after Brian's review)
 
@@ -138,6 +138,22 @@ attributes, no mention-derived relations.
 
 STANDALONE ITEM SURFACED (does not wait for the session): depends-on's inertness —
 give it a consumer or relabel it documentation; both reports flag it independently.
+
+CANDIDATE CATEGORY 6 — INHERITANCE ("X is a kind of Y"; Brian, 2026-07-14): distinct
+from hierarchy (part-of vs is-a — the classic taxonomy/partonomy split; naming both
+protects each from absorbing the other). Two flavors with different realizations:
+(a) BETWEEN DOCS — a taxonomy edge in the knowledge graph. Transitive, acyclic,
+directional; corpus evidence today is thin (the coined "extends"/"realizes" labels are
+spec-family, not is-a) — so per the lazy rule: ratify the category name, build no
+consumer until real edges demand one.
+(b) BETWEEN KINDS — schema subtyping ("Bug extends Task": inherits fields, terminal
+set, link vocabulary, AND consumers — Bugs would appear on the Board page and in
+--open automatically). NOT a link class: realized in the kinds registry (an extends:
+declaration), a product feature with classic hazards (override rules, diamonds). Its
+strongest demand signal is recipe-plugins (a shared recipe SPECIALIZING an existing
+kind instead of shipping a parallel one). Route this flavor to the kinds/domain-model
+design track rather than the link ontology; the session should decide only whether to
+name it and where it lives, not design it.
 
 ### 2. Should the tool ever push back on a link label it doesn't recognize?
 
