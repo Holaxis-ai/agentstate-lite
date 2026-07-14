@@ -1,8 +1,8 @@
 ---
 type: Doc
 title: 'Relationships index: every link label, its tier, and what actually consumes it'
-actor: brian-claude
-timestamp: '2026-07-14T17:58:09.157Z'
+actor: brian
+timestamp: '2026-07-14T18:50:57.908Z'
 ---
 ## How a label becomes "active" — the mechanism in three tiers
 
@@ -67,3 +67,11 @@ the sharpest input: EITHER give it a consumer (blocked/runnable derivation in li
 the Board page — it is the obvious next active label) OR acknowledge it as
 documentation-only so nobody assumes the system schedules around it. Regenerate this
 doc after the session; it should always reflect the audited truth, not aspirations.
+
+## Terminology note (2026-07-14)
+
+In session materials: SEMANTICS = the meaning itself; CLASS = the system object that
+realizes it (what conventions would declare and consumers key on); CATEGORY = the
+plain-language word for the same grouping. The tiers in this doc describe how much of
+a label's declared semantics the system currently realizes — full realization is what
+Brian's class-based frame on tasks/joint-ontology-session proposes to make systematic.

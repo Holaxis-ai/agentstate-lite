@@ -14,7 +14,7 @@ description: >-
   decisions land as a decisions/ doc; rung c then either becomes buildable tasks
   or is explicitly retired. Assignees: both founders (scheduling is the work).
 actor: brian
-timestamp: '2026-07-14T18:40:58.686Z'
+timestamp: '2026-07-14T18:50:57.664Z'
 ---
 ## The decision agenda — plain-language edition (v2, 2026-07-14, after Brian's review)
 
@@ -60,6 +60,15 @@ grants tier 1 automatically. Concretely, including a relationship means:
   page/code, or a filed task (e.g. depends-on -> blocked/runnable derivation).
 - AMENDMENT RULE: agree how future labels join the set (edit a convention freely? a
   decisions/ doc first?) — this is the governance half.
+
+TERMINOLOGY (Brian's discipline, 2026-07-14 — one word per register, so the three
+never blur): SEMANTICS = the meaning itself, system-independent ("X cannot proceed
+until Y"). CLASS = the system object that realizes that meaning (the declared
+`class: dependency` that generic consumers key on) — classes are judged by whether
+their behavior faithfully realizes their stated semantics. CATEGORY = the plain-
+language word for the same grouping, reserved for explanations to humans. Bridge rule:
+wherever a plain-language section meets a technical one, say explicitly that the
+categories being described ARE the classes in the convention docs.
 
 BRIAN'S PROPOSED FRAME (2026-07-14, pre-session position for Mike to react to): the
 primitives are relationship SEMANTIC CLASSES, not labels. A minimal kernel — hierarchy
