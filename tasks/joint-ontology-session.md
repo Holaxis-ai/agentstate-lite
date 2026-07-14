@@ -13,8 +13,8 @@ description: >-
   rung-c enforcement wake condition. DONE WHEN: the session happens and its
   decisions land as a decisions/ doc; rung c then either becomes buildable tasks
   or is explicitly retired. Assignees: both founders (scheduling is the work).
-actor: brian-claude
-timestamp: '2026-07-14T19:33:38.803Z'
+actor: brian
+timestamp: '2026-07-14T20:10:54.071Z'
 ---
 ## The decision agenda — plain-language edition (v2, 2026-07-14, after Brian's review)
 
@@ -138,6 +138,23 @@ attributes, no mention-derived relations.
 
 STANDALONE ITEM SURFACED (does not wait for the session): depends-on's inertness —
 give it a consumer or relabel it documentation; both reports flag it independently.
+
+DECISION ZERO — DEMAND-FOLLOWERS OR DEMAND-SETTERS? (Brian's challenge to the panel,
+2026-07-14, recorded above all six questions): the skeptics' timing arguments split in
+two. The INVARIANT findings stand regardless of vision (a derivation unresolved
+anywhere is inert on arrival; sync skew; narrow breaks authoring; the labels-aren't-
+docs fork comes first) — these price and sequence the vision, they do not forbid it.
+But the DEMAND findings ("no consumers exist", corpus break-even, ceremony pricing)
+measure a corpus authored under the CURRENT scaffolding — and the panel's own
+id-default root cause (one unlabeled skill example -> ~80 unlabeled edges) proves
+behavior follows scaffolding. Demand measured under the old regime undercounts demand
+under the new one. As founders of a category-defining system, demand is partly a
+CHOICE: committing to grounding sweeps and blocked/runnable as product bets flips the
+break-even math, because its key input was an absence the founders have authority to
+end. THE SESSION SHOULD OPEN HERE: decide whether this ontology is demand-following
+(lazy rule as written) or demand-setting (declare the wanted consumers as product
+commitments now, sequenced by the invariant findings). Everything else calibrates off
+that stance.
 
 FRAME v2 REVIEW PANEL — SYNTHESIS (2026-07-14; skeptic round 2 + mechanism reviewer +
 agent-experience reviewer, all read-only, all empirical against the corpus and code.
