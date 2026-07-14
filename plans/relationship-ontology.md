@@ -3,8 +3,8 @@ type: Plan
 title: >-
   Proposal: relationship classes as a demand-enabling affordance (kernel + cheap
   extension)
-actor: brian
-timestamp: '2026-07-14T22:04:20.451Z'
+actor: brian-claude
+timestamp: '2026-07-14T22:05:52.656Z'
 ---
 ## The product thesis this rests on
 
@@ -83,9 +83,13 @@ demonstration.
 ## What we build (three horizons)
 
 NOW — the teaching surfaces (each small, none require new machinery):
-1. Fix the skill's canonical link example to carry a real --text label (our corpus
-   shows ~80 of 284 edges have junk id-default labels traced to this ONE example —
-   behavior follows scaffolding).
+1. Fix the skill's canonical link example to teach labeling honestly (our corpus
+   shows ~80 of 284 edges carry junk id-default labels traced to this ONE example —
+   behavior follows scaffolding). Value: a label is the hook all future meaning hangs
+   on — labeled edges can be class-mapped retroactively in one line; id-default edges
+   are permanently opaque. Teach BOTH forms: a meaningful --text when the relationship
+   has one, and the explicit aside form when it genuinely doesn't — do not teach
+   agents to invent fake semantics for see-also links.
 2. Annotate class names onto the existing point-of-use link hints (new/link receipts).
 3. A status VOCABULARY line: labels total / class-mapped / free text / id-default —
    the drift self-audit.
