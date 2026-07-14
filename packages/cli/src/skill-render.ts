@@ -134,6 +134,10 @@ function renderWorkspaceLocation(prefix: string): string[] {
     "  to share); on a local-only bundle it reports the local-only state, whose note points at",
   );
   lines.push("  `--establish`. Staying local-only indefinitely is a supported mode, not a limbo.");
+  lines.push(
+    "  If origin cannot be checked, `sync` reports the shared-board state as unknown and waits for",
+  );
+  lines.push("  a retry instead of recommending publication.");
   lines.push("");
   lines.push("```sh");
   lines.push(`${prefix} sync                            # existing shared project — provisions the board; a local-only bundle reports its state`);
@@ -285,7 +289,7 @@ function renderSyncSection(prefix: string): string[] {
     "Run it whenever you close a unit of work — a task finished, a decision recorded, a session",
   );
   lines.push(
-    "ending. Recording work isn't done until it's shared. Three honest empty states (all exit 0):",
+    "ending. Recording work isn't done until it's shared. Three known empty states (all exit 0):",
   );
   lines.push(
     "outside any git repo or workspace it prints `sync: nothing to sync`; a LOCAL-ONLY board (a",
@@ -302,6 +306,10 @@ function renderSyncSection(prefix: string): string[] {
   lines.push(
     "a clean, already-current shared board prints `sync: already up to date`.",
   );
+  lines.push(
+    "If origin cannot be checked and no board ref is available, sync reports the remote state as",
+  );
+  lines.push("unknown and recommends retrying before `--establish`.");
   lines.push("");
   lines.push(
     "`sync --establish` is the one explicit, one-time act that starts sharing a project's local",

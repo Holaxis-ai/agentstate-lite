@@ -365,13 +365,8 @@ export type ProvisionOutcome =
   | { kind: "already"; boardPath: string }
   /** `dir` is not inside a git repository at all — the caller emits `sync: nothing to sync`. */
   | { kind: "no_repo" }
-  /**
-   * A repo, but no `board` branch exists locally OR on origin — nothing to provision from. The
-   * caller splits this by whether a bundle folder exists (sync.ts's empty-state split): no bundle
-   * → `sync: nothing to sync`; bundle present → the honest LOCAL-ONLY board state (a supported
-   * mode, tasks/sync-local-only-degradation), never the bare "nothing" line.
-   */
-  | { kind: "no_board" }
+  /** No local or fetched board ref exists; `remoteState` records whether origin was checked. */
+  | { kind: "no_board"; remoteState: "absent" | "unknown" }
   /** An unprovisioned local `board` branch exists, but this caller refuses to adopt it by name. */
   | { kind: "local_board"; boardPath: string; remoteExists: boolean };
 
@@ -456,26 +451,76 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
   const boardPath = path.join(top, BUNDLE_DIR);
   if (isProvisioned(top)) return { kind: "already", boardPath };
 
-  // Fetch BEFORE referencing board — tolerated nonzero (offline / no remote): the local ref
-  // checks below decide what is actually provisionable. This IS provisioning's no-remote
-  // degradation path (tasks/sync-local-only-degradation item 2): a remote-less or offline repo
-  // never errors here — it provisions from a previously fetched/local board ref when one exists,
-  // and otherwise reports `no_board` for the caller's empty-state split to word honestly.
-  runGit(top, ["fetch", "--prune", BOARD_REMOTE], {
-    timeoutMs: budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS,
+  // Probe the board ref explicitly: a clone's configured fetch refspec may exclude it.
+  const hasOrigin = runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0;
+  const deadline = Date.now() + (budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS);
+  const networkOptions = (): RunOptions => ({
+    timeoutMs: Math.max(0, deadline - Date.now()),
     connectTimeoutSeconds: budget.connectTimeoutSeconds,
   });
+  const runNetwork = (args: string[]): GitRunResult | null => {
+    try {
+      return runGit(top, args, networkOptions());
+    } catch (err) {
+      if (err instanceof CliError && err.code === "TRANSIENT") return null;
+      throw err;
+    }
+  };
+  let remoteState: "absent" | "unknown" = "absent";
+  let remoteBoardKnownAbsent = false;
+  if (hasOrigin) {
+    const probe = runNetwork([
+      "ls-remote",
+      "--exit-code",
+      BOARD_REMOTE,
+      `refs/heads/${BOARD_BRANCH}`,
+    ]);
+    if (probe?.status === 0) {
+      // Exact `board` cannot coexist remotely with `board/*`; any local children are stale.
+      const children = runGit(top, [
+        "for-each-ref",
+        "--format=%(refname)",
+        `refs/remotes/${BOARD_REF}/`,
+      ]);
+      let namespaceReady = children.status === 0;
+      for (const child of children.stdout.split("\n").filter(Boolean)) {
+        if (runGit(top, ["update-ref", "-d", child]).status !== 0) namespaceReady = false;
+      }
+      if (namespaceReady) {
+        const fetch = runNetwork([
+          "fetch",
+          "--prune",
+          "--no-tags",
+          BOARD_REMOTE,
+          `+refs/heads/${BOARD_BRANCH}:refs/remotes/${BOARD_REF}`,
+        ]);
+        remoteState = fetch?.status === 0 ? "absent" : "unknown";
+      } else {
+        remoteState = "unknown";
+      }
+    } else if (probe?.status === 2) {
+      remoteBoardKnownAbsent = true;
+      runGit(top, ["update-ref", "-d", `refs/remotes/${BOARD_REF}`]);
+    } else {
+      remoteState = "unknown";
+    }
+  }
 
   const localBoard = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]);
   const remoteBoard = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]);
   const hasLocal = localBoard.status === 0;
-  const hasRemote = remoteBoard.status === 0;
+  const hasRemote = remoteBoard.status === 0 && !remoteBoardKnownAbsent;
   const localMatchesRemote =
     hasLocal &&
     hasRemote &&
     localBoard.stdout.trim().length > 0 &&
     localBoard.stdout.trim() === remoteBoard.stdout.trim();
-  if (!hasLocal && !hasRemote) return { kind: "no_board" };
+  if (!hasLocal && !hasRemote) {
+    return {
+      kind: "no_board",
+      remoteState,
+    };
+  }
 
   if (existsSync(boardPath)) {
     if (readdirSync(boardPath).length > 0) {

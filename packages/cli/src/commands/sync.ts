@@ -121,10 +121,10 @@ it via \`git worktree repair\` and reports \`repaired: <path>\` the same way —
 mutation too, and both lines appear even on an otherwise-empty run.
 
 Three definitive empty states (exit 0): no git repo — or a repo with neither a board branch nor
-a bundle — prints 'sync: nothing to sync'; a repo whose bundle has no board branch anywhere
-(local or on origin) is a LOCAL-ONLY board, a supported mode reported honestly — your changes
-stay on this machine and sync commits, pulls, and pushes nothing; a clean, already-current
-shared board prints 'sync: already up to date'.
+a bundle — prints 'sync: nothing to sync'; a repo whose bundle is known to have no board branch
+anywhere is a LOCAL-ONLY board; a clean shared board prints 'sync: already up to date'. If origin
+cannot be checked and no board ref is available, sync reports the shared-board state as unknown
+and recommends retrying when origin is reachable.
 Otherwise the receipt reports { committed, pushed, pulled, actor, incoming } — \`incoming\` is the
 enriched delta of docs that arrived this run (capped; --limit controls the row cap, default 20).
 
@@ -547,11 +547,6 @@ export function ffSwallowToError(reason: string, inv: string, boardPath?: string
       return new CliError("GIT_MISSING", "sync needs git, which isn't installed on this machine", {
         help: "install git (https://git-scm.com/downloads), then re-run the command",
       });
-    // DEGRADATION MATRIX, --pull-only leg (tasks/sync-local-only-degradation item 2): a board
-    // with no remote `board` branch hits this reason on `--pull-only`. An unpublished LOCAL
-    // board branch gets the explicit publication path (`sync --establish`); with no local board
-    // branch either, the honest statement is "nothing to pull from" — never the sharing-verb
-    // framing the pull-only caller didn't ask about — and local-only reads as a supported state.
     case "no-upstream": {
       const hasLocalBoard =
         boardPath !== undefined &&
@@ -905,46 +900,10 @@ export function toDeltaRows(changes: DocChange[]): AwarenessDeltaRow[] {
   return changes.map((c) => ({ docId: c.docId, verb: c.verb, kind: c.kind, title: c.title, actor: c.actor }));
 }
 
-// ── DEGRADATION MATRIX (tasks/sync-local-only-degradation, the founders' local-only requirement) ──
-//
-// Every remote-requiring surface already degrades STRUCTURALLY with no remote (no hangs, no
-// partial mutations); the contract documented here is the WORDS each path owes the user:
-//
-//   • provisioning (`provisionBoardWorktree`, git.ts): its `git fetch` is best-effort /
-//     tolerated-nonzero by design — offline and remote-less repos fall through to the LOCAL ref
-//     checks; no board ref anywhere → `no_board`, which the empty-state split below divides into
-//     "nothing to sync" (no bundle either) vs the honest LOCAL-ONLY state (bundle present).
-//   • full sync on a provisioned board with no remote: the fetch/rebase failure classifies as
-//     NO_UPSTREAM (errors.ts) and gets `upstreamHelp` (which names local-only as supported);
-//     when this run committed first, the "your work is saved" safety framing leads
-//     (`throwPostCommitFailure`) — the commit is real and stays local.
-//   • `--pull-only`: `ffPull` swallows "no-upstream"; THIS caller translates it via
-//     `ffSwallowToError` into a structured NO_UPSTREAM that says what it means for a PULL —
-//     an unpublished local board routes to `sync --establish`, otherwise "nothing to pull
-//     from" with local-only stated as supported — see the case comment there.
-//   • `--show-incoming`: needs a previously FETCHED origin/board ref; absent → the
-//     viewer-specific NO_UPSTREAM in `showIncoming` (a local-only board has no incoming
-//     versions to view — see {@link SHOW_INCOMING_NO_UPSTREAM}).
-//   • session-start's pull: deliberately fail-soft (ffPull's own never-block-a-render contract)
-//     — the home render always appears; a local-only repo simply renders its local state.
-
-/**
- * The LOCAL-ONLY empty state (test-pinned; the P4 empty-state lesson's third application): a git
- * repo that HAS a bundle at the conventional path but NO board branch anywhere (local or origin)
- * is not "nothing to sync" — there is a real board here, it just isn't shared. Saying "nothing to
- * sync" with fresh local board changes sitting in the folder reads as data loss. This state is
- * honest instead: the board is local-only, changes stay on this machine, and sync mutated nothing.
- */
+/** The bundle exists locally and origin was successfully checked for a shared board. */
 export const SYNC_LOCAL_ONLY_MESSAGE =
   "local-only board — no shared board branch exists, so there is nothing to pull or push";
 
-/**
- * The local-only state's companion note (test-pinned via this builder): names local-only as a
- * SUPPORTED mode, is explicit that sync committed nothing (it must never lie about committing),
- * and routes sharing to the REAL verb — `sync --establish` publishes the board as a `board`
- * branch on the repo's `origin` remote (establish REQUIRES an origin: it refuses without one,
- * hence the add-one-first parenthetical), after which teammates provision with a bare `sync`.
- */
 export function syncLocalOnlyNote(inv: string): string {
   return (
     "a supported mode: every local command works, and your board changes stay on this machine " +
@@ -954,13 +913,17 @@ export function syncLocalOnlyNote(inv: string): string {
   );
 }
 
-/**
- * True when the repo containing `dir` carries a conventional bundle at `<top>/.agentstate-lite/`
- * — detected by the folder's own `index.md`, the same reserved-root signature the CLI's
- * conventional-folder resolution walk keys on. Only consulted on the `no_board` provisioning
- * outcome, where the folder (if present) is necessarily a PLAIN directory, never a worktree
- * (a board worktree implies a local board branch, which `no_board` has already ruled out).
- */
+export const SYNC_REMOTE_STATE_UNKNOWN_MESSAGE =
+  "shared board state unknown — origin could not be checked, so sync cannot tell whether a remote board exists";
+
+export function syncRemoteStateUnknownNote(inv: string, hasLocalBundle: boolean): string {
+  const local = hasLocalBundle
+    ? "your local bundle remains usable and sync committed nothing. "
+    : "sync changed nothing. ";
+  return local + `Retry \`${inv} sync\` when origin is available; a shared board may already exist.`;
+}
+
+/** Detect a conventional local bundle by its reserved root index. */
 export function hasLocalOnlyBundle(dir: string): boolean {
   const top = repoTopLevel(dir);
   if (!top) return false;
@@ -1086,15 +1049,7 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   // must run BEFORE, not after, `provisionBoardWorktree`).
   healStaleRebaseBeforeProvisioning(dir);
 
-  // STEP 1: provisionBoardWorktree resolves repoTopLevel itself. Two DISTINCT definitive empty
-  // states come out of it (both exit 0, the P4 empty-state split — see the DEGRADATION MATRIX
-  // above): outside any git repo, or a repo with neither a board branch nor a bundle, there is
-  // genuinely "nothing to sync"; a repo whose bundle exists but has no board branch anywhere is
-  // a LOCAL-ONLY board and gets its own honest state instead — never the bare "nothing" line
-  // while real local board changes may be sitting in the folder. (This supersedes the earlier
-  // stable-string-plus-hint shape for the bundle-present cell; the note carries the routing to
-  // `sync --establish`.) An unadopted local `board` BRANCH is a third, non-empty case: bare sync
-  // refuses to guess and routes to explicit adoption/publication below.
+  // Provisioning owns the distinction between known remote absence and a failed remote check.
   const outcome = provisionBoardWorktree(dir, { allowLocalBranch: false });
   if (outcome.kind === "local_board") {
     if (outcome.remoteExists) {
@@ -1116,8 +1071,25 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
       { help: `${inv} sync --establish` },
     );
   }
-  if (outcome.kind === "no_repo" || outcome.kind === "no_board") {
-    if (outcome.kind === "no_board" && hasLocalOnlyBundle(dir)) {
+  if (outcome.kind === "no_repo") {
+    stdout(render({ sync: "nothing to sync" }, mode));
+    return;
+  }
+  if (outcome.kind === "no_board") {
+    const hasLocalBundle = hasLocalOnlyBundle(dir);
+    if (outcome.remoteState === "unknown") {
+      stdout(
+        render(
+          {
+            sync: SYNC_REMOTE_STATE_UNKNOWN_MESSAGE,
+            note: syncRemoteStateUnknownNote(inv, hasLocalBundle),
+          },
+          mode,
+        ),
+      );
+      return;
+    }
+    if (hasLocalBundle) {
       stdout(render({ sync: SYNC_LOCAL_ONLY_MESSAGE, note: syncLocalOnlyNote(inv) }, mode));
       return;
     }
@@ -1368,14 +1340,7 @@ export const SHOW_INCOMING_AS_OF = "last fetch";
 export const SHOW_INCOMING_ABSENT_STATE =
   "absent upstream — not on origin/board as of the last fetch (deleted upstream, or a new local doc)";
 
-/**
- * DEGRADATION MATRIX, --show-incoming leg (tasks/sync-local-only-degradation item 2, test-pinned):
- * the viewer reads the FETCHED `origin/board` ref, so with no remote there is structurally nothing
- * to show — but the old wording here (`ffSwallowToError("no-upstream")`'s sharing-verb framing,
- * "sync can't share it") was dishonest for a VIEWER: the user asked to see an incoming version,
- * not to share. This names the two real cases: a local-only board (no incoming versions EXIST —
- * a supported mode, not an error in their workflow) or a shared board that simply hasn't fetched.
- */
+/** `--show-incoming` reads only the last fetched remote ref and never fetches implicitly. */
 export const SHOW_INCOMING_NO_UPSTREAM =
   "there is no fetched origin/board state to show — either this board is local-only (no remote " +
   "board branch, so no incoming versions exist), or nothing has been fetched yet";
@@ -1435,12 +1400,9 @@ async function showIncoming(
     }
 
     if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
-      // An unpublished LOCAL board branch gets the same explicit-publication routing every other
-      // no-upstream surface uses (`sync --establish`, via the ONE mapping in ffSwallowToError).
       if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0) {
         throw ffSwallowToError("no-upstream", inv, top);
       }
-      // The viewer-specific no-upstream degradation — see {@link SHOW_INCOMING_NO_UPSTREAM}.
       throw new CliError("NO_UPSTREAM", SHOW_INCOMING_NO_UPSTREAM, {
         help: `on a shared board, run ${inv} sync --pull-only once to fetch origin/board, then re-run --show-incoming`,
       });

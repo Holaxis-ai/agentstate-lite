@@ -594,13 +594,10 @@ test("show-incoming: --out <file> writes the raw upstream bytes; --out - streams
   }
 });
 
-test("show-incoming: no fetched origin/board ref → the viewer-specific NO_UPSTREAM (pinned; local-only named as supported, never the sharing-verb framing)", async () => {
+test("show-incoming: no fetched origin/board ref returns the viewer-specific NO_UPSTREAM", async () => {
   const { homes, cleanup } = await tempHomes(1);
   const lone = await mkdtemp(path.join(tmpdir(), "agentstate-lite-u3b-localonly-"));
   try {
-    // A repo with NO origin/board ref anywhere — the local-only shape (degradation matrix,
-    // tasks/sync-local-only-degradation item 2): the viewer must say there is nothing FETCHED to
-    // show and that a local-only board simply has no incoming versions — not "sync can't share it".
     git(lone, ["init", "-b", "main"]);
     const result = await runSync(homes[0]!, ["--show-incoming", "tasks/seed-one", "--dir", lone]);
     assert.ok(result.err, "expected a thrown CliError");

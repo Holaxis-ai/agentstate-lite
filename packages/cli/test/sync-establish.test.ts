@@ -4,9 +4,7 @@
 // The suite pins:
 //   • first publication is explicit: bare sync never publishes a local-only `board` branch;
 //   • snapshot creation does not touch the code worktree, its index, or the source bundle;
-//   • decision 1, surviving half (LOCKED): bare `sync` NEVER auto-publishes. Its other half —
-//     the pinned "nothing to sync" string + routing hint on combo 1 — was superseded by the
-//     local-only state (tasks/sync-local-only-degradation); see the combo-1 test below;
+//   • bare `sync` never auto-publishes and reports an existing local bundle honestly;
 //   • decision 3 (LOCKED): the gitignore append lands in the WORKING TREE only, uncommitted;
 //   • the keystone first-contact journey end to end (clone A establishes, clone B joins);
 //   • races, push failures, symlinks, staged bundle paths, and post-publish crash recovery;
@@ -132,11 +130,6 @@ test("establish strings: pinned constants", () => {
 // ── matrix cell 1: absent/absent — bare sync hints, --establish publishes ─────
 
 test("combo 1 (absent/absent): bare sync reports the LOCAL-ONLY state, whose note routes to --establish", async () => {
-  // Supersedes the earlier stable-'nothing to sync'-plus-hint shape (this file's original
-  // decision 1) per tasks/sync-local-only-degradation: a bundle with no board branch anywhere is
-  // a real, supported LOCAL-ONLY board and gets its own honest empty state — never the bare
-  // "nothing" line while local board changes may be sitting in the folder. The --establish
-  // routing moved from the ad-hoc `hint` into the pinned note.
   const topo = await makeGreenfieldTopology();
   const { home, cleanup } = await tempHome();
   try {

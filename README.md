@@ -76,7 +76,9 @@ a bare `sync` never silently publishes a bundle nobody asked to share. Once a bo
 exists (here or on a teammate's clone), plain `sync` is everyone's setup AND ongoing verb:
 a fresh clone's first `sync` provisions the board from origin; a project with a local
 bundle but no shared board reports its local-only state honestly (changes stay on this
-machine) and routes to `--establish`. When a doc changed on both sides, sync
+machine) and routes to `--establish`. If origin cannot be checked, sync reports the
+shared-board state as unknown and waits for a retry instead of recommending publication.
+When a doc changed on both sides, sync
 converges: your teammate's version is kept, yours is saved to an export file, and
 `sync --show-incoming <id>` + `doc update` reconcile — no git surgery. (A project that
 committed the folder directly to its code branch instead of adopting `sync` — the
