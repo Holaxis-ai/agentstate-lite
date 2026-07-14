@@ -2,7 +2,7 @@
 type: Design
 title: Personal bundle catalog (draft)
 actor: codex
-timestamp: '2026-07-14T20:37:09.407Z'
+timestamp: '2026-07-14T20:41:36.092Z'
 ---
 # Personal bundle catalog
 
@@ -50,7 +50,14 @@ is the bridge between project-local authority and that cross-project experience.
 The catalog never participates in bundle reads or writes after target selection. Its sole runtime
 responsibility is:
 
-> Resolve an explicit catalog selector to exactly one bundle locator, or fail without choosing.
+> Resolve an explicit catalog selector to exactly one validated bundle locator, or fail without
+> choosing.
+
+In v1, “exact” means one canonical local filesystem locator. It does not mean the catalog has
+proven an enduring logical identity for the bundle: bundles do not currently carry such an
+identifier, and a deleted path can later contain a different valid bundle. Registration and every
+resolution canonicalize through `realpath` and verify that the target still contains the bundle-root
+`index.md`. Durable logical and cross-machine bundle identity is a separate future design.
 
 After resolution, the ordinary single-bundle command path remains authoritative. This avoids a
 second query engine, cross-bundle transaction semantics, and an ambient global “active bundle” that
@@ -76,19 +83,35 @@ The concrete command spelling should be validated against the CLI framework, but
 should expose these capabilities:
 
 ```text
-agentstate-lite catalog add <label> --dir <path>
+agentstate-lite catalog add <label> [--dir <path>]
 agentstate-lite catalog list [--json]
-agentstate-lite catalog resolve <label-or-id> [--json]
-agentstate-lite catalog rename <label-or-id> <new-label>
-agentstate-lite catalog remove <label-or-id>
-agentstate-lite catalog open <label-or-id>
+agentstate-lite catalog resolve <selector> [--json]
+agentstate-lite catalog rename <selector> <new-label>
+agentstate-lite catalog remove <selector>
+agentstate-lite catalog open <selector>
 ```
 
-`add` validates that the path resolves to an existing bundle and stores a canonical local locator.
-It is idempotent for the same catalog entry and locator; conflicting labels fail explicitly.
-`resolve` returns one entry only. An unknown selector or ambiguous label is an error, never a
-best-effort choice. `open` is a human convenience that invokes the existing single-bundle UI for
-the resolved directory rather than introducing a multi-bundle UI runtime.
+With no `--dir`, `add` uses the existing project-local discovery path, making registration easy
+from inside a project. An explicit `--dir` retains its current meaning throughout the CLI: it names
+the literal bundle root containing `index.md`, not a repository directory that merely contains a
+`.agentstate-lite/` child. `add` canonicalizes the discovered root through `realpath`, validates it,
+and stores that local locator.
+
+V1 permits one entry per canonical path and no aliases. The same label plus same canonical path is
+an idempotent no-op. The same label with a different path, the same path with a different label, or
+any other uniqueness conflict fails explicitly. Generated ids use a reserved grammar/prefix that
+labels are forbidden to match, so a selector can unambiguously be classified as an id or a label
+without an implicit precedence rule.
+
+`resolve` returns one entry only and revalidates the canonical path and its `index.md`. An unknown,
+unavailable, or invalid selector is an error, never a best-effort choice and never an invitation to
+initialize a replacement bundle. `open` delegates in-process to the existing `ui` handler with the
+resolved literal `--dir`; it remains a foreground one-bundle UI process. It does not shell-spawn a
+CLI, introduce a multi-bundle server, or change the existing rule that the per-user UI URL file
+describes only the latest UI run.
+
+All catalog commands work from any directory and do not require an already resolved bundle. They
+are registered in the executable's top-level command/reference authority.
 
 The agent-facing JSON result should be versioned and minimal, for example:
 
@@ -103,8 +126,10 @@ The agent-facing JSON result should be versioned and minimal, for example:
 }
 ```
 
-Human table output is not an agent contract. The JSON shape, exit codes, error envelope, and next
-step hints are part of the executable's public interface and require deterministic tests.
+The existing CLI output model remains authoritative: one logical result schema renders as TOON by
+default and compact JSON with `--json`. There is no separate human table contract. The schema, exit
+codes, error envelope, and next-step hints are part of the executable's public interface and
+require deterministic tests.
 
 ### Agent interaction
 
@@ -132,7 +157,7 @@ path may become a traditional npm install, and the catalog must remain fully usa
 
 Therefore:
 
-- `agentstate-lite catalog --help` explains the workflow and targeting precedence;
+- `agentstate-lite catalog --help` alone explains the workflow and targeting precedence;
 - commands return structured, documented output suitable for any agent harness;
 - errors include actionable next commands without assuming a skill is loaded;
 - the npm package and any plugin-bundled executable expose identical behavior;
@@ -145,25 +170,42 @@ the CLI rather than creating a second authority.
 
 ## Storage authority and data model
 
-For the first slice, use a small machine-local configuration file under AgentState's existing
-per-user configuration directory. Do not model the registry as an AgentState bundle: doing so
+For the first slice, use a separate `~/.agentstate/catalog.json` file under AgentState's existing
+per-user configuration directory. Do not reuse the remote-credential file. Do not model the
+registry as an AgentState bundle: doing so
 creates recursion about how to locate the catalog and implies knowledge-store semantics that the
 locator registry does not need.
 
 The file should have a versioned top-level envelope and entries with only the information required
 for deterministic selection and useful orientation:
 
-- generated stable entry id;
+- generated stable catalog-entry id;
 - unique human label;
-- locator kind and canonical local path;
-- optional repository identity or project hint;
-- optional bundle role, such as project board or personal workspace;
-- last-opened timestamp as disposable local convenience state.
+- locator kind and canonical local path.
 
-Writes must use the project's established private-config discipline: restrictive permissions,
-atomic replacement, schema validation, and failure without discarding the last valid file. Unknown
-future fields should be handled according to an explicit compatibility rule rather than silently
-rewritten away.
+Availability is derived at read time. Repository hints, bundle roles, and last-opened timestamps do
+not belong in v1; they add semantics and contended writes without improving safe selection.
+
+The schema is strict and versioned. Behavior-affecting additions require a schema-version bump; an
+older CLI refuses to mutate a newer schema. Malformed or unsupported data fails closed, names the
+exact config path, provides a non-destructive repair hint, and is never automatically replaced.
+
+Writes must use the project's established private-config discipline: directory mode `0700`, file
+mode `0600`, schema validation, and atomic replacement. Atomic replacement alone is insufficient
+for multiple agents because two read-modify-write processes can both read version A and the later
+rename can silently erase the earlier mutation. Every mutating catalog command therefore routes
+through one catalog mutation primitive:
+
+1. acquire a cross-process lock with bounded waiting;
+2. reread and strictly validate the current schema while holding the lock;
+3. make the idempotency or conflict decision against that fresh state;
+4. atomically replace the file; and
+5. release the lock in a `finally` path.
+
+Lock metadata identifies the owning process. Stale-lock recovery is conservative: reclaim only
+after a minimum age when the owning process can be proven absent; otherwise fail with a retry hint.
+Age alone never authorizes breaking a lock. Simultaneous add/add, add/remove, and rename/remove are
+adversarial test cases for this primitive.
 
 The stable id identifies the catalog entry, not universally the underlying bundle. Cross-machine
 bundle identity remains deliberately unresolved in the first slice.
@@ -176,8 +218,8 @@ A user can explicitly register the bundles they work with and inspect them from 
 - private bundles stored outside a public repository;
 - git-shared project boards present in local checkouts.
 
-For each entry, the catalog can show a human label, project association, local locator, availability,
-and last-opened state. The first useful slice prefers explicit registration over filesystem crawling.
+For each entry, the catalog shows a human label, local locator, and derived availability. The first
+useful slice prefers explicit registration over filesystem crawling.
 Discovery may later offer safe suggestions from known project bindings, but it never scans or
 publishes workspaces without the user's knowledge.
 
@@ -217,12 +259,17 @@ smuggled into a local launcher.
 ### Unit 1: registry and agent-safe CLI
 
 Implement the private versioned registry plus add, list, resolve, rename, and remove. Prove unique
-selection, path validation, atomic persistence, permission handling, corruption behavior, and JSON
-contracts. Update generated CLI reference/help from the same command authority.
+selection, realpath and bundle-root validation, the locked mutation boundary, permission handling,
+corruption and newer-schema behavior, and TOON/JSON projections of one result contract. Update
+generated CLI reference/help from the same command authority. Because this unit controls target
+selection and supports concurrent agent mutation, it receives exact-SHA independent review and
+adversarial QA even though its code size should remain modest.
 
 ### Unit 2: human opening workflow
 
-Add `catalog open`, reusing the current `ui --dir` behavior. Do not introduce a multi-bundle server.
+Add `catalog open` as in-process delegation to the current `ui --dir` handler. Preserve its
+foreground, one-bundle behavior and latest-run URL-file semantics. Do not introduce a multi-bundle
+server.
 
 ### Unit 3: thin visual catalog, only if still valuable
 
@@ -236,17 +283,19 @@ No implementation task should combine these units merely because they share the 
 
 - **Wrong-target writes:** ambiguous or missing selectors must fail; mutation examples must retain
   an explicit resolved directory.
-- **Stale paths:** list reports unavailable entries; resolve/open fails with a repair hint and never
-  initializes a replacement bundle automatically.
+- **Stale or reused paths:** list reports unavailable entries; resolve/open canonicalizes and
+  revalidates the bundle root, fails with a repair hint, and never initializes a replacement bundle
+  automatically. V1 cannot detect a different valid bundle placed at the same path; that limitation
+  is explicit until bundles have durable identity.
 - **Moved bundles:** the user explicitly updates or re-adds the locator; no filesystem crawling in
   the first slice.
-- **Duplicate registration:** deterministic idempotency and conflict rules prevent two labels from
-  appearing to identify the same thing accidentally.
-- **Registry corruption or concurrent writers:** atomic persistence and adversarial tests protect
-  the last valid state.
+- **Duplicate registration and selector collision:** one entry per canonical path, reserved id
+  grammar, and deterministic idempotency/conflict rules prevent ambiguous selection.
+- **Registry corruption or concurrent writers:** strict schema handling plus one locked mutation
+  primitive protect the last valid state and prevent silent lost updates.
 - **Privacy:** file permissions are tested and no command prints unrelated entries when resolving
   one selector.
-- **Distribution drift:** npm-packed and plugin-bundled CLIs must expose the same catalog contract;
+- **Distribution drift:** npm-packed and plugin-bundled CLIs expose the same catalog contract;
   generated references remain derived from executable command metadata.
 
 ## Non-goals
@@ -263,13 +312,9 @@ No implementation task should combine these units merely because they share the 
 
 ## Open questions for review
 
-1. Does the small private config file remain the correct authority, or is there a concrete benefit
-   that justifies modeling the catalog as a bundle despite the recursion and semantic mismatch?
-2. Should duplicate canonical paths be rejected, aliased, or treated as an idempotent add?
-3. Is repository identity useful in Unit 1, or should it wait until moved-path recovery is designed?
-4. What compatibility behavior should apply when a newer CLI has written fields an older CLI does
-   not understand?
-5. Does `catalog open` spawn the current UI process directly, or should it print and optionally run
-   the exact `ui --dir` command?
-6. Is resolve-then-`--dir` sufficient for agent ergonomics, or is a later global selector worth the
+1. Should durable bundle identity eventually live in reserved bundle metadata, and what migration
+   would introduce it without weakening OKF interoperability?
+2. Is resolve-then-`--dir` sufficient for agent ergonomics, or is a later global selector worth the
    additional precedence and safety surface?
+3. After real usage, which orientation metadata justifies entering the schema, and is it derived or
+   catalog-owned?
