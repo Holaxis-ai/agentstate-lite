@@ -14,7 +14,7 @@ description: >-
   decisions land as a decisions/ doc; rung c then either becomes buildable tasks
   or is explicitly retired. Assignees: both founders (scheduling is the work).
 actor: brian
-timestamp: '2026-07-14T19:23:46.215Z'
+timestamp: '2026-07-14T19:24:38.506Z'
 ---
 ## The decision agenda — plain-language edition (v2, 2026-07-14, after Brian's review)
 
@@ -157,11 +157,15 @@ construction (the "evidence" convention constitutes the definition of "evidence"
 Brian's own constitutive/aboutness principle makes the convention layer the legal home
 for is-a.
 
-THE GUARDRAIL (defuses the skeptic's misfire attack): derivation is WHOLESALE — no
-behavior overrides. Accept the base class's behavior entirely or you are not deriving
-(you're proposing a new class, or misfiling). Test case from the corpus: "may
-supersede" CANNOT derive from succession (head-collapse would hide a live doc) — the
-rule forces that honesty at declaration time instead of as a later view bug.
+THE GUARDRAIL (defuses the skeptic's misfire attack), refined per Brian: derivation
+INHERITS base behavior wholesale and MAY EXTEND — the derived convention can indicate
+how it extends the base: NARROW (evidence restricts legal target kinds), ADD behavior
+(an extra evidence-staleness sweep the base doesn't run), and carry its own
+description/display. It may NEVER subtract or alter base behavior: every "evidence"
+edge must remain a fully valid "grounding" edge to every base consumer
+(substitutability). Test case from the corpus: "may supersede" still CANNOT derive
+from succession — suppressing head-collapse is subtraction, not extension — the rule
+forces that honesty at declaration time instead of as a later view bug.
 
 CONSEQUENCE FOR DECISION 4: classes live centrally (small ontology doc, few,
 product-adjacent); derivations live per-convention (recipe-friendly). The derivation
