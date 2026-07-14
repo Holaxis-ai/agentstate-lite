@@ -16,7 +16,25 @@ description: >-
   allow-popups vs a shell-mediated open-external message. All v0-ACCEPTABLE;
   backlinks + md-render are the two most likely to force an additive protocol
   bump, so reserve their shapes now. Depends on ui-pages-spike.
-actor: mike/claude
-timestamp: '2026-07-09T19:28:42.473Z'
+actor: brian-claude
+timestamp: '2026-07-14T18:27:28.113Z'
 ---
 [depends on](ui-pages-spike.md)
+
+## Candidate addition: shell-provided doc drawer (Brian-approved line, 2026-07-14)
+
+Evidence of demand: a doc-detail drawer (click any doc id -> slide-in detail with
+frontmatter chips, rendered body, clickable doc-to-doc links, back-navigation history)
+is now COPY-PASTED into three bundle pages (pages/board.html, pages/roadmap.html,
+pages/memory.html) and was patched in lockstep four times in one day — the classic
+signal that the invariant wants one owning primitive. Working prototype + usage trail
+live on this bundle.
+
+If adopted, two design constraints discovered by the prototype:
+- The drawer must respect per-page capability: a bridge:none page must NOT gain data
+  access through a shell-owned drawer (would bypass the #39 fail-closed model).
+- It composes with this task's existing server-rendered-markdown bullet — a shell
+  drawer wants real markdown rendering, replacing the pages' hand-rolled mdLite.
+
+On landing, retire the three page-local copies (consolidation convention: superseded
+implementations go in the same unit).
