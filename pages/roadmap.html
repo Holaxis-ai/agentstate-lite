@@ -212,20 +212,24 @@
     });
   }
   function mdLite(src) {
-    var out = [], inList = false;
+    var out = [], para = [], inList = false;
+    function flushPara() {
+      if (para.length) { out.push('<p style="margin:0 0 9px">' + inline(para.join(" ")) + "</p>"); para = []; }
+    }
+    function closeList() { if (inList) { out.push("</ul>"); inList = false; } }
     String(src || "").split(/\r?\n/).forEach(function (ln) {
       var t = ln.trim();
+      if (t === "") { flushPara(); closeList(); return; }
       var h = /^(#{1,4})\s+(.*)$/.exec(t);
-      if (h) { if (inList) { out.push("</ul>"); inList = false; }
-        var lvl = Math.min(h[1].length + 2, 5);
+      if (h) { flushPara(); closeList(); var lvl = Math.min(h[1].length + 2, 5);
         out.push("<h" + lvl + ' style="margin:14px 0 6px;font-size:' + (15 - h[1].length) + 'px">' + inline(h[2]) + "</h" + lvl + ">"); return; }
-      if (/^[-*]\s+/.test(t)) { if (!inList) { out.push('<ul style="margin:4px 0 8px;padding-left:20px">'); inList = true; }
+      if (/^[-*]\s+/.test(t)) { flushPara(); if (!inList) { out.push('<ul style="margin:4px 0 8px;padding-left:20px">'); inList = true; }
         out.push("<li>" + inline(t.replace(/^[-*]\s+/, "")) + "</li>"); return; }
-      if (inList) { out.push("</ul>"); inList = false; }
-      if (t === "") { out.push('<div style="height:7px"></div>'); return; }
-      out.push("<p style=\"margin:0 0 2px\">" + inline(t) + "</p>");
+      if (inList) { out[out.length - 1] = out[out.length - 1].replace(/<\/li>$/, " " + inline(t) + "</li>"); return; }
+      if (/^\d+[.)]\s+/.test(t)) { flushPara(); para.push(t); return; }
+      para.push(t);
     });
-    if (inList) out.push("</ul>");
+    flushPara(); closeList();
     return out.join("");
   }
   function inline(t) {
