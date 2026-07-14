@@ -8793,16 +8793,69 @@ function provisionBoardWorktree(dir, budget = {}) {
   if (!top) return { kind: "no_repo" };
   const boardPath = path7.join(top, BUNDLE_DIR);
   if (isProvisioned(top)) return { kind: "already", boardPath };
-  runGit(top, ["fetch", "--prune", BOARD_REMOTE], {
-    timeoutMs: budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS,
+  const hasOrigin = runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0;
+  const deadline = Date.now() + (budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS);
+  const networkOptions = () => ({
+    timeoutMs: Math.max(0, deadline - Date.now()),
     connectTimeoutSeconds: budget.connectTimeoutSeconds
   });
+  const runNetwork = (args) => {
+    try {
+      return runGit(top, args, networkOptions());
+    } catch (err) {
+      if (err instanceof CliError && err.code === "TRANSIENT") return null;
+      throw err;
+    }
+  };
+  let remoteState = "absent";
+  let remoteBoardKnownAbsent = false;
+  if (hasOrigin) {
+    const probe = runNetwork([
+      "ls-remote",
+      "--exit-code",
+      BOARD_REMOTE,
+      `refs/heads/${BOARD_BRANCH}`
+    ]);
+    if (probe?.status === 0) {
+      const children = runGit(top, [
+        "for-each-ref",
+        "--format=%(refname)",
+        `refs/remotes/${BOARD_REF}/`
+      ]);
+      let namespaceReady = children.status === 0;
+      for (const child of children.stdout.split("\n").filter(Boolean)) {
+        if (runGit(top, ["update-ref", "-d", child]).status !== 0) namespaceReady = false;
+      }
+      if (namespaceReady) {
+        const fetch2 = runNetwork([
+          "fetch",
+          "--prune",
+          "--no-tags",
+          BOARD_REMOTE,
+          `+refs/heads/${BOARD_BRANCH}:refs/remotes/${BOARD_REF}`
+        ]);
+        remoteState = fetch2?.status === 0 ? "absent" : "unknown";
+      } else {
+        remoteState = "unknown";
+      }
+    } else if (probe?.status === 2) {
+      remoteBoardKnownAbsent = true;
+      runGit(top, ["update-ref", "-d", `refs/remotes/${BOARD_REF}`]);
+    } else {
+      remoteState = "unknown";
+    }
+  }
   const localBoard = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]);
   const remoteBoard = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]);
   const hasLocal = localBoard.status === 0;
-  const hasRemote = remoteBoard.status === 0;
+  const hasRemote = remoteBoard.status === 0 && !remoteBoardKnownAbsent;
   const localMatchesRemote = hasLocal && hasRemote && localBoard.stdout.trim().length > 0 && localBoard.stdout.trim() === remoteBoard.stdout.trim();
-  if (!hasLocal && !hasRemote) return { kind: "no_board" };
+  if (!hasLocal && !hasRemote) {
+    return {
+      kind: "no_board",
+      remoteState
+    };
+  }
   if (existsSync3(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
       if (hasRemote && !hasWorktreeSignature(boardPath) && runGit(top, ["cat-file", "-e", `HEAD:${BUNDLE_DIR}`]).status === 0) {
@@ -10581,8 +10634,11 @@ but its pointers went stale (e.g. it was moved or remounted at a different path)
 it via \`git worktree repair\` and reports \`repaired: <path>\` the same way \u2014 a repair is a git
 mutation too, and both lines appear even on an otherwise-empty run.
 
-Two definitive empty states (exit 0): no git repo (or no board anywhere yet, local or on origin)
-prints 'sync: nothing to sync'; a clean, already-current board prints 'sync: already up to date'.
+Three definitive empty states (exit 0): no git repo \u2014 or a repo with neither a board branch nor
+a bundle \u2014 prints 'sync: nothing to sync'; a repo whose bundle is known to have no board branch
+anywhere is a LOCAL-ONLY board; a clean shared board prints 'sync: already up to date'. If origin
+cannot be checked and no board ref is available, sync reports the shared-board state as unknown
+and recommends retrying when origin is reachable.
 Otherwise the receipt reports { committed, pushed, pulled, actor, incoming } \u2014 \`incoming\` is the
 enriched delta of docs that arrived this run (capped; --limit controls the row cap, default 20).
 
@@ -10652,7 +10708,7 @@ function pushFailureMessage(err) {
   return `committed to the board locally \u2014 your work is saved. ${err.message}`;
 }
 function upstreamHelp(inv) {
-  return `if a teammate already shares this project's board, make sure your \`origin\` remote points at the SAME repository they pushed the \`board\` branch to; if nobody has started sharing this project's board yet, run \`${inv} sync --establish\` to start`;
+  return `if a teammate already shares this project's board, make sure your \`origin\` remote points at the SAME repository they pushed the \`board\` branch to; if nobody has started sharing this project's board yet, run \`${inv} sync --establish\` to start \u2014 until then a local-only board is a supported mode: every local command keeps working, and nothing leaves this machine`;
 }
 function withUpstreamHelp(err, inv) {
   if (err.code === "NO_UPSTREAM" && err.help === void 0) {
@@ -10795,7 +10851,7 @@ function ffSwallowToError(reason, inv, boardPath) {
       }
       return new CliError(
         "NO_UPSTREAM",
-        "the board branch isn't linked to a remote yet \u2014 sync can't share it",
+        "the board branch isn't linked to a remote \u2014 there is nothing to pull from or push to (a local-only board is a supported mode; sharing needs a remote 'board' branch)",
         { help: upstreamHelp(inv) }
       );
     }
@@ -10993,6 +11049,20 @@ function toIncomingRows(changes) {
 function toDeltaRows(changes) {
   return changes.map((c) => ({ docId: c.docId, verb: c.verb, kind: c.kind, title: c.title, actor: c.actor }));
 }
+var SYNC_LOCAL_ONLY_MESSAGE = "local-only board \u2014 no shared board branch exists, so there is nothing to pull or push";
+function syncLocalOnlyNote(inv) {
+  return `a supported mode: every local command works, and your board changes stay on this machine (sync committed nothing). To share the board with teammates, run \`${inv} sync --establish\` \u2014 it publishes the board as a 'board' branch on the repo's 'origin' remote (add one first if the repo has none); teammates then just run sync.`;
+}
+var SYNC_REMOTE_STATE_UNKNOWN_MESSAGE = "shared board state unknown \u2014 origin could not be checked, so sync cannot tell whether a remote board exists";
+function syncRemoteStateUnknownNote(inv, hasLocalBundle) {
+  const local = hasLocalBundle ? "your local bundle remains usable and sync committed nothing. " : "sync changed nothing. ";
+  return local + `Retry \`${inv} sync\` when origin is available; a shared board may already exist.`;
+}
+function hasLocalOnlyBundle(dir) {
+  const top = repoTopLevel(dir);
+  if (!top) return false;
+  return existsSync6(path9.join(top, BUNDLE_DIR, "index.md"));
+}
 async function sync(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const inv = cliInvocation();
@@ -11105,17 +11175,29 @@ async function sync(argv, deps = {}) {
       { help: `${inv} sync --establish` }
     );
   }
-  if (outcome.kind === "no_repo" || outcome.kind === "no_board") {
-    const rec = { sync: "nothing to sync" };
-    if (outcome.kind === "no_board") {
-      const top2 = repoTopLevel(dir);
-      const hasOrigin = top2 !== null && runGit(top2, ["remote", "get-url", BOARD_REMOTE]).status === 0;
-      const hasFolder = top2 !== null && existsSync6(path9.join(top2, BUNDLE_DIR, "index.md"));
-      if (hasOrigin && hasFolder) {
-        rec.hint = `this project has a local bundle but no shared board yet \u2014 run \`${inv} sync --establish\` to start sharing it over a '${BOARD_BRANCH}' branch on origin`;
-      }
+  if (outcome.kind === "no_repo") {
+    stdout(render({ sync: "nothing to sync" }, mode));
+    return;
+  }
+  if (outcome.kind === "no_board") {
+    const hasLocalBundle = hasLocalOnlyBundle(dir);
+    if (outcome.remoteState === "unknown") {
+      stdout(
+        render(
+          {
+            sync: SYNC_REMOTE_STATE_UNKNOWN_MESSAGE,
+            note: syncRemoteStateUnknownNote(inv, hasLocalBundle)
+          },
+          mode
+        )
+      );
+      return;
     }
-    stdout(render(rec, mode));
+    if (hasLocalBundle) {
+      stdout(render({ sync: SYNC_LOCAL_ONLY_MESSAGE, note: syncLocalOnlyNote(inv) }, mode));
+      return;
+    }
+    stdout(render({ sync: "nothing to sync" }, mode));
     return;
   }
   const boardPath = outcome.boardPath;
@@ -11259,6 +11341,7 @@ async function sync(argv, deps = {}) {
 }
 var SHOW_INCOMING_AS_OF = "last fetch";
 var SHOW_INCOMING_ABSENT_STATE = "absent upstream \u2014 not on origin/board as of the last fetch (deleted upstream, or a new local doc)";
+var SHOW_INCOMING_NO_UPSTREAM = "there is no fetched origin/board state to show \u2014 either this board is local-only (no remote board branch, so no incoming versions exist), or nothing has been fetched yet";
 function attachBodyPreview(rec, body, byteHatch) {
   if (body.length > BODY_PREVIEW_LIMIT) {
     rec.body = body.slice(0, BODY_PREVIEW_LIMIT);
@@ -11291,7 +11374,12 @@ async function showIncoming(id, values, deps) {
       throw new CliError("USAGE", `--show-incoming needs a repo-relative doc id or path without '..' segments: ${id}`);
     }
     if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
-      throw ffSwallowToError("no-upstream", inv, top);
+      if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0) {
+        throw ffSwallowToError("no-upstream", inv, top);
+      }
+      throw new CliError("NO_UPSTREAM", SHOW_INCOMING_NO_UPSTREAM, {
+        help: `on a shared board, run ${inv} sync --pull-only once to fetch origin/board, then re-run --show-incoming`
+      });
     }
     const candidates = [];
     let conceptIdOk = true;
