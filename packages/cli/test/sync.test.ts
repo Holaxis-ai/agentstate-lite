@@ -40,7 +40,12 @@ import {
   toDeltaRows,
   toIncomingRows,
   PUSH_FAIL_SAFETY_MESSAGE,
+  SYNC_LOCAL_ONLY_MESSAGE,
+  SYNC_REMOTE_STATE_UNKNOWN_MESSAGE,
+  syncLocalOnlyNote,
+  syncRemoteStateUnknownNote,
 } from "../src/commands/sync.js";
+import { cliInvocation } from "../src/invocation.js";
 import { doc } from "../src/commands/doc.js";
 import { CliError } from "../src/errors.js";
 import type { DocChange } from "../src/git.js";
@@ -245,11 +250,17 @@ test("ffSwallowToError: git-missing / no-upstream reuse the EXACT test-pinned wo
   assert.equal(missing.exitCode, 1);
   assert.equal(missing.message, "sync needs git, which isn't installed on this machine");
 
+  // Pull-only reports the missing pull source without implying that local-only use is invalid.
   const noUpstream = ffSwallowToError("no-upstream", "agentstate-lite");
   assert.equal(noUpstream.code, "NO_UPSTREAM");
   assert.equal(noUpstream.exitCode, 1);
-  assert.equal(noUpstream.message, "the board branch isn't linked to a remote yet — sync can't share it");
+  assert.equal(
+    noUpstream.message,
+    "the board branch isn't linked to a remote — there is nothing to pull from or push to " +
+      "(a local-only board is a supported mode; sharing needs a remote 'board' branch)",
+  );
   assert.ok(noUpstream.help && noUpstream.help.length > 0, "no-upstream carries a fixing hint");
+  assert.match(noUpstream.help!, /local-only/, "the fixing hint names local-only as supported");
 });
 
 test("ffSwallowToError: auth is exit 4, network/busy/dirty/diverged classify sensibly", () => {
@@ -314,7 +325,7 @@ test("provisionAnnouncement: decisions/board-branch-sync rider 2 — a mutation 
   });
   assert.equal(provisionAnnouncement({ kind: "already", boardPath: "/x/.agentstate-lite" }), undefined);
   assert.equal(provisionAnnouncement({ kind: "no_repo" }), undefined);
-  assert.equal(provisionAnnouncement({ kind: "no_board" }), undefined);
+  assert.equal(provisionAnnouncement({ kind: "no_board", remoteState: "absent" }), undefined);
 });
 
 // ── integration tests over the U0 git harness ──────────────────────────────────
@@ -332,7 +343,7 @@ test("sync: no git repo at all -> the definitive 'nothing to sync' empty state, 
   }
 });
 
-test("sync: a git repo with no board branch anywhere (local or origin) is ALSO 'nothing to sync'", async () => {
+test("sync: a git repo with no board branch anywhere AND no bundle is ALSO 'nothing to sync'", async () => {
   const { homes, cleanup } = await tempHomes(1);
   const lone = await mkdtemp(path.join(tmpdir(), "agentstate-lite-sync-test-lone-"));
   try {
@@ -343,6 +354,145 @@ test("sync: a git repo with no board branch anywhere (local or origin) is ALSO '
   } finally {
     await cleanup();
     await rm(lone, { recursive: true, force: true });
+  }
+});
+
+/** A git repo carrying a conventional bundle folder (index.md signature) but NO board branch anywhere. */
+async function makeLocalOnlyRepo(): Promise<string> {
+  const repo = await mkdtemp(path.join(tmpdir(), "agentstate-lite-sync-test-localonly-"));
+  git(repo, ["init", "-b", "main"]);
+  await mkdir(path.join(repo, BUNDLE_DIR), { recursive: true });
+  await writeFile(path.join(repo, BUNDLE_DIR, "index.md"), '---\nokf_version: "0.1"\n---\n');
+  return repo;
+}
+
+test("sync: a repo whose bundle exists but has no board branch gets the local-only state", async () => {
+  const { homes, cleanup } = await tempHomes(1);
+  const repo = await makeLocalOnlyRepo();
+  try {
+    const { out, err } = await runSync(homes[0]!, ["--dir", repo]);
+    assert.equal(err, undefined, err?.message);
+    assert.ok(out.includes(SYNC_LOCAL_ONLY_MESSAGE), `pinned local-only line missing from: ${out}`);
+    assert.ok(out.includes(syncLocalOnlyNote(cliInvocation())), `pinned local-only note missing from: ${out}`);
+    assert.ok(out.includes("sync --establish"), "the note routes sharing to the REAL verb");
+    assert.ok(!out.includes("nothing to sync"), "must not reuse the no-repo/no-bundle empty state");
+    assert.ok(!out.includes("already up to date"), "must not reuse the clean shared-board empty state");
+  } finally {
+    await cleanup();
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("sync: LOCAL board changes present → the local-only state still appears, sync mutates nothing and never claims a commit", async () => {
+  const { homes, cleanup } = await tempHomes(1);
+  const repo = await makeLocalOnlyRepo();
+  try {
+    // Real local work must not be answered with a bare "nothing to sync".
+    await cliDocWrite(path.join(repo, BUNDLE_DIR), "notes/local-work", [
+      "--type", "Note", "--title", "Local work", "--body", "# local\n", "--actor", "mike",
+    ]);
+    const before = git(repo, ["status", "--porcelain"]);
+
+    const { out, err } = await runSync(homes[0]!, ["--dir", repo]);
+    assert.equal(err, undefined, err?.message);
+    assert.ok(out.includes(SYNC_LOCAL_ONLY_MESSAGE), `pinned local-only line missing from: ${out}`);
+    assert.ok(!/committed/.test(out.replace("sync committed nothing", "")), "never claims a commit happened");
+    assert.ok(out.includes("sync committed nothing"), "the note states the no-commit fact explicitly");
+    // And it genuinely didn't: the repo's git state is byte-identical.
+    assert.equal(git(repo, ["status", "--porcelain"]), before, "sync mutated no git state");
+    assert.ok(existsSync(path.join(repo, BUNDLE_DIR, "notes", "local-work.md")), "the local doc is untouched");
+  } finally {
+    await cleanup();
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("sync: a failed first fetch reports remote state as unknown and never recommends establishing", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "agentstate-lite-sync-test-unknown-"));
+  const remote = path.join(root, "origin.git");
+  const offlineRemote = path.join(root, "origin.offline.git");
+  const seed = path.join(root, "seed");
+  const repo = path.join(root, "repo");
+  const { homes, cleanup } = await tempHomes(1);
+  try {
+    git(root, ["init", "--bare", remote]);
+    git(root, ["init", "-b", "board", seed]);
+    await writeFile(path.join(seed, "index.md"), '---\nokf_version: "0.1"\n---\n');
+    git(seed, ["add", "index.md"]);
+    git(seed, ["commit", "-m", "shared board"]);
+    git(seed, ["remote", "add", "origin", remote]);
+    git(seed, ["push", "-u", "origin", "board"]);
+
+    git(root, ["init", "-b", "main", repo]);
+    git(repo, ["remote", "add", "origin", remote]);
+    await mkdir(path.join(repo, BUNDLE_DIR), { recursive: true });
+    await writeFile(path.join(repo, BUNDLE_DIR, "index.md"), '---\nokf_version: "0.1"\n---\n');
+    await rename(remote, offlineRemote);
+
+    const before = git(repo, ["status", "--porcelain"]);
+    const { out, err } = await runSync(homes[0]!, ["--dir", repo]);
+    assert.equal(err, undefined, err?.message);
+    assert.ok(out.includes(SYNC_REMOTE_STATE_UNKNOWN_MESSAGE));
+    assert.ok(out.includes(syncRemoteStateUnknownNote(cliInvocation(), true)));
+    assert.ok(!out.includes(SYNC_LOCAL_ONLY_MESSAGE));
+    assert.ok(!out.includes("--establish"), "must not recommend publication while remote state is unknown");
+    assert.notEqual(
+      gitTry(repo, ["rev-parse", "--verify", "--quiet", "refs/remotes/origin/board"]).status,
+      0,
+      "the clone never fetched the remote board ref",
+    );
+    assert.equal(git(repo, ["status", "--porcelain"]), before);
+  } finally {
+    await cleanup();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("sync: a single-branch clone discovers a remote board despite its refspec and a stale board/* tracking ref", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "agentstate-lite-sync-test-single-branch-"));
+  const remote = path.join(root, "origin.git");
+  const seed = path.join(root, "seed");
+  const repo = path.join(root, "repo");
+  const { homes, cleanup } = await tempHomes(1);
+  try {
+    git(root, ["init", "--bare", remote]);
+    git(root, ["init", "-b", "main", seed]);
+    await writeFile(path.join(seed, "README.md"), "# project\n");
+    git(seed, ["add", "README.md"]);
+    git(seed, ["commit", "-m", "main"]);
+    git(seed, ["checkout", "-b", "board"]);
+    await writeFile(path.join(seed, "index.md"), '---\nokf_version: "0.1"\n---\n');
+    git(seed, ["add", "index.md"]);
+    git(seed, ["commit", "-m", "shared board"]);
+    git(seed, ["remote", "add", "origin", remote]);
+    git(seed, ["push", "origin", "main", "board"]);
+
+    git(root, ["clone", "--single-branch", "--branch", "main", remote, repo]);
+    assert.match(
+      git(repo, ["config", "--get-all", "remote.origin.fetch"]),
+      /refs\/heads\/main:refs\/remotes\/origin\/main/,
+    );
+    git(repo, ["update-ref", "refs/remotes/origin/board/old", "HEAD"]);
+    await mkdir(path.join(repo, BUNDLE_DIR), { recursive: true });
+    await writeFile(path.join(repo, BUNDLE_DIR, "index.md"), '---\nokf_version: "0.1"\n---\n');
+
+    const { out, err } = await runSync(homes[0]!, ["--dir", repo]);
+    assert.equal(err?.code, "RUNTIME", "the local bundle conflicts with the discovered shared board");
+    assert.ok(!out.includes(SYNC_LOCAL_ONLY_MESSAGE));
+    assert.ok(!`${out}\n${err?.message ?? ""}\n${err?.help ?? ""}`.includes("--establish"));
+    assert.equal(
+      gitTry(repo, ["rev-parse", "--verify", "--quiet", "refs/remotes/origin/board"]).status,
+      0,
+      "the explicit board fetch bypasses the main-only refspec",
+    );
+    assert.notEqual(
+      gitTry(repo, ["rev-parse", "--verify", "--quiet", "refs/remotes/origin/board/old"]).status,
+      0,
+      "the impossible stale child namespace was removed before fetching exact board",
+    );
+  } finally {
+    await cleanup();
+    await rm(root, { recursive: true, force: true });
   }
 });
 

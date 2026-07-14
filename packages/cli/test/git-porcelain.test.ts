@@ -704,7 +704,28 @@ test("provision: a repo with NO board branch anywhere → no_board", async () =>
     await writeFile(path.join(dir, "README.md"), "# plain repo\n");
     git(dir, ["add", "-A"]);
     git(dir, ["commit", "-m", "initial"]);
-    assert.deepEqual(provisionBoardWorktree(dir), { kind: "no_board" });
+    assert.deepEqual(provisionBoardWorktree(dir), { kind: "no_board", remoteState: "absent" });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("provision: a timed-out remote check degrades to unknown within the supplied budget", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-board-timeout-"));
+  try {
+    git(dir, ["init", "-b", "main", "."]);
+    await writeFile(path.join(dir, "README.md"), "# plain repo\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-m", "initial"]);
+    git(dir, ["remote", "add", "origin", "ext::sleep 2"]);
+    git(dir, ["config", "protocol.ext.allow", "always"]);
+
+    const started = Date.now();
+    assert.deepEqual(provisionBoardWorktree(dir, { fetchTimeoutMs: 100 }), {
+      kind: "no_board",
+      remoteState: "unknown",
+    });
+    assert.ok(Date.now() - started < 1_000, "the sleeping remote was abandoned inside the budget");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

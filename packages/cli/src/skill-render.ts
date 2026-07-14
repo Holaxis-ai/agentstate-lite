@@ -130,10 +130,17 @@ function renderWorkspaceLocation(prefix: string): string[] {
   lines.push(
     "  a bare `sync` never establishes on its own (it would silently publish a bundle nobody asked",
   );
-  lines.push("  to share), though it hints at `--establish` when it looks like you meant to.");
+  lines.push(
+    "  to share); on a local-only bundle it reports the local-only state, whose note points at",
+  );
+  lines.push("  `--establish`. Staying local-only indefinitely is a supported mode, not a limbo.");
+  lines.push(
+    "  If origin cannot be checked, `sync` reports the shared-board state as unknown and waits for",
+  );
+  lines.push("  a retry instead of recommending publication.");
   lines.push("");
   lines.push("```sh");
-  lines.push(`${prefix} sync                            # existing shared project — provisions the board, or reports "nothing to sync"`);
+  lines.push(`${prefix} sync                            # existing shared project — provisions the board; a local-only bundle reports its state`);
   lines.push(`${prefix} init --dir .agentstate-lite     # greenfield — idempotent; creates a LOCAL bundle, or opens an existing one`);
   lines.push(`${prefix} sync --establish                # optional — start sharing a local bundle's board with teammates`);
   lines.push("```");
@@ -158,12 +165,18 @@ function renderWorkspaceLocation(prefix: string): string[] {
     "onto its own `board` branch — from then on `sync` commits and pushes board changes itself, never",
   );
   lines.push(
-    "batched with code. Until established, the bundle stays local — either left uncommitted, or",
+    "batched with code. Until established, the bundle stays local — a fully supported mode, not a",
   );
   lines.push(
-    "committed directly on the code branch like any other file, whichever the user prefers. (Gitignore",
+    "temporary one: everything works offline and remote-free, and board changes stay on this machine",
   );
-  lines.push("the folder only if the workspace should stay private to this machine.)");
+  lines.push(
+    "(either left uncommitted, or committed directly on the code branch like any other file,",
+  );
+  lines.push(
+    "whichever the user prefers). (Gitignore the folder only if the workspace should stay private",
+  );
+  lines.push("to this machine.)");
   lines.push("");
   lines.push(
     "Write with attribution: set `AGENTSTATE_LITE_ACTOR=<your-name>` once for `new`, `doc write`,",
@@ -255,7 +268,8 @@ function renderTypicalFlow(prefix: string): string[] {
   lines.push(`${prefix} view`);
   lines.push("");
   lines.push(`# Share the board — recording work isn't done until it's shared`);
-  lines.push(`# (safe everywhere: a project with no shared board just prints "sync: nothing to sync")`);
+  lines.push(`# (safe everywhere: a local-only board just reports its state; outside any`);
+  lines.push(`#  workspace it prints "sync: nothing to sync" — in both cases nothing is committed or pushed)`);
   lines.push(`${prefix} sync`);
   lines.push("```");
   lines.push("");
@@ -275,20 +289,27 @@ function renderSyncSection(prefix: string): string[] {
     "Run it whenever you close a unit of work — a task finished, a decision recorded, a session",
   );
   lines.push(
-    "ending. Recording work isn't done until it's shared. Two honest empty states (both exit 0): a",
+    "ending. Recording work isn't done until it's shared. Three known empty states (all exit 0):",
   );
   lines.push(
-    "project with no shared board yet prints `sync: nothing to sync` (with a `hint` naming",
+    "outside any git repo or workspace it prints `sync: nothing to sync`; a LOCAL-ONLY board (a",
   );
   lines.push(
-    "`--establish` when this project looks like a candidate — a local bundle, a git repo, an `origin`",
+    "bundle with no shared `board` branch — a supported mode) reports itself as local-only, with",
   );
   lines.push(
-    "remote — but bare `sync` NEVER establishes on its own: that would silently publish a bundle",
+    "nothing committed, pulled, or pushed, and its note points at `--establish` — but bare `sync`",
   );
   lines.push(
-    "nobody asked to share); a clean, already-current board prints `sync: already up to date`.",
+    "NEVER establishes on its own (that would silently publish a bundle nobody asked to share);",
   );
+  lines.push(
+    "a clean, already-current shared board prints `sync: already up to date`.",
+  );
+  lines.push(
+    "If origin cannot be checked and no board ref is available, sync reports the remote state as",
+  );
+  lines.push("unknown and recommends retrying before `--establish`.");
   lines.push("");
   lines.push(
     "`sync --establish` is the one explicit, one-time act that starts sharing a project's local",

@@ -105,10 +105,13 @@ becomes — or stays — shared memory across clones and teammates:
   It is LOCAL until you choose to share it: run `sync --establish` once to publish it (creates
   the `board` branch, pushes it) — teammates then just run `sync` to join. Never automatic:
   a bare `sync` never establishes on its own (it would silently publish a bundle nobody asked
-  to share), though it hints at `--establish` when it looks like you meant to.
+  to share); on a local-only bundle it reports the local-only state, whose note points at
+  `--establish`. Staying local-only indefinitely is a supported mode, not a limbo.
+  If origin cannot be checked, `sync` reports the shared-board state as unknown and waits for
+  a retry instead of recommending publication.
 
 ```sh
-npx -y agentstate-lite sync                            # existing shared project — provisions the board, or reports "nothing to sync"
+npx -y agentstate-lite sync                            # existing shared project — provisions the board; a local-only bundle reports its state
 npx -y agentstate-lite init --dir .agentstate-lite     # greenfield — idempotent; creates a LOCAL bundle, or opens an existing one
 npx -y agentstate-lite sync --establish                # optional — start sharing a local bundle's board with teammates
 ```
@@ -124,9 +127,11 @@ npx -y agentstate-lite doc read context-notes/cycle-1
 
 The folder is LOCAL until you choose to share it: `aslite sync --establish` (once) publishes it
 onto its own `board` branch — from then on `sync` commits and pushes board changes itself, never
-batched with code. Until established, the bundle stays local — either left uncommitted, or
-committed directly on the code branch like any other file, whichever the user prefers. (Gitignore
-the folder only if the workspace should stay private to this machine.)
+batched with code. Until established, the bundle stays local — a fully supported mode, not a
+temporary one: everything works offline and remote-free, and board changes stay on this machine
+(either left uncommitted, or committed directly on the code branch like any other file,
+whichever the user prefers). (Gitignore the folder only if the workspace should stay private
+to this machine.)
 
 Write with attribution: set `AGENTSTATE_LITE_ACTOR=<your-name>` once for `new`, `doc write`,
 `doc update`, and `link add`, or pass `--actor <your-name>` per command (the flag wins).
@@ -185,7 +190,8 @@ npx -y agentstate-lite list --type Spec
 npx -y agentstate-lite view
 
 # Share the board — recording work isn't done until it's shared
-# (safe everywhere: a project with no shared board just prints "sync: nothing to sync")
+# (safe everywhere: a local-only board just reports its state; outside any
+#  workspace it prints "sync: nothing to sync" — in both cases nothing is committed or pushed)
 npx -y agentstate-lite sync
 ```
 
@@ -195,11 +201,14 @@ Ordinary `aslite sync` shares your board — commits your changes, pulls your te
 while leaving code-project files untouched.
 
 Run it whenever you close a unit of work — a task finished, a decision recorded, a session
-ending. Recording work isn't done until it's shared. Two honest empty states (both exit 0): a
-project with no shared board yet prints `sync: nothing to sync` (with a `hint` naming
-`--establish` when this project looks like a candidate — a local bundle, a git repo, an `origin`
-remote — but bare `sync` NEVER establishes on its own: that would silently publish a bundle
-nobody asked to share); a clean, already-current board prints `sync: already up to date`.
+ending. Recording work isn't done until it's shared. Three known empty states (all exit 0):
+outside any git repo or workspace it prints `sync: nothing to sync`; a LOCAL-ONLY board (a
+bundle with no shared `board` branch — a supported mode) reports itself as local-only, with
+nothing committed, pulled, or pushed, and its note points at `--establish` — but bare `sync`
+NEVER establishes on its own (that would silently publish a bundle nobody asked to share);
+a clean, already-current shared board prints `sync: already up to date`.
+If origin cannot be checked and no board ref is available, sync reports the remote state as
+unknown and recommends retrying before `--establish`.
 
 `sync --establish` is the one explicit, one-time act that starts sharing a project's local
 bundle: it snapshots and publishes the bundle, checks out the `board` branch at the same path,
