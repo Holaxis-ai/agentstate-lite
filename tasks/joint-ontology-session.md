@@ -13,8 +13,8 @@ description: >-
   rung-c enforcement wake condition. DONE WHEN: the session happens and its
   decisions land as a decisions/ doc; rung c then either becomes buildable tasks
   or is explicitly retired. Assignees: both founders (scheduling is the work).
-actor: brian
-timestamp: '2026-07-14T19:24:38.506Z'
+actor: brian-claude
+timestamp: '2026-07-14T19:33:38.803Z'
 ---
 ## The decision agenda — plain-language edition (v2, 2026-07-14, after Brian's review)
 
@@ -138,6 +138,75 @@ attributes, no mention-derived relations.
 
 STANDALONE ITEM SURFACED (does not wait for the session): depends-on's inertness —
 give it a consumer or relabel it documentation; both reports flag it independently.
+
+FRAME v2 REVIEW PANEL — SYNTHESIS (2026-07-14; skeptic round 2 + mechanism reviewer +
+agent-experience reviewer, all read-only, all empirical against the corpus and code.
+This is the FINAL pre-read layer; the session adjudicates what follows.)
+
+UNANIMOUS VERDICT: adopt-with-modifications. The vocabulary, the constitutive-home for
+is-a, and the Liskov guardrail-as-discipline all survive again. The machinery as
+framed does not. Three findings force the reshape:
+
+1. DERIVATION IS CURATION, NOT AUTHORING (skeptic + devx, independently). At link time
+   an agent has two zero-cost options (class-name-as-label, free text); authoring a
+   convention doc first is a 3-4-decision tax nobody pays mid-task. Derivation is
+   real but it is a RECIPE-DESIGN/curator act. If an ad-hoc derive path is wanted, a
+   `relationship derive X --from Y` ONE-LINER is required, suggested by a near-miss
+   hint — else describe the path honestly as curation-only.
+2. THE RESOLVER IS THE UNAVOIDABLE MACHINE, AND LABELS AREN'T DOCS (skeptic +
+   mechanic). Any synonym behaving requires label->class resolution everywhere, day
+   one — else a derivation is inert-on-declaration (the depends-on bug one level up),
+   and under sync/recipe skew it is inert-on-ONE-CLONE (worse: intermittent). Fixes:
+   anything governing shared edges lives ON THE SHARED BOARD (this flips part of
+   decision 4 toward central); resolver ships WITH cycle guard + dangling-base
+   warning in one reviewed unit. AND the mechanic's load-bearing find: labels today
+   are strings in a kind's links map, not docs — "derivation between convention docs"
+   forces either a label-doc migration or a second declaration channel (a gate-3
+   registry fork). That fork must be decided BEFORE any derivation build; it is the
+   gate, not a detail.
+3. THE TEACHING CHANNEL IS THE WHOLE BALLGAME (devx, with the corpus as user study).
+   ~80 of 284 edges carry the ID-DEFAULT label because the agent passed no --text —
+   root-caused to SKILL.md's canonical example being label-free. ONE example edit
+   addresses more real authoring behavior than the entire class mechanism. Classes
+   are surfaced NOWHERE today; the only surfacing that survives the
+   copy-not-registries finding is (a) a near-miss hint on link add naming the nearest
+   class + example labels + the exact derive command, and (b) the success receipt
+   echoing the written label's class. Best-case capture even with everything built:
+   ~half of coined labels; the rest legitimately stay free text.
+
+SEVERANCE (skeptic + mechanic, emphatic): kind-inheritance (Bug extends Task) and
+label-derivation are TWO mechanisms that rhyme, not one — and the polarity is the
+REVERSE of assumed: kind-extends merged at registry-load time needs ZERO consumer
+changes (every shipped reader sees merged fields free) — M-sized, pays immediately,
+natural first machine, decided on the kinds/recipes track. Label-derivation is
+L-sized, mostly speculative, gated behind the first class-keyed consumer, and its
+biggest consumer migration (the three exact-text board pages) collides with gate 4.
+Do not co-decide them.
+
+EXTENSION DEMOTED: "narrow" breaks authoring (a narrowed evidence rejects base-valid
+grounding links -> agents flee to free text); nothing can mechanically validate
+additivity (behaviors live in imperative consumer code). Until a validator exists:
+derived labels may add DESCRIPTION only. The may-supersede refusal stays as a
+teaching example — it is human judgment, not machine enforcement, and should be
+stated as such.
+
+THE CHEAP-NOW LIST (buildable without any resolver, banks ~80% of the teaching value;
+each S-sized): fix SKILL.md's link example to carry a labeled --text; annotate class
+names onto new.ts's existing point-of-use link hints; a status VOCABULARY line (N
+labels / M class-mapped / K free-text / id-default count); a relationship LEGEND panel
+on a bundle page with per-class one-liners (devx drafted the exact strings, in their
+report) + the unmapped-label drift list. Plus the comprehension flag: consider naming
+grounding and SPECIFICATION as two class names (initially sharing one consumer) so
+"implements" has an obvious home.
+
+RESULTING DECISION SHAPE FOR THE SESSION (v3, pre-negotiated): (a) ratify 5-6 class
+NAMES + per-class one-liner behavior strings + the four properties axes; (b) adopt
+the cheap-now list as immediate tasks; (c) central shared-board label->class map as
+the FIRST machine, whenever the first synonym must behave, resolver+guards in one
+unit; (d) derivation-with-extension deferred under the lazy rule, label-doc fork
+decided first if ever pursued, description-only extension until a validator; (e)
+kind-extends severed to the kinds/recipes track as its own (cheaper, sooner) decision;
+(f) depends-on inertness resolved standalone.
 
 BRIAN'S UNIFIED FRAME v2 (2026-07-14, supersedes the candidate-6 framing below —
 INHERITANCE IS THE META-MECHANISM, NOT A CATEGORY): the structure we want is —
