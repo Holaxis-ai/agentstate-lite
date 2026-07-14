@@ -2,11 +2,11 @@
 type: Context Note
 title: 'Architecture review: stable model vs bundle state'
 actor: codex-main
-timestamp: '2026-07-13T18:49:21.650Z'
+timestamp: '2026-07-14T17:08:31.304Z'
 ---
 # Summary
 
-Final review of current main c92497a: the implemented architecture mostly establishes the intended semantic boundary. Convention docs under conventions/ with type Convention are parsed into one KindRegistry containing governed types, fields, paths, terminal/freshness rules, links, relationship descriptions, and inbound expectations. Ordinary documents remain versioned OkfDocuments whose arbitrary frontmatter carries changing field values; links remain Markdown bytes in document bodies and are derived into Link rows/backlinks; blobs remain disjoint opaque versioned byte state behind StorageBackend. Backends do not own kind semantics. Conventions are physically ordinary versioned bundle documents and can be CAS-mutated, so 'relatively stable' is governance/usage semantics, not immutability or a separate persistence tier; schema edits immediately re-interpret existing documents.
+Final review of current main c92497a, with the blocking link behavior rechecked at 69a0627: the implemented architecture mostly establishes the intended semantic boundary. Convention docs under conventions/ with type Convention are parsed into one KindRegistry containing governed types, fields, paths, terminal/freshness rules, links, relationship descriptions, and inbound expectations. Ordinary documents remain versioned OkfDocuments whose arbitrary frontmatter carries changing field values; links remain Markdown bytes in document bodies and are derived into Link rows/backlinks; blobs remain disjoint opaque versioned byte state behind StorageBackend. Backends do not own kind semantics. Conventions are physically ordinary versioned bundle documents and can be CAS-mutated, so 'relatively stable' is governance/usage semantics, not immutability or a separate persistence tier; schema edits immediately re-interpret existing documents.
 
 Correctness finding 1: relationship instance identity conflicts with the declared type carrier. Core queryEdges deliberately treats differently worded links between the same source and target as distinct edges, because display text is the relationship-type signal. CLI addLink declares any existing target link idempotent regardless of text. Empirical scratch result: with a citation link from document A to document B already present, asking link add to add a depends-on link between the same documents returned changed:false and link list still exposed only citation. This prevents adding a declared typed relation where an untyped or differently typed link to the target exists. Recommended invariant: link-add idempotency should be keyed by resolved target plus exact text, with a regression test.
 
@@ -18,14 +18,28 @@ Evidence: core targeted architecture suite passed 143/143; CLI targeted suite pa
 ## Review document update
 
 The existing bundle Review Request `review-requests/kinds-and-descriptions-architecture` is now
-finalized as `changes_requested` at version
-`sha256:f4c25aa228a37fda4a2fa170f1d2902061394260dabd723fbe8808cad43b7c9f`.
+finalized as `changes_requested`; after adding its remediation-task links, its current version is
+`sha256:ebd6f5fa2de221a02c982f0571b10e11fa198681be3ef9604d01fe9011e7eaf4`.
 Its original Context, Requested decision, and Acceptance criteria were preserved unchanged. The
 Reviewer response contains the six required judgments, label and diagram audits,
 blocking-versus-optional classification, completion checklist, and plain-language explanations for
 each technically dense section. All completion items are checked, and the metadata includes the final
 status and concise `decision_summary`. Approval can be reconsidered after the typed-link
 materialization mismatch and stale explainer labels are corrected.
+
+## Review follow-up tasks
+
+- The blocking typed-link identity mismatch did not have a task. It is now tracked as P1 `todo` in
+  `tasks/typed-link-materialization-identity`, linked from both the Review Request (`reviews task`)
+  and `roadmap-items/self-describing-domain-models` (`contains`).
+- `tasks/kind-enum-value-descriptions` is now done and records PR #52 as shipped, but the promoted
+  explainer still calls enums next/in progress and lists them as not implemented. That remaining
+  documentation drift is tracked in P2 `todo` task `tasks/architecture-explainer-shipped-enums`,
+  linked from the Review Request and the same roadmap item.
+- The later, evidence-gated section descriptions/examples work remains tracked in
+  `tasks/kind-section-descriptions-examples`.
+- The single-registry-snapshot hardening observation remains an optional future enhancement, so no
+  task was created for it.
 ## Browser-rendering environment diagnosis
 
 - discovery: Browser startup fails before executing Page or browser code with

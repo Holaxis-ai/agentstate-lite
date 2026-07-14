@@ -6,19 +6,21 @@ title: >-
 status: done
 priority: '2'
 description: >-
-  Shipped in PR #53. Reviewed head 309b8e8 merged to main as c8cef9d.
-  Provisioning distinguishes known remote-board absence from an unavailable
-  check, explicitly discovers board through restricted fetch refspecs, removes
-  impossible stale origin/board child refs only after exact remote proof, and
-  degrades hard network timeouts to unknown without suggesting publication.
-  Historical review-round commentary was removed from the PR delta.
-  Verification: focused sync suites 151/151, full npm run check green including
-  browser E2E 14/14, independent exact-SHA review approved, and adversarial QA
-  passed unreachable, absent, no-origin, restricted-refspec, stale-ref, and
-  timeout scenarios.
-actor: mike/codex
+  DONE — merged 2026-07-14 (the long-lived branch finally landed). Shipped: the
+  boardless empty-state split (pinned local-only message + establish-routing
+  note, supported-mode framing), the degradation matrix with honest wording at
+  every no-remote surface, and the skill's local-only/join/establish trilogy
+  through the shared renderer. Survived three reconciliation rounds (post-#36
+  respin, #37 generator-extraction port [PORT-FAITHFUL, byte-identical generated
+  SKILL], post-#52 rebase [exact-SHA confirmed, range-diff delta = #45's
+  attribution paragraph only]) and five review passes. Lesson institutionalized
+  en route: an approved-but-unopened PR is invisible and loses every merge race.
+  Open questions A (sync commits locally) and B (local awareness) remain carried
+  for founder adjudication. Follow-ups live on sync-receipt-edge-polish items
+  9-12.
+actor: brian
 assignee: brian-claude
-timestamp: '2026-07-14T03:21:27.746Z'
+timestamp: '2026-07-14T17:13:50.458Z'
 ---
 ## Audit findings (empirical, 2026-07-09, built CLI over a local-only git repo)
 
