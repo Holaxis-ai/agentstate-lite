@@ -9,7 +9,7 @@ description: >-
   target-plus-text remains an idempotent no-op. Add regression coverage without
   changing open-world relationship linting.
 actor: codex
-timestamp: '2026-07-14T18:25:58.179Z'
+timestamp: '2026-07-14T18:40:19.552Z'
 ---
 # Problem
 
@@ -42,3 +42,5 @@ This is the blocking objection recorded by
 Record the merged PR/commit, the regression tests, and the final verification result in this task's
 description before marking it done. Once completed, the architecture Review Request can be
 reconsidered for approval.
+
+[review evidence](../context-notes/pr-55-exact-sha-review.md)
