@@ -12909,8 +12909,9 @@ Usage:
   agentstate-lite link show <id> [--limit <n>] [--text <t>]
   agentstate-lite link list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]
 
-Idempotent: re-adding a link the source already carries is a no-op \u2014 exit 0, changed:false, no
-duplicate link, no timestamp refresh.
+Idempotent: re-adding the same target with the same exact display text is a no-op \u2014 exit 0,
+changed:false, no duplicate link, no timestamp refresh. Different text to the same target is a
+distinct semantic edge and is added.
 
 Graph lint (link add only): if this bundle declares a kind's 'links' vocabulary (see 'kinds --help')
 and --text matches a declared type, the just-written link is checked against the actual source/target
@@ -13029,7 +13030,7 @@ function nearMissTextHint(textFilter, textsPresent, scope) {
 async function addLink(bundle, from, to, opts = {}) {
   const text = opts.text?.trim() || to;
   const href = relativeHref(from, to);
-  const normalizedTo = to.replace(/^\/+/, "").replace(/\.md$/, "");
+  const normalizedTo = resolveConceptId(from, href) ?? to.replace(/^\/+/, "").replace(/\.md$/, "");
   if (isReservedFile(pathFromConceptId(normalizedTo))) {
     throw new CliError(
       "USAGE",
@@ -13057,7 +13058,7 @@ async function addLink(bundle, from, to, opts = {}) {
       },
       decide: (source) => {
         lastSource = source;
-        const already = parseLinks(bundle, source).some((l) => l.to === normalizedTo);
+        const already = parseLinks(bundle, source).some((l) => l.to === normalizedTo && l.text === text);
         if (already) return { action: "done", result: { changed: false } };
         const trimmed = source.body.replace(/\s*$/, "");
         const nextBody = `${trimmed}${trimmed ? "\n\n" : ""}[${text}](${href})
