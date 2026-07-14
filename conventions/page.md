@@ -15,7 +15,7 @@ fields:
       - none
       - bundle-read
   terminal: {}
-timestamp: '2026-07-10T21:00:00.000Z'
+timestamp: '2026-07-10T00:00:00.000Z'
 ---
 # Page
 
@@ -27,15 +27,20 @@ the read-only postMessage bridge (BRIDGE.md, shipped alongside) — it never hol
 - `title` (required) — the launcher card's heading.
 - `entry` (required) — the HTML blob key, e.g. `pages/roadmap.html`.
 - `description` (optional) — one line shown on the launcher card.
-- `bridge` (required) — `none | bundle-read`. Every Page is intentionally classified. ENFORCED by
-  the shell, not cosmetic; and layered with a runtime fail-closed default: absent, malformed, or any
-  value other than exactly `bundle-read` is treated as `none` (defense for external/hand-edited docs
-  this convention does not govern).
+- `bridge` (required) — `none | bundle-read`. Required so every Page is an INTENTIONAL
+  classification, not a silent default — an author who forgets to declare it gets a clear
+  authoring-time lint, not a page that quietly renders empty against a full bundle. ENFORCED by
+  the shell too, not just linted: absent, malformed, or any value other than exactly
+  `bundle-read` is treated as `none` at runtime — fail-closed defense for a doc this convention
+  didn't govern (an external bundle, a hand-edited file that skipped the lint).
   - `bundle-read` — a **data page**: the shell answers its bridge requests (`hello`/`query`/
     `read`/`edges`/`subscribe`) with live bundle data. Groups under the launcher's "Dashboards".
-  - `none` — a **content page**: the shell DENIES every bridge request outright. Arbitrary
-    self-contained HTML with zero bundle access — a report, a rendered design doc, a diagram.
-    Groups under the launcher's "Documents".
+  - `none` — a **content page**: the shell DENIES every bundle-data request. Arbitrary
+    self-contained HTML with zero bundle-data access — a report, a rendered design doc, a diagram.
+    It may still ask the shell to open another registered Page. Groups under "Documents".
+
+Both capabilities may use `open-page` to navigate to another valid `pages-registry/…` Page. This
+shell action returns no target content or metadata and grants no bundle-data capability.
 
 Pages sync, version, and attribute like any doc; the HTML bytes travel as an opaque blob via
 `promote`/`pull`, never through the model context window.
