@@ -1,15 +1,19 @@
 ---
 type: Task
 title: 'Typed links: include relationship text in link-add identity'
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  Blocking architecture-review remediation: allow one source to link to the same
-  target with different exact relationship texts, while an exact duplicate
-  target-plus-text remains an idempotent no-op. Add regression coverage without
-  changing open-world relationship linting.
+  SHIPPED 2026-07-14 in PR #55. Merge b6a3cc9; bot release 6b78697 / plugin
+  1.0.49. Link-add identity is now core-resolved normalized target plus exact
+  display text: differently typed same-target edges coexist, exact repeats and
+  equivalent target spellings converge to changed:false, and new --link shares
+  the same path. Independent exact-SHA review APPROVED
+  78078759451e83ad435cad2fac7413059d57748b with no findings after one
+  normalization fix. Focused suite 55/55; build, typecheck, unit, script, and
+  skill checks passed; browser/security E2E rerun 14/14.
 actor: codex
-timestamp: '2026-07-14T18:40:19.552Z'
+timestamp: '2026-07-14T18:52:42.101Z'
 ---
 # Problem
 
