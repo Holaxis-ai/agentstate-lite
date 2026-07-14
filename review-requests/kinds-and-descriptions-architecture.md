@@ -17,7 +17,7 @@ decision_summary: >-
   same target, even though the graph model treats them as distinct. The
   explainer's relationship and enum status labels must also be updated before
   approval.
-timestamp: '2026-07-13T18:48:39.755Z'
+timestamp: '2026-07-14T17:03:02.187Z'
 ---
 # Context
 
@@ -437,3 +437,5 @@ possible future improvements that should wait until real use proves they are nee
 [reviews task](../tasks/kind-section-descriptions-examples.md)
 
 [explained by](../pages-registry/architecture-kinds.md)
+
+[reviews task](../tasks/typed-link-materialization-identity.md)
