@@ -5,8 +5,8 @@ status: active
 description: >-
   Make Kinds communicate the meaning of concepts, fields, relationships, and
   lifecycle values through the one registry and at the point of agent action.
-actor: codex-main
-timestamp: '2026-07-14T17:08:06.488Z'
+actor: codex
+timestamp: '2026-07-14T21:01:16.481Z'
 ---
 # Vision
 
@@ -65,3 +65,5 @@ guidance or a parallel schema. The same metadata reaches Pages through the exist
 [contains](../tasks/typed-link-materialization-identity.md)
 
 [contains](../tasks/architecture-explainer-shipped-enums.md)
+
+[contains](../tasks/kind-required-heading-help.md)
