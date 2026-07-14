@@ -33,6 +33,24 @@ const VALID_TERM: RecipeFile = {
   bytes: "---\ntype: Convention\ngoverns: Term\n---\n# Term\n\nA glossary entry.\n",
 };
 
+const PORTABLE_MANIFEST: RecipeFile = {
+  path: "recipe.md",
+  bytes:
+    "---\ntype: Recipe\nid: portable\ntitle: Portable\nversion: \"1\"\nsummary: Definitions only.\n" +
+    "content_policy: definitions-only\npages:\n" +
+    "  - registry: pages-registry/reviews.md\n    entry: pages/reviews.html\n---\n",
+};
+
+const PAGE_REGISTRY: RecipeFile = {
+  path: "pages-registry/reviews.md",
+  bytes: "---\ntype: Page\ntitle: Reviews\nentry: pages/reviews.html\nbridge: bundle-read\n---\nLive reviews.\n",
+};
+
+const PAGE_HTML: RecipeFile = {
+  path: "pages/reviews.html",
+  bytes: "<!doctype html><title>Reviews</title>",
+};
+
 async function tempDir(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "agentstate-lite-recipe-source-test-"));
 }
@@ -51,7 +69,68 @@ test("parseRecipeFiles: a valid manifest + one convention doc parses to a Loaded
   assert.deepEqual(result.recipe.governs, ["Term"]);
   assert.equal(result.recipe.docs.length, 1);
   assert.equal(result.recipe.docs[0]!.id, "conventions/term");
+  assert.deepEqual(result.recipe.pages, []);
   assert.deepEqual(result.recipe.warnings, []);
+});
+
+test("parseRecipeFiles: definitions-only package materializes an explicitly declared Page pair", () => {
+  const result = parseRecipeFiles([PORTABLE_MANIFEST, VALID_TERM, PAGE_REGISTRY, PAGE_HTML], "test:portable");
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.recipe.contentPolicy, "definitions-only");
+  assert.equal(result.recipe.pages.length, 1);
+  assert.equal(result.recipe.pages[0]!.registry.id, "pages-registry/reviews");
+  assert.equal(result.recipe.pages[0]!.entry, "pages/reviews.html");
+  assert.equal(result.recipe.pages[0]!.html, PAGE_HTML.bytes);
+});
+
+test("parseRecipeFiles: Page assets require the definitions-only policy", () => {
+  const manifest = {
+    ...PORTABLE_MANIFEST,
+    bytes: PORTABLE_MANIFEST.bytes.replace("content_policy: definitions-only\n", ""),
+  };
+  const result = parseRecipeFiles([manifest, VALID_TERM, PAGE_REGISTRY, PAGE_HTML], "test:no-policy");
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.error.code, "RECIPE_MALFORMED");
+  assert.match(result.error.message, /content_policy/);
+});
+
+test("parseRecipeFiles: definitions-only rejects undeclared files before apply", () => {
+  const instance: RecipeFile = {
+    path: "review-requests/private.md",
+    bytes: "---\ntype: Review Request\ntitle: Private\n---\nsecret\n",
+  };
+  const result = parseRecipeFiles(
+    [PORTABLE_MANIFEST, VALID_TERM, PAGE_REGISTRY, PAGE_HTML, instance],
+    "test:contains-data",
+  );
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.error.code, "RECIPE_UNSAFE_PATH");
+  assert.match(result.error.message, /definitions-only/);
+  assert.match(result.error.message, /private\.md/);
+});
+
+test("parseRecipeFiles: definitions-only hard-rejects Convention warnings instead of installing a partial model", () => {
+  const malformed: RecipeFile = {
+    path: "conventions/term.md",
+    bytes: "---\ntype: Convention\ngoverns: Term\nfields:\n  mystery: [title]\n---\n",
+  };
+  const result = parseRecipeFiles([PORTABLE_MANIFEST, malformed, PAGE_REGISTRY, PAGE_HTML], "test:bad-kind");
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.error.code, "RECIPE_MALFORMED");
+  assert.match(result.error.message, /fields\.mystery/);
+});
+
+test("parseRecipeFiles: Page registry entry must match the manifest entry", () => {
+  const mismatch = { ...PAGE_REGISTRY, bytes: PAGE_REGISTRY.bytes.replace("pages/reviews.html", "pages/other.html") };
+  const result = parseRecipeFiles([PORTABLE_MANIFEST, VALID_TERM, mismatch, PAGE_HTML], "test:mismatch");
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.error.code, "RECIPE_MALFORMED");
+  assert.match(result.error.message, /does not match/);
 });
 
 test("parseRecipeFiles: a missing recipe.md manifest -> RECIPE_MALFORMED", () => {
@@ -105,9 +184,9 @@ test("parseRecipeFiles: a self-duplicate 'governs' within the recipe -> RECIPE_M
   assert.match(result.error.message, /twice/);
 });
 
-test("parseRecipeFiles: an unsafe id (outside conventions/) -> RECIPE_UNSAFE_PATH", () => {
+test("parseRecipeFiles: definitions-only rejects an unsafe id outside its declared definitions", () => {
   const outside: RecipeFile = { path: "notes/term.md", bytes: VALID_TERM.bytes };
-  const result = parseRecipeFiles([VALID_MANIFEST, outside], "test:outside");
+  const result = parseRecipeFiles([PORTABLE_MANIFEST, VALID_TERM, PAGE_REGISTRY, PAGE_HTML, outside], "test:outside");
   assert.equal(result.ok, false);
   if (result.ok) return;
   assert.equal(result.error.code, "RECIPE_UNSAFE_PATH");
@@ -227,6 +306,40 @@ test("resolveRecipe: loads a real external recipe folder end to end (the fixture
   assert.deepEqual(result.recipe.governs, ["Term"]);
 });
 
+test("resolveRecipe: loads the content-free Review Workflow package with its declared Page", async () => {
+  const fixture = path.resolve(import.meta.dirname, "../../../examples/recipes/review-workflow");
+  const result = await resolveRecipe(fixture);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.recipe.id, "review-workflow");
+  assert.equal(result.recipe.contentPolicy, "definitions-only");
+  assert.deepEqual(result.recipe.governs, ["Review Request"]);
+  assert.equal(result.recipe.pages.length, 1);
+  assert.equal(result.recipe.pages[0]!.registry.id, "pages-registry/review-workflow-reviews");
+  assert.equal(result.recipe.pages[0]!.entry, "pages/review-workflow/reviews.html");
+});
+
+test("resolveRecipe: definitions-only scans the full folder and rejects hidden instance data", async () => {
+  const dir = await tempDir();
+  try {
+    await mkdir(path.join(dir, "conventions"), { recursive: true });
+    await mkdir(path.join(dir, "review-requests"), { recursive: true });
+    await writeFile(
+      path.join(dir, "recipe.md"),
+      PORTABLE_MANIFEST.bytes.replace(/pages:[\s\S]*?---\n$/, "---\n"),
+    );
+    await writeFile(path.join(dir, "conventions", "term.md"), VALID_TERM.bytes);
+    await writeFile(path.join(dir, "review-requests", "private.md"), "---\ntype: Review Request\n---\nprivate\n");
+    const result = await resolveRecipe(dir);
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.equal(result.error.code, "RECIPE_UNSAFE_PATH");
+    assert.match(result.error.message, /review-requests\/private\.md/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("resolveRecipe: a symlink inside conventions/ that escapes the recipe root -> RECIPE_UNSAFE_PATH", async () => {
   const dir = await tempDir();
   const outsideTarget = await tempDir();
@@ -241,6 +354,24 @@ test("resolveRecipe: a symlink inside conventions/ that escapes the recipe root 
     assert.equal(result.ok, false);
     if (result.ok) return;
     assert.equal(result.error.code, "RECIPE_UNSAFE_PATH");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(outsideTarget, { recursive: true, force: true });
+  }
+});
+
+test("resolveRecipe: a recipe.md symlink escaping the recipe root is rejected", async () => {
+  const dir = await tempDir();
+  const outsideTarget = await tempDir();
+  try {
+    const outsideManifest = path.join(outsideTarget, "recipe.md");
+    await writeFile(outsideManifest, VALID_MANIFEST.bytes);
+    await symlink(outsideManifest, path.join(dir, "recipe.md"));
+    const result = await resolveRecipe(dir);
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.equal(result.error.code, "RECIPE_UNSAFE_PATH");
+    assert.match(result.error.message, /recipe\.md/);
   } finally {
     await rm(dir, { recursive: true, force: true });
     await rm(outsideTarget, { recursive: true, force: true });

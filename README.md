@@ -101,11 +101,13 @@ reports that uncommitted edit; ordinary sync does not modify code-project files.
   Every mutation is attributed.
 - **Storage is a seam.** The engine holds all semantics; backends (filesystem by
   default; memory, wire, cloud) plug in underneath with byte-identical version tokens.
-- **Recipes install capability as text.** A recipe is a folder of convention docs,
-  applied idempotently — it seeds schemas, then the bundle owns them. Three ship built-in
-  (`context-notes`, `work-tracking`, `roadmap`); `examples/recipes/claims` is the worked example of
-  an external recipe — a provenance/claims lifecycle installed via
-  `aslite recipe add examples/recipes/claims`, and the template for writing your own.
+- **Recipes install capability as text.** A recipe is a folder of definitions, applied
+  idempotently — it seeds schemas and may carry explicitly declared self-contained Pages, then the
+  bundle owns them. A `definitions-only` package rejects instance data and undeclared files. Three
+  recipes ship built-in (`context-notes`, `work-tracking`, `roadmap`);
+  `examples/recipes/claims` is the minimal custom-Kind example, while
+  `examples/recipes/review-workflow` is a complete content-free cognitive ecosystem: a
+  self-describing Review Request kind plus a generic live Page, with no review instances.
 
 Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf)
 — plain markdown any conformant tool can read.
@@ -126,10 +128,10 @@ Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPla
 ## What's early or experimental
 
 - **Everything is pre-1.0.** Breaking changes are likely; nothing is on npm yet.
-- **Recipes as composition** is a thesis under test, not a result — two recipes exist
-  and both are first-party. The first external-recipe experiment (a claims/provenance
-  system) is in flight, with declared success criteria; "cookbooks" (composed recipes
-  with typed-link glue) are design intent only.
+- **Recipes as composition** is a thesis under test, not a result. The repository now includes
+  small first-party definitions-only packages, including a Kind-plus-Page reference, but package
+  dependencies, upgrades, migrations, and marketplace discovery remain future work. "Cookbooks"
+  (composed recipes with typed-link glue) are design intent only.
 - **The web UI**: the serving and security plumbing is production-grade; the current
   views are a placeholder pending a design rethink. Treat `ui` as a preview.
 - **The hosted multi-user deployment** exists (Cloudflare, enforced CAS, API keys,

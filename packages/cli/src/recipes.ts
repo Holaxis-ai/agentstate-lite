@@ -18,6 +18,10 @@
 // whether the folder was a built-in in-code constant or bytes read off disk), so a built-in and an
 // external recipe apply through byte-for-byte the SAME function.
 import {
+  readBlob,
+  readDoc,
+  resolveContentType,
+  writeBlob,
   writeDocVersioned,
   query,
   CONVENTIONS_PREFIX,
@@ -28,6 +32,8 @@ import {
   type OkfDocument,
   type ValidationWarning,
 } from "@agentstate-lite/core";
+import { isDeepStrictEqual } from "node:util";
+import { CliError } from "./errors.js";
 import type { LoadedRecipe } from "./recipe-source.js";
 
 /** The `type` value the context-notes recipe governs; formerly a core export, localized when the
@@ -332,6 +338,14 @@ export interface RecipeDocResult {
   changed: boolean;
 }
 
+export interface RecipePageResult {
+  registry_id: ConceptId;
+  entry: string;
+  registry_changed: boolean;
+  entry_changed: boolean;
+  changed: boolean;
+}
+
 /** The receipt `applyRecipe` returns: identity, per-doc outcomes, an overall `changed` (any doc
  * changed), and any non-fatal warnings collected at LOAD time (recipe.md reserved keys, skipped
  * malformed convention docs). Duplicate-`governs` against the TARGET bundle is a separate, POST-
@@ -341,6 +355,7 @@ export interface ApplyRecipeResult {
   version: string;
   source: string;
   docs: RecipeDocResult[];
+  pages: RecipePageResult[];
   changed: boolean;
   warnings: ValidationWarning[];
 }
@@ -369,6 +384,8 @@ export async function applyRecipe(
   recipe: LoadedRecipe,
   now: string = new Date().toISOString(),
 ): Promise<ApplyRecipeResult> {
+  await assertPageTargetsCompatible(bundle, recipe, now);
+
   const docs: RecipeDocResult[] = [];
   for (const d of recipe.docs) {
     const doc: OkfDocument = { ...d, frontmatter: { ...d.frontmatter, timestamp: now } };
@@ -384,14 +401,94 @@ export async function applyRecipe(
     }
     docs.push({ id: doc.id, changed });
   }
+
+  const pages: RecipePageResult[] = [];
+  for (const page of recipe.pages) {
+    const desiredBytes = Buffer.from(page.html, "utf8");
+    let entryChanged = true;
+    try {
+      await writeBlob(bundle, page.entry, desiredBytes, undefined, { expectedVersion: null });
+    } catch (err) {
+      if (!(err instanceof VersionConflict)) throw err;
+      const existing = await readBlob(bundle, page.entry);
+      const sameBytes = existing !== null && Buffer.from(existing.bytes).equals(desiredBytes);
+      const sameContentType = existing?.contentType === resolveContentType(page.entry);
+      if (!sameBytes || !sameContentType) throw recipeAssetConflict(recipe.id, page.entry);
+      entryChanged = false;
+    }
+
+    const registry: OkfDocument = {
+      ...page.registry,
+      frontmatter: { ...page.registry.frontmatter, timestamp: now },
+    };
+    let registryChanged = true;
+    try {
+      await writeDocVersioned(bundle, registry, { expectedVersion: null });
+    } catch (err) {
+      if (!(err instanceof VersionConflict)) throw err;
+      const existing = await readDoc(bundle, registry.id);
+      if (!sameInstalledDoc(existing, registry)) throw recipeAssetConflict(recipe.id, `${registry.id}.md`);
+      registryChanged = false;
+    }
+
+    pages.push({
+      registry_id: registry.id,
+      entry: page.entry,
+      registry_changed: registryChanged,
+      entry_changed: entryChanged,
+      changed: registryChanged || entryChanged,
+    });
+  }
   return {
     id: recipe.id,
     version: recipe.version,
     source: recipe.source,
     docs,
-    changed: docs.some((d) => d.changed),
+    pages,
+    changed: docs.some((d) => d.changed) || pages.some((page) => page.changed),
     warnings: recipe.warnings,
   };
+}
+
+async function assertPageTargetsCompatible(bundle: Bundle, recipe: LoadedRecipe, now: string): Promise<void> {
+  if (recipe.pages.length === 0) return;
+  const registryDocs = await query(bundle, { prefix: "pages-registry/" });
+  const registries = new Map(registryDocs.map((doc) => [doc.id, doc]));
+  for (const page of recipe.pages) {
+    const existingBlob = await readBlob(bundle, page.entry);
+    if (existingBlob) {
+      const desiredBytes = Buffer.from(page.html, "utf8");
+      const sameBytes = Buffer.from(existingBlob.bytes).equals(desiredBytes);
+      const sameContentType = existingBlob.contentType === resolveContentType(page.entry);
+      if (!sameBytes || !sameContentType) throw recipeAssetConflict(recipe.id, page.entry);
+    }
+
+    const existingRegistry = registries.get(page.registry.id);
+    if (existingRegistry) {
+      const desiredRegistry: OkfDocument = {
+        ...page.registry,
+        frontmatter: { ...page.registry.frontmatter, timestamp: now },
+      };
+      if (!sameInstalledDoc(existingRegistry, desiredRegistry)) {
+        throw recipeAssetConflict(recipe.id, `${page.registry.id}.md`);
+      }
+    }
+  }
+}
+
+function sameInstalledDoc(existing: OkfDocument, desired: OkfDocument): boolean {
+  const { timestamp: _existingTimestamp, ...existingFrontmatter } = existing.frontmatter;
+  const { timestamp: _desiredTimestamp, ...desiredFrontmatter } = desired.frontmatter;
+  return isDeepStrictEqual(existingFrontmatter, desiredFrontmatter) && existing.body === desired.body;
+}
+
+function recipeAssetConflict(recipeId: string, key: string): CliError {
+  return new CliError(
+    "ALREADY_EXISTS",
+    `recipe '${recipeId}' cannot install '${key}' because a different target already exists; ` +
+      "the existing bundle content was left untouched",
+    { details: { recipe: recipeId, key } },
+  );
 }
 
 /**

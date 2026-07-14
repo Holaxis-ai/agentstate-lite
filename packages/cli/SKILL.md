@@ -71,7 +71,7 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
 - `npx -y agentstate-lite recipes [--remote <url>]`
   — List built-in recipes and whether each is already applied to this bundle
 - `npx -y agentstate-lite recipe add <name-or-path> [--remote <url>]`
-  — Apply a recipe's (built-in name or folder path) convention docs to the bundle (idempotent)
+  — Apply a recipe's content-free definitions — Kinds and optional declared Pages — idempotently
 
 ### Remote
 

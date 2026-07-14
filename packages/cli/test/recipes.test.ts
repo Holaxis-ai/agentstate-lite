@@ -27,6 +27,8 @@ import path from "node:path";
 
 import {
   initBundle,
+  readBlob,
+  writeBlob,
   writeDoc,
   parseMarkdown,
   loadKinds,
@@ -60,6 +62,7 @@ import { CONTEXT_NOTES_RECIPE } from "../src/recipe-source.js";
 
 const T = "2026-07-01T00:00:00.000Z";
 const EXAMPLE_RECIPE_FIXTURE = path.resolve(import.meta.dirname, "fixtures/example-recipe");
+const REVIEW_WORKFLOW_RECIPE = path.resolve(import.meta.dirname, "../../../examples/recipes/review-workflow");
 
 async function tempDir(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "agentstate-lite-recipes-test-"));
@@ -758,6 +761,7 @@ test("applyRecipe carries serialized Claim lifecycle descriptions through the or
         summary: "Test-only Claim lifecycle semantics.",
         source: "test",
         docs: [kindConventionDoc(claim, "", T)],
+        pages: [],
         governs: ["Claim"],
         warnings: [],
       },
@@ -788,6 +792,139 @@ test("recipe add <path>: idempotent — second add of the SAME external recipe i
 
     const bytesAfterSecond = await readFile(path.join(dir, "conventions", "example-term.md"), "utf8");
     assert.equal(bytesAfterSecond, bytesAfterFirst);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("portable Review Workflow: clean-room install carries Kinds and a Page but zero instances", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const first = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
+    assert.equal(first.id, "review-workflow");
+    assert.equal(first.changed, true);
+    const pages = first.pages as Array<Record<string, unknown>>;
+    assert.equal(pages.length, 1);
+    assert.equal(pages[0]!.registry_id, "pages-registry/review-workflow-reviews");
+    assert.equal(pages[0]!.entry, "pages/review-workflow/reviews.html");
+    assert.equal(pages[0]!.registry_changed, true);
+    assert.equal(pages[0]!.entry_changed, true);
+
+    const bundle: Bundle = { root: dir };
+    const registry = await loadKinds(bundle);
+    const reviewKind = registry.kinds.get("Review Request");
+    assert.ok(reviewKind);
+    assert.match(reviewKind!.description ?? "", /durable request/);
+    assert.match(reviewKind!.fields.valueDescriptions.status?.approved ?? "", /terminal/);
+
+    const before = await runJson(list, ["--type", "Review Request", "--dir", dir]);
+    assert.equal(before.count, 0, "the package must not carry source Review Request instances");
+
+    const created = await runJson(newCommand, [
+      "Review Request",
+      "portable-check",
+      "--title",
+      "Portable check",
+      "--status",
+      "requested",
+      "--reviewer",
+      "Brian",
+      "--requested_by",
+      "Mike",
+      "--question",
+      "Does this operating model transfer without data?",
+      "--dir",
+      dir,
+    ]);
+    assert.equal(created.id, "review-requests/portable-check");
+    await assert.rejects(
+      () =>
+        runJson(newCommand, [
+          "Review Request",
+          "invalid-state",
+          "--title",
+          "Invalid",
+          "--status",
+          "invented",
+          "--reviewer",
+          "Brian",
+          "--requested_by",
+          "Mike",
+          "--question",
+          "Should fail",
+          "--dir",
+          dir,
+        ]),
+      (err: unknown) => err instanceof CliError && err.code === "USAGE",
+    );
+
+    const htmlBefore = await readFile(path.join(dir, "pages", "review-workflow", "reviews.html"), "utf8");
+    const registryBefore = await readFile(
+      path.join(dir, "pages-registry", "review-workflow-reviews.md"),
+      "utf8",
+    );
+    const second = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
+    assert.equal(second.changed, false);
+    const secondPages = second.pages as Array<Record<string, unknown>>;
+    assert.equal(secondPages[0]!.registry_changed, false);
+    assert.equal(secondPages[0]!.entry_changed, false);
+    assert.equal(await readFile(path.join(dir, "pages", "review-workflow", "reviews.html"), "utf8"), htmlBefore);
+    assert.equal(
+      await readFile(path.join(dir, "pages-registry", "review-workflow-reviews.md"), "utf8"),
+      registryBefore,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("portable recipe refuses a different existing Page blob without overwriting it", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    const existing = Buffer.from("<p>bundle author's page</p>");
+    await writeBlob(bundle, "pages/review-workflow/reviews.html", existing, "text/html; charset=utf-8");
+    await assert.rejects(
+      () => runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "ALREADY_EXISTS");
+        assert.match(err.message, /existing bundle content was left untouched/);
+        return true;
+      },
+    );
+    const after = await readBlob(bundle, "pages/review-workflow/reviews.html");
+    assert.ok(after);
+    assert.equal(Buffer.from(after!.bytes).toString("utf8"), existing.toString("utf8"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("portable recipe preflights a different Page registry before writing any package artifact", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    await writeDoc(bundle, {
+      id: "pages-registry/review-workflow-reviews",
+      frontmatter: {
+        type: "Page",
+        title: "Bundle author's reviews",
+        entry: "pages/review-workflow/reviews.html",
+        bridge: "none",
+        timestamp: T,
+      },
+      body: "Different local definition.\n",
+    });
+    await assert.rejects(
+      () => runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]),
+      (err: unknown) => err instanceof CliError && err.code === "ALREADY_EXISTS",
+    );
+    assert.equal(await readBlob(bundle, "pages/review-workflow/reviews.html"), null);
+    await assert.rejects(() => readFile(path.join(dir, "conventions", "review-request.md")));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -1072,6 +1209,32 @@ test("--remote: recipe add against a served bundle, idempotent parity with the s
     }
   } finally {
     await rm(localDir, { recursive: true, force: true });
+    await rm(remoteDir, { recursive: true, force: true });
+  }
+});
+
+test("--remote: portable recipe installs and rechecks its Page pair through the storage seam", async () => {
+  const remoteDir = await tempDir();
+  try {
+    await initBundle(remoteDir);
+    const handle: ServerHandle = await serve({ bundle: { root: remoteDir }, port: 0 });
+    const url = `http://${handle.host}:${handle.port}`;
+    try {
+      const first = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--remote", url]);
+      assert.equal(first.changed, true);
+      const pages = first.pages as Array<Record<string, unknown>>;
+      assert.equal(pages[0]!.entry_changed, true);
+      assert.equal(pages[0]!.registry_changed, true);
+
+      const second = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--remote", url]);
+      assert.equal(second.changed, false);
+      const secondPages = second.pages as Array<Record<string, unknown>>;
+      assert.equal(secondPages[0]!.entry_changed, false);
+      assert.equal(secondPages[0]!.registry_changed, false);
+    } finally {
+      await handle.close();
+    }
+  } finally {
     await rm(remoteDir, { recursive: true, force: true });
   }
 });

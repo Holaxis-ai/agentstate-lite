@@ -25,8 +25,10 @@ Usage:
 
 A recipe is a folder ('recipe.md' manifest + 'conventions/*.md' docs) that 'recipe add
 <name-or-path>' installs onto a bundle in one shot — idempotently (re-adding an already-applied
-recipe is a changed:false no-op). This command lists the BUILT-IN recipes shipped with the CLI;
-an external recipe (a path) is not enumerated here, only path-addressed via 'recipe add <path>'.
+recipe is a changed:false no-op). A definitions-only portable recipe may also declare Page
+registry/HTML pairs without carrying instances. This command lists the BUILT-IN recipes shipped
+with the CLI; an external recipe (a path) is not enumerated here, only path-addressed via
+'recipe add <path>'.
 'init' applies the default recipe ('context-notes') automatically unless '--recipe none' is
 passed. See 'agentstate-lite kinds' for the LIVE per-bundle registry a recipe's docs feed into.
 

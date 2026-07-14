@@ -15,9 +15,8 @@
 // `CONTEXT_NOTE_KIND` / `CONTEXT_NOTE_SEED_BODY` / `CONTEXT_NOTES_SUMMARY` / `RECIPE_DESC_BODY`
 // supply the CONTENT; this module supplies the packaging + the generic load/parse machinery.
 //
-// Zero `@agentstate-lite/core` changes: every primitive here (`parseMarkdown`, `stringifyDoc`,
-// `kindConventionDoc`, `conceptIdFromPath`, `assertSafeConceptId`, `isReservedFile`,
-// `CONVENTIONS_PREFIX`, `CONVENTION_TYPE`) was already exported (CLAUDE.md gate 3).
+// Core owns markdown, path, blob-key, and Kind parsing. This layer reuses those primitives rather
+// than creating recipe-specific copies of their invariants.
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -25,8 +24,10 @@ import {
   parseMarkdown,
   stringifyDoc,
   kindConventionDoc,
+  parseConventionDoc,
   conceptIdFromPath,
   assertSafeConceptId,
+  assertSafeBlobKey,
   isReservedFile,
   CONVENTIONS_PREFIX,
   CONVENTION_TYPE,
@@ -50,10 +51,20 @@ import {
   ROADMAP_DESC_BODY,
 } from "./recipes.js";
 
-/** One recipe file: a path relative to the recipe root (posix), raw markdown bytes. */
+/** One recipe file: a path relative to the recipe root (posix), with its UTF-8 text. */
 export interface RecipeFile {
   path: string;
   bytes: string;
+}
+
+/** One portable, content-free Page carried by a recipe package. */
+export interface RecipePage {
+  /** The `type: Page` registry document installed under `pages-registry/`. */
+  registry: OkfDocument;
+  /** The self-contained HTML blob key declared by the registry document. */
+  entry: string;
+  /** UTF-8 HTML bytes written to `entry`. */
+  html: string;
 }
 
 /** The common shape every `RecipeSource` produces and `applyRecipe` (recipes.ts) consumes. */
@@ -66,6 +77,10 @@ export interface LoadedRecipe {
   source: string;
   /** Convention docs, ids under `conventions/`. `timestamp` is stamped at APPLY, not here. */
   docs: OkfDocument[];
+  /** Optional Page definitions installed with the conventions; never Kind instances. */
+  pages: RecipePage[];
+  /** Present only for packages opting into the strict portable definitions-only contract. */
+  contentPolicy?: "definitions-only";
   /** The `type` values this recipe's conventions govern (derived at parse, for the receipt). */
   governs: string[];
   /** Non-fatal (skipped-malformed doc / reserved manifest key / etc). Never silently dropped. */
@@ -96,6 +111,103 @@ const RESERVED_MANIFEST_KEYS = ["composes", "seeds", "requires"] as const;
 
 function nonEmptyString(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+interface PageDeclaration {
+  registry: string;
+  entry: string;
+}
+
+function parsePageDeclarations(manifest: Record<string, unknown>, recipeId: string, source: string):
+  | { ok: true; pages: PageDeclaration[] }
+  | { ok: false; error: RecipeError } {
+  if (manifest.pages === undefined) return { ok: true, pages: [] };
+  if (manifest.content_policy !== "definitions-only") {
+    return {
+      ok: false,
+      error: {
+        code: "RECIPE_MALFORMED",
+        message:
+          `recipe '${recipeId}' at '${source}' declares pages but does not declare ` +
+          "'content_policy: definitions-only', which is required for portable assets",
+      },
+    };
+  }
+  if (!Array.isArray(manifest.pages)) {
+    return {
+      ok: false,
+      error: { code: "RECIPE_MALFORMED", message: `recipe '${recipeId}': 'pages' must be a list` },
+    };
+  }
+
+  const pages: PageDeclaration[] = [];
+  const registries = new Set<string>();
+  const entries = new Set<string>();
+  for (const [index, value] of manifest.pages.entries()) {
+    if (!isRecord(value)) {
+      return {
+        ok: false,
+        error: { code: "RECIPE_MALFORMED", message: `recipe '${recipeId}': pages[${index}] must be a map` },
+      };
+    }
+    const registry = nonEmptyString(value.registry);
+    const entry = nonEmptyString(value.entry);
+    if (!registry || !entry) {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_MALFORMED",
+          message: `recipe '${recipeId}': pages[${index}] requires non-empty 'registry' and 'entry' paths`,
+        },
+      };
+    }
+    if (!registry.startsWith("pages-registry/") || !registry.endsWith(".md")) {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_UNSAFE_PATH",
+          message: `recipe '${recipeId}': Page registry '${registry}' must be a .md file under 'pages-registry/'`,
+        },
+      };
+    }
+    if (!entry.startsWith("pages/") || !entry.endsWith(".html")) {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_UNSAFE_PATH",
+          message: `recipe '${recipeId}': Page entry '${entry}' must be a .html file under 'pages/'`,
+        },
+      };
+    }
+    try {
+      const registryId = conceptIdFromPath(registry);
+      assertSafeConceptId(registryId);
+      if (isReservedFile(registry)) throw new Error("reserved");
+      assertSafeBlobKey(entry);
+    } catch {
+      return {
+        ok: false,
+        error: { code: "RECIPE_UNSAFE_PATH", message: `recipe '${recipeId}' contains an unsafe Page path` },
+      };
+    }
+    if (registries.has(registry) || entries.has(entry)) {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_MALFORMED",
+          message: `recipe '${recipeId}' declares a duplicate Page registry or entry at pages[${index}]`,
+        },
+      };
+    }
+    registries.add(registry);
+    entries.add(entry);
+    pages.push({ registry, entry });
+  }
+  return { ok: true, pages };
 }
 
 /**
@@ -143,6 +255,20 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
     };
   }
 
+  const contentPolicy = nonEmptyString(manifest.content_policy);
+  if (manifest.content_policy !== undefined && contentPolicy !== "definitions-only") {
+    return {
+      ok: false,
+      error: {
+        code: "RECIPE_MALFORMED",
+        message: `recipe '${id}' at '${source}' has unsupported content_policy '${contentPolicy}'`,
+      },
+    };
+  }
+  const pageDeclarations = parsePageDeclarations(manifest, id, source);
+  if (!pageDeclarations.ok) return pageDeclarations;
+  const declaredPageFiles = new Set(pageDeclarations.pages.flatMap((page) => [page.registry, page.entry]));
+
   const warnings: ValidationWarning[] = [];
   for (const key of RESERVED_MANIFEST_KEYS) {
     if (key in manifest) {
@@ -162,6 +288,22 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
   for (const file of files) {
     if (file.path === "recipe.md") continue;
 
+    if (!file.path.startsWith(CONVENTIONS_PREFIX)) {
+      if (declaredPageFiles.has(file.path)) continue;
+      if (contentPolicy === "definitions-only") {
+        return {
+          ok: false,
+          error: {
+            code: "RECIPE_UNSAFE_PATH",
+            message: `recipe '${id}' violates definitions-only policy with undeclared file '${file.path}'`,
+          },
+        };
+      }
+      // Backward compatibility: the historical filesystem source never acquired files outside
+      // recipe.md + conventions/, so legacy packages may continue carrying ignored README/assets.
+      continue;
+    }
+
     const conceptId = conceptIdFromPath(file.path);
     try {
       assertSafeConceptId(conceptId);
@@ -169,15 +311,6 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
       return {
         ok: false,
         error: { code: "RECIPE_UNSAFE_PATH", message: `recipe '${id}' contains an unsafe path '${file.path}'` },
-      };
-    }
-    if (!conceptId.startsWith(CONVENTIONS_PREFIX)) {
-      return {
-        ok: false,
-        error: {
-          code: "RECIPE_UNSAFE_PATH",
-          message: `recipe '${id}' contains a file outside '${CONVENTIONS_PREFIX}': '${file.path}'`,
-        },
       };
     }
     if (isReservedFile(file.path)) {
@@ -193,6 +326,15 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
     // Mirror loadKinds' own skip-with-warning semantics (a doc that is not `type: Convention`, or
     // has an empty `governs`, is not a kind declaration at all) WITHOUT seeding a backend.
     if (frontmatter.type !== CONVENTION_TYPE) {
+      if (contentPolicy === "definitions-only") {
+        return {
+          ok: false,
+          error: {
+            code: "RECIPE_MALFORMED",
+            message: `recipe '${id}': '${doc.id}' must declare 'type: ${CONVENTION_TYPE}'`,
+          },
+        };
+      }
       warnings.push({
         code: "KIND_CONVENTION_MALFORMED",
         message: `recipe '${id}': skipped '${doc.id}' (type '${String(frontmatter.type)}', expected '${CONVENTION_TYPE}').`,
@@ -203,6 +345,12 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
     }
     const governs = nonEmptyString(frontmatter.governs);
     if (!governs) {
+      if (contentPolicy === "definitions-only") {
+        return {
+          ok: false,
+          error: { code: "RECIPE_MALFORMED", message: `recipe '${id}': '${doc.id}' needs a non-empty 'governs'` },
+        };
+      }
       warnings.push({
         code: "KIND_CONVENTION_MALFORMED",
         message: `recipe '${id}': skipped '${doc.id}' (missing or empty 'governs' field).`,
@@ -210,6 +358,22 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
         severity: "warning",
       });
       continue;
+    }
+
+    if (contentPolicy === "definitions-only") {
+      const parsed = parseConventionDoc(doc);
+      if (!parsed.ok || parsed.warnings.length > 0) {
+        const reasons = [!parsed.ok ? parsed.reason : "", ...parsed.warnings.map((warning) => warning.message)].filter(
+          Boolean,
+        );
+        return {
+          ok: false,
+          error: {
+            code: "RECIPE_MALFORMED",
+            message: `recipe '${id}': invalid Convention '${doc.id}': ${reasons.join("; ")}`,
+          },
+        };
+      }
     }
 
     // Self-duplicate governs WITHIN this recipe is a malformed recipe (approved §B decision 8(i)) —
@@ -236,7 +400,69 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
     };
   }
 
-  return { ok: true, recipe: { id, title, version, summary, source, docs, governs: governsList, warnings } };
+  const pages: RecipePage[] = [];
+  for (const declaration of pageDeclarations.pages) {
+    const registryFile = files.find((file) => file.path === declaration.registry);
+    const entryFile = files.find((file) => file.path === declaration.entry);
+    if (!registryFile || !entryFile) {
+      const missingPath = !registryFile ? declaration.registry : declaration.entry;
+      return {
+        ok: false,
+        error: { code: "RECIPE_MALFORMED", message: `recipe '${id}' is missing declared Page file '${missingPath}'` },
+      };
+    }
+    if (entryFile.bytes.trim() === "") {
+      return {
+        ok: false,
+        error: { code: "RECIPE_MALFORMED", message: `recipe '${id}': Page entry '${declaration.entry}' is empty` },
+      };
+    }
+    const { frontmatter, body } = parseMarkdown(registryFile.bytes);
+    if (frontmatter.type !== "Page") {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_MALFORMED",
+          message: `recipe '${id}': '${declaration.registry}' must declare 'type: Page'`,
+        },
+      };
+    }
+    if (!nonEmptyString(frontmatter.title)) {
+      return {
+        ok: false,
+        error: { code: "RECIPE_MALFORMED", message: `recipe '${id}': '${declaration.registry}' needs a title` },
+      };
+    }
+    if (frontmatter.bridge !== "none" && frontmatter.bridge !== "bundle-read") {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_MALFORMED",
+          message: `recipe '${id}': '${declaration.registry}' needs bridge: none or bridge: bundle-read`,
+        },
+      };
+    }
+    if (nonEmptyString(frontmatter.entry) !== declaration.entry) {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_MALFORMED",
+          message:
+            `recipe '${id}': '${declaration.registry}' entry '${String(frontmatter.entry)}' ` +
+            `does not match manifest entry '${declaration.entry}'`,
+        },
+      };
+    }
+    pages.push({
+      registry: { id: conceptIdFromPath(declaration.registry), frontmatter, body },
+      entry: declaration.entry,
+      html: entryFile.bytes,
+    });
+  }
+
+  const recipe: LoadedRecipe = { id, title, version, summary, source, docs, pages, governs: governsList, warnings };
+  if (contentPolicy === "definitions-only") recipe.contentPolicy = contentPolicy;
+  return { ok: true, recipe };
 }
 
 // ── The built-in source: bytes from in-code constants, produced through the SAME serializer
@@ -335,27 +561,63 @@ export function builtinRecipeSource(): RecipeSource {
   };
 }
 
-/** Read ONLY `recipe.md` (root) + `conventions/**\/*.md` (recursively) under `root`. Any other
- * file in the folder is simply never read — it cannot reach `parseRecipeFiles` at all. A
- * `conventions/` entry whose realpath escapes `root` (a symlink pointing outside the recipe
- * folder) is rejected outright: safety-first, not silently skipped. */
+/** Read the historical manifest+conventions shape, or the complete inventory for a package that
+ * opts into `content_policy: definitions-only`. Full inventory is what lets the pure parser prove
+ * that no instance data or undeclared asset travels inside a portable package. */
 async function readRecipeDir(root: string): Promise<RecipeFile[]> {
   const files: RecipeFile[] = [];
+  const rootReal = await fs.realpath(root);
 
   const manifestPath = path.join(root, "recipe.md");
   const manifestStat = await fs.stat(manifestPath).catch(() => null);
   if (manifestStat?.isFile()) {
-    files.push({ path: "recipe.md", bytes: await fs.readFile(manifestPath, "utf8") });
+    const manifestReal = await fs.realpath(manifestPath).catch(() => null);
+    if (!manifestReal || (manifestReal !== rootReal && !manifestReal.startsWith(rootReal + path.sep))) {
+      throw new RecipeUnsafePathSignal("recipe.md");
+    }
+    const bytes = await fs.readFile(manifestPath, "utf8");
+    files.push({ path: "recipe.md", bytes });
+    const { frontmatter } = parseMarkdown(bytes);
+    if (frontmatter.content_policy === "definitions-only" || frontmatter.pages !== undefined) {
+      await walkRecipeFiles(root, "", rootReal, files, new Set(["recipe.md"]));
+      return files;
+    }
   }
 
   const conventionsRoot = path.join(root, "conventions");
   const conventionsStat = await fs.stat(conventionsRoot).catch(() => null);
   if (conventionsStat?.isDirectory()) {
-    const rootReal = await fs.realpath(root);
     await walkConventions(conventionsRoot, "conventions", rootReal, files);
   }
 
   return files;
+}
+
+async function walkRecipeFiles(
+  dir: string,
+  relPrefix: string,
+  rootReal: string,
+  out: RecipeFile[],
+  skip: Set<string>,
+): Promise<void> {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const abs = path.join(dir, entry.name);
+    const rel = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
+    if (skip.has(rel)) continue;
+    if (entry.isDirectory()) {
+      await walkRecipeFiles(abs, rel, rootReal, out, skip);
+      continue;
+    }
+    if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+    const real = await fs.realpath(abs).catch(() => null);
+    if (!real || (real !== rootReal && !real.startsWith(rootReal + path.sep))) {
+      throw new RecipeUnsafePathSignal(rel);
+    }
+    const stat = await fs.stat(real).catch(() => null);
+    if (!stat?.isFile()) throw new RecipeUnsafePathSignal(rel);
+    out.push({ path: rel, bytes: await fs.readFile(abs, "utf8") });
+  }
 }
 
 async function walkConventions(dir: string, relPrefix: string, rootReal: string, out: RecipeFile[]): Promise<void> {

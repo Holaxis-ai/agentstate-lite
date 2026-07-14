@@ -1,4 +1,4 @@
-// `agentstate-lite recipe add <name-or-path>` — apply a recipe's convention docs to an EXISTING
+// `agentstate-lite recipe add <name-or-path>` — apply a recipe's definitions to an EXISTING
 // bundle. `<name-or-path>` is a built-in name (e.g. `context-notes`) OR a path to a recipe folder
 // (npm-style disambiguation: a separator or a leading `~` means a path — see `recipe-source.ts`).
 //
@@ -23,10 +23,12 @@ export const RECIPE_USAGE = `agentstate-lite recipe — apply a recipe to this b
 Usage:
   agentstate-lite recipe add <name-or-path> [--dir <path>] [--remote <url>]
 
-Applies a recipe's convention docs to the bundle. <name-or-path> is a built-in name (e.g.
+Applies a recipe's definitions to the bundle. <name-or-path> is a built-in name (e.g.
 'context-notes') or a path to a recipe folder (a path is anything containing '/' or starting
 with '~' — a local folder literally named 'foo' is reachable only as './foo'). A recipe folder
-is 'recipe.md' (type: Recipe manifest) plus one or more 'conventions/*.md' docs.
+is 'recipe.md' (type: Recipe manifest) plus one or more 'conventions/*.md' docs. A portable recipe
+may opt into 'content_policy: definitions-only' and explicitly declare self-contained Page
+registry/HTML pairs; instance data and undeclared files are then rejected before any write.
 
 Idempotent: a doc the recipe would install that already exists is left untouched (changed:false
 for that doc) rather than erroring or overwriting — re-running 'recipe add' on an already-applied
@@ -113,6 +115,7 @@ async function recipeAdd(argv: string[], stdout: (s: string) => void): Promise<v
     changed: result.changed,
     docs: result.docs,
   };
+  if (result.pages.length > 0) receipt.pages = result.pages;
   if (warnings.length > 0) receipt.warnings = warnings;
   receipt.help = [`${cliInvocation()} recipes`, `${cliInvocation()} kinds`];
 
