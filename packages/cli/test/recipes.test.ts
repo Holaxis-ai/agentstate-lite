@@ -797,7 +797,7 @@ test("recipe add <path>: idempotent — second add of the SAME external recipe i
   }
 });
 
-test("portable Review Workflow: clean-room install carries Kinds and a Page but zero instances", async () => {
+test("portable Review Workflow: clean-room install carries Kinds and a Page but zero Review Request instances", async () => {
   const dir = await tempDir();
   try {
     await initBundle(dir);
@@ -817,6 +817,16 @@ test("portable Review Workflow: clean-room install carries Kinds and a Page but 
     assert.ok(reviewKind);
     assert.match(reviewKind!.description ?? "", /durable request/);
     assert.match(reviewKind!.fields.valueDescriptions.status?.approved ?? "", /terminal/);
+
+    const pageKind = registry.kinds.get("Page");
+    assert.ok(pageKind);
+    assert.equal(pageKind!.path, "pages-registry/");
+    assert.deepEqual(pageKind!.fields.required, ["title", "entry", "bridge"]);
+    assert.deepEqual(pageKind!.fields.values.bridge, ["none", "bundle-read"]);
+
+    const pageDefinitions = await runJson(list, ["--type", "Page", "--dir", dir]);
+    assert.equal(pageDefinitions.count, 1, "the package carries exactly its declared Page definition");
+    assert.equal((pageDefinitions.docs as Array<Record<string, unknown>>)[0]!.id, "pages-registry/review-workflow-reviews");
 
     const before = await runJson(list, ["--type", "Review Request", "--dir", dir]);
     assert.equal(before.count, 0, "the package must not carry source Review Request instances");

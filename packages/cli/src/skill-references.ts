@@ -53,6 +53,10 @@ export const SKILL_REFERENCES: SkillReference[] = [
     dest: "recipes/review-workflow/conventions/review-request.md",
   },
   {
+    src: "examples/recipes/review-workflow/conventions/page.md",
+    dest: "recipes/review-workflow/conventions/page.md",
+  },
+  {
     src: "examples/recipes/review-workflow/pages-registry/review-workflow-reviews.md",
     dest: "recipes/review-workflow/pages-registry/review-workflow-reviews.md",
   },

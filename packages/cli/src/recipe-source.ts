@@ -27,13 +27,13 @@ import {
   parseConventionDoc,
   conceptIdFromPath,
   assertSafeConceptId,
-  assertSafeBlobKey,
   isReservedFile,
   CONVENTIONS_PREFIX,
   CONVENTION_TYPE,
   type OkfDocument,
   type ValidationWarning,
 } from "@agentstate-lite/core";
+import { isPageEntryKey, isPageRegistryId } from "@agentstate-lite/core/page";
 import {
   CONTEXT_NOTE_KIND,
   CONTEXT_NOTE_SEED_BODY,
@@ -119,6 +119,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 interface PageDeclaration {
   registry: string;
+  registryId: string;
   entry: string;
 }
 
@@ -154,8 +155,8 @@ function parsePageDeclarations(manifest: Record<string, unknown>, recipeId: stri
         error: { code: "RECIPE_MALFORMED", message: `recipe '${recipeId}': pages[${index}] must be a map` },
       };
     }
-    const registry = nonEmptyString(value.registry);
-    const entry = nonEmptyString(value.entry);
+    const registry = typeof value.registry === "string" ? value.registry : "";
+    const entry = typeof value.entry === "string" ? value.entry : "";
     if (!registry || !entry) {
       return {
         ok: false,
@@ -183,18 +184,16 @@ function parsePageDeclarations(manifest: Record<string, unknown>, recipeId: stri
         },
       };
     }
-    try {
-      const registryId = conceptIdFromPath(registry);
-      assertSafeConceptId(registryId);
-      if (isReservedFile(registry)) throw new Error("reserved");
-      assertSafeBlobKey(entry);
-    } catch {
+    const registryId = registry.slice(0, -3);
+    if (!isPageRegistryId(registryId) || !isPageEntryKey(entry) || isReservedFile(registry)) {
       return {
         ok: false,
         error: { code: "RECIPE_UNSAFE_PATH", message: `recipe '${recipeId}' contains an unsafe Page path` },
       };
     }
-    if (registries.has(registry) || entries.has(entry)) {
+    const registryTarget = registryId.toLowerCase();
+    const entryTarget = entry.toLowerCase();
+    if (registries.has(registryTarget) || entries.has(entryTarget)) {
       return {
         ok: false,
         error: {
@@ -203,9 +202,9 @@ function parsePageDeclarations(manifest: Record<string, unknown>, recipeId: stri
         },
       };
     }
-    registries.add(registry);
-    entries.add(entry);
-    pages.push({ registry, entry });
+    registries.add(registryTarget);
+    entries.add(entryTarget);
+    pages.push({ registry, registryId, entry });
   }
   return { ok: true, pages };
 }
@@ -255,13 +254,13 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
     };
   }
 
-  const contentPolicy = nonEmptyString(manifest.content_policy);
-  if (manifest.content_policy !== undefined && contentPolicy !== "definitions-only") {
+  const contentPolicy = manifest.content_policy;
+  if (contentPolicy !== undefined && contentPolicy !== "definitions-only") {
     return {
       ok: false,
       error: {
         code: "RECIPE_MALFORMED",
-        message: `recipe '${id}' at '${source}' has unsupported content_policy '${contentPolicy}'`,
+        message: `recipe '${id}' at '${source}' has unsupported content_policy '${String(contentPolicy)}'`,
       },
     };
   }
@@ -442,7 +441,7 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
         },
       };
     }
-    if (nonEmptyString(frontmatter.entry) !== declaration.entry) {
+    if (frontmatter.entry !== declaration.entry) {
       return {
         ok: false,
         error: {
@@ -454,7 +453,7 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
       };
     }
     pages.push({
-      registry: { id: conceptIdFromPath(declaration.registry), frontmatter, body },
+      registry: { id: declaration.registryId, frontmatter, body },
       entry: declaration.entry,
       html: entryFile.bytes,
     });

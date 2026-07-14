@@ -84,6 +84,92 @@ test("parseRecipeFiles: definitions-only package materializes an explicitly decl
   assert.equal(result.recipe.pages[0]!.html, PAGE_HTML.bytes);
 });
 
+test("parseRecipeFiles: a valid nested Page declaration preserves the exact runtime id and blob key", () => {
+  const registry = "pages-registry/reviews/architecture.v2.md";
+  const entry = "pages/reviews/architecture.v2.html";
+  const manifest: RecipeFile = {
+    ...PORTABLE_MANIFEST,
+    bytes: PORTABLE_MANIFEST.bytes
+      .replace("pages-registry/reviews.md", registry)
+      .replace("pages/reviews.html", entry),
+  };
+  const registryFile: RecipeFile = {
+    path: registry,
+    bytes: PAGE_REGISTRY.bytes.replace("pages/reviews.html", entry),
+  };
+  const html: RecipeFile = { path: entry, bytes: PAGE_HTML.bytes };
+  const result = parseRecipeFiles([manifest, VALID_TERM, registryFile, html], "test:nested-page");
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.recipe.pages[0]!.registry.id, "pages-registry/reviews/architecture.v2");
+  assert.equal(result.recipe.pages[0]!.entry, entry);
+});
+
+test("parseRecipeFiles: rejects Page paths that the runtime cannot discover or load", () => {
+  for (const [registry, entry] of [
+    ["pages-registry/has space.md", "pages/reviews.html"],
+    ["pages-registry/.hidden.md", "pages/reviews.html"],
+    ["pages-registry/x.md.md", "pages/reviews.html"],
+    ["pages-registry/x\\y.md", "pages/reviews.html"],
+    ["pages-registry/reviews.md", "pages/.hidden.html"],
+    ["pages-registry/reviews.md", "pages/has space.html"],
+    ["pages-registry/reviews.md", "pages/assets.md/reviews.html"],
+  ] as const) {
+    const manifest: RecipeFile = {
+      ...PORTABLE_MANIFEST,
+      bytes: PORTABLE_MANIFEST.bytes
+        .replace("pages-registry/reviews.md", registry)
+        .replace("pages/reviews.html", entry),
+    };
+    const registryFile: RecipeFile = {
+      path: registry,
+      bytes: PAGE_REGISTRY.bytes.replace("pages/reviews.html", entry),
+    };
+    const html: RecipeFile = { path: entry, bytes: PAGE_HTML.bytes };
+    const result = parseRecipeFiles([manifest, VALID_TERM, registryFile, html], `test:unsafe:${registry}:${entry}`);
+    assert.equal(result.ok, false, `${registry} -> ${entry} must be rejected`);
+    if (result.ok) continue;
+    assert.equal(result.error.code, "RECIPE_UNSAFE_PATH");
+  }
+});
+
+test("parseRecipeFiles: manifest Page paths are exact and reject surrounding whitespace", () => {
+  for (const [needle, padded] of [
+    ["pages-registry/reviews.md", '" pages-registry/reviews.md "'],
+    ["pages/reviews.html", '" pages/reviews.html "'],
+  ] as const) {
+    const manifest = { ...PORTABLE_MANIFEST, bytes: PORTABLE_MANIFEST.bytes.replace(needle, padded) };
+    const result = parseRecipeFiles([manifest, VALID_TERM, PAGE_REGISTRY, PAGE_HTML], `test:padded-manifest:${needle}`);
+    assert.equal(result.ok, false, `${needle} must not be whitespace-normalized`);
+    if (result.ok) continue;
+    assert.equal(result.error.code, "RECIPE_UNSAFE_PATH");
+  }
+});
+
+test("parseRecipeFiles: rejects case-folded duplicate Page targets for cross-filesystem portability", () => {
+  const manifest: RecipeFile = {
+    ...PORTABLE_MANIFEST,
+    bytes:
+      "---\ntype: Recipe\nid: portable\ntitle: Portable\nversion: \"1\"\nsummary: Definitions only.\n" +
+      "content_policy: definitions-only\npages:\n" +
+      "  - registry: pages-registry/Foo.md\n    entry: pages/Foo.html\n" +
+      "  - registry: pages-registry/foo.md\n    entry: pages/foo.html\n---\n",
+  };
+  const files: RecipeFile[] = [
+    manifest,
+    VALID_TERM,
+    { path: "pages-registry/Foo.md", bytes: PAGE_REGISTRY.bytes.replaceAll("reviews", "Foo") },
+    { path: "pages/Foo.html", bytes: PAGE_HTML.bytes },
+    { path: "pages-registry/foo.md", bytes: PAGE_REGISTRY.bytes.replaceAll("reviews", "foo") },
+    { path: "pages/foo.html", bytes: PAGE_HTML.bytes },
+  ];
+  const result = parseRecipeFiles(files, "test:case-folded-duplicates");
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.error.code, "RECIPE_MALFORMED");
+  assert.match(result.error.message, /duplicate/i);
+});
+
 test("parseRecipeFiles: Page assets require the definitions-only policy", () => {
   const manifest = {
     ...PORTABLE_MANIFEST,
@@ -127,6 +213,18 @@ test("parseRecipeFiles: definitions-only hard-rejects Convention warnings instea
 test("parseRecipeFiles: Page registry entry must match the manifest entry", () => {
   const mismatch = { ...PAGE_REGISTRY, bytes: PAGE_REGISTRY.bytes.replace("pages/reviews.html", "pages/other.html") };
   const result = parseRecipeFiles([PORTABLE_MANIFEST, VALID_TERM, mismatch, PAGE_HTML], "test:mismatch");
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.error.code, "RECIPE_MALFORMED");
+  assert.match(result.error.message, /does not match/);
+});
+
+test("parseRecipeFiles: Page registry entry matching is exact, not whitespace-normalized", () => {
+  const padded = {
+    ...PAGE_REGISTRY,
+    bytes: PAGE_REGISTRY.bytes.replace("entry: pages/reviews.html", 'entry: " pages/reviews.html "'),
+  };
+  const result = parseRecipeFiles([PORTABLE_MANIFEST, VALID_TERM, padded, PAGE_HTML], "test:padded-entry");
   assert.equal(result.ok, false);
   if (result.ok) return;
   assert.equal(result.error.code, "RECIPE_MALFORMED");
@@ -313,7 +411,7 @@ test("resolveRecipe: loads the content-free Review Workflow package with its dec
   if (!result.ok) return;
   assert.equal(result.recipe.id, "review-workflow");
   assert.equal(result.recipe.contentPolicy, "definitions-only");
-  assert.deepEqual(result.recipe.governs, ["Review Request"]);
+  assert.deepEqual([...result.recipe.governs].sort(), ["Page", "Review Request"]);
   assert.equal(result.recipe.pages.length, 1);
   assert.equal(result.recipe.pages[0]!.registry.id, "pages-registry/review-workflow-reviews");
   assert.equal(result.recipe.pages[0]!.entry, "pages/review-workflow/reviews.html");
@@ -335,6 +433,27 @@ test("resolveRecipe: definitions-only scans the full folder and rejects hidden i
     if (result.ok) return;
     assert.equal(result.error.code, "RECIPE_UNSAFE_PATH");
     assert.match(result.error.message, /review-requests\/private\.md/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveRecipe: definitions-only policy spelling is exact across inventory discovery and parsing", async () => {
+  const dir = await tempDir();
+  try {
+    await mkdir(path.join(dir, "conventions"), { recursive: true });
+    await mkdir(path.join(dir, "review-requests"), { recursive: true });
+    const manifest = PORTABLE_MANIFEST.bytes
+      .replace("content_policy: definitions-only", 'content_policy: " definitions-only "')
+      .replace(/pages:[\s\S]*?---\n$/, "---\n");
+    await writeFile(path.join(dir, "recipe.md"), manifest);
+    await writeFile(path.join(dir, "conventions", "term.md"), VALID_TERM.bytes);
+    await writeFile(path.join(dir, "review-requests", "private.md"), "---\ntype: Review Request\n---\nprivate\n");
+    const result = await resolveRecipe(dir);
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.equal(result.error.code, "RECIPE_MALFORMED");
+    assert.match(result.error.message, /unsupported content_policy/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
