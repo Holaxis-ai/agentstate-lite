@@ -4,7 +4,7 @@ title: >-
   Proposal: relationship classes as a demand-enabling affordance (kernel + cheap
   extension)
 actor: brian
-timestamp: '2026-07-14T21:51:07.861Z'
+timestamp: '2026-07-14T22:04:20.451Z'
 ---
 ## The product thesis this rests on
 
@@ -52,16 +52,33 @@ Each class declaration also states four properties consumers otherwise silently
 assume: inverse label (supersedes/superseded-by are one relation, two viewpoints),
 transitivity, acyclicity, and cardinality (can two roadmap items contain one task?).
 
-## Division of labor (resolves the demand question)
+## Governance: a ratification gate, not role assignments (resolves the demand question)
 
-Humans DECIDE ontology extensions — rare, deliberate. Agents IMPLEMENT and USE them —
-frequent, cheap. We agree with our own review panel that agents won't independently
-coin sound relationship semantics; that was never the requirement. The requirement is
-that when WE decide "evidence should behave as grounding," an agent executes that
-decision in one command and every agent thereafter uses it correctly because the
-system teaches it at the moment of linking. Demand for class behavior is not
-something we wait to observe; it is something we enable and, where it embodies the
-product's pitch, seed with demonstrations.
+The one rigid thing is narrow: the shared label->class map is shared state that
+changes system behavior on every clone, so changes to it get RATIFIED — the same
+reason code merges get review. Everything around that gate is open, and mostly
+already works bottom-up:
+
+- Agents freely coin labels today (the undeclared free-text tier is the sandbox), and
+  those coinages are DEMAND SIGNALS, not noise: three agents independently writing
+  "informs" is the system asking for a soft-dependency relation. The legend panel's
+  unmapped-label list makes this pipeline visible — free text is variation, the drift
+  list is observation, promotion into the map is selection.
+- Anyone may PROPOSE a mapping — agents included, typically via the near-miss hint's
+  ready-to-run `relationship derive` command, surfaced to their human or filed as a
+  suggestion.
+- Ratification sits with humans today; the gate can loosen deliberately over time
+  (description-only mappings are reversible and low-risk — a future policy could let
+  agents ratify those autonomously, reserving human sign-off for behavior-bearing
+  changes).
+- Once ratified, every agent thereafter uses the mapping correctly because the system
+  teaches it at the moment of linking — the teaching surfaces, not the registry, are
+  what make the decision real.
+
+On demand for the class consumers themselves: we don't wait to observe it and we
+don't bet blindly — we make expressing it cheap, and where a consumer embodies the
+product's own pitch (evidence-backed claims, visible blocked work), we seed it as a
+demonstration.
 
 ## What we build (three horizons)
 
