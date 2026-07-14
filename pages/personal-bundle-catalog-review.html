@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personal bundle catalog — product review</title>
+<style>
+  :root{--bg:#f3f0e9;--paper:#fffdf8;--ink:#172631;--muted:#68747c;--line:#d8d2c7;--navy:#183d58;--blue:#277c99;--blue-soft:#e5f1f4;--green:#34745e;--gold:#ae7729;--coral:#b45c4d;--serif:Iowan Old Style,Georgia,serif;--sans:system-ui,-apple-system,"Segoe UI",sans-serif;--mono:ui-monospace,"SFMono-Regular",Menlo,monospace}
+  @media(prefers-color-scheme:dark){:root{--bg:#10181f;--paper:#17222b;--ink:#edf2f2;--muted:#a5b0b7;--line:#35434c;--navy:#173b57;--blue:#78c1d7;--blue-soft:#203945;--green:#77c2a4;--gold:#dfb36c;--coral:#ef9385}}
+  *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.62 var(--sans)}
+  header{background:var(--navy);color:#fff;padding:54px clamp(20px,6vw,72px) 60px}header>div{max-width:1120px;margin:auto}.eyebrow{font:700 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:#9ed7e7}h1,h2,h3{font-family:var(--serif);font-weight:500;line-height:1.12}h1{font-size:clamp(42px,7vw,72px);letter-spacing:-.03em;max-width:900px;margin:13px 0 20px}.lede{font:21px/1.5 var(--serif);max-width:760px;color:#e3edf2}.hero-note{display:inline-flex;gap:8px;align-items:center;margin-top:20px;padding:8px 11px;border:1px solid rgba(255,255,255,.28);border-radius:999px;font:12px var(--mono);color:#d8e9ef}.hero-note i{width:8px;height:8px;border-radius:50%;background:#79dbb4}
+  main{max-width:1120px;margin:auto;padding:50px clamp(20px,6vw,72px) 90px}section{margin:64px 0}.kicker{font:700 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--blue)}h2{font-size:34px;margin:8px 0 14px}h3{font-size:21px;margin:0 0 8px}p{color:var(--muted);max-width:76ch}.intro{font:19px/1.55 var(--serif);color:var(--ink)}
+  .problem{display:grid;grid-template-columns:1fr 48px 1fr;align-items:center;margin-top:25px}.scene{background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:23px;min-height:185px}.scene.before{border-top:4px solid var(--coral)}.scene.after{border-top:4px solid var(--green)}.scene small{font:700 10px var(--mono);text-transform:uppercase;color:var(--muted)}.scene p{font-size:14px;margin-bottom:0}.arrow{font-size:28px;text-align:center;color:var(--muted)}
+  .journey{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-top:25px;counter-reset:step}.step{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:19px;position:relative;counter-increment:step}.step:before{content:counter(step);display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--blue-soft);color:var(--blue);font:700 12px var(--mono);margin-bottom:15px}.step p{font-size:13px;margin:0}
+  .agent-flow{display:grid;grid-template-columns:repeat(7,auto);align-items:stretch;margin-top:25px}.agent-card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:18px;min-width:0}.agent-card strong{display:block;color:var(--blue);font:700 10px var(--mono);text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px}.agent-card p{font-size:13px;margin:0}.flow-arrow{display:grid;place-items:center;color:var(--muted);font-size:22px;padding:0 9px}
+  .architecture{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:28px;margin-top:24px}.catalog{max-width:560px;margin:0 auto 25px;padding:18px;border-radius:8px;background:var(--navy);color:#fff;text-align:center}.catalog small{display:block;font:700 10px var(--mono);text-transform:uppercase;color:#a9d5e3;margin-bottom:5px}.catalog p{color:#dbe8ed;margin:5px auto 0;font-size:13px}.branch{height:26px;width:70%;margin:auto;border-left:1px solid var(--line);border-right:1px solid var(--line);border-top:1px solid var(--line)}.bundles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.bundle{border:1px solid var(--line);border-radius:7px;padding:16px;text-align:center}.bundle b{font-family:var(--serif);font-size:19px;font-weight:500}.bundle span{display:block;color:var(--muted);font-size:12px;margin-top:5px}.architecture-note{text-align:center;margin:20px auto 0;font:15px var(--serif);color:var(--ink)}
+  .values{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:23px}.value{background:var(--paper);border:1px solid var(--line);border-left:4px solid var(--blue);border-radius:7px;padding:19px}.value p{font-size:13px;margin:0}.value:nth-child(2){border-left-color:var(--green)}.value:nth-child(3){border-left-color:var(--gold)}.value:nth-child(4){border-left-color:var(--coral)}
+  .boundary{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px}.boundary article{border-radius:8px;padding:21px}.yes{background:color-mix(in srgb,var(--green) 9%,var(--paper));border:1px solid color-mix(in srgb,var(--green) 35%,var(--line))}.not-yet{background:var(--paper);border:1px solid var(--line)}ul{color:var(--muted);padding-left:1.2em;margin-bottom:0}li{margin:.45em 0}
+  .review{background:var(--blue-soft);border:1px solid color-mix(in srgb,var(--blue) 30%,var(--line));border-radius:10px;padding:28px}.review h2{margin-top:5px}.questions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:22px 0}.question{background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:16px;font:17px/1.4 var(--serif)}button{border:0;background:var(--navy);color:#fff;border-radius:6px;padding:12px 17px;font:650 14px var(--sans);cursor:pointer}button:hover{filter:brightness(1.12)}.button-note{font:11px var(--mono);color:var(--muted);margin-left:10px}.source{font:11px/1.5 var(--mono);color:var(--muted);margin-top:48px}
+  @media(max-width:900px){.journey,.values{grid-template-columns:1fr 1fr}.agent-flow{grid-template-columns:1fr}.flow-arrow{height:28px;transform:rotate(90deg)}.bundles{grid-template-columns:1fr}.branch{display:none}}
+  @media(max-width:650px){.problem,.boundary,.questions,.journey,.values{grid-template-columns:1fr}.arrow{transform:rotate(90deg);height:42px}.button-note{display:block;margin:10px 0 0}}
+</style>
+</head>
+<body>
+<header><div>
+  <div class="eyebrow">Product review · Personal bundle catalog</div>
+  <h1>One person. Many bundles. One reliable way back in.</h1>
+  <p class="lede">AgentState already gives each project and private workspace its own durable memory. The personal catalog adds the missing orientation layer: a simple place for you and your agents to find the right bundle without merging or centralizing the knowledge inside it.</p>
+  <div class="hero-note"><i></i> Designed because juggling multiple bundles is now a real workflow</div>
+</div></header>
+
+<main>
+  <section>
+    <div class="kicker">The product gap</div><h2>Independent bundles are a strength—until you lose your place</h2>
+    <p class="intro">Project boundaries keep knowledge understandable, portable, and private. But as the number of bundles grows, remembering where each one lives becomes its own job.</p>
+    <div class="problem">
+      <div class="scene before"><small>Today</small><h3>Navigation lives in your head</h3><p>You remember paths, switch repositories, reopen launchers, and explain to an agent which workspace you meant. The bundles work; orientation does not.</p></div>
+      <div class="arrow">→</div>
+      <div class="scene after"><small>With the catalog</small><h3>Name the place you want</h3><p>“Personal,” “AgentState,” or “client work” becomes enough context to locate the bundle. Once selected, the normal AgentState experience takes over.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">User journey</div><h2>A small layer that makes many workspaces feel coherent</h2>
+    <div class="journey">
+      <article class="step"><h3>Register</h3><p>Name the bundles you actually use. Nothing scans your machine or publishes a private workspace.</p></article>
+      <article class="step"><h3>Orient</h3><p>See the known places you work and whether each one is currently available on this machine.</p></article>
+      <article class="step"><h3>Open</h3><p>Choose a bundle and enter its existing Page launcher, with its own domain model, records, and views intact.</p></article>
+      <article class="step"><h3>Trust</h3><p>The catalog remembers where things are; it never absorbs, merges, or silently reroutes the underlying knowledge.</p></article>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">Agent journey</div><h2>The agent locates first, then works normally</h2>
+    <p>This should feel natural in any agent harness—not only when an AgentState skill happens to be loaded.</p>
+    <div class="agent-flow">
+      <article class="agent-card"><strong>1 · Understand</strong><p>The user names a bundle or asks what workspaces are available.</p></article><div class="flow-arrow">→</div>
+      <article class="agent-card"><strong>2 · Resolve</strong><p>The agent asks the catalog for one exact local destination.</p></article><div class="flow-arrow">→</div>
+      <article class="agent-card"><strong>3 · Operate</strong><p>The existing AgentState CLI reads or writes inside that selected bundle.</p></article><div class="flow-arrow">→</div>
+      <article class="agent-card"><strong>4 · Stay explicit</strong><p>Cross-project work names each destination; there is no hidden global “current bundle.”</p></article>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">The product model</div><h2>A map of independent places—not a new place that owns everything</h2>
+    <div class="architecture">
+      <div class="catalog"><small>Personal catalog</small><strong>Labels + locations + availability</strong><p>Private orientation for one person and their agent fleet</p></div>
+      <div class="branch"></div>
+      <div class="bundles">
+        <div class="bundle"><b>Project bundle</b><span>shared context for one repository</span></div>
+        <div class="bundle"><b>Personal bundle</b><span>private knowledge outside a public repo</span></div>
+        <div class="bundle"><b>Client bundle</b><span>a distinct domain and authority boundary</span></div>
+      </div>
+      <p class="architecture-note">Each bundle remains independently useful, portable, shareable, and understandable without the catalog.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">Product values</div><h2>What this should preserve</h2>
+    <div class="values">
+      <article class="value"><h3>Local by default</h3><p>Your catalog can contain private names and locations. It stays on your machine unless you deliberately choose otherwise.</p></article>
+      <article class="value"><h3>Clear authority</h3><p>The catalog chooses a destination. The selected bundle remains the only authority for its knowledge.</p></article>
+      <article class="value"><h3>CLI-first portability</h3><p>A normal npm installation should be enough. Skills may teach the workflow, but they are not required to make it work.</p></article>
+      <article class="value"><h3>Honest limits</h3><p>The first release solves finding and opening bundles. It does not pretend to be a universal cross-project dashboard.</p></article>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">First product slice</div><h2>Useful immediately, without betting on the whole future</h2>
+    <div class="boundary">
+      <article class="yes"><h3>What ships first</h3><ul><li>Add, list, rename, and remove known bundles</li><li>Let an agent resolve one named bundle safely</li><li>Open the selected bundle's existing UI</li><li>Work from any directory and without a skill</li><li>Keep the registry private and explicit</li></ul></article>
+      <article class="not-yet"><h3>What waits for evidence</h3><ul><li>One dashboard aggregating records from every bundle</li><li>Cross-bundle writes or transactions</li><li>Automatic filesystem discovery</li><li>Hosted accounts, subscriptions, or remote reopening</li><li>Portable identity across several machines</li></ul></article>
+    </div>
+  </section>
+
+  <section class="review">
+    <div class="kicker">Your review</div><h2>Does this solve the problem you are actually feeling?</h2>
+    <p>The technical design has been independently reviewed. This review is about the product boundary and whether the first experience is worth building now.</p>
+    <div class="questions">
+      <div class="question">Would naming and reopening your bundles remove meaningful friction today?</div>
+      <div class="question">Does “the catalog selects; the bundle operates” feel understandable and trustworthy?</div>
+      <div class="question">Is the first slice complete enough without cross-bundle aggregation?</div>
+      <div class="question">Should this move from a queued direction into active implementation?</div>
+    </div>
+    <button id="open-reviews" type="button">Open the review request</button><span class="button-note">Record your decision through an agent or the CLI</span>
+  </section>
+
+  <p class="source">Product interpretation of the reviewed “Personal bundle catalog” design. The detailed design remains the authority for implementation mechanics and safety constraints.</p>
+</main>
+<script>
+  (function(){document.getElementById("open-reviews").addEventListener("click",function(){parent.postMessage({bridge:"v0",type:"open-page",pageId:"pages-registry/reviews"},"*")})})();
+</script>
+</body>
+</html>
