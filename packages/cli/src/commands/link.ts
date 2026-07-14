@@ -43,6 +43,7 @@ import {
   type EdgeFilter,
   type Link,
   type OkfDocument,
+  type Version,
   type ValidationWarning,
 } from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
@@ -253,6 +254,8 @@ export interface AddLinkResult {
   text: string;
   /** false when the source already carries this normalized target + exact display text. */
   changed: boolean;
+  /** The source document's current version after this call (written head or idempotent no-op head). */
+  version: Version;
   /** Present only when the write-time type-conformance lint (graph lints unit) attached one. */
   warnings?: ValidationWarning[];
 }
@@ -370,23 +373,40 @@ export async function addLink(
     });
 
     if (!outcome.wrote) {
-      return { from: lastSource!.id, normalizedTo, href, text, changed: false };
+      return { from: lastSource!.id, normalizedTo, href, text, changed: false, version: outcome.version! };
     }
     // Write-time type-conformance lint (graph lints unit) — warn-only, never blocking: the link is
     // already written by the time this runs. Skipped entirely on the idempotent no-op path above (a
     // true no-op performs no registry load and no checks).
-    const warnings = await lintLinkType(bundle, {
-      sourceType: sourceTypeAtWrite,
-      text,
-      to: normalizedTo,
-      remoteUrl: opts.remoteUrl,
-    });
+    let warnings: ValidationWarning[];
+    try {
+      warnings = await lintLinkType(bundle, {
+        sourceType: sourceTypeAtWrite,
+        text,
+        to: normalizedTo,
+        remoteUrl: opts.remoteUrl,
+      });
+    } catch (err) {
+      // The mutation is already durable and its version is known. Type conformance is explicitly
+      // advisory, so a registry/target read failure must not erase the successful write outcome or
+      // make a caller retry an operation that already landed. Surface the degraded lint as a
+      // warning while preserving the truthful post-write version.
+      warnings = [
+        {
+          code: "LINK_LINT_UNAVAILABLE",
+          message: `link was written, but type-conformance guidance was unavailable: ${err instanceof Error ? err.message : String(err)}`,
+          field: "text",
+          severity: "warning",
+        },
+      ];
+    }
     return {
       from: savedDoc!.id,
       normalizedTo,
       href,
       text,
       changed: true,
+      version: outcome.version!,
       warnings: warnings.length > 0 ? warnings : undefined,
     };
   } catch (err) {

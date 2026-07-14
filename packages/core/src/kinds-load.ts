@@ -6,7 +6,13 @@
  * pull the engine (`query` -> backends -> node built-ins). One registry, two entry weights.
  */
 import { query } from "./bundle.js";
-import { CONVENTIONS_PREFIX, CONVENTION_TYPE, parseConventionDoc, freshnessHorizonMs } from "./kinds.js";
+import {
+  CONVENTIONS_PREFIX,
+  CONVENTION_TYPE,
+  RESERVED_KIND_FIELD_NAMES,
+  parseConventionDoc,
+  freshnessHorizonMs,
+} from "./kinds.js";
 import type { KindConvention, KindRegistry } from "./kinds.js";
 import type { ValidationWarning } from "./validation.js";
 import type { Bundle } from "./types.js";
@@ -53,7 +59,7 @@ export async function loadKinds(bundle: Bundle): Promise<KindRegistry> {
     if (reservedFieldsIgnored.length > 0) {
       warnings.push({
         code: "KIND_RESERVED_FIELD",
-        message: `kind convention '${doc.id}' declares reserved field name(s) ${reservedFieldsIgnored.join(", ")} (reserved by the CLI: type/dir/remote/json/help); ignoring them.`,
+        message: `kind convention '${doc.id}' declares reserved field name(s) ${reservedFieldsIgnored.join(", ")} (reserved by the CLI: ${RESERVED_KIND_FIELD_NAMES.join("/")}); ignoring them — rename those domain fields before authoring instances.`,
         field: reservedFieldPaths.join(","),
         severity: "warning",
       });
