@@ -3,7 +3,7 @@ type: Task
 title: >-
   Local builds dirty the bot-owned plugin bundle - every subsequent git pull
   collides
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Recurring friction (bit both founders' sides 3x on 2026-07-11 alone): npm run
@@ -19,6 +19,7 @@ description: >-
   serves the committed path from main). Acceptance: fresh clone, npm run build,
   git status clean; CI bot flow unchanged.
 actor: brian-claude
-timestamp: '2026-07-11T21:41:56.322Z'
+assignee: brian-claude
+timestamp: '2026-07-15T02:17:21.119Z'
 ---
 

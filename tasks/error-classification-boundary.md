@@ -1,13 +1,14 @@
 ---
 type: Task
 title: Centralize CLI error classification at one boundary
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   Replace distributed command-level error translation with one typed CLI error
   boundary and a contract-tested exit-code matrix.
-actor: openai/codex
-timestamp: '2026-07-10T12:18:03.180Z'
+actor: brian-claude
+assignee: brian-claude
+timestamp: '2026-07-15T02:17:20.997Z'
 ---
 # Goal
 
