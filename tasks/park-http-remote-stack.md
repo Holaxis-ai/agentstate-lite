@@ -1,55 +1,47 @@
 ---
 type: Task
 title: Extract hosted control-plane units behind the OSS wire boundary
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Hosted extraction is implemented and ready to merge as a two-phase boundary
-  change. Publication of @agentstate-lite/core and @agentstate-lite/server is no
-  longer a prerequisite for shrinking OSS; it is a prerequisite only for
-  reviving the hosted implementation as a runnable product.
+  Complete. PR #68 merged the hosted extraction into public main on 2026-07-15.
 
 
-  Preservation completed:
+  Current boundary:
 
-  - The former Cloudflare Worker/D1/R2/auth package is in the verified-private
-  frozen repository Holaxis-ai/agentstate-hosted-reference.
+  - OSS ships no hosted deployment, identity system, account-administration
+  commands, provider package, Worker source, or Cloudflare deployment
+  dependencies.
 
-  - Only its public subtree history is reachable; the local pre-public archive
-  was not copied.
+  - StorageBackend, RemoteBackend, bearer auth, explicit --remote, the reference
+  server, serve, local UI/Pages, and git sync remain public.
 
-  - Migrations, tests, configuration, retired hosted account-command clients,
-  auth-wire types, provenance, and a revival checklist are preserved.
-
-  - Common private-key/token patterns were scanned before push; no matches were
-  found.
+  - The hardened executable boundary test prevents hosted source or provider
+  dependencies from drifting back into the public build and lock graph.
 
 
-  OSS removal is ready PR #68 at exact commit 1a919d0:
+  Preservation:
 
-  - Deletes packages/worker and retired hosted control-plane CLI/auth-wire
-  sources.
+  - The implementation, migrations, tests, configuration, retired hosted account
+  clients, auth-wire types, provenance, and revival checklist live in
+  verified-private Holaxis-ai/agentstate-hosted-reference.
 
-  - Removes Cloudflare/Workerd/Wrangler dependencies and Worker build targets.
-
-  - Keeps StorageBackend, RemoteBackend, bearer auth, explicit --remote, the
-  reference server, serve, local UI/Pages, and git sync public.
-
-  - Adds an executable boundary test preventing hosted source/dependencies from
-  drifting back.
-
-  - Independent review found and drove fixes for stale deleted-login guidance
-  and an invalid PATH assumption; a focused regression test covers the supported
-  AGENTSTATE_LITE_API_KEY and same-invocation recovery path.
+  - Only public subtree history is reachable there; no production data,
+  credentials, Cloudflare account state, or pre-public archive was copied.
 
 
-  Independent exact-SHA review APPROVED with no remaining findings. Build,
-  typecheck, every workspace unit/integration suite, the full UI browser gate
-  (14/14), all script/package/boundary proofs (22/22; boundary 3/3), skill
-  drift, package dry-run/install smoke, and diff checks pass. Awaiting merge;
-  task remains in progress until the public removal lands.
+  Review and validation:
+
+  - Independent review approved the extraction after correcting stale remote-UI
+  login and executable-path guidance.
+
+  - Build, typecheck, workspace suites, browser gate, package/boundary proofs,
+  skill drift, package install smoke, and private snapshot safety checks passed.
+
+  - PR #70 is a documentation-only follow-up that rewrites the public READMEs
+  around the current product state rather than the removed implementation.
 actor: mike/codex
-timestamp: '2026-07-15T19:09:36.827Z'
+timestamp: '2026-07-15T20:37:03.706Z'
 ---
 [depends on](default-cli-local-only.md)
 
