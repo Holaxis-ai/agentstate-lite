@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -188,6 +188,29 @@ test("active and stale locks fail deterministically without unsafe lock stealing
       (err: unknown) => err instanceof CliError && err.code === "TRANSIENT" && err.details?.stale === true,
     );
     assert.equal(JSON.parse(await readFile(lock, "utf8")).token, "owner");
+  } finally {
+    await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("an old empty lock from a crash is diagnosed as malformed and never silently stolen", async () => {
+  const f = await fixture();
+  try {
+    const lock = catalogLockPath(f.home);
+    await mkdir(path.dirname(lock), { recursive: true });
+    await writeFile(lock, "");
+    await utimes(lock, new Date(1_000), new Date(1_000));
+
+    await assert.rejects(
+      () => addCatalogEntry("one", f.first, { home: f.home, now: () => 31_001 }),
+      (err: unknown) =>
+        err instanceof CliError &&
+        err.code === "TRANSIENT" &&
+        err.details?.stale === true &&
+        err.details?.malformed === true &&
+        err.help?.includes("inspect and remove") === true,
+    );
+    assert.equal(await readFile(lock, "utf8"), "");
   } finally {
     await rm(f.root, { recursive: true, force: true });
   }

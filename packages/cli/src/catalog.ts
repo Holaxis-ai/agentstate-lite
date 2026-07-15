@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, open, readFile, unlink } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, stat, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -249,8 +249,10 @@ async function acquireCatalogLock(options: CatalogOptions): Promise<() => Promis
     }
 
     let owner: LockMetadata | null = null;
+    let malformedAgeMs: number | null = null;
     try {
       owner = readLockMetadata(await readFile(lockPath, "utf8"));
+      if (!owner) malformedAgeMs = now() - (await stat(lockPath)).mtimeMs;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
     }
@@ -258,6 +260,12 @@ async function acquireCatalogLock(options: CatalogOptions): Promise<() => Promis
       throw new CliError("TRANSIENT", `stale workspace catalog lock at ${lockPath} belongs to absent PID ${owner.pid}`, {
         details: { retryable: true, stale: true, lock_path: lockPath, owner_pid: owner.pid },
         help: `remove ${lockPath} after confirming PID ${owner.pid} is absent, then retry`,
+      });
+    }
+    if (malformedAgeMs !== null && malformedAgeMs >= STALE_LOCK_MIN_AGE_MS) {
+      throw new CliError("TRANSIENT", `stale malformed workspace catalog lock at ${lockPath}`, {
+        details: { retryable: true, stale: true, malformed: true, lock_path: lockPath },
+        help: `inspect and remove ${lockPath}, then retry`,
       });
     }
     if (now() - started >= waitMs) {
