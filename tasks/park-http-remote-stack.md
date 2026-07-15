@@ -1,7 +1,7 @@
 ---
 type: Task
 title: Extract hosted control-plane units behind the OSS wire boundary
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Hosted extraction coordination task.
@@ -52,8 +52,8 @@ description: >-
 
   This coordination task should decompose into small PRs; it does not authorize
   a one-shot repository rewrite.
-actor: codex
-timestamp: '2026-07-12T22:57:49.306Z'
+actor: mike/codex
+timestamp: '2026-07-15T18:42:43.495Z'
 ---
 [depends on](default-cli-local-only.md)
 
