@@ -135,7 +135,7 @@ the rest of the line unchanged.
 - `"$ASLITE" serve [--dir <path>] [--host <h>] [--port <p>]`
   — Boot the reference wire-protocol server over a local bundle (loopback, no auth)
 - `"$ASLITE" ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
-  — Boot the local web UI: a launcher for the bundle's pages (type: Page docs rendered in sandboxed iframes, with live updates) — same origin, loopback-only
+  — Boot the local web UI: a launcher for the bundle's pages (type: Page docs rendered in sandboxed iframes, with live updates) — same origin, loopback-only. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"
 - `"$ASLITE" sync [--establish | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
   — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it
 
@@ -180,6 +180,15 @@ config files:
 ```sh
 "$ASLITE" list
 "$ASLITE" doc read context-notes/cycle-1
+```
+
+Surfaces that label the workspace (the `ui` header, home's bundle block) derive its DISPLAY
+NAME from the project folder's name. To set it explicitly (it syncs to teammates with the
+board), write the well-known name doc — its title becomes the display name:
+
+```sh
+"$ASLITE" doc write docs/bundle --type "Bundle Name" --title "<display name>"
+"$ASLITE" doc update docs/bundle --title "<new name>"   # rename later
 ```
 
 The folder is LOCAL until you choose to share it: `aslite sync --establish` (once) publishes it

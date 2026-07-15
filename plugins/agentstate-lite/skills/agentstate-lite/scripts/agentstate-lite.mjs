@@ -3894,26 +3894,26 @@ function applyReplacer(root, replacer) {
   if (replacedRoot === void 0) return transformChildren(root, replacer, []);
   return transformChildren(normalizeValue(replacedRoot), replacer, []);
 }
-function transformChildren(value, replacer, path14) {
-  if (isJsonObject(value)) return transformObject(value, replacer, path14);
-  if (isJsonArray(value)) return transformArray(value, replacer, path14);
+function transformChildren(value, replacer, path15) {
+  if (isJsonObject(value)) return transformObject(value, replacer, path15);
+  if (isJsonArray(value)) return transformArray(value, replacer, path15);
   return value;
 }
-function transformObject(obj, replacer, path14) {
+function transformObject(obj, replacer, path15) {
   const result = {};
   for (const [key, value] of Object.entries(obj)) {
-    const childPath = [...path14, key];
+    const childPath = [...path15, key];
     const replacedValue = replacer(key, value, childPath);
     if (replacedValue === void 0) continue;
     result[key] = transformChildren(normalizeValue(replacedValue), replacer, childPath);
   }
   return result;
 }
-function transformArray(arr, replacer, path14) {
+function transformArray(arr, replacer, path15) {
   const result = [];
   for (let i = 0; i < arr.length; i++) {
     const value = arr[i];
-    const childPath = [...path14, i];
+    const childPath = [...path15, i];
     const replacedValue = replacer(String(i), value, childPath);
     if (replacedValue === void 0) continue;
     const normalizedValue = normalizeValue(replacedValue);
@@ -3940,11 +3940,11 @@ function resolveOptions(options2) {
 }
 
 // ../../node_modules/axi-sdk-js/dist/output.js
-function collapseHomeDirectory(path14, homeDir = homedir()) {
-  if (!path14.startsWith(homeDir)) {
-    return path14;
+function collapseHomeDirectory(path15, homeDir = homedir()) {
+  if (!path15.startsWith(homeDir)) {
+    return path15;
   }
-  return `~${path14.slice(homeDir.length)}`;
+  return `~${path15.slice(homeDir.length)}`;
 }
 function homeHeaderOutput(options2) {
   return {
@@ -4048,7 +4048,7 @@ function isUpdateAvailable(current, latest) {
 }
 var nodeFs = {
   existsSync,
-  readFileSync: (path14, encoding) => readFileSync(path14, encoding)
+  readFileSync: (path15, encoding) => readFileSync(path15, encoding)
 };
 function readNearestPackageJson(startPath, fs11 = nodeFs) {
   let dir = dirname(startPath);
@@ -4075,36 +4075,36 @@ function readNearestPackageJson(startPath, fs11 = nodeFs) {
 }
 function detectInstallMethod(options2) {
   const env = options2.env ?? process.env;
-  const path14 = options2.entry.replaceAll("\\", "/");
-  if (path14.includes("/_npx/") || /\/dlx-[^/]+\//.test(path14) || path14.includes("/pnpm/dlx/") || path14.includes("/bun/install/cache/")) {
+  const path15 = options2.entry.replaceAll("\\", "/");
+  if (path15.includes("/_npx/") || /\/dlx-[^/]+\//.test(path15) || path15.includes("/pnpm/dlx/") || path15.includes("/bun/install/cache/")) {
     return { kind: "npx" };
   }
-  const homebrewFormula = homebrewFormulaFromPath(path14, env);
+  const homebrewFormula = homebrewFormulaFromPath(path15, env);
   if (homebrewFormula) {
     return { kind: "homebrew", formula: homebrewFormula };
   }
   const pnpmHome = normalizePathRoot(env.PNPM_HOME);
-  if (isPathInsideRoot(path14, pnpmHome) || isKnownPnpmGlobalStore(path14, env)) {
+  if (isPathInsideRoot(path15, pnpmHome) || isKnownPnpmGlobalStore(path15, env)) {
     return { kind: "pnpm-global" };
   }
-  if (isKnownNpmGlobalInstall(path14, env)) {
+  if (isKnownNpmGlobalInstall(path15, env)) {
     return { kind: "npm-global" };
   }
   return { kind: "unknown" };
 }
-function normalizePathRoot(path14) {
-  const normalized = path14?.replaceAll("\\", "/").replace(/\/+$/, "");
+function normalizePathRoot(path15) {
+  const normalized = path15?.replaceAll("\\", "/").replace(/\/+$/, "");
   return normalized && normalized.length > 0 ? normalized : void 0;
 }
-function isPathInsideRoot(path14, root) {
-  return root !== void 0 && (path14 === root || path14.startsWith(`${root}/`));
+function isPathInsideRoot(path15, root) {
+  return root !== void 0 && (path15 === root || path15.startsWith(`${root}/`));
 }
-function homebrewFormulaFromPath(path14, env) {
+function homebrewFormulaFromPath(path15, env) {
   for (const root of homebrewCellarRoots(env)) {
-    if (!isPathInsideRoot(path14, root)) {
+    if (!isPathInsideRoot(path15, root)) {
       continue;
     }
-    const relative = path14.slice(root.length).replace(/^\/+/, "");
+    const relative = path15.slice(root.length).replace(/^\/+/, "");
     const formula = relative.split("/")[0];
     if (formula) {
       return formula;
@@ -4132,12 +4132,12 @@ function homebrewCellarRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownPnpmGlobalStore(path14, env) {
+function isKnownPnpmGlobalStore(path15, env) {
   return pnpmGlobalStoreRoots(env).some((root) => {
-    if (!isPathInsideRoot(path14, root)) {
+    if (!isPathInsideRoot(path15, root)) {
       return false;
     }
-    const relative = path14.slice(root.length).replace(/^\/+/, "");
+    const relative = path15.slice(root.length).replace(/^\/+/, "");
     return /^\d+\/\.pnpm\//.test(relative);
   });
 }
@@ -4155,8 +4155,8 @@ function pnpmGlobalStoreRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownNpmGlobalInstall(path14, env) {
-  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path14, root)) || isKnownVersionManagerNpmGlobal(path14, env);
+function isKnownNpmGlobalInstall(path15, env) {
+  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path15, root)) || isKnownVersionManagerNpmGlobal(path15, env);
 }
 function npmGlobalNodeModulesRoots(env) {
   const roots = [
@@ -4182,8 +4182,8 @@ function npmGlobalNodeModulesRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownVersionManagerNpmGlobal(path14, env) {
-  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path14, root) && path14.includes("/lib/node_modules/"));
+function isKnownVersionManagerNpmGlobal(path15, env) {
+  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path15, root) && path15.includes("/lib/node_modules/"));
 }
 function versionManagerNodeRoots(env) {
   const roots = [];
@@ -4419,7 +4419,7 @@ async function runUpdate(options2) {
   const binName = binNameFromArgv(invokedAs);
   const mode = parseUpdateArgs(options2.args, binName);
   const platform = options2.platform ?? process.platform;
-  const realpath = options2.realpath ?? ((path14) => realpathSync(path14));
+  const realpath = options2.realpath ?? ((path15) => realpathSync(path15));
   const entry = resolveEntry(invokedAs, realpath);
   const fs11 = options2.fs ?? nodeFs;
   const fromPackageJson = entry ? readNearestPackageJson(entry, fs11) : {};
@@ -6130,13 +6130,13 @@ function describeShape(value) {
   if (typeof value === "object") return "an object";
   return typeof value;
 }
-function toStringArrayLenient(value, path14, docId, warnings) {
+function toStringArrayLenient(value, path15, docId, warnings) {
   if (!Array.isArray(value)) {
     if (value !== void 0) {
       warnings.push({
         code: "KIND_CONVENTION_BAD_SHAPE",
-        message: `kind convention '${docId}' has a non-list '${path14}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
-        field: path14,
+        message: `kind convention '${docId}' has a non-list '${path15}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
+        field: path15,
         severity: "warning"
       });
     }
@@ -6149,8 +6149,8 @@ function toStringArrayLenient(value, path14, docId, warnings) {
     } else {
       warnings.push({
         code: "KIND_CONVENTION_BAD_MEMBER",
-        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path14}'; skipping it.`,
-        field: path14,
+        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path15}'; skipping it.`,
+        field: path15,
         severity: "warning"
       });
     }
@@ -6504,7 +6504,7 @@ function parseConventionDoc(doc2) {
       });
     }
   }
-  const path14 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
+  const path15 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
   const freshnessHorizon = typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== "" ? fm.freshness_horizon.trim() : void 0;
   const kind2 = {
     id: doc2.id,
@@ -6513,7 +6513,7 @@ function parseConventionDoc(doc2) {
     fields: { required, optional, values, valueDescriptions, terminal, descriptions }
   };
   if (description !== void 0) kind2.description = description;
-  if (path14 !== void 0) kind2.path = path14;
+  if (path15 !== void 0) kind2.path = path15;
   if (links !== void 0) kind2.links = links;
   if (linkDescriptions !== void 0) kind2.linkDescriptions = linkDescriptions;
   if (expectsInbound !== void 0) kind2.expectsInbound = expectsInbound;
@@ -6949,8 +6949,8 @@ function normalizeServer(raw) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`server URL must use http or https: ${raw}`);
   }
-  const path14 = url.pathname.replace(/\/+$/, "");
-  return { base: url.origin + path14, resource: url.origin };
+  const path15 = url.pathname.replace(/\/+$/, "");
+  return { base: url.origin + path15, resource: url.origin };
 }
 
 // src/credentials.ts
@@ -6971,7 +6971,7 @@ function credentialsPath(home2 = homedir3()) {
 async function writeFileAtomic0600(dir, fileName, content) {
   await mkdir(dir, { recursive: true, mode: DIR_MODE });
   await chmod(dir, DIR_MODE);
-  const path14 = join3(dir, fileName);
+  const path15 = join3(dir, fileName);
   const tmpPath = join3(dir, `.${fileName}.${randomBytes(8).toString("hex")}.tmp`);
   const handle = await open(tmpPath, "wx", FILE_MODE);
   try {
@@ -6981,7 +6981,7 @@ async function writeFileAtomic0600(dir, fileName, content) {
     await handle.close();
   }
   try {
-    await rename(tmpPath, path14);
+    await rename(tmpPath, path15);
   } catch (err) {
     await unlink(tmpPath).catch(() => {
     });
@@ -9989,7 +9989,7 @@ async function writeSyncState(key, patch, home2 = homedir4()) {
   const parent = credentialsDir(home2);
   await mkdir2(parent, { recursive: true, mode: DIR_MODE2 });
   await chmod2(parent, DIR_MODE2);
-  const path14 = syncStatePath(key, home2);
+  const path15 = syncStatePath(key, home2);
   const record = {
     key,
     cursor: next.cursor ?? void 0,
@@ -9999,7 +9999,7 @@ async function writeSyncState(key, patch, home2 = homedir4()) {
     autoPullAttemptAt: next.autoPullAttemptAt ?? void 0,
     hookHintedAt: next.hookHintedAt ?? void 0
   };
-  await writeFileAtomic0600(syncStateDir(home2), basename3(path14), JSON.stringify(record, null, 2) + "\n");
+  await writeFileAtomic0600(syncStateDir(home2), basename3(path15), JSON.stringify(record, null, 2) + "\n");
   return next;
 }
 async function writeCursor(key, cursor, home2 = homedir4()) {
@@ -10162,23 +10162,23 @@ function targetsFor(base) {
     opencodePlugin: join5(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
   };
 }
-function readSettings(path14) {
-  if (!existsSync4(path14)) return {};
+function readSettings(path15) {
+  if (!existsSync4(path15)) return {};
   try {
-    return JSON.parse(readFileSync3(path14, "utf8"));
+    return JSON.parse(readFileSync3(path15, "utf8"));
   } catch {
     return {};
   }
 }
-function writeSettings(path14, settings) {
-  mkdirSync2(dirname2(path14), { recursive: true });
-  writeFileSync2(path14, `${JSON.stringify(settings, null, 2)}
+function writeSettings(path15, settings) {
+  mkdirSync2(dirname2(path15), { recursive: true });
+  writeFileSync2(path15, `${JSON.stringify(settings, null, 2)}
 `);
 }
-function opencodePluginInstalled(path14) {
-  if (!existsSync4(path14)) return false;
+function opencodePluginInstalled(path15) {
+  if (!existsSync4(path15)) return false;
   try {
-    return readFileSync3(path14, "utf8").includes(OPENCODE_MANAGED_MARKER);
+    return readFileSync3(path15, "utf8").includes(OPENCODE_MANAGED_MARKER);
   } catch {
     return false;
   }
@@ -10411,10 +10411,10 @@ async function hook(argv, deps = {}) {
     return;
   }
   let changed = false;
-  for (const path14 of [targets.claudeSettings, targets.codexHooks]) {
-    const [updated, didChange] = computeHookUninstall(readSettings(path14));
+  for (const path15 of [targets.claudeSettings, targets.codexHooks]) {
+    const [updated, didChange] = computeHookUninstall(readSettings(path15));
     if (didChange) {
-      writeSettings(path14, updated);
+      writeSettings(path15, updated);
       changed = true;
     }
   }
@@ -15514,7 +15514,33 @@ import { spawn as spawn2 } from "node:child_process";
 
 // src/ui/server.ts
 import { createServer as createServer2 } from "node:http";
-import { basename as basename4 } from "node:path";
+
+// src/bundle-name.ts
+import path12 from "node:path";
+var BUNDLE_NAME_DOC_ID = "docs/bundle";
+var BUNDLE_NAME_DOC_TYPE = "Bundle Name";
+var FALLBACK_NAME = "bundle";
+function nonEmptyString2(value) {
+  if (typeof value !== "string") return void 0;
+  const trimmed = value.trim();
+  return trimmed === "" ? void 0 : trimmed;
+}
+async function deriveBundleDisplayName(bundle) {
+  try {
+    const doc2 = await readDoc(bundle, BUNDLE_NAME_DOC_ID);
+    if (nonEmptyString2(doc2.frontmatter.type) === BUNDLE_NAME_DOC_TYPE) {
+      const explicit = nonEmptyString2(doc2.frontmatter.name) ?? nonEmptyString2(doc2.frontmatter.title);
+      if (explicit) return { name: explicit, source: "explicit" };
+    }
+  } catch {
+  }
+  const base = path12.basename(bundle.root);
+  if (base === CONVENTIONAL_BUNDLE_DIR_NAME) {
+    const parent = path12.basename(path12.dirname(bundle.root));
+    if (parent) return { name: parent, source: "conventional-parent" };
+  }
+  return { name: base || FALLBACK_NAME, source: "root-basename" };
+}
 
 // src/ui/host.ts
 var ALLOWED_HOSTS = /* @__PURE__ */ new Set(["localhost", "127.0.0.1", "::1"]);
@@ -16036,8 +16062,8 @@ async function handleMint(req, runtime, options2) {
     headers: { "content-type": "application/json; charset=utf-8" }
   });
 }
-function configResponse(options2) {
-  const name = options2.mode === "dir" ? basename4(options2.bundle?.root ?? "") || "bundle" : (() => {
+async function configResponse(options2) {
+  const name = options2.mode === "dir" ? options2.bundle ? (await deriveBundleDisplayName(options2.bundle)).name : "bundle" : (() => {
     try {
       return new URL(options2.remoteBase).host;
     } catch {
@@ -16124,7 +16150,7 @@ async function handleRequest(req, res, options2, runtime, sessionSecret) {
   if (url.pathname === "/__page/mint" && request.method === "POST") {
     response = await handleMint(request, runtime, options2);
   } else if (url.pathname === "/__ui/config") {
-    response = configResponse(options2);
+    response = await configResponse(options2);
   } else if (url.pathname === "/__ui/kinds") {
     response = await kindsResponse(options2);
   } else if (url.pathname === "/__ui/edges") {
@@ -16223,6 +16249,11 @@ Options:
   --open                Open the printed URL in a browser once the server is listening
   --json                Emit compact JSON instead of TOON
   -h, --help            Show this help
+
+The shell header shows the bundle's DISPLAY NAME: an explicit name doc when one exists
+(doc write docs/bundle --type "Bundle Name" --title "<name>" \u2014 rename later via doc update),
+else the project folder's name for a conventional .agentstate-lite/ bundle, else the bundle
+directory's name.
 
 No --host flag in v1 \u2014 always binds 127.0.0.1 (loopback-only; a network-exposed key proxy is a
 separate, unreviewed feature). The printed URL carries a per-run session token; the first load
@@ -16489,7 +16520,7 @@ var COMMAND_GROUPS = [
       },
       {
         usage: "ui [--dir <path> | --remote <url>] [--port <p>] [--open]",
-        summary: "Boot the local web UI: a launcher for the bundle's pages (type: Page docs rendered in sandboxed iframes, with live updates) \u2014 same origin, loopback-only"
+        summary: `Boot the local web UI: a launcher for the bundle's pages (type: Page docs rendered in sandboxed iframes, with live updates) \u2014 same origin, loopback-only. The header shows the bundle's display name \u2014 derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"`
       },
       {
         // NOTE: `sync --migrate` (TEMPORARY, founders' one-time act — see commands/sync-migrate.ts)
@@ -16578,13 +16609,13 @@ function helpIndexText(invocation) {
 
 // src/commands/home.ts
 import { parseArgs as parseArgs23 } from "node:util";
-import path13 from "node:path";
+import path14 from "node:path";
 
 // src/catalog.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
 import { chmod as chmod3, mkdir as mkdir3, open as open2, readFile as readFile4, stat, unlink as unlink3 } from "node:fs/promises";
 import { homedir as homedir7 } from "node:os";
-import path12 from "node:path";
+import path13 from "node:path";
 var CATALOG_FILE_NAME = "catalog.json";
 var CATALOG_LOCK_FILE_NAME = "catalog.lock";
 var CATALOG_SCHEMA_VERSION = 1;
@@ -16599,10 +16630,10 @@ function catalogDir(home2) {
   return credentialsDir(home2);
 }
 function catalogPath(home2 = homedir7()) {
-  return path12.join(catalogDir(home2), CATALOG_FILE_NAME);
+  return path13.join(catalogDir(home2), CATALOG_FILE_NAME);
 }
 function catalogLockPath(home2 = homedir7()) {
-  return path12.join(catalogDir(home2), CATALOG_LOCK_FILE_NAME);
+  return path13.join(catalogDir(home2), CATALOG_LOCK_FILE_NAME);
 }
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -16642,7 +16673,7 @@ function validateEntry(value, file, index) {
   if (value.locator.kind !== "local-path") {
     throw invalidCatalog(file, `entries[${index}].locator.kind must be "local-path"`);
   }
-  if (typeof value.locator.path !== "string" || !path12.isAbsolute(value.locator.path) || path12.normalize(value.locator.path) !== value.locator.path) {
+  if (typeof value.locator.path !== "string" || !path13.isAbsolute(value.locator.path) || path13.normalize(value.locator.path) !== value.locator.path) {
     throw invalidCatalog(file, `entries[${index}].locator.path must be a normalized absolute path`);
   }
   return {
@@ -16820,7 +16851,7 @@ function generatedId(options2, existing) {
 }
 async function addCatalogEntry(label, canonicalPath, options2 = {}) {
   assertCatalogLabel(label);
-  if (!path12.isAbsolute(canonicalPath)) throw new CliError("USAGE", "workspace catalog paths must be absolute");
+  if (!path13.isAbsolute(canonicalPath)) throw new CliError("USAGE", "workspace catalog paths must be absolute");
   const result = await mutateCatalog(async (current) => {
     const target = await resolveLocalBundleTarget(canonicalPath);
     if (target.canonicalRoot !== canonicalPath) {
@@ -16950,14 +16981,15 @@ async function defaultSummarizeBundle(dir) {
   }
   try {
     const docs = await queryHeads(bundle);
-    return summarizeDocs(docs, collapseHomeDirectory2(bundle.root));
+    const { name, source } = await deriveBundleDisplayName(bundle);
+    return { name, nameSource: source, ...summarizeDocs(docs, collapseHomeDirectory2(bundle.root)) };
   } catch {
     return { root: collapseHomeDirectory2(bundle.root), unreadable: true };
   }
 }
 async function discoverSummarizeBundle(startDir) {
   try {
-    const root = await findBundleRoot(path13.resolve(startDir));
+    const root = await findBundleRoot(path14.resolve(startDir));
     return root ? defaultSummarizeBundle(root) : null;
   } catch {
     return null;
@@ -17028,7 +17060,7 @@ async function defaultLoadBoardStatus(dir) {
   try {
     const top = repoTopLevel(retargetBoardInterior(dir ?? process.cwd()));
     if (!top) return null;
-    const boardPath = path13.join(top, BUNDLE_DIR);
+    const boardPath = path14.join(top, BUNDLE_DIR);
     if (!isProvisioned(top)) {
       const probed = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0 || runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
       return probed ? { state: "unprovisioned" } : null;
@@ -17077,11 +17109,16 @@ function buildHomeView(deps, summary, remote, binding, bindingError, board, hook
     if (binding) bundleBlock.via = binding.file;
     view.bundle = bundleBlock;
   } else if (summary) {
-    const bundleBlock = {
-      root: summary.root,
-      docs: summary.docs,
-      by_type: summary.byType
-    };
+    const bundleBlock = {};
+    if (summary.name) {
+      bundleBlock.name = summary.name;
+      if (summary.nameSource === "conventional-parent") {
+        bundleBlock.name_help = `name derived from the project folder \u2014 set it explicitly: ${deps.invocation()} doc write ${BUNDLE_NAME_DOC_ID} --type "${BUNDLE_NAME_DOC_TYPE}" --title "<name>"`;
+      }
+    }
+    bundleBlock.root = summary.root;
+    bundleBlock.docs = summary.docs;
+    bundleBlock.by_type = summary.byType;
     if (summary.docs > 0) {
       bundleBlock.recent = summary.recent;
       bundleBlock.next = [
