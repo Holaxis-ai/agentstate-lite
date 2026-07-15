@@ -3,7 +3,7 @@ type: Task
 title: >-
   Every conventional bundle displays as '.agentstate-lite' — infer and show the
   PROJECT's name
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Brian's field report (2026-07-15, screenshot from a second project's ui): the
@@ -22,7 +22,8 @@ description: >-
   definitionally exists). SURFACES to fix once the derivation is central: ui
   shell header + bundle title, bridge hello.bundle.name, home/session-start
   render, sync receipts.
-actor: brian
-timestamp: '2026-07-15T16:05:08.107Z'
+actor: brian-claude
+assignee: brian-claude
+timestamp: '2026-07-15T17:26:04.285Z'
 ---
 

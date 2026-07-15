@@ -3,7 +3,7 @@ type: Task
 title: >-
   Flaky ui e2e: 'session-rotating restart surfaces Connection lost'
   (pages.spec.ts:196) blocks gates intermittently
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Empirical record (2026-07-15): the test is flaky ON PURE MAIN (cc4d441) —
@@ -18,6 +18,7 @@ description: >-
   with a retry budget while investigating. Traces preserved in the runs'
   test-results dirs.
 actor: brian-claude
-timestamp: '2026-07-15T13:11:57.632Z'
+assignee: brian-claude
+timestamp: '2026-07-15T17:26:04.405Z'
 ---
 
