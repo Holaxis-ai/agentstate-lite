@@ -3,15 +3,17 @@ type: Task
 title: >-
   Deprecate the static HTML viewer (viz.html) — back out packages/viewer + the
   view command
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Implementation complete at 5bf3e52 in PR #63; full repository gate and
-  external packed-CLI smoke are green. Pending independent review of the exact
-  SHA before merge.
+  Shipped via PR #63. Removed the legacy static viewer package and CLI view
+  command so Pages are the sole human-facing rendering system. Full repository
+  gate and packed-install smoke passed for commit 5bf3e52; merged to main as
+  8f65350 on 2026-07-15. Independent review was explicitly waived by the product
+  owner as a safe, low-risk removal.
 actor: mike/codex
 assignee: mike/codex
-timestamp: '2026-07-15T14:57:22.148Z'
+timestamp: '2026-07-15T15:05:06.659Z'
 ---
 **Human decision (Mike, 2026-07-09):** with bundle pages shipping (PR #31 — a launcher +
 sandboxed pages including **Roadmap**, a live graph view over `queryEdges`), the UI now provides
