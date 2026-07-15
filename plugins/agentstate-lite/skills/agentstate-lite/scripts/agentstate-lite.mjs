@@ -7153,6 +7153,55 @@ async function resolveRemoteFlag(remoteFlag, dirFlag) {
   await resolveProjectBinding();
   return void 0;
 }
+async function canonicalBundleRoot(root, notFoundMessage, help) {
+  if (!await exists(path4.join(root, "index.md"))) {
+    throw new CliError("NOT_FOUND", notFoundMessage, { help });
+  }
+  try {
+    return await fs2.realpath(root);
+  } catch {
+    throw new CliError("NOT_FOUND", notFoundMessage, { help });
+  }
+}
+async function resolveLocalBundleTarget(dirFlag, startDir = process.cwd()) {
+  if (dirFlag !== void 0) {
+    const requested = path4.resolve(startDir, dirFlag);
+    const canonicalRoot2 = await canonicalBundleRoot(
+      requested,
+      `no OKF bundle at ${requested} (no index.md)`,
+      `${cliInvocation()} init --dir ${dirFlag}`
+    );
+    return { root: requested, canonicalRoot: canonicalRoot2, selectedBy: "explicit-dir" };
+  }
+  const binding = await resolveProjectBinding(startDir);
+  if (binding) {
+    const canonicalRoot2 = await canonicalBundleRoot(
+      binding.target,
+      `no OKF bundle at ${binding.target} (no index.md) \u2014 from project binding ${binding.file}`,
+      `${cliInvocation()} init --dir ${binding.target}`
+    );
+    return {
+      root: binding.target,
+      canonicalRoot: canonicalRoot2,
+      selectedBy: "project-binding",
+      bindingFile: binding.file
+    };
+  }
+  const discovered = await findBundleRoot(startDir);
+  if (!discovered) {
+    throw new CliError(
+      "NOT_FOUND",
+      `no OKF bundle found (no index.md, and no ${CONVENTIONAL_BUNDLE_DIR_NAME}/index.md, in the current directory or its ancestors)`,
+      { help: `${cliInvocation()} init --dir ${CONVENTIONAL_BUNDLE_DIR_NAME}` }
+    );
+  }
+  const canonicalRoot = await canonicalBundleRoot(
+    discovered,
+    `no OKF bundle at ${discovered} (no index.md)`,
+    `${cliInvocation()} init --dir ${CONVENTIONAL_BUNDLE_DIR_NAME}`
+  );
+  return { root: discovered, canonicalRoot, selectedBy: "discovery" };
+}
 async function openBundle(dirFlag, remoteFlag) {
   if (remoteFlag !== void 0) {
     if (dirFlag !== void 0) {
@@ -7164,36 +7213,8 @@ async function openBundle(dirFlag, remoteFlag) {
     }
     return openRemoteBundle(remoteFlag);
   }
-  if (dirFlag !== void 0) {
-    const root2 = path4.resolve(dirFlag);
-    if (!await exists(path4.join(root2, "index.md"))) {
-      throw new CliError("NOT_FOUND", `no OKF bundle at ${root2} (no index.md)`, {
-        help: `${cliInvocation()} init --dir ${dirFlag}`
-      });
-    }
-    return { root: root2 };
-  }
-  const binding = await resolveProjectBinding();
-  if (binding) {
-    const root2 = binding.target;
-    if (!await exists(path4.join(root2, "index.md"))) {
-      throw new CliError(
-        "NOT_FOUND",
-        `no OKF bundle at ${root2} (no index.md) \u2014 from project binding ${binding.file}`,
-        { help: `${cliInvocation()} init --dir ${root2}` }
-      );
-    }
-    return { root: root2 };
-  }
-  const root = await findBundleRoot(process.cwd());
-  if (!root) {
-    throw new CliError(
-      "NOT_FOUND",
-      `no OKF bundle found (no index.md, and no ${CONVENTIONAL_BUNDLE_DIR_NAME}/index.md, in the current directory or its ancestors)`,
-      { help: `${cliInvocation()} init --dir ${CONVENTIONAL_BUNDLE_DIR_NAME}` }
-    );
-  }
-  return { root };
+  const target = await resolveLocalBundleTarget(dirFlag);
+  return { root: target.root };
 }
 
 // src/args.ts
@@ -16601,6 +16622,10 @@ var COMMAND_GROUPS = [
     group: "Bundle",
     commands: [
       {
+        usage: "bundle locate [--dir <path>]",
+        summary: "Resolve the exact canonical local bundle path and report why it won selection"
+      },
+      {
         usage: "init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]",
         summary: "Create (or open) an OKF knowledge bundle in a directory \u2014 greenfield setup; a project that already shares a board is set up by sync, not init"
       },
@@ -17214,10 +17239,70 @@ async function sessionStart(argv, deps = {}) {
   });
 }
 
-// src/cli.ts
+// src/commands/bundle.ts
 import { parseArgs as parseArgs26 } from "node:util";
+var BUNDLE_USAGE = `agentstate-lite bundle \u2014 inspect local bundle targeting
+
+Usage:
+  agentstate-lite bundle locate [--dir <path>]
+
+Commands:
+  locate                  Resolve the exact local bundle this invocation would use
+
+Options:
+  --dir <path>            Resolve this literal bundle root instead of project context
+  --json                  Emit compact JSON instead of TOON
+  -h, --help              Show this help
+
+Resolution preserves normal CLI precedence: explicit --dir, then the nearest project binding,
+then local discovery. A successful receipt contains a canonical absolute local path suitable for
+passing back to ordinary commands with --dir. This command never reads or selects an HTTP remote.
+`;
+async function bundleCommand(argv, deps = {}) {
+  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
+  const cwd = deps.cwd ?? (() => process.cwd());
+  const parsed = parseOrUsage(
+    () => parseArgs26({
+      args: argv,
+      options: {
+        dir: { type: "string" },
+        json: { type: "boolean" },
+        help: { type: "boolean", short: "h" }
+      },
+      allowPositionals: true
+    }),
+    "bundle locate"
+  );
+  if (parsed.values.help || parsed.positionals.length === 0) {
+    stdout(BUNDLE_USAGE);
+    return;
+  }
+  const [subcommand, ...extra] = parsed.positionals;
+  if (subcommand !== "locate" || extra.length > 0) {
+    throw new CliError("USAGE", `unknown bundle subcommand: ${subcommand ?? ""}`, {
+      help: `${cliInvocation()} bundle locate --help`
+    });
+  }
+  const target = await resolveLocalBundleTarget(parsed.values.dir, cwd());
+  stdout(
+    render(
+      {
+        schema_version: 1,
+        locator: { kind: "local-path", path: target.canonicalRoot },
+        selected_by: target.selectedBy,
+        ...target.bindingFile ? { binding_file: target.bindingFile } : {},
+        available: true
+      },
+      resolveMode(parsed.values)
+    )
+  );
+}
+
+// src/cli.ts
+import { parseArgs as parseArgs27 } from "node:util";
 var KNOWN_COMMANDS = [
   "init",
+  "bundle",
   "doc",
   "promote",
   "pull",
@@ -17253,7 +17338,7 @@ var wrap2 = (fn) => async (args) => {
 };
 function isGlobalOnlyHomeInvocation(argv) {
   try {
-    const { positionals } = parseArgs26({
+    const { positionals } = parseArgs27({
       args: argv,
       options: {
         remote: { type: "string" },
@@ -17271,7 +17356,7 @@ function isGlobalOnlyHomeInvocation(argv) {
 function hoistLeadingGlobalFlags(argv) {
   let tokens;
   try {
-    tokens = parseArgs26({
+    tokens = parseArgs27({
       args: argv,
       tokens: true,
       strict: false,
@@ -17334,6 +17419,7 @@ async function main(argv) {
     stdout: { write: (c) => c === "\n" ? true : process.stdout.write(c) },
     commands: {
       init: wrap2(init),
+      bundle: wrap2(bundleCommand),
       doc: wrap2(doc),
       promote: wrap2(promote),
       pull: wrap2(pull),
