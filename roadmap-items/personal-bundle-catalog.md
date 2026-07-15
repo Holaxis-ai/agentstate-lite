@@ -3,19 +3,21 @@ type: Roadmap Item
 title: 'Workspace catalog: work across projects'
 status: active
 description: >-
-  ACTIVE — catalog foundation PR #59 and discovery consumer PR #60/plugin 1.0.54
-  shipped. NEXT: dogfood the explicit resolve-to---dir journey across real
-  bundles; lifecycle repair, targeting sugar, opening, UI, aggregation, and
-  remote locators remain evidence-gated.
+  ACTIVE — catalog foundation PR #59 and discovery PR #60 shipped; dogfood is IN
+  PROGRESS with agentstate-lite and mike-tasks registered. Home visibility and
+  explicit resolution work. Plugin-refresh expectations and the zsh resolver
+  were the first findings; PR #62/plugin 1.0.55 fixed the latter. NEXT:
+  fresh-agent cross-workspace reads/writes; later features remain
+  evidence-gated.
 actor: mike/codex
-timestamp: '2026-07-15T12:46:56.082Z'
+timestamp: '2026-07-15T14:32:45.943Z'
 ---
 # Workspace catalog: work across projects
 
 **Priority:** Active. The minimum add/list/resolve foundation shipped in PR #59 on 2026-07-14,
-and its home/session-start discovery consumer shipped in PR #60 on 2026-07-15. The next unit is a
-dogfood checkpoint; later management, convenience, UI, and aggregation units remain separately
-gated by observed friction.
+and its home/session-start discovery consumer shipped in PR #60 on 2026-07-15. The current unit is
+an in-progress dogfood checkpoint; later management, convenience, UI, and aggregation units remain
+separately gated by observed friction.
 
 AgentState already recognizes multi-bundle registries and cross-project views as future scope. This
 item gives the user-scoped concept a durable, bounded home: one human and their agents can
@@ -33,6 +35,10 @@ layer above those bundles, not part of recipe packaging itself.
 Met: real use across several bundles created recurring discovery and switching friction. The
 minimum loop is shipped. The next problem is no longer storage or resolution; it is whether the
 catalog enters the agent's natural workflow often enough to deliver value.
+
+Dogfood began on 2026-07-15 with the real `agentstate-lite` and `mike-tasks` bundles registered on
+one founder's machine. The catalog, home orientation block, and explicit resolution path all worked;
+the remaining proof is whether fresh agents notice and use that path naturally during real work.
 
 ## Rough delivery sequence
 
@@ -56,13 +62,24 @@ start.
 This is the unit that turns the naming primitive into an agent workflow. It adds no new targeting
 semantics, registration, crawling, mutation, or UI.
 
-### 2. Dogfood checkpoint — NEXT (evidence, not a feature)
+### 2. Dogfood checkpoint — IN PROGRESS (evidence, not a feature)
 
-Register the real bundles used across the founders' work and observe whether agents notice the
-home/session-start block, resolve the correct label, and carry the returned path into explicit
-`--dir` operations. Record actual failures: stale entries, correction needs, repeated resolution
-friction, or demand to open a bundle for a human. Do not wake later units merely because they are
-listed here.
+The first real setup registered `agentstate-lite` and `mike-tasks`. Both entries report available,
+resolve to the correct canonical local bundle roots, and appear in `home`/`session-start` as labels
+without leaking paths. The CLI's own top-level, `catalog`, `bundle locate`, `init`, and `sync` help
+is sufficient to discover the supported lifecycle without depending on skill prose.
+
+Two setup findings have already paid down friction. First, Codex Git marketplaces are explicit
+snapshots: the founder initially expected a merged plugin release to update automatically, then
+confirmed that `codex plugin marketplace upgrade agentstate-lite` refreshes the installed version.
+Second, the documented skill resolver failed under default zsh when an optional host glob had no
+match; PR #62 fixed both `$ASLITE` and `$REFS`, released as plugin 1.0.55, and added exact emitted
+Zsh regressions.
+
+Remaining evidence: start fresh agent tasks in each project, observe whether the agent notices the
+workspace block without coaching, and complete real cross-workspace reads and writes through
+resolve-then-`--dir`. Record stale-entry repair needs, repeated targeting friction, or demand to
+open a bundle for a human. Do not wake later units merely because they are listed here.
 
 ### 3. Lifecycle repair — remove first
 
@@ -104,3 +121,7 @@ tagged locator seam, but do not treat its extensibility as a commitment to reope
 [contains](../tasks/workspace-catalog-core-loop.md)
 
 [contains](../tasks/workspace-catalog-discovery-consumer.md)
+
+[contains](../tasks/workspace-catalog-dogfood-checkpoint.md)
+
+[contains](../tasks/zsh-skill-resolver.md)
