@@ -3,23 +3,19 @@ type: Task
 title: >-
   Every conventional bundle displays as '.agentstate-lite' — infer and show the
   PROJECT's name
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Built + APPROVED, awaiting merge: feat/bundle-display-name @ 287f66d. ONE
-  derivation primitive (cli/src/bundle-name.ts): docs/bundle doc (name field,
-  else title — settable TODAY via plain doc update docs/bundle --title '<name>')
-  -> parent-of-conventional-dir -> root basename; total, no network, one
-  absent-tolerant read. Consumed by ui /__ui/config (shell header +
-  hello.bundle.name, per-request so renames show live) and home's bundle block
-  (additive name field — review-accepted as in-scope). Field scenario pinned +
-  review-driven live: two conventional projects render different names. Review
-  notes: docs/bundle collides with nothing on the board; catalog can import the
-  primitive directly (no command-layer coupling). Follow-ups on
-  tasks/bundle-name-followups: skill-channel teaching of the rename path +
-  establish-time seeding from the git remote.
-actor: builder-name
+  DONE — merged as PR #67 (2026-07-15). ONE derivation primitive returning
+  {name, source}: docs/bundle gated on marker type 'Bundle Name' (name field,
+  else title; ordinary docs ignored — silent-appropriation guard from the codex
+  review) -> parent-of-conventional-dir -> root basename. Consumed by ui config
+  (header + hello, per-request) and home (leading name + self-clearing name_help
+  hint when parent-derived). Taught in ui help + skill Workspaces. Catalog
+  consumes the primitive (source field distinguishes explicit/derived). Rider on
+  bundle-name-followups: establish-time seeding.
+actor: brian
 assignee: brian-claude
-timestamp: '2026-07-15T17:54:42.850Z'
+timestamp: '2026-07-15T19:45:15.221Z'
 ---
 [informs](bundle-name-followups.md)
