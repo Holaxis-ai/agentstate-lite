@@ -188,30 +188,3 @@ export {
   DEFAULT_BLOB_CONTENT_TYPE,
 } from "./content-type.js";
 export type { ContentTypeInference, ValidationWarning } from "./content-type.js";
-
-// Auth/collaboration wire contract (shared by worker auth-routes + CLI + future UI):
-// the SHARED SOURCE OF TRUTH for the `/v0/join`, `/v0/whoami`, `/v0/bundles`,
-// `/v0/invites*`, `/v0/members*`, `/v0/keys*` request/response shapes — see
-// `auth-wire.ts`'s module doc comment for the promotion plan (a future dedicated
-// `@agentstate-lite/wire` package). Lives here for now because core is the one package
-// both the CLI and the worker already depend on.
-export { ROLES, isRole } from "./auth-wire.js";
-export type {
-  Role,
-  JoinResponse,
-  MembershipWire,
-  WhoamiResponse,
-  ListBundlesResponse,
-  InviteRecordWire,
-  CreateInviteResponse,
-  ListInvitesResponse,
-  RevokeInviteResponse,
-  MemberRecordWire,
-  ListMembersResponse,
-  SetMemberRoleResponse,
-  RemoveMemberResponse,
-  MintKeyResponse,
-  ApiKeyRecordWire,
-  ListKeysResponse,
-  RevokeKeyResponse,
-} from "./auth-wire.js";

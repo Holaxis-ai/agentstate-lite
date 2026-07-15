@@ -24,8 +24,7 @@ export type CliErrorCode =
   | "TRANSIENT"
   | "RUNTIME"
   /**
-   * Stage-2 auth Part B: the caller authenticated fine but lacks the role a
-   * `packages/worker/src/auth-routes.ts` admin route requires (the wire's `403 FORBIDDEN`).
+   * The caller authenticated fine but a remote denied the operation (`403 FORBIDDEN`).
    * Exit 2 (USAGE) is the least-wrong bucket in the capped taxonomy — exit 4 (AUTH) would
    * mislead an agent into re-authenticating, which grants no additional role — but the
    * `code` is preserved distinctly (not collapsed into a generic `"USAGE"`) so an agent can
@@ -33,10 +32,9 @@ export type CliErrorCode =
    */
   | "FORBIDDEN"
   /**
-   * Stage-2 auth Part B: the wire's `409 LAST_ADMIN` — a well-formed membership mutation that
-   * would strip a bundle of its last real admin
-   * (`packages/worker/src/auth-routes.ts`'s `wouldRemoveLastAdmin` guard). A genuine
-   * precondition conflict, same taxonomy bucket as `STALE_HEAD`/`ALREADY_EXISTS`.
+   * A remote's `409 LAST_ADMIN` — a well-formed membership mutation that would strip a bundle
+   * of its last real admin. A genuine precondition conflict, same taxonomy bucket as
+   * `STALE_HEAD`/`ALREADY_EXISTS`.
    */
   | "LAST_ADMIN"
   /**
@@ -179,7 +177,7 @@ export function toEnvelope(err: CliError): ErrorEnvelope {
  *    (1); FORBIDDEN -> FORBIDDEN (USAGE's exit 2, distinct code — re-authenticating grants no
  *    role); NOT_FOUND -> NOT_FOUND (6); LAST_ADMIN -> LAST_ADMIN (CONFLICT's exit 5). An
  *    UNRECOGNIZED code falls back by HTTP STATUS, never blindly to USAGE: `RATE_LIMITED`/429
- *    (the Worker's join throttle) -> TRANSIENT (1) with `details.retryable: true` — attested
+ *    -> TRANSIENT (1) with `details.retryable: true` — attested
  *    client fault, but the fix is BACKING OFF, not editing input; any 5xx -> RUNTIME (1); a
  *    remaining 4xx (e.g. the wire's own USAGE, 400) -> USAGE (2) — a 400-class status IS the
  *    server attesting client fault, the one sanctioned non-typed USAGE source.

@@ -50,8 +50,8 @@
  *
  * Auth (Stage-1 Unit 2b Part C): an optional {@link RemoteBackendOptions.authToken} rides as
  * `Authorization: Bearer <token>` on EVERY request. The reference `serve()` ignores it (no
- * auth enforced there), so omitting it is harmless against a local/reference server; a gated
- * deployment (the Cloudflare Worker, `packages/worker`) requires it.
+ * auth enforced there), so omitting it is harmless against a local/reference server; a separate
+ * gated deployment may require it.
  *
  * This module touches NO filesystem and parses NO markdown — like {@link MemoryBackend},
  * it proves the engine leaks no assumptions beyond the {@link StorageBackend} contract.
@@ -103,9 +103,8 @@ export interface RemoteBackendOptions {
   /** Transport override; defaults to the global `fetch` (Node >= 20). Tests inject a router directly. */
   fetchImpl?: FetchLike;
   /**
-   * Optional bearer token sent as `Authorization: Bearer <token>` on EVERY request
-   * (Stage-1 Unit 2b Part C — the Cloudflare Worker deployment's API-key gate,
-   * `packages/worker`'s `withApiKey`). The reference `serve()` (`@agentstate-lite/server`)
+   * Optional bearer token sent as `Authorization: Bearer <token>` on EVERY request. The
+   * reference `serve()` (`@agentstate-lite/server`)
    * ignores this header entirely (no auth enforced there), so omitting it is harmless
    * against a local/reference server.
    */
@@ -262,8 +261,8 @@ export class RemoteBackend implements StorageBackend {
 
   private async send(bundleRelativePath: string, init: RequestInit = {}): Promise<Response> {
     // Attach Authorization on EVERY request when an authToken is configured — the reference
-    // server ignores the header (no auth enforced), a gated deployment (packages/worker)
-    // requires it. Merged onto any caller-supplied headers rather than overwriting `init`.
+    // server ignores the header (no auth enforced), while a separate gated deployment may
+    // require it. Merged onto any caller-supplied headers rather than overwriting `init`.
     if (this.authToken) {
       const headers = new Headers(init.headers);
       headers.set("Authorization", `Bearer ${this.authToken}`);
@@ -512,7 +511,7 @@ export class RemoteBackend implements StorageBackend {
   //
   // Bytes cross the wire as the RAW request/response body — never JSON (B1): PUT
   // sends a `Uint8Array` directly as `BodyInit`, GET reads back via `arrayBuffer()`.
-  // No `Buffer` anywhere in this module, so it stays CF-Worker-clean end to end.
+  // No `Buffer` anywhere in this module, so it stays browser/edge-runtime compatible.
   // Content-type rides `Content-Type`; the version rides `X-Version`/`ETag` (extractVersion),
   // exactly like docs.
 

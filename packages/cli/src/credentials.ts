@@ -20,8 +20,7 @@ import { join } from "node:path";
 
 export interface Credentials {
   /**
-   * Per-origin API keys for `--remote <url>` (Stage-1 Unit 2b Part C — the Cloudflare Worker
-   * deployment's API-key gate, `packages/worker/src/auth.ts`), keyed by the remote's ORIGIN
+   * Per-origin API keys for an explicitly gated `--remote <url>`, keyed by the remote's ORIGIN
    * (`new URL(remoteUrl).origin`, e.g. `https://my-worker.example.workers.dev`) — origin-keyed
    * from birth (a recorded design commitment: a single-slot shape would break the moment a
    * caller talks to more than one gated remote, e.g. a staging + a production deployment).

@@ -36,7 +36,6 @@ function useUiConfig(): UiConfig | null {
 export function ReloginScreen({ kind }: { kind: Exclude<InterceptorStatus, "ok"> }) {
   const config = useUiConfig();
   const remoteUrl = config?.remoteUrl ?? "<url>";
-  const command = `agentstate-lite login --remote ${remoteUrl} --api-key <key>`;
 
   if (kind === "rate_limited") {
     return (
@@ -63,8 +62,12 @@ export function ReloginScreen({ kind }: { kind: Exclude<InterceptorStatus, "ok">
   return (
     <div className="relogin-screen" role="alert">
       <h1>Sign-in required</h1>
-      <p>Your API key was rejected or has expired. Polling has stopped — re-authenticate from a terminal, then reload:</p>
-      <pre><code>{command}</code></pre>
+      <p>
+        Your API key was rejected or has expired. Polling has stopped. Set <code>AGENTSTATE_LITE_API_KEY</code> in the
+        environment that launches the CLI, rerun the same <code>ui --remote</code> invocation that opened this page, then
+        open the fresh URL it prints.
+      </p>
+      <p>Remote: <code>{remoteUrl}</code></p>
     </div>
   );
 }

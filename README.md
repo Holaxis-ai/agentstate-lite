@@ -99,8 +99,8 @@ reports that uncommitted edit; ordinary sync does not modify code-project files.
 - **Writes are compare-and-swap.** Every document state has a content-addressed
   version; a racing writer gets a typed conflict instead of silently losing an update.
   Every mutation is attributed.
-- **Storage is a seam.** The engine holds all semantics; backends (filesystem by
-  default; memory, wire, cloud) plug in underneath with byte-identical version tokens.
+- **Storage is a seam.** The engine holds all semantics; filesystem, memory, and wire
+  backends plug in underneath with byte-identical version tokens.
 - **Recipes install capability as text.** A recipe is a folder of definitions, applied
   idempotently — it seeds schemas and may carry explicitly declared static References and
   self-contained Pages, then the bundle owns them. A `definitions-only` package rejects instance
@@ -115,9 +115,8 @@ Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPla
 
 ## What's solid
 
-- The engine and the storage seam: 900+ tests across six workspaces, four backends
-  pinned to byte-identical version tokens, and a versioning/CAS model ported from a
-  design already proven in production.
+- The engine and the storage seam: a broad suite across four workspaces, with the
+  filesystem, memory, and wire backends pinned to byte-identical version tokens.
 - The CLI surface, built agent-first: structured output, counts and truncation with
   escape hatches, idempotent mutations, a small stable exit-code taxonomy.
 - The byte channel (`promote`/`pull`) for artifacts that should never enter a model's
@@ -135,13 +134,13 @@ Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPla
   (composed recipes with typed-link glue) are design intent only.
 - **The web UI**: the serving and security plumbing is production-grade; the current
   views are a placeholder pending a design rethink. Treat `ui` as a preview.
-- **The hosted multi-user deployment** exists (Cloudflare, enforced CAS, API keys,
-  invites/roles) but is single-bundle and deliberately frozen in scope while the
-  local-first product solidifies.
-  The default CLI exposes only the local/git product. Explicit wire-protocol access
-  (`serve` and bundle commands with `--remote`) remains available. Authenticated remotes
-  accept `AGENTSTATE_LITE_API_KEY` or an already-provisioned stored per-origin credential;
-  hosted identity and account administration stay off the surface.
+- **Hosted multi-user code is not part of this OSS repository.** The former Cloudflare
+  Worker, D1/R2 backend, auth implementation, and retired hosted-control-plane clients were
+  preserved in a private frozen reference rather than maintained as an active public surface.
+  Explicit generic wire-protocol access (`serve` and bundle commands with `--remote`) remains
+  available. A gated remote may accept `AGENTSTATE_LITE_API_KEY` or an already-provisioned
+  stored per-origin credential; hosted identity and account administration are outside this
+  package.
 - **Wire protocol v0.1** is evolving. One recorded caveat: a document's raw bytes
   re-serialize to canonical form over the wire; blobs are the byte-exact channel.
 - **Filesystem CAS is best-effort across processes** (atomic within one). For multiple

@@ -11,9 +11,10 @@
  *
  * `session_expired` (403) is intentionally a DIFFERENT status than `unauthorized` (401): a 401
  * only ever reaches the browser via a `--remote` proxy relaying the wire-protocol server's own
- * rejection of the stored API key (recovery: re-run `login`), while a 403 here is the `ui`
- * command's OWN loopback session gate rejecting the cookie/token (recovery: reopen the URL the
- * `ui` command just printed — no `login` involved). This can never be confused with the
+ * rejection of the API key (recovery: restart `ui --remote` with `AGENTSTATE_LITE_API_KEY` and
+ * open its fresh URL), while a 403 here is the `ui` command's OWN loopback session gate rejecting
+ * the cookie/token (recovery: reopen the URL the `ui` command just printed). This can never be
+ * confused with the
  * page-bytes route's own 403 (`/__page/<nonce>`, served when a page's registry doc is deleted or
  * retargeted): that route is loaded as the sandboxed iframe's `src`, a browser-native navigation
  * this shell's JS never observes as a fetch failure, so it can't reach this store — see
@@ -39,7 +40,7 @@ export function getInterceptorStatus(): InterceptorStatus {
   return status;
 }
 
-/** Set the interceptor status. Once tripped (non-"ok"), it stays tripped for the session — recovery is a fresh page load after the operator re-runs the printed login command, never an automatic reset. */
+/** Set the interceptor status. Once tripped (non-"ok"), it stays tripped for the session — recovery is a fresh page load after the operator follows the terminal recovery instructions, never an automatic reset. */
 export function setInterceptorStatus(next: InterceptorStatus): void {
   if (next === status) return;
   if (status !== "ok") return; // terminal — never downgrades back to "ok" or flips between tripped states
