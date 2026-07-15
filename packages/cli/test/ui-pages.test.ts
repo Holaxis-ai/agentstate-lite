@@ -10,11 +10,13 @@ import { mkdtemp, rm, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer as createHttpServer, type Server, type ServerResponse } from "node:http";
+import { connect } from "node:net";
 
-import { deleteDoc, initBundle, writeBlob, writeDoc, RemoteBackend, type Bundle } from "@agentstate-lite/core";
+import { deleteDoc, initBundle, readDoc, writeBlob, writeDoc, RemoteBackend, type Bundle } from "@agentstate-lite/core";
 import { createRouter, serve, type ServerHandle } from "@agentstate-lite/server";
 import { bootUiServer, type UiServerHandle } from "../src/ui/server.js";
 import { PageNonceRegistry, pageCsp } from "../src/ui/pages.js";
+import { SseHub } from "../src/ui/events.js";
 import { diffSnapshots, isEmptyChange, startWatcher, type Snapshot } from "../src/ui/watch.js";
 import { writeUiUrlFile, clearUiUrlFile, uiUrlFilePath } from "../src/ui/url-file.js";
 
@@ -657,5 +659,233 @@ test("P1: shell assets AND page bytes both send Referrer-Policy: no-referrer (th
     assert.equal(page.headers.get("referrer-policy"), "no-referrer");
   } finally {
     await cleanup();
+  }
+});
+
+// ── shutdown vs. live SSE clients (the session-rotation restart hang) ─────────
+
+test("SseHub: a stream arriving after close() is severed, never registered (no late reconnect holds shutdown open)", () => {
+  const hub = new SseHub();
+  let destroyed = false;
+  let wroteHead = false;
+  const res = {
+    writeHead: () => {
+      wroteHead = true;
+    },
+    write: () => true,
+    end: () => {},
+    destroy: () => {
+      destroyed = true;
+    },
+    on: () => {},
+  } as unknown as ServerResponse;
+  hub.close();
+  hub.add(res);
+  assert.equal(hub.size(), 0, "a post-close stream must not register");
+  assert.equal(destroyed, true, "the late stream is severed");
+  assert.equal(wroteHead, false, "no event-stream headers are written on a refused stream");
+});
+
+test("P1: close() resolves even when an /events request is IN FLIGHT at shutdown — a restart never waits on a client", async () => {
+  // The deterministic form of the flaky session-rotation e2e hang: an /events request the
+  // server has ACCEPTED but not yet registered when close() fires (handleRequest's async
+  // marshaling spans event-loop turns) reaches sse.add AFTER sse.close() has run. Unfixed,
+  // that registered a never-ending stream on an active socket and server.close() waited on it
+  // forever — reproduced on the unfixed code at one specific close()-timing turn. The
+  // vulnerable window is a timing offset by nature, so SWEEP close() across the first few
+  // event-loop turns after the request bytes go out: the fixed server must close bounded at
+  // EVERY offset (the hub's post-close guard refuses the late stream; closeAllConnections
+  // severs the socket).
+  for (let ticks = 0; ticks <= 4; ticks++) {
+    const { handle, dir } = await bootPagesServer();
+    const sock = connect(handle.port, handle.host);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        sock.once("connect", () => resolve());
+        sock.once("error", reject);
+      });
+      // Being severed mid-flight by the shutdown under test is the expected outcome, not an error.
+      sock.on("error", () => {});
+      sock.write(`GET /events?token=${SECRET} HTTP/1.1\r\nhost: ${handle.host}:${handle.port}\r\n\r\n`);
+      for (let i = 0; i < ticks; i++) await new Promise<void>((resolve) => setImmediate(resolve));
+
+      const closed = await Promise.race([
+        handle.close().then(() => true as const),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 5_000).unref()),
+      ]);
+      assert.equal(closed, true, `close() must resolve promptly with an in-flight /events request (offset: ${ticks} ticks)`);
+    } finally {
+      sock.destroy();
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("P1: close() resolves even when a request is held MID-MARSHALING at shutdown (body declared, never sent)", async () => {
+  // The timing-INDEPENDENT form of the same hang: a request the server has accepted whose body
+  // marshaling can never finish (content-length declared, bytes withheld) keeps its socket
+  // active for as long as the client pleases — unfixed, server.close() waited on it forever
+  // (verified: this construction hangs the unfixed close() deterministically, no tick sweep
+  // needed). closeAllConnections severs it; the try/caught 500 fallback absorbs the aborted
+  // marshaling without an unhandled rejection.
+  const { handle, dir } = await bootPagesServer();
+  const sock = connect(handle.port, handle.host);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      sock.once("connect", () => resolve());
+      sock.once("error", reject);
+    });
+    sock.on("error", () => {});
+    sock.write(
+      `POST /events?token=${SECRET} HTTP/1.1\r\nhost: ${handle.host}:${handle.port}\r\nx-requested-with: test\r\ncontent-length: 3\r\n\r\n`,
+    );
+    // Let the server accept the request and block awaiting the 3 body bytes that never come.
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+
+    const closed = await Promise.race([
+      handle.close().then(() => true as const),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 5_000).unref()),
+    ]);
+    assert.equal(closed, true, "close() must resolve promptly with a mid-marshaling request held open");
+  } finally {
+    sock.destroy();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+/** Boot `bootUiServer` in dir mode over a fresh bundle with the real router WRAPPED so a PUT parks inside the router until the returned hook fires — the deterministic seam for the post-close write race. */
+async function bootWithHeldPut(hold: (release: () => void) => Promise<void> | void): Promise<{
+  handle: UiServerHandle;
+  origin: string;
+  dir: string;
+  bundle: Bundle;
+  putEntered: Promise<void>;
+}> {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-drain-"));
+  await initBundle(dir);
+  const bundle: Bundle = { root: dir };
+  let signalEntered!: () => void;
+  const putEntered = new Promise<void>((resolve) => (signalEntered = resolve));
+  const real = createRouter(bundle);
+  const router = async (req: Request): Promise<Response> => {
+    if (req.method === "PUT") {
+      signalEntered();
+      await new Promise<void>((release) => void hold(release));
+    }
+    return real(req);
+  };
+  const handle = await bootUiServer({ mode: "dir", port: 0, router, bundle, sessionSecret: SECRET });
+  return { handle, origin: `http://${handle.host}:${handle.port}`, dir, bundle, putEntered };
+}
+
+function sendPut(origin: string, id: string): Promise<unknown> {
+  return fetch(`${origin}/v0/bundles/default/docs/${id}`, {
+    method: "PUT",
+    headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+    body: JSON.stringify({ frontmatter: { type: "Task", title: "Raced write" }, body: "" }),
+    // The socket is severed by the shutdown under test, so this fetch's rejection is expected.
+  }).catch(() => undefined);
+}
+
+test("P1: an accepted local mutation COMMITS BEFORE close() resolves — never after it (post-close write race)", async () => {
+  // The one-level-deeper form of the shutdown race: closeAllConnections severs the CLIENT, but a
+  // mutation already executing inside the router is server-side work — if close() resolves while
+  // it runs, the write lands AFTER shutdown ostensibly finished (the destructive post-close
+  // commit). Chosen semantics, pinned here: dir mode FINISHES what it accepted — the write
+  // commits, and close() does not resolve until it has (aborting a local fs write mid-flight
+  // risks partial state).
+  let release!: () => void;
+  const { handle, origin, dir, bundle, putEntered } = await bootWithHeldPut((r) => (release = r));
+  try {
+    const put = sendPut(origin, "tasks/raced");
+    await putEntered; // the mutation is now accepted and parked INSIDE the router
+
+    let closed = false;
+    const closing = handle.close().then(() => {
+      closed = true;
+    });
+    // ORDER pin: close() must not resolve ahead of the accepted mutation.
+    await new Promise<void>((resolve) => setTimeout(resolve, 150));
+    assert.equal(closed, false, "close() resolved while an accepted mutation was still executing");
+
+    release();
+    await closing;
+    await put;
+    // COHERENCE pin: the accepted write landed, and it landed before close() resolved.
+    const doc = await readDoc(bundle, "tasks/raced");
+    assert.equal(doc.frontmatter.title, "Raced write", "the accepted mutation must have committed before close() resolved");
+  } finally {
+    release?.();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("P1: a bundle dir deleted after close() resolves STAYS deleted — no post-close handler resurrects it", async () => {
+  // The reviewer's worst repro: close() resolves, the operator deletes the bundle dir, and a
+  // handler still executing from before shutdown RECREATES the directory and commits its doc.
+  // With draining, nothing outlives close(): the (timer-held, self-releasing) mutation commits
+  // BEFORE close() resolves, so the deletion afterwards is final.
+  const { handle, origin, dir, putEntered } = await bootWithHeldPut((release) => {
+    setTimeout(release, 300);
+  });
+  try {
+    const put = sendPut(origin, "tasks/resurrected");
+    await putEntered;
+
+    await handle.close(); // must drain the parked mutation before resolving
+    await rm(dir, { recursive: true, force: true });
+
+    // Wait past the point where an undrained handler would have woken and written.
+    await new Promise<void>((resolve) => setTimeout(resolve, 600));
+    await put;
+    const resurrected = await stat(dir).then(
+      () => true,
+      () => false,
+    );
+    assert.equal(resurrected, false, "a post-close handler resurrected the deleted bundle dir");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("close() is safe to call CONCURRENTLY during the drain window — both calls settle, no unhandledRejection", async () => {
+  // The latent double-close defect: close() creates its listener-closed promise EAGERLY but only
+  // awaits it AFTER the drain — a second close() during a parked drain gets that promise's
+  // ERR_SERVER_NOT_RUNNING rejection sitting handler-less across macrotask turns, a genuine
+  // unhandledRejection (process-fatal under node's default --unhandled-rejections=throw). The
+  // guard: a no-op catch attached at creation marks it handled immediately while the later
+  // await still observes the real outcome.
+  const rejections: unknown[] = [];
+  const onUnhandled = (reason: unknown): void => {
+    rejections.push(reason);
+  };
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    let release!: () => void;
+    const { handle, origin, dir, putEntered } = await bootWithHeldPut((r) => (release = r));
+    try {
+      const put = sendPut(origin, "tasks/double-close");
+      await putEntered; // the drain window is now held open by the parked mutation
+
+      const first = handle.close();
+      const second = handle.close();
+      // Let macrotask turns pass with both closes mid-drain — the window where an unguarded
+      // second listener-closed rejection surfaces as unhandled.
+      await new Promise<void>((resolve) => setTimeout(resolve, 150));
+      release();
+
+      const outcomes = await Promise.allSettled([first, second]);
+      await put;
+      assert.equal(outcomes[0].status, "fulfilled", "the first close() must succeed");
+      assert.equal(outcomes.length, 2); // the second may reject (already closing) — settled, never unhandled
+      // Give the loop a turn to flush any pending unhandledRejection emission before asserting.
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      assert.deepEqual(rejections, [], "concurrent close() during the drain produced an unhandledRejection");
+    } finally {
+      release?.();
+      await rm(dir, { recursive: true, force: true });
+    }
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
   }
 });

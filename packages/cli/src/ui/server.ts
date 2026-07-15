@@ -63,11 +63,12 @@ export interface UiServerHandle {
   close(): Promise<void>;
 }
 
-/** Per-run mutable state the request handler closes over: the page-nonce registry, the SSE fan-out, and the change watcher. */
+/** Per-run mutable state the request handler closes over: the page-nonce registry, the SSE fan-out, the change watcher, and the shutdown signal (aborts remote-mode upstream requests at close()). */
 interface UiRuntime {
   nonces: PageNonceRegistry;
   sse: SseHub;
   watcher?: WatcherHandle;
+  shutdown: AbortController;
 }
 
 function jsonError(status: number, code: string, message: string): Response {
@@ -356,7 +357,7 @@ async function handleRequest(
     response =
       options.mode === "dir"
         ? await options.router!(request)
-        : await proxyToRemote(request, options.remoteBase!, options.apiKey);
+        : await proxyToRemote(request, options.remoteBase!, options.apiKey, runtime.shutdown.signal);
   } else {
     const asset = serveAsset(url.pathname, request.headers.get("accept-encoding"));
     response = new Response(asset.body, { status: asset.status, headers: asset.headers });
@@ -382,18 +383,34 @@ async function bootWatcher(options: UiServerOptions, sse: SseHub): Promise<Watch
   }
 }
 
+/** How long close() waits for accepted request handlers to settle before shutting down without them (a backstop for a pathological handler; severed sockets settle ordinary blocked reads well within this). */
+const CLOSE_DRAIN_WATCHDOG_MS = 5_000;
+
 /** Boot the `ui` command's http listener and resolve once it is listening. */
 export async function bootUiServer(options: UiServerOptions): Promise<UiServerHandle> {
   const sessionSecret = options.sessionSecret ?? mintSessionSecret();
-  const runtime: UiRuntime = { nonces: new PageNonceRegistry(), sse: new SseHub() };
+  const runtime: UiRuntime = { nonces: new PageNonceRegistry(), sse: new SseHub(), shutdown: new AbortController() };
   runtime.watcher = await bootWatcher(options, runtime.sse);
 
   return new Promise((resolve, reject) => {
+    // Every ACCEPTED request's handler promise, tracked until it settles: close() drains this
+    // set before resolving, so no handler can commit a write AFTER shutdown ostensibly finished
+    // (the post-close destructive-write race — e.g. a mutation recreating a bundle dir the
+    // operator deleted right after close()).
+    const inFlight = new Set<Promise<void>>();
     const server = createServer((req, res) => {
-      void handleRequest(req, res, options, runtime, sessionSecret).catch((err: unknown) => {
-        res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ error: { code: "RUNTIME", message: err instanceof Error ? err.message : String(err) } }));
+      const handled = handleRequest(req, res, options, runtime, sessionSecret).catch((err: unknown) => {
+        // Best-effort: the response may already be severed (shutdown's closeAllConnections) — a
+        // throwing fallback here would surface as an unhandled rejection, not a served error.
+        try {
+          res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: { code: "RUNTIME", message: err instanceof Error ? err.message : String(err) } }));
+        } catch {
+          res.destroy();
+        }
       });
+      inFlight.add(handled);
+      void handled.finally(() => inFlight.delete(handled));
     });
     server.once("error", (err) => {
       void runtime.watcher?.stop();
@@ -410,12 +427,42 @@ export async function bootUiServer(options: UiServerOptions): Promise<UiServerHa
         host: HOST,
         port: addr.port,
         token: sessionSecret,
-        close: () =>
-          new Promise<void>((resolveClose, rejectClose) => {
-            void runtime.watcher?.stop();
-            runtime.sse.close();
-            server.close((err) => (err ? rejectClose(err) : resolveClose()));
-          }),
+        close: async () => {
+          void runtime.watcher?.stop();
+          runtime.sse.close();
+          const listenerClosed = new Promise<void>((resolveClose, rejectClose) =>
+            server.close((err) => (err ? rejectClose(err) : resolveClose())),
+          );
+          // Handled-guard: listenerClosed is awaited only AFTER the drain below, so a rejection
+          // landing during the drain (a concurrent second close() gets ERR_SERVER_NOT_RUNNING)
+          // would otherwise sit handler-less across macrotask turns — a process-fatal
+          // unhandledRejection. The no-op catch marks it handled now; the await still throws.
+          listenerClosed.catch(() => {});
+          // Shutdown never waits on a client: sever every remaining socket now. Without this,
+          // an EventSource reconnect racing onto a kept-alive connection mid-drain registers a
+          // fresh never-ending stream (or a pipelined request keeps its socket active) and
+          // `server.close()` blocks forever — the session-rotation restart hang.
+          server.closeAllConnections();
+          // Remote mode: abort in-flight upstream requests — a slow remote must not stall
+          // shutdown, and the remote owns its own write coherence. Dir mode is untouched by
+          // this signal: an accepted LOCAL mutation finishes (see the drain below).
+          runtime.shutdown.abort();
+          // Drain accepted server-side work BEFORE resolving: severing sockets stops CLIENTS,
+          // but a handler already executing (e.g. a mutation inside the router) is our work —
+          // resolving under it would let a write commit AFTER close(). Dir-mode semantics:
+          // finish-what-you-accepted (aborting a local fs write mid-flight risks partial
+          // state). Bounded by a watchdog for a pathological handler that outlives its
+          // severed socket.
+          const drained = Promise.allSettled([...inFlight]).then(() => true as const);
+          const bounded = await Promise.race([
+            drained,
+            new Promise<false>((resolveTimeout) => setTimeout(() => resolveTimeout(false), CLOSE_DRAIN_WATCHDOG_MS).unref()),
+          ]);
+          if (!bounded) {
+            process.stderr.write("[ui] close(): a request handler did not settle within the drain window; shutting down without it\n");
+          }
+          await listenerClosed;
+        },
       });
     });
   });

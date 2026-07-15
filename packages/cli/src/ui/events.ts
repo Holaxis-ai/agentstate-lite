@@ -13,13 +13,22 @@ const HEARTBEAT_MS = 25_000;
 export class SseHub {
   private readonly clients = new Set<ServerResponse>();
   private heartbeat: ReturnType<typeof setInterval> | undefined;
+  private closed = false;
 
   /**
    * Attach a freshly-opened SSE response: write the event-stream headers, register it, and
    * de-register it on close. `extraHeaders` carries the session cookie when the connecting
    * request authenticated via the URL token (mirrors the main server's cookie-grant path).
+   *
+   * After {@link close}, a late-arriving stream (an EventSource reconnect racing onto a
+   * kept-alive socket mid-shutdown) is severed instead of registered — a post-close stream
+   * would never be ended and would hold the http server's `close()` open forever.
    */
   add(res: ServerResponse, extraHeaders: Record<string, string> = {}): void {
+    if (this.closed) {
+      res.destroy();
+      return;
+    }
     res.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-store",
@@ -51,8 +60,9 @@ export class SseHub {
     return this.clients.size;
   }
 
-  /** End every stream and stop the heartbeat — called on server shutdown so no timer keeps the process alive. */
+  /** End every stream, stop the heartbeat, and refuse any later {@link add} — called on server shutdown so no timer (or late reconnect) keeps the server alive. */
   close(): void {
+    this.closed = true;
     if (this.heartbeat) {
       clearInterval(this.heartbeat);
       this.heartbeat = undefined;
