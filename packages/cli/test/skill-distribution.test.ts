@@ -91,7 +91,11 @@ test("every SKILL_REFERENCES.src exists on disk (from the repo root)", () => {
 });
 
 test("the shipped Page examples include capability-independent navigation from a content Page", () => {
-  for (const dest of ["pages/about.html", "pages/pages-registry/about.md", "pages/BRIDGE.md"]) {
+  for (const dest of [
+    "pages/about.html",
+    "pages/pages-registry/about.md",
+    "pages/references/page-authoring-v0.md",
+  ]) {
     assert.ok(MANIFEST_DESTS.has(dest), `Page navigation reference missing from SKILL_REFERENCES: ${dest}`);
   }
 });
@@ -122,6 +126,14 @@ test("the shipped review-workflow references exactly mirror the complete recipe 
 test("the portable recipe carries the canonical Page convention byte-for-byte", () => {
   const canonical = readFileSync(path.join(REPO_ROOT, "examples/pages/conventions/page.md"));
   const portable = readFileSync(path.join(REPO_ROOT, "examples/recipes/review-workflow/conventions/page.md"));
+  assert.deepEqual(portable, canonical);
+});
+
+test("the portable recipe carries the canonical bundle-native Page authoring reference byte-for-byte", () => {
+  const canonical = readFileSync(path.join(REPO_ROOT, "examples/pages/references/page-authoring-v0.md"));
+  const portable = readFileSync(
+    path.join(REPO_ROOT, "examples/recipes/review-workflow/references/page-authoring-v0.md"),
+  );
   assert.deepEqual(portable, canonical);
 });
 

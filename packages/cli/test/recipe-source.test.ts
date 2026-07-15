@@ -51,6 +51,19 @@ const PAGE_HTML: RecipeFile = {
   bytes: "<!doctype html><title>Reviews</title>",
 };
 
+const REFERENCE_MANIFEST: RecipeFile = {
+  ...PORTABLE_MANIFEST,
+  bytes: PORTABLE_MANIFEST.bytes.replace(
+    "content_policy: definitions-only\n",
+    "content_policy: definitions-only\nreferences:\n  - references/page-authoring-v0.md\n",
+  ),
+};
+
+const PAGE_REFERENCE: RecipeFile = {
+  path: "references/page-authoring-v0.md",
+  bytes: "---\ntype: Reference\ntitle: Page authoring v0\nprotocol: v0\n---\n# Page authoring\n",
+};
+
 async function tempDir(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "agentstate-lite-recipe-source-test-"));
 }
@@ -70,6 +83,7 @@ test("parseRecipeFiles: a valid manifest + one convention doc parses to a Loaded
   assert.equal(result.recipe.docs.length, 1);
   assert.equal(result.recipe.docs[0]!.id, "conventions/term");
   assert.deepEqual(result.recipe.pages, []);
+  assert.deepEqual(result.recipe.references, []);
   assert.deepEqual(result.recipe.warnings, []);
 });
 
@@ -82,6 +96,93 @@ test("parseRecipeFiles: definitions-only package materializes an explicitly decl
   assert.equal(result.recipe.pages[0]!.registry.id, "pages-registry/reviews");
   assert.equal(result.recipe.pages[0]!.entry, "pages/reviews.html");
   assert.equal(result.recipe.pages[0]!.html, PAGE_HTML.bytes);
+  assert.deepEqual(result.recipe.references, []);
+});
+
+test("parseRecipeFiles: definitions-only package materializes an explicitly declared operating Reference", () => {
+  const result = parseRecipeFiles(
+    [REFERENCE_MANIFEST, VALID_TERM, PAGE_REGISTRY, PAGE_HTML, PAGE_REFERENCE],
+    "test:portable-reference",
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.recipe.references.length, 1);
+  assert.equal(result.recipe.references[0]!.doc.id, "references/page-authoring-v0");
+  assert.equal(result.recipe.references[0]!.doc.frontmatter.type, "Reference");
+  assert.match(result.recipe.references[0]!.doc.body, /Page authoring/);
+});
+
+test("parseRecipeFiles: Reference paths are exact, safe, unique, and definitions-only", () => {
+  for (const unsafe of [
+    "docs/page-authoring-v0.md",
+    "references/has space.md",
+    "references/.hidden.md",
+    "references/index.md",
+    '" references/page-authoring-v0.md "',
+  ]) {
+    const manifest = {
+      ...REFERENCE_MANIFEST,
+      bytes: REFERENCE_MANIFEST.bytes.replace("references/page-authoring-v0.md", unsafe),
+    };
+    const file = { ...PAGE_REFERENCE, path: unsafe.replaceAll('"', "").trim() };
+    const result = parseRecipeFiles([manifest, VALID_TERM, PAGE_REGISTRY, PAGE_HTML, file], `test:unsafe-ref:${unsafe}`);
+    assert.equal(result.ok, false, `${unsafe} must be rejected`);
+    if (result.ok) continue;
+    assert.equal(result.error.code, "RECIPE_UNSAFE_PATH");
+  }
+
+  const duplicateManifest = {
+    ...REFERENCE_MANIFEST,
+    bytes: REFERENCE_MANIFEST.bytes.replace(
+      "  - references/page-authoring-v0.md\n",
+      "  - references/Page.md\n  - references/page.md\n",
+    ),
+  };
+  const duplicate = parseRecipeFiles(
+    [
+      duplicateManifest,
+      VALID_TERM,
+      PAGE_REGISTRY,
+      PAGE_HTML,
+      { ...PAGE_REFERENCE, path: "references/Page.md" },
+      { ...PAGE_REFERENCE, path: "references/page.md" },
+    ],
+    "test:duplicate-ref",
+  );
+  assert.equal(duplicate.ok, false);
+  if (!duplicate.ok) assert.equal(duplicate.error.code, "RECIPE_MALFORMED");
+
+  const noPolicy = {
+    ...REFERENCE_MANIFEST,
+    bytes: REFERENCE_MANIFEST.bytes.replace("content_policy: definitions-only\n", ""),
+  };
+  const unscoped = parseRecipeFiles(
+    [noPolicy, VALID_TERM, PAGE_REGISTRY, PAGE_HTML, PAGE_REFERENCE],
+    "test:reference-no-policy",
+  );
+  assert.equal(unscoped.ok, false);
+  if (!unscoped.ok) assert.equal(unscoped.error.code, "RECIPE_MALFORMED");
+});
+
+test("parseRecipeFiles: declared References must exist and be typed, titled Reference docs", () => {
+  const missing = parseRecipeFiles(
+    [REFERENCE_MANIFEST, VALID_TERM, PAGE_REGISTRY, PAGE_HTML],
+    "test:missing-reference",
+  );
+  assert.equal(missing.ok, false);
+  if (!missing.ok) assert.match(missing.error.message, /missing declared Reference/);
+
+  for (const bytes of [
+    "---\ntype: Task\ntitle: Not a reference\n---\n",
+    "---\ntype: Reference\n---\nUntitled.\n",
+  ]) {
+    const malformed = parseRecipeFiles(
+      [REFERENCE_MANIFEST, VALID_TERM, PAGE_REGISTRY, PAGE_HTML, { ...PAGE_REFERENCE, bytes }],
+      "test:malformed-reference",
+    );
+    assert.equal(malformed.ok, false);
+    if (!malformed.ok) assert.equal(malformed.error.code, "RECIPE_MALFORMED");
+  }
 });
 
 test("parseRecipeFiles: a valid nested Page declaration preserves the exact runtime id and blob key", () => {
@@ -415,6 +516,8 @@ test("resolveRecipe: loads the content-free Review Workflow package with its dec
   assert.equal(result.recipe.pages.length, 1);
   assert.equal(result.recipe.pages[0]!.registry.id, "pages-registry/review-workflow-reviews");
   assert.equal(result.recipe.pages[0]!.entry, "pages/review-workflow/reviews.html");
+  assert.equal(result.recipe.references.length, 1);
+  assert.equal(result.recipe.references[0]!.doc.id, "references/page-authoring-v0");
 });
 
 test("resolveRecipe: definitions-only scans the full folder and rejects hidden instance data", async () => {

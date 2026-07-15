@@ -10,7 +10,7 @@ import { SKILL_REFERENCES } from "../src/skill-references.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../../..");
 const authorities = {
-  contract: "examples/pages/BRIDGE.md",
+  contract: "examples/pages/references/page-authoring-v0.md",
   pulse: "examples/pages/pulse.html",
   roadmap: "examples/pages/roadmap.html",
 } as const;

@@ -29,8 +29,9 @@ cp -R "$REPO/.agentstate-lite/." "$BUNDLE/"
 
 echo "Seeding scratch bundle: $BUNDLE"
 
-# Convention first (so the registry docs validate against it), then the registry docs, then the
+# Install the bundle-native authoring reference with the convention, then the registry docs and
 # page blobs. .md keys route through the doc engine; other keys are opaque blobs.
+node "$CLI" promote "$HERE/references/page-authoring-v0.md" --doc-key references/page-authoring-v0.md --dir "$BUNDLE" >/dev/null
 node "$CLI" promote "$HERE/conventions/page.md"          --doc-key conventions/page.md            --dir "$BUNDLE" >/dev/null
 node "$CLI" promote "$HERE/pages-registry/pulse.md"      --doc-key pages-registry/pulse.md        --dir "$BUNDLE" >/dev/null
 node "$CLI" promote "$HERE/pages-registry/roadmap.md"    --doc-key pages-registry/roadmap.md      --dir "$BUNDLE" >/dev/null
@@ -45,7 +46,7 @@ TASK_ID="$(node "$CLI" list --type Task --dir "$BUNDLE" --json \
 [ -n "$TASK_ID" ] || TASK_ID="tasks/<some-todo-task>"
 
 echo
-echo "Seeded 3 pages (pulse, roadmap, about) + the Page convention."
+echo "Seeded 3 pages (pulse, roadmap, about) + the Page convention and authoring reference."
 echo "──────────────────────────────────────────────────────────────────────────"
 echo "1) Launch the UI (foreground; it prints a tokenized http://127.0.0.1:PORT URL to open):"
 echo

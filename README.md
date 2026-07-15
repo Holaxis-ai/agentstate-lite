@@ -102,8 +102,9 @@ reports that uncommitted edit; ordinary sync does not modify code-project files.
 - **Storage is a seam.** The engine holds all semantics; backends (filesystem by
   default; memory, wire, cloud) plug in underneath with byte-identical version tokens.
 - **Recipes install capability as text.** A recipe is a folder of definitions, applied
-  idempotently — it seeds schemas and may carry explicitly declared self-contained Pages, then the
-  bundle owns them. A `definitions-only` package rejects instance data and undeclared files. Three
+  idempotently — it seeds schemas and may carry explicitly declared static References and
+  self-contained Pages, then the bundle owns them. A `definitions-only` package rejects instance
+  data and undeclared files. Three
   recipes ship built-in (`context-notes`, `work-tracking`, `roadmap`);
   `examples/recipes/claims` is the minimal custom-Kind example, while
   `examples/recipes/review-workflow` is a complete content-free cognitive ecosystem: a

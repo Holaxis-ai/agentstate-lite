@@ -67,6 +67,12 @@ export interface RecipePage {
   html: string;
 }
 
+/** One portable, content-free operating reference carried by a recipe package. */
+export interface RecipeReference {
+  /** A `type: Reference` document installed under `references/`. */
+  doc: OkfDocument;
+}
+
 /** The common shape every `RecipeSource` produces and `applyRecipe` (recipes.ts) consumes. */
 export interface LoadedRecipe {
   id: string;
@@ -79,6 +85,8 @@ export interface LoadedRecipe {
   docs: OkfDocument[];
   /** Optional Page definitions installed with the conventions; never Kind instances. */
   pages: RecipePage[];
+  /** Optional operating references installed with the definitions; never project instances. */
+  references: RecipeReference[];
   /** Present only for packages opting into the strict portable definitions-only contract. */
   contentPolicy?: "definitions-only";
   /** The `type` values this recipe's conventions govern (derived at parse, for the receipt). */
@@ -121,6 +129,90 @@ interface PageDeclaration {
   registry: string;
   registryId: string;
   entry: string;
+}
+
+interface ReferenceDeclaration {
+  path: string;
+  id: string;
+}
+
+const REFERENCE_SEGMENT = /^[A-Za-z0-9._-]+$/;
+
+function isSafeRecipeReferencePath(value: string): boolean {
+  if (!value.startsWith("references/") || !value.endsWith(".md") || /[\\%?#]/.test(value)) return false;
+  const segments = value.slice("references/".length).split("/");
+  return segments.every((segment) => !segment.startsWith(".") && REFERENCE_SEGMENT.test(segment));
+}
+
+function parseReferenceDeclarations(manifest: Record<string, unknown>, recipeId: string, source: string):
+  | { ok: true; references: ReferenceDeclaration[] }
+  | { ok: false; error: RecipeError } {
+  if (manifest.references === undefined) return { ok: true, references: [] };
+  if (manifest.content_policy !== "definitions-only") {
+    return {
+      ok: false,
+      error: {
+        code: "RECIPE_MALFORMED",
+        message:
+          `recipe '${recipeId}' at '${source}' declares references but does not declare ` +
+          "'content_policy: definitions-only', which is required for portable assets",
+      },
+    };
+  }
+  if (!Array.isArray(manifest.references)) {
+    return {
+      ok: false,
+      error: { code: "RECIPE_MALFORMED", message: `recipe '${recipeId}': 'references' must be a list` },
+    };
+  }
+
+  const references: ReferenceDeclaration[] = [];
+  const targets = new Set<string>();
+  for (const [index, value] of manifest.references.entries()) {
+    if (typeof value !== "string" || value === "") {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_MALFORMED",
+          message: `recipe '${recipeId}': references[${index}] must be a non-empty path`,
+        },
+      };
+    }
+    if (!isSafeRecipeReferencePath(value)) {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_UNSAFE_PATH",
+          message: `recipe '${recipeId}': Reference '${value}' must be a .md file under 'references/'`,
+        },
+      };
+    }
+    const id = conceptIdFromPath(value);
+    try {
+      assertSafeConceptId(id);
+    } catch {
+      return {
+        ok: false,
+        error: { code: "RECIPE_UNSAFE_PATH", message: `recipe '${recipeId}' contains an unsafe Reference path` },
+      };
+    }
+    if (isReservedFile(value)) {
+      return {
+        ok: false,
+        error: { code: "RECIPE_UNSAFE_PATH", message: `recipe '${recipeId}' contains a reserved filename: '${value}'` },
+      };
+    }
+    const target = id.toLowerCase();
+    if (targets.has(target)) {
+      return {
+        ok: false,
+        error: { code: "RECIPE_MALFORMED", message: `recipe '${recipeId}' declares duplicate Reference '${value}'` },
+      };
+    }
+    targets.add(target);
+    references.push({ path: value, id });
+  }
+  return { ok: true, references };
 }
 
 function parsePageDeclarations(manifest: Record<string, unknown>, recipeId: string, source: string):
@@ -266,7 +358,10 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
   }
   const pageDeclarations = parsePageDeclarations(manifest, id, source);
   if (!pageDeclarations.ok) return pageDeclarations;
+  const referenceDeclarations = parseReferenceDeclarations(manifest, id, source);
+  if (!referenceDeclarations.ok) return referenceDeclarations;
   const declaredPageFiles = new Set(pageDeclarations.pages.flatMap((page) => [page.registry, page.entry]));
+  const declaredReferenceFiles = new Set(referenceDeclarations.references.map((reference) => reference.path));
 
   const warnings: ValidationWarning[] = [];
   for (const key of RESERVED_MANIFEST_KEYS) {
@@ -289,6 +384,7 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
 
     if (!file.path.startsWith(CONVENTIONS_PREFIX)) {
       if (declaredPageFiles.has(file.path)) continue;
+      if (declaredReferenceFiles.has(file.path)) continue;
       if (contentPolicy === "definitions-only") {
         return {
           ok: false,
@@ -459,7 +555,49 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
     });
   }
 
-  const recipe: LoadedRecipe = { id, title, version, summary, source, docs, pages, governs: governsList, warnings };
+  const references: RecipeReference[] = [];
+  for (const declaration of referenceDeclarations.references) {
+    const referenceFile = files.find((file) => file.path === declaration.path);
+    if (!referenceFile) {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_MALFORMED",
+          message: `recipe '${id}' is missing declared Reference file '${declaration.path}'`,
+        },
+      };
+    }
+    const { frontmatter, body } = parseMarkdown(referenceFile.bytes);
+    if (frontmatter.type !== "Reference") {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_MALFORMED",
+          message: `recipe '${id}': '${declaration.path}' must declare 'type: Reference'`,
+        },
+      };
+    }
+    if (!nonEmptyString(frontmatter.title)) {
+      return {
+        ok: false,
+        error: { code: "RECIPE_MALFORMED", message: `recipe '${id}': '${declaration.path}' needs a title` },
+      };
+    }
+    references.push({ doc: { id: declaration.id, frontmatter, body } });
+  }
+
+  const recipe: LoadedRecipe = {
+    id,
+    title,
+    version,
+    summary,
+    source,
+    docs,
+    pages,
+    references,
+    governs: governsList,
+    warnings,
+  };
   if (contentPolicy === "definitions-only") recipe.contentPolicy = contentPolicy;
   return { ok: true, recipe };
 }
