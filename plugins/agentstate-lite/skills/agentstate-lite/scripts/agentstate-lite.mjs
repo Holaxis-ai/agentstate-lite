@@ -13760,7 +13760,7 @@ function renderKindHelp(kind2, registry, inv) {
     ]);
     return fieldLine + (description ? ` \u2014 ${description}` : "") + "\n    allowed values:\n" + valueRows.join("\n");
   });
-  const sections = kind2.sections && kind2.sections.length > 0 ? kind2.sections.join(", ") : "(none)";
+  const sectionLines = kind2.sections && kind2.sections.length > 0 ? kind2.sections.map((section) => `  # ${section}`).join("\n") : "  (none)";
   const pathLine = kind2.path ? `Id:  auto-prefixed with '${kind2.path.replace(/\/+$/, "")}/' unless <id> already carries it` : "Id:  used as-is (this kind declares no path prefix)";
   const outboundLines = Object.entries(kind2.links ?? {}).map(([t, target]) => {
     const description = ownDescription(kind2.linkDescriptions, t);
@@ -13776,7 +13776,8 @@ function renderKindHelp(kind2, registry, inv) {
 
 ` + (kind2.description ? `Description:  ${kind2.description}
 ` : "") + `Fields (declared by the '${kind2.governs}' kind convention):
-` + (fieldRows.length > 0 ? fieldRows.join("\n") + "\n" : "  (none)\n") + `Body sections scaffolded:  ${sections}
+` + (fieldRows.length > 0 ? fieldRows.join("\n") + "\n" : "  (none)\n") + `Required body headings (level 1; exact Markdown):
+${sectionLines}
 ` + linksBlock + `${pathLine}
 
 Repeat a flag to set an array value (e.g. --tag a --tag b). Validation is STRICT.
@@ -14081,7 +14082,9 @@ Declaring a kind convention (frontmatter keys core reads \u2014 everything else 
                                  missing_expected_links lint; 'link add' also warns on a
                                  type-mismatched edge against any declared 'links'/'expects_inbound'
                                  vocabulary. Write-time is never blocked by this key.
-  sections             list     expected level-1 '# Heading' body-section names
+  sections             list     expected body-section names; 'kinds' preserves these names in its
+                                 sections output and also emits required_headings with the exact
+                                 level-1 Markdown syntax (for example '# Requested decision')
   freshness_horizon    string   '<n>(m|h|d)', e.g. 24h, 30d, 15m
 A misshaped or misplaced key here is a non-fatal registry warning (visible in 'kinds'/'status'
 output), never a silent no-op. See 'agentstate-lite doc read conventions/context-note' on any
@@ -14113,7 +14116,10 @@ function toRow(kind2) {
   }
   if (kind2.expectsInbound && Object.keys(kind2.expectsInbound).length > 0) row.expects_inbound = kind2.expectsInbound;
   if (kind2.path) row.path = kind2.path;
-  if (kind2.sections && kind2.sections.length > 0) row.sections = kind2.sections;
+  if (kind2.sections && kind2.sections.length > 0) {
+    row.sections = kind2.sections;
+    row.required_headings = kind2.sections.map((section) => `# ${section}`);
+  }
   if (kind2.freshnessHorizon) {
     row.horizon = kind2.freshnessHorizon;
     const ms = freshnessHorizonMs(kind2);
@@ -16671,7 +16677,7 @@ var COMMAND_GROUPS = [
       },
       {
         usage: "kinds [--remote <url>]",
-        summary: "List the kind conventions this bundle declares (purpose, described fields, typed-link vocabulary, horizon)"
+        summary: "List the kind conventions this bundle declares (purpose, described fields, exact required body headings, typed-link vocabulary, horizon)"
       },
       {
         usage: 'kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]',
