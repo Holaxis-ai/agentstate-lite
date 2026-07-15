@@ -397,7 +397,7 @@ test('new "<Kind>" --help shows deterministic described field rows, not the gene
     assert.equal((out.match(/--status <v>/g) ?? []).length, 1);
     assert.doesNotMatch(out, /--actor <v>/);
     assert.doesNotMatch(out, /--link <v>/);
-    assert.match(out, /Summary/); // the kind's declared body section
+    assert.match(out, /Required body headings \(level 1; exact Markdown\):\n  # Summary/);
     assert.match(out, /described\//); // the kind's declared path prefix
     // `new --help` with NO kind still shows the GENERIC reference (not a kind schema).
     let generic = "";
@@ -1210,6 +1210,7 @@ test("seed round-trip (usability F2): init seeds 'sections: [Summary]' into 'kin
     assert.equal(rows.length, 1);
     assert.equal(rows[0]!.governs, "Context Note");
     assert.deepEqual(rows[0]!.sections, ["Summary"]);
+    assert.deepEqual(rows[0]!.required_headings, ["# Summary"]);
 
     // The PRIMARY-PATH pin: a summary-only Context Note (no Decisions/Open Questions/Pointers,
     // the most common legitimate shape — written via the generic 'doc write', not a bespoke

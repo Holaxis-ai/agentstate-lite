@@ -58,7 +58,9 @@ Declaring a kind convention (frontmatter keys core reads — everything else is 
                                  missing_expected_links lint; 'link add' also warns on a
                                  type-mismatched edge against any declared 'links'/'expects_inbound'
                                  vocabulary. Write-time is never blocked by this key.
-  sections             list     expected level-1 '# Heading' body-section names
+  sections             list     expected body-section names; 'kinds' preserves these names in its
+                                 sections output and also emits required_headings with the exact
+                                 level-1 Markdown syntax (for example '# Requested decision')
   freshness_horizon    string   '<n>(m|h|d)', e.g. 24h, 30d, 15m
 A misshaped or misplaced key here is a non-fatal registry warning (visible in 'kinds'/'status'
 output), never a silent no-op. See 'agentstate-lite doc read conventions/context-note' on any
@@ -96,7 +98,13 @@ function toRow(kind: KindConvention): Record<string, unknown> {
   }
   if (kind.expectsInbound && Object.keys(kind.expectsInbound).length > 0) row.expects_inbound = kind.expectsInbound;
   if (kind.path) row.path = kind.path;
-  if (kind.sections && kind.sections.length > 0) row.sections = kind.sections;
+  if (kind.sections && kind.sections.length > 0) {
+    // Keep `sections` as the stable semantic names and also project the exact Markdown an author
+    // must write. The latter prevents a bare name such as "Requested decision" from leaving the
+    // required heading level implicit to an agent or human composing a body outside `new`.
+    row.sections = kind.sections;
+    row.required_headings = kind.sections.map((section) => `# ${section}`);
+  }
   if (kind.freshnessHorizon) {
     row.horizon = kind.freshnessHorizon;
     const ms = freshnessHorizonMs(kind);

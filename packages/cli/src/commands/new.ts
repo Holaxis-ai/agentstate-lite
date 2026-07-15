@@ -288,7 +288,10 @@ function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: strin
       valueRows.join("\n")
     );
   });
-  const sections = kind.sections && kind.sections.length > 0 ? kind.sections.join(", ") : "(none)";
+  const sectionLines =
+    kind.sections && kind.sections.length > 0
+      ? kind.sections.map((section) => `  # ${section}`).join("\n")
+      : "  (none)";
   const pathLine = kind.path
     ? `Id:  auto-prefixed with '${kind.path.replace(/\/+$/, "")}/' unless <id> already carries it`
     : "Id:  used as-is (this kind declares no path prefix)";
@@ -318,7 +321,7 @@ function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: strin
     (kind.description ? `Description:  ${kind.description}\n` : "") +
     `Fields (declared by the '${kind.governs}' kind convention):\n` +
     (fieldRows.length > 0 ? fieldRows.join("\n") + "\n" : "  (none)\n") +
-    `Body sections scaffolded:  ${sections}\n` +
+    `Required body headings (level 1; exact Markdown):\n${sectionLines}\n` +
     linksBlock +
     `${pathLine}\n\n` +
     `Repeat a flag to set an array value (e.g. --tag a --tag b). Validation is STRICT.\n` +

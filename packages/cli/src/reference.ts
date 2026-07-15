@@ -134,7 +134,8 @@ export const COMMAND_GROUPS: CommandGroup[] = [
       },
       {
         usage: "kinds [--remote <url>]",
-        summary: "List the kind conventions this bundle declares (purpose, described fields, typed-link vocabulary, horizon)",
+        summary:
+          "List the kind conventions this bundle declares (purpose, described fields, exact required body headings, typed-link vocabulary, horizon)",
       },
       {
         usage: 'kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]',
