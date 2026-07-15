@@ -44,7 +44,7 @@ export const REAL_PATHS = {
   pluginJson: resolve(repoRoot, "plugins/agentstate-lite/.codex-plugin/plugin.json"),
   skillMd: resolve(repoRoot, "plugins/agentstate-lite/skills/agentstate-lite/SKILL.md"),
   bundleMjs: resolve(repoRoot, "plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite.mjs"),
-  // The shipped contracts/examples manifest (src/skill-references.ts), synced by
+  // The skill projection of the distribution resource inventory, synced by
   // `gen-skill.mjs --target skill` alongside SKILL.md. LOAD-BEARING: without this in the
   // before/after diff below, a references-only change (a new manifest entry, an edited source
   // file it points at) would never register in `changed` — the version would silently never

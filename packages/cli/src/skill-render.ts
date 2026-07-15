@@ -2,11 +2,11 @@
 // scripts/gen-skill.mjs so they are typed, unit-testable without esbuild's data-URL bundling
 // dance, and importable directly by test/skill-distribution.test.ts (which renders the skill
 // target in-memory to gate its shipped-references prose). NO I/O: pure functions over
-// reference.ts's COMMAND_GROUPS/DESCRIPTION and skill-references.ts's manifest, parameterized only
+// reference.ts's COMMAND_GROUPS/DESCRIPTION and distribution-resources.ts's inventory, parameterized only
 // by the caller-supplied invocation prefix where relevant — mirrors reference.ts's own "pure data +
 // pure projection" contract (see that file's header comment).
 //
-// gen-skill.mjs bundles this module (transitively pulling in reference.ts + skill-references.ts)
+// gen-skill.mjs bundles this module (transitively pulling in reference.ts + distribution-resources.ts)
 // via esbuild's data-URL loader and calls `renderNpm()` / `renderSkill()` directly; it no longer
 // contains any rendering logic of its own, only the write/--check CLI shell.
 //
@@ -16,9 +16,9 @@
 // `renderNotesSection`'s shared body is unchanged — only its new `extraBullets` param is added,
 // defaulting to none so the npm call site reproduces the exact prior output.
 import { DESCRIPTION, COMMAND_GROUPS, commandName, type CommandGroup } from "./reference.js";
-import { SKILL_REFERENCES } from "./skill-references.js";
+import { SKILL_RESOURCES } from "./distribution-resources.js";
 
-export { SKILL_REFERENCES, commandName };
+export { SKILL_RESOURCES, commandName };
 
 const PKG = "agentstate-lite";
 const NPX = `npx -y ${PKG}`;
