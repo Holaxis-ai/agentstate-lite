@@ -3,22 +3,19 @@ type: Task
 title: >-
   Committed plugin bundle is not byte-reproducible across node majors (local
   check:plugin-bundle false-stales)
-status: todo
+status: done
 priority: '3'
 description: >-
-  Side finding from the dev-build-bundle-collision unit (2026-07-15, empirical
-  on pristine main): the embedded UI assets' gzip bytes differ between node 25
-  (local) and node 20 (CI) — zlib DEFLATE output changed across versions;
-  gzipDeterministic zeroes mtime/OS but can't normalize the compressor.
-  Consequence: npm run check:plugin-bundle on a non-node-20 machine falsely
-  reports the committed bundle stale (this also explains why local builds ALWAYS
-  dirtied the bundle file, not just sometimes). CI's convergence no-op is
-  unaffected (single node version). Fix directions: pin the toolchain via a
-  container/volta for the manual check; or compare post-DECOMPRESSION content
-  instead of gzip bytes; or store assets uncompressed and gzip at serve time.
-  Low urgency once the collision fix lands (default builds no longer touch the
-  path).
+  CLOSED by PR #64 fix round (3b038d5): the embed pipeline compresses with
+  exact-pinned pako 2.1.0 instead of node:zlib, making committed-bundle bytes a
+  pure function of the source tree + lockfile (runtime decompression stays
+  node:zlib gunzip; pako is build-time only, never bundled). Convergence pinned
+  by a real-repo double-regen test asserting changed:false on the second run.
+  Sizes unchanged (94,960 gz vs 409,600 budget). Transition note: the bot's
+  first post-merge regen produces the one expected full-artifact diff + bump;
+  byte-stable on every machine thereafter. Lifespan: filed morning 2026-07-15,
+  killed same day by an external reviewer proving it had teeth.
 actor: brian-claude
-timestamp: '2026-07-15T16:05:53.048Z'
+timestamp: '2026-07-15T18:02:39.655Z'
 ---
 
