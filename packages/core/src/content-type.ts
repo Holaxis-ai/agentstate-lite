@@ -3,8 +3,8 @@
  * (`packages/schemas/src/content-type.ts`, dx-05 / `specs/zod-validation-layer-spec.md` §2.7).
  *
  * This is the single source for "infer a MIME `content_type` from a doc path extension." In the
- * OKF store engine it is exposed for downstream consumers (the CLI's promote/pull commands, viewer
- * asset handling, and any `resource`-pointing frontmatter) rather than being stamped onto concept
+ * OKF store engine it is exposed for downstream consumers (the CLI's promote/pull commands,
+ * Page assets, and any `resource`-pointing frontmatter) rather than being stamped onto concept
  * docs — OKF concept files are always markdown, and the format favors clean, spec-minimal
  * frontmatter, so the engine does NOT inject a `content_type` key into concept documents.
  *

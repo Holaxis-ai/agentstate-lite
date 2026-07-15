@@ -282,9 +282,6 @@ function renderTypicalFlow(prefix: string): string[] {
   lines.push(`${prefix} link add specs/auth context-notes/cycle-1`);
   lines.push(`${prefix} list --type Spec`);
   lines.push("");
-  lines.push(`# Bake a shareable, self-contained HTML view of the whole bundle`);
-  lines.push(`${prefix} view`);
-  lines.push("");
   lines.push(`# Share the board — recording work isn't done until it's shared`);
   lines.push(`# (safe everywhere: a local-only board just reports its state; outside any`);
   lines.push(`#  workspace it prints "sync: nothing to sync" — in both cases nothing is committed or pushed)`);
@@ -479,18 +476,18 @@ export function renderNpm(): string {
   lines.push(`name: ${PKG}`);
   lines.push("description: >-");
   lines.push(
-    "  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and a",
+    "  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and live",
   );
   lines.push(
-    "  self-contained static-HTML view) from the shell via the agentstate-lite CLI. Use when an agent",
+    "  bundle Pages) from the shell via the agentstate-lite CLI. Use when an agent",
   );
   lines.push(
     "  needs to persist a context note across sessions, store a decision/spec as a doc, link concepts,",
   );
   lines.push(
-    "  query a bundle, share the project's board with teammates (`sync`), or bake a shareable HTML",
+    "  query a bundle, share the project's board with teammates (`sync`), or open its local Page UI.",
   );
-  lines.push(`  view. Runs standalone via \`${NPX}\`.`);
+  lines.push(`  Runs standalone via \`${NPX}\`.`);
   lines.push("---");
   lines.push("");
   lines.push(`# ${PKG}`);
@@ -644,10 +641,10 @@ export function renderSkill(): string {
   lines.push(`name: ${PKG}`);
   lines.push("description: >-");
   lines.push(
-    "  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and a",
+    "  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and live",
   );
   lines.push(
-    "  self-contained static-HTML view) via the self-contained agentstate-lite CLI bundled in this",
+    "  bundle Pages) via the self-contained agentstate-lite CLI bundled in this",
   );
   lines.push(
     "  skill (scripts/agentstate-lite — a committed, zero-dependency bundle; no npm install",
@@ -659,9 +656,9 @@ export function renderSkill(): string {
     "  decision/spec as a doc, link concepts, query a bundle, share the project's board with",
   );
   lines.push(
-    "  teammates (`sync`), run a local wire-protocol server (`serve` / `--remote`), or bake a",
+    "  teammates (`sync`), run a local wire-protocol server (`serve` / `--remote`), or open the",
   );
-  lines.push("  shareable HTML view.");
+  lines.push("  bundle's local Page UI.");
   lines.push("---");
   lines.push("");
   lines.push(`# ${PKG}`);

@@ -3,14 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Monorepo for agentstate-lite — a minimal, filesystem-first OKF knowledge store. The publishable artifact is the `agentstate-lite` CLI (packages/cli), which bundles core + viewer.",
+  "description": "Monorepo for agentstate-lite — a minimal, filesystem-first OKF knowledge store. The publishable artifact is the `agentstate-lite` CLI (packages/cli), which bundles core + the reference server + UI assets.",
   "license": "MIT",
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @agentstate-lite/core -w @agentstate-lite/server -w @agentstate-lite/worker -w @agentstate-lite/viewer -w agentstate-lite",
-    "typecheck": "npm run build -w @agentstate-lite/core -w @agentstate-lite/server -w @agentstate-lite/worker -w @agentstate-lite/viewer && npm run typecheck --workspaces --if-present",
+    "build": "npm run build -w @agentstate-lite/core -w @agentstate-lite/server -w @agentstate-lite/worker -w agentstate-lite",
+    "typecheck": "npm run build -w @agentstate-lite/core -w @agentstate-lite/server -w @agentstate-lite/worker && npm run typecheck --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
     "test:scripts": "node --test --test-concurrency=1 scripts/ci-version-bundle.test.mjs scripts/package-core-external-proof.test.mjs",
     "e2e": "npm run e2e:gate -w @agentstate-lite/ui",

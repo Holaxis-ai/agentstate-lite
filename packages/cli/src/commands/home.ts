@@ -549,7 +549,6 @@ export function buildHomeView(
       bundleBlock.next = [
         `${deps.invocation()} list`,
         `${deps.invocation()} status`,
-        `${deps.invocation()} view`,
       ];
     } else {
       // Definitive empty state (AXI §5), distinct from "no bundle at all": the bundle exists but

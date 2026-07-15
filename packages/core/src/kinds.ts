@@ -9,7 +9,7 @@
  * values, expected body sections, and an optional freshness horizon. A convention doc
  * is NOT a schema fork: it is a plain OKF doc with a well-known `type`, read by this
  * ONE registry (consumed by the CLI's `kinds`/`new`/`doc write`, and additively by any
- * future consumer — viewer/server/MCP).
+ * future consumer — server/MCP).
  *
  * Registry discovery is PREFIX-SCOPED and built ONCE per invocation, in the COMMAND
  * layer — no engine path (`readDoc`, `writeDoc`, …) loads it implicitly, so

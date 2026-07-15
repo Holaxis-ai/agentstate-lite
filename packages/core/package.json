@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "OKF store engine — bundle I/O, cross-links, derived backlinks, freshness, and viewer rendering.",
+  "description": "OKF store engine — bundle I/O, cross-links, derived backlinks, freshness, and versioned writes.",
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

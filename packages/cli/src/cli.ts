@@ -30,7 +30,6 @@ import { kind } from "./commands/kind.js";
 import { recipes } from "./commands/recipes.js";
 import { recipe } from "./commands/recipe.js";
 import { status } from "./commands/status.js";
-import { view } from "./commands/view.js";
 import { serve } from "./commands/serve.js";
 import { ui } from "./commands/ui.js";
 import { sync } from "./commands/sync.js";
@@ -63,7 +62,6 @@ export const KNOWN_COMMANDS = [
   "recipes",
   "recipe",
   "status",
-  "view",
   "serve",
   "ui",
   "sync",
@@ -257,7 +255,6 @@ export async function main(argv: string[]): Promise<void> {
       recipes: wrap(recipes),
       recipe: wrap(recipe),
       status: wrap(status),
-      view: wrap(view),
       serve: wrap(serve),
       ui: wrap(ui),
       sync: wrap(sync),

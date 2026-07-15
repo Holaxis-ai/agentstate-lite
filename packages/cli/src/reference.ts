@@ -24,7 +24,7 @@
 
 /** The one-sentence tagline. */
 export const DESCRIPTION =
-  "read and write a local OKF knowledge bundle (context notes, docs, cross-links, static-HTML view)";
+  "read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Pages)";
 
 /** A single command's usage line + a one-line summary of what it does. */
 export interface CommandRef {
@@ -60,10 +60,6 @@ export const COMMAND_GROUPS: CommandGroup[] = [
         usage: "init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]",
         summary:
           "Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init",
-      },
-      {
-        usage: "view [--dir <path>] [--out <path>] [--name <label>] [--remote <url>]",
-        summary: "Bake the bundle into one self-contained static HTML file",
       },
       {
         usage: "status [--limit <n>] [--remote <url>]",

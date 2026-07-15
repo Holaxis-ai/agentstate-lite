@@ -30,7 +30,6 @@ import { newCommand } from "../src/commands/new.js";
 import { doc } from "../src/commands/doc.js";
 import { list } from "../src/commands/list.js";
 import { link } from "../src/commands/link.js";
-import { view } from "../src/commands/view.js";
 import { init } from "../src/commands/init.js";
 import { CliError } from "../src/errors.js";
 import { applyRecipe } from "../src/recipes.js";
@@ -216,24 +215,6 @@ test("doc read --out --remote: canonical re-serialization is byte-identical to a
     }
   } finally {
     await rm(dir, { recursive: true, force: true });
-    await rm(outDir, { recursive: true, force: true });
-  }
-});
-
-test("view --remote on examples/sample-bundle served remotely = 4 nodes / 7 edges; viz.html written locally", async () => {
-  const server = await bootServer(SAMPLE_BUNDLE);
-  const outDir = await tempDir();
-  try {
-    const out = path.join(outDir, "viz.html");
-    const result = await runJson(view, ["--remote", server.url, "--out", out]);
-    assert.equal(result.nodes, 4);
-    assert.equal(result.edges, 7);
-    assert.equal(result.out, out);
-    const html = await readFile(out, "utf8");
-    assert.ok(html.length > 0);
-    assert.match(html, /<html/i);
-  } finally {
-    await server.close();
     await rm(outDir, { recursive: true, force: true });
   }
 });

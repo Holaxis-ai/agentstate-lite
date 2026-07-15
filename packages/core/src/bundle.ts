@@ -245,7 +245,7 @@ export interface SkippedDoc {
  * frontmatter): the offending doc is skipped and reported here instead of failing the whole
  * scan — so one bad file never blinds routine inspection (`list`/`status`/`kinds`). When it is
  * OMITTED, a {@link MalformedDocumentError} propagates (attributed to the doc), preserving the
- * loud default for callers (`view`, index regeneration, backlinks) that must not silently drop
+ * loud default for callers (index regeneration, backlinks) that must not silently drop
  * content.
  */
 async function readManyExisting(

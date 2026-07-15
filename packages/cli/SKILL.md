@@ -1,16 +1,16 @@
 ---
 name: agentstate-lite
 description: >-
-  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and a
-  self-contained static-HTML view) from the shell via the agentstate-lite CLI. Use when an agent
+  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and live
+  bundle Pages) from the shell via the agentstate-lite CLI. Use when an agent
   needs to persist a context note across sessions, store a decision/spec as a doc, link concepts,
-  query a bundle, share the project's board with teammates (`sync`), or bake a shareable HTML
-  view. Runs standalone via `npx -y agentstate-lite`.
+  query a bundle, share the project's board with teammates (`sync`), or open its local Page UI.
+  Runs standalone via `npx -y agentstate-lite`.
 ---
 
 # agentstate-lite
 
-read and write a local OKF knowledge bundle (context notes, docs, cross-links, static-HTML view).
+read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Pages).
 
 It is a standalone npm package. Every example below runs with no install via `npx -y agentstate-lite …`; if the
 tool is installed globally you can drop the `npx -y ` prefix and call `agentstate-lite …` (or the
@@ -31,8 +31,6 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
   — Register and deterministically resolve this user's explicitly named local workspaces
 - `npx -y agentstate-lite init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]`
   — Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init
-- `npx -y agentstate-lite view [--dir <path>] [--out <path>] [--name <label>] [--remote <url>]`
-  — Bake the bundle into one self-contained static HTML file
 - `npx -y agentstate-lite status [--limit <n>] [--remote <url>]`
   — Read-only bundle health report (kind lint, unresolved links, orphans, staleness, graph lints)
 
@@ -189,9 +187,6 @@ npx -y agentstate-lite doc read context-notes/cycle-1
 npx -y agentstate-lite doc write specs/auth --type Spec --title "Auth" --body "…" --actor <your-name>
 npx -y agentstate-lite link add specs/auth context-notes/cycle-1
 npx -y agentstate-lite list --type Spec
-
-# Bake a shareable, self-contained HTML view of the whole bundle
-npx -y agentstate-lite view
 
 # Share the board — recording work isn't done until it's shared
 # (safe everywhere: a local-only board just reports its state; outside any
