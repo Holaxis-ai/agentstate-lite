@@ -54,7 +54,12 @@ import { cliInvocation, binPath, collapseHomeDirectory } from "../invocation.js"
 import { DESCRIPTION, commandReference, compactCommandReference } from "../reference.js";
 import { render } from "../output.js";
 import { findBundleRoot, openBundle, resolveProjectBinding } from "../bundle.js";
-import { deriveBundleDisplayName } from "../bundle-name.js";
+import {
+  deriveBundleDisplayName,
+  BUNDLE_NAME_DOC_ID,
+  BUNDLE_NAME_DOC_TYPE,
+  type BundleNameSource,
+} from "../bundle-name.js";
 import { queryHeads, type OkfDocument } from "@agentstate-lite/core";
 import { parseArgs } from "node:util";
 import path from "node:path";
@@ -91,6 +96,8 @@ export interface BundleSummary {
    * field then).
    */
   name?: string;
+  /** Which chain rung produced `name` — `conventional-parent` gates the one-line rename hint. */
+  nameSource?: BundleNameSource;
   /** Home-collapsed bundle root path (AXI §7 — WHICH bundle this dashboard reflects). */
   root: string;
   /** Total concept count. */
@@ -263,8 +270,8 @@ export async function defaultSummarizeBundle(dir?: string): Promise<BundleSummar
     const docs = await queryHeads(bundle);
     // ONE extra known-id read (absent-tolerant, never throws, fs-only for home's always-local
     // bundle) — the same display-name chain the ui server's config uses (bundle-name.ts).
-    const name = await deriveBundleDisplayName(bundle);
-    return { name, ...summarizeDocs(docs, collapseHomeDirectory(bundle.root)) };
+    const { name, source } = await deriveBundleDisplayName(bundle);
+    return { name, nameSource: source, ...summarizeDocs(docs, collapseHomeDirectory(bundle.root)) };
   } catch {
     // A bundle root exists but could not be read — DISTINCT from "no bundle" (see UnreadableBundle).
     return { root: collapseHomeDirectory(bundle.root), unreadable: true };
@@ -554,7 +561,16 @@ export function buildHomeView(
     const bundleBlock: Record<string, unknown> = {};
     // Identity first (tasks/bundle-display-name): the derived project name, so a conventional
     // `.agentstate-lite` bundle reads as ITS project, not as the folder every project shares.
-    if (summary.name) bundleBlock.name = summary.name;
+    if (summary.name) {
+      bundleBlock.name = summary.name;
+      // Progressive disclosure (PR #67 review): when the name is merely DERIVED from the parent
+      // folder, one line teaches the explicit override — the only shipped surface that names the
+      // exact command. Home-only (the ui config stays machine-clean), and only for rung (b), so
+      // an explicitly named bundle never sees it.
+      if (summary.nameSource === "conventional-parent") {
+        bundleBlock.name_help = `name derived from the project folder — set it explicitly: ${deps.invocation()} doc write ${BUNDLE_NAME_DOC_ID} --type "${BUNDLE_NAME_DOC_TYPE}" --title "<name>"`;
+      }
+    }
     bundleBlock.root = summary.root;
     bundleBlock.docs = summary.docs;
     bundleBlock.by_type = summary.byType;

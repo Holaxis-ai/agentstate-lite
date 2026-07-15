@@ -357,7 +357,7 @@ test("A1.6 offline/directory-scoped: default deps, real bundle dir -> dashboard;
   }
 });
 
-test("A1.6b bundle display name (tasks/bundle-display-name): a conventional bundle's block carries the PROJECT name; an explicit docs/bundle doc overrides it; injected name-less fakes stay name-free", async () => {
+test("A1.6b bundle display name (tasks/bundle-display-name): a conventional bundle's block carries the PROJECT name plus the rename hint; a MARKER-typed docs/bundle doc overrides both; an ordinary docs/bundle doc appropriates nothing; injected name-less fakes stay name-free", async () => {
   const projectDir = await tempDir();
   try {
     const bundleRoot = path.join(projectDir, "my-project", ".agentstate-lite");
@@ -367,27 +367,41 @@ test("A1.6b bundle display name (tasks/bundle-display-name): a conventional bund
     const origCwd = process.cwd();
     try {
       // Chain rung (b): the block's name is the conventional dir's PARENT (the project), not
-      // ".agentstate-lite" — the field report's exact illegibility.
+      // ".agentstate-lite" — the field report's exact illegibility. A parent-DERIVED name also
+      // carries the one-line progressive-disclosure hint naming the exact override command.
       process.chdir(path.join(projectDir, "my-project"));
       let out1 = "";
       await home(["--json"], { stdout: (s) => (out1 += s) });
-      const view1 = JSON.parse(out1) as { bundle: { name?: string } };
+      const view1 = JSON.parse(out1) as { bundle: { name?: string; name_help?: string } };
       assert.equal(view1.bundle.name, "my-project");
+      assert.match(view1.bundle.name_help ?? "", /doc write docs\/bundle --type "Bundle Name" --title/);
 
-      // Chain rung (a): the well-known doc's title wins — the plain `doc write --title` set path.
-      await writeDoc(bundle, { id: "docs/bundle", frontmatter: { type: "Doc", title: "Renamed Project" }, body: "" });
+      // SILENT-APPROPRIATION guard (PR #67 review): an ordinary doc at the well-known id — any
+      // type other than the marker — must NOT rename the project.
+      await writeDoc(bundle, { id: "docs/bundle", frontmatter: { type: "Doc", title: "Bundle Storage Reference" }, body: "" });
+      let outOrdinary = "";
+      await home(["--json"], { stdout: (s) => (outOrdinary += s) });
+      const viewOrdinary = JSON.parse(outOrdinary) as { bundle: { name?: string } };
+      assert.equal(viewOrdinary.bundle.name, "my-project");
+
+      // Chain rung (a): the MARKER-typed doc's title wins — the plain
+      // `doc write --type "Bundle Name" --title` set path — and the hint disappears (an
+      // explicitly named bundle is never nagged).
+      await writeDoc(bundle, { id: "docs/bundle", frontmatter: { type: "Bundle Name", title: "Renamed Project" }, body: "" });
       let out2 = "";
       await home(["--json"], { stdout: (s) => (out2 += s) });
-      const view2 = JSON.parse(out2) as { bundle: { name?: string } };
+      const view2 = JSON.parse(out2) as { bundle: { name?: string; name_help?: string } };
       assert.equal(view2.bundle.name, "Renamed Project");
+      assert.equal(view2.bundle.name_help, undefined);
     } finally {
       process.chdir(origCwd);
     }
 
     // Byte-stability for the pure renderer: a summary WITHOUT a name (every pre-existing injected
-    // fake) renders no `name` field at all.
+    // fake) renders no `name` (and no hint) field at all.
     const view = buildHomeView(BASE_DEPS, EMPTY_BUNDLE);
     assert.ok(!("name" in (view.bundle as Record<string, unknown>)));
+    assert.ok(!("name_help" in (view.bundle as Record<string, unknown>)));
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }

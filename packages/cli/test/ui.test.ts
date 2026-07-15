@@ -15,7 +15,7 @@ import { initBundle, writeDoc } from "@agentstate-lite/core";
 import { ui } from "../src/commands/ui.js";
 import { bootUiServer } from "../src/ui/server.js";
 import { CliError } from "../src/errors.js";
-import { BUNDLE_NAME_DOC_ID } from "../src/bundle-name.js";
+import { BUNDLE_NAME_DOC_ID, BUNDLE_NAME_DOC_TYPE } from "../src/bundle-name.js";
 import { CONVENTIONAL_BUNDLE_DIR_NAME } from "../src/bundle.js";
 
 async function makeFixtureBundle(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
@@ -223,10 +223,16 @@ test("ui --dir over a CONVENTIONAL bundle: /__ui/config names the PROJECT (paren
     assert.equal(body.mode, "dir");
     assert.equal(body.name, "my-project");
 
-    // Chain rung (a), LIVE: writing the well-known doc changes the name on the next config
+    // SILENT-APPROPRIATION guard (PR #67 review): an ORDINARY doc at the well-known id — any
+    // type other than the marker — must NOT rename the project.
+    await writeDoc({ root: bundleRoot }, { id: BUNDLE_NAME_DOC_ID, frontmatter: { type: "Doc", title: "Bundle Storage Reference" }, body: "" });
+    const configOrdinary = await fetch(`${new URL(receipt.url).origin}/__ui/config?token=${token}`);
+    assert.equal(((await configOrdinary.json()) as { name: string }).name, "my-project");
+
+    // Chain rung (a), LIVE: writing the MARKER-typed doc changes the name on the next config
     // fetch with no server restart — the same JSON the shell header and the bridge's
     // hello.bundle.name render.
-    await writeDoc({ root: bundleRoot }, { id: BUNDLE_NAME_DOC_ID, frontmatter: { type: "Doc", title: "Renamed Project" }, body: "" });
+    await writeDoc({ root: bundleRoot }, { id: BUNDLE_NAME_DOC_ID, frontmatter: { type: BUNDLE_NAME_DOC_TYPE, title: "Renamed Project" }, body: "" });
     const config2 = await fetch(`${new URL(receipt.url).origin}/__ui/config?token=${token}`);
     const body2 = (await config2.json()) as { name: string };
     assert.equal(body2.name, "Renamed Project");

@@ -209,7 +209,7 @@ async function configResponse(options: UiServerOptions): Promise<Response> {
   const name =
     options.mode === "dir"
       ? options.bundle
-        ? await deriveBundleDisplayName(options.bundle)
+        ? (await deriveBundleDisplayName(options.bundle)).name
         : "bundle"
       : (() => {
           try {
