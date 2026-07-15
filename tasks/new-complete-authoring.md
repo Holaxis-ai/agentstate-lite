@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'new: create complete records from --body-file and return the final version'
-status: in_progress
+status: done
 priority: '1'
 assignee: codex
 description: >-
@@ -17,6 +17,6 @@ description: >-
   https://github.com/Holaxis-ai/agentstate-lite/pull/57; exact-SHA adversarial
   review approved.
 actor: mike/codex
-timestamp: '2026-07-14T21:23:45.345Z'
+timestamp: '2026-07-15T00:51:12.945Z'
 ---
 

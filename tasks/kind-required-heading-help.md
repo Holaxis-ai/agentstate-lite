@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'Kinds: show exact required Markdown headings before authoring'
-status: in_progress
+status: done
 priority: '2'
 description: >-
   Dogfood found that kinds reports section names while validation requires
@@ -13,6 +13,6 @@ description: >-
   https://github.com/Holaxis-ai/agentstate-lite/pull/56; exact-SHA independent
   review approved.
 actor: mike/codex
-timestamp: '2026-07-14T21:22:47.046Z'
+timestamp: '2026-07-15T00:51:13.070Z'
 ---
 
