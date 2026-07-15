@@ -196,7 +196,12 @@ bundle-relative**.
   SKILL.md) are BOT-OWNED on merge to main (see the plugin version + bundle bullet below) and are
   deliberately NOT part of this PR-side gate; a branch that only touches CLI source is not expected
   to carry a current rebuild of either. Run them by hand via `npm run check:plugin-bundle` if you
-  want to eyeball drift before the bot does.
+  want to eyeball drift before the bot does. The DEFAULT build NEVER writes the committed plugin
+  bundle — dev builds target `packages/cli/dist` only (regression-pinned in
+  `scripts/dev-build-no-plugin-writes.test.mjs`, so a local build can no longer dirty the bot-owned
+  artifact and break the next `git pull`); the ONE writer of the committed path is
+  `packages/cli/scripts/build-plugin-bundle.mjs`, invoked by the CI bot and by the manual
+  `npm run build:plugin-bundle`.
   **Always build from the REPO ROOT** — a package-scoped build leaves sibling `dist/`s stale and
   test files that import them crash confusingly. `npm run build` bundles the CLI to
   `packages/cli/dist/agentstate-lite.mjs` (esbuild). Smoke-test the built CLI

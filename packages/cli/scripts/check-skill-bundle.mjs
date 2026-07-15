@@ -40,14 +40,14 @@ try {
     existing = await readFile(committedPath);
   } catch {
     console.error(`committed skill bundle is missing: ${committedPath}`);
-    console.error("Run `npm run build -w agentstate-lite` to create it.");
+    console.error("Run `npm run build:plugin-bundle` (repo root) to create it.");
     process.exit(1);
   }
 
   if (!fresh.equals(existing)) {
     console.error(`skill bundle is stale: ${committedPath}`);
-    console.error("does not byte-match a fresh build of src/. Run `npm run build -w agentstate-lite`");
-    console.error("and commit the result.");
+    console.error("does not byte-match a fresh build of src/. Run `npm run build:plugin-bundle` (repo root)");
+    console.error("and commit the result — or leave it to the CI bot, which regenerates it on merge to main.");
     process.exit(1);
   }
 

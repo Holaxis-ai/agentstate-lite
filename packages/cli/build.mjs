@@ -14,12 +14,13 @@
 // A createRequire shim is injected in the banner because a bundled CommonJS dependency (gray-matter)
 // may call require() at runtime; ESM output has no ambient `require`, so we provide one.
 //
-// ADDITIVE mirror step: after producing the npm dist/ bundle, this ALSO copies the identical bytes
-// into the self-contained skill's scripts/ (plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite.mjs) —
-// the second, install-free distribution channel (`npx skills add`). One esbuild config
-// (scripts/build-bundle.mjs), no second bundler; the npm dist/ output is unaffected (files:
-// ["dist"] in package.json never sees the skill directory).
-import { rm, chmod, mkdir, copyFile } from "node:fs/promises";
+// This DEV/NPM build writes ONLY dist/ (plus the gitignored generated UI-assets module). It must
+// NEVER touch the COMMITTED plugin bundle (plugins/agentstate-lite/skills/agentstate-lite/scripts/
+// agentstate-lite.mjs) — that artifact is bot-owned on merge to main, and a default build dirtying
+// it made every subsequent `git pull` collide. The one writer of the committed path is
+// scripts/build-plugin-bundle.mjs (invoked by CI's scripts/ci-version-bundle.mjs and the manual
+// `npm run build:plugin-bundle`); a regression test pins this (scripts/dev-build-no-plugin-writes.test.mjs).
+import { rm, chmod } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { buildCliBundle } from "./scripts/build-bundle.mjs";
@@ -28,9 +29,6 @@ import { embedUiAssets } from "./scripts/embed-ui-assets.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const r = (p) => resolve(here, p);
 const outfile = r("dist/agentstate-lite.mjs");
-// packages/cli -> repo root -> plugins/agentstate-lite/skills/agentstate-lite/scripts/
-const skillMjs = r("../../plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite.mjs");
-const skillShim = r("../../plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite");
 
 // Clean dist so the packed tarball never carries stale files (files: ["dist"]).
 await rm(r("dist"), { recursive: true, force: true });
@@ -48,12 +46,3 @@ await buildCliBundle(outfile);
 // in the tarball and for direct `./dist/agentstate-lite.mjs` runs).
 await chmod(outfile, 0o755);
 console.log(`built ${outfile}`);
-
-// Mirror the exact built bytes into the skill's scripts/ and keep both the bundle and its shim
-// executable — `Write`/`copyFile` do not set +x, and the skill's committed bundle must be
-// directly runnable the moment it's checked out (no npm install step in that channel).
-await mkdir(dirname(skillMjs), { recursive: true });
-await copyFile(outfile, skillMjs);
-await chmod(skillMjs, 0o755);
-await chmod(skillShim, 0o755);
-console.log(`copied skill bundle -> ${skillMjs}`);
