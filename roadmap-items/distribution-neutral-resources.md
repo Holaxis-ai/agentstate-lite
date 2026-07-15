@@ -8,8 +8,10 @@ description: >-
   the manifest; make npm consumption explicit; thin SKILL.md only after
   founder-to-founder npm proof.
 actor: mike/codex
-timestamp: '2026-07-15T17:38:07.941Z'
+timestamp: '2026-07-15T21:31:41.356Z'
 ---
 [contains](../tasks/distribution-resource-inventory.md)
 
 [guided by](../designs/npm-bundle-bootstrap.md)
+
+[contains](../tasks/verify-npm-package.md)
