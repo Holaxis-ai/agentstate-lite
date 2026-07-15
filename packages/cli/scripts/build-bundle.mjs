@@ -1,8 +1,10 @@
 // Shared esbuild config for the self-contained CLI bundle — the ONE bundler config, reused by
-// both `build.mjs` (writes the real npm dist/ bundle, then mirrors it into the skill's
-// scripts/) and `check-skill-bundle.mjs` (rebuilds to a scratch temp file for a byte-compare
-// drift gate). Keeping this in one place means the two bundle-producing call sites can never
-// drift from each other.
+// its three consumers: `build.mjs` (the default dev/npm build, writing ONLY dist/ — never the
+// committed plugin path), `build-plugin-bundle.mjs` (the ONE writer of the committed skill
+// bundle, used by the CI bot and the manual `npm run build:plugin-bundle`), and
+// `check-skill-bundle.mjs` (rebuilds to a scratch temp file for a byte-compare drift gate).
+// Keeping this in one place means the bundle-producing call sites can never drift from each
+// other.
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";

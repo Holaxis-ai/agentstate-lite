@@ -39,7 +39,7 @@
     "check:skill": "node scripts/gen-skill.mjs --check",
     "gen:skill:bundle": "node scripts/gen-skill.mjs --target skill",
     "check:skill:bundle": "node scripts/gen-skill.mjs --target skill --check",
-    "build:skill": "node build.mjs && node scripts/gen-skill.mjs --target skill",
+    "build:plugin-bundle": "node scripts/build-plugin-bundle.mjs && node scripts/gen-skill.mjs --target skill",
     "check:bundle": "node scripts/check-skill-bundle.mjs",
     "prepublishOnly": "node build.mjs"
   },
@@ -50,6 +50,7 @@
     "@types/node": "^22.0.0",
     "axi-sdk-js": "0.1.8",
     "esbuild": "0.25.12",
+    "pako": "2.1.0",
     "typescript": "^5.4.0"
   }
 }

@@ -7,15 +7,20 @@
 // root build, `npm run build -w agentstate-lite`, and `prepublishOnly` alike (all three run
 // `packages/cli/build.mjs`, which calls this first).
 //
-// Determinism (the skill-bundle byte-compare drift gate, `check-skill-bundle.mjs`, depends on
-// it): files are walked in a STABLE sorted order, and each is gzipped with `zlib.gzipSync` then
-// its header's MTIME field (RFC 1952 bytes 4-7) and OS byte (byte 9) are zeroed — the only two
-// fields that otherwise vary run-to-run/host-to-host for byte-identical input.
+// Determinism (the skill-bundle byte-compare drift gate `check-skill-bundle.mjs` and the CI
+// bot's regenerate-and-diff `scripts/ci-version-bundle.mjs` both depend on it): files are walked
+// in a STABLE sorted order, and each is gzipped with the EXACT-VERSION-PINNED pure-JS compressor
+// `pako` (packages/cli devDependency) — NOT `node:zlib`, whose DEFLATE output varies across zlib
+// (i.e. Node) versions for identical input, which made the committed bundle's bytes depend on
+// which Node built it (a node-25 machine produced different gzip streams than CI's node-20 for
+// byte-identical uncompressed assets). The gzip header's MTIME field (RFC 1952 bytes 4-7) and OS
+// byte (byte 9) are still normalized. Decompression is format-standard, so the RUNTIME keeps
+// using `node:zlib`'s gunzip (src/ui/assets.ts) — pako is build-time only, never bundled.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gzipSync } from "node:zlib";
+import { gzip as pakoGzip } from "pako";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // packages/cli/scripts -> packages/cli
@@ -49,9 +54,9 @@ function guessContentType(path) {
   return match ? match[1] : "application/octet-stream";
 }
 
-/** Gzip `buf` deterministically: zero the header's MTIME + OS fields so identical input bytes always produce identical output regardless of when/where the build runs. */
+/** Gzip `buf` deterministically via the pinned pako compressor (machine/runtime-independent bytes), then normalize the header's MTIME + OS fields so identical input bytes always produce identical output regardless of when/where the build runs. */
 function gzipDeterministic(buf) {
-  const gz = gzipSync(buf, { level: 9 });
+  const gz = Buffer.from(pakoGzip(buf, { level: 9 }));
   gz[4] = 0;
   gz[5] = 0;
   gz[6] = 0;
@@ -76,8 +81,9 @@ function walk(dir) {
  * `@agentstate-lite/core` FIRST: the ui imports core's browser-safe `./kinds` slice, and npm does NOT
  * build a workspace's deps on a single-workspace build, so core's `dist/` must already exist or Vite's
  * production build fails to resolve `@agentstate-lite/core/kinds` (its target `dist/kinds.js` absent).
- * Callers that go through root `npm run build` get this ordering for free; the version-bundle bot calls
- * embedUiAssets() directly, so making this step self-sufficient is what keeps BOTH paths correct.
+ * Callers that go through root `npm run build` get this ordering for free; the committed-bundle writer
+ * (build-plugin-bundle.mjs, used by the version-bundle bot) calls embedUiAssets() directly, so making
+ * this step self-sufficient is what keeps BOTH paths correct.
  * Throws (uncaught, `execFileSync`'s default) — and so fails this whole build immediately — on any
  * build error, e.g. a TypeScript or Vite failure. */
 function buildUiDist() {

@@ -29,7 +29,7 @@
 // Exits 0 whether or not anything changed; exits 1 on any unexpected failure (regen error,
 // malformed manifest, etc.) — the workflow decides whether to commit by checking `git status`
 // after this script runs, not by parsing its output.
-import { readFile, writeFile, chmod, readdir, stat } from "node:fs/promises";
+import { readFile, writeFile, readdir, stat } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { dirname, resolve, relative, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -107,18 +107,15 @@ export function replaceVersion(manifestText, newVersion, label) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Regeneration — the real, repo-tied rebuild. Mirrors packages/cli/build.mjs's UI-embed +
-// esbuild-bundle steps (writing directly to the committed skill path instead of dist/, since the
-// bot has no use for the npm dist/ artifact) plus a `gen-skill.mjs --target skill` regen.
+// Regeneration — the real, repo-tied rebuild: the ONE committed-bundle writer
+// (packages/cli/scripts/build-plugin-bundle.mjs — the dev build, build.mjs, deliberately never
+// writes the committed path) plus a `gen-skill.mjs --target skill` regen.
 // ---------------------------------------------------------------------------------------------
 
 export async function regenerateArtifacts() {
-  const { embedUiAssets } = await import("../packages/cli/scripts/embed-ui-assets.mjs");
-  const { buildCliBundle } = await import("../packages/cli/scripts/build-bundle.mjs");
+  const { buildPluginBundle } = await import("../packages/cli/scripts/build-plugin-bundle.mjs");
 
-  embedUiAssets();
-  await buildCliBundle(REAL_PATHS.bundleMjs);
-  await chmod(REAL_PATHS.bundleMjs, 0o755);
+  await buildPluginBundle();
 
   execFileSync(
     process.execPath,
