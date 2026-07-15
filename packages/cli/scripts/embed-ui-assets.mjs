@@ -77,6 +77,14 @@ function walk(dir) {
   return out;
 }
 
+export function npmInvocation(args, env = process.env) {
+  const npmCli = env.npm_execpath?.trim();
+  if (!npmCli) {
+    throw new Error("npm_execpath is required; run the build through an npm script");
+  }
+  return { command: process.execPath, args: [npmCli, ...args] };
+}
+
 /** Rebuild `packages/ui`'s dist/ fresh via its own workspace script. Builds its workspace dependency
  * `@agentstate-lite/core` FIRST: the ui imports core's browser-safe `./kinds` slice, and npm does NOT
  * build a workspace's deps on a single-workspace build, so core's `dist/` must already exist or Vite's
@@ -87,11 +95,13 @@ function walk(dir) {
  * Throws (uncaught, `execFileSync`'s default) — and so fails this whole build immediately — on any
  * build error, e.g. a TypeScript or Vite failure. */
 function buildUiDist() {
-  execFileSync("npm", ["run", "build", "--workspace=@agentstate-lite/core"], {
+  const coreBuild = npmInvocation(["run", "build", "--workspace=@agentstate-lite/core"]);
+  execFileSync(coreBuild.command, coreBuild.args, {
     cwd: repoRoot,
     stdio: "inherit",
   });
-  execFileSync("npm", ["run", "build", "--workspace=@agentstate-lite/ui"], {
+  const uiBuild = npmInvocation(["run", "build", "--workspace=@agentstate-lite/ui"]);
+  execFileSync(uiBuild.command, uiBuild.args, {
     cwd: repoRoot,
     stdio: "inherit",
   });
