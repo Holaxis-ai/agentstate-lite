@@ -36,9 +36,8 @@
 // URL-valued bindings are rejected at the parser with an explicit-`--remote` migration hint. Local
 // bindings are consumed by `openBundle`'s cwd-discovery fallback, which keeps bare commands local.
 //
-// API-key sourcing (Stage-1 Unit 2b Part C — the Cloudflare Worker deployment's `withApiKey`
-// gate, `packages/worker/src/auth.ts`): `openRemoteBundle` sources a bearer token for the
-// resolved remote's ORIGIN in priority order — (1) the `AGENTSTATE_LITE_API_KEY` env var
+// API-key sourcing for an explicitly gated remote: `openRemoteBundle` sources a bearer token for
+// the resolved remote's ORIGIN in priority order — (1) the `AGENTSTATE_LITE_API_KEY` env var
 // (a session-wide override, no credentials-file write needed for scripts/CI), then (2) the
 // already-provisioned origin-keyed entry stored (`credentials.ts`'s
 // `getApiKeyForOrigin`). Neither is required: the reference `serve()` ignores the

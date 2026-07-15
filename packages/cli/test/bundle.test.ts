@@ -22,7 +22,6 @@ import {
 } from "../src/bundle.js";
 import { CliError } from "../src/errors.js";
 import { list } from "../src/commands/list.js";
-import { whoami } from "../src/commands/whoami.js";
 
 // Realpath'd (not just mkdtemp'd): on macOS, `os.tmpdir()` lands under `/var/folders/...`, a
 // symlink to `/private/var/folders/...` — `process.chdir()` + `process.cwd()` resolve THROUGH it,
@@ -480,64 +479,6 @@ test("end-to-end: a bare command with a URL binding fails before any HTTP reques
         return true;
       });
       assert.equal(fetches, 0);
-    });
-  } finally {
-    globalThis.fetch = originalFetch;
-    await rm(projectDir, { recursive: true, force: true });
-  }
-});
-
-// ── whoami's offline listing: a courtesy note for a directory-type binding ──
-
-test("whoami offline listing notes a directory-type project binding as a courtesy (irrelevant to its own job, but visible rather than silently ignored)", async () => {
-  const dir = await tempDir();
-  try {
-    await writeBinding(dir, "./somewhere"); // dir-type — resolveRemoteFlag ignores it, stays offline
-    await inDir(dir, async () => {
-      let out = "";
-      await whoami(["--json"], { loadCreds: async () => null, stdout: (s) => (out += s) });
-      const parsed = JSON.parse(out) as {
-        logged_in: boolean;
-        project_binding?: { file: string; target: string };
-      };
-      assert.equal(parsed.logged_in, false); // still the genuine offline empty state, not a fetch
-      assert.ok(parsed.project_binding);
-      assert.equal(parsed.project_binding!.file, path.join(dir, PROJECT_BINDING_FILE_NAME));
-      assert.equal(parsed.project_binding!.target, path.resolve(dir, "somewhere"));
-    });
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("whoami: a URL project binding errors before the live identity request", async () => {
-  // The bundle-scoped reference server (`@agentstate-lite/server`'s `serve()`) does not implement
-  // the Stage-2 `/v0/whoami` auth-routes surface (that's `packages/worker`-only) — so, mirroring
-  // `auth-cli.test.ts`'s own "mock over globalThis.fetch" style, a minimal fetch mock stands in for
-  // it here rather than a real listener.
-  const projectDir = await tempDir();
-  const origin = "http://binding-whoami-test.local";
-  await writeBinding(projectDir, origin);
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (req: Request) => {
-    const url = new URL(req.url);
-    if (url.pathname === "/v0/whoami") {
-      return new Response(
-        JSON.stringify({ user_id: "root", display: "root", method: "root", memberships: [], bootstrap: true }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }
-    return new Response("not found", { status: 404 });
-  }) as typeof fetch;
-
-  try {
-    await inDir(projectDir, async () => {
-      await assert.rejects(() => whoami(["--json"], { loadCreds: async () => null }), (err: unknown) => {
-        assert.ok(err instanceof CliError);
-        assert.equal(err.code, "USAGE");
-        assert.match(err.message, /pass --remote/);
-        return true;
-      });
     });
   } finally {
     globalThis.fetch = originalFetch;

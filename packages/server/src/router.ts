@@ -2,8 +2,7 @@
  * Wire-protocol v0 fetch router — the wire-protocol v0 seam-over-HTTP contract
  * (`docs/WIRE-PROTOCOL.md`) implemented as a plain
  * `(req: Request) => Promise<Response>` function using Web-standard `Request`/
- * `Response`, so the identical router later mounts unchanged in a Cloudflare
- * Worker `fetch` handler (a future, out-of-scope deployment).
+ * `Response`, so the identical router can mount unchanged in another Fetch-compatible runtime.
  *
  * ONE-ENGINE RULE: this module contains NO parsing/link/OKF logic of its own.
  * Doc WRITES route through the engine (`writeDocVersioned` from `@agentstate-lite/core`)
@@ -202,16 +201,11 @@ const BUNDLE_PATH_RE = /^\/v0\/bundles\/([^/]+)\/(.*)$/;
 
 /**
  * Build the fetch-style router directly over an explicit `backend` — no `Bundle`-shape
- * fallback to `new FilesystemBackend(...)`. This is the WORKER-CLEAN entry point: {@link
+ * fallback to `new FilesystemBackend(...)`. This is the edge-runtime entry point: {@link
  * createRouter} falls back to constructing a `FilesystemBackend` when `bundle.backend` is
  * absent (needed by the reference server's local `--dir` support, `serve.ts`), and that
- * fallback's `FilesystemBackend` import pulls in `node:fs` — something a Cloudflare Worker
- * bundle must never contain (Stage-1 Unit 2b Part B's worker-cleanliness requirement). A
- * Worker always constructs its own backend (`D1R2Backend`) explicitly and has no bundle
- * directory to fall back to, so it calls THIS function instead of {@link createRouter}: the
- * `FilesystemBackend`-referencing code path (and therefore its `node:fs` import) is never
- * referenced from a Worker's own bundle entry point, so a tree-shaking bundler (esbuild /
- * wrangler) drops it — proven by `packages/worker`'s dry-run build grep.
+ * fallback imports `node:fs`. A non-Node host supplies its backend explicitly and calls this
+ * function so a tree-shaking bundler can omit the filesystem path.
  */
 export function createRouterForBackend(backend: StorageBackend): (req: Request) => Promise<Response> {
   return buildRouter(backend);
@@ -354,7 +348,7 @@ function buildRouter(backend: StorageBackend): (req: Request) => Promise<Respons
 
     // HEAD-FIRST scan (this route only ever projects frontmatter — bodies never leave it),
     // via core's ONE `queryHeads` implementation: it prefers the backend's optional
-    // push-down (`D1R2Backend` — one D1 query, zero R2 reads for column-backed rows),
+    // push-down (a hosted adapter can answer from its head index without reading bodies),
     // re-applies the canonical `matchesFilter` to whatever came back, and falls back to
     // the delete-tolerant `list` + batch-read walk for every other backend (a doc deleted
     // mid-scan is SKIPPED, not a scan-failing 404 — the server half of STATUS item 33; a
@@ -425,7 +419,7 @@ function buildRouter(backend: StorageBackend): (req: Request) => Promise<Respons
   // applied identically on EVERY blob route including GET/HEAD (I1: a probing read
   // must not bypass the guard writes enforce). Bytes cross the wire as the RAW
   // request/response body (`req.arrayBuffer()` / a `Uint8Array` `Response` body),
-  // never JSON — B1: no `Buffer` anywhere in this module, so it stays CF-Worker-clean.
+  // never JSON — B1: no `Buffer` anywhere in this module, so it stays edge-runtime compatible.
 
   async function handleReadBlob(key: BlobKey): Promise<Response> {
     assertSafeBlobKey(key);
@@ -500,7 +494,7 @@ function buildRouter(backend: StorageBackend): (req: Request) => Promise<Respons
     // honesty rule, promoted to the wire — docs/WIRE-PROTOCOL.md "Capabilities discovery").
     // v0.1 (Stage-1 Unit 2b Part B): prefer the backend's OWN self-declaration
     // (`StorageBackend.capabilities?.()`, `core/src/types.ts`) when it implements one — this
-    // is what lets a THIRD adapter (e.g. `D1R2Backend`) report its real guarantees instead of
+    // is what lets a THIRD adapter report its real guarantees instead of
     // being guessed at. `FilesystemBackend`/`MemoryBackend` deliberately do NOT implement it,
     // so they fall through to the original `instanceof MemoryBackend` inference — the standing
     // proof this addition is additive (neither in-repo adapter needed to change).

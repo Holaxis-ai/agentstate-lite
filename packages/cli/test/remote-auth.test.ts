@@ -1,19 +1,17 @@
 /**
- * CLI integration: `--remote` against a GATED worker-entry-style handler (Stage-1 Unit 2b Part
- * C) — the end-to-end proof that a real command's error path now closes the documented
+ * CLI integration: `--remote` against a gated wire handler — the end-to-end proof that a real
+ * command's error path closes the documented
  * misclassification (`docs/WIRE-PROTOCOL.md`'s formerly-open "client-side error envelope
  * carries no code" gap): a wrong/missing API key surfaces as `AUTH_REQUIRED`/exit 4 with an
- * `AGENTSTATE_LITE_API_KEY` fixing hint, and a genuine server-side failure (an unconfigured gate,
- * mirroring `packages/worker/src/auth.ts`'s fail-closed 500) surfaces as `RUNTIME`/exit 1 — NOT
+ * `AGENTSTATE_LITE_API_KEY` fixing hint, and a genuine server-side failure (an unconfigured gate)
+ * surfaces as `RUNTIME`/exit 1 — NOT
  * the pre-existing generic `USAGE`/exit 2 every command's catch-all used to produce for any
  * non-CliError throw.
  *
- * The gate below is a minimal, INLINE reimplementation of `packages/worker/src/auth.ts`'s
- * `withApiKey` envelope shape (same `{ error: { code, message } }`, same status codes) wrapped
- * around the REAL `@agentstate-lite/server` router over a `MemoryBackend` — i.e. exactly the
- * "wire-protocol router behind an API-key gate" shape a Worker deployment presents, without
- * pulling `@agentstate-lite/worker` (a private, D1/R2-specific deployment package) in as a CLI
- * test dependency. `globalThis.fetch` is monkey-patched for the duration of each test to route to
+ * The gate below is a minimal API-key envelope wrapped around the REAL
+ * `@agentstate-lite/server` router over a `MemoryBackend` — exactly the generic "wire-protocol
+ * router behind an API-key gate" shape the public client must tolerate. `globalThis.fetch` is
+ * monkey-patched for the duration of each test to route to
  * this in-process handler — no real socket — mirroring `packages/core/test/wire-protocol.test.ts`'s
  * "router injected as the transport" pattern, applied at the point the CLI's `--remote` resolution
  * (`bundle.ts`) actually calls `fetch` from (it has no injectable `fetchImpl` seam of its own).
@@ -40,7 +38,6 @@ import { createRouter } from "@agentstate-lite/server";
 import { list } from "../src/commands/list.js";
 import { doc } from "../src/commands/doc.js";
 import { link } from "../src/commands/link.js";
-import { join } from "../src/commands/join.js";
 import { toExit } from "../src/errors.js";
 import { API_KEY_ENV_VAR } from "../src/bundle.js";
 import { saveApiKeyForOrigin } from "../src/credentials.js";
@@ -52,7 +49,7 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
-/** Mirrors packages/worker/src/auth.ts's withApiKey envelope shape and status codes exactly. */
+/** Minimal API-key gate using the wire error-envelope shape and HTTP status codes. */
 function gate(
   router: (req: Request) => Promise<Response>,
   configuredKey: string | undefined,
@@ -306,23 +303,6 @@ test("--remote: a 403 role-denial on doc write keeps its FORBIDDEN code through 
   );
 });
 
-/**
- * Mirrors `packages/worker/src/auth.ts`'s join rate limiter EXACTLY: `POST /v0/join` answers
- * `429 { code: "RATE_LIMITED" }` (the one unauthenticated, throttled route). Everything else
- * passes through — these wrappers drive the boundary's status-aware unknown-code fallback
- * (tasks/error-classification-boundary fix round 2) through REAL commands.
- */
-function rateLimitJoin(router: (req: Request) => Promise<Response>): (req: Request) => Promise<Response> {
-  return async (req: Request): Promise<Response> => {
-    if (new URL(req.url).pathname === "/v0/join" && req.method === "POST") {
-      return jsonResponse(429, {
-        error: { code: "RATE_LIMITED", message: "too many join attempts from this address — try again later" },
-      });
-    }
-    return router(req);
-  };
-}
-
 /** Answers every request with a 5xx carrying a code the CLI has never heard of. */
 function unknownCode5xx(): (req: Request) => Promise<Response> {
   return async (): Promise<Response> =>
@@ -334,20 +314,6 @@ function unknownCode4xx(): (req: Request) => Promise<Response> {
   return async (): Promise<Response> =>
     jsonResponse(422, { error: { code: "UNPROCESSABLE", message: "the request was understood but rejected" } });
 }
-
-test("--remote: the Worker's 429 RATE_LIMITED through the REAL join path -> TRANSIENT, exit 1, retryable — not USAGE/exit 2 (P1 fix round 2)", async () => {
-  const router = await freshRouter();
-  await withGatedFetch(rateLimitJoin(router), async () => {
-    const { exitCode, envelope } = await exitOf(() =>
-      join(["--remote", REMOTE_URL, "--invite", "some-invite-token", "--json"], {}),
-    );
-    assert.equal(exitCode, 1); // back off and retry — NOT "fix your input"
-    assert.equal(envelope.error.code, "TRANSIENT");
-    assert.equal(envelope.error.details?.retryable, true);
-    assert.equal(envelope.error.details?.status, 429);
-    assert.match(envelope.error.message, /too many join attempts/);
-  });
-});
 
 test("--remote: an unknown wire code on a 5xx (INTERNAL_ERROR) -> RUNTIME, exit 1 — never USAGE (P1 fix round 2)", async () => {
   await withApiKeyEnv(CORRECT_KEY, () =>

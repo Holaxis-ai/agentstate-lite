@@ -4,14 +4,14 @@ This file is read automatically at every session start. `agentstate-lite` is an
 **OKF-native, CLI-first, local-first** knowledge store: `packages/core` (the OKF
 engine), `packages/server` (`@agentstate-lite/server`
 — the wire-protocol REFERENCE server, a pure consumer of core; see gate 3 and Scope),
-`packages/worker` (`@agentstate-lite/worker` — the PRIVATE Cloudflare D1+R2 deployment
-package, never bundled into the CLI; deployed to production and FROZEN per bundle doc `docs/core`),
 `packages/ui` (the browser SPA — PRIVATE workspace; only its BUILT assets ship, gzip-embedded
 into the CLI bundle; it launches bundle-authored Pages, see gate 4), and `packages/cli` —
 the **publishable npm package `agentstate-lite`** (bins `agentstate-lite` / `aslite`), an
 esbuild bundle that inlines core + server + the built UI assets + deps into one
 self-contained ESM file. The filesystem is the
-DEFAULT local backend; the storage seam is pluggable (gate 3) and production runs D1/R2.
+DEFAULT local backend; the storage seam is pluggable (gate 3). Hosted deployment code is outside
+this OSS repository; the former Cloudflare implementation is preserved only as a private frozen
+reference.
 
 Before changing anything, read the PROJECT BUNDLE — this repo's own knowledge bundle at
 `.agentstate-lite/`, shared on a dedicated `board` branch via `aslite sync` (gitignored on
@@ -80,8 +80,8 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   plug-ins that implement the same interface — never baked into the engine. The
   engine keeps all OKF semantics; a backend only persists and retrieves. **`RemoteBackend`
   (`core/src/remote-backend.ts`) is the first remote adapter, proving the wire-protocol v0
-  REFERENCE contract (`docs/WIRE-PROTOCOL.md`, `packages/server`) — but a CF/production
-  deployment behind it is still future (see Scope). The CLI is now `RemoteBackend`'s first REAL
+  REFERENCE contract (`docs/WIRE-PROTOCOL.md`, `packages/server`). A concrete hosted deployment
+  is deliberately outside this repository. The CLI is now `RemoteBackend`'s first REAL
   consumer** (`--remote <url>` on every bundle command, `packages/cli/src/bundle.ts`), not just a
   test-suite exerciser — so a wiring bug here is a user-facing bug, not a contract-test gap.
 - **Flagship remote backend = document-centric** (per-doc identity, per-doc/namespace
@@ -161,8 +161,8 @@ in-process; `--remote` reverse-proxies with the stored key; per-run token + Host
 iframes; Pages are bundle content, and their live data access goes through the read-only
 bridge. The former `packages/viewer` / `view` → `viz.html` surface is removed — author human
 views as Pages rather than adding a second rendering engine. The multi-human collaboration
-substrate (hosted worker, auth, admin) is FROZEN per bundle doc `docs/core` — deployed, dormant,
-and not a build target without an explicit human decision.
+substrate (hosted worker, auth, admin) is FROZEN per bundle doc `docs/core` and preserved outside
+the OSS repository — it is not a build or deployment target without an explicit human decision.
 
 ### 5. Local-first, standards-clean
 
@@ -189,7 +189,7 @@ bundle-relative**.
   callers cannot reproduce the mistake; do not keep patching consumers or adding reminders.
 
 - Build/verify gate: `npm run build` and `npm run typecheck` must exit 0, and `npm test`
-  (`--workspaces --if-present`: core + cli + server + worker + ui suites) must pass, before
+  (`--workspaces --if-present`: core + cli + server + ui suites) must pass, before
   shipping. `npm run check` runs all of that plus this repo's own `scripts/` tests (`test:scripts`)
   and the npm-target SKILL.md drift gate (`check:skill`) in one shot. The plugin-bundle drift gates
   (`check:skill:bundle`, `check:bundle` — the ~650KB committed artifact and the skill-target
@@ -306,17 +306,15 @@ the code when touching it.**
 What exists, end to end (each verified in production or by the full suite — per-unit records on
 the bundle):
 
-- **Stage 1 CLOSED, Stage-2 auth CLOSED.** The wire protocol (v0.1: docs + reserved files +
-  blobs + delete + push-down list) is implemented by the reference server (`packages/server`,
-  loopback/no-auth by design) AND deployed to production: the Cloudflare Worker + D1 + R2
-  (`packages/worker`, a PRIVATE deployment package, never bundled into the CLI; `D1R2Backend`
-  with ENFORCED cross-process CAS) behind a minted-API-key gate with users/invites/memberships/
-  roles (`IdentityVerifier` seam). The production deployment is live, out of auth-bootstrap
-  (a real admin member exists), and serves the team's own work bundle (tasks/roadmap docs).
-- **Four backends, one contract:** Filesystem (degenerate; same-process CAS serialized,
+- **Stage 1 wire CLOSED.** The wire protocol (v0.1: docs + reserved files + blobs + delete +
+  push-down list) is implemented by the reference server (`packages/server`, loopback/no-auth by
+  design). The former Cloudflare Worker + D1/R2 + hosted-auth implementation has been extracted
+  from OSS and preserved as a private frozen reference; no hosted deployment package is built or
+  maintained here.
+- **Three backends, one contract:** Filesystem (degenerate; same-process CAS serialized,
   cross-process best-effort — NOT safe under multi-writer contention across processes),
-  Memory (enforced), Remote (wire client, typed `RemoteError` with server-derived codes),
-  D1R2 (enforced, production). Quad parity tests pin byte-identical version tokens.
+  Memory (enforced), and Remote (wire client, typed `RemoteError` with server-derived codes).
+  Tri-backend parity tests pin byte-identical version tokens.
 - **Explicit `--remote <url>` on every bundle command** is the only HTTP activation path; `serve` boots the
   reference server locally; `promote`/`pull`/`blobs`/`delete` are the byte channel. Known
   divergence (recorded in `docs/WIRE-PROTOCOL.md` open questions): a concept doc's RAW bytes
@@ -325,8 +323,8 @@ the bundle):
 - **Kinds + recipes:** kind conventions (gate 3) with two built-in recipes (`context-notes` —
   init's default — and `work-tracking`, the Task kind the team's own board runs on) over one
   pluggable `RecipeSource` pipeline.
-- **Scans are cheap end to end:** `list`/`query` ride head projections (`queryHeads`) — no
-  bodies over the wire, no per-doc R2 reads on the Worker (D1 `frontmatter` head column).
+- **Scans are cheap end to end:** `list`/`query` ride head projections (`queryHeads`) so a
+  capable remote can return frontmatter without transferring document bodies.
 - **The local `ui` command + bundle Pages** (gate 4): the SPA-over-loopback launcher is shipped
   and working in both modes; registered Pages are the one human-facing rendering primitive. The
   bundle now also holds the project's own plans/research/changelog-archive docs — the records
@@ -354,9 +352,9 @@ the bundle):
 
 Standing gates on future work:
 
-- **Deploys are human-gated**, and D1 migrations apply BEFORE `wrangler deploy` — the ordering
-  is load-bearing (new code may reference new columns unconditionally; deploy-first has already
-  been identified as a full-outage class).
+- **Hosted revival is human-gated.** This repository carries no Cloudflare deployment target.
+  The frozen private reference records that any future revival must review the architecture and
+  apply D1 migrations before deploying dependent code.
 - **Distribution is the in-repo marketplace/skill channel** — self-contained CLI + skill in one
   install, verified end-to-end from Claude Code and Codex; it ships the tool AND the knowledge of
   how to use it. npm is a PARKED parallel channel for plain-terminal audiences (keep `npm pack`

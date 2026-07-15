@@ -2,8 +2,7 @@
 
 **An OKF-native, CLI-first, agent-facing knowledge store.** Context notes, docs, cross-links,
 and live bundle Pages — as a plain folder of user-owned files that works offline,
-with an optional shared cloud backend when you want multiple people and agents on the same
-bundle.
+with an optional wire backend when a separate service hosts the bundle.
 
 The whole tool is one self-contained file with **zero runtime dependencies** — `npx` it and go.
 
@@ -45,10 +44,10 @@ agentstate-lite serve --dir ./my-bundle      # loopback, keyless reference serve
 agentstate-lite list --remote http://127.0.0.1:4818
 ```
 
-For a real shared deployment, the same engine mounts on **Cloudflare Workers + D1 + R2** with a
-minted-API-key gate and multi-human membership (roles, invites, revocation): an admin runs
-`invite create`, a collaborator runs `join --remote <url> --invite <token>`, and they're in — no
-OAuth app to register. See the repository for the deploy recipe.
+The public package intentionally stops at this generic wire boundary. It does not ship a hosted
+deployment, identity system, account-administration commands, or cloud-provider recipe. A separate
+service can implement the same versioned storage and HTTP contracts without changing the local
+engine or CLI.
 
 ## Documentation
 

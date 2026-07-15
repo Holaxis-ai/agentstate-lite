@@ -352,8 +352,8 @@ export interface StorageBackend {
    * ENGINE re-applies the one canonical predicate (`matchesFilter`, `bundle.ts`) to
    * whatever comes back, so semantics stay in core. A backend MUST NOT under-return for
    * a facet it chooses to honor. A backend that does not implement this method
-   * (FilesystemBackend / MemoryBackend / D1R2Backend — all local to their data, where a
-   * head projection saves nothing) is served by the engine's fallback (`list` +
+   * (FilesystemBackend / MemoryBackend — both local to their data, where a head projection
+   * saves nothing) is served by the engine's fallback (`list` +
    * `readMany`, bodies read then dropped), which additionally honors the scan's
    * malformed-doc resilience (`QueryOptions.onSkip`); the push-down path does not — a
    * malformed doc fails the server-side scan, exactly as the wire `list` always has.
@@ -365,8 +365,8 @@ export interface StorageBackend {
    * no capabilities descriptor by default, so a wire router that wants to report an adapter's
    * real guarantees (`GET /v0/capabilities`, `docs/WIRE-PROTOCOL.md`) has historically inferred
    * them via `instanceof` against the two in-repo adapters — correct for those two, but unable
-   * to classify a THIRD adapter it has never heard of (a document-centric remote backend such as
-   * `D1R2Backend`). A backend that implements this method reports its own limits instead of
+   * to classify a THIRD adapter it has never heard of (for example, a document-centric hosted
+   * backend). A backend that implements this method reports its own limits instead of
    * being guessed at; a backend that does NOT implement it (deliberately unchanged:
    * `FilesystemBackend`, `MemoryBackend`) falls back to the router's pre-existing `instanceof`
    * logic, which is the standing proof this addition is additive — neither in-repo adapter
@@ -461,4 +461,3 @@ export interface FreshnessResult {
   /** Human-readable reason (e.g. exceeded max age, a dependency is newer). */
   reason?: string;
 }
-

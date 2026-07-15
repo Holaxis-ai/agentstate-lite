@@ -21,9 +21,9 @@ const HOP_BY_HOP = new Set([
 // Response-direction drops: WHATWG fetch (undici) DECODES a compressed upstream body but
 // leaves the original `Content-Encoding`/`Content-Length` headers visible — copying them onto
 // the already-decoded stream makes the browser try to decode plain bytes a second time
-// (ERR_CONTENT_DECODING_FAILED → "Failed to fetch"). Found live against production (Cloudflare
-// brotli-compresses JSON); invisible to the zero-cloud E2E because the reference server never
-// compresses. The local server sets its own framing.
+// (ERR_CONTENT_DECODING_FAILED → "Failed to fetch"). Found live against a compressed hosted
+// response; invisible to the local E2E because the reference server never compresses. The local
+// server sets its own framing.
 const RESPONSE_DROP = new Set(["content-encoding", "content-length"]);
 
 function copyHeaders(from: Headers, opts: { dropCookie?: boolean; dropContentCoding?: boolean } = {}): Headers {

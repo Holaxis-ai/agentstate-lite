@@ -11,9 +11,9 @@
  *
  * These tests drive `RemoteBackend` against a hand-built mock `fetchImpl` (no router, no
  * sockets) so they exercise ONLY the client-side extraction/validation logic in isolation —
- * `packages/server/test/*` and `packages/worker/test/worker.test.ts` prove the SERVER side (the
- * router actually emits both headers correctly); `packages/core/test/wire-protocol.test.ts`
- * proves the two sides compose correctly end to end through a real router.
+ * `packages/server/test/*` prove the SERVER side (the router actually emits both headers
+ * correctly); `packages/core/test/wire-protocol.test.ts` proves the two sides compose correctly
+ * end to end through a real router.
  */
 import test from "node:test";
 import assert from "node:assert/strict";

@@ -4,8 +4,7 @@
  * `src/` sources directly (the project uses NodeNext `.js` import specifiers).
  *
  * Used only for `npm test` (see package.json). Production builds go through `tsc`.
- * (Mirrors `packages/core/test/ts-loader.mjs` / `packages/worker/test/ts-loader.mjs`
- * verbatim — infra, not engine logic.)
+ * (Mirrors `packages/core/test/ts-loader.mjs` verbatim — infra, not engine logic.)
  */
 import { registerHooks } from "node:module";
 import { existsSync } from "node:fs";
