@@ -163,15 +163,19 @@ export function parseCatalog(raw: string, file: string): CatalogFile {
   return { schema_version: CATALOG_SCHEMA_VERSION, entries };
 }
 
-export async function loadCatalog(home: string = homedir()): Promise<CatalogFile> {
+export async function loadCatalog(home: string = homedir(), signal?: AbortSignal): Promise<CatalogFile> {
   const file = catalogPath(home);
   let raw: string;
   try {
-    raw = await readFile(file, "utf8");
+    if (!(await stat(file)).isFile()) {
+      throw new CliError("RUNTIME", `workspace catalog ${file} is not a regular file`);
+    }
+    raw = await readFile(file, { encoding: "utf8", signal });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       return { schema_version: CATALOG_SCHEMA_VERSION, entries: [] };
     }
+    if (err instanceof CliError) throw err;
     throw new CliError("RUNTIME", `could not read workspace catalog ${file}: ${err instanceof Error ? err.message : String(err)}`);
   }
   return parseCatalog(raw, file);

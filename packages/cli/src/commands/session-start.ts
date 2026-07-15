@@ -81,10 +81,11 @@ Usage:
   agentstate-lite session-start [--dir <path>] [--json]
 
 Runs a time-boxed, best-effort pull of this repo's shared board (provisioning the checkout from
-origin/board on a fresh clone — announced, never silent), then renders the home view with the
-board-awareness block: what changed since this machine last synced, attributed per teammate, plus
-the unpushed/uncommitted backstop. Every pull failure — offline, auth, a busy repo, a lost time
-box — falls through to the render (exit 0): you always get the last known state, honestly labeled.
+origin/board on a fresh clone — announced, never silent), then renders the home view with registered
+workspace orientation and the board-awareness block: what changed since this machine last synced,
+attributed per teammate, plus the unpushed/uncommitted backstop. Every pull failure — offline, auth,
+a busy repo, a lost time box — falls through to the render (exit 0): you always get the last known
+state, honestly labeled.
 
 This is the command \`hook install\` wires as the SessionStart hook for Claude Code, Codex, and
 OpenCode. Run it directly to see exactly what a new session will see.
