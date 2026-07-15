@@ -1,25 +1,25 @@
 ---
 type: Task
 title: Centralize CLI error classification at one boundary
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  Built on feat/error-boundary @ 62b564a, IN REVIEW. One typed boundary
-  (classifyBundleError; toExit/asHandled delegate). Core gains typed
-  InvalidInputError for engine input validation. USAGE no longer a fallback
-  bucket: plain errors + fs errnos -> RUNTIME/1 (EACCES doc write empirically
-  USAGE->RUNTIME vs main's bundle), escaped VersionConflict -> STALE_HEAD/5,
-  uncaught InvalidInputError -> USAGE/2. link.ts P3 special case removed.
-  25-test table-driven contract suite incl. the deterministic ENOSPC link-add
-  probe; 1320 tests + check green. classifyGitError adjudicated: domain
-  classifier FEEDING the boundary, documented. Caveats: relative-origin
-  AUTH_REQUIRED misclassification needs remote-URL context in classifyGitError
-  (auth lane — stays on edge-polish item 12); wire boundary (server/worker) has
-  the same plain-Error->400-USAGE class — filed as
-  tasks/wire-error-classification.
-actor: builder-errors
+  DONE — merged as PR #61 (2026-07-15). One typed boundary (classifyBundleError;
+  toExit/asHandled delegate); core InvalidInputError; USAGE never a fallback
+  (plain errors + fs errnos -> RUNTIME/1; escaped VersionConflict ->
+  STALE_HEAD/5). Three review rounds: internal cold review (promote source-read
+  fallback fixed), external review on the PR (P1: status-blind
+  unknown-RemoteError fallback — 429 RATE_LIMITED landed USAGE/2; fixed
+  status-aware: 429->TRANSIENT retryable, unknown 5xx->RUNTIME, unknown
+  4xx->USAGE as the explicit adjudicated rule agreeing with the wire client's
+  own fallback; proven PRE-EXISTING on main, not a branch regression). 32-test
+  boundary contract suite + 11 fake-wire probes through real commands.
+  Follow-ups filed: tasks/wire-error-classification (same class at server/worker
+  boundary), edge-polish items 13-14, tasks/ui-e2e-session-rotation-flake (gate
+  flake, evidence recorded).
+actor: brian
 assignee: brian-claude
-timestamp: '2026-07-15T03:01:15.233Z'
+timestamp: '2026-07-15T15:55:35.594Z'
 ---
 # Goal
 
