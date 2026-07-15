@@ -6,20 +6,20 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  Built + APPROVED (adversarial tier), awaiting merge:
-  fix/ui-e2e-session-rotation-flake @ 6b5077c. Root-caused to a PRODUCT bug the
-  test was faithfully reporting: bootUiServer.close() could hang forever
-  (mid-drain EventSource reconnect registered a fresh SSE stream after
-  sse.close(); server.close() waited on the client-held socket). Fix: SseHub
-  refuses post-close streams; close() severs all connections; 500 fallback
-  hardened. THREE differential pins (SseHub unit pin; the reviewer's mid-flight
-  tick-sweep; a timing-independent held-body construction) — each verified RED
-  on unfixed code. Baseline 11/15 failing -> 25/25 + 20/20 under 6-core load;
-  adversarial review survived shutdown storms, port cycles, SIGINT-on-built-CLI
-  (155ms). Zero e2e-spec changes. Sibling :53 churn flake filed as
-  tasks/ui-pageevents-churn.
+  Built + twice-adversarially-confirmed, awaiting merge:
+  fix/ui-e2e-session-rotation-flake @ 3ac0b88 (rebased de7c1e3 + drain 02401b3 +
+  guard 3ac0b88). The flaky e2e was a PRODUCT bug, and the review chain found
+  its full extent: (1) post-close SSE registration (original fix); (2) close()
+  resolving while accepted mutations still execute — external codex QA committed
+  a PUT after close and resurrected a deleted bundle dir; fixed with
+  handler-promise tracking + sever->abort->drain->watchdog ordering (dir mode
+  finishes accepted writes; remote mode aborts upstream via threaded
+  AbortSignal); (3) concurrent double-close unhandledRejection (latent, internal
+  adversarial find) — catch-guard at creation. SIX shutdown pins, each verified
+  red-on-old. SIGINT unchanged (~155ms). Follow-ups filed:
+  ui-remote-watcher-boot-timeout (P3), ui-pageevents-churn (P3).
 actor: builder-flake
 assignee: brian-claude
-timestamp: '2026-07-15T18:27:07.157Z'
+timestamp: '2026-07-15T21:06:19.597Z'
 ---
 
