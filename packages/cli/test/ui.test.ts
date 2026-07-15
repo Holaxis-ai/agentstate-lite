@@ -6,15 +6,17 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer, type Server } from "node:net";
 
-import { initBundle } from "@agentstate-lite/core";
+import { initBundle, writeDoc } from "@agentstate-lite/core";
 import { ui } from "../src/commands/ui.js";
 import { bootUiServer } from "../src/ui/server.js";
 import { CliError } from "../src/errors.js";
+import { BUNDLE_NAME_DOC_ID, BUNDLE_NAME_DOC_TYPE } from "../src/bundle-name.js";
+import { CONVENTIONAL_BUNDLE_DIR_NAME } from "../src/bundle.js";
 
 async function makeFixtureBundle(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-test-"));
@@ -186,5 +188,58 @@ test("ui --dir: prints a tokenized receipt, boots a real listener enforcing the 
     await assert.rejects(() => fetch(origin + "/v0/bundles/default/docs"));
   } finally {
     await cleanup();
+  }
+});
+
+test("ui --dir over a CONVENTIONAL bundle: /__ui/config names the PROJECT (parent dir), and an explicit docs/bundle doc overrides it live (tasks/bundle-display-name)", async () => {
+  // The field report's exact shape: the bundle rooted at `<project>/.agentstate-lite/`, which
+  // used to make EVERY project's shell header/bridge hello read ".agentstate-lite".
+  const tmp = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-name-"));
+  const bundleRoot = path.join(tmp, "my-project", CONVENTIONAL_BUNDLE_DIR_NAME);
+  await mkdir(bundleRoot, { recursive: true });
+  await initBundle(bundleRoot);
+  try {
+    let out = "";
+    let resolveShutdown!: () => void;
+    const shutdown = new Promise<void>((resolve) => {
+      resolveShutdown = resolve;
+    });
+    const run = ui(["--dir", bundleRoot, "--port", "0", "--json"], {
+      stdout: (s) => (out += s),
+      bootUiServer,
+      waitForShutdown: () => shutdown,
+      openBrowser: () => {},
+      writeUrlFile: async () => {},
+      clearUrlFile: async () => {},
+    });
+    while (!out) await new Promise((r) => setTimeout(r, 5));
+    const receipt = JSON.parse(out);
+    const token = new URL(receipt.url).searchParams.get("token");
+
+    // Chain rung (b): the conventional dir's PARENT — the project — not ".agentstate-lite".
+    const config = await fetch(`${new URL(receipt.url).origin}/__ui/config?token=${token}`);
+    assert.equal(config.status, 200);
+    const body = (await config.json()) as { name: string; mode: string };
+    assert.equal(body.mode, "dir");
+    assert.equal(body.name, "my-project");
+
+    // SILENT-APPROPRIATION guard (PR #67 review): an ORDINARY doc at the well-known id — any
+    // type other than the marker — must NOT rename the project.
+    await writeDoc({ root: bundleRoot }, { id: BUNDLE_NAME_DOC_ID, frontmatter: { type: "Doc", title: "Bundle Storage Reference" }, body: "" });
+    const configOrdinary = await fetch(`${new URL(receipt.url).origin}/__ui/config?token=${token}`);
+    assert.equal(((await configOrdinary.json()) as { name: string }).name, "my-project");
+
+    // Chain rung (a), LIVE: writing the MARKER-typed doc changes the name on the next config
+    // fetch with no server restart — the same JSON the shell header and the bridge's
+    // hello.bundle.name render.
+    await writeDoc({ root: bundleRoot }, { id: BUNDLE_NAME_DOC_ID, frontmatter: { type: BUNDLE_NAME_DOC_TYPE, title: "Renamed Project" }, body: "" });
+    const config2 = await fetch(`${new URL(receipt.url).origin}/__ui/config?token=${token}`);
+    const body2 = (await config2.json()) as { name: string };
+    assert.equal(body2.name, "Renamed Project");
+
+    resolveShutdown();
+    await run;
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
   }
 });

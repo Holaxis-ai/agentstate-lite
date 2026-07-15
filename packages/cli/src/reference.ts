@@ -168,7 +168,7 @@ export const COMMAND_GROUPS: CommandGroup[] = [
       {
         usage: "ui [--dir <path> | --remote <url>] [--port <p>] [--open]",
         summary:
-          "Boot the local web UI: a launcher for the bundle's pages (type: Page docs rendered in sandboxed iframes, with live updates) — same origin, loopback-only",
+          "Boot the local web UI: a launcher for the bundle's pages (type: Page docs rendered in sandboxed iframes, with live updates) — same origin, loopback-only. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type \"Bundle Name\" --title \"<name>\"",
       },
       {
         // NOTE: `sync --migrate` (TEMPORARY, founders' one-time act — see commands/sync-migrate.ts)

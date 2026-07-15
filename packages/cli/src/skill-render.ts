@@ -177,6 +177,19 @@ function renderWorkspaceLocation(prefix: string): string[] {
   lines.push("```");
   lines.push("");
   lines.push(
+    "Surfaces that label the workspace (the `ui` header, home's bundle block) derive its DISPLAY",
+  );
+  lines.push(
+    "NAME from the project folder's name. To set it explicitly (it syncs to teammates with the",
+  );
+  lines.push("board), write the well-known name doc — its title becomes the display name:");
+  lines.push("");
+  lines.push("```sh");
+  lines.push(`${prefix} doc write docs/bundle --type "Bundle Name" --title "<display name>"`);
+  lines.push(`${prefix} doc update docs/bundle --title "<new name>"   # rename later`);
+  lines.push("```");
+  lines.push("");
+  lines.push(
     "The folder is LOCAL until you choose to share it: `aslite sync --establish` (once) publishes it",
   );
   lines.push(

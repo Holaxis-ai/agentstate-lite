@@ -39,6 +39,11 @@ Options:
   --json                Emit compact JSON instead of TOON
   -h, --help            Show this help
 
+The shell header shows the bundle's DISPLAY NAME: an explicit name doc when one exists
+(doc write docs/bundle --type "Bundle Name" --title "<name>" — rename later via doc update),
+else the project folder's name for a conventional .agentstate-lite/ bundle, else the bundle
+directory's name.
+
 No --host flag in v1 — always binds 127.0.0.1 (loopback-only; a network-exposed key proxy is a
 separate, unreviewed feature). The printed URL carries a per-run session token; the first load
 exchanges it for an HttpOnly, SameSite=Strict cookie. One thing IS persisted: the current run's
