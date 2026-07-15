@@ -46,15 +46,24 @@ config (the way git finds `.git`) — every command after setup runs bare from a
 the project tree. The bundle is committed shared memory: check it in and every
 collaborator's agents work against the same workspace.
 
-**Two overrides when the default doesn't fit:**
+**When the conventional project folder does not fit:**
 
 - **`.agentstate.json` binding:** a committed local pointer (`{ "bundle": "<path>" }`) for an
   out-of-tree directory. Beats the conventional folder when both exist. Remote access is never
   ambient: pass `--remote <url>` explicitly. Legacy URL bindings and `AGENTSTATE_LITE_REMOTE`
   fail with migration guidance instead of activating HTTP.
-- **Personal workspace (keep it private):** the bundle lives in your home directory
-  (`~/.agentstate-lite/<name>/`); a git-excluded binding points at it, and nothing enters
-  the repo.
+- **Private workspace:** the bundle lives outside the repo (for example,
+  `~/.agentstate-lite/<name>/`); a git-excluded binding points at it, and nothing enters the repo.
+- **Personal catalog:** register any local bundle under a user- or agent-defined label so it is
+  visible when an agent starts outside that project. The catalog is explicit and machine-local:
+  it never crawls, clones, or creates an ambient active workspace. Resolve a label to a path, then
+  pass that path to an ordinary command:
+
+  ```sh
+  aslite catalog add personal --dir ~/.agentstate-lite/personal
+  aslite catalog list
+  aslite catalog resolve personal --field path
+  ```
 
 Then, day to day:
 
@@ -80,22 +89,26 @@ machine) and routes to `--establish`. If origin cannot be checked, sync reports 
 shared-board state as unknown and waits for a retry instead of recommending publication.
 When a doc changed on both sides, sync
 converges: your teammate's version is kept, yours is saved to an export file, and
-`sync --show-incoming <id>` + `doc update` reconcile — no git surgery. (A project that
-committed the folder directly to its code branch instead of adopting `sync` — the
-original, still-valid convention — keeps working exactly as before.)
+`sync --show-incoming <id>` + `doc update` reconcile — no git surgery. Bundles committed
+directly to a code branch are also supported; `sync` is specifically the shared-board path.
 
 Establishment also appends `.agentstate-lite/` to the root working-tree `.gitignore` and
 reports that uncommitted edit; ordinary sync does not modify code-project files.
 
 ## How it works
 
-- **Everything is a typed markdown document.** One required frontmatter field —
-  `type` — plus whatever fields its schema declares. New concepts are new types, not
-  new subsystems.
+- **Every concept is a typed markdown document.** One required frontmatter field — `type` — plus
+  whatever fields its schema declares. New concepts are new types, not new subsystems. Byte-exact
+  artifacts such as Page HTML live as blobs referenced by those documents.
 - **Schemas are documents too.** A "kind" is declared by a convention doc inside the
   bundle; validation fires at write time (warn by default, `--strict` to reject). The
   bundle describes itself.
-- **Relationships are links; backlinks are always derived, never stored.**
+- **Schema guidance travels with the data.** Kinds can describe the concept itself, individual
+  fields, enum values, and relationship labels; the CLI projects that guidance through `kinds`
+  and kind-specific `new --help` output so agents do not need a separate live explanation.
+- **Relationships are ordinary markdown links with convention-declared semantics.** A kind can
+  name and describe allowed outbound link labels and expected inbound relationships; the CLI can
+  warn or lint mismatches and query exact link labels. Backlinks are always derived, never stored.
 - **Writes are compare-and-swap.** Every document state has a content-addressed
   version; a racing writer gets a typed conflict instead of silently losing an update.
   Every mutation is attributed.
@@ -128,27 +141,30 @@ Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPla
 ## What's early or experimental
 
 - **Everything is pre-1.0.** Breaking changes are likely; nothing is on npm yet.
-- **Recipes as composition** is a thesis under test, not a result. The repository now includes
+- **Recipes as composition** is a thesis under test, not a result. The repository includes
   small first-party definitions-only packages, including a Kind-plus-Page reference, but package
   dependencies, upgrades, migrations, and marketplace discovery remain future work. "Cookbooks"
   (composed recipes with typed-link glue) are design intent only.
-- **The web UI**: the serving and security plumbing is production-grade; the current
-  views are a placeholder pending a design rethink. Treat `ui` as a preview.
-- **Hosted multi-user code is not part of this OSS repository.** The former Cloudflare
-  Worker, D1/R2 backend, auth implementation, and retired hosted-control-plane clients were
-  preserved in a private frozen reference rather than maintained as an active public surface.
-  Explicit generic wire-protocol access (`serve` and bundle commands with `--remote`) remains
-  available. A gated remote may accept `AGENTSTATE_LITE_API_KEY` or an already-provisioned
-  stored per-origin credential; hosted identity and account administration are outside this
-  package.
+- **Bundle Pages and the local web UI** are functional but still early. `ui` launches registered
+  Pages in sandboxed iframes; data Pages receive a narrow read-only bridge with live change events,
+  while content Pages receive no bundle-data capability. Pages can navigate to other registered
+  Pages, and Page-bearing definitions-only recipes can carry the operating model, registry entry,
+  HTML, and authoring reference together. Authoring is still HTML/agent-driven rather than a
+  polished end-user builder, so treat the surface as a preview.
+- **The public package ends at a generic remote boundary.** `serve` exposes a bundle through the
+  versioned wire protocol, and bundle commands can target a service explicitly with `--remote`.
+  A gated service may accept `AGENTSTATE_LITE_API_KEY` or an already-provisioned stored per-origin
+  credential. This repository ships no hosted deployment, identity system, account-administration
+  commands, or cloud-provider package.
 - **Wire protocol v0.1** is evolving. One recorded caveat: a document's raw bytes
   re-serialize to canonical form over the wire; blobs are the byte-exact channel.
 - **Filesystem CAS is best-effort across processes** (atomic within one). For multiple
   concurrent local agents, run `aslite serve` and point them at the loopback head —
   that restores full enforcement with zero cloud.
-- **Typed relationships** (first-class provenance edges) are an open design question —
-  today links are untyped.
-- OKF itself is a weeks-old spec; we track it as it evolves.
+- **Richer graph semantics** remain open: conventions type outbound links and can require at least
+  one matching inbound relationship today, but richer cardinality, cross-edge constraints,
+  workflow rules, and automation are intentionally not a second graph engine yet.
+- OKF itself is young and evolving; we track it as it changes.
 
 ## Where the deep documentation lives
 

@@ -4,7 +4,10 @@
 and live bundle Pages — as a plain folder of user-owned files that works offline,
 with an optional wire backend when a separate service hosts the bundle.
 
-The whole tool is one self-contained file with **zero runtime dependencies** — `npx` it and go.
+The npm artifact is one self-contained file with **zero runtime dependencies**. It is built and
+pack-tested today but not yet published to npm; the current supported install is the plugin
+marketplace described in the [repository README](https://github.com/Holaxis-ai/agentstate-lite#install).
+Once published, the package-facing flow is:
 
 ```sh
 npx -y agentstate-lite init
