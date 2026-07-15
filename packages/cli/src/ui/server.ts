@@ -433,6 +433,11 @@ export async function bootUiServer(options: UiServerOptions): Promise<UiServerHa
           const listenerClosed = new Promise<void>((resolveClose, rejectClose) =>
             server.close((err) => (err ? rejectClose(err) : resolveClose())),
           );
+          // Handled-guard: listenerClosed is awaited only AFTER the drain below, so a rejection
+          // landing during the drain (a concurrent second close() gets ERR_SERVER_NOT_RUNNING)
+          // would otherwise sit handler-less across macrotask turns — a process-fatal
+          // unhandledRejection. The no-op catch marks it handled now; the await still throws.
+          listenerClosed.catch(() => {});
           // Shutdown never waits on a client: sever every remaining socket now. Without this,
           // an EventSource reconnect racing onto a kept-alive connection mid-drain registers a
           // fresh never-ending stream (or a pipelined request keeps its socket active) and

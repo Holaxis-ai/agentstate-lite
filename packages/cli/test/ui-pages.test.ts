@@ -847,3 +847,45 @@ test("P1: a bundle dir deleted after close() resolves STAYS deleted — no post-
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("close() is safe to call CONCURRENTLY during the drain window — both calls settle, no unhandledRejection", async () => {
+  // The latent double-close defect: close() creates its listener-closed promise EAGERLY but only
+  // awaits it AFTER the drain — a second close() during a parked drain gets that promise's
+  // ERR_SERVER_NOT_RUNNING rejection sitting handler-less across macrotask turns, a genuine
+  // unhandledRejection (process-fatal under node's default --unhandled-rejections=throw). The
+  // guard: a no-op catch attached at creation marks it handled immediately while the later
+  // await still observes the real outcome.
+  const rejections: unknown[] = [];
+  const onUnhandled = (reason: unknown): void => {
+    rejections.push(reason);
+  };
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    let release!: () => void;
+    const { handle, origin, dir, putEntered } = await bootWithHeldPut((r) => (release = r));
+    try {
+      const put = sendPut(origin, "tasks/double-close");
+      await putEntered; // the drain window is now held open by the parked mutation
+
+      const first = handle.close();
+      const second = handle.close();
+      // Let macrotask turns pass with both closes mid-drain — the window where an unguarded
+      // second listener-closed rejection surfaces as unhandled.
+      await new Promise<void>((resolve) => setTimeout(resolve, 150));
+      release();
+
+      const outcomes = await Promise.allSettled([first, second]);
+      await put;
+      assert.equal(outcomes[0].status, "fulfilled", "the first close() must succeed");
+      assert.equal(outcomes.length, 2); // the second may reject (already closing) — settled, never unhandled
+      // Give the loop a turn to flush any pending unhandledRejection emission before asserting.
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      assert.deepEqual(rejections, [], "concurrent close() during the drain produced an unhandledRejection");
+    } finally {
+      release?.();
+      await rm(dir, { recursive: true, force: true });
+    }
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+});
