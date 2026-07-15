@@ -6,11 +6,12 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  Back out the static-HTML viewer now that bundle pages (PR #31) supersede it;
-  gated on #31 merging.
+  Implementation complete at 5bf3e52 in PR #63; full repository gate and
+  external packed-CLI smoke are green. Pending independent review of the exact
+  SHA before merge.
 actor: mike/codex
 assignee: mike/codex
-timestamp: '2026-07-15T14:47:59.361Z'
+timestamp: '2026-07-15T14:57:22.148Z'
 ---
 **Human decision (Mike, 2026-07-09):** with bundle pages shipping (PR #31 — a launcher +
 sandboxed pages including **Roadmap**, a live graph view over `queryEdges`), the UI now provides
