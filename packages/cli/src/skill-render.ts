@@ -614,7 +614,7 @@ function renderBundlePagesSection(): string[] {
   lines.push("examples (including a live graph view over Roadmap Items) are in the shipped contract:");
   lines.push("");
   lines.push("```bash");
-  lines.push('cat "$REFS/pages/BRIDGE.md"');
+  lines.push('cat "$REFS/pages/references/page-authoring-v0.md"');
   lines.push("```");
   lines.push("");
   return lines;
@@ -628,8 +628,8 @@ const SKILL_NOTES_ADDENDUM: string[] = [
   `  \`${ASLITE} recipe add work-tracking\`).`,
   "- Packaging a content-free cognitive ecosystem: `$REFS/recipes/review-workflow/` carries a",
   "  self-describing Review Request kind plus a generic live Page, but no review instances. A",
-  "  definitions-only recipe may contain only its manifest, convention docs, and explicitly",
-  "  declared Page registry/HTML pairs; install it with the same `recipe add <folder>` command.",
+  "  definitions-only recipe may contain only its manifest, convention docs, explicitly declared",
+  "  static Reference docs, and Page registry/HTML pairs; install it with the same `recipe add <folder>` command.",
   "- A full interop-shaped example bundle (externally-authored markdown: unquoted timestamps,",
   "  relative links, wrapped bullets) ships at `$REFS/sample-bundle/` — copy it and point `--dir` at",
   "  the copy to explore a populated bundle without writing one from scratch.",

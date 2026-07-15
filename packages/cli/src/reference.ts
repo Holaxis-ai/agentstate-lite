@@ -153,7 +153,8 @@ export const COMMAND_GROUPS: CommandGroup[] = [
       },
       {
         usage: "recipe add <name-or-path> [--remote <url>]",
-        summary: "Apply a recipe's content-free definitions — Kinds and optional declared Pages — idempotently",
+        summary:
+          "Apply a recipe's content-free definitions — Kinds plus optional declared References and Pages — idempotently",
       },
     ],
   },

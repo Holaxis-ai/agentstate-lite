@@ -30,11 +30,14 @@ export interface SkillReference {
 }
 
 export const SKILL_REFERENCES: SkillReference[] = [
-  // Bundle pages — the postMessage-bridge contract + three worked examples (gate 4, tasks/ui-pages-spike).
-  { src: "examples/pages/BRIDGE.md", dest: "pages/BRIDGE.md" },
+  // Bundle Pages — the bundle-native postMessage contract + three worked examples.
   { src: "examples/pages/pulse.html", dest: "pages/pulse.html" },
   { src: "examples/pages/roadmap.html", dest: "pages/roadmap.html" },
   { src: "examples/pages/about.html", dest: "pages/about.html" },
+  {
+    src: "examples/pages/references/page-authoring-v0.md",
+    dest: "pages/references/page-authoring-v0.md",
+  },
   { src: "examples/pages/conventions/page.md", dest: "pages/conventions/page.md" },
   { src: "examples/pages/pages-registry/pulse.md", dest: "pages/pages-registry/pulse.md" },
   { src: "examples/pages/pages-registry/roadmap.md", dest: "pages/pages-registry/roadmap.md" },
@@ -63,6 +66,10 @@ export const SKILL_REFERENCES: SkillReference[] = [
   {
     src: "examples/recipes/review-workflow/pages/review-workflow/reviews.html",
     dest: "recipes/review-workflow/pages/review-workflow/reviews.html",
+  },
+  {
+    src: "examples/recipes/review-workflow/references/page-authoring-v0.md",
+    dest: "recipes/review-workflow/references/page-authoring-v0.md",
   },
 
   // The interop fixture — an externally-shaped OKF bundle (unquoted timestamps, relative links,
@@ -119,7 +126,7 @@ export const COMMAND_CONTRACTS: Record<string, string[]> = {
   recipes: [],
   "recipe add": ["recipes/claims/recipe.md", "recipes/review-workflow/recipe.md"],
   serve: [],
-  ui: ["pages/BRIDGE.md"],
+  ui: ["pages/references/page-authoring-v0.md"],
   sync: [],
   "session-start": [],
   "hook install|status|uninstall": [],
@@ -141,7 +148,10 @@ export interface CapabilityPattern {
  * check above; adding a pattern row here is the same one-table discipline extended to free prose.
  */
 export const CAPABILITY_PATTERNS: CapabilityPattern[] = [
-  { pattern: /type:\s*Page|bundle page|postMessage|sandboxed iframe/i, requires: ["pages/BRIDGE.md"] },
+  {
+    pattern: /type:\s*Page|bundle page|postMessage|sandboxed iframe/i,
+    requires: ["pages/references/page-authoring-v0.md"],
+  },
   {
     pattern: /recipe/i,
     requires: ["recipes/claims/recipe.md", "recipes/review-workflow/recipe.md"],

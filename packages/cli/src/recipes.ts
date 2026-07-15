@@ -346,6 +346,11 @@ export interface RecipePageResult {
   changed: boolean;
 }
 
+export interface RecipeReferenceResult {
+  id: ConceptId;
+  changed: boolean;
+}
+
 /** The receipt `applyRecipe` returns: identity, per-doc outcomes, an overall `changed` (any doc
  * changed), and any non-fatal warnings collected at LOAD time (recipe.md reserved keys, skipped
  * malformed convention docs). Duplicate-`governs` against the TARGET bundle is a separate, POST-
@@ -356,6 +361,7 @@ export interface ApplyRecipeResult {
   source: string;
   docs: RecipeDocResult[];
   pages: RecipePageResult[];
+  references: RecipeReferenceResult[];
   changed: boolean;
   warnings: ValidationWarning[];
 }
@@ -384,7 +390,7 @@ export async function applyRecipe(
   recipe: LoadedRecipe,
   now: string = new Date().toISOString(),
 ): Promise<ApplyRecipeResult> {
-  await assertPageTargetsCompatible(bundle, recipe, now);
+  await assertPortableTargetsCompatible(bundle, recipe, now);
 
   const docs: RecipeDocResult[] = [];
   for (const d of recipe.docs) {
@@ -439,21 +445,46 @@ export async function applyRecipe(
       changed: registryChanged || entryChanged,
     });
   }
+
+  const references: RecipeReferenceResult[] = [];
+  for (const reference of recipe.references) {
+    const desired: OkfDocument = {
+      ...reference.doc,
+      frontmatter: { ...reference.doc.frontmatter, timestamp: now },
+    };
+    let changed = true;
+    try {
+      await writeDocVersioned(bundle, desired, { expectedVersion: null });
+    } catch (err) {
+      if (!(err instanceof VersionConflict)) throw err;
+      const existing = await readDoc(bundle, desired.id);
+      if (!sameInstalledDoc(existing, desired)) throw recipeAssetConflict(recipe.id, `${desired.id}.md`);
+      changed = false;
+    }
+    references.push({ id: desired.id, changed });
+  }
+
   return {
     id: recipe.id,
     version: recipe.version,
     source: recipe.source,
     docs,
     pages,
-    changed: docs.some((d) => d.changed) || pages.some((page) => page.changed),
+    references,
+    changed:
+      docs.some((d) => d.changed) ||
+      pages.some((page) => page.changed) ||
+      references.some((reference) => reference.changed),
     warnings: recipe.warnings,
   };
 }
 
-async function assertPageTargetsCompatible(bundle: Bundle, recipe: LoadedRecipe, now: string): Promise<void> {
-  if (recipe.pages.length === 0) return;
-  const registryDocs = await query(bundle, { prefix: "pages-registry/" });
-  const registries = new Map(registryDocs.map((doc) => [doc.id, doc]));
+async function assertPortableTargetsCompatible(bundle: Bundle, recipe: LoadedRecipe, now: string): Promise<void> {
+  const registries = new Map<ConceptId, OkfDocument>();
+  if (recipe.pages.length > 0) {
+    const registryDocs = await query(bundle, { prefix: "pages-registry/" });
+    for (const doc of registryDocs) registries.set(doc.id, doc);
+  }
   for (const page of recipe.pages) {
     const existingBlob = await readBlob(bundle, page.entry);
     if (existingBlob) {
@@ -472,6 +503,23 @@ async function assertPageTargetsCompatible(bundle: Bundle, recipe: LoadedRecipe,
       if (!sameInstalledDoc(existingRegistry, desiredRegistry)) {
         throw recipeAssetConflict(recipe.id, `${page.registry.id}.md`);
       }
+    }
+  }
+
+  const installedReferences = new Map<ConceptId, OkfDocument>();
+  if (recipe.references.length > 0) {
+    const referenceDocs = await query(bundle, { prefix: "references/" });
+    for (const doc of referenceDocs) installedReferences.set(doc.id, doc);
+  }
+  for (const reference of recipe.references) {
+    const existing = installedReferences.get(reference.doc.id);
+    if (!existing) continue;
+    const desired: OkfDocument = {
+      ...reference.doc,
+      frontmatter: { ...reference.doc.frontmatter, timestamp: now },
+    };
+    if (!sameInstalledDoc(existing, desired)) {
+      throw recipeAssetConflict(recipe.id, `${reference.doc.id}.md`);
     }
   }
 }
