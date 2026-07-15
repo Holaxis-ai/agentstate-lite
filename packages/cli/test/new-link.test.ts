@@ -13,7 +13,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -21,10 +21,16 @@ import {
   initBundle,
   writeDoc,
   readDoc,
+  readDocVersioned,
   docVersions,
   MemoryBackend,
   CONVENTION_TYPE,
+  type ConceptId,
   type Bundle,
+  type OkfDocument,
+  type ReadResult,
+  type Version,
+  type WriteOptions,
 } from "@agentstate-lite/core";
 import { serve, type ServerHandle } from "@agentstate-lite/server";
 
@@ -71,6 +77,24 @@ async function makeTaskBundle(): Promise<{ dir: string; bundle: Bundle; cleanup:
   return { dir, bundle, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
+/** A hard-case backend: the link write lands, then only the advisory registry read fails. */
+class PostWriteLintFailureBackend extends MemoryBackend {
+  private failConventionReads = false;
+
+  override async write(id: ConceptId, doc: OkfDocument, options: WriteOptions = {}): Promise<Version> {
+    const version = await super.write(id, doc, options);
+    if (id === "tasks/review" && doc.body.includes("[depends on]")) this.failConventionReads = true;
+    return version;
+  }
+
+  override async read(id: ConceptId): Promise<ReadResult> {
+    if (this.failConventionReads && id === "conventions/task") {
+      throw new Error("injected post-write lint read failure");
+    }
+    return super.read(id);
+  }
+}
+
 /** Run a command function, capturing its `--json` stdout and parsing the envelope. */
 async function runJson(
   cmd: (argv: string[], deps: { stdout: (s: string) => void }) => Promise<void>,
@@ -108,6 +132,107 @@ test("new --link: a single declared-type link is added through the SAME machiner
     // The link actually landed in the doc's body, via the identical `link add` write path.
     const written = await readDoc(bundle, "tasks/t2");
     assert.match(written.body, /\[depends on\]\(t1\.md\)/);
+    const finalHead = await readDocVersioned(bundle, "tasks/t2");
+    assert.equal(
+      result.version,
+      finalHead.version,
+      "the new receipt must report the post-link head, not the intermediate create version",
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --body-file + --link: local authoring enters through one command and returns the final stored head", async () => {
+  const { dir, bundle, cleanup } = await makeTaskBundle();
+  try {
+    await runJson(newCommand, ["Task", "source", "--title", "Source", "--dir", dir]);
+    const bodyFile = path.join(dir, "review-body.md");
+    await writeFile(bodyFile, "# Context\n\nA substantial body authored in a local file.\n", "utf8");
+
+    const result = await runJson(newCommand, [
+      "Task",
+      "review",
+      "--title",
+      "Review",
+      "--body-file",
+      bodyFile,
+      "--link",
+      "depends on=tasks/source",
+      "--dir",
+      dir,
+    ]);
+
+    const finalHead = await readDocVersioned(bundle, "tasks/review");
+    assert.match(finalHead.doc.body, /^# Context\n\nA substantial body authored in a local file\./);
+    assert.match(finalHead.doc.body, /\[depends on\]\(source\.md\)/);
+    assert.equal(result.version, finalHead.version);
+    assert.deepEqual(
+      (result.links as Array<Record<string, unknown>>).map((link) => [link.type, link.changed]),
+      [["depends on", true]],
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --link: a post-write advisory-lint failure preserves success and the truthful final version", async () => {
+  const backend = new PostWriteLintFailureBackend();
+  const bundle: Bundle = { root: "mem://new-link-lint-failure", backend };
+  await writeDoc(bundle, {
+    id: "conventions/task",
+    frontmatter: {
+      type: CONVENTION_TYPE,
+      governs: "Task",
+      path: "tasks/",
+      fields: { required: ["title"], optional: [] },
+      links: { "depends on": "Task" },
+      timestamp: T,
+    },
+    body: "A task.",
+  });
+  const handle = await serve({ bundle, port: 0 });
+  const url = `http://${handle.host}:${handle.port}`;
+  try {
+    await runJson(newCommand, ["Task", "source", "--title", "Source", "--remote", url]);
+    const result = await runJson(newCommand, [
+      "Task",
+      "review",
+      "--title",
+      "Review",
+      "--link",
+      "depends on=tasks/source",
+      "--remote",
+      url,
+    ]);
+
+    const finalHead = await readDocVersioned(bundle, "tasks/review");
+    assert.equal(result.version, finalHead.version);
+    assert.match(finalHead.doc.body, /\[depends on\]\(source\.md\)/);
+    const warnings = ((result.links as Array<Record<string, unknown>>)[0]!.warnings ?? []) as Array<
+      Record<string, unknown>
+    >;
+    assert.equal(warnings[0]!.code, "LINK_LINT_UNAVAILABLE");
+    assert.match(String(warnings[0]!.message), /link was written/);
+  } finally {
+    await handle.close();
+  }
+});
+
+test("new --body-file: unreadable input fails before creation", async () => {
+  const { dir, bundle, cleanup } = await makeTaskBundle();
+  try {
+    const missing = path.join(dir, "missing-body.md");
+    await assert.rejects(
+      () => newCommand(["Task", "never-created", "--title", "No", "--body-file", missing, "--dir", dir, "--json"]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /could not read --body-file/);
+        return true;
+      },
+    );
+    await assert.rejects(() => readDoc(bundle, "tasks/never-created"));
   } finally {
     await cleanup();
   }

@@ -203,7 +203,7 @@ for (const [name, run] of RUNNERS) {
     });
   });
 
-  test(`${name}: a convention declaring a CLI-reserved field name ('type') is filtered out with a warning, not silently accepted (F2 regression)`, async () => {
+  test(`${name}: a convention declaring CLI-reserved field names is filtered with migration guidance, not silently accepted (F2 regression)`, async () => {
     await run(async (bundle) => {
       await writeDoc(bundle, {
         id: "conventions/hijack",
@@ -211,7 +211,7 @@ for (const [name, run] of RUNNERS) {
           type: CONVENTION_TYPE,
           title: "Hijack",
           governs: "Hijack",
-          fields: { required: ["title", "type"], optional: ["dir"] },
+          fields: { required: ["title", "type", "body-file"], optional: ["dir"] },
           timestamp: T,
         },
         body: "A convention that tries to declare reserved field names as its own.",
@@ -219,14 +219,16 @@ for (const [name, run] of RUNNERS) {
       const registry = await loadKinds(bundle);
       const kind = registry.kinds.get("Hijack");
       assert.ok(kind);
-      // 'type' and 'dir' are filtered OUT of required/optional entirely — never reachable as a
-      // `new --<field>` flag, and never overwrites the governed `type` at write time.
+      // The names are filtered OUT of required/optional entirely — never ambiguously interpreted
+      // as both a domain field and a CLI control at authoring time.
       assert.deepEqual(kind!.fields.required, ["title"]);
       assert.deepEqual(kind!.fields.optional, []);
       const warning = registry.warnings.find((w) => w.code === "KIND_RESERVED_FIELD");
       assert.ok(warning, "expected a KIND_RESERVED_FIELD warning");
       assert.match(warning!.message, /type/);
       assert.match(warning!.message, /dir/);
+      assert.match(warning!.message, /body-file/);
+      assert.match(warning!.message, /rename those domain fields/);
     });
   });
 }
