@@ -15,7 +15,7 @@
 // coverage for the new board surface.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -50,6 +50,7 @@ import {
 } from "../src/commands/hook.js";
 import { readCursor, readMarker, readSelfActors, type AwarenessCache } from "../src/cursor.js";
 import { initBundle, writeDoc } from "@agentstate-lite/core";
+import { addCatalogEntry } from "../src/catalog.js";
 import {
   commitBoard,
   git,
@@ -548,6 +549,28 @@ test("fall-through belt: an injected pull that NEVER resolves still renders home
     assert.ok(Date.now() - t0 < 3_000);
     assert.match(out, /agentstate-lite/);
     assert.match(out, /commands:/);
+  } finally {
+    await rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+test("session-start inherits non-empty workspace orientation from home", async () => {
+  const homeDir = await realpath(await tempHome());
+  const bundleDir = path.join(homeDir, "personal-bundle");
+  try {
+    await initBundle(bundleDir);
+    await addCatalogEntry("personal", bundleDir, { home: homeDir });
+
+    const out = await runSessionStart(homeDir, ["--json"], {
+      budgetMs: 50,
+      pull: async () => undefined,
+    });
+    const view = JSON.parse(out) as Record<string, any>;
+    assert.equal(view.workspaces.count, 1);
+    assert.equal(view.workspaces.shown, 1);
+    assert.deepEqual(view.workspaces.entries, [{ label: "personal" }]);
+    assert.match(view.workspaces.help, /catalog resolve <label-or-id> --field path$/);
+    assert.doesNotMatch(JSON.stringify(view.workspaces), /(?:locator|personal-bundle|bnd_)/);
   } finally {
     await rm(homeDir, { recursive: true, force: true });
   }

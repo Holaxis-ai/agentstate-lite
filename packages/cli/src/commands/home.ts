@@ -70,6 +70,7 @@ import { countUncommitted, resolveBundleKey, retargetBoardInterior } from "./syn
 import { maybeAutoPull } from "../autopull.js";
 import { readSyncState, type AwarenessCache, type AwarenessDeltaRow } from "../cursor.js";
 import { hookNeedsUpdate } from "./hook.js";
+import { loadCatalog } from "../catalog.js";
 
 /** A dashboard row in the minimal list schema (AXI §2) — reuses `list.ts`'s exact projection. */
 export interface HomeRow {
@@ -112,8 +113,30 @@ export interface HomeBindingNote {
   target: string;
 }
 
+/** The deliberately small user-scoped catalog projection shown during agent orientation. */
+export interface HomeWorkspace {
+  label: string;
+}
+
+export type HomeWorkspacesBlock =
+  | {
+      count: number;
+      shown: number;
+      entries: HomeWorkspace[];
+      help: string;
+    }
+  | {
+      status: "unavailable";
+      note: string;
+      help: string;
+    };
+
 /** Cap on the home dashboard's "recent docs" list — small, every-session token budget (AXI §7). */
 const HOME_RECENT_LIMIT = 5;
+/** Catalog orientation must remain a cheap hint even when an entry points at a slow filesystem. */
+export const HOME_WORKSPACES_BUDGET_MS = 500;
+/** Cap the always-on workspace orientation block; the full catalog remains one explicit read away. */
+const HOME_WORKSPACES_LIMIT = 15;
 
 /** Injectable seam so the offline view is unit-testable without real I/O. */
 export interface HomeDeps {
@@ -152,6 +175,10 @@ export interface HomeDeps {
    * `--remote`-scoped view.
    */
   autoPull: (dir?: string) => Promise<unknown>;
+  /** Read the machine-local workspace catalog. Fs-only; failures never fail the home render. */
+  loadWorkspaces: (signal?: AbortSignal) => Promise<HomeWorkspace[]>;
+  /** Maximum time catalog orientation may add to home/session-start. */
+  workspaceBudgetMs: number;
 }
 
 /** A doc's `title` with the SAME fallback `list.ts` uses (frontmatter `title`, else the id's tail). */
@@ -249,6 +276,13 @@ export async function discoverSummarizeBundle(
   } catch {
     return null;
   }
+}
+
+/** Load labels without probing locators; paths, ids, and live availability stay behind catalog commands. */
+export async function defaultLoadWorkspaces(home?: string, signal?: AbortSignal): Promise<HomeWorkspace[]> {
+  return (await loadCatalog(home, signal)).entries
+    .map(({ label }) => ({ label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 // ── board awareness (sync-verb §U4) ───────────────────────────────────────────
@@ -468,6 +502,7 @@ export function buildHomeView(
   bindingError?: string,
   board?: { block?: string | Record<string, unknown>; firstContact?: string },
   hookUpdate?: string,
+  workspaces?: HomeWorkspacesBlock,
 ): Record<string, unknown> {
   const inv = deps.invocation();
   const ref = commandReference(inv);
@@ -551,6 +586,7 @@ export function buildHomeView(
     // SessionStart hook), surfaced instead as a visible, non-fatal note.
     view.project_binding_error = bindingError;
   }
+  if (workspaces) view.workspaces = workspaces;
 
   // Compact command list (names per group + a `--help` pointer) — the home view is the SessionStart
   // hook payload, so it stays token-lean; the FULL usage/summary reference is the `--help` view.
@@ -642,6 +678,57 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
 
   const invocation = deps.invocation ?? cliInvocation;
 
+  // User-scoped workspace orientation is independent of the current bundle. Empty catalogs stay
+  // invisible; malformed/unreadable catalogs become a compact repair pointer and can never fail
+  // home or session-start. The loader projects out paths and ids before this render boundary and
+  // avoids locator probes; detailed availability remains explicit via `catalog list`.
+  let workspaces: HomeWorkspacesBlock | undefined;
+  let workspaceTimer: ReturnType<typeof setTimeout> | undefined;
+  const workspaceAbort = new AbortController();
+  const loadWorkspaces =
+    deps.loadWorkspaces ?? ((signal?: AbortSignal) => defaultLoadWorkspaces(undefined, signal));
+  try {
+    const timedOut = Symbol("workspace catalog timed out");
+    const outcome = await Promise.race([
+      loadWorkspaces(workspaceAbort.signal),
+      new Promise<typeof timedOut>((resolve) => {
+        workspaceTimer = setTimeout(
+          () => resolve(timedOut),
+          deps.workspaceBudgetMs ?? HOME_WORKSPACES_BUDGET_MS,
+        );
+      }),
+    ]);
+    if (outcome === timedOut) {
+      workspaceAbort.abort();
+      workspaces = {
+        status: "unavailable",
+        note: "workspace catalog check timed out",
+        help: `${invocation()} catalog list`,
+      };
+    } else if (outcome.length > 0) {
+      const entries = [...outcome]
+        .sort((a, b) => a.label.localeCompare(b.label))
+        .slice(0, HOME_WORKSPACES_LIMIT);
+      workspaces = {
+        count: outcome.length,
+        shown: entries.length,
+        entries,
+        help:
+          outcome.length > entries.length
+            ? `${invocation()} catalog list`
+            : `${invocation()} catalog resolve <label-or-id> --field path`,
+      };
+    }
+  } catch {
+    workspaces = {
+      status: "unavailable",
+      note: "workspace catalog could not be read",
+      help: `${invocation()} catalog list`,
+    };
+  } finally {
+    if (workspaceTimer) clearTimeout(workspaceTimer);
+  }
+
   // The board block (sync-verb §U4) — skipped for a --remote scope (the board is a git-tier LOCAL
   // concept). Double-guarded like everything else here: a throwing probe yields no board block.
   let board: { block?: string | Record<string, unknown>; firstContact?: string } | undefined;
@@ -675,6 +762,7 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
         bindingError,
         board,
         hookUpdate,
+        workspaces,
       ),
       // Honor --json (JSON is equally offline/never-throw); default remains TOON, the format the
       // SessionStart hook ingests as ambient context.

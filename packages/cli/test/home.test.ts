@@ -6,31 +6,40 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { initBundle, writeDoc, type OkfDocument } from "@agentstate-lite/core";
 
-// HERMETIC CWD (found live, 2026-07-06): `home()` peeks at the project binding by walking UP
-// from the cwd, so a REAL `.agentstate.json` anywhere above the test process's cwd — including
+// HERMETIC CWD + HOME: `home()` peeks at project bindings from the cwd and at the user-scoped
+// workspace catalog, so a REAL `.agentstate.json` anywhere above the test process's cwd — including
 // the repo's own untracked one — leaks into every in-process test in this file and changes the
-// dashboard/remote-pointer output. node --test runs each file in its own process, so a
-// module-top chdir into a binding-free temp dir makes the whole file hermetic; tests that
+// dashboard/remote-pointer output; a real ~/.agentstate/catalog.json would likewise leak catalog
+// entries. node --test runs each file in its own process, so module-top temp roots make the file
+// hermetic; tests that
 // chdir themselves capture and restore their OWN `origCwd`, which composes with this.
 process.chdir(await mkdtemp(path.join(tmpdir(), "aslite-hermetic-home-")));
+const HERMETIC_HOME = await mkdtemp(path.join(tmpdir(), "aslite-hermetic-user-home-"));
+process.env.HOME = HERMETIC_HOME;
+process.env.USERPROFILE = HERMETIC_HOME;
 
 import {
   buildHomeView,
+  defaultLoadWorkspaces,
   home,
   summarizeDocs,
   type BundleSummary,
   type HomeRow,
   type UnreadableBundle,
 } from "../src/commands/home.js";
+import { addCatalogEntry } from "../src/catalog.js";
 
 const INVOKE = "npx -y agentstate-lite";
 const BASE_DEPS = { binPath: () => "/bin/agentstate-lite", invocation: () => INVOKE };
+const BUILT_CLI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/agentstate-lite.mjs");
 
 function row(id: string, timestamp: string): HomeRow {
   return { id, type: "Note", title: id.split("/").pop() ?? id, timestamp };
@@ -117,6 +126,173 @@ test("home --json is honored (renders valid JSON, not silently ignored TOON)", a
   assert.notEqual(jsonOut, toon);
   const parsed = JSON.parse(jsonOut) as Record<string, unknown>;
   assert.ok(parsed["agentstate-lite"], "the identity header survives into the JSON view");
+});
+
+test("workspace catalog orientation: non-empty only, minimal fields, before command reference", async () => {
+  let out = "";
+  await home(["--json"], {
+    binPath: () => "/bin/agentstate-lite",
+    invocation: () => INVOKE,
+    stdout: (s) => (out += s),
+    summarizeBundle: async () => null,
+    loadBoardStatus: async () => null,
+    autoPull: async () => {},
+    hookNeedsUpdate: () => false,
+    loadWorkspaces: async () => [
+      { label: "agentstate" },
+      { label: "personal" },
+    ],
+  });
+  const view = JSON.parse(out) as Record<string, any>;
+  assert.deepEqual(view.workspaces, {
+    count: 2,
+    shown: 2,
+    entries: [
+      { label: "agentstate" },
+      { label: "personal" },
+    ],
+    help: `${INVOKE} catalog resolve <label-or-id> --field path`,
+  });
+  assert.ok(Object.keys(view).indexOf("workspaces") < Object.keys(view).indexOf("commands"));
+  assert.doesNotMatch(JSON.stringify(view.workspaces.entries), /(?:locator|path|bnd_)/);
+
+  out = "";
+  await home(["--json"], {
+    binPath: () => "/bin/agentstate-lite",
+    invocation: () => INVOKE,
+    stdout: (s) => (out += s),
+    summarizeBundle: async () => null,
+    loadBoardStatus: async () => null,
+    autoPull: async () => {},
+    hookNeedsUpdate: () => false,
+    loadWorkspaces: async () => [],
+  });
+  assert.equal((JSON.parse(out) as Record<string, unknown>).workspaces, undefined);
+});
+
+test("workspace catalog orientation: caps and sorts labels with full-list guidance", async () => {
+  let out = "";
+  const labels = Array.from({ length: 18 }, (_, index) => `workspace-${String(17 - index).padStart(2, "0")}`);
+  await home(["--json"], {
+    binPath: () => "/bin/agentstate-lite",
+    invocation: () => INVOKE,
+    stdout: (s) => (out += s),
+    summarizeBundle: async () => null,
+    loadBoardStatus: async () => null,
+    autoPull: async () => {},
+    hookNeedsUpdate: () => false,
+    loadWorkspaces: async () => labels.map((label) => ({ label })),
+  });
+
+  const workspaces = (JSON.parse(out) as Record<string, any>).workspaces;
+  assert.equal(workspaces.count, 18);
+  assert.equal(workspaces.shown, 15);
+  assert.deepEqual(
+    workspaces.entries.map(({ label }: { label: string }) => label),
+    [...labels].sort().slice(0, 15),
+  );
+  assert.equal(workspaces.help, `${INVOKE} catalog list`);
+});
+
+test("workspace catalog orientation: loader failure is visible but never fails home", async () => {
+  let out = "";
+  await home(["--json"], {
+    binPath: () => "/bin/agentstate-lite",
+    invocation: () => INVOKE,
+    stdout: (s) => (out += s),
+    summarizeBundle: async () => null,
+    loadBoardStatus: async () => null,
+    autoPull: async () => {},
+    hookNeedsUpdate: () => false,
+    loadWorkspaces: async () => {
+      throw new Error("corrupt catalog at /private/path");
+    },
+  });
+  const view = JSON.parse(out) as Record<string, any>;
+  assert.deepEqual(view.workspaces, {
+    status: "unavailable",
+    note: "workspace catalog could not be read",
+    help: `${INVOKE} catalog list`,
+  });
+  assert.doesNotMatch(JSON.stringify(view.workspaces), /private\/path/);
+});
+
+test("workspace catalog orientation: a stalled injected loader cannot stall home", async () => {
+  let out = "";
+  const startedAt = Date.now();
+  await home(["--json"], {
+    binPath: () => "/bin/agentstate-lite",
+    invocation: () => INVOKE,
+    stdout: (s) => (out += s),
+    summarizeBundle: async () => null,
+    loadBoardStatus: async () => null,
+    autoPull: async () => {},
+    hookNeedsUpdate: () => false,
+    loadWorkspaces: () => new Promise(() => {}),
+    workspaceBudgetMs: 5,
+  });
+  assert.ok(Date.now() - startedAt < 1_000);
+  assert.deepEqual((JSON.parse(out) as Record<string, any>).workspaces, {
+    status: "unavailable",
+    note: "workspace catalog check timed out",
+    help: `${INVOKE} catalog list`,
+  });
+});
+
+test("default workspace loader sorts labels but does not probe or expose ids and paths", async () => {
+  const root = await realpath(await tempDir());
+  try {
+    const homeDir = path.join(root, "home");
+    const bundleDir = path.join(root, "bundle");
+    await mkdir(homeDir);
+    await initBundle(bundleDir);
+    await addCatalogEntry("personal", bundleDir, { home: homeDir });
+    const entries = await defaultLoadWorkspaces(homeDir);
+    assert.deepEqual(entries, [{ label: "personal" }]);
+    assert.deepEqual(Object.keys(entries[0]!), ["label"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("built home rejects a FIFO catalog and exits after its fail-soft receipt", async () => {
+  const root = await realpath(await tempDir());
+  const homeDir = path.join(root, "home");
+  const stateDir = path.join(homeDir, ".agentstate");
+  const fifo = path.join(stateDir, "catalog.json");
+  try {
+    await mkdir(stateDir, { recursive: true });
+    await new Promise<void>((resolve, reject) => {
+      execFile("mkfifo", [fifo], (err) => (err ? reject(err) : resolve()));
+    });
+
+    const startedAt = Date.now();
+    const output = await new Promise<string>((resolve, reject) => {
+      const child = spawn(process.execPath, [BUILT_CLI, "--json"], {
+        cwd: root,
+        env: { ...process.env, HOME: homeDir, USERPROFILE: homeDir, AGENTSTATE_LITE_NO_AUTOPULL: "1" },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stdout = "";
+      let stderr = "";
+      const killTimer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new Error(`built home stayed alive on a FIFO catalog; stderr: ${stderr}`));
+      }, 3_000);
+      child.stdout.on("data", (chunk) => (stdout += chunk));
+      child.stderr.on("data", (chunk) => (stderr += chunk));
+      child.on("error", reject);
+      child.on("close", (code) => {
+        clearTimeout(killTimer);
+        if (code === 0) resolve(stdout);
+        else reject(new Error(`built home exited ${code}; stderr: ${stderr}`));
+      });
+    });
+    assert.ok(Date.now() - startedAt < 3_000);
+    assert.equal(JSON.parse(output).workspaces.note, "workspace catalog could not be read");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("A1.4 empty bundle (present, 0 docs): distinct from no-bundle", () => {
