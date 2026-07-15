@@ -15658,7 +15658,7 @@ function freshErrorResponse(status2, code, message) {
     headers: { "content-type": "application/json; charset=utf-8" }
   });
 }
-async function proxyToRemote(request, remoteBase, apiKey) {
+async function proxyToRemote(request, remoteBase, apiKey, signal) {
   const incomingUrl = new URL(request.url);
   const target = new URL(remoteBase + incomingUrl.pathname + incomingUrl.search);
   target.searchParams.delete("token");
@@ -15670,7 +15670,7 @@ async function proxyToRemote(request, remoteBase, apiKey) {
   const bodyBytes = hasBody ? await request.arrayBuffer() : void 0;
   let upstream;
   try {
-    upstream = await fetch(new Request(target, { method, headers, body: bodyBytes }));
+    upstream = await fetch(new Request(target, { method, headers, body: bodyBytes, signal }));
   } catch (err) {
     return freshErrorResponse(502, "RUNTIME", `could not reach remote ${remoteBase} (${err instanceof Error ? err.message : String(err)})`);
   }
@@ -15746,12 +15746,21 @@ var HEARTBEAT_MS = 25e3;
 var SseHub = class {
   clients = /* @__PURE__ */ new Set();
   heartbeat;
+  closed = false;
   /**
    * Attach a freshly-opened SSE response: write the event-stream headers, register it, and
    * de-register it on close. `extraHeaders` carries the session cookie when the connecting
    * request authenticated via the URL token (mirrors the main server's cookie-grant path).
+   *
+   * After {@link close}, a late-arriving stream (an EventSource reconnect racing onto a
+   * kept-alive socket mid-shutdown) is severed instead of registered — a post-close stream
+   * would never be ended and would hold the http server's `close()` open forever.
    */
   add(res, extraHeaders = {}) {
+    if (this.closed) {
+      res.destroy();
+      return;
+    }
     res.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-store",
@@ -15781,8 +15790,9 @@ var SseHub = class {
   size() {
     return this.clients.size;
   }
-  /** End every stream and stop the heartbeat — called on server shutdown so no timer keeps the process alive. */
+  /** End every stream, stop the heartbeat, and refuse any later {@link add} — called on server shutdown so no timer (or late reconnect) keeps the server alive. */
   close() {
+    this.closed = true;
     if (this.heartbeat) {
       clearInterval(this.heartbeat);
       this.heartbeat = void 0;
@@ -16156,7 +16166,7 @@ async function handleRequest(req, res, options2, runtime, sessionSecret) {
   } else if (url.pathname === "/__ui/edges") {
     response = await edgesResponse(options2, url);
   } else if (url.pathname.startsWith("/v0/")) {
-    response = options2.mode === "dir" ? await options2.router(request) : await proxyToRemote(request, options2.remoteBase, options2.apiKey);
+    response = options2.mode === "dir" ? await options2.router(request) : await proxyToRemote(request, options2.remoteBase, options2.apiKey, runtime.shutdown.signal);
   } else {
     const asset = serveAsset(url.pathname, request.headers.get("accept-encoding"));
     response = new Response(asset.body, { status: asset.status, headers: asset.headers });
@@ -16177,16 +16187,24 @@ async function bootWatcher(options2, sse) {
     return void 0;
   }
 }
+var CLOSE_DRAIN_WATCHDOG_MS = 5e3;
 async function bootUiServer(options2) {
   const sessionSecret = options2.sessionSecret ?? mintSessionSecret();
-  const runtime = { nonces: new PageNonceRegistry(), sse: new SseHub() };
+  const runtime = { nonces: new PageNonceRegistry(), sse: new SseHub(), shutdown: new AbortController() };
   runtime.watcher = await bootWatcher(options2, runtime.sse);
   return new Promise((resolve2, reject) => {
+    const inFlight = /* @__PURE__ */ new Set();
     const server = createServer2((req, res) => {
-      void handleRequest(req, res, options2, runtime, sessionSecret).catch((err) => {
-        res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ error: { code: "RUNTIME", message: err instanceof Error ? err.message : String(err) } }));
+      const handled = handleRequest(req, res, options2, runtime, sessionSecret).catch((err) => {
+        try {
+          res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: { code: "RUNTIME", message: err instanceof Error ? err.message : String(err) } }));
+        } catch {
+          res.destroy();
+        }
       });
+      inFlight.add(handled);
+      void handled.finally(() => inFlight.delete(handled));
     });
     server.once("error", (err) => {
       void runtime.watcher?.stop();
@@ -16203,11 +16221,26 @@ async function bootUiServer(options2) {
         host: HOST,
         port: addr.port,
         token: sessionSecret,
-        close: () => new Promise((resolveClose, rejectClose) => {
+        close: async () => {
           void runtime.watcher?.stop();
           runtime.sse.close();
-          server.close((err) => err ? rejectClose(err) : resolveClose());
-        })
+          const listenerClosed = new Promise(
+            (resolveClose, rejectClose) => server.close((err) => err ? rejectClose(err) : resolveClose())
+          );
+          listenerClosed.catch(() => {
+          });
+          server.closeAllConnections();
+          runtime.shutdown.abort();
+          const drained = Promise.allSettled([...inFlight]).then(() => true);
+          const bounded = await Promise.race([
+            drained,
+            new Promise((resolveTimeout) => setTimeout(() => resolveTimeout(false), CLOSE_DRAIN_WATCHDOG_MS).unref())
+          ]);
+          if (!bounded) {
+            process.stderr.write("[ui] close(): a request handler did not settle within the drain window; shutting down without it\n");
+          }
+          await listenerClosed;
+        }
       });
     });
   });
