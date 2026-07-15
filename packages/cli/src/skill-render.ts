@@ -25,13 +25,12 @@ const NPX = `npx -y ${PKG}`;
 const ASLITE = '"$ASLITE"';
 
 // ---------------------------------------------------------------------------------------------
-// Single source for cross-host resolver coverage. The skill ships two bash resolvers — `$ASLITE`
+// Single source for cross-host resolver coverage. The skill ships two shell resolvers — `$ASLITE`
 // (the CLI, under renderSkill's invocation section) and `$REFS` (the shipped references dir,
 // under renderShippedReferencesSection) — that both need to find the SAME install of this skill
-// under the SAME set of hosts. They used to hand-list the host roots twice; that duplication is
-// exactly how a Codex marketplace-cache install went uncovered by BOTH resolvers at once. Every
-// host this skill supports now lives in ONE array; both resolvers derive their `ls -d` globs from
-// it via `hostGlobLines`, so a host can never be added to one and forgotten in the other.
+// under the SAME set of hosts. Every host this skill supports lives in ONE array; both resolvers
+// derive their direct-install and marketplace-cache search from it, so a host can never be added
+// to one and forgotten in the other.
 //
 // Covered: Claude Code and Codex, each via a DIRECT skill install (`<host-home>/skills/agentstate-lite`)
 // and a plugin-MARKETPLACE-cache install (`<host-home>/plugins/cache/<marketplace>/agentstate-lite/<version>/skills/agentstate-lite`
@@ -43,31 +42,50 @@ const ASLITE = '"$ASLITE"';
 // `claude` binary — it resolves `settings.json`/`projects` from `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`,
 // i.e. the var REPLACES `~/.claude` wholesale, not merges with it), Codex via `CODEX_HOME` (confirmed
 // against the installed `codex` binary's own `--help`, e.g. `$CODEX_HOME/<name>.config.toml`). Bash's
-// `${VAR:-default}` expresses that fallback inline, so no extra bash logic is needed beyond the glob.
+// `${VAR:-default}` expresses that fallback inline.
 //
 // OpenCode is deliberately NOT here. It never reads SKILL.md at all: its SessionStart integration
 // is the ambient-context plugin built by `commands/hook.ts`'s `buildOpenCodePluginSource`, which
 // bakes the CLI's already-resolved absolute path in directly at `hook install` time
-// (`hookCommand()`) — there is no skill-relative install path for a bash glob to discover, by
+// (`hookCommand()`) — there is no skill-relative install path for this resolver to discover, by
 // construction (confirmed against axi-sdk-js: OpenCode gets a managed plugin file, not a
 // skill/plugin-cache directory layout). If a future OpenCode surface ever loads this skill's own
 // files by a discoverable convention path, add its root here — not a third resolver. (Note:
 // `commands/hook.ts` itself has the SAME hardcoded-`$HOME` gap for Claude/Codex — out of scope here,
 // a sibling fix on a different command.)
-export const SKILL_HOST_ROOTS = [
-  '"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/skills/agentstate-lite',
-  '"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite',
-  '"${CODEX_HOME:-$HOME/.codex}"/skills/agentstate-lite',
-  '"${CODEX_HOME:-$HOME/.codex}"/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite',
+export const SKILL_HOST_HOMES = [
+  '"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"',
+  '"${CODEX_HOME:-$HOME/.codex}"',
 ];
 
+// Test-facing projection of every supported host/channel shape. Keep the compatibility matrix
+// literal and inspectable while the emitted resolver itself derives from SKILL_HOST_HOMES.
+export const SKILL_HOST_ROOTS = SKILL_HOST_HOMES.flatMap((home) => [
+  `${home}/skills/agentstate-lite`,
+  `${home}/plugins/cache/*/agentstate-lite/*/skills/agentstate-lite`,
+]);
+
 /**
- * Renders one backslash-continued `ls -d` glob line per {@link SKILL_HOST_ROOTS} entry, for the
- * given sub-path (e.g. `scripts/agentstate-lite`, `references`) — the shared body both resolvers
- * splice into their own `ls -d \ … 2>/dev/null | sort -V | tail -1` pipeline.
+ * Render the shared, shell-portable discovery loop. Optional marketplace roots are traversed by
+ * `find`, not expanded as shell globs: default zsh treats an unmatched glob as a fatal NOMATCH
+ * error before `ls` or stderr redirection can run. Bash leaves the same glob literal in place,
+ * which is why bash-only execution tests failed to expose the bug.
  */
-function hostGlobLines(subpath: string, indent = "  "): string[] {
-  return SKILL_HOST_ROOTS.map((root) => `${indent}${root}/${subpath} \\`);
+function hostDiscoveryLines(subpath: string, type: "f" | "d", indent = "    "): string[] {
+  const lines: string[] = [];
+  lines.push(`${indent}for host_home in \\`);
+  SKILL_HOST_HOMES.forEach((home, index) => {
+    lines.push(`${indent}  ${home}${index === SKILL_HOST_HOMES.length - 1 ? "" : " \\"}`);
+  });
+  lines.push(`${indent}do`);
+  lines.push(`${indent}  direct="$host_home/skills/agentstate-lite/${subpath}"`);
+  lines.push(`${indent}  [ -${type} "$direct" ] && printf '%s\\n' "$direct"`);
+  lines.push(`${indent}  cache="$host_home/plugins/cache"`);
+  lines.push(
+    `${indent}  [ -d "$cache" ] && find "$cache" -type ${type} -path '*/agentstate-lite/*/skills/agentstate-lite/${subpath}' -print 2>/dev/null`,
+  );
+  lines.push(`${indent}done | sort -V | tail -1`);
+  return lines;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -520,9 +538,11 @@ function renderShippedReferencesSection(): string[] {
   lines.push("plain session that never touches them pays nothing for them. Resolve the path once:");
   lines.push("");
   lines.push("```bash");
-  lines.push('REFS="$(ls -d \\');
-  lines.push(...hostGlobLines("references"));
-  lines.push('  2>/dev/null | sort -V | tail -1)"');
+  lines.push('REFS="$(');
+  lines.push("  {");
+  lines.push(...hostDiscoveryLines("references", "d"));
+  lines.push("  }");
+  lines.push(')"');
   lines.push('if [ -z "$REFS" ]; then');
   lines.push(
     '  echo "agentstate-lite: shipped references not found (checked Claude Code (CLAUDE_CONFIG_DIR or ~/.claude) and Codex (CODEX_HOME or ~/.codex) skill + plugin-cache installs)" >&2',
@@ -676,9 +696,11 @@ export function renderSkill(): string {
   lines.push(`use \`${ASLITE}\` in every command:`);
   lines.push("");
   lines.push("```bash");
-  lines.push('ASLITE="$(command -v agentstate-lite 2>/dev/null || ls -d \\');
-  lines.push(...hostGlobLines("scripts/agentstate-lite"));
-  lines.push("  2>/dev/null | sort -V | tail -1)\"");
+  lines.push('ASLITE="$(');
+  lines.push("  command -v agentstate-lite 2>/dev/null || {");
+  lines.push(...hostDiscoveryLines("scripts/agentstate-lite", "f"));
+  lines.push("  }");
+  lines.push(')"');
   lines.push('if [ -z "$ASLITE" ]; then');
   lines.push(
     '  echo "agentstate-lite: plugin executable not found (checked PATH, Claude Code (CLAUDE_CONFIG_DIR or ~/.claude), and Codex (CODEX_HOME or ~/.codex) skill + plugin-cache installs)" >&2',
@@ -692,7 +714,7 @@ export function renderSkill(): string {
     "`command -v` short-circuits if a future install ever puts `agentstate-lite` on `PATH`; otherwise",
   );
   lines.push(
-    "the glob checks, for BOTH Claude Code and Codex, a direct skill install (`<host-home>/skills/…`) and",
+    "the fallback checks, for BOTH Claude Code and Codex, a direct skill install (`<host-home>/skills/…`) and",
   );
   lines.push(
     "a plugin-marketplace cache install (`<host-home>/plugins/cache/<marketplace>/<plugin>/<version>/skills/agentstate-lite/scripts/…` — the cache copies the PLUGIN DIR's contents, so there is no `plugins/` segment); each `<host-home>` honors that host's own relocation variable first (`CLAUDE_CONFIG_DIR` for Claude Code, `CODEX_HOME` for Codex) and falls back to `~/.claude`/`~/.codex`, and",
@@ -707,13 +729,19 @@ export function renderSkill(): string {
     "across DIFFERENT roots (direct vs cache, Claude vs Codex) it's a best-effort, path-ordered pick,",
   );
   lines.push(
-    "not a true cross-host version comparison. This works from any cwd. Resolve to",
+    "not a true cross-host version comparison. Marketplace discovery is delegated to `find` rather",
+  );
+  lines.push(
+    "than shell-expanded optional globs, so the same block works under Bash and default zsh. This",
+  );
+  lines.push(
+    "works from any cwd. Resolve to",
   );
   lines.push(
     "the **shim** (not the `.mjs` directly) so the Node >= 20 floor guard runs first. OpenCode isn't",
   );
   lines.push(
-    "in this glob: it never reads this file — its SessionStart integration bakes the CLI's path in",
+    "in this search: it never reads this file — its SessionStart integration bakes the CLI's path in",
   );
   lines.push(
     "directly at `hook install` time instead (see that command's own docs). If NONE of the checked",
