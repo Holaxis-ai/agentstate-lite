@@ -9,7 +9,7 @@ description: >-
   --workspace sugar, catalog open, visual navigation, aggregation, or remote
   locator work.
 actor: mike/codex
-timestamp: '2026-07-15T03:35:39.458Z'
+timestamp: '2026-07-15T12:23:55.368Z'
 ---
 # Workspace catalog: work across projects
 
@@ -45,11 +45,13 @@ workspace, cross-bundle query, or hosted dependency. PR #59 / plugin 1.0.53.
 ### 1. Discovery consumer — IN REVIEW (PR #60)
 
 Surface a compact workspace block through the existing `home` render, which also makes it appear
-at `session-start` without a second integration. Show only a non-empty catalog's count and sorted
-labels, plus the explicit `catalog resolve <label> --field path` next action. Do not print absolute
-paths or perform live locator probes in orientation output; detailed availability remains in the
-explicit `catalog list` command. Empty catalogs add no noise; a malformed or stalled catalog must
-fail soft with repair guidance and must never prevent session start.
+at `session-start` without a second integration. Show only a non-empty catalog's total count, shown
+count, and up to 15 sorted labels. Untruncated output gives the explicit
+`catalog resolve <label> --field path` next action; truncated output points to `catalog list`.
+Do not print absolute paths or perform live locator probes in orientation output; detailed
+availability remains in the explicit `catalog list` command. Empty catalogs add no noise; a
+malformed or stalled catalog must fail soft with repair guidance and must never prevent session
+start.
 
 This is the unit that turns the naming primitive into an agent workflow. It adds no new targeting
 semantics, registration, crawling, mutation, or UI.
