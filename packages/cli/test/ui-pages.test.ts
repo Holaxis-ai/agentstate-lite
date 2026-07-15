@@ -10,11 +10,13 @@ import { mkdtemp, rm, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer as createHttpServer, type Server, type ServerResponse } from "node:http";
+import { connect } from "node:net";
 
 import { deleteDoc, initBundle, writeBlob, writeDoc, RemoteBackend, type Bundle } from "@agentstate-lite/core";
 import { createRouter, serve, type ServerHandle } from "@agentstate-lite/server";
 import { bootUiServer, type UiServerHandle } from "../src/ui/server.js";
 import { PageNonceRegistry, pageCsp } from "../src/ui/pages.js";
+import { SseHub } from "../src/ui/events.js";
 import { diffSnapshots, isEmptyChange, startWatcher, type Snapshot } from "../src/ui/watch.js";
 import { writeUiUrlFile, clearUiUrlFile, uiUrlFilePath } from "../src/ui/url-file.js";
 
@@ -657,5 +659,96 @@ test("P1: shell assets AND page bytes both send Referrer-Policy: no-referrer (th
     assert.equal(page.headers.get("referrer-policy"), "no-referrer");
   } finally {
     await cleanup();
+  }
+});
+
+// ── shutdown vs. live SSE clients (the session-rotation restart hang) ─────────
+
+test("SseHub: a stream arriving after close() is severed, never registered (no late reconnect holds shutdown open)", () => {
+  const hub = new SseHub();
+  let destroyed = false;
+  let wroteHead = false;
+  const res = {
+    writeHead: () => {
+      wroteHead = true;
+    },
+    write: () => true,
+    end: () => {},
+    destroy: () => {
+      destroyed = true;
+    },
+    on: () => {},
+  } as unknown as ServerResponse;
+  hub.close();
+  hub.add(res);
+  assert.equal(hub.size(), 0, "a post-close stream must not register");
+  assert.equal(destroyed, true, "the late stream is severed");
+  assert.equal(wroteHead, false, "no event-stream headers are written on a refused stream");
+});
+
+test("P1: close() resolves even when an /events request is IN FLIGHT at shutdown — a restart never waits on a client", async () => {
+  // The deterministic form of the flaky session-rotation e2e hang: an /events request the
+  // server has ACCEPTED but not yet registered when close() fires (handleRequest's async
+  // marshaling spans event-loop turns) reaches sse.add AFTER sse.close() has run. Unfixed,
+  // that registered a never-ending stream on an active socket and server.close() waited on it
+  // forever — reproduced on the unfixed code at one specific close()-timing turn. The
+  // vulnerable window is a timing offset by nature, so SWEEP close() across the first few
+  // event-loop turns after the request bytes go out: the fixed server must close bounded at
+  // EVERY offset (the hub's post-close guard refuses the late stream; closeAllConnections
+  // severs the socket).
+  for (let ticks = 0; ticks <= 4; ticks++) {
+    const { handle, dir } = await bootPagesServer();
+    const sock = connect(handle.port, handle.host);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        sock.once("connect", () => resolve());
+        sock.once("error", reject);
+      });
+      // Being severed mid-flight by the shutdown under test is the expected outcome, not an error.
+      sock.on("error", () => {});
+      sock.write(`GET /events?token=${SECRET} HTTP/1.1\r\nhost: ${handle.host}:${handle.port}\r\n\r\n`);
+      for (let i = 0; i < ticks; i++) await new Promise<void>((resolve) => setImmediate(resolve));
+
+      const closed = await Promise.race([
+        handle.close().then(() => true as const),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 5_000).unref()),
+      ]);
+      assert.equal(closed, true, `close() must resolve promptly with an in-flight /events request (offset: ${ticks} ticks)`);
+    } finally {
+      sock.destroy();
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("P1: close() resolves even when a request is held MID-MARSHALING at shutdown (body declared, never sent)", async () => {
+  // The timing-INDEPENDENT form of the same hang: a request the server has accepted whose body
+  // marshaling can never finish (content-length declared, bytes withheld) keeps its socket
+  // active for as long as the client pleases — unfixed, server.close() waited on it forever
+  // (verified: this construction hangs the unfixed close() deterministically, no tick sweep
+  // needed). closeAllConnections severs it; the try/caught 500 fallback absorbs the aborted
+  // marshaling without an unhandled rejection.
+  const { handle, dir } = await bootPagesServer();
+  const sock = connect(handle.port, handle.host);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      sock.once("connect", () => resolve());
+      sock.once("error", reject);
+    });
+    sock.on("error", () => {});
+    sock.write(
+      `POST /events?token=${SECRET} HTTP/1.1\r\nhost: ${handle.host}:${handle.port}\r\nx-requested-with: test\r\ncontent-length: 3\r\n\r\n`,
+    );
+    // Let the server accept the request and block awaiting the 3 body bytes that never come.
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+
+    const closed = await Promise.race([
+      handle.close().then(() => true as const),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 5_000).unref()),
+    ]);
+    assert.equal(closed, true, "close() must resolve promptly with a mid-marshaling request held open");
+  } finally {
+    sock.destroy();
+    await rm(dir, { recursive: true, force: true });
   }
 });

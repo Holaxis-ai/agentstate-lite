@@ -391,8 +391,14 @@ export async function bootUiServer(options: UiServerOptions): Promise<UiServerHa
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
       void handleRequest(req, res, options, runtime, sessionSecret).catch((err: unknown) => {
-        res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ error: { code: "RUNTIME", message: err instanceof Error ? err.message : String(err) } }));
+        // Best-effort: the response may already be severed (shutdown's closeAllConnections) — a
+        // throwing fallback here would surface as an unhandled rejection, not a served error.
+        try {
+          res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: { code: "RUNTIME", message: err instanceof Error ? err.message : String(err) } }));
+        } catch {
+          res.destroy();
+        }
       });
     });
     server.once("error", (err) => {
@@ -415,6 +421,11 @@ export async function bootUiServer(options: UiServerOptions): Promise<UiServerHa
             void runtime.watcher?.stop();
             runtime.sse.close();
             server.close((err) => (err ? rejectClose(err) : resolveClose()));
+            // Shutdown never waits on a client: sever every remaining socket now. Without this,
+            // an EventSource reconnect racing onto a kept-alive connection mid-drain registers a
+            // fresh never-ending stream (or a pipelined request keeps its socket active) and
+            // `server.close()` blocks forever — the session-rotation restart hang.
+            server.closeAllConnections();
           }),
       });
     });
