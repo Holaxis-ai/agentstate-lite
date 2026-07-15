@@ -1,18 +1,18 @@
 ---
 name: agentstate-lite
 description: >-
-  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and a
-  self-contained static-HTML view) via the self-contained agentstate-lite CLI bundled in this
+  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and live
+  bundle Pages) via the self-contained agentstate-lite CLI bundled in this
   skill (scripts/agentstate-lite — a committed, zero-dependency bundle; no npm install
   required). Use when an agent needs to persist a context note across sessions, store a
   decision/spec as a doc, link concepts, query a bundle, share the project's board with
-  teammates (`sync`), run a local wire-protocol server (`serve` / `--remote`), or bake a
-  shareable HTML view.
+  teammates (`sync`), run a local wire-protocol server (`serve` / `--remote`), or open the
+  bundle's local Page UI.
 ---
 
 # agentstate-lite
 
-read and write a local OKF knowledge bundle (context notes, docs, cross-links, static-HTML view).
+read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Pages).
 
 This skill bundles a **self-contained** `agentstate-lite` CLI at `scripts/agentstate-lite` (a
 committed, zero-dependency `.mjs` esbuild bundle, run through a small bash shim). It runs under
@@ -86,8 +86,6 @@ the rest of the line unchanged.
   — Register and deterministically resolve this user's explicitly named local workspaces
 - `"$ASLITE" init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]`
   — Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init
-- `"$ASLITE" view [--dir <path>] [--out <path>] [--name <label>] [--remote <url>]`
-  — Bake the bundle into one self-contained static HTML file
 - `"$ASLITE" status [--limit <n>] [--remote <url>]`
   — Read-only bundle health report (kind lint, unresolved links, orphans, staleness, graph lints)
 
@@ -244,9 +242,6 @@ share this bundle? When the user's intent is ambiguous, ask rather than defaulti
 "$ASLITE" doc write specs/auth --type Spec --title "Auth" --body "…" --actor <your-name>
 "$ASLITE" link add specs/auth context-notes/cycle-1
 "$ASLITE" list --type Spec
-
-# Bake a shareable, self-contained HTML view of the whole bundle
-"$ASLITE" view
 
 # Share the board — recording work isn't done until it's shared
 # (safe everywhere: a local-only board just reports its state; outside any

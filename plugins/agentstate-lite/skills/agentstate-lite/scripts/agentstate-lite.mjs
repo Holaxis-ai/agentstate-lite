@@ -3409,7 +3409,7 @@ var require_parse = __commonJS({
 var require_gray_matter = __commonJS({
   "../../node_modules/gray-matter/index.js"(exports2, module2) {
     "use strict";
-    var fs12 = __require("fs");
+    var fs11 = __require("fs");
     var sections = require_section_matter();
     var defaults = require_defaults();
     var stringify = require_stringify();
@@ -3493,7 +3493,7 @@ var require_gray_matter = __commonJS({
       return stringify(file, data, options2);
     };
     matter2.read = function(filepath, options2) {
-      const str2 = fs12.readFileSync(filepath, "utf8");
+      const str2 = fs11.readFileSync(filepath, "utf8");
       const file = matter2(str2, options2);
       file.path = filepath;
       return file;
@@ -3894,26 +3894,26 @@ function applyReplacer(root, replacer) {
   if (replacedRoot === void 0) return transformChildren(root, replacer, []);
   return transformChildren(normalizeValue(replacedRoot), replacer, []);
 }
-function transformChildren(value, replacer, path15) {
-  if (isJsonObject(value)) return transformObject(value, replacer, path15);
-  if (isJsonArray(value)) return transformArray(value, replacer, path15);
+function transformChildren(value, replacer, path14) {
+  if (isJsonObject(value)) return transformObject(value, replacer, path14);
+  if (isJsonArray(value)) return transformArray(value, replacer, path14);
   return value;
 }
-function transformObject(obj, replacer, path15) {
+function transformObject(obj, replacer, path14) {
   const result = {};
   for (const [key, value] of Object.entries(obj)) {
-    const childPath = [...path15, key];
+    const childPath = [...path14, key];
     const replacedValue = replacer(key, value, childPath);
     if (replacedValue === void 0) continue;
     result[key] = transformChildren(normalizeValue(replacedValue), replacer, childPath);
   }
   return result;
 }
-function transformArray(arr, replacer, path15) {
+function transformArray(arr, replacer, path14) {
   const result = [];
   for (let i = 0; i < arr.length; i++) {
     const value = arr[i];
-    const childPath = [...path15, i];
+    const childPath = [...path14, i];
     const replacedValue = replacer(String(i), value, childPath);
     if (replacedValue === void 0) continue;
     const normalizedValue = normalizeValue(replacedValue);
@@ -3940,11 +3940,11 @@ function resolveOptions(options2) {
 }
 
 // ../../node_modules/axi-sdk-js/dist/output.js
-function collapseHomeDirectory(path15, homeDir = homedir()) {
-  if (!path15.startsWith(homeDir)) {
-    return path15;
+function collapseHomeDirectory(path14, homeDir = homedir()) {
+  if (!path14.startsWith(homeDir)) {
+    return path14;
   }
-  return `~${path15.slice(homeDir.length)}`;
+  return `~${path14.slice(homeDir.length)}`;
 }
 function homeHeaderOutput(options2) {
   return {
@@ -4048,16 +4048,16 @@ function isUpdateAvailable(current, latest) {
 }
 var nodeFs = {
   existsSync,
-  readFileSync: (path15, encoding) => readFileSync(path15, encoding)
+  readFileSync: (path14, encoding) => readFileSync(path14, encoding)
 };
-function readNearestPackageJson(startPath, fs12 = nodeFs) {
+function readNearestPackageJson(startPath, fs11 = nodeFs) {
   let dir = dirname(startPath);
   let previous = "";
   while (dir !== previous) {
     const packageJsonPath = join(dir, "package.json");
-    if (fs12.existsSync(packageJsonPath)) {
+    if (fs11.existsSync(packageJsonPath)) {
       try {
-        const parsed = JSON.parse(fs12.readFileSync(packageJsonPath, "utf-8"));
+        const parsed = JSON.parse(fs11.readFileSync(packageJsonPath, "utf-8"));
         if (typeof parsed.name === "string" && parsed.name.length > 0) {
           return {
             packageName: parsed.name,
@@ -4075,36 +4075,36 @@ function readNearestPackageJson(startPath, fs12 = nodeFs) {
 }
 function detectInstallMethod(options2) {
   const env = options2.env ?? process.env;
-  const path15 = options2.entry.replaceAll("\\", "/");
-  if (path15.includes("/_npx/") || /\/dlx-[^/]+\//.test(path15) || path15.includes("/pnpm/dlx/") || path15.includes("/bun/install/cache/")) {
+  const path14 = options2.entry.replaceAll("\\", "/");
+  if (path14.includes("/_npx/") || /\/dlx-[^/]+\//.test(path14) || path14.includes("/pnpm/dlx/") || path14.includes("/bun/install/cache/")) {
     return { kind: "npx" };
   }
-  const homebrewFormula = homebrewFormulaFromPath(path15, env);
+  const homebrewFormula = homebrewFormulaFromPath(path14, env);
   if (homebrewFormula) {
     return { kind: "homebrew", formula: homebrewFormula };
   }
   const pnpmHome = normalizePathRoot(env.PNPM_HOME);
-  if (isPathInsideRoot(path15, pnpmHome) || isKnownPnpmGlobalStore(path15, env)) {
+  if (isPathInsideRoot(path14, pnpmHome) || isKnownPnpmGlobalStore(path14, env)) {
     return { kind: "pnpm-global" };
   }
-  if (isKnownNpmGlobalInstall(path15, env)) {
+  if (isKnownNpmGlobalInstall(path14, env)) {
     return { kind: "npm-global" };
   }
   return { kind: "unknown" };
 }
-function normalizePathRoot(path15) {
-  const normalized = path15?.replaceAll("\\", "/").replace(/\/+$/, "");
+function normalizePathRoot(path14) {
+  const normalized = path14?.replaceAll("\\", "/").replace(/\/+$/, "");
   return normalized && normalized.length > 0 ? normalized : void 0;
 }
-function isPathInsideRoot(path15, root) {
-  return root !== void 0 && (path15 === root || path15.startsWith(`${root}/`));
+function isPathInsideRoot(path14, root) {
+  return root !== void 0 && (path14 === root || path14.startsWith(`${root}/`));
 }
-function homebrewFormulaFromPath(path15, env) {
+function homebrewFormulaFromPath(path14, env) {
   for (const root of homebrewCellarRoots(env)) {
-    if (!isPathInsideRoot(path15, root)) {
+    if (!isPathInsideRoot(path14, root)) {
       continue;
     }
-    const relative = path15.slice(root.length).replace(/^\/+/, "");
+    const relative = path14.slice(root.length).replace(/^\/+/, "");
     const formula = relative.split("/")[0];
     if (formula) {
       return formula;
@@ -4132,12 +4132,12 @@ function homebrewCellarRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownPnpmGlobalStore(path15, env) {
+function isKnownPnpmGlobalStore(path14, env) {
   return pnpmGlobalStoreRoots(env).some((root) => {
-    if (!isPathInsideRoot(path15, root)) {
+    if (!isPathInsideRoot(path14, root)) {
       return false;
     }
-    const relative = path15.slice(root.length).replace(/^\/+/, "");
+    const relative = path14.slice(root.length).replace(/^\/+/, "");
     return /^\d+\/\.pnpm\//.test(relative);
   });
 }
@@ -4155,8 +4155,8 @@ function pnpmGlobalStoreRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownNpmGlobalInstall(path15, env) {
-  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path15, root)) || isKnownVersionManagerNpmGlobal(path15, env);
+function isKnownNpmGlobalInstall(path14, env) {
+  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path14, root)) || isKnownVersionManagerNpmGlobal(path14, env);
 }
 function npmGlobalNodeModulesRoots(env) {
   const roots = [
@@ -4182,8 +4182,8 @@ function npmGlobalNodeModulesRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownVersionManagerNpmGlobal(path15, env) {
-  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path15, root) && path15.includes("/lib/node_modules/"));
+function isKnownVersionManagerNpmGlobal(path14, env) {
+  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path14, root) && path14.includes("/lib/node_modules/"));
 }
 function versionManagerNodeRoots(env) {
   const roots = [];
@@ -4346,7 +4346,7 @@ async function defaultRunInstall(plan, stdout, context) {
   }
   stdout.write(`running: ${plan.command}
 `);
-  return new Promise((resolve3) => {
+  return new Promise((resolve2) => {
     const [command, ...args] = argv;
     const child = spawn(packageManagerExecutable(command, context.platform), args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -4359,10 +4359,10 @@ async function defaultRunInstall(plan, stdout, context) {
       process.stderr.write(chunk);
     });
     child.on("error", (error) => {
-      resolve3({ ok: false, message: error.message });
+      resolve2({ ok: false, message: error.message });
     });
     child.on("close", (code) => {
-      resolve3(code === 0 ? { ok: true } : { ok: false, message: `${plan.command} exited with code ${code}` });
+      resolve2(code === 0 ? { ok: true } : { ok: false, message: `${plan.command} exited with code ${code}` });
     });
   });
 }
@@ -4379,9 +4379,9 @@ function resolveEntry(invokedAs, realpath) {
     return invokedAs;
   }
 }
-function resolveInstalledVersion(invokedAs, realpath, fs12) {
+function resolveInstalledVersion(invokedAs, realpath, fs11) {
   const installedEntry = resolveEntry(invokedAs, realpath);
-  return installedEntry ? readNearestPackageJson(installedEntry, fs12).version : void 0;
+  return installedEntry ? readNearestPackageJson(installedEntry, fs11).version : void 0;
 }
 function homebrewUpgradeOutput(options2) {
   const update = {
@@ -4419,10 +4419,10 @@ async function runUpdate(options2) {
   const binName = binNameFromArgv(invokedAs);
   const mode = parseUpdateArgs(options2.args, binName);
   const platform = options2.platform ?? process.platform;
-  const realpath = options2.realpath ?? ((path15) => realpathSync(path15));
+  const realpath = options2.realpath ?? ((path14) => realpathSync(path14));
   const entry = resolveEntry(invokedAs, realpath);
-  const fs12 = options2.fs ?? nodeFs;
-  const fromPackageJson = entry ? readNearestPackageJson(entry, fs12) : {};
+  const fs11 = options2.fs ?? nodeFs;
+  const fromPackageJson = entry ? readNearestPackageJson(entry, fs11) : {};
   const packageName = options2.packageName ?? fromPackageJson.packageName;
   const current = options2.version ?? fromPackageJson.version;
   if (!packageName) {
@@ -4484,7 +4484,7 @@ async function runUpdate(options2) {
       packageName,
       current,
       latest,
-      installedVersion: resolveInstalledVersion(invokedAs, realpath, fs12),
+      installedVersion: resolveInstalledVersion(invokedAs, realpath, fs11),
       command: plan.command
     });
   }
@@ -5812,7 +5812,7 @@ function retryDelayMs(attempt) {
   return backoff + Math.floor(Math.random() * RETRY_JITTER_MS);
 }
 function delay(ms) {
-  return new Promise((resolve3) => setTimeout(resolve3, ms));
+  return new Promise((resolve2) => setTimeout(resolve2, ms));
 }
 function encodeId(id) {
   return id.split("/").map((seg) => encodeURIComponent(seg)).join("/");
@@ -6122,13 +6122,13 @@ function describeShape(value) {
   if (typeof value === "object") return "an object";
   return typeof value;
 }
-function toStringArrayLenient(value, path15, docId, warnings) {
+function toStringArrayLenient(value, path14, docId, warnings) {
   if (!Array.isArray(value)) {
     if (value !== void 0) {
       warnings.push({
         code: "KIND_CONVENTION_BAD_SHAPE",
-        message: `kind convention '${docId}' has a non-list '${path15}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
-        field: path15,
+        message: `kind convention '${docId}' has a non-list '${path14}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
+        field: path14,
         severity: "warning"
       });
     }
@@ -6141,8 +6141,8 @@ function toStringArrayLenient(value, path15, docId, warnings) {
     } else {
       warnings.push({
         code: "KIND_CONVENTION_BAD_MEMBER",
-        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path15}'; skipping it.`,
-        field: path15,
+        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path14}'; skipping it.`,
+        field: path14,
         severity: "warning"
       });
     }
@@ -6496,7 +6496,7 @@ function parseConventionDoc(doc2) {
       });
     }
   }
-  const path15 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
+  const path14 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
   const freshnessHorizon = typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== "" ? fm.freshness_horizon.trim() : void 0;
   const kind2 = {
     id: doc2.id,
@@ -6505,7 +6505,7 @@ function parseConventionDoc(doc2) {
     fields: { required, optional, values, valueDescriptions, terminal, descriptions }
   };
   if (description !== void 0) kind2.description = description;
-  if (path15 !== void 0) kind2.path = path15;
+  if (path14 !== void 0) kind2.path = path14;
   if (links !== void 0) kind2.links = links;
   if (linkDescriptions !== void 0) kind2.linkDescriptions = linkDescriptions;
   if (expectsInbound !== void 0) kind2.expectsInbound = expectsInbound;
@@ -6939,8 +6939,8 @@ function normalizeServer(raw) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`server URL must use http or https: ${raw}`);
   }
-  const path15 = url.pathname.replace(/\/+$/, "");
-  return { base: url.origin + path15, resource: url.origin };
+  const path14 = url.pathname.replace(/\/+$/, "");
+  return { base: url.origin + path14, resource: url.origin };
 }
 
 // src/credentials.ts
@@ -6961,7 +6961,7 @@ function credentialsPath(home2 = homedir3()) {
 async function writeFileAtomic0600(dir, fileName, content) {
   await mkdir(dir, { recursive: true, mode: DIR_MODE });
   await chmod(dir, DIR_MODE);
-  const path15 = join3(dir, fileName);
+  const path14 = join3(dir, fileName);
   const tmpPath = join3(dir, `.${fileName}.${randomBytes(8).toString("hex")}.tmp`);
   const handle = await open(tmpPath, "wx", FILE_MODE);
   try {
@@ -6971,7 +6971,7 @@ async function writeFileAtomic0600(dir, fileName, content) {
     await handle.close();
   }
   try {
-    await rename(tmpPath, path15);
+    await rename(tmpPath, path14);
   } catch (err) {
     await unlink(tmpPath).catch(() => {
     });
@@ -9830,7 +9830,7 @@ async function writeSyncState(key, patch, home2 = homedir4()) {
   const parent = credentialsDir(home2);
   await mkdir2(parent, { recursive: true, mode: DIR_MODE2 });
   await chmod2(parent, DIR_MODE2);
-  const path15 = syncStatePath(key, home2);
+  const path14 = syncStatePath(key, home2);
   const record = {
     key,
     cursor: next.cursor ?? void 0,
@@ -9840,7 +9840,7 @@ async function writeSyncState(key, patch, home2 = homedir4()) {
     autoPullAttemptAt: next.autoPullAttemptAt ?? void 0,
     hookHintedAt: next.hookHintedAt ?? void 0
   };
-  await writeFileAtomic0600(syncStateDir(home2), basename3(path15), JSON.stringify(record, null, 2) + "\n");
+  await writeFileAtomic0600(syncStateDir(home2), basename3(path14), JSON.stringify(record, null, 2) + "\n");
   return next;
 }
 async function writeCursor(key, cursor, home2 = homedir4()) {
@@ -10003,23 +10003,23 @@ function targetsFor(base) {
     opencodePlugin: join5(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
   };
 }
-function readSettings(path15) {
-  if (!existsSync4(path15)) return {};
+function readSettings(path14) {
+  if (!existsSync4(path14)) return {};
   try {
-    return JSON.parse(readFileSync3(path15, "utf8"));
+    return JSON.parse(readFileSync3(path14, "utf8"));
   } catch {
     return {};
   }
 }
-function writeSettings(path15, settings) {
-  mkdirSync2(dirname2(path15), { recursive: true });
-  writeFileSync2(path15, `${JSON.stringify(settings, null, 2)}
+function writeSettings(path14, settings) {
+  mkdirSync2(dirname2(path14), { recursive: true });
+  writeFileSync2(path14, `${JSON.stringify(settings, null, 2)}
 `);
 }
-function opencodePluginInstalled(path15) {
-  if (!existsSync4(path15)) return false;
+function opencodePluginInstalled(path14) {
+  if (!existsSync4(path14)) return false;
   try {
-    return readFileSync3(path15, "utf8").includes(OPENCODE_MANAGED_MARKER);
+    return readFileSync3(path14, "utf8").includes(OPENCODE_MANAGED_MARKER);
   } catch {
     return false;
   }
@@ -10252,10 +10252,10 @@ async function hook(argv, deps = {}) {
     return;
   }
   let changed = false;
-  for (const path15 of [targets.claudeSettings, targets.codexHooks]) {
-    const [updated, didChange] = computeHookUninstall(readSettings(path15));
+  for (const path14 of [targets.claudeSettings, targets.codexHooks]) {
+    const [updated, didChange] = computeHookUninstall(readSettings(path14));
     if (didChange) {
-      writeSettings(path15, updated);
+      writeSettings(path14, updated);
       changed = true;
     }
   }
@@ -12197,7 +12197,7 @@ function inBundlePollutionWarning(bundle, out) {
     return `--out ${out} resolves to ${resolvedOut}, which is INSIDE this bundle (${root}) at a reserved OKF filename \u2014 the write will CLOBBER that reserved file (index.md/log.md is never re-parsed as a concept doc). Pass a path outside the bundle if that is not intended.`;
   }
   if (!resolvedOut.endsWith(".md")) return void 0;
-  return `--out ${out} resolves to ${resolvedOut}, which is INSIDE this bundle (${root}) \u2014 the exported file will be re-ingested as a new concept doc on the next bundle walk (list/query/view/status). Pass a path outside the bundle if that is not intended.`;
+  return `--out ${out} resolves to ${resolvedOut}, which is INSIDE this bundle (${root}) \u2014 the exported file will be re-ingested as a new concept doc on the next bundle walk (list/query/status). Pass a path outside the bundle if that is not intended.`;
 }
 
 // src/commands/doc/history.ts
@@ -14835,406 +14835,8 @@ async function status(argv, deps = {}) {
   stdout(render(out, resolveMode(values)));
 }
 
-// src/commands/view.ts
-import { parseArgs as parseArgs21 } from "node:util";
-
-// ../viewer/src/generate.ts
-import { promises as fs11 } from "node:fs";
-import * as path12 from "node:path";
-
-// ../viewer/src/bundle.ts
-function asString(value) {
-  return typeof value === "string" ? value : "";
-}
-function asStringArray(value) {
-  if (Array.isArray(value)) return value.map((v) => String(v));
-  if (typeof value === "string" && value.trim() !== "") return [value];
-  return [];
-}
-function baseName(root) {
-  const parts = root.replace(/[/\\]+$/, "").split(/[/\\]/);
-  return parts[parts.length - 1] || "bundle";
-}
-async function buildBundleData(source, name) {
-  const bundle = typeof source === "string" ? { root: source } : source;
-  const docs = await query(bundle);
-  const nodes = [];
-  const bodies = {};
-  for (const doc2 of docs) {
-    nodes.push({
-      id: doc2.id,
-      type: asString(doc2.frontmatter.type) || "Untyped",
-      title: asString(doc2.frontmatter.title) || doc2.id,
-      description: asString(doc2.frontmatter.description),
-      resource: asString(doc2.frontmatter.resource),
-      tags: asStringArray(doc2.frontmatter.tags),
-      size: doc2.body.length
-    });
-    bodies[doc2.id] = doc2.body;
-  }
-  const known = new Set(nodes.map((n) => n.id));
-  const edges = [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const doc2 of docs) {
-    for (const link2 of parseLinksFromDoc(doc2)) {
-      if (!known.has(link2.to) || link2.to === doc2.id) continue;
-      const key = `${doc2.id} ${link2.to}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      edges.push({ source: doc2.id, target: link2.to });
-    }
-  }
-  return { name: name ?? baseName(bundle.root), nodes, edges, bodies };
-}
-
-// ../viewer/src/assets.ts
-var VIZ_CSS = `
-:root {
-  --bg: #17181c;
-  --panel: #202124;
-  --edge: #5f6368;
-  --text: #e8eaed;
-  --muted: #9aa0a6;
-  --accent: #8ab4f8;
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
-body {
-  background: var(--bg);
-  color: var(--text);
-  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
-header {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid #2b2c30;
-  flex: 0 0 auto;
-}
-header .brand { font-weight: 700; letter-spacing: 0.02em; }
-header #bundle-name { color: var(--muted); }
-main { flex: 1 1 auto; display: flex; min-height: 0; }
-#graph { flex: 1 1 60%; min-width: 0; background: radial-gradient(circle at 40% 30%, #1d1f24, var(--bg)); }
-#detail {
-  flex: 0 0 40%;
-  max-width: 560px;
-  overflow-y: auto;
-  padding: 20px 24px;
-  border-left: 1px solid #2b2c30;
-  background: var(--panel);
-}
-#detail h1 { font-size: 20px; margin: 10px 0 2px; }
-#detail h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-top: 24px; }
-#detail .id { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; margin: 0 0 8px; }
-#detail .desc { color: var(--text); }
-#detail .chip { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; color: #17181c; font-weight: 600; }
-#detail .tags { margin: 8px 0; }
-#detail .tag { display: inline-block; background: #2b2c30; color: var(--muted); border-radius: 6px; padding: 1px 7px; margin: 0 6px 6px 0; font-size: 12px; }
-#detail .resource a, #detail a { color: var(--accent); }
-#detail a.internal { border-bottom: 1px dotted var(--accent); text-decoration: none; }
-#detail .body { margin-top: 16px; border-top: 1px solid #2b2c30; padding-top: 12px; }
-#detail .body pre { background: #17181c; padding: 10px; border-radius: 6px; overflow-x: auto; }
-#detail .body code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-#detail .backlinks ul { margin: 6px 0 0; padding-left: 18px; }
-#detail .muted { color: var(--muted); }
-`;
-var VIZ_JS = `
-(function () {
-  var DATA = window.__BUNDLE__ || { name: "", nodes: [], edges: [], bodies: {} };
-  var PALETTE = ["#4f8ef7", "#f7844f", "#4fce8b", "#c14ff7", "#f7d24f", "#f74f8b", "#4fd6f7", "#9b8cff"];
-
-  var types = [];
-  DATA.nodes.forEach(function (n) { if (types.indexOf(n.type) < 0) types.push(n.type); });
-  types.sort();
-  function colorFor(t) {
-    var i = types.indexOf(t);
-    return i < 0 ? "#9aa0a6" : PALETTE[i % PALETTE.length];
-  }
-
-  var byId = {};
-  DATA.nodes.forEach(function (n) { byId[n.id] = n; });
-
-  var backlinks = {};
-  DATA.edges.forEach(function (e) {
-    if (!backlinks[e.target]) backlinks[e.target] = [];
-    backlinks[e.target].push(e.source);
-  });
-
-  function escapeHtml(s) {
-    return String(s).split("&").join("&amp;").split("<").join("&lt;").split(">").join("&gt;").split('"').join("&quot;");
-  }
-  function escapeAttr(s) {
-    return escapeHtml(s).split("'").join("&#39;");
-  }
-
-  function resolvePath(sourceId, href) {
-    if (href.indexOf("://") >= 0) return null;
-    var hashAt = href.indexOf("#");
-    if (hashAt >= 0) href = href.slice(0, hashAt);
-    if (href.slice(-3) !== ".md") return null;
-    href = href.slice(0, -3);
-    var parts;
-    if (href.charAt(0) === "/") {
-      parts = href.slice(1).split("/");
-    } else {
-      var base = sourceId.split("/");
-      base.pop();
-      parts = base.concat(href.split("/"));
-    }
-    var out = [];
-    parts.forEach(function (p) {
-      if (p === "" || p === ".") return;
-      if (p === "..") { out.pop(); return; }
-      out.push(p);
-    });
-    return out.join("/");
-  }
-
-  var elements = [];
-  DATA.nodes.forEach(function (n) {
-    var size = 26 + Math.min(60, Math.round((n.size || 0) / 40));
-    elements.push({ data: { id: n.id, label: n.title || n.id, color: colorFor(n.type), size: size } });
-  });
-  DATA.edges.forEach(function (e, i) {
-    elements.push({ data: { id: "edge-" + i, source: e.source, target: e.target } });
-  });
-
-  var cy = cytoscape({
-    container: document.getElementById("graph"),
-    elements: elements,
-    style: [
-      { selector: "node", style: {
-        "background-color": "data(color)",
-        "label": "data(label)",
-        "width": "data(size)",
-        "height": "data(size)",
-        "font-size": 10,
-        "color": "#e8eaed",
-        "text-outline-color": "#17181c",
-        "text-outline-width": 2,
-        "text-valign": "bottom",
-        "text-margin-y": 4
-      } },
-      { selector: "edge", style: {
-        "width": 1.5,
-        "line-color": "#5f6368",
-        "target-arrow-color": "#5f6368",
-        "target-arrow-shape": "triangle",
-        "curve-style": "bezier",
-        "arrow-scale": 0.8
-      } },
-      { selector: "node.selected", style: { "border-width": 3, "border-color": "#e8eaed" } }
-    ],
-    layout: { name: "cose", animate: false, padding: 30 }
-  });
-
-  function renderDetail(id) {
-    var panel = document.getElementById("detail");
-    var n = byId[id];
-    if (!n) { panel.innerHTML = '<p class="muted">Unknown concept: ' + escapeHtml(id) + "</p>"; return; }
-    var h = "";
-    h += '<span class="chip" style="background:' + colorFor(n.type) + '">' + escapeHtml(n.type) + "</span>";
-    h += "<h1>" + escapeHtml(n.title || id) + "</h1>";
-    h += '<p class="id">' + escapeHtml(id) + "</p>";
-    if (n.description) h += '<p class="desc">' + escapeHtml(n.description) + "</p>";
-    if (n.resource) h += '<p class="resource"><a href="' + escapeAttr(n.resource) + '" target="_blank" rel="noopener">' + escapeHtml(n.resource) + "</a></p>";
-    if (n.tags && n.tags.length) {
-      h += '<p class="tags">';
-      n.tags.forEach(function (t) { h += '<span class="tag">' + escapeHtml(t) + "</span>"; });
-      h += "</p>";
-    }
-    // Bundle bodies are untrusted (a shared viz.html renders someone else's markdown),
-    // so marked.js output only ever reaches innerHTML through DOMPurify. If DOMPurify
-    // failed to load (e.g. the CDN is blocked), fall back to plain escaped text rather
-    // than ever assigning unsanitized HTML \u2014 safe-by-default, not safe-by-CDN-uptime.
-    var rawBody = DATA.bodies[id] || "";
-    var rendered;
-    if (window.marked && window.marked.parse && window.DOMPurify && window.DOMPurify.sanitize) {
-      rendered = window.DOMPurify.sanitize(window.marked.parse(rawBody));
-    } else {
-      rendered = escapeHtml(rawBody);
-    }
-    h += '<div class="body">' + rendered + "</div>";
-    var bl = backlinks[id] || [];
-    h += '<div class="backlinks"><h2>Cited by</h2>';
-    if (!bl.length) {
-      h += '<p class="muted">Nothing links here yet.</p>';
-    } else {
-      h += "<ul>";
-      bl.forEach(function (s) {
-        var sn = byId[s];
-        h += '<li><a href="#" data-nav="' + escapeAttr(s) + '">' + escapeHtml((sn && sn.title) || s) + "</a></li>";
-      });
-      h += "</ul>";
-    }
-    h += "</div>";
-    panel.innerHTML = h;
-
-    var links = panel.querySelectorAll(".body a[href]");
-    Array.prototype.forEach.call(links, function (a) {
-      var target = resolvePath(id, a.getAttribute("href") || "");
-      if (target && byId[target]) {
-        a.setAttribute("data-nav", target);
-        a.className = (a.className ? a.className + " " : "") + "internal";
-      } else if ((a.getAttribute("href") || "").indexOf("://") >= 0) {
-        a.setAttribute("target", "_blank");
-        a.setAttribute("rel", "noopener");
-      }
-    });
-    Array.prototype.forEach.call(panel.querySelectorAll("[data-nav]"), function (a) {
-      a.addEventListener("click", function (ev) { ev.preventDefault(); navigate(a.getAttribute("data-nav")); });
-    });
-  }
-
-  function navigate(id) {
-    cy.nodes().removeClass("selected");
-    var node = cy.getElementById(id);
-    if (node && node.length) {
-      node.addClass("selected");
-      cy.animate({ center: { eles: node }, zoom: Math.max(cy.zoom(), 1) }, { duration: 250 });
-    }
-    renderDetail(id);
-    location.hash = encodeURIComponent(id);
-  }
-
-  cy.on("tap", "node", function (evt) { navigate(evt.target.id()); });
-
-  var nameEl = document.getElementById("bundle-name");
-  if (nameEl) nameEl.textContent = DATA.name;
-
-  var initial = decodeURIComponent((location.hash || "").slice(1));
-  if (initial && byId[initial]) navigate(initial);
-  else if (DATA.nodes.length) renderDetail(DATA.nodes[0].id);
-})();
-`;
-
-// ../viewer/src/template.ts
-var HTML_SKELETON = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>__BUNDLE_NAME__ \xB7 OKF bundle</title>
-<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
-<style>/*__VIZ_CSS__*/</style>
-</head>
-<body>
-<header><span class="brand">agentstate-lite</span><span id="bundle-name"></span></header>
-<main>
-<div id="graph"></div>
-<aside id="detail"></aside>
-</main>
-<script>window.__BUNDLE__ = /*__BUNDLE_DATA__*/;</script>
-<script>/*__VIZ_JS__*/</script>
-</body>
-</html>
-`;
-function escapeHtmlText(s) {
-  return s.split("&").join("&amp;").split("<").join("&lt;").split(">").join("&gt;");
-}
-function embedJson(data) {
-  return JSON.stringify(data).split("</").join("<\\/");
-}
-function renderTemplate(data) {
-  return HTML_SKELETON.split("__BUNDLE_NAME__").join(escapeHtmlText(data.name)).split("/*__VIZ_CSS__*/").join(VIZ_CSS).split("/*__BUNDLE_DATA__*/").join(embedJson(data)).split("/*__VIZ_JS__*/").join(VIZ_JS);
-}
-
-// ../viewer/src/generate.ts
-async function generateVisualization(bundleSource, options2 = {}) {
-  let data;
-  let defaultOutDir;
-  if (typeof bundleSource === "string") {
-    const root = path12.resolve(bundleSource);
-    const stat2 = await fs11.stat(root).catch(() => null);
-    if (!stat2 || !stat2.isDirectory()) {
-      throw new Error("bundle directory not found: " + root);
-    }
-    data = await buildBundleData(root, options2.name);
-    defaultOutDir = root;
-  } else {
-    data = await buildBundleData(bundleSource, options2.name);
-    defaultOutDir = process.cwd();
-  }
-  const html = renderTemplate(data);
-  const out = path12.resolve(options2.out ?? path12.join(defaultOutDir, "viz.html"));
-  await fs11.mkdir(path12.dirname(out), { recursive: true });
-  const tmp = out + ".tmp-" + process.pid;
-  await fs11.writeFile(tmp, html, "utf8");
-  await fs11.rename(tmp, out);
-  return { out, nodeCount: data.nodes.length, edgeCount: data.edges.length };
-}
-
-// src/commands/view.ts
-var VIEW_USAGE = `agentstate-lite view \u2014 bake the bundle into one self-contained static HTML file
-
-Usage:
-  agentstate-lite view [--dir <path>] [--out <path>] [--name <label>]
-
-Options:
-  --dir <path>         Bundle directory (default: discovered from the cwd)
-  --remote <url>       Talk to a wire-protocol server instead of a local bundle
-                       (mutually exclusive with --dir; remote access is always explicit).
-                       --out then defaults to ./viz.html in the current directory \u2014 viz.html is
-                       always written LOCALLY.
-  --out <path>         Output HTML path (default: <root>/viz.html, or ./viz.html for --remote)
-  --name <label>       Display label shown in the viewer header
-  --json               Emit compact JSON instead of TOON
-  -h, --help           Show this help
-`;
-async function view(argv, deps = {}) {
-  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
-  const { values } = parseOrUsage(
-    () => parseArgs21({
-      args: argv,
-      options: {
-        dir: { type: "string" },
-        remote: { type: "string" },
-        out: { type: "string" },
-        name: { type: "string" },
-        json: { type: "boolean" },
-        help: { type: "boolean", short: "h" }
-      },
-      allowPositionals: true
-    }),
-    "view"
-  );
-  if (values.help) {
-    stdout(VIEW_USAGE);
-    return;
-  }
-  const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
-  const options2 = {};
-  if (values.out?.trim()) options2.out = values.out.trim();
-  if (values.name?.trim()) options2.name = values.name.trim();
-  const result = await generateVisualization(bundle.backend ? bundle : bundle.root, options2);
-  stdout(
-    render(
-      {
-        view: "ok",
-        out: result.out,
-        nodes: result.nodeCount,
-        edges: result.edgeCount,
-        // The bundle DATA is inlined (self-contained, nothing leaves the page), but the render
-        // libraries (Cytoscape/marked/DOMPurify) load from a CDN — so an OFFLINE recipient sees a
-        // blank shell. State it here rather than let a shared file surprise them (comprehensive UX
-        // audit finding); inlining the libs for true offline use is a deliberate, ~460 KB-per-file
-        // tradeoff, not the default.
-        note: "viz.html inlines the bundle data but loads its render libraries (Cytoscape/marked/DOMPurify) from a CDN \u2014 it needs network access to draw the graph and render markdown. Share it with recipients who are online.",
-        help: [`open ${result.out}`]
-      },
-      resolveMode(values)
-    )
-  );
-}
-
 // src/commands/serve.ts
-import { parseArgs as parseArgs22 } from "node:util";
+import { parseArgs as parseArgs21 } from "node:util";
 
 // ../server/src/router.ts
 var DEFAULT_LIST_LIMIT = 50;
@@ -15592,10 +15194,10 @@ function buildRouter(backend) {
 import { createServer } from "node:http";
 function readBody(req) {
   if (req.method === "GET" || req.method === "HEAD") return Promise.resolve(void 0);
-  return new Promise((resolve3, reject) => {
+  return new Promise((resolve2, reject) => {
     const chunks = [];
     req.on("data", (chunk) => chunks.push(chunk));
-    req.on("end", () => resolve3(chunks.length > 0 ? Buffer.concat(chunks) : void 0));
+    req.on("end", () => resolve2(chunks.length > 0 ? Buffer.concat(chunks) : void 0));
     req.on("error", reject);
   });
 }
@@ -15625,7 +15227,7 @@ async function writeResponseToServerResponse(res, response) {
 function serve(options2) {
   const router = createRouter(options2.bundle);
   const host = options2.host ?? "127.0.0.1";
-  return new Promise((resolve3, reject) => {
+  return new Promise((resolve2, reject) => {
     const server = createServer((req, res) => {
       const origin = `http://${req.headers.host ?? `${host}:0`}`;
       requestFromIncomingMessage(req, origin).then((request) => router(request)).then((response) => writeResponseToServerResponse(res, response)).catch((err) => {
@@ -15640,7 +15242,7 @@ function serve(options2) {
         reject(new Error("failed to bind a TCP address"));
         return;
       }
-      resolve3({
+      resolve2({
         host,
         port: addr.port,
         close: () => new Promise((resolveClose, rejectClose) => {
@@ -15673,9 +15275,9 @@ direct local CLI write) over the SAME directory is still best-effort \u2014 see 
 `;
 var DEFAULT_SERVE_PORT = 4818;
 function defaultWaitForShutdown() {
-  return new Promise((resolve3) => {
-    process.once("SIGINT", () => resolve3());
-    process.once("SIGTERM", () => resolve3());
+  return new Promise((resolve2) => {
+    process.once("SIGINT", () => resolve2());
+    process.once("SIGTERM", () => resolve2());
   });
 }
 async function serve2(argv, deps = {}) {
@@ -15683,7 +15285,7 @@ async function serve2(argv, deps = {}) {
   const bootServer = deps.bootServer ?? serve;
   const waitForShutdown = deps.waitForShutdown ?? defaultWaitForShutdown;
   const { values } = parseOrUsage(
-    () => parseArgs22({
+    () => parseArgs21({
       args: argv,
       options: {
         dir: { type: "string" },
@@ -15747,7 +15349,7 @@ function mapBootError(err, port) {
 }
 
 // src/commands/ui.ts
-import { parseArgs as parseArgs23 } from "node:util";
+import { parseArgs as parseArgs22 } from "node:util";
 import { spawn as spawn2 } from "node:child_process";
 
 // src/ui/server.ts
@@ -16393,7 +15995,7 @@ async function bootUiServer(options2) {
   const sessionSecret = options2.sessionSecret ?? mintSessionSecret();
   const runtime = { nonces: new PageNonceRegistry(), sse: new SseHub() };
   runtime.watcher = await bootWatcher(options2, runtime.sse);
-  return new Promise((resolve3, reject) => {
+  return new Promise((resolve2, reject) => {
     const server = createServer2((req, res) => {
       void handleRequest(req, res, options2, runtime, sessionSecret).catch((err) => {
         res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
@@ -16411,7 +16013,7 @@ async function bootUiServer(options2) {
         reject(new Error("failed to bind a TCP address"));
         return;
       }
-      resolve3({
+      resolve2({
         host: HOST,
         port: addr.port,
         token: sessionSecret,
@@ -16428,10 +16030,10 @@ async function bootUiServer(options2) {
 // src/ui/url-file.ts
 import { readFile as readFile3, unlink as unlink2 } from "node:fs/promises";
 import { homedir as homedir6 } from "node:os";
-import { join as join7 } from "node:path";
+import { join as join6 } from "node:path";
 var UI_URL_FILE_NAME = "ui-url";
 function uiUrlFilePath(home2 = homedir6()) {
-  return join7(credentialsDir(home2), UI_URL_FILE_NAME);
+  return join6(credentialsDir(home2), UI_URL_FILE_NAME);
 }
 async function writeUiUrlFile(url, home2 = homedir6()) {
   try {
@@ -16470,9 +16072,9 @@ credential while this run lasts, removed on clean shutdown; after a crash the le
 dead (the server is gone, and the secret rotates next boot).
 `;
 function defaultWaitForShutdown2() {
-  return new Promise((resolve3) => {
-    process.once("SIGINT", () => resolve3());
-    process.once("SIGTERM", () => resolve3());
+  return new Promise((resolve2) => {
+    process.once("SIGINT", () => resolve2());
+    process.once("SIGTERM", () => resolve2());
   });
 }
 function defaultOpenBrowser(url) {
@@ -16510,7 +16112,7 @@ async function ui(argv, deps = {}) {
   const writeUrlFile = deps.writeUrlFile ?? ((url2) => writeUiUrlFile(url2));
   const clearUrlFile = deps.clearUrlFile ?? ((url2) => clearUiUrlFile(url2));
   const { values } = parseOrUsage(
-    () => parseArgs23({
+    () => parseArgs22({
       args: argv,
       options: {
         dir: { type: "string" },
@@ -16616,7 +16218,7 @@ async function ui(argv, deps = {}) {
 }
 
 // src/reference.ts
-var DESCRIPTION = "read and write a local OKF knowledge bundle (context notes, docs, cross-links, static-HTML view)";
+var DESCRIPTION = "read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Pages)";
 var COMMAND_GROUPS = [
   {
     group: "Bundle",
@@ -16632,10 +16234,6 @@ var COMMAND_GROUPS = [
       {
         usage: "init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]",
         summary: "Create (or open) an OKF knowledge bundle in a directory \u2014 greenfield setup; a project that already shares a board is set up by sync, not init"
-      },
-      {
-        usage: "view [--dir <path>] [--out <path>] [--name <label>] [--remote <url>]",
-        summary: "Bake the bundle into one self-contained static HTML file"
       },
       {
         usage: "status [--limit <n>] [--remote <url>]",
@@ -16819,14 +16417,14 @@ function helpIndexText(invocation) {
 }
 
 // src/commands/home.ts
-import { parseArgs as parseArgs24 } from "node:util";
-import path14 from "node:path";
+import { parseArgs as parseArgs23 } from "node:util";
+import path13 from "node:path";
 
 // src/catalog.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
 import { chmod as chmod3, mkdir as mkdir3, open as open2, readFile as readFile4, stat, unlink as unlink3 } from "node:fs/promises";
 import { homedir as homedir7 } from "node:os";
-import path13 from "node:path";
+import path12 from "node:path";
 var CATALOG_FILE_NAME = "catalog.json";
 var CATALOG_LOCK_FILE_NAME = "catalog.lock";
 var CATALOG_SCHEMA_VERSION = 1;
@@ -16841,10 +16439,10 @@ function catalogDir(home2) {
   return credentialsDir(home2);
 }
 function catalogPath(home2 = homedir7()) {
-  return path13.join(catalogDir(home2), CATALOG_FILE_NAME);
+  return path12.join(catalogDir(home2), CATALOG_FILE_NAME);
 }
 function catalogLockPath(home2 = homedir7()) {
-  return path13.join(catalogDir(home2), CATALOG_LOCK_FILE_NAME);
+  return path12.join(catalogDir(home2), CATALOG_LOCK_FILE_NAME);
 }
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -16884,7 +16482,7 @@ function validateEntry(value, file, index) {
   if (value.locator.kind !== "local-path") {
     throw invalidCatalog(file, `entries[${index}].locator.kind must be "local-path"`);
   }
-  if (typeof value.locator.path !== "string" || !path13.isAbsolute(value.locator.path) || path13.normalize(value.locator.path) !== value.locator.path) {
+  if (typeof value.locator.path !== "string" || !path12.isAbsolute(value.locator.path) || path12.normalize(value.locator.path) !== value.locator.path) {
     throw invalidCatalog(file, `entries[${index}].locator.path must be a normalized absolute path`);
   }
   return {
@@ -16970,7 +16568,7 @@ async function acquireCatalogLock(options2) {
   const lockPath = catalogLockPath(home2);
   const now = options2.now ?? Date.now;
   const pid = options2.pid ?? process.pid;
-  const sleep = options2.sleep ?? ((ms) => new Promise((resolve3) => setTimeout(resolve3, ms)));
+  const sleep = options2.sleep ?? ((ms) => new Promise((resolve2) => setTimeout(resolve2, ms)));
   const processExists = options2.processExists ?? defaultProcessExists;
   const waitMs = options2.lockWaitMs ?? DEFAULT_LOCK_WAIT_MS;
   const pollMs = options2.lockPollMs ?? DEFAULT_LOCK_POLL_MS;
@@ -17062,7 +16660,7 @@ function generatedId(options2, existing) {
 }
 async function addCatalogEntry(label, canonicalPath, options2 = {}) {
   assertCatalogLabel(label);
-  if (!path13.isAbsolute(canonicalPath)) throw new CliError("USAGE", "workspace catalog paths must be absolute");
+  if (!path12.isAbsolute(canonicalPath)) throw new CliError("USAGE", "workspace catalog paths must be absolute");
   const result = await mutateCatalog(async (current) => {
     const target = await resolveLocalBundleTarget(canonicalPath);
     if (target.canonicalRoot !== canonicalPath) {
@@ -17199,7 +16797,7 @@ async function defaultSummarizeBundle(dir) {
 }
 async function discoverSummarizeBundle(startDir) {
   try {
-    const root = await findBundleRoot(path14.resolve(startDir));
+    const root = await findBundleRoot(path13.resolve(startDir));
     return root ? defaultSummarizeBundle(root) : null;
   } catch {
     return null;
@@ -17270,7 +16868,7 @@ async function defaultLoadBoardStatus(dir) {
   try {
     const top = repoTopLevel(retargetBoardInterior(dir ?? process.cwd()));
     if (!top) return null;
-    const boardPath = path14.join(top, BUNDLE_DIR);
+    const boardPath = path13.join(top, BUNDLE_DIR);
     if (!isProvisioned(top)) {
       const probed = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0 || runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
       return probed ? { state: "unprovisioned" } : null;
@@ -17297,7 +16895,7 @@ async function defaultLoadBoardStatus(dir) {
 function buildHomeView(deps, summary, remote, binding, bindingError, board, hookUpdate, workspaces) {
   const inv = deps.invocation();
   const ref = commandReference(inv);
-  const view2 = {
+  const view = {
     "agentstate-lite": { bin: deps.binPath(), description: DESCRIPTION }
   };
   if (remote) {
@@ -17309,7 +16907,7 @@ function buildHomeView(deps, summary, remote, binding, bindingError, board, hook
       ]
     };
     if (binding && binding.target === remote) remoteBlock.via = binding.file;
-    view2.remote = remoteBlock;
+    view.remote = remoteBlock;
   } else if (summary && "unreadable" in summary) {
     const bundleBlock = {
       root: summary.root,
@@ -17317,7 +16915,7 @@ function buildHomeView(deps, summary, remote, binding, bindingError, board, hook
       help: `a document in this bundle could not be read \u2014 run \`${deps.invocation()} list\` to surface the parse error`
     };
     if (binding) bundleBlock.via = binding.file;
-    view2.bundle = bundleBlock;
+    view.bundle = bundleBlock;
   } else if (summary) {
     const bundleBlock = {
       root: summary.root,
@@ -17328,38 +16926,37 @@ function buildHomeView(deps, summary, remote, binding, bindingError, board, hook
       bundleBlock.recent = summary.recent;
       bundleBlock.next = [
         `${deps.invocation()} list`,
-        `${deps.invocation()} status`,
-        `${deps.invocation()} view`
+        `${deps.invocation()} status`
       ];
     } else {
       bundleBlock.help = `${deps.invocation()} new "Context Note" <id> \u2026 | ${deps.invocation()} doc write \u2026 \u2014 create the first doc`;
     }
     if (binding) bundleBlock.via = binding.file;
-    view2.bundle = bundleBlock;
+    view.bundle = bundleBlock;
   } else if (!board?.firstContact && board?.block === void 0) {
-    view2.getting_started = `no OKF bundle found in this directory \u2014 run \`${deps.invocation()} init\` to create one`;
+    view.getting_started = `no OKF bundle found in this directory \u2014 run \`${deps.invocation()} init\` to create one`;
     if (binding) {
-      view2.getting_started += ` (project binding ${binding.file} -> ${binding.target} did not resolve to a bundle)`;
+      view.getting_started += ` (project binding ${binding.file} -> ${binding.target} did not resolve to a bundle)`;
     }
   }
   if (board?.firstContact) {
-    view2.board = board.firstContact;
+    view.board = board.firstContact;
   } else if (board?.block !== void 0) {
-    view2.board = board.block;
+    view.board = board.block;
   }
   if (hookUpdate) {
-    view2.hook_update = hookUpdate;
+    view.hook_update = hookUpdate;
   }
   if (bindingError) {
-    view2.project_binding_error = bindingError;
+    view.project_binding_error = bindingError;
   }
-  if (workspaces) view2.workspaces = workspaces;
+  if (workspaces) view.workspaces = workspaces;
   const compact = compactCommandReference(inv);
-  view2.commands = compact.commands;
-  view2.commands_help = compact.commands_help;
-  view2.kinds = ref.kinds;
-  view2.remote_env = ref.remoteEnv;
-  return view2;
+  view.commands = compact.commands;
+  view.commands_help = compact.commands_help;
+  view.kinds = ref.kinds;
+  view.remote_env = ref.remoteEnv;
+  return view;
 }
 async function home(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
@@ -17367,7 +16964,7 @@ async function home(argv, deps = {}) {
   let dir;
   let jsonMode = false;
   try {
-    const parsed = parseArgs24({
+    const parsed = parseArgs23({
       args: argv,
       options: {
         remote: { type: "string" },
@@ -17419,9 +17016,9 @@ async function home(argv, deps = {}) {
     const timedOut = Symbol("workspace catalog timed out");
     const outcome = await Promise.race([
       loadWorkspaces(workspaceAbort.signal),
-      new Promise((resolve3) => {
+      new Promise((resolve2) => {
         workspaceTimer = setTimeout(
-          () => resolve3(timedOut),
+          () => resolve2(timedOut),
           deps.workspaceBudgetMs ?? HOME_WORKSPACES_BUDGET_MS
         );
       })
@@ -17489,7 +17086,7 @@ async function home(argv, deps = {}) {
 }
 
 // src/commands/session-start.ts
-import { parseArgs as parseArgs25 } from "node:util";
+import { parseArgs as parseArgs24 } from "node:util";
 var SESSION_START_PULL_BUDGET_MS = 7e3;
 var SESSION_START_CONNECT_TIMEOUT_SECONDS = 5;
 var MIN_USEFUL_BUDGET_MS = 250;
@@ -17561,7 +17158,7 @@ async function sessionStartPull(dir, budgetMs = SESSION_START_PULL_BUDGET_MS, no
 async function sessionStart(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const { values } = parseOrUsage(
-    () => parseArgs25({
+    () => parseArgs24({
       args: argv,
       options: {
         dir: { type: "string" },
@@ -17583,8 +17180,8 @@ async function sessionStart(argv, deps = {}) {
   try {
     const raced = await Promise.race([
       Promise.resolve().then(() => pull2(values.dir, budgetMs)).catch(() => ({ offline: true })),
-      new Promise((resolve3) => {
-        timer = setTimeout(() => resolve3("timeout"), budgetMs);
+      new Promise((resolve2) => {
+        timer = setTimeout(() => resolve2("timeout"), budgetMs);
       })
     ]);
     outcome = raced === "timeout" ? { offline: true } : raced;
@@ -17614,7 +17211,7 @@ async function sessionStart(argv, deps = {}) {
 }
 
 // src/commands/bundle.ts
-import { parseArgs as parseArgs26 } from "node:util";
+import { parseArgs as parseArgs25 } from "node:util";
 var BUNDLE_USAGE = `agentstate-lite bundle \u2014 inspect local bundle targeting
 
 Usage:
@@ -17636,7 +17233,7 @@ async function bundleCommand(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const cwd = deps.cwd ?? (() => process.cwd());
   const parsed = parseOrUsage(
-    () => parseArgs26({
+    () => parseArgs25({
       args: argv,
       options: {
         dir: { type: "string" },
@@ -17673,7 +17270,7 @@ async function bundleCommand(argv, deps = {}) {
 }
 
 // src/commands/catalog.ts
-import { parseArgs as parseArgs27 } from "node:util";
+import { parseArgs as parseArgs26 } from "node:util";
 import { homedir as homedir8 } from "node:os";
 var CATALOG_USAGE = `agentstate-lite catalog \u2014 register and resolve this user's workspaces
 
@@ -17734,7 +17331,7 @@ async function catalogInner(argv, deps) {
   const cwd = deps.cwd ?? (() => process.cwd());
   const home2 = deps.home ?? homedir8;
   const parsed = parseOrUsage(
-    () => parseArgs27({
+    () => parseArgs26({
       args: argv,
       options: {
         dir: { type: "string" },
@@ -17819,7 +17416,7 @@ async function catalogInner(argv, deps) {
 }
 
 // src/cli.ts
-import { parseArgs as parseArgs28 } from "node:util";
+import { parseArgs as parseArgs27 } from "node:util";
 var KNOWN_COMMANDS = [
   "init",
   "bundle",
@@ -17838,7 +17435,6 @@ var KNOWN_COMMANDS = [
   "recipes",
   "recipe",
   "status",
-  "view",
   "serve",
   "ui",
   "sync",
@@ -17859,7 +17455,7 @@ var wrap2 = (fn) => async (args) => {
 };
 function isGlobalOnlyHomeInvocation(argv) {
   try {
-    const { positionals } = parseArgs28({
+    const { positionals } = parseArgs27({
       args: argv,
       options: {
         remote: { type: "string" },
@@ -17877,7 +17473,7 @@ function isGlobalOnlyHomeInvocation(argv) {
 function hoistLeadingGlobalFlags(argv) {
   let tokens;
   try {
-    tokens = parseArgs28({
+    tokens = parseArgs27({
       args: argv,
       tokens: true,
       strict: false,
@@ -17957,7 +17553,6 @@ async function main(argv) {
       recipes: wrap2(recipes),
       recipe: wrap2(recipe),
       status: wrap2(status),
-      view: wrap2(view),
       serve: wrap2(serve2),
       ui: wrap2(ui),
       sync: wrap2(sync),
