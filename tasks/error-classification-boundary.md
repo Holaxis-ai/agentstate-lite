@@ -4,11 +4,22 @@ title: Centralize CLI error classification at one boundary
 status: in_progress
 priority: '1'
 description: >-
-  Replace distributed command-level error translation with one typed CLI error
-  boundary and a contract-tested exit-code matrix.
-actor: brian-claude
+  Built on feat/error-boundary @ 62b564a, IN REVIEW. One typed boundary
+  (classifyBundleError; toExit/asHandled delegate). Core gains typed
+  InvalidInputError for engine input validation. USAGE no longer a fallback
+  bucket: plain errors + fs errnos -> RUNTIME/1 (EACCES doc write empirically
+  USAGE->RUNTIME vs main's bundle), escaped VersionConflict -> STALE_HEAD/5,
+  uncaught InvalidInputError -> USAGE/2. link.ts P3 special case removed.
+  25-test table-driven contract suite incl. the deterministic ENOSPC link-add
+  probe; 1320 tests + check green. classifyGitError adjudicated: domain
+  classifier FEEDING the boundary, documented. Caveats: relative-origin
+  AUTH_REQUIRED misclassification needs remote-URL context in classifyGitError
+  (auth lane — stays on edge-polish item 12); wire boundary (server/worker) has
+  the same plain-Error->400-USAGE class — filed as
+  tasks/wire-error-classification.
+actor: builder-errors
 assignee: brian-claude
-timestamp: '2026-07-15T02:17:20.997Z'
+timestamp: '2026-07-15T02:43:39.843Z'
 ---
 # Goal
 
