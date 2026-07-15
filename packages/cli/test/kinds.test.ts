@@ -8,7 +8,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -571,7 +571,7 @@ test("new surfaces the auto-applied path prefix in its receipt — no silent id 
   }
 });
 
-test("new --body gives targeted guidance, not a confusing 'unknown field body' (maturity)", async () => {
+test("new --body gives targeted --body-file guidance, not a confusing 'unknown field body' (maturity)", async () => {
   const { dir, cleanup } = await makeSeededBundle();
   try {
     await assert.rejects(
@@ -580,7 +580,7 @@ test("new --body gives targeted guidance, not a confusing 'unknown field body' (
         assert.ok(err instanceof CliError);
         assert.equal(err.code, "USAGE");
         assert.match(err.message, /does not take --body/);
-        assert.match(err.message, /doc update|doc write/);
+        assert.match(err.message, /--body-file/);
         return true;
       },
     );
@@ -755,6 +755,47 @@ test("new: a kind declaring the reserved field name 'type' cannot have --type ov
   }
 });
 
+test("new --body-file: a formerly-valid colliding domain field is centrally reserved and warns at point of use", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/artifact",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Artifact",
+        path: "artifacts/",
+        fields: { required: ["title"], optional: ["body-file"] },
+        timestamp: T,
+      },
+      body: "A convention written before body-file became a CLI byte channel.",
+    });
+    const bodyFile = path.join(dir, "artifact-body.md");
+    await writeFile(bodyFile, "# Summary\n\nAuthored body.\n", "utf8");
+
+    const receipt = await runJson(newCommand, [
+      "Artifact",
+      "a",
+      "--title",
+      "A",
+      "--body-file",
+      bodyFile,
+      "--dir",
+      dir,
+    ]);
+    const saved = await readDoc(bundle, "artifacts/a");
+    assert.equal(saved.body, "# Summary\n\nAuthored body.\n");
+    assert.equal(Object.hasOwn(saved.frontmatter, "body-file"), false);
+    const warnings = receipt.warnings as Array<Record<string, unknown>>;
+    assert.equal(warnings[0]!.code, "KIND_RESERVED_FIELD");
+    assert.match(String(warnings[0]!.message), /body-file/);
+    assert.match(String(warnings[0]!.message), /rename those domain fields/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("new: a kind with declared 'sections' scaffolds them as empty body headings", async () => {
   const dir = await tempDir();
   try {
@@ -791,6 +832,43 @@ test("new: a kind with declared 'sections' scaffolds them as empty body headings
         return true;
       },
     );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("new --body-file: supplied Markdown replaces scaffolding and is strictly validated before creation", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/review",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Review",
+        path: "reviews/",
+        fields: { required: ["title"] },
+        sections: ["Context", "Decision"],
+        timestamp: T,
+      },
+      body: "A review request.",
+    });
+
+    const incomplete = path.join(dir, "incomplete.md");
+    await writeFile(incomplete, "# Context\n\nOnly one required section.\n", "utf8");
+    await assert.rejects(
+      () => newCommand(["Review", "incomplete", "--title", "Incomplete", "--body-file", incomplete, "--dir", dir]),
+      (err: unknown) => err instanceof CliError && err.code === "USAGE" && err.message.includes("Decision"),
+    );
+    await assert.rejects(() => readDoc(bundle, "reviews/incomplete"));
+
+    const complete = path.join(dir, "complete.md");
+    const authored = "# Context\n\nWhy this matters.\n\n# Decision\n\nApprove or revise.\n";
+    await writeFile(complete, authored, "utf8");
+    const receipt = await runJson(newCommand, ["Review", "complete", "--title", "Complete", "--body-file", complete, "--dir", dir]);
+    assert.equal((await readDoc(bundle, "reviews/complete")).body, authored);
+    assert.equal(typeof receipt.version, "string");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -48,6 +48,7 @@
 // `frontmatter.actor` (see the write below), so a kind declaring `actor` is satisfiable after all
 // — through the control flag, with control semantics (blank-value guard, trim).
 import { parseArgs } from "node:util";
+import { promises as fs } from "node:fs";
 import {
   loadKinds,
   type Frontmatter,
@@ -67,7 +68,7 @@ import { addLink } from "./link.js";
 export const NEW_USAGE = `agentstate-lite new — create a new instance of a bundle-declared kind
 
 Usage:
-  agentstate-lite new "<Kind>" <id> --<field> <value> [--<field> <value> ...] [options]
+  agentstate-lite new "<Kind>" <id> --<field> <value> [--<field> <value> ...] [--body-file <path>] [options]
 
 The kind must be declared by a kind convention doc under conventions/ — run 'agentstate-lite kinds'
 to list what a bundle declares. Supply each of the kind's required fields via --<field> <value>
@@ -91,6 +92,11 @@ Options:
                          history by a persisting backend. Precedence: --actor >
                          AGENTSTATE_LITE_ACTOR > absent. A present-but-blank flag or environment
                          value is a USAGE error (exit 2).
+  --body-file <path>   Read the initial Markdown body from a local file. When omitted, scaffold
+                       the kind's declared sections as empty '# Heading' blocks. The supplied body
+                       is validated strictly against those declared sections before anything is
+                       written. This is a byte-ingress convenience; the bundle still stores an
+                       ordinary OKF Markdown document.
   --link "<type>=<target-id>"
                          Repeatable. After the doc is created, add an outbound cross-link of this
                          TYPE to the given target id — through the exact same idempotent path
@@ -136,6 +142,7 @@ const NEW_CONTROL_OPTIONS = {
   remote: { type: "string" },
   actor: { type: "string" },
   link: { type: "string", multiple: true },
+  "body-file": { type: "string" },
   "no-prefix": { type: "boolean" },
   json: { type: "boolean" },
   help: { type: "boolean", short: "h" },
@@ -321,6 +328,9 @@ function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: strin
     `To ADD a field to this kind, edit its convention doc (${inv} kinds names it; then pull → edit fields.optional → promote).\n\n` +
     `Options:\n` +
     `  --actor <name>   Attribute the write (overrides AGENTSTATE_LITE_ACTOR)\n` +
+    `  --body-file <path>\n` +
+    `                   Read the complete initial Markdown body from a local file; when omitted,\n` +
+    `                   scaffold the declared body sections\n` +
     `  --link "<type>=<target-id>"\n` +
     `                   Repeatable: after creating this instance, add an outbound link of type\n` +
     `                   <type> to <target-id> (same idempotent path as 'link add'; a dangling\n` +
@@ -393,10 +403,9 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     return;
   }
 
-  // Phase 2 — strict, kind-aware, AUTHORITATIVE parse. `type`/`dir`/`remote`/`json`/`help` are
-  // already stripped from `declaredFields` by `loadKinds` (core's `RESERVED_FIELD_NAMES`); `actor`
-  // and `link` are NOT core-reserved, so they are excluded here explicitly (control wins on a name
-  // collision) — still listed in `declaredFields` for the "declared: …" hint text below.
+  // Phase 2 — strict, kind-aware, AUTHORITATIVE parse. Core strips every centrally-reserved kind
+  // field before this point (including `body-file`); only `actor` and `link` remain command controls
+  // with intentional kind-aware behavior, so they are excluded here explicitly.
   const declaredFields = [...kind.fields.required, ...kind.fields.optional];
   const fieldNames = declaredFields.filter((f) => f !== "actor" && f !== "link");
   const fieldOptions = Object.fromEntries(
@@ -421,14 +430,13 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
       if ((err as { code?: unknown } | null)?.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION") {
         const raw = /'([^']+)'/.exec((err as Error).message)?.[1] ?? "";
         const field = raw.replace(/^--?/, ""); // node quotes the raw '--name'; strip the dashes
-        if (field === "body" || field === "body-file") {
-          // --body is a `doc write` flag, not a `new` one: a kind's body comes from its scaffolded
-          // sections. Give that guidance instead of the confusing "unknown field 'body'".
+        if (field === "body") {
+          // --body is a `doc write` flag, not a `new` one. `new` accepts the byte channel instead,
+          // so substantial content stays in a local file rather than a shell argument.
           throw new CliError(
             "USAGE",
-            `'new' does not take --${field} — a kind's body comes from its declared sections (scaffolded as empty ` +
-              `'# Heading' blocks). Create the instance, then set content with '${cliInvocation()} doc update <id> ` +
-              `--body <text>'; or use '${cliInvocation()} doc write' for a generic (non-kind) document.`,
+            `'new' does not take --body — pass substantial initial Markdown with --body-file <path>, or omit it ` +
+              `to scaffold the kind's declared sections as empty '# Heading' blocks.`,
             { help: `${cliInvocation()} new "${kindName}" <id>` },
           );
         }
@@ -482,6 +490,28 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
   const linkFlags = (values.link as string[] | undefined) ?? [];
   const parsedLinks = linkFlags.map(parseLinkFlagValue);
 
+  // Read the byte channel ONCE and before any mutation. A missing/unreadable file is a caller input
+  // problem and must leave no partially-created document. Empty file content is still deliberate
+  // input; strict kind validation below decides whether it satisfies the declared sections.
+  const bodyFile = values["body-file"] as string | undefined;
+  let suppliedBody: string | undefined;
+  if (bodyFile !== undefined) {
+    if (bodyFile.trim() === "") {
+      throw new CliError("USAGE", "--body-file requires a non-empty path", {
+        help: `${cliInvocation()} new "${kindName}" <id> --body-file <path>`,
+      });
+    }
+    try {
+      suppliedBody = await fs.readFile(bodyFile, "utf8");
+    } catch (err) {
+      throw new CliError(
+        "USAGE",
+        `could not read --body-file ${JSON.stringify(bodyFile)}: ${err instanceof Error ? err.message : String(err)}`,
+        { help: `${cliInvocation()} new "${kindName}" <id> --body-file <path>` },
+      );
+    }
+  }
+
   const frontmatter: Frontmatter = { type: kind.governs };
   for (const field of fieldNames) {
     const vals = dynamicValues.get(field);
@@ -495,7 +525,7 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
   // Context Note kind) validates against a value that is actually present, not "missing because the
   // user didn't pass --timestamp".
 
-  const body = (kind.sections ?? []).map((heading) => `# ${heading}\n`).join("\n");
+  const body = suppliedBody ?? (kind.sections ?? []).map((heading) => `# ${heading}\n`).join("\n");
   // `--no-prefix` uses the id VERBATIM instead of auto-prepending the kind's declared `path` — the
   // escape hatch for when a caller needs a specific id/namespace that differs from the kind's
   // convention (cold-start study r3: an agent needing a literal prefix had to drop off `new` onto
@@ -539,10 +569,15 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     id: saved.id,
     type: saved.frontmatter.type,
     timestamp: saved.frontmatter.timestamp ?? null,
-    // The content-addressed version token of the created doc — the CAS basis for a later
-    // optimistic `doc update --expected-version` (mirrors `doc write`/`doc history`).
-    version: result.version,
   };
+  // Registry warnings for THIS convention belong at the point of use too. In particular, a bundle
+  // that previously declared `body-file` as a domain field must not have the now-reserved control
+  // silently reinterpret its command: the successful receipt carries the central rename guidance.
+  const conventionWarningPrefix = `kind convention '${kind.id}'`;
+  const conventionWarnings = registry.warnings.filter((warning) =>
+    warning.message.startsWith(conventionWarningPrefix),
+  );
+  if (conventionWarnings.length > 0) receipt.warnings = conventionWarnings;
   // Surface the path-prefixing so it isn't silent: an agent that passed a bare id (or a
   // differently-prefixed one) sees the final id it actually got (cold-start study: C4 nearly
   // committed a wrong id because the prefix was auto-applied without any indication).
@@ -564,6 +599,10 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
   }
   const linkResults: LinkFlagReceipt[] = [];
   const satisfiedOutboundTypes = new Set<string>();
+  // `new` itself writes once, then each successful `--link` rides the shared link-add CAS path.
+  // Keep the version current after every success/no-op so the ONE command's receipt describes the
+  // final stored head, not the pre-link intermediate version that dogfooding exposed.
+  let finalVersion = result.version;
   let firstLinkFailure: CliError | undefined;
   for (const { type, target } of parsedLinks) {
     const warnings: ValidationWarning[] = [];
@@ -580,6 +619,7 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     }
     try {
       const added = await addLink(bundle, saved.id, target, { text: type, remoteUrl: remote, actor });
+      finalVersion = added.version;
       if (added.warnings) warnings.push(...added.warnings);
       linkResults.push({
         type,
@@ -601,6 +641,9 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     }
   }
   if (parsedLinks.length > 0) receipt.links = linkResults;
+  // The content-addressed token of the FINAL document state after every successful/no-op link
+  // attempt. This is the truthful CAS basis for a follow-up `doc update --expected-version`.
+  receipt.version = finalVersion;
 
   // Point-of-use link teaching (AXI §9): the moment an instance is created is when its declared
   // relationships are actionable — surface them as complete, placeholder-parameterized commands

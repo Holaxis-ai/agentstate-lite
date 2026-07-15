@@ -174,11 +174,13 @@ function toStringArrayLenient(
  * field: `type` is stamped from `kind.governs` (a kind declaring it as a field would let
  * `new --type <v>` silently overwrite the governed type it just validated against), and
  * `dir`/`remote`/`json`/`help` are consumed by every command's common flag handling before a
- * `--<field> <value>` pair ever reaches kind-field mapping (declaring them would make the
- * field permanently unreachable, not merely confusing). Filtered out of `required`/`optional`/
- * `values` at parse time with a collected warning — never silently accepted.
+ * `--<field> <value>` pair ever reaches kind-field mapping. `body-file` is `new`'s complete-body
+ * byte channel. Declaring any of them would make the field permanently unreachable, not merely
+ * confusing. Filtered out of `required`/`optional`/`values` at parse time with a collected warning
+ * — never silently accepted.
  */
-const RESERVED_FIELD_NAMES = new Set(["type", "dir", "remote", "json", "help"]);
+export const RESERVED_KIND_FIELD_NAMES = ["type", "dir", "remote", "json", "help", "body-file"] as const;
+const RESERVED_FIELD_NAMES = new Set<string>(RESERVED_KIND_FIELD_NAMES);
 
 /** The only recognized keys inside a convention doc's `fields:` block. */
 const VALID_FIELDS_KEYS = new Set([
