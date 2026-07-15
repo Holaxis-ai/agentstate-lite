@@ -1,7 +1,7 @@
 ---
 type: Task
 title: Verify the npm CLI artifact before publication
-status: in_progress
+status: done
 priority: '1'
 description: >-
   Add one reproducible npm package verification command that builds and packs
@@ -12,6 +12,6 @@ description: >-
   repository check and the publish lifecycle. No publication, release workflow,
   plugin thinning, or core/server publication in this unit.
 actor: mike/codex
-timestamp: '2026-07-15T21:31:41.235Z'
+timestamp: '2026-07-15T21:54:10.035Z'
 ---
 
