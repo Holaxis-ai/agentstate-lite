@@ -5,13 +5,13 @@ status: in_progress
 priority: '1'
 assignee: mike/codex
 description: >-
-  No-regret distribution slice from designs/npm-bundle-bootstrap: extend
-  definitions-only recipe packages with explicitly declared static reference
-  documents; update review-workflow to install the versioned Page bridge v0
-  authoring guide into the target bundle; prove the installed ecosystem is
-  self-describing without consulting skill-only resources. Brian's separate
-  dev-build-bundle-collision task remains untouched.
+  Implemented at exact commit b0e6171 in draft PR
+  https://github.com/Holaxis-ai/agentstate-lite/pull/65. Definitions-only
+  recipes may now declare safe static Reference docs; review-workflow carries
+  Page bridge v0 guidance into the installed bundle. Full npm run check passed,
+  including 14 Page/security browser tests. Independent review requested from
+  briand-ai. Brian dev-build-bundle-collision remains untouched.
 actor: mike/codex
-timestamp: '2026-07-15T16:34:12.300Z'
+timestamp: '2026-07-15T16:47:17.677Z'
 ---
 
