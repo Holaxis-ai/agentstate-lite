@@ -307,13 +307,19 @@ describe("real build (repo-tied)", () => {
     const referencesBackupDir = await mkdtemp(join(tmpdir(), "ci-version-bundle-references-backup-"));
     if (referencesExisted) await cp(REAL_PATHS.referencesDir, referencesBackupDir, { recursive: true });
     try {
-      const result = await run(); // real regenerate, real paths — no overrides
-      // If the repo is in its normal, already-converged state (the common case, and the state
-      // this worktree was in when this suite was written), regeneration matches committed bytes
-      // exactly and this must be a no-op. If a developer is mid-edit on CLI source when running
-      // tests, this may legitimately report changed:true — that's fine; the restore below still
-      // guarantees no lasting side effect either way.
-      assert.equal(typeof result.changed, "boolean");
+      // First run brings the committed artifacts up to date with a fresh regeneration. It may
+      // legitimately report changed:true (a developer mid-edit on CLI source, or a branch whose
+      // committed bundle predates a compressor/tooling change the bot hasn't regenerated for yet).
+      const first = await run(); // real regenerate, real paths — no overrides
+      assert.equal(typeof first.changed, "boolean");
+
+      // Against the now-current tree the bot MUST converge: a second regeneration produces the
+      // same bytes and reports changed:false, leaving the manifests untouched. This is the
+      // loop-safety property the CI workflow's correctness rests on, and — with the embed
+      // pipeline's compressor pinned to an exact library version (pako) instead of node:zlib —
+      // it now holds across machines and Node versions, not just on the machine that built last.
+      const second = await run();
+      assert.equal(second.changed, false, "regenerating an already-current tree must be a no-op");
     } finally {
       for (const key of fileKeys) {
         await writeFile(REAL_PATHS[key], backup[key]);

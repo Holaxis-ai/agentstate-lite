@@ -50,6 +50,7 @@
     "@types/node": "^22.0.0",
     "axi-sdk-js": "0.1.8",
     "esbuild": "0.25.12",
+    "pako": "2.1.0",
     "typescript": "^5.4.0"
   }
 }
