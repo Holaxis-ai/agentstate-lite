@@ -73,6 +73,8 @@ the rest of the line unchanged.
 
 - `"$ASLITE" bundle locate [--dir <path>]`
   — Resolve the exact canonical local bundle path and report why it won selection
+- `"$ASLITE" catalog (add <label> [--dir <path>] | list | resolve <label-or-id> [--field path])`
+  — Register and deterministically resolve this user's explicitly named local workspaces
 - `"$ASLITE" init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]`
   — Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init
 - `"$ASLITE" view [--dir <path>] [--out <path>] [--name <label>] [--remote <url>]`

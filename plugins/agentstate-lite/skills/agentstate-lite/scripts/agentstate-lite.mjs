@@ -168,15 +168,15 @@ var require_is_extendable = __commonJS({
 var require_extend_shallow = __commonJS({
   "../../node_modules/extend-shallow/index.js"(exports2, module2) {
     "use strict";
-    var isObject = require_is_extendable();
+    var isObject2 = require_is_extendable();
     module2.exports = function extend(o) {
-      if (!isObject(o)) {
+      if (!isObject2(o)) {
         o = {};
       }
       var len = arguments.length;
       for (var i = 1; i < len; i++) {
         var obj = arguments[i];
-        if (isObject(obj)) {
+        if (isObject2(obj)) {
           assign(o, obj);
         }
       }
@@ -309,7 +309,7 @@ var require_common = __commonJS({
     function isNothing(subject) {
       return typeof subject === "undefined" || subject === null;
     }
-    function isObject(subject) {
+    function isObject2(subject) {
       return typeof subject === "object" && subject !== null;
     }
     function toArray(sequence) {
@@ -339,7 +339,7 @@ var require_common = __commonJS({
       return number === 0 && Number.NEGATIVE_INFINITY === 1 / number;
     }
     module2.exports.isNothing = isNothing;
-    module2.exports.isObject = isObject;
+    module2.exports.isObject = isObject2;
     module2.exports.toArray = toArray;
     module2.exports.repeat = repeat;
     module2.exports.isNegativeZero = isNegativeZero;
@@ -3307,12 +3307,12 @@ var require_stringify = __commonJS({
         throw new TypeError('expected "' + language + '.stringify" to be a function');
       }
       data = Object.assign({}, file.data, data);
-      const open2 = opts.delimiters[0];
+      const open3 = opts.delimiters[0];
       const close = opts.delimiters[1];
       const matter2 = engine.stringify(data, options2).trim();
       let buf = "";
       if (matter2 !== "{}") {
-        buf = newline(open2) + newline(matter2) + newline(close);
+        buf = newline(open3) + newline(matter2) + newline(close);
       }
       if (typeof file.excerpt === "string" && file.excerpt !== "") {
         if (str2.indexOf(file.excerpt.trim()) === -1) {
@@ -3436,18 +3436,18 @@ var require_gray_matter = __commonJS({
     }
     function parseMatter(file, options2) {
       const opts = defaults(options2);
-      const open2 = opts.delimiters[0];
+      const open3 = opts.delimiters[0];
       const close = "\n" + opts.delimiters[1];
       let str2 = file.content;
       if (opts.language) {
         file.language = opts.language;
       }
-      const openLen = open2.length;
-      if (!utils.startsWith(str2, open2, openLen)) {
+      const openLen = open3.length;
+      if (!utils.startsWith(str2, open3, openLen)) {
         excerpt(file, opts);
         return file;
       }
-      if (str2.charAt(openLen) === open2.slice(-1)) {
+      if (str2.charAt(openLen) === open3.slice(-1)) {
         return file;
       }
       str2 = str2.slice(openLen);
@@ -3503,9 +3503,9 @@ var require_gray_matter = __commonJS({
     };
     matter2.language = function(str2, options2) {
       const opts = defaults(options2);
-      const open2 = opts.delimiters[0];
+      const open3 = opts.delimiters[0];
       if (matter2.test(str2)) {
-        str2 = str2.slice(open2.length);
+        str2 = str2.slice(open3.length);
       }
       const language = str2.slice(0, str2.search(/\r?\n/));
       return {
@@ -3894,26 +3894,26 @@ function applyReplacer(root, replacer) {
   if (replacedRoot === void 0) return transformChildren(root, replacer, []);
   return transformChildren(normalizeValue(replacedRoot), replacer, []);
 }
-function transformChildren(value, replacer, path14) {
-  if (isJsonObject(value)) return transformObject(value, replacer, path14);
-  if (isJsonArray(value)) return transformArray(value, replacer, path14);
+function transformChildren(value, replacer, path15) {
+  if (isJsonObject(value)) return transformObject(value, replacer, path15);
+  if (isJsonArray(value)) return transformArray(value, replacer, path15);
   return value;
 }
-function transformObject(obj, replacer, path14) {
+function transformObject(obj, replacer, path15) {
   const result = {};
   for (const [key, value] of Object.entries(obj)) {
-    const childPath = [...path14, key];
+    const childPath = [...path15, key];
     const replacedValue = replacer(key, value, childPath);
     if (replacedValue === void 0) continue;
     result[key] = transformChildren(normalizeValue(replacedValue), replacer, childPath);
   }
   return result;
 }
-function transformArray(arr, replacer, path14) {
+function transformArray(arr, replacer, path15) {
   const result = [];
   for (let i = 0; i < arr.length; i++) {
     const value = arr[i];
-    const childPath = [...path14, i];
+    const childPath = [...path15, i];
     const replacedValue = replacer(String(i), value, childPath);
     if (replacedValue === void 0) continue;
     const normalizedValue = normalizeValue(replacedValue);
@@ -3940,11 +3940,11 @@ function resolveOptions(options2) {
 }
 
 // ../../node_modules/axi-sdk-js/dist/output.js
-function collapseHomeDirectory(path14, homeDir = homedir()) {
-  if (!path14.startsWith(homeDir)) {
-    return path14;
+function collapseHomeDirectory(path15, homeDir = homedir()) {
+  if (!path15.startsWith(homeDir)) {
+    return path15;
   }
-  return `~${path14.slice(homeDir.length)}`;
+  return `~${path15.slice(homeDir.length)}`;
 }
 function homeHeaderOutput(options2) {
   return {
@@ -4048,7 +4048,7 @@ function isUpdateAvailable(current, latest) {
 }
 var nodeFs = {
   existsSync,
-  readFileSync: (path14, encoding) => readFileSync(path14, encoding)
+  readFileSync: (path15, encoding) => readFileSync(path15, encoding)
 };
 function readNearestPackageJson(startPath, fs12 = nodeFs) {
   let dir = dirname(startPath);
@@ -4075,36 +4075,36 @@ function readNearestPackageJson(startPath, fs12 = nodeFs) {
 }
 function detectInstallMethod(options2) {
   const env = options2.env ?? process.env;
-  const path14 = options2.entry.replaceAll("\\", "/");
-  if (path14.includes("/_npx/") || /\/dlx-[^/]+\//.test(path14) || path14.includes("/pnpm/dlx/") || path14.includes("/bun/install/cache/")) {
+  const path15 = options2.entry.replaceAll("\\", "/");
+  if (path15.includes("/_npx/") || /\/dlx-[^/]+\//.test(path15) || path15.includes("/pnpm/dlx/") || path15.includes("/bun/install/cache/")) {
     return { kind: "npx" };
   }
-  const homebrewFormula = homebrewFormulaFromPath(path14, env);
+  const homebrewFormula = homebrewFormulaFromPath(path15, env);
   if (homebrewFormula) {
     return { kind: "homebrew", formula: homebrewFormula };
   }
   const pnpmHome = normalizePathRoot(env.PNPM_HOME);
-  if (isPathInsideRoot(path14, pnpmHome) || isKnownPnpmGlobalStore(path14, env)) {
+  if (isPathInsideRoot(path15, pnpmHome) || isKnownPnpmGlobalStore(path15, env)) {
     return { kind: "pnpm-global" };
   }
-  if (isKnownNpmGlobalInstall(path14, env)) {
+  if (isKnownNpmGlobalInstall(path15, env)) {
     return { kind: "npm-global" };
   }
   return { kind: "unknown" };
 }
-function normalizePathRoot(path14) {
-  const normalized = path14?.replaceAll("\\", "/").replace(/\/+$/, "");
+function normalizePathRoot(path15) {
+  const normalized = path15?.replaceAll("\\", "/").replace(/\/+$/, "");
   return normalized && normalized.length > 0 ? normalized : void 0;
 }
-function isPathInsideRoot(path14, root) {
-  return root !== void 0 && (path14 === root || path14.startsWith(`${root}/`));
+function isPathInsideRoot(path15, root) {
+  return root !== void 0 && (path15 === root || path15.startsWith(`${root}/`));
 }
-function homebrewFormulaFromPath(path14, env) {
+function homebrewFormulaFromPath(path15, env) {
   for (const root of homebrewCellarRoots(env)) {
-    if (!isPathInsideRoot(path14, root)) {
+    if (!isPathInsideRoot(path15, root)) {
       continue;
     }
-    const relative = path14.slice(root.length).replace(/^\/+/, "");
+    const relative = path15.slice(root.length).replace(/^\/+/, "");
     const formula = relative.split("/")[0];
     if (formula) {
       return formula;
@@ -4132,12 +4132,12 @@ function homebrewCellarRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownPnpmGlobalStore(path14, env) {
+function isKnownPnpmGlobalStore(path15, env) {
   return pnpmGlobalStoreRoots(env).some((root) => {
-    if (!isPathInsideRoot(path14, root)) {
+    if (!isPathInsideRoot(path15, root)) {
       return false;
     }
-    const relative = path14.slice(root.length).replace(/^\/+/, "");
+    const relative = path15.slice(root.length).replace(/^\/+/, "");
     return /^\d+\/\.pnpm\//.test(relative);
   });
 }
@@ -4155,8 +4155,8 @@ function pnpmGlobalStoreRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownNpmGlobalInstall(path14, env) {
-  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path14, root)) || isKnownVersionManagerNpmGlobal(path14, env);
+function isKnownNpmGlobalInstall(path15, env) {
+  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path15, root)) || isKnownVersionManagerNpmGlobal(path15, env);
 }
 function npmGlobalNodeModulesRoots(env) {
   const roots = [
@@ -4182,8 +4182,8 @@ function npmGlobalNodeModulesRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownVersionManagerNpmGlobal(path14, env) {
-  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path14, root) && path14.includes("/lib/node_modules/"));
+function isKnownVersionManagerNpmGlobal(path15, env) {
+  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path15, root) && path15.includes("/lib/node_modules/"));
 }
 function versionManagerNodeRoots(env) {
   const roots = [];
@@ -4419,7 +4419,7 @@ async function runUpdate(options2) {
   const binName = binNameFromArgv(invokedAs);
   const mode = parseUpdateArgs(options2.args, binName);
   const platform = options2.platform ?? process.platform;
-  const realpath = options2.realpath ?? ((path14) => realpathSync(path14));
+  const realpath = options2.realpath ?? ((path15) => realpathSync(path15));
   const entry = resolveEntry(invokedAs, realpath);
   const fs12 = options2.fs ?? nodeFs;
   const fromPackageJson = entry ? readNearestPackageJson(entry, fs12) : {};
@@ -6122,13 +6122,13 @@ function describeShape(value) {
   if (typeof value === "object") return "an object";
   return typeof value;
 }
-function toStringArrayLenient(value, path14, docId, warnings) {
+function toStringArrayLenient(value, path15, docId, warnings) {
   if (!Array.isArray(value)) {
     if (value !== void 0) {
       warnings.push({
         code: "KIND_CONVENTION_BAD_SHAPE",
-        message: `kind convention '${docId}' has a non-list '${path14}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
-        field: path14,
+        message: `kind convention '${docId}' has a non-list '${path15}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
+        field: path15,
         severity: "warning"
       });
     }
@@ -6141,8 +6141,8 @@ function toStringArrayLenient(value, path14, docId, warnings) {
     } else {
       warnings.push({
         code: "KIND_CONVENTION_BAD_MEMBER",
-        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path14}'; skipping it.`,
-        field: path14,
+        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path15}'; skipping it.`,
+        field: path15,
         severity: "warning"
       });
     }
@@ -6496,7 +6496,7 @@ function parseConventionDoc(doc2) {
       });
     }
   }
-  const path14 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
+  const path15 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
   const freshnessHorizon = typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== "" ? fm.freshness_horizon.trim() : void 0;
   const kind2 = {
     id: doc2.id,
@@ -6505,7 +6505,7 @@ function parseConventionDoc(doc2) {
     fields: { required, optional, values, valueDescriptions, terminal, descriptions }
   };
   if (description !== void 0) kind2.description = description;
-  if (path14 !== void 0) kind2.path = path14;
+  if (path15 !== void 0) kind2.path = path15;
   if (links !== void 0) kind2.links = links;
   if (linkDescriptions !== void 0) kind2.linkDescriptions = linkDescriptions;
   if (expectsInbound !== void 0) kind2.expectsInbound = expectsInbound;
@@ -6939,8 +6939,8 @@ function normalizeServer(raw) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`server URL must use http or https: ${raw}`);
   }
-  const path14 = url.pathname.replace(/\/+$/, "");
-  return { base: url.origin + path14, resource: url.origin };
+  const path15 = url.pathname.replace(/\/+$/, "");
+  return { base: url.origin + path15, resource: url.origin };
 }
 
 // src/credentials.ts
@@ -6961,7 +6961,7 @@ function credentialsPath(home2 = homedir3()) {
 async function writeFileAtomic0600(dir, fileName, content) {
   await mkdir(dir, { recursive: true, mode: DIR_MODE });
   await chmod(dir, DIR_MODE);
-  const path14 = join3(dir, fileName);
+  const path15 = join3(dir, fileName);
   const tmpPath = join3(dir, `.${fileName}.${randomBytes(8).toString("hex")}.tmp`);
   const handle = await open(tmpPath, "wx", FILE_MODE);
   try {
@@ -6971,7 +6971,7 @@ async function writeFileAtomic0600(dir, fileName, content) {
     await handle.close();
   }
   try {
-    await rename(tmpPath, path14);
+    await rename(tmpPath, path15);
   } catch (err) {
     await unlink(tmpPath).catch(() => {
     });
@@ -7930,8 +7930,8 @@ async function walkRecipeFiles(dir, relPrefix, rootReal, out, skip) {
     if (!real || real !== rootReal && !real.startsWith(rootReal + path5.sep)) {
       throw new RecipeUnsafePathSignal(rel);
     }
-    const stat = await fs3.stat(real).catch(() => null);
-    if (!stat?.isFile()) throw new RecipeUnsafePathSignal(rel);
+    const stat2 = await fs3.stat(real).catch(() => null);
+    if (!stat2?.isFile()) throw new RecipeUnsafePathSignal(rel);
     out.push({ path: rel, bytes: await fs3.readFile(abs, "utf8") });
   }
 }
@@ -7970,8 +7970,8 @@ function filesRecipeSource() {
       if (!real) {
         return { ok: false, error: { code: "RECIPE_NOT_FOUND", message: `no recipe folder at '${ref}'` } };
       }
-      const stat = await fs3.stat(real).catch(() => null);
-      if (!stat || !stat.isDirectory()) {
+      const stat2 = await fs3.stat(real).catch(() => null);
+      if (!stat2 || !stat2.isDirectory()) {
         return { ok: false, error: { code: "RECIPE_UNSAFE_PATH", message: `'${ref}' is not a directory` } };
       }
       let files;
@@ -9408,9 +9408,9 @@ function assertBundleBytesMatchCommit(top, bundlePath, commit) {
       });
     }
     try {
-      const stat = lstatSync(absolute);
+      const stat2 = lstatSync(absolute);
       const actual = mode === "120000" ? readlinkSync(absolute, { encoding: "buffer" }) : readFileSync2(absolute);
-      if (mode === "120000" && !stat.isSymbolicLink() || mode !== "120000" && !stat.isFile()) {
+      if (mode === "120000" && !stat2.isSymbolicLink() || mode !== "120000" && !stat2.isFile()) {
         mismatches.push(relPath);
       } else if (!Buffer.from(actual).equals(stored.stdout)) {
         mismatches.push(relPath);
@@ -9830,7 +9830,7 @@ async function writeSyncState(key, patch, home2 = homedir4()) {
   const parent = credentialsDir(home2);
   await mkdir2(parent, { recursive: true, mode: DIR_MODE2 });
   await chmod2(parent, DIR_MODE2);
-  const path14 = syncStatePath(key, home2);
+  const path15 = syncStatePath(key, home2);
   const record = {
     key,
     cursor: next.cursor ?? void 0,
@@ -9840,7 +9840,7 @@ async function writeSyncState(key, patch, home2 = homedir4()) {
     autoPullAttemptAt: next.autoPullAttemptAt ?? void 0,
     hookHintedAt: next.hookHintedAt ?? void 0
   };
-  await writeFileAtomic0600(syncStateDir(home2), basename3(path14), JSON.stringify(record, null, 2) + "\n");
+  await writeFileAtomic0600(syncStateDir(home2), basename3(path15), JSON.stringify(record, null, 2) + "\n");
   return next;
 }
 async function writeCursor(key, cursor, home2 = homedir4()) {
@@ -10003,23 +10003,23 @@ function targetsFor(base) {
     opencodePlugin: join5(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
   };
 }
-function readSettings(path14) {
-  if (!existsSync4(path14)) return {};
+function readSettings(path15) {
+  if (!existsSync4(path15)) return {};
   try {
-    return JSON.parse(readFileSync3(path14, "utf8"));
+    return JSON.parse(readFileSync3(path15, "utf8"));
   } catch {
     return {};
   }
 }
-function writeSettings(path14, settings) {
-  mkdirSync2(dirname2(path14), { recursive: true });
-  writeFileSync2(path14, `${JSON.stringify(settings, null, 2)}
+function writeSettings(path15, settings) {
+  mkdirSync2(dirname2(path15), { recursive: true });
+  writeFileSync2(path15, `${JSON.stringify(settings, null, 2)}
 `);
 }
-function opencodePluginInstalled(path14) {
-  if (!existsSync4(path14)) return false;
+function opencodePluginInstalled(path15) {
+  if (!existsSync4(path15)) return false;
   try {
-    return readFileSync3(path14, "utf8").includes(OPENCODE_MANAGED_MARKER);
+    return readFileSync3(path15, "utf8").includes(OPENCODE_MANAGED_MARKER);
   } catch {
     return false;
   }
@@ -10252,10 +10252,10 @@ async function hook(argv, deps = {}) {
     return;
   }
   let changed = false;
-  for (const path14 of [targets.claudeSettings, targets.codexHooks]) {
-    const [updated, didChange] = computeHookUninstall(readSettings(path14));
+  for (const path15 of [targets.claudeSettings, targets.codexHooks]) {
+    const [updated, didChange] = computeHookUninstall(readSettings(path15));
     if (didChange) {
-      writeSettings(path14, updated);
+      writeSettings(path15, updated);
       changed = true;
     }
   }
@@ -15151,8 +15151,8 @@ async function generateVisualization(bundleSource, options2 = {}) {
   let defaultOutDir;
   if (typeof bundleSource === "string") {
     const root = path12.resolve(bundleSource);
-    const stat = await fs11.stat(root).catch(() => null);
-    if (!stat || !stat.isDirectory()) {
+    const stat2 = await fs11.stat(root).catch(() => null);
+    if (!stat2 || !stat2.isDirectory()) {
       throw new Error("bundle directory not found: " + root);
     }
     data = await buildBundleData(root, options2.name);
@@ -16626,6 +16626,10 @@ var COMMAND_GROUPS = [
         summary: "Resolve the exact canonical local bundle path and report why it won selection"
       },
       {
+        usage: "catalog (add <label> [--dir <path>] | list | resolve <label-or-id> [--field path])",
+        summary: "Register and deterministically resolve this user's explicitly named local workspaces"
+      },
+      {
         usage: "init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]",
         summary: "Create (or open) an OKF knowledge bundle in a directory \u2014 greenfield setup; a project that already shares a board is set up by sync, not init"
       },
@@ -16765,9 +16769,9 @@ function commandReference(invocation) {
   }
   return { commands, kinds: kindsPointer(invocation), remoteEnv: remoteEnvPointer() };
 }
-function commandName(usage) {
-  const stop = usage.search(/[<[("]|\s--|\s-\w/);
-  return (stop === -1 ? usage : usage.slice(0, stop)).trim();
+function commandName(usage2) {
+  const stop = usage2.search(/[<[("]|\s--|\s-\w/);
+  return (stop === -1 ? usage2 : usage2.slice(0, stop)).trim();
 }
 function compactCommandReference(invocation) {
   const commands = {};
@@ -17298,11 +17302,476 @@ async function bundleCommand(argv, deps = {}) {
   );
 }
 
-// src/cli.ts
+// src/commands/catalog.ts
 import { parseArgs as parseArgs27 } from "node:util";
+import { homedir as homedir8 } from "node:os";
+
+// src/catalog.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { chmod as chmod3, mkdir as mkdir3, open as open2, readFile as readFile4, stat, unlink as unlink3 } from "node:fs/promises";
+import { homedir as homedir7 } from "node:os";
+import path14 from "node:path";
+var CATALOG_FILE_NAME = "catalog.json";
+var CATALOG_LOCK_FILE_NAME = "catalog.lock";
+var CATALOG_SCHEMA_VERSION = 1;
+var DIR_MODE3 = 448;
+var LOCK_MODE = 384;
+var DEFAULT_LOCK_WAIT_MS = 2e3;
+var DEFAULT_LOCK_POLL_MS = 25;
+var STALE_LOCK_MIN_AGE_MS = 3e4;
+var LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
+var ID_PATTERN = /^bnd_[0-9a-f]{32}$/;
+function catalogDir(home2) {
+  return credentialsDir(home2);
+}
+function catalogPath(home2 = homedir7()) {
+  return path14.join(catalogDir(home2), CATALOG_FILE_NAME);
+}
+function catalogLockPath(home2 = homedir7()) {
+  return path14.join(catalogDir(home2), CATALOG_LOCK_FILE_NAME);
+}
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function hasExactKeys(value, expected) {
+  const actual = Object.keys(value).sort();
+  const sortedExpected = [...expected].sort();
+  return actual.length === sortedExpected.length && actual.every((key, index) => key === sortedExpected[index]);
+}
+function invalidCatalog(file, detail) {
+  return new CliError("USAGE", `invalid workspace catalog ${file}: ${detail}`, {
+    help: `repair or move ${file}, then retry`
+  });
+}
+function assertCatalogLabel(label) {
+  if (!LABEL_PATTERN.test(label) || label.startsWith("bnd_")) {
+    throw new CliError(
+      "USAGE",
+      `invalid workspace label "${label}"; use 1-64 lowercase letters, numbers, dot, dash, or underscore, beginning and ending with a letter or number (the bnd_ prefix is reserved)`,
+      { help: `${cliInvocation()} catalog add <label> [--dir <path>]` }
+    );
+  }
+}
+function validateEntry(value, file, index) {
+  if (!isObject(value) || !hasExactKeys(value, ["id", "label", "locator"])) {
+    throw invalidCatalog(file, `entries[${index}] must contain exactly id, label, and locator`);
+  }
+  if (typeof value.id !== "string" || !ID_PATTERN.test(value.id)) {
+    throw invalidCatalog(file, `entries[${index}].id must match ${ID_PATTERN.source}`);
+  }
+  if (typeof value.label !== "string" || !LABEL_PATTERN.test(value.label) || value.label.startsWith("bnd_")) {
+    throw invalidCatalog(file, `entries[${index}].label is not a valid workspace label`);
+  }
+  if (!isObject(value.locator) || !hasExactKeys(value.locator, ["kind", "path"])) {
+    throw invalidCatalog(file, `entries[${index}].locator must contain exactly kind and path`);
+  }
+  if (value.locator.kind !== "local-path") {
+    throw invalidCatalog(file, `entries[${index}].locator.kind must be "local-path"`);
+  }
+  if (typeof value.locator.path !== "string" || !path14.isAbsolute(value.locator.path) || path14.normalize(value.locator.path) !== value.locator.path) {
+    throw invalidCatalog(file, `entries[${index}].locator.path must be a normalized absolute path`);
+  }
+  return {
+    id: value.id,
+    label: value.label,
+    locator: { kind: "local-path", path: value.locator.path }
+  };
+}
+function parseCatalog(raw, file) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw invalidCatalog(file, `invalid JSON (${err instanceof Error ? err.message : String(err)})`);
+  }
+  if (!isObject(parsed)) throw invalidCatalog(file, "top level must be an object");
+  if (parsed.schema_version !== CATALOG_SCHEMA_VERSION) {
+    if (typeof parsed.schema_version === "number" && parsed.schema_version > CATALOG_SCHEMA_VERSION) {
+      throw new CliError(
+        "NOT_IMPLEMENTED",
+        `workspace catalog ${file} uses newer schema version ${parsed.schema_version}; this CLI supports version ${CATALOG_SCHEMA_VERSION}`,
+        { help: "upgrade agentstate-lite before modifying this catalog" }
+      );
+    }
+    throw invalidCatalog(file, `schema_version must be ${CATALOG_SCHEMA_VERSION}`);
+  }
+  if (!hasExactKeys(parsed, ["entries", "schema_version"]) || !Array.isArray(parsed.entries)) {
+    throw invalidCatalog(file, "top level must contain exactly schema_version and entries[]");
+  }
+  const entries = parsed.entries.map((entry, index) => validateEntry(entry, file, index));
+  const ids = /* @__PURE__ */ new Set();
+  const labels = /* @__PURE__ */ new Set();
+  const paths = /* @__PURE__ */ new Set();
+  for (const entry of entries) {
+    if (ids.has(entry.id)) throw invalidCatalog(file, `duplicate id "${entry.id}"`);
+    if (labels.has(entry.label)) throw invalidCatalog(file, `duplicate label "${entry.label}"`);
+    if (paths.has(entry.locator.path)) throw invalidCatalog(file, `duplicate path "${entry.locator.path}"`);
+    ids.add(entry.id);
+    labels.add(entry.label);
+    paths.add(entry.locator.path);
+  }
+  return { schema_version: CATALOG_SCHEMA_VERSION, entries };
+}
+async function loadCatalog(home2 = homedir7()) {
+  const file = catalogPath(home2);
+  let raw;
+  try {
+    raw = await readFile4(file, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return { schema_version: CATALOG_SCHEMA_VERSION, entries: [] };
+    }
+    throw new CliError("RUNTIME", `could not read workspace catalog ${file}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return parseCatalog(raw, file);
+}
+function defaultProcessExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code !== "ESRCH";
+  }
+}
+function readLockMetadata(raw) {
+  try {
+    const value = JSON.parse(raw);
+    if (!isObject(value) || typeof value.pid !== "number" || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.created_at_ms !== "number" || !Number.isFinite(value.created_at_ms) || typeof value.token !== "string" || value.token.length === 0) {
+      return null;
+    }
+    return { pid: value.pid, created_at_ms: value.created_at_ms, token: value.token };
+  } catch {
+    return null;
+  }
+}
+async function acquireCatalogLock(options2) {
+  const home2 = options2.home ?? homedir7();
+  const dir = catalogDir(home2);
+  const lockPath = catalogLockPath(home2);
+  const now = options2.now ?? Date.now;
+  const pid = options2.pid ?? process.pid;
+  const sleep = options2.sleep ?? ((ms) => new Promise((resolve3) => setTimeout(resolve3, ms)));
+  const processExists = options2.processExists ?? defaultProcessExists;
+  const waitMs = options2.lockWaitMs ?? DEFAULT_LOCK_WAIT_MS;
+  const pollMs = options2.lockPollMs ?? DEFAULT_LOCK_POLL_MS;
+  const token = randomUUID2();
+  const started = now();
+  await mkdir3(dir, { recursive: true, mode: DIR_MODE3 });
+  await chmod3(dir, DIR_MODE3);
+  while (true) {
+    try {
+      const handle = await open2(lockPath, "wx", LOCK_MODE);
+      try {
+        await handle.writeFile(JSON.stringify({ pid, created_at_ms: now(), token }) + "\n");
+        await handle.chmod(LOCK_MODE);
+        await handle.sync();
+      } catch (err) {
+        await handle.close().catch(() => {
+        });
+        await unlink3(lockPath).catch(() => {
+        });
+        throw err;
+      }
+      await handle.close();
+      return async () => {
+        try {
+          const current = readLockMetadata(await readFile4(lockPath, "utf8"));
+          if (current?.token === token) await unlink3(lockPath);
+        } catch (err) {
+          if (err.code !== "ENOENT") throw err;
+        }
+      };
+    } catch (err) {
+      if (err.code !== "EEXIST") throw err;
+    }
+    let owner = null;
+    let malformedAgeMs = null;
+    try {
+      owner = readLockMetadata(await readFile4(lockPath, "utf8"));
+      if (!owner) malformedAgeMs = now() - (await stat(lockPath)).mtimeMs;
+    } catch (err) {
+      if (err.code === "ENOENT") continue;
+    }
+    if (owner && now() - owner.created_at_ms >= STALE_LOCK_MIN_AGE_MS && !processExists(owner.pid)) {
+      throw new CliError("TRANSIENT", `stale workspace catalog lock at ${lockPath} belongs to absent PID ${owner.pid}`, {
+        details: { retryable: true, stale: true, lock_path: lockPath, owner_pid: owner.pid },
+        help: `remove ${lockPath} after confirming PID ${owner.pid} is absent, then retry`
+      });
+    }
+    if (malformedAgeMs !== null && malformedAgeMs >= STALE_LOCK_MIN_AGE_MS) {
+      throw new CliError("TRANSIENT", `stale malformed workspace catalog lock at ${lockPath}`, {
+        details: { retryable: true, stale: true, malformed: true, lock_path: lockPath },
+        help: `inspect and remove ${lockPath}, then retry`
+      });
+    }
+    if (now() - started >= waitMs) {
+      throw new CliError("TRANSIENT", `workspace catalog is busy (lock: ${lockPath})`, {
+        details: { retryable: true, lock_path: lockPath, owner_pid: owner?.pid },
+        help: `${cliInvocation()} catalog <command> ...`
+      });
+    }
+    await sleep(pollMs);
+  }
+}
+async function mutateCatalog(decide, options2) {
+  const home2 = options2.home ?? homedir7();
+  const release = await acquireCatalogLock({ ...options2, home: home2 });
+  try {
+    const current = await loadCatalog(home2);
+    const result = await decide(current);
+    if (result.changed) {
+      if (!result.next) throw new Error("catalog mutation marked changed without a next state");
+      const next = {
+        schema_version: CATALOG_SCHEMA_VERSION,
+        entries: [...result.next.entries].sort((a, b) => a.label.localeCompare(b.label))
+      };
+      await writeFileAtomic0600(catalogDir(home2), CATALOG_FILE_NAME, JSON.stringify(next, null, 2) + "\n");
+    }
+    return { value: result.value, changed: result.changed };
+  } finally {
+    await release();
+  }
+}
+function generatedId(options2, existing) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const id = options2.createId?.() ?? `bnd_${randomUUID2().replaceAll("-", "")}`;
+    if (!ID_PATTERN.test(id)) throw new Error(`catalog id generator returned invalid id: ${id}`);
+    if (!existing.has(id)) return id;
+  }
+  throw new Error("catalog id generator exhausted collision retries");
+}
+async function addCatalogEntry(label, canonicalPath, options2 = {}) {
+  assertCatalogLabel(label);
+  if (!path14.isAbsolute(canonicalPath)) throw new CliError("USAGE", "workspace catalog paths must be absolute");
+  const result = await mutateCatalog(async (current) => {
+    const target = await resolveLocalBundleTarget(canonicalPath);
+    if (target.canonicalRoot !== canonicalPath) {
+      throw new CliError("NOT_FOUND", `workspace path is no longer canonical: ${canonicalPath}`, {
+        help: `${cliInvocation()} bundle locate --dir ${canonicalPath}`
+      });
+    }
+    const byLabel = current.entries.find((entry2) => entry2.label === label);
+    const byPath = current.entries.find((entry2) => entry2.locator.path === canonicalPath);
+    if (byLabel && byPath && byLabel.id === byPath.id) {
+      return { value: byLabel, changed: false };
+    }
+    if (byLabel) {
+      throw new CliError("ALREADY_EXISTS", `workspace label "${label}" already points to ${byLabel.locator.path}`, {
+        details: { id: byLabel.id, label, path: byLabel.locator.path },
+        help: `${cliInvocation()} catalog resolve ${label}`
+      });
+    }
+    if (byPath) {
+      throw new CliError("ALREADY_EXISTS", `workspace path ${canonicalPath} is already labeled "${byPath.label}"`, {
+        details: { id: byPath.id, label: byPath.label, path: canonicalPath },
+        help: `${cliInvocation()} catalog resolve ${byPath.label}`
+      });
+    }
+    const entry = {
+      id: generatedId(options2, new Set(current.entries.map((item) => item.id))),
+      label,
+      locator: { kind: "local-path", path: canonicalPath }
+    };
+    return {
+      value: entry,
+      changed: true,
+      next: { schema_version: CATALOG_SCHEMA_VERSION, entries: [...current.entries, entry] }
+    };
+  }, options2);
+  return { entry: result.value, changed: result.changed };
+}
+async function entryAvailable(entry) {
+  try {
+    const target = await resolveLocalBundleTarget(entry.locator.path);
+    return target.canonicalRoot === entry.locator.path;
+  } catch {
+    return false;
+  }
+}
+async function listCatalogEntries(home2 = homedir7()) {
+  const catalog2 = await loadCatalog(home2);
+  return Promise.all(
+    [...catalog2.entries].sort((a, b) => a.label.localeCompare(b.label)).map(async (entry) => ({ ...entry, available: await entryAvailable(entry) }))
+  );
+}
+function classifySelector(selector) {
+  if (selector.startsWith("bnd_")) {
+    if (!ID_PATTERN.test(selector)) {
+      throw new CliError("USAGE", `invalid workspace catalog id "${selector}"`);
+    }
+    return "id";
+  }
+  assertCatalogLabel(selector);
+  return "label";
+}
+async function resolveCatalogEntry(selector, home2 = homedir7()) {
+  const catalog2 = await loadCatalog(home2);
+  const kind2 = classifySelector(selector);
+  const entry = catalog2.entries.find((item) => item[kind2] === selector);
+  if (!entry) {
+    throw new CliError("NOT_FOUND", `workspace "${selector}" is not registered`, {
+      help: `${cliInvocation()} catalog list`
+    });
+  }
+  if (!await entryAvailable(entry)) {
+    throw new CliError("NOT_FOUND", `workspace "${entry.label}" is unavailable at ${entry.locator.path}`, {
+      details: { id: entry.id, label: entry.label, path: entry.locator.path },
+      help: `restore the bundle at ${entry.locator.path}, then retry`
+    });
+  }
+  return { ...entry, available: true };
+}
+
+// src/commands/catalog.ts
+var CATALOG_USAGE = `agentstate-lite catalog \u2014 register and resolve this user's workspaces
+
+Usage:
+  agentstate-lite catalog add <label> [--dir <path>]
+  agentstate-lite catalog list [--json]
+  agentstate-lite catalog resolve <label-or-id> [--field path | --json]
+
+Labels are user-defined or agent-defined on the user's behalf. They use 1-64 lowercase letters,
+numbers, dots, dashes, or underscores, beginning and ending with a letter or number. Registration
+is explicit: the catalog never crawls for or silently enrolls workspaces.
+
+Commands:
+  add       Register the resolved local bundle under a unique label (idempotent for the same pair)
+  list      List registered workspaces and their currently derived availability
+  resolve   Revalidate and return exactly one registered workspace
+
+Options:
+  --dir <path>   add: literal bundle root; otherwise normal project-local discovery applies
+  --field path   resolve: print only the canonical path plus a newline
+  --json         Emit compact JSON instead of TOON
+  -h, --help     Show this help
+
+The catalog only selects a target. Pass a resolved path explicitly to ordinary commands with
+--dir; there is no process-global active workspace and no implicit cross-bundle operation.
+`;
+function entryReceipt(entry) {
+  return {
+    schema_version: 1,
+    id: entry.id,
+    label: entry.label,
+    locator: entry.locator,
+    available: entry.available
+  };
+}
+function usage(message) {
+  throw new CliError("USAGE", message, { help: `${cliInvocation()} catalog --help` });
+}
+async function catalog(argv, deps = {}) {
+  const stderr = deps.stderr ?? ((s) => void process.stderr.write(s));
+  if (requestsPathField(argv)) {
+    try {
+      await catalogInner(argv, deps);
+    } catch (err) {
+      const { envelope, handled } = toExit(err);
+      if (!handled) stderr(renderErrorEnvelope(envelope));
+      throw handled ? err : asHandled(err);
+    }
+    return;
+  }
+  await catalogInner(argv, deps);
+}
+function requestsPathField(argv) {
+  return argv.some((arg, index) => arg === "--field=path" || arg === "--field" && argv[index + 1] === "path");
+}
+async function catalogInner(argv, deps) {
+  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
+  const cwd = deps.cwd ?? (() => process.cwd());
+  const home2 = deps.home ?? homedir8;
+  const parsed = parseOrUsage(
+    () => parseArgs27({
+      args: argv,
+      options: {
+        dir: { type: "string" },
+        field: { type: "string" },
+        json: { type: "boolean" },
+        help: { type: "boolean", short: "h" }
+      },
+      allowPositionals: true
+    }),
+    "catalog"
+  );
+  if (parsed.values.help || parsed.positionals.length === 0) {
+    stdout(CATALOG_USAGE);
+    return;
+  }
+  const [subcommand, ...positionals] = parsed.positionals;
+  if (subcommand === "add") {
+    if (positionals.length !== 1) usage("catalog add requires exactly one <label>");
+    if (parsed.values.field !== void 0) usage("--field is only valid with catalog resolve");
+    const target = await resolveLocalBundleTarget(parsed.values.dir, cwd());
+    const result = await addCatalogEntry(positionals[0], target.canonicalRoot, {
+      ...deps.catalogOptions ?? {},
+      home: home2()
+    });
+    stdout(
+      render(
+        {
+          catalog: result.changed ? "added" : "unchanged",
+          changed: result.changed,
+          ...entryReceipt({ ...result.entry, available: true }),
+          help: [`${cliInvocation()} catalog resolve ${result.entry.label} --field path`]
+        },
+        resolveMode(parsed.values)
+      )
+    );
+    return;
+  }
+  if (subcommand === "list") {
+    if (positionals.length !== 0) usage("catalog list takes no positional arguments");
+    if (parsed.values.dir !== void 0) usage("--dir is only valid with catalog add");
+    if (parsed.values.field !== void 0) usage("--field is only valid with catalog resolve");
+    const entries = await listCatalogEntries(home2());
+    stdout(
+      render(
+        {
+          schema_version: 1,
+          count: entries.length,
+          entries,
+          help: entries.length === 0 ? [`${cliInvocation()} catalog add <label> [--dir <path>]`] : [`${cliInvocation()} catalog resolve <label-or-id> --field path`]
+        },
+        resolveMode(parsed.values)
+      )
+    );
+    return;
+  }
+  if (subcommand === "resolve") {
+    if (positionals.length !== 1) usage("catalog resolve requires exactly one <label-or-id>");
+    if (parsed.values.dir !== void 0) usage("--dir is only valid with catalog add");
+    if (parsed.values.field !== void 0 && parsed.values.field !== "path") {
+      usage('catalog resolve --field supports only "path"');
+    }
+    if (parsed.values.field !== void 0 && parsed.values.json) {
+      usage("--field and --json are mutually exclusive");
+    }
+    const entry = await resolveCatalogEntry(positionals[0], home2());
+    if (parsed.values.field === "path") {
+      stdout(entry.locator.path + "\n");
+      return;
+    }
+    stdout(
+      render(
+        {
+          ...entryReceipt(entry),
+          help: [`pass this path explicitly: ${cliInvocation()} <command> --dir <resolved-path>`]
+        },
+        resolveMode(parsed.values)
+      )
+    );
+    return;
+  }
+  usage(`unknown catalog subcommand: ${subcommand}`);
+}
+
+// src/cli.ts
+import { parseArgs as parseArgs28 } from "node:util";
 var KNOWN_COMMANDS = [
   "init",
   "bundle",
+  "catalog",
   "doc",
   "promote",
   "pull",
@@ -17338,7 +17807,7 @@ var wrap2 = (fn) => async (args) => {
 };
 function isGlobalOnlyHomeInvocation(argv) {
   try {
-    const { positionals } = parseArgs27({
+    const { positionals } = parseArgs28({
       args: argv,
       options: {
         remote: { type: "string" },
@@ -17356,7 +17825,7 @@ function isGlobalOnlyHomeInvocation(argv) {
 function hoistLeadingGlobalFlags(argv) {
   let tokens;
   try {
-    tokens = parseArgs27({
+    tokens = parseArgs28({
       args: argv,
       tokens: true,
       strict: false,
@@ -17420,6 +17889,7 @@ async function main(argv) {
     commands: {
       init: wrap2(init),
       bundle: wrap2(bundleCommand),
+      catalog: wrap2(catalog),
       doc: wrap2(doc),
       promote: wrap2(promote),
       pull: wrap2(pull),
