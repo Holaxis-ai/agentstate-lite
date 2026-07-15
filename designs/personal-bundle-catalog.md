@@ -1,17 +1,17 @@
 ---
 type: Design
-title: Personal bundle catalog (draft)
-actor: codex
-timestamp: '2026-07-14T20:41:36.092Z'
+title: User-scoped workspace catalog
+actor: mike/codex
+timestamp: '2026-07-15T02:28:55.699Z'
 ---
-# Personal bundle catalog
+# User-scoped workspace catalog
 
-**Status:** Draft; wake condition met on 2026-07-14 by active use across multiple bundles.
-This document is ready for design review. It does not authorize implementation.
+**Status:** Direction approved; the minimum registry loop was authorized for implementation on
+2026-07-14 after active use across multiple bundles. Later units remain separately gated.
 
 ## Decision summary
 
-Add a machine-local, explicitly managed catalog that lets one person and their agents locate the
+Add a machine-local, explicitly managed catalog that lets one user and their agents locate the
 independent AgentState bundles they use. The catalog is a routing aid, not a merged knowledge store.
 It resolves a human label or stable entry id to exactly one bundle locator; the existing AgentState
 CLI then performs the requested operation against that bundle.
@@ -25,13 +25,13 @@ commands, schemas, validation, help, and safe-targeting behavior.
 AgentState is organized around project-scoped bundles. That is the right authority boundary for
 project knowledge, but one person may work across many repositories, private workspaces, and
 shared boards. Today discovery is contextual: when standing inside a project, the CLI resolves its
-bundle. There is no personal surface that answers which bundles this person uses, where they are,
+bundle. There is no user-scoped surface that answers which bundles this person uses, where they are,
 or how an agent should target one outside its current project.
 
 That pain is no longer hypothetical: one user is actively juggling several bundles. The original
 wake condition for prioritizing the design has therefore been met.
 
-The product thesis targets one human and their agent fleet across many projects. A personal catalog
+The product thesis targets one human and their agent fleet across many projects. A workspace catalog
 is the bridge between project-local authority and that cross-project experience.
 
 ## Goals
@@ -69,7 +69,7 @@ asks which bundles exist, or explicitly requests work outside the current projec
 
 ## Product boundary
 
-The catalog is a personal index of bundle references. It is not a new bundle format, a merged
+The catalog is a user-scoped index of workspace references. It is not a new bundle format, a merged
 knowledge database, or hosted multi-tenant dispatch. Each referenced bundle remains an independent
 authority with its own documents, history, sharing mode, permissions, and lifecycle.
 
@@ -85,10 +85,7 @@ should expose these capabilities:
 ```text
 agentstate-lite catalog add <label> [--dir <path>]
 agentstate-lite catalog list [--json]
-agentstate-lite catalog resolve <selector> [--json]
-agentstate-lite catalog rename <selector> <new-label>
-agentstate-lite catalog remove <selector>
-agentstate-lite catalog open <selector>
+agentstate-lite catalog resolve <selector> [--field path | --json]
 ```
 
 With no `--dir`, `add` uses the existing project-local discovery path, making registration easy
@@ -103,12 +100,15 @@ any other uniqueness conflict fails explicitly. Generated ids use a reserved gra
 labels are forbidden to match, so a selector can unambiguously be classified as an id or a label
 without an implicit precedence rule.
 
-`resolve` returns one entry only and revalidates the canonical path and its `index.md`. An unknown,
+Labels are user-defined or agent-defined on the user's behalf. AgentState does not prescribe
+categories such as personal, project, or team; it only enforces a safe label grammar and
+uniqueness. Registration is always explicit — agents may suggest or perform it when asked, but the
+CLI never crawls the filesystem or silently enrolls a workspace.
+
+`resolve` returns one entry only and revalidates the canonical path and its `index.md`. `--field
+path` emits only the raw canonical path plus a newline for direct shell and agent reuse. An unknown,
 unavailable, or invalid selector is an error, never a best-effort choice and never an invitation to
-initialize a replacement bundle. `open` delegates in-process to the existing `ui` handler with the
-resolved literal `--dir`; it remains a foreground one-bundle UI process. It does not shell-spawn a
-CLI, introduce a multi-bundle server, or change the existing rule that the per-user UI URL file
-describes only the latest UI run.
+initialize a replacement bundle.
 
 All catalog commands work from any directory and do not require an already resolved bundle. They
 are registered in the executable's top-level command/reference authority.
@@ -119,10 +119,9 @@ The agent-facing JSON result should be versioned and minimal, for example:
 {
   "schema_version": 1,
   "id": "bnd_01J...",
-  "label": "personal",
-  "locator": { "kind": "local-path", "path": "/Users/example/bundles/personal" },
-  "available": true,
-  "project": null
+  "label": "agentstate",
+  "locator": { "kind": "local-path", "path": "/Users/example/projects/agentstate/.agentstate-lite" },
+  "available": true
 }
 ```
 
@@ -135,8 +134,8 @@ require deterministic tests.
 
 An agent follows a two-step protocol:
 
-1. Use `catalog list --json` for orientation or `catalog resolve <selector> --json` when the user
-   names a bundle.
+1. Use `catalog list --json` for orientation or `catalog resolve <selector> --field path` when the
+   user names a workspace.
 2. Pass the returned path as the explicit directory to every ordinary AgentState command in that
    unit of work.
 
@@ -223,7 +222,7 @@ useful slice prefers explicit registration over filesystem crawling.
 Discovery may later offer safe suggestions from known project bindings, but it never scans or
 publishes workspaces without the user's knowledge.
 
-The initial `open` operation launches the selected bundle's existing Page launcher. A later visual
+The later `catalog open` operation may launch the selected bundle's existing Page launcher. A later visual
 catalog may show the same registry and hand off to that existing single-bundle UI. It should not
 turn the current UI server into a multi-bundle data plane merely to provide navigation.
 
@@ -256,16 +255,21 @@ smuggled into a local launcher.
 
 ## Proposed delivery sequence
 
-### Unit 1: registry and agent-safe CLI
+### Unit 1a: minimum registry loop — authorized
 
-Implement the private versioned registry plus add, list, resolve, rename, and remove. Prove unique
+Implement the private versioned registry plus add, list, and resolve (`--field path`). Prove unique
 selection, realpath and bundle-root validation, the locked mutation boundary, permission handling,
 corruption and newer-schema behavior, and TOON/JSON projections of one result contract. Update
 generated CLI reference/help from the same command authority. Because this unit controls target
 selection and supports concurrent agent mutation, it receives exact-SHA independent review and
 adversarial QA even though its code size should remain modest.
 
-### Unit 2: human opening workflow
+### Unit 1b: catalog management — after dogfood
+
+Add rename and remove only after the minimum loop is used. Reuse the same locked mutation primitive;
+do not change selector or uniqueness semantics.
+
+### Unit 2: human opening workflow — separately gated
 
 Add `catalog open` as in-process delegation to the current `ui --dir` handler. Preserve its
 foreground, one-bundle behavior and latest-run URL-file semantics. Do not introduce a multi-bundle

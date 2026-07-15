@@ -1,20 +1,20 @@
 ---
 type: Roadmap Item
-title: 'Personal bundle catalog: work across projects'
-status: queued
+title: 'Workspace catalog: work across projects'
+status: active
 description: >-
-  UNPRIORITIZED — a private catalog and launcher for one person's bundles across
-  repositories; preserve the direction without scheduling implementation.
+  ACTIVE — user-scoped catalog for user/agent-defined workspace labels; minimum
+  add/list/resolve loop authorized, later management and UI separately gated.
 actor: mike/codex
-timestamp: '2026-07-15T01:50:54.730Z'
+timestamp: '2026-07-15T02:29:07.936Z'
 ---
-# Personal bundle catalog: work across projects
+# Workspace catalog: work across projects
 
-**Priority:** Unprioritized. `queued` records the idea without placing it in the implementation
-sequence. No tasks should be created until an explicit prioritization decision.
+**Priority:** Active. The minimum add/list/resolve loop was explicitly authorized on 2026-07-14.
+Later management, UI, and aggregation units remain separately gated by dogfood.
 
-AgentState already recognizes multi-bundle registries and cross-project views as frozen future
-scope. This item gives the personal version of that concept a durable, bounded home: one human can
+AgentState already recognizes multi-bundle registries and cross-project views as future scope. This
+item gives the user-scoped concept a durable, bounded home: one human and their agents can
 find and reopen the local, private, and shared bundles used across repositories without merging
 their data or reviving hosted infrastructure.
 
@@ -22,11 +22,13 @@ The adjacent portable-recipe work makes this more valuable: several independent 
 Kinds and Pages while retaining separate instance data and authority. The catalog is the discovery
 layer above those bundles, not part of recipe packaging itself.
 
-[Draft design](../designs/personal-bundle-catalog.md)
+[Design](../designs/personal-bundle-catalog.md)
 
-## Wake condition
+## Wake decision
 
-Revisit when real use across several bundles creates recurring discovery, switching, wrong-target,
-or launcher-navigation pain. Until then, preserve the design and do not implement it.
+Met: real use across several bundles created recurring discovery and switching friction. The
+minimum loop is active; subsequent units wait for evidence from its use.
 
 [contains](../tasks/bundle-locate.md)
+
+[contains](../tasks/workspace-catalog-core-loop.md)
