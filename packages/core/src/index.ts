@@ -154,6 +154,10 @@ export { parseTimestamp } from "./freshness.js";
 
 export { parseMarkdown, stringifyDoc, stringifyWithData, MalformedDocumentError } from "./frontmatter.js";
 
+// Typed input-validation rejection (engine refuses caller input before touching storage) —
+// consumer boundaries branch on the TYPE (CLI: USAGE/exit 2), never on message prose.
+export { InvalidInputError } from "./errors.js";
+
 // Kind conventions (CLAUDE.md gate 3, decision 5): a bundle-declared, opt-in document-kind
 // registry — validation + per-kind freshness horizons, read from `Convention` docs under
 // `conventions/`. THE mechanism is core (one implementation, consumed by CLI/server/future

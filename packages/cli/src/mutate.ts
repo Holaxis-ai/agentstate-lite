@@ -152,19 +152,6 @@ export interface MutateResult {
   warnings: ValidationWarning[];
 }
 
-/**
- * Classify an error thrown by the read/write seam during a mutation. Delegates to the shared
- * {@link classifyBundleError} (the SAME classifier `link add`/the command catch-alls use) so a
- * `RemoteError` from a `--remote` mutation keeps its server-derived `code` — a role-denied `403`
- * surfaces as `FORBIDDEN`, a `404` as `NOT_FOUND`, a `409` as `LAST_ADMIN` — instead of being
- * flattened to a generic `USAGE`. Behavior for the two pre-existing cases is unchanged: an
- * already-classified `CliError` (e.g. a wrapped transport RUNTIME from `bundle.ts`) passes through,
- * and a plain `Error` (core's reserved-id/empty-type/unsafe-id violations) still becomes `USAGE`.
- */
-function classify(err: unknown, remoteUrl?: string): CliError {
-  return classifyBundleError(err, remoteUrl);
-}
-
 /** Structural equality (order-independent, recursive through plain objects/arrays). */
 function valuesEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -229,7 +216,7 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
       if (err instanceof VersionConflict) {
         throw errors.alreadyExists ? errors.alreadyExists() : new CliError("ALREADY_EXISTS", `'${id}' already exists`);
       }
-      throw classify(err, opts.remoteUrl);
+      throw classifyBundleError(err, opts.remoteUrl);
     }
   }
 
@@ -243,7 +230,7 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
       return { state: doc, version };
     } catch (err) {
       if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return { state: undefined, version: null };
-      throw classify(err, opts.remoteUrl);
+      throw classifyBundleError(err, opts.remoteUrl);
     }
   };
 
@@ -282,7 +269,7 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
             return version;
           } catch (err) {
             if (err instanceof VersionConflict) throw err; // let the primitive retry/exhaust
-            throw classify(err, opts.remoteUrl);
+            throw classifyBundleError(err, opts.remoteUrl);
           }
         },
         maxAttempts,
@@ -292,7 +279,7 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
       if (err instanceof VersionConflict) {
         throw errors.staleHead ? errors.staleHead(err) : new CliError("STALE_HEAD", err.message);
       }
-      throw err; // already classified (readExisting/write's own classify, or a buildCandidate throw)
+      throw err; // already classified (readExisting/write route through the boundary, or a buildCandidate throw)
     }
   }
 
@@ -353,7 +340,7 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
           return version;
         } catch (err) {
           if (err instanceof VersionConflict) throw err; // let the primitive retry/exhaust
-          throw classify(err, opts.remoteUrl);
+          throw classifyBundleError(err, opts.remoteUrl);
         }
       },
       // An EXPLICIT caller token makes a conflict terminal (hard CAS, no retry) — the whole point of
@@ -369,6 +356,6 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
     if (err instanceof VersionConflict) {
       throw errors.staleHead ? errors.staleHead(err) : new CliError("STALE_HEAD", err.message);
     }
-    throw err; // already classified (readExisting/notFound/write's own classify, or a buildCandidate throw)
+    throw err; // already classified (readExisting/notFound/write route through the boundary, or a buildCandidate throw)
   }
 }

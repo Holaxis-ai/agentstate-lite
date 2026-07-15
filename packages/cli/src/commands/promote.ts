@@ -265,14 +265,15 @@ async function promoteBlob(
   stdout(render(receipt, mode));
 }
 
-/** Map a local-file read failure (ENOENT, etc.) to a structured USAGE CliError naming the file. */
+/** Map a missing source file (ENOENT — the caller named it, so it's their input) to a USAGE
+ * CliError naming the file; anything else (EACCES, EISDIR, …) is an I/O failure for the boundary. */
 function promoteFileReadError(err: unknown, file: string): CliError {
   if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
     return new CliError("USAGE", `no such file: '${file}'`, {
       help: `${cliInvocation()} promote <file> --doc-key <key>`,
     });
   }
-  return new CliError("USAGE", err instanceof Error ? err.message : String(err));
+  return classifyBundleError(err);
 }
 
 /**
@@ -309,9 +310,8 @@ function promoteWriteErrorToCliError(err: unknown, key: string, file: string, re
       },
     );
   }
-  // Anything else — a local engine's plain Error (reserved-id, unsafe-id, §9.2, etc.) → USAGE, or
-  // a RemoteError (a --remote write's non-CAS failure, e.g. an AUTH_REQUIRED/RUNTIME from a gated
-  // Worker deployment) → classified by ITS code — matches doc write's catch-all posture, extended
-  // for the remote taxonomy (Stage-1 Unit 2b Part C).
+  // Anything else lands on the one boundary: a typed InvalidInputError (reserved-id, unsafe-id,
+  // §9.2) → USAGE, a RemoteError by ITS code (AUTH_REQUIRED/FORBIDDEN/…), an unexpected
+  // failure → RUNTIME.
   return classifyBundleError(err, remoteUrl);
 }

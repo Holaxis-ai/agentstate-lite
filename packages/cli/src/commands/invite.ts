@@ -2,8 +2,8 @@
 // multi-human auth (Stage-2 auth Part A: `POST /v0/invites`, `GET /v0/invites`, `DELETE
 // /v0/invites/{id}` — `packages/worker/src/auth-routes.ts`, the ENDPOINT CONTRACT this
 // command consumes). Requires an admin membership on the target bundle (or the root
-// bootstrap identity) — a non-admin caller gets the server's 403 FORBIDDEN, which (like
-// any code `classifyBundleError` doesn't special-case) surfaces as USAGE/exit 2.
+// bootstrap identity) — a non-admin caller gets the server's 403 FORBIDDEN, which
+// `classifyBundleError` surfaces with its distinct FORBIDDEN code (USAGE's exit 2).
 import { parseArgs } from "node:util";
 import {
   authRequest,

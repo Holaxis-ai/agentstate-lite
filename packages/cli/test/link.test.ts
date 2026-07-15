@@ -32,7 +32,7 @@ import {
 } from "@agentstate-lite/core";
 import { serve, type ServerHandle } from "@agentstate-lite/server";
 import { link, addLink } from "../src/commands/link.js";
-import { CliError, toExit } from "../src/errors.js";
+import { CliError } from "../src/errors.js";
 
 const OLD_TS = "2020-01-01T00:00:00.000Z";
 
@@ -344,44 +344,8 @@ test("link add: a competing writer makes an UNRELATED change before our own writ
   assert.equal(after.frontmatter.title, "Raced title");
 });
 
-test("link add: a genuine I/O failure (simulated ENOSPC) during the write surfaces as RUNTIME (exit 1), not USAGE (exit 2) (P3 review fix)", async () => {
-  // A prior version of addLink's write-error rethrow routed EVERY non-conflict write error
-  // (including a plain local Error with no typed shape) through `classifyBundleError`, whose
-  // fallback maps anything unrecognized to USAGE (exit 2, "fix your input") — wrong for a genuine
-  // I/O failure like a disk-full write, which is a RUNTIME condition, not user misuse. The fix
-  // classifies ONLY the known/typed `RemoteError` shape and rethrows anything else AS-IS, so it
-  // reaches the CLI's generic RUNTIME/exit-1 catch-all (`toExit`, exactly as `cli.ts`'s dispatcher
-  // applies it) instead of being silently downgraded.
-  const backend = new MemoryBackend();
-  const bundle: Bundle = { root: "mem://link-add-enospc", backend };
-  await writeDoc(bundle, { id: "a", frontmatter: { type: "Concept", timestamp: OLD_TS }, body: "" });
-  await writeDoc(bundle, { id: "b", frontmatter: { type: "Concept", timestamp: OLD_TS }, body: "" });
-
-  const originalWrite = backend.write.bind(backend);
-  backend.write = (async (id: string, d: OkfDocument, options?: { expectedVersion?: Version | null }) => {
-    if (id === "a") {
-      const err = new Error("ENOSPC: no space left on device, write") as NodeJS.ErrnoException;
-      err.code = "ENOSPC";
-      throw err;
-    }
-    return originalWrite(id, d, options);
-  }) as typeof backend.write;
-
-  let thrown: unknown;
-  try {
-    await addLink(bundle, "a", "b", { text: "b" });
-    assert.fail("expected addLink to reject on the simulated ENOSPC write failure");
-  } catch (err) {
-    thrown = err;
-  }
-  // NOT a CliError at this layer — addLink itself never classifies a plain local error (only a
-  // RemoteError gets mapped); classification into the exit-code taxonomy is the CLI dispatcher's
-  // job, exercised here exactly the way `cli.ts`'s `formatError` does it.
-  const exit = toExit(thrown);
-  assert.equal(exit.exitCode, 1);
-  assert.equal(exit.envelope.error.code, "RUNTIME");
-  assert.match(exit.envelope.error.message, /ENOSPC/);
-});
+// The ENOSPC-stays-RUNTIME probe lives in test/error-boundary.test.ts with the rest of the
+// public error matrix (tasks/error-classification-boundary).
 
 test("link show --limit caps the outbound/backlink lists; counts stay the true totals (A5)", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));

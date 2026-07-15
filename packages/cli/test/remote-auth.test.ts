@@ -40,6 +40,7 @@ import { createRouter } from "@agentstate-lite/server";
 import { list } from "../src/commands/list.js";
 import { doc } from "../src/commands/doc.js";
 import { link } from "../src/commands/link.js";
+import { join } from "../src/commands/join.js";
 import { toExit } from "../src/errors.js";
 import { API_KEY_ENV_VAR } from "../src/bundle.js";
 import { saveApiKeyForOrigin } from "../src/credentials.js";
@@ -301,6 +302,71 @@ test("--remote: a 403 role-denial on doc write keeps its FORBIDDEN code through 
       assert.equal(exitCode, 2); // FORBIDDEN maps to exit 2 (least-wrong; re-auth would not grant a role)
       assert.equal(envelope.error.code, "FORBIDDEN"); // NOT "USAGE" — the code the fix preserves
       assert.match(envelope.error.message, /does not satisfy the required 'writer' role/);
+    }),
+  );
+});
+
+/**
+ * Mirrors `packages/worker/src/auth.ts`'s join rate limiter EXACTLY: `POST /v0/join` answers
+ * `429 { code: "RATE_LIMITED" }` (the one unauthenticated, throttled route). Everything else
+ * passes through — these wrappers drive the boundary's status-aware unknown-code fallback
+ * (tasks/error-classification-boundary fix round 2) through REAL commands.
+ */
+function rateLimitJoin(router: (req: Request) => Promise<Response>): (req: Request) => Promise<Response> {
+  return async (req: Request): Promise<Response> => {
+    if (new URL(req.url).pathname === "/v0/join" && req.method === "POST") {
+      return jsonResponse(429, {
+        error: { code: "RATE_LIMITED", message: "too many join attempts from this address — try again later" },
+      });
+    }
+    return router(req);
+  };
+}
+
+/** Answers every request with a 5xx carrying a code the CLI has never heard of. */
+function unknownCode5xx(): (req: Request) => Promise<Response> {
+  return async (): Promise<Response> =>
+    jsonResponse(500, { error: { code: "INTERNAL_ERROR", message: "unexpected condition" } });
+}
+
+/** Answers every request with a 4xx carrying a code the CLI has never heard of. */
+function unknownCode4xx(): (req: Request) => Promise<Response> {
+  return async (): Promise<Response> =>
+    jsonResponse(422, { error: { code: "UNPROCESSABLE", message: "the request was understood but rejected" } });
+}
+
+test("--remote: the Worker's 429 RATE_LIMITED through the REAL join path -> TRANSIENT, exit 1, retryable — not USAGE/exit 2 (P1 fix round 2)", async () => {
+  const router = await freshRouter();
+  await withGatedFetch(rateLimitJoin(router), async () => {
+    const { exitCode, envelope } = await exitOf(() =>
+      join(["--remote", REMOTE_URL, "--invite", "some-invite-token", "--json"], {}),
+    );
+    assert.equal(exitCode, 1); // back off and retry — NOT "fix your input"
+    assert.equal(envelope.error.code, "TRANSIENT");
+    assert.equal(envelope.error.details?.retryable, true);
+    assert.equal(envelope.error.details?.status, 429);
+    assert.match(envelope.error.message, /too many join attempts/);
+  });
+});
+
+test("--remote: an unknown wire code on a 5xx (INTERNAL_ERROR) -> RUNTIME, exit 1 — never USAGE (P1 fix round 2)", async () => {
+  await withApiKeyEnv(CORRECT_KEY, () =>
+    withGatedFetch(unknownCode5xx(), async () => {
+      const { exitCode, envelope } = await exitOf(() => list(["--remote", REMOTE_URL, "--json"], {}));
+      assert.equal(exitCode, 1);
+      assert.equal(envelope.error.code, "RUNTIME");
+      assert.match(envelope.error.message, /unexpected condition/);
+    }),
+  );
+});
+
+test("--remote: an unknown wire code on a 4xx (UNPROCESSABLE, 422) -> USAGE, exit 2 — the adjudicated attested-client-fault rule", async () => {
+  await withApiKeyEnv(CORRECT_KEY, () =>
+    withGatedFetch(unknownCode4xx(), async () => {
+      const { exitCode, envelope } = await exitOf(() => list(["--remote", REMOTE_URL, "--json"], {}));
+      assert.equal(exitCode, 2);
+      assert.equal(envelope.error.code, "USAGE");
+      assert.match(envelope.error.message, /understood but rejected/);
     }),
   );
 });

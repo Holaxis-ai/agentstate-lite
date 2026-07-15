@@ -630,7 +630,7 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
       });
       satisfiedOutboundTypes.add(type);
     } catch (err) {
-      const classified = err instanceof CliError ? err : classifyBundleError(err, remote);
+      const classified = classifyBundleError(err, remote);
       linkResults.push({
         type,
         target,

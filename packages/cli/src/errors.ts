@@ -3,15 +3,12 @@
 // Per the agent-first design (§6/§7): an agent shelling out branches on the EXIT CODE first and the
 // structured `code` enum second, so both must be deterministic. Every failable command throws a
 // `CliError`; the bin wrapper (index.ts / cli.ts formatError) maps it to an exit code and a structured
-// stdout envelope — never by prose-matching the message. Non-CliError throws fall back to a generic
-// RUNTIME (exit 1) — EXCEPT a `RemoteError` (Stage-1 Unit 2b Part C, `core/src/remote-backend.ts`),
-// which `toExit` now classifies by its OWN `code` (see `classifyBundleError` below) instead of
-// collapsing into that generic fallback, so an uncaught AUTH_REQUIRED/RUNTIME distinction from a
-// `--remote` command survives even for a command with no engine-call-specific catch-all of its own.
+// stdout envelope — never by prose-matching the message. Non-CliError throws are classified by
+// `classifyBundleError` — THE one boundary from typed failures to public codes/exits — whether they
+// reach a command catch-all or fall all the way to `toExit`.
 //
-// Ported verbatim from holaxis-agentstate `packages/cli/src/errors.ts` — the 0/1/2/4/5/6 exit taxonomy
-// is PRESERVED intact.
-import { MalformedDocumentError, RemoteError } from "@agentstate-lite/core";
+// The 0/1/2/4/5/6 exit taxonomy is PRESERVED intact from holaxis-agentstate.
+import { InvalidInputError, MalformedDocumentError, RemoteError, VersionConflict } from "@agentstate-lite/core";
 
 /** Stable, documented error codes. Finer than the exit table; rides alongside it in the envelope. */
 export type CliErrorCode =
@@ -159,51 +156,49 @@ export function toEnvelope(err: CliError): ErrorEnvelope {
 }
 
 /**
- * Classify ANY thrown value caught from a `--remote`-capable bundle operation into a `CliError`
- * carrying the correct taxonomy code — the ONE mapping every command's catch-all should use
- * INSTEAD OF a blind `new CliError("USAGE", ...)` (Stage-1 Unit 2b Part C, closing the documented
- * misclassification where a genuine server-side `500` surfaced to an agent as exit 2 "fix your
- * input" instead of exit 1 "retry/report a bug", and where a gated remote's `401` had no path to
- * the AUTH exit-code taxonomy at all):
+ * THE CLI error boundary: classify ANY thrown value into a `CliError` on the capped taxonomy.
+ * Every command catch-all delegates here; `toExit` (the bin wrapper) applies the SAME mapping to
+ * anything left uncaught, so the two layers can never disagree. Command-level catches may still
+ * translate an EXPECTED domain condition with better context (a typed pre-check — e.g. ENOENT ->
+ * "no concept document at id 'X'"), but never classify an arbitrary plain error themselves.
+ * `classifyGitError` (below) is the git-porcelain DOMAIN classifier: it feeds this boundary by
+ * producing already-classified `CliError`s, which pass through unchanged — it is not a second
+ * boundary. Contract (pinned by `test/error-boundary.test.ts`'s table):
  *
- *  - An already-classified `CliError` (e.g. a transport-error RUNTIME from `bundle.ts`'s
- *    `wrapTransportErrors`, or a NOT_FOUND a caller already derived from an ENOENT check) passes
- *    through UNCHANGED.
- *  - A `RemoteError` (`core/src/remote-backend.ts` — any non-2xx, non-404, non-412 wire response, OR
- *    a response `RemoteBackend` itself rejected client-side) maps by ITS `code`: `AUTH_REQUIRED` ->
- *    the AUTH exit-code taxonomy (4) with an `AGENTSTATE_LITE_API_KEY` fixing hint (using
- *    `remoteUrl` when the caller has it in scope; a placeholder otherwise); `RUNTIME` AND
- *    `VERSION_MISSING` -> RUNTIME (1) — the regression this closes, and (for `VERSION_MISSING`,
- *    Stage-1 Unit 2b production repair) a response that arrived with no version header is almost
- *    always an intermediary (a CDN/compressing proxy) stripping it in transit, not a caller mistake,
- *    so "retry/report a bug" is the right signal, not "fix your input"; `FORBIDDEN` (Stage-2 auth
- *    Part B — the `/v0/invites|members|keys` admin routes' `403`) -> `FORBIDDEN`, USAGE's exit code
- *    (2) but a DISTINCT `code` (re-authenticating grants no additional role, so exit 4 would
- *    mislead); `NOT_FOUND` -> `NOT_FOUND` (exit 6 — safe here specifically because every EXISTING
- *    bundle-scoped read already intercepts its own 404 before it can reach this function, see
- *    `RemoteBackend`'s `read`/`readMany`/`readReserved`/`readBlob`/`exists`/`existsBlob`; only the
- *    NEW auth-route surface's 404s for absent administrative resources flow through here);
- *    `LAST_ADMIN` (Stage-2 auth Part B — the membership mutation `409` guard
- *    against stripping a bundle of its last admin) -> `LAST_ADMIN`, the CONFLICT exit code (5);
- *    anything else (e.g. the envelope's own `USAGE`) -> USAGE (2), the pre-existing default.
- *  - Any other thrown value (a LOCAL engine's plain `Error`, e.g. an OKF validation rejection,
- *    which never becomes a `RemoteError`) -> USAGE (2), unchanged from the pre-existing convention
- *    every one of these call sites already followed.
- *
- * Local (`--dir`) behavior is entirely unaffected: a `RemoteError` can only originate from
- * `RemoteBackend` (`--remote`) or `auth-client.ts` (the Stage-2 auth surface), so this function is
- * a strict superset of the old `if (err instanceof CliError) throw err; throw new CliError("USAGE",
- * ...)` pattern for every OTHER kind of thrown value.
+ *  - `CliError` -> unchanged (already classified).
+ *  - `InvalidInputError` (core's typed input-validation rejection: unsafe/reserved ids, §9.2
+ *    empty type, bad option values) -> USAGE (2). This TYPE is the only path by which a
+ *    non-`CliError` throw reaches USAGE — "fix your input" is a claim about the input, so it
+ *    must be provably input-derived, never a fallback bucket.
+ *  - `MalformedDocumentError` (corrupt STORED bytes; the invocation was valid) -> RUNTIME (1).
+ *  - `VersionConflict` that escaped a call site's own translation -> STALE_HEAD (5), with
+ *    `{expected, actual}` details.
+ *  - `RemoteError` -> by ITS server-derived `code`: AUTH_REQUIRED -> exit 4 with an
+ *    `AGENTSTATE_LITE_API_KEY` fixing hint; RUNTIME and VERSION_MISSING (a 5xx, or an
+ *    intermediary stripping the version header — retry/report, not a caller mistake) -> RUNTIME
+ *    (1); FORBIDDEN -> FORBIDDEN (USAGE's exit 2, distinct code — re-authenticating grants no
+ *    role); NOT_FOUND -> NOT_FOUND (6); LAST_ADMIN -> LAST_ADMIN (CONFLICT's exit 5). An
+ *    UNRECOGNIZED code falls back by HTTP STATUS, never blindly to USAGE: `RATE_LIMITED`/429
+ *    (the Worker's join throttle) -> TRANSIENT (1) with `details.retryable: true` — attested
+ *    client fault, but the fix is BACKING OFF, not editing input; any 5xx -> RUNTIME (1); a
+ *    remaining 4xx (e.g. the wire's own USAGE, 400) -> USAGE (2) — a 400-class status IS the
+ *    server attesting client fault, the one sanctioned non-typed USAGE source.
+ *  - ANYTHING else — fs errnos (ENOSPC, EACCES, a raw ENOENT no call site translated),
+ *    unexpected backend/engine failures, a non-Error throw — -> RUNTIME (1): a valid invocation
+ *    hitting a broken environment is "retry/report a bug", never "fix your input". An
+ *    ENOENT-shaped "missing document" is a DOMAIN condition: the call sites that know the id
+ *    translate it (NOT_FOUND with the id, USAGE for a missing `promote` source file) before it
+ *    ever reaches this fallback — context-free, ENOENT is just a failed syscall.
  */
 export function classifyBundleError(err: unknown, remoteUrl?: string): CliError {
   if (err instanceof CliError) return err;
-  // A corrupt document (unparseable YAML) is a data-integrity failure, NOT a usage error: the
-  // invocation was valid, the STORED bytes are the problem. Classified here (the ONE chokepoint
-  // every bundle command's catch routes through) so read/write/update/history/link all report it
-  // uniformly as RUNTIME (exit 1) — not the USAGE (exit 2) default below, which would misleadingly
-  // read as "you called it wrong". The message is already actionable (names the file, says fix-or-
-  // remove), so no `help` is attached.
+  if (err instanceof InvalidInputError) return new CliError("USAGE", err.message);
   if (err instanceof MalformedDocumentError) return new CliError("RUNTIME", err.message);
+  if (err instanceof VersionConflict) {
+    return new CliError("STALE_HEAD", err.message, {
+      details: { expected: err.expected, actual: err.actual },
+    });
+  }
   if (err instanceof RemoteError) {
     if (err.code === "AUTH_REQUIRED") {
       return new CliError("AUTH_REQUIRED", err.message, {
@@ -224,31 +219,26 @@ export function classifyBundleError(err: unknown, remoteUrl?: string): CliError 
     if (err.code === "LAST_ADMIN") {
       return new CliError("LAST_ADMIN", err.message);
     }
+    if (err.code === "RATE_LIMITED" || err.status === 429) {
+      return new CliError("TRANSIENT", err.message, { details: { retryable: true, status: err.status } });
+    }
+    if (err.status >= 500) {
+      return new CliError("RUNTIME", err.message);
+    }
     return new CliError("USAGE", err.message);
   }
-  return new CliError("USAGE", err instanceof Error ? err.message : String(err));
+  return new CliError("RUNTIME", err instanceof Error ? err.message : String(err));
 }
 
 /**
- * Map ANY thrown value to the exit code + envelope the bin wrapper emits. A CliError maps by its
- * own code; a `RemoteError` that reached this point uncaught (no command-specific catch-all
- * intercepted it) is classified via {@link classifyBundleError} rather than falling into the
- * generic RUNTIME catch-all, so an AUTH_REQUIRED/RUNTIME distinction from an UNWRAPPED `--remote`
- * command still reaches the correct exit code; anything else becomes a generic RUNTIME (exit 1) so
- * an unexpected throw still produces a structured stdout error rather than a raw stack trace.
- * `handled` rides along so the wrapper can suppress its stdout write when the command already
- * emitted the envelope on its own channel.
+ * Map ANY thrown value to the exit code + envelope the bin wrapper emits — the SAME
+ * {@link classifyBundleError} mapping, so an uncaught typed failure lands on the identical
+ * code/exit a command catch-all would have produced. `handled` rides along so the wrapper can
+ * suppress its stdout write when the command already emitted the envelope on its own channel.
  */
 export function toExit(err: unknown): { exitCode: number; envelope: ErrorEnvelope; handled: boolean } {
-  if (err instanceof CliError) {
-    return { exitCode: err.exitCode, envelope: toEnvelope(err), handled: err.handled };
-  }
-  if (err instanceof RemoteError) {
-    const cliErr = classifyBundleError(err);
-    return { exitCode: cliErr.exitCode, envelope: toEnvelope(cliErr), handled: false };
-  }
-  const message = err instanceof Error ? err.message : String(err);
-  return { exitCode: EXIT.RUNTIME, envelope: { error: { code: "RUNTIME", message } }, handled: false };
+  const cliErr = classifyBundleError(err);
+  return { exitCode: cliErr.exitCode, envelope: toEnvelope(cliErr), handled: cliErr.handled };
 }
 
 /**
@@ -392,13 +382,10 @@ export function classifyGitError(f: GitFailure): CliError {
  * envelope to stdout — keeping the reserved byte channel pure regardless of outcome.
  */
 export function asHandled(err: unknown): CliError {
-  if (err instanceof CliError) {
-    return new CliError(err.code, err.message, {
-      details: err.details,
-      help: err.help,
-      handled: true,
-    });
-  }
-  const message = err instanceof Error ? err.message : String(err);
-  return new CliError("RUNTIME", message, { handled: true });
+  const classified = classifyBundleError(err);
+  return new CliError(classified.code, classified.message, {
+    details: classified.details,
+    help: classified.help,
+    handled: true,
+  });
 }

@@ -35,6 +35,7 @@ import {
   pathFromConceptId,
   toPosix,
 } from "./paths.js";
+import { InvalidInputError } from "./errors.js";
 import { blobVersion, defaultActor, VersionConflict, versionOfBytes } from "./versioning.js";
 import type {
   BlobKey,
@@ -262,7 +263,7 @@ export class FilesystemBackend implements StorageBackend {
     const rootResolved = path.resolve(this.root);
     const resolved = path.resolve(rootResolved, rel);
     if (resolved !== rootResolved && !resolved.startsWith(rootResolved + path.sep)) {
-      throw new Error(`Path '${rel}' resolves outside the bundle root.`);
+      throw new InvalidInputError(`Path '${rel}' resolves outside the bundle root.`);
     }
     return resolved;
   }
