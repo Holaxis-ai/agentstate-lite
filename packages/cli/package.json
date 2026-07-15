@@ -22,8 +22,8 @@
     "url": "https://github.com/Holaxis-ai/agentstate-lite/issues"
   },
   "bin": {
-    "agentstate-lite": "./dist/agentstate-lite.mjs",
-    "aslite": "./dist/agentstate-lite.mjs"
+    "agentstate-lite": "dist/agentstate-lite.mjs",
+    "aslite": "dist/agentstate-lite.mjs"
   },
   "files": [
     "dist"
@@ -41,7 +41,7 @@
     "check:skill:bundle": "node scripts/gen-skill.mjs --target skill --check",
     "build:plugin-bundle": "node scripts/build-plugin-bundle.mjs && node scripts/gen-skill.mjs --target skill",
     "check:bundle": "node scripts/check-skill-bundle.mjs",
-    "prepublishOnly": "node build.mjs"
+    "prepublishOnly": "node ../../scripts/verify-npm-package.mjs"
   },
   "devDependencies": {
     "@agentstate-lite/core": "*",

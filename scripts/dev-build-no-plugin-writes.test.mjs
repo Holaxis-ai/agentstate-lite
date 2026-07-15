@@ -76,7 +76,9 @@ describe("default build leaves the committed plugin channel untouched", () => {
     assert.ok(pluginsBefore.size > 0, "sanity: plugins/ is a committed, non-empty tree");
 
     // The REAL default build — the exact command the acceptance criterion names.
-    execFileSync("npm", ["run", "build"], { cwd: repoRoot, stdio: "inherit" });
+    const npmCli = process.env.npm_execpath?.trim();
+    assert.ok(npmCli, "run this proof through npm so npm_execpath is available");
+    execFileSync(process.execPath, [npmCli, "run", "build"], { cwd: repoRoot, stdio: "inherit" });
 
     // Sanity that the build actually produced its intended output (we didn't pass a no-op).
     const distBundle = resolve(repoRoot, "packages/cli/dist/agentstate-lite.mjs");

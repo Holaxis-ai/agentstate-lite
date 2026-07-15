@@ -7,6 +7,9 @@ with an optional wire backend when a separate service hosts the bundle.
 The npm artifact is one self-contained file with **zero runtime dependencies**. It is built and
 pack-tested today but not yet published to npm; the current supported install is the plugin
 marketplace described in the [repository README](https://github.com/Holaxis-ai/agentstate-lite#install).
+Maintainers can reproduce the complete package proof from the repository root with
+`npm run verify:npm-package`; it builds, packs, installs into an isolated prefix, resolves both
+command names from `PATH`, and exercises an offline bundle workflow.
 Once published, the package-facing flow is:
 
 ```sh

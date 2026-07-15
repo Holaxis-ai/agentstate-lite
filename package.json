@@ -12,9 +12,10 @@
     "build": "npm run build -w @agentstate-lite/core -w @agentstate-lite/server -w agentstate-lite",
     "typecheck": "npm run build -w @agentstate-lite/core -w @agentstate-lite/server && npm run typecheck --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
-    "test:scripts": "node --test --test-concurrency=1 scripts/ci-version-bundle.test.mjs scripts/package-core-external-proof.test.mjs scripts/dev-build-no-plugin-writes.test.mjs scripts/oss-hosted-boundary.test.mjs",
+    "test:scripts": "node --test --test-concurrency=1 scripts/ci-version-bundle.test.mjs scripts/package-core-external-proof.test.mjs scripts/dev-build-no-plugin-writes.test.mjs scripts/oss-hosted-boundary.test.mjs scripts/verify-npm-package.test.mjs",
     "e2e": "npm run e2e:gate -w @agentstate-lite/ui",
-    "check": "npm run build && npm run typecheck && npm test --workspaces --if-present && npm run test:scripts && npm run check:skill -w agentstate-lite && npm run e2e:gate -w @agentstate-lite/ui",
+    "check": "npm run build && npm run typecheck && npm test --workspaces --if-present && npm run test:scripts && npm run verify:npm-package && npm run check:skill -w agentstate-lite && npm run e2e:gate -w @agentstate-lite/ui",
+    "verify:npm-package": "node scripts/verify-npm-package.mjs",
     "check:plugin-bundle": "npm run check:skill:bundle -w agentstate-lite && npm run check:bundle -w agentstate-lite",
     "build:plugin-bundle": "npm run build:plugin-bundle -w agentstate-lite"
   }

@@ -190,8 +190,9 @@ bundle-relative**.
 
 - Build/verify gate: `npm run build` and `npm run typecheck` must exit 0, and `npm test`
   (`--workspaces --if-present`: core + cli + server + ui suites) must pass, before
-  shipping. `npm run check` runs all of that plus this repo's own `scripts/` tests (`test:scripts`)
-  and the npm-target SKILL.md drift gate (`check:skill`) in one shot. The plugin-bundle drift gates
+  shipping. `npm run check` runs all of that plus this repo's own `scripts/` tests (`test:scripts`),
+  the installed-tarball proof (`verify:npm-package`), and the npm-target SKILL.md drift gate
+  (`check:skill`) in one shot. The plugin-bundle drift gates
   (`check:skill:bundle`, `check:bundle` — the ~650KB committed artifact and the skill-target
   SKILL.md) are BOT-OWNED on merge to main (see the plugin version + bundle bullet below) and are
   deliberately NOT part of this PR-side gate; a branch that only touches CLI source is not expected
@@ -206,9 +207,10 @@ bundle-relative**.
   test files that import them crash confusingly. `npm run build` bundles the CLI to
   `packages/cli/dist/agentstate-lite.mjs` (esbuild). Smoke-test the built CLI
   (`node packages/cli/dist/agentstate-lite.mjs …`) — at minimum `init`, `doc write`/`doc read`,
-  `list`, `link add`/`show`, and `status` on `examples/sample-bundle`. To
-  verify publishability, `npm pack -w agentstate-lite` and run the tarball's bin in a temp dir
-  outside the monorepo (its `node_modules` must contain ONLY `agentstate-lite`).
+  `list`, `link add`/`show`, and `status` on `examples/sample-bundle`. Run
+  `npm run verify:npm-package` to prove the exact tarball allowlist, zero-runtime-dependency
+  boundary, both command names on an isolated `PATH`, an offline create/query workflow, and no
+  writes to the committed plugin channel. `prepublishOnly` runs the same proof.
 - **Verify a gate by its own exit code, never through a pipe.** A piped tail or grep (`npm test |
   tail`, `... | grep -v Skip`) reports the PIPE's last command's exit status, not the gate's — a
   failing gate can read as green. Run gates unpiped, or redirect to a file and grep the file
@@ -320,9 +322,9 @@ the bundle):
   divergence (recorded in `docs/WIRE-PROTOCOL.md` open questions): a concept doc's RAW bytes
   don't cross the wire — `doc read --out --remote` re-serializes via `stringifyDoc` (canonical
   form; byte-identical only for engine-written docs).
-- **Kinds + recipes:** kind conventions (gate 3) with two built-in recipes (`context-notes` —
-  init's default — and `work-tracking`, the Task kind the team's own board runs on) over one
-  pluggable `RecipeSource` pipeline.
+- **Kinds + recipes:** kind conventions (gate 3) with three built-in recipes (`context-notes` —
+  init's default — `work-tracking`, the Task kind the team's own board runs on, and `roadmap`)
+  over one pluggable `RecipeSource` pipeline.
 - **Scans are cheap end to end:** `list`/`query` ride head projections (`queryHeads`) so a
   capable remote can return frontmatter without transferring document bodies.
 - **The local `ui` command + bundle Pages** (gate 4): the SPA-over-loopback launcher is shipped
@@ -355,11 +357,11 @@ Standing gates on future work:
 - **Hosted revival is human-gated.** This repository carries no Cloudflare deployment target.
   The frozen private reference records that any future revival must review the architecture and
   apply D1 migrations before deploying dependent code.
-- **Distribution is the in-repo marketplace/skill channel** — self-contained CLI + skill in one
-  install, verified end-to-end from Claude Code and Codex; it ships the tool AND the knowledge of
-  how to use it. npm is a PARKED parallel channel for plain-terminal audiences (keep `npm pack`
-  verified standalone; the SKILL generator's dual-channel design stays); its wake condition is a
-  real user asking for `npx` — do not surface it as a pending decision.
+- **Distribution today is the in-repo marketplace/plugin channel** — self-contained CLI + skill in
+  one install, verified end-to-end from Claude Code and Codex; it ships the tool AND the knowledge
+  of how to use it. The npm CLI is now an actively prepared, still-unpublished parallel channel:
+  keep `npm run verify:npm-package` green and preserve the SKILL generator's dual-channel design.
+  Publication, release automation, and a final install UX remain separate explicit decisions.
 - **Multi-bundle partitioning + per-bundle key scoping + bundle-scoped authz** is its own
   future unit, designed and built TOGETHER (the Stage-2 review's adjudication) — do not build
   piecemeal, and do not build without an explicit decision. Same for the GitHub device-flow
