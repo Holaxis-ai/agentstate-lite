@@ -6,6 +6,34 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+const hostedDeploymentPackages = new Set(["@agentstate-lite/worker", "miniflare", "workerd", "wrangler"]);
+const dependencyFields = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
+
+function isHostedDeploymentPackage(packageName) {
+  return packageName.startsWith("@cloudflare/") || hostedDeploymentPackages.has(packageName);
+}
+
+function packageNamesFromLockfile(lockfile) {
+  const packageNames = new Set();
+
+  for (const [packagePath, metadata] of Object.entries(lockfile.packages ?? {})) {
+    if (typeof metadata.name === "string") packageNames.add(metadata.name);
+
+    const nodeModulesIndex = packagePath.lastIndexOf("node_modules/");
+    if (nodeModulesIndex !== -1) packageNames.add(packagePath.slice(nodeModulesIndex + "node_modules/".length));
+
+    for (const field of dependencyFields) {
+      for (const packageName of Object.keys(metadata[field] ?? {})) packageNames.add(packageName);
+    }
+  }
+
+  return packageNames;
+}
+
+function findHostedDeploymentPackages(lockfile) {
+  return [...packageNamesFromLockfile(lockfile)].filter(isHostedDeploymentPackage).sort();
+}
+
 async function exists(relativePath) {
   try {
     await access(path.join(root, relativePath));
@@ -35,13 +63,47 @@ test("OSS distribution excludes the frozen hosted implementation and control-pla
   assert.deepEqual(present, [], "hosted-only source belongs in the frozen private reference, not OSS");
 });
 
-test("OSS build and lockfile carry no Cloudflare deployment dependency", async () => {
-  const rootPackage = await readFile(path.join(root, "package.json"), "utf8");
-  const lockfile = await readFile(path.join(root, "package-lock.json"), "utf8");
-  const buildGraph = rootPackage + "\n" + lockfile;
+test("lockfile scanner recognizes hosted deployment dependencies", () => {
+  const lockfile = {
+    packages: {
+      "": { devDependencies: { "@cloudflare/unenv-preset": "1.0.0", wrangler: "1.0.0" } },
+      "node_modules/@cloudflare/kv-asset-handler": {},
+      "node_modules/example/node_modules/miniflare": {},
+      "node_modules/workerd": {},
+      "packages/worker": { name: "@agentstate-lite/worker" },
+    },
+  };
 
-  for (const forbidden of ["@agentstate-lite/worker", "packages/worker", "wrangler", "@cloudflare/workers-types"])
-    assert.equal(buildGraph.includes(forbidden), false, `public build graph must not contain '${forbidden}'`);
+  assert.deepEqual(findHostedDeploymentPackages(lockfile), [
+    "@agentstate-lite/worker",
+    "@cloudflare/kv-asset-handler",
+    "@cloudflare/unenv-preset",
+    "miniflare",
+    "workerd",
+    "wrangler",
+  ]);
+});
+
+test("OSS build and lockfile carry no hosted deployment dependency", async () => {
+  const rootPackage = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
+  const lockfile = JSON.parse(await readFile(path.join(root, "package-lock.json"), "utf8"));
+  const buildConfiguration = JSON.stringify({ scripts: rootPackage.scripts, workspaces: rootPackage.workspaces });
+
+  for (const forbidden of [
+    "@agentstate-lite/worker",
+    "packages/worker",
+    "@cloudflare/",
+    "miniflare",
+    "workerd",
+    "wrangler",
+  ])
+    assert.equal(buildConfiguration.includes(forbidden), false, `public build graph must not contain '${forbidden}'`);
+
+  assert.deepEqual(
+    findHostedDeploymentPackages(lockfile),
+    [],
+    "public lockfile must not contain hosted deployment packages",
+  );
 });
 
 test("generic wire authorities remain public after hosted extraction", async () => {
