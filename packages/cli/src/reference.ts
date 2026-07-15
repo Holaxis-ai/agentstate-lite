@@ -254,7 +254,7 @@ export function commandReference(invocation: string): CommandReference {
 /**
  * The leading command word(s) of a usage string, up to its first argument/flag/option token —
  * e.g. `"doc read <id> [--out …]"` -> `"doc read"`. Exported (beyond its original
- * {@link compactCommandReference} use) so src/skill-references.ts's COMMAND_CONTRACTS registry and
+ * {@link compactCommandReference} use) so distribution-resources.ts's skill projection registry and
  * its exhaustiveness gate (test/skill-distribution.test.ts) derive command NAMES from the exact
  * same projection `--help`/`home` already use — never a second, driftable name-extraction rule.
  */

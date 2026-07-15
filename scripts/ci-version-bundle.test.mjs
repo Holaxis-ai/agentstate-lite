@@ -191,7 +191,7 @@ describe("run() orchestration (fixtures, fake regenerate)", () => {
 
 // ---------------------------------------------------------------------------------------------
 // references/ snapshot — LOAD-BEARING widening: without this, a references-only change (a new
-// SKILL_REFERENCES manifest entry, an edited source file it points at) would never register in
+// skill-projected resource entry, an edited source file it points at) would never register in
 // `changed`, so the version would never bump and the plugin's version-keyed cache would keep
 // serving stale — or entirely absent — references/ content forever. These three cases are exactly
 // what the distribution-completeness build spec calls out: changed, converged, and absent->present.

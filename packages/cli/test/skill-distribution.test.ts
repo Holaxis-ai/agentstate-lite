@@ -1,7 +1,7 @@
 /**
  * Distribution-completeness gate: every capability the skill-target SKILL.md advertises must ship
- * a backing contract/example under `references/` — see src/skill-references.ts's module doc for
- * the manifest shape (SKILL_REFERENCES / COMMAND_CONTRACTS / CAPABILITY_PATTERNS).
+ * a backing contract/example under `references/` — the skill is one projection of the
+ * distribution-neutral inventory in src/distribution-resources.ts.
  *
  * Runs in `npm test -w agentstate-lite`, hence `npm run check` — PR-side is the right layer here
  * because a gap is a SOURCE defect (a new command that never declares its shipped-contract
@@ -9,14 +9,15 @@
  * regenerates plugins/ on merge to main would otherwise ship the gap FIRST, and only a human
  * diff-reading the generated output after the fact would ever catch it.
  *
- * Five checks, in order: (1) exhaustiveness — COMMAND_CONTRACTS covers every COMMAND_GROUPS
+ * Checks include inventory ownership and channel intent, then skill-projection exhaustiveness.
+ * SKILL_COMMAND_RESOURCES covers every COMMAND_GROUPS
  * command name, no more, no less; (2)+(3) validity — every dest a contract/pattern names, and
  * every src it copies from, actually exists; (4) the capability sweep — render the skill-target
- * SKILL.md in memory and confirm every CAPABILITY_PATTERNS tripwire both fires AND is satisfied;
+ * SKILL.md in memory and confirm every SKILL_CAPABILITY_PATTERNS tripwire both fires AND is satisfied;
  * (5) no orphans/no phantom pointers — the manifest and the rendered prose agree on what's shipped
  * in both directions.
  *
- * Honest limit (see src/skill-references.ts's CAPABILITY_PATTERNS doc comment): this cannot
+ * Honest limit (see distribution-resources.ts's pattern doc comment): this cannot
  * recognize a semantically NOVEL capability described in prose that no pattern below anticipates —
  * check (1) covers the command-shaped majority; adding a pattern row is the same one-table
  * discipline extended to free prose.
@@ -28,7 +29,15 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { COMMAND_GROUPS, commandName } from "../src/reference.js";
-import { SKILL_REFERENCES, COMMAND_CONTRACTS, CAPABILITY_PATTERNS } from "../src/skill-references.js";
+import {
+  DISTRIBUTION_CHANNELS,
+  DISTRIBUTION_RESOURCES,
+  RESOURCE_ROLES,
+  SKILL_CAPABILITY_PATTERNS,
+  SKILL_COMMAND_RESOURCES,
+  SKILL_RESOURCES,
+  projectResources,
+} from "../src/distribution-resources.js";
 import { renderNpm, renderSkill } from "../src/skill-render.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -37,26 +46,61 @@ const REPO_ROOT = path.resolve(here, "../../..");
 const ALL_COMMAND_NAMES = [
   ...new Set(COMMAND_GROUPS.flatMap(({ commands }) => commands.map((c) => commandName(c.usage)))),
 ];
-const MANIFEST_DESTS = new Set(SKILL_REFERENCES.map((r) => r.dest));
+const SKILL_DESTS = new Set(SKILL_RESOURCES.map((r) => r.dest));
+
+// ---------------------------------------------------------------------------------------------
+// Inventory ownership — resources are repo-owned and classified before any channel projects them.
+// ---------------------------------------------------------------------------------------------
+
+test("distribution resources have unique repo authorities, declared roles, and at least one target", () => {
+  const sources = new Set<string>();
+  const seenRoles = new Set<string>();
+  for (const resource of DISTRIBUTION_RESOURCES) {
+    assert.ok(!sources.has(resource.src), `duplicate distribution authority: ${resource.src}`);
+    sources.add(resource.src);
+    assert.doesNotMatch(resource.src, /^plugins\//, "generated plugin content cannot be a resource authority");
+    assert.ok(RESOURCE_ROLES.includes(resource.role), `unknown resource role: ${resource.role}`);
+    seenRoles.add(resource.role);
+    assert.ok(Object.keys(resource.targets).length > 0, `${resource.src} has no distribution target`);
+  }
+  assert.deepEqual([...seenRoles].sort(), [...RESOURCE_ROLES].sort());
+});
+
+test("each channel projection has unique destinations backed by real repo sources", () => {
+  for (const channel of DISTRIBUTION_CHANNELS) {
+    const destinations = new Set<string>();
+    for (const { src, dest } of projectResources(channel)) {
+      assert.ok(!destinations.has(dest), `${channel} projects two resources to ${dest}`);
+      destinations.add(dest);
+      assert.ok(existsSync(path.join(REPO_ROOT, src)), `${channel} projects missing source ${src}`);
+    }
+  }
+});
+
+test("npm auxiliary resources remain an explicit empty projection in this no-behavior-change unit", () => {
+  assert.deepEqual(projectResources("npm"), []);
+  const packageJson = JSON.parse(readFileSync(path.join(REPO_ROOT, "packages/cli/package.json"), "utf8"));
+  assert.deepEqual(packageJson.files, ["dist"]);
+});
 
 // ---------------------------------------------------------------------------------------------
 // (1) Exhaustiveness — the ratchet. Both directions: a new command with no key, and a stale key
 // left behind by a removed/renamed command, are both a drift a human should reconcile by hand.
 // ---------------------------------------------------------------------------------------------
 
-test("COMMAND_CONTRACTS has a key for every COMMAND_GROUPS command name", () => {
+test("SKILL_COMMAND_RESOURCES has a key for every COMMAND_GROUPS command name", () => {
   for (const name of ALL_COMMAND_NAMES) {
     assert.ok(
-      Object.prototype.hasOwnProperty.call(COMMAND_CONTRACTS, name),
-      `new command \`${name}\` must declare its shipped-contract surface in src/skill-references.ts ([] if self-contained).`,
+      Object.prototype.hasOwnProperty.call(SKILL_COMMAND_RESOURCES, name),
+      `new command \`${name}\` must declare its skill-resource surface ([] if self-contained).`,
     );
   }
 });
 
-test("COMMAND_CONTRACTS has no stale key for a command that no longer exists", () => {
+test("SKILL_COMMAND_RESOURCES has no stale key for a command that no longer exists", () => {
   const names = new Set(ALL_COMMAND_NAMES);
-  for (const key of Object.keys(COMMAND_CONTRACTS)) {
-    assert.ok(names.has(key), `COMMAND_CONTRACTS has a stale key \`${key}\` — no COMMAND_GROUPS command produces this name.`);
+  for (const key of Object.keys(SKILL_COMMAND_RESOURCES)) {
+    assert.ok(names.has(key), `SKILL_COMMAND_RESOURCES has a stale key \`${key}\` — no command produces this name.`);
   }
 });
 
@@ -65,24 +109,24 @@ test("COMMAND_CONTRACTS has no stale key for a command that no longer exists", (
 // manifest entry's src must be a real file (from the repo root).
 // ---------------------------------------------------------------------------------------------
 
-test("every COMMAND_CONTRACTS dest names a real SKILL_REFERENCES entry", () => {
-  for (const [name, dests] of Object.entries(COMMAND_CONTRACTS)) {
+test("every SKILL_COMMAND_RESOURCES dest names a real skill projection", () => {
+  for (const [name, dests] of Object.entries(SKILL_COMMAND_RESOURCES)) {
     for (const dest of dests) {
-      assert.ok(MANIFEST_DESTS.has(dest), `command \`${name}\` requires \`${dest}\`, which is not in SKILL_REFERENCES.`);
+      assert.ok(SKILL_DESTS.has(dest), `command \`${name}\` requires \`${dest}\`, which is not skill-projected.`);
     }
   }
 });
 
-test("every CAPABILITY_PATTERNS.requires dest names a real SKILL_REFERENCES entry", () => {
-  for (const { pattern, requires } of CAPABILITY_PATTERNS) {
+test("every SKILL_CAPABILITY_PATTERNS requirement names a real skill projection", () => {
+  for (const { pattern, requires } of SKILL_CAPABILITY_PATTERNS) {
     for (const dest of requires) {
-      assert.ok(MANIFEST_DESTS.has(dest), `capability pattern ${pattern} requires \`${dest}\`, which is not in SKILL_REFERENCES.`);
+      assert.ok(SKILL_DESTS.has(dest), `capability pattern ${pattern} requires \`${dest}\`, which is not skill-projected.`);
     }
   }
 });
 
-test("every SKILL_REFERENCES.src exists on disk (from the repo root)", () => {
-  for (const { src, dest } of SKILL_REFERENCES) {
+test("every skill-projected source exists on disk", () => {
+  for (const { src, dest } of SKILL_RESOURCES) {
     assert.ok(
       existsSync(path.join(REPO_ROOT, src)),
       `manifest entry dest=\`${dest}\` names a source that does not exist: ${src}`,
@@ -96,7 +140,7 @@ test("the shipped Page examples include capability-independent navigation from a
     "pages/pages-registry/about.md",
     "pages/references/page-authoring-v0.md",
   ]) {
-    assert.ok(MANIFEST_DESTS.has(dest), `Page navigation reference missing from SKILL_REFERENCES: ${dest}`);
+    assert.ok(SKILL_DESTS.has(dest), `Page navigation reference is not skill-projected: ${dest}`);
   }
 });
 
@@ -117,7 +161,7 @@ test("the shipped review-workflow references exactly mirror the complete recipe 
     src: `${sourcePrefix}${relative}`,
     dest: `${destPrefix}${relative}`,
   }));
-  const actual = SKILL_REFERENCES
+  const actual = SKILL_RESOURCES
     .filter(({ src, dest }) => src.startsWith(sourcePrefix) || dest.startsWith(destPrefix))
     .sort((a, b) => a.src.localeCompare(b.src));
   assert.deepEqual(actual, expected);
@@ -167,14 +211,14 @@ test("actor guidance distinguishes advisory labels from backend-owned attributio
   assert.match(rendered, /local OS owner or an\s+authenticated remote user/);
 });
 
-test("no CAPABILITY_PATTERNS entry is dead — each must match somewhere in the rendered SKILL.md", () => {
-  for (const { pattern, requires } of CAPABILITY_PATTERNS) {
+test("no SKILL_CAPABILITY_PATTERNS entry is dead", () => {
+  for (const { pattern, requires } of SKILL_CAPABILITY_PATTERNS) {
     assert.ok(
       pattern.test(rendered),
       `capability pattern ${pattern} matches nothing in the rendered skill-target SKILL.md — dead tripwire, fix or remove it.`,
     );
     for (const dest of requires) {
-      assert.ok(MANIFEST_DESTS.has(dest), `capability pattern ${pattern} requires \`${dest}\`, missing from SKILL_REFERENCES.`);
+      assert.ok(SKILL_DESTS.has(dest), `capability pattern ${pattern} requires \`${dest}\`, missing from skill projection.`);
     }
   }
 });
@@ -188,7 +232,7 @@ function destMentionCandidates(dest: string): string[] {
 }
 
 test("no orphans — every shipped file (or an enclosing directory of it) is mentioned in the rendered SKILL.md", () => {
-  for (const { src, dest } of SKILL_REFERENCES) {
+  for (const { src, dest } of SKILL_RESOURCES) {
     const mentioned = destMentionCandidates(dest).some((candidate) => rendered.includes(candidate));
     assert.ok(
       mentioned,
@@ -205,7 +249,7 @@ function extractRefsPaths(text: string): string[] {
 /** Whether `refPath` is itself a manifest dest, or a (possibly bare, no trailing slash) directory prefix of one. */
 function resolvesToManifest(refPath: string): boolean {
   const normalized = refPath.endsWith("/") ? refPath.slice(0, -1) : refPath;
-  for (const dest of MANIFEST_DESTS) {
+  for (const dest of SKILL_DESTS) {
     if (dest === normalized || dest.startsWith(`${normalized}/`)) return true;
   }
   return false;
@@ -213,5 +257,5 @@ function resolvesToManifest(refPath: string): boolean {
 
 test("no phantom pointers — every $REFS/… path in the rendered SKILL.md resolves to a shipped dest or dir-prefix", () => {
   const phantoms = [...new Set(extractRefsPaths(rendered).filter((p) => !resolvesToManifest(p)))];
-  assert.deepEqual(phantoms, [], `phantom $REFS/ path(s) — point nowhere in SKILL_REFERENCES: ${phantoms.join(", ")}`);
+  assert.deepEqual(phantoms, [], `phantom $REFS/ path(s) — point nowhere in the skill projection: ${phantoms.join(", ")}`);
 });

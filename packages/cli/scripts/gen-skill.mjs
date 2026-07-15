@@ -1,6 +1,6 @@
 // Generate a SKILL.md from the CLI's single source of truth (src/reference.ts COMMAND_GROUPS,
 // rendered by src/skill-render.ts), and — for --target skill — sync this skill's `references/`
-// folder from its declared manifest (src/skill-references.ts SKILL_REFERENCES): a byte-for-byte
+// folder from the skill projection of src/distribution-resources.ts: a byte-for-byte
 // copy of each source file, with any stray file under references/ NOT named in the manifest
 // deleted. Idempotent/convergent, same discipline as the SKILL.md write itself.
 //
@@ -10,7 +10,7 @@
 //   --target npm   (default) → packages/cli/SKILL.md, examples prefixed `npx -y agentstate-lite`
 //                    (the published-package channel; installed with no bin-on-PATH assumption).
 //                    Carries no references/ sync — the npm tarball doesn't ship them yet (a known
-//                    parked gap; see src/skill-references.ts's header comment).
+//                    explicit empty projection; see src/distribution-resources.ts).
 //   --target skill            → plugins/agentstate-lite/skills/agentstate-lite/SKILL.md +
 //                    .../references/, examples prefixed `"$ASLITE"` (the self-contained
 //                    committed-bundle channel; see the resolver section it generates — the bundle
@@ -25,7 +25,7 @@
 //                                                                (+ sync references/ for skill)
 //   node scripts/gen-skill.mjs [--target npm|skill] --check   → exit 1 if stale (CI drift gate)
 //
-// src/skill-render.ts (which transitively pulls in reference.ts + src/skill-references.ts) is pure
+// src/skill-render.ts (which transitively pulls in reference.ts + src/distribution-resources.ts) is pure
 // data + pure projections (no runtime imports), so we bundle it in-memory with esbuild and import
 // the result as a data: URL — no temp files, no pre-build.
 import { build } from "esbuild";
@@ -66,7 +66,7 @@ async function loadSkillRender() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// references/ sync — skill target only. One manifest (SKILL_REFERENCES), read via the same bundle
+// references/ sync — skill target only. One projection (SKILL_RESOURCES), read via the same bundle
 // as the renderer, so a --check run and a real regen can never disagree about what "the manifest"
 // currently is.
 // ---------------------------------------------------------------------------------------------
@@ -90,14 +90,14 @@ async function listFilesRecursive(dir) {
 }
 
 /** Copy every manifest entry byte-for-byte into `referencesDir`, then delete any file under it not named in the manifest. */
-async function syncReferences(SKILL_REFERENCES) {
-  for (const { src, dest } of SKILL_REFERENCES) {
+async function syncReferences(resources) {
+  for (const { src, dest } of resources) {
     const bytes = await readFile(resolve(repoRoot, src));
     const destPath = resolve(referencesDir, dest);
     await mkdir(dirname(destPath), { recursive: true });
     await writeFile(destPath, bytes);
   }
-  const wanted = new Set(SKILL_REFERENCES.map((r) => r.dest));
+  const wanted = new Set(resources.map((r) => r.dest));
   for (const file of await listFilesRecursive(referencesDir)) {
     const rel = relative(referencesDir, file).split(sep).join("/");
     if (!wanted.has(rel)) await rm(file);
@@ -105,9 +105,9 @@ async function syncReferences(SKILL_REFERENCES) {
 }
 
 /** --check's references-side: every manifest file must byte-match, and nothing extra may exist. */
-async function checkReferences(SKILL_REFERENCES) {
+async function checkReferences(resources) {
   const problems = [];
-  for (const { src, dest } of SKILL_REFERENCES) {
+  for (const { src, dest } of resources) {
     const srcPath = resolve(repoRoot, src);
     const destPath = resolve(referencesDir, dest);
     let wantBytes;
@@ -122,7 +122,7 @@ async function checkReferences(SKILL_REFERENCES) {
       problems.push(`${destPath} is stale or missing`);
     }
   }
-  const wanted = new Set(SKILL_REFERENCES.map((r) => r.dest));
+  const wanted = new Set(resources.map((r) => r.dest));
   for (const file of await listFilesRecursive(referencesDir)) {
     const rel = relative(referencesDir, file).split(sep).join("/");
     if (!wanted.has(rel)) problems.push(`${file} is not in the manifest (stray file)`);
@@ -132,7 +132,7 @@ async function checkReferences(SKILL_REFERENCES) {
 
 // ---------------------------------------------------------------------------------------------
 
-const { renderNpm, renderSkill, SKILL_REFERENCES } = await loadSkillRender();
+const { renderNpm, renderSkill, SKILL_RESOURCES } = await loadSkillRender();
 const content = TARGET === "npm" ? renderNpm() : renderSkill();
 
 if (process.argv.includes("--check")) {
@@ -148,7 +148,7 @@ if (process.argv.includes("--check")) {
     ok = false;
   }
   if (TARGET === "skill") {
-    for (const problem of await checkReferences(SKILL_REFERENCES)) {
+    for (const problem of await checkReferences(SKILL_RESOURCES)) {
       console.error(problem);
       ok = false;
     }
@@ -160,7 +160,7 @@ if (process.argv.includes("--check")) {
   await writeFile(skillPath, content);
   console.log(`wrote ${skillPath}`);
   if (TARGET === "skill") {
-    await syncReferences(SKILL_REFERENCES);
+    await syncReferences(SKILL_RESOURCES);
     console.log(`synced ${referencesDir}`);
   }
 }
