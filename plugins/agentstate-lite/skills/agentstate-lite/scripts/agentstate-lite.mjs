@@ -16820,8 +16820,332 @@ function helpIndexText(invocation) {
 
 // src/commands/home.ts
 import { parseArgs as parseArgs24 } from "node:util";
+import path14 from "node:path";
+
+// src/catalog.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { chmod as chmod3, mkdir as mkdir3, open as open2, readFile as readFile4, stat, unlink as unlink3 } from "node:fs/promises";
+import { homedir as homedir7 } from "node:os";
 import path13 from "node:path";
+var CATALOG_FILE_NAME = "catalog.json";
+var CATALOG_LOCK_FILE_NAME = "catalog.lock";
+var CATALOG_SCHEMA_VERSION = 1;
+var DIR_MODE3 = 448;
+var LOCK_MODE = 384;
+var DEFAULT_LOCK_WAIT_MS = 2e3;
+var DEFAULT_LOCK_POLL_MS = 25;
+var STALE_LOCK_MIN_AGE_MS = 3e4;
+var LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
+var ID_PATTERN = /^bnd_[0-9a-f]{32}$/;
+function catalogDir(home2) {
+  return credentialsDir(home2);
+}
+function catalogPath(home2 = homedir7()) {
+  return path13.join(catalogDir(home2), CATALOG_FILE_NAME);
+}
+function catalogLockPath(home2 = homedir7()) {
+  return path13.join(catalogDir(home2), CATALOG_LOCK_FILE_NAME);
+}
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function hasExactKeys(value, expected) {
+  const actual = Object.keys(value).sort();
+  const sortedExpected = [...expected].sort();
+  return actual.length === sortedExpected.length && actual.every((key, index) => key === sortedExpected[index]);
+}
+function invalidCatalog(file, detail) {
+  return new CliError("USAGE", `invalid workspace catalog ${file}: ${detail}`, {
+    help: `repair or move ${file}, then retry`
+  });
+}
+function assertCatalogLabel(label) {
+  if (!LABEL_PATTERN.test(label) || label.startsWith("bnd_")) {
+    throw new CliError(
+      "USAGE",
+      `invalid workspace label "${label}"; use 1-64 lowercase letters, numbers, dot, dash, or underscore, beginning and ending with a letter or number (the bnd_ prefix is reserved)`,
+      { help: `${cliInvocation()} catalog add <label> [--dir <path>]` }
+    );
+  }
+}
+function validateEntry(value, file, index) {
+  if (!isObject(value) || !hasExactKeys(value, ["id", "label", "locator"])) {
+    throw invalidCatalog(file, `entries[${index}] must contain exactly id, label, and locator`);
+  }
+  if (typeof value.id !== "string" || !ID_PATTERN.test(value.id)) {
+    throw invalidCatalog(file, `entries[${index}].id must match ${ID_PATTERN.source}`);
+  }
+  if (typeof value.label !== "string" || !LABEL_PATTERN.test(value.label) || value.label.startsWith("bnd_")) {
+    throw invalidCatalog(file, `entries[${index}].label is not a valid workspace label`);
+  }
+  if (!isObject(value.locator) || !hasExactKeys(value.locator, ["kind", "path"])) {
+    throw invalidCatalog(file, `entries[${index}].locator must contain exactly kind and path`);
+  }
+  if (value.locator.kind !== "local-path") {
+    throw invalidCatalog(file, `entries[${index}].locator.kind must be "local-path"`);
+  }
+  if (typeof value.locator.path !== "string" || !path13.isAbsolute(value.locator.path) || path13.normalize(value.locator.path) !== value.locator.path) {
+    throw invalidCatalog(file, `entries[${index}].locator.path must be a normalized absolute path`);
+  }
+  return {
+    id: value.id,
+    label: value.label,
+    locator: { kind: "local-path", path: value.locator.path }
+  };
+}
+function parseCatalog(raw, file) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw invalidCatalog(file, `invalid JSON (${err instanceof Error ? err.message : String(err)})`);
+  }
+  if (!isObject(parsed)) throw invalidCatalog(file, "top level must be an object");
+  if (parsed.schema_version !== CATALOG_SCHEMA_VERSION) {
+    if (typeof parsed.schema_version === "number" && parsed.schema_version > CATALOG_SCHEMA_VERSION) {
+      throw new CliError(
+        "NOT_IMPLEMENTED",
+        `workspace catalog ${file} uses newer schema version ${parsed.schema_version}; this CLI supports version ${CATALOG_SCHEMA_VERSION}`,
+        { help: "upgrade agentstate-lite before modifying this catalog" }
+      );
+    }
+    throw invalidCatalog(file, `schema_version must be ${CATALOG_SCHEMA_VERSION}`);
+  }
+  if (!hasExactKeys(parsed, ["entries", "schema_version"]) || !Array.isArray(parsed.entries)) {
+    throw invalidCatalog(file, "top level must contain exactly schema_version and entries[]");
+  }
+  const entries = parsed.entries.map((entry, index) => validateEntry(entry, file, index));
+  const ids = /* @__PURE__ */ new Set();
+  const labels = /* @__PURE__ */ new Set();
+  const paths = /* @__PURE__ */ new Set();
+  for (const entry of entries) {
+    if (ids.has(entry.id)) throw invalidCatalog(file, `duplicate id "${entry.id}"`);
+    if (labels.has(entry.label)) throw invalidCatalog(file, `duplicate label "${entry.label}"`);
+    if (paths.has(entry.locator.path)) throw invalidCatalog(file, `duplicate path "${entry.locator.path}"`);
+    ids.add(entry.id);
+    labels.add(entry.label);
+    paths.add(entry.locator.path);
+  }
+  return { schema_version: CATALOG_SCHEMA_VERSION, entries };
+}
+async function loadCatalog(home2 = homedir7(), signal) {
+  const file = catalogPath(home2);
+  let raw;
+  try {
+    if (!(await stat(file)).isFile()) {
+      throw new CliError("RUNTIME", `workspace catalog ${file} is not a regular file`);
+    }
+    raw = await readFile4(file, { encoding: "utf8", signal });
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return { schema_version: CATALOG_SCHEMA_VERSION, entries: [] };
+    }
+    if (err instanceof CliError) throw err;
+    throw new CliError("RUNTIME", `could not read workspace catalog ${file}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return parseCatalog(raw, file);
+}
+function defaultProcessExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code !== "ESRCH";
+  }
+}
+function readLockMetadata(raw) {
+  try {
+    const value = JSON.parse(raw);
+    if (!isObject(value) || typeof value.pid !== "number" || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.created_at_ms !== "number" || !Number.isFinite(value.created_at_ms) || typeof value.token !== "string" || value.token.length === 0) {
+      return null;
+    }
+    return { pid: value.pid, created_at_ms: value.created_at_ms, token: value.token };
+  } catch {
+    return null;
+  }
+}
+async function acquireCatalogLock(options2) {
+  const home2 = options2.home ?? homedir7();
+  const dir = catalogDir(home2);
+  const lockPath = catalogLockPath(home2);
+  const now = options2.now ?? Date.now;
+  const pid = options2.pid ?? process.pid;
+  const sleep = options2.sleep ?? ((ms) => new Promise((resolve3) => setTimeout(resolve3, ms)));
+  const processExists = options2.processExists ?? defaultProcessExists;
+  const waitMs = options2.lockWaitMs ?? DEFAULT_LOCK_WAIT_MS;
+  const pollMs = options2.lockPollMs ?? DEFAULT_LOCK_POLL_MS;
+  const token = randomUUID2();
+  const started = now();
+  await mkdir3(dir, { recursive: true, mode: DIR_MODE3 });
+  await chmod3(dir, DIR_MODE3);
+  while (true) {
+    try {
+      const handle = await open2(lockPath, "wx", LOCK_MODE);
+      try {
+        await handle.writeFile(JSON.stringify({ pid, created_at_ms: now(), token }) + "\n");
+        await handle.chmod(LOCK_MODE);
+        await handle.sync();
+      } catch (err) {
+        await handle.close().catch(() => {
+        });
+        await unlink3(lockPath).catch(() => {
+        });
+        throw err;
+      }
+      await handle.close();
+      return async () => {
+        try {
+          const current = readLockMetadata(await readFile4(lockPath, "utf8"));
+          if (current?.token === token) await unlink3(lockPath);
+        } catch (err) {
+          if (err.code !== "ENOENT") throw err;
+        }
+      };
+    } catch (err) {
+      if (err.code !== "EEXIST") throw err;
+    }
+    let owner = null;
+    let malformedAgeMs = null;
+    try {
+      owner = readLockMetadata(await readFile4(lockPath, "utf8"));
+      if (!owner) malformedAgeMs = now() - (await stat(lockPath)).mtimeMs;
+    } catch (err) {
+      if (err.code === "ENOENT") continue;
+    }
+    if (owner && now() - owner.created_at_ms >= STALE_LOCK_MIN_AGE_MS && !processExists(owner.pid)) {
+      throw new CliError("TRANSIENT", `stale workspace catalog lock at ${lockPath} belongs to absent PID ${owner.pid}`, {
+        details: { retryable: true, stale: true, lock_path: lockPath, owner_pid: owner.pid },
+        help: `remove ${lockPath} after confirming PID ${owner.pid} is absent, then retry`
+      });
+    }
+    if (malformedAgeMs !== null && malformedAgeMs >= STALE_LOCK_MIN_AGE_MS) {
+      throw new CliError("TRANSIENT", `stale malformed workspace catalog lock at ${lockPath}`, {
+        details: { retryable: true, stale: true, malformed: true, lock_path: lockPath },
+        help: `inspect and remove ${lockPath}, then retry`
+      });
+    }
+    if (now() - started >= waitMs) {
+      throw new CliError("TRANSIENT", `workspace catalog is busy (lock: ${lockPath})`, {
+        details: { retryable: true, lock_path: lockPath, owner_pid: owner?.pid },
+        help: `${cliInvocation()} catalog <command> ...`
+      });
+    }
+    await sleep(pollMs);
+  }
+}
+async function mutateCatalog(decide, options2) {
+  const home2 = options2.home ?? homedir7();
+  const release = await acquireCatalogLock({ ...options2, home: home2 });
+  try {
+    const current = await loadCatalog(home2);
+    const result = await decide(current);
+    if (result.changed) {
+      if (!result.next) throw new Error("catalog mutation marked changed without a next state");
+      const next = {
+        schema_version: CATALOG_SCHEMA_VERSION,
+        entries: [...result.next.entries].sort((a, b) => a.label.localeCompare(b.label))
+      };
+      await writeFileAtomic0600(catalogDir(home2), CATALOG_FILE_NAME, JSON.stringify(next, null, 2) + "\n");
+    }
+    return { value: result.value, changed: result.changed };
+  } finally {
+    await release();
+  }
+}
+function generatedId(options2, existing) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const id = options2.createId?.() ?? `bnd_${randomUUID2().replaceAll("-", "")}`;
+    if (!ID_PATTERN.test(id)) throw new Error(`catalog id generator returned invalid id: ${id}`);
+    if (!existing.has(id)) return id;
+  }
+  throw new Error("catalog id generator exhausted collision retries");
+}
+async function addCatalogEntry(label, canonicalPath, options2 = {}) {
+  assertCatalogLabel(label);
+  if (!path13.isAbsolute(canonicalPath)) throw new CliError("USAGE", "workspace catalog paths must be absolute");
+  const result = await mutateCatalog(async (current) => {
+    const target = await resolveLocalBundleTarget(canonicalPath);
+    if (target.canonicalRoot !== canonicalPath) {
+      throw new CliError("NOT_FOUND", `workspace path is no longer canonical: ${canonicalPath}`, {
+        help: `${cliInvocation()} bundle locate --dir ${canonicalPath}`
+      });
+    }
+    const byLabel = current.entries.find((entry2) => entry2.label === label);
+    const byPath = current.entries.find((entry2) => entry2.locator.path === canonicalPath);
+    if (byLabel && byPath && byLabel.id === byPath.id) {
+      return { value: byLabel, changed: false };
+    }
+    if (byLabel) {
+      throw new CliError("ALREADY_EXISTS", `workspace label "${label}" already points to ${byLabel.locator.path}`, {
+        details: { id: byLabel.id, label, path: byLabel.locator.path },
+        help: `${cliInvocation()} catalog resolve ${label}`
+      });
+    }
+    if (byPath) {
+      throw new CliError("ALREADY_EXISTS", `workspace path ${canonicalPath} is already labeled "${byPath.label}"`, {
+        details: { id: byPath.id, label: byPath.label, path: canonicalPath },
+        help: `${cliInvocation()} catalog resolve ${byPath.label}`
+      });
+    }
+    const entry = {
+      id: generatedId(options2, new Set(current.entries.map((item) => item.id))),
+      label,
+      locator: { kind: "local-path", path: canonicalPath }
+    };
+    return {
+      value: entry,
+      changed: true,
+      next: { schema_version: CATALOG_SCHEMA_VERSION, entries: [...current.entries, entry] }
+    };
+  }, options2);
+  return { entry: result.value, changed: result.changed };
+}
+async function entryAvailable(entry) {
+  try {
+    const target = await resolveLocalBundleTarget(entry.locator.path);
+    return target.canonicalRoot === entry.locator.path;
+  } catch {
+    return false;
+  }
+}
+async function listCatalogEntries(home2 = homedir7()) {
+  const catalog2 = await loadCatalog(home2);
+  return Promise.all(
+    [...catalog2.entries].sort((a, b) => a.label.localeCompare(b.label)).map(async (entry) => ({ ...entry, available: await entryAvailable(entry) }))
+  );
+}
+function classifySelector(selector) {
+  if (selector.startsWith("bnd_")) {
+    if (!ID_PATTERN.test(selector)) {
+      throw new CliError("USAGE", `invalid workspace catalog id "${selector}"`);
+    }
+    return "id";
+  }
+  assertCatalogLabel(selector);
+  return "label";
+}
+async function resolveCatalogEntry(selector, home2 = homedir7()) {
+  const catalog2 = await loadCatalog(home2);
+  const kind2 = classifySelector(selector);
+  const entry = catalog2.entries.find((item) => item[kind2] === selector);
+  if (!entry) {
+    throw new CliError("NOT_FOUND", `workspace "${selector}" is not registered`, {
+      help: `${cliInvocation()} catalog list`
+    });
+  }
+  if (!await entryAvailable(entry)) {
+    throw new CliError("NOT_FOUND", `workspace "${entry.label}" is unavailable at ${entry.locator.path}`, {
+      details: { id: entry.id, label: entry.label, path: entry.locator.path },
+      help: `restore the bundle at ${entry.locator.path}, then retry`
+    });
+  }
+  return { ...entry, available: true };
+}
+
+// src/commands/home.ts
 var HOME_RECENT_LIMIT = 5;
+var HOME_WORKSPACES_BUDGET_MS = 500;
+var HOME_WORKSPACES_LIMIT = 15;
 function rowTitle(id, title) {
   return typeof title === "string" ? title : id.split("/").pop() ?? id;
 }
@@ -16875,11 +17199,14 @@ async function defaultSummarizeBundle(dir) {
 }
 async function discoverSummarizeBundle(startDir) {
   try {
-    const root = await findBundleRoot(path13.resolve(startDir));
+    const root = await findBundleRoot(path14.resolve(startDir));
     return root ? defaultSummarizeBundle(root) : null;
   } catch {
     return null;
   }
+}
+async function defaultLoadWorkspaces(home2, signal) {
+  return (await loadCatalog(home2, signal)).entries.map(({ label }) => ({ label })).sort((a, b) => a.label.localeCompare(b.label));
 }
 var BOARD_UP_TO_DATE = "up to date";
 var BOARD_OFFLINE_NOTE = "board sync offline \u2014 showing last known state";
@@ -16943,7 +17270,7 @@ async function defaultLoadBoardStatus(dir) {
   try {
     const top = repoTopLevel(retargetBoardInterior(dir ?? process.cwd()));
     if (!top) return null;
-    const boardPath = path13.join(top, BUNDLE_DIR);
+    const boardPath = path14.join(top, BUNDLE_DIR);
     if (!isProvisioned(top)) {
       const probed = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0 || runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
       return probed ? { state: "unprovisioned" } : null;
@@ -16967,7 +17294,7 @@ async function defaultLoadBoardStatus(dir) {
     return null;
   }
 }
-function buildHomeView(deps, summary, remote, binding, bindingError, board, hookUpdate) {
+function buildHomeView(deps, summary, remote, binding, bindingError, board, hookUpdate, workspaces) {
   const inv = deps.invocation();
   const ref = commandReference(inv);
   const view2 = {
@@ -17026,6 +17353,7 @@ function buildHomeView(deps, summary, remote, binding, bindingError, board, hook
   if (bindingError) {
     view2.project_binding_error = bindingError;
   }
+  if (workspaces) view2.workspaces = workspaces;
   const compact = compactCommandReference(inv);
   view2.commands = compact.commands;
   view2.commands_help = compact.commands_help;
@@ -17083,6 +17411,46 @@ async function home(argv, deps = {}) {
     }
   }
   const invocation = deps.invocation ?? cliInvocation;
+  let workspaces;
+  let workspaceTimer;
+  const workspaceAbort = new AbortController();
+  const loadWorkspaces = deps.loadWorkspaces ?? ((signal) => defaultLoadWorkspaces(void 0, signal));
+  try {
+    const timedOut = Symbol("workspace catalog timed out");
+    const outcome = await Promise.race([
+      loadWorkspaces(workspaceAbort.signal),
+      new Promise((resolve3) => {
+        workspaceTimer = setTimeout(
+          () => resolve3(timedOut),
+          deps.workspaceBudgetMs ?? HOME_WORKSPACES_BUDGET_MS
+        );
+      })
+    ]);
+    if (outcome === timedOut) {
+      workspaceAbort.abort();
+      workspaces = {
+        status: "unavailable",
+        note: "workspace catalog check timed out",
+        help: `${invocation()} catalog list`
+      };
+    } else if (outcome.length > 0) {
+      const entries = [...outcome].sort((a, b) => a.label.localeCompare(b.label)).slice(0, HOME_WORKSPACES_LIMIT);
+      workspaces = {
+        count: outcome.length,
+        shown: entries.length,
+        entries,
+        help: outcome.length > entries.length ? `${invocation()} catalog list` : `${invocation()} catalog resolve <label-or-id> --field path`
+      };
+    }
+  } catch {
+    workspaces = {
+      status: "unavailable",
+      note: "workspace catalog could not be read",
+      help: `${invocation()} catalog list`
+    };
+  } finally {
+    if (workspaceTimer) clearTimeout(workspaceTimer);
+  }
   let board;
   if (!remote) {
     try {
@@ -17110,7 +17478,8 @@ async function home(argv, deps = {}) {
         binding,
         bindingError,
         board,
-        hookUpdate
+        hookUpdate,
+        workspaces
       ),
       // Honor --json (JSON is equally offline/never-throw); default remains TOON, the format the
       // SessionStart hook ingests as ambient context.
@@ -17130,10 +17499,11 @@ Usage:
   agentstate-lite session-start [--dir <path>] [--json]
 
 Runs a time-boxed, best-effort pull of this repo's shared board (provisioning the checkout from
-origin/board on a fresh clone \u2014 announced, never silent), then renders the home view with the
-board-awareness block: what changed since this machine last synced, attributed per teammate, plus
-the unpushed/uncommitted backstop. Every pull failure \u2014 offline, auth, a busy repo, a lost time
-box \u2014 falls through to the render (exit 0): you always get the last known state, honestly labeled.
+origin/board on a fresh clone \u2014 announced, never silent), then renders the home view with registered
+workspace orientation and the board-awareness block: what changed since this machine last synced,
+attributed per teammate, plus the unpushed/uncommitted backstop. Every pull failure \u2014 offline, auth,
+a busy repo, a lost time box \u2014 falls through to the render (exit 0): you always get the last known
+state, honestly labeled.
 
 This is the command \`hook install\` wires as the SessionStart hook for Claude Code, Codex, and
 OpenCode. Run it directly to see exactly what a new session will see.
@@ -17305,324 +17675,6 @@ async function bundleCommand(argv, deps = {}) {
 // src/commands/catalog.ts
 import { parseArgs as parseArgs27 } from "node:util";
 import { homedir as homedir8 } from "node:os";
-
-// src/catalog.ts
-import { randomUUID as randomUUID2 } from "node:crypto";
-import { chmod as chmod3, mkdir as mkdir3, open as open2, readFile as readFile4, stat, unlink as unlink3 } from "node:fs/promises";
-import { homedir as homedir7 } from "node:os";
-import path14 from "node:path";
-var CATALOG_FILE_NAME = "catalog.json";
-var CATALOG_LOCK_FILE_NAME = "catalog.lock";
-var CATALOG_SCHEMA_VERSION = 1;
-var DIR_MODE3 = 448;
-var LOCK_MODE = 384;
-var DEFAULT_LOCK_WAIT_MS = 2e3;
-var DEFAULT_LOCK_POLL_MS = 25;
-var STALE_LOCK_MIN_AGE_MS = 3e4;
-var LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
-var ID_PATTERN = /^bnd_[0-9a-f]{32}$/;
-function catalogDir(home2) {
-  return credentialsDir(home2);
-}
-function catalogPath(home2 = homedir7()) {
-  return path14.join(catalogDir(home2), CATALOG_FILE_NAME);
-}
-function catalogLockPath(home2 = homedir7()) {
-  return path14.join(catalogDir(home2), CATALOG_LOCK_FILE_NAME);
-}
-function isObject(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-function hasExactKeys(value, expected) {
-  const actual = Object.keys(value).sort();
-  const sortedExpected = [...expected].sort();
-  return actual.length === sortedExpected.length && actual.every((key, index) => key === sortedExpected[index]);
-}
-function invalidCatalog(file, detail) {
-  return new CliError("USAGE", `invalid workspace catalog ${file}: ${detail}`, {
-    help: `repair or move ${file}, then retry`
-  });
-}
-function assertCatalogLabel(label) {
-  if (!LABEL_PATTERN.test(label) || label.startsWith("bnd_")) {
-    throw new CliError(
-      "USAGE",
-      `invalid workspace label "${label}"; use 1-64 lowercase letters, numbers, dot, dash, or underscore, beginning and ending with a letter or number (the bnd_ prefix is reserved)`,
-      { help: `${cliInvocation()} catalog add <label> [--dir <path>]` }
-    );
-  }
-}
-function validateEntry(value, file, index) {
-  if (!isObject(value) || !hasExactKeys(value, ["id", "label", "locator"])) {
-    throw invalidCatalog(file, `entries[${index}] must contain exactly id, label, and locator`);
-  }
-  if (typeof value.id !== "string" || !ID_PATTERN.test(value.id)) {
-    throw invalidCatalog(file, `entries[${index}].id must match ${ID_PATTERN.source}`);
-  }
-  if (typeof value.label !== "string" || !LABEL_PATTERN.test(value.label) || value.label.startsWith("bnd_")) {
-    throw invalidCatalog(file, `entries[${index}].label is not a valid workspace label`);
-  }
-  if (!isObject(value.locator) || !hasExactKeys(value.locator, ["kind", "path"])) {
-    throw invalidCatalog(file, `entries[${index}].locator must contain exactly kind and path`);
-  }
-  if (value.locator.kind !== "local-path") {
-    throw invalidCatalog(file, `entries[${index}].locator.kind must be "local-path"`);
-  }
-  if (typeof value.locator.path !== "string" || !path14.isAbsolute(value.locator.path) || path14.normalize(value.locator.path) !== value.locator.path) {
-    throw invalidCatalog(file, `entries[${index}].locator.path must be a normalized absolute path`);
-  }
-  return {
-    id: value.id,
-    label: value.label,
-    locator: { kind: "local-path", path: value.locator.path }
-  };
-}
-function parseCatalog(raw, file) {
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    throw invalidCatalog(file, `invalid JSON (${err instanceof Error ? err.message : String(err)})`);
-  }
-  if (!isObject(parsed)) throw invalidCatalog(file, "top level must be an object");
-  if (parsed.schema_version !== CATALOG_SCHEMA_VERSION) {
-    if (typeof parsed.schema_version === "number" && parsed.schema_version > CATALOG_SCHEMA_VERSION) {
-      throw new CliError(
-        "NOT_IMPLEMENTED",
-        `workspace catalog ${file} uses newer schema version ${parsed.schema_version}; this CLI supports version ${CATALOG_SCHEMA_VERSION}`,
-        { help: "upgrade agentstate-lite before modifying this catalog" }
-      );
-    }
-    throw invalidCatalog(file, `schema_version must be ${CATALOG_SCHEMA_VERSION}`);
-  }
-  if (!hasExactKeys(parsed, ["entries", "schema_version"]) || !Array.isArray(parsed.entries)) {
-    throw invalidCatalog(file, "top level must contain exactly schema_version and entries[]");
-  }
-  const entries = parsed.entries.map((entry, index) => validateEntry(entry, file, index));
-  const ids = /* @__PURE__ */ new Set();
-  const labels = /* @__PURE__ */ new Set();
-  const paths = /* @__PURE__ */ new Set();
-  for (const entry of entries) {
-    if (ids.has(entry.id)) throw invalidCatalog(file, `duplicate id "${entry.id}"`);
-    if (labels.has(entry.label)) throw invalidCatalog(file, `duplicate label "${entry.label}"`);
-    if (paths.has(entry.locator.path)) throw invalidCatalog(file, `duplicate path "${entry.locator.path}"`);
-    ids.add(entry.id);
-    labels.add(entry.label);
-    paths.add(entry.locator.path);
-  }
-  return { schema_version: CATALOG_SCHEMA_VERSION, entries };
-}
-async function loadCatalog(home2 = homedir7()) {
-  const file = catalogPath(home2);
-  let raw;
-  try {
-    raw = await readFile4(file, "utf8");
-  } catch (err) {
-    if (err.code === "ENOENT") {
-      return { schema_version: CATALOG_SCHEMA_VERSION, entries: [] };
-    }
-    throw new CliError("RUNTIME", `could not read workspace catalog ${file}: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  return parseCatalog(raw, file);
-}
-function defaultProcessExists(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err.code !== "ESRCH";
-  }
-}
-function readLockMetadata(raw) {
-  try {
-    const value = JSON.parse(raw);
-    if (!isObject(value) || typeof value.pid !== "number" || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.created_at_ms !== "number" || !Number.isFinite(value.created_at_ms) || typeof value.token !== "string" || value.token.length === 0) {
-      return null;
-    }
-    return { pid: value.pid, created_at_ms: value.created_at_ms, token: value.token };
-  } catch {
-    return null;
-  }
-}
-async function acquireCatalogLock(options2) {
-  const home2 = options2.home ?? homedir7();
-  const dir = catalogDir(home2);
-  const lockPath = catalogLockPath(home2);
-  const now = options2.now ?? Date.now;
-  const pid = options2.pid ?? process.pid;
-  const sleep = options2.sleep ?? ((ms) => new Promise((resolve3) => setTimeout(resolve3, ms)));
-  const processExists = options2.processExists ?? defaultProcessExists;
-  const waitMs = options2.lockWaitMs ?? DEFAULT_LOCK_WAIT_MS;
-  const pollMs = options2.lockPollMs ?? DEFAULT_LOCK_POLL_MS;
-  const token = randomUUID2();
-  const started = now();
-  await mkdir3(dir, { recursive: true, mode: DIR_MODE3 });
-  await chmod3(dir, DIR_MODE3);
-  while (true) {
-    try {
-      const handle = await open2(lockPath, "wx", LOCK_MODE);
-      try {
-        await handle.writeFile(JSON.stringify({ pid, created_at_ms: now(), token }) + "\n");
-        await handle.chmod(LOCK_MODE);
-        await handle.sync();
-      } catch (err) {
-        await handle.close().catch(() => {
-        });
-        await unlink3(lockPath).catch(() => {
-        });
-        throw err;
-      }
-      await handle.close();
-      return async () => {
-        try {
-          const current = readLockMetadata(await readFile4(lockPath, "utf8"));
-          if (current?.token === token) await unlink3(lockPath);
-        } catch (err) {
-          if (err.code !== "ENOENT") throw err;
-        }
-      };
-    } catch (err) {
-      if (err.code !== "EEXIST") throw err;
-    }
-    let owner = null;
-    let malformedAgeMs = null;
-    try {
-      owner = readLockMetadata(await readFile4(lockPath, "utf8"));
-      if (!owner) malformedAgeMs = now() - (await stat(lockPath)).mtimeMs;
-    } catch (err) {
-      if (err.code === "ENOENT") continue;
-    }
-    if (owner && now() - owner.created_at_ms >= STALE_LOCK_MIN_AGE_MS && !processExists(owner.pid)) {
-      throw new CliError("TRANSIENT", `stale workspace catalog lock at ${lockPath} belongs to absent PID ${owner.pid}`, {
-        details: { retryable: true, stale: true, lock_path: lockPath, owner_pid: owner.pid },
-        help: `remove ${lockPath} after confirming PID ${owner.pid} is absent, then retry`
-      });
-    }
-    if (malformedAgeMs !== null && malformedAgeMs >= STALE_LOCK_MIN_AGE_MS) {
-      throw new CliError("TRANSIENT", `stale malformed workspace catalog lock at ${lockPath}`, {
-        details: { retryable: true, stale: true, malformed: true, lock_path: lockPath },
-        help: `inspect and remove ${lockPath}, then retry`
-      });
-    }
-    if (now() - started >= waitMs) {
-      throw new CliError("TRANSIENT", `workspace catalog is busy (lock: ${lockPath})`, {
-        details: { retryable: true, lock_path: lockPath, owner_pid: owner?.pid },
-        help: `${cliInvocation()} catalog <command> ...`
-      });
-    }
-    await sleep(pollMs);
-  }
-}
-async function mutateCatalog(decide, options2) {
-  const home2 = options2.home ?? homedir7();
-  const release = await acquireCatalogLock({ ...options2, home: home2 });
-  try {
-    const current = await loadCatalog(home2);
-    const result = await decide(current);
-    if (result.changed) {
-      if (!result.next) throw new Error("catalog mutation marked changed without a next state");
-      const next = {
-        schema_version: CATALOG_SCHEMA_VERSION,
-        entries: [...result.next.entries].sort((a, b) => a.label.localeCompare(b.label))
-      };
-      await writeFileAtomic0600(catalogDir(home2), CATALOG_FILE_NAME, JSON.stringify(next, null, 2) + "\n");
-    }
-    return { value: result.value, changed: result.changed };
-  } finally {
-    await release();
-  }
-}
-function generatedId(options2, existing) {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const id = options2.createId?.() ?? `bnd_${randomUUID2().replaceAll("-", "")}`;
-    if (!ID_PATTERN.test(id)) throw new Error(`catalog id generator returned invalid id: ${id}`);
-    if (!existing.has(id)) return id;
-  }
-  throw new Error("catalog id generator exhausted collision retries");
-}
-async function addCatalogEntry(label, canonicalPath, options2 = {}) {
-  assertCatalogLabel(label);
-  if (!path14.isAbsolute(canonicalPath)) throw new CliError("USAGE", "workspace catalog paths must be absolute");
-  const result = await mutateCatalog(async (current) => {
-    const target = await resolveLocalBundleTarget(canonicalPath);
-    if (target.canonicalRoot !== canonicalPath) {
-      throw new CliError("NOT_FOUND", `workspace path is no longer canonical: ${canonicalPath}`, {
-        help: `${cliInvocation()} bundle locate --dir ${canonicalPath}`
-      });
-    }
-    const byLabel = current.entries.find((entry2) => entry2.label === label);
-    const byPath = current.entries.find((entry2) => entry2.locator.path === canonicalPath);
-    if (byLabel && byPath && byLabel.id === byPath.id) {
-      return { value: byLabel, changed: false };
-    }
-    if (byLabel) {
-      throw new CliError("ALREADY_EXISTS", `workspace label "${label}" already points to ${byLabel.locator.path}`, {
-        details: { id: byLabel.id, label, path: byLabel.locator.path },
-        help: `${cliInvocation()} catalog resolve ${label}`
-      });
-    }
-    if (byPath) {
-      throw new CliError("ALREADY_EXISTS", `workspace path ${canonicalPath} is already labeled "${byPath.label}"`, {
-        details: { id: byPath.id, label: byPath.label, path: canonicalPath },
-        help: `${cliInvocation()} catalog resolve ${byPath.label}`
-      });
-    }
-    const entry = {
-      id: generatedId(options2, new Set(current.entries.map((item) => item.id))),
-      label,
-      locator: { kind: "local-path", path: canonicalPath }
-    };
-    return {
-      value: entry,
-      changed: true,
-      next: { schema_version: CATALOG_SCHEMA_VERSION, entries: [...current.entries, entry] }
-    };
-  }, options2);
-  return { entry: result.value, changed: result.changed };
-}
-async function entryAvailable(entry) {
-  try {
-    const target = await resolveLocalBundleTarget(entry.locator.path);
-    return target.canonicalRoot === entry.locator.path;
-  } catch {
-    return false;
-  }
-}
-async function listCatalogEntries(home2 = homedir7()) {
-  const catalog2 = await loadCatalog(home2);
-  return Promise.all(
-    [...catalog2.entries].sort((a, b) => a.label.localeCompare(b.label)).map(async (entry) => ({ ...entry, available: await entryAvailable(entry) }))
-  );
-}
-function classifySelector(selector) {
-  if (selector.startsWith("bnd_")) {
-    if (!ID_PATTERN.test(selector)) {
-      throw new CliError("USAGE", `invalid workspace catalog id "${selector}"`);
-    }
-    return "id";
-  }
-  assertCatalogLabel(selector);
-  return "label";
-}
-async function resolveCatalogEntry(selector, home2 = homedir7()) {
-  const catalog2 = await loadCatalog(home2);
-  const kind2 = classifySelector(selector);
-  const entry = catalog2.entries.find((item) => item[kind2] === selector);
-  if (!entry) {
-    throw new CliError("NOT_FOUND", `workspace "${selector}" is not registered`, {
-      help: `${cliInvocation()} catalog list`
-    });
-  }
-  if (!await entryAvailable(entry)) {
-    throw new CliError("NOT_FOUND", `workspace "${entry.label}" is unavailable at ${entry.locator.path}`, {
-      details: { id: entry.id, label: entry.label, path: entry.locator.path },
-      help: `restore the bundle at ${entry.locator.path}, then retry`
-    });
-  }
-  return { ...entry, available: true };
-}
-
-// src/commands/catalog.ts
 var CATALOG_USAGE = `agentstate-lite catalog \u2014 register and resolve this user's workspaces
 
 Usage:
