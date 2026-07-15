@@ -8,7 +8,7 @@ description: >-
   remove, explicit --workspace sugar, catalog open, visual navigation,
   aggregation, or remote locator work.
 actor: mike/codex
-timestamp: '2026-07-15T03:13:43.093Z'
+timestamp: '2026-07-15T03:14:46.086Z'
 ---
 # Workspace catalog: work across projects
 
@@ -98,3 +98,5 @@ tagged locator seam, but do not treat its extensibility as a commitment to reope
 [contains](../tasks/bundle-locate.md)
 
 [contains](../tasks/workspace-catalog-core-loop.md)
+
+[contains](../tasks/workspace-catalog-discovery-consumer.md)
