@@ -19,7 +19,7 @@ description: >-
   serves the committed path from main). Acceptance: fresh clone, npm run build,
   git status clean; CI bot flow unchanged.
 actor: mike/codex
-assignee: mike/codex
-timestamp: '2026-07-15T14:39:25.398Z'
+assignee: brian-claude
+timestamp: '2026-07-15T14:43:56.969Z'
 ---
 
