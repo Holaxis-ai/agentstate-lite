@@ -58,6 +58,7 @@
  */
 
 import { DEFAULT_BLOB_CONTENT_TYPE } from "./content-type.js";
+import { InvalidInputError } from "./errors.js";
 import { VersionConflict, stripETagWrapper } from "./versioning.js";
 import type {
   BlobKey,
@@ -181,14 +182,13 @@ function extractVersion(res: Response, context: string): Version {
  * would go out UNCONDITIONAL (an absent/empty CAS guard is last-writer-wins on this seam),
  * reopening the exact silent-CAS-downgrade class this repair exists to close — e.g. if a caller
  * naively passed through a version read via {@link extractVersion} from an OLDER, unpatched
- * server that still emitted the empty-string default. A plain `Error` (not a `RemoteError`): this
- * is a caller-side input problem discovered before any request is sent, not a wire response to
- * classify — `classifyBundleError` (packages/cli/src/errors.ts) already maps a plain `Error` to
- * `USAGE`.
+ * server that still emitted the empty-string default. An `InvalidInputError` (not a
+ * `RemoteError`): a caller-side input problem discovered before any request is sent, not a
+ * wire response to classify.
  */
 function assertValidExpectedVersion(expectedVersion: WriteOptions["expectedVersion"]): void {
   if (expectedVersion === "") {
-    throw new Error(
+    throw new InvalidInputError(
       "expectedVersion must not be an empty string — pass a real version token, null " +
         "(expect-absent create), or omit the option entirely (unconditional write)",
     );

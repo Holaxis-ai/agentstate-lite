@@ -21,6 +21,7 @@ import {
   pathFromConceptId,
   toPosix,
 } from "./paths.js";
+import { InvalidInputError } from "./errors.js";
 import { VersionConflict } from "./versioning.js";
 import type {
   BlobKey,
@@ -112,14 +113,14 @@ export async function writeDocVersioned(
   assertSafeConceptId(doc.id);
   const rel = pathFromConceptId(doc.id);
   if (isReservedFile(rel)) {
-    throw new Error(
+    throw new InvalidInputError(
       `'${doc.id}' maps to a reserved file (${rel}); use the index/log accessors, not writeDoc.`,
     );
   }
 
   const type = doc.frontmatter?.type;
   if (typeof type !== "string" || type.trim() === "") {
-    throw new Error(`OKF §9.2: frontmatter.type is required and must be non-empty (concept '${doc.id}').`);
+    throw new InvalidInputError(`OKF §9.2: frontmatter.type is required and must be non-empty (concept '${doc.id}').`);
   }
 
   const existingTs = doc.frontmatter.timestamp;
@@ -161,7 +162,7 @@ export async function readDocVersioned(bundle: Bundle, id: ConceptId): Promise<R
   assertSafeConceptId(id);
   const rel = pathFromConceptId(id);
   if (isReservedFile(rel)) {
-    throw new Error(`'${id}' is a reserved file (index.md / log.md), not a concept document.`);
+    throw new InvalidInputError(`'${id}' is a reserved file (index.md / log.md), not a concept document.`);
   }
   return backendFor(bundle).read(id);
 }
@@ -182,7 +183,7 @@ export async function docVersions(bundle: Bundle, id: ConceptId): Promise<Versio
   assertSafeConceptId(id);
   const rel = pathFromConceptId(id);
   if (isReservedFile(rel)) {
-    throw new Error(`'${id}' is a reserved file (index.md / log.md), not a concept document.`);
+    throw new InvalidInputError(`'${id}' is a reserved file (index.md / log.md), not a concept document.`);
   }
   return backendFor(bundle).versions(id);
 }
@@ -209,7 +210,7 @@ export async function deleteDoc(bundle: Bundle, id: ConceptId, options?: DeleteO
   assertSafeConceptId(id);
   const rel = pathFromConceptId(id);
   if (isReservedFile(rel)) {
-    throw new Error(`'${id}' is a reserved file (${rel}); reserved files cannot be deleted.`);
+    throw new InvalidInputError(`'${id}' is a reserved file (${rel}); reserved files cannot be deleted.`);
   }
   return backendFor(bundle).delete(id, options);
 }

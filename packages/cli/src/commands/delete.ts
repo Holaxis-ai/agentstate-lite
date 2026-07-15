@@ -164,8 +164,7 @@ function deleteErrorToCliError(err: unknown, key: string, remoteUrl?: string): C
       },
     );
   }
-  // Anything else — a local engine's plain Error (reserved-id, unsafe-id) → USAGE, or a
-  // RemoteError (a --remote delete's non-CAS failure) → classified by ITS code — matches
-  // `promote`'s catch-all posture exactly.
+  // Anything else lands on the one boundary: a typed InvalidInputError (reserved-id,
+  // unsafe-id) → USAGE, a RemoteError by ITS code, an unexpected failure → RUNTIME.
   return classifyBundleError(err, remoteUrl);
 }

@@ -38,7 +38,6 @@ import {
   pathFromConceptId,
   loadKinds,
   VersionConflict,
-  RemoteError,
   type Bundle,
   type EdgeFilter,
   type Link,
@@ -356,17 +355,9 @@ export async function addLink(
           return version;
         } catch (err) {
           if (err instanceof VersionConflict) throw err; // let the primitive retry/exhaust
-          // P3 review fix: an earlier version of this line routed EVERY non-conflict write error
-          // through `classifyBundleError` — but that function's fallback maps anything it doesn't
-          // recognize to USAGE (exit 2, "fix your input"), which is wrong for a genuine I/O failure
-          // (e.g. ENOSPC/EACCES from a real filesystem write): a disk-full condition is a RUNTIME
-          // failure, not user misuse. Classify ONLY the known/typed shape a `--remote` write can
-          // throw (`RemoteError`, carrying a server-derived code — AUTH_REQUIRED/FORBIDDEN/etc.
-          // should surface with the right taxonomy, exactly like the read side above); a plain local
-          // error is rethrown AS-IS, so it reaches the CLI's generic RUNTIME/exit-1 catch-all instead
-          // of being silently downgraded.
-          if (err instanceof RemoteError) throw classifyBundleError(err, opts.remoteUrl);
-          throw err;
+          // The boundary owns the taxonomy: a RemoteError keeps its server-derived code, a
+          // genuine I/O failure (ENOSPC/EACCES) lands RUNTIME — never a blind USAGE.
+          throw classifyBundleError(err, opts.remoteUrl);
         }
       },
       maxAttempts: LINK_ADD_MAX_ATTEMPTS,

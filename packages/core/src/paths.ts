@@ -10,6 +10,7 @@
  */
 
 import type { ConceptId } from "./types.js";
+import { InvalidInputError } from "./errors.js";
 
 /** The two OKF reserved filenames, valid at any directory level (§3.1). */
 export const RESERVED_FILENAMES = ["index.md", "log.md"] as const;
@@ -50,14 +51,14 @@ export function pathFromConceptId(id: ConceptId): string {
  */
 export function assertSafeConceptId(id: ConceptId): void {
   if (typeof id !== "string" || id.trim() === "") {
-    throw new Error("Concept id must be a non-empty string.");
+    throw new InvalidInputError("Concept id must be a non-empty string.");
   }
   const norm = toPosix(id);
   if (norm.startsWith("/")) {
-    throw new Error(`Concept id must be bundle-relative, got absolute '${id}'.`);
+    throw new InvalidInputError(`Concept id must be bundle-relative, got absolute '${id}'.`);
   }
   if (norm.split("/").some((seg) => seg === "..")) {
-    throw new Error(`Concept id must not contain '..' segments: '${id}'.`);
+    throw new InvalidInputError(`Concept id must not contain '..' segments: '${id}'.`);
   }
 }
 
@@ -89,25 +90,25 @@ export function assertSafeConceptId(id: ConceptId): void {
  */
 export function assertSafeBlobKey(key: string): void {
   if (typeof key !== "string" || key.trim() === "") {
-    throw new Error("Blob key must be a non-empty string.");
+    throw new InvalidInputError("Blob key must be a non-empty string.");
   }
   const norm = toPosix(key);
   if (norm.startsWith("/")) {
-    throw new Error(`Blob key must be bundle-relative, got absolute '${key}'.`);
+    throw new InvalidInputError(`Blob key must be bundle-relative, got absolute '${key}'.`);
   }
   const segments = norm.split("/");
   if (segments.some((seg) => seg === "..")) {
-    throw new Error(`Blob key must not contain '..' segments: '${key}'.`);
+    throw new InvalidInputError(`Blob key must not contain '..' segments: '${key}'.`);
   }
   if (segments.some((seg) => seg.startsWith("."))) {
-    throw new Error(`Blob key must not contain dot-prefixed segments: '${key}'.`);
+    throw new InvalidInputError(`Blob key must not contain dot-prefixed segments: '${key}'.`);
   }
   const last = segments[segments.length - 1] ?? "";
   if (last === "") {
-    throw new Error(`Blob key must name a file, not end with '/': '${key}'.`);
+    throw new InvalidInputError(`Blob key must name a file, not end with '/': '${key}'.`);
   }
   if (segments.some((seg) => seg.toLowerCase().endsWith(".md"))) {
-    throw new Error(
+    throw new InvalidInputError(
       `Blob key '${key}' has a path segment ending in '.md' (checked case-insensitively, at ` +
         `any depth), which collides with the concept-document namespace — write it as a doc ` +
         `instead.`,
@@ -124,13 +125,13 @@ export function assertSafeBlobKey(key: string): void {
  */
 export function assertSafeReservedDir(dir: string): void {
   if (typeof dir !== "string") {
-    throw new Error("Reserved-file directory must be a string.");
+    throw new InvalidInputError("Reserved-file directory must be a string.");
   }
   const norm = toPosix(dir);
   if (norm.startsWith("/")) {
-    throw new Error(`Reserved-file directory must be bundle-relative, got absolute '${dir}'.`);
+    throw new InvalidInputError(`Reserved-file directory must be bundle-relative, got absolute '${dir}'.`);
   }
   if (norm.split("/").some((seg) => seg === "..")) {
-    throw new Error(`Reserved-file directory must not contain '..' segments: '${dir}'.`);
+    throw new InvalidInputError(`Reserved-file directory must not contain '..' segments: '${dir}'.`);
   }
 }
