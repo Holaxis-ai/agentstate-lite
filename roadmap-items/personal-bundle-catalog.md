@@ -3,10 +3,12 @@ type: Roadmap Item
 title: 'Workspace catalog: work across projects'
 status: active
 description: >-
-  ACTIVE — user-scoped catalog for user/agent-defined workspace labels; minimum
-  add/list/resolve loop authorized, later management and UI separately gated.
+  ACTIVE — foundation shipped in PR #59: user-scoped catalog with
+  user/agent-defined labels and the explicit add/list/resolve loop. Later
+  rename/remove, richer management, UI, and aggregation remain separately gated
+  by dogfood.
 actor: mike/codex
-timestamp: '2026-07-15T02:29:07.936Z'
+timestamp: '2026-07-15T03:06:17.489Z'
 ---
 # Workspace catalog: work across projects
 
