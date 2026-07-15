@@ -3,12 +3,13 @@ type: Roadmap Item
 title: 'Workspace catalog: work across projects'
 status: active
 description: >-
-  ACTIVE — foundation shipped in PR #59. NEXT: surface a compact non-empty
-  workspace catalog block through home/session-start. Then dogfood before waking
-  remove, explicit --workspace sugar, catalog open, visual navigation,
-  aggregation, or remote locator work.
+  ACTIVE — foundation shipped in PR #59; the discovery consumer is independently
+  approved and in review as PR #60. After merge, dogfood whether agents notice
+  labels, resolve correctly, and carry explicit --dir before waking remove,
+  --workspace sugar, catalog open, visual navigation, aggregation, or remote
+  locator work.
 actor: mike/codex
-timestamp: '2026-07-15T03:14:46.086Z'
+timestamp: '2026-07-15T03:35:39.458Z'
 ---
 # Workspace catalog: work across projects
 
@@ -41,12 +42,13 @@ Private, versioned, machine-local catalog with explicit `add`, `list`, and `reso
 ids; canonical local locators; one locked mutation boundary; and no crawling, ambient active
 workspace, cross-bundle query, or hosted dependency. PR #59 / plugin 1.0.53.
 
-### 1. Discovery consumer — NEXT
+### 1. Discovery consumer — IN REVIEW (PR #60)
 
 Surface a compact workspace block through the existing `home` render, which also makes it appear
-at `session-start` without a second integration. Show only a non-empty catalog's count, labels, and
-derived availability, plus the explicit `catalog resolve <label> --field path` next action. Do not
-print absolute paths in orientation output. Empty catalogs add no noise; a malformed catalog must
+at `session-start` without a second integration. Show only a non-empty catalog's count and sorted
+labels, plus the explicit `catalog resolve <label> --field path` next action. Do not print absolute
+paths or perform live locator probes in orientation output; detailed availability remains in the
+explicit `catalog list` command. Empty catalogs add no noise; a malformed or stalled catalog must
 fail soft with repair guidance and must never prevent session start.
 
 This is the unit that turns the naming primitive into an agent workflow. It adds no new targeting
