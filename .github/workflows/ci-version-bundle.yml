@@ -61,7 +61,7 @@ jobs:
 
           for attempt in 1 2 3; do
             echo "::group::regenerate (attempt ${attempt}/3)"
-            node scripts/ci-version-bundle.mjs
+            npm run ci:version-bundle
             echo "::endgroup::"
 
             if [ -z "$(git status --porcelain)" ]; then

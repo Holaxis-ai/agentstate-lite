@@ -2,7 +2,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile, rm, cp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   parseSemver,
@@ -16,6 +17,17 @@ import {
 } from "./ci-version-bundle.mjs";
 import { buildCliBundle } from "../packages/cli/scripts/build-bundle.mjs";
 import { embedUiAssets } from "../packages/cli/scripts/embed-ui-assets.mjs";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+test("the CI workflow enters regeneration through the npm-owned script", async () => {
+  const manifest = JSON.parse(await readFile(join(repoRoot, "package.json"), "utf8"));
+  const workflow = await readFile(join(repoRoot, ".github/workflows/ci-version-bundle.yml"), "utf8");
+
+  assert.equal(manifest.scripts["ci:version-bundle"], "node scripts/ci-version-bundle.mjs");
+  assert.equal(workflow.match(/npm run ci:version-bundle/g)?.length, 1);
+  assert.doesNotMatch(workflow, /^\s*node scripts\/ci-version-bundle\.mjs\s*$/m);
+});
 
 // ---------------------------------------------------------------------------------------------
 // Pure semver helpers.
