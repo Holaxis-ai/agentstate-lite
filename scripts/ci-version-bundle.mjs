@@ -25,7 +25,7 @@
 // safe against infinite commit loops; the workflow's actor-check is only a cheap optimization to
 // skip a redundant job, never the correctness guarantee (see .github/workflows/ci-version-bundle.yml).
 //
-// Usage: node scripts/ci-version-bundle.mjs
+// Usage: npm run ci:version-bundle
 // Exits 0 whether or not anything changed; exits 1 on any unexpected failure (regen error,
 // malformed manifest, etc.) — the workflow decides whether to commit by checking `git status`
 // after this script runs, not by parsing its output.

@@ -16,6 +16,7 @@
     "e2e": "npm run e2e:gate -w @agentstate-lite/ui",
     "check": "npm run build && npm run typecheck && npm test --workspaces --if-present && npm run test:scripts && npm run verify:npm-package && npm run check:skill -w agentstate-lite && npm run e2e:gate -w @agentstate-lite/ui",
     "verify:npm-package": "node scripts/verify-npm-package.mjs",
+    "ci:version-bundle": "node scripts/ci-version-bundle.mjs",
     "check:plugin-bundle": "npm run check:skill:bundle -w agentstate-lite && npm run check:bundle -w agentstate-lite",
     "build:plugin-bundle": "npm run build:plugin-bundle -w agentstate-lite"
   }
