@@ -5,8 +5,8 @@ status: queued
 description: >-
   UNPRIORITIZED — a private catalog and launcher for one person's bundles across
   repositories; preserve the direction without scheduling implementation.
-actor: codex
-timestamp: '2026-07-14T17:36:49.429Z'
+actor: mike/codex
+timestamp: '2026-07-15T01:50:54.730Z'
 ---
 # Personal bundle catalog: work across projects
 
@@ -28,3 +28,5 @@ layer above those bundles, not part of recipe packaging itself.
 
 Revisit when real use across several bundles creates recurring discovery, switching, wrong-target,
 or launcher-navigation pain. Until then, preserve the design and do not implement it.
+
+[contains](../tasks/bundle-locate.md)
