@@ -12,7 +12,7 @@ import path from "node:path";
 import { createServer as createHttpServer, type Server, type ServerResponse } from "node:http";
 import { connect } from "node:net";
 
-import { deleteDoc, initBundle, writeBlob, writeDoc, RemoteBackend, type Bundle } from "@agentstate-lite/core";
+import { deleteDoc, initBundle, readDoc, writeBlob, writeDoc, RemoteBackend, type Bundle } from "@agentstate-lite/core";
 import { createRouter, serve, type ServerHandle } from "@agentstate-lite/server";
 import { bootUiServer, type UiServerHandle } from "../src/ui/server.js";
 import { PageNonceRegistry, pageCsp } from "../src/ui/pages.js";
@@ -749,6 +749,101 @@ test("P1: close() resolves even when a request is held MID-MARSHALING at shutdow
     assert.equal(closed, true, "close() must resolve promptly with a mid-marshaling request held open");
   } finally {
     sock.destroy();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+/** Boot `bootUiServer` in dir mode over a fresh bundle with the real router WRAPPED so a PUT parks inside the router until the returned hook fires — the deterministic seam for the post-close write race. */
+async function bootWithHeldPut(hold: (release: () => void) => Promise<void> | void): Promise<{
+  handle: UiServerHandle;
+  origin: string;
+  dir: string;
+  bundle: Bundle;
+  putEntered: Promise<void>;
+}> {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-drain-"));
+  await initBundle(dir);
+  const bundle: Bundle = { root: dir };
+  let signalEntered!: () => void;
+  const putEntered = new Promise<void>((resolve) => (signalEntered = resolve));
+  const real = createRouter(bundle);
+  const router = async (req: Request): Promise<Response> => {
+    if (req.method === "PUT") {
+      signalEntered();
+      await new Promise<void>((release) => void hold(release));
+    }
+    return real(req);
+  };
+  const handle = await bootUiServer({ mode: "dir", port: 0, router, bundle, sessionSecret: SECRET });
+  return { handle, origin: `http://${handle.host}:${handle.port}`, dir, bundle, putEntered };
+}
+
+function sendPut(origin: string, id: string): Promise<unknown> {
+  return fetch(`${origin}/v0/bundles/default/docs/${id}`, {
+    method: "PUT",
+    headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+    body: JSON.stringify({ frontmatter: { type: "Task", title: "Raced write" }, body: "" }),
+    // The socket is severed by the shutdown under test, so this fetch's rejection is expected.
+  }).catch(() => undefined);
+}
+
+test("P1: an accepted local mutation COMMITS BEFORE close() resolves — never after it (post-close write race)", async () => {
+  // The one-level-deeper form of the shutdown race: closeAllConnections severs the CLIENT, but a
+  // mutation already executing inside the router is server-side work — if close() resolves while
+  // it runs, the write lands AFTER shutdown ostensibly finished (the destructive post-close
+  // commit). Chosen semantics, pinned here: dir mode FINISHES what it accepted — the write
+  // commits, and close() does not resolve until it has (aborting a local fs write mid-flight
+  // risks partial state).
+  let release!: () => void;
+  const { handle, origin, dir, bundle, putEntered } = await bootWithHeldPut((r) => (release = r));
+  try {
+    const put = sendPut(origin, "tasks/raced");
+    await putEntered; // the mutation is now accepted and parked INSIDE the router
+
+    let closed = false;
+    const closing = handle.close().then(() => {
+      closed = true;
+    });
+    // ORDER pin: close() must not resolve ahead of the accepted mutation.
+    await new Promise<void>((resolve) => setTimeout(resolve, 150));
+    assert.equal(closed, false, "close() resolved while an accepted mutation was still executing");
+
+    release();
+    await closing;
+    await put;
+    // COHERENCE pin: the accepted write landed, and it landed before close() resolved.
+    const doc = await readDoc(bundle, "tasks/raced");
+    assert.equal(doc.frontmatter.title, "Raced write", "the accepted mutation must have committed before close() resolved");
+  } finally {
+    release?.();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("P1: a bundle dir deleted after close() resolves STAYS deleted — no post-close handler resurrects it", async () => {
+  // The reviewer's worst repro: close() resolves, the operator deletes the bundle dir, and a
+  // handler still executing from before shutdown RECREATES the directory and commits its doc.
+  // With draining, nothing outlives close(): the (timer-held, self-releasing) mutation commits
+  // BEFORE close() resolves, so the deletion afterwards is final.
+  const { handle, origin, dir, putEntered } = await bootWithHeldPut((release) => {
+    setTimeout(release, 300);
+  });
+  try {
+    const put = sendPut(origin, "tasks/resurrected");
+    await putEntered;
+
+    await handle.close(); // must drain the parked mutation before resolving
+    await rm(dir, { recursive: true, force: true });
+
+    // Wait past the point where an undrained handler would have woken and written.
+    await new Promise<void>((resolve) => setTimeout(resolve, 600));
+    await put;
+    const resurrected = await stat(dir).then(
+      () => true,
+      () => false,
+    );
+    assert.equal(resurrected, false, "a post-close handler resurrected the deleted bundle dir");
+  } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });

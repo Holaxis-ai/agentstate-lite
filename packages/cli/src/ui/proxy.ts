@@ -49,8 +49,11 @@ function freshErrorResponse(status: number, code: string, message: string): Resp
  * Proxy one `/v0/*` request to `remoteBase`. `apiKey` is the stored key for the remote's
  * origin, if any (`undefined` for a keyless target, e.g. the local reference `serve()` used by
  * the E2E harness) — its presence alone decides whether `Authorization` is set at all.
+ * `signal` is the ui server's shutdown signal: at close(), in-flight upstream requests are
+ * ABORTED rather than awaited (a slow remote must not stall shutdown; the remote owns its own
+ * write coherence).
  */
-export async function proxyToRemote(request: Request, remoteBase: string, apiKey: string | undefined): Promise<Response> {
+export async function proxyToRemote(request: Request, remoteBase: string, apiKey: string | undefined, signal?: AbortSignal): Promise<Response> {
   const incomingUrl = new URL(request.url);
   const target = new URL(remoteBase + incomingUrl.pathname + incomingUrl.search);
   // The local per-run session `?token=` is OUR trust boundary, not the remote's — never forward
@@ -67,7 +70,7 @@ export async function proxyToRemote(request: Request, remoteBase: string, apiKey
 
   let upstream: Response;
   try {
-    upstream = await fetch(new Request(target, { method, headers, body: bodyBytes }));
+    upstream = await fetch(new Request(target, { method, headers, body: bodyBytes, signal }));
   } catch (err) {
     return freshErrorResponse(502, "RUNTIME", `could not reach remote ${remoteBase} (${err instanceof Error ? err.message : String(err)})`);
   }
