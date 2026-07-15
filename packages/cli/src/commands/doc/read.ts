@@ -286,7 +286,7 @@ async function docReadInner(argv: string[], deps: Partial<DocCliDeps>): Promise<
     }
     // F3 (P2, bundle pollution): a LOCAL bundle whose resolved --out path lands INSIDE the open
     // bundle's root would otherwise silently re-ingest the exported file as a new concept doc on the
-    // next bundle walk (list/query/view/status). Still write it — a deliberate in-bundle copy (e.g.
+    // next bundle walk (list/query/status). Still write it — a deliberate in-bundle copy (e.g.
     // re-exporting a doc back onto its own canonical path) is conceivable — but attach a loud warning.
     const warning = inBundlePollutionWarning(bundle, out);
     if (warning) result.warning = warning;
@@ -431,7 +431,7 @@ export function inBundlePollutionWarning(
   if (!resolvedOut.endsWith(".md")) return undefined;
   return (
     `--out ${out} resolves to ${resolvedOut}, which is INSIDE this bundle (${root}) — the exported ` +
-    `file will be re-ingested as a new concept doc on the next bundle walk (list/query/view/status). ` +
+    `file will be re-ingested as a new concept doc on the next bundle walk (list/query/status). ` +
     `Pass a path outside the bundle if that is not intended.`
   );
 }

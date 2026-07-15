@@ -2,15 +2,14 @@
 
 This file is read automatically at every session start. `agentstate-lite` is an
 **OKF-native, CLI-first, local-first** knowledge store: `packages/core` (the OKF
-engine), `packages/viewer` (static HTML visualizer generator, a pure consumer of core;
-sunsetting per bundle doc `docs/core`'s ecosystem stance), `packages/server` (`@agentstate-lite/server`
+engine), `packages/server` (`@agentstate-lite/server`
 — the wire-protocol REFERENCE server, a pure consumer of core; see gate 3 and Scope),
 `packages/worker` (`@agentstate-lite/worker` — the PRIVATE Cloudflare D1+R2 deployment
 package, never bundled into the CLI; deployed to production and FROZEN per bundle doc `docs/core`),
 `packages/ui` (the browser SPA — PRIVATE workspace; only its BUILT assets ship, gzip-embedded
-into the CLI bundle; its views are paused pending a rethink, see gate 4), and `packages/cli` —
+into the CLI bundle; it launches bundle-authored Pages, see gate 4), and `packages/cli` —
 the **publishable npm package `agentstate-lite`** (bins `agentstate-lite` / `aslite`), an
-esbuild bundle that inlines core + viewer + server + the built UI assets + deps into one
+esbuild bundle that inlines core + server + the built UI assets + deps into one
 self-contained ESM file. The filesystem is the
 DEFAULT local backend; the storage seam is pluggable (gate 3) and production runs D1/R2.
 
@@ -48,8 +47,6 @@ Watch-points that are easy to regress here:
   `outbound_count` / `backlink_count`.
 - **A `view`/detail shows backlink counts inline.** `link show` reports the derived
   "cited by" count next to the concept.
-- **`view` writes an HTML file and prints the path.** `axi view` must write `viz.html` and
-  print its path — never dump HTML to stdout.
 - **Errors go to stdout in structured form.** Error envelopes render as TOON on stdout with
   a capped exit-code taxonomy (0/1/2/4/5/6). Exception: `doc read --out -` routes the
   envelope to STDERR because stdout is reserved for raw bytes.
@@ -123,10 +120,9 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   enforced), and `appendLog`/`regenerateIndex` are read-CAS-write with a bounded retry — so the
   provenance surface (`log.md`) no longer loses entries under a concurrent writer.
 - Keep exactly **ONE** frontmatter parser, **ONE** bundle walk, **ONE** link resolver, and
-  **ONE** viewer engine. Do not add a parallel implementation. The viewer is a consumer of
-  core, not a second engine. (The viewer's client-side `viz.js` link resolver is browser
-  runtime emitted into the HTML, not a build-time parser — that is the one allowed
-  exception.)
+  **ONE** human-facing runtime: the local `ui` shell plus bundle-authored Pages. Do not
+  reintroduce a parallel static viewer or a second parser inside Page tooling; Pages consume
+  core semantics through the reference server's read-only bridge.
 - **Kind conventions (`core/src/kinds.ts`) are ONE registry, in core, consumed everywhere —
   not a schema fork.** A bundle MAY declare document kinds as plain OKF convention docs
   (`type: Convention`) naming the `type` value they govern, its required/optional fields,
@@ -153,22 +149,20 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   out), `recipe add` installs others (e.g. `work-tracking`), and every recipe — built-in or
   external folder — flows through ONE `RecipeSource`/`parseRecipeFiles` pipeline applying
   via expect-absent CAS (idempotent, never clobbers a hand-edited convention). If a future
-  consumer (viewer/server/an MCP surface) needs kind awareness, it calls `loadKinds` itself
+  consumer (server/an MCP surface) needs kind awareness, it calls `loadKinds` itself
   — do not thread a second registry implementation through a different layer.
 
-### 4. Human visibility — the local `ui` command; views paused, substrate frozen
+### 4. Human visibility — the local `ui` command + bundle-authored Pages
 
 The human-visibility surface is the **local `agentstate-lite ui` command**: one loopback
 server serving the embedded SPA over a bundle (`--dir` mounts the reference router
 in-process; `--remote` reverse-proxies with the stored key; per-run token + Host allowlist
-+ CSP). The plumbing (server, proxy, security, embed pipeline, typed client, query layer)
-is production-grade and INVESTABLE; the **views are PAUSED by human verdict** — do not
-build UI views without an explicit human decision, and expect the rethink to question the
-primitive itself (board task `tasks/ui-v1` carries the record). The static viewer
-(`axi view` → `viz.html`) still works and is kept until the UI's views supersede it —
-sunsetting, do not extend it. The multi-human collaboration substrate (hosted worker,
-auth, admin) is FROZEN per bundle doc `docs/core` — deployed, dormant, and not a build target
-without an explicit human decision.
++ CSP). The shell is a launcher for registered `type: Page` docs rendered in sandboxed
+iframes; Pages are bundle content, and their live data access goes through the read-only
+bridge. The former `packages/viewer` / `view` → `viz.html` surface is removed — author human
+views as Pages rather than adding a second rendering engine. The multi-human collaboration
+substrate (hosted worker, auth, admin) is FROZEN per bundle doc `docs/core` — deployed, dormant,
+and not a build target without an explicit human decision.
 
 ### 5. Local-first, standards-clean
 
@@ -195,7 +189,7 @@ bundle-relative**.
   callers cannot reproduce the mistake; do not keep patching consumers or adding reminders.
 
 - Build/verify gate: `npm run build` and `npm run typecheck` must exit 0, and `npm test`
-  (`--workspaces --if-present`: core + cli + server + viewer + worker + ui suites) must pass, before
+  (`--workspaces --if-present`: core + cli + server + worker + ui suites) must pass, before
   shipping. `npm run check` runs all of that plus this repo's own `scripts/` tests (`test:scripts`)
   and the npm-target SKILL.md drift gate (`check:skill`) in one shot. The plugin-bundle drift gates
   (`check:skill:bundle`, `check:bundle` — the ~650KB committed artifact and the skill-target
@@ -207,7 +201,7 @@ bundle-relative**.
   test files that import them crash confusingly. `npm run build` bundles the CLI to
   `packages/cli/dist/agentstate-lite.mjs` (esbuild). Smoke-test the built CLI
   (`node packages/cli/dist/agentstate-lite.mjs …`) — at minimum `init`, `doc write`/`doc read`,
-  `list`, `link add`/`show`, and `view` on `examples/sample-bundle` (expect 4 nodes / 7 edges). To
+  `list`, `link add`/`show`, and `status` on `examples/sample-bundle`. To
   verify publishability, `npm pack -w agentstate-lite` and run the tarball's bin in a temp dir
   outside the monorepo (its `node_modules` must contain ONLY `agentstate-lite`).
 - **Verify a gate by its own exit code, never through a pipe.** A piped tail or grep (`npm test |
@@ -328,9 +322,10 @@ the bundle):
   pluggable `RecipeSource` pipeline.
 - **Scans are cheap end to end:** `list`/`query` ride head projections (`queryHeads`) — no
   bodies over the wire, no per-doc R2 reads on the Worker (D1 `frontmatter` head column).
-- **The local `ui` command** (gate 4): the SPA-over-loopback vertical slice is shipped and
-  working in both modes; views paused by human verdict (`tasks/ui-v1`). The bundle now also
-  holds the project's own plans/research/changelog-archive docs — the records convention above.
+- **The local `ui` command + bundle Pages** (gate 4): the SPA-over-loopback launcher is shipped
+  and working in both modes; registered Pages are the one human-facing rendering primitive. The
+  bundle now also holds the project's own plans/research/changelog-archive docs — the records
+  convention above.
 - **The `sync` verb (git tier)** — shares a project's board over a `board` branch on the
   repo's own remote: self-healing provisioning (sync is the SETUP verb on a fresh clone of a
   board-sharing project), commit/pull/push touching nothing outside the board, CONVERGING

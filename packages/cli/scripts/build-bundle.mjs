@@ -34,20 +34,13 @@ export async function buildCliBundle(outfile) {
     format: "esm",
     target: "node20",
     // Resolve the workspace deps to their TypeScript source so no dist pre-build is needed.
-    // viewer is aliased to its LIBRARY module (generate.ts), NOT its index.ts — the latter carries
-    // an `import.meta.url === process.argv[1]` CLI self-exec guard that would fire once bundled
-    // (the bundle's own module URL === argv[1]) and leak the viewer's usage line. generate.ts is
-    // the full library surface the CLI uses (index.ts only re-exports it and adds the standalone
-    // CLI).
     alias: {
       // List browser-safe core subpaths before the package root so esbuild does not append the
       // subpath to `index.ts` (which would resolve as the impossible `index.ts/page`).
       "@agentstate-lite/core/page": r("../core/src/page.ts"),
       "@agentstate-lite/core": r("../core/src/index.ts"),
-      "@agentstate-lite/viewer": r("../viewer/src/generate.ts"),
       // server/src/index.ts is guard-free re-exports (createRouter + serve) — its only deps are
-      // core + node:http, so aliasing straight to it (unlike viewer, which needs the generate.ts
-      // detour to dodge a CLI self-exec guard) keeps the esbuild bundle ONE self-contained file.
+      // core + node:http, so aliasing straight to it keeps the esbuild bundle ONE self-contained file.
       "@agentstate-lite/server": r("../server/src/index.ts"),
     },
     // NOTE: esbuild hoists the entry file's own `#!/usr/bin/env node` shebang (src/index.ts) to

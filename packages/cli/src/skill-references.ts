@@ -101,7 +101,6 @@ export const COMMAND_CONTRACTS: Record<string, string[]> = {
   "bundle locate": [],
   catalog: [],
   init: [],
-  view: [],
   status: [],
   "doc write": [],
   "doc update": [],

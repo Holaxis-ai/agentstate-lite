@@ -84,7 +84,7 @@ test("A1.1 dashboard: bundle present, docs>0 — bundle block content", () => {
   assert.equal(recent.shown, 1);
   assert.equal(recent.total, 1);
   assert.deepEqual(recent.rows[0], { id: "notes/a", type: "Note", title: "a", timestamp: "2026-07-02T00:00:00.000Z" });
-  assert.deepEqual(bundle.next, [`${INVOKE} list`, `${INVOKE} status`, `${INVOKE} view`]);
+  assert.deepEqual(bundle.next, [`${INVOKE} list`, `${INVOKE} status`]);
   assert.equal(view.getting_started, undefined);
 });
 

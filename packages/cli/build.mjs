@@ -1,13 +1,13 @@
 // Build the single, self-contained, publishable CLI bundle.
 //
-// esbuild bundles src/index.ts together with its two workspace source packages
-// (@agentstate-lite/core, @agentstate-lite/viewer) and every npm dependency into ONE ESM file with a
+// esbuild bundles src/index.ts together with its workspace source packages
+// (@agentstate-lite/core, @agentstate-lite/server) and every npm dependency into ONE ESM file with a
 // `#!/usr/bin/env node` shebang. The published `agentstate-lite` package therefore has NO runtime
 // dependencies and NO unresolved `workspace:*` links — `npx -y agentstate-lite …` runs with zero
 // workspace resolution.
 //
 // The two workspace deps are aliased to their SOURCE entry points so this build is self-contained:
-// it does NOT require core/viewer to be pre-compiled to dist first (esbuild transpiles the .ts and
+// it does NOT require core/server to be pre-compiled to dist first (esbuild transpiles the .ts and
 // resolves their NodeNext `.js`-extension imports to the sibling `.ts` files). That keeps
 // `prepublishOnly` a single step.
 //

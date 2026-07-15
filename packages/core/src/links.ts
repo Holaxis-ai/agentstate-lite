@@ -90,7 +90,7 @@ export function resolveConceptId(fromId: ConceptId, href: string): ConceptId | n
  * {@link resolveConceptId}: it produces the relative form (`../refs/x.md`,
  * `y.md`) that the OKF reference graph builder counts as an edge — the form
  * VISION and the sample bundles use — rather than the absolute `/…md` form,
- * which the reference viewer skips when building its graph.
+ * which the OKF reference graph does not count as a relative concept edge.
  */
 export function relativeHref(fromId: ConceptId, target: string): string {
   const t = target.trim();

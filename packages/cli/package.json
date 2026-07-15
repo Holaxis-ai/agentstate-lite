@@ -2,7 +2,7 @@
   "name": "agentstate-lite",
   "version": "0.1.0",
   "type": "module",
-  "description": "Agent-facing CLI (AXI) for reading and writing local OKF knowledge bundles: context notes, docs, cross-links, and a self-contained static-HTML view.",
+  "description": "Agent-facing CLI (AXI) for reading and writing local OKF knowledge bundles: context notes, docs, cross-links, and live bundle Pages.",
   "keywords": [
     "okf",
     "knowledge",
@@ -46,7 +46,6 @@
   "devDependencies": {
     "@agentstate-lite/core": "*",
     "@agentstate-lite/server": "*",
-    "@agentstate-lite/viewer": "*",
     "@toon-format/toon": "2.3.0",
     "@types/node": "^22.0.0",
     "axi-sdk-js": "0.1.8",

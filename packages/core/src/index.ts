@@ -11,8 +11,8 @@
  * a pluggable {@link StorageBackend} (default: {@link FilesystemBackend}). This
  * module implements bundle I/O, standard-markdown cross-links (never wikilinks),
  * derived backlinks, freshness derived from `timestamp`, and reserved-file
- * (`index.md`/`log.md`) handling. The static HTML visualizer lives in
- * `@agentstate-lite/viewer`, which consumes this engine.
+ * (`index.md`/`log.md`) handling. Human-facing bundle Pages consume this engine through the
+ * reference server's read-only browser bridge.
  *
  * The public function signatures below are contract-stable; everything past the
  * "extensions" line is additive (pure helpers, reserved-file accessors, and the
@@ -156,7 +156,7 @@ export { parseMarkdown, stringifyDoc, stringifyWithData, MalformedDocumentError 
 
 // Kind conventions (CLAUDE.md gate 3, decision 5): a bundle-declared, opt-in document-kind
 // registry — validation + per-kind freshness horizons, read from `Convention` docs under
-// `conventions/`. THE mechanism is core (one implementation, consumed by CLI/viewer/server/future
+// `conventions/`. THE mechanism is core (one implementation, consumed by CLI/server/future
 // MCP); usage is opt-in per bundle. A conventions-free bundle is byte-for-byte unaffected.
 export {
   CONVENTIONS_PREFIX,
