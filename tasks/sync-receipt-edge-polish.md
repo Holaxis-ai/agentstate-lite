@@ -9,7 +9,7 @@ description: >-
   git-identity fallback, --help worktree language, single-branch refspec hint,
   code-repo linked-worktree raw fatal.
 actor: brian-claude
-timestamp: '2026-07-10T15:33:27.388Z'
+timestamp: '2026-07-15T02:57:02.865Z'
 ---
 From the PR#13 three-lane review (all empirical):
 1. Cross-run receipt under-report: fetch-succeeded-then-failed run → NEXT run
@@ -51,3 +51,8 @@ From the PR#13 three-lane review (all empirical):
    misclassifies as AUTH_REQUIRED exit 4 (relative remotes resolve differently from
    inside the linked board worktree) — pre-existing #36 behavior, git semantics; wording
    or a realpath-at-establish-time fix.
+13. (error-boundary review, pre-existing) `doc history <missing-id>` exits 0 with
+   count 0 — the one missing-document surface that never says NOT_FOUND.
+14. (error-boundary review, pre-existing) `--body-file <missing>` ENOENT surfaces raw
+   RUNTIME/1 while promote's source ENOENT is USAGE naming the file — the
+   call-site-knows-the-path translation principle applied unevenly.
