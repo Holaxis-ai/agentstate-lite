@@ -7379,7 +7379,7 @@ var ROADMAP_ITEM_SEED_BODY = '# Roadmap Item\n\nA durable line of work spanning 
 var ROADMAP_SUMMARY = "Declares the Roadmap + Roadmap Item kind conventions (typed 'contains' links, roadmap \u2192 item \u2192 task; item status enum queued/active/done) \u2014 work-tracking's companion";
 var ROADMAP_DESC_BODY = "# Roadmap\n\nInstalls the `Roadmap` and `Roadmap Item` kind conventions: roadmap-items-as-docs. A single\n`Roadmap` spine doc CONTAINS `Roadmap Item` docs; each item CONTAINS its `Task` docs \u2014 all\nvia typed links carrying the text `contains`, so the whole roadmap \u2192 item \u2192 task chain is\none filtered query per hop (`link show <id> --text contains`). An item's progress is derived\nfrom its contained tasks' statuses, never stored.\n\nApplied on demand with `recipe add roadmap` (not part of `init`'s default \u2014 that stays\n`context-notes`). Composes with the `work-tracking` recipe (the `Task` kind this recipe's\n`contains` vocabulary points at) \u2014 apply both for the full chain.\n\n## Pairing the Task kind (opt-in, one documented step)\n\nThe graph lint that answers \"which tasks have no owning Roadmap Item\" reads\n`expects_inbound` on the TASK kind's convention (`status` then reports\n`missing_expected_links`). A recipe applies via expect-absent CAS and never touches a doc\nthat already exists, so this recipe cannot patch your bundle's `conventions/task` \u2014 the\npairing is a deliberate one-step opt-in on the adopting bundle:\n\n```\nagentstate-lite pull --doc-key conventions/task.md --out task.md\n# edit task.md \u2014 add to the frontmatter:\n#   expects_inbound:\n#     contains: Roadmap Item\nagentstate-lite promote task.md --doc-key conventions/task.md --expected-version <version from the pull receipt>\n```\n\nWithout this step everything else still works (the `contains` vocabulary and its link-type\nvalidation come from THIS recipe's conventions); only the \"task lacks an owning item\" lint\nstays off.\n";
 async function applyRecipe(bundle, recipe2, now = (/* @__PURE__ */ new Date()).toISOString()) {
-  await assertPageTargetsCompatible(bundle, recipe2, now);
+  await assertPortableTargetsCompatible(bundle, recipe2, now);
   const docs = [];
   for (const d of recipe2.docs) {
     const doc2 = { ...d, frontmatter: { ...d.frontmatter, timestamp: now } };
@@ -7430,20 +7430,40 @@ async function applyRecipe(bundle, recipe2, now = (/* @__PURE__ */ new Date()).t
       changed: registryChanged || entryChanged
     });
   }
+  const references = [];
+  for (const reference of recipe2.references) {
+    const desired = {
+      ...reference.doc,
+      frontmatter: { ...reference.doc.frontmatter, timestamp: now }
+    };
+    let changed = true;
+    try {
+      await writeDocVersioned(bundle, desired, { expectedVersion: null });
+    } catch (err) {
+      if (!(err instanceof VersionConflict)) throw err;
+      const existing = await readDoc(bundle, desired.id);
+      if (!sameInstalledDoc(existing, desired)) throw recipeAssetConflict(recipe2.id, `${desired.id}.md`);
+      changed = false;
+    }
+    references.push({ id: desired.id, changed });
+  }
   return {
     id: recipe2.id,
     version: recipe2.version,
     source: recipe2.source,
     docs,
     pages,
-    changed: docs.some((d) => d.changed) || pages.some((page) => page.changed),
+    references,
+    changed: docs.some((d) => d.changed) || pages.some((page) => page.changed) || references.some((reference) => reference.changed),
     warnings: recipe2.warnings
   };
 }
-async function assertPageTargetsCompatible(bundle, recipe2, now) {
-  if (recipe2.pages.length === 0) return;
-  const registryDocs = await query(bundle, { prefix: "pages-registry/" });
-  const registries = new Map(registryDocs.map((doc2) => [doc2.id, doc2]));
+async function assertPortableTargetsCompatible(bundle, recipe2, now) {
+  const registries = /* @__PURE__ */ new Map();
+  if (recipe2.pages.length > 0) {
+    const registryDocs = await query(bundle, { prefix: "pages-registry/" });
+    for (const doc2 of registryDocs) registries.set(doc2.id, doc2);
+  }
   for (const page of recipe2.pages) {
     const existingBlob = await readBlob(bundle, page.entry);
     if (existingBlob) {
@@ -7461,6 +7481,22 @@ async function assertPageTargetsCompatible(bundle, recipe2, now) {
       if (!sameInstalledDoc(existingRegistry, desiredRegistry)) {
         throw recipeAssetConflict(recipe2.id, `${page.registry.id}.md`);
       }
+    }
+  }
+  const installedReferences = /* @__PURE__ */ new Map();
+  if (recipe2.references.length > 0) {
+    const referenceDocs = await query(bundle, { prefix: "references/" });
+    for (const doc2 of referenceDocs) installedReferences.set(doc2.id, doc2);
+  }
+  for (const reference of recipe2.references) {
+    const existing = installedReferences.get(reference.doc.id);
+    if (!existing) continue;
+    const desired = {
+      ...reference.doc,
+      frontmatter: { ...reference.doc.frontmatter, timestamp: now }
+    };
+    if (!sameInstalledDoc(existing, desired)) {
+      throw recipeAssetConflict(recipe2.id, `${reference.doc.id}.md`);
     }
   }
 }
@@ -7525,6 +7561,77 @@ function nonEmptyString(v) {
 }
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+var REFERENCE_SEGMENT = /^[A-Za-z0-9._-]+$/;
+function isSafeRecipeReferencePath(value) {
+  if (!value.startsWith("references/") || !value.endsWith(".md") || /[\\%?#]/.test(value)) return false;
+  const segments = value.slice("references/".length).split("/");
+  return segments.every((segment) => !segment.startsWith(".") && REFERENCE_SEGMENT.test(segment));
+}
+function parseReferenceDeclarations(manifest, recipeId, source) {
+  if (manifest.references === void 0) return { ok: true, references: [] };
+  if (manifest.content_policy !== "definitions-only") {
+    return {
+      ok: false,
+      error: {
+        code: "RECIPE_MALFORMED",
+        message: `recipe '${recipeId}' at '${source}' declares references but does not declare 'content_policy: definitions-only', which is required for portable assets`
+      }
+    };
+  }
+  if (!Array.isArray(manifest.references)) {
+    return {
+      ok: false,
+      error: { code: "RECIPE_MALFORMED", message: `recipe '${recipeId}': 'references' must be a list` }
+    };
+  }
+  const references = [];
+  const targets = /* @__PURE__ */ new Set();
+  for (const [index, value] of manifest.references.entries()) {
+    if (typeof value !== "string" || value === "") {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_MALFORMED",
+          message: `recipe '${recipeId}': references[${index}] must be a non-empty path`
+        }
+      };
+    }
+    if (!isSafeRecipeReferencePath(value)) {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_UNSAFE_PATH",
+          message: `recipe '${recipeId}': Reference '${value}' must be a .md file under 'references/'`
+        }
+      };
+    }
+    const id = conceptIdFromPath(value);
+    try {
+      assertSafeConceptId(id);
+    } catch {
+      return {
+        ok: false,
+        error: { code: "RECIPE_UNSAFE_PATH", message: `recipe '${recipeId}' contains an unsafe Reference path` }
+      };
+    }
+    if (isReservedFile(value)) {
+      return {
+        ok: false,
+        error: { code: "RECIPE_UNSAFE_PATH", message: `recipe '${recipeId}' contains a reserved filename: '${value}'` }
+      };
+    }
+    const target = id.toLowerCase();
+    if (targets.has(target)) {
+      return {
+        ok: false,
+        error: { code: "RECIPE_MALFORMED", message: `recipe '${recipeId}' declares duplicate Reference '${value}'` }
+      };
+    }
+    targets.add(target);
+    references.push({ path: value, id });
+  }
+  return { ok: true, references };
 }
 function parsePageDeclarations(manifest, recipeId, source) {
   if (manifest.pages === void 0) return { ok: true, pages: [] };
@@ -7655,7 +7762,10 @@ function parseRecipeFiles(files, source) {
   }
   const pageDeclarations = parsePageDeclarations(manifest, id, source);
   if (!pageDeclarations.ok) return pageDeclarations;
+  const referenceDeclarations = parseReferenceDeclarations(manifest, id, source);
+  if (!referenceDeclarations.ok) return referenceDeclarations;
   const declaredPageFiles = new Set(pageDeclarations.pages.flatMap((page) => [page.registry, page.entry]));
+  const declaredReferenceFiles = new Set(referenceDeclarations.references.map((reference) => reference.path));
   const warnings = [];
   for (const key of RESERVED_MANIFEST_KEYS) {
     if (key in manifest) {
@@ -7674,6 +7784,7 @@ function parseRecipeFiles(files, source) {
     if (file.path === "recipe.md") continue;
     if (!file.path.startsWith(CONVENTIONS_PREFIX)) {
       if (declaredPageFiles.has(file.path)) continue;
+      if (declaredReferenceFiles.has(file.path)) continue;
       if (contentPolicy === "definitions-only") {
         return {
           ok: false,
@@ -7827,7 +7938,48 @@ function parseRecipeFiles(files, source) {
       html: entryFile.bytes
     });
   }
-  const recipe2 = { id, title, version, summary, source, docs, pages, governs: governsList, warnings };
+  const references = [];
+  for (const declaration of referenceDeclarations.references) {
+    const referenceFile = files.find((file) => file.path === declaration.path);
+    if (!referenceFile) {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_MALFORMED",
+          message: `recipe '${id}' is missing declared Reference file '${declaration.path}'`
+        }
+      };
+    }
+    const { frontmatter, body } = parseMarkdown(referenceFile.bytes);
+    if (frontmatter.type !== "Reference") {
+      return {
+        ok: false,
+        error: {
+          code: "RECIPE_MALFORMED",
+          message: `recipe '${id}': '${declaration.path}' must declare 'type: Reference'`
+        }
+      };
+    }
+    if (!nonEmptyString(frontmatter.title)) {
+      return {
+        ok: false,
+        error: { code: "RECIPE_MALFORMED", message: `recipe '${id}': '${declaration.path}' needs a title` }
+      };
+    }
+    references.push({ doc: { id: declaration.id, frontmatter, body } });
+  }
+  const recipe2 = {
+    id,
+    title,
+    version,
+    summary,
+    source,
+    docs,
+    pages,
+    references,
+    governs: governsList,
+    warnings
+  };
   if (contentPolicy === "definitions-only") recipe2.contentPolicy = contentPolicy;
   return { ok: true, recipe: recipe2 };
 }
@@ -14450,10 +14602,10 @@ Usage:
 
 A recipe is a folder ('recipe.md' manifest + 'conventions/*.md' docs) that 'recipe add
 <name-or-path>' installs onto a bundle in one shot \u2014 idempotently (re-adding an already-applied
-recipe is a changed:false no-op). A definitions-only portable recipe may also declare Page
-registry/HTML pairs without carrying instances. This command lists the BUILT-IN recipes shipped
-with the CLI; an external recipe (a path) is not enumerated here, only path-addressed via
-'recipe add <path>'.
+recipe is a changed:false no-op). A definitions-only portable recipe may also declare static
+Reference docs and Page registry/HTML pairs without carrying instances. This command lists the
+BUILT-IN recipes shipped with the CLI; an external recipe (a path) is not enumerated here, only
+path-addressed via 'recipe add <path>'.
 'init' applies the default recipe ('context-notes') automatically unless '--recipe none' is
 passed. See 'agentstate-lite kinds' for the LIVE per-bundle registry a recipe's docs feed into.
 
@@ -14519,8 +14671,9 @@ Applies a recipe's definitions to the bundle. <name-or-path> is a built-in name 
 'context-notes') or a path to a recipe folder (a path is anything containing '/' or starting
 with '~' \u2014 a local folder literally named 'foo' is reachable only as './foo'). A recipe folder
 is 'recipe.md' (type: Recipe manifest) plus one or more 'conventions/*.md' docs. A portable recipe
-may opt into 'content_policy: definitions-only' and explicitly declare self-contained Page
-registry/HTML pairs; instance data and undeclared files are then rejected before any write.
+may opt into 'content_policy: definitions-only' and explicitly declare static 'type: Reference'
+docs plus self-contained Page registry/HTML pairs; instance data and undeclared files are then
+rejected before any write.
 
 Idempotent: a doc the recipe would install that already exists is left untouched (changed:false
 for that doc) rather than erroring or overwriting \u2014 re-running 'recipe add' on an already-applied
@@ -14592,6 +14745,7 @@ async function recipeAdd(argv, stdout) {
     docs: result.docs
   };
   if (result.pages.length > 0) receipt.pages = result.pages;
+  if (result.references.length > 0) receipt.references = result.references;
   if (warnings.length > 0) receipt.warnings = warnings;
   receipt.help = [`${cliInvocation()} recipes`, `${cliInvocation()} kinds`];
   stdout(render(receipt, resolveMode(values)));
@@ -16322,7 +16476,7 @@ var COMMAND_GROUPS = [
       },
       {
         usage: "recipe add <name-or-path> [--remote <url>]",
-        summary: "Apply a recipe's content-free definitions \u2014 Kinds and optional declared Pages \u2014 idempotently"
+        summary: "Apply a recipe's content-free definitions \u2014 Kinds plus optional declared References and Pages \u2014 idempotently"
       }
     ]
   },

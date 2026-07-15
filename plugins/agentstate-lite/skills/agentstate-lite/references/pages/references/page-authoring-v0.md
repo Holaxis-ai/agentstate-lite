@@ -1,16 +1,21 @@
 ---
 type: Reference
-title: Bundle Pages — the postMessage bridge (v0)
-timestamp: "2026-07-09T00:00:00.000Z"
+title: Bundle Page authoring — bridge v0
+protocol: v0
+timestamp: "2026-07-15T00:00:00.000Z"
 ---
 
-# Bundle Pages & the postMessage bridge (protocol `v0`)
+# Bundle Page authoring — bridge v0
 
-A **bundle page** is a self-contained HTML file promoted into an agentstate-lite bundle as a
-blob under `pages/…`, declared by a `type: Page` registry doc, and rendered by
-`agentstate-lite ui` inside a **sandboxed iframe**. This is the gate-4 rethink direction
-(`tasks/ui-pages-spike`): pages are bundle *content* — authored, versioned, attributed, and
-synced like any other doc — and the shell is just a launcher + a data broker.
+Use this reference when creating or revising a human-facing Page in this bundle. It travels with
+Page-bearing portable recipes so Page work does not depend on an agent-harness skill. The installed
+CLI remains the authority for the runtime implementation; this document describes the stable `v0`
+contract the Page declares and consumes.
+
+A **bundle Page** is a self-contained HTML file promoted into an agentstate-lite bundle as a blob
+under `pages/…`, declared by a `type: Page` registry doc, and rendered by `agentstate-lite ui`
+inside a **sandboxed iframe**. Pages are bundle content — authored, versioned, attributed, and
+synced like any other doc — while the shell is the launcher and trusted data broker.
 
 ## Trust model (why a page can never touch a credential)
 
@@ -127,14 +132,34 @@ The launcher groups pages by this same field: "Dashboards" for `bundle-read`, "D
 
 ## Authoring a page
 
-1. Write a self-contained `.html` (inline CSS/JS, no external hosts). A data page embeds a copy of
-   the bridge client below. A content page (`bridge: none`) may use only its fire-and-forget
-   `openPage` helper; its bundle-data calls would come back `FORBIDDEN`.
-2. Promote it as a blob: `agentstate-lite promote my-page.html --doc-key pages/my-page.html`.
-3. Declare a registry doc: a `type: Page` doc with `title`, `entry: pages/my-page.html`, either
-   `bridge: none` or `bridge: bundle-read` (required), and an optional `description`. Promote it:
-   `--doc-key pages-registry/my-page.md`.
-4. Declare the `Page` convention once per bundle (`conventions/page.md`, `governs: Page`).
+Start from an installed Page when possible—the working HTML is both a template and executable
+evidence of the bridge version it uses:
+
+```sh
+aslite blobs --prefix pages/
+aslite pull --doc-key pages/review-workflow/reviews.html --out my-page.html
+```
+
+Adapt the HTML as a self-contained file with inline CSS and JavaScript and no external hosts. A
+data Page embeds the bridge client below. A content Page (`bridge: none`) may use only its
+fire-and-forget `openPage` helper; its bundle-data calls return `FORBIDDEN`.
+
+Install the HTML blob and its registry entry:
+
+```sh
+aslite promote my-page.html --doc-key pages/my-page.html
+aslite new "Page" my-page \
+  --title "My page" \
+  --entry pages/my-page.html \
+  --bridge bundle-read \
+  --description "A live view of this bundle."
+aslite ui --open
+```
+
+`new "Page" my-page` applies the Page Kind's declared `pages-registry/` path. Use `bridge: none`
+for a static report or diagram. Re-promoting the HTML updates the open Page; the shell reloads it
+with a fresh nonce. If the bundle does not yet declare the Page Kind, install its Page-bearing
+recipe or promote the supplied `conventions/page.md` once before creating the registry entry.
 
 The seed pages here are working examples: `pulse.html`/`roadmap.html` are `bridge: bundle-read`
 data pages — `roadmap.html` is the one that exercises the `edges` request end-to-end (a live graph
