@@ -38,6 +38,7 @@ import { home } from "./commands/home.js";
 import { hook } from "./commands/hook.js";
 import { sessionStart } from "./commands/session-start.js";
 import { bundleCommand } from "./commands/bundle.js";
+import { catalog } from "./commands/catalog.js";
 import { CliError, toEnvelope, toExit } from "./errors.js";
 import { renderErrorEnvelope } from "./output.js";
 import { DESCRIPTION, helpIndexText } from "./reference.js";
@@ -47,6 +48,7 @@ import { parseArgs } from "node:util";
 export const KNOWN_COMMANDS = [
   "init",
   "bundle",
+  "catalog",
   "doc",
   "promote",
   "pull",
@@ -239,6 +241,7 @@ export async function main(argv: string[]): Promise<void> {
     commands: {
       init: wrap(init),
       bundle: wrap(bundleCommand),
+      catalog: wrap(catalog),
       doc: wrap(doc),
       promote: wrap(promote),
       pull: wrap(pull),
