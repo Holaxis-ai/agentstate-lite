@@ -3,19 +3,19 @@ type: Roadmap Item
 title: 'Workspace catalog: work across projects'
 status: active
 description: >-
-  ACTIVE — foundation shipped in PR #59; the discovery consumer is independently
-  approved and in review as PR #60. After merge, dogfood whether agents notice
-  labels, resolve correctly, and carry explicit --dir before waking remove,
-  --workspace sugar, catalog open, visual navigation, aggregation, or remote
-  locator work.
+  ACTIVE — catalog foundation PR #59 and discovery consumer PR #60/plugin 1.0.54
+  shipped. NEXT: dogfood the explicit resolve-to---dir journey across real
+  bundles; lifecycle repair, targeting sugar, opening, UI, aggregation, and
+  remote locators remain evidence-gated.
 actor: mike/codex
-timestamp: '2026-07-15T12:23:55.368Z'
+timestamp: '2026-07-15T12:46:56.082Z'
 ---
 # Workspace catalog: work across projects
 
-**Priority:** Active. The minimum add/list/resolve foundation shipped in PR #59 on 2026-07-14.
-The next unit makes that primitive visible to agents; later management, convenience, UI, and
-aggregation units remain separately gated by dogfood.
+**Priority:** Active. The minimum add/list/resolve foundation shipped in PR #59 on 2026-07-14,
+and its home/session-start discovery consumer shipped in PR #60 on 2026-07-15. The next unit is a
+dogfood checkpoint; later management, convenience, UI, and aggregation units remain separately
+gated by observed friction.
 
 AgentState already recognizes multi-bundle registries and cross-project views as future scope. This
 item gives the user-scoped concept a durable, bounded home: one human and their agents can
@@ -42,7 +42,7 @@ Private, versioned, machine-local catalog with explicit `add`, `list`, and `reso
 ids; canonical local locators; one locked mutation boundary; and no crawling, ambient active
 workspace, cross-bundle query, or hosted dependency. PR #59 / plugin 1.0.53.
 
-### 1. Discovery consumer — IN REVIEW (PR #60)
+### 1. Discovery consumer — shipped (PR #60 / plugin 1.0.54)
 
 Surface a compact workspace block through the existing `home` render, which also makes it appear
 at `session-start` without a second integration. Show only a non-empty catalog's total count, shown
@@ -56,7 +56,7 @@ start.
 This is the unit that turns the naming primitive into an agent workflow. It adds no new targeting
 semantics, registration, crawling, mutation, or UI.
 
-### 2. Dogfood checkpoint — evidence, not a feature
+### 2. Dogfood checkpoint — NEXT (evidence, not a feature)
 
 Register the real bundles used across the founders' work and observe whether agents notice the
 home/session-start block, resolve the correct label, and carry the returned path into explicit
