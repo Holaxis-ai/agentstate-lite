@@ -19,7 +19,7 @@ description: >-
   tasks/wire-error-classification.
 actor: builder-errors
 assignee: brian-claude
-timestamp: '2026-07-15T02:43:39.843Z'
+timestamp: '2026-07-15T03:01:15.233Z'
 ---
 # Goal
 
@@ -62,3 +62,8 @@ Make the CLI error taxonomy an executable invariant owned by one boundary, so in
 # Delivery discipline
 
 Ship as one focused behavioral PR. Treat any repeated classification exception discovered during the work as evidence that the typed error model is missing a domain error, rather than adding another call-site special case.
+
+- Fix round (review finding, minor): promote source-read fallback USAGE -> boundary
+  (EISDIR/EACCES now RUNTIME/1, empirically verified vs main; missing-source USAGE
+  naming the file KEPT — the review-ratified call-site design); probe added; suite 26
+  tests; final sha 0b0a4a9.
