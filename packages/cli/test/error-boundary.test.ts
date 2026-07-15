@@ -74,7 +74,15 @@ const MATRIX: MatrixRow[] = [
   { name: "RemoteError FORBIDDEN -> FORBIDDEN (exit 2)", make: () => new RemoteError("403", "FORBIDDEN", 403), code: "FORBIDDEN", exit: 2 },
   { name: "RemoteError NOT_FOUND -> exit 6", make: () => new RemoteError("404", "NOT_FOUND", 404), code: "NOT_FOUND", exit: 6 },
   { name: "RemoteError LAST_ADMIN -> exit 5", make: () => new RemoteError("409", "LAST_ADMIN", 409), code: "LAST_ADMIN", exit: 5 },
-  { name: "RemoteError with the wire's own USAGE -> exit 2", make: () => new RemoteError("400", "USAGE", 400), code: "USAGE", exit: 2 },
+  { name: "RemoteError with the wire's own USAGE (400) -> exit 2", make: () => new RemoteError("400", "USAGE", 400), code: "USAGE", exit: 2 },
+  // An UNRECOGNIZED wire code falls back by HTTP status, never blindly to USAGE:
+  // 429 rate limiting is attested client fault whose fix is BACKING OFF -> TRANSIENT, retryable.
+  { name: "RemoteError RATE_LIMITED (429) -> TRANSIENT", make: () => new RemoteError("too many join attempts", "RATE_LIMITED", 429), code: "TRANSIENT", exit: 1 },
+  { name: "RemoteError envelope-less 429 (status-derived code) -> TRANSIENT", make: () => new RemoteError("429", "USAGE", 429), code: "TRANSIENT", exit: 1 },
+  { name: "RemoteError unknown code on a 5xx -> RUNTIME", make: () => new RemoteError("boom", "INTERNAL_ERROR", 500), code: "RUNTIME", exit: 1 },
+  // Adjudicated: an unknown code on a 400-class status stays USAGE — the status IS the server
+  // attesting client fault, the one sanctioned non-typed USAGE source.
+  { name: "RemoteError unknown code on a 4xx -> USAGE", make: () => new RemoteError("nope", "TEAPOT", 418), code: "USAGE", exit: 2 },
   // Corrupt stored bytes: a valid invocation hitting bad data is RUNTIME, not USAGE.
   { name: "MalformedDocumentError -> RUNTIME", make: () => new MalformedDocumentError("a.md", "unparseable YAML"), code: "RUNTIME", exit: 1 },
   // Local I/O failures and anything unexpected -> RUNTIME, exit 1 — never USAGE.
@@ -107,6 +115,11 @@ test("error matrix: an uncaught VersionConflict carries {expected, actual} detai
   const exit = toExit(new VersionConflict("tasks/x", "sha256:aa", "sha256:bb"));
   assert.equal(exit.exitCode, EXIT.CONFLICT);
   assert.deepEqual(exit.envelope.error.details, { expected: "sha256:aa", actual: "sha256:bb" });
+});
+
+test("error matrix: the 429 TRANSIENT envelope is a structured retry signal (retryable + status)", () => {
+  const classified = classifyBundleError(new RemoteError("too many join attempts", "RATE_LIMITED", 429));
+  assert.deepEqual(classified.details, { retryable: true, status: 429 });
 });
 
 test("error matrix: AUTH_REQUIRED keeps the remote-url fixing hint when the caller has it", () => {

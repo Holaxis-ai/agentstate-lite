@@ -177,8 +177,12 @@ export function toEnvelope(err: CliError): ErrorEnvelope {
  *    `AGENTSTATE_LITE_API_KEY` fixing hint; RUNTIME and VERSION_MISSING (a 5xx, or an
  *    intermediary stripping the version header — retry/report, not a caller mistake) -> RUNTIME
  *    (1); FORBIDDEN -> FORBIDDEN (USAGE's exit 2, distinct code — re-authenticating grants no
- *    role); NOT_FOUND -> NOT_FOUND (6); LAST_ADMIN -> LAST_ADMIN (CONFLICT's exit 5); any other
- *    envelope code (e.g. the wire's own USAGE, a 4xx-shaped client error) -> USAGE (2).
+ *    role); NOT_FOUND -> NOT_FOUND (6); LAST_ADMIN -> LAST_ADMIN (CONFLICT's exit 5). An
+ *    UNRECOGNIZED code falls back by HTTP STATUS, never blindly to USAGE: `RATE_LIMITED`/429
+ *    (the Worker's join throttle) -> TRANSIENT (1) with `details.retryable: true` — attested
+ *    client fault, but the fix is BACKING OFF, not editing input; any 5xx -> RUNTIME (1); a
+ *    remaining 4xx (e.g. the wire's own USAGE, 400) -> USAGE (2) — a 400-class status IS the
+ *    server attesting client fault, the one sanctioned non-typed USAGE source.
  *  - ANYTHING else — fs errnos (ENOSPC, EACCES, a raw ENOENT no call site translated),
  *    unexpected backend/engine failures, a non-Error throw — -> RUNTIME (1): a valid invocation
  *    hitting a broken environment is "retry/report a bug", never "fix your input". An
@@ -214,6 +218,12 @@ export function classifyBundleError(err: unknown, remoteUrl?: string): CliError 
     }
     if (err.code === "LAST_ADMIN") {
       return new CliError("LAST_ADMIN", err.message);
+    }
+    if (err.code === "RATE_LIMITED" || err.status === 429) {
+      return new CliError("TRANSIENT", err.message, { details: { retryable: true, status: err.status } });
+    }
+    if (err.status >= 500) {
+      return new CliError("RUNTIME", err.message);
     }
     return new CliError("USAGE", err.message);
   }
