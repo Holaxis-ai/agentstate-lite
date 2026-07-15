@@ -6,20 +6,18 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  Recurring friction (bit both founders' sides 3x on 2026-07-11 alone): npm run
-  build regenerates the committed plugins/.../agentstate-lite.mjs in place, so
-  any local build leaves the tree dirty on a BOT-OWNED file, and the next git
-  pull aborts with would-be-overwritten. Humans hit a confusing error; agents
-  piping pull output can silently NOT update (observed: a masked failed pull led
-  to a stale-main briefing). Fix direction: the default build should NOT write
-  the committed bundle path - dev builds target packages/cli/dist only; a
-  separate build:plugin-bundle (invoked by CI's version-bundle workflow and
-  check:plugin-bundle) is the only writer of the committed artifact. Alternative
-  considered: gitignore-plus-bot-branch, rejected (the marketplace channel
-  serves the committed path from main). Acceptance: fresh clone, npm run build,
-  git status clean; CI bot flow unchanged.
-actor: mike/codex
+  Built + APPROVED, awaiting merge: fix/dev-build-bundle-collision @ c0e1695.
+  Default build no longer writes the bot-owned committed bundle (mirror step
+  deleted); ONE committed-path writer (build-plugin-bundle.mjs) consumed by CI's
+  regen and the manual npm run build:plugin-bundle; stale hints repointed;
+  CLAUDE.md invariant recorded. Regression pin runs the REAL root build and
+  asserts plugins/+.claude-plugin/ byte-and-mode identical — reviewer proved it
+  catches the original bug by revert experiment. Three-way byte equivalence
+  (dev/CI/manual = sha 552783f3) verified twice. Side finding filed:
+  tasks/bundle-cross-node-reproducibility (node-25 vs node-20 gzip divergence —
+  explains why local builds ALWAYS dirtied the bundle).
+actor: builder-collision
 assignee: brian-claude
-timestamp: '2026-07-15T14:43:56.969Z'
+timestamp: '2026-07-15T16:17:35.988Z'
 ---
 
