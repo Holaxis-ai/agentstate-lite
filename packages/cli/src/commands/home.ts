@@ -54,6 +54,7 @@ import { cliInvocation, binPath, collapseHomeDirectory } from "../invocation.js"
 import { DESCRIPTION, commandReference, compactCommandReference } from "../reference.js";
 import { render } from "../output.js";
 import { findBundleRoot, openBundle, resolveProjectBinding } from "../bundle.js";
+import { deriveBundleDisplayName } from "../bundle-name.js";
 import { queryHeads, type OkfDocument } from "@agentstate-lite/core";
 import { parseArgs } from "node:util";
 import path from "node:path";
@@ -82,6 +83,14 @@ export interface HomeRow {
 
 /** A compact, cheap summary of the CWD's bundle — the home dashboard's content (AXI §4 aggregates). */
 export interface BundleSummary {
+  /**
+   * Human display name (tasks/bundle-display-name): THE derivation in `bundle-name.ts` —
+   * explicit `docs/bundle` doc, else the conventional dir's PARENT folder, else the root
+   * basename — so a conventional bundle identifies its PROJECT, not the `.agentstate-lite`
+   * folder every project shares. Optional: injected test fakes may omit it (block omits the
+   * field then).
+   */
+  name?: string;
   /** Home-collapsed bundle root path (AXI §7 — WHICH bundle this dashboard reflects). */
   root: string;
   /** Total concept count. */
@@ -252,7 +261,10 @@ export async function defaultSummarizeBundle(dir?: string): Promise<BundleSummar
   }
   try {
     const docs = await queryHeads(bundle);
-    return summarizeDocs(docs, collapseHomeDirectory(bundle.root));
+    // ONE extra known-id read (absent-tolerant, never throws, fs-only for home's always-local
+    // bundle) — the same display-name chain the ui server's config uses (bundle-name.ts).
+    const name = await deriveBundleDisplayName(bundle);
+    return { name, ...summarizeDocs(docs, collapseHomeDirectory(bundle.root)) };
   } catch {
     // A bundle root exists but could not be read — DISTINCT from "no bundle" (see UnreadableBundle).
     return { root: collapseHomeDirectory(bundle.root), unreadable: true };
@@ -539,11 +551,13 @@ export function buildHomeView(
     if (binding) bundleBlock.via = binding.file;
     view.bundle = bundleBlock;
   } else if (summary) {
-    const bundleBlock: Record<string, unknown> = {
-      root: summary.root,
-      docs: summary.docs,
-      by_type: summary.byType,
-    };
+    const bundleBlock: Record<string, unknown> = {};
+    // Identity first (tasks/bundle-display-name): the derived project name, so a conventional
+    // `.agentstate-lite` bundle reads as ITS project, not as the folder every project shares.
+    if (summary.name) bundleBlock.name = summary.name;
+    bundleBlock.root = summary.root;
+    bundleBlock.docs = summary.docs;
+    bundleBlock.by_type = summary.byType;
     if (summary.docs > 0) {
       bundleBlock.recent = summary.recent;
       bundleBlock.next = [

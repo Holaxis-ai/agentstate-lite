@@ -14,9 +14,9 @@
 // SSE `/events` stream (shell-only) fed by a version-token watcher for live updates. See
 // `pages.ts`, `events.ts`, `watch.ts`.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { basename } from "node:path";
 import { requestFromIncomingMessage, writeResponseToServerResponse } from "@agentstate-lite/server";
 import { readBlob, queryHeads, assertSafeBlobKey, loadKinds, queryEdges, type Bundle, type EdgeFilter } from "@agentstate-lite/core";
+import { deriveBundleDisplayName } from "../bundle-name.js";
 import { isAllowedHost } from "./host.js";
 import { checkAuth, mintSessionSecret, sessionCookieHeader } from "./session.js";
 import { serveAsset } from "./assets.js";
@@ -197,11 +197,20 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
   });
 }
 
-/** The SPA bootstrap endpoint: mode, the `--remote` origin (for `ReloginScreen`), and a friendly bundle label for the launcher summary. NOT part of the wire surface (no `/v0/` prefix, never proxied). */
-function configResponse(options: UiServerOptions): Response {
+/**
+ * The SPA bootstrap endpoint: mode, the `--remote` origin (for `ReloginScreen`), and a friendly
+ * bundle label for the launcher summary (shell header + bridge `hello.bundle.name`). NOT part of
+ * the wire surface (no `/v0/` prefix, never proxied). Dir mode derives the label through THE
+ * bundle display-name chain (`bundle-name.ts` — explicit doc, else parent-of-conventional-dir,
+ * else root basename), read per request so a `doc write docs/bundle --title …` shows up on the
+ * next load without a server restart. Remote mode keeps the origin host as the label.
+ */
+async function configResponse(options: UiServerOptions): Promise<Response> {
   const name =
     options.mode === "dir"
-      ? basename(options.bundle?.root ?? "") || "bundle"
+      ? options.bundle
+        ? await deriveBundleDisplayName(options.bundle)
+        : "bundle"
       : (() => {
           try {
             return new URL(options.remoteBase!).host;
@@ -338,7 +347,7 @@ async function handleRequest(
   if (url.pathname === "/__page/mint" && request.method === "POST") {
     response = await handleMint(request, runtime, options);
   } else if (url.pathname === "/__ui/config") {
-    response = configResponse(options);
+    response = await configResponse(options);
   } else if (url.pathname === "/__ui/kinds") {
     response = await kindsResponse(options);
   } else if (url.pathname === "/__ui/edges") {
