@@ -3,13 +3,14 @@ type: Task
 title: >-
   Deprecate the static HTML viewer (viz.html) — back out packages/viewer + the
   view command
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Back out the static-HTML viewer now that bundle pages (PR #31) supersede it;
   gated on #31 merging.
-actor: mike/claude
-timestamp: '2026-07-10T01:13:43.940Z'
+actor: mike/codex
+assignee: mike/codex
+timestamp: '2026-07-15T14:47:59.361Z'
 ---
 **Human decision (Mike, 2026-07-09):** with bundle pages shipping (PR #31 — a launcher +
 sandboxed pages including **Roadmap**, a live graph view over `queryEdges`), the UI now provides
