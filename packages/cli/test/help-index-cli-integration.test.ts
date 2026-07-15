@@ -13,7 +13,7 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -47,7 +47,8 @@ for (const argv of [["--help"], ["-h"], ["help"]]) {
     // `npx -y agentstate-lite`, a multi-word prefix, so match loosely on the leading token.)
     assert.match(out, /^.+ — read and write a local OKF knowledge bundle/);
     assert.match(out, /\nUsage: .+ <command> \[options\]\n/);
-    assert.match(out, /\nBundle:\n {2}init \[--dir <path>\][^\n]* — Create \(or open\) an OKF knowledge bundle/);
+    assert.match(out, /\nBundle:\n {2}bundle locate \[--dir <path>\][^\n]* — Resolve the exact canonical local bundle path/);
+    assert.match(out, /\n {2}init \[--dir <path>\][^\n]* — Create \(or open\) an OKF knowledge bundle/);
     assert.match(out, /\nDocuments & links:\n {2}doc write <id> --type <t>/);
     assert.match(out, /\nSession:\n {2}session-start/);
     assert.match(out, /\n {2}hook install\|status\|uninstall/);
@@ -68,6 +69,22 @@ test("built CLI: the bare (home) view is UNCHANGED by the --help rewrite — sti
   for (const group of ["Identity", "Invites & members (admin)", "API keys"]) {
     assert.doesNotMatch(out, new RegExp(`^ {2}${group}:`, "m"), `${group} must be absent from compact home`);
   }
+});
+
+test("built CLI: bundle locate is dispatched and returns the canonical explicit target", () => {
+  const fixture = path.resolve(cliPackageRoot, "../../examples/sample-bundle");
+  const receipt = JSON.parse(run(["bundle", "locate", "--dir", fixture, "--json"])) as {
+    schema_version: number;
+    locator: { kind: string; path: string };
+    selected_by: string;
+    available: boolean;
+  };
+  assert.deepEqual(receipt, {
+    schema_version: 1,
+    locator: { kind: "local-path", path: realpathSync(fixture) },
+    selected_by: "explicit-dir",
+    available: true,
+  });
 });
 
 const RETIRED = ["login", "join", "whoami", "invite", "member", "key"];
