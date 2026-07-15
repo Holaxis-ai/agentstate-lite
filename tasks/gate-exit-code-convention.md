@@ -3,16 +3,18 @@ type: Task
 title: >-
   CLAUDE.md line: verify gates by their own exit code (piped-tail false-green
   trap)
-status: todo
+status: done
 priority: '2'
 description: >-
-  From the roadmap-recipe false-green incident (empirically reconstructed,
-  record on tasks/roadmap-recipe): npm test --workspaces shows green tails on
-  failing runs, and a pipeline's $? is tail's status not npm's. One convention
-  line for CLAUDE.md's Working-here section: run gates unpiped and read the
-  direct exit code (or capture-to-file and grep); final gates run AFTER the last
-  change.
+  CLOSED WITHOUT BUILD — already satisfied: CLAUDE.md line 207 carries the full
+  convention ('Verify a gate by its own exit code, never through a pipe', with
+  the piped-tail false-green mechanics and the check-the-LAST-change rule).
+  Landed via the U6-era conventions work; this task record lagged the tree (the
+  exact staleness class the records discipline warns about — caught by
+  grep-before-building, 2026-07-15). The lesson it encodes has since been
+  re-validated three times in the field (builder false-green 07-08, orchestrator
+  masked pull 07-11, orchestrator masked rebase 07-13).
 actor: brian-claude
-timestamp: '2026-07-08T20:22:46.309Z'
+timestamp: '2026-07-15T17:27:58.124Z'
 ---
 
