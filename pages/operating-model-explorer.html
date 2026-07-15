@@ -1,0 +1,434 @@
+<meta charset="utf-8" />
+<title>Operating model — recipes &amp; their relationships</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --paper:#f8f6f2; --card:#ffffff; --ink:#0f1a24; --slate:#4a5d6e; --ghost:#8595a4;
+    --line:#e4e0da; --line-strong:#d4cfc6;
+    --blue:#1b6a9e; --teal:#0a8a7a; --amber:#b8832a; --indigo:#5a5b9c; --neutral:#6b7a88;
+    --shadow:0 1px 2px rgba(15,26,36,.05),0 8px 24px rgba(15,26,36,.06);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --paper:#0b1926; --card:#0f2233; --ink:#eaf1f6; --slate:#a9bccb; --ghost:#6d8496;
+      --line:#1d3446; --line-strong:#2a475e;
+      --blue:#4d9bce; --teal:#39b6a3; --amber:#d9a94a; --indigo:#9092d6; --neutral:#8ba0b0;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"]{
+    --paper:#f8f6f2;--card:#ffffff;--ink:#0f1a24;--slate:#4a5d6e;--ghost:#8595a4;--line:#e4e0da;--line-strong:#d4cfc6;
+    --blue:#1b6a9e;--teal:#0a8a7a;--amber:#b8832a;--indigo:#5a5b9c;--neutral:#6b7a88;
+    --shadow:0 1px 2px rgba(15,26,36,.05),0 8px 24px rgba(15,26,36,.06);
+  }
+  :root[data-theme="dark"]{
+    --paper:#0b1926;--card:#0f2233;--ink:#eaf1f6;--slate:#a9bccb;--ghost:#6d8496;--line:#1d3446;--line-strong:#2a475e;
+    --blue:#4d9bce;--teal:#39b6a3;--amber:#d9a94a;--indigo:#9092d6;--neutral:#8ba0b0;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.5;
+    -webkit-font-smoothing:antialiased;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 22px 60px}
+  header.top{display:flex;flex-wrap:wrap;gap:14px 18px;align-items:flex-end;justify-content:space-between;
+    border-bottom:1px solid var(--line);padding-bottom:18px}
+  .eyebrow{font:600 11px/1.4 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ghost)}
+  h1{font-size:23px;font-weight:650;letter-spacing:-.01em;margin:.35em 0 .2em;text-wrap:balance}
+  .sub{color:var(--slate);max-width:60ch;font-size:14px;margin:0}
+  .pill{display:inline-flex;align-items:center;gap:7px;font:600 11px/1 var(--mono);letter-spacing:.03em;
+    padding:6px 10px;border-radius:999px;border:1px solid var(--line-strong);color:var(--slate);background:var(--card)}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--neutral)}
+  .pill.live .dot{background:var(--teal);box-shadow:0 0 0 3px color-mix(in srgb,var(--teal) 22%,transparent)}
+  .pill.snap .dot{background:var(--amber)}
+  /* segmented control */
+  .switch{display:inline-flex;background:var(--card);border:1px solid var(--line-strong);border-radius:11px;
+    padding:4px;gap:2px;margin:22px 0 6px;box-shadow:var(--shadow)}
+  .switch button{appearance:none;border:0;background:transparent;color:var(--slate);cursor:pointer;
+    font:600 13px/1 var(--sans);padding:9px 15px;border-radius:8px;display:flex;align-items:center;gap:8px}
+  .switch button .n{font:700 10px/1 var(--mono);color:var(--ghost)}
+  .switch button[aria-selected="true"]{background:color-mix(in srgb,var(--blue) 12%,var(--card));color:var(--ink)}
+  .switch button[aria-selected="true"] .n{color:var(--blue)}
+  .switch button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+  .viewcap{color:var(--slate);font-size:13.5px;margin:2px 0 20px;max-width:72ch}
+  .panel{display:none}
+  .panel.on{display:block;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.panel.on{animation:none}}
+
+  /* legend */
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;font-size:12.5px;color:var(--slate)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .swatch-blue{background:var(--blue)} .swatch-teal{background:var(--teal)}
+  .swatch-amber{background:var(--amber)} .swatch-indigo{background:var(--indigo)}
+  .swatch-neutral{background:var(--neutral)}
+  .legend i.dash{background:transparent;border:1.5px dashed var(--neutral);border-radius:3px}
+
+  /* ATLAS graph */
+  .atlas{display:grid;grid-template-columns:1fr 250px;gap:18px;align-items:start}
+  @media (max-width:760px){.atlas{grid-template-columns:1fr}}
+  .graphbox{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+    overflow:hidden}
+  svg.graph{display:block;width:100%;height:auto}
+  .gnode{cursor:pointer}
+  .gnode rect{rx:9;transition:filter .15s}
+  .gnode:hover .box,.gnode.sel .box{filter:brightness(1.04)}
+  .gnode .box{stroke-width:1.5}
+  .gnode text.kname{font:600 13px var(--mono);fill:#fff;dominant-baseline:middle}
+  .gnode text.kmeta{font:500 9.5px var(--mono);letter-spacing:.04em;dominant-baseline:middle}
+  .gnode.ungov .box{fill:var(--card);stroke-dasharray:5 4}
+  .gnode.ungov text.kname{fill:var(--slate)}
+  .edge{fill:none;stroke:var(--line-strong);stroke-width:1.6}
+  .edge.hot{stroke:var(--blue);stroke-width:2.4}
+  .elabel{font:500 10px var(--mono);fill:var(--slate)}
+  .elabel.hot{fill:var(--blue);font-weight:600}
+  .detail{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow);
+    min-height:220px}
+  .detail .hint{color:var(--ghost);font-size:13px}
+  .detail h3{margin:0 0 2px;font:650 15px/1.2 var(--sans)}
+  .detail .kpath{font:500 11px var(--mono);color:var(--ghost);margin-bottom:12px}
+  .detail .lbl{font:700 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ghost);
+    margin:12px 0 5px}
+  .detail ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+  .detail li{font-size:12.5px;color:var(--slate)}
+  .detail code{font:500 11.5px var(--mono);color:var(--ink);background:color-mix(in srgb,var(--slate) 12%,transparent);
+    padding:1px 5px;border-radius:4px}
+  .rtag{display:inline-block;font:600 10px var(--mono);padding:2px 7px;border-radius:5px;color:#fff}
+  .arrow-rel{color:var(--ghost)}
+
+  /* LAUNCHER mock */
+  .laptop{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+  .chrome{display:flex;align-items:center;gap:7px;padding:11px 15px;border-bottom:1px solid var(--line);
+    background:color-mix(in srgb,var(--slate) 6%,var(--card))}
+  .chrome i{width:10px;height:10px;border-radius:50%;background:var(--line-strong)}
+  .chrome .url{margin-left:10px;font:500 11.5px var(--mono);color:var(--ghost)}
+  .lbody{padding:22px 24px 26px}
+  .lbody h2{font-size:17px;margin:0 0 3px;font-weight:650}
+  .lbody .lsub{color:var(--slate);font-size:13px;margin:0 0 18px}
+  .opmodel{border:1px solid var(--line-strong);border-radius:12px;padding:15px 16px;margin-bottom:22px;
+    background:linear-gradient(180deg,color-mix(in srgb,var(--blue) 6%,var(--card)),var(--card))}
+  .opmodel .ohead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+  .opmodel .ohead b{font-size:13.5px}
+  .opmodel .ohead .mini{font:600 11px var(--mono);color:var(--blue);cursor:pointer}
+  .recipe-row{display:flex;flex-wrap:wrap;gap:8px 10px}
+  .recipe-chip{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:9px;
+    padding:9px 11px;background:var(--card);min-width:132px;flex:1 1 132px}
+  .recipe-chip .rn{font:600 11px var(--mono);letter-spacing:.02em;display:flex;align-items:center;gap:6px}
+  .recipe-chip .rn i{width:8px;height:8px;border-radius:50%}
+  .recipe-chip .kinds{display:flex;flex-wrap:wrap;gap:4px}
+  .kchip{font:600 10.5px var(--mono);padding:2px 7px;border-radius:5px;border:1px solid var(--line-strong);
+    color:var(--ink);background:var(--card)}
+  .opmodel .weave{margin:12px 0 0;font-size:12px;color:var(--slate);border-top:1px dashed var(--line-strong);padding-top:10px}
+  .opmodel .weave code{font:500 11px var(--mono);color:var(--ink)}
+  .lsection{font:700 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ghost);margin:0 0 9px}
+  .cardrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
+  @media (max-width:560px){.cardrow{grid-template-columns:1fr}}
+  .lcard{border:1px solid var(--line);border-radius:10px;padding:12px 13px;background:var(--card)}
+  .lcard b{font-size:13px;display:block;margin-bottom:2px}
+  .lcard span{font-size:12px;color:var(--ghost)}
+
+  /* OUTLINE */
+  .outline{display:flex;flex-direction:column;gap:12px}
+  .rgroup{border:1px solid var(--line);border-radius:13px;overflow:hidden;box-shadow:var(--shadow);background:var(--card)}
+  .rgroup > summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:11px;padding:14px 16px}
+  .rgroup > summary::-webkit-details-marker{display:none}
+  .rgroup > summary .bar{width:5px;align-self:stretch;border-radius:3px;min-height:34px}
+  .rgroup > summary .rmeta{flex:1}
+  .rgroup > summary .rname{font:650 14px var(--mono)}
+  .rgroup > summary .rdesc{font-size:12.5px;color:var(--slate)}
+  .rgroup > summary .rcount{font:600 11px var(--mono);color:var(--ghost)}
+  .rgroup > summary .chev{color:var(--ghost);transition:transform .2s}
+  .rgroup[open] > summary .chev{transform:rotate(90deg)}
+  .kinds-wrap{border-top:1px solid var(--line);padding:6px 16px 14px}
+  .krow{border-bottom:1px solid var(--line);padding:12px 0}
+  .krow:last-child{border-bottom:0}
+  .krow .khead{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .krow .kn{font:650 13.5px var(--mono)}
+  .krow .kp{font:500 11px var(--mono);color:var(--ghost)}
+  .krow .fields{margin:8px 0 0;display:flex;flex-wrap:wrap;gap:5px}
+  .fld{font:500 11px var(--mono);padding:2px 7px;border-radius:5px;background:color-mix(in srgb,var(--slate) 10%,transparent);color:var(--ink)}
+  .fld.req{background:color-mix(in srgb,var(--blue) 15%,transparent)}
+  .rels{margin:9px 0 0;display:flex;flex-direction:column;gap:5px}
+  .rel{font-size:12.5px;color:var(--slate);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .rel .verb{font:600 11px var(--mono);color:var(--ink);background:color-mix(in srgb,var(--slate) 12%,transparent);padding:1px 6px;border-radius:4px}
+  .rel .tgt{font:600 11px var(--mono);padding:1px 7px;border-radius:5px;color:#fff}
+  .rel.cross::after{content:"cross-recipe";font:600 9px var(--mono);letter-spacing:.06em;text-transform:uppercase;
+    color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 45%,transparent);padding:1px 5px;border-radius:4px}
+  .foot{margin-top:26px;padding-top:16px;border-top:1px solid var(--line);color:var(--ghost);font-size:12px;max-width:74ch}
+  .foot code{font:500 11px var(--mono);color:var(--slate)}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">agentstate-lite · human window</div>
+      <h1>The bundle's operating model</h1>
+      <p class="sub">Recipes install <b>kinds</b> — a domain vocabulary — and typed links weave <b>relationships</b> across them. Three ways to make that visible, rendered from this bundle's real conventions.</p>
+    </div>
+    <span class="pill snap" id="status"><span class="dot"></span><span id="status-t">snapshot</span></span>
+  </header>
+
+  <div class="switch" role="tablist" aria-label="Prototype solutions">
+    <button role="tab" aria-selected="true" data-view="atlas"><span class="n">A</span>Atlas graph</button>
+    <button role="tab" aria-selected="false" data-view="launcher"><span class="n">B</span>On the launcher</button>
+    <button role="tab" aria-selected="false" data-view="outline"><span class="n">C</span>Outline</button>
+  </div>
+
+  <!-- ATLAS -->
+  <section class="panel on" id="v-atlas" role="tabpanel">
+    <p class="viewcap"><b>Solution A — a dedicated graph.</b> Kinds are nodes coloured by the recipe that installed them; edges are the typed-link vocabulary. The story it tells: <code>Task</code> (work-tracking) is the hub every other recipe points into. Hover a node for its fields and links.</p>
+    <div class="legend" id="legend"></div>
+    <div class="atlas">
+      <div class="graphbox"><svg class="graph" id="svg" viewBox="0 0 900 560" role="img" aria-label="Kind relationship graph"></svg></div>
+      <aside class="detail" id="detail"><div class="hint">Hover or tap a kind to inspect its fields and typed links.</div></aside>
+    </div>
+  </section>
+
+  <!-- LAUNCHER -->
+  <section class="panel" id="v-launcher" role="tabpanel">
+    <p class="viewcap"><b>Solution B — on the launcher landing.</b> No new destination: a compact <em>operating-model</em> strip sits above the usual Dashboards/Documents on the <code>ui</code> home, so every session sees the shape of the bundle it's working in. (Mock of the launcher; the strip is the proposed addition.)</p>
+    <div class="laptop">
+      <div class="chrome"><i></i><i></i><i></i><span class="url">agentstate-lite ui · localhost</span></div>
+      <div class="lbody">
+        <h2>agentstate-lite</h2>
+        <p class="lsub">A markdown knowledge bundle — 216 documents across 13 kinds.</p>
+        <div class="opmodel">
+          <div class="ohead"><b>Operating model</b><span class="mini" id="to-atlas">open full atlas →</span></div>
+          <div class="recipe-row" id="lrecipes"></div>
+          <p class="weave">Relationships cross recipe boundaries — e.g. <code>Review Request → reviews task → Task</code> and <code>Roadmap Item → contains → Task</code>. The typed-link vocabulary is what rolls separate recipes into one operating model.</p>
+        </div>
+        <p class="lsection">Dashboards</p>
+        <div class="cardrow">
+          <div class="lcard"><b>Reviews</b><span>Live Review Requests · bundle-read</span></div>
+          <div class="lcard"><b>Roadmap</b><span>Near-term spine · bundle-read</span></div>
+        </div>
+        <p class="lsection">Documents</p>
+        <div class="cardrow">
+          <div class="lcard"><b>Domain architecture</b><span>Kinds &amp; self-description</span></div>
+          <div class="lcard"><b>Status</b><span>What shipped, end to end</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OUTLINE -->
+  <section class="panel" id="v-outline" role="tabpanel">
+    <p class="viewcap"><b>Solution C — a legible outline.</b> The same data without a graph: each recipe expands to its kinds, each kind to its fields and typed links. Cross-recipe links are flagged. Better for reading and for accessibility; weaker at showing shape at a glance.</p>
+    <div class="outline" id="outline"></div>
+  </section>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  // ---- recipe attribution (recipe membership lives in recipe packages / the CLI, not the bundle,
+  // so this mapping is a static overlay; kinds, links, fields, and paths below load live from the bridge) ----
+  var RECIPES=[
+    {id:"work-tracking",color:"var(--blue)",swatch:"blue",desc:"Task tracking — the work substrate"},
+    {id:"roadmap",color:"var(--teal)",swatch:"teal",desc:"Roadmap + Roadmap Item, work-tracking's companion"},
+    {id:"review-workflow",color:"var(--amber)",swatch:"amber",desc:"Durable human review + its explainer Page"},
+    {id:"context-notes",color:"var(--indigo)",swatch:"indigo",desc:"Ephemeral orientation notes (init default)"},
+    {id:"board-native",color:"var(--neutral)",swatch:"neutral",desc:"Declared on this board, no packaged recipe"}
+  ];
+  var RECIPE_OF={"Task":"work-tracking","Roadmap":"roadmap","Roadmap Item":"roadmap",
+    "Review Request":"review-workflow","Page":"review-workflow","Context Note":"context-notes","Claim":"board-native"};
+  var recById={}; RECIPES.forEach(function(r){recById[r.id]=r;});
+
+  // ---- SNAPSHOT: this bundle's real conventions (fallback when opened outside `aslite ui`) ----
+  var SNAPSHOT=[
+    {name:"Task",path:"tasks/",recipe:"work-tracking",
+     fields:{required:["title","status"],optional:["actor"]},links:{"depends on":"Task"}},
+    {name:"Roadmap",path:"roadmap/",recipe:"roadmap",fields:{required:["title"],optional:[]},links:{"contains":"Roadmap Item"}},
+    {name:"Roadmap Item",path:"roadmap-items/",recipe:"roadmap",
+     fields:{required:["title","status"],optional:[]},links:{"contains":"Task"}},
+    {name:"Review Request",path:"review-requests/",recipe:"review-workflow",
+     fields:{required:["title","status","reviewer","requested_by","question"],optional:["decision_summary","decided_at"]},
+     links:{"reviews design":"Design","reviews task":"Task","reviews roadmap item":"Roadmap Item","explained by":"Page"}},
+    {name:"Page",path:"pages-registry/",recipe:"review-workflow",
+     fields:{required:["title","entry","bridge"],optional:["description"]},links:{}},
+    {name:"Context Note",path:"context-notes/",recipe:"context-notes",
+     fields:{required:["title","timestamp"],optional:[]},links:{}},
+    {name:"Claim",path:"claims/",recipe:"board-native",fields:{required:["title"],optional:[]},links:{"supersedes":"Claim"}}
+  ];
+
+  // hand-laid positions for a legible directed graph (Task = hub)
+  var POS={
+    "Roadmap":[120,86],"Roadmap Item":[330,170],"Task":[530,300],
+    "Review Request":[770,120],"Design":[790,300],"Page":[788,452],
+    "Context Note":[110,300],"Claim":[190,452],"Doc":[400,486]
+  };
+  var W=124,H=48; // node box
+
+  var state={kinds:SNAPSHOT.slice(),live:false};
+
+  function kindColor(k){var r=recById[k.recipe]; return r?r.color:"var(--neutral)";}
+  function isUngoverned(name){return !state.kinds.some(function(k){return k.name===name;});}
+
+  // build node set incl. referenced-but-ungoverned targets (Design), and the ungoverned Doc type
+  function allNodes(){
+    var m={}; state.kinds.forEach(function(k){m[k.name]={name:k.name,gov:true,recipe:k.recipe,fields:k.fields,links:k.links,path:k.path};});
+    state.kinds.forEach(function(k){Object.keys(k.links||{}).forEach(function(v){var t=k.links[v]; if(!m[t]) m[t]={name:t,gov:false};});});
+    if(!m["Doc"]) m["Doc"]={name:"Doc",gov:false}; // used type with no convention — surfaced as a gap
+    return m;
+  }
+  function edges(){var e=[]; state.kinds.forEach(function(k){Object.keys(k.links||{}).forEach(function(v){e.push({from:k.name,to:k.links[v],verb:v});});}); return e;}
+
+  // ---------- LEGEND ----------
+  function renderLegend(){
+    var el=document.getElementById("legend"),h="";
+    RECIPES.forEach(function(r){h+='<span><i class="swatch-'+r.swatch+'"></i>'+r.id+'</span>';});
+    h+='<span><i class="dash"></i>referenced / ungoverned</span>';
+    el.innerHTML=h;
+  }
+
+  // ---------- ATLAS (SVG) ----------
+  function nodeCenter(name){var p=POS[name]||[450,540];return [p[0]+W/2,p[1]+H/2];}
+  function edgePath(a,b){
+    if(a===b){ // self loop
+      var p=POS[a],x=p[0]+W-14,y=p[1]+6;
+      return "M "+x+" "+y+" c 34 -20 34 34 -6 20";
+    }
+    var c1=nodeCenter(a),c2=nodeCenter(b);
+    var mx=(c1[0]+c2[0])/2, my=(c1[1]+c2[1])/2-18;
+    return "M "+c1[0]+" "+c1[1]+" Q "+mx+" "+my+" "+c2[0]+" "+c2[1];
+  }
+  function renderAtlas(){
+    var svg=document.getElementById("svg"),nodes=allNodes(),es=edges(),NS="http://www.w3.org/2000/svg",parts="";
+    parts+='<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--line-strong)"/></marker></defs>';
+    // edges
+    es.forEach(function(e,i){
+      var mid;
+      if(e.from===e.to){var p=POS[e.from];mid=[p[0]+W+14,p[1]-2];}
+      else{var a=nodeCenter(e.from),b=nodeCenter(e.to);mid=[(a[0]+b[0])/2,(a[1]+b[1])/2-22];}
+      parts+='<path class="edge" data-e="'+i+'" d="'+edgePath(e.from,e.to)+'" marker-end="url(#ah)"/>';
+      parts+='<text class="elabel" data-e="'+i+'" x="'+mid[0]+'" y="'+mid[1]+'" text-anchor="middle">'+e.verb+'</text>';
+    });
+    // nodes
+    Object.keys(nodes).forEach(function(name){
+      var p=POS[name]; if(!p) return; var n=nodes[name],col=n.gov?kindColor(n):"var(--neutral)";
+      var cls="gnode"+(n.gov?"":" ungov");
+      parts+='<g class="'+cls+'" data-k="'+name+'" tabindex="0" role="button" aria-label="'+name+'">';
+      parts+='<rect class="box" x="'+p[0]+'" y="'+p[1]+'" width="'+W+'" height="'+H+'" rx="9" fill="'+(n.gov?col:"var(--card)")+'" stroke="'+col+'"/>';
+      parts+='<text class="kname" x="'+(p[0]+13)+'" y="'+(p[1]+H/2-5)+'">'+name+'</text>';
+      var meta=n.gov?(n.path||""):"ungoverned";
+      parts+='<text class="kmeta" x="'+(p[0]+13)+'" y="'+(p[1]+H/2+11)+'" fill="'+(n.gov?"rgba(255,255,255,.82)":"var(--ghost)")+'">'+meta+'</text>';
+      parts+='</g>';
+    });
+    svg.innerHTML=parts;
+    Array.prototype.forEach.call(svg.querySelectorAll(".gnode"),function(g){
+      g.addEventListener("mouseenter",function(){select(g.getAttribute("data-k"));});
+      g.addEventListener("focus",function(){select(g.getAttribute("data-k"));});
+      g.addEventListener("click",function(){select(g.getAttribute("data-k"));});
+    });
+  }
+  function select(name){
+    var svg=document.getElementById("svg"),nodes=allNodes(),n=nodes[name],es=edges();
+    Array.prototype.forEach.call(svg.querySelectorAll(".gnode"),function(g){g.classList.toggle("sel",g.getAttribute("data-k")===name);});
+    Array.prototype.forEach.call(svg.querySelectorAll(".edge"),function(p){var e=es[+p.getAttribute("data-e")];p.classList.toggle("hot",e.from===name||e.to===name);});
+    Array.prototype.forEach.call(svg.querySelectorAll(".elabel"),function(t){var e=es[+t.getAttribute("data-e")];t.classList.toggle("hot",e.from===name||e.to===name);});
+    var d=document.getElementById("detail");
+    if(!n){d.innerHTML='<div class="hint">Unknown kind.</div>';return;}
+    var col=n.gov?kindColor(n):"var(--neutral)";
+    var h="";
+    if(!n.gov){
+      h+='<h3>'+name+'</h3><div class="kpath">referenced as a link target — no governing convention in this bundle</div>';
+      h+='<div class="lbl">why it appears</div><ul><li>Another kind links to <code>'+name+'</code>, but no <code>conventions/</code> doc governs it. The graph surfaces the gap.</li></ul>';
+      d.innerHTML=h;return;
+    }
+    h+='<span class="rtag" style="background:'+col+'">'+n.recipe+'</span>';
+    h+='<h3 style="margin-top:8px">'+name+'</h3><div class="kpath">'+(n.path||"")+'</div>';
+    var req=(n.fields&&n.fields.required)||[],opt=(n.fields&&n.fields.optional)||[];
+    if(req.length){h+='<div class="lbl">required</div><ul>'+req.map(function(f){return '<li><code>'+f+'</code></li>';}).join("")+'</ul>';}
+    if(opt.length){h+='<div class="lbl">optional</div><ul>'+opt.map(function(f){return '<li><code>'+f+'</code></li>';}).join("")+'</ul>';}
+    var lk=n.links||{},keys=Object.keys(lk);
+    if(keys.length){h+='<div class="lbl">relationships</div><ul>'+keys.map(function(v){
+      var cross=RECIPE_OF[lk[v]]&&RECIPE_OF[lk[v]]!==n.recipe;
+      return '<li><code>'+v+'</code> <span class="arrow-rel">→</span> '+lk[v]+(cross?' <span style="color:var(--amber);font-size:11px">·cross-recipe</span>':'')+'</li>';
+    }).join("")+'</ul>';}
+    d.innerHTML=h;
+  }
+
+  // ---------- LAUNCHER ----------
+  function renderLauncher(){
+    var el=document.getElementById("lrecipes"),h="";
+    RECIPES.forEach(function(r){
+      var ks=state.kinds.filter(function(k){return k.recipe===r.id;}).map(function(k){return k.name;});
+      if(!ks.length&&r.id!=="board-native")return;
+      h+='<div class="recipe-chip"><div class="rn"><i style="background:'+r.color+'"></i>'+r.id+'</div><div class="kinds">'+
+        ks.map(function(n){return '<span class="kchip">'+n+'</span>';}).join("")+'</div></div>';
+    });
+    el.innerHTML=h;
+  }
+
+  // ---------- OUTLINE ----------
+  function renderOutline(){
+    var el=document.getElementById("outline"),h="";
+    RECIPES.forEach(function(r){
+      var ks=state.kinds.filter(function(k){return k.recipe===r.id;});
+      if(!ks.length)return;
+      h+='<details class="rgroup"'+(r.id==="work-tracking"?" open":"")+'><summary><span class="bar" style="background:'+r.color+'"></span>'+
+        '<span class="rmeta"><div class="rname">'+r.id+'</div><div class="rdesc">'+r.desc+'</div></span>'+
+        '<span class="rcount">'+ks.length+' kind'+(ks.length>1?"s":"")+'</span><span class="chev">▸</span></summary><div class="kinds-wrap">';
+      ks.forEach(function(k){
+        h+='<div class="krow"><div class="khead"><span class="kn">'+k.name+'</span><span class="kp">'+(k.path||"")+'</span></div>';
+        var req=(k.fields&&k.fields.required)||[],opt=(k.fields&&k.fields.optional)||[];
+        if(req.length||opt.length){
+          h+='<div class="fields">'+req.map(function(f){return '<span class="fld req">'+f+'</span>';}).join("")+
+             opt.map(function(f){return '<span class="fld">'+f+'?</span>';}).join("")+'</div>';
+        }
+        var lk=k.links||{},keys=Object.keys(lk);
+        if(keys.length){
+          h+='<div class="rels">'+keys.map(function(v){
+            var tgt=lk[v],cross=RECIPE_OF[tgt]&&RECIPE_OF[tgt]!==k.recipe;
+            var tcol=RECIPE_OF[tgt]?recById[RECIPE_OF[tgt]].color:"var(--neutral)";
+            return '<div class="rel'+(cross?" cross":"")+'"><span class="verb">'+v+'</span><span class="arrow-rel">→</span>'+
+              '<span class="tgt" style="background:'+tcol+'">'+tgt+'</span></div>';
+          }).join("")+'</div>';
+        }
+        h+='</div>';
+      });
+      h+='</div></details>';
+    });
+    el.innerHTML=h;
+  }
+
+  function renderAll(){renderLegend();renderAtlas();renderLauncher();renderOutline();
+    document.getElementById("foot").innerHTML=(state.live
+      ? 'Live: kinds, links, fields and paths read from this bundle via the read-only Page bridge. '
+      : 'Snapshot: this bundle\'s real conventions, baked for standalone preview. Under <code>aslite ui</code> the same Page reads them live. ')
+      +'Recipe attribution is a static overlay (recipe membership lives in recipe packages, not the bundle). '
+      +'Design &amp; Doc appear ungoverned — link targets / used types with no convention here.';
+  }
+
+  // ---------- view switching ----------
+  var tabs=document.querySelectorAll(".switch button");
+  Array.prototype.forEach.call(tabs,function(b){b.addEventListener("click",function(){setView(b.getAttribute("data-view"));});});
+  function setView(v){
+    Array.prototype.forEach.call(tabs,function(b){b.setAttribute("aria-selected",b.getAttribute("data-view")===v);});
+    ["atlas","launcher","outline"].forEach(function(x){document.getElementById("v-"+x).classList.toggle("on",x===v);});
+  }
+  document.getElementById("to-atlas").addEventListener("click",function(){setView("atlas");});
+
+  // ---------- bridge (live) with snapshot fallback ----------
+  var seq=0,pending=Object.create(null),listeners=[];
+  function request(type,extra){return new Promise(function(res,rej){var id=String(++seq),m={bridge:"v0",id:id,type:type};pending[id]={res:res,rej:rej};Object.assign(m,extra||{});(window.parent||window).postMessage(m,"*");});}
+  window.addEventListener("message",function(ev){if(ev.source!==window.parent)return;var m=ev.data;if(!m||m.bridge!=="v0")return;if(m.type==="change"){listeners.forEach(function(f){f();});return;}var it=pending[m.id];if(!it)return;delete pending[m.id];if(m.type==="error")it.rej(new Error((m.error&&m.error.message)||"bridge"));else it.res(m.result);});
+  function loadLive(){
+    return request("query",{params:{prefix:"conventions/",type:"Convention"}}).then(function(r){
+      var rows=r&&r.rows||[];if(!rows.length)throw new Error("no conventions");
+      state.kinds=rows.map(function(row){var f=row.frontmatter||{};var nm=f.governs||f.title;
+        return {name:nm,path:f.path,recipe:RECIPE_OF[nm]||"board-native",fields:f.fields||{required:[],optional:[]},links:f.links||{}};});
+      state.live=true;var s=document.getElementById("status");s.className="pill live";document.getElementById("status-t").textContent="live · bridge";renderAll();
+    });
+  }
+  // if inside the ui shell, parent!==window and the bridge answers; else fall back.
+  var inShell=false; try{inShell=window.parent&&window.parent!==window;}catch(e){inShell=false;}
+  renderAll(); // snapshot immediately
+  if(inShell){listeners.push(function(){loadLive();});request("subscribe").then(loadLive).catch(function(){/* keep snapshot */});}
+  select("Task");
+})();
+</script>
