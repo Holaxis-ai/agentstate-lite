@@ -18,8 +18,8 @@ description: >-
   considered: gitignore-plus-bot-branch, rejected (the marketplace channel
   serves the committed path from main). Acceptance: fresh clone, npm run build,
   git status clean; CI bot flow unchanged.
-actor: brian-claude
-assignee: brian-claude
-timestamp: '2026-07-15T02:17:21.119Z'
+actor: mike/codex
+assignee: mike/codex
+timestamp: '2026-07-15T14:39:25.398Z'
 ---
 
