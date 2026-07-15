@@ -37,6 +37,7 @@ import { sync } from "./commands/sync.js";
 import { home } from "./commands/home.js";
 import { hook } from "./commands/hook.js";
 import { sessionStart } from "./commands/session-start.js";
+import { bundleCommand } from "./commands/bundle.js";
 import { CliError, toEnvelope, toExit } from "./errors.js";
 import { renderErrorEnvelope } from "./output.js";
 import { DESCRIPTION, helpIndexText } from "./reference.js";
@@ -45,6 +46,7 @@ import { parseArgs } from "node:util";
 
 export const KNOWN_COMMANDS = [
   "init",
+  "bundle",
   "doc",
   "promote",
   "pull",
@@ -236,6 +238,7 @@ export async function main(argv: string[]): Promise<void> {
     stdout: { write: (c: string) => (c === "\n" ? true : process.stdout.write(c)) },
     commands: {
       init: wrap(init),
+      bundle: wrap(bundleCommand),
       doc: wrap(doc),
       promote: wrap(promote),
       pull: wrap(pull),

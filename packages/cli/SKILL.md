@@ -25,6 +25,8 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
 
 ### Bundle
 
+- `npx -y agentstate-lite bundle locate [--dir <path>]`
+  — Resolve the exact canonical local bundle path and report why it won selection
 - `npx -y agentstate-lite init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]`
   — Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init
 - `npx -y agentstate-lite view [--dir <path>] [--out <path>] [--name <label>] [--remote <url>]`

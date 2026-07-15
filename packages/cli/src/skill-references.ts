@@ -98,6 +98,7 @@ export const SKILL_REFERENCES: SkillReference[] = [
  * test/skill-distribution.test.ts.
  */
 export const COMMAND_CONTRACTS: Record<string, string[]> = {
+  "bundle locate": [],
   init: [],
   view: [],
   status: [],

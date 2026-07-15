@@ -127,6 +127,22 @@ export interface ProjectBinding {
   target: string;
 }
 
+/** How a local bundle target won the CLI's selection precedence. */
+export type LocalBundleSelection = "explicit-dir" | "project-binding" | "discovery";
+
+/**
+ * The validated local target shared by bundle-opening commands and the public locator receipt.
+ * It retains both the lexical root ordinary commands use and its canonical physical directory.
+ */
+export interface LocalBundleTarget {
+  /** The lexical absolute root ordinary commands have historically operated through. */
+  root: string;
+  /** The same physical directory canonicalized for a stable machine receipt. */
+  canonicalRoot: string;
+  selectedBy: LocalBundleSelection;
+  bindingFile?: string;
+}
+
 interface BindingUriIntent {
   detail: string;
   suggestedRemote?: string;
@@ -305,6 +321,73 @@ export async function resolveRemoteFlag(
   return undefined;
 }
 
+async function canonicalBundleRoot(
+  root: string,
+  notFoundMessage: string,
+  help: string,
+): Promise<string> {
+  if (!(await exists(path.join(root, "index.md")))) {
+    throw new CliError("NOT_FOUND", notFoundMessage, { help });
+  }
+  try {
+    return await fs.realpath(root);
+  } catch {
+    // The target may have disappeared between validation and canonicalization. Keep that race in
+    // the same user-facing class as an initially missing bundle rather than leaking a raw fs error.
+    throw new CliError("NOT_FOUND", notFoundMessage, { help });
+  }
+}
+
+/**
+ * Resolve exactly one local bundle using the CLI's established precedence and retain why it won.
+ * This is the sole local target-selection primitive: {@link openBundle} consumes it, and
+ * `bundle locate` only projects its result.
+ */
+export async function resolveLocalBundleTarget(
+  dirFlag: string | undefined,
+  startDir: string = process.cwd(),
+): Promise<LocalBundleTarget> {
+  if (dirFlag !== undefined) {
+    const requested = path.resolve(startDir, dirFlag);
+    const canonicalRoot = await canonicalBundleRoot(
+      requested,
+      `no OKF bundle at ${requested} (no index.md)`,
+      `${cliInvocation()} init --dir ${dirFlag}`,
+    );
+    return { root: requested, canonicalRoot, selectedBy: "explicit-dir" };
+  }
+
+  const binding = await resolveProjectBinding(startDir);
+  if (binding) {
+    const canonicalRoot = await canonicalBundleRoot(
+      binding.target,
+      `no OKF bundle at ${binding.target} (no index.md) — from project binding ${binding.file}`,
+      `${cliInvocation()} init --dir ${binding.target}`,
+    );
+    return {
+      root: binding.target,
+      canonicalRoot,
+      selectedBy: "project-binding",
+      bindingFile: binding.file,
+    };
+  }
+
+  const discovered = await findBundleRoot(startDir);
+  if (!discovered) {
+    throw new CliError(
+      "NOT_FOUND",
+      `no OKF bundle found (no index.md, and no ${CONVENTIONAL_BUNDLE_DIR_NAME}/index.md, in the current directory or its ancestors)`,
+      { help: `${cliInvocation()} init --dir ${CONVENTIONAL_BUNDLE_DIR_NAME}` },
+    );
+  }
+  const canonicalRoot = await canonicalBundleRoot(
+    discovered,
+    `no OKF bundle at ${discovered} (no index.md)`,
+    `${cliInvocation()} init --dir ${CONVENTIONAL_BUNDLE_DIR_NAME}`,
+  );
+  return { root: discovered, canonicalRoot, selectedBy: "discovery" };
+}
+
 /**
  * Resolve the {@link Bundle} an OKF command should operate on: `--remote <url>` wins (mutually
  * exclusive with `--dir`, checked here — a USAGE error, exit 2, if both are given); otherwise the
@@ -328,35 +411,6 @@ export async function openBundle(dirFlag: string | undefined, remoteFlag?: strin
     }
     return openRemoteBundle(remoteFlag);
   }
-  if (dirFlag !== undefined) {
-    const root = path.resolve(dirFlag);
-    if (!(await exists(path.join(root, "index.md")))) {
-      throw new CliError("NOT_FOUND", `no OKF bundle at ${root} (no index.md)`, {
-        help: `${cliInvocation()} init --dir ${dirFlag}`,
-      });
-    }
-    return { root };
-  }
-  // Neither explicit flag applies: a local project binding wins over plain cwd discovery.
-  const binding = await resolveProjectBinding();
-  if (binding) {
-    const root = binding.target;
-    if (!(await exists(path.join(root, "index.md")))) {
-      throw new CliError(
-        "NOT_FOUND",
-        `no OKF bundle at ${root} (no index.md) — from project binding ${binding.file}`,
-        { help: `${cliInvocation()} init --dir ${root}` },
-      );
-    }
-    return { root };
-  }
-  const root = await findBundleRoot(process.cwd());
-  if (!root) {
-    throw new CliError(
-      "NOT_FOUND",
-      `no OKF bundle found (no index.md, and no ${CONVENTIONAL_BUNDLE_DIR_NAME}/index.md, in the current directory or its ancestors)`,
-      { help: `${cliInvocation()} init --dir ${CONVENTIONAL_BUNDLE_DIR_NAME}` },
-    );
-  }
-  return { root };
+  const target = await resolveLocalBundleTarget(dirFlag);
+  return { root: target.root };
 }
