@@ -6,8 +6,8 @@ description: >-
   Package Kinds, agent instructions, and optional Pages as
   marketplace-distributed plugins while keeping adopted knowledge local and
   portable.
-actor: codex
-timestamp: '2026-07-14T03:52:36.653Z'
+actor: mike/codex
+timestamp: '2026-07-15T16:34:12.412Z'
 ---
 # Vision
 
@@ -44,3 +44,5 @@ One founder can publish a recipe plugin and the other can install it from the re
 [contains](../tasks/prove-recipe-plugin-sharing.md)
 
 [contains](../tasks/portable-recipe-packages-v1.md)
+
+[contains](../tasks/bundle-native-reference-docs.md)
