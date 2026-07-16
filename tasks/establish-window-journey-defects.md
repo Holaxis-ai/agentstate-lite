@@ -20,9 +20,12 @@ description: >-
   marker sha; stale committed-case marker debris never cleared on fully-shared
   clones; internal migration-framing comments (git.ts:18,425,619,
   session-start.ts:250); F-D1 immutable marker file -> 'cleared' receipt without
-  post-unlink check; F-D3 'never published' overclaims in crash-then-force-push
-  corner.
+  post-unlink check; F-D2 shallow-clone containment false-negative could
+  wrongfully auto-clear a true crash-window marker after a manual branch delete
+  (damage bounded to losing the recovery pointer; shallow clones sit outside the
+  machinery's standing assumptions); F-D3 'never published' overclaims in
+  crash-then-force-push corner.
 actor: mike/claude
-timestamp: '2026-07-16T02:48:09.325Z'
+timestamp: '2026-07-16T11:44:42.056Z'
 ---
 [depends on](sync-migrate-removal.md)
