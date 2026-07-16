@@ -524,15 +524,15 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
 
   if (existsSync(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
-      // U5 fix round (review MEDIUM 3): the PRE-MIGRATION WINDOW — the board branch already
-      // exists on the remote, but THIS clone's checked-out branch still TRACKS the folder (the
-      // committed pre-migration copy: the migration PR hasn't merged, or this clone hasn't
+      // U5 fix round (review MEDIUM 3): the PRE-SHARE WINDOW — the board branch already exists
+      // on the remote, but THIS clone's checked-out branch still TRACKS the folder (the old
+      // committed copy: the folder-removal cleanup PR hasn't merged, or this clone hasn't
       // pulled it). The generic "move it aside" advice below is DANGEROUS in exactly this state:
       // moving a TRACKED folder aside and provisioning hand-builds the overlay hazard (the
       // tracked paths read as phantom-deleted, the user's own `git checkout`/`git restore`
       // re-writes the frozen copies into the board checkout, and the next sync pushes that
       // stale content over a teammate's board update — reviewer-proven). The only safe advice
-      // is to finish the migration's own journey: merge, pull, sync.
+      // is to finish the establishment's own journey: merge, pull, sync.
       if (
         hasRemote &&
         !hasWorktreeSignature(boardPath) &&
@@ -541,12 +541,12 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
         throw new BoardGitError(
           "RUNTIME",
           `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is ` +
-            `still the pre-migration folder committed on this branch — the migration PR hasn't ` +
-            `merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', then run ` +
-            `sync again`,
+            `still the old folder committed on this branch — the folder-removal (cleanup) PR ` +
+            `hasn't merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', ` +
+            `then run sync again`,
           {
-            details: { path: boardPath, state: "pre-migration-window" },
-            help: "git pull  # after the migration PR merges, then re-run sync",
+            details: { path: boardPath, state: "pre-share-window" },
+            help: "git pull  # after the cleanup PR merges, then re-run sync",
           },
         );
       }
@@ -1223,12 +1223,12 @@ export function push(boardPath: string): void {
 }
 
 /**
- * U5 (`sync --migrate`): publish the freshly created `board` branch WITH TRACKING —
- * `git push -u origin board`, run from the repo TOP (during migration the branch exists only as a
- * ref; it is not checked out anywhere). The `-u` is LOAD-BEARING (panel round 2): without it the
- * migration machine's fresh `board` branch has no tracking config at all — sync itself always uses
- * EXPLICIT `origin/board` refs precisely because that state exists, but the humans' own git
- * (`status`, `branch -vv`) reads the tracking config, and the migration is the one moment the
+ * The committed-folder establishment publishes the freshly created `board` branch WITH TRACKING —
+ * `git push -u origin board`, run from the repo TOP (during establishment the branch exists only
+ * as a ref; it is not checked out anywhere). The `-u` is LOAD-BEARING (panel round 2): without it
+ * the establishing machine's fresh `board` branch has no tracking config at all — sync itself
+ * always uses EXPLICIT `origin/board` refs precisely because that state exists, but the humans'
+ * own git (`status`, `branch -vv`) reads the tracking config, and this is the one moment the
  * config can be written for free.
  */
 export function pushBoardUpstream(top: string): void {
@@ -1253,10 +1253,10 @@ export function setBoardUpstream(boardPath: string): void {
 
 /**
  * `git fetch origin`, returning whether it succeeded (nonzero tolerated at THIS layer — the
- * CALLER decides what a dead fetch means). The migration path REFUSES on false (U5 fix round,
- * review HIGH 1): a migration cannot complete offline anyway — the mandatory `push -u` would
- * fail — and tolerating a dead fetch is exactly what would let a stale clone migrate while a
- * teammate's board commit sat unseen on origin (the behind-origin freshness guard needs a LIVE
+ * CALLER decides what a dead fetch means). The committed-folder establish path REFUSES on false
+ * (U5 fix round, review HIGH 1): the act cannot complete offline anyway — the mandatory `push -u`
+ * would fail — and tolerating a dead fetch is exactly what would let a stale clone establish while
+ * a teammate's board commit sat unseen on origin (the behind-origin freshness guard needs a LIVE
  * origin to be worth anything). Renamed from `fetchOriginTolerated`: the old name described a
  * tolerance its one real consumer no longer extends.
  */
@@ -1277,10 +1277,10 @@ export function fetchOriginRequired(top: string): void {
  * U5 fix round (review adjudication 5, empirically confirmed against THIS repo's own origin,
  * which carried `board/sync-verb-tasks`): branch names under the `board/` namespace make
  * `refs/heads/board` UNCREATABLE — git refs form a directory tree, so `refs/heads/board/<x>`
- * (a directory) and `refs/heads/board` (a file) conflict, and the migration's `push -u` is
+ * (a directory) and `refs/heads/board` (a file) conflict, and the establishment's `push -u` is
  * rejected by the remote. This lists the REMOTE offenders (`ls-remote --heads origin board/*`)
- * as short branch names; a failure to ask the remote throws classified (the migration path
- * treats the remote as mandatory — see {@link fetchOrigin}).
+ * as short branch names; a failure to ask the remote throws classified (the committed-folder
+ * establish path treats the remote as mandatory — see {@link fetchOrigin}).
  */
 export function remoteBoardNamespaceBranches(top: string): string[] {
   const r = runGit(top, ["ls-remote", "--heads", BOARD_REMOTE, `${BOARD_BRANCH}/*`], {
@@ -1299,7 +1299,7 @@ export function remoteBoardNamespaceBranches(top: string): string[] {
 /**
  * Branches under the `board/` namespace — locally OR on the remote — make `refs/heads/board`
  * UNCREATABLE (a ref directory/file conflict; empirically confirmed against this repo's own
- * origin, which once carried `board/sync-verb-tasks`). Establish and migrate share this guard.
+ * origin, which once carried `board/sync-verb-tasks`). Both establish cases share this guard.
  */
 export function boardNamespaceConflicts(top: string): string[] {
   const local = runGit(top, ["for-each-ref", "--format=%(refname:short)", `refs/heads/${BOARD_BRANCH}/`]);
@@ -1315,15 +1315,15 @@ export function boardNamespaceConflicts(top: string): string[] {
   return [...localNames, ...remoteNames];
 }
 
-// ── gitignore entry (migrate + establish share the ONE idempotent transform) ──
+// ── gitignore entry (both establish cases share the ONE idempotent transform) ──
 
 /** The `.gitignore` line that keeps the board folder out of the code branch's own index. */
 export const GITIGNORE_ENTRY = `${BUNDLE_DIR}/`;
 
 /**
  * Return `content` with {@link GITIGNORE_ENTRY} present — unchanged when any existing line already
- * ignores the folder (with or without leading/trailing slash), appended otherwise. Establish and
- * migrate share the same idempotent transform.
+ * ignores the folder (with or without leading/trailing slash), appended otherwise. Both establish
+ * cases share the same idempotent transform.
  */
 export function withIgnoreEntry(content: string): string {
   const covered = content.split("\n").some((l) => {
@@ -1339,10 +1339,10 @@ export function withIgnoreEntry(content: string): string {
 }
 
 /**
- * `sync --establish`'s gitignore step: append {@link GITIGNORE_ENTRY} to
- * `<top>/.gitignore` in the WORKING TREE ONLY — never committed to the code branch (unlike
- * migrate's version of this transform, which writes an object-database blob INTO a prepared
- * commit). Idempotent via {@link withIgnoreEntry}; a call that changes nothing reports
+ * The greenfield establish case's gitignore step: append {@link GITIGNORE_ENTRY} to
+ * `<top>/.gitignore` in the WORKING TREE ONLY — never committed to the code branch (unlike the
+ * committed case's version of this transform, which writes an object-database blob INTO the
+ * prepared cleanup commit). Idempotent via {@link withIgnoreEntry}; a call that changes nothing reports
  * `changed: false`. Read/write failures are NOT swallowed — a caller that cannot write
  * `.gitignore` needs to know, since the receipt promises to announce it.
  */

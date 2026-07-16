@@ -181,11 +181,11 @@ export async function makeTwoCloneTopology(options: TopologyOptions = {}): Promi
 }
 
 /**
- * U5 (`sync --migrate`) topology: a bare origin + two clones of a project whose bundle is a PLAIN
- * COMMITTED FOLDER on `main` — NO `board` branch exists anywhere (the pre-migration shape this
- * repo itself is in). `BoardRepo.board` names `<root>/.agentstate-lite`, which here is just a
- * committed directory, not a checkout of its own. Seeds the same user code and {@link SEED_DOCS}
- * as {@link makeTwoCloneTopology} so post-migration assertions can check the docs survived.
+ * Committed-folder topology (the `sync --establish` hard case): a bare origin + two clones of a
+ * project whose bundle is a PLAIN COMMITTED FOLDER on `main` — NO `board` branch exists anywhere.
+ * `BoardRepo.board` names `<root>/.agentstate-lite`, which here is just a committed directory,
+ * not a checkout of its own. Seeds the same user code and {@link SEED_DOCS} as
+ * {@link makeTwoCloneTopology} so post-establishment assertions can check the docs survived.
  */
 export async function makeCommittedFolderTopology(): Promise<TwoCloneTopology> {
   const dir = await realpath(await mkdtemp(path.join(tmpdir(), "aslite-git-harness-")));

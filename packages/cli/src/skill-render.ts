@@ -121,41 +121,59 @@ function renderWorkspaceLocation(prefix: string): string[] {
   lines.push(
     "bundle (solo use is first-class, nothing forces sharing); `sync` is how a project's board",
   );
-  lines.push("becomes — or stays — shared memory across clones and teammates:");
+  lines.push("becomes — or stays — shared memory across clones and teammates. Three modes:");
   lines.push("");
   lines.push(
-    "- **Joining an existing project** — if `.agentstate-lite/` is already in the clone, there is",
+    "- **A local-only board** — `init` creates a bundle that doesn't exist anywhere yet, and it",
   );
   lines.push(
-    "  NOTHING to set up. If it isn't but the project already shares its board (the repo's remote",
+    "  stays LOCAL until someone chooses to share it. This is a first-class mode, not a limbo:",
   );
   lines.push(
-    "  has a `board` branch), `sync` is the setup verb — run it once and it creates the folder and",
+    "  everything works offline and remote-free, and board changes stay on this machine. A bare",
   );
   lines.push(
-    "  pulls the shared state. NEVER init a project that already has a workspace: that creates a",
-  );
-  lines.push("  divergent second bundle.");
-  lines.push(
-    "- **Starting fresh (greenfield)** — `init` creates a bundle that doesn't exist anywhere yet.",
+    "  `sync` on a local-only bundle reports that state honestly (its note points at `--establish`)",
   );
   lines.push(
-    "  It is LOCAL until you choose to share it: run `sync --establish` once to publish it (creates",
+    "  — it never establishes on its own, which would silently publish a bundle nobody asked to",
+  );
+  lines.push("  share.");
+  lines.push(
+    "- **Joining an existing shared board** — if `.agentstate-lite/` is already in the clone, there",
   );
   lines.push(
-    "  the `board` branch, pushes it) — teammates then just run `sync` to join. Never automatic:",
+    "  is NOTHING to set up. If it isn't but the project already shares its board (the repo's",
   );
   lines.push(
-    "  a bare `sync` never establishes on its own (it would silently publish a bundle nobody asked",
+    "  remote has a `board` branch), `sync` is the setup verb — run it once and it creates the",
   );
   lines.push(
-    "  to share); on a local-only bundle it reports the local-only state, whose note points at",
+    "  folder and pulls the shared state. NEVER init a project that already has a workspace: that",
   );
-  lines.push("  `--establish`. Staying local-only indefinitely is a supported mode, not a limbo.");
+  lines.push("  creates a divergent second bundle.");
   lines.push(
-    "  If origin cannot be checked, `sync` reports the shared-board state as unknown and waits for",
+    "- **Sharing a board (`sync --establish`, once)** — the explicit act that publishes a local",
   );
-  lines.push("  a retry instead of recommending publication.");
+  lines.push(
+    "  bundle as the repo's `board` branch; teammates then just run `sync` to join. It handles",
+  );
+  lines.push(
+    "  both shapes: an uncommitted local folder is snapshotted, pushed, and converted in place;",
+  );
+  lines.push(
+    "  a folder ALREADY COMMITTED on the code branch gets a preview first — re-run with `--yes`",
+  );
+  lines.push(
+    "  to execute, which also prepares a cleanup commit on a side branch that you push and open",
+  );
+  lines.push(
+    "  as a PR (it removes the folder from the code branch; the board branch takes over after the",
+  );
+  lines.push(
+    "  merge). If origin cannot be checked, `sync` reports the shared-board state as unknown and",
+  );
+  lines.push("  waits for a retry instead of recommending publication.");
   lines.push("");
   lines.push("```sh");
   lines.push(`${prefix} sync                            # existing shared project — provisions the board; a local-only bundle reports its state`);
@@ -357,6 +375,40 @@ function renderSyncSection(prefix: string): string[] {
   lines.push("erroring).");
   lines.push("");
   lines.push(
+    "The same flag handles a bundle folder ALREADY COMMITTED on the code branch: `sync --establish`",
+  );
+  lines.push(
+    "prints a preview and changes nothing; `sync --establish --yes` creates the `board` branch from",
+  );
+  lines.push(
+    "the folder's current files (files only — the folder's history stays on the code branch),",
+  );
+  lines.push(
+    "pushes it, and prepares ONE commit on a local `board-cleanup` branch that removes the folder",
+  );
+  lines.push(
+    "from the code branch and gitignores it — you push that branch and open the PR yourself;",
+  );
+  lines.push(
+    "nothing on the code branch is pushed or changed. Until that PR merges, the old committed",
+  );
+  lines.push(
+    "folder is a frozen read-only snapshot; after the merge, `git pull` then `sync` brings the",
+  );
+  lines.push("live board back on every clone.");
+  lines.push("");
+  lines.push(
+    "Sharing is an explicit act: nothing ever creates or publishes a board branch on its own —",
+  );
+  lines.push(
+    "only `sync --establish` does. The session-start hook and the read-time refresh below only",
+  );
+  lines.push(
+    "ever PULL an already-shared board (bounded, fast-forward, never a push); your changes leave",
+  );
+  lines.push("the machine only when you run `sync`.");
+  lines.push("");
+  lines.push(
     "When a doc changed on BOTH sides, sync converges instead of stopping: your teammate's version",
   );
   lines.push(
@@ -400,7 +452,13 @@ function renderSyncSection(prefix: string): string[] {
   lines.push(
     "On projects that share their board you may notice a `board` branch in the repo's GitHub —",
   );
-  lines.push("that's the board; never merge it into main.");
+  lines.push(
+    "that's the board; it never merges into main (it has no common history with it, by design).",
+  );
+  lines.push(
+    "Protect it like main: enable delete and force-push protection on `board` in the repo settings",
+  );
+  lines.push("— sync only ever appends commits to it.");
   lines.push("");
   return lines;
 }
