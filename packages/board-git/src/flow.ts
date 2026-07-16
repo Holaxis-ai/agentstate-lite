@@ -95,6 +95,40 @@ export function behindBoardCommits(top: string, branch: string): string[] | null
     .filter((l) => l.length > 0);
 }
 
+/**
+ * True when `refs/remotes/origin/<branch>` is known AND no longer carries `relPath` at its tip —
+ * the committed-folder establish flow's "has the folder-removal already landed upstream" probe
+ * (`windowNote`). A detached-HEAD `branch` (`"HEAD"`) has no remote-tracking counterpart, so it
+ * reads as not-landed rather than probing a nonsensical ref.
+ */
+export function pathLandedAbsentOnRemoteBranch(top: string, branch: string, relPath: string): boolean {
+  if (branch === "HEAD") return false;
+  const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
+  const remoteBranchKnown = runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status === 0;
+  return remoteBranchKnown && runGit(top, ["cat-file", "-e", `${remoteRef}:${relPath}`]).status !== 0;
+}
+
+/**
+ * The interrupted-run remnant probe: the sha/tree/root-count triple for the local `board`
+ * branch, so the committed-folder establish flow can tell a genuine crash remnant (a single
+ * commit whose tree matches the folder being established) from an unrelated pre-existing branch
+ * of the same name.
+ */
+export interface BoardBranchRemnant {
+  sha: string;
+  tree: string;
+  count: string;
+}
+
+/** Read {@link BoardBranchRemnant} for the local `board` branch (caller ensures it exists). */
+export function boardBranchRemnant(top: string): BoardBranchRemnant {
+  return {
+    sha: mustGit(top, ["rev-parse", `refs/heads/${BOARD_BRANCH}`]).trim(),
+    tree: mustGit(top, ["rev-parse", `refs/heads/${BOARD_BRANCH}^{tree}`]).trim(),
+    count: mustGit(top, ["rev-list", "--count", `refs/heads/${BOARD_BRANCH}`]).trim(),
+  };
+}
+
 // ── converge annotation (the one landed probe per conflicted doc) ─────────────
 
 /**

@@ -918,7 +918,7 @@ test("classifyGitError: missing origin / unresolvable origin/board → NO_UPSTRE
   ]) {
     const err = classifyGitError({ args: ["rebase"], status: 1, stdout: "", stderr });
     assert.equal(err.code, "NO_UPSTREAM", stderr);
-      assert.match(err.message, /isn't linked to a remote/);
+    assert.match(err.message, /isn't linked to a remote/);
   }
 });
 
@@ -943,7 +943,7 @@ test("classifyGitError: network signals → TRANSIENT, distinct from AUTH", () =
   ]) {
     const err = classifyGitError({ args: ["fetch"], status: 128, stdout: "", stderr: f.stderr, timedOut: f.timedOut });
     assert.equal(err.code, "TRANSIENT", f.stderr || "(timeout)");
-      assert.equal(err.details?.retryable, true);
+    assert.equal(err.details?.retryable, true);
   }
 });
 

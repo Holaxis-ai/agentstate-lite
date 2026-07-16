@@ -1494,6 +1494,29 @@ export function currentHead(boardPath: string): string {
   return r.stdout.trim();
 }
 
+/** The repo's current branch short name, or the literal `"HEAD"` for a detached checkout (never throws). */
+export function currentBranch(top: string): string {
+  const r = runGit(top, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  return r.status === 0 ? r.stdout.trim() : "HEAD";
+}
+
+/** One `git status --porcelain` row: its two-letter status code and repo-relative path. */
+export interface StatusRow {
+  status: string;
+  path: string;
+}
+
+/** Parse `git status --porcelain[ -- <prefix>]` into {@link StatusRow}s (`[]` on a failed status). */
+export function statusRows(dir: string, prefix?: string): StatusRow[] {
+  const r = runGit(dir, ["status", "--porcelain", ...(prefix ? ["--", prefix] : [])]);
+  if (r.status !== 0) return [];
+  return r.stdout
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter((l) => l.length > 0)
+    .map((l) => ({ status: l.slice(0, 2).trim(), path: l.slice(3) }));
+}
+
 /**
  * Count of lines in `git status --porcelain` — uncommitted (staged or not) changes in the
  * worktree. `prefix` (board-git PR C) scopes the count to one pathspec — the in-tree backstop's
@@ -1501,7 +1524,20 @@ export function currentHead(boardPath: string): string {
  * omit it (the board worktree carries only the bundle, so repo-wide IS bundle-wide there).
  */
 export function countUncommitted(boardPath: string, prefix?: string): number {
-  const r = runGit(boardPath, ["status", "--porcelain", ...(prefix ? ["--", prefix] : [])]);
-  if (r.status !== 0) return 0;
-  return r.stdout.split("\n").filter((l) => l.trim().length > 0).length;
+  return statusRows(boardPath, prefix).length;
+}
+
+/**
+ * Read a path's exact bytes at `ref`, or `null` when absent. Absence is checked STRUCTURALLY
+ * (`cat-file -e`) before the read — never inferred from `show`'s failure prose, which drifts
+ * across git versions — so a path that genuinely exists but fails to `show` is a real
+ * (classified) error, not a swallowed absence.
+ */
+export function readDocBytesAtRef(dir: string, ref: string, relPath: string): Buffer | null {
+  if (runGit(dir, ["cat-file", "-e", `${ref}:${relPath}`]).status !== 0) return null;
+  const shown = runGitBytes(dir, ["show", `${ref}:${relPath}`]);
+  if (shown.status !== 0) {
+    throw classifyGitError({ args: ["show"], status: shown.status, stdout: "", stderr: shown.stderr });
+  }
+  return shown.stdout;
 }

@@ -21,11 +21,14 @@ import {
   ESTABLISH_MARKER_KEY,
   GITIGNORE_ENTRY,
   assertBundleBytesMatchCommit,
+  boardBranchRemnant,
   boardNamespaceConflicts,
   behindBoardCommits,
   clearGitDirMarker,
   createBoardRootCommit,
   createRemovalCommit,
+  currentBranch,
+  currentHead,
   ensureBoardGitignoreWorkingTree,
   fetchOrigin,
   fetchOriginRequired,
@@ -35,6 +38,7 @@ import {
   isProvisioned,
   localBranchExists,
   mustGit,
+  pathLandedAbsentOnRemoteBranch,
   provisionBoardWorktree,
   pushBoardCommit,
   pushBoardUpstream,
@@ -46,6 +50,7 @@ import {
   setBoardUpstream,
   singleActor,
   snapshotBundleCommit,
+  statusRows,
   treeOf,
   unpushedCount,
   writeGitDirMarker,
@@ -179,7 +184,7 @@ function finishLocalConversion(
   }
 
   if (isProvisioned(top)) {
-    const current = mustGit(boardPath, ["rev-parse", "HEAD"]).trim();
+    const current = currentHead(boardPath);
     if (!isAncestor(top, publishedCommit, current)) {
       throw new CliError("CONFLICT", "the provisioned board does not contain the establishment snapshot");
     }
@@ -216,7 +221,7 @@ function finishLocalConversion(
       throw new CliError("RUNTIME", `board provisioning returned '${outcome.kind}' after publication`);
     }
     const provisionedPath = outcome.boardPath;
-    const current = mustGit(provisionedPath, ["rev-parse", "HEAD"]).trim();
+    const current = currentHead(provisionedPath);
     if (!isAncestor(top, publishedCommit, current)) {
       throw new CliError("CONFLICT", "the provisioned board does not contain the establishment snapshot");
     }
@@ -286,7 +291,11 @@ export async function establishBoard(
     throw new CliError("RUNTIME", "not inside a git repository — establish needs a repo with an 'origin' remote");
   }
   if (runGit(top, ["remote", "get-url", BOARD_REMOTE]).status !== 0) {
-    throw new CliError("RUNTIME", `this repository has no '${BOARD_REMOTE}' remote`);
+    throw new CliError(
+      "RUNTIME",
+      `this repository has no '${BOARD_REMOTE}' remote — establish needs one to publish the board`,
+      { help: `git remote add ${BOARD_REMOTE} <url>  # then re-run ${inv} sync --establish` },
+    );
   }
 
   // The COMMITTED-FOLDER case routes structurally, before any network op: a `.agentstate-lite/`
@@ -349,7 +358,7 @@ export async function establishBoard(
     if (!remoteCommit) throw new CliError("RUNTIME", "board push succeeded but origin/board could not be verified");
     const conversion: ConversionResult = {
       boardPath,
-      boardCommit: mustGit(boardPath, ["rev-parse", "HEAD"]).trim(),
+      boardCommit: currentHead(boardPath),
       gitignore: gitignoreNote(top),
     };
     return renderEstablished(top, conversion, { docs: [] }, inv, mode, stdout, deps);
@@ -631,8 +640,7 @@ async function establishCommitted(
     );
   }
 
-  const branchR = runGit(top, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  const branch = branchR.status === 0 ? branchR.stdout.trim() : "HEAD";
+  const branch = currentBranch(top);
   if (branch === "HEAD") {
     throw new CliError(
       "RUNTIME",
@@ -655,12 +663,7 @@ async function establishCommitted(
 
   // REFUSE on uncommitted board changes, naming them: the board branch carries HEAD's tree, so
   // anything uncommitted would be silently stranded in the frozen snapshot.
-  const status = runGit(top, ["status", "--porcelain", "--", BUNDLE_DIR]);
-  const dirty = (status.status === 0 ? status.stdout : "")
-    .split("\n")
-    .map((l) => l.trimEnd())
-    .filter((l) => l.length > 0)
-    .map((l) => ({ status: l.slice(0, 2).trim(), path: l.slice(3) }));
+  const dirty = statusRows(top, BUNDLE_DIR);
   if (dirty.length > 0) {
     const shown = dirty.slice(0, 20);
     throw new CliError(
@@ -702,11 +705,9 @@ async function establishCommitted(
   // (created here, crashed before the push): a single root commit over exactly this tree.
   let reuseBoardSha: string | null = null;
   if (localBranchExists(top, BOARD_BRANCH)) {
-    const sha = mustGit(top, ["rev-parse", `refs/heads/${BOARD_BRANCH}`]).trim();
-    const tree = mustGit(top, ["rev-parse", `refs/heads/${BOARD_BRANCH}^{tree}`]).trim();
-    const count = mustGit(top, ["rev-list", "--count", `refs/heads/${BOARD_BRANCH}`]).trim();
-    if (tree === treeSha && count === "1") {
-      reuseBoardSha = sha;
+    const remnant = boardBranchRemnant(top);
+    if (remnant.tree === treeSha && remnant.count === "1") {
+      reuseBoardSha = remnant.sha;
     } else {
       throw new CliError(
         "RUNTIME",
@@ -789,8 +790,7 @@ async function alreadyShared(
   stdout: (s: string) => void,
 ): Promise<void> {
   const rec: Record<string, unknown> = { establish: ESTABLISH_COMMITTED_ALREADY };
-  const branchR = runGit(top, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  const branch = branchR.status === 0 ? branchR.stdout.trim() : "HEAD";
+  const branch = currentBranch(top);
   const marker = readGitDirMarker(top, COMMITTED_MARKER_KEY);
 
   if (localBranchExists(top, CLEANUP_BRANCH)) {
@@ -911,11 +911,7 @@ async function alreadyShared(
  * or may not exist.
  */
 function windowNote(top: string, inv: string, branch: string): string {
-  const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
-  const remoteBranchKnown =
-    branch !== "HEAD" && runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status === 0;
-  const landedUpstream =
-    remoteBranchKnown && runGit(top, ["cat-file", "-e", `${remoteRef}:${BUNDLE_DIR}`]).status !== 0;
+  const landedUpstream = pathLandedAbsentOnRemoteBranch(top, branch, BUNDLE_DIR);
   return landedUpstream
     ? `this clone still carries the committed ${BUNDLE_DIR}/ folder and the folder-removal has ` +
         `already landed on '${branch}' — run 'git pull' (the folder vanishes), then '${inv} sync' ` +

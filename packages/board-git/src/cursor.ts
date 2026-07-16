@@ -76,11 +76,12 @@ import { basename, dirname, join, resolve } from "node:path";
 const DIR_MODE = 0o700;
 
 /**
- * The honest re-anchor note recorded when the stored cursor's object no longer exists (history
- * rewritten under it) — surfaced by the next `home` render instead of the delta. NEVER a silent
- * skip, never fatal (plan §U2).
+ * The honest re-anchor note recorded when the stored cursor can no longer be diffed from —
+ * either its commit is gone (history rewritten under it) or it is no longer an ancestor of the
+ * comparison tip (a branch switch repositioned it) — surfaced by the next `home` render instead
+ * of the delta. NEVER a silent skip, never fatal (plan §U2).
  */
-export const REANCHOR_NOTE = "delta unavailable (history rewritten)";
+export const REANCHOR_NOTE = "delta unavailable (history rewritten or repositioned)";
 
 // ── per-bundle key ────────────────────────────────────────────────────────────
 

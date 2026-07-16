@@ -397,7 +397,7 @@ test("re-anchor: a dangling cursor SHA is re-anchored with the HONEST note — n
     assert.deepEqual(state.cursor, { tier: "git", token: head }, "cursor re-anchored to HEAD");
     assert.deepEqual(state.cache, written);
     assert.equal(state.cache!.note, REANCHOR_NOTE, "the honest 'delta unavailable' note is recorded");
-    assert.equal(REANCHOR_NOTE, "delta unavailable (history rewritten)");
+    assert.equal(REANCHOR_NOTE, "delta unavailable (history rewritten or repositioned)");
     assert.deepEqual(state.cache!.delta, [], "no fabricated delta across a rewrite");
     assert.equal(state.cache!.unpushedCount, 3, "backstop counts carried through the re-anchor");
     assert.equal(state.cache!.updatedAt, now.toISOString());
