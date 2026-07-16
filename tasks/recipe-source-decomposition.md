@@ -1,15 +1,14 @@
 ---
 type: Task
 title: Decompose recipe-source by responsibility without behavior change
-status: in_progress
+status: done
 priority: '2'
 assignee: mike/codex
 description: >-
-  Implemented in PR #74; full gate, independent exact-SHA review, and
-  byte-identical pre/post module and CLI differential proofs passed. Awaiting
-  merge.
+  Merged in PR #74 after full gate, independent exact-SHA review, and
+  byte-identical pre/post module and CLI differential proofs.
 actor: mike/codex
-timestamp: '2026-07-16T01:41:25.695Z'
+timestamp: '2026-07-16T01:42:47.705Z'
 ---
 # Scope
 
