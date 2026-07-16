@@ -1,12 +1,13 @@
 /**
- * `git.ts` — the sync verb's git PORCELAIN layer (U1, plans/sync-verb-implementation §U1).
+ * `porcelain.ts` — the board's git PORCELAIN layer (U1, plans/sync-verb-implementation §U1;
+ * relocated from the CLI's `git.ts` by board-git A1).
  *
  * ONE spawn wrapper ({@link runGit}) enforces the plan's "global porcelain invariants" on every
  * invocation; the exported ops (provision, stage-and-commit, fetch-rebase, push, ff-pull,
- * changes-since, unpushed-count, stale-rebase detect/abort) are the ONLY vocabulary the sync
- * command (U3a) and SessionStart pull (U4) speak. COMMAND LAYER ONLY: `@agentstate-lite/core`
- * never learns git exists — this module CONSUMES core (its one frontmatter parser, its one
- * path/reserved-file vocabulary) and is consumed by `commands/`.
+ * unpushed-count, stale-rebase detect/abort) are the ONLY vocabulary the CLI's sync command
+ * (U3a) and SessionStart pull (U4) speak (the ref-to-ref doc diff family rides them from
+ * `diff.ts`). `@agentstate-lite/core` never learns git exists — this package CONSUMES core (its
+ * one frontmatter parser, its one path/reserved-file vocabulary) and is consumed by the CLI.
  *
  * Invariants (every call):
  *   - `git -C <dir>` with GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE SCRUBBED from the environment
@@ -22,7 +23,7 @@
  *     story. Explicit (not merely `-M` omitted) so a host `diff.renames=true` config cannot leak in.
  *   - Path quoting OFF (`-c core.quotepath=off`): non-ASCII paths come back as raw UTF-8, never
  *     C-quoted — parsed paths must round-trip back into git as pathspecs (see `runGit`'s header).
- *   - No raw git on stdout: every failure routes through `classifyGitError` (board-git-errors.ts)
+ *   - No raw git on stdout: every failure routes through `classifyGitError` (errors.ts)
  *     into the typed `BoardGitError` taxonomy; the CLI command boundary maps it to exit codes.
  *
  * CONFLICT BOUNDARY: {@link fetchRebase} DETECTS a same-doc conflict — collects the conflicted ids
@@ -50,7 +51,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { conceptIdFromPath, isReservedFile, parseMarkdown } from "@agentstate-lite/core";
-import { BoardGitError, classifyGitError, isBoardGitError, type GitFailure } from "./board-git-errors.js";
+import { BoardGitError, classifyGitError, isBoardGitError, type GitFailure } from "./errors.js";
 
 /** The dedicated branch that carries ONLY the bundle (its root IS the bundle root). */
 export const BOARD_BRANCH = "board";
@@ -89,7 +90,7 @@ export interface GitRunResult {
   stderr: string;
 }
 
-interface RunOptions {
+export interface RunOptions {
   /** Per-op timeout; defaults to {@link LOCAL_TIMEOUT_MS}. */
   timeoutMs?: number;
   /** Piped to the child's stdin (the `commit -F -` message channel — no shell interpolation). */
@@ -211,7 +212,7 @@ function failureOf(args: string[], r: GitRunResult): GitFailure {
 }
 
 /** Run a git op that MUST succeed; a nonzero exit throws the classified `BoardGitError`. */
-function mustGit(dir: string, args: string[], opts: RunOptions = {}): string {
+export function mustGit(dir: string, args: string[], opts: RunOptions = {}): string {
   const r = runGit(dir, args, opts);
   if (r.status !== 0) throw classifyGitError(failureOf(args, r));
   return r.stdout;
@@ -688,12 +689,12 @@ function fmString(v: unknown): string {
 }
 
 /** True when a repo-relative path is a concept document (a non-reserved `.md`). */
-function isConceptDocPath(relPath: string): boolean {
+export function isConceptDocPath(relPath: string): boolean {
   return relPath.endsWith(".md") && !isReservedFile(relPath);
 }
 
 /** Parse `--name-status` output lines into `[statusLetter, path]` pairs (rename detection is off). */
-function nameStatusRows(out: string): Array<{ letter: string; relPath: string }> {
+export function nameStatusRows(out: string): Array<{ letter: string; relPath: string }> {
   return out
     .split("\n")
     .map((l) => l.trimEnd())
@@ -706,7 +707,7 @@ function nameStatusRows(out: string): Array<{ letter: string; relPath: string }>
 }
 
 /** Map a name-status letter to the doc verb (`T` type-change reads as an update). */
-function verbOf(letter: string): DocVerb | null {
+export function verbOf(letter: string): DocVerb | null {
   if (letter === "A") return "added";
   if (letter === "M" || letter === "T") return "updated";
   if (letter === "D") return "deleted";
@@ -721,7 +722,7 @@ function verbOf(letter: string): DocVerb | null {
  * names the BUNDLE-relative path the doc id derives from — `git show` always reads the full
  * repo-relative `relPath`, so a prefix-scoped diff strips its prefix from the id only.
  */
-function enrichDocChange(
+export function enrichDocChange(
   boardPath: string,
   relPath: string,
   verb: DocVerb,
@@ -1440,84 +1441,6 @@ export function ffPull(boardPath: string, budget: NetworkBudgetOptions = {}): Ff
     if (isBoardGitError(err)) return { updated: false, swallowed: swallowReason(err) };
     return { updated: false, swallowed: "runtime" };
   }
-}
-
-// ── the ONE ref-to-ref doc diff (changes-since + the receipt's origin delta) ──
-
-export interface DiffDocsOptions {
-  /**
-   * Scope the delta to docs under this repo-relative prefix (e.g. `.agentstate-lite/`), stripping
-   * it BEFORE doc-id/reserved-file interpretation — so `<prefix>/index.md` still reads as
-   * reserved. The seam for in-tree mode (plan board-git PR C); unused by today's callers (a
-   * board worktree's root IS the bundle root).
-   */
-  prefix?: string;
-  /**
-   * True: a failed diff reads as "no changes" (the receipt's origin-delta tolerance — two
-   * already-verified refs that cannot diff yield an empty delta, never a failed sync). Default
-   * false: a failed diff throws classified (the cursor feed's posture). Spawn-level failures
-   * (no git binary, fired timeout) throw either way.
-   */
-  tolerateDiffFailure?: boolean;
-}
-
-/**
- * The consolidated enriched delta pipeline: every concept doc changed between `fromRef..toRef`
- * (two-dot — snapshot-to-snapshot, requiring object EXISTENCE not ancestry), each row read from
- * the doc's OWN frontmatter at `toRef` (or, for a deletion, at `fromRef`). This is the ONE
- * diff-parse-enrich path — {@link changesSince} (the cursor feed) and sync's receipt delta both
- * ride it; do not reintroduce a per-caller copy of the name-status parse or the enrichment.
- */
-export function diffDocsBetween(
-  dir: string,
-  fromRef: string,
-  toRef: string,
-  opts: DiffDocsOptions = {},
-): DocChange[] {
-  const args = ["diff", "--name-status", "--no-renames", `${fromRef}..${toRef}`];
-  let out: string;
-  if (opts.tolerateDiffFailure) {
-    const r = runGit(dir, args);
-    if (r.status !== 0) return [];
-    out = r.stdout;
-  } else {
-    out = mustGit(dir, args);
-  }
-  const prefix =
-    !opts.prefix ? undefined : opts.prefix.endsWith("/") ? opts.prefix : `${opts.prefix}/`;
-  const changes: DocChange[] = [];
-  for (const { letter, relPath } of nameStatusRows(out)) {
-    let idPath = relPath;
-    if (prefix !== undefined) {
-      if (!relPath.startsWith(prefix)) continue;
-      idPath = relPath.slice(prefix.length);
-    }
-    if (!isConceptDocPath(idPath)) continue;
-    const verb = verbOf(letter);
-    if (!verb) continue;
-    changes.push(enrichDocChange(dir, relPath, verb, verb === "deleted" ? fromRef : toRef, {}, idPath));
-  }
-  return changes;
-}
-
-// ── changes since a cursor token ──────────────────────────────────────────────
-
-export type ChangesSinceOutcome =
-  | { ok: true; changes: DocChange[] }
-  /** The cursor token no longer resolves to a commit (history rewritten) — the caller re-anchors. */
-  | { ok: false; reason: "dangling" };
-
-/**
- * The enriched delta feed since a cursor token — {@link diffDocsBetween} over `<token>..HEAD`,
- * guarded by `git cat-file -e <token>^{commit}` so a rewritten-away cursor reports `dangling`
- * instead of a fatal `Invalid revision range` — the honest re-anchor path is the CURSOR module's
- * job (U2).
- */
-export function changesSince(boardPath: string, token: string): ChangesSinceOutcome {
-  if (runGit(boardPath, ["cat-file", "-e", `${token}^{commit}`]).status !== 0) {
-    return { ok: false, reason: "dangling" };
-  }
-  return { ok: true, changes: diffDocsBetween(boardPath, token, "HEAD") };
 }
 
 // ── unpushed count ────────────────────────────────────────────────────────────

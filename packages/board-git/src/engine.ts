@@ -1,11 +1,11 @@
-// `sync-engine.ts` — the git tier's NEUTRAL engine helpers (board-git A0 seam prep).
+// `engine.ts` — the git tier's NEUTRAL engine helpers (board-git A0 seam prep; relocated from
+// the CLI's `sync-engine.ts` by A1).
 //
-// These helpers used to live in `commands/sync.ts`, which made every other consumer (autopull.ts,
-// commands/session-start.ts, commands/home.ts, commands/sync-establish.ts) import a COMMAND
-// module for engine facts — the inverted dependency the board-git extraction plan names. This
-// module un-inverts it: command modules import engine modules (git.ts, cursor.ts, this file),
-// never each other. Command UX (arg parsing, envelopes, help text, exit mapping) stays in
-// `commands/sync.ts`; nothing here renders, resolves invocations, or touches exit codes.
+// These helpers used to live in the CLI's `commands/sync.ts`, which made every other consumer
+// (autopull, session-start, home, sync-establish) import a COMMAND module for engine facts — the
+// inverted dependency the board-git extraction plan names. A0 un-inverted it; A1 moved the
+// result here. Command UX (arg parsing, envelopes, help text, exit mapping) stays in the CLI;
+// nothing here renders, resolves invocations, or touches exit codes.
 import { existsSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -18,7 +18,7 @@ import {
   runGit,
   type DocChange,
   type ProvisionOutcome,
-} from "./git.js";
+} from "./porcelain.js";
 import { bundleKey, type AwarenessDeltaRow } from "./cursor.js";
 
 /** realpath when the path exists; the path unchanged otherwise (for stable comparisons). */
@@ -141,7 +141,7 @@ export function resolveBundleKey(boardPath: string): string {
   return bundleKey({ root: checkoutRoot });
 }
 
-/** The single actor when every committed doc shares one (mirrors `git.ts`'s commit-subject grammar). */
+/** The single actor when every committed doc shares one (mirrors `porcelain.ts`'s commit-subject grammar). */
 export function singleActor(docs: DocChange[]): string | undefined {
   if (docs.length === 0) return undefined;
   const actors = new Set(docs.map((d) => d.actor));

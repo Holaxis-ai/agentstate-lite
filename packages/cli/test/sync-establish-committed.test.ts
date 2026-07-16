@@ -47,7 +47,7 @@ import {
   committedPreviewRecord,
   rolloutNote,
 } from "../src/commands/sync-establish.js";
-import { GITIGNORE_ENTRY, withIgnoreEntry } from "../src/git.js";
+import { GITIGNORE_ENTRY, withIgnoreEntry } from "@agentstate-lite/board-git";
 import { CliError } from "../src/errors.js";
 import { cliInvocation } from "../src/invocation.js";
 import {
@@ -58,7 +58,7 @@ import {
   plantStagedUserCode,
   readBoardFile,
   type TwoCloneTopology,
-} from "./git-harness.js";
+} from "../../board-git/test/git-harness.js";
 
 const INV = cliInvocation();
 

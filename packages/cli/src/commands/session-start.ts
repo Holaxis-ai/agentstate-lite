@@ -51,10 +51,15 @@
 // do not fork the state-write discipline back into either caller.
 import { parseArgs } from "node:util";
 
-import { provisionBoardWorktree, type ProvisionOutcome } from "../git.js";
+import {
+  provisionAnnouncement,
+  provisionBoardWorktree,
+  resolveBundleKey,
+  retargetBoardInterior,
+  type ProvisionOutcome,
+} from "@agentstate-lite/board-git";
 import { defaultSyncStore } from "../cursor.js";
 import { pullBoardAndRecord } from "../autopull.js";
-import { provisionAnnouncement, resolveBundleKey, retargetBoardInterior } from "../sync-engine.js";
 import { defaultSummarizeBundle, discoverSummarizeBundle, home, type BoardPullOutcome } from "./home.js";
 import { cliInvocation } from "../invocation.js";
 import { parseOrUsage } from "../args.js";

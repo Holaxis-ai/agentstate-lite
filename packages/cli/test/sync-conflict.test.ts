@@ -37,7 +37,7 @@ import {
   readBoardFile,
   writeBoardDoc,
   type TwoCloneTopology,
-} from "./git-harness.js";
+} from "../../board-git/test/git-harness.js";
 
 // ── scaffolding (mirrors sync.test.ts; adds stderr + byte capture for --out -) ──
 

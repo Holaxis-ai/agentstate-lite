@@ -1,8 +1,7 @@
-// `cursor-store.ts` — the per-bundle sync/awareness state store's NEUTRAL implementation
-// (board-git A0 seam prep; sync-verb plan §U2).
+// `cursor.ts` — the per-bundle sync/awareness state store's NEUTRAL implementation
+// (board-git A0 seam prep, relocated here by A1; sync-verb plan §U2).
 //
-// This is the piece that moves into the future `@agentstate-lite/board-git` package
-// (`board-git-API.md`'s "State store" entry): the `createSyncStore` factory, the store
+// The package's "State store" entry (README.md): the `createSyncStore` factory, the store
 // interface, the cursor/cache/marker record types, key derivation, and (de)serialization. It
 // owns the three pieces of per-clone local state that the sync verb (U3) writes and
 // SessionStart/home (U4) read, all under ONE per-clone key:
@@ -24,15 +23,15 @@
 //
 // BOUNDARY (binding): this module is the state store + its schema/serialization ONLY. The git
 // diff, the `git cat-file -e` cursor-existence guard, and per-doc frontmatter enrichment live in
-// U1's `git.ts` (`changesSince` et al.) — this module NEVER shells out to git. When the CALLER's
+// U1's porcelain/diff modules (`changesSince` et al.) — this module NEVER shells out to git. When the CALLER's
 // existence guard finds the stored token gone (history rewritten), it re-anchors through
 // {@link recordReanchor} on {@link SyncStore}, which records the honest {@link REANCHOR_NOTE} in
 // the cache so the miss is REPORTED, never a silent skip and never fatal.
 //
-// DEPENDENCY-CLEAN (binding, per `board-git-API.md`): node builtins and other package-clean
-// modules ONLY — no CLI knowledge (credentials, args, output, envelopes). WHERE state lives on
-// disk and HOW it is written atomically are injected via {@link SyncStoreOptions}; the CLI wires
-// the `~/.agentstate/sync` location and its `writeFileAtomic0600` discipline in `cursor.ts`.
+// DEPENDENCY-CLEAN (binding, per README.md): node builtins and other package modules ONLY — no
+// CLI knowledge (credentials, args, output, envelopes). WHERE state lives on disk and HOW it is
+// written atomically are injected via {@link SyncStoreOptions}; the CLI wires the
+// `~/.agentstate/sync` location and its `writeFileAtomic0600` discipline in its own `cursor.ts`.
 //
 // KEYING: per CLONE — remote URL + subpath + the CHECKOUT ROOT (this checkout's absolute board
 // path), falling back to the absolute bundle root alone for a remote-less repo. Every piece of

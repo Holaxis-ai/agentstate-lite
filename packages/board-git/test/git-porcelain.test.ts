@@ -1,8 +1,10 @@
 /**
- * U1 acceptance suite for the git porcelain layer (`src/git.ts` + `classifyGitError` in
- * `src/board-git-errors.ts`; exit-code assertions run the tier's throws through THE one CLI
- * boundary mapping, errors.ts's `cliErrorFromBoardGit`), consuming the U0 harness (`./git-harness.ts`) — every test named by
- * [plans/sync-verb-implementation] §U1:
+ * U1 acceptance suite for the git porcelain layer (`src/porcelain.ts` + `src/diff.ts` +
+ * `classifyGitError` in `src/errors.ts`), consuming the U0 harness (`./git-harness.ts`).
+ * Failures are asserted on the tier's OWN `BoardGitError` code; the code→exit/envelope
+ * projection is pinned by the CLI's `test/board-git-errors.test.ts` parity table (this package
+ * never imports CLI source — the import-direction rule its own gate enforces on `src/`, honored
+ * by the tests too). Every test named by [plans/sync-verb-implementation] §U1:
  *
  *   staged/unstaged user code untouched (any branch) · new/modified/deleted doc committed ·
  *   env-leak override (GIT_DIR set → `-C` still wins) · ff-only swallow matrix · conflict →
@@ -65,9 +67,9 @@ import {
   changesSince,
   diffDocsBetween,
   unpushedCount,
-} from "../src/git.js";
-import { cliErrorFromBoardGit, toEnvelope, EXIT } from "../src/errors.js";
-import { classifyGitError, isBoardGitError } from "../src/board-git-errors.js";
+  classifyGitError,
+  isBoardGitError,
+} from "../src/index.js";
 
 // ── hermetic ambient env (the porcelain inherits process.env; pin identity + neutralize host
 //    config so `stageAndCommit`'s commits work on any machine, gitconfig or not) ──────────────
@@ -364,11 +366,9 @@ test("GIT_BUSY: a held index.lock yields a structured RETRY envelope, never a ra
       const err = capture(() => stageAndCommit(topo.a.board));
       assert.ok(isBoardGitError(err));
       assert.equal(err.code, "GIT_BUSY");
-      assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.RUNTIME);
       assert.equal(err.details?.retryable, true, "the structured-retry signal");
-      const env = toEnvelope(cliErrorFromBoardGit(err));
-      assert.equal(env.error.code, "GIT_BUSY");
-      assert.doesNotMatch(env.error.message, /fatal:|Unable to create/i, "no raw git strand");
+      // exit/envelope projection: the CLI's parity table (test/board-git-errors.test.ts).
+      assert.doesNotMatch(err.message, /fatal:|Unable to create/i, "no raw git strand");
     } finally {
       lock.release();
     }
@@ -885,7 +885,6 @@ test("push: an unreachable remote throws a CLASSIFIED BoardGitError (best-effort
     assert.ok(isBoardGitError(err));
     // Local-path "does not appear to be a git repository" → the DOCUMENTED best-effort AUTH bucket.
     assert.equal(err.code, "AUTH_REQUIRED");
-    assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.AUTH);
   } finally {
     await topo.cleanup();
   }
@@ -893,14 +892,13 @@ test("push: an unreachable remote throws a CLASSIFIED BoardGitError (best-effort
 
 // ── classifyGitError unit matrix (stable signals → taxonomy) ──────────────────
 
-test("classifyGitError: spawn ENOENT → GIT_MISSING (exit 1, distinct code)", () => {
+test("classifyGitError: spawn ENOENT → GIT_MISSING (a distinct, branchable code)", () => {
   const err = classifyGitError({ args: ["fetch"], status: null, stdout: "", stderr: "", spawnErrorCode: "ENOENT" });
   assert.equal(err.code, "GIT_MISSING");
-  assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.RUNTIME);
   assert.match(err.message, /isn't installed/);
 });
 
-test("classifyGitError: index.lock → GIT_BUSY (exit 1) with details.retryable", () => {
+test("classifyGitError: index.lock → GIT_BUSY with details.retryable", () => {
   const err = classifyGitError({
     args: ["add", "-A"],
     status: 128,
@@ -908,11 +906,10 @@ test("classifyGitError: index.lock → GIT_BUSY (exit 1) with details.retryable"
     stderr: "fatal: Unable to create '/repo/.git/worktrees/b/index.lock': File exists.\n\nAnother git process seems to be running in this repository...",
   });
   assert.equal(err.code, "GIT_BUSY");
-  assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.RUNTIME);
   assert.equal(err.details?.retryable, true);
 });
 
-test("classifyGitError: missing origin / unresolvable origin/board → NO_UPSTREAM (exit 1)", () => {
+test("classifyGitError: missing origin / unresolvable origin/board → NO_UPSTREAM", () => {
   for (const stderr of [
     "fatal: 'origin' does not appear to be a git repository\nfatal: Could not read from remote repository.",
     "fatal: invalid upstream 'origin/board'",
@@ -921,12 +918,11 @@ test("classifyGitError: missing origin / unresolvable origin/board → NO_UPSTRE
   ]) {
     const err = classifyGitError({ args: ["rebase"], status: 1, stdout: "", stderr });
     assert.equal(err.code, "NO_UPSTREAM", stderr);
-    assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.RUNTIME);
-    assert.match(err.message, /isn't linked to a remote/);
+      assert.match(err.message, /isn't linked to a remote/);
   }
 });
 
-test("classifyGitError: credential signals → AUTH_REQUIRED (exit 4, documented best-effort)", () => {
+test("classifyGitError: credential signals → AUTH_REQUIRED (documented best-effort)", () => {
   for (const stderr of [
     "fatal: Authentication failed for 'https://github.com/x/y.git/'",
     "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
@@ -936,11 +932,10 @@ test("classifyGitError: credential signals → AUTH_REQUIRED (exit 4, documented
   ]) {
     const err = classifyGitError({ args: ["push"], status: 128, stdout: "", stderr });
     assert.equal(err.code, "AUTH_REQUIRED", stderr);
-    assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.AUTH);
   }
 });
 
-test("classifyGitError: network signals → TRANSIENT (exit 1), distinct from AUTH", () => {
+test("classifyGitError: network signals → TRANSIENT, distinct from AUTH", () => {
   for (const f of [
     { stderr: "fatal: unable to access 'https://github.com/x/y.git/': Could not resolve host: github.com" },
     { stderr: "ssh: connect to host github.com port 22: Connection refused" },
@@ -948,12 +943,11 @@ test("classifyGitError: network signals → TRANSIENT (exit 1), distinct from AU
   ]) {
     const err = classifyGitError({ args: ["fetch"], status: 128, stdout: "", stderr: f.stderr, timedOut: f.timedOut });
     assert.equal(err.code, "TRANSIENT", f.stderr || "(timeout)");
-    assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.RUNTIME);
-    assert.equal(err.details?.retryable, true);
+      assert.equal(err.details?.retryable, true);
   }
 });
 
-test("classifyGitError: unmerged-paths signals → CONFLICT (exit 5); detached HEAD names the state", () => {
+test("classifyGitError: unmerged-paths signals → CONFLICT; detached HEAD names the state", () => {
   const conflict = classifyGitError({
     args: ["merge"],
     status: 128,
@@ -961,7 +955,6 @@ test("classifyGitError: unmerged-paths signals → CONFLICT (exit 5); detached H
     stderr: "error: Pulling is not possible because you have unmerged files.",
   });
   assert.equal(conflict.code, "CONFLICT");
-  assert.equal(cliErrorFromBoardGit(conflict).exitCode, EXIT.CONFLICT);
 
   const detached = classifyGitError({
     args: ["push"],
@@ -981,7 +974,6 @@ test("classifyGitError: anything else → structured RUNTIME carrying the op + f
     stderr: "fatal: something entirely unexpected\nmore detail\n",
   });
   assert.equal(err.code, "RUNTIME");
-  assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.RUNTIME);
   assert.equal(err.message, "git worktree failed: fatal: something entirely unexpected");
   assert.equal(err.details?.exit_status, 128);
 });
