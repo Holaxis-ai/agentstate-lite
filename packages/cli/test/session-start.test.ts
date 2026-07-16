@@ -40,7 +40,8 @@ import {
   sessionStart,
   sessionStartPull,
 } from "../src/commands/session-start.js";
-import { sync, resolveBundleKey } from "../src/commands/sync.js";
+import { sync } from "../src/commands/sync.js";
+import { resolveBundleKey } from "../src/sync-engine.js";
 import {
   HOOK_TIMEOUT_SECONDS,
   buildOpenCodePluginSource,

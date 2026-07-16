@@ -50,7 +50,8 @@ import {
   runGit,
   withIgnoreEntry,
 } from "../git.js";
-import { CliError, classifyGitError, type GitFailure } from "../errors.js";
+import { classifyGitError, type GitFailure } from "../board-git-errors.js";
+import { CliError } from "../errors.js";
 import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 

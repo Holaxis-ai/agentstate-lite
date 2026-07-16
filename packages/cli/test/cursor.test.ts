@@ -33,6 +33,8 @@ import {
   writeCache,
   writeCursor,
   writeSyncState,
+  createSyncStore,
+  defaultSyncStore,
   type AwarenessCache,
   type SyncCursor,
 } from "../src/cursor.js";
@@ -401,6 +403,65 @@ test("re-anchor: a dangling cursor SHA is re-anchored with the HONEST note — n
     assert.equal(state.cache!.updatedAt, now.toISOString());
   } finally {
     await topo.cleanup();
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+// ── the store factory (board-git A0: the package-ready injection seam) ────────
+
+test("createSyncStore: injected stateDir + writeAtomic own persistence — reads/writes round-trip through the injected seams only", async () => {
+  const home = await tempHome();
+  try {
+    const stateDir = path.join(home, "custom-state");
+    const writes: Array<{ dir: string; fileName: string }> = [];
+    const store = createSyncStore({
+      stateDir,
+      writeAtomic: async (dir, fileName, content) => {
+        writes.push({ dir, fileName });
+        await mkdir(dir, { recursive: true });
+        await writeFile(path.join(dir, fileName), content, "utf8");
+      },
+    });
+    const key = bundleKey({ root: "/w/injected/.agentstate-lite" });
+
+    assert.equal(await store.readCursor(key), null, "empty store reads null");
+    await store.writeCursor(key, { tier: "git", token: "a".repeat(40) });
+    assert.deepEqual(await store.readCursor(key), { tier: "git", token: "a".repeat(40) });
+
+    // Persistence went through the INJECTED seams: the write named the injected dir, and the
+    // state file sits under it (nothing under ~/.agentstate).
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0]!.dir, stateDir);
+    assert.equal(path.dirname(store.statePath(key)), stateDir);
+    assert.equal(writes[0]!.fileName, path.basename(store.statePath(key)));
+    assert.ok(store.exportsDir(key).startsWith(path.join(stateDir, "exports")));
+
+    // The free functions are per-home projections of the SAME implementation: a different home
+    // sees nothing from the injected store.
+    assert.equal(await readCursor(key, home), null);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("defaultSyncStore: resolves the home directory PER OPERATION (the HOME-swapping test pattern keeps working)", async () => {
+  const home = await tempHome();
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    const key = bundleKey({ root: "/w/default-store/.agentstate-lite" });
+    await defaultSyncStore.writeCursor(key, { tier: "git", token: "b".repeat(40) });
+    // The write landed under the SWAPPED home — proving lazy per-call resolution — and the
+    // free-function projection over the same home reads the identical state.
+    assert.deepEqual(await readCursor(key, home), { tier: "git", token: "b".repeat(40) });
+    assert.equal(path.dirname(defaultSyncStore.statePath(key)), syncStateDir(home));
+  } finally {
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
     await rm(home, { recursive: true, force: true });
   }
 });
