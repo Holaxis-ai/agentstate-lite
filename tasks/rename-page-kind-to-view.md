@@ -4,19 +4,18 @@ title: Rename the Page kind to View (code + reusable bundle migration)
 status: in_progress
 priority: '2'
 description: >-
-  FOUNDERS-DECIDED rename (Brian+Mike 2026-07-16); SHAPE RULED by Brian after
-  panel vetting: OPTION C+ — type-only rename with forward-only prefixes plus a
-  write-time legacy nudge and a re-runnable status audit. NO migration tool, NO
-  id moves, NO removal release FOR NOW: old Page content stays legal until the
-  founders decide to fully deprecate Page (a future decision with its own
-  vetting — the parked Option-A blueprint is its plan, the audit its sizing
-  instrument); new content authors as type View under views-registry//views/;
-  drift converges by gradient (authoring-moment hint) with visibility (audit).
-  Three units (dual reads S/M; detection primitive S; teaching pass M/L). Full
-  vetted plan: plans/rename-page-kind-to-view. AWAITING MIKE'S ACK before build
-  dispatch.
+  BUILD DISPATCHED (Brian greenlit 2026-07-16 after the non-fork analysis: C+ is
+  a strict prefix of the parked Option A — later full deprecation loses nothing,
+  and the nudge+forward-prefixes freeze the legacy stock so its cost can't
+  grow). SHAPE: Option C+ — dual type-read Page|View (until a future deprecation
+  decision), forward-only views-registry//views/ prefixes for new content,
+  write-time legacy nudge, re-runnable status audit (doubles as the deprecation
+  sizing meter), full teaching pass to canonical View. Units: U1 dual reads
+  (S/M, building), U2 detection primitive (S, building), U3 teaching pass (M/L,
+  queued behind U1). NOT in scope: migration tool, id moves, removal — parked
+  with the vetted Option-A blueprint on plans/rename-page-kind-to-view.
 actor: brian
 assignee: brian-claude
-timestamp: '2026-07-16T16:19:31.201Z'
+timestamp: '2026-07-16T16:27:41.343Z'
 ---
 [informed by](joint-ontology-session.md)
