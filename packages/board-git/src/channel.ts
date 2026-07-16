@@ -29,6 +29,7 @@ import {
   preShareWindowError,
   repoTopLevel,
   runGit,
+  trackedBoardRemnantPaths,
   worktreeRootResolves,
   worktreeRootResolvesForOwner,
   type NetworkBudgetOptions,
@@ -196,7 +197,9 @@ function dualBoardError(boardPath: string): BoardGitError {
  *  1. board worktree signature owned by this repo (incl. wedged mid-rebase and stale-pointer
  *     states — heal/repair's business, not detection's) → `branch`, no remote probe at all;
  *  2. tracked folder + remote board seeded from it (or unverifiable) → the pre-share-window
- *     refusal, verbatim (`preShareWindowError` — ONE factory shared with provisioning);
+ *     refusal, verbatim (`preShareWindowError` — ONE factory shared with provisioning); a tracked
+ *     REMNANT (removal landed AND pulled, straggler paths still tracked) routes to the factory's
+ *     untrack-escape arm BEFORE the dual-board probe, which would misclassify it;
  *  3. tracked folder + VERIFIED foreign remote board → the typed dual-board refusal;
  *  4. tracked folder + remote definitively absent → `in-tree` (the supported read-side mode);
  *  5. tracked folder + remote unknown → typed indeterminate (never in-tree, never absent);
@@ -236,10 +239,16 @@ export function detectBoardChannel(dir: string, options: DetectBoardChannelOptio
 
   if (tracked) {
     if (remote === "exists") {
-      if (verifiedForeignBoardRoot(top)) throw dualBoardError(boardPath);
+      // The REMNANT state routes FIRST (F3): a folder whose removal already landed and was pulled
+      // is straggler paths, not a competing board — its tree never matching the branch roots is
+      // exactly why the dual-board probe would otherwise misclassify it. The factory carries the
+      // untrack escape.
+      if (trackedBoardRemnantPaths(top) === null && verifiedForeignBoardRoot(top)) {
+        throw dualBoardError(boardPath);
+      }
       // The truth-fix arm (PR C): "exists" off stale fetched evidence with no configured remote
       // must not claim the branch "exists on origin" — the factory words the no-remote state.
-      throw preShareWindowError(boardPath, runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0);
+      throw preShareWindowError(top, boardPath, runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0);
     }
     if (remote === "absent") {
       return { kind: "channel", channel: { mode: "in-tree" } };

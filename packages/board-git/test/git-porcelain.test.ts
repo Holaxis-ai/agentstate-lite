@@ -22,7 +22,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile, readFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -33,6 +33,7 @@ import {
   git,
   gitTry,
   makeTwoCloneTopology,
+  provisionBoard,
   deprovisionBoard,
   writeBoardDoc,
   modifyBoardDoc,
@@ -58,6 +59,9 @@ import {
   isProvisioned,
   provisionBoardWorktree,
   runGit,
+  clearGitDirMarkerVerified,
+  gitDirMarkerPath,
+  writeGitDirMarker,
   detectStaleRebase,
   abortStaleRebase,
   stageAndCommit,
@@ -1076,6 +1080,245 @@ test("diffDocsBetween: a failed diff throws classified by default; tolerateDiffF
     const err = capture(() => diffDocsBetween(topo.a.board, bogus, head));
     assert.ok(isBoardGitError(err), "default posture: classified throw, mirroring changesSince's mustGit");
     assert.deepEqual(diffDocsBetween(topo.a.board, bogus, head, { tolerateDiffFailure: true }), []);
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+// ── F2: the local-board fast-forward adopt (establish/window journeys) ─────────
+//
+// The ONE adopted shape: a leftover local `board` branch that is a STRICT ANCESTOR of a
+// LIVE-fetched origin/board (the committed-case establisher's own root commit once a teammate
+// advanced the board in the window). Every other arm of the decision table keeps the
+// `local_board` refusal verbatim with the ref untouched — each pinned below.
+
+/**
+ * Build the F2 shape: clone B holds an unprovisioned local `board` branch at `oldSha`, a strict
+ * ancestor of origin/board's advanced tip (`newSha` — clone A pushed a doc past it).
+ */
+async function makeAncestorBranchFixture(): Promise<{
+  topo: Awaited<ReturnType<typeof makeTwoCloneTopology>>;
+  oldSha: string;
+  newSha: string;
+}> {
+  const topo = await makeTwoCloneTopology({ provision: false });
+  git(topo.b.root, ["fetch", "origin"]);
+  const oldSha = git(topo.b.root, ["rev-parse", `refs/remotes/origin/${BOARD_BRANCH}`]).trim();
+  provisionBoard(topo.a);
+  await writeBoardDoc(topo.a, "tasks/advanced", {
+    frontmatter: { type: "Task", title: "Advanced", actor: "alice" },
+    body: "# Advanced\n",
+  });
+  commitBoard(topo.a, "board: alice advances the board");
+  pushBoard(topo.a);
+  const newSha = git(topo.a.root, ["rev-parse", `refs/heads/${BOARD_BRANCH}`]).trim();
+  git(topo.b.root, ["branch", BOARD_BRANCH, oldSha]);
+  return { topo, oldSha, newSha };
+}
+
+/** Assert the refusal arm: `local_board` returned, the local ref untouched, nothing materialized. */
+function assertRefused(
+  topo: Awaited<ReturnType<typeof makeTwoCloneTopology>>,
+  expectedSha: string,
+  outcome: ReturnType<typeof provisionBoardWorktree>,
+): void {
+  assert.equal(outcome.kind, "local_board");
+  assert.equal(
+    git(topo.b.root, ["rev-parse", `refs/heads/${BOARD_BRANCH}`]).trim(),
+    expectedSha,
+    "the local branch ref is untouched by a refusal",
+  );
+}
+
+test("F2 adopt: a strict-ancestor local board branch is fast-forwarded to a LIVE-fetched origin/board and adopted", async () => {
+  const { topo, newSha } = await makeAncestorBranchFixture();
+  try {
+    const outcome = provisionBoardWorktree(topo.b.root, { allowLocalBranch: false });
+    assert.equal(outcome.kind, "provisioned");
+    assert.equal(
+      (outcome as { source: string }).source,
+      "remote",
+      "an ff-adopted branch's tip IS origin/board — 'remote' is the truthful announcement provenance",
+    );
+    assert.equal(git(topo.b.root, ["rev-parse", `refs/heads/${BOARD_BRANCH}`]).trim(), newSha, "fast-forwarded");
+    assert.equal(isProvisioned(topo.b.root), true);
+    assert.equal(existsSync(path.join(topo.b.board, "tasks", "advanced.md")), true, "the teammate's doc materialized");
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("F2 adopt is equality-preserving: a branch already equal to origin/board keeps today's adopt (source 'local')", async () => {
+  const { topo, newSha } = await makeAncestorBranchFixture();
+  try {
+    git(topo.b.root, ["fetch", "origin"]); // make newSha reachable locally for the ref write
+    git(topo.b.root, ["update-ref", `refs/heads/${BOARD_BRANCH}`, newSha]);
+    const outcome = provisionBoardWorktree(topo.b.root, { allowLocalBranch: false });
+    assert.equal(outcome.kind, "provisioned");
+    assert.equal((outcome as { source: string }).source, "local", "the pre-existing equal-sha adopt is unchanged");
+    assert.equal(git(topo.b.root, ["rev-parse", `refs/heads/${BOARD_BRANCH}`]).trim(), newSha);
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("F2 refusal: a DIVERGED local board branch (own commit past the ancestor) is never adopted", async () => {
+  const { topo, oldSha } = await makeAncestorBranchFixture();
+  try {
+    const tree = git(topo.b.root, ["rev-parse", `${oldSha}^{tree}`]).trim();
+    const diverged = git(topo.b.root, ["commit-tree", tree, "-p", oldSha, "-m", "local-only divergence"]).trim();
+    git(topo.b.root, ["update-ref", `refs/heads/${BOARD_BRANCH}`, diverged]);
+    const outcome = provisionBoardWorktree(topo.b.root, { allowLocalBranch: false });
+    assertRefused(topo, diverged, outcome);
+    assert.equal((outcome as { remoteExists: boolean }).remoteExists, true);
+    assert.equal(existsSync(topo.b.board), false, "nothing materialized");
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("F2 refusal: a local board branch AHEAD of origin/board is never adopted (it has commits origin lacks)", async () => {
+  const { topo, newSha } = await makeAncestorBranchFixture();
+  try {
+    git(topo.b.root, ["fetch", "origin"]); // make newSha reachable locally for the commit-tree parent
+    const tree = git(topo.b.root, ["rev-parse", `${newSha}^{tree}`]).trim();
+    const ahead = git(topo.b.root, ["commit-tree", tree, "-p", newSha, "-m", "unpushed local commit"]).trim();
+    git(topo.b.root, ["update-ref", `refs/heads/${BOARD_BRANCH}`, ahead]);
+    const outcome = provisionBoardWorktree(topo.b.root, { allowLocalBranch: false });
+    assertRefused(topo, ahead, outcome);
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("F2 refusal: an UNRELATED local board branch (foreign root) is never adopted", async () => {
+  const { topo } = await makeAncestorBranchFixture();
+  try {
+    const mainTree = git(topo.b.root, ["rev-parse", "HEAD^{tree}"]).trim();
+    const unrelated = git(topo.b.root, ["commit-tree", mainTree, "-m", "an unrelated private branch"]).trim();
+    git(topo.b.root, ["update-ref", `refs/heads/${BOARD_BRANCH}`, unrelated]);
+    const outcome = provisionBoardWorktree(topo.b.root, { allowLocalBranch: false });
+    assertRefused(topo, unrelated, outcome);
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("F2 refusal: the branch checked out as the MAIN worktree's HEAD is refused — the user's checkout never moves", async () => {
+  const { topo, oldSha } = await makeAncestorBranchFixture();
+  try {
+    git(topo.b.root, ["checkout", BOARD_BRANCH]);
+    const outcome = provisionBoardWorktree(topo.b.root, { allowLocalBranch: false });
+    assertRefused(topo, oldSha, outcome);
+    assert.equal(git(topo.b.root, ["rev-parse", "HEAD"]).trim(), oldSha, "HEAD did not move");
+    assert.equal(git(topo.b.root, ["rev-parse", "--abbrev-ref", "HEAD"]).trim(), BOARD_BRANCH, "still on the branch");
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("F2 refusal: the branch checked out in ANOTHER worktree is refused", async () => {
+  const { topo, oldSha } = await makeAncestorBranchFixture();
+  try {
+    git(topo.b.root, ["worktree", "add", path.join(topo.dir, "elsewhere"), BOARD_BRANCH]);
+    const outcome = provisionBoardWorktree(topo.b.root, { allowLocalBranch: false });
+    assertRefused(topo, oldSha, outcome);
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("F2 refusal: a worktree wedged MID-REBASE from the branch is refused (detached HEAD hides the branch line — git's own rebase bookkeeping is read)", async () => {
+  const { topo, oldSha } = await makeAncestorBranchFixture();
+  try {
+    // A worktree on the branch, then a rebase onto an UNRELATED root with a conflicting index.md:
+    // replaying the board's history stops mid-rebase (ADD/ADD), leaving refs/heads/board at
+    // oldSha (still a strict ancestor of origin/board) while HEAD in the worktree is detached.
+    const wt = path.join(topo.dir, "wt-rebase");
+    git(topo.b.root, ["worktree", "add", wt, BOARD_BRANCH]);
+    const xdir = path.join(topo.dir, "wt-xbase");
+    git(topo.b.root, ["worktree", "add", "--detach", xdir]);
+    git(xdir, ["checkout", "--orphan", "xbase"]);
+    git(xdir, ["rm", "-rf", "."]);
+    await writeFile(path.join(xdir, "index.md"), "a conflicting root index\n");
+    git(xdir, ["add", "-A"]);
+    git(xdir, ["commit", "-m", "xbase: conflicting root"]);
+    const rebase = gitTry(wt, ["rebase", "xbase"], { GIT_EDITOR: "true", GIT_SEQUENCE_EDITOR: "true" });
+    assert.notEqual(rebase.status, 0, "the rebase must stop on the planted conflict");
+    assert.equal(detectStaleRebase(wt), true, "sanity: the worktree is wedged mid-rebase");
+
+    const outcome = provisionBoardWorktree(topo.b.root, { allowLocalBranch: false });
+    assertRefused(topo, oldSha, outcome);
+    assert.equal(detectStaleRebase(wt), true, "the wedged rebase is untouched");
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("F2 refusal: a SHALLOW repository never adopts (the ancestor check is unreliable on truncated history)", async () => {
+  const { topo, oldSha } = await makeAncestorBranchFixture();
+  try {
+    const gitDir = git(topo.b.root, ["rev-parse", "--absolute-git-dir"]).trim();
+    // Mark the repo shallow at main's root: is-shallow-repository reads true while every walk
+    // this fixture needs still works — the guard must key on shallowness itself, not on a walk
+    // happening to fail.
+    const rootSha = git(topo.b.root, ["rev-list", "--max-parents=0", "HEAD"]).trim();
+    writeFileSync(path.join(gitDir, "shallow"), `${rootSha}\n`);
+    const outcome = provisionBoardWorktree(topo.b.root, { allowLocalBranch: false });
+    assertRefused(topo, oldSha, outcome);
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("F2 refusal: a DEAD fetch never adopts — stale origin/board evidence must not drive a ref move", async () => {
+  const topo = await makeTwoCloneTopology({ provision: false });
+  try {
+    // B fetches the ADVANCED board first (stale-evidence-to-be), then origin dies.
+    provisionBoard(topo.a);
+    await writeBoardDoc(topo.a, "tasks/advanced", {
+      frontmatter: { type: "Task", title: "Advanced", actor: "alice" },
+      body: "# Advanced\n",
+    });
+    commitBoard(topo.a, "board: alice advances the board");
+    pushBoard(topo.a);
+    git(topo.b.root, ["fetch", "origin"]);
+    const newSha = git(topo.b.root, ["rev-parse", `refs/remotes/origin/${BOARD_BRANCH}`]).trim();
+    const oldSha = git(topo.b.root, ["rev-parse", `${newSha}~1`]).trim();
+    git(topo.b.root, ["branch", BOARD_BRANCH, oldSha]);
+    git(topo.b.root, ["remote", "set-url", "origin", path.join(topo.dir, "nonexistent.git")]);
+
+    const outcome = provisionBoardWorktree(topo.b.root, { allowLocalBranch: false });
+    assertRefused(topo, oldSha, outcome);
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+test("F-D1: clearGitDirMarkerVerified reports the POST-CLEAR truth (never claims a survivor was cleared)", async () => {
+  const topo = await makeTwoCloneTopology({ provision: false });
+  const KEY = "agentstate.testMarker";
+  const SHA = "0123456789abcdef0123456789abcdef01234567";
+  try {
+    writeGitDirMarker(topo.a.root, KEY, SHA);
+    const markerFile = gitDirMarkerPath(topo.a.root, KEY);
+    assert.equal(existsSync(markerFile), true);
+    assert.equal(clearGitDirMarkerVerified(topo.a.root, KEY), true, "a removable marker clears");
+    assert.equal(existsSync(markerFile), false);
+    assert.equal(clearGitDirMarkerVerified(topo.a.root, KEY), true, "already-absent reads as cleared");
+
+    if (process.platform === "darwin") {
+      // The immutable-file arm (chflags uchg): the unlink is denied, the file SURVIVES, and the
+      // verified clear must say so — the receipt honesty F-D1 pins rides this return value.
+      writeGitDirMarker(topo.a.root, KEY, SHA);
+      execFileSync("chflags", ["uchg", markerFile]);
+      try {
+        assert.equal(clearGitDirMarkerVerified(topo.a.root, KEY), false, "a survivor is never reported cleared");
+        assert.equal(existsSync(markerFile), true);
+      } finally {
+        execFileSync("chflags", ["nouchg", markerFile]);
+      }
+    }
   } finally {
     await topo.cleanup();
   }

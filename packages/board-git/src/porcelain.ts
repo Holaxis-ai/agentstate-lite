@@ -16,8 +16,8 @@
  *     no-hang class is killed at the wrapper, not per call site.
  *   - GIT_EDITOR/GIT_SEQUENCE_EDITOR=true on rebase ops (nothing interactive can open).
  *   - A per-op timeout (network ops get a longer budget); a fired timeout classifies TRANSIENT.
- *   - EXPLICIT refs everywhere — `origin/board`, NEVER `@{u}` (the migration machine's
- *     subtree-split branch has no tracking config, empirically).
+ *   - EXPLICIT refs everywhere — `origin/board`, NEVER `@{u}` (a shared board branch can arrive
+ *     with no tracking config at all — empirically observed in the field).
  *   - Worktree internals via `git rev-parse --git-path` (`.git` is a FILE in a linked worktree).
  *   - Rename detection OFF (`--no-renames`): a doc's identity IS its path; add+delete is the true
  *     story. Explicit (not merely `-M` omitted) so a host `diff.renames=true` config cannot leak in.
@@ -418,6 +418,138 @@ function moveAsideHelp(boardPath: string, note: string): string {
 }
 
 /**
+ * True when the repository is shallow (truncated history). Ancestor-containment checks are
+ * unreliable there (a missing parent chain reads as "not an ancestor"), so both the local-branch
+ * fast-forward adopt and the stale-marker auto-clear treat shallow as "cannot verify" and keep
+ * their refusal/no-op. Fail-closed: an unreadable answer counts as shallow.
+ */
+export function isShallowRepository(top: string): boolean {
+  const r = runGit(top, ["rev-parse", "--is-shallow-repository"]);
+  return r.status !== 0 || r.stdout.trim() !== "false";
+}
+
+/**
+ * The ONE unambiguous local-branch adoption (establish/window journeys, F2): a leftover local
+ * `board` branch — e.g. the committed-case establisher's own root commit after the cleanup PR
+ * merged — that is a STRICT ANCESTOR of a LIVE-fetched `origin/board` is fast-forwarded to it and
+ * adopted. Refusal-preserving by construction: EVERY guard failure returns false and the caller
+ * keeps the `local_board` refusal verbatim (diverged, ahead, unrelated, checked out anywhere,
+ * mid-rebase, shallow, dead fetch — the caller gates on the live fetch). Guards, in order:
+ *   1. not a shallow repository ({@link isShallowRepository} — the ancestor check is unreliable);
+ *   2. the branch is not checked out in ANY worktree, the main checkout included — adoption must
+ *      never touch a checkout the user is standing on (`worktree list --porcelain`, the same
+ *      version-proof structural read the add-failure fallback uses);
+ *   3. no existing worktree is wedged mid-rebase FROM the branch (a rebase detaches HEAD, hiding
+ *      the branch from the worktree list — read git's own rebase bookkeeping instead);
+ *   4. the local tip is an ancestor of the fetched `origin/board` (strict — equality is the
+ *      pre-existing `localMatchesRemote` adopt);
+ *   5. the ref moves via compare-and-swap (`update-ref <new> <old>`) — a concurrent mover fails
+ *      the swap and the refusal stands; nothing is ever forced.
+ */
+function tryFastForwardAdoptLocalBoard(top: string, localSha: string, remoteSha: string): boolean {
+  if (localSha.length === 0 || remoteSha.length === 0) return false;
+  if (isShallowRepository(top)) return false;
+  const list = runGit(top, ["worktree", "list", "--porcelain"]);
+  if (list.status !== 0) return false;
+  const lines = list.stdout.split("\n");
+  if (lines.includes(`branch refs/heads/${BOARD_BRANCH}`)) return false;
+  for (const wt of lines.filter((l) => l.startsWith("worktree ")).map((l) => l.slice("worktree ".length))) {
+    if (!existsSync(wt)) continue; // a stale registration whose directory is gone hosts no rebase
+    try {
+      if (detectStaleRebase(wt) && rebaseWasFromBoardBranch(wt)) return false;
+    } catch {
+      return false; // unreadable worktree state proves nothing — keep the refusal
+    }
+  }
+  if (runGit(top, ["merge-base", "--is-ancestor", localSha, remoteSha]).status !== 0) return false;
+  return runGit(top, ["update-ref", `refs/heads/${BOARD_BRANCH}`, remoteSha, localSha]).status === 0;
+}
+
+/**
+ * The tracked-folder REMNANT probe (establish/window journeys, F3): the folder-removal (cleanup)
+ * commit has already LANDED on this branch's remote counterpart AND this clone has already pulled
+ * it, yet some board paths are STILL tracked at HEAD — a clone's own board commit, merged over the
+ * removal, re-added them. In that state the window's "run 'git pull'" advice is a DEAD END (pull
+ * has nothing left to deliver) and the dual-board framing is wrong (the paths are stragglers, not
+ * a competing board): the only exit is untracking the remnant paths. Returns the tracked paths, or
+ * null when this is NOT the remnant state (the genuine window keeps its pull-first guidance).
+ */
+export function trackedBoardRemnantPaths(top: string): string[] | null {
+  const branch = currentBranch(top);
+  if (branch === "HEAD" || branch === BOARD_BRANCH) return null;
+  const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
+  if (runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status !== 0) return null;
+  // The removal must have LANDED on the remote tip…
+  if (runGit(top, ["cat-file", "-e", `${remoteRef}:${BUNDLE_DIR}`]).status === 0) return null;
+  // …and this clone must have ALREADY PULLED it (otherwise pull-first is exactly right).
+  if (runGit(top, ["merge-base", "--is-ancestor", remoteRef, "HEAD"]).status !== 0) return null;
+  const ls = runGit(top, ["ls-tree", "-r", "-z", "--name-only", "HEAD", "--", BUNDLE_DIR]);
+  if (ls.status !== 0) return null;
+  const paths = ls.stdout.split("\0").filter((p) => p.length > 0);
+  return paths.length > 0 ? paths : null;
+}
+
+/**
+ * What a tracked-folder-facing-a-shared-board state should tell the user — the ONE string source
+ * for the sync/provisioning refusal ({@link preShareWindowError}), channel detection
+ * (`channel.ts`), and home's offline board line (F5: home renders this truth directly instead of
+ * a "run sync" that sync then refuses). `state` is the structured discriminator the thrown
+ * refusal carries in `details.state`.
+ */
+export interface BoardWindowGuidance {
+  state: "pre-share-window" | "window-remnant";
+  message: string;
+  help: string;
+  /** Remnant arm only: the still-tracked folder paths (full list — display capping is the consumer's). */
+  trackedRemnants?: string[];
+  originConfigured: boolean;
+}
+
+/** Build {@link BoardWindowGuidance} for the tracked-folder states (see {@link preShareWindowError}). */
+export function boardWindowGuidance(top: string, originConfigured = true): BoardWindowGuidance {
+  if (!originConfigured) {
+    return {
+      state: "pre-share-window",
+      originConfigured,
+      message:
+        `a previously fetched '${BOARD_REF}' ref shows this project's board was shared, but no ` +
+        `'${BOARD_REMOTE}' remote is configured here any more — '${BUNDLE_DIR}' is still the old ` +
+        `folder committed on this branch, and sync cannot pull the shared board without the remote`,
+      help: `git remote add ${BOARD_REMOTE} <url>  # restore the remote, 'git pull' once the cleanup PR merges, then re-run sync`,
+    };
+  }
+  const remnants = trackedBoardRemnantPaths(top);
+  if (remnants !== null) {
+    const plural = remnants.length !== 1;
+    return {
+      state: "window-remnant",
+      originConfigured,
+      trackedRemnants: remnants,
+      message:
+        `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE} and the folder-removal (cleanup) ` +
+        `commit has already been pulled here, but ${remnants.length} ${plural ? "paths" : "path"} under ` +
+        `'${BUNDLE_DIR}/' ${plural ? "are" : "is"} still tracked on this branch — a board commit merged ` +
+        `over the removal re-added ${plural ? "them" : "it"}, so 'git pull' has nothing left to fix: ` +
+        `untrack ${plural ? "those paths" : "that path"}, then re-run sync`,
+      help:
+        `git rm -r --cached -- ${BUNDLE_DIR} && git commit -m 'board: untrack leftover board paths', ` +
+        `then mv ${BUNDLE_DIR} ${BUNDLE_DIR}.bak and re-run sync — it provisions the shared board; ` +
+        `reconcile any docs from the backup afterwards with doc update`,
+    };
+  }
+  return {
+    state: "pre-share-window",
+    originConfigured,
+    message:
+      `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is ` +
+      `still the old folder committed on this branch — the folder-removal (cleanup) PR ` +
+      `hasn't merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', ` +
+      `then run sync again`,
+    help: "git pull  # after the cleanup PR merges, then re-run sync",
+  };
+}
+
+/**
  * The PRE-SHARE-WINDOW refusal (U5 fix round, review MEDIUM 3): the board branch already exists
  * on the remote, but THIS clone's checked-out branch still TRACKS the folder (the old committed
  * copy — the folder-removal PR hasn't merged, or this clone hasn't pulled it). A bare "move it
@@ -425,35 +557,24 @@ function moveAsideHelp(boardPath: string, note: string): string {
  * the only safe advice is pull-first. ONE factory so `provisionBoardWorktree` and channel
  * detection (`channel.ts`) stay verbatim-identical, mechanically.
  *
- * `originConfigured: false` is the truth-fix arm (board-git PR C, carried from B's review): the
- * only board-branch evidence is a PREVIOUSLY FETCHED `origin/board` ref while no `origin` remote
- * is configured any more — the default wording would falsely claim the branch "exists on origin",
- * and its bare `git pull` help cannot work with no remote to pull from.
+ * Two truth arms refine the default wording without changing the refusal semantics:
+ *  - `originConfigured: false` (board-git PR C, carried from B's review): the only board-branch
+ *    evidence is a PREVIOUSLY FETCHED `origin/board` ref while no `origin` remote is configured
+ *    any more — the default wording would falsely claim the branch "exists on origin", and its
+ *    bare `git pull` help cannot work with no remote to pull from;
+ *  - the REMNANT arm ({@link trackedBoardRemnantPaths}, F3): the removal already landed AND was
+ *    pulled, so "run 'git pull'" is a dead end — the refusal names the still-tracked paths and
+ *    the `git rm -r --cached` escape instead.
  */
-export function preShareWindowError(boardPath: string, originConfigured = true): BoardGitError {
-  if (!originConfigured) {
-    return new BoardGitError(
-      "RUNTIME",
-      `a previously fetched '${BOARD_REF}' ref shows this project's board was shared, but no ` +
-        `'${BOARD_REMOTE}' remote is configured here any more — '${BUNDLE_DIR}' is still the old ` +
-        `folder committed on this branch, and sync cannot pull the shared board without the remote`,
-      {
-        details: { path: boardPath, state: "pre-share-window", origin_configured: false },
-        help: `git remote add ${BOARD_REMOTE} <url>  # restore the remote, 'git pull' once the cleanup PR merges, then re-run sync`,
-      },
-    );
+export function preShareWindowError(top: string, boardPath: string, originConfigured = true): BoardGitError {
+  const guidance = boardWindowGuidance(top, originConfigured);
+  const details: Record<string, unknown> = { path: boardPath, state: guidance.state };
+  if (!guidance.originConfigured) details.origin_configured = false;
+  if (guidance.trackedRemnants) {
+    const shown = guidance.trackedRemnants.slice(0, 20);
+    details.tracked_remnants = { shown: shown.length, total: guidance.trackedRemnants.length, rows: shown };
   }
-  return new BoardGitError(
-    "RUNTIME",
-    `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is ` +
-      `still the old folder committed on this branch — the folder-removal (cleanup) PR ` +
-      `hasn't merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', ` +
-      `then run sync again`,
-    {
-      details: { path: boardPath, state: "pre-share-window" },
-      help: "git pull  # after the cleanup PR merges, then re-run sync",
-    },
-  );
+  return new BoardGitError("RUNTIME", guidance.message, { details, help: guidance.help });
 }
 
 /**
@@ -463,8 +584,8 @@ export function preShareWindowError(boardPath: string, originConfigured = true):
  * fresh `git worktree add`; a pre-existing NON-EMPTY `.agentstate-lite/` that is NOT the board
  * worktree is REFUSED with guidance (never a blind add — a pre-existing EMPTY directory is the one
  * resolvable case, removed so the add can proceed); "already checked out" from git = idempotent
- * success. The `--no-track` add faithfully reproduces the migration machine's no-tracking-config
- * state — which is exactly why every other op uses EXPLICIT `origin/board` refs.
+ * success. The `--no-track` add reproduces the no-tracking-config state a shared board can arrive
+ * in — which is exactly why every other op uses EXPLICIT `origin/board` refs.
  *
  * WORKTREE PORTABILITY (2026-07-08 field finding): a fresh `add` writes RELATIVE pointers
  * ({@link RELATIVE_WORKTREE_CONFIG}, git >= 2.48; silently ignored on older git — no version
@@ -509,6 +630,9 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
   };
   let remoteState: "absent" | "unknown" = "absent";
   let remoteBoardKnownAbsent = false;
+  // True only when THIS run's fetch of origin/board succeeded — the fast-forward adopt below is
+  // gated on a live view (a stale ref must never drive a ref move; dead fetch keeps the refusal).
+  let liveFetch = false;
   if (hasOrigin) {
     const probe = runNetwork([
       "ls-remote",
@@ -536,6 +660,7 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
           `+refs/heads/${BOARD_BRANCH}:refs/remotes/${BOARD_REF}`,
         ]);
         remoteState = fetch?.status === 0 ? "absent" : "unknown";
+        liveFetch = fetch?.status === 0;
       } else {
         remoteState = "unknown";
       }
@@ -563,6 +688,22 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
     };
   }
 
+  // F2 (establish/window journeys): the establisher's receipt chain — "git pull, then sync" —
+  // must survive a teammate advancing origin/board in the window. A leftover local branch that is
+  // a STRICT ANCESTOR of a LIVE-fetched origin/board fast-forwards and is adopted; every other
+  // shape keeps the `local_board` refusal verbatim. Memoized: the two refusal sites below share
+  // ONE ref-move attempt.
+  let ffAdopted: boolean | undefined;
+  const adoptLocalBoard = (): boolean => {
+    if (ffAdopted === undefined) {
+      ffAdopted =
+        hasRemote &&
+        liveFetch &&
+        tryFastForwardAdoptLocalBoard(top, localBoard.stdout.trim(), remoteBoard.stdout.trim());
+    }
+    return ffAdopted;
+  };
+
   if (existsSync(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
       // The PRE-SHARE WINDOW (see {@link preShareWindowError} for the full hazard story): the
@@ -573,7 +714,7 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
         !hasWorktreeSignature(boardPath) &&
         runGit(top, ["cat-file", "-e", `HEAD:${BUNDLE_DIR}`]).status === 0
       ) {
-        throw preShareWindowError(boardPath, hasOrigin);
+        throw preShareWindowError(top, boardPath, hasOrigin);
       }
       // Non-empty and (per isProvisioned above) not currently a genuine `board` checkout: it may
       // STILL be the real board worktree, just wedged with stale pointers — try the structural
@@ -631,7 +772,7 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
         help: messages[reason].help,
       });
     }
-    if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote) {
+    if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote && !adoptLocalBoard()) {
       return { kind: "local_board", boardPath, remoteExists: hasRemote };
     }
     // The one resolvable pre-existing state: an EMPTY directory. Remove it so worktree add can
@@ -640,9 +781,12 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
   }
 
   // A branch name alone is not provenance. Interactive sync and SessionStart adopt an
-  // unprovisioned local branch only when its commit exactly equals the freshly-pruned remote ref;
-  // that preserves migration recovery while refusing unrelated/private branches.
-  if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote) {
+  // unprovisioned local branch only when its commit exactly equals the freshly-pruned remote ref,
+  // OR when it is a strict ancestor of a LIVE-fetched origin/board (the establisher's own leftover
+  // branch once the share window closes — fast-forwarded before adoption, {@link
+  // tryFastForwardAdoptLocalBoard}); everything else refuses, so an unrelated/private branch is
+  // never guessed at.
+  if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote && !adoptLocalBoard()) {
     return { kind: "local_board", boardPath, remoteExists: hasRemote };
   }
 
@@ -670,7 +814,10 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
     }
     throw classifyGitError(failureOf(["worktree", "add"], r));
   }
-  return { kind: "provisioned", boardPath, source: hasLocal ? "local" : "remote" };
+  // A fast-forward-adopted branch's tip IS the fetched origin/board, so `remote` is the truthful
+  // provenance for its announcement; a branch adopted as-is (equal, or the explicit-establish
+  // path) keeps `local`.
+  return { kind: "provisioned", boardPath, source: hasLocal && ffAdopted !== true ? "local" : "remote" };
 }
 
 // ── stale-rebase self-heal primitives (consumed at SYNC ENTRY by U3a, adjudication C) ─

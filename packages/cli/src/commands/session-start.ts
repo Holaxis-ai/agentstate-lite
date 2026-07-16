@@ -307,7 +307,7 @@ export async function sessionStart(argv: string[], deps: Partial<SessionStartDep
   // would make home's dashboard miss the project's bundle and dangle a wrong `init` hint next to
   // it. So with an explicit --dir the dashboard's summarizer is redirected: board resolved →
   // summarize the BOARD bundle itself; no board (a boardless project with a committed
-  // `.agentstate-lite/`, this repo's own pre-migration shape) → home's normal DISCOVERY walk,
+  // `.agentstate-lite/`, the in-tree/window shape) → home's normal DISCOVERY walk,
   // started from the given dir instead of the cwd. A bare (cwd) invocation — the installed
   // hook's shape — keeps home's byte-identical conventional discovery.
   const homeArgv: string[] = [];
