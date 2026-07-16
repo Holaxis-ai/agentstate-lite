@@ -53,7 +53,8 @@ test("serve: prints the TOON receipt first (url/root/help), boots a real listene
     assert.match(receipt.url, /^http:\/\/127\.0\.0\.1:\d+$/);
     assert.equal(receipt.root, dir);
     assert.match(receipt.auth, /none/);
-    assert.match(receipt.concurrency, /best-effort/);
+    assert.match(receipt.concurrency, /across same-user local processes/);
+    assert.match(receipt.concurrency, /fails closed/);
     assert.match(receipt.help[0], /list --remote http:\/\/127\.0\.0\.1:\d+/);
 
     // waitForShutdown resolved immediately, so the command already closed the listener before

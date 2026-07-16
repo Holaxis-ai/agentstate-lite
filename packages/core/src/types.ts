@@ -224,7 +224,8 @@ export interface DeleteOptions {
  * on mismatch) and an {@link WriteOptions.actor}; {@link StorageBackend.versions}
  * exposes history; {@link StorageBackend.readMany} batches reads so link-graph /
  * backlink traversal does not do N single round-trips. `FilesystemBackend` is the
- * DEGENERATE adapter (single-version history, best-effort CAS over the on-disk hash);
+ * DEGENERATE adapter (single-version history, enforced CAS through a same-user cross-process
+ * filesystem critical section over the on-disk hash);
  * `MemoryBackend` proves the same contract for the hard case (a real version chain,
  * enforced CAS, per-write attribution).
  */
@@ -269,8 +270,8 @@ export interface StorageBackend {
    * `VersionConflict` on mismatch; passing a version token for an absent file is a
    * conflict; passing `null` means expect-ABSENT, i.e. create-if-absent — a conflict
    * when the file already exists); with no options the write is unconditional (the
-   * historical last-writer-wins). The filesystem adapter's CAS is best-effort
-   * (hash-then-rename); `MemoryBackend` enforces it.
+   * historical last-writer-wins). The filesystem adapter enforces the version premise
+   * with an external same-user cross-process mutation lock; `MemoryBackend` enforces it in memory.
    */
   writeReserved(
     dir: string,
@@ -367,12 +368,13 @@ export interface StorageBackend {
    * them via `instanceof` against the two in-repo adapters — correct for those two, but unable
    * to classify a THIRD adapter it has never heard of (for example, a document-centric hosted
    * backend). A backend that implements this method reports its own limits instead of
-   * being guessed at; a backend that does NOT implement it (deliberately unchanged:
-   * `FilesystemBackend`, `MemoryBackend`) falls back to the router's pre-existing `instanceof`
-   * logic, which is the standing proof this addition is additive — neither in-repo adapter
-   * needed to change for the seam to grow this capability.
+   * being guessed at; a backend that does NOT implement it falls back to the router's
+   * pre-existing `instanceof` inference. `FilesystemBackend` self-declares because enforced
+   * cross-process CAS and retained history are now intentionally different capabilities.
    */
   capabilities?(): {
+    /** Whether `versions()` retains more than the current revision. When omitted, legacy adapters preserve the v0 inference from `enforced_cas`. */
+    history?: boolean;
     /** Whether `write`/`writeBlob`/`writeReserved`'s `expectedVersion` CAS is ENFORCED (atomic, race-proof) rather than best-effort. */
     enforced_cas: boolean;
     /** Whether `readBlob`/`writeBlob`/`existsBlob`/`listBlobs` are implemented for real (not a stub). */

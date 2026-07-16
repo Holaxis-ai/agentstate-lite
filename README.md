@@ -173,9 +173,9 @@ Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPla
   commands, or cloud-provider package.
 - **Wire protocol v0.1** is evolving. One recorded caveat: a document's raw bytes
   re-serialize to canonical form over the wire; blobs are the byte-exact channel.
-- **Filesystem CAS is best-effort across processes** (atomic within one). For multiple
-  concurrent local agents, run `aslite serve` and point them at the loopback head —
-  that restores full enforcement with zero cloud.
+- **Filesystem CAS is serialized across same-user local processes** with an external per-target runtime lock.
+  A process crash can leave a diagnosable lock behind; writes fail closed until it is inspected
+  and removed rather than silently stealing an ambiguous lock.
 - **Richer graph semantics** remain open: conventions type outbound links and can require at least
   one matching inbound relationship today, but richer cardinality, cross-edge constraints,
   workflow rules, and automation are intentionally not a second graph engine yet.

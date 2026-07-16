@@ -1,0 +1,316 @@
+import { promises as fs, realpathSync } from "node:fs";
+import type { Stats } from "node:fs";
+import { homedir, hostname, tmpdir, userInfo } from "node:os";
+import path from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+
+const OWNER_FILE = "owner.json";
+const DEFAULT_WAIT_MS = 5_000;
+const DEFAULT_POLL_MS = 25;
+
+export interface FilesystemMutationLockOwner {
+  pid: number;
+  hostname: string;
+  created_at_ms: number;
+  token: string;
+  target: string;
+}
+
+export interface FilesystemMutationLockOptions {
+  waitMs?: number;
+  pollMs?: number;
+  /** Portable tree that must never contain runtime lock state. FilesystemBackend supplies its root. */
+  portableRoot?: string;
+}
+
+export class FilesystemMutationLockError extends Error {
+  readonly lockPath: string;
+  readonly owner: FilesystemMutationLockOwner | null;
+  readonly stale: boolean;
+  readonly malformed: boolean;
+
+  constructor(
+    message: string,
+    details: {
+      lockPath: string;
+      owner: FilesystemMutationLockOwner | null;
+      stale: boolean;
+      malformed: boolean;
+    },
+  ) {
+    super(message);
+    this.name = "FilesystemMutationLockError";
+    this.lockPath = details.lockPath;
+    this.owner = details.owner;
+    this.stale = details.stale;
+    this.malformed = details.malformed;
+  }
+}
+
+function runtimeOwnerKey(): string {
+  const uid = process.getuid?.();
+  if (uid !== undefined) return `uid-${uid}`;
+  let username = "unknown";
+  try {
+    username = userInfo().username;
+  } catch {
+    // Windows temp directories are already user-scoped; this is only a stable path segment.
+  }
+  return `user-${createHash("sha256").update(username).digest("hex").slice(0, 16)}`;
+}
+
+function canonicalExistingPath(value: string): string {
+  try {
+    return realpathSync(value);
+  } catch {
+    return path.resolve(value);
+  }
+}
+
+function pathContains(root: string, candidate: string): boolean {
+  const rel = path.relative(root, candidate);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+/** Stable per-user runtime namespace outside `portableRoot`; refuses an impossible root bundle. */
+export function filesystemMutationLockRoot(portableRoot?: string): string {
+  // POSIX TMPDIR is process/session-scoped (notably shell vs launchd on macOS). Use the
+  // system-wide sticky directory so every same-user writer derives one lock namespace.
+  const tempParent = canonicalExistingPath(process.platform === "win32" ? tmpdir() : "/tmp");
+  const homeParent = canonicalExistingPath(homedir());
+  const ownerKey = runtimeOwnerKey();
+  const candidates = [
+    path.join(tempParent, `agentstate-lite-mutation-locks-${ownerKey}`),
+    path.join(homeParent, ".agentstate", `mutation-locks-${ownerKey}`),
+  ];
+  if (portableRoot === undefined) return candidates[0]!;
+
+  const portable = canonicalExistingPath(portableRoot);
+  const selected = candidates.find((candidate) => !pathContains(portable, candidate));
+  if (selected) return selected;
+  throw new FilesystemMutationLockError(
+    `cannot place filesystem mutation locks outside portable root '${portable}'`,
+    { lockPath: portable, owner: null, stale: false, malformed: true },
+  );
+}
+
+/** Runtime lock directory for one already-canonical physical target. */
+export function filesystemMutationLockPath(target: string, portableRoot?: string): string {
+  const digest = createHash("sha256").update(path.resolve(target)).digest("hex");
+  return path.join(filesystemMutationLockRoot(portableRoot), `${digest}.lock`);
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseOwner(value: unknown): FilesystemMutationLockOwner | null {
+  if (!isObject(value)) return null;
+  if (
+    typeof value.pid !== "number" ||
+    !Number.isSafeInteger(value.pid) ||
+    value.pid <= 0 ||
+    typeof value.hostname !== "string" ||
+    value.hostname.length === 0 ||
+    typeof value.created_at_ms !== "number" ||
+    !Number.isFinite(value.created_at_ms) ||
+    typeof value.token !== "string" ||
+    value.token.length === 0 ||
+    typeof value.target !== "string" ||
+    value.target.length === 0
+  ) {
+    return null;
+  }
+  return {
+    pid: value.pid,
+    hostname: value.hostname,
+    created_at_ms: value.created_at_ms,
+    token: value.token,
+    target: value.target,
+  };
+}
+
+async function readOwner(lockPath: string): Promise<FilesystemMutationLockOwner | null> {
+  try {
+    return parseOwner(JSON.parse(await fs.readFile(path.join(lockPath, OWNER_FILE), "utf8")));
+  } catch {
+    return null;
+  }
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function positiveOption(value: number | undefined, fallback: number, name: string): number {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved < 0) {
+    throw new TypeError(`${name} must be a non-negative safe integer`);
+  }
+  return resolved;
+}
+
+async function ensurePrivateLockRoot(root: string): Promise<void> {
+  try {
+    await fs.mkdir(root, { recursive: true, mode: 0o700 });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+  }
+
+  const stat = await fs.lstat(root);
+  const uid = process.getuid?.();
+  const wrongOwner = uid !== undefined && stat.uid !== uid;
+  const unsafeMode = process.platform !== "win32" && (stat.mode & 0o777) !== 0o700;
+  if (!stat.isDirectory() || stat.isSymbolicLink() || wrongOwner || unsafeMode) {
+    throw new FilesystemMutationLockError(
+      `refusing unsafe filesystem mutation lock root '${root}'; it must be a private directory owned by this user`,
+      { lockPath: root, owner: null, stale: false, malformed: true },
+    );
+  }
+}
+
+async function canonicalTargetInDirectory(directory: string, requestedBasename: string): Promise<string> {
+  const requested = path.join(directory, requestedBasename);
+  let requestedStat: Stats;
+  try {
+    requestedStat = await fs.lstat(requested);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return requested;
+    throw err;
+  }
+
+  const entries = await fs.readdir(directory);
+  if (entries.includes(requestedBasename)) return requested;
+
+  // On a case-/normalization-insensitive filesystem, lstat(requested) can succeed even though
+  // readdir reports a differently-spelled directory entry. Find that entry without realpath'ing
+  // the target itself: resolving a final symlink would put the lock outside the bundle even though
+  // atomicWrite replaces the symlink directory entry inside it.
+  for (const entry of entries) {
+    const candidate = path.join(directory, entry);
+    const candidateStat = await fs.lstat(candidate);
+    if (candidateStat.dev === requestedStat.dev && candidateStat.ino === requestedStat.ino) return candidate;
+  }
+  return requested;
+}
+
+function timeoutError(lockPath: string, owner: FilesystemMutationLockOwner | null): FilesystemMutationLockError {
+  const malformed = owner === null;
+  const sameHost = owner?.hostname === hostname();
+  const stale = owner !== null && sameHost && !processExists(owner.pid);
+  let message: string;
+  if (malformed) {
+    message =
+      `timed out waiting for filesystem mutation lock '${lockPath}'; its owner metadata is missing or malformed. ` +
+      `Inspect and remove the lock only after confirming no process is mutating the target, then retry.`;
+  } else if (stale) {
+    message =
+      `stale filesystem mutation lock '${lockPath}' belongs to absent PID ${owner.pid} on ${owner.hostname}. ` +
+      `Inspect and remove the lock, then retry.`;
+  } else {
+    message =
+      `timed out waiting for filesystem mutation lock '${lockPath}' held by PID ${owner.pid} on ${owner.hostname}; retry the mutation.`;
+  }
+  return new FilesystemMutationLockError(message, { lockPath, owner, stale, malformed });
+}
+
+/**
+ * Acquire one same-user cross-process mutation lock for `target`.
+ *
+ * `mkdir` is the atomic claim. Locks live in a private per-user runtime namespace keyed by the
+ * canonical target path, never inside the portable bundle: Git staging, establishment snapshots,
+ * copying, and packaging cannot capture them. The owner record makes a crash leftover diagnosable,
+ * but this primitive never steals one automatically.
+ */
+export async function acquireFilesystemMutationLock(
+  target: string,
+  options: FilesystemMutationLockOptions = {},
+): Promise<() => Promise<void>> {
+  const waitMs = positiveOption(options.waitMs, DEFAULT_WAIT_MS, "waitMs");
+  const pollMs = positiveOption(options.pollMs, DEFAULT_POLL_MS, "pollMs");
+  const targetResolved = path.resolve(target);
+  const targetDir = path.dirname(targetResolved);
+  const started = Date.now();
+
+  await fs.mkdir(targetDir, { recursive: true });
+  // Two callers may spell the same bundle through real and symlinked parent paths. Canonicalize
+  // the now-existing parent so both claim the same runtime lock for the physical target.
+  const canonicalDir = await fs.realpath(targetDir);
+  const targetCanonical = await canonicalTargetInDirectory(canonicalDir, path.basename(targetResolved));
+  const portableRoot = options.portableRoot
+    ? await fs.realpath(options.portableRoot).catch(() => path.resolve(options.portableRoot!))
+    : undefined;
+  const lockRoot = filesystemMutationLockRoot(portableRoot);
+  await ensurePrivateLockRoot(lockRoot);
+  const lockPath = filesystemMutationLockPath(targetCanonical, portableRoot);
+  const owner: FilesystemMutationLockOwner = {
+    pid: process.pid,
+    hostname: hostname(),
+    created_at_ms: started,
+    token: randomUUID(),
+    target: targetCanonical,
+  };
+
+  while (true) {
+    try {
+      await fs.mkdir(lockPath, { mode: 0o700 });
+      try {
+        await fs.writeFile(path.join(lockPath, OWNER_FILE), `${JSON.stringify(owner)}\n`, {
+          encoding: "utf8",
+          flag: "wx",
+          mode: 0o600,
+        });
+      } catch (err) {
+        await fs.rm(lockPath, { recursive: true, force: true }).catch(() => {});
+        throw err;
+      }
+
+      return async () => {
+        const current = await readOwner(lockPath);
+        if (current?.token !== owner.token) {
+          throw new FilesystemMutationLockError(
+            `refusing to release filesystem mutation lock '${lockPath}' because its owner token changed; the mutation may have completed, inspect the lock before retrying.`,
+            { lockPath, owner: current, stale: false, malformed: current === null },
+          );
+        }
+        try {
+          await fs.rm(lockPath, { recursive: true, force: false });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new FilesystemMutationLockError(
+            `mutation completed but filesystem lock '${lockPath}' could not be removed (${message}); inspect the lock before retrying.`,
+            { lockPath, owner: current, stale: false, malformed: false },
+          );
+        }
+      };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+
+    if (Date.now() - started >= waitMs) throw timeoutError(lockPath, await readOwner(lockPath));
+    await delay(pollMs);
+  }
+}
+
+/** Run `fn` while holding the same-user cross-process mutation lock for `target`. */
+export async function withFilesystemMutationLock<T>(
+  target: string,
+  fn: () => Promise<T>,
+  options: FilesystemMutationLockOptions = {},
+): Promise<T> {
+  const release = await acquireFilesystemMutationLock(target, options);
+  try {
+    return await fn();
+  } finally {
+    await release();
+  }
+}

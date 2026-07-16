@@ -101,9 +101,9 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   newest-first; and `readMany(ids)` batches reads so graph/backlink traversal is ONE
   round-trip, not N. `FilesystemBackend` is the **degenerate** adapter (version = SHA of the
   on-disk bytes, single-version `versions()` because a plain filesystem keeps no history).
-  Its compare-and-swap is serialized (atomic) for concurrent writers **within one process**
-  via a process-wide per-path mutex — closing the served multi-writer case — but stays
-  **best-effort across processes** (no atomic conditional rename on POSIX). **`MemoryBackend`
+  Its compare-and-swap is serialized per physical target **across same-user local processes** through
+  a private external runtime lock; a process-local queue avoids needless polling. A crash leftover
+  fails closed with inspectable owner metadata rather than being silently stolen. **`MemoryBackend`
   (`core/src/memory-backend.ts`) proves the same
   contract for the hard case** — a real version chain, enforced CAS, per-write attribution —
   and is the standing evidence that the engine leaks no filesystem assumptions (a
@@ -119,8 +119,8 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   `link add` is the proof consumer: versioned read → append → CAS write with bounded conflict
   retry (preserving the idempotent `changed:false`). **Reserved files (`index.md`/`log.md`) are
   in the versioning/CAS model now**, not outside it: `readReserved` returns `{content, version}`,
-  `writeReserved` honors CAS (FilesystemBackend best-effort hash-then-rename; MemoryBackend
-  enforced), and `appendLog`/`regenerateIndex` are read-CAS-write with a bounded retry — so the
+  `writeReserved` honors CAS (FilesystemBackend cross-process lock + hash/rename; MemoryBackend
+  in-memory enforcement), and `appendLog`/`regenerateIndex` are read-CAS-write with a bounded retry — so the
   provenance surface (`log.md`) no longer loses entries under a concurrent writer.
 - Keep exactly **ONE** frontmatter parser, **ONE** bundle walk, **ONE** link resolver, and
   **ONE** human-facing runtime: the local `ui` shell plus bundle-authored Pages. Do not
@@ -316,8 +316,8 @@ the bundle):
   design). The former Cloudflare Worker + D1/R2 + hosted-auth implementation has been extracted
   from OSS and preserved as a private frozen reference; no hosted deployment package is built or
   maintained here.
-- **Three backends, one contract:** Filesystem (degenerate; same-process CAS serialized,
-  cross-process best-effort — NOT safe under multi-writer contention across processes),
+- **Three backends, one contract:** Filesystem (degenerate history; CAS serialized per target
+  across same-user local processes with fail-closed crash-leftover recovery),
   Memory (enforced), and Remote (wire client, typed `RemoteError` with server-derived codes).
   Tri-backend parity tests pin byte-identical version tokens.
 - **Explicit `--remote <url>` on every bundle command** is the only HTTP activation path; `serve` boots the

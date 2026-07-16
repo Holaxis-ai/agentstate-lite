@@ -34,8 +34,7 @@
  * Runs command functions in-process (no subprocess) against a real temp filesystem bundle, mirroring
  * `link.test.ts`/`kinds.test.ts`'s pattern. The CAS-retry test additionally boots a real
  * `@agentstate-lite/server` `serve()` instance over a `MemoryBackend` bundle, mirroring
- * `remote.test.ts`'s multi-writer convergence tests (real enforced CAS, unlike the degenerate
- * filesystem adapter's best-effort CAS).
+ * `remote.test.ts`'s multi-writer convergence tests.
  *
  * Test-authoring note: a body-less `doc write`/`doc update` call with NO `readStdin` override falls
  * through to `defaultReadStdin`, which reads REAL `process.stdin` and hangs under `node --test`
@@ -1768,8 +1767,7 @@ test("doc update: a repeated kind-declared --<field> becomes an array", async ()
 
 /**
  * CAS retry, not regressed: N concurrent `doc update`s to the SAME doc through one real server over
- * a `MemoryBackend` bundle (real enforced compare-and-swap, unlike the degenerate filesystem
- * adapter's best-effort CAS — see `remote.test.ts`'s identical convergence-test rationale). Every
+ * a `MemoryBackend` bundle (real enforced compare-and-swap). Every
  * writer's patch is independent (each sets a distinct --title), so every individual call must land
  * (`doc: "updated"`) within `doc update`'s bounded retry budget, none exhausting it into STALE_HEAD.
  * Writer count is 5 to match `DOC_UPDATE_MAX_ATTEMPTS = 5` (doc.ts) for the same worst-case-4-

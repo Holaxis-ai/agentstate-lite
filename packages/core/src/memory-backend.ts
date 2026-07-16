@@ -3,7 +3,7 @@
  * implementable, and that the engine leaks no filesystem assumptions.
  *
  * Where {@link FilesystemBackend} is the degenerate adapter (single-version history,
- * best-effort compare-and-swap), this adapter implements the hard case for real:
+ * cross-process filesystem compare-and-swap), this adapter implements the historical hard case:
  *   - a genuine per-document VERSION CHAIN (`versions()` returns the full history,
  *     newest-first);
  *   - ENFORCED compare-and-swap: a `write` whose `expectedVersion` no longer matches

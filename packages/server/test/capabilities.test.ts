@@ -2,9 +2,8 @@
  * Router-level tests for the capabilities self-declaration seam addition (Stage-1 Unit 2b
  * Part B, `core/src/types.ts`'s optional `StorageBackend.capabilities?()`): `GET
  * /v0/capabilities` prefers a backend's own declaration when present, and falls back to the
- * pre-existing `instanceof MemoryBackend` inference for an adapter that doesn't implement
- * it (`FilesystemBackend`/`MemoryBackend`, deliberately unchanged — the standing proof this
- * addition is additive).
+ * pre-existing `instanceof MemoryBackend` inference for an adapter that doesn't implement it.
+ * FilesystemBackend now self-declares because its enforced CAS and retained-history answers differ.
  *
  * Also covers {@link createRouterForBackend}, the worker-clean entry point extracted
  * alongside this change (`router.ts`'s `buildRouter` refactor): a basic doc round-trip
@@ -45,14 +44,14 @@ test("GET /v0/capabilities: a backend WITHOUT capabilities() falls back to the i
   assert.equal(body.backlinks, false);
 });
 
-test("GET /v0/capabilities: a FilesystemBackend (no capabilities()) falls back to enforced_cas:false, blobs:true", async () => {
+test("GET /v0/capabilities: a FilesystemBackend reports enforced CAS independently from retained history", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-server-caps-"));
   try {
     const router = createRouter({ root: dir, backend: new FilesystemBackend(dir) });
     const res = await router(new Request("http://x/v0/capabilities"));
     const body = (await json(res)) as Record<string, unknown>;
     assert.equal(body.history, false);
-    assert.equal(body.enforced_cas, false);
+    assert.equal(body.enforced_cas, true);
     assert.equal(body.blobs, true);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -61,7 +60,7 @@ test("GET /v0/capabilities: a FilesystemBackend (no capabilities()) falls back t
 
 /** A minimal stub backend that self-declares capabilities different from either fallback path. */
 class StubBackend extends MemoryBackend implements StorageBackend {
-  capabilities(): { enforced_cas: boolean; blobs: boolean; projections?: boolean; backlinks?: boolean } {
+  capabilities(): { history?: boolean; enforced_cas: boolean; blobs: boolean; projections?: boolean; backlinks?: boolean } {
     return { enforced_cas: true, blobs: false, projections: false, backlinks: true };
   }
 }

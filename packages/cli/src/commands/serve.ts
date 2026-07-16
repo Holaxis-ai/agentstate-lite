@@ -16,15 +16,10 @@
 // default is the stated mitigation (a process on the same machine can reach it, the network
 // cannot).
 //
-// SECOND HONEST CAVEAT: `serve` only ever boots over a FILESYSTEM bundle (the sole thing
-// `openBundle` without `--remote` can produce). `FilesystemBackend`'s compare-and-swap is now
-// serialized (atomic) for concurrent writers WITHIN this one `serve` process (a process-wide
-// per-path mutex in `core/src/backend.ts`), so multiple `--remote` clients hitting the SAME doc
-// through THIS server converge losslessly — the served multi-writer case STATUS.md used to flag
-// is closed. What remains best-effort is CROSS-PROCESS: two separate `serve` instances (or `serve`
-// plus a direct local CLI write) over the SAME directory can still each see `changed:true` while
-// only one write survives, because POSIX has no atomic conditional rename across processes. Said
-// out loud in both the usage text and the receipt, matching the auth caveat's say-it-out-loud norm.
+// SECOND HONEST CAVEAT: `serve` boots over a filesystem bundle. The adapter serializes each
+// target's version check + mutation across independent same-user local processes using a runtime lock.
+// A process crash can leave a diagnosable lock behind; mutation then fails closed until a human
+// confirms no writer is active and removes it. Say that in the usage and receipt too.
 import { parseArgs } from "node:util";
 import { serve as bootServerDefault, type ServeOptions, type ServerHandle } from "@agentstate-lite/server";
 import { openBundle } from "../bundle.js";
@@ -48,9 +43,8 @@ Options:
 Connect a client once this is running:
   agentstate-lite list --remote http://127.0.0.1:<port>
 
-Caveat: concurrent writes to the SAME doc from multiple clients hitting THIS server converge
-losslessly (FilesystemBackend serializes same-process writes per doc); a SECOND server (or a
-direct local CLI write) over the SAME directory is still best-effort — see STATUS.md.
+Caveat: concurrent writes to the same target across local clients and processes are serialized.
+A process crash can leave a runtime lock that fails closed until inspected and removed.
 `;
 
 /**
@@ -131,7 +125,7 @@ export async function serve(argv: string[], deps: Partial<ServeCliDeps> = {}): P
         root: bundle.root,
         auth: "none (v0 reference server; loopback-only default — see docs/WIRE-PROTOCOL.md)",
         concurrency:
-          "lossless for concurrent writers hitting THIS server (same-process, per-doc serialized); still best-effort across a SECOND serve process or a direct local write to the same directory (see STATUS.md)",
+          "lossless per target across same-user local processes; a crash-leftover lock fails closed until inspected and removed",
         help: [`${cliInvocation()} list --remote ${url}`],
       },
       resolveMode(values),
