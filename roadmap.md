@@ -1,8 +1,8 @@
 ---
 type: Roadmap
 title: agentstate-lite — Roadmap (near-term spine)
-actor: mike/codex
-timestamp: '2026-07-15T17:38:07.707Z'
+actor: mike/claude
+timestamp: '2026-07-16T00:17:44.653Z'
 ---
 # agentstate-lite — Roadmap (near-term spine)
 
@@ -144,3 +144,5 @@ items the same way, so the whole chain (roadmap → item → task) is one filter
 [contains](roadmap-items/personal-bundle-catalog.md)
 
 [contains](roadmap-items/distribution-neutral-resources.md)
+
+[contains](roadmap-items/board-git-package.md)
