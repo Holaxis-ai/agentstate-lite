@@ -41,6 +41,9 @@ export async function buildCliBundle(outfile) {
       // subpath to `index.ts` (which would resolve as the impossible `index.ts/page`).
       "@agentstate-lite/core/page": r("../core/src/page.ts"),
       "@agentstate-lite/core": r("../core/src/index.ts"),
+      // The git tier lives in its own workspace package (board-git A1); alias to source so the
+      // npm artifact stays ONE self-contained file with no dist pre-build.
+      "@agentstate-lite/board-git": r("../board-git/src/index.ts"),
       // server/src/index.ts is guard-free re-exports (createRouter + serve) — its only deps are
       // core + node:http, so aliasing straight to it keeps the esbuild bundle ONE self-contained file.
       "@agentstate-lite/server": r("../server/src/index.ts"),

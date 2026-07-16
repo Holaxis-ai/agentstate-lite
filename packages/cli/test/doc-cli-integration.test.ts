@@ -34,7 +34,7 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
 import { initBundle, writeDoc } from "@agentstate-lite/core";
-import { commitBoard, makeTwoCloneTopology, pushBoard, writeBoardDoc } from "./git-harness.js";
+import { commitBoard, makeTwoCloneTopology, pushBoard, writeBoardDoc } from "../../board-git/test/git-harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cliPackageRoot = path.resolve(here, "..");

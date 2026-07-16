@@ -7,133 +7,63 @@
 // conversion resumable without guessing from branch names, `index.md`, or crash debris.
 // Committed-folder (the folder is already committed on the current branch): preview-first and
 // `--yes`-gated — see the committed-case section below for its own safety model.
-import {
-  existsSync,
-  lstatSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, lstatSync, readdirSync, renameSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import { resolveProjectBinding } from "../bundle.js";
-import { classifyGitError, type GitFailure } from "../board-git-errors.js";
 import { CliError } from "../errors.js";
 import {
   BOARD_BRANCH,
   BOARD_REF,
   BOARD_REMOTE,
   BUNDLE_DIR,
+  COMMITTED_MARKER_KEY,
+  ESTABLISH_MARKER_KEY,
   GITIGNORE_ENTRY,
   assertBundleBytesMatchCommit,
   boardNamespaceConflicts,
+  behindBoardCommits,
+  clearGitDirMarker,
+  createBoardRootCommit,
+  createRemovalCommit,
   ensureBoardGitignoreWorkingTree,
   fetchOrigin,
   fetchOriginRequired,
+  folderPresentInCodeIndex,
+  folderTreeAtHead,
+  isAncestor,
   isProvisioned,
+  localBranchExists,
+  mustGit,
   provisionBoardWorktree,
   pushBoardCommit,
   pushBoardUpstream,
+  readGitDirMarker,
+  refCommit,
   repoTopLevel,
+  resolveBundleKey,
   runGit,
   setBoardUpstream,
+  singleActor,
   snapshotBundleCommit,
+  treeOf,
   unpushedCount,
-  withIgnoreEntry,
+  writeGitDirMarker,
   type BundleSnapshotCommit,
-} from "../git.js";
+} from "@agentstate-lite/board-git";
 import { defaultSyncStore } from "../cursor.js";
 import { render, type OutputMode } from "../output.js";
-import { resolveBundleKey, singleActor } from "../sync-engine.js";
-import { hookInstallHintOnce, type SyncCliDeps } from "./sync.js";
+import { hookInstallHintOnce, type SyncCliDeps } from "../sync-cli.js";
 
 export const ESTABLISH_DONE =
   "the shared board is live — .agentstate-lite/ now syncs over the 'board' branch";
 export const ESTABLISH_ALREADY = "already established";
-
-const ESTABLISH_MARKER_KEY = "agentstate.establishCommit";
-/** Write-time provenance for the committed case's crash window: only the executing clone has it. */
-const COMMITTED_MARKER_KEY = "agentstate.establishCommittedShare";
 
 export function establishNextSteps(inv: string): string[] {
   return [
     `teammates just run '${inv} sync' — it provisions automatically`,
     `'${inv} hook install' keeps session start board-aware`,
   ];
-}
-
-function failureOf(args: string[], r: { status: number; stdout: string; stderr: string }): GitFailure {
-  return { args, status: r.status, stdout: r.stdout, stderr: r.stderr };
-}
-
-function mustGit(dir: string, args: string[], input?: string): string {
-  const r = runGit(dir, args, input !== undefined ? { input } : {});
-  if (r.status !== 0) throw classifyGitError(failureOf(args, r));
-  return r.stdout;
-}
-
-function refCommit(top: string, ref: string): string | undefined {
-  const r = runGit(top, ["rev-parse", "--verify", "--quiet", ref]);
-  const value = r.stdout.trim();
-  return r.status === 0 && value ? value : undefined;
-}
-
-function treeOf(top: string, commit: string): string | undefined {
-  return refCommit(top, `${commit}^{tree}`);
-}
-
-function isAncestor(top: string, ancestor: string, descendant: string): boolean {
-  return runGit(top, ["merge-base", "--is-ancestor", ancestor, descendant]).status === 0;
-}
-
-function readMarker(top: string, key: string): string | undefined {
-  try {
-    const value = readFileSync(markerPath(top, key), "utf8").trim();
-    return /^[0-9a-f]{40,64}$/.test(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function writeMarker(top: string, key: string, commit: string): void {
-  const target = markerPath(top, key);
-  const temporary = `${target}.tmp-${process.pid}`;
-  writeFileSync(temporary, `${commit}\n`, { mode: 0o600 });
-  renameSync(temporary, target);
-}
-
-function clearMarker(top: string, key: string): void {
-  try {
-    unlinkSync(markerPath(top, key));
-  } catch {
-    // Already absent (or cleanup will be retried on the next explicit establish).
-  }
-}
-
-function markerPath(top: string, key: string): string {
-  return path.join(mustGit(top, ["rev-parse", "--absolute-git-dir"]).trim(), key);
-}
-
-/**
- * The tree object of the committed `.agentstate-lite/` folder at HEAD, or null when the current
- * branch carries no such folder (or carries a non-directory of that name) — the structural router
- * between the greenfield and committed-folder establish cases.
- */
-function folderTreeAtHead(top: string): string | null {
-  const r = runGit(top, ["rev-parse", "--verify", "--quiet", `HEAD:${BUNDLE_DIR}`]);
-  if (r.status !== 0) return null;
-  const sha = r.stdout.trim();
-  const t = runGit(top, ["cat-file", "-t", sha]);
-  if (t.status !== 0 || t.stdout.trim() !== "tree") return null;
-  return sha;
-}
-
-function folderPresentInCodeIndex(top: string): boolean {
-  const r = runGit(top, ["ls-files", "--", BUNDLE_DIR]);
-  return r.status === 0 && r.stdout.trim().length > 0;
 }
 
 /** Reject filesystem indirection before any ref, remote, index, or folder mutation. */
@@ -257,7 +187,7 @@ function finishLocalConversion(
     setBoardUpstream(boardPath);
     const note = gitignoreNote(top);
     removeVerifiedBackup(top, backupPath, publishedCommit, inv);
-    clearMarker(top, ESTABLISH_MARKER_KEY);
+    clearGitDirMarker(top, ESTABLISH_MARKER_KEY);
     return { boardPath, boardCommit: current, gitignore: note };
   }
 
@@ -297,7 +227,7 @@ function finishLocalConversion(
     setBoardUpstream(provisionedPath);
     const note = gitignoreNote(top);
     removeVerifiedBackup(top, sourcePath, publishedCommit, inv);
-    clearMarker(top, ESTABLISH_MARKER_KEY);
+    clearGitDirMarker(top, ESTABLISH_MARKER_KEY);
     return { boardPath: provisionedPath, boardCommit: current, gitignore: note };
   } catch (err) {
     if (!existsSync(boardPath) && existsSync(backupPath)) renameSync(backupPath, boardPath);
@@ -371,7 +301,7 @@ export async function establishBoard(
 
   const boardPath = path.join(top, BUNDLE_DIR);
   const backupPath = `${boardPath}.establish-backup`;
-  let marker = readMarker(top, ESTABLISH_MARKER_KEY);
+  let marker = readGitDirMarker(top, ESTABLISH_MARKER_KEY);
   let remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
   const localCommit = refCommit(top, `refs/heads/${BOARD_BRANCH}`);
 
@@ -395,7 +325,7 @@ export async function establishBoard(
       gitignoreNote(top);
       assertBundleBytesMatchCommit(top, boardPath, marker);
       removeVerifiedBackup(top, backupPath, marker, inv);
-      clearMarker(top, ESTABLISH_MARKER_KEY);
+      clearGitDirMarker(top, ESTABLISH_MARKER_KEY);
     }
     return { already: true };
   }
@@ -494,7 +424,7 @@ export async function establishBoard(
   await assertNotBoundElsewhere(top, boardPath);
 
   const snapshot = snapshotBundleCommit(top, boardPath);
-  writeMarker(top, ESTABLISH_MARKER_KEY, snapshot.sha);
+  writeGitDirMarker(top, ESTABLISH_MARKER_KEY, snapshot.sha);
   marker = snapshot.sha;
   try {
     pushBoardCommit(top, snapshot.sha);
@@ -624,29 +554,6 @@ export function committedNextSteps(inv: string, branch: string): string[] {
   ];
 }
 
-/** True when `refs/heads/<name>` resolves. */
-function localBranchExists(top: string, name: string): boolean {
-  return runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${name}`]).status === 0;
-}
-
-/**
- * The behind-origin freshness guard's probe: the commits on `origin/<branch>` that this clone
- * does NOT have and that TOUCH the board folder. Establishing past such a commit is the
- * reviewer-driven disaster (U5 review HIGH 1): the teammate's board commit is orphaned on the
- * frozen folder FOREVER (the root commit is cut from stale HEAD, the cleanup PR merges cleanly,
- * and sync refuses everywhere). Returns null when `origin/<branch>` doesn't resolve (a
- * never-pushed branch — nothing to be behind of); commits that DON'T touch the folder are
- * deliberately not blocking (the board tree is identical either way).
- */
-function behindBoardCommits(top: string, branch: string): string[] | null {
-  const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
-  if (runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status !== 0) return null;
-  return mustGit(top, ["rev-list", `HEAD..${remoteRef}`, "--", BUNDLE_DIR])
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-}
-
 /** Throw the behind-origin refusal when {@link behindBoardCommits} found any. */
 function assertNotBehindOnBoard(top: string, inv: string, branch: string): void {
   const behind = behindBoardCommits(top, branch);
@@ -664,43 +571,6 @@ function assertNotBehindOnBoard(top: string, inv: string, branch: string): void 
   }
 }
 
-interface TreeEntry {
-  mode: string;
-  type: string;
-  sha: string;
-  name: string;
-}
-
-/** Parse `ls-tree -z` output (NUL-terminated `<mode> <type> <sha>\t<name>` records). */
-function parseLsTreeZ(out: string): TreeEntry[] {
-  return out
-    .split("\0")
-    .filter((l) => l.length > 0)
-    .map((l) => {
-      const tab = l.indexOf("\t");
-      const [mode = "", type = "", sha = ""] = l.slice(0, tab).split(" ");
-      return { mode, type, sha, name: l.slice(tab + 1) };
-    });
-}
-
-/**
- * Git's tree-entry sort key: entries are ordered by name bytes, with a directory comparing as if
- * suffixed by `/` — required because inserting a new `.gitignore` entry must keep the listing in
- * the canonical order `mktree` records.
- */
-function treeSortKey(e: TreeEntry): string {
-  return e.type === "tree" ? `${e.name}/` : e.name;
-}
-
-/** The board branch's one attributed root-commit message (attribution = the git author running it). */
-function boardCommitMessage(branch: string): string {
-  return (
-    `board: bundle shared from '${branch}' (files only)\n\n` +
-    `One-time establishment: the bundle's current files, moved onto the dedicated ` +
-    `'${BOARD_BRANCH}' branch.\nThe folder's history stays on '${branch}'.\n`
-  );
-}
-
 /** The removal commit's message (rides the human-opened cleanup PR). */
 function removalCommitMessage(inv: string, branch: string): string {
   return (
@@ -709,47 +579,6 @@ function removalCommitMessage(inv: string, branch: string): string {
     `ignored on '${branch}'.\nOnce this lands: 'git pull' (the folder vanishes), then ` +
     `'${inv} sync' (it returns as the live shared board).\n`
   );
-}
-
-/**
- * Create the board branch's ROOT commit (files, not history): `git commit-tree` over the folder's
- * tree at HEAD with NO parents, then point `refs/heads/board` at it. Object-store and ref writes
- * only; the working tree and index are untouched.
- */
-function createBoardRootCommit(top: string, treeSha: string, branch: string): string {
-  const sha = mustGit(top, ["commit-tree", treeSha], boardCommitMessage(branch)).trim();
-  mustGit(top, ["branch", BOARD_BRANCH, sha]);
-  return sha;
-}
-
-/**
- * Build the folder-removal commit with PLUMBING ONLY — HEAD's top-level tree minus the
- * `.agentstate-lite` entry, with `.gitignore` gaining the entry — parented on HEAD. The working
- * tree, the index, and the current branch are never touched, which also means any STAGED user
- * code stays exactly as staged.
- */
-function createRemovalCommit(top: string, inv: string, branch: string): string {
-  const headTree = mustGit(top, ["rev-parse", "HEAD^{tree}"]).trim();
-  const entries = parseLsTreeZ(mustGit(top, ["ls-tree", "-z", headTree])).filter(
-    (e) => e.name !== BUNDLE_DIR,
-  );
-
-  const existing = entries.find((e) => e.name === ".gitignore");
-  const base = existing ? mustGit(top, ["cat-file", "blob", existing.sha]) : "";
-  const updated = withIgnoreEntry(base);
-  if (updated !== base) {
-    const blob = mustGit(top, ["hash-object", "-w", "--stdin"], updated).trim();
-    if (existing) {
-      existing.sha = blob;
-    } else {
-      entries.push({ mode: "100644", type: "blob", sha: blob, name: ".gitignore" });
-    }
-  }
-
-  entries.sort((a, b) => (treeSortKey(a) < treeSortKey(b) ? -1 : treeSortKey(a) > treeSortKey(b) ? 1 : 0));
-  const mktreeInput = entries.map((e) => `${e.mode} ${e.type} ${e.sha}\t${e.name}\0`).join("");
-  const newTree = mustGit(top, ["mktree", "-z"], mktreeInput).trim();
-  return mustGit(top, ["commit-tree", newTree, "-p", "HEAD"], removalCommitMessage(inv, branch)).trim();
 }
 
 /**
@@ -900,11 +729,11 @@ async function establishCommitted(
   // existence — is what later identifies THIS clone as the interrupted executor (a teammate who
   // merely checked out the board branch during the window must never be offered the recovery).
   const boardSha = reuseBoardSha ?? createBoardRootCommit(top, treeSha, branch);
-  writeMarker(top, COMMITTED_MARKER_KEY, boardSha);
+  writeGitDirMarker(top, COMMITTED_MARKER_KEY, boardSha);
   pushBoardUpstream(top);
-  const removalSha = createRemovalCommit(top, inv, branch);
+  const removalSha = createRemovalCommit(top, removalCommitMessage(inv, branch));
   mustGit(top, ["branch", CLEANUP_BRANCH, removalSha]);
-  clearMarker(top, COMMITTED_MARKER_KEY);
+  clearGitDirMarker(top, COMMITTED_MARKER_KEY);
 
   const receipt: Record<string, unknown> = {
     established: ESTABLISH_COMMITTED_DONE,
@@ -962,11 +791,11 @@ async function alreadyShared(
   const rec: Record<string, unknown> = { establish: ESTABLISH_COMMITTED_ALREADY };
   const branchR = runGit(top, ["rev-parse", "--abbrev-ref", "HEAD"]);
   const branch = branchR.status === 0 ? branchR.stdout.trim() : "HEAD";
-  const marker = readMarker(top, COMMITTED_MARKER_KEY);
+  const marker = readGitDirMarker(top, COMMITTED_MARKER_KEY);
 
   if (localBranchExists(top, CLEANUP_BRANCH)) {
     // (a) prepared but not landed: the PR is the only thing left.
-    clearMarker(top, COMMITTED_MARKER_KEY);
+    clearGitDirMarker(top, COMMITTED_MARKER_KEY);
     rec.note =
       `the folder-removal commit is already prepared on '${CLEANUP_BRANCH}' — push it and ` +
       `open its PR`;
@@ -989,7 +818,7 @@ async function alreadyShared(
       if (!localBranchExists(top, BOARD_BRANCH)) {
         // The attempt is already discarded — definitively lost. Clearing the stale marker is the
         // ONLY mutation here; from now on normal routing (state c) owns this clone.
-        clearMarker(top, COMMITTED_MARKER_KEY);
+        clearGitDirMarker(top, COMMITTED_MARKER_KEY);
         rec.cleared =
           `a different board was published to ${BOARD_REMOTE}/${BOARD_BRANCH} and this clone's ` +
           `earlier establishment attempt was never published — its stale marker has been ` +
@@ -1057,9 +886,9 @@ async function alreadyShared(
           },
         );
       }
-      const removalSha = createRemovalCommit(top, inv, branch);
+      const removalSha = createRemovalCommit(top, removalCommitMessage(inv, branch));
       mustGit(top, ["branch", CLEANUP_BRANCH, removalSha]);
-      clearMarker(top, COMMITTED_MARKER_KEY);
+      clearGitDirMarker(top, COMMITTED_MARKER_KEY);
       rec.recovered =
         `an interrupted establishment left the board branch pushed but no folder-removal commit — ` +
         `it has been re-created on '${CLEANUP_BRANCH}'`;

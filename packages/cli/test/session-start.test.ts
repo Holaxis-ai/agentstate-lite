@@ -41,7 +41,7 @@ import {
   sessionStartPull,
 } from "../src/commands/session-start.js";
 import { sync } from "../src/commands/sync.js";
-import { resolveBundleKey } from "../src/sync-engine.js";
+import { resolveBundleKey } from "@agentstate-lite/board-git";
 import {
   HOOK_TIMEOUT_SECONDS,
   buildOpenCodePluginSource,
@@ -60,7 +60,7 @@ import {
   pushBoard,
   writeBoardDoc,
   type BoardRepo,
-} from "./git-harness.js";
+} from "../../board-git/test/git-harness.js";
 
 // ── scaffolding (mirrors sync.test.ts) ───────────────────────────────────────
 

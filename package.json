@@ -9,8 +9,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @agentstate-lite/core -w @agentstate-lite/server -w agentstate-lite",
-    "typecheck": "npm run build -w @agentstate-lite/core -w @agentstate-lite/server && npm run typecheck --workspaces --if-present",
+    "build": "npm run build -w @agentstate-lite/core -w @agentstate-lite/board-git -w @agentstate-lite/server -w agentstate-lite",
+    "typecheck": "npm run build -w @agentstate-lite/core -w @agentstate-lite/board-git -w @agentstate-lite/server && npm run typecheck --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
     "test:scripts": "node --test --test-concurrency=1 scripts/ci-version-bundle.test.mjs scripts/package-core-external-proof.test.mjs scripts/dev-build-no-plugin-writes.test.mjs scripts/oss-hosted-boundary.test.mjs scripts/verify-npm-package.test.mjs",
     "e2e": "npm run e2e:gate -w @agentstate-lite/ui",

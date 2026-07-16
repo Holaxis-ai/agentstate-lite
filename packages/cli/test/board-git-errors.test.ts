@@ -2,7 +2,7 @@
  * The BoardGitError → CliError PARITY TABLE (board-git A0's behavior pin).
  *
  * Before the taxonomy split the git tier threw `CliError` directly; now it throws typed
- * `BoardGitError`s that THE one boundary mapping (`cliErrorFromBoardGit`, also applied inside
+ * `BoardGitError`s (from `@agentstate-lite/board-git`) that THE one boundary mapping (`cliErrorFromBoardGit`, also applied inside
  * `classifyBundleError`/`toExit`) projects onto the CLI surface. This suite pins that the
  * projection is IDENTICAL to the old direct-throw behavior for EVERY BoardGitError code:
  * same-named CliErrorCode, same exit code, byte-identical envelope (message/details/help
@@ -18,7 +18,7 @@ import {
   classifyGitError,
   isBoardGitError,
   type BoardGitErrorCode,
-} from "../src/board-git-errors.js";
+} from "@agentstate-lite/board-git";
 import {
   CliError,
   classifyBundleError,

@@ -44,6 +44,7 @@
     "prepublishOnly": "node ../../scripts/verify-npm-package.mjs"
   },
   "devDependencies": {
+    "@agentstate-lite/board-git": "*",
     "@agentstate-lite/core": "*",
     "@agentstate-lite/server": "*",
     "@toon-format/toon": "2.3.0",

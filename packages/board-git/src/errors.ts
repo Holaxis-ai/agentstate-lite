@@ -1,10 +1,10 @@
-// `board-git-errors.ts` — the git tier's OWN typed error taxonomy (board-git A0 seam prep).
+// `errors.ts` — the git tier's OWN typed error taxonomy (board-git A0 seam prep, relocated
+// here by A1).
 //
-// The git tier (git.ts, cursor.ts, autopull.ts, the sync flow internals) throws and consumes
-// `BoardGitError`; the CLI command boundary maps it onto `CliError`/envelope/exit codes through
-// ONE mapping layer (`cliErrorFromBoardGit` in errors.ts). This module is deliberately
-// DEPENDENCY-CLEAN — no imports from errors.ts/output.ts/invocation.ts — so it can relocate into
-// the future `@agentstate-lite/board-git` package without dragging CLI concerns along.
+// The git tier (porcelain/diff/cursor/engine/flow/autopull) throws and consumes `BoardGitError`;
+// the CLI command boundary maps it onto `CliError`/envelope/exit codes through ONE mapping layer
+// (`cliErrorFromBoardGit` in the CLI's errors.ts). This module is deliberately DEPENDENCY-CLEAN
+// — node builtins only — the package's one error vocabulary.
 //
 // Detection is STRUCTURAL ({@link isBoardGitError}), never bare `instanceof`: cli tests resolve
 // workspace deps to built `dist` while the esbuild bundle aliases source, so two copies of this
@@ -12,7 +12,7 @@
 
 /**
  * The codes the git tier produces. Each maps 1:1 onto the SAME-NAMED `CliErrorCode`; the
- * code→exit parity is pinned by `test/board-git-errors.test.ts`'s table.
+ * code→exit parity is pinned by the CLI's `test/board-git-errors.test.ts` table.
  */
 export type BoardGitErrorCode =
   | "GIT_MISSING"
@@ -76,7 +76,7 @@ export function isBoardGitError(v: unknown): v is BoardGitError {
 }
 
 /**
- * The captured outcome of one failed `git` invocation (`git.ts`'s spawn wrapper is the ONLY
+ * The captured outcome of one failed `git` invocation (`porcelain.ts`'s spawn wrapper is the ONLY
  * producer). Deliberately a plain data shape — not an Error subclass — so the classifier below is
  * a pure, unit-testable function.
  */

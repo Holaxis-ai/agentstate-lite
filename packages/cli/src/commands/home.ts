@@ -72,8 +72,9 @@ import {
   repoTopLevel,
   runGit,
   unpushedCount,
-} from "../git.js";
-import { resolveBundleKey, retargetBoardInterior } from "../sync-engine.js";
+  resolveBundleKey,
+  retargetBoardInterior,
+} from "@agentstate-lite/board-git";
 import { maybeAutoPull } from "../autopull.js";
 import { defaultSyncStore, type AwarenessCache, type AwarenessDeltaRow } from "../cursor.js";
 import { hookNeedsUpdate } from "./hook.js";

@@ -41,8 +41,9 @@ import {
   maybeAutoPull,
 } from "../src/autopull.js";
 import { readCache, readCursor, readSyncState } from "../src/cursor.js";
-import { sync, hookInstallHintOnce } from "../src/commands/sync.js";
-import { resolveBundleKey } from "../src/sync-engine.js";
+import { sync } from "../src/commands/sync.js";
+import { hookInstallHintOnce } from "../src/sync-cli.js";
+import { resolveBundleKey } from "@agentstate-lite/board-git";
 import { hook, hookInstalled } from "../src/commands/hook.js";
 import { home } from "../src/commands/home.js";
 import { list } from "../src/commands/list.js";
@@ -59,7 +60,7 @@ import {
   makeTwoCloneTopology,
   pushBoard,
   writeBoardDoc,
-} from "./git-harness.js";
+} from "../../board-git/test/git-harness.js";
 
 // ── scaffolding (mirrors sync.test.ts / session-start.test.ts) ────────────────
 

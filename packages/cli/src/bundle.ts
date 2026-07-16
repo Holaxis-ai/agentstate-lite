@@ -43,6 +43,7 @@
 // `getApiKeyForOrigin`). Neither is required: the reference `serve()` ignores the
 // `Authorization` header entirely (no auth enforced there), so an ungated local bundle works
 // exactly as before with no key configured.
+import { BUNDLE_DIR } from "@agentstate-lite/board-git";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { RemoteBackend, RemoteError, type Bundle, type FetchLike } from "@agentstate-lite/core";
@@ -89,7 +90,9 @@ async function findAncestorWithFile(start: string, filename: string): Promise<st
  * `.agentstate.json` remains the explicit override for anything unconventional (a remote
  * URL, an out-of-tree directory) and — being an explicit committed pointer — beats it.
  */
-export const CONVENTIONAL_BUNDLE_DIR_NAME = ".agentstate-lite";
+// The one sanctioned reverse edge (board-git A1): the discovery layer consumes the git
+// channel's BUNDLE_DIR constant, so the conventional folder name has ONE owner.
+export const CONVENTIONAL_BUNDLE_DIR_NAME: string = BUNDLE_DIR;
 
 /**
  * Walk up from `start` to the nearest bundle root; null if none. At EACH level, the

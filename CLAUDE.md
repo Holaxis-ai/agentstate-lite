@@ -2,12 +2,15 @@
 
 This file is read automatically at every session start. `agentstate-lite` is an
 **OKF-native, CLI-first, local-first** knowledge store: `packages/core` (the OKF
-engine), `packages/server` (`@agentstate-lite/server`
+engine), `packages/board-git` (`@agentstate-lite/board-git` — the board's git channel:
+porcelain/diff/state-store/engine/flow/autopull; imports ONLY node + core, machine-enforced by
+its own import-direction test with no allowlist; command UX stays in the CLI),
+`packages/server` (`@agentstate-lite/server`
 — the wire-protocol REFERENCE server, a pure consumer of core; see gate 3 and Scope),
 `packages/ui` (the browser SPA — PRIVATE workspace; only its BUILT assets ship, gzip-embedded
 into the CLI bundle; it launches bundle-authored Pages, see gate 4), and `packages/cli` —
 the **publishable npm package `agentstate-lite`** (bins `agentstate-lite` / `aslite`), an
-esbuild bundle that inlines core + server + the built UI assets + deps into one
+esbuild bundle that inlines core + board-git + server + the built UI assets + deps into one
 self-contained ESM file. The filesystem is the
 DEFAULT local backend; the storage seam is pluggable (gate 3). Hosted deployment code is outside
 this OSS repository; the former Cloudflare implementation is preserved only as a private frozen
@@ -189,7 +192,7 @@ bundle-relative**.
   callers cannot reproduce the mistake; do not keep patching consumers or adding reminders.
 
 - Build/verify gate: `npm run build` and `npm run typecheck` must exit 0, and `npm test`
-  (`--workspaces --if-present`: core + cli + server + ui suites) must pass, before
+  (`--workspaces --if-present`: board-git + core + cli + server + ui suites) must pass, before
   shipping. `npm run check` runs all of that plus this repo's own `scripts/` tests (`test:scripts`),
   the installed-tarball proof (`verify:npm-package`), and the npm-target SKILL.md drift gate
   (`check:skill`) in one shot. The plugin-bundle drift gates
@@ -336,7 +339,8 @@ the bundle):
   board-sharing project), commit/pull/push touching nothing outside the board, CONVERGING
   conflict resolution (teammate's version kept, yours exported to a file; reconcile via
   `doc update`, exit 5), `--show-incoming <id>` viewer, `--pull-only`, cursor + awareness
-  cache (`cli/src/git.ts`, `cursor.ts`, `commands/sync.ts` — command layer only; core never
+  cache (`packages/board-git` is the channel mechanics; the CLI's `commands/sync*.ts` +
+  `cursor.ts`/`autopull.ts` wiring keep command UX — core never
   learns git exists), and the SessionStart integration (U4): `session-start` — ONE hook
   subcommand doing a time-boxed (≤7s) best-effort pull then the home render in-process, with
   the board-awareness block ("since this machine last synced" attributed per actor,

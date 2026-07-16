@@ -31,7 +31,6 @@ import {
   convergeHelp,
   entryLabel,
   ffSwallowToError,
-  originDocsBetween,
   pickHelp,
   pushFailureMessage,
   sync,
@@ -42,11 +41,16 @@ import {
   syncLocalOnlyNote,
   syncRemoteStateUnknownNote,
 } from "../src/commands/sync.js";
-import { provisionAnnouncement, singleActor, toDeltaRows } from "../src/sync-engine.js";
+import {
+  originDocsBetween,
+  provisionAnnouncement,
+  singleActor,
+  toDeltaRows,
+  type DocChange,
+} from "@agentstate-lite/board-git";
 import { cliInvocation } from "../src/invocation.js";
 import { doc } from "../src/commands/doc.js";
 import { CliError } from "../src/errors.js";
-import type { DocChange } from "../src/git.js";
 import { REANCHOR_NOTE, readSyncState, bundleKey, syncExportsDir, syncStateDir, writeCursor } from "../src/cursor.js";
 import {
   BUNDLE_DIR,
@@ -65,7 +69,7 @@ import {
   writeBoardDoc,
   git,
   type BoardRepo,
-} from "./git-harness.js";
+} from "../../board-git/test/git-harness.js";
 
 // ── test scaffolding ───────────────────────────────────────────────────────────
 

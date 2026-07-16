@@ -18,9 +18,9 @@
 // via `git show origin/board:<path>` with full doc-read semantics (truncation, `--out` byte hatch,
 // `--out -` stderr envelope), labeled "as of last fetch" (no implicit fetch — adjudication G).
 //
-// COMMAND LAYER ONLY: this module composes the engine tier's exported vocabulary — `git.ts`
-// (porcelain ops), `cursor.ts` (the state store), `sync-engine.ts` (the neutral helpers every
-// board-aware command shares) — but never re-implements git plumbing or the state-store schema.
+// COMMAND LAYER ONLY: this module composes `@agentstate-lite/board-git`'s exported vocabulary —
+// porcelain ops, the diff family, the flow steps, the neutral engine helpers — plus the CLI's
+// store wiring (`cursor.ts`), but never re-implements git plumbing or the state-store schema.
 // This module keeps COMMAND UX: arg parsing, envelopes, help text, and the git tier's CLI
 // command boundary (BoardGitError → CliError, see `sync()`).
 //
@@ -30,7 +30,7 @@
 // an interactive verb that must report a REAL structured outcome, so `ffSwallowToError` below
 // translates every `FfPullResult.swallowed` reason into the capped CliError taxonomy instead of
 // silently no-op'ing.
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -38,38 +38,40 @@ import { assertSafeConceptId, parseMarkdown, pathFromConceptId } from "@agentsta
 import {
   BOARD_BRANCH,
   BOARD_REF,
-  BUNDLE_DIR,
+  annotateLanded,
   changesSince,
+  classifyGitError,
   countUncommitted,
-  diffDocsBetween,
+  currentHead,
   fetchRebaseResolving,
   ffPull,
-  currentHead,
+  hasLocalOnlyBundle,
+  healStaleRebaseBeforeProvisioning,
+  isBoardGitError,
+  originDocsBetween,
+  provisionAnnouncement,
   provisionBoardWorktree,
   push,
   repoTopLevel,
+  resolveBundleKey,
+  resolveOriginRef,
+  retargetBoardInterior,
   runGit,
   runGitBytes,
+  singleActor,
   stageAndCommit,
+  toDeltaRows,
   unpushedCount,
   type CommitResult,
   type DocChange,
   type FetchRebaseResolvingOutcome,
+  type LandedConflict,
   type ProvisionOutcome,
   type ResolvedConflict,
-} from "../git.js";
+} from "@agentstate-lite/board-git";
 import { REANCHOR_NOTE, defaultSyncStore } from "../cursor.js";
-import {
-  healStaleRebaseBeforeProvisioning,
-  provisionAnnouncement,
-  resolveBundleKey,
-  retargetBoardInterior,
-  singleActor,
-  toDeltaRows,
-} from "../sync-engine.js";
-import { hookInstalled } from "./hook.js";
+import { hookInstallHintOnce, type SyncCliDeps } from "../sync-cli.js";
 import { ESTABLISH_ALREADY, establishBoard } from "./sync-establish.js";
-import { classifyGitError, isBoardGitError } from "../board-git-errors.js";
 import { CliError, asHandled, cliErrorFromBoardGit, toExit } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, renderErrorEnvelope, resolveMode } from "../output.js";
@@ -172,16 +174,6 @@ Options:
   --json               Emit compact JSON instead of TOON
   -h, --help           Show this help
 `;
-
-export interface SyncCliDeps {
-  stdout: (s: string) => void;
-  /** show-incoming's receipt/envelope channel when stdout is reserved for raw bytes (--out -). */
-  stderr: (s: string) => void;
-  /** Raw byte writes for `--show-incoming --out -` (stdout stays a pure byte stream). */
-  writeStdoutBytes: (data: Uint8Array) => void;
-  /** The installed-hook probe behind the one-time onboarding hint (default hook.ts's {@link hookInstalled}). */
-  hookInstalled: () => boolean;
-}
 
 /** AXI list-cap default: 20 rows unless `--limit` overrides it (0 = unlimited). */
 const DEFAULT_LIMIT = 20;
@@ -302,23 +294,6 @@ async function throwPostCommitFailure(
  */
 export function entryLabel(c: Pick<ResolvedConflict, "entry" | "isDoc">): string {
   return c.isDoc ? `doc ${c.entry}` : c.entry;
-}
-
-/**
- * A {@link ResolvedConflict} annotated with whether the kept-upstream version actually LANDED at
- * HEAD (false = the teammate's side DELETED the file, so keep-upstream meant removing it). The
- * one `cat-file -e HEAD:<path>` probe per conflict happens in {@link annotateLanded}; the message
- * builder, the row projector, and the help-chain pick (review fix 2) all read the SAME answer —
- * the help chain must never name a doc whose file is gone (`doc update` on it fails NOT_FOUND).
- */
-export type LandedConflict = ResolvedConflict & { landed: boolean };
-
-/** Annotate each resolved conflict with the post-rebase HEAD existence probe (ONE probe per doc). */
-export function annotateLanded(boardPath: string, conflicts: ResolvedConflict[]): LandedConflict[] {
-  return conflicts.map((c) => ({
-    ...c,
-    landed: runGit(boardPath, ["cat-file", "-e", `HEAD:${c.relPath}`]).status === 0,
-  }));
 }
 
 /**
@@ -478,36 +453,6 @@ function withProvisionAnnouncement(err: CliError, outcome: ProvisionOutcome): Cl
 }
 
 /**
- * The onboarding last-mile hint (tasks/sync-opportunistic-pull): when NO managed SessionStart hook
- * is installed anywhere (project or global scope), a successful sync's receipt hints `hook install`
- * ONCE per clone. Once-ness mechanism: recorded on the per-clone sync state (cursor.ts's
- * `hookHintedAt` — the same keyed store the cursor/cache ride), so the hint is honest (it names the
- * ONE manual step left in the onboarding chain) and never nagging (a clone sees it exactly once;
- * an already-installed hook suppresses it before it is ever shown, and installing later simply
- * makes the probe true). Chosen surface: sync's SUCCESS receipts — sync is the setup verb (first
- * contact provisions through it), and the receipt is read at exactly the moment onboarding
- * completes; home renders every session and would nag. Best-effort throughout: any probe/state
- * failure suppresses the hint, never the receipt.
- */
-export async function hookInstallHintOnce(
-  key: string,
-  inv: string,
-  installed: () => boolean = hookInstalled,
-): Promise<string | undefined> {
-  try {
-    if (installed()) return undefined;
-    if ((await defaultSyncStore.readHookHintedAt(key)) !== null) return undefined;
-    await defaultSyncStore.recordHookHinted(key);
-    return (
-      `no SessionStart hook is installed — run \`${inv} hook install\` once and every new agent ` +
-      `session will start with the board pulled and rendered`
-    );
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * Map a fail-soft pull reason to the capped CliError taxonomy. `boardPath` distinguishes a local
  * unpublished board from a project with no shared board configured.
  */
@@ -589,28 +534,9 @@ export function ffSwallowToError(reason: string, inv: string, boardPath?: string
   }
 }
 
-/** The `refs/remotes/origin/board` sha, or `null` when it doesn't resolve (mirrors `unpushedCount`'s own check). */
-function resolveOriginRef(boardPath: string): string | null {
-  const r = runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]);
-  return r.status === 0 ? r.stdout.trim() : null;
-}
-
 const UNKNOWN_FIELD = "unknown";
 function fmValue(v: unknown): string {
   return typeof v === "string" && v.trim().length > 0 ? v.trim() : UNKNOWN_FIELD;
-}
-
-/**
- * The RECEIPT's `pulled`/`incoming` delta: the concept docs that changed strictly between two
- * EXPLICIT origin/board refs (before/after this run's own fetch), NEVER touching local HEAD or
- * local commit history — a HEAD-anchored diff would double-count self-authored/unpushed docs as
- * "incoming". `null`/equal refs (no known baseline, or genuinely nothing new fetched) and a diff
- * between refs that cannot be compared both yield an empty result rather than a failed sync —
- * the receipt tolerance, layered onto git.ts's ONE consolidated {@link diffDocsBetween}.
- */
-export function originDocsBetween(boardPath: string, fromRef: string | null, toRef: string | null): DocChange[] {
-  if (!fromRef || !toRef || fromRef === toRef) return [];
-  return diffDocsBetween(boardPath, fromRef, toRef, { tolerateDiffFailure: true });
 }
 
 /** Project the enriched delta feed into the envelope's `incoming` row shape (message pack (a)). */
@@ -639,13 +565,6 @@ export function syncRemoteStateUnknownNote(inv: string, hasLocalBundle: boolean)
     ? "your local bundle remains usable and sync committed nothing. "
     : "sync changed nothing. ";
   return local + `Retry \`${inv} sync\` when origin is available; a shared board may already exist.`;
-}
-
-/** Detect a conventional local bundle by its reserved root index. */
-export function hasLocalOnlyBundle(dir: string): boolean {
-  const top = repoTopLevel(dir);
-  if (!top) return false;
-  return existsSync(path.join(top, BUNDLE_DIR, "index.md"));
 }
 
 /**

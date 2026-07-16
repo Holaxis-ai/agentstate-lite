@@ -38,7 +38,7 @@ import {
   provisionBoardWorktree,
   pushBoardCommit,
   snapshotBundleCommit,
-} from "../src/git.js";
+} from "@agentstate-lite/board-git";
 import {
   BUNDLE_DIR,
   git,
@@ -47,7 +47,7 @@ import {
   makeGreenfieldTopology,
   writeBoardDoc,
   type BoardRepo,
-} from "./git-harness.js";
+} from "../../board-git/test/git-harness.js";
 
 const INV = cliInvocation();
 

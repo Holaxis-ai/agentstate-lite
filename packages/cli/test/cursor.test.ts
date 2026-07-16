@@ -46,7 +46,7 @@ import {
   git,
   gitTry,
   makeTwoCloneTopology,
-} from "./git-harness.js";
+} from "../../board-git/test/git-harness.js";
 
 async function tempHome(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "agentstate-lite-cursor-test-"));
