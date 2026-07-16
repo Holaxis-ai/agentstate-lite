@@ -4,7 +4,7 @@ title: >-
   How agentstate-lite works: CLI, engine, sync, and the dynamic UI (with
   plain-language sections)
 actor: brian-claude
-timestamp: '2026-07-16T13:48:19.315Z'
+timestamp: '2026-07-16T14:53:26.040Z'
 ---
 ## What this is
 
@@ -21,7 +21,54 @@ that make those documents behave like a shared memory (types, links, versions,
 attribution), and everything else — sync, dashboards, session greetings — is built on
 top of that folder without ever replacing it.
 
-## 2. The data model: a bundle
+## 2. Vocabulary: the concepts, precisely
+
+- BUNDLE — the substrate. Any directory of OKF markdown documents rooted at an
+  index.md. A bundle is a data format, not a purpose: sample fixtures, a personal
+  scratch space, and this team's task tracker are all bundles.
+- BOARD — a ROLE a bundle plays, not a different thing. The board is a project's
+  shared-workspace bundle: the one at the conventional .agentstate-lite/ location
+  that carries the team's tasks, plans, decisions, and pages — the bundle that sync
+  manages, session-start greets you with, and the dashboards render. Every board is a
+  bundle; most bundles you'll ever touch are boards. A board can be local-only (a
+  supported mode) or shared (living on the board branch, below).
+- DOC — one markdown file in a bundle: frontmatter (must have a type) + body.
+- KIND — a doc type with declared structure (Task, Claim, Context Note). Declared by
+  a CONVENTION doc (type: Convention under conventions/) naming required/optional
+  fields, enum values, terminal statuses, expected links, and a freshness horizon.
+- RECIPE — an installable folder of convention docs (work-tracking, context-notes):
+  how a bundle gains kinds. Applied idempotently; never overwrites hand edits.
+- LINK / LABEL — a relative markdown link in a doc's body; its display text is the
+  label ("contains", "evidence"). Backlinks are derived at read time, never stored.
+- BOARD BRANCH — the dedicated git branch (literally named `board`) where a SHARED
+  board lives, checked out into the working tree at .agentstate-lite/ (gitignored on
+  main). Created files-only, so it shares no history with main — which is why the two
+  can never be merged, even accidentally.
+- SYNC — the one verb that moves a shared board: commit board changes, pull
+  teammates', push yours. Also the setup verb on a fresh clone (it provisions the
+  checkout from the board branch).
+- CURSOR / AWARENESS — sync's bookmark of where THIS machine last was (an opaque
+  token anchored to a commit) plus the derived change feed {doc, actor, verb} — the
+  raw material of session-start's "since you last synced" greeting.
+- ACTOR — the attribution string on writes (--actor or AGENTSTATE_LITE_ACTOR). What
+  teammates' greetings display; unattributed writes render as "unknown".
+- VERSION TOKEN / CAS — every read returns a content-hash version; a write may say
+  "only if it's still version X" (compare-and-swap). This is what makes claiming a
+  task race-safe between agents.
+- PAGE — a doc of type Page registering a self-contained HTML blob (pages/*.html) as
+  a dashboard; rendered by the ui shell in a sandboxed iframe over the read-only
+  bridge. Pages are bundle content: authored, synced, and versioned like any doc.
+- SKILL / PLUGIN — the distribution channel: a marketplace plugin carrying the
+  self-contained CLI plus the SKILL text that teaches agents to use it.
+- TOON — the compact structured-text format receipts render in on stdout.
+
+IN PLAIN LANGUAGE: a bundle is a notebook (the physical format); a board is THE
+team notebook (the one whose job is tracking your shared work). The board branch is
+the parallel git track the team notebook travels on. Docs are pages of the notebook;
+kinds are the stationery templates; recipes are packs of templates; pages (confusingly
+capitalized differently) are interactive dashboards stored inside the notebook itself.
+
+## 3. The data model: a bundle
 
 A BUNDLE is a directory tree rooted at a folder containing index.md. Every document
 is one .md file: YAML frontmatter (must carry a non-empty `type`) plus a markdown
@@ -41,7 +88,7 @@ edit by hand. The "schema" is more text files in the same folder, describing wha
 Task or a Claim looks like. Nothing is hidden in a binary store; git can diff all of
 it; deleting the tool leaves your notes intact.
 
-## 3. How a CLI command actually runs
+## 4. How a CLI command actually runs
 
 The shipped CLI is ONE self-contained JavaScript file (~esbuild bundle of core +
 server + UI assets + deps) run by node — no install, no node_modules. Walkthrough of
@@ -77,7 +124,7 @@ doesn't care whether the notebook is on disk or on a server, and print a small
 machine-readable receipt. If two agents write the same doc at once, version tokens
 make the second writer retry or fail loudly instead of silently overwriting.
 
-## 4. How agents actually use it (a day in the life)
+## 5. How agents actually use it (a day in the life)
 
 - SESSION START: a hook installed once per machine (`hook install`, all three agent
   runtimes) runs `session-start`: a time-boxed (~7s) best-effort pull of the shared
@@ -94,7 +141,7 @@ make the second writer retry or fail loudly instead of silently overwriting.
 - UNIT CLOSE: `sync` — commits board changes, pulls teammates', pushes yours.
   Recording work isn't done until it's shared.
 
-## 5. Sync: the board on its own branch
+## 6. Sync: the board on its own branch
 
 The shared board lives on a dedicated `board` git branch of the project's own repo,
 checked out INTO the working tree at .agentstate-lite/ (gitignored on main). sync
@@ -118,7 +165,7 @@ the board in both directions. If you and a teammate edited the same card, the to
 keeps theirs, hands yours back as a file, and tells you exactly how to merge the two —
 you never see a git conflict marker.
 
-## 6. The dynamic UI: pages are documents
+## 7. The dynamic UI: pages are documents
 
 `aslite ui` boots a LOOPBACK-ONLY web server over the bundle and prints a one-time
 tokened URL (the token becomes an HttpOnly cookie on first load; it dies with the
@@ -155,7 +202,7 @@ open tasks") through a slot, and the librarian answers with read-only copies. Wh
 the notebook changes, the librarian taps the glass and the page redraws itself. The
 one-time password in the URL means only the person who started the viewer can use it.
 
-## 7. Other architecturally interesting choices
+## 8. Other architecturally interesting choices
 
 - LOCAL-FIRST, GIT-OPTIONAL: everything works with the network off, and a bundle
   without any remote is a first-class supported mode (sync says so honestly). Sharing
