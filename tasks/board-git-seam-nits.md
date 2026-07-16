@@ -1,24 +1,22 @@
 ---
 type: Task
 title: 'board-git seam: altitude cleanup nits from the A1 review'
-status: in_progress
+status: done
 priority: '3'
 description: >-
-  Non-blocking follow-ups from the A1 + C reviews (all cosmetic/copy/perf; zero
-  behavior risk). FROM A1 (#78): (1) nameable probes duplicated across the seam
-  (currentHead x3 in sync-establish, currentBranch, dirty-board-paths parse,
-  remnant probe, windowNote landed probe, show-incoming byte read); (2)
-  mis-indentation in moved git-porcelain.test.ts (~918-921, 943-946); (3) import
-  gate exempts board-git test files; (4) redundant isTemplateExpression check.
-  FROM C (#80): (N1) remoteless in-tree refusal + establish no-origin error both
-  dead-end without the 'git remote add origin <url>' remedy — model on the
-  pre-share no-origin arm shipped in #80; (N3) REANCHOR_NOTE '(history
-  rewritten)' parenthetical inaccurate for the branch-switch reposition arm;
-  (N4) in-tree diffDocsBetween filters in JS rather than passing the pathspec —
-  cost-only on large repos; (N5) PR body suite-count label swap (cosmetic,
-  record only). Sonnet-tier sweep, one PR.
+  SHIPPED: PR #81 merged (reviewed candidate e835190, Sonnet build + Sonnet
+  review APPROVE). All seven recorded nits resolved, none skipped: remoteless
+  dead-end remedy (git remote add origin <url> in both the in-tree refusal and
+  establish's no-origin error — copy-only deltas verified against a base build);
+  REANCHOR_NOTE reworded truthfully for both arms; six seam probes consolidated
+  into named package ops (argv-identical, byte-parity via unmodified pinned
+  suites); import gate extended to board-git test files (planted-violation red
+  proof); redundant isTemplateExpression removed (both dynamic-import arms
+  re-probed); test indentation fixed (whitespace-only diff proven); in-tree diff
+  pathspec pushdown (glob-special-character probe passed byte-identical). Review
+  added the glob probe beyond the builder's own verification — no findings.
 actor: mike/claude
 assignee: mike/claude
-timestamp: '2026-07-16T10:21:36.765Z'
+timestamp: '2026-07-16T10:58:34.514Z'
 ---
 

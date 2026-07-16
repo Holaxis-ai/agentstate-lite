@@ -1,20 +1,22 @@
 ---
 type: Roadmap Item
 title: 'board-git package: git tier behind a BoardChannel seam (branch + in-tree)'
-status: active
+status: done
 description: >-
-  A0-C ALL SHIPPED (2026-07-16, six PRs): #73 seam prep, #75 establish
-  unification + --migrate retirement (full high-risk ladder), #76 cursor split
-  (Sonnet), #78 extraction (packages/board-git, no-allowlist import gate), #79
-  BoardChannel detection (fail-closed matrix), #80 in-tree read-side mode. The
-  plan's product goal is delivered: a bundle committed with code is a supported,
-  honestly-described board mode; the git tier is a package with a
-  machine-enforced boundary. Remaining tail before closing this item:
-  tasks/board-git-seam-nits (Sonnet sweep) and the pre-existing
-  tasks/establish-window-journey-defects. Plan: plans/board-git-package (v3,
-  twice-reviewed; every review carry-over landed).
+  COMPLETE (2026-07-16, seven PRs, all independently reviewed on exact SHAs):
+  #73 seam prep, #75 establish unification + --migrate retirement (full
+  high-risk ladder: review, adversarial QA, F1 fix, delta review), #76 cursor
+  split, #78 extraction (packages/board-git, no-allowlist machine-enforced
+  import boundary), #79 fail-closed BoardChannel detection, #80 in-tree
+  read-side mode, #81 review-nit sweep. Product goals delivered: the git tier is
+  a package with a mechanical boundary, and a bundle committed with code is a
+  supported, honestly-described board mode (read-side v1: awareness +
+  fetch-and-report; write verbs refuse truthfully; --establish is the upgrade
+  path). Plan: plans/board-git-package (v3). Open elsewhere on the board:
+  tasks/establish-window-journey-defects (pre-existing window-journey issues
+  from #75's QA — its own prioritization call).
 actor: mike/claude
-timestamp: '2026-07-16T05:52:23.287Z'
+timestamp: '2026-07-16T10:58:34.617Z'
 ---
 [contains](../tasks/board-git-a0-seam-prep.md)
 
