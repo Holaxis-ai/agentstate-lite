@@ -14,8 +14,16 @@ description: >-
   (S/M, building), U2 detection primitive (S, building), U3 teaching pass (M/L,
   queued behind U1). NOT in scope: migration tool, id moves, removal — parked
   with the vetted Option-A blueprint on plans/rename-page-kind-to-view.
-actor: brian
+actor: brian-claude
 assignee: brian-claude
-timestamp: '2026-07-16T16:27:41.343Z'
+timestamp: '2026-07-16T16:56:52.154Z'
 ---
 [informed by](joint-ontology-session.md)
+
+- U2 APPROVED (909a9dc, feat/view-legacy-audit, pushed): predicate + nudge + audit;
+  both adjudications ruled — no-op-update nudge ACCEPTABLE (authoring-moment rule,
+  one-line filter available if fatigue observed); frozen prefix constants SURVIVE
+  integration by design (the sizing meter must outlive the live grammar's legacy
+  acceptance) with a TRIPWIRE TEST to add at U1+U2 integration: assert the frozen
+  constants equal core's legacy values while dual-read exists — no import coupling.
+  Bonus verified: the audit works over --remote.
