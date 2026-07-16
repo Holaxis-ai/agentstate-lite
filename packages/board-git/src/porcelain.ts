@@ -81,8 +81,8 @@ const SCRUBBED_GIT_VARS = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"] as cons
 
 /** Default per-op timeout for local plumbing/porcelain. */
 const LOCAL_TIMEOUT_MS = 30_000;
-/** Budget for ops that touch the network (fetch/push) — bounded, but tolerant of a slow remote. */
-const NETWORK_TIMEOUT_MS = 60_000;
+/** Budget for ops that touch the network (fetch/push/probe) — bounded, but tolerant of a slow remote. */
+export const NETWORK_TIMEOUT_MS = 60_000;
 
 export interface GitRunResult {
   status: number;
@@ -270,8 +270,9 @@ function sameGitCommonDir(a: string, b: string): boolean {
  * fix the POINTERS, not to un-wedge a rebase, so checking for `isProvisioned`'s stronger
  * "on-branch" condition would misreport a genuinely successful repair as a failure whenever the
  * worktree was ALSO wedged (the heal-ordering edge — the caller re-runs the entry heal for that).
+ * Exported for channel detection's rule 1 (`channel.ts`), which keys on this same weak signature.
  */
-function worktreeRootResolves(boardPath: string): boolean {
+export function worktreeRootResolves(boardPath: string): boolean {
   const boardTop = repoTopLevel(boardPath);
   return boardTop !== null && realOrSame(boardTop) === realOrSame(boardPath);
 }
@@ -279,9 +280,9 @@ function worktreeRootResolves(boardPath: string): boolean {
 /**
  * Stronger than {@link worktreeRootResolves}: the path must be a worktree root AND belong to the
  * same git common-dir as the project that wants to adopt it. This rejects a foreign repo's board
- * worktree parked at this project's conventional path.
+ * worktree parked at this project's conventional path. Exported for channel detection's rule 1.
  */
-function worktreeRootResolvesForOwner(boardPath: string, ownerTop: string): boolean {
+export function worktreeRootResolvesForOwner(boardPath: string, ownerTop: string): boolean {
   return worktreeRootResolves(boardPath) && sameGitCommonDir(boardPath, ownerTop);
 }
 
@@ -379,9 +380,9 @@ export type ProvisionOutcome =
  * requires that a repair attempt can NEVER fire against a plain foreign directory, only against
  * something that already looks like git's own machinery — {@link repairedWorktreeIsBoard} is what
  * then tells a genuine `board` worktree apart from a submodule or an unrelated worktree that merely
- * shares this same signature.
+ * shares this same signature. Exported for channel detection's rule 1.
  */
-function hasWorktreeSignature(dir: string): boolean {
+export function hasWorktreeSignature(dir: string): boolean {
   const gitPath = path.join(dir, ".git");
   if (!existsSync(gitPath)) return false;
   try {
@@ -414,6 +415,28 @@ function shellQuote(s: string): string {
 
 function moveAsideHelp(boardPath: string, note: string): string {
   return `mv ${shellQuote(boardPath)} ${shellQuote(`${boardPath}.bak`)}  # ${note}`;
+}
+
+/**
+ * The PRE-SHARE-WINDOW refusal (U5 fix round, review MEDIUM 3): the board branch already exists
+ * on the remote, but THIS clone's checked-out branch still TRACKS the folder (the old committed
+ * copy — the folder-removal PR hasn't merged, or this clone hasn't pulled it). A bare "move it
+ * aside" is DANGEROUS in exactly this state (it hand-builds the overlay hazard — reviewer-proven);
+ * the only safe advice is pull-first. ONE factory so `provisionBoardWorktree` and channel
+ * detection (`channel.ts`) stay verbatim-identical, mechanically.
+ */
+export function preShareWindowError(boardPath: string): BoardGitError {
+  return new BoardGitError(
+    "RUNTIME",
+    `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is ` +
+      `still the old folder committed on this branch — the folder-removal (cleanup) PR ` +
+      `hasn't merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', ` +
+      `then run sync again`,
+    {
+      details: { path: boardPath, state: "pre-share-window" },
+      help: "git pull  # after the cleanup PR merges, then re-run sync",
+    },
+  );
 }
 
 /**
@@ -525,31 +548,15 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
 
   if (existsSync(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
-      // U5 fix round (review MEDIUM 3): the PRE-SHARE WINDOW — the board branch already exists
-      // on the remote, but THIS clone's checked-out branch still TRACKS the folder (the old
-      // committed copy: the folder-removal cleanup PR hasn't merged, or this clone hasn't
-      // pulled it). The generic "move it aside" advice below is DANGEROUS in exactly this state:
-      // moving a TRACKED folder aside and provisioning hand-builds the overlay hazard (the
-      // tracked paths read as phantom-deleted, the user's own `git checkout`/`git restore`
-      // re-writes the frozen copies into the board checkout, and the next sync pushes that
-      // stale content over a teammate's board update — reviewer-proven). The only safe advice
-      // is to finish the establishment's own journey: merge, pull, sync.
+      // The PRE-SHARE WINDOW (see {@link preShareWindowError} for the full hazard story): the
+      // generic "move it aside" advice below must never fire while the checked-out branch still
+      // TRACKS the folder and the board branch exists on the remote.
       if (
         hasRemote &&
         !hasWorktreeSignature(boardPath) &&
         runGit(top, ["cat-file", "-e", `HEAD:${BUNDLE_DIR}`]).status === 0
       ) {
-        throw new BoardGitError(
-          "RUNTIME",
-          `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is ` +
-            `still the old folder committed on this branch — the folder-removal (cleanup) PR ` +
-            `hasn't merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', ` +
-            `then run sync again`,
-          {
-            details: { path: boardPath, state: "pre-share-window" },
-            help: "git pull  # after the cleanup PR merges, then re-run sync",
-          },
-        );
+        throw preShareWindowError(boardPath);
       }
       // Non-empty and (per isProvisioned above) not currently a genuine `board` checkout: it may
       // STILL be the real board worktree, just wedged with stale pointers — try the structural
