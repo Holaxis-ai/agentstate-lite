@@ -3,8 +3,9 @@
 // COMPOSITION only: this command adds NO new core validation/link/freshness logic. It composes
 // existing core machinery — `loadKinds`/`validateAgainstKind` (kind conformance), `parseLinksFromDoc`
 // (cross-links, reversed in-memory for orphan derivation), and `freshness()` fed a kind's declared
-// horizon (staleness) — into one report. ONE registry load (`loadKinds`) + ONE `query(bundle)` per
-// invocation; everything else derives in memory. Orphans come from reversing the SAME edge set built
+// horizon (staleness) — into one report. ONE registry load (`loadKinds`) + ONE `query(bundle)` + ONE
+// prefix-scoped `listBlobs` (the legacy_naming audit) per invocation; everything else derives in
+// memory. Orphans come from reversing the SAME edge set built
 // while scanning for unresolved links — never a per-doc `backlinks()` call (that would be N
 // whole-bundle traversals over data this command already has in hand).
 //
@@ -23,6 +24,7 @@ import {
   freshness,
   freshnessHorizonMs,
   isTerminal,
+  listBlobs,
   loadKinds,
   type OkfDocument,
   parseLinksFromDoc,
@@ -35,6 +37,7 @@ import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { collectLinkDeclarations } from "../link-types.js";
+import { isLegacyPageDoc, legacyPagePrefixOf, LEGACY_PAGE_BLOB_PREFIX } from "../legacy-page.js";
 
 export const STATUS_USAGE = `agentstate-lite status — read-only whole-bundle health report (bundle lint)
 
@@ -92,9 +95,14 @@ Category semantics (one line each):
                       terminal declarations existed). Non-terminal instances sort first: by the
                       declared terminal set when the kind has one, else by the legacy hardcoded
                       status === "done" fallback.
+  legacy_naming      Informational, never a warning: docs typed 'Page' (the legacy name for the
+                      'View' kind) plus items still under the legacy pages-registry//pages/ id
+                      prefixes — all fully supported, nothing migrates. Omitted when the bundle
+                      carries none.
 
-This is a whole-bundle read (one registry load + one query, batched) — acceptable for an explicitly
-batch-analysis command; over --remote it is one whole-bundle fetch, not a per-doc round trip.
+This is a whole-bundle read (one registry load + one query + one prefix-scoped blob listing,
+batched) — acceptable for an explicitly batch-analysis command; over --remote it is one
+whole-bundle fetch, not a per-doc round trip.
 
 Exit is ALWAYS 0 once the analysis runs: findings are reports, not errors. (A --fail-on-findings CI
 flag is a recorded future item, not built here.)
@@ -176,9 +184,12 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   // crashing the health report — a health report that can't run because one doc is broken is the
   // opposite of useful; the broken doc IS the headline finding.
   const malformedRows: Record<string, unknown>[] = [];
-  const [registry, docs] = await Promise.all([
+  const [registry, docs, legacyBlobKeys] = await Promise.all([
     loadKinds(bundle),
     query(bundle, {}, { onSkip: (s) => malformedRows.push({ id: s.id, reason: s.reason }) }),
+    // legacy_naming audit (below): blob keys still under the legacy pages/ prefix — one extra
+    // prefix-scoped listing on a command that is already an explicit whole-bundle read.
+    listBlobs(bundle, LEGACY_PAGE_BLOB_PREFIX),
   ]);
   const byId = new Set(docs.map((d) => d.id));
   // `id -> doc`, for the link-type-violation check's target-doc-type lookup below (never a second
@@ -324,6 +335,22 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   });
   const missingExpectedRows = missingExpectedRanked.map((e) => e.row);
 
+  // legacy_naming (legacy-page.ts, plans/rename-page-kind-to-view Option C+): docs still typed
+  // with the LEGACY 'Page' kind name, plus (informational, separately labeled) items still under
+  // the legacy pages-registry//pages/ id prefixes. Old names/prefixes are fully legal and nothing
+  // ever migrates — these are reports, not findings. This section is ALSO the sizing meter for a
+  // future full deprecation of the legacy Page name: its counts ARE that decision's cost estimate.
+  const pageTypedRows: Record<string, unknown>[] = docs
+    .filter((doc) => isLegacyPageDoc(doc.frontmatter))
+    .map((doc) => ({ id: doc.id }));
+  const legacyPrefixRows: Record<string, unknown>[] = [
+    ...docs.filter((doc) => legacyPagePrefixOf(doc.id) !== null).map((doc) => ({ id: doc.id, store: "doc" })),
+    ...legacyBlobKeys
+      .slice()
+      .sort()
+      .map((key) => ({ id: key, store: "blob" })),
+  ];
+
   const malformed = cap(malformedRows, limit);
   const lint = cap(lintRows, limit);
   const unresolved = cap(unresolvedRows, limit);
@@ -368,6 +395,22 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   if (linkTypeViolations.total > 0) out.link_type_violations_rows = linkTypeViolations;
   if (missingExpectedLinks.total > 0) out.missing_expected_links_rows = missingExpectedLinks;
   if (registryLint.total > 0) out.registry_lint = registryLint;
+  // Omitted entirely on a legacy-free bundle (the `terminal_skipped` present-only-when-relevant
+  // idiom) — a clean report gains nothing.
+  const pageTyped = cap(pageTypedRows, limit);
+  const legacyPrefix = cap(legacyPrefixRows, limit);
+  if (pageTyped.total > 0 || legacyPrefix.total > 0) {
+    const legacy: Record<string, unknown> = {
+      note:
+        "informational — 'Page' is the legacy name for the 'View' kind; legacy-typed docs and " +
+        "old-prefix ids stay fully supported and never migrate. These counts size a future full deprecation.",
+      page_typed_docs: pageTyped.total,
+      legacy_prefix_items: legacyPrefix.total,
+    };
+    if (pageTyped.total > 0) legacy.page_typed_rows = pageTyped;
+    if (legacyPrefix.total > 0) legacy.legacy_prefix_rows = legacyPrefix;
+    out.legacy_naming = legacy;
+  }
 
   stdout(render(out, resolveMode(values)));
 }
