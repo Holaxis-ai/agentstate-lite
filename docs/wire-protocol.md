@@ -1,7 +1,8 @@
 ---
 type: Doc
 title: Wire Protocol v0.1 — the `StorageBackend` seam over HTTP
-timestamp: '2026-07-06T19:18:18.474Z'
+actor: mike/codex
+timestamp: '2026-07-16T13:59:23.126Z'
 ---
 # Wire Protocol v0.1 — the `StorageBackend` seam over HTTP
 
@@ -224,22 +225,18 @@ recorded as findings, per the plan, not silently decided:
 - **Expect-absent create returns `201`,** not `200` — a small enhancement over the
   draft's single "`200` → `{ version }`" note. Existing clients only need to check
   `res.ok`, so this is additive, not breaking.
-- **Capabilities detection is now SEAM-SELF-DECLARED, with the original `instanceof
-  MemoryBackend` inference kept as a fallback (Stage-1 Unit 2b Part B, closing the item
-  below that used to describe this as a limitation).** `StorageBackend` gained an
-  OPTIONAL `capabilities?(): { enforced_cas, blobs, projections?, backlinks? }`
-  (`core/src/types.ts`) — a backend that implements it reports its OWN real guarantees;
-  `GET /v0/capabilities` prefers `backend.capabilities?.()` and falls back to the
-  original `instanceof MemoryBackend` inference only when the backend does not
-  implement it. `FilesystemBackend`/`MemoryBackend` deliberately do NOT implement this
-  method — the fallback path is the standing proof the addition is additive, and both
-  in-repo adapters are unchanged. `D1R2Backend` (`packages/worker`, the Cloudflare
-  Worker deployment's backend) DOES implement it (`enforced_cas: true, blobs: true`),
-  so it reports its real guarantees correctly instead of being misclassified by the
-  `instanceof` fallback (which would otherwise have no idea what a third adapter is).
-  The wire response's `history` field still mirrors `enforced_cas` — no adapter has
-  ever needed the two to diverge, so the seam addition deliberately did not grow a
-  second field for a distinction nothing uses.
+- **Capabilities are seam-self-declared, with the original `instanceof MemoryBackend`
+  inference retained only as a compatibility fallback.** `StorageBackend` may implement
+  `capabilities?(): { history?, enforced_cas, blobs, projections?, backlinks? }`
+  (`core/src/types.ts`), and `GET /v0/capabilities` reports that declaration. `history`
+  and `enforced_cas` are independent guarantees: a backend can enforce compare-and-swap
+  without retaining prior revisions. When `history` is omitted, the wire response mirrors
+  `enforced_cas` for backward compatibility with older third-party adapters.
+  `FilesystemBackend` now declares `{ history: false, enforced_cas: true, blobs: true }`:
+  its external same-user cross-process mutation lock makes each version premise atomic,
+  while a plain filesystem still retains only the current revision. `MemoryBackend`
+  declares both `history` and `enforced_cas` as true. Adapters without `capabilities()`
+  continue through the additive fallback path.
 - **Error-status mapping for writes:** any `Error` thrown by the engine's own
   validation (OKF §9.2 non-empty `type`, id safety, reserved-file rejection, malformed
   request bodies) maps to `400 USAGE` — these are client-input problems, not runtime
