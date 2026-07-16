@@ -9932,11 +9932,13 @@ function countUncommitted(boardPath) {
 }
 
 // src/cursor.ts
+import { homedir as homedir4 } from "node:os";
+import { join as join5 } from "node:path";
+
+// src/cursor-store.ts
 import { chmod as chmod2, mkdir as mkdir2, readFile as readFile2 } from "node:fs/promises";
 import { createHash as createHash2 } from "node:crypto";
-import { homedir as homedir4 } from "node:os";
 import { basename as basename3, dirname as dirname2, join as join4, resolve } from "node:path";
-var SYNC_STATE_DIR_NAME = "sync";
 var DIR_MODE2 = 448;
 var REANCHOR_NOTE = "delta unavailable (history rewritten)";
 function normalizeRemoteUrl(url) {
@@ -9956,9 +9958,6 @@ ${resolve(src.checkoutRoot)}`;
   }
   return `path
 ${resolve(src.root)}`;
-}
-function syncStateDir(home2 = homedir4()) {
-  return join4(credentialsDir(home2), SYNC_STATE_DIR_NAME);
 }
 function keyDigest(key) {
   return createHash2("sha256").update(key, "utf8").digest("hex").slice(0, 32);
@@ -10185,6 +10184,12 @@ function createSyncStore(options2) {
       await writeSyncState(key, { hookHintedAt: now().toISOString() });
     }
   };
+}
+
+// src/cursor.ts
+var SYNC_STATE_DIR_NAME = "sync";
+function syncStateDir(home2 = homedir4()) {
+  return join5(credentialsDir(home2), SYNC_STATE_DIR_NAME);
 }
 var defaultSyncStore = createSyncStore({
   stateDir: () => syncStateDir(),
@@ -14546,10 +14551,10 @@ async function bootUiServer(options2) {
 // src/ui/url-file.ts
 import { readFile as readFile3, unlink as unlink2 } from "node:fs/promises";
 import { homedir as homedir5 } from "node:os";
-import { join as join5 } from "node:path";
+import { join as join6 } from "node:path";
 var UI_URL_FILE_NAME = "ui-url";
 function uiUrlFilePath(home2 = homedir5()) {
-  return join5(credentialsDir(home2), UI_URL_FILE_NAME);
+  return join6(credentialsDir(home2), UI_URL_FILE_NAME);
 }
 async function writeUiUrlFile(url, home2 = homedir5()) {
   try {
@@ -14747,7 +14752,7 @@ import { parseArgs as parseArgs22 } from "node:util";
 // src/commands/hook.ts
 import { existsSync as existsSync5, readFileSync as readFileSync3, writeFileSync as writeFileSync2, rmSync as rmSync2 } from "node:fs";
 import { homedir as homedir6 } from "node:os";
-import { join as join6, dirname as dirname3 } from "node:path";
+import { join as join7, dirname as dirname3 } from "node:path";
 import { mkdirSync as mkdirSync2 } from "node:fs";
 import { parseArgs as parseArgs21 } from "node:util";
 var HOOK_USAGE = `agentstate-lite hook \u2014 manage the SessionStart board-aware hook
@@ -14835,9 +14840,9 @@ function readHookStatus(settings) {
 }
 function targetsFor(base) {
   return {
-    claudeSettings: join6(base, ".claude", "settings.json"),
-    codexHooks: join6(base, ".codex", "hooks.json"),
-    opencodePlugin: join6(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
+    claudeSettings: join7(base, ".claude", "settings.json"),
+    codexHooks: join7(base, ".codex", "hooks.json"),
+    opencodePlugin: join7(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
   };
 }
 function readSettings(path17) {
@@ -15050,7 +15055,7 @@ async function hook(argv, deps = {}) {
         errors.push(`${target}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    const codexConfigPath = join6(base, ".codex", "config.toml");
+    const codexConfigPath = join7(base, ".codex", "config.toml");
     try {
       const current = existsSync5(codexConfigPath) ? readFileSync3(codexConfigPath, "utf8") : "";
       const [updated, changed2] = computeCodexConfigUpdate(current);
