@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'board-git seam: altitude cleanup nits from the A1 review'
-status: todo
+status: in_progress
 priority: '3'
 description: >-
   Non-blocking follow-ups from the A1 + C reviews (all cosmetic/copy/perf; zero
@@ -18,6 +18,7 @@ description: >-
   cost-only on large repos; (N5) PR body suite-count label swap (cosmetic,
   record only). Sonnet-tier sweep, one PR.
 actor: mike/claude
-timestamp: '2026-07-16T05:52:23.176Z'
+assignee: mike/claude
+timestamp: '2026-07-16T10:21:36.765Z'
 ---
 
