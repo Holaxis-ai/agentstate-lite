@@ -2,7 +2,7 @@
 type: Context Note
 title: 'Review: board-git package and BoardChannel plan'
 actor: mike/codex
-timestamp: '2026-07-16T00:05:43.218Z'
+timestamp: '2026-07-16T00:06:18.120Z'
 ---
 # Summary
 
@@ -100,6 +100,6 @@ Overall: this is a strong plan, not premature modularization. Tightening the unc
 
 [reviews](../plans/board-git-package.md)
 
-[depends on](../tasks/sync-migrate-removal.md)
+[prerequisite](../tasks/sync-migrate-removal.md)
 
 [supports](../roadmap-items/local-first-loop.md)
