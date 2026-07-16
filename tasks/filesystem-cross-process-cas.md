@@ -8,7 +8,7 @@ description: >-
   processes mutate one local bundle.
 actor: mike/codex
 assignee: mike/codex
-timestamp: '2026-07-16T02:58:51.127Z'
+timestamp: '2026-07-16T03:23:00.672Z'
 ---
 # Behavioral claim
 
@@ -34,3 +34,12 @@ Two independent AgentState Lite processes mutating the same local bundle cannot 
 - Failure/timeout leaves no corrupt target or silently stolen lock; recovery behavior is explicit and tested.
 
 [identified by](../designs/mutation-boundary-audit.md)
+
+# Implementation ready for review
+
+Draft PR: https://github.com/Holaxis-ai/agentstate-lite/pull/77
+
+- All five filesystem mutation paths (`write`, `delete`, `writeReserved`, `writeBlob`, `deleteBlob`) now share one adjacent per-target cross-process critical section; the process-local queue remains the fast path.
+- Active, stale, malformed, symlink-alias, and case-alias lock behavior is deterministic and fail-closed. Crash leftovers carry private owner metadata and are never auto-stolen.
+- Filesystem `enforced_cas` and retained `history` are now reported independently (`true` and `false`, respectively).
+- Exact commit `b60f7b6` passed the full `npm run check`, deterministic two-process CAS and five-process `link add` proofs, exact-SHA review, and an adversarial SIGKILL/recovery probe.
