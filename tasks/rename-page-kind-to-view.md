@@ -1,7 +1,7 @@
 ---
 type: Task
 title: Rename the Page kind to View (code + reusable bundle migration)
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   FOUNDERS-DECIDED (Brian + Mike, direct conversation 2026-07-16, pre-empting
@@ -22,7 +22,8 @@ description: >-
   blocker. Note the system-kind asymmetry this exposes: Page/View is nominally
   consumed by product code, unlike generically-consumed kinds — recorded in
   docs/how-it-works.
-actor: brian
-timestamp: '2026-07-16T15:19:39.378Z'
+actor: brian-claude
+assignee: brian-claude
+timestamp: '2026-07-16T15:23:47.998Z'
 ---
 [informed by](joint-ontology-session.md)
