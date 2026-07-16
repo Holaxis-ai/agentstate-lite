@@ -10,8 +10,8 @@ description: >-
   lives in research/ontology-deliberation; the audited label mechanics in
   docs/relationships. Session output: decisions/ docs per ask + filed tasks for
   the NOW-horizon items.
-actor: brian-claude
-timestamp: '2026-07-14T21:59:02.498Z'
+actor: brian
+timestamp: '2026-07-16T15:06:42.904Z'
 ---
 ## What this is
 
@@ -36,6 +36,17 @@ leaves open for the room:
    so disagreements can go straight to the source.
 3. Deferred by prior agreement, only if time remains: the lite<->Holaxis vocabulary
    alignment (nothing in lite blocks on it).
+
+## Small added agenda item (Brian, 2026-07-16): ratify or rename the `Page` kind
+
+"Page" now collides with the ordinary sense of a bundle's pages (docs) — a real
+ambiguity for agent instructions ("add a page about X" can mean write a doc OR mint a
+dashboard). Candidate rename: `View` (says what it is; the word became vacant when the
+static viewer retired in #63). Rename is one coordinated unit today (one team, two
+bundles); it becomes a breaking migration for strangers once recipes/adopters carry
+`type: Page` data. Thirty-second decision: keep Page (and let the glossary carry the
+disambiguation) or rename now. If rename: file the implementation task from the
+session.
 
 ## Done when
 
