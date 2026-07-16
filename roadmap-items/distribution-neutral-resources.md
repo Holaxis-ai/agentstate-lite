@@ -1,14 +1,17 @@
 ---
 type: Roadmap Item
 title: Distribution-neutral resources and thin agent bootstrap
-status: active
+status: queued
 description: >-
-  Separate durable bundle-native operating knowledge and portable recipes from
-  harness-specific bootstrap. Sequence: inventory/classify resources; generalize
-  the manifest; make npm consumption explicit; thin SKILL.md only after
-  founder-to-founder npm proof.
+  Runtime CLI independence and a clean-room no-skill Page journey are proven.
+  Publication and plugin thinning are deliberately paused until the
+  product/package name is chosen; keep the bundled executable as the supported
+  fallback.
 actor: mike/codex
-timestamp: '2026-07-15T21:31:41.356Z'
+sequence: >-
+  Choose product/package identity → npm prerelease and ordinary founder use →
+  make npm primary → thin plugin in separate deletion units
+timestamp: '2026-07-16T01:01:14.843Z'
 ---
 [contains](../tasks/distribution-resource-inventory.md)
 
