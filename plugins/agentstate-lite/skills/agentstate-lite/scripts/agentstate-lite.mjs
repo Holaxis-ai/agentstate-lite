@@ -7531,10 +7531,25 @@ function currentHead(boardPath) {
   }
   return r.stdout.trim();
 }
+function currentBranch(top) {
+  const r = runGit(top, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  return r.status === 0 ? r.stdout.trim() : "HEAD";
+}
+function statusRows(dir, prefix) {
+  const r = runGit(dir, ["status", "--porcelain", ...prefix ? ["--", prefix] : []]);
+  if (r.status !== 0) return [];
+  return r.stdout.split("\n").map((l) => l.trimEnd()).filter((l) => l.length > 0).map((l) => ({ status: l.slice(0, 2).trim(), path: l.slice(3) }));
+}
 function countUncommitted(boardPath, prefix) {
-  const r = runGit(boardPath, ["status", "--porcelain", ...prefix ? ["--", prefix] : []]);
-  if (r.status !== 0) return 0;
-  return r.stdout.split("\n").filter((l) => l.trim().length > 0).length;
+  return statusRows(boardPath, prefix).length;
+}
+function readDocBytesAtRef(dir, ref, relPath) {
+  if (runGit(dir, ["cat-file", "-e", `${ref}:${relPath}`]).status !== 0) return null;
+  const shown = runGitBytes(dir, ["show", `${ref}:${relPath}`]);
+  if (shown.status !== 0) {
+    throw classifyGitError({ args: ["show"], status: shown.status, stdout: "", stderr: shown.stderr });
+  }
+  return shown.stdout;
 }
 
 // ../board-git/src/channel.ts
@@ -7582,6 +7597,19 @@ function behindBoardCommits(top, branch) {
   const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
   if (runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status !== 0) return null;
   return mustGit(top, ["rev-list", `HEAD..${remoteRef}`, "--", BUNDLE_DIR]).split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+}
+function pathLandedAbsentOnRemoteBranch(top, branch, relPath) {
+  if (branch === "HEAD") return false;
+  const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
+  const remoteBranchKnown = runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status === 0;
+  return remoteBranchKnown && runGit(top, ["cat-file", "-e", `${remoteRef}:${relPath}`]).status !== 0;
+}
+function boardBranchRemnant(top) {
+  return {
+    sha: mustGit(top, ["rev-parse", `refs/heads/${BOARD_BRANCH}`]).trim(),
+    tree: mustGit(top, ["rev-parse", `refs/heads/${BOARD_BRANCH}^{tree}`]).trim(),
+    count: mustGit(top, ["rev-list", "--count", `refs/heads/${BOARD_BRANCH}`]).trim()
+  };
 }
 function annotateLanded(boardPath, conflicts) {
   return conflicts.map((c) => ({
@@ -7739,7 +7767,13 @@ function detectBoardChannel(dir, options2 = {}) {
 
 // ../board-git/src/diff.ts
 function diffDocsBetween(dir, fromRef, toRef, opts = {}) {
-  const args = ["diff", "--name-status", "--no-renames", `${fromRef}..${toRef}`];
+  const args = [
+    "diff",
+    "--name-status",
+    "--no-renames",
+    `${fromRef}..${toRef}`,
+    ...opts.prefix ? ["--", opts.prefix] : []
+  ];
   let out;
   if (opts.tolerateDiffFailure) {
     const r = runGit(dir, args);
@@ -7779,7 +7813,7 @@ import { chmod, mkdir, readFile } from "node:fs/promises";
 import { createHash as createHash2 } from "node:crypto";
 import { basename as basename3, dirname as dirname2, join as join2, resolve } from "node:path";
 var DIR_MODE = 448;
-var REANCHOR_NOTE = "delta unavailable (history rewritten)";
+var REANCHOR_NOTE = "delta unavailable (history rewritten or repositioned)";
 function normalizeRemoteUrl(url) {
   let u = url.trim().replace(/\/+$/, "");
   if (u.endsWith(".git")) u = u.slice(0, -".git".length);
@@ -15603,7 +15637,7 @@ function finishLocalConversion(top, sourcePath, publishedCommit, expectedTree, i
     );
   }
   if (isProvisioned(top)) {
-    const current = mustGit(boardPath, ["rev-parse", "HEAD"]).trim();
+    const current = currentHead(boardPath);
     if (!isAncestor(top, publishedCommit, current)) {
       throw new CliError("CONFLICT", "the provisioned board does not contain the establishment snapshot");
     }
@@ -15636,7 +15670,7 @@ function finishLocalConversion(top, sourcePath, publishedCommit, expectedTree, i
       throw new CliError("RUNTIME", `board provisioning returned '${outcome.kind}' after publication`);
     }
     const provisionedPath = outcome.boardPath;
-    const current = mustGit(provisionedPath, ["rev-parse", "HEAD"]).trim();
+    const current = currentHead(provisionedPath);
     if (!isAncestor(top, publishedCommit, current)) {
       throw new CliError("CONFLICT", "the provisioned board does not contain the establishment snapshot");
     }
@@ -15686,7 +15720,11 @@ async function establishBoard(dir, inv, mode, stdout, deps, opts = {}) {
     throw new CliError("RUNTIME", "not inside a git repository \u2014 establish needs a repo with an 'origin' remote");
   }
   if (runGit(top, ["remote", "get-url", BOARD_REMOTE]).status !== 0) {
-    throw new CliError("RUNTIME", `this repository has no '${BOARD_REMOTE}' remote`);
+    throw new CliError(
+      "RUNTIME",
+      `this repository has no '${BOARD_REMOTE}' remote \u2014 establish needs one to publish the board`,
+      { help: `git remote add ${BOARD_REMOTE} <url>  # then re-run ${inv} sync --establish` }
+    );
   }
   const committedTree = folderTreeAtHead(top);
   if (committedTree !== null) {
@@ -15735,7 +15773,7 @@ async function establishBoard(dir, inv, mode, stdout, deps, opts = {}) {
     if (!remoteCommit) throw new CliError("RUNTIME", "board push succeeded but origin/board could not be verified");
     const conversion2 = {
       boardPath,
-      boardCommit: mustGit(boardPath, ["rev-parse", "HEAD"]).trim(),
+      boardCommit: currentHead(boardPath),
       gitignore: gitignoreNote(top)
     };
     return renderEstablished(top, conversion2, { docs: [] }, inv, mode, stdout, deps);
@@ -15895,8 +15933,7 @@ async function establishCommitted(top, inv, mode, yes, treeSha, stdout) {
       { details: { retryable: true } }
     );
   }
-  const branchR = runGit(top, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  const branch = branchR.status === 0 ? branchR.stdout.trim() : "HEAD";
+  const branch = currentBranch(top);
   if (branch === "HEAD") {
     throw new CliError(
       "RUNTIME",
@@ -15910,8 +15947,7 @@ async function establishCommitted(top, inv, mode, yes, treeSha, stdout) {
     );
   }
   assertNotBehindOnBoard(top, inv, branch);
-  const status2 = runGit(top, ["status", "--porcelain", "--", BUNDLE_DIR]);
-  const dirty = (status2.status === 0 ? status2.stdout : "").split("\n").map((l) => l.trimEnd()).filter((l) => l.length > 0).map((l) => ({ status: l.slice(0, 2).trim(), path: l.slice(3) }));
+  const dirty = statusRows(top, BUNDLE_DIR);
   if (dirty.length > 0) {
     const shown = dirty.slice(0, 20);
     throw new CliError(
@@ -15942,11 +15978,9 @@ async function establishCommitted(top, inv, mode, yes, treeSha, stdout) {
   }
   let reuseBoardSha = null;
   if (localBranchExists(top, BOARD_BRANCH)) {
-    const sha = mustGit(top, ["rev-parse", `refs/heads/${BOARD_BRANCH}`]).trim();
-    const tree = mustGit(top, ["rev-parse", `refs/heads/${BOARD_BRANCH}^{tree}`]).trim();
-    const count = mustGit(top, ["rev-list", "--count", `refs/heads/${BOARD_BRANCH}`]).trim();
-    if (tree === treeSha && count === "1") {
-      reuseBoardSha = sha;
+    const remnant = boardBranchRemnant(top);
+    if (remnant.tree === treeSha && remnant.count === "1") {
+      reuseBoardSha = remnant.sha;
     } else {
       throw new CliError(
         "RUNTIME",
@@ -15979,8 +16013,7 @@ async function establishCommitted(top, inv, mode, yes, treeSha, stdout) {
 }
 async function alreadyShared(top, inv, mode, yes, fetchOk, stdout) {
   const rec = { establish: ESTABLISH_COMMITTED_ALREADY };
-  const branchR = runGit(top, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  const branch = branchR.status === 0 ? branchR.stdout.trim() : "HEAD";
+  const branch = currentBranch(top);
   const marker = readGitDirMarker(top, COMMITTED_MARKER_KEY);
   if (localBranchExists(top, CLEANUP_BRANCH)) {
     clearGitDirMarker(top, COMMITTED_MARKER_KEY);
@@ -16053,9 +16086,7 @@ async function alreadyShared(top, inv, mode, yes, fetchOk, stdout) {
   stdout(render(rec, mode));
 }
 function windowNote(top, inv, branch) {
-  const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
-  const remoteBranchKnown = branch !== "HEAD" && runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status === 0;
-  const landedUpstream = remoteBranchKnown && runGit(top, ["cat-file", "-e", `${remoteRef}:${BUNDLE_DIR}`]).status !== 0;
+  const landedUpstream = pathLandedAbsentOnRemoteBranch(top, branch, BUNDLE_DIR);
   return landedUpstream ? `this clone still carries the committed ${BUNDLE_DIR}/ folder and the folder-removal has already landed on '${branch}' \u2014 run 'git pull' (the folder vanishes), then '${inv} sync' (it returns as the live board)` : `this clone still carries the committed ${BUNDLE_DIR}/ folder \u2014 once the folder-removal lands on the default branch: 'git pull' (the folder vanishes), then '${inv} sync' (it returns as the live board)`;
 }
 
@@ -16369,8 +16400,9 @@ function syncRemoteStateUnknownNote(inv, hasLocalBundle) {
   return local + `Retry \`${inv} sync\` when origin is available; a shared board may already exist.`;
 }
 var SYNC_IN_TREE_BOARD_LINE = `in-tree \u2014 board docs ride the current code branch (${BUNDLE_DIR}/ is committed with the code)`;
-function syncInTreeRefusalMessage(inv) {
-  return `this board rides your code branch \u2014 '${BUNDLE_DIR}/' is committed with the code, so a full sync would have to publish the code branch itself; share board changes with your normal git commit/push, run '${inv} sync --pull-only' to fetch-and-report incoming board changes, or run '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch`;
+function syncInTreeRefusalMessage(inv, hasOrigin = true) {
+  const establishRemedy = hasOrigin ? `run '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch` : `this repo has no '${BOARD_REMOTE}' remote yet \u2014 run 'git remote add ${BOARD_REMOTE} <url>', then '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch`;
+  return `this board rides your code branch \u2014 '${BUNDLE_DIR}/' is committed with the code, so a full sync would have to publish the code branch itself; share board changes with your normal git commit/push, run '${inv} sync --pull-only' to fetch-and-report incoming board changes, or ${establishRemedy}`;
 }
 var SYNC_IN_TREE_NO_BASIS = "no-comparison-basis";
 function inTreeNoBasisNote(reason, ref) {
@@ -16386,9 +16418,10 @@ async function syncInTree(dir, pullOnly, inv, mode, limit, stdout, deps) {
   if (!top) throw new CliError("RUNTIME", "not inside a git repository");
   const boardPath = path17.join(top, BUNDLE_DIR);
   if (!pullOnly) {
-    throw new CliError("USAGE", syncInTreeRefusalMessage(inv), {
+    const hasOrigin = runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0;
+    throw new CliError("USAGE", syncInTreeRefusalMessage(inv, hasOrigin), {
       details: { path: boardPath, state: "in-tree" },
-      help: `${inv} sync --establish`
+      help: hasOrigin ? `${inv} sync --establish` : `git remote add ${BOARD_REMOTE} <url>`
     });
   }
   const key = resolveBundleKey(boardPath);
@@ -16765,14 +16798,9 @@ async function showIncoming(id, values, deps) {
     if (candidates.every((c) => c.relPath !== id)) candidates.push({ relPath: id, isDoc: false });
     let hit = null;
     for (const probe of candidates) {
-      if (runGit(top, ["cat-file", "-e", `${readRef}:${pathPrefix}${probe.relPath}`]).status !== 0) {
-        continue;
-      }
-      const shown = runGitBytes(top, ["show", `${readRef}:${pathPrefix}${probe.relPath}`]);
-      if (shown.status !== 0) {
-        throw classifyGitError({ args: ["show"], status: shown.status, stdout: "", stderr: shown.stderr });
-      }
-      hit = { probe, bytes: shown.stdout };
+      const bytes2 = readDocBytesAtRef(top, readRef, `${pathPrefix}${probe.relPath}`);
+      if (bytes2 === null) continue;
+      hit = { probe, bytes: bytes2 };
       break;
     }
     if (hit === null) {
