@@ -16,7 +16,7 @@ description: >-
   tasks/establish-window-journey-defects (pre-existing window-journey issues
   from #75's QA — its own prioritization call).
 actor: mike/claude
-timestamp: '2026-07-16T10:58:34.617Z'
+timestamp: '2026-07-16T13:29:58.606Z'
 ---
 [contains](../tasks/board-git-a0-seam-prep.md)
 
@@ -29,3 +29,5 @@ timestamp: '2026-07-16T10:58:34.617Z'
 [plan](../plans/board-git-package.md)
 
 [contains](../tasks/board-git-seam-nits.md)
+
+[contains](../tasks/adopt-path-hardening.md)
