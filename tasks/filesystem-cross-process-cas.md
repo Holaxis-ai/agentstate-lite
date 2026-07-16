@@ -1,14 +1,14 @@
 ---
 type: Task
 title: Enforce FilesystemBackend CAS across independent agent processes
-status: in_progress
+status: done
 priority: '1'
 description: >-
   Close the remaining silent lost-update window when separate CLI/serve
   processes mutate one local bundle.
 actor: mike/codex
 assignee: mike/codex
-timestamp: '2026-07-16T14:02:37.689Z'
+timestamp: '2026-07-16T14:07:14.688Z'
 ---
 # Behavioral claim
 
@@ -35,9 +35,11 @@ Two independent AgentState Lite processes mutating the same local bundle cannot 
 
 [identified by](../designs/mutation-boundary-audit.md)
 
-# Implementation ready for review
+# Shipped
 
-Draft PR: https://github.com/Holaxis-ai/agentstate-lite/pull/77
+Merged PR: https://github.com/Holaxis-ai/agentstate-lite/pull/77
+
+Merge commit: `90c3c0f6fcd26a63f06df5ada0f33b9e5bbf771b`
 
 - All five filesystem mutation paths (`write`, `delete`, `writeReserved`, `writeBlob`, `deleteBlob`) now share one external per-target same-user cross-process critical section; the process-local queue remains the fast path.
 - Active, stale, malformed, symlink-alias, and case-alias lock behavior is deterministic and fail-closed. Crash leftovers carry private owner metadata and are never auto-stolen.
@@ -46,7 +48,7 @@ Draft PR: https://github.com/Holaxis-ai/agentstate-lite/pull/77
 - PR #77 was cleanly rebased onto current `main` after PR #82; no manual conflict resolution or patch change was required. GitHub reports it mergeable.
 - Independent reading review at `512b4c0` required two changes. The POSIX `/tmp` choice is now explained and pinned by real child processes with different `TMPDIR` values; the canonical `docs/wire-protocol` bundle doc now records independent `history`/`enforced_cas` capabilities and the filesystem backend's `{ history:false, enforced_cas:true }` guarantee.
 - Exact commit `61ff46f` passed the full `npm run check` in a detached worktree, including PR #82's establish/window journeys, deterministic two-process CAS and five-process `link add` proofs, the two exact Git capture regressions, the distinct-`TMPDIR` proof, and an adversarial SIGKILL/recovery probe.
-- Post-rebase integration inspection found no conflict between the external CAS runtime state and PR #82's Git journeys. The PR remains draft pending reviewer confirmation of the amended exact SHA.
+- Post-rebase integration inspection found no conflict between the external CAS runtime state and PR #82's Git journeys. Mike authorized merge after the independent review's two required changes were addressed and the amended exact SHA passed the full gate and adversarial crash probe.
 
 # Recorded non-gating follow-ups
 
