@@ -18,11 +18,11 @@
 // via `git show origin/board:<path>` with full doc-read semantics (truncation, `--out` byte hatch,
 // `--out -` stderr envelope), labeled "as of last fetch" (no implicit fetch — adjudication G).
 //
-// COMMAND LAYER ONLY: this module is the FIRST real caller of both U1 (`git.ts`) and U2
-// (`cursor.ts`) — it composes their exported vocabulary but never re-implements git plumbing or
-// the state-store schema. `runGit` (U1's own spawn wrapper) is called directly in a few spots
-// below ONLY for primitives U1 doesn't already expose as a named op (current HEAD, uncommitted
-// count, the origin remote URL for cursor keying) — never to duplicate an op U1 already provides.
+// COMMAND LAYER ONLY: this module composes the engine tier's exported vocabulary — `git.ts`
+// (porcelain ops), `cursor.ts` (the state store), `sync-engine.ts` (the neutral helpers every
+// board-aware command shares) — but never re-implements git plumbing or the state-store schema.
+// This module keeps COMMAND UX: arg parsing, envelopes, help text, and the git tier's CLI
+// command boundary (BoardGitError → CliError, see `sync()`).
 //
 // TWO CALLERS, ONE `ffPull` PRIMITIVE, DIFFERENT TOLERANCE: U1's `ffPull` is deliberately fail-soft
 // (its own header: "must never throw and never block a render") for U4's SessionStart caller. THIS
@@ -30,27 +30,21 @@
 // an interactive verb that must report a REAL structured outcome, so `ffSwallowToError` below
 // translates every `FfPullResult.swallowed` reason into the capped CliError taxonomy instead of
 // silently no-op'ing.
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import {
-  assertSafeConceptId,
-  conceptIdFromPath,
-  isReservedFile,
-  parseMarkdown,
-  pathFromConceptId,
-} from "@agentstate-lite/core";
+import { assertSafeConceptId, parseMarkdown, pathFromConceptId } from "@agentstate-lite/core";
 import {
   BOARD_BRANCH,
   BOARD_REF,
-  BOARD_REMOTE,
   BUNDLE_DIR,
-  abortStaleRebase,
   changesSince,
-  detectStaleRebase,
+  countUncommitted,
+  diffDocsBetween,
   fetchRebaseResolving,
   ffPull,
+  currentHead,
   provisionBoardWorktree,
   push,
   repoTopLevel,
@@ -64,24 +58,20 @@ import {
   type ProvisionOutcome,
   type ResolvedConflict,
 } from "../git.js";
+import { REANCHOR_NOTE, defaultSyncStore } from "../cursor.js";
 import {
-  REANCHOR_NOTE,
-  bundleKey,
-  readCursor,
-  readHookHintedAt,
-  recordHookHinted,
-  recordReanchor,
-  recordSelfActors,
-  refreshMarker,
-  syncExportsDir,
-  writeCache,
-  writeCursor,
-  type AwarenessDeltaRow,
-} from "../cursor.js";
+  healStaleRebaseBeforeProvisioning,
+  provisionAnnouncement,
+  resolveBundleKey,
+  retargetBoardInterior,
+  singleActor,
+  toDeltaRows,
+} from "../sync-engine.js";
 import { hookInstalled } from "./hook.js";
 import { migrateBoard } from "./sync-migrate.js";
 import { ESTABLISH_ALREADY, establishBoard } from "./sync-establish.js";
-import { CliError, asHandled, classifyGitError, toExit } from "../errors.js";
+import { classifyGitError, isBoardGitError } from "../board-git-errors.js";
+import { CliError, asHandled, cliErrorFromBoardGit, toExit } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, renderErrorEnvelope, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
@@ -258,13 +248,16 @@ function withUpstreamHelp(err: CliError, inv: string): CliError {
 }
 
 /**
- * Classify a raw catch-block value into a CliError (mirrors the fallback every other catch site in
- * this module already uses) — a bare `git.ts` throw is always ALREADY a CliError, but a defensive
- * fallback keeps this module's error handling total.
+ * Classify a raw catch-block value into a CliError — a bare `git.ts` throw is always ALREADY a
+ * typed `BoardGitError` (mapped through THE one boundary, `cliErrorFromBoardGit`), but a
+ * defensive fallback keeps this module's error handling total.
  */
 function toCliError(err: unknown, op: string): CliError {
   if (err instanceof CliError) return err;
-  return classifyGitError({ args: [op], status: null, stdout: "", stderr: err instanceof Error ? err.message : String(err) });
+  if (isBoardGitError(err)) return cliErrorFromBoardGit(err);
+  return cliErrorFromBoardGit(
+    classifyGitError({ args: [op], status: null, stdout: "", stderr: err instanceof Error ? err.message : String(err) }),
+  );
 }
 
 /**
@@ -290,7 +283,7 @@ async function throwPostCommitFailure(
 ): Promise<never> {
   if (!committedThisRun) throw err;
   const wrapped = new CliError(err.code, pushFailureMessage(err), { details: err.details, help: err.help });
-  await writeCache(key, {
+  await defaultSyncStore.writeCache(key, {
     updatedAt: new Date().toISOString(),
     delta: [],
     unpushedCount: unpushedCount(boardPath) ?? 0,
@@ -472,28 +465,6 @@ export function toConflictRows(boardPath: string, conflicts: LandedConflict[]): 
 }
 
 /**
- * decisions/board-branch-sync rider 2 (binding): provisioning is a git mutation and must be
- * ANNOUNCEABLE — "says so in structured output — never a silent git mutation." Only `provisioned`
- * (a fresh materialize) and `repaired` (the stale-pointer self-heal) MUTATED anything this run;
- * `already`/`no_repo`/`no_board` did nothing to announce, so this returns `undefined` for them —
- * the omit-when-absent convention every envelope in this module already follows. Message pack
- * shape (test-pinned): one field, named for the outcome, `<path> — <what happened>`.
- */
-export function provisionAnnouncement(outcome: ProvisionOutcome): Record<string, string> | undefined {
-  if (outcome.kind === "provisioned") {
-    // `source` distinguishes a clone/join from a pre-existing local `board` branch, so the
-    // receipt never claims remote provenance for content that came from a local-only branch.
-    const detail =
-      outcome.source === "remote" ? "materialized from origin/board" : "materialized from the local board branch";
-    return { provisioned: `${outcome.boardPath} — ${detail}` };
-  }
-  if (outcome.kind === "repaired") {
-    return { repaired: `${outcome.boardPath} — worktree pointers repaired` };
-  }
-  return undefined;
-}
-
-/**
  * Merge {@link provisionAnnouncement} into a CliError's `details`, for the (rarer) case where
  * provisioning mutated git state and THEN the same run hit a later failure (a conflict, a
  * fetch/rebase error) — rider 2 applies to every envelope this run can produce, not only the
@@ -526,8 +497,8 @@ export async function hookInstallHintOnce(
 ): Promise<string | undefined> {
   try {
     if (installed()) return undefined;
-    if ((await readHookHintedAt(key)) !== null) return undefined;
-    await recordHookHinted(key);
+    if ((await defaultSyncStore.readHookHintedAt(key)) !== null) return undefined;
+    await defaultSyncStore.recordHookHinted(key);
     return (
       `no SessionStart hook is installed — run \`${inv} hook install\` once and every new agent ` +
       `session will start with the board pulled and rendered`
@@ -619,167 +590,6 @@ export function ffSwallowToError(reason: string, inv: string, boardPath?: string
   }
 }
 
-/** realpath when the path exists; the path unchanged otherwise (for stable comparisons — mirrors git.ts's own private `realOrSame`, duplicated here since it isn't exported). */
-function realOrSame(p: string): string {
-  try {
-    return realpathSync(p);
-  } catch {
-    return p;
-  }
-}
-
-/**
- * STEP 0, entry self-heal (adjudication C) — run BEFORE `provisionBoardWorktree` is even called,
- * not just before commit. `isProvisioned`'s own check reads `git rev-parse --abbrev-ref HEAD` and
- * requires it to equal `board`; during a REBASE, HEAD is DETACHED (rebase checks out commits
- * directly), so a genuinely-provisioned-but-wedged worktree reads as "not provisioned" and
- * `provisionBoardWorktree` would misclassify it as a stray non-worktree directory and refuse
- * outright — never reaching the commit step where the brief's own self-heal was meant to run
- * first. Resolving `<repoTop>/.agentstate-lite` independently here (without going through
- * `provisionBoardWorktree`) breaks that chicken-and-egg: heal the wedge FIRST (restoring the
- * `board` branch checkout), so provisioning's own idempotent "already" check then succeeds
- * normally.
- *
- * REVIEW FINDING 1 (HIGH, fixed): this probe used to skip straight to `detectStaleRebase` once
- * `candidateBoardPath` merely EXISTED, with no check that it is genuinely its OWN worktree root.
- * On a PRE-MIGRATION repo (a PLAIN `.agentstate-lite/` directory committed on `main` — this
- * project's own on-disk shape today, before U5 ever runs), `.agentstate-lite` has no `.git` of its
- * own: `git -C .agentstate-lite rev-parse --git-path rebase-merge` walks UP and resolves into the
- * PARENT repo's shared git dir, so a wedged `main` (the user's own in-progress rebase, unrelated to
- * sync entirely) reads as "the board is wedged" — and `abortStaleRebase` would then run `rebase
- * --abort` against the SAME shared git dir, silently destroying the user's own rebase. The fix
- * mirrors `isProvisioned`'s OWN worktree-boundary check (`git.ts`): `candidateBoardPath` is only
- * ever probed/healed when `repoTopLevel(candidateBoardPath)` resolves back to ITSELF — the
- * structural signature of a genuine linked worktree, never true for a plain subdirectory of the
- * enclosing repo. Best-effort otherwise: any OTHER failure here (path doesn't exist, isn't a repo
- * at all) is swallowed — a genuine problem still resurfaces, correctly classified, from
- * `provisionBoardWorktree` right after.
- */
-function healStaleRebaseBeforeProvisioning(dir: string): void {
-  try {
-    const top = repoTopLevel(dir);
-    if (!top) return;
-    const candidateBoardPath = path.join(top, BUNDLE_DIR);
-    if (!existsSync(candidateBoardPath)) return;
-    const boardTop = repoTopLevel(candidateBoardPath);
-    if (!boardTop || realOrSame(boardTop) !== realOrSame(candidateBoardPath)) return;
-    // REVIEW ROUND 2, FINDING 1 (HIGH impact / low likelihood): the self-resolution check above is
-    // ALSO true for an independent NESTED git repo that happens to sit at `.agentstate-lite` (its
-    // own `git init`, not our board) — and healing THAT would `rebase --abort` an innocent repo's
-    // in-progress rebase, then report "nothing to sync". The board worktree's structural signature
-    // is the LINKED-worktree shape: its per-worktree git dir (`.git/worktrees/<name>` inside the
-    // parent) differs from the shared common dir (the parent's `.git`); a standalone nested repo
-    // has the two EQUAL. Note the `board`-branch check canNOT serve here — the wedged state this
-    // heal exists for has a DETACHED HEAD by definition. Only a linked worktree may ever be healed.
-    if (!isLinkedWorktree(candidateBoardPath)) return;
-    if (detectStaleRebase(candidateBoardPath)) {
-      abortStaleRebase(candidateBoardPath);
-    }
-  } catch {
-    /* best-effort probe only — see the doc comment above */
-  }
-}
-
-/**
- * True when `p` is inside a LINKED git worktree: its per-worktree git dir differs from the shared
- * common dir. A standalone repo — including an unrelated nested repo squatting at the bundle path
- * (review round 2, finding 1) — resolves both to the SAME directory.
- */
-function isLinkedWorktree(p: string): boolean {
-  const r = runGit(p, ["rev-parse", "--absolute-git-dir", "--git-common-dir"]);
-  if (r.status !== 0) return false;
-  const [gitDirRaw, commonDirRaw] = r.stdout.trim().split("\n");
-  if (!gitDirRaw || !commonDirRaw) return false;
-  const commonDir = path.isAbsolute(commonDirRaw) ? commonDirRaw : path.resolve(p, commonDirRaw);
-  return realOrSame(gitDirRaw) !== realOrSame(commonDir);
-}
-
-/** True for git's linked-worktree/submodule marker shape: a `.git` FILE, not a directory. */
-function hasGitFileSignature(p: string): boolean {
-  try {
-    return statSync(path.join(p, ".git")).isFile();
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Path-only fallback for the mount-move case: stale worktree pointers make `repoTopLevel(dir)`
- * fail from inside `.agentstate-lite`, but the enclosing path still names the conventional board
- * checkout. Retarget to its parent so `provisionBoardWorktree` can run the repair path. The `.git`
- * FILE gate keeps this away from plain pre-migration bundle directories; independent nested repos
- * with a `.git` directory still fall through to the normal no-board/no-repo classification.
- */
-function retargetStaleBoardInteriorByPath(dir: string): string | null {
-  let cur = path.resolve(dir);
-  for (;;) {
-    if (path.basename(cur) === BUNDLE_DIR && hasGitFileSignature(cur)) {
-      return path.dirname(cur);
-    }
-    const parent = path.dirname(cur);
-    if (parent === cur) return null;
-    cur = parent;
-  }
-}
-
-/**
- * REVIEW ROUND 2, FINDING 2 (MEDIUM-HIGH): `sync` run from INSIDE the board worktree — exactly
- * where an agent sits right after `doc write --dir .agentstate-lite` — used to fail with a leaked
- * doubled path: `repoTopLevel(dir)` resolves to the board worktree itself, provisioning then
- * fabricates `<board>/.agentstate-lite`, its `worktree add` fails "already checked out", and the
- * fallback returned a boardPath that does not exist. The structural signature of "standing inside
- * the board" is a repo top that is BOTH named `.agentstate-lite` AND a linked worktree; retarget
- * to its parent directory (the enclosing project), where the normal resolution — heal probe, then
- * provisioning's idempotent "already" branch — proceeds against the REAL board path.
- */
-export function retargetBoardInterior(dir: string): string {
-  try {
-    const top = repoTopLevel(dir);
-    if (top && path.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
-      return path.dirname(top);
-    }
-  } catch {
-    /* fall through — the normal flow classifies whatever this is */
-  }
-  return retargetStaleBoardInteriorByPath(dir) ?? dir;
-}
-
-/** The board worktree's current HEAD sha, via U1's exported `runGit` (no U1 op named this directly). */
-export function currentHead(boardPath: string): string {
-  const r = runGit(boardPath, ["rev-parse", "HEAD"]);
-  if (r.status !== 0) {
-    throw classifyGitError({ args: ["rev-parse", "HEAD"], status: r.status, stdout: r.stdout, stderr: r.stderr });
-  }
-  return r.stdout.trim();
-}
-
-/** Count of lines in `git status --porcelain` — uncommitted (staged or not) changes in the worktree. */
-export function countUncommitted(boardPath: string): number {
-  const r = runGit(boardPath, ["status", "--porcelain"]);
-  if (r.status !== 0) return 0;
-  return r.stdout.split("\n").filter((l) => l.trim().length > 0).length;
-}
-
-// ── review finding 2: an origin-ref-only diff for the RECEIPT's pulled/incoming ────────────────
-//
-// `changesSince` (U1) is deliberately HEAD-anchored — the cursor/awareness-cache "since I last
-// read up to" contract, which U4 will filter self-authored rows out of at the human face (the
-// reviewer judged that cache feed acceptable to stay self-inclusive; see the two `writeCache`
-// calls below, which still use `toDeltaRows(changes)`, the cursor-based feed, UNCHANGED). But the
-// RECEIPT's `pulled`/`incoming` must report ONLY what genuinely arrived FROM ORIGIN this run —
-// a HEAD-anchored diff can't express that: HEAD, after a full sync's rebase, is origin/board's tip
-// PLUS whatever this run (or an earlier, still-unpushed run) committed locally, so it double-counts
-// self-authored (or already-locally-committed-but-unpushed) docs as "incoming". The fix diffs TWO
-// EXPLICIT origin/board refs — before this run's own fetch, and after — which is by construction
-// unrelated to local HEAD or local commit history at all.
-//
-// This duplicates git.ts's private per-doc frontmatter enrichment (`enrichDocChange`/
-// `nameStatusRows`/`verbOf`) rather than extending `changesSince` itself, since U1 is
-// consume-only for this unit and `changesSince`'s HEAD-anchored shape is deliberate (U2's cursor
-// contract). A natural FUTURE refactor: promote a `diffDocsBetween(boardPath, fromRef, toRef)`
-// primitive into git.ts, with `changesSince(token)` becoming `diffDocsBetween(token, "HEAD")` — but
-// that is a git.ts change, out of scope for a "consume only" unit; flagged in the builder report.
-
 /** The `refs/remotes/origin/board` sha, or `null` when it doesn't resolve (mirrors `unpushedCount`'s own check). */
 function resolveOriginRef(boardPath: string): string | null {
   const r = runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]);
@@ -791,113 +601,22 @@ function fmValue(v: unknown): string {
   return typeof v === "string" && v.trim().length > 0 ? v.trim() : UNKNOWN_FIELD;
 }
 
-function isConceptDocRelPath(relPath: string): boolean {
-  return relPath.endsWith(".md") && !isReservedFile(relPath);
-}
-
-function nameStatusPairs(out: string): Array<{ letter: string; relPath: string }> {
-  return out
-    .split("\n")
-    .map((l) => l.trimEnd())
-    .filter((l) => l.length > 0)
-    .map((l) => {
-      const [letter = "", ...rest] = l.split("\t");
-      return { letter: letter.trim().charAt(0), relPath: rest.join("\t") };
-    })
-    .filter((r) => r.letter.length > 0 && r.relPath.length > 0);
-}
-
-function verbForLetter(letter: string): DocChange["verb"] | null {
-  if (letter === "A") return "added";
-  if (letter === "M" || letter === "T") return "updated";
-  if (letter === "D") return "deleted";
-  return null;
-}
-
-/** Enrich one changed doc from its OWN frontmatter at `rev` — mirrors git.ts's `enrichDocChange`. */
-function enrichDocChangeAt(boardPath: string, relPath: string, verb: DocChange["verb"], rev: string): DocChange {
-  const docId = conceptIdFromPath(relPath);
-  let actor = UNKNOWN_FIELD;
-  let kind = UNKNOWN_FIELD;
-  let title = docId;
-  const shown = runGit(boardPath, ["show", `${rev}:${relPath}`]);
-  if (shown.status === 0) {
-    try {
-      const { frontmatter } = parseMarkdown(shown.stdout, relPath);
-      actor = fmValue(frontmatter.actor);
-      kind = fmValue(frontmatter.type);
-      const t = fmValue(frontmatter.title);
-      if (t !== UNKNOWN_FIELD) title = t;
-    } catch {
-      /* malformed doc: keep the unknown placeholders, same policy as git.ts's own enrichment */
-    }
-  }
-  return { docId, actor, verb, kind, title };
-}
-
 /**
- * The concept docs that changed strictly between two EXPLICIT refs — both origin/board states,
- * NEVER touching local HEAD or local commit history. `null`/equal refs (no known baseline, or
- * genuinely nothing new fetched) yield an empty result rather than a git error.
+ * The RECEIPT's `pulled`/`incoming` delta: the concept docs that changed strictly between two
+ * EXPLICIT origin/board refs (before/after this run's own fetch), NEVER touching local HEAD or
+ * local commit history — a HEAD-anchored diff would double-count self-authored/unpushed docs as
+ * "incoming". `null`/equal refs (no known baseline, or genuinely nothing new fetched) and a diff
+ * between refs that cannot be compared both yield an empty result rather than a failed sync —
+ * the receipt tolerance, layered onto git.ts's ONE consolidated {@link diffDocsBetween}.
  */
 export function originDocsBetween(boardPath: string, fromRef: string | null, toRef: string | null): DocChange[] {
   if (!fromRef || !toRef || fromRef === toRef) return [];
-  const r = runGit(boardPath, ["diff", "--name-status", "--no-renames", `${fromRef}..${toRef}`]);
-  if (r.status !== 0) return [];
-  const changes: DocChange[] = [];
-  for (const { letter, relPath } of nameStatusPairs(r.stdout)) {
-    if (!isConceptDocRelPath(relPath)) continue;
-    const verb = verbForLetter(letter);
-    if (!verb) continue;
-    changes.push(enrichDocChangeAt(boardPath, relPath, verb, verb === "deleted" ? fromRef : toRef));
-  }
-  return changes;
-}
-
-/**
- * The per-clone cursor/cache/marker key (U2's `bundleKey`) for THIS board worktree — EXPORTED as
- * THE one derivation (cache-per-clone review advisory (a): home/session-start REUSE this; a second
- * independent derivation is the real state-split risk). NOTE for callers: this realpaths the board
- * path itself (`realOrSame`) — pass the board worktree path as resolved from the repo top, and do
- * NOT pre-normalize it differently. Keyed by the
- * `origin` remote URL (git worktrees share one remote config with their main worktree) with an
- * empty subpath (the board branch's root IS the bundle root — gate 2) PLUS the board worktree's
- * own realpath as the checkout identity — two clones of one origin on one machine must never
- * share a state file (PR#13 review, item 4: the shared file let clone A's clean sync erase clone
- * B's stranded-unpushed backstop state). Falls back to the absolute board path alone when no
- * origin URL resolves (U2's own path fallback for a remote-less repo). The realpath (via
- * `realOrSame`) keeps the key stable across symlinked spellings of one checkout (macOS
- * `/tmp` → `/private/tmp`, an aliased home) — same clone, same key, every invocation.
- */
-export function resolveBundleKey(boardPath: string): string {
-  const checkoutRoot = realOrSame(boardPath);
-  const r = runGit(boardPath, ["remote", "get-url", BOARD_REMOTE]);
-  if (r.status === 0 && r.stdout.trim().length > 0) {
-    return bundleKey({ remoteUrl: r.stdout.trim(), subpath: "", checkoutRoot });
-  }
-  return bundleKey({ root: checkoutRoot });
-}
-
-/** The single actor when every committed doc shares one (mirrors `git.ts`'s commit-subject grammar). */
-export function singleActor(docs: DocChange[]): string | undefined {
-  if (docs.length === 0) return undefined;
-  const actors = new Set(docs.map((d) => d.actor));
-  return actors.size === 1 ? docs[0]!.actor : undefined;
+  return diffDocsBetween(boardPath, fromRef, toRef, { tolerateDiffFailure: true });
 }
 
 /** Project the enriched delta feed into the envelope's `incoming` row shape (message pack (a)). */
 export function toIncomingRows(changes: DocChange[]): Record<string, unknown>[] {
   return changes.map((c) => ({ verb: c.verb, kind: c.kind, id: c.docId, title: c.title, actor: c.actor }));
-}
-
-/**
- * Project the enriched delta feed into `AwarenessDeltaRow[]` (the cache's persisted shape). A plain
- * `DocChange[]` isn't directly assignable — `AwarenessDeltaRow` carries an index signature for a
- * future producer's extra fields, and `DocChange` (a fixed, non-indexed interface) doesn't
- * structurally satisfy it — so this rebuilds each row as a fresh object literal instead.
- */
-export function toDeltaRows(changes: DocChange[]): AwarenessDeltaRow[] {
-  return changes.map((c) => ({ docId: c.docId, verb: c.verb, kind: c.kind, title: c.title, actor: c.actor }));
 }
 
 /** The bundle exists locally and origin was successfully checked for a shared board. */
@@ -930,7 +649,21 @@ export function hasLocalOnlyBundle(dir: string): boolean {
   return existsSync(path.join(top, BUNDLE_DIR, "index.md"));
 }
 
+/**
+ * The sync command entry — and the git tier's CLI COMMAND BOUNDARY: any typed `BoardGitError`
+ * that reaches this edge (git.ts ops, the establish/migrate flows dispatched below) maps through
+ * THE one `cliErrorFromBoardGit` layer, so callers (the bin wrapper, tests) always observe
+ * `CliError` with the exact envelope/exit the tier produced before the taxonomy split.
+ */
 export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Promise<void> {
+  try {
+    await syncCommand(argv, deps);
+  } catch (err) {
+    throw isBoardGitError(err) ? cliErrorFromBoardGit(err) : err;
+  }
+}
+
+async function syncCommand(argv: string[], deps: Partial<SyncCliDeps> = {}): Promise<void> {
   const stdout = deps.stdout ?? ((s: string) => void process.stdout.write(s));
   const inv = cliInvocation();
 
@@ -1117,9 +850,9 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   // marker's meaning — so it is refreshed here, BEFORE the pull, covering every path out of this
   // run (clean, conflict, offline fetch failure, push failure) with one write. session-start's
   // pull step refreshes it the same way.
-  await refreshMarker(key);
+  await defaultSyncStore.refreshMarker(key);
 
-  const storedCursor = await readCursor(key);
+  const storedCursor = await defaultSyncStore.readCursor(key);
   const startHead = currentHead(boardPath);
   // Finding 2's baseline: origin/board's OWN ref as this run understood it BEFORE its own
   // fetch — captured now, before step 2's commit or step 3's fetch, so it can never include
@@ -1134,7 +867,7 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
       // U4's "self" identity: the actors THIS clone just committed are recorded per-clone, so the
       // home render can filter self-authored rows out of the human "since" count ("unknown" is
       // dropped inside recordSelfActors — see its doc).
-      await recordSelfActors(key, commitResult.docs.map((d) => d.actor));
+      await defaultSyncStore.recordSelfActors(key, commitResult.docs.map((d) => d.actor));
     }
   }
 
@@ -1151,7 +884,7 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   } else {
     let rebaseOutcome: FetchRebaseResolvingOutcome;
     try {
-      rebaseOutcome = fetchRebaseResolving(boardPath, syncExportsDir(key));
+      rebaseOutcome = fetchRebaseResolving(boardPath, defaultSyncStore.exportsDir(key));
     } catch (rawErr) {
       // Finding 3: a fetch/rebase failure AFTER a real local commit this run gets the SAME
       // safety-first framing a push failure does (composed with the NO_UPSTREAM help, in order),
@@ -1225,14 +958,14 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   let reanchorNote: string | undefined;
   if (delta.ok) {
     changes = delta.changes;
-    await writeCursor(key, { tier: "git", token: postPullHead });
+    await defaultSyncStore.writeCursor(key, { tier: "git", token: postPullHead });
   } else {
     // The STORED cursor's object no longer exists (history was rewritten under it) — U2's own
     // re-anchor path: record the honest note, an empty delta (unknowable across a rewrite), and
     // advance the cursor to now. NEVER a silent skip, never fatal (U2's contract).
     changes = [];
     reanchorNote = REANCHOR_NOTE;
-    await recordReanchor(
+    await defaultSyncStore.recordReanchor(
       key,
       { tier: "git", token: postPullHead },
       { unpushedCount: unpushedCount(boardPath) ?? 0, uncommittedCount: countUncommitted(boardPath) },
@@ -1264,7 +997,7 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
       partial.incoming = cap(toIncomingRows(originDelta), limit);
       if (reanchorNote) partial.note = reanchorNote;
       stdout(render(partial, mode));
-      await writeCache(key, {
+      await defaultSyncStore.writeCache(key, {
         updatedAt: new Date().toISOString(),
         delta: toDeltaRows(changes),
         unpushedCount: unpushedCount(boardPath) ?? 0,
@@ -1278,7 +1011,7 @@ export async function sync(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   // STEP 5: the awareness cache — refreshed with FINAL (post-push-attempt) backstop counts, so a
   // successful push is reflected (not the stale pre-push "still ahead" count). Deliberately still
   // the cursor-based `changes` (see the comment above `cursorToken`), NOT `originDelta`.
-  await writeCache(key, {
+  await defaultSyncStore.writeCache(key, {
     updatedAt: new Date().toISOString(),
     delta: toDeltaRows(changes),
     unpushedCount: unpushedCount(boardPath) ?? 0,

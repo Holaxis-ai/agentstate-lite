@@ -22,8 +22,8 @@
  *     story. Explicit (not merely `-M` omitted) so a host `diff.renames=true` config cannot leak in.
  *   - Path quoting OFF (`-c core.quotepath=off`): non-ASCII paths come back as raw UTF-8, never
  *     C-quoted — parsed paths must round-trip back into git as pathspecs (see `runGit`'s header).
- *   - No raw git on stdout: every failure routes through `classifyGitError` (errors.ts) into the
- *     capped exit taxonomy.
+ *   - No raw git on stdout: every failure routes through `classifyGitError` (board-git-errors.ts)
+ *     into the typed `BoardGitError` taxonomy; the CLI command boundary maps it to exit codes.
  *
  * CONFLICT BOUNDARY: {@link fetchRebase} DETECTS a same-doc conflict — collects the conflicted ids
  * via `diff --name-only --diff-filter=U` — and `git rebase --abort`s cleanly (ZERO data movement;
@@ -50,7 +50,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { conceptIdFromPath, isReservedFile, parseMarkdown } from "@agentstate-lite/core";
-import { CliError, classifyGitError, type GitFailure } from "./errors.js";
+import { BoardGitError, classifyGitError, isBoardGitError, type GitFailure } from "./board-git-errors.js";
 
 /** The dedicated branch that carries ONLY the bundle (its root IS the bundle root). */
 export const BOARD_BRANCH = "board";
@@ -130,7 +130,7 @@ function gitEnv(rebase: boolean, connectTimeoutSeconds = 10, indexFile?: string)
 /**
  * Run `git -C <dir> <args…>` under the porcelain invariants, TOLERATING a nonzero exit (the caller
  * inspects `status`). A spawn-level failure (no git binary, fired timeout) can never be a
- * legitimate outcome, so it THROWS the classified `CliError` (GIT_MISSING / TRANSIENT) directly.
+ * legitimate outcome, so it THROWS the classified `BoardGitError` (GIT_MISSING / TRANSIENT) directly.
  *
  * `-c core.quotepath=off` is a WRAPPER INVARIANT (U3b review fix 1): with git's default
  * `core.quotepath=true`, any non-ASCII path (e.g. `tasks/café.md`) comes back C-QUOTED in
@@ -210,7 +210,7 @@ function failureOf(args: string[], r: GitRunResult): GitFailure {
   return { args, status: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
-/** Run a git op that MUST succeed; a nonzero exit throws the classified `CliError`. */
+/** Run a git op that MUST succeed; a nonzero exit throws the classified `BoardGitError`. */
 function mustGit(dir: string, args: string[], opts: RunOptions = {}): string {
   const r = runGit(dir, args, opts);
   if (r.status !== 0) throw classifyGitError(failureOf(args, r));
@@ -462,7 +462,7 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
     try {
       return runGit(top, args, networkOptions());
     } catch (err) {
-      if (err instanceof CliError && err.code === "TRANSIENT") return null;
+      if (isBoardGitError(err) && err.code === "TRANSIENT") return null;
       throw err;
     }
   };
@@ -538,7 +538,7 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
         !hasWorktreeSignature(boardPath) &&
         runGit(top, ["cat-file", "-e", `HEAD:${BUNDLE_DIR}`]).status === 0
       ) {
-        throw new CliError(
+        throw new BoardGitError(
           "RUNTIME",
           `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is ` +
             `still the pre-migration folder committed on this branch — the migration PR hasn't ` +
@@ -601,7 +601,7 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
           help: moveAsideHelp(boardPath, "then re-run sync; the existing checkout is untouched, just relocated"),
         },
       };
-      throw new CliError("RUNTIME", messages[reason].message, {
+      throw new BoardGitError("RUNTIME", messages[reason].message, {
         details: { path: boardPath },
         help: messages[reason].help,
       });
@@ -717,7 +717,9 @@ function verbOf(letter: string): DocVerb | null {
  * Build the enriched {@link DocChange} for one changed doc by parsing the frontmatter of the doc's
  * content AT `rev` (a `<rev>:<path>` readable by `git show` — the stage for a pending commit, HEAD
  * for a landed change, the old tip for a deletion). Malformed frontmatter degrades to `unknown`
- * fields — a corrupt doc must never block a commit or the feed.
+ * fields — a corrupt doc must never block a commit or the feed. `idPath` (default: `relPath`)
+ * names the BUNDLE-relative path the doc id derives from — `git show` always reads the full
+ * repo-relative `relPath`, so a prefix-scoped diff strips its prefix from the id only.
  */
 function enrichDocChange(
   boardPath: string,
@@ -725,8 +727,9 @@ function enrichDocChange(
   verb: DocVerb,
   rev: string,
   runOptions: RunOptions = {},
+  idPath: string = relPath,
 ): DocChange {
-  const docId = conceptIdFromPath(relPath);
+  const docId = conceptIdFromPath(idPath);
   let actor = UNKNOWN;
   let kind = UNKNOWN;
   let title = docId;
@@ -824,7 +827,7 @@ function snapshotFilesystemFiles(root: string): string[] {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
       if (entry.name.toLowerCase() === ".git") {
-        throw new CliError(
+        throw new BoardGitError(
           "RUNTIME",
           `the bundle contains nested git control data at '${relPath}' — establish refuses because ` +
             `Git can silently omit or collapse files below that boundary`,
@@ -834,7 +837,7 @@ function snapshotFilesystemFiles(root: string): string[] {
       if (entry.isDirectory()) visit(path.join(dir, entry.name), relPath);
       else if (entry.isFile() || entry.isSymbolicLink()) files.push(relPath);
       else {
-        throw new CliError(
+        throw new BoardGitError(
           "RUNTIME",
           `the bundle contains an unsupported filesystem entry at '${relPath}' — only files, ` +
             `directories, and symbolic links can be established safely`,
@@ -891,7 +894,7 @@ export function assertBundleBytesMatchCommit(top: string, bundlePath: string, co
     }
   }
   if (mismatches.length > 0) {
-    throw new CliError(
+    throw new BoardGitError(
       "RUNTIME",
       `bundle bytes differ from the Git snapshot at '${mismatches[0]}' — a Git attribute, ` +
         `clean/smudge filter, EOL rule, or concurrent writer may be rewriting content; no source backup was removed`,
@@ -932,7 +935,7 @@ export function snapshotBundleCommit(top: string, bundlePath: string): BundleSna
       .filter((row) => row.startsWith("160000 "))
       .map((row) => row.slice(row.indexOf("\t") + 1));
     if (gitlinks.length > 0) {
-      throw new CliError(
+      throw new BoardGitError(
         "RUNTIME",
         `the bundle contains nested git checkout machinery at '${gitlinks[0]}' — establish ` +
           `refuses because Git would publish only a gitlink and omit that directory's files`,
@@ -946,7 +949,7 @@ export function snapshotBundleCommit(top: string, bundlePath: string): BundleSna
     ) {
       const staged = new Set(stagedFiles);
       const filesystem = new Set(filesystemFiles);
-      throw new CliError("RUNTIME", "Git did not capture every bundle file; nothing was published", {
+      throw new BoardGitError("RUNTIME", "Git did not capture every bundle file; nothing was published", {
         details: {
           omitted_paths: filesystemFiles.filter((file) => !staged.has(file)).slice(0, 20),
           unexpected_paths: stagedFiles.filter((file) => !filesystem.has(file)).slice(0, 20),
@@ -1130,7 +1133,7 @@ export function fetchRebaseResolving(boardPath: string, exportDir: string): Fetc
     let stops = 0;
     while (detectStaleRebase(boardPath)) {
       if (++stops > MAX_REBASE_STOPS) {
-        throw new CliError(
+        throw new BoardGitError(
           "RUNTIME",
           `sync's converging rebase did not terminate after ${MAX_REBASE_STOPS} stops — aborting to leave the board unchanged`,
         );
@@ -1371,8 +1374,8 @@ export interface FfPullResult {
   swallowed?: string;
 }
 
-/** Map a classified git CliError code to the ff-pull swallow-reason vocabulary. */
-function swallowReason(err: CliError): string {
+/** Map a classified BoardGitError code to the ff-pull swallow-reason vocabulary. */
+function swallowReason(err: BoardGitError): string {
   switch (err.code) {
     case "GIT_MISSING":
       return "git-missing";
@@ -1434,9 +1437,67 @@ export function ffPull(boardPath: string, budget: NetworkBudgetOptions = {}): Ff
     return result;
   } catch (err) {
     // Fail-soft to the last defense: even a spawn-level failure is swallowed here.
-    if (err instanceof CliError) return { updated: false, swallowed: swallowReason(err) };
+    if (isBoardGitError(err)) return { updated: false, swallowed: swallowReason(err) };
     return { updated: false, swallowed: "runtime" };
   }
+}
+
+// ── the ONE ref-to-ref doc diff (changes-since + the receipt's origin delta) ──
+
+export interface DiffDocsOptions {
+  /**
+   * Scope the delta to docs under this repo-relative prefix (e.g. `.agentstate-lite/`), stripping
+   * it BEFORE doc-id/reserved-file interpretation — so `<prefix>/index.md` still reads as
+   * reserved. The seam for in-tree mode (plan board-git PR C); unused by today's callers (a
+   * board worktree's root IS the bundle root).
+   */
+  prefix?: string;
+  /**
+   * True: a failed diff reads as "no changes" (the receipt's origin-delta tolerance — two
+   * already-verified refs that cannot diff yield an empty delta, never a failed sync). Default
+   * false: a failed diff throws classified (the cursor feed's posture). Spawn-level failures
+   * (no git binary, fired timeout) throw either way.
+   */
+  tolerateDiffFailure?: boolean;
+}
+
+/**
+ * The consolidated enriched delta pipeline: every concept doc changed between `fromRef..toRef`
+ * (two-dot — snapshot-to-snapshot, requiring object EXISTENCE not ancestry), each row read from
+ * the doc's OWN frontmatter at `toRef` (or, for a deletion, at `fromRef`). This is the ONE
+ * diff-parse-enrich path — {@link changesSince} (the cursor feed) and sync's receipt delta both
+ * ride it; do not reintroduce a per-caller copy of the name-status parse or the enrichment.
+ */
+export function diffDocsBetween(
+  dir: string,
+  fromRef: string,
+  toRef: string,
+  opts: DiffDocsOptions = {},
+): DocChange[] {
+  const args = ["diff", "--name-status", "--no-renames", `${fromRef}..${toRef}`];
+  let out: string;
+  if (opts.tolerateDiffFailure) {
+    const r = runGit(dir, args);
+    if (r.status !== 0) return [];
+    out = r.stdout;
+  } else {
+    out = mustGit(dir, args);
+  }
+  const prefix =
+    !opts.prefix ? undefined : opts.prefix.endsWith("/") ? opts.prefix : `${opts.prefix}/`;
+  const changes: DocChange[] = [];
+  for (const { letter, relPath } of nameStatusRows(out)) {
+    let idPath = relPath;
+    if (prefix !== undefined) {
+      if (!relPath.startsWith(prefix)) continue;
+      idPath = relPath.slice(prefix.length);
+    }
+    if (!isConceptDocPath(idPath)) continue;
+    const verb = verbOf(letter);
+    if (!verb) continue;
+    changes.push(enrichDocChange(dir, relPath, verb, verb === "deleted" ? fromRef : toRef, {}, idPath));
+  }
+  return changes;
 }
 
 // ── changes since a cursor token ──────────────────────────────────────────────
@@ -1447,27 +1508,16 @@ export type ChangesSinceOutcome =
   | { ok: false; reason: "dangling" };
 
 /**
- * The enriched delta feed: every concept doc changed between `<token>..HEAD` (two-dot —
- * snapshot-to-snapshot, requiring object EXISTENCE not ancestry), each row read from the doc's OWN
- * frontmatter at HEAD (or, for a deletion, at the cursor's snapshot). Guarded by
- * `git cat-file -e <token>^{commit}` so a rewritten-away cursor reports `dangling` instead of a
- * fatal `Invalid revision range` — the honest re-anchor path is the CURSOR module's job (U2).
+ * The enriched delta feed since a cursor token — {@link diffDocsBetween} over `<token>..HEAD`,
+ * guarded by `git cat-file -e <token>^{commit}` so a rewritten-away cursor reports `dangling`
+ * instead of a fatal `Invalid revision range` — the honest re-anchor path is the CURSOR module's
+ * job (U2).
  */
 export function changesSince(boardPath: string, token: string): ChangesSinceOutcome {
   if (runGit(boardPath, ["cat-file", "-e", `${token}^{commit}`]).status !== 0) {
     return { ok: false, reason: "dangling" };
   }
-  const rows = nameStatusRows(
-    mustGit(boardPath, ["diff", "--name-status", "--no-renames", `${token}..HEAD`]),
-  );
-  const changes: DocChange[] = [];
-  for (const { letter, relPath } of rows) {
-    if (!isConceptDocPath(relPath)) continue;
-    const verb = verbOf(letter);
-    if (!verb) continue;
-    changes.push(enrichDocChange(boardPath, relPath, verb, verb === "deleted" ? token : "HEAD"));
-  }
-  return { ok: true, changes };
+  return { ok: true, changes: diffDocsBetween(boardPath, token, "HEAD") };
 }
 
 // ── unpushed count ────────────────────────────────────────────────────────────
@@ -1484,4 +1534,22 @@ export function unpushedCount(boardPath: string): number | null {
   const out = mustGit(boardPath, ["rev-list", "--count", `${BOARD_REF}..HEAD`]).trim();
   const n = Number.parseInt(out, 10);
   return Number.isFinite(n) ? n : 0;
+}
+
+// ── small named ops the flow layer composes (promoted from commands/sync.ts, A0) ─
+
+/** The board worktree's current HEAD sha; a failure throws classified. */
+export function currentHead(boardPath: string): string {
+  const r = runGit(boardPath, ["rev-parse", "HEAD"]);
+  if (r.status !== 0) {
+    throw classifyGitError({ args: ["rev-parse", "HEAD"], status: r.status, stdout: r.stdout, stderr: r.stderr });
+  }
+  return r.stdout.trim();
+}
+
+/** Count of lines in `git status --porcelain` — uncommitted (staged or not) changes in the worktree. */
+export function countUncommitted(boardPath: string): number {
+  const r = runGit(boardPath, ["status", "--porcelain"]);
+  if (r.status !== 0) return 0;
+  return r.stdout.split("\n").filter((l) => l.trim().length > 0).length;
 }

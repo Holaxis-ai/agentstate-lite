@@ -52,13 +52,9 @@
 import { parseArgs } from "node:util";
 
 import { provisionBoardWorktree, type ProvisionOutcome } from "../git.js";
-import { refreshMarker } from "../cursor.js";
+import { defaultSyncStore } from "../cursor.js";
 import { pullBoardAndRecord } from "../autopull.js";
-import {
-  provisionAnnouncement,
-  resolveBundleKey,
-  retargetBoardInterior,
-} from "./sync.js";
+import { provisionAnnouncement, resolveBundleKey, retargetBoardInterior } from "../sync-engine.js";
 import { defaultSummarizeBundle, discoverSummarizeBundle, home, type BoardPullOutcome } from "./home.js";
 import { cliInvocation } from "../invocation.js";
 import { parseOrUsage } from "../args.js";
@@ -152,7 +148,7 @@ export async function sessionStartPull(
     const key = resolveBundleKey(boardPath);
     // Marker refresh: EVERY pull step that confirmed a provisioned board (plan §U2), regardless of
     // how the network half goes below.
-    await refreshMarker(key);
+    await defaultSyncStore.refreshMarker(key);
 
     if (remaining() < MIN_USEFUL_BUDGET_MS) {
       return { offline: true, boardPath, ...(announcement ? { announcement } : {}) };

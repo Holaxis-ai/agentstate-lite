@@ -64,7 +64,7 @@
 import { chmod, mkdir, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import { credentialsDir, writeFileAtomic0600 } from "./credentials.js";
 
@@ -341,7 +341,7 @@ function freshOrNull<T extends { updatedAt: string }>(
   return age > opts.maxAgeMs ? null : value;
 }
 
-// ── reads (never throw) ───────────────────────────────────────────────────────
+// ── the store factory (board-git A0: injection point for the future package) ──
 
 /** Staleness policy for timestamped reads — the CONSUMER decides how old is too old. */
 export interface ReadOptions {
@@ -351,172 +351,343 @@ export interface ReadOptions {
   now?: () => Date;
 }
 
+/** The injected seams: WHERE state lives and HOW it is written. No CLI/credentials knowledge. */
+export interface SyncStoreOptions {
+  /**
+   * The state directory, or a thunk resolved PER OPERATION — the default store passes a thunk so
+   * a `HOME` change between calls (the test-suite pattern) is honored, exactly like the old
+   * per-call `home` parameters were.
+   */
+  stateDir: string | (() => string);
+  /** The atomic 0600 write discipline (default: credentials.ts's `writeFileAtomic0600`). */
+  writeAtomic: (dir: string, fileName: string, content: string) => Promise<void>;
+}
+
+/** The per-bundle sync state store — ONE owning implementation behind {@link createSyncStore}. */
+export interface SyncStore {
+  /** The absolute state-file path for `key`. */
+  statePath(key: string): string;
+  /** The per-bundle conflict-export directory for `key` (path naming only — git creates it). */
+  exportsDir(key: string): string;
+  readSyncState(key: string): Promise<SyncState>;
+  readCursor(key: string): Promise<SyncCursor | null>;
+  readCache(key: string, opts?: ReadOptions): Promise<AwarenessCache | null>;
+  readMarker(key: string, opts?: ReadOptions): Promise<BoardPendingMarker | null>;
+  writeSyncState(key: string, patch: Partial<SyncState>): Promise<SyncState>;
+  writeCursor(key: string, cursor: SyncCursor): Promise<void>;
+  writeCache(key: string, cache: AwarenessCache): Promise<void>;
+  refreshMarker(key: string, now?: () => Date): Promise<BoardPendingMarker>;
+  readSelfActors(key: string): Promise<string[]>;
+  recordSelfActors(key: string, actors: string[]): Promise<string[]>;
+  recordReanchor(
+    key: string,
+    cursor: SyncCursor,
+    counts: { unpushedCount: number; uncommittedCount: number },
+    now?: () => Date,
+  ): Promise<AwarenessCache>;
+  readAutoPullAttemptAt(key: string): Promise<string | null>;
+  recordAutoPullAttempt(key: string, now?: () => Date): Promise<void>;
+  readHookHintedAt(key: string): Promise<string | null>;
+  recordHookHinted(key: string, now?: () => Date): Promise<void>;
+}
+
 /**
- * Read the whole per-bundle state record. NEVER throws: absent file, unreadable file, invalid
- * JSON, or a foreign key all read as the empty record; each SECTION is validated independently,
- * so one malformed section reads null without taking the others down.
+ * Build a sync store over an injected state directory + atomic write. This is THE implementation
+ * — the module-level functions below are per-home projections of it, and `defaultSyncStore` is
+ * the instance every production consumer uses. Semantics (unchanged from the free-function era):
+ * reads NEVER throw (absent/malformed/foreign state reads as null/empty); writes are atomic
+ * read-merge-write and CAN throw; invalid write input is a programmer error (TypeError).
  */
-export async function readSyncState(key: string, home: string = homedir()): Promise<SyncState> {
-  let raw: string;
-  try {
-    raw = await readFile(syncStatePath(key, home), "utf8");
-  } catch {
-    return { ...EMPTY_STATE }; // absent or unreadable — both are just "no state yet"
+export function createSyncStore(options: SyncStoreOptions): SyncStore {
+  const stateDir = (): string =>
+    typeof options.stateDir === "function" ? options.stateDir() : options.stateDir;
+  const statePath = (key: string): string => join(stateDir(), `${keyDigest(key)}.json`);
+  const exportsDir = (key: string): string => join(stateDir(), "exports", keyDigest(key));
+
+  /**
+   * Read the whole per-bundle state record. NEVER throws: absent file, unreadable file, invalid
+   * JSON, or a foreign key all read as the empty record; each SECTION is validated independently,
+   * so one malformed section reads null without taking the others down.
+   */
+  async function readSyncState(key: string): Promise<SyncState> {
+    let raw: string;
+    try {
+      raw = await readFile(statePath(key), "utf8");
+    } catch {
+      return { ...EMPTY_STATE }; // absent or unreadable — both are just "no state yet"
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { ...EMPTY_STATE };
+    }
+    if (!isRecord(parsed)) return { ...EMPTY_STATE };
+    // Foreign-file guard: the key is stored INSIDE the file too; a truncated-hash collision (or a
+    // hand-copied file) must read as absent for this key, never as another bundle's state.
+    if (parsed.key !== key) return { ...EMPTY_STATE };
+    return {
+      cursor: asCursor(parsed.cursor),
+      cache: asCache(parsed.cache),
+      marker: asMarker(parsed.marker),
+      selfActors: asSelfActors(parsed.selfActors),
+      autoPullAttemptAt: isTimestamp(parsed.autoPullAttemptAt) ? parsed.autoPullAttemptAt : null,
+      hookHintedAt: isTimestamp(parsed.hookHintedAt) ? parsed.hookHintedAt : null,
+    };
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return { ...EMPTY_STATE };
+
+  /**
+   * Merge `patch` into the stored record and write the whole file atomically. An explicit `null`
+   * in the patch CLEARS that section; an absent field preserves it. Returns the state as written.
+   */
+  async function writeSyncState(key: string, patch: Partial<SyncState>): Promise<SyncState> {
+    const next: SyncState = { ...(await readSyncState(key)), ...patch };
+    // Force the PARENT (e.g. `~/.agentstate/`) to 0700 too (writeAtomic only governs the leaf dir).
+    const dir = stateDir();
+    const parent = dirname(dir);
+    await mkdir(parent, { recursive: true, mode: DIR_MODE });
+    await chmod(parent, DIR_MODE);
+    const record = {
+      key,
+      cursor: next.cursor ?? undefined,
+      cache: next.cache ?? undefined,
+      marker: next.marker ?? undefined,
+      selfActors: next.selfActors ?? undefined,
+      autoPullAttemptAt: next.autoPullAttemptAt ?? undefined,
+      hookHintedAt: next.hookHintedAt ?? undefined,
+    };
+    await options.writeAtomic(dir, basename(statePath(key)), JSON.stringify(record, null, 2) + "\n");
+    return next;
   }
-  if (!isRecord(parsed)) return { ...EMPTY_STATE };
-  // Foreign-file guard: the key is stored INSIDE the file too; a truncated-hash collision (or a
-  // hand-copied file) must read as absent for this key, never as another bundle's state.
-  if (parsed.key !== key) return { ...EMPTY_STATE };
+
   return {
-    cursor: asCursor(parsed.cursor),
-    cache: asCache(parsed.cache),
-    marker: asMarker(parsed.marker),
-    selfActors: asSelfActors(parsed.selfActors),
-    autoPullAttemptAt: isTimestamp(parsed.autoPullAttemptAt) ? parsed.autoPullAttemptAt : null,
-    hookHintedAt: isTimestamp(parsed.hookHintedAt) ? parsed.hookHintedAt : null,
+    statePath,
+    exportsDir,
+    readSyncState,
+    writeSyncState,
+
+    /** The stored cursor, or `null` (absent/malformed — never throws). Cursors do not age out. */
+    async readCursor(key: string): Promise<SyncCursor | null> {
+      return (await readSyncState(key)).cursor;
+    },
+
+    /** The awareness cache, or `null` (absent/malformed/stale-past-`maxAgeMs` — never throws). */
+    async readCache(key: string, opts?: ReadOptions): Promise<AwarenessCache | null> {
+      return freshOrNull((await readSyncState(key)).cache, opts);
+    },
+
+    /** The board-pending marker, or `null` (absent/malformed/stale-past-`maxAgeMs` — never throws). */
+    async readMarker(key: string, opts?: ReadOptions): Promise<BoardPendingMarker | null> {
+      return freshOrNull((await readSyncState(key)).marker, opts);
+    },
+
+    /** Persist the cursor (verbatim — opaque token, unknown tiers untouched). */
+    async writeCursor(key: string, cursor: SyncCursor): Promise<void> {
+      if (asCursor(cursor) === null) {
+        throw new TypeError("cursor must be { tier: non-empty string, token: non-empty string | finite number }");
+      }
+      await writeSyncState(key, { cursor });
+    },
+
+    /** Persist the awareness cache the next `home` render reads. */
+    async writeCache(key: string, cache: AwarenessCache): Promise<void> {
+      if (asCache(cache) === null) {
+        throw new TypeError(
+          "cache must carry { updatedAt: ISO timestamp, delta: AwarenessDeltaRow[], unpushedCount, uncommittedCount }",
+        );
+      }
+      await writeSyncState(key, { cache });
+    },
+
+    /**
+     * Refresh the board-pending marker's timestamp (called by every pull step). Preserves any
+     * extra fields a prior writer stored on the marker. Returns the marker as written.
+     */
+    async refreshMarker(key: string, now: () => Date = () => new Date()): Promise<BoardPendingMarker> {
+      const current = (await readSyncState(key)).marker;
+      const marker: BoardPendingMarker = { ...(current ?? {}), updatedAt: now().toISOString() };
+      await writeSyncState(key, { marker });
+      return marker;
+    },
+
+    /** The self-actor list for a bundle key, or `[]` (absent/malformed — never throws). */
+    async readSelfActors(key: string): Promise<string[]> {
+      return (await readSyncState(key)).selfActors ?? [];
+    },
+
+    /**
+     * Record actors THIS CLONE just committed (sync's commit step calls this — see
+     * {@link SELF_ACTORS_CAP}'s doc for the whole "self" identity story). Merge-union with the
+     * stored list, newest-last, deduped, capped to the NEWEST {@link SELF_ACTORS_CAP} entries.
+     * `"unknown"` and empty strings are dropped at this one chokepoint (recording the placeholder
+     * would make the U4 render hide a teammate's unattributed changes too). A call that changes
+     * nothing skips the write.
+     */
+    async recordSelfActors(key: string, actors: string[]): Promise<string[]> {
+      const current = (await readSyncState(key)).selfActors ?? [];
+      const merged = [...current];
+      for (const a of actors) {
+        if (typeof a !== "string" || a.length === 0 || a === "unknown") continue;
+        if (!merged.includes(a)) merged.push(a);
+      }
+      const capped = merged.slice(-SELF_ACTORS_CAP);
+      if (capped.length === current.length && capped.every((a, i) => a === current[i])) {
+        return current;
+      }
+      await writeSyncState(key, { selfActors: capped });
+      return capped;
+    },
+
+    /**
+     * Re-anchor after the CALLER's existence guard (U1's `git cat-file -e` before diffing) finds
+     * the stored token gone — history was rewritten under the cursor. Atomically records the NEW
+     * cursor (HEAD, minted by the caller) AND an awareness cache whose `note` is the honest
+     * {@link REANCHOR_NOTE} with an EMPTY delta (the real delta is unknowable across a rewrite)
+     * plus the caller's current backstop counts — so the miss is reported on the next render,
+     * never a silent skip, and never fatal. Returns the cache as written.
+     */
+    async recordReanchor(
+      key: string,
+      cursor: SyncCursor,
+      counts: { unpushedCount: number; uncommittedCount: number },
+      now: () => Date = () => new Date(),
+    ): Promise<AwarenessCache> {
+      if (asCursor(cursor) === null) {
+        throw new TypeError("cursor must be { tier: non-empty string, token: non-empty string | finite number }");
+      }
+      const cache: AwarenessCache = {
+        updatedAt: now().toISOString(),
+        delta: [],
+        unpushedCount: counts.unpushedCount,
+        uncommittedCount: counts.uncommittedCount,
+        note: REANCHOR_NOTE,
+      };
+      await writeSyncState(key, { cursor, cache });
+      return cache;
+    },
+
+    /** The last opportunistic auto-pull ATTEMPT timestamp, or `null` (absent/malformed — never throws). */
+    async readAutoPullAttemptAt(key: string): Promise<string | null> {
+      return (await readSyncState(key)).autoPullAttemptAt;
+    },
+
+    /**
+     * Record an opportunistic auto-pull ATTEMPT (autopull.ts calls this BEFORE its network op —
+     * see {@link SyncState.autoPullAttemptAt}: a failing/hanging pull must still back off for the
+     * window).
+     */
+    async recordAutoPullAttempt(key: string, now: () => Date = () => new Date()): Promise<void> {
+      await writeSyncState(key, { autoPullAttemptAt: now().toISOString() });
+    },
+
+    /** The one-time hook-install hint's shown-at timestamp, or `null` (absent/malformed — never throws). */
+    async readHookHintedAt(key: string): Promise<string | null> {
+      return (await readSyncState(key)).hookHintedAt;
+    },
+
+    /** Record that sync's one-time hook-install hint was shown for this clone (never shown again). */
+    async recordHookHinted(key: string, now: () => Date = () => new Date()): Promise<void> {
+      await writeSyncState(key, { hookHintedAt: now().toISOString() });
+    },
   };
 }
 
-/** The stored cursor, or `null` (absent/malformed — never throws). Cursors do not age out. */
-export async function readCursor(key: string, home: string = homedir()): Promise<SyncCursor | null> {
-  return (await readSyncState(key, home)).cursor;
+/** A store over `home`'s `~/.agentstate/sync` with the credentials-grade atomic write. */
+function storeForHome(home: string): SyncStore {
+  return createSyncStore({ stateDir: () => syncStateDir(home), writeAtomic: writeFileAtomic0600 });
 }
 
-/** The awareness cache, or `null` (absent/malformed/stale-past-`maxAgeMs` — never throws). */
+/**
+ * THE production instance every consumer (sync, establish, autopull, session-start, home) uses.
+ * `stateDir` is a thunk so the home directory resolves PER OPERATION (the `HOME`-swapping test
+ * pattern keeps working), exactly as the old per-call `home = homedir()` defaults did.
+ */
+export const defaultSyncStore: SyncStore = createSyncStore({
+  stateDir: () => syncStateDir(),
+  writeAtomic: writeFileAtomic0600,
+});
+
+// ── per-home projections (the historical free-function surface; same one implementation) ──
+
+/** See {@link SyncStore.readSyncState}. */
+export async function readSyncState(key: string, home: string = homedir()): Promise<SyncState> {
+  return storeForHome(home).readSyncState(key);
+}
+
+/** See {@link SyncStore.readCursor}. */
+export async function readCursor(key: string, home: string = homedir()): Promise<SyncCursor | null> {
+  return storeForHome(home).readCursor(key);
+}
+
+/** See {@link SyncStore.readCache}. */
 export async function readCache(
   key: string,
   opts?: ReadOptions,
   home: string = homedir(),
 ): Promise<AwarenessCache | null> {
-  return freshOrNull((await readSyncState(key, home)).cache, opts);
+  return storeForHome(home).readCache(key, opts);
 }
 
-/** The board-pending marker, or `null` (absent/malformed/stale-past-`maxAgeMs` — never throws). */
+/** See {@link SyncStore.readMarker}. */
 export async function readMarker(
   key: string,
   opts?: ReadOptions,
   home: string = homedir(),
 ): Promise<BoardPendingMarker | null> {
-  return freshOrNull((await readSyncState(key, home)).marker, opts);
+  return storeForHome(home).readMarker(key, opts);
 }
 
-// ── writes (atomic read-merge-write; invalid input is a programmer error) ─────
-
-/**
- * Merge `patch` into the stored record and write the whole file atomically. An explicit `null` in
- * the patch CLEARS that section; an absent field preserves it. Returns the state as written.
- * Writes CAN throw (disk/permission errors) — they run inside sync, never inside `home`.
- */
+/** See {@link SyncStore.writeSyncState}. */
 export async function writeSyncState(
   key: string,
   patch: Partial<SyncState>,
   home: string = homedir(),
 ): Promise<SyncState> {
-  const next: SyncState = { ...(await readSyncState(key, home)), ...patch };
-  // Force the PARENT `~/.agentstate/` to 0700 too (writeFileAtomic0600 only governs the leaf dir).
-  const parent = credentialsDir(home);
-  await mkdir(parent, { recursive: true, mode: DIR_MODE });
-  await chmod(parent, DIR_MODE);
-  const path = syncStatePath(key, home);
-  const record = {
-    key,
-    cursor: next.cursor ?? undefined,
-    cache: next.cache ?? undefined,
-    marker: next.marker ?? undefined,
-    selfActors: next.selfActors ?? undefined,
-    autoPullAttemptAt: next.autoPullAttemptAt ?? undefined,
-    hookHintedAt: next.hookHintedAt ?? undefined,
-  };
-  await writeFileAtomic0600(syncStateDir(home), basename(path), JSON.stringify(record, null, 2) + "\n");
-  return next;
+  return storeForHome(home).writeSyncState(key, patch);
 }
 
-/** Persist the cursor (verbatim — opaque token, unknown tiers untouched). */
+/** See {@link SyncStore.writeCursor}. */
 export async function writeCursor(
   key: string,
   cursor: SyncCursor,
   home: string = homedir(),
 ): Promise<void> {
-  if (asCursor(cursor) === null) {
-    throw new TypeError("cursor must be { tier: non-empty string, token: non-empty string | finite number }");
-  }
-  await writeSyncState(key, { cursor }, home);
+  return storeForHome(home).writeCursor(key, cursor);
 }
 
-/** Persist the awareness cache the next `home` render reads. */
+/** See {@link SyncStore.writeCache}. */
 export async function writeCache(
   key: string,
   cache: AwarenessCache,
   home: string = homedir(),
 ): Promise<void> {
-  if (asCache(cache) === null) {
-    throw new TypeError(
-      "cache must carry { updatedAt: ISO timestamp, delta: AwarenessDeltaRow[], unpushedCount, uncommittedCount }",
-    );
-  }
-  await writeSyncState(key, { cache }, home);
+  return storeForHome(home).writeCache(key, cache);
 }
 
-/**
- * Refresh the board-pending marker's timestamp (called by every pull step). Preserves any extra
- * fields a prior writer stored on the marker. Returns the marker as written.
- */
+/** See {@link SyncStore.refreshMarker}. */
 export async function refreshMarker(
   key: string,
   home: string = homedir(),
   now: () => Date = () => new Date(),
 ): Promise<BoardPendingMarker> {
-  const current = (await readSyncState(key, home)).marker;
-  const marker: BoardPendingMarker = { ...(current ?? {}), updatedAt: now().toISOString() };
-  await writeSyncState(key, { marker }, home);
-  return marker;
+  return storeForHome(home).refreshMarker(key, now);
 }
 
-/** The self-actor list for a bundle key, or `[]` (absent/malformed — never throws). */
+/** See {@link SyncStore.readSelfActors}. */
 export async function readSelfActors(key: string, home: string = homedir()): Promise<string[]> {
-  return (await readSyncState(key, home)).selfActors ?? [];
+  return storeForHome(home).readSelfActors(key);
 }
 
-/**
- * Record actors THIS CLONE just committed (sync's commit step calls this — see
- * {@link SELF_ACTORS_CAP}'s doc for the whole "self" identity story). Merge-union with the stored
- * list, newest-last, deduped, capped to the NEWEST {@link SELF_ACTORS_CAP} entries. `"unknown"` and
- * empty strings are dropped at this one chokepoint (recording the placeholder would make the U4
- * render hide a teammate's unattributed changes too). A call that changes nothing skips the write.
- */
+/** See {@link SyncStore.recordSelfActors}. */
 export async function recordSelfActors(
   key: string,
   actors: string[],
   home: string = homedir(),
 ): Promise<string[]> {
-  const current = (await readSyncState(key, home)).selfActors ?? [];
-  const merged = [...current];
-  for (const a of actors) {
-    if (typeof a !== "string" || a.length === 0 || a === "unknown") continue;
-    if (!merged.includes(a)) merged.push(a);
-  }
-  const capped = merged.slice(-SELF_ACTORS_CAP);
-  if (capped.length === current.length && capped.every((a, i) => a === current[i])) {
-    return current;
-  }
-  await writeSyncState(key, { selfActors: capped }, home);
-  return capped;
+  return storeForHome(home).recordSelfActors(key, actors);
 }
 
-/**
- * Re-anchor after the CALLER's existence guard (U1's `git cat-file -e` before diffing) finds the
- * stored token gone — history was rewritten under the cursor. Atomically records the NEW cursor
- * (HEAD, minted by the caller) AND an awareness cache whose `note` is the honest
- * {@link REANCHOR_NOTE} with an EMPTY delta (the real delta is unknowable across a rewrite) plus
- * the caller's current backstop counts — so the miss is reported on the next render, never a
- * silent skip, and never fatal. Returns the cache as written.
- */
+/** See {@link SyncStore.recordReanchor}. */
 export async function recordReanchor(
   key: string,
   cursor: SyncCursor,
@@ -524,47 +695,33 @@ export async function recordReanchor(
   home: string = homedir(),
   now: () => Date = () => new Date(),
 ): Promise<AwarenessCache> {
-  if (asCursor(cursor) === null) {
-    throw new TypeError("cursor must be { tier: non-empty string, token: non-empty string | finite number }");
-  }
-  const cache: AwarenessCache = {
-    updatedAt: now().toISOString(),
-    delta: [],
-    unpushedCount: counts.unpushedCount,
-    uncommittedCount: counts.uncommittedCount,
-    note: REANCHOR_NOTE,
-  };
-  await writeSyncState(key, { cursor, cache }, home);
-  return cache;
+  return storeForHome(home).recordReanchor(key, cursor, counts, now);
 }
 
-/** The last opportunistic auto-pull ATTEMPT timestamp, or `null` (absent/malformed — never throws). */
+/** See {@link SyncStore.readAutoPullAttemptAt}. */
 export async function readAutoPullAttemptAt(key: string, home: string = homedir()): Promise<string | null> {
-  return (await readSyncState(key, home)).autoPullAttemptAt;
+  return storeForHome(home).readAutoPullAttemptAt(key);
 }
 
-/**
- * Record an opportunistic auto-pull ATTEMPT (autopull.ts calls this BEFORE its network op — see
- * {@link SyncState.autoPullAttemptAt}: a failing/hanging pull must still back off for the window).
- */
+/** See {@link SyncStore.recordAutoPullAttempt}. */
 export async function recordAutoPullAttempt(
   key: string,
   home: string = homedir(),
   now: () => Date = () => new Date(),
 ): Promise<void> {
-  await writeSyncState(key, { autoPullAttemptAt: now().toISOString() }, home);
+  return storeForHome(home).recordAutoPullAttempt(key, now);
 }
 
-/** The one-time hook-install hint's shown-at timestamp, or `null` (absent/malformed — never throws). */
+/** See {@link SyncStore.readHookHintedAt}. */
 export async function readHookHintedAt(key: string, home: string = homedir()): Promise<string | null> {
-  return (await readSyncState(key, home)).hookHintedAt;
+  return storeForHome(home).readHookHintedAt(key);
 }
 
-/** Record that sync's one-time hook-install hint was shown for this clone (never shown again). */
+/** See {@link SyncStore.recordHookHinted}. */
 export async function recordHookHinted(
   key: string,
   home: string = homedir(),
   now: () => Date = () => new Date(),
 ): Promise<void> {
-  await writeSyncState(key, { hookHintedAt: now().toISOString() }, home);
+  return storeForHome(home).recordHookHinted(key, now);
 }

@@ -33,11 +33,8 @@ import {
   ffSwallowToError,
   originDocsBetween,
   pickHelp,
-  provisionAnnouncement,
   pushFailureMessage,
-  singleActor,
   sync,
-  toDeltaRows,
   toIncomingRows,
   PUSH_FAIL_SAFETY_MESSAGE,
   SYNC_LOCAL_ONLY_MESSAGE,
@@ -45,6 +42,7 @@ import {
   syncLocalOnlyNote,
   syncRemoteStateUnknownNote,
 } from "../src/commands/sync.js";
+import { provisionAnnouncement, singleActor, toDeltaRows } from "../src/sync-engine.js";
 import { cliInvocation } from "../src/invocation.js";
 import { doc } from "../src/commands/doc.js";
 import { CliError } from "../src/errors.js";

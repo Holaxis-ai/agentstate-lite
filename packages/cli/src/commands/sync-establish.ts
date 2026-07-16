@@ -18,7 +18,8 @@ import {
 import path from "node:path";
 
 import { resolveProjectBinding } from "../bundle.js";
-import { CliError, classifyGitError, type GitFailure } from "../errors.js";
+import { classifyGitError, type GitFailure } from "../board-git-errors.js";
+import { CliError } from "../errors.js";
 import {
   BOARD_BRANCH,
   BOARD_REF,
@@ -41,9 +42,10 @@ import {
   unpushedCount,
   type BundleSnapshotCommit,
 } from "../git.js";
-import { recordSelfActors, refreshMarker, writeCache, writeCursor } from "../cursor.js";
+import { defaultSyncStore } from "../cursor.js";
 import { render, type OutputMode } from "../output.js";
-import { hookInstallHintOnce, resolveBundleKey, singleActor, type SyncCliDeps } from "./sync.js";
+import { resolveBundleKey, singleActor } from "../sync-engine.js";
+import { hookInstallHintOnce, type SyncCliDeps } from "./sync.js";
 
 export const ESTABLISH_DONE =
   "the shared board is live — .agentstate-lite/ now syncs over the 'board' branch";
@@ -307,10 +309,10 @@ async function renderEstablished(
   deps: Partial<SyncCliDeps>,
 ): Promise<EstablishOutcome> {
   const key = resolveBundleKey(conversion.boardPath);
-  await refreshMarker(key);
-  if (snapshot.docs.length > 0) await recordSelfActors(key, snapshot.docs.map((d) => d.actor));
-  await writeCursor(key, { tier: "git", token: conversion.boardCommit });
-  await writeCache(key, {
+  await defaultSyncStore.refreshMarker(key);
+  if (snapshot.docs.length > 0) await defaultSyncStore.recordSelfActors(key, snapshot.docs.map((d) => d.actor));
+  await defaultSyncStore.writeCursor(key, { tier: "git", token: conversion.boardCommit });
+  await defaultSyncStore.writeCache(key, {
     updatedAt: new Date().toISOString(),
     delta: [],
     unpushedCount: unpushedCount(conversion.boardPath) ?? 0,

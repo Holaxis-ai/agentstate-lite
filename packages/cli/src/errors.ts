@@ -9,6 +9,7 @@
 //
 // The 0/1/2/4/5/6 exit taxonomy is PRESERVED intact from holaxis-agentstate.
 import { InvalidInputError, MalformedDocumentError, RemoteError, VersionConflict } from "@agentstate-lite/core";
+import { isBoardGitError, type BoardGitError } from "./board-git-errors.js";
 
 /** Stable, documented error codes. Finer than the exit table; rides alongside it in the envelope. */
 export type CliErrorCode =
@@ -159,11 +160,14 @@ export function toEnvelope(err: CliError): ErrorEnvelope {
  * anything left uncaught, so the two layers can never disagree. Command-level catches may still
  * translate an EXPECTED domain condition with better context (a typed pre-check — e.g. ENOENT ->
  * "no concept document at id 'X'"), but never classify an arbitrary plain error themselves.
- * `classifyGitError` (below) is the git-porcelain DOMAIN classifier: it feeds this boundary by
- * producing already-classified `CliError`s, which pass through unchanged — it is not a second
- * boundary. Contract (pinned by `test/error-boundary.test.ts`'s table):
+ * `classifyGitError` (board-git-errors.ts) is the git-porcelain DOMAIN classifier: it produces
+ * typed `BoardGitError`s that this boundary maps through {@link cliErrorFromBoardGit} — the ONE
+ * BoardGitError→CliError mapping (parity pinned by `test/board-git-errors.test.ts`'s table).
+ * Contract (pinned by `test/error-boundary.test.ts`'s table):
  *
  *  - `CliError` -> unchanged (already classified).
+ *  - `BoardGitError` (structural guard, never `instanceof` — the dual-load hazard) -> the
+ *    same-named `CliErrorCode`, message/details/help preserved verbatim.
  *  - `InvalidInputError` (core's typed input-validation rejection: unsafe/reserved ids, §9.2
  *    empty type, bad option values) -> USAGE (2). This TYPE is the only path by which a
  *    non-`CliError` throw reaches USAGE — "fix your input" is a claim about the input, so it
@@ -190,6 +194,7 @@ export function toEnvelope(err: CliError): ErrorEnvelope {
  */
 export function classifyBundleError(err: unknown, remoteUrl?: string): CliError {
   if (err instanceof CliError) return err;
+  if (isBoardGitError(err)) return cliErrorFromBoardGit(err);
   if (err instanceof InvalidInputError) return new CliError("USAGE", err.message);
   if (err instanceof MalformedDocumentError) return new CliError("RUNTIME", err.message);
   if (err instanceof VersionConflict) {
@@ -240,136 +245,16 @@ export function toExit(err: unknown): { exitCode: number; envelope: ErrorEnvelop
 }
 
 /**
- * The captured outcome of one failed `git` invocation (`cli/src/git.ts`'s spawn wrapper is the ONLY
- * producer). Deliberately a plain data shape — not an Error subclass — so the classifier below is a
- * pure, unit-testable function mirroring {@link classifyBundleError}'s role for the wire surface.
+ * THE one BoardGitError→CliError mapping (the CLI command boundary for the git tier): the
+ * same-named `CliErrorCode` — every `BoardGitErrorCode` exists in {@link CliErrorCode}, checked at
+ * compile time — with message/details/help preserved verbatim, so the envelope and exit code are
+ * byte-identical to what the tier produced when it threw `CliError` directly. Code→exit parity is
+ * pinned by `test/board-git-errors.test.ts`'s exhaustive table.
  */
-export interface GitFailure {
-  /** The git argv (WITHOUT the leading `git -C <dir>` prefix) — names the op in messages/details. */
-  args: readonly string[];
-  /** The child's exit status; null when the spawn itself failed or the process was killed. */
-  status: number | null;
-  stdout: string;
-  stderr: string;
-  /** True when the per-op timeout killed the child (the wrapper's no-hang invariant fired). */
-  timedOut?: boolean;
-  /** The spawn-level errno code (e.g. `ENOENT` = no git binary), when the process never ran. */
-  spawnErrorCode?: string;
-}
-
-/** First non-empty line of a git failure's stderr (fall back to stdout) — for compact messages. */
-function firstGitLine(f: GitFailure): string {
-  const line =
-    f.stderr.split("\n").find((l) => l.trim().length > 0) ??
-    f.stdout.split("\n").find((l) => l.trim().length > 0) ??
-    "";
-  return line.trim();
-}
-
-/**
- * Classify one failed git invocation into a `CliError` on the capped taxonomy — the ONE chokepoint
- * (plans/sync-verb-implementation, "Global porcelain invariants") between raw git and the AXI
- * surface: no raw git strand ever reaches stdout; every failure lands structured. Mirrors
- * {@link classifyBundleError}. Matching prefers STABLE signals (spawn errno, `index.lock`, ref
- * names) over localized prose where git offers one; the prose fallbacks are ordered so the more
- * specific state wins:
- *
- *  - spawn `ENOENT` -> `GIT_MISSING` (exit 1): git itself is not installed — distinct code, shared
- *    exit (the FORBIDDEN/LAST_ADMIN pattern), so "install git" is branchable from "retry".
- *  - per-op timeout -> `TRANSIENT` (exit 1): the no-hang invariant fired; retryable.
- *  - `index.lock` / "Another git process" -> `GIT_BUSY` (exit 1, adjudication B) with
- *    `details.retryable: true` — the structured RETRY envelope.
- *  - missing `origin` remote / unresolvable `origin/board` (invalid upstream, can't-merge,
- *    couldn't-find-remote-ref, src-refspec) -> `NO_UPSTREAM` (exit 1): the board branch isn't
- *    linked to a remote yet.
- *  - credential/permission signals -> `AUTH_REQUIRED` (exit 4). BEST-EFFORT by design (recorded in
- *    research/sync-verb-review): GitHub answers "Repository not found." for unauthorized-private,
- *    so not-found-shaped transport failures classify as AUTH rather than silently reading as
- *    "no such repo" — clean AUTH-vs-network separation is impossible from stderr alone.
- *  - detached HEAD -> RUNTIME (exit 1), a precondition failure NAMING the state.
- *  - unmerged paths / mid-merge refusals -> `CONFLICT` (exit 5).
- *  - unreachable/unresolvable host, connection refused/timed out -> `TRANSIENT` (exit 1).
- *  - anything else -> RUNTIME (exit 1) carrying the op name + first stderr line (structured, never
- *    a raw dump).
- */
-export function classifyGitError(f: GitFailure): CliError {
-  const op = f.args[0] ?? "git";
-  const text = `${f.stderr}\n${f.stdout}`;
-
-  if (f.spawnErrorCode === "ENOENT") {
-    return new CliError("GIT_MISSING", "sync needs git, which isn't installed on this machine", {
-      details: { op },
-      help: "install git (https://git-scm.com/downloads), then re-run the command",
-    });
-  }
-  if (f.timedOut || f.spawnErrorCode === "ETIMEDOUT") {
-    return new CliError("TRANSIENT", `git ${op} timed out — the network or repository may be slow; retry`, {
-      details: { op, retryable: true },
-    });
-  }
-  if (/index\.lock|Another git process seems to be running/i.test(text)) {
-    return new CliError(
-      "GIT_BUSY",
-      "another git process is using this repository — retry once it finishes",
-      { details: { op, retryable: true } },
-    );
-  }
-  if (
-    /'origin' does not appear to be a git repository/i.test(text) ||
-    /No such remote:? '?origin'?/i.test(text) ||
-    /invalid upstream ['"]?origin\//i.test(text) ||
-    /origin\/[^\s]+ - not something we can merge/i.test(text) ||
-    /couldn'?t find remote ref/i.test(text) ||
-    /src refspec [^\s]+ does not match any/i.test(text)
-  ) {
-    return new CliError(
-      "NO_UPSTREAM",
-      "the board branch isn't linked to a remote yet — sync can't share it",
-      { details: { op } },
-    );
-  }
-  if (
-    /authentication failed/i.test(text) ||
-    /could not read (Username|Password)/i.test(text) ||
-    /Permission denied \(publickey/i.test(text) ||
-    /returned error: 40[13]/i.test(text) ||
-    /Repository not found/i.test(text) ||
-    /does not appear to be a git repository/i.test(text) ||
-    /access denied|Invalid username or password/i.test(text)
-  ) {
-    return new CliError(
-      "AUTH_REQUIRED",
-      `git ${op} was denied access to the remote (or the repository is not visible to your credentials)`,
-      { details: { op, best_effort: true } },
-    );
-  }
-  if (/You are not currently on a branch|HEAD detached/i.test(text)) {
-    return new CliError(
-      "RUNTIME",
-      "the board worktree is in a detached-HEAD state — sync needs the board branch checked out",
-      { details: { op, state: "detached-head" } },
-    );
-  }
-  if (
-    /needs merge/i.test(text) ||
-    /unmerged files/i.test(text) ||
-    /not possible because you have unmerged/i.test(text) ||
-    /Resolve all conflicts/i.test(text)
-  ) {
-    return new CliError("CONFLICT", "the board worktree has unresolved conflicts", { details: { op } });
-  }
-  if (
-    /Could not resolve host|unable to access|Connection (refused|timed out|reset)|Operation timed out|network is unreachable|Failed to connect/i.test(
-      text,
-    )
-  ) {
-    return new CliError("TRANSIENT", `git ${op} could not reach the remote — offline or the host is unreachable; retry`, {
-      details: { op, retryable: true },
-    });
-  }
-  const line = firstGitLine(f);
-  return new CliError("RUNTIME", `git ${op} failed${line ? `: ${line}` : ""}`, {
-    details: { op, exit_status: f.status },
+export function cliErrorFromBoardGit(err: BoardGitError): CliError {
+  return new CliError(err.code, err.message, {
+    ...(err.details !== undefined ? { details: err.details } : {}),
+    ...(err.help !== undefined ? { help: err.help } : {}),
   });
 }
 

@@ -50,7 +50,7 @@
 //   • DETECTION IS CHEAP, not just correct (fix round — the check runs on EVERY non-triggering
 //     read, so its cost is the tax everyone pays): checks are ordered cheapest-first.
 //     (1) An FS-ONLY pre-gate ({@link findBoardCandidate}: the `.git`-FILE linked-worktree
-//     signature walk — the same structural signal sync.ts's `retargetStaleBoardInteriorByPath`
+//     signature walk — the same structural signal sync-engine.ts's `retargetStaleBoardInteriorByPath`
 //     keys on) locates a provisioned-LOOKING board checkout with ZERO process spawns, so a
 //     non-repo dir, a plain bundle, and an unprovisioned checkout all exit spawn-free.
 //     (2) The bundle-scope check is fs-only too. (3) The state file is read next, so a FRESH
@@ -73,28 +73,17 @@ import { realpathSync, statSync } from "node:fs";
 import {
   BUNDLE_DIR,
   changesSince,
+  countUncommitted,
+  currentHead,
   ffPull,
   isProvisioned,
   repoTopLevel,
   unpushedCount,
   type NetworkBudgetOptions,
 } from "./git.js";
-import {
-  readCursor,
-  readSyncState,
-  recordAutoPullAttempt,
-  recordReanchor,
-  refreshMarker,
-  writeCache,
-  writeCursor,
-} from "./cursor.js";
+import { defaultSyncStore } from "./cursor.js";
 import { findBundleRoot } from "./bundle.js";
-import {
-  countUncommitted,
-  currentHead,
-  resolveBundleKey,
-  toDeltaRows,
-} from "./commands/sync.js";
+import { resolveBundleKey, toDeltaRows } from "./sync-engine.js";
 
 /** How old the awareness cache may get before a board-reading command refreshes it (~5m). */
 export const AUTO_PULL_STALE_MS = 5 * 60_000;
@@ -177,7 +166,7 @@ export async function pullBoardAndRecord(
   budget: NetworkBudgetOptions = {},
   now: () => Date = () => new Date(),
 ): Promise<BoardPullRecordResult> {
-  const storedCursor = await readCursor(key);
+  const storedCursor = await defaultSyncStore.readCursor(key);
   const startHead = currentHead(boardPath);
   const ff = ffPull(boardPath, budget);
   if (ff.swallowed) {
@@ -194,8 +183,8 @@ export async function pullBoardAndRecord(
   const postPullHead = currentHead(boardPath);
   const delta = changesSince(boardPath, cursorToken ?? startHead);
   if (delta.ok) {
-    await writeCursor(key, { tier: "git", token: postPullHead });
-    await writeCache(key, {
+    await defaultSyncStore.writeCursor(key, { tier: "git", token: postPullHead });
+    await defaultSyncStore.writeCache(key, {
       updatedAt: now().toISOString(),
       delta: toDeltaRows(delta.changes),
       unpushedCount: unpushedCount(boardPath) ?? 0,
@@ -204,11 +193,10 @@ export async function pullBoardAndRecord(
   } else {
     // Dangling cursor (history rewritten) — U2's honest re-anchor: empty delta + note, never a
     // silent skip, never fatal.
-    await recordReanchor(
+    await defaultSyncStore.recordReanchor(
       key,
       { tier: "git", token: postPullHead },
       { unpushedCount: unpushedCount(boardPath) ?? 0, uncommittedCount: countUncommitted(boardPath) },
-      undefined,
       now,
     );
   }
@@ -289,7 +277,7 @@ export async function maybeAutoPull(dir?: string, opts: AutoPullOptions = {}): P
     // inside resolveBundleKey) — deliberately BEFORE any other git op, so the state file can
     // prove freshness without further process cost.
     const key = resolveBundleKey(boardPath);
-    const state = await readSyncState(key);
+    const state = await defaultSyncStore.readSyncState(key);
     const nowMs = now().getTime();
     const ageOk = (iso: string | undefined | null): boolean =>
       typeof iso === "string" && nowMs - Date.parse(iso) <= staleMs;
@@ -314,8 +302,8 @@ export async function maybeAutoPull(dir?: string, opts: AutoPullOptions = {}): P
     // must still back off for a full window (otherwise an offline machine pays the budget on
     // EVERY read). Marker refreshed too — every pull step that confirmed a provisioned board
     // refreshes it (U2's contract, same as sync's and session-start's pull steps).
-    await recordAutoPullAttempt(key, undefined, now);
-    await refreshMarker(key, undefined, now);
+    await defaultSyncStore.recordAutoPullAttempt(key, now);
+    await defaultSyncStore.refreshMarker(key, now);
 
     const result = await pullBoardAndRecord(
       boardPath,

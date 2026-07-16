@@ -41,7 +41,8 @@ import {
   maybeAutoPull,
 } from "../src/autopull.js";
 import { readCache, readCursor, readSyncState } from "../src/cursor.js";
-import { sync, resolveBundleKey, hookInstallHintOnce } from "../src/commands/sync.js";
+import { sync, hookInstallHintOnce } from "../src/commands/sync.js";
+import { resolveBundleKey } from "../src/sync-engine.js";
 import { hook, hookInstalled } from "../src/commands/hook.js";
 import { home } from "../src/commands/home.js";
 import { list } from "../src/commands/list.js";

@@ -1,6 +1,7 @@
 /**
  * U1 acceptance suite for the git porcelain layer (`src/git.ts` + `classifyGitError` in
- * `src/errors.ts`), consuming the U0 harness (`./git-harness.ts`) — every test named by
+ * `src/board-git-errors.ts`; exit-code assertions run the tier's throws through THE one CLI
+ * boundary mapping, errors.ts's `cliErrorFromBoardGit`), consuming the U0 harness (`./git-harness.ts`) — every test named by
  * [plans/sync-verb-implementation] §U1:
  *
  *   staged/unstaged user code untouched (any branch) · new/modified/deleted doc committed ·
@@ -62,9 +63,11 @@ import {
   push,
   ffPull,
   changesSince,
+  diffDocsBetween,
   unpushedCount,
 } from "../src/git.js";
-import { CliError, classifyGitError, toEnvelope, EXIT } from "../src/errors.js";
+import { cliErrorFromBoardGit, toEnvelope, EXIT } from "../src/errors.js";
+import { classifyGitError, isBoardGitError } from "../src/board-git-errors.js";
 
 // ── hermetic ambient env (the porcelain inherits process.env; pin identity + neutralize host
 //    config so `stageAndCommit`'s commits work on any machine, gitconfig or not) ──────────────
@@ -359,11 +362,11 @@ test("GIT_BUSY: a held index.lock yields a structured RETRY envelope, never a ra
     const lock = holdIndexLock(topo.a);
     try {
       const err = capture(() => stageAndCommit(topo.a.board));
-      assert.ok(err instanceof CliError);
+      assert.ok(isBoardGitError(err));
       assert.equal(err.code, "GIT_BUSY");
-      assert.equal(err.exitCode, EXIT.RUNTIME);
+      assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.RUNTIME);
       assert.equal(err.details?.retryable, true, "the structured-retry signal");
-      const env = toEnvelope(err);
+      const env = toEnvelope(cliErrorFromBoardGit(err));
       assert.equal(env.error.code, "GIT_BUSY");
       assert.doesNotMatch(env.error.message, /fatal:|Unable to create/i, "no raw git strand");
     } finally {
@@ -424,7 +427,7 @@ test("provision: pre-existing NON-EMPTY non-worktree .agentstate-lite is REFUSED
     await plantNonEmptyBundleDir(topo.a);
     assert.equal(isProvisioned(topo.a.root), false, "a plain non-empty dir is not 'provisioned'");
     const err = capture(() => provisionBoardWorktree(topo.a.root));
-    assert.ok(err instanceof CliError);
+    assert.ok(isBoardGitError(err));
     assert.equal(err.code, "RUNTIME");
     assert.match(err.message, /move it aside/i, "guidance, not a raw git error");
     assert.ok(err.help, "carries a fixing command");
@@ -461,7 +464,7 @@ test("provisionBoardWorktree: a FOREIGN repo's board worktree at .agentstate-lit
     assert.equal(isProvisioned(topo.a.root), false, "a foreign board worktree is not provisioned");
 
     const err = capture(() => provisionBoardWorktree(topo.a.root));
-    assert.ok(err instanceof CliError);
+    assert.ok(isBoardGitError(err));
     assert.equal(err.code, "RUNTIME");
     assert.match(err.message, /belongs to a different git repository/i);
     assert.match(err.message, new RegExp(topo.a.root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -562,7 +565,7 @@ test("provisionBoardWorktree: a worktree signature repair CANNOT fix refuses wit
     await rm(adminDir, { recursive: true, force: true });
 
     const err = capture(() => provisionBoardWorktree(topo.a.root));
-    assert.ok(err instanceof CliError);
+    assert.ok(isBoardGitError(err));
     assert.equal(err.code, "RUNTIME");
     assert.match(
       err.message,
@@ -598,7 +601,7 @@ test("provisionBoardWorktree: a HEALTHY worktree checked out to a DIFFERENT bran
 
     const before = git(topo.a.board, ["rev-parse", BOARD_BRANCH]).trim();
     const err = capture(() => provisionBoardWorktree(topo.a.root));
-    assert.ok(err instanceof CliError);
+    assert.ok(isBoardGitError(err));
     assert.equal(err.code, "RUNTIME");
     assert.match(err.message, /not checked out to the '?board'? branch/i, "names the actual observed state");
     assert.doesNotMatch(err.message, /stale pointers/i, "distinct from the unrepairable-pointers wording");
@@ -624,7 +627,7 @@ test("provisionBoardWorktree: a HEALTHY worktree on a plain detached HEAD (NOT m
     assert.equal(isProvisioned(topo.a.root), false);
 
     const err = capture(() => provisionBoardWorktree(topo.a.root));
-    assert.ok(err instanceof CliError);
+    assert.ok(isBoardGitError(err));
     assert.equal(err.code, "RUNTIME");
     assert.match(err.message, /not checked out to the '?board'? branch/i, "names the actual observed state");
     assert.match(err.help ?? "", /^mv /, "still a non-destructive mv, never rm");
@@ -678,7 +681,7 @@ test("provisionBoardWorktree: PROBE-E (cold review) — a wedge started from a N
     await rename(topo.a.root, movedRoot);
 
     const err = capture(() => provisionBoardWorktree(movedRoot));
-    assert.ok(err instanceof CliError, "must REFUSE — rebaseWasFromBoardBranch is false here, so repairedWorktreeIsBoard must reject it despite being mid-rebase");
+    assert.ok(isBoardGitError(err), "must REFUSE — rebaseWasFromBoardBranch is false here, so repairedWorktreeIsBoard must reject it despite being mid-rebase");
     assert.equal(err.code, "RUNTIME");
     assert.match(err.message, /not checked out to the '?board'? branch/i, "the wrong-branch wording, not a false 'repaired'");
     assert.match(err.help ?? "", /^mv /, "still a non-destructive mv, never rm");
@@ -872,17 +875,17 @@ test("push + unpushedCount: local commits count against explicit origin/board; p
   }
 });
 
-test("push: an unreachable remote throws a CLASSIFIED CliError (best-effort AUTH), never a raw strand", async () => {
+test("push: an unreachable remote throws a CLASSIFIED BoardGitError (best-effort AUTH), never a raw strand", async () => {
   const topo = await makeTwoCloneTopology();
   try {
     await writeBoardDoc(topo.a, "tasks/stranded", { frontmatter: { type: "Task", title: "Stranded", actor: "mike" }, body: "# S\n" });
     stageAndCommit(topo.a.board);
     git(topo.a.root, ["remote", "set-url", "origin", "/nonexistent/black-hole.git"]);
     const err = capture(() => push(topo.a.board));
-    assert.ok(err instanceof CliError);
+    assert.ok(isBoardGitError(err));
     // Local-path "does not appear to be a git repository" → the DOCUMENTED best-effort AUTH bucket.
     assert.equal(err.code, "AUTH_REQUIRED");
-    assert.equal(err.exitCode, EXIT.AUTH);
+    assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.AUTH);
   } finally {
     await topo.cleanup();
   }
@@ -893,7 +896,7 @@ test("push: an unreachable remote throws a CLASSIFIED CliError (best-effort AUTH
 test("classifyGitError: spawn ENOENT → GIT_MISSING (exit 1, distinct code)", () => {
   const err = classifyGitError({ args: ["fetch"], status: null, stdout: "", stderr: "", spawnErrorCode: "ENOENT" });
   assert.equal(err.code, "GIT_MISSING");
-  assert.equal(err.exitCode, EXIT.RUNTIME);
+  assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.RUNTIME);
   assert.match(err.message, /isn't installed/);
 });
 
@@ -905,7 +908,7 @@ test("classifyGitError: index.lock → GIT_BUSY (exit 1) with details.retryable"
     stderr: "fatal: Unable to create '/repo/.git/worktrees/b/index.lock': File exists.\n\nAnother git process seems to be running in this repository...",
   });
   assert.equal(err.code, "GIT_BUSY");
-  assert.equal(err.exitCode, EXIT.RUNTIME);
+  assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.RUNTIME);
   assert.equal(err.details?.retryable, true);
 });
 
@@ -918,7 +921,7 @@ test("classifyGitError: missing origin / unresolvable origin/board → NO_UPSTRE
   ]) {
     const err = classifyGitError({ args: ["rebase"], status: 1, stdout: "", stderr });
     assert.equal(err.code, "NO_UPSTREAM", stderr);
-    assert.equal(err.exitCode, EXIT.RUNTIME);
+    assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.RUNTIME);
     assert.match(err.message, /isn't linked to a remote/);
   }
 });
@@ -933,7 +936,7 @@ test("classifyGitError: credential signals → AUTH_REQUIRED (exit 4, documented
   ]) {
     const err = classifyGitError({ args: ["push"], status: 128, stdout: "", stderr });
     assert.equal(err.code, "AUTH_REQUIRED", stderr);
-    assert.equal(err.exitCode, EXIT.AUTH);
+    assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.AUTH);
   }
 });
 
@@ -945,7 +948,7 @@ test("classifyGitError: network signals → TRANSIENT (exit 1), distinct from AU
   ]) {
     const err = classifyGitError({ args: ["fetch"], status: 128, stdout: "", stderr: f.stderr, timedOut: f.timedOut });
     assert.equal(err.code, "TRANSIENT", f.stderr || "(timeout)");
-    assert.equal(err.exitCode, EXIT.RUNTIME);
+    assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.RUNTIME);
     assert.equal(err.details?.retryable, true);
   }
 });
@@ -958,7 +961,7 @@ test("classifyGitError: unmerged-paths signals → CONFLICT (exit 5); detached H
     stderr: "error: Pulling is not possible because you have unmerged files.",
   });
   assert.equal(conflict.code, "CONFLICT");
-  assert.equal(conflict.exitCode, EXIT.CONFLICT);
+  assert.equal(cliErrorFromBoardGit(conflict).exitCode, EXIT.CONFLICT);
 
   const detached = classifyGitError({
     args: ["push"],
@@ -978,7 +981,7 @@ test("classifyGitError: anything else → structured RUNTIME carrying the op + f
     stderr: "fatal: something entirely unexpected\nmore detail\n",
   });
   assert.equal(err.code, "RUNTIME");
-  assert.equal(err.exitCode, EXIT.RUNTIME);
+  assert.equal(cliErrorFromBoardGit(err).exitCode, EXIT.RUNTIME);
   assert.equal(err.message, "git worktree failed: fatal: something entirely unexpected");
   assert.equal(err.details?.exit_status, 128);
 });
@@ -1019,11 +1022,69 @@ test("runGit timeoutMs <= 0: immediate TRANSIENT classification, NO child proces
       }
       assert.ok(Date.now() - t0 < 1_000, `must not wait on any child (timeoutMs ${timeoutMs})`);
       assert.ok(!existsSync(path.join(dir, ".git")), `git must never have run (timeoutMs ${timeoutMs})`);
-      assert.ok(err instanceof CliError);
+      assert.ok(isBoardGitError(err));
       assert.equal(err.code, "TRANSIENT");
       assert.match(err.message, /timed out/);
     }
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── diffDocsBetween: the ONE consolidated ref-to-ref doc diff (changesSince + the receipt's
+//    origin delta ride it; the prefix option is the in-tree seam, unused by today's callers) ──
+
+test("diffDocsBetween: prefix scoping strips the prefix from doc ids, excludes outside-prefix paths, keeps reserved handling, survives non-ASCII paths", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-intree-diff-"));
+  try {
+    git(dir, ["init", "-b", "main", "."]);
+    const bundle = path.join(dir, BUNDLE_DIR);
+    mkdirSync(path.join(bundle, "tasks"), { recursive: true });
+    await writeFile(path.join(bundle, "index.md"), "# Index\n");
+    await writeFile(path.join(dir, "code.md"), "outside the prefix\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-m", "base"]);
+    const from = git(dir, ["rev-parse", "HEAD"]).trim();
+
+    // Non-ASCII path pin: quotepath=off must hold through the prefix strip too.
+    await writeFile(
+      path.join(bundle, "tasks", "café.md"),
+      "---\ntype: Task\ntitle: Café\nactor: mike\n---\n# C\n",
+    );
+    await writeFile(path.join(bundle, "index.md"), "# Index v2\n");
+    await writeFile(path.join(dir, "code.md"), "changed outside\n");
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-m", "delta"]);
+    const to = git(dir, ["rev-parse", "HEAD"]).trim();
+
+    const scoped = diffDocsBetween(dir, from, to, { prefix: `${BUNDLE_DIR}/` });
+    assert.deepEqual(scoped, [
+      { docId: "tasks/café", actor: "mike", verb: "added", kind: "Task", title: "Café" },
+    ]);
+    // A bare prefix (no trailing slash) normalizes to the same scope.
+    assert.deepEqual(diffDocsBetween(dir, from, to, { prefix: BUNDLE_DIR }), scoped);
+
+    // UNSCOPED, the same range reports outside-prefix docs and prefix-qualified ids — exactly
+    // the misattribution the prefix seam exists to prevent for in-tree mode.
+    const unscoped = diffDocsBetween(dir, from, to);
+    assert.deepEqual(
+      unscoped.map((c) => c.docId).sort(),
+      [`${BUNDLE_DIR}/tasks/café`, "code"].sort(),
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("diffDocsBetween: a failed diff throws classified by default; tolerateDiffFailure reads as an empty delta (the receipt tolerance)", async () => {
+  const topo = await makeTwoCloneTopology();
+  try {
+    const head = boardHead(topo.a);
+    const bogus = "0123456789abcdef0123456789abcdef01234567";
+    const err = capture(() => diffDocsBetween(topo.a.board, bogus, head));
+    assert.ok(isBoardGitError(err), "default posture: classified throw, mirroring changesSince's mustGit");
+    assert.deepEqual(diffDocsBetween(topo.a.board, bogus, head, { tolerateDiffFailure: true }), []);
+  } finally {
+    await topo.cleanup();
   }
 });

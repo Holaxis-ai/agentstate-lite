@@ -67,14 +67,15 @@ import {
   BOARD_BRANCH,
   BOARD_REF,
   BUNDLE_DIR,
+  countUncommitted,
   isProvisioned,
   repoTopLevel,
   runGit,
   unpushedCount,
 } from "../git.js";
-import { countUncommitted, resolveBundleKey, retargetBoardInterior } from "./sync.js";
+import { resolveBundleKey, retargetBoardInterior } from "../sync-engine.js";
 import { maybeAutoPull } from "../autopull.js";
-import { readSyncState, type AwarenessCache, type AwarenessDeltaRow } from "../cursor.js";
+import { defaultSyncStore, type AwarenessCache, type AwarenessDeltaRow } from "../cursor.js";
 import { hookNeedsUpdate } from "./hook.js";
 import { loadCatalog } from "../catalog.js";
 
@@ -481,7 +482,7 @@ export async function defaultLoadBoardStatus(dir?: string): Promise<BoardStatus 
       return probed ? { state: "unprovisioned" } : null;
     }
     const key = resolveBundleKey(boardPath);
-    const state = await readSyncState(key);
+    const state = await defaultSyncStore.readSyncState(key);
     let uncommitted: number | null;
     try {
       uncommitted = countUncommitted(boardPath);
