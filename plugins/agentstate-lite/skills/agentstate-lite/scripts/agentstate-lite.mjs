@@ -6959,6 +6959,16 @@ function shellQuote(s) {
 function moveAsideHelp(boardPath, note) {
   return `mv ${shellQuote(boardPath)} ${shellQuote(`${boardPath}.bak`)}  # ${note}`;
 }
+function preShareWindowError(boardPath) {
+  return new BoardGitError(
+    "RUNTIME",
+    `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is still the old folder committed on this branch \u2014 the folder-removal (cleanup) PR hasn't merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', then run sync again`,
+    {
+      details: { path: boardPath, state: "pre-share-window" },
+      help: "git pull  # after the cleanup PR merges, then re-run sync"
+    }
+  );
+}
 function provisionBoardWorktree(dir, budget = {}) {
   const top = repoTopLevel(dir);
   if (!top) return { kind: "no_repo" };
@@ -7030,14 +7040,7 @@ function provisionBoardWorktree(dir, budget = {}) {
   if (existsSync2(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
       if (hasRemote && !hasWorktreeSignature(boardPath) && runGit(top, ["cat-file", "-e", `HEAD:${BUNDLE_DIR}`]).status === 0) {
-        throw new BoardGitError(
-          "RUNTIME",
-          `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is still the old folder committed on this branch \u2014 the folder-removal (cleanup) PR hasn't merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', then run sync again`,
-          {
-            details: { path: boardPath, state: "pre-share-window" },
-            help: "git pull  # after the cleanup PR merges, then re-run sync"
-          }
-        );
+        throw preShareWindowError(boardPath);
       }
       const hadSignature = hasWorktreeSignature(boardPath);
       let reason = "foreign";
@@ -7524,6 +7527,125 @@ function countUncommitted(boardPath) {
   return r.stdout.split("\n").filter((l) => l.trim().length > 0).length;
 }
 
+// ../board-git/src/flow.ts
+import { existsSync as existsSync3, readFileSync as readFileSync3, renameSync, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
+import path5 from "node:path";
+function refCommit(top, ref) {
+  const r = runGit(top, ["rev-parse", "--verify", "--quiet", ref]);
+  const value = r.stdout.trim();
+  return r.status === 0 && value ? value : void 0;
+}
+function treeOf(top, commit) {
+  return refCommit(top, `${commit}^{tree}`);
+}
+function isAncestor(top, ancestor, descendant) {
+  return runGit(top, ["merge-base", "--is-ancestor", ancestor, descendant]).status === 0;
+}
+function localBranchExists(top, name) {
+  return runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${name}`]).status === 0;
+}
+function resolveOriginRef(boardPath) {
+  const r = runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]);
+  return r.status === 0 ? r.stdout.trim() : null;
+}
+function hasLocalOnlyBundle(dir) {
+  const top = repoTopLevel(dir);
+  if (!top) return false;
+  return existsSync3(path5.join(top, BUNDLE_DIR, "index.md"));
+}
+function folderTreeAtHead(top) {
+  const r = runGit(top, ["rev-parse", "--verify", "--quiet", `HEAD:${BUNDLE_DIR}`]);
+  if (r.status !== 0) return null;
+  const sha = r.stdout.trim();
+  const t = runGit(top, ["cat-file", "-t", sha]);
+  if (t.status !== 0 || t.stdout.trim() !== "tree") return null;
+  return sha;
+}
+function folderPresentInCodeIndex(top) {
+  const r = runGit(top, ["ls-files", "--", BUNDLE_DIR]);
+  return r.status === 0 && r.stdout.trim().length > 0;
+}
+function behindBoardCommits(top, branch) {
+  const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
+  if (runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status !== 0) return null;
+  return mustGit(top, ["rev-list", `HEAD..${remoteRef}`, "--", BUNDLE_DIR]).split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+}
+function annotateLanded(boardPath, conflicts) {
+  return conflicts.map((c) => ({
+    ...c,
+    landed: runGit(boardPath, ["cat-file", "-e", `HEAD:${c.relPath}`]).status === 0
+  }));
+}
+var ESTABLISH_MARKER_KEY = "agentstate.establishCommit";
+var COMMITTED_MARKER_KEY = "agentstate.establishCommittedShare";
+function markerPath(top, key) {
+  return path5.join(mustGit(top, ["rev-parse", "--absolute-git-dir"]).trim(), key);
+}
+function readGitDirMarker(top, key) {
+  try {
+    const value = readFileSync3(markerPath(top, key), "utf8").trim();
+    return /^[0-9a-f]{40,64}$/.test(value) ? value : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function writeGitDirMarker(top, key, commit) {
+  const target = markerPath(top, key);
+  const temporary = `${target}.tmp-${process.pid}`;
+  writeFileSync2(temporary, `${commit}
+`, { mode: 384 });
+  renameSync(temporary, target);
+}
+function clearGitDirMarker(top, key) {
+  try {
+    unlinkSync(markerPath(top, key));
+  } catch {
+  }
+}
+function parseLsTreeZ(out) {
+  return out.split("\0").filter((l) => l.length > 0).map((l) => {
+    const tab = l.indexOf("	");
+    const [mode = "", type = "", sha = ""] = l.slice(0, tab).split(" ");
+    return { mode, type, sha, name: l.slice(tab + 1) };
+  });
+}
+function treeSortKey(e) {
+  return e.type === "tree" ? `${e.name}/` : e.name;
+}
+function boardCommitMessage(branch) {
+  return `board: bundle shared from '${branch}' (files only)
+
+One-time establishment: the bundle's current files, moved onto the dedicated '${BOARD_BRANCH}' branch.
+The folder's history stays on '${branch}'.
+`;
+}
+function createBoardRootCommit(top, treeSha, branch) {
+  const sha = mustGit(top, ["commit-tree", treeSha], { input: boardCommitMessage(branch) }).trim();
+  mustGit(top, ["branch", BOARD_BRANCH, sha]);
+  return sha;
+}
+function createRemovalCommit(top, message) {
+  const headTree = mustGit(top, ["rev-parse", "HEAD^{tree}"]).trim();
+  const entries = parseLsTreeZ(mustGit(top, ["ls-tree", "-z", headTree])).filter(
+    (e) => e.name !== BUNDLE_DIR
+  );
+  const existing = entries.find((e) => e.name === ".gitignore");
+  const base = existing ? mustGit(top, ["cat-file", "blob", existing.sha]) : "";
+  const updated = withIgnoreEntry(base);
+  if (updated !== base) {
+    const blob = mustGit(top, ["hash-object", "-w", "--stdin"], { input: updated }).trim();
+    if (existing) {
+      existing.sha = blob;
+    } else {
+      entries.push({ mode: "100644", type: "blob", sha: blob, name: ".gitignore" });
+    }
+  }
+  entries.sort((a, b) => treeSortKey(a) < treeSortKey(b) ? -1 : treeSortKey(a) > treeSortKey(b) ? 1 : 0);
+  const mktreeInput = entries.map((e) => `${e.mode} ${e.type} ${e.sha}	${e.name}\0`).join("");
+  const newTree = mustGit(top, ["mktree", "-z"], { input: mktreeInput }).trim();
+  return mustGit(top, ["commit-tree", newTree, "-p", "HEAD"], { input: message }).trim();
+}
+
 // ../board-git/src/diff.ts
 function diffDocsBetween(dir, fromRef, toRef, opts = {}) {
   const args = ["diff", "--name-status", "--no-renames", `${fromRef}..${toRef}`];
@@ -7813,8 +7935,8 @@ function createSyncStore(options2) {
 }
 
 // ../board-git/src/engine.ts
-import { existsSync as existsSync3, realpathSync as realpathSync3, statSync as statSync2 } from "node:fs";
-import path5 from "node:path";
+import { existsSync as existsSync4, realpathSync as realpathSync3, statSync as statSync2 } from "node:fs";
+import path6 from "node:path";
 function realOrSame2(p) {
   try {
     return realpathSync3(p);
@@ -7827,23 +7949,23 @@ function isLinkedWorktree(p) {
   if (r.status !== 0) return false;
   const [gitDirRaw, commonDirRaw] = r.stdout.trim().split("\n");
   if (!gitDirRaw || !commonDirRaw) return false;
-  const commonDir = path5.isAbsolute(commonDirRaw) ? commonDirRaw : path5.resolve(p, commonDirRaw);
+  const commonDir = path6.isAbsolute(commonDirRaw) ? commonDirRaw : path6.resolve(p, commonDirRaw);
   return realOrSame2(gitDirRaw) !== realOrSame2(commonDir);
 }
 function hasGitFileSignature(p) {
   try {
-    return statSync2(path5.join(p, ".git")).isFile();
+    return statSync2(path6.join(p, ".git")).isFile();
   } catch {
     return false;
   }
 }
 function retargetStaleBoardInteriorByPath(dir) {
-  let cur = path5.resolve(dir);
+  let cur = path6.resolve(dir);
   for (; ; ) {
-    if (path5.basename(cur) === BUNDLE_DIR && hasGitFileSignature(cur)) {
-      return path5.dirname(cur);
+    if (path6.basename(cur) === BUNDLE_DIR && hasGitFileSignature(cur)) {
+      return path6.dirname(cur);
     }
-    const parent = path5.dirname(cur);
+    const parent = path6.dirname(cur);
     if (parent === cur) return null;
     cur = parent;
   }
@@ -7851,8 +7973,8 @@ function retargetStaleBoardInteriorByPath(dir) {
 function retargetBoardInterior(dir) {
   try {
     const top = repoTopLevel(dir);
-    if (top && path5.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
-      return path5.dirname(top);
+    if (top && path6.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
+      return path6.dirname(top);
     }
   } catch {
   }
@@ -7862,8 +7984,8 @@ function healStaleRebaseBeforeProvisioning(dir) {
   try {
     const top = repoTopLevel(dir);
     if (!top) return;
-    const candidateBoardPath = path5.join(top, BUNDLE_DIR);
-    if (!existsSync3(candidateBoardPath)) return;
+    const candidateBoardPath = path6.join(top, BUNDLE_DIR);
+    if (!existsSync4(candidateBoardPath)) return;
     const boardTop = repoTopLevel(candidateBoardPath);
     if (!boardTop || realOrSame2(boardTop) !== realOrSame2(candidateBoardPath)) return;
     if (!isLinkedWorktree(candidateBoardPath)) return;
@@ -7898,125 +8020,6 @@ function provisionAnnouncement(outcome) {
     return { repaired: `${outcome.boardPath} \u2014 worktree pointers repaired` };
   }
   return void 0;
-}
-
-// ../board-git/src/flow.ts
-import { existsSync as existsSync4, readFileSync as readFileSync3, renameSync, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
-import path6 from "node:path";
-function refCommit(top, ref) {
-  const r = runGit(top, ["rev-parse", "--verify", "--quiet", ref]);
-  const value = r.stdout.trim();
-  return r.status === 0 && value ? value : void 0;
-}
-function treeOf(top, commit) {
-  return refCommit(top, `${commit}^{tree}`);
-}
-function isAncestor(top, ancestor, descendant) {
-  return runGit(top, ["merge-base", "--is-ancestor", ancestor, descendant]).status === 0;
-}
-function localBranchExists(top, name) {
-  return runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${name}`]).status === 0;
-}
-function resolveOriginRef(boardPath) {
-  const r = runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]);
-  return r.status === 0 ? r.stdout.trim() : null;
-}
-function hasLocalOnlyBundle(dir) {
-  const top = repoTopLevel(dir);
-  if (!top) return false;
-  return existsSync4(path6.join(top, BUNDLE_DIR, "index.md"));
-}
-function folderTreeAtHead(top) {
-  const r = runGit(top, ["rev-parse", "--verify", "--quiet", `HEAD:${BUNDLE_DIR}`]);
-  if (r.status !== 0) return null;
-  const sha = r.stdout.trim();
-  const t = runGit(top, ["cat-file", "-t", sha]);
-  if (t.status !== 0 || t.stdout.trim() !== "tree") return null;
-  return sha;
-}
-function folderPresentInCodeIndex(top) {
-  const r = runGit(top, ["ls-files", "--", BUNDLE_DIR]);
-  return r.status === 0 && r.stdout.trim().length > 0;
-}
-function behindBoardCommits(top, branch) {
-  const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
-  if (runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status !== 0) return null;
-  return mustGit(top, ["rev-list", `HEAD..${remoteRef}`, "--", BUNDLE_DIR]).split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
-}
-function annotateLanded(boardPath, conflicts) {
-  return conflicts.map((c) => ({
-    ...c,
-    landed: runGit(boardPath, ["cat-file", "-e", `HEAD:${c.relPath}`]).status === 0
-  }));
-}
-var ESTABLISH_MARKER_KEY = "agentstate.establishCommit";
-var COMMITTED_MARKER_KEY = "agentstate.establishCommittedShare";
-function markerPath(top, key) {
-  return path6.join(mustGit(top, ["rev-parse", "--absolute-git-dir"]).trim(), key);
-}
-function readGitDirMarker(top, key) {
-  try {
-    const value = readFileSync3(markerPath(top, key), "utf8").trim();
-    return /^[0-9a-f]{40,64}$/.test(value) ? value : void 0;
-  } catch {
-    return void 0;
-  }
-}
-function writeGitDirMarker(top, key, commit) {
-  const target = markerPath(top, key);
-  const temporary = `${target}.tmp-${process.pid}`;
-  writeFileSync2(temporary, `${commit}
-`, { mode: 384 });
-  renameSync(temporary, target);
-}
-function clearGitDirMarker(top, key) {
-  try {
-    unlinkSync(markerPath(top, key));
-  } catch {
-  }
-}
-function parseLsTreeZ(out) {
-  return out.split("\0").filter((l) => l.length > 0).map((l) => {
-    const tab = l.indexOf("	");
-    const [mode = "", type = "", sha = ""] = l.slice(0, tab).split(" ");
-    return { mode, type, sha, name: l.slice(tab + 1) };
-  });
-}
-function treeSortKey(e) {
-  return e.type === "tree" ? `${e.name}/` : e.name;
-}
-function boardCommitMessage(branch) {
-  return `board: bundle shared from '${branch}' (files only)
-
-One-time establishment: the bundle's current files, moved onto the dedicated '${BOARD_BRANCH}' branch.
-The folder's history stays on '${branch}'.
-`;
-}
-function createBoardRootCommit(top, treeSha, branch) {
-  const sha = mustGit(top, ["commit-tree", treeSha], { input: boardCommitMessage(branch) }).trim();
-  mustGit(top, ["branch", BOARD_BRANCH, sha]);
-  return sha;
-}
-function createRemovalCommit(top, message) {
-  const headTree = mustGit(top, ["rev-parse", "HEAD^{tree}"]).trim();
-  const entries = parseLsTreeZ(mustGit(top, ["ls-tree", "-z", headTree])).filter(
-    (e) => e.name !== BUNDLE_DIR
-  );
-  const existing = entries.find((e) => e.name === ".gitignore");
-  const base = existing ? mustGit(top, ["cat-file", "blob", existing.sha]) : "";
-  const updated = withIgnoreEntry(base);
-  if (updated !== base) {
-    const blob = mustGit(top, ["hash-object", "-w", "--stdin"], { input: updated }).trim();
-    if (existing) {
-      existing.sha = blob;
-    } else {
-      entries.push({ mode: "100644", type: "blob", sha: blob, name: ".gitignore" });
-    }
-  }
-  entries.sort((a, b) => treeSortKey(a) < treeSortKey(b) ? -1 : treeSortKey(a) > treeSortKey(b) ? 1 : 0);
-  const mktreeInput = entries.map((e) => `${e.mode} ${e.type} ${e.sha}	${e.name}\0`).join("");
-  const newTree = mustGit(top, ["mktree", "-z"], { input: mktreeInput }).trim();
-  return mustGit(top, ["commit-tree", newTree, "-p", "HEAD"], { input: message }).trim();
 }
 
 // ../board-git/src/autopull.ts
