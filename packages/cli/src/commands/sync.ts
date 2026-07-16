@@ -68,7 +68,6 @@ import {
   toDeltaRows,
 } from "../sync-engine.js";
 import { hookInstalled } from "./hook.js";
-import { migrateBoard } from "./sync-migrate.js";
 import { ESTABLISH_ALREADY, establishBoard } from "./sync-establish.js";
 import { classifyGitError, isBoardGitError } from "../board-git-errors.js";
 import { CliError, asHandled, cliErrorFromBoardGit, toExit } from "../errors.js";
@@ -81,9 +80,8 @@ export const SYNC_USAGE = `agentstate-lite sync — share the board branch with 
 
 Usage:
   agentstate-lite sync [--pull-only] [--dir <path>] [--limit <n>] [--json]
-  agentstate-lite sync --establish [--dir <path>] [--json]
+  agentstate-lite sync --establish [--yes] [--dir <path>] [--json]
   agentstate-lite sync --show-incoming <id> [--out <file>] [--dir <path>] [--json]
-  agentstate-lite sync --migrate [--yes] [--dir <path>] [--json]
 
 Shares this repo's board (\`.agentstate-lite\`, kept on its own \`board\` branch) with your
 teammates: ordinary sync commits pending local doc changes, pulls theirs, and pushes yours without
@@ -144,29 +142,30 @@ changes is always this verb. Set AGENTSTATE_LITE_NO_AUTOPULL to any non-empty va
 the auto-pull (note: "0" disables it too — the variable's PRESENCE is the switch) for CI or
 scripted runs that must never touch the network.
 
-\`sync --migrate\` is the ONE-TIME move for a project whose board is a folder committed on the
-default branch: it creates a \`board\` branch carrying the folder's CURRENT files (files only —
-the folder's history stays where it is), pushes it to origin with tracking, and prepares ONE
-local commit on a new \`board-migration\` branch that removes the folder from the current branch
+\`--establish\` also handles the project whose \`.agentstate-lite/\` folder is ALREADY COMMITTED
+on the current branch: it creates the \`board\` branch carrying the folder's CURRENT files (files
+only — the folder's history stays where it is), pushes it to origin with tracking, and prepares
+ONE local commit on a new \`board-cleanup\` branch that removes the folder from the current branch
 and gitignores it — you push that branch and open the PR yourself; nothing on the current branch
 is pushed or changed. Until that PR merges the old committed folder is a frozen snapshot: sync no
-longer updates it, so treat it as read-only. Without \`--yes\`, \`--migrate\` prints a preview (a
-dry run, including the rollout note to send teammates) and changes nothing. It refuses while
-\`.agentstate-lite/\` has uncommitted changes, when the current branch is behind origin on
+longer updates it, so treat it as read-only. Without \`--yes\`, the committed case prints a
+preview (a dry run, including the rollout note to send teammates) and changes nothing. It refuses
+while \`.agentstate-lite/\` has uncommitted changes, when the current branch is behind origin on
 commits touching the folder (pull first — a teammate's board commit must never be stranded on
 the frozen copy), when origin is unreachable (the freshness check and the push both need it),
 and when any \`board/...\` branch exists locally or on the remote (git cannot create a \`board\`
-branch alongside them). It reports 'already migrated' (exit 0) once a board branch exists on
+branch alongside them). It reports 'already established' (exit 0) once a board branch exists on
 origin — with state-aware guidance, including re-creating the folder-removal commit when an
-interrupted run left it missing. Coordinate first: every founder syncs (at minimum commits)
-their board work before anyone migrates.
+interrupted run left it missing. Coordinate first: every board writer syncs (at minimum commits)
+their board work before anyone establishes.
 
 Options:
   --pull-only          Only fast-forward from origin (never rebase); skip commit + push
-  --establish          Explicitly publish a local bundle as this project's shared board
+  --establish          Explicitly publish this project's bundle as its shared board (a folder
+                       already committed on the branch is handled too — preview first)
+  --yes                Execute the committed-folder establishment (without it, that case prints
+                       a preview and changes nothing; the uncommitted case never needs it)
   --show-incoming <id> Print the upstream (origin/board) version of one doc, as of the last fetch
-  --migrate            One-time: move a committed .agentstate-lite/ folder onto its own board branch
-  --yes                Execute --migrate (without it, --migrate prints a preview and changes nothing)
   --out <file>         With --show-incoming: write the raw bytes to <file> ('-' = raw to stdout)
   --dir <path>         Directory to run sync from (default: the cwd) — must be inside a git repo
   --limit <n>          Cap the incoming-delta row list to <n> rows (default: 20; 0 = unlimited)
@@ -651,7 +650,7 @@ export function hasLocalOnlyBundle(dir: string): boolean {
 
 /**
  * The sync command entry — and the git tier's CLI COMMAND BOUNDARY: any typed `BoardGitError`
- * that reaches this edge (git.ts ops, the establish/migrate flows dispatched below) maps through
+ * that reaches this edge (git.ts ops, the establish flows dispatched below) maps through
  * THE one `cliErrorFromBoardGit` layer, so callers (the bin wrapper, tests) always observe
  * `CliError` with the exact envelope/exit the tier produced before the taxonomy split.
  */
@@ -692,32 +691,19 @@ async function syncCommand(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
     return;
   }
 
-  // `--migrate` (U5) is the one-time, --yes-gated move of a committed board folder onto its own
-  // board branch — dispatched before the everyday flow (it never commits/pulls/pushes the board).
-  // TEMPORARY: founders' one-time act, scheduled for removal post-execution; kept out of every
-  // taught surface (see sync-migrate.ts's header).
+  // `--migrate` is a RETIRED spelling: `--establish` subsumed the committed-folder case. The flag
+  // stays recognized so old muscle memory gets a pointer instead of a generic unknown-option error.
   if (values.migrate) {
-    if (values["pull-only"]) {
-      throw new CliError("USAGE", "--migrate and --pull-only cannot be combined — migration never pulls");
-    }
-    if (values.establish) {
-      throw new CliError("USAGE", "--migrate and --establish cannot be combined — they are two different one-time moves");
-    }
-    if (values["show-incoming"] !== undefined) {
-      throw new CliError("USAGE", "--migrate and --show-incoming cannot be combined");
-    }
-    if (values.out !== undefined) {
-      throw new CliError("USAGE", "--out only applies to sync --show-incoming <id>", {
-        help: `${inv} sync --show-incoming <id> --out <file>`,
-      });
-    }
-    const migrateDir = retargetBoardInterior(values.dir ?? process.cwd());
-    await migrateBoard(migrateDir, { yes: Boolean(values.yes), ...(values.json !== undefined ? { json: values.json } : {}) }, stdout);
-    return;
+    throw new CliError(
+      "USAGE",
+      "--migrate was retired — 'sync --establish' now handles a committed .agentstate-lite/ folder " +
+        "too (preview first; --yes executes)",
+      { help: `${inv} sync --establish` },
+    );
   }
-  if (values.yes) {
-    throw new CliError("USAGE", "--yes only applies to sync --migrate", {
-      help: `${inv} sync --migrate --yes`,
+  if (values.yes && !values.establish) {
+    throw new CliError("USAGE", "--yes only applies to sync --establish (it confirms the committed-folder case)", {
+      help: `${inv} sync --establish --yes`,
     });
   }
 
@@ -771,7 +757,7 @@ async function syncCommand(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   // the ordinary sync flow with an idempotence note.
   let establishAlreadyNote: string | undefined;
   if (values.establish) {
-    const establishOutcome = await establishBoard(dir, inv, mode, stdout, deps);
+    const establishOutcome = await establishBoard(dir, inv, mode, stdout, deps, { yes: Boolean(values.yes) });
     if (!establishOutcome.already) return;
     establishAlreadyNote = ESTABLISH_ALREADY;
   }

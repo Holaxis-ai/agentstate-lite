@@ -92,8 +92,20 @@ converges: your teammate's version is kept, yours is saved to an export file, an
 `sync --show-incoming <id>` + `doc update` reconcile — no git surgery. Bundles committed
 directly to a code branch are also supported; `sync` is specifically the shared-board path.
 
+`sync --establish` also handles the project that already committed `.agentstate-lite/` to
+its code branch: it prints a preview first, and `--yes` executes — publishing the board
+branch from the folder's current files and preparing a cleanup commit on a side branch
+that you open as a PR (the folder leaves the code branch; the board takes over after the
+merge).
+
 Establishment also appends `.agentstate-lite/` to the root working-tree `.gitignore` and
 reports that uncommitted edit; ordinary sync does not modify code-project files.
+
+**If you see a `board` branch** in a repo that uses agentstate-lite: that is the shared
+board — an orphan branch carrying only the knowledge bundle, written by `aslite sync`. It
+never merges into `main` (it shares no history with it, by design). Protect it the way
+you protect `main`: enable delete and force-push protection on `board` in the repo
+settings — sync only ever appends commits to it.
 
 ## How it works
 

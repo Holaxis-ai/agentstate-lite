@@ -26,14 +26,15 @@ import { recipe } from "../src/commands/recipe.js";
 import { list } from "../src/commands/list.js";
 import {
   ESTABLISH_ALREADY,
+  ESTABLISH_COMMITTED_PREVIEW,
   ESTABLISH_DONE,
   establishNextSteps,
 } from "../src/commands/sync-establish.js";
-import { GITIGNORE_ENTRY } from "../src/commands/sync-migrate.js";
 import { CliError } from "../src/errors.js";
 import { cliInvocation } from "../src/invocation.js";
 import {
   BOARD_BRANCH,
+  GITIGNORE_ENTRY,
   provisionBoardWorktree,
   pushBoardCommit,
   snapshotBundleCommit,
@@ -50,7 +51,7 @@ import {
 
 const INV = cliInvocation();
 
-// ── scaffolding (mirrors sync.test.ts / sync-migrate.test.ts) ─────────────────
+// ── scaffolding (mirrors sync.test.ts / sync-establish-committed.test.ts) ─────
 
 async function withHome<T>(home: string, run: () => Promise<T>): Promise<T> {
   const originalHome = process.env.HOME;
@@ -897,7 +898,7 @@ test("establish refusals: no folder / empty folder / no index.md all point at in
   }
 });
 
-test("establish refusal: a folder already committed at HEAD points at --migrate, not establish", async () => {
+test("establish on a folder already committed at HEAD routes to the committed-case preview, never the greenfield conversion", async () => {
   const topo = await makeGreenfieldTopology();
   const { home, cleanup } = await tempHome();
   try {
@@ -905,10 +906,17 @@ test("establish refusal: a folder already committed at HEAD points at --migrate,
     await writeBoardDoc(topo.a, "notes/hello", { frontmatter: { type: "Note", title: "Hello" }, body: "hi\n" });
     git(topo.a.root, ["add", "-A"]);
     git(topo.a.root, ["commit", "-m", "committed the bundle folder directly"]);
+    const preHead = git(topo.a.root, ["rev-parse", "HEAD"]).trim();
 
-    const { err } = await runSync(home, ["--establish", "--dir", topo.a.root]);
-    assert.equal(err?.code, "RUNTIME");
-    assert.match(err?.message ?? "", /sync --migrate/);
+    const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(rec.establish, ESTABLISH_COMMITTED_PREVIEW);
+    assert.equal(git(topo.a.root, ["rev-parse", "HEAD"]).trim(), preHead, "preview mutates nothing");
+    assert.notEqual(
+      gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status,
+      0,
+      "nothing published by a preview",
+    );
+    assert.equal(existsSync(path.join(topo.a.board, "notes", "hello.md")), true, "the folder is untouched");
   } finally {
     await cleanup();
     await topo.cleanup();
