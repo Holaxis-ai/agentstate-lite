@@ -3,7 +3,7 @@ type: Task
 title: >-
   Establish/window journeys: pre-existing defects surfaced by PR #75 adversarial
   QA
-status: todo
+status: in_progress
 priority: '3'
 description: >-
   Carried-over defects (verified pre-existing vs origin/main; repro scripts in
@@ -26,6 +26,7 @@ description: >-
   machinery's standing assumptions); F-D3 'never published' overclaims in
   crash-then-force-push corner.
 actor: mike/claude
-timestamp: '2026-07-16T11:44:42.056Z'
+assignee: mike/claude
+timestamp: '2026-07-16T11:49:59.514Z'
 ---
 [depends on](sync-migrate-removal.md)
