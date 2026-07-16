@@ -6,20 +6,22 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  PR #36 is ready to merge at reviewed candidate
-  88f84643a51da6f918350c476f111af55bb9023f. Greenfield establishment is now
-  snapshot-first and explicit; bare sync cannot publish or adopt an untrusted
-  local board branch; ignored files, nested Git boundaries, byte-rewriting
-  filters, stale refs, linked-worktree marker collisions, ambiguous push
-  failures, concurrent backup writes, and crash recovery are covered by
-  deterministic adversarial tests. Independent review approved the exact SHA;
-  npm run check passed, including all workspaces and 13 browser E2E tests.
-  Remaining before this broader task closes: merge #36, then decide/ship the
-  still-separate committed-folder unification and --migrate spelling retirement
-  described in this task.
-actor: openai/codex
-assignee: openai/codex
-timestamp: '2026-07-10T13:37:34.973Z'
+  TAKEN OVER by mike/claude 2026-07-16 (Mike's decision; openai/codex idle here
+  since PR #36 merged). SHIPPED: greenfield establishment (sync --establish,
+  snapshot-first, adversarially tested). VERIFIED REMAINING: (1)
+  committed-folder unification — establish today refuses the committed case at
+  sync-establish.ts:169 and points at --migrate; absorb the audited U5 flow
+  (removal commit on a side branch + PR guidance, all guards verbatim) into
+  establish; (2) retire the --migrate spelling — delete sync-migrate.ts (~600
+  lines) + the flag/help surface in sync.ts; (3) skill/docs trilogy (local-only
+  / JOIN / SHARE), board-branch protection line, README legibility line; (4)
+  carried findings: PR#26 alreadyMigrated branch-order staleness (fix or moot),
+  U5 crash-discriminator LOW re-adjudication under the permanent verb. This task
+  is the hard prerequisite for tasks/board-git-a1-extraction. High-risk tier:
+  Builder -> independent review -> adversarial QA.
+actor: mike/claude
+assignee: mike/claude
+timestamp: '2026-07-16T00:28:03.080Z'
 ---
 ## Why the rescope (the Broken-Leash analysis, 2026-07-09)
 
