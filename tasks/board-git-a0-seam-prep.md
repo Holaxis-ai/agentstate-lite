@@ -1,22 +1,22 @@
 ---
 type: Task
 title: 'board-git PR A0: seam preparation in place (no file moves)'
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  Builder complete: PR #73 (feat/board-git-a0-seam-prep), reviewed candidate
-  b4a48d4f0a65549dfd9afc8f24afe79c8149696d, cut from origin/main e7c8ab7. All
-  gates exit 0 (build/typecheck/test/check + built-CLI smoke incl. dual-load
-  envelope parity). New modules: board-git-errors.ts (BoardGitError, 7 codes,
-  structural guard), sync-engine.ts (carved engine helpers), board-git-API.md
-  (package acceptance bar); diffDocsBetween consolidated into git.ts;
-  createSyncStore factory in cursor.ts; ONE cliErrorFromBoardGit mapping; no
-  engine imports from commands/sync.ts remain. Builder caveats for review:
-  originDocsBetween tolerance-adapter equivalence, cursor free-function
-  projections retained until A1, remaining command->command composition edges
-  deferred to A1 flow.ts. Independent review IN FLIGHT on the exact sha.
+  SHIPPED: PR #73 merged as ce70665 (reviewed candidate b4a48d4). Independent
+  review APPROVE, empirically calibrated: base-vs-PR built-CLI transcripts
+  byte-identical across 10 failure/receipt scenarios incl. the two-clone
+  converging conflict; parity table proven compile-enforced (bogus-code probe
+  fails typecheck); all gates exit 0 incl. npm run check. Delivered:
+  board-git-errors.ts (BoardGitError + structural guard, zero CLI imports),
+  sync-engine.ts (un-inverted engine helpers), ONE cliErrorFromBoardGit mapping,
+  consolidated diffDocsBetween with prefix seam, createSyncStore factory,
+  board-git-API.md acceptance bar. Forward to A1 (review LOW): cursor.ts
+  default-store/projections still import credentials.js — split factory from
+  projections before relocation, or the import-direction test fails.
 actor: mike/claude
 assignee: mike/claude
-timestamp: '2026-07-16T00:57:06.456Z'
+timestamp: '2026-07-16T01:13:59.524Z'
 ---
 [depends on](sync-migrate-removal.md)
