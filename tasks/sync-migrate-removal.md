@@ -6,22 +6,23 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  TAKEN OVER by mike/claude 2026-07-16 (Mike's decision; openai/codex idle here
-  since PR #36 merged). SHIPPED: greenfield establishment (sync --establish,
-  snapshot-first, adversarially tested). VERIFIED REMAINING: (1)
-  committed-folder unification — establish today refuses the committed case at
-  sync-establish.ts:169 and points at --migrate; absorb the audited U5 flow
-  (removal commit on a side branch + PR guidance, all guards verbatim) into
-  establish; (2) retire the --migrate spelling — delete sync-migrate.ts (~600
-  lines) + the flag/help surface in sync.ts; (3) skill/docs trilogy (local-only
-  / JOIN / SHARE), board-branch protection line, README legibility line; (4)
-  carried findings: PR#26 alreadyMigrated branch-order staleness (fix or moot),
-  U5 crash-discriminator LOW re-adjudication under the permanent verb. This task
-  is the hard prerequisite for tasks/board-git-a1-extraction. High-risk tier:
-  Builder -> independent review -> adversarial QA.
+  TAKEN OVER by mike/claude 2026-07-16. Builder complete: PR #75
+  (feat/establish-committed-unification), reviewed candidate
+  75668b82944f91fb8925e1fd9cfc3b238f8c11a6. establish subsumes the
+  committed-folder case (all U5 guards carried verbatim per the PR's guard
+  table: snapshot-first, preview+--yes, orphan root,
+  behind-origin/namespace/dead-fetch refusals, side-branch removal commit, never
+  git clean); sync-migrate.ts deleted with coverage PORTED not dropped;
+  --migrate is a recognized retired spelling (USAGE pointer at --establish);
+  docs trilogy + protection + README legibility shipped; carried findings
+  adjudicated (PR#26 moot-by-structure + regression test; U5 crash discriminator
+  implemented as write-time marker enabling foreign-origin/board and
+  stale-snapshot refusals). All gates exit 0 incl. check:skill regen. Caveat:
+  main advanced (#74) after branching — merged-tree gates pending review.
+  HIGH-RISK tier: independent review IN FLIGHT, adversarial QA to follow.
 actor: mike/claude
 assignee: mike/claude
-timestamp: '2026-07-16T00:28:03.080Z'
+timestamp: '2026-07-16T01:49:11.402Z'
 ---
 ## Why the rescope (the Broken-Leash analysis, 2026-07-09)
 
