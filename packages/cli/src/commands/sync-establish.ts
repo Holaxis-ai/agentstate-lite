@@ -928,13 +928,21 @@ async function establishCommitted(
  *  (a) a local `board-cleanup` branch exists → the removal commit is prepared; guide to pushing
  *      it and opening the PR (the lost-receipt case on the happy path). Any leftover crash marker
  *      is cleared — the work it protected is done;
- *  (b) the CRASH WINDOW — this clone's own crash marker exists (written before the push, cleared
- *      after the cleanup branch lands), but no `board-cleanup` branch — → the removal commit is
- *      genuinely missing: RE-CREATE it (with `--yes`; without, say exactly what a `--yes` re-run
- *      will do). Guarded by the same freshness rules as a fresh run (live fetch + not-behind),
- *      plus two provenance checks a heuristic could not make: the marker's commit must be
- *      contained in origin/board (a different published board refuses), and its tree must still
- *      match HEAD's folder (newer board commits on the code branch would be silently stranded);
+ *  (b) this clone's own crash marker exists (written before the push, cleared after the cleanup
+ *      branch lands), but no `board-cleanup` branch. PROVENANCE FIRST — the marker's commit must
+ *      be contained in origin/board, or the "interrupted establishment" framing is false (the
+ *      marker also survives a LOST establish race, whose push never landed):
+ *      • contained → the true crash window: the removal commit is genuinely missing — RE-CREATE
+ *        it (with `--yes`; without, say exactly what a `--yes` re-run will do), guarded by the
+ *        same freshness rules as a fresh run (live fetch + not-behind) plus the tree check (the
+ *        marker's tree must still match HEAD's folder — newer board commits on the code branch
+ *        would be silently stranded);
+ *      • NOT contained, against a LIVE fetch → the race was lost: a different board was
+ *        published and this clone's snapshot never landed. Report that truthfully; `--yes`
+ *        CONFLICTs with the discard path. Once the local `board` branch is also gone (the user
+ *        discarded the attempt), the loss is definitive and the stale marker is cleared — the
+ *        ONLY mutation on this path — so later runs route to (c). The clear NEVER fires on a
+ *        contained snapshot, while the local branch exists, or off a dead fetch;
  *  (c) no marker (a teammate's clone that simply hasn't pulled the removal yet — even one that
  *      checked out the board branch locally) → a truthful note, probed against origin's actual
  *      state. Never a removal-commit re-creation here — that would race the real PR.
@@ -964,7 +972,8 @@ async function alreadyShared(
       `open its PR`;
     rec.next_steps = committedNextSteps(inv, branch === "HEAD" ? "the default branch" : branch);
   } else if (marker) {
-    // (b) the crash window: this clone's own marker proves the interrupted run happened HERE.
+    // (b) this clone's own marker proves an interrupted --yes run happened HERE — but only
+    // origin/board can say whether that run's push WON. Provenance before any framing.
     if (branch === "HEAD") {
       throw new CliError(
         "RUNTIME",
@@ -972,23 +981,29 @@ async function alreadyShared(
           `${BUNDLE_DIR}/ folder, then re-run '${inv} sync --establish --yes'`,
       );
     }
-    if (!yes) {
-      rec.note =
-        `an interrupted establishment left the board branch pushed but no folder-removal commit — ` +
-        `re-run '${inv} sync --establish --yes' to re-create it on '${CLEANUP_BRANCH}' ` +
-        `(nothing has been changed by this run)`;
-    } else if (!fetchOk) {
-      throw new CliError(
-        "TRANSIENT",
-        `establish refused: could not reach '${BOARD_REMOTE}' — finishing the interrupted ` +
-          `establishment re-creates the folder-removal commit, which must be cut from a fresh view ` +
-          `of ${BOARD_REMOTE}; get online, then re-run`,
-        { details: { retryable: true } },
-      );
-    } else {
-      assertNotBehindOnBoard(top, inv, branch);
-      const remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
-      if (!remoteCommit || !isAncestor(top, marker, remoteCommit)) {
+    const remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
+    const contained = remoteCommit !== undefined && isAncestor(top, marker, remoteCommit);
+    if (!contained && fetchOk) {
+      // The race was LOST: a live origin/board does not contain this clone's snapshot, so the
+      // attempted board was never published.
+      if (!localBranchExists(top, BOARD_BRANCH)) {
+        // The attempt is already discarded — definitively lost. Clearing the stale marker is the
+        // ONLY mutation here; from now on normal routing (state c) owns this clone.
+        clearMarker(top, COMMITTED_MARKER_KEY);
+        rec.cleared =
+          `a different board was published to ${BOARD_REMOTE}/${BOARD_BRANCH} and this clone's ` +
+          `earlier establishment attempt was never published — its stale marker has been ` +
+          `cleared (the only change made by this run)`;
+        rec.note = windowNote(top, inv, branch);
+      } else if (!yes) {
+        rec.note =
+          `a different board was published to ${BOARD_REMOTE}/${BOARD_BRANCH} — this clone's ` +
+          `earlier '--establish --yes' lost that race and its attempted board was never ` +
+          `published; nothing has been changed by this run`;
+        rec.discard =
+          `git branch -D ${BOARD_BRANCH}, then re-run '${inv} sync --establish' — the stale ` +
+          `marker is cleared automatically once the branch is gone`;
+      } else {
         throw new CliError(
           "CONFLICT",
           `origin/${BOARD_BRANCH} does not contain this clone's interrupted establishment ` +
@@ -998,10 +1013,31 @@ async function alreadyShared(
             details: { snapshot_commit: marker },
             help:
               `coordinate with whoever published origin/${BOARD_BRANCH}; to discard this clone's ` +
-              `interrupted snapshot: git branch -D ${BOARD_BRANCH}`,
+              `never-published attempt: git branch -D ${BOARD_BRANCH}, then re-run ` +
+              `'${inv} sync --establish' — the stale marker is cleared automatically once the ` +
+              `branch is gone`,
           },
         );
       }
+    } else if (!yes) {
+      rec.note = contained
+        ? `an interrupted establishment left the board branch pushed but no folder-removal commit — ` +
+          `re-run '${inv} sync --establish --yes' to re-create it on '${CLEANUP_BRANCH}' ` +
+          `(nothing has been changed by this run)`
+        : `an earlier establishment on this clone was interrupted, but '${BOARD_REMOTE}' cannot ` +
+          `be reached to verify what was published — get online, then re-run ` +
+          `'${inv} sync --establish' (nothing has been changed by this run)`;
+    } else if (!fetchOk) {
+      throw new CliError(
+        "TRANSIENT",
+        `establish refused: could not reach '${BOARD_REMOTE}' — finishing the interrupted ` +
+          `establishment re-creates the folder-removal commit, which must be cut from a fresh view ` +
+          `of ${BOARD_REMOTE}; get online, then re-run`,
+        { details: { retryable: true } },
+      );
+    } else {
+      // contained && fetchOk && yes: the true interrupted-establishment recovery.
+      assertNotBehindOnBoard(top, inv, branch);
       const markerTree = treeOf(top, marker);
       if (!markerTree) {
         throw new CliError("RUNTIME", `the establishment marker names an unavailable commit (${marker}); nothing was changed`);
@@ -1033,21 +1069,29 @@ async function alreadyShared(
       rec.both_worlds = bothWorldsLine(branch);
     }
   } else {
-    // (c) a clone that hasn't pulled the removal yet. Probe origin's actual state so the note
-    // never asserts a PR that may or may not exist.
-    const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
-    const remoteBranchKnown =
-      branch !== "HEAD" && runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status === 0;
-    const landedUpstream =
-      remoteBranchKnown && runGit(top, ["cat-file", "-e", `${remoteRef}:${BUNDLE_DIR}`]).status !== 0;
-    rec.note = landedUpstream
-      ? `this clone still carries the committed ${BUNDLE_DIR}/ folder and the folder-removal has ` +
-        `already landed on '${branch}' — run 'git pull' (the folder vanishes), then '${inv} sync' ` +
-        `(it returns as the live board)`
-      : `this clone still carries the committed ${BUNDLE_DIR}/ folder — once the folder-removal ` +
-        `lands on the default branch: 'git pull' (the folder vanishes), then '${inv} sync' ` +
-        `(it returns as the live board)`;
+    // (c) a clone that hasn't pulled the removal yet.
+    rec.note = windowNote(top, inv, branch);
   }
 
   stdout(render(rec, mode));
+}
+
+/**
+ * The pre-share-window guidance for a clone with no local establishment work left: pull once the
+ * removal lands, then sync. Probes origin's actual state so the note never asserts a PR that may
+ * or may not exist.
+ */
+function windowNote(top: string, inv: string, branch: string): string {
+  const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
+  const remoteBranchKnown =
+    branch !== "HEAD" && runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status === 0;
+  const landedUpstream =
+    remoteBranchKnown && runGit(top, ["cat-file", "-e", `${remoteRef}:${BUNDLE_DIR}`]).status !== 0;
+  return landedUpstream
+    ? `this clone still carries the committed ${BUNDLE_DIR}/ folder and the folder-removal has ` +
+        `already landed on '${branch}' — run 'git pull' (the folder vanishes), then '${inv} sync' ` +
+        `(it returns as the live board)`
+    : `this clone still carries the committed ${BUNDLE_DIR}/ folder — once the folder-removal ` +
+        `lands on the default branch: 'git pull' (the folder vanishes), then '${inv} sync' ` +
+        `(it returns as the live board)`;
 }

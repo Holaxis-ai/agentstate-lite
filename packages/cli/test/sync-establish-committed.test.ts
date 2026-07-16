@@ -18,6 +18,10 @@
 //   • crash-window recovery keyed on the WRITE-TIME MARKER (the U5 delta-review LOW: a local
 //     `board` branch is not provenance — a teammate who checked out the board branch during the
 //     window must never be offered the recovery);
+//   • the LOST race (QA F1): a marker whose snapshot origin/board does not contain is reported
+//     truthfully (never "pushed"), and the loser's journey terminates — discarding the local
+//     branch lets the next run clear the stale marker (the only mutation) exactly once; the clear
+//     never fires on a contained snapshot, while the branch exists, or off a dead fetch;
 //   • a fully shared clone with leftover local crumbs gets ordinary already-established behavior,
 //     never stale push-the-PR guidance (the Codex PR#26 finding, moot by structural routing);
 //   • refusals: uncommitted board changes (naming them), behind-origin freshness, dead fetch,
@@ -595,6 +599,148 @@ test("crash recovery refuses when the committed folder changed after the interru
       true,
       "no removal commit cut from a stale snapshot",
     );
+  } finally {
+    await topo.cleanup();
+    await cleanup();
+  }
+});
+
+// ── the LOST race: a marker whose snapshot origin/board does not contain ──────
+
+/**
+ * Plant the race LOSER's state on clone A: root commit cut, local board branch created, marker
+ * written — but the push LOST (never landed), and the teammate (B) then published a DIVERGENT
+ * board. origin/board does not contain the returned sha.
+ */
+async function plantLostRace(topo: TwoCloneTopology, home: string): Promise<string> {
+  await writeFile(path.join(topo.a.board, "tasks", "only-on-a.md"), "---\ntype: Task\ntitle: Only on A\n---\n# Only on A\n");
+  git(topo.a.root, ["add", "-A"]);
+  git(topo.a.root, ["commit", "-m", "board: a-only doc"]);
+  const treeSha = git(topo.a.root, ["rev-parse", `HEAD:${BUNDLE_DIR}`]).trim();
+  const rootSha = git(topo.a.root, ["commit-tree", treeSha, "-m", "board: bundle shared from 'main' (files only)"]).trim();
+  git(topo.a.root, ["branch", "board", rootSha]);
+  plantCommittedMarker(topo.a.root, rootSha);
+  await runSyncJson(home, ["--establish", "--yes", "--dir", topo.b.root]);
+  return rootSha;
+}
+
+test("a lost establish race is reported truthfully: state (b) never claims the loser's board was pushed", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await plantLostRace(topo, home);
+    const preHead = git(topo.a.root, ["rev-parse", "HEAD"]).trim();
+
+    const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(rec.establish, ESTABLISH_COMMITTED_ALREADY);
+    assert.match(String(rec.note), /a different board was published to origin\/board/);
+    assert.match(String(rec.note), /attempted board was never published/);
+    assert.doesNotMatch(JSON.stringify(rec), /left the board branch pushed/, "the false interrupted-establishment note is gone");
+    assert.equal("recovered" in rec, false, "never offered the removal-commit recovery");
+    assert.match(String(rec.discard), /^git branch -D board, then re-run/);
+    // Nothing mutated: the marker + local-branch evidence is preserved, nothing created.
+    assert.equal(existsSync(committedMarkerPath(topo.a.root)), true, "marker preserved while the local branch exists");
+    assert.equal(gitTry(topo.a.root, ["rev-parse", "--verify", "--quiet", "refs/heads/board"]).status, 0);
+    assert.equal(
+      gitTry(topo.a.root, ["rev-parse", "--verify", "--quiet", `refs/heads/${CLEANUP_BRANCH}`]).status !== 0,
+      true,
+      "no cleanup branch created",
+    );
+    assert.equal(git(topo.a.root, ["rev-parse", "HEAD"]).trim(), preHead);
+    assert.doesNotMatch(JSON.stringify(rec), FORBIDDEN);
+  } finally {
+    await topo.cleanup();
+    await cleanup();
+  }
+});
+
+test("the lost-race journey terminates: --yes CONFLICTs with the discard path, following it clears the stale marker exactly once", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await plantLostRace(topo, home);
+
+    // --yes: the pinned CONFLICT, its help documenting the full escape.
+    const conflict = await runSync(home, ["--establish", "--yes", "--dir", topo.a.root, "--json"]);
+    assert.equal(conflict.err?.code, "CONFLICT");
+    assert.match(conflict.err!.message, /does not contain this clone's interrupted establishment snapshot/);
+    assert.match(conflict.err!.help ?? "", /git branch -D board/);
+    assert.match(conflict.err!.help ?? "", /stale marker is cleared automatically once the branch is gone/);
+    assert.equal(existsSync(committedMarkerPath(topo.a.root)), true, "the CONFLICT preserves the marker evidence");
+
+    // Follow the CLI's own help.
+    git(topo.a.root, ["branch", "-D", "board"]);
+
+    // The next run terminates the loop; the marker clear is the ONLY mutation.
+    const preHead = git(topo.a.root, ["rev-parse", "HEAD"]).trim();
+    const cleared = await runSyncJson(home, ["--establish", "--yes", "--dir", topo.a.root]);
+    assert.equal(cleared.establish, ESTABLISH_COMMITTED_ALREADY);
+    assert.match(String(cleared.cleared), /never published — its stale marker has been cleared/);
+    assert.match(String(cleared.note), /once the folder-removal lands on the default branch: 'git pull'/);
+    assert.equal(existsSync(committedMarkerPath(topo.a.root)), false, "marker cleared");
+    assert.equal(git(topo.a.root, ["rev-parse", "HEAD"]).trim(), preHead, "HEAD untouched");
+    assert.equal(git(topo.a.root, ["status", "--porcelain"]).trim(), "", "working tree untouched");
+    assert.equal(
+      gitTry(topo.a.root, ["rev-parse", "--verify", "--quiet", `refs/heads/${CLEANUP_BRANCH}`]).status !== 0,
+      true,
+      "no cleanup branch created on the loser",
+    );
+
+    // Subsequent runs route normally (state c) — the clear fired exactly once.
+    const after = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(after.establish, ESTABLISH_COMMITTED_ALREADY);
+    assert.equal("cleared" in after, false);
+    assert.equal("recovered" in after, false);
+    assert.match(String(after.note), /once the folder-removal lands on the default branch/);
+    assert.doesNotMatch(JSON.stringify(cleared) + JSON.stringify(after), FORBIDDEN);
+  } finally {
+    await topo.cleanup();
+    await cleanup();
+  }
+});
+
+test("the stale-marker auto-clear never fires on a contained snapshot, even with the local board branch gone", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    plantCrashWindow(topo.a.root); // the marker's snapshot IS on origin/board
+    git(topo.a.root, ["branch", "-D", "board"]);
+
+    const offer = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.match(String(offer.note), /an interrupted establishment left the board branch pushed but no folder-removal commit/);
+    assert.equal("cleared" in offer, false);
+    assert.equal(existsSync(committedMarkerPath(topo.a.root)), true, "a contained snapshot is never auto-cleared");
+
+    // And --yes still completes the REAL recovery from this state.
+    const rec = await runSyncJson(home, ["--establish", "--yes", "--dir", topo.a.root]);
+    assert.match(String(rec.recovered), /re-created on 'board-cleanup'/);
+    assert.equal(existsSync(committedMarkerPath(topo.a.root)), false, "recovery (not the stale-clear) clears the marker");
+  } finally {
+    await topo.cleanup();
+    await cleanup();
+  }
+});
+
+test("an unverifiable marker (dead fetch) never claims the board was pushed and never auto-clears", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await plantLostRace(topo, home);
+    // One live run populates refs/remotes/origin/board on A; then A goes offline and even
+    // discards its local branch — the clear still must not fire without a live fetch.
+    await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    git(topo.a.root, ["remote", "set-url", "origin", path.join(topo.dir, "nonexistent.git")]);
+    git(topo.a.root, ["branch", "-D", "board"]);
+
+    const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.match(String(rec.note), /cannot be reached to verify what was published — get online/);
+    assert.doesNotMatch(JSON.stringify(rec), /left the board branch pushed/);
+    assert.equal("cleared" in rec, false);
+    assert.equal(existsSync(committedMarkerPath(topo.a.root)), true, "the clear never fires off a dead fetch");
+    assert.doesNotMatch(JSON.stringify(rec), FORBIDDEN);
+
+    const yes = await runSync(home, ["--establish", "--yes", "--dir", topo.a.root, "--json"]);
+    assert.equal(yes.err?.code, "TRANSIENT");
   } finally {
     await topo.cleanup();
     await cleanup();
