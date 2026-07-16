@@ -11,7 +11,7 @@ description: >-
   docs/relationships. Session output: decisions/ docs per ask + filed tasks for
   the NOW-horizon items.
 actor: brian
-timestamp: '2026-07-16T15:06:42.904Z'
+timestamp: '2026-07-16T15:19:39.257Z'
 ---
 ## What this is
 
@@ -37,7 +37,7 @@ leaves open for the room:
 3. Deferred by prior agreement, only if time remains: the lite<->Holaxis vocabulary
    alignment (nothing in lite blocks on it).
 
-## Small added agenda item (Brian, 2026-07-16): ratify or rename the `Page` kind
+## DECIDED off-session (Brian + Mike, 2026-07-16): Page renames to View — implementation filed as tasks/rename-page-kind-to-view; agenda item retired
 
 "Page" now collides with the ordinary sense of a bundle's pages (docs) — a real
 ambiguity for agent instructions ("add a page about X" can mean write a doc OR mint a
