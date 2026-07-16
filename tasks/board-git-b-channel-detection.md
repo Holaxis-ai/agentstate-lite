@@ -3,7 +3,7 @@ type: Task
 title: >-
   board-git PR B: BoardChannel detection (branch/local-only wired; in-tree
   recognized)
-status: todo
+status: in_progress
 priority: '3'
 description: >-
   Constants become branch-mode defaults; detection composes with heal/repair
@@ -12,6 +12,7 @@ description: >-
   FAILS CLOSED as a typed indeterminate (never classified as in-tree/absent).
   Behavior unchanged for branch mode.
 actor: mike/claude
-timestamp: '2026-07-16T00:17:44.437Z'
+assignee: mike/claude
+timestamp: '2026-07-16T03:57:49.511Z'
 ---
 [depends on](board-git-a1-extraction.md)

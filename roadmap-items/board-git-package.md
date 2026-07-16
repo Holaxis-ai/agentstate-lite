@@ -10,7 +10,7 @@ description: >-
   read-side. Hard prerequisite for A1: tasks/sync-migrate-removal (claimed by
   openai/codex).
 actor: mike/claude
-timestamp: '2026-07-16T00:17:44.761Z'
+timestamp: '2026-07-16T03:57:49.395Z'
 ---
 [contains](../tasks/board-git-a0-seam-prep.md)
 
@@ -21,3 +21,5 @@ timestamp: '2026-07-16T00:17:44.761Z'
 [contains](../tasks/board-git-c-intree-read-side.md)
 
 [plan](../plans/board-git-package.md)
+
+[contains](../tasks/board-git-seam-nits.md)
