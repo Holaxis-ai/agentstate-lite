@@ -46,7 +46,17 @@ export function diffDocsBetween(
   toRef: string,
   opts: DiffDocsOptions = {},
 ): DocChange[] {
-  const args = ["diff", "--name-status", "--no-renames", `${fromRef}..${toRef}`];
+  // A prefix scope is pushed down as git's own `-- <pathspec>` (cost-only, C review N4): git
+  // computes the diff over just that subtree instead of the whole repo, which matters once an
+  // in-tree bundle sits in a large code repo. The JS-side prefix-strip/filter below is unchanged
+  // (still correct on an already-scoped diff) — this is a cost cut, not a behavior change.
+  const args = [
+    "diff",
+    "--name-status",
+    "--no-renames",
+    `${fromRef}..${toRef}`,
+    ...(opts.prefix ? ["--", opts.prefix] : []),
+  ];
   let out: string;
   if (opts.tolerateDiffFailure) {
     const r = runGit(dir, args);

@@ -38,6 +38,7 @@ import { assertSafeConceptId, parseMarkdown, pathFromConceptId } from "@agentsta
 import {
   BOARD_BRANCH,
   BOARD_REF,
+  BOARD_REMOTE,
   BUNDLE_DIR,
   annotateLanded,
   changesSince,
@@ -57,13 +58,13 @@ import {
   provisionAnnouncement,
   provisionBoardWorktree,
   push,
+  readDocBytesAtRef,
   repoTopLevel,
   resolveBundleKey,
   resolveInTreeUpstream,
   resolveOriginRef,
   retargetBoardInterior,
   runGit,
-  runGitBytes,
   singleActor,
   stageAndCommit,
   toDeltaRows,
@@ -588,13 +589,21 @@ export function syncRemoteStateUnknownNote(inv: string, hasLocalBundle: boolean)
 /** The in-tree board's one-line identity, led by every in-tree receipt. */
 export const SYNC_IN_TREE_BOARD_LINE = `in-tree — board docs ride the current code branch (${BUNDLE_DIR}/ is committed with the code)`;
 
-/** Full sync's in-tree refusal (write-side is a non-goal: pushing the branch publishes code). */
-export function syncInTreeRefusalMessage(inv: string): string {
+/**
+ * Full sync's in-tree refusal (write-side is a non-goal: pushing the branch publishes code).
+ * `hasOrigin` false (no `origin` remote configured at all) names that dead end instead of
+ * pointing at `sync --establish`, which would just refuse again with nothing else to try.
+ */
+export function syncInTreeRefusalMessage(inv: string, hasOrigin: boolean = true): string {
+  const establishRemedy = hasOrigin
+    ? `run '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch`
+    : `this repo has no '${BOARD_REMOTE}' remote yet — run 'git remote add ${BOARD_REMOTE} <url>', ` +
+      `then '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch`;
   return (
     `this board rides your code branch — '${BUNDLE_DIR}/' is committed with the code, so a full ` +
     `sync would have to publish the code branch itself; share board changes with your normal git ` +
     `commit/push, run '${inv} sync --pull-only' to fetch-and-report incoming board changes, or ` +
-    `run '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch`
+    `${establishRemedy}`
   );
 }
 
@@ -642,9 +651,10 @@ async function syncInTree(
   const boardPath = path.join(top, BUNDLE_DIR);
 
   if (!pullOnly) {
-    throw new CliError("USAGE", syncInTreeRefusalMessage(inv), {
+    const hasOrigin = runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0;
+    throw new CliError("USAGE", syncInTreeRefusalMessage(inv, hasOrigin), {
       details: { path: boardPath, state: "in-tree" },
-      help: `${inv} sync --establish`,
+      help: hasOrigin ? `${inv} sync --establish` : `git remote add ${BOARD_REMOTE} <url>`,
     });
   }
 
@@ -1229,16 +1239,9 @@ async function showIncoming(
       // message strings drift across git versions even with LC_ALL=C pinned (the standing
       // porcelain lesson, CLAUDE.md "branch from current main" note; Mike's review fix 00203a1,
       // carried through this probe-first candidate walk).
-      if (runGit(top, ["cat-file", "-e", `${readRef}:${pathPrefix}${probe.relPath}`]).status !== 0) {
-        continue; // absent under THIS interpretation — try the next candidate
-      }
-      const shown = runGitBytes(top, ["show", `${readRef}:${pathPrefix}${probe.relPath}`]);
-      if (shown.status !== 0) {
-        // The path EXISTS at the ref (the structural probe just said so) — this is a genuine
-        // failure, never an absence.
-        throw classifyGitError({ args: ["show"], status: shown.status, stdout: "", stderr: shown.stderr });
-      }
-      hit = { probe, bytes: shown.stdout };
+      const bytes = readDocBytesAtRef(top, readRef, `${pathPrefix}${probe.relPath}`);
+      if (bytes === null) continue; // absent under THIS interpretation — try the next candidate
+      hit = { probe, bytes };
       break;
     }
     if (hit === null) {

@@ -235,12 +235,12 @@ test("buildBoardBlock: backstop both counts — live counts preferred, cache cou
 
 test("buildBoardBlock: cache note (re-anchor) and pull notes surface; changes list is capped", () => {
   const rows = Array.from({ length: 15 }, (_, i) => row("mike", "updated", "Task", `Doc ${i}`));
-  const status = provisionedStatus(cacheOf(rows, { note: "delta unavailable (history rewritten)" }));
+  const status = provisionedStatus(cacheOf(rows, { note: "delta unavailable (history rewritten or repositioned)" }));
   const { block } = buildBoardBlock(status, { offline: true, notes: ["extra"] }, INV);
   const rec = block as Record<string, unknown>;
   assert.equal(rec.since_this_machine_last_synced, "15 board changes from mike");
   assert.equal((rec.changes as string[]).length, 10);
-  assert.equal(rec.note, `${BOARD_OFFLINE_NOTE}; extra; delta unavailable (history rewritten)`);
+  assert.equal(rec.note, `${BOARD_OFFLINE_NOTE}; extra; delta unavailable (history rewritten or repositioned)`);
 });
 
 test("buildBoardBlock: unprovisioned → probe-gated first-contact line (run sync, NEVER init)", () => {

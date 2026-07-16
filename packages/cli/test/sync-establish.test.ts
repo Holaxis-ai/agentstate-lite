@@ -861,6 +861,8 @@ test("establish refusals: no git repo at all, and a repo with no origin remote",
       const { err } = await runSync(home, ["--establish", "--dir", noOrigin]);
       assert.equal(err?.code, "RUNTIME");
       assert.match(err?.message ?? "", /origin/);
+      // The remoteless dead end is remedied, not just named: the actionable next step.
+      assert.match(err?.help ?? "", /git remote add origin <url>/);
     } finally {
       await rm(noOrigin, { recursive: true, force: true });
     }

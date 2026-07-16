@@ -1078,7 +1078,7 @@ test("sync: a dangling stored cursor under the per-clone key still re-anchors wi
 
     const result = await runSync(home, ["--dir", topo.a.root]);
     assert.equal(result.err, undefined, result.err?.message);
-    assert.match(result.out, /delta unavailable \(history rewritten\)/, "the honest re-anchor note reaches the receipt");
+    assert.match(result.out, /delta unavailable \(history rewritten or repositioned\)/, "the honest re-anchor note reaches the receipt");
 
     const state = await readSyncState(key, home);
     assert.equal(state.cursor?.token, boardHead(topo.a), "cursor re-anchored to HEAD");

@@ -36,6 +36,7 @@ import { maybeAutoPull } from "../src/autopull.js";
 import { boardPostPersistHook } from "../src/board-attribution.js";
 import { mutateDoc } from "../src/mutate.js";
 import { CliError } from "../src/errors.js";
+import { cliInvocation } from "../src/invocation.js";
 import { readSyncState } from "../src/cursor.js";
 import { resolveBundleKey, IN_TREE_CURSOR_TIER } from "@agentstate-lite/board-git";
 import type { KindRegistry } from "@agentstate-lite/core";
@@ -136,6 +137,25 @@ test("in-tree: full sync refuses with truthful guidance — structured, discrimi
     assert.ok(err!.message === syncInTreeRefusalMessage(err!.help!.replace(/ sync --establish$/, "")));
     assert.equal(git(topo.a.root, ["status", "--porcelain"]), statusBefore, "refusal mutates nothing");
     assert.notEqual(gitTry(topo.origin, ["rev-parse", "--verify", "--quiet", "refs/heads/board"]).status, 0, "no board branch was created");
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
+test("in-tree: full sync's refusal carries the remoteless remedy when no 'origin' is configured (C review N1)", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home: h, cleanup } = await tempHome();
+  try {
+    git(topo.a.root, ["remote", "remove", "origin"]);
+    const { err } = await runSync(h, ["--dir", topo.a.root]);
+    assert.equal(err?.code, "USAGE");
+    assert.equal((err?.details as Record<string, unknown>)?.state, "in-tree", "details.state is unchanged by the remedy");
+    assert.match(err!.message, /no 'origin' remote yet/);
+    assert.match(err!.message, /git remote add origin <url>/);
+    assert.equal(err!.help, "git remote add origin <url>");
+    // Pinned to the exported builder so copy drift is a deliberate act.
+    assert.equal(err!.message, syncInTreeRefusalMessage(cliInvocation(), false));
   } finally {
     await cleanup();
     await topo.cleanup();

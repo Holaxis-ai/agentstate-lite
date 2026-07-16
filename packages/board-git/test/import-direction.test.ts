@@ -9,6 +9,13 @@
  *     package — e.g. into the CLI — is a violation even though it is "relative").
  * Anything else — the CLI, `@agentstate-lite/server`, any npm package — fails the gate.
  *
+ * The SAME walk also covers `packages/board-git/test/`, under the pragmatic TEST-file rule (A1
+ * review finding 3): builtins, core, in-package sources (relative specifiers resolving anywhere
+ * under the package root — `src/` or `test/`), and `"typescript"` (the gate's own devDep, used to
+ * parse the AST it walks) — but never `packages/cli` sources. This is the direction the harness
+ * itself must never cross; the other direction (the CLI's tests importing board-git's `git-harness`
+ * fixture) is legal and unaffected.
+ *
  * The walk uses the TypeScript AST (typescript is already a devDependency), not regexes, so the
  * seed test's known gaps (PR #76 review finding) are closed by construction:
  *   - bare side-effect imports (`import "./x.js"`) — an ImportDeclaration with no import clause
@@ -34,7 +41,9 @@ import path from "node:path";
 import ts from "typescript";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const PKG_ROOT = path.resolve(here, "..");
 const SRC_DIR = path.resolve(here, "../src");
+const TEST_DIR = here;
 
 /** A specifier is legal iff builtin, core, or relative-and-inside-src. */
 function specifierViolation(file: string, specifier: string): string | null {
@@ -50,13 +59,36 @@ function specifierViolation(file: string, specifier: string): string | null {
   return `disallowed specifier "${specifier}"`;
 }
 
+/**
+ * A specifier is legal for a TEST file iff builtin, core, `"typescript"` (the gate's own
+ * devDep), or relative-and-resolves-inside-the-package (`src/` OR `test/`) — never `packages/cli`,
+ * which resolves outside {@link PKG_ROOT} by construction.
+ */
+function testSpecifierViolation(file: string, specifier: string): string | null {
+  if (isBuiltin(specifier)) return null;
+  if (specifier === "@agentstate-lite/core" || specifier.startsWith("@agentstate-lite/core/")) {
+    return null;
+  }
+  if (specifier === "typescript") return null;
+  if (specifier.startsWith("./") || specifier.startsWith("../")) {
+    const resolved = path.resolve(path.dirname(file), specifier);
+    if (resolved === PKG_ROOT || resolved.startsWith(`${PKG_ROOT}${path.sep}`)) return null;
+    return `relative import escapes the package: "${specifier}"`;
+  }
+  return `disallowed specifier "${specifier}"`;
+}
+
 /** Collect every violation in one source file via the TypeScript AST. */
-function violationsIn(file: string, source: string): string[] {
+function violationsIn(
+  file: string,
+  source: string,
+  checkSpecifier: (file: string, specifier: string) => string | null,
+): string[] {
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, /* setParentNodes */ true);
   const violations: string[] = [];
   const flag = (node: ts.Node, why: string): void => {
     const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
-    violations.push(`${path.relative(SRC_DIR, file)}:${line + 1} — ${why}`);
+    violations.push(`${path.relative(PKG_ROOT, file)}:${line + 1} — ${why}`);
   };
 
   const visit = (node: ts.Node): void => {
@@ -66,7 +98,7 @@ function violationsIn(file: string, source: string): string[] {
       node.moduleSpecifier !== undefined
     ) {
       if (ts.isStringLiteral(node.moduleSpecifier)) {
-        const why = specifierViolation(file, node.moduleSpecifier.text);
+        const why = checkSpecifier(file, node.moduleSpecifier.text);
         if (why) flag(node, why);
       } else {
         flag(node, "non-literal module specifier");
@@ -79,8 +111,8 @@ function violationsIn(file: string, source: string): string[] {
     // Dynamic import(): literal specifiers are checked; anything else is a violation.
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       const arg = node.arguments[0];
-      if (arg !== undefined && ts.isStringLiteralLike(arg) && !ts.isTemplateExpression(arg)) {
-        const why = specifierViolation(file, arg.text);
+      if (arg !== undefined && ts.isStringLiteralLike(arg)) {
+        const why = checkSpecifier(file, arg.text);
         if (why) flag(node, why);
       } else {
         flag(node, "dynamic import() with a non-literal specifier");
@@ -111,9 +143,19 @@ test("import direction: no board-git src module reaches the CLI (or anything bey
   assert.ok(files.length >= 8, `expected the package's modules, found ${files.length} — wrong dir?`);
   const violations: string[] = [];
   for (const file of files) {
-    violations.push(...violationsIn(file, await readFile(file, "utf8")));
+    violations.push(...violationsIn(file, await readFile(file, "utf8"), specifierViolation));
   }
   assert.deepEqual(violations, [], `import-direction violations:\n${violations.join("\n")}`);
+});
+
+test("import direction: no board-git TEST module reaches packages/cli sources", async () => {
+  const files = await walkSources(TEST_DIR);
+  assert.ok(files.length >= 5, `expected the package's test modules, found ${files.length} — wrong dir?`);
+  const violations: string[] = [];
+  for (const file of files) {
+    violations.push(...violationsIn(file, await readFile(file, "utf8"), testSpecifierViolation));
+  }
+  assert.deepEqual(violations, [], `import-direction (test) violations:\n${violations.join("\n")}`);
 });
 
 test("import direction: the manifest's runtime dependencies are exactly @agentstate-lite/core", async () => {
