@@ -4,7 +4,7 @@ title: >-
   Plan: rename the Page kind to View — RULING: Option C+ (type-only + forward
   prefixes + nudge/audit); awaiting Mike's ack
 actor: brian
-timestamp: '2026-07-16T15:55:03.378Z'
+timestamp: '2026-07-16T16:19:31.053Z'
 ---
 ## RULING: OPTION C+ (Brian, 2026-07-16 — awaiting Mike's ack before any build)
 
@@ -15,7 +15,7 @@ migrates; no project can be stranded, structurally.
 
 FINAL SCOPE, collapsed to three reviewable units:
 - UNIT 1 (S/M, ordinary tier) — dual reads: shell type-match accepts Page|View
-  (permanent); grammar accepts views-registry//views/ alongside the legacy prefixes
+  (kept until the founders decide to fully deprecate Page); grammar accepts views-registry//views/ alongside the legacy prefixes
   (parameterized wrappers over the existing prefix-parameterized helper, per panel
   M3); the two two-query merges the mechanic located (server.ts nonce allowlist both
   modes, api listPages). NOT needed under C+: alias-normalization (ids never move),
@@ -26,7 +26,8 @@ FINAL SCOPE, collapsed to three reviewable units:
   for View — new dashboards use type: View"), and a status AUDIT section (count +
   ids of legacy-typed docs; old-prefix items listed as informational). Re-runnable,
   read-only, zero mutation. This is the convergence mechanism: drift self-corrects
-  at the authoring moment (the channel agents heed) and the stock stays visible.
+  at the authoring moment (the channel agents heed) and the stock stays visible — doubling as the SIZING INSTRUMENT for any future
+  full deprecation of Page (the audit's count IS that decision's cost estimate).
 - UNIT 3 (M/L, ordinary tier; regenerated-prose care) — the teaching pass: View
   canonical everywhere agents learn (reference.ts, skill-render, ui help), examples +
   review-workflow recipe re-authored under views-registry//views/ with type View
@@ -38,8 +39,10 @@ FINAL SCOPE, collapsed to three reviewable units:
 EXPLICITLY OUT OF SCOPE (deferred behind real demand, per the lazy rule — the audit
 is the work-list if that day comes): the migration tool, any id/prefix moves of
 existing content, the removal release, alias-normalization, ordering gates, any
-rewrite of historical prose. Old Page-typed content under old prefixes is LEGAL
-FOREVER; dual-read is permanent by design.
+rewrite of historical prose. Old Page-typed content under old prefixes stays legal UNTIL the founders decide to
+fully deprecate Page — a future decision with its own vetting; the parked Option-A
+blueprint below is the plan for that day, and the audit is its sizing instrument
+(it reports exactly how much would need to migrate).
 
 WHY C+ over the full plan (one line): the defect was the KIND NAME in agent teaching;
 C+ fixes exactly that, converges new authoring by gradient (nudge) with visibility
