@@ -1,0 +1,125 @@
+// The filesystem acquisition adapter owns traversal and symlink containment. It returns bytes to
+// the distribution-neutral parser and never interprets recipe semantics beyond choosing whether a
+// definitions-only manifest requires a complete file inventory.
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { parseMarkdown } from "@agentstate-lite/core";
+import { parseRecipeFiles, type RecipeFile, type RecipeSource } from "./recipe-parser.js";
+import { expandRecipePath, looksLikeRecipePath } from "./recipe-ref.js";
+
+async function readRecipeDir(root: string): Promise<RecipeFile[]> {
+  const files: RecipeFile[] = [];
+  const rootReal = await fs.realpath(root);
+
+  const manifestPath = path.join(root, "recipe.md");
+  const manifestStat = await fs.stat(manifestPath).catch(() => null);
+  if (manifestStat?.isFile()) {
+    const manifestReal = await fs.realpath(manifestPath).catch(() => null);
+    if (!manifestReal || (manifestReal !== rootReal && !manifestReal.startsWith(rootReal + path.sep))) {
+      throw new RecipeUnsafePathSignal("recipe.md");
+    }
+    const bytes = await fs.readFile(manifestPath, "utf8");
+    files.push({ path: "recipe.md", bytes });
+    const { frontmatter } = parseMarkdown(bytes);
+    if (frontmatter.content_policy === "definitions-only" || frontmatter.pages !== undefined) {
+      await walkRecipeFiles(root, "", rootReal, files, new Set(["recipe.md"]));
+      return files;
+    }
+  }
+
+  const conventionsRoot = path.join(root, "conventions");
+  const conventionsStat = await fs.stat(conventionsRoot).catch(() => null);
+  if (conventionsStat?.isDirectory()) {
+    await walkConventions(conventionsRoot, "conventions", rootReal, files);
+  }
+  return files;
+}
+
+async function walkRecipeFiles(
+  dir: string,
+  relPrefix: string,
+  rootReal: string,
+  out: RecipeFile[],
+  skip: Set<string>,
+): Promise<void> {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const abs = path.join(dir, entry.name);
+    const rel = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
+    if (skip.has(rel)) continue;
+    if (entry.isDirectory()) {
+      await walkRecipeFiles(abs, rel, rootReal, out, skip);
+      continue;
+    }
+    if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+    const real = await fs.realpath(abs).catch(() => null);
+    if (!real || (real !== rootReal && !real.startsWith(rootReal + path.sep))) {
+      throw new RecipeUnsafePathSignal(rel);
+    }
+    const stat = await fs.stat(real).catch(() => null);
+    if (!stat?.isFile()) throw new RecipeUnsafePathSignal(rel);
+    out.push({ path: rel, bytes: await fs.readFile(abs, "utf8") });
+  }
+}
+
+async function walkConventions(dir: string, relPrefix: string, rootReal: string, out: RecipeFile[]): Promise<void> {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const abs = path.join(dir, entry.name);
+    const rel = `${relPrefix}/${entry.name}`;
+    if (entry.isDirectory()) {
+      await walkConventions(abs, rel, rootReal, out);
+      continue;
+    }
+    if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+    if (!rel.endsWith(".md")) continue;
+
+    const real = await fs.realpath(abs).catch(() => null);
+    if (!real || (real !== rootReal && !real.startsWith(rootReal + path.sep))) {
+      throw new RecipeUnsafePathSignal(rel);
+    }
+    out.push({ path: rel, bytes: await fs.readFile(abs, "utf8") });
+  }
+}
+
+class RecipeUnsafePathSignal extends Error {
+  rel: string;
+  constructor(rel: string) {
+    super(`unsafe path '${rel}'`);
+    this.rel = rel;
+  }
+}
+
+export function filesRecipeSource(): RecipeSource {
+  return {
+    kind: "files",
+    async resolve(ref) {
+      if (!looksLikeRecipePath(ref)) return null;
+      const expanded = expandRecipePath(ref);
+      const real = await fs.realpath(path.resolve(expanded)).catch(() => null);
+      if (!real) {
+        return { ok: false, error: { code: "RECIPE_NOT_FOUND", message: `no recipe folder at '${ref}'` } };
+      }
+      const stat = await fs.stat(real).catch(() => null);
+      if (!stat || !stat.isDirectory()) {
+        return { ok: false, error: { code: "RECIPE_UNSAFE_PATH", message: `'${ref}' is not a directory` } };
+      }
+      let files: RecipeFile[];
+      try {
+        files = await readRecipeDir(real);
+      } catch (err) {
+        if (err instanceof RecipeUnsafePathSignal) {
+          return {
+            ok: false,
+            error: {
+              code: "RECIPE_UNSAFE_PATH",
+              message: `recipe folder '${ref}' contains a symlink escaping the recipe root: '${err.rel}'`,
+            },
+          };
+        }
+        throw err;
+      }
+      return parseRecipeFiles(files, real);
+    },
+  };
+}
