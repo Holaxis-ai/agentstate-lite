@@ -90,7 +90,10 @@ shared-board state as unknown and waits for a retry instead of recommending publ
 When a doc changed on both sides, sync
 converges: your teammate's version is kept, yours is saved to an export file, and
 `sync --show-incoming <id>` + `doc update` reconcile — no git surgery. Bundles committed
-directly to a code branch are also supported; `sync` is specifically the shared-board path.
+directly to a code branch are also supported as the IN-TREE mode: board docs travel with
+your normal commit/push/pull, `sync --pull-only` fetches the branch's upstream and reports
+incoming board changes (session start shows the same awareness), and a full `sync` refuses
+with guidance — `sync --establish` is the explicit conversion to a dedicated board branch.
 
 `sync --establish` also handles the project that already committed `.agentstate-lite/` to
 its code branch: it prints a preview first, and `--yes` executes — publishing the board

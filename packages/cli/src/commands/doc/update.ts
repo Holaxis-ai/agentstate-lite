@@ -9,6 +9,7 @@ import { CliError } from "../../errors.js";
 import { render, resolveMode } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
 import { mutateDoc } from "../../mutate.js";
+import { boardPostPersistHook } from "../../board-attribution.js";
 import { resolveActor } from "../../actor.js";
 import { DOC_UPDATE_USAGE, type DocCliDeps, defaultReadStdin, guardDroppedLinks } from "./common.js";
 
@@ -308,6 +309,9 @@ export async function docUpdate(argv: string[], deps: Partial<DocCliDeps>): Prom
     actor,
     persistActor: true,
     expectedVersion: p.expectedVersion?.trim(),
+    // Board self-attribution (PR C): a `changed: false` no-op never records (mutate.ts's
+    // post-persist contract), so ambient attribution cannot manufacture a "self" actor.
+    onPersisted: boardPostPersistHook(bundle, actor),
     buildCandidate: async (existingDoc) => {
       const existing = existingDoc!;
       const nextFrontmatter: Frontmatter = { ...existing.frontmatter };

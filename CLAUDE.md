@@ -347,6 +347,13 @@ the bundle):
   self-authored rows filtered, unpushed/uncommitted backstop, probe-gated "run sync — never
   init" first contact), wired by `hook install` across Claude Code/Codex/OpenCode
   (`commands/session-start.ts`, `commands/home.ts`'s board block, `commands/hook.ts`).
+  An IN-TREE board — the bundle committed WITH code on the current branch, no board branch
+  anywhere — is a supported READ-SIDE mode (board-git PR C): `detectBoardChannel` routes at
+  sync's/session-start's own resolution points, awareness rides the branch's tracking upstream
+  (decision table, never a guessed `origin/<branch>`; mode-scoped `git-intree` cursor;
+  prefix-scoped diffs/backstops; NO autopull), delivery is the user's own `git pull`, write
+  verbs refuse with guidance, and doc-write self-attribution rides mutate.ts's injected
+  post-persist hook (`board-attribution.ts`).
   The `sync --migrate` COMMAND (U5) was a TEMPORARY, founders-only flag — one-time
   and `--yes`-gated (preview-first; files-not-history board branch pushed with tracking; the
   folder-removal + gitignore commit prepared on a local `board-migration` branch for a

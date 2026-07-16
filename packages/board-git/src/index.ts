@@ -8,3 +8,4 @@ export * from "./cursor.js";
 export * from "./engine.js";
 export * from "./flow.js";
 export * from "./autopull.js";
+export * from "./intree.js";

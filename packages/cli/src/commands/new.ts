@@ -62,6 +62,7 @@ import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 import { mutateDoc } from "../mutate.js";
+import { boardPostPersistHook } from "../board-attribution.js";
 import { resolveActor } from "../actor.js";
 import { addLink } from "./link.js";
 
@@ -548,6 +549,8 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     helpOnKindReject: `${cliInvocation()} kinds`,
     actor,
     persistActor: true,
+    // Board self-attribution (PR C): fires only after the expect-absent CAS create persisted.
+    onPersisted: boardPostPersistHook(bundle, actor),
     buildCandidate: () => ({ frontmatter, body }),
     errors: {
       alreadyExists: () =>

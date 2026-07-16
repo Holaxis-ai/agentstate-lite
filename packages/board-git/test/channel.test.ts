@@ -11,7 +11,7 @@
  *   2. tracked folder + remote board seeded from it → the pre-share-window refusal, proven
  *      VERBATIM-identical to `provisionBoardWorktree`'s (one shared factory, asserted here);
  *   3. tracked folder + VERIFIED foreign remote board → typed dual-board CONFLICT;
- *   4. tracked folder + remote definitively absent → `in-tree`, typed recognized-not-supported;
+ *   4. tracked folder + remote definitively absent → `in-tree` (the supported read-side channel);
  *   5. tracked folder + remote unknown → typed indeterminate (NEVER in-tree, NEVER absent);
  *   6. untracked + local `board` branch → `branch` (join/provision `local_board` path, no probe);
  *   7. untracked + remote board exists (live or previously fetched evidence) → `branch` (JOIN);
@@ -44,7 +44,6 @@ import {
   BOARD_BRANCH,
   BOARD_REMOTE,
   BUNDLE_DIR,
-  IN_TREE_NOT_YET_SUPPORTED,
   INDETERMINATE_TRACKED_REASON,
   INDETERMINATE_UNTRACKED_REASON,
   detectBoardChannel,
@@ -245,12 +244,12 @@ test("UNVERIFIABLE dual (origin/board never fetched) routes to the pull-first ar
 
 // ── rows 4–5: tracked folder, no error arm ───────────────────────────────────────
 
-test("matrix: tracked folder + remote definitively absent → in-tree, typed recognized-not-yet-supported", async () => {
+test("matrix: tracked folder + remote definitively absent → in-tree (the supported read-side channel)", async () => {
   const topo = await makeCommittedFolderTopology();
   try {
     // The bare origin exists and answers the live probe: no board ref → definitively absent.
     const d = detectBoardChannel(topo.a.root);
-    assert.deepEqual(d, { kind: "unsupported", channel: { mode: "in-tree" }, reason: IN_TREE_NOT_YET_SUPPORTED });
+    assert.deepEqual(d, { kind: "channel", channel: { mode: "in-tree" } });
   } finally {
     await topo.cleanup();
   }
@@ -282,7 +281,7 @@ test("tracked folder + local board-branch remnant + remote absent → still in-t
     const rootSha = boardRootFromCommittedFolder(topo.a.root);
     git(topo.a.root, ["branch", BOARD_BRANCH, rootSha]);
     const d = detectBoardChannel(topo.a.root);
-    assert.equal(d.kind, "unsupported");
+    assert.deepEqual(d, { kind: "channel", channel: { mode: "in-tree" } });
   } finally {
     await topo.cleanup();
   }

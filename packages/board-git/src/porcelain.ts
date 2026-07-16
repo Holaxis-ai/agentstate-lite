@@ -424,8 +424,25 @@ function moveAsideHelp(boardPath: string, note: string): string {
  * aside" is DANGEROUS in exactly this state (it hand-builds the overlay hazard — reviewer-proven);
  * the only safe advice is pull-first. ONE factory so `provisionBoardWorktree` and channel
  * detection (`channel.ts`) stay verbatim-identical, mechanically.
+ *
+ * `originConfigured: false` is the truth-fix arm (board-git PR C, carried from B's review): the
+ * only board-branch evidence is a PREVIOUSLY FETCHED `origin/board` ref while no `origin` remote
+ * is configured any more — the default wording would falsely claim the branch "exists on origin",
+ * and its bare `git pull` help cannot work with no remote to pull from.
  */
-export function preShareWindowError(boardPath: string): BoardGitError {
+export function preShareWindowError(boardPath: string, originConfigured = true): BoardGitError {
+  if (!originConfigured) {
+    return new BoardGitError(
+      "RUNTIME",
+      `a previously fetched '${BOARD_REF}' ref shows this project's board was shared, but no ` +
+        `'${BOARD_REMOTE}' remote is configured here any more — '${BUNDLE_DIR}' is still the old ` +
+        `folder committed on this branch, and sync cannot pull the shared board without the remote`,
+      {
+        details: { path: boardPath, state: "pre-share-window", origin_configured: false },
+        help: `git remote add ${BOARD_REMOTE} <url>  # restore the remote, 'git pull' once the cleanup PR merges, then re-run sync`,
+      },
+    );
+  }
   return new BoardGitError(
     "RUNTIME",
     `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is ` +
@@ -556,7 +573,7 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
         !hasWorktreeSignature(boardPath) &&
         runGit(top, ["cat-file", "-e", `HEAD:${BUNDLE_DIR}`]).status === 0
       ) {
-        throw preShareWindowError(boardPath);
+        throw preShareWindowError(boardPath, hasOrigin);
       }
       // Non-empty and (per isProvisioned above) not currently a genuine `board` checkout: it may
       // STILL be the real board worktree, just wedged with stale pointers — try the structural
@@ -1477,9 +1494,14 @@ export function currentHead(boardPath: string): string {
   return r.stdout.trim();
 }
 
-/** Count of lines in `git status --porcelain` — uncommitted (staged or not) changes in the worktree. */
-export function countUncommitted(boardPath: string): number {
-  const r = runGit(boardPath, ["status", "--porcelain"]);
+/**
+ * Count of lines in `git status --porcelain` — uncommitted (staged or not) changes in the
+ * worktree. `prefix` (board-git PR C) scopes the count to one pathspec — the in-tree backstop's
+ * variant, so a dirty CODE tree never inflates the board's uncommitted count; branch-mode callers
+ * omit it (the board worktree carries only the bundle, so repo-wide IS bundle-wide there).
+ */
+export function countUncommitted(boardPath: string, prefix?: string): number {
+  const r = runGit(boardPath, ["status", "--porcelain", ...(prefix ? ["--", prefix] : [])]);
   if (r.status !== 0) return 0;
   return r.stdout.split("\n").filter((l) => l.trim().length > 0).length;
 }

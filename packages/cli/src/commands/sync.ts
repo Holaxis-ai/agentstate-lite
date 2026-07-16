@@ -38,15 +38,20 @@ import { assertSafeConceptId, parseMarkdown, pathFromConceptId } from "@agentsta
 import {
   BOARD_BRANCH,
   BOARD_REF,
+  BUNDLE_DIR,
   annotateLanded,
   changesSince,
   classifyGitError,
   countUncommitted,
   currentHead,
+  detectBoardChannel,
   fetchRebaseResolving,
   ffPull,
+  folderTreeAtHead,
   hasLocalOnlyBundle,
   healStaleRebaseBeforeProvisioning,
+  inTreeFetchAndRecord,
+  inTreeUpstreamSha,
   isBoardGitError,
   originDocsBetween,
   provisionAnnouncement,
@@ -54,6 +59,7 @@ import {
   push,
   repoTopLevel,
   resolveBundleKey,
+  resolveInTreeUpstream,
   resolveOriginRef,
   retargetBoardInterior,
   runGit,
@@ -134,6 +140,16 @@ as an expected state, not an error.
 If the push fails after a local commit already landed (offline, revoked/expired credentials, or a
 locked repository), the receipt still reports what committed/pulled successfully — your work is
 saved locally either way, and re-running sync retries the push.
+
+A board can also ride IN-TREE: \`.agentstate-lite/\` committed WITH the code on the current
+branch, with no dedicated \`board\` branch anywhere. That is a supported, read-side mode — sync
+recognizes it and behaves accordingly: \`sync --pull-only\` fetches the branch's own tracking
+upstream and reports incoming board doc changes (your normal \`git pull\` delivers them);
+\`session-start\`/\`home\` show the same upstream awareness; \`--show-incoming <id>\` reads the
+upstream version. Sharing YOUR board changes rides your normal commit/push — a full \`sync\`
+refuses (it would have to publish the code branch itself) and \`sync --establish\` remains the
+explicit conversion to a dedicated \`board\` branch. If the branch has no upstream (or a detached
+HEAD), in-tree awareness honestly reports that there is no comparison basis rather than guessing.
 
 Board-READING commands (\`list\`, \`doc read\`, \`status\`, \`home\`, \`link show\`) also keep a
 provisioned board fresh opportunistically: when the board's awareness state is older than ~5
@@ -567,6 +583,99 @@ export function syncRemoteStateUnknownNote(inv: string, hasLocalBundle: boolean)
   return local + `Retry \`${inv} sync\` when origin is available; a shared board may already exist.`;
 }
 
+// ── the in-tree board (read-side mode, board-git PR C) ─────────────────────────
+
+/** The in-tree board's one-line identity, led by every in-tree receipt. */
+export const SYNC_IN_TREE_BOARD_LINE = `in-tree — board docs ride the current code branch (${BUNDLE_DIR}/ is committed with the code)`;
+
+/** Full sync's in-tree refusal (write-side is a non-goal: pushing the branch publishes code). */
+export function syncInTreeRefusalMessage(inv: string): string {
+  return (
+    `this board rides your code branch — '${BUNDLE_DIR}/' is committed with the code, so a full ` +
+    `sync would have to publish the code branch itself; share board changes with your normal git ` +
+    `commit/push, run '${inv} sync --pull-only' to fetch-and-report incoming board changes, or ` +
+    `run '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch`
+  );
+}
+
+/** The explicit "no comparison basis" state (upstream decision table: report nothing, honestly). */
+export const SYNC_IN_TREE_NO_BASIS = "no-comparison-basis";
+
+/** Human phrasing per decision-table reason — never a guessed `origin/<branch>`. */
+export function inTreeNoBasisNote(reason: "detached-head" | "no-upstream" | "unusable-upstream", ref?: string): string {
+  const cause =
+    reason === "detached-head"
+      ? "the checkout is on a detached HEAD (no branch, so no tracking upstream)"
+      : reason === "no-upstream"
+        ? "the current branch has no upstream tracking configured"
+        : `the branch's tracking ref '${ref ?? "?"}' does not resolve (never fetched, or deleted on the remote)`;
+  return `${cause} — there is nothing to fetch from or compare against, so board freshness is unknown; sync will not guess an upstream`;
+}
+
+/** "N incoming board changes not yet in this checkout — run 'git pull' to get them". */
+export function inTreePullHint(behind: number): string {
+  return `${behind} incoming board ${behind === 1 ? "change is" : "changes are"} not yet in this checkout — run 'git pull' to get ${behind === 1 ? "it" : "them"}`;
+}
+
+/** The in-tree `--pull-only` up-to-date state (nothing upstream this checkout lacks). */
+export const SYNC_IN_TREE_CURRENT = "checkout is current with upstream";
+
+/**
+ * The in-tree sync flow: full sync REFUSES with truthful guidance (structured, `details.state:
+ * "in-tree"` — consumers discriminate on the state, never the code alone); `--pull-only`
+ * degrades to FETCH-AND-REPORT — the same `inTreeFetchAndRecord` step session-start budgets,
+ * here with the interactive posture (a failed fetch throws its classified error instead of
+ * degrading silently). Delivery is always the user's own `git pull`; the working tree is never
+ * touched on any path.
+ */
+async function syncInTree(
+  dir: string,
+  pullOnly: boolean,
+  inv: string,
+  mode: ReturnType<typeof resolveMode>,
+  limit: number,
+  stdout: (s: string) => void,
+  deps: Partial<SyncCliDeps>,
+): Promise<void> {
+  const top = repoTopLevel(dir);
+  if (!top) throw new CliError("RUNTIME", "not inside a git repository");
+  const boardPath = path.join(top, BUNDLE_DIR);
+
+  if (!pullOnly) {
+    throw new CliError("USAGE", syncInTreeRefusalMessage(inv), {
+      details: { path: boardPath, state: "in-tree" },
+      help: `${inv} sync --establish`,
+    });
+  }
+
+  const key = resolveBundleKey(boardPath);
+  // A confirmed board exists for this repo (the in-tree one) — same marker contract as the
+  // branch-mode pull steps.
+  await defaultSyncStore.refreshMarker(key);
+
+  const result = await inTreeFetchAndRecord(defaultSyncStore, top, key);
+  if (result.state === "fetch-failed") throw result.failure; // classified; maps at the boundary
+
+  const rec: Record<string, unknown> = { board: SYNC_IN_TREE_BOARD_LINE };
+  if (result.state === "no-upstream") {
+    rec.state = SYNC_IN_TREE_NO_BASIS;
+    rec.note = inTreeNoBasisNote(result.reason);
+  } else if (result.state === "unusable-upstream") {
+    rec.state = SYNC_IN_TREE_NO_BASIS;
+    rec.note = inTreeNoBasisNote("unusable-upstream", result.ref);
+  } else {
+    rec.upstream = result.upstreamRef;
+    rec.incoming = cap(toIncomingRows(result.changes), limit);
+    const notes: string[] = [];
+    if (result.reanchored) notes.push(REANCHOR_NOTE);
+    notes.push(result.behind > 0 ? inTreePullHint(result.behind) : SYNC_IN_TREE_CURRENT);
+    rec.note = notes.join("; ");
+  }
+  const hookHint = await hookInstallHintOnce(key, inv, deps.hookInstalled);
+  if (hookHint) rec.hint = hookHint;
+  stdout(render(rec, mode));
+}
+
 /**
  * The sync command entry — and the git tier's CLI COMMAND BOUNDARY: any typed `BoardGitError`
  * that reaches this edge (git.ts ops, the establish flows dispatched below) maps through
@@ -686,6 +795,21 @@ async function syncCommand(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   // commit step (see the doc comment on {@link healStaleRebaseBeforeProvisioning} for why this
   // must run BEFORE, not after, `provisionBoardWorktree`).
   healStaleRebaseBeforeProvisioning(dir);
+
+  // CHANNEL DETECTION (board-git PR C) — the act-time probe at sync's own resolution point,
+  // computed fresh on every run (never cached across a network boundary — B review's TOCTOU
+  // note). Routing is deliberately narrow: ONLY a positively detected `in-tree` channel leaves
+  // today's flow; `branch`, `local-only`, AND the fail-closed `indeterminate` outcome all fall
+  // through to the provisioning state machine unchanged (its remote-unknown / local-only /
+  // nothing-to-sync messages stay byte-identical — detection composes with that machine, never
+  // re-routes its reviewed guidance). The tracked-folder refusal arms (pre-share-window /
+  // dual-board) throw typed here and map at this command's boundary — the pre-share arm via the
+  // ONE factory provisioning itself uses, verbatim.
+  const detection = detectBoardChannel(dir);
+  if (detection.kind === "channel" && detection.channel.mode === "in-tree") {
+    await syncInTree(dir, pullOnly, inv, mode, limit, stdout, deps);
+    return;
+  }
 
   // Provisioning owns the distinction between known remote absence and a failed remote check.
   const outcome = provisionBoardWorktree(dir, { allowLocalBranch: false });
@@ -978,10 +1102,27 @@ export const SHOW_INCOMING_AS_OF = "last fetch";
 export const SHOW_INCOMING_ABSENT_STATE =
   "absent upstream — not on origin/board as of the last fetch (deleted upstream, or a new local doc)";
 
+/** The in-tree variant: absence is judged under the board prefix on the branch's tracking upstream. */
+export const SHOW_INCOMING_IN_TREE_ABSENT_STATE =
+  `absent upstream — not under ${BUNDLE_DIR}/ on the branch's tracking upstream as of the last ` +
+  "fetch (deleted upstream, or a new local doc)";
+
 /** `--show-incoming` reads only the last fetched remote ref and never fetches implicitly. */
 export const SHOW_INCOMING_NO_UPSTREAM =
   "there is no fetched origin/board state to show — either this board is local-only (no remote " +
   "board branch, so no incoming versions exist), or nothing has been fetched yet";
+
+/** The in-tree viewer's refusal when the branch has no usable upstream to read a version from. */
+export function showIncomingInTreeNoBasis(inv: string, reason: "detached-head" | "no-upstream" | "unusable-upstream", ref?: string): CliError {
+  return new CliError(
+    "NO_UPSTREAM",
+    `this board rides the current branch, and ${inTreeNoBasisNote(reason, ref)}`,
+    {
+      details: { state: "in-tree" },
+      help: `configure tracking (git branch --set-upstream-to=<remote>/<branch>) or fetch once, then re-run ${inv} sync --show-incoming <id>`,
+    },
+  );
+}
 
 /** Attach the doc-read body semantics to a render record: truncate large bodies, point at the byte hatch. */
 function attachBodyPreview(rec: Record<string, unknown>, body: string, byteHatch: string): void {
@@ -1037,13 +1178,29 @@ async function showIncoming(
       throw new CliError("USAGE", `--show-incoming needs a repo-relative doc id or path without '..' segments: ${id}`);
     }
 
+    // The ref the incoming version is read FROM, and the repo-relative prefix doc paths live
+    // under. Branch mode (any fetched `origin/board`): the board ref, no prefix — byte-identical
+    // to before PR C. In-tree (tracked conventional folder, no board refs anywhere): the branch's
+    // OWN tracking upstream, docs under `.agentstate-lite/` — still "as of last fetch", still no
+    // implicit fetch (adjudication G holds; the upstream resolution here is local config/refs).
+    let readRef = `refs/remotes/${BOARD_REF}`;
+    let pathPrefix = "";
     if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
       if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0) {
         throw ffSwallowToError("no-upstream", inv, top);
       }
-      throw new CliError("NO_UPSTREAM", SHOW_INCOMING_NO_UPSTREAM, {
-        help: `on a shared board, run ${inv} sync --pull-only once to fetch origin/board, then re-run --show-incoming`,
-      });
+      if (folderTreeAtHead(top) !== null) {
+        const resolution = resolveInTreeUpstream(top);
+        if (resolution.state === "none") throw showIncomingInTreeNoBasis(inv, resolution.reason);
+        const sha = inTreeUpstreamSha(top, resolution.config.ref);
+        if (sha === null) throw showIncomingInTreeNoBasis(inv, "unusable-upstream", resolution.config.ref);
+        readRef = sha;
+        pathPrefix = `${BUNDLE_DIR}/`;
+      } else {
+        throw new CliError("NO_UPSTREAM", SHOW_INCOMING_NO_UPSTREAM, {
+          help: `on a shared board, run ${inv} sync --pull-only once to fetch origin/board, then re-run --show-incoming`,
+        });
+      }
     }
 
     // id → repo-relative path, PROBE-FIRST (round-2 REQUIRED 2: no string-shape heuristic —
@@ -1072,10 +1229,10 @@ async function showIncoming(
       // message strings drift across git versions even with LC_ALL=C pinned (the standing
       // porcelain lesson, CLAUDE.md "branch from current main" note; Mike's review fix 00203a1,
       // carried through this probe-first candidate walk).
-      if (runGit(top, ["cat-file", "-e", `refs/remotes/${BOARD_REF}:${probe.relPath}`]).status !== 0) {
+      if (runGit(top, ["cat-file", "-e", `${readRef}:${pathPrefix}${probe.relPath}`]).status !== 0) {
         continue; // absent under THIS interpretation — try the next candidate
       }
-      const shown = runGitBytes(top, ["show", `refs/remotes/${BOARD_REF}:${probe.relPath}`]);
+      const shown = runGitBytes(top, ["show", `${readRef}:${pathPrefix}${probe.relPath}`]);
       if (shown.status !== 0) {
         // The path EXISTS at the ref (the structural probe just said so) — this is a genuine
         // failure, never an absence.
@@ -1089,7 +1246,7 @@ async function showIncoming(
         sync: "show-incoming",
         id,
         as_of: SHOW_INCOMING_AS_OF,
-        state: SHOW_INCOMING_ABSENT_STATE,
+        state: pathPrefix === "" ? SHOW_INCOMING_ABSENT_STATE : SHOW_INCOMING_IN_TREE_ABSENT_STATE,
       };
       // Stream mode keeps stdout a pure byte channel — the state record rides the receipt
       // channel (stderr), same as the receipt would have.

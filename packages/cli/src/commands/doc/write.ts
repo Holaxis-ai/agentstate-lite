@@ -9,6 +9,7 @@ import { parseOrUsage } from "../../args.js";
 import { render, resolveMode } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
 import { mutateDoc } from "../../mutate.js";
+import { boardPostPersistHook } from "../../board-attribution.js";
 import { resolveActor } from "../../actor.js";
 import { DOC_WRITE_USAGE, type DocCliDeps, defaultReadStdin, guardDroppedLinks } from "./common.js";
 
@@ -146,6 +147,9 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
     helpOnKindReject: `${cliInvocation()} kinds`,
     actor,
     persistActor: true,
+    // Board self-attribution (PR C): fires only after a substantive persisted write — never a
+    // refused/failed one — and only for the conventional board bundle (see board-attribution.ts).
+    onPersisted: boardPostPersistHook(bundle, actor),
     buildCandidate: (fresh: OkfDocument | undefined) => {
       // SCHEMA-LOSS guard (cold-start study #3): `doc write` replaces the WHOLE document and carries
       // only a fixed flag set (type/title/description/resource/tags/timestamp) — it has NO
