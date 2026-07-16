@@ -3,27 +3,26 @@ type: Task
 title: >-
   sync --share: board-branch creation becomes a permanent affordance; --migrate
   spelling retires
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  TAKEN OVER by mike/claude 2026-07-16. PR #75 candidate 75668b8. Ladder:
-  builder DONE; independent review APPROVE-WITH-NITS (no guard weakened,
-  coverage ported 1:1, gates green on PR + merged trees, 69/69 smoke);
-  adversarial QA verdict SHIP — no wrong tree/mutated code branch/data loss
-  under concurrency, SIGKILL-mid-push, rejecting hooks, autocrlf/CRLF filters,
-  shallow clones, non-ASCII. ONE new-in-PR defect gates the merge: F1 (MEDIUM) —
-  divergent race loser gets a false exit-0 'board branch pushed, re-run --yes'
-  note (it is the WINNER's board) and the containment CONFLICT's help (git
-  branch -D board) loops without clearing the marker; no documented escape until
-  the winner's cleanup merges. FIX IN FLIGHT on the same branch: state (b) runs
-  the containment check without --yes and reports truthfully; a
-  definitively-lost marker (snapshot not contained + local board branch gone) is
-  cleared with a truthful receipt; loser-journey test pinned. Pre-existing
-  findings F2-F6 recorded as tasks/establish-window-journey-defects (not
-  blockers). Merge after delta review of the fix.
+  SHIPPED by mike/claude (takeover 2026-07-16): PR #75 merged as 82f4b26
+  (reviewed base 75668b8 + delta-reviewed F1 fix 7bb1b95). establish subsumes
+  the committed-folder case with every U5 guard verified verbatim;
+  sync-migrate.ts deleted, coverage ported 1:1 (14->18+4 tests); --migrate =
+  USAGE pointer; docs trilogy + protection + README legibility shipped; carried
+  findings adjudicated (PR#26 moot-by-structure pinned; U5 crash discriminator
+  -> write-time marker with foreign-board + stale-snapshot refusals). Full
+  high-risk ladder: builder -> independent review (APPROVE-WITH-NITS, dual-tree
+  gates, 69/69 smoke) -> adversarial QA (SHIP;
+  concurrency/SIGKILL/hooks/CRLF/shallow/non-ASCII all held; F1 found) -> F1 fix
+  (race-loser honesty + terminating escape + auto-clear, 4 pins) -> delta review
+  (APPROVE, unreachability proven, micro-attacks survived). Non-blocking residue
+  recorded on tasks/establish-window-journey-defects. UNBLOCKS
+  tasks/board-git-a1-extraction.
 actor: mike/claude
 assignee: mike/claude
-timestamp: '2026-07-16T02:21:19.299Z'
+timestamp: '2026-07-16T02:48:09.222Z'
 ---
 ## Why the rescope (the Broken-Leash analysis, 2026-07-09)
 
