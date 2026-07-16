@@ -8,7 +8,7 @@ description: >-
   processes mutate one local bundle.
 actor: mike/codex
 assignee: mike/codex
-timestamp: '2026-07-16T03:23:00.672Z'
+timestamp: '2026-07-16T12:19:00.236Z'
 ---
 # Behavioral claim
 
@@ -39,7 +39,9 @@ Two independent AgentState Lite processes mutating the same local bundle cannot 
 
 Draft PR: https://github.com/Holaxis-ai/agentstate-lite/pull/77
 
-- All five filesystem mutation paths (`write`, `delete`, `writeReserved`, `writeBlob`, `deleteBlob`) now share one adjacent per-target cross-process critical section; the process-local queue remains the fast path.
+- All five filesystem mutation paths (`write`, `delete`, `writeReserved`, `writeBlob`, `deleteBlob`) now share one external per-target same-user cross-process critical section; the process-local queue remains the fast path.
 - Active, stale, malformed, symlink-alias, and case-alias lock behavior is deterministic and fail-closed. Crash leftovers carry private owner metadata and are never auto-stolen.
+- Review against the merged `board-git` extraction found that adjacent locks could be captured by `git add -A` or greenfield snapshots. Runtime locks now live in a private per-user namespace selected outside the portable bundle; exact sync-staging and establishment-snapshot regressions pin that invariant.
 - Filesystem `enforced_cas` and retained `history` are now reported independently (`true` and `false`, respectively).
-- Exact commit `b60f7b6` passed the full `npm run check`, deterministic two-process CAS and five-process `link add` proofs, exact-SHA review, and an adversarial SIGKILL/recovery probe.
+- PR #77 was rebased onto current `main`; GitHub reports it mergeable with no source conflict against PRs #78-#81.
+- Exact commit `0aa9332` passed the full `npm run check` in a detached worktree, deterministic two-process CAS and five-process `link add` proofs, the two exact Git capture regressions, exact-SHA review, and an adversarial SIGKILL/recovery probe.
