@@ -36,11 +36,13 @@ import {
 import { folderTreeAtHead, localBranchExists, refCommit, treeOf } from "./flow.js";
 
 /**
- * The channel a project's board rides. `branch` is today's shipped mode (the dedicated board
- * branch checked out as a linked worktree) — its `branch`/`remote` fields default to the
- * porcelain channel constants (`BOARD_BRANCH`/`BOARD_REMOTE`). `in-tree` is the bundle committed
- * with code on the current branch (recognized by detection; semantics land in PR C). `local-only`
- * is a board that is neither provisioned nor tracked nor shared anywhere.
+ * The channel a project's board rides. `branch` is the dedicated-board-branch mode (checked out
+ * as a linked worktree) — its `branch`/`remote` fields default to the porcelain channel constants
+ * (`BOARD_BRANCH`/`BOARD_REMOTE`). `in-tree` is the bundle committed with code on the current
+ * branch — a supported READ-SIDE mode (PR C, `intree.ts`): awareness/freshness ride the branch's
+ * tracking upstream, delivery is the user's own `git pull`, and every write verb refuses with
+ * guidance (sharing rides the normal commit/push, or `sync --establish` converts to `branch`).
+ * `local-only` is a board that is neither provisioned nor tracked nor shared anywhere.
  */
 export type BoardChannel =
   | { mode: "branch"; branch: string; remote: string }
@@ -59,19 +61,12 @@ export type RemoteBoardState = "exists" | "absent" | "unknown";
 
 /**
  * A detection outcome. Indeterminacy is NOT a durable mode — it is an explicit refusal to decide,
- * carrying which probe was unknowable and why; `unsupported` is the typed "recognized, not yet
- * supported" state for `in-tree` until PR C ships its semantics (consumers surface it honestly;
- * the type makes it impossible to consume in-tree as a working channel by accident).
+ * carrying which probe was unknowable and why. (PR B's interim `unsupported` kind is gone: PR C
+ * shipped in-tree's read-side semantics, so `in-tree` is a real channel now.)
  */
 export type ChannelDetection =
   | { kind: "channel"; channel: BoardChannel }
-  | { kind: "unsupported"; channel: Extract<BoardChannel, { mode: "in-tree" }>; reason: string }
   | { kind: "indeterminate"; probe: ChannelProbeName; folderTracked: boolean; reason: string };
-
-/** The typed "recognized, not yet supported" reason detection attaches to an in-tree board. */
-export const IN_TREE_NOT_YET_SUPPORTED =
-  `the board is committed in-tree on the current branch ('${BUNDLE_DIR}/' tracked at HEAD, no ` +
-  `shared '${BOARD_BRANCH}' branch anywhere) — a recognized mode that is not yet supported`;
 
 /** Why a tracked-folder detection refuses to decide under an unknown remote (fail closed). */
 export const INDETERMINATE_TRACKED_REASON =
@@ -203,7 +198,7 @@ function dualBoardError(boardPath: string): BoardGitError {
  *  2. tracked folder + remote board seeded from it (or unverifiable) → the pre-share-window
  *     refusal, verbatim (`preShareWindowError` — ONE factory shared with provisioning);
  *  3. tracked folder + VERIFIED foreign remote board → the typed dual-board refusal;
- *  4. tracked folder + remote definitively absent → `in-tree` (typed recognized-not-yet-supported);
+ *  4. tracked folder + remote definitively absent → `in-tree` (the supported read-side mode);
  *  5. tracked folder + remote unknown → typed indeterminate (never in-tree, never absent);
  *  6. untracked + a local `board` branch → `branch` (the join/provision `local_board` path —
  *     adoption policy stays with provisioning; no remote probe needed);
@@ -242,10 +237,12 @@ export function detectBoardChannel(dir: string, options: DetectBoardChannelOptio
   if (tracked) {
     if (remote === "exists") {
       if (verifiedForeignBoardRoot(top)) throw dualBoardError(boardPath);
-      throw preShareWindowError(boardPath);
+      // The truth-fix arm (PR C): "exists" off stale fetched evidence with no configured remote
+      // must not claim the branch "exists on origin" — the factory words the no-remote state.
+      throw preShareWindowError(boardPath, runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0);
     }
     if (remote === "absent") {
-      return { kind: "unsupported", channel: { mode: "in-tree" }, reason: IN_TREE_NOT_YET_SUPPORTED };
+      return { kind: "channel", channel: { mode: "in-tree" } };
     }
     return { kind: "indeterminate", probe: "remote-board", folderTracked: true, reason: INDETERMINATE_TRACKED_REASON };
   }

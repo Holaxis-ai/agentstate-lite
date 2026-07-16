@@ -68,8 +68,14 @@ import {
   BOARD_REF,
   BUNDLE_DIR,
   countUncommitted,
+  folderTreeAtHead,
+  hasWorktreeSignature,
+  inTreeBehindCount,
+  inTreeUnpushedCount,
+  inTreeUpstreamSha,
   isProvisioned,
   repoTopLevel,
+  resolveInTreeUpstream,
   runGit,
   unpushedCount,
   resolveBundleKey,
@@ -352,6 +358,20 @@ export type BoardStatus =
       /** LIVE local backstop counts (git plumbing against the checkout — network-free). */
       unpushed: number | null;
       uncommitted: number | null;
+    }
+  /** An IN-TREE board (board-git PR C): the bundle committed with code on the current branch. */
+  | {
+      state: "in-tree";
+      /** The last in-tree fetch step's awareness cache (null: never checked from this clone). */
+      cache: AwarenessCache | null;
+      /** Actors this clone authored (sync commits + the post-persist doc-write hook). */
+      selfActors: string[];
+      /** PREFIX-SCOPED board commits on this branch not yet pushed; null = no upstream basis. */
+      unpushed: number | null;
+      /** PREFIX-SCOPED uncommitted board changes. */
+      uncommitted: number | null;
+      /** PREFIX-SCOPED upstream board commits not yet pulled; null = no upstream basis. */
+      behind: number | null;
     };
 
 /** Pinned moment-(e) strings (research/sync-verb-ux-review (e); machine-honest per adjudication). */
@@ -363,6 +383,33 @@ export const BOARD_CHANGES_SHOWN_LIMIT = 10;
 /** The probe-gated first-contact line — NEVER "run init" (the divergent-second-bundle footgun). */
 export function boardFirstContactLine(inv: string): string {
   return `not yet provisioned — run \`${inv} sync\` to set it up`;
+}
+
+/**
+ * The IN-TREE board line (board-git PR C) — doubles as first contact AND the quiet steady state:
+ * it is true whether or not this render could verify freshness, so it never over-claims currency
+ * the way "up to date" would for a mode whose plain render never fetches.
+ */
+export const BOARD_IN_TREE_LINE =
+  `rides this branch — '${BUNDLE_DIR}/' is committed with the code; teammates' board changes ` +
+  "arrive with your normal 'git pull'";
+
+/** In-tree since-header: session-start's fetch is the "check", there is no sync verb here. */
+export const IN_TREE_SINCE_FIELD = "since_this_machine_last_checked";
+
+/** "2 incoming board changes are not yet in this checkout — run 'git pull' to get them". */
+export function inTreePullHintLine(n: number): string {
+  return `${n} incoming board ${n === 1 ? "change is" : "changes are"} not yet in this checkout — run 'git pull' to get ${n === 1 ? "it" : "them"}`;
+}
+
+/** In-tree unpushed backstop (prefix-scoped): sharing rides the normal git flow, never sync. */
+export function inTreeUnpushedLine(n: number): string {
+  return `${n} board ${n === 1 ? "commit" : "commits"} on this branch not yet pushed — 'git push' shares ${n === 1 ? "it" : "them"}`;
+}
+
+/** In-tree uncommitted backstop (prefix-scoped). */
+export function inTreeUncommittedLine(n: number): string {
+  return `${n} uncommitted board ${n === 1 ? "change" : "changes"} — commit ${n === 1 ? "it" : "them"} with your normal git flow to share`;
 }
 
 /** The hook-reinstall prompt (U6-inherited): the installed hook predates `session-start`. */
@@ -425,6 +472,7 @@ export function buildBoardBlock(
 ): { block?: string | Record<string, unknown>; firstContact?: string } {
   if (!status) return {};
   if (status.state === "unprovisioned") return { firstContact: boardFirstContactLine(inv) };
+  const inTree = status.state === "in-tree";
 
   const rec: Record<string, unknown> = {};
   if (pull?.announcement) Object.assign(rec, pull.announcement);
@@ -432,15 +480,18 @@ export function buildBoardBlock(
   const visible = rows.filter((r) => !status.selfActors.includes(r.actor));
   if (visible.length > 0) {
     // CURSOR HONESTY (decided trade-off, plan §U4): labeled by MACHINE reality — the cursor is
-    // per-clone state, not a cross-machine per-person one (that defers to the hosted tier).
-    rec.since_this_machine_last_synced = sinceLine(visible);
+    // per-clone state, not a cross-machine per-person one (that defers to the hosted tier). The
+    // in-tree header says "checked", not "synced": the fetch step is the check there, and the
+    // rows are UPSTREAM changes `git pull` delivers, not changes already merged locally.
+    rec[inTree ? IN_TREE_SINCE_FIELD : "since_this_machine_last_synced"] = sinceLine(visible);
     rec.changes = visible.slice(0, BOARD_CHANGES_SHOWN_LIMIT).map(docLine);
   }
   const unpushed = countOr(status.unpushed, status.cache?.unpushedCount);
   const uncommitted = countOr(status.uncommitted, status.cache?.uncommittedCount);
-  if (unpushed > 0) rec.unpushed = unpushedLine(unpushed);
-  if (uncommitted > 0) rec.uncommitted = uncommittedLine(uncommitted);
+  if (unpushed > 0) rec.unpushed = inTree ? inTreeUnpushedLine(unpushed) : unpushedLine(unpushed);
+  if (uncommitted > 0) rec.uncommitted = inTree ? inTreeUncommittedLine(uncommitted) : uncommittedLine(uncommitted);
   const notes: string[] = [];
+  if (inTree && (status.behind ?? 0) > 0) notes.push(inTreePullHintLine(status.behind!));
   if (pull?.offline) notes.push(BOARD_OFFLINE_NOTE);
   if (pull?.notes) notes.push(...pull.notes);
   if (status.cache?.note) notes.push(status.cache.note);
@@ -453,7 +504,10 @@ export function buildBoardBlock(
   if (status.cache && !pull?.refreshed && Object.keys(rec).length > 0) {
     rec.as_of = status.cache.updatedAt;
   }
-  if (Object.keys(rec).length === 0) return { block: BOARD_UP_TO_DATE };
+  // The quiet in-tree state renders the mode line, not "up to date": a plain in-tree render never
+  // fetched, so it cannot claim currency — the mode line is true either way (and doubles as the
+  // first-contact copy: board rides this branch; pull normally).
+  if (Object.keys(rec).length === 0) return { block: inTree ? BOARD_IN_TREE_LINE : BOARD_UP_TO_DATE };
   return { block: rec };
 }
 
@@ -480,7 +534,29 @@ export async function defaultLoadBoardStatus(dir?: string): Promise<BoardStatus 
       const probed =
         runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0 ||
         runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
-      return probed ? { state: "unprovisioned" } : null;
+      if (probed) return { state: "unprovisioned" };
+      // IN-TREE probe (board-git PR C) — ORDERED AFTER the board-ref probes, so every state that
+      // rendered before PR C (branch/join/pre-share, all carrying board refs) keeps its exact
+      // routing; only states that previously rendered NOTHING can newly render the in-tree block.
+      // This is deliberately home's own LOCAL-EVIDENCE approximation, not `detectBoardChannel`:
+      // the render's offline guarantee forbids the act-time remote probe, and the mode line it
+      // gates is true regardless of what a live probe would add (the folder IS committed on the
+      // branch). Mode-SENSITIVE decisions (sync's routing, establish) stay with act-time detection.
+      if (folderTreeAtHead(top) !== null && !hasWorktreeSignature(boardPath)) {
+        const key = resolveBundleKey(boardPath);
+        const state = await defaultSyncStore.readSyncState(key);
+        const upstream = resolveInTreeUpstream(top);
+        const sha = upstream.state === "ok" ? inTreeUpstreamSha(top, upstream.config.ref) : null;
+        return {
+          state: "in-tree",
+          cache: state.cache,
+          selfActors: state.selfActors ?? [],
+          unpushed: sha === null ? null : inTreeUnpushedCount(top, sha),
+          uncommitted: countUncommitted(top, BUNDLE_DIR),
+          behind: sha === null ? null : inTreeBehindCount(top, sha),
+        };
+      }
+      return null;
     }
     const key = resolveBundleKey(boardPath);
     const state = await defaultSyncStore.readSyncState(key);

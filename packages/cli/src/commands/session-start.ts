@@ -50,12 +50,18 @@
 // command) is the ONE code path both this hook and the opportunistic read-command trigger use —
 // do not fork the state-write discipline back into either caller.
 import { parseArgs } from "node:util";
+import path from "node:path";
 
 import {
+  BUNDLE_DIR,
+  detectBoardChannel,
+  inTreeFetchAndRecord,
   provisionAnnouncement,
   provisionBoardWorktree,
+  repoTopLevel,
   resolveBundleKey,
   retargetBoardInterior,
+  type ChannelDetection,
   type ProvisionOutcome,
 } from "@agentstate-lite/board-git";
 import { defaultSyncStore } from "../cursor.js";
@@ -100,6 +106,9 @@ Options:
 /** `ffPull` swallow reasons that mean "could not reach/verify the remote" → the offline note. */
 const OFFLINE_REASONS = new Set(["network", "auth", "busy", "git-missing"]);
 
+/** The same offline classes as {@link OFFLINE_REASONS}, in `BoardGitError.code` vocabulary (in-tree fetch). */
+const OFFLINE_CODES = new Set(["TRANSIENT", "AUTH_REQUIRED", "GIT_BUSY", "GIT_MISSING"]);
+
 /** Injectable seam for the fall-through tests. */
 export interface SessionStartDeps {
   stdout: (s: string) => void;
@@ -130,6 +139,52 @@ export async function sessionStartPull(
     // hand a decayed slice to the provision fetch. (The residual guard-to-spawn decay race is
     // closed at the runGitBytes floor — see the module header.)
     if (remaining() < MIN_USEFUL_BUDGET_MS) return { offline: true };
+
+    // CHANNEL DETECTION (board-git PR C), computed fresh at THIS pull's own resolution point.
+    // Routing mirrors sync's: only a positively detected `in-tree` channel leaves today's flow —
+    // `branch` continues into the provisioning path below unchanged; `local-only` and the
+    // fail-closed `indeterminate` outcome return undefined exactly where provisioning's
+    // no_repo/no_board outcomes did; a tracked-folder refusal arm (pre-share-window/dual-board)
+    // thrown here lands in the same calm-render catch provisioning's own throw did.
+    let detection: ChannelDetection;
+    try {
+      detection = detectBoardChannel(startDir, {
+        budget: { fetchTimeoutMs: remaining(), connectTimeoutSeconds: SESSION_START_CONNECT_TIMEOUT_SECONDS },
+      });
+    } catch {
+      return undefined;
+    }
+    if (detection.kind === "indeterminate") return undefined;
+    if (detection.channel.mode === "local-only") return undefined;
+    if (detection.channel.mode === "in-tree") {
+      const top = repoTopLevel(startDir);
+      if (!top) return undefined;
+      const boardPath = path.join(top, BUNDLE_DIR);
+      const key = resolveBundleKey(boardPath);
+      // Marker refresh: every pull step that confirmed a board exists for this repo (plan §U2).
+      await defaultSyncStore.refreshMarker(key);
+      if (remaining() < MIN_USEFUL_BUDGET_MS) return { offline: true, boardPath };
+      // The in-tree fetch-and-report step (NO merge/rebase/checkout — the working tree is never
+      // touched; delivery is the user's own `git pull`). State discipline mirrors the branch
+      // pull: cursor/cache rewritten only on a successful check; a dead remote degrades silently
+      // into the offline note; the decision table's no-comparison-basis outcomes report nothing.
+      const result = await inTreeFetchAndRecord(defaultSyncStore, top, key, {
+        fetchTimeoutMs: remaining(),
+        connectTimeoutSeconds: SESSION_START_CONNECT_TIMEOUT_SECONDS,
+      });
+      if (result.state === "refreshed") return { offline: false, refreshed: true, boardPath };
+      if (result.state === "fetch-failed") {
+        if (OFFLINE_CODES.has(result.failure.code)) return { offline: true, boardPath };
+        return {
+          offline: false,
+          boardPath,
+          notes: [
+            `board fetch skipped (${result.failure.code}) — run \`${cliInvocation()} sync --pull-only\` for the full story`,
+          ],
+        };
+      }
+      return { offline: false, boardPath };
+    }
 
     // Provision if needed (self-healing first contact — sync's own step 1, detection-gated inside
     // provisionBoardWorktree: it probes origin/board and only then materializes the worktree).

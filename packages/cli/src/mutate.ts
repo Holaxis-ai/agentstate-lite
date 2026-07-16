@@ -136,6 +136,15 @@ export interface MutateDocOptions {
    * patch keeps its pre-existing bounded-retry behavior unchanged.
    */
   expectedVersion?: Version;
+  /**
+   * POST-PERSIST hook (board-git PR C): invoked exactly once, AFTER a mutation was substantively
+   * persisted — a successful create/overwrite, or a patch that WROTE. Never invoked for a
+   * `changed: false` no-op or any failed/refused write. Best-effort by contract: a throw is
+   * swallowed here, so it can never turn a successful write into a failure. This pipeline stays
+   * ignorant of what the hook does (the CLI's board channel binds its self-attribution here —
+   * `board-attribution.ts`; callers without such a channel omit it entirely).
+   */
+  onPersisted?: () => void | Promise<void>;
   errors: MutateErrorHooks;
 }
 
@@ -183,6 +192,16 @@ function isNoopPatch(existing: OkfDocument, candidate: MutateCandidate, compareT
   return valuesEqual(restExisting, restCandidate);
 }
 
+/** Fire the post-persist hook, swallowing any throw (it can never fail a successful write). */
+async function firePostPersist(hook: (() => void | Promise<void>) | undefined): Promise<void> {
+  if (!hook) return;
+  try {
+    await hook();
+  } catch {
+    /* best-effort by contract — see MutateDocOptions.onPersisted */
+  }
+}
+
 /** Attach advisory attribution to document content without mutating the caller's candidate. */
 function attributeCandidate(
   candidate: MutateCandidate,
@@ -211,6 +230,7 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
     const warnings = validate(candidate);
     try {
       const { doc: saved, version } = await writeDocVersioned(bundle, { id, ...candidate }, { expectedVersion: null, actor: opts.actor });
+      await firePostPersist(opts.onPersisted);
       return { doc: saved, version, warnings };
     } catch (err) {
       if (err instanceof VersionConflict) {
@@ -274,6 +294,7 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
         },
         maxAttempts,
       });
+      await firePostPersist(opts.onPersisted);
       return { doc: savedDoc!, version: outcome.version!, warnings };
     } catch (err) {
       if (err instanceof VersionConflict) {
@@ -349,6 +370,7 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
       maxAttempts: hardCas ? 1 : maxAttempts,
     });
 
+    if (outcome.wrote) await firePostPersist(opts.onPersisted);
     return outcome.wrote
       ? { doc: savedDoc!, changed: true, version: outcome.version!, warnings: outcome.result.warnings }
       : { doc: outcome.result.doc!, changed: false, version: outcome.version!, warnings: [] };

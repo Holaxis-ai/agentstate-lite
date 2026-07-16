@@ -18,8 +18,14 @@ Domain-neutral operations, typed results, and injected stores/adapters:
   `detectBoardChannel`, a READ-ONLY classifier (injected remote probe for tests) that composes
   AFTER the provisioning state machine's heal/repair steps and never re-routes its reviewed
   guidance. Remote-unknown FAILS CLOSED: a dead probe is a typed indeterminate outcome, never
-  "absent", never `in-tree`, never `local-only`; `in-tree` itself is a typed
-  recognized-not-yet-supported state until PR C ships its semantics.
+  "absent", never `in-tree`, never `local-only`.
+- **In-tree read-side mechanics** (`src/intree.ts`, PR C): the supported semantics for a bundle
+  committed with code on the current branch — the upstream DECISION TABLE (tracking config or an
+  explicit no-comparison-basis outcome; never a guessed `origin/<branch>`), the mode-scoped
+  cursor tier (`git-intree`), prefix-scoped awareness over the one `diffDocsBetween`, prefix-
+  scoped unpushed/uncommitted/behind backstops, and `inTreeFetchAndRecord` — the fetch-and-report
+  step session-start and `sync --pull-only` share. READ-SIDE ONLY: delivery is the user's own
+  `git pull`; nothing here merges, rebases, pushes, or touches the working tree.
 - **The diff family** (`src/diff.ts`): `diffDocsBetween` (the ONE ref-to-ref doc diff) and its
   two named projections, `changesSince` (the cursor feed) and `originDocsBetween` (the sync
   receipt's origin-side delta).
