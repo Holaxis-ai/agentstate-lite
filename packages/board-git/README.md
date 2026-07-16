@@ -11,8 +11,15 @@ Domain-neutral operations, typed results, and injected stores/adapters:
 - **Porcelain ops** (`src/porcelain.ts`): the ONE spawn wrapper (`runGit`/`runGitBytes`, plus the
   throw-on-failure `mustGit`) and the named ops — provisioning/self-heal, stage-and-commit,
   converging fetch-rebase, ff-pull, push, `currentHead`, `countUncommitted`, `unpushedCount`.
-  Channel constants (`BOARD_BRANCH`/`BOARD_REMOTE`/`BOARD_REF`/`BUNDLE_DIR`) become
-  `branch`-mode defaults when the BoardChannel seam lands (PR B).
+  Channel constants (`BOARD_BRANCH`/`BOARD_REMOTE`/`BOARD_REF`/`BUNDLE_DIR`) are the
+  `branch`-mode defaults of the BoardChannel seam (`src/channel.ts`).
+- **Channel detection** (`src/channel.ts`, PR B): the `BoardChannel` union — `branch` (defaults
+  `board`/`origin` from the porcelain constants), `in-tree`, `local-only` — and
+  `detectBoardChannel`, a READ-ONLY classifier (injected remote probe for tests) that composes
+  AFTER the provisioning state machine's heal/repair steps and never re-routes its reviewed
+  guidance. Remote-unknown FAILS CLOSED: a dead probe is a typed indeterminate outcome, never
+  "absent", never `in-tree`, never `local-only`; `in-tree` itself is a typed
+  recognized-not-yet-supported state until PR C ships its semantics.
 - **The diff family** (`src/diff.ts`): `diffDocsBetween` (the ONE ref-to-ref doc diff) and its
   two named projections, `changesSince` (the cursor feed) and `originDocsBetween` (the sync
   receipt's origin-side delta).
