@@ -1,28 +1,29 @@
 ---
 type: Task
 title: 'board-git PR C: in-tree read-side mode'
-status: in_progress
+status: done
 priority: '4'
 description: >-
-  Builder complete: PR #80 (feat/board-git-c-intree-read-side), reviewed
-  candidate b468e2459a58c9b0c0bd4b8a6abfb5f58107d1b3, base 9d9a415. Shipped:
-  detection wired act-time in sync (in-tree verdict only leaves today's flow;
-  establish deliberately NOT detection-routed — its live-fetch gates already
-  fail closed, both arms pinned); intree.ts upstream decision table (tracking
-  config or no-comparison-basis, fetch only the tracked remote, time-boxed,
-  tree-untouched); cursor tier git-intree with mode-flip isolation pinned both
-  ways; selfActors via generic onPersisted in mutate.ts + board-attribution.ts
-  binding (BOTH modes per plan); --show-incoming = upstream-scoped viewer;
-  refusals USAGE exit 2 with details.state in-tree; preShareWindowError
-  no-origin copy fixed; home local-evidence probe (offline-safe, ordered after
-  board-ref probes); autopull exclusion pinned; SKILL regenerated. Smoke: branch
-  battery unchanged; in-tree e2e clean. FOR REVIEW (disclosed): two sanctioned
-  tracked-folder behavior changes (remoteless committed: local-only exit 0 ->
-  in-tree refusal exit 2; verified-dual: pre-share -> dual arm) + intended
-  branch-mode attribution delta (direct doc writes now self-recorded).
-  Independent review IN FLIGHT; focused QA to follow.
+  SHIPPED: PR #80 merged (reviewed candidate b468e24). In-tree is a supported
+  read-side board mode: act-time detection wired in sync/session-start
+  (establish keeps its own fail-closed live-fetch gates); intree.ts upstream
+  decision table (tracking config or honest no-comparison-basis; fetch only the
+  tracked remote, time-boxed, tree-untouched); cursor tier git-intree with
+  non-vacuous mode-flip isolation both directions; selfActors via post-persist
+  onPersisted hook (both modes; write-safety proven under unwritable state
+  dirs); prefix-stripped ids incl. reserved + non-ASCII; write verbs refuse
+  USAGE exit 2 with details.state; --pull-only fetch-and-reports;
+  --show-incoming upstream-scoped, never fetches; no autopull (pinned); home
+  local-evidence probe renders only previously-null states; pre-share no-origin
+  copy fixed; SKILL regenerated. Review APPROVE-WITH-NITS: parity = disclosed
+  deltas ONLY (remoteless->in-tree exit 2 accepted; verified-dual->dual arm
+  accepted, unverifiable byte-identical; attribution delta intended);
+  provisioned bare sync gained ZERO network calls (spawn-counted). Nits N1
+  (remoteless remedy dead-end, copy-only) + N3/N4/N5 ->
+  tasks/board-git-seam-nits. Separate QA waived: review performed QA-grade
+  attacks; read-side tier.
 actor: mike/claude
 assignee: mike/claude
-timestamp: '2026-07-16T05:27:28.403Z'
+timestamp: '2026-07-16T05:52:23.068Z'
 ---
 [depends on](board-git-b-channel-detection.md)
