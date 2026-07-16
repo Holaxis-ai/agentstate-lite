@@ -16,7 +16,7 @@ description: >-
   with the vetted Option-A blueprint on plans/rename-page-kind-to-view.
 actor: brian-claude
 assignee: brian-claude
-timestamp: '2026-07-16T16:56:52.154Z'
+timestamp: '2026-07-16T17:04:59.982Z'
 ---
 [informed by](joint-ontology-session.md)
 
@@ -27,3 +27,13 @@ timestamp: '2026-07-16T16:56:52.154Z'
   acceptance) with a TRIPWIRE TEST to add at U1+U2 integration: assert the frozen
   constants equal core's legacy values while dual-read exists — no import coupling.
   Bonus verified: the audit works over --remote.
+
+- U1 APPROVED (0dcaa2b, feat/view-kind-dual-read, pushed): dual reads across core
+  grammar / shell / both query paths / blob-nonce-watch / recipes. Legacy-only
+  regression proven BYTE-IDENTICAL vs main's own bundle (CLI stdout + HTTP incl.
+  CSP); red-on-old verified by three revert experiments; all nonce/traversal/cross-
+  prefix attacks survived; mixed name/prefix pairings ruled KEEP (consistent,
+  no security delta, audit surfaces them). One-registry verdict: PASS with a note —
+  the accepted-prefix-pair lists live at ~4 grep-reachable sites; consolidating into
+  core ACCEPTED_*_PREFIXES arrays is folded into the PARKED Unit-5/deprecation scope
+  (deprecation day = ~4 files today, 1 after that consolidation).
