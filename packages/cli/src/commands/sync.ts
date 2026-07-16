@@ -178,6 +178,13 @@ origin — with state-aware guidance, including re-creating the folder-removal c
 interrupted run left it missing. Coordinate first: every board writer syncs (at minimum commits)
 their board work before anyone establishes.
 
+Two edge states are ACCEPTED rather than auto-resolved. (1) On a case-insensitive filesystem, a
+committed folder whose name differs from \`.agentstate-lite\` only by case (a state this CLI never
+creates) can misroute establishment — rename it to the exact lowercase spelling first. (2) Deleting
+the remote \`board\` branch in the middle of the both-worlds window (a deliberate, destructive,
+out-of-band act) leaves the prepared cleanup PR pointing at a board that no longer exists — do not
+merge that PR; re-run \`sync --establish\` to publish the board again first.
+
 Options:
   --pull-only          Only fast-forward from origin (never rebase); skip commit + push
   --establish          Explicitly publish this project's bundle as its shared board (a folder

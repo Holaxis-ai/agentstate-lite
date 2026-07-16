@@ -57,7 +57,7 @@ function hasGitFileSignature(p: string): boolean {
  * Path-only fallback for the mount-move case: stale worktree pointers make `repoTopLevel(dir)`
  * fail from inside `.agentstate-lite`, but the enclosing path still names the conventional board
  * checkout. Retarget to its parent so `provisionBoardWorktree` can run the repair path. The `.git`
- * FILE gate keeps this away from plain pre-migration bundle directories; independent nested repos
+ * FILE gate keeps this away from plain not-yet-shared bundle directories; independent nested repos
  * with a `.git` directory still fall through to the normal no-board/no-repo classification.
  */
 function retargetStaleBoardInteriorByPath(dir: string): string | null {

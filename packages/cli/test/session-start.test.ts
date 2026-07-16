@@ -255,6 +255,12 @@ test("buildBoardBlock: no board status → no block, even when a pull outcome ex
   assert.deepEqual(buildBoardBlock(null, { offline: true }, INV), {});
 });
 
+test("buildBoardBlock: the both-worlds window renders the shared factory's line verbatim (F5 — one-hop truth)", () => {
+  const { block, firstContact } = buildBoardBlock({ state: "window", line: "the window truth" }, undefined, INV);
+  assert.equal(block, undefined);
+  assert.equal(firstContact, "the window truth", "the line rides the init-hint-suppressing slot");
+});
+
 // ── 2. integration: two-clone e2e over the harness ───────────────────────────
 
 test("two-clone e2e: A pushes, B's session-start renders A's changes attributed (moment (e))", async () => {

@@ -23,8 +23,10 @@ import {
   assertBundleBytesMatchCommit,
   boardBranchRemnant,
   boardNamespaceConflicts,
+  boardWindowGuidance,
   behindBoardCommits,
   clearGitDirMarker,
+  clearGitDirMarkerVerified,
   createBoardRootCommit,
   createRemovalCommit,
   currentBranch,
@@ -34,8 +36,10 @@ import {
   fetchOriginRequired,
   folderPresentInCodeIndex,
   folderTreeAtHead,
+  gitDirMarkerPath,
   isAncestor,
   isProvisioned,
+  isShallowRepository,
   localBranchExists,
   mustGit,
   pathLandedAbsentOnRemoteBranch,
@@ -242,6 +246,38 @@ function finishLocalConversion(
 
 export type EstablishOutcome = { already: true } | { already: false };
 
+/** True when the marker commit object exists locally — a garbage/unfetched sha reads unverifiable. */
+function markerCommitResolves(top: string, marker: string): boolean {
+  return runGit(top, ["cat-file", "-e", `${marker}^{commit}`]).status === 0;
+}
+
+/**
+ * Clear a stale committed-case crash marker on a FULLY-SHARED clone (the folder no longer at
+ * HEAD), where `alreadyShared`'s own clear arms can never run again. Called only after a
+ * successful `fetchOriginRequired` (a LIVE view of origin — the same liveness `alreadyShared`'s
+ * auto-clear demands). Clears when the marker's story is definitively over:
+ *  - its snapshot is CONTAINED in origin/board (the work it protected landed; a positive
+ *    containment answer is trustworthy even on truncated history), or
+ *  - it is NOT contained (or unverifiable as an object) AND the history is not shallow (F-D2 —
+ *    a truncated history can fake non-containment) AND no discard evidence remains: either the
+ *    attempt's local `board` branch is gone, or this clone has already provisioned the winning
+ *    board over it.
+ * Everything else keeps the marker — never guess a recovery pointer away.
+ */
+function clearStaleCommittedMarker(top: string): void {
+  const marker = readGitDirMarker(top, COMMITTED_MARKER_KEY);
+  if (!marker) return;
+  const remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
+  if (!remoteCommit) return;
+  if (markerCommitResolves(top, marker) && isAncestor(top, marker, remoteCommit)) {
+    clearGitDirMarker(top, COMMITTED_MARKER_KEY);
+    return;
+  }
+  if (isShallowRepository(top)) return;
+  if (localBranchExists(top, BOARD_BRANCH) && !isProvisioned(top)) return;
+  clearGitDirMarker(top, COMMITTED_MARKER_KEY);
+}
+
 async function renderEstablished(
   top: string,
   conversion: ConversionResult,
@@ -307,6 +343,11 @@ export async function establishBoard(
     return establishCommitted(top, inv, mode, Boolean(opts.yes), committedTree, stdout);
   }
   fetchOriginRequired(top);
+  // The committed-case crash marker outlives its machinery once the folder leaves HEAD (this
+  // fully-shared routing): `alreadyShared`'s clear arms are unreachable from here, so a marker
+  // whose story is DEFINITIVELY over is cleared now — against the LIVE fetch the line above just
+  // guaranteed. Anything unverifiable stays untouched.
+  clearStaleCommittedMarker(top);
 
   const boardPath = path.join(top, BUNDLE_DIR);
   const backupPath = `${boardPath}.establish-backup`;
@@ -543,7 +584,9 @@ export function committedPreviewRecord(inv: string, branch: string): Record<stri
     before_you_run:
       `every board writer should sync — at minimum commit — their board changes first: board work ` +
       `sitting uncommitted or unpushed on another machine cannot be detected from here, and it ` +
-      `will NOT be on the new branch`,
+      `will NOT be on the new branch; worse, a clone whose unpushed board commits merge over the ` +
+      `cleanup PR keeps those ${BUNDLE_DIR}/ paths tracked on '${branch}', and sync will refuse ` +
+      `there until they are untracked (git rm -r --cached)`,
     verified:
       `this preview already checked the machine-checkable preconditions: ${BOARD_REMOTE} is ` +
       `reachable, '${branch}' is not behind ${BOARD_REMOTE}/${branch} on board changes, and no ` +
@@ -767,12 +810,17 @@ async function establishCommitted(
  *        same freshness rules as a fresh run (live fetch + not-behind) plus the tree check (the
  *        marker's tree must still match HEAD's folder — newer board commits on the code branch
  *        would be silently stranded);
- *      • NOT contained, against a LIVE fetch → the race was lost: a different board was
- *        published and this clone's snapshot never landed. Report that truthfully; `--yes`
- *        CONFLICTs with the discard path. Once the local `board` branch is also gone (the user
- *        discarded the attempt), the loss is definitive and the stale marker is cleared — the
- *        ONLY mutation on this path — so later runs route to (c). The clear NEVER fires on a
- *        contained snapshot, while the local branch exists, or off a dead fetch;
+ *      • NOT contained, against a LIVE fetch → the race was lost: a different board is published
+ *        now and this clone's snapshot is not part of it (claim ONLY that — a crash-then-force-push
+ *        corner means "never published" would overclaim). A marker whose commit cannot even be
+ *        found is named as invalid/unverifiable instead, same refusal shapes. `--yes` CONFLICTs
+ *        with the discard path. Once the local `board` branch is also gone (the user discarded
+ *        the attempt), the loss is definitive and the stale marker is cleared — the ONLY mutation
+ *        on this path, and the receipt reports the POST-CLEAR truth (a marker that survives the
+ *        unlink is never reported as cleared) — so later runs route to (c). The clear NEVER fires
+ *        on a contained snapshot, while the local branch exists, off a dead fetch, or on a SHALLOW
+ *        history (truncation can fake non-containment — the shallow arm refuses to conclude
+ *        anything and points at `git fetch --unshallow`);
  *  (c) no marker (a teammate's clone that simply hasn't pulled the removal yet — even one that
  *      checked out the board branch locally) → a truthful note, probed against origin's actual
  *      state. Never a removal-commit re-creation here — that would race the real PR.
@@ -811,38 +859,71 @@ async function alreadyShared(
       );
     }
     const remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
-    const contained = remoteCommit !== undefined && isAncestor(top, marker, remoteCommit);
-    if (!contained && fetchOk) {
-      // The race was LOST: a live origin/board does not contain this clone's snapshot, so the
-      // attempted board was never published.
+    const markerValid = markerCommitResolves(top, marker);
+    const contained = markerValid && remoteCommit !== undefined && isAncestor(top, marker, remoteCommit);
+    if (!contained && fetchOk && isShallowRepository(top)) {
+      // F-D2: a truncated (shallow) history can fake non-containment, so neither the lost-race
+      // framing nor the auto-clear may fire off it — refuse to conclude anything.
+      const unshallow = `git fetch --unshallow ${BOARD_REMOTE}`;
+      if (!yes) {
+        rec.note =
+          `an earlier establishment on this clone was interrupted, but this clone's git history ` +
+          `is shallow (truncated), so establish cannot verify whether that attempt's snapshot was ` +
+          `published — deepen the history (${unshallow}), then re-run '${inv} sync --establish' ` +
+          `(nothing has been changed by this run)`;
+      } else {
+        throw new CliError(
+          "RUNTIME",
+          `establish refused: this clone's git history is shallow (truncated), so the interrupted ` +
+            `establishment's snapshot cannot be verified against origin/${BOARD_BRANCH}; nothing was changed`,
+          {
+            details: { snapshot_commit: marker },
+            help: `${unshallow}  # then re-run ${inv} sync --establish`,
+          },
+        );
+      }
+    } else if (!contained && fetchOk) {
+      // The race was LOST — or the marker itself is unverifiable. A live origin/board does not
+      // contain this clone's snapshot: claim only what is known (a different board is published
+      // NOW; this snapshot is not part of it — F-D3), and name an invalid marker for what it is.
+      const story = markerValid
+        ? `a different board is published on ${BOARD_REMOTE}/${BOARD_BRANCH} and this clone's ` +
+          `earlier establishment snapshot is not part of it`
+        : `this clone's establishment marker is invalid or unverifiable (it names a commit that ` +
+          `cannot be found even after fetching), and the board published on ` +
+          `${BOARD_REMOTE}/${BOARD_BRANCH} cannot be tied to it`;
       if (!localBranchExists(top, BOARD_BRANCH)) {
-        // The attempt is already discarded — definitively lost. Clearing the stale marker is the
-        // ONLY mutation here; from now on normal routing (state c) owns this clone.
-        clearGitDirMarker(top, COMMITTED_MARKER_KEY);
-        rec.cleared =
-          `a different board was published to ${BOARD_REMOTE}/${BOARD_BRANCH} and this clone's ` +
-          `earlier establishment attempt was never published — its stale marker has been ` +
-          `cleared (the only change made by this run)`;
+        // The attempt is already discarded — definitively over. Clearing the stale marker is the
+        // ONLY mutation here; from now on normal routing (state c) owns this clone. The receipt
+        // reports what ACTUALLY happened (F-D1): a marker that survives the unlink (immutable
+        // file, denied permissions) must never be reported as cleared.
+        const cleared = clearGitDirMarkerVerified(top, COMMITTED_MARKER_KEY);
+        rec.cleared = cleared
+          ? `${story} — its stale marker has been cleared (the only change made by this run)`
+          : `${story} — its stale marker could NOT be removed (this run changed nothing); remove ` +
+            `it by hand: rm ${gitDirMarkerPath(top, COMMITTED_MARKER_KEY)}`;
         rec.note = windowNote(top, inv, branch);
       } else if (!yes) {
-        rec.note =
-          `a different board was published to ${BOARD_REMOTE}/${BOARD_BRANCH} — this clone's ` +
-          `earlier '--establish --yes' lost that race and its attempted board was never ` +
-          `published; nothing has been changed by this run`;
+        rec.note = `${story} — this clone's earlier '--establish --yes' did not win; nothing has been changed by this run`;
         rec.discard =
           `git branch -D ${BOARD_BRANCH}, then re-run '${inv} sync --establish' — the stale ` +
           `marker is cleared automatically once the branch is gone`;
       } else {
         throw new CliError(
           "CONFLICT",
-          `origin/${BOARD_BRANCH} does not contain this clone's interrupted establishment ` +
-            `snapshot — a different board was published; nothing was changed, and the committed ` +
-            `folder here is untouched`,
+          markerValid
+            ? `origin/${BOARD_BRANCH} does not contain this clone's interrupted establishment ` +
+              `snapshot — a different board is published now; nothing was changed, and the ` +
+              `committed folder here is untouched`
+            : `this clone's establishment marker is invalid or unverifiable — it names a commit ` +
+              `that cannot be found even after fetching, so establish cannot tie it to what ` +
+              `origin/${BOARD_BRANCH} publishes; nothing was changed, and the committed folder ` +
+              `here is untouched`,
           {
             details: { snapshot_commit: marker },
             help:
               `coordinate with whoever published origin/${BOARD_BRANCH}; to discard this clone's ` +
-              `never-published attempt: git branch -D ${BOARD_BRANCH}, then re-run ` +
+              `unpublished attempt: git branch -D ${BOARD_BRANCH}, then re-run ` +
               `'${inv} sync --establish' — the stale marker is cleared automatically once the ` +
               `branch is gone`,
           },
@@ -908,9 +989,12 @@ async function alreadyShared(
 /**
  * The pre-share-window guidance for a clone with no local establishment work left: pull once the
  * removal lands, then sync. Probes origin's actual state so the note never asserts a PR that may
- * or may not exist.
+ * or may not exist. A tracked REMNANT (removal landed AND pulled, straggler paths still tracked —
+ * F3) gets the ONE factory's untrack-escape line instead: "run 'git pull'" is a dead end there.
  */
 function windowNote(top: string, inv: string, branch: string): string {
+  const guidance = boardWindowGuidance(top);
+  if (guidance.state === "window-remnant") return guidance.message;
   const landedUpstream = pathLandedAbsentOnRemoteBranch(top, branch, BUNDLE_DIR);
   return landedUpstream
     ? `this clone still carries the committed ${BUNDLE_DIR}/ folder and the folder-removal has ` +

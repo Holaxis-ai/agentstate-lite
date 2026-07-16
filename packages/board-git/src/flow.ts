@@ -179,10 +179,30 @@ export function writeGitDirMarker(top: string, key: string, commit: string): voi
 
 /** Remove a marker; already-absent is fine (cleanup retries on the next explicit establish). */
 export function clearGitDirMarker(top: string, key: string): void {
+  clearGitDirMarkerVerified(top, key);
+}
+
+/** The marker file's absolute path — so refusal copy can name the exact file to remove by hand. */
+export function gitDirMarkerPath(top: string, key: string): string {
+  return markerPath(top, key);
+}
+
+/**
+ * Remove a marker and REPORT whether it is actually gone (F-D1): an unlink can fail silently in
+ * spirit (immutable file, EPERM on the containing dir), and a receipt claiming "cleared" for a
+ * file that survived is a lie. Never throws — `false` means "still present; say so honestly".
+ */
+export function clearGitDirMarkerVerified(top: string, key: string): boolean {
   try {
-    unlinkSync(markerPath(top, key));
+    const target = markerPath(top, key);
+    try {
+      unlinkSync(target);
+    } catch {
+      // Already absent, or the unlink was denied — the existence check below is the verdict.
+    }
+    return !existsSync(target);
   } catch {
-    // Already absent (or cleanup will be retried on the next explicit establish).
+    return false;
   }
 }
 

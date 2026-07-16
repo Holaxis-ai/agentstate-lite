@@ -78,6 +78,8 @@ import {
   resolveInTreeUpstream,
   runGit,
   unpushedCount,
+  detectBoardChannel,
+  isBoardGitError,
   resolveBundleKey,
   retargetBoardInterior,
 } from "@agentstate-lite/board-git";
@@ -349,6 +351,13 @@ export interface BoardPullOutcome {
 export type BoardStatus =
   /** A board exists for this repo (local `board` branch or `origin/board`) but is NOT checked out. */
   | { state: "unprovisioned" }
+  /**
+   * The BOTH-WORLDS window (or its post-cleanup remnant): a fetched `origin/board` exists while
+   * `.agentstate-lite/` is still committed at HEAD. `line` carries the ONE shared factory's truth
+   * (the same message sync's refusal renders — pull-first, or the untrack escape), so home never
+   * says "run sync" for a sync that would only refuse (F5, one-hop guidance).
+   */
+  | { state: "window"; line: string }
   | {
       state: "provisioned";
       /** The last pull step's awareness cache (null: never pulled from this clone). */
@@ -472,6 +481,9 @@ export function buildBoardBlock(
 ): { block?: string | Record<string, unknown>; firstContact?: string } {
   if (!status) return {};
   if (status.state === "unprovisioned") return { firstContact: boardFirstContactLine(inv) };
+  // The window line rides the firstContact slot: same above-the-fold placement, same init-hint
+  // suppression — but the copy is the sync refusal's own truth, not a "run sync" that would refuse.
+  if (status.state === "window") return { firstContact: status.line };
   const inTree = status.state === "in-tree";
 
   const rec: Record<string, unknown> = {};
@@ -531,9 +543,25 @@ export async function defaultLoadBoardStatus(dir?: string): Promise<BoardStatus 
     if (!top) return null;
     const boardPath = path.join(top, BUNDLE_DIR);
     if (!isProvisioned(top)) {
+      const remoteRefExists =
+        runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0;
       const probed =
-        runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0 ||
+        remoteRefExists ||
         runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
+      // THE BOTH-WORLDS WINDOW (F5), from LOCAL EVIDENCE ONLY: the folder is committed at HEAD
+      // while a previously FETCHED origin/board ref exists. Sync would refuse this state with the
+      // window/remnant/dual-board guidance — so home renders THAT truth instead of a "run sync"
+      // dead end. The refusal copy is reused verbatim by running channel detection with an
+      // INJECTED offline probe (the fetched ref IS the evidence — no network, the offline
+      // guarantee holds) and catching the typed refusal it throws.
+      if (remoteRefExists && folderTreeAtHead(top) !== null && !hasWorktreeSignature(boardPath)) {
+        try {
+          detectBoardChannel(top, { remoteBoardState: () => "exists" });
+        } catch (err) {
+          if (isBoardGitError(err)) return { state: "window", line: err.message };
+          throw err; // the outer catch degrades to null — never a failed session
+        }
+      }
       if (probed) return { state: "unprovisioned" };
       // IN-TREE probe (board-git PR C) — ORDERED AFTER the board-ref probes, so every state that
       // rendered before PR C (branch/join/pre-share, all carrying board refs) keeps its exact

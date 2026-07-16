@@ -30,12 +30,14 @@
 //     user-facing committed-case string.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { sync } from "../src/commands/sync.js";
+import { buildBoardBlock, defaultLoadBoardStatus } from "../src/commands/home.js";
 import {
   CLEANUP_BRANCH,
   ESTABLISH_ALREADY,
@@ -172,6 +174,13 @@ test("committed-case strings: pinned constants, rollout note, and no forbidden v
   assert.match(both, /BOTH-WORLDS state/);
   assert.match(both, /FROZEN\s+SNAPSHOT/);
   assert.match(both, /never merge 'board' into 'main'/);
+
+  // F3(a): the preview's coordination warning states the REAL consequence — a clone whose
+  // unpushed board commits merge over the cleanup PR stays partially tracked and needs the
+  // untrack escape.
+  const previewForCopy = committedPreviewRecord(INV, "main");
+  assert.match(String(previewForCopy.before_you_run), /git rm -r --cached/);
+  assert.match(String(previewForCopy.before_you_run), /sync will refuse there until they are untracked/);
 
   // Forbidden-vocabulary sweep over every user-facing committed-case string.
   const preview = committedPreviewRecord(INV, "main");
@@ -633,8 +642,11 @@ test("a lost establish race is reported truthfully: state (b) never claims the l
 
     const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
     assert.equal(rec.establish, ESTABLISH_COMMITTED_ALREADY);
-    assert.match(String(rec.note), /a different board was published to origin\/board/);
-    assert.match(String(rec.note), /attempted board was never published/);
+    // F-D3: claim only what is KNOWN — a different board is published NOW and this snapshot is
+    // not part of it ("never published" would overclaim in the crash-then-force-push corner).
+    assert.match(String(rec.note), /a different board is published on origin\/board/);
+    assert.match(String(rec.note), /snapshot is not part of it/);
+    assert.doesNotMatch(String(rec.note), /never published/);
     assert.doesNotMatch(JSON.stringify(rec), /left the board branch pushed/, "the false interrupted-establishment note is gone");
     assert.equal("recovered" in rec, false, "never offered the removal-commit recovery");
     assert.match(String(rec.discard), /^git branch -D board, then re-run/);
@@ -675,7 +687,8 @@ test("the lost-race journey terminates: --yes CONFLICTs with the discard path, f
     const preHead = git(topo.a.root, ["rev-parse", "HEAD"]).trim();
     const cleared = await runSyncJson(home, ["--establish", "--yes", "--dir", topo.a.root]);
     assert.equal(cleared.establish, ESTABLISH_COMMITTED_ALREADY);
-    assert.match(String(cleared.cleared), /never published — its stale marker has been cleared/);
+    assert.match(String(cleared.cleared), /snapshot is not part of it — its stale marker has been cleared/);
+    assert.doesNotMatch(String(cleared.cleared), /never published/);
     assert.match(String(cleared.note), /once the folder-removal lands on the default branch: 'git pull'/);
     assert.equal(existsSync(committedMarkerPath(topo.a.root)), false, "marker cleared");
     assert.equal(git(topo.a.root, ["rev-parse", "HEAD"]).trim(), preHead, "HEAD untouched");
@@ -879,3 +892,269 @@ test("--migrate is retired with a USAGE pointer at establish; --yes without --es
     await cleanup();
   }
 });
+
+// ── establish/window journeys (PR #75 QA carry-overs: F2, F3, F5, F-D1, F-D2) ──
+
+/** Complete the human half of the committed-case journey on clone A: push + merge the cleanup PR. */
+function mergeCleanupPr(topo: TwoCloneTopology): void {
+  git(topo.a.root, ["push", "-u", "origin", CLEANUP_BRANCH]);
+  git(topo.a.root, ["merge", "--ff-only", CLEANUP_BRANCH]);
+  git(topo.a.root, ["push", "origin", "main"]);
+}
+
+test("F2 journey: the establisher's receipt chain ('git pull', then sync) survives a teammate advancing the board in the window", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home: homeA, cleanup: cleanupA } = await tempHome();
+  const { home: homeB, cleanup: cleanupB } = await tempHome();
+  try {
+    await runSyncJson(homeA, ["--establish", "--yes", "--dir", topo.a.root]);
+    mergeCleanupPr(topo);
+
+    // Teammate B pulls the merge, joins, and ADVANCES origin/board past A's root commit.
+    git(topo.b.root, ["pull"]);
+    await runSyncJson(homeB, ["--dir", topo.b.root]);
+    await writeFile(
+      path.join(topo.b.board, "tasks", "from-b.md"),
+      "---\ntype: Task\ntitle: From B\nactor: bob\n---\n# From B\n",
+    );
+    await runSyncJson(homeB, ["--dir", topo.b.root]);
+
+    // A runs the receipt's EXACT chain — 'git pull', then sync. This used to refuse exit 5
+    // ("will not guess which history is safe") because A's leftover local `board` branch was a
+    // strict ancestor of the advanced origin/board.
+    git(topo.a.root, ["pull"]);
+    const rec = await runSyncJson(homeA, ["--dir", topo.a.root]);
+    assert.match(String(rec.provisioned), /materialized from origin\/board/);
+    assert.equal(
+      git(topo.a.root, ["rev-parse", "refs/heads/board"]).trim(),
+      git(topo.a.root, ["rev-parse", "refs/remotes/origin/board"]).trim(),
+      "A's leftover local branch fast-forwarded to origin/board",
+    );
+    assert.match(await readBoardFile(topo.a, "tasks/from-b.md"), /From B/, "the teammate's doc arrived");
+    assert.match(await readBoardFile(topo.a, "tasks/seed-one.md"), /Seed one/, "the original docs are intact");
+
+    // And the adopted clone is genuinely syncing: an idempotent re-run is the definitive empty state.
+    const again = await runSyncJson(homeA, ["--dir", topo.a.root]);
+    assert.equal(again.sync, "already up to date");
+  } finally {
+    await topo.cleanup();
+    await cleanupA();
+    await cleanupB();
+  }
+});
+
+test("F3 wedge: a clone whose unpushed board commit merged over the cleanup PR gets the untrack escape (never dual-board, never 'git pull'), and the escape works verbatim", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home: homeA, cleanup: cleanupA } = await tempHome();
+  const { home: homeB, cleanup: cleanupB } = await tempHome();
+  try {
+    await runSyncJson(homeA, ["--establish", "--yes", "--dir", topo.a.root]);
+
+    // B plants an UNPUSHED board commit on main during the window — the exact state the
+    // preview's before_you_run warning names.
+    await writeFile(
+      path.join(topo.b.board, "tasks", "extra.md"),
+      "---\ntype: Task\ntitle: Extra\nactor: bob\n---\n# Extra\n",
+    );
+    git(topo.b.root, ["add", `${BUNDLE_DIR}/tasks/extra.md`]);
+    git(topo.b.root, ["commit", "-m", "board: b extra doc"]);
+
+    mergeCleanupPr(topo);
+    git(topo.b.root, ["pull", "--no-rebase"]);
+    assert.equal(
+      git(topo.b.root, ["ls-files", "--", BUNDLE_DIR]).trim(),
+      `${BUNDLE_DIR}/tasks/extra.md`,
+      "sanity: the wedge — exactly one remnant path tracked after the merge",
+    );
+
+    // The refusal is the ACTIONABLE escape, naming the actual tracked paths.
+    const wedged = await runSync(homeB, ["--dir", topo.b.root, "--json"]);
+    assert.equal(wedged.err?.code, "RUNTIME");
+    assert.match(wedged.err!.message, /'git pull' has nothing left to fix/);
+    assert.match(wedged.err!.message, /untrack/);
+    assert.doesNotMatch(wedged.err!.message, /two competing board locations/, "never misclassified as dual-board");
+    const details = wedged.err!.details as Record<string, unknown>;
+    assert.equal(details.state, "window-remnant");
+    const remnants = details.tracked_remnants as { shown: number; total: number; rows: string[] };
+    assert.deepEqual(remnants.rows, [`${BUNDLE_DIR}/tasks/extra.md`], "the refusal names the actual tracked paths");
+    assert.match(wedged.err!.help ?? "", /git rm -r --cached -- \.agentstate-lite/);
+    assert.doesNotMatch(`${wedged.err!.message} ${wedged.err!.help ?? ""}`, FORBIDDEN);
+
+    // F5 (wedge face): home's offline board line carries the SAME truth, one hop.
+    const status = await withHome(homeB, () => defaultLoadBoardStatus(topo.b.root));
+    assert.equal(status?.state, "window");
+    assert.equal((status as { line: string }).line, wedged.err!.message, "home renders the refusal's own message");
+
+    // establish's own state-(c) window note tells the remnant truth too — never the dead-end pull.
+    const eb = await runSyncJson(homeB, ["--establish", "--dir", topo.b.root]);
+    assert.equal(eb.establish, ESTABLISH_COMMITTED_ALREADY);
+    assert.match(String(eb.note), /'git pull' has nothing left to fix/);
+
+    // FOLLOW the emitted escape chain: untrack, commit, move the leftovers aside, re-run sync.
+    git(topo.b.root, ["rm", "-r", "--cached", "--", BUNDLE_DIR]);
+    git(topo.b.root, ["commit", "-m", "board: untrack leftover board paths"]);
+    await rename(path.join(topo.b.root, BUNDLE_DIR), path.join(topo.b.root, `${BUNDLE_DIR}.bak`));
+    const rec = await runSyncJson(homeB, ["--dir", topo.b.root]);
+    assert.match(String(rec.provisioned), /materialized from origin\/board/);
+    assert.match(await readBoardFile(topo.b, "tasks/seed-one.md"), /Seed one/);
+    assert.equal(
+      existsSync(path.join(topo.b.root, `${BUNDLE_DIR}.bak`, "tasks", "extra.md")),
+      true,
+      "the local-only doc is preserved in the backup for reconciliation",
+    );
+
+  } finally {
+    await topo.cleanup();
+    await cleanupA();
+    await cleanupB();
+  }
+});
+
+test("F5 window: home's board block renders the pull-first window truth one-hop — never 'run sync' for a sync that refuses", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await runSyncJson(home, ["--establish", "--yes", "--dir", topo.a.root]);
+
+    const status = await withHome(home, () => defaultLoadBoardStatus(topo.a.root));
+    assert.equal(status?.state, "window");
+    const line = (status as { line: string }).line;
+    assert.match(line, /the folder-removal \(cleanup\) PR hasn't merged yet, or this clone hasn't pulled it/);
+    assert.match(line, /run 'git pull'/);
+    assert.doesNotMatch(line, /not yet provisioned/);
+    assert.doesNotMatch(line, FORBIDDEN);
+
+    // And the sync refusal in the SAME state carries the SAME message — one factory, verbatim.
+    const refused = await runSync(home, ["--dir", topo.a.root, "--json"]);
+    assert.equal(refused.err?.code, "RUNTIME");
+    assert.equal(line, refused.err!.message);
+
+    // The pure render puts the line in the board slot (the init-hint-suppressing firstContact slot).
+    const { block, firstContact } = buildBoardBlock(status!, undefined, INV);
+    assert.equal(block, undefined);
+    assert.equal(firstContact, line);
+  } finally {
+    await topo.cleanup();
+    await cleanup();
+  }
+});
+
+test("F-D2: a SHALLOW history refuses to conclude anything about a non-contained marker — no lost-race claim, no auto-clear", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    await plantLostRace(topo, home);
+    git(topo.a.root, ["branch", "-D", "board"]); // even with the branch gone — the auto-clear's usual trigger
+    const gitDir = git(topo.a.root, ["rev-parse", "--absolute-git-dir"]).trim();
+    const rootSha = git(topo.a.root, ["rev-list", "--max-parents=0", "HEAD"]).trim();
+    writeFileSync(path.join(gitDir, "shallow"), `${rootSha}\n`);
+
+    const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(rec.establish, ESTABLISH_COMMITTED_ALREADY);
+    assert.match(String(rec.note), /shallow \(truncated\)/);
+    assert.match(String(rec.note), /git fetch --unshallow/);
+    assert.equal("cleared" in rec, false, "the auto-clear never fires off a truncated history");
+    assert.doesNotMatch(JSON.stringify(rec), /different board is published/);
+    assert.equal(existsSync(committedMarkerPath(topo.a.root)), true, "marker preserved");
+
+    const yes = await runSync(home, ["--establish", "--yes", "--dir", topo.a.root, "--json"]);
+    assert.equal(yes.err?.code, "RUNTIME");
+    assert.match(yes.err!.message, /shallow/);
+    assert.match(yes.err!.help ?? "", /git fetch --unshallow/);
+    assert.equal(existsSync(committedMarkerPath(topo.a.root)), true, "marker preserved by the --yes refusal too");
+  } finally {
+    await topo.cleanup();
+    await cleanup();
+  }
+});
+
+test("an INVALID/unverifiable marker is named for what it is — same refusal shapes, honest auto-clear copy", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    // A published board exists (via B); A carries a marker naming a commit that does not exist.
+    await runSyncJson(home, ["--establish", "--yes", "--dir", topo.b.root]);
+    plantCommittedMarker(topo.a.root, "0123456789abcdef0123456789abcdef01234567");
+    git(topo.a.root, ["branch", "board", "HEAD"]); // discard evidence present: no clear may fire
+
+    const offer = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.match(String(offer.note), /invalid or unverifiable/);
+    assert.doesNotMatch(String(offer.note), /never published/);
+    assert.equal(existsSync(committedMarkerPath(topo.a.root)), true);
+
+    const conflict = await runSync(home, ["--establish", "--yes", "--dir", topo.a.root, "--json"]);
+    assert.equal(conflict.err?.code, "CONFLICT");
+    assert.match(conflict.err!.message, /invalid or unverifiable/);
+    assert.match(conflict.err!.message, /cannot be found even after fetching/);
+
+    // Discarding the branch lets the clear fire — with the honest invalid-marker story.
+    git(topo.a.root, ["branch", "-D", "board"]);
+    const cleared = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.match(String(cleared.cleared), /invalid or unverifiable/);
+    assert.match(String(cleared.cleared), /its stale marker has been cleared/);
+    assert.equal(existsSync(committedMarkerPath(topo.a.root)), false);
+  } finally {
+    await topo.cleanup();
+    await cleanup();
+  }
+});
+
+test("a stale committed-case marker on a FULLY-shared clone is cleared by establish — contained, or definitively over; never on a shallow history", async () => {
+  const topo = await makeCommittedFolderTopology();
+  const { home, cleanup } = await tempHome();
+  try {
+    const done = await runSyncJson(home, ["--establish", "--yes", "--dir", topo.a.root]);
+    const boardSha = String(done.board_commit).trim();
+    mergeCleanupPr(topo);
+    await runSyncJson(home, ["--dir", topo.a.root]); // provisions the shared board — fully shared now
+
+    // (1) contained: the marker's work landed — debris, cleared.
+    plantCommittedMarker(topo.a.root, boardSha);
+    const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(rec.establish, ESTABLISH_ALREADY);
+    assert.equal(existsSync(committedMarkerPath(topo.a.root)), false, "a contained marker is cleared once fully shared");
+
+    // (2) NOT contained, but this clone already runs the winning board (provisioned) — cleared.
+    const codeSha = git(topo.a.root, ["rev-parse", "HEAD"]).trim(); // a real commit that is NOT on the board branch
+    plantCommittedMarker(topo.a.root, codeSha);
+    await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(existsSync(committedMarkerPath(topo.a.root)), false, "a definitively-lost marker is cleared once fully shared");
+
+    // (3) F-D2: a shallow history keeps a non-contained marker (containment unverifiable).
+    plantCommittedMarker(topo.a.root, codeSha);
+    const gitDir = git(topo.a.root, ["rev-parse", "--absolute-git-dir"]).trim();
+    const rootSha = git(topo.a.root, ["rev-list", "--max-parents=0", "HEAD"]).trim();
+    writeFileSync(path.join(gitDir, "shallow"), `${rootSha}\n`);
+    await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+    assert.equal(existsSync(committedMarkerPath(topo.a.root)), true, "shallow: the marker is preserved");
+  } finally {
+    await topo.cleanup();
+    await cleanup();
+  }
+});
+
+test(
+  "F-D1: the auto-clear receipt never claims 'cleared' for a marker that survived the unlink (immutable file)",
+  { skip: process.platform !== "darwin" ? "needs chflags(1)" : false },
+  async () => {
+    const topo = await makeCommittedFolderTopology();
+    const { home, cleanup } = await tempHome();
+    try {
+      await plantLostRace(topo, home);
+      git(topo.a.root, ["branch", "-D", "board"]);
+      execFileSync("chflags", ["uchg", committedMarkerPath(topo.a.root)]);
+      try {
+        const rec = await runSyncJson(home, ["--establish", "--dir", topo.a.root]);
+        assert.match(String(rec.cleared), /could NOT be removed/);
+        assert.match(String(rec.cleared), /rm /, "the honest copy names the file to remove by hand");
+        assert.doesNotMatch(String(rec.cleared), /has been cleared/);
+        assert.equal(existsSync(committedMarkerPath(topo.a.root)), true, "the marker genuinely survived");
+      } finally {
+        execFileSync("chflags", ["nouchg", committedMarkerPath(topo.a.root)]);
+      }
+    } finally {
+      await topo.cleanup();
+      await cleanup();
+    }
+  },
+);
