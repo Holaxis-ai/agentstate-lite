@@ -168,15 +168,15 @@ var require_is_extendable = __commonJS({
 var require_extend_shallow = __commonJS({
   "../../node_modules/extend-shallow/index.js"(exports2, module2) {
     "use strict";
-    var isObject2 = require_is_extendable();
+    var isObject3 = require_is_extendable();
     module2.exports = function extend(o) {
-      if (!isObject2(o)) {
+      if (!isObject3(o)) {
         o = {};
       }
       var len = arguments.length;
       for (var i = 1; i < len; i++) {
         var obj = arguments[i];
-        if (isObject2(obj)) {
+        if (isObject3(obj)) {
           assign(o, obj);
         }
       }
@@ -309,7 +309,7 @@ var require_common = __commonJS({
     function isNothing(subject) {
       return typeof subject === "undefined" || subject === null;
     }
-    function isObject2(subject) {
+    function isObject3(subject) {
       return typeof subject === "object" && subject !== null;
     }
     function toArray(sequence) {
@@ -339,7 +339,7 @@ var require_common = __commonJS({
       return number === 0 && Number.NEGATIVE_INFINITY === 1 / number;
     }
     module2.exports.isNothing = isNothing;
-    module2.exports.isObject = isObject2;
+    module2.exports.isObject = isObject3;
     module2.exports.toArray = toArray;
     module2.exports.repeat = repeat;
     module2.exports.isNegativeZero = isNegativeZero;
@@ -3409,7 +3409,7 @@ var require_parse = __commonJS({
 var require_gray_matter = __commonJS({
   "../../node_modules/gray-matter/index.js"(exports2, module2) {
     "use strict";
-    var fs11 = __require("fs");
+    var fs12 = __require("fs");
     var sections = require_section_matter();
     var defaults = require_defaults();
     var stringify = require_stringify();
@@ -3493,7 +3493,7 @@ var require_gray_matter = __commonJS({
       return stringify(file, data, options2);
     };
     matter2.read = function(filepath, options2) {
-      const str2 = fs11.readFileSync(filepath, "utf8");
+      const str2 = fs12.readFileSync(filepath, "utf8");
       const file = matter2(str2, options2);
       file.path = filepath;
       return file;
@@ -3894,26 +3894,26 @@ function applyReplacer(root, replacer) {
   if (replacedRoot === void 0) return transformChildren(root, replacer, []);
   return transformChildren(normalizeValue(replacedRoot), replacer, []);
 }
-function transformChildren(value, replacer, path21) {
-  if (isJsonObject(value)) return transformObject(value, replacer, path21);
-  if (isJsonArray(value)) return transformArray(value, replacer, path21);
+function transformChildren(value, replacer, path22) {
+  if (isJsonObject(value)) return transformObject(value, replacer, path22);
+  if (isJsonArray(value)) return transformArray(value, replacer, path22);
   return value;
 }
-function transformObject(obj, replacer, path21) {
+function transformObject(obj, replacer, path22) {
   const result = {};
   for (const [key, value] of Object.entries(obj)) {
-    const childPath = [...path21, key];
+    const childPath = [...path22, key];
     const replacedValue = replacer(key, value, childPath);
     if (replacedValue === void 0) continue;
     result[key] = transformChildren(normalizeValue(replacedValue), replacer, childPath);
   }
   return result;
 }
-function transformArray(arr, replacer, path21) {
+function transformArray(arr, replacer, path22) {
   const result = [];
   for (let i = 0; i < arr.length; i++) {
     const value = arr[i];
-    const childPath = [...path21, i];
+    const childPath = [...path22, i];
     const replacedValue = replacer(String(i), value, childPath);
     if (replacedValue === void 0) continue;
     const normalizedValue = normalizeValue(replacedValue);
@@ -3940,11 +3940,11 @@ function resolveOptions(options2) {
 }
 
 // ../../node_modules/axi-sdk-js/dist/output.js
-function collapseHomeDirectory(path21, homeDir = homedir()) {
-  if (!path21.startsWith(homeDir)) {
-    return path21;
+function collapseHomeDirectory(path22, homeDir = homedir()) {
+  if (!path22.startsWith(homeDir)) {
+    return path22;
   }
-  return `~${path21.slice(homeDir.length)}`;
+  return `~${path22.slice(homeDir.length)}`;
 }
 function homeHeaderOutput(options2) {
   return {
@@ -4048,16 +4048,16 @@ function isUpdateAvailable(current, latest) {
 }
 var nodeFs = {
   existsSync,
-  readFileSync: (path21, encoding) => readFileSync(path21, encoding)
+  readFileSync: (path22, encoding) => readFileSync(path22, encoding)
 };
-function readNearestPackageJson(startPath, fs11 = nodeFs) {
+function readNearestPackageJson(startPath, fs12 = nodeFs) {
   let dir = dirname(startPath);
   let previous = "";
   while (dir !== previous) {
     const packageJsonPath = join(dir, "package.json");
-    if (fs11.existsSync(packageJsonPath)) {
+    if (fs12.existsSync(packageJsonPath)) {
       try {
-        const parsed = JSON.parse(fs11.readFileSync(packageJsonPath, "utf-8"));
+        const parsed = JSON.parse(fs12.readFileSync(packageJsonPath, "utf-8"));
         if (typeof parsed.name === "string" && parsed.name.length > 0) {
           return {
             packageName: parsed.name,
@@ -4075,36 +4075,36 @@ function readNearestPackageJson(startPath, fs11 = nodeFs) {
 }
 function detectInstallMethod(options2) {
   const env = options2.env ?? process.env;
-  const path21 = options2.entry.replaceAll("\\", "/");
-  if (path21.includes("/_npx/") || /\/dlx-[^/]+\//.test(path21) || path21.includes("/pnpm/dlx/") || path21.includes("/bun/install/cache/")) {
+  const path22 = options2.entry.replaceAll("\\", "/");
+  if (path22.includes("/_npx/") || /\/dlx-[^/]+\//.test(path22) || path22.includes("/pnpm/dlx/") || path22.includes("/bun/install/cache/")) {
     return { kind: "npx" };
   }
-  const homebrewFormula = homebrewFormulaFromPath(path21, env);
+  const homebrewFormula = homebrewFormulaFromPath(path22, env);
   if (homebrewFormula) {
     return { kind: "homebrew", formula: homebrewFormula };
   }
   const pnpmHome = normalizePathRoot(env.PNPM_HOME);
-  if (isPathInsideRoot(path21, pnpmHome) || isKnownPnpmGlobalStore(path21, env)) {
+  if (isPathInsideRoot(path22, pnpmHome) || isKnownPnpmGlobalStore(path22, env)) {
     return { kind: "pnpm-global" };
   }
-  if (isKnownNpmGlobalInstall(path21, env)) {
+  if (isKnownNpmGlobalInstall(path22, env)) {
     return { kind: "npm-global" };
   }
   return { kind: "unknown" };
 }
-function normalizePathRoot(path21) {
-  const normalized = path21?.replaceAll("\\", "/").replace(/\/+$/, "");
+function normalizePathRoot(path22) {
+  const normalized = path22?.replaceAll("\\", "/").replace(/\/+$/, "");
   return normalized && normalized.length > 0 ? normalized : void 0;
 }
-function isPathInsideRoot(path21, root) {
-  return root !== void 0 && (path21 === root || path21.startsWith(`${root}/`));
+function isPathInsideRoot(path22, root) {
+  return root !== void 0 && (path22 === root || path22.startsWith(`${root}/`));
 }
-function homebrewFormulaFromPath(path21, env) {
+function homebrewFormulaFromPath(path22, env) {
   for (const root of homebrewCellarRoots(env)) {
-    if (!isPathInsideRoot(path21, root)) {
+    if (!isPathInsideRoot(path22, root)) {
       continue;
     }
-    const relative = path21.slice(root.length).replace(/^\/+/, "");
+    const relative = path22.slice(root.length).replace(/^\/+/, "");
     const formula = relative.split("/")[0];
     if (formula) {
       return formula;
@@ -4132,12 +4132,12 @@ function homebrewCellarRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownPnpmGlobalStore(path21, env) {
+function isKnownPnpmGlobalStore(path22, env) {
   return pnpmGlobalStoreRoots(env).some((root) => {
-    if (!isPathInsideRoot(path21, root)) {
+    if (!isPathInsideRoot(path22, root)) {
       return false;
     }
-    const relative = path21.slice(root.length).replace(/^\/+/, "");
+    const relative = path22.slice(root.length).replace(/^\/+/, "");
     return /^\d+\/\.pnpm\//.test(relative);
   });
 }
@@ -4155,8 +4155,8 @@ function pnpmGlobalStoreRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownNpmGlobalInstall(path21, env) {
-  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path21, root)) || isKnownVersionManagerNpmGlobal(path21, env);
+function isKnownNpmGlobalInstall(path22, env) {
+  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path22, root)) || isKnownVersionManagerNpmGlobal(path22, env);
 }
 function npmGlobalNodeModulesRoots(env) {
   const roots = [
@@ -4182,8 +4182,8 @@ function npmGlobalNodeModulesRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownVersionManagerNpmGlobal(path21, env) {
-  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path21, root) && path21.includes("/lib/node_modules/"));
+function isKnownVersionManagerNpmGlobal(path22, env) {
+  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path22, root) && path22.includes("/lib/node_modules/"));
 }
 function versionManagerNodeRoots(env) {
   const roots = [];
@@ -4379,9 +4379,9 @@ function resolveEntry(invokedAs, realpath) {
     return invokedAs;
   }
 }
-function resolveInstalledVersion(invokedAs, realpath, fs11) {
+function resolveInstalledVersion(invokedAs, realpath, fs12) {
   const installedEntry = resolveEntry(invokedAs, realpath);
-  return installedEntry ? readNearestPackageJson(installedEntry, fs11).version : void 0;
+  return installedEntry ? readNearestPackageJson(installedEntry, fs12).version : void 0;
 }
 function homebrewUpgradeOutput(options2) {
   const update = {
@@ -4419,10 +4419,10 @@ async function runUpdate(options2) {
   const binName = binNameFromArgv(invokedAs);
   const mode = parseUpdateArgs(options2.args, binName);
   const platform = options2.platform ?? process.platform;
-  const realpath = options2.realpath ?? ((path21) => realpathSync(path21));
+  const realpath = options2.realpath ?? ((path22) => realpathSync(path22));
   const entry = resolveEntry(invokedAs, realpath);
-  const fs11 = options2.fs ?? nodeFs;
-  const fromPackageJson = entry ? readNearestPackageJson(entry, fs11) : {};
+  const fs12 = options2.fs ?? nodeFs;
+  const fromPackageJson = entry ? readNearestPackageJson(entry, fs12) : {};
   const packageName = options2.packageName ?? fromPackageJson.packageName;
   const current = options2.version ?? fromPackageJson.version;
   if (!packageName) {
@@ -4484,7 +4484,7 @@ async function runUpdate(options2) {
       packageName,
       current,
       latest,
-      installedVersion: resolveInstalledVersion(invokedAs, realpath, fs11),
+      installedVersion: resolveInstalledVersion(invokedAs, realpath, fs12),
       command: plan.command
     });
   }
@@ -4775,15 +4775,15 @@ function computeCodexConfigUpdate(content) {
 // src/commands/init.ts
 import { parseArgs } from "node:util";
 import { existsSync as existsSync5 } from "node:fs";
-import path12 from "node:path";
+import path13 from "node:path";
 
 // ../core/src/bundle.ts
-import path3 from "node:path";
+import path4 from "node:path";
 
 // ../core/src/backend.ts
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { promises as fs2 } from "node:fs";
+import path2 from "node:path";
+import { randomUUID as randomUUID2 } from "node:crypto";
 
 // ../core/src/frontmatter.ts
 var import_gray_matter = __toESM(require_gray_matter(), 1);
@@ -4973,10 +4973,233 @@ function assertSafeReservedDir(dir) {
   }
 }
 
+// ../core/src/filesystem-lock.ts
+import { promises as fs, realpathSync as realpathSync2 } from "node:fs";
+import { homedir as homedir2, hostname, tmpdir, userInfo } from "node:os";
+import path from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+var OWNER_FILE = "owner.json";
+var DEFAULT_WAIT_MS = 5e3;
+var DEFAULT_POLL_MS = 25;
+var FilesystemMutationLockError = class extends Error {
+  lockPath;
+  owner;
+  stale;
+  malformed;
+  constructor(message, details) {
+    super(message);
+    this.name = "FilesystemMutationLockError";
+    this.lockPath = details.lockPath;
+    this.owner = details.owner;
+    this.stale = details.stale;
+    this.malformed = details.malformed;
+  }
+};
+function runtimeOwnerKey() {
+  const uid = process.getuid?.();
+  if (uid !== void 0) return `uid-${uid}`;
+  let username = "unknown";
+  try {
+    username = userInfo().username;
+  } catch {
+  }
+  return `user-${createHash("sha256").update(username).digest("hex").slice(0, 16)}`;
+}
+function canonicalExistingPath(value) {
+  try {
+    return realpathSync2(value);
+  } catch {
+    return path.resolve(value);
+  }
+}
+function pathContains(root, candidate) {
+  const rel = path.relative(root, candidate);
+  return rel === "" || !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+function filesystemMutationLockRoot(portableRoot) {
+  const tempParent = canonicalExistingPath(process.platform === "win32" ? tmpdir() : "/tmp");
+  const homeParent = canonicalExistingPath(homedir2());
+  const ownerKey = runtimeOwnerKey();
+  const candidates = [
+    path.join(tempParent, `agentstate-lite-mutation-locks-${ownerKey}`),
+    path.join(homeParent, ".agentstate", `mutation-locks-${ownerKey}`)
+  ];
+  if (portableRoot === void 0) return candidates[0];
+  const portable = canonicalExistingPath(portableRoot);
+  const selected = candidates.find((candidate) => !pathContains(portable, candidate));
+  if (selected) return selected;
+  throw new FilesystemMutationLockError(
+    `cannot place filesystem mutation locks outside portable root '${portable}'`,
+    { lockPath: portable, owner: null, stale: false, malformed: true }
+  );
+}
+function filesystemMutationLockPath(target, portableRoot) {
+  const digest = createHash("sha256").update(path.resolve(target)).digest("hex");
+  return path.join(filesystemMutationLockRoot(portableRoot), `${digest}.lock`);
+}
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function parseOwner(value) {
+  if (!isObject(value)) return null;
+  if (typeof value.pid !== "number" || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.hostname !== "string" || value.hostname.length === 0 || typeof value.created_at_ms !== "number" || !Number.isFinite(value.created_at_ms) || typeof value.token !== "string" || value.token.length === 0 || typeof value.target !== "string" || value.target.length === 0) {
+    return null;
+  }
+  return {
+    pid: value.pid,
+    hostname: value.hostname,
+    created_at_ms: value.created_at_ms,
+    token: value.token,
+    target: value.target
+  };
+}
+async function readOwner(lockPath) {
+  try {
+    return parseOwner(JSON.parse(await fs.readFile(path.join(lockPath, OWNER_FILE), "utf8")));
+  } catch {
+    return null;
+  }
+}
+function processExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code !== "ESRCH";
+  }
+}
+function delay(ms) {
+  return new Promise((resolve2) => setTimeout(resolve2, ms));
+}
+function positiveOption(value, fallback, name) {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved < 0) {
+    throw new TypeError(`${name} must be a non-negative safe integer`);
+  }
+  return resolved;
+}
+async function ensurePrivateLockRoot(root) {
+  try {
+    await fs.mkdir(root, { recursive: true, mode: 448 });
+  } catch (err) {
+    if (err.code !== "EEXIST") throw err;
+  }
+  const stat2 = await fs.lstat(root);
+  const uid = process.getuid?.();
+  const wrongOwner = uid !== void 0 && stat2.uid !== uid;
+  const unsafeMode = process.platform !== "win32" && (stat2.mode & 511) !== 448;
+  if (!stat2.isDirectory() || stat2.isSymbolicLink() || wrongOwner || unsafeMode) {
+    throw new FilesystemMutationLockError(
+      `refusing unsafe filesystem mutation lock root '${root}'; it must be a private directory owned by this user`,
+      { lockPath: root, owner: null, stale: false, malformed: true }
+    );
+  }
+}
+async function canonicalTargetInDirectory(directory, requestedBasename) {
+  const requested = path.join(directory, requestedBasename);
+  let requestedStat;
+  try {
+    requestedStat = await fs.lstat(requested);
+  } catch (err) {
+    if (err.code === "ENOENT") return requested;
+    throw err;
+  }
+  const entries = await fs.readdir(directory);
+  if (entries.includes(requestedBasename)) return requested;
+  for (const entry of entries) {
+    const candidate = path.join(directory, entry);
+    const candidateStat = await fs.lstat(candidate);
+    if (candidateStat.dev === requestedStat.dev && candidateStat.ino === requestedStat.ino) return candidate;
+  }
+  return requested;
+}
+function timeoutError(lockPath, owner) {
+  const malformed = owner === null;
+  const sameHost = owner?.hostname === hostname();
+  const stale = owner !== null && sameHost && !processExists(owner.pid);
+  let message;
+  if (malformed) {
+    message = `timed out waiting for filesystem mutation lock '${lockPath}'; its owner metadata is missing or malformed. Inspect and remove the lock only after confirming no process is mutating the target, then retry.`;
+  } else if (stale) {
+    message = `stale filesystem mutation lock '${lockPath}' belongs to absent PID ${owner.pid} on ${owner.hostname}. Inspect and remove the lock, then retry.`;
+  } else {
+    message = `timed out waiting for filesystem mutation lock '${lockPath}' held by PID ${owner.pid} on ${owner.hostname}; retry the mutation.`;
+  }
+  return new FilesystemMutationLockError(message, { lockPath, owner, stale, malformed });
+}
+async function acquireFilesystemMutationLock(target, options2 = {}) {
+  const waitMs = positiveOption(options2.waitMs, DEFAULT_WAIT_MS, "waitMs");
+  const pollMs = positiveOption(options2.pollMs, DEFAULT_POLL_MS, "pollMs");
+  const targetResolved = path.resolve(target);
+  const targetDir = path.dirname(targetResolved);
+  const started = Date.now();
+  await fs.mkdir(targetDir, { recursive: true });
+  const canonicalDir = await fs.realpath(targetDir);
+  const targetCanonical = await canonicalTargetInDirectory(canonicalDir, path.basename(targetResolved));
+  const portableRoot = options2.portableRoot ? await fs.realpath(options2.portableRoot).catch(() => path.resolve(options2.portableRoot)) : void 0;
+  const lockRoot = filesystemMutationLockRoot(portableRoot);
+  await ensurePrivateLockRoot(lockRoot);
+  const lockPath = filesystemMutationLockPath(targetCanonical, portableRoot);
+  const owner = {
+    pid: process.pid,
+    hostname: hostname(),
+    created_at_ms: started,
+    token: randomUUID(),
+    target: targetCanonical
+  };
+  while (true) {
+    try {
+      await fs.mkdir(lockPath, { mode: 448 });
+      try {
+        await fs.writeFile(path.join(lockPath, OWNER_FILE), `${JSON.stringify(owner)}
+`, {
+          encoding: "utf8",
+          flag: "wx",
+          mode: 384
+        });
+      } catch (err) {
+        await fs.rm(lockPath, { recursive: true, force: true }).catch(() => {
+        });
+        throw err;
+      }
+      return async () => {
+        const current = await readOwner(lockPath);
+        if (current?.token !== owner.token) {
+          throw new FilesystemMutationLockError(
+            `refusing to release filesystem mutation lock '${lockPath}' because its owner token changed; the mutation may have completed, inspect the lock before retrying.`,
+            { lockPath, owner: current, stale: false, malformed: current === null }
+          );
+        }
+        try {
+          await fs.rm(lockPath, { recursive: true, force: false });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new FilesystemMutationLockError(
+            `mutation completed but filesystem lock '${lockPath}' could not be removed (${message}); inspect the lock before retrying.`,
+            { lockPath, owner: current, stale: false, malformed: false }
+          );
+        }
+      };
+    } catch (err) {
+      if (err.code !== "EEXIST") throw err;
+    }
+    if (Date.now() - started >= waitMs) throw timeoutError(lockPath, await readOwner(lockPath));
+    await delay(pollMs);
+  }
+}
+async function withFilesystemMutationLock(target, fn, options2 = {}) {
+  const release = await acquireFilesystemMutationLock(target, options2);
+  try {
+    return await fn();
+  } finally {
+    await release();
+  }
+}
+
 // ../core/src/versioning.ts
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 function sha256Hex(input) {
-  return createHash("sha256").update(input, "utf8").digest("hex");
+  return createHash2("sha256").update(input, "utf8").digest("hex");
 }
 function contentVersion(doc2) {
   return `sha256:${sha256Hex(stringifyDoc(doc2.frontmatter, doc2.body ?? ""))}`;
@@ -4985,7 +5208,7 @@ function versionOfBytes(raw) {
   return `sha256:${sha256Hex(raw)}`;
 }
 function blobVersion(bytes) {
-  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+  return `sha256:${createHash2("sha256").update(bytes).digest("hex")}`;
 }
 function stripETagWrapper(raw) {
   let v = raw.trim();
@@ -5023,7 +5246,7 @@ function firstString(...vals) {
 }
 async function pathExists(p) {
   try {
-    await fs.stat(p);
+    await fs2.stat(p);
     return true;
   } catch {
     return false;
@@ -5031,7 +5254,7 @@ async function pathExists(p) {
 }
 async function pathIsFile(p) {
   try {
-    return (await fs.stat(p)).isFile();
+    return (await fs2.stat(p)).isFile();
   } catch {
     return false;
   }
@@ -5041,25 +5264,25 @@ function isAbsentFileError(err) {
   return code === "ENOENT" || code === "EISDIR";
 }
 async function atomicWrite(filePath, content) {
-  const dir = path.dirname(filePath);
-  await fs.mkdir(dir, { recursive: true });
-  const tmp = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`);
+  const dir = path2.dirname(filePath);
+  await fs2.mkdir(dir, { recursive: true });
+  const tmp = path2.join(dir, `.${path2.basename(filePath)}.${process.pid}.${Date.now()}.${randomUUID2()}.tmp`);
   if (typeof content === "string") {
-    await fs.writeFile(tmp, content, "utf8");
+    await fs2.writeFile(tmp, content, "utf8");
   } else {
-    await fs.writeFile(tmp, content);
+    await fs2.writeFile(tmp, content);
   }
-  await fs.rename(tmp, filePath);
+  await fs2.rename(tmp, filePath);
 }
 async function safeReaddir(abs) {
   try {
-    return await fs.readdir(abs, { withFileTypes: true });
+    return await fs2.readdir(abs, { withFileTypes: true });
   } catch {
     return [];
   }
 }
 async function walkMarkdown(root, sub = "") {
-  const abs = path.join(root, sub);
+  const abs = path2.join(root, sub);
   const entries = await safeReaddir(abs);
   const out = [];
   for (const entry of entries) {
@@ -5074,7 +5297,7 @@ async function walkMarkdown(root, sub = "") {
   return out;
 }
 async function walkBlobs(root, sub = "") {
-  const abs = path.join(root, sub);
+  const abs = path2.join(root, sub);
   const entries = await safeReaddir(abs);
   const out = [];
   for (const entry of entries) {
@@ -5095,7 +5318,8 @@ function reservedPath(dir, name) {
 var FilesystemBackend = class _FilesystemBackend {
   root;
   /**
-   * Per-resolved-path promise chain serializing writes WITHIN this process.
+   * Per-resolved-path promise chain serializing writes within this process before the
+   * same-user cross-process filesystem lock is acquired.
    *
    * `write()`/`writeReserved()`'s compare-and-swap is check-then-write across two
    * `await`s (read the current version, then `atomicWrite`): without serialization, N
@@ -5103,10 +5327,10 @@ var FilesystemBackend = class _FilesystemBackend {
    * version, all pass the CAS check, and all proceed to write — every writer reports
    * success, only the last write survives, and no `VersionConflict` is ever thrown to
    * trigger a caller's retry loop. Queuing each write's full check-then-write critical
-   * section behind this per-key chain makes that section atomic per file WITHIN one
-   * process, so at most one writer can win a given `expectedVersion` and the rest
-   * observe a genuine `VersionConflict`. Reads stay lock-free (they are already
-   * consistent via atomic rename).
+   * section behind this per-key chain avoids needless polling between local callers.
+   * `withFilesystemMutationLock` then makes the same critical section exclusive across
+   * independent processes, so at most one writer can satisfy a given version premise.
+   * Reads stay lock-free because target replacement is atomic.
    *
    * STATIC, not per-instance: `core/src/bundle.ts`'s `backendFor()` constructs a FRESH
    * `FilesystemBackend` on every bundle operation when the caller passes a bare
@@ -5122,10 +5346,9 @@ var FilesystemBackend = class _FilesystemBackend {
    * `writeReserved()` (`index.md`/`log.md`) share one queue per physical file — the
    * only thing that actually needs serializing is contention on the same bytes.
    *
-   * Scope: this closes the race WITHIN one process only. Two `serve` processes (or a
-   * `serve` plus a direct local CLI invocation) over the same directory remain
-   * best-effort — see `docs/` / `STATUS.md`; only a document-centric remote backend
-   * with a real atomic conditional write closes the cross-process case.
+   * The external runtime lock is used for conditional and unconditional mutations alike: an
+   * unconditional writer must not move the target between another process's version
+   * check and write. A crash leftover fails closed with inspectable owner metadata.
    */
   static locks = /* @__PURE__ */ new Map();
   constructor(root) {
@@ -5145,7 +5368,8 @@ var FilesystemBackend = class _FilesystemBackend {
   withLock(key, fn) {
     const locks = _FilesystemBackend.locks;
     const tail = locks.get(key) ?? Promise.resolve();
-    const run = tail.then(fn, fn);
+    const locked = () => withFilesystemMutationLock(key, fn, { portableRoot: this.root });
+    const run = tail.then(locked, locked);
     const settled = run.then(
       () => void 0,
       () => void 0
@@ -5164,9 +5388,9 @@ var FilesystemBackend = class _FilesystemBackend {
    * a future caller that skips the upstream guard cannot escape the bundle either.
    */
   abs(rel) {
-    const rootResolved = path.resolve(this.root);
-    const resolved = path.resolve(rootResolved, rel);
-    if (resolved !== rootResolved && !resolved.startsWith(rootResolved + path.sep)) {
+    const rootResolved = path2.resolve(this.root);
+    const resolved = path2.resolve(rootResolved, rel);
+    if (resolved !== rootResolved && !resolved.startsWith(rootResolved + path2.sep)) {
       throw new InvalidInputError(`Path '${rel}' resolves outside the bundle root.`);
     }
     return resolved;
@@ -5174,7 +5398,7 @@ var FilesystemBackend = class _FilesystemBackend {
   async read(id) {
     assertSafeConceptId(id);
     const rel = pathFromConceptId(id);
-    const raw = await fs.readFile(this.abs(rel), "utf8");
+    const raw = await fs2.readFile(this.abs(rel), "utf8");
     const { frontmatter, body } = parseMarkdown(raw, rel);
     return { doc: { id, frontmatter, body }, version: versionOfBytes(raw) };
   }
@@ -5187,7 +5411,7 @@ var FilesystemBackend = class _FilesystemBackend {
   /** Current version of the file at the already-resolved `absPath`, or `null` if absent. */
   async currentVersionAt(absPath) {
     try {
-      return versionOfBytes(await fs.readFile(absPath, "utf8"));
+      return versionOfBytes(await fs2.readFile(absPath, "utf8"));
     } catch {
       return null;
     }
@@ -5216,7 +5440,7 @@ var FilesystemBackend = class _FilesystemBackend {
       if (options2.expectedVersion !== void 0 && current !== options2.expectedVersion) {
         throw new VersionConflict(id, options2.expectedVersion, current);
       }
-      await fs.unlink(target);
+      await fs2.unlink(target);
       return true;
     });
   }
@@ -5226,8 +5450,8 @@ var FilesystemBackend = class _FilesystemBackend {
     let raw;
     let mtime;
     try {
-      raw = await fs.readFile(p, "utf8");
-      mtime = (await fs.stat(p)).mtime;
+      raw = await fs2.readFile(p, "utf8");
+      mtime = (await fs2.stat(p)).mtime;
     } catch {
       return [];
     }
@@ -5256,7 +5480,7 @@ var FilesystemBackend = class _FilesystemBackend {
     assertSafeReservedDir(dir);
     const p = this.abs(reservedPath(dir, name));
     if (!await pathExists(p)) return null;
-    const content = await fs.readFile(p, "utf8");
+    const content = await fs2.readFile(p, "utf8");
     return { content, version: versionOfBytes(content) };
   }
   async writeReserved(dir, name, content, options2 = {}) {
@@ -5278,7 +5502,7 @@ var FilesystemBackend = class _FilesystemBackend {
   /** Current RAW-BYTES version of the blob at the already-resolved `absPath`, or `null` if absent. Reads with NO encoding — reusing the doc-shaped `currentVersionAt` would corrupt binary content via UTF-8 decoding (B1). */
   async currentBlobVersionAt(absPath) {
     try {
-      return blobVersion(await fs.readFile(absPath));
+      return blobVersion(await fs2.readFile(absPath));
     } catch (err) {
       if (isAbsentFileError(err)) return null;
       throw err;
@@ -5288,7 +5512,7 @@ var FilesystemBackend = class _FilesystemBackend {
     assertSafeBlobKey(key);
     let bytes;
     try {
-      bytes = await fs.readFile(this.abs(key));
+      bytes = await fs2.readFile(this.abs(key));
     } catch (err) {
       if (isAbsentFileError(err)) return null;
       throw err;
@@ -5318,7 +5542,7 @@ var FilesystemBackend = class _FilesystemBackend {
       if (options2.expectedVersion !== void 0 && current !== options2.expectedVersion) {
         throw new VersionConflict(key, options2.expectedVersion, current);
       }
-      await fs.unlink(target);
+      await fs2.unlink(target);
       return true;
     });
   }
@@ -5332,10 +5556,19 @@ var FilesystemBackend = class _FilesystemBackend {
     filtered.sort((a, b) => a.localeCompare(b));
     return filtered;
   }
+  capabilities() {
+    return {
+      history: false,
+      enforced_cas: true,
+      blobs: true,
+      projections: true,
+      backlinks: false
+    };
+  }
 };
 
 // ../core/src/links.ts
-import path2 from "node:path";
+import path3 from "node:path";
 var MD_LINK_RE = /\[([^\]]*)\]\(([^)\s]+)\)/g;
 function isExternalHref(href) {
   const h = href.trim();
@@ -5359,7 +5592,7 @@ function resolveConceptId(fromId, href) {
   } else {
     const slash = fromId.lastIndexOf("/");
     const fromDir = slash >= 0 ? fromId.slice(0, slash) : "";
-    resolved = path2.posix.join(fromDir, target);
+    resolved = path3.posix.join(fromDir, target);
   }
   resolved = resolved.replace(/^(\.\.\/)+/, "");
   if (isReservedFile(resolved)) return null;
@@ -5371,8 +5604,8 @@ function relativeHref(fromId, target) {
   const targetId = t.replace(/^\/+/, "").replace(/\.md$/, "");
   const slash = fromId.lastIndexOf("/");
   const fromDir = slash >= 0 ? fromId.slice(0, slash) : "";
-  let rel = path2.posix.relative(fromDir, targetId);
-  if (rel === "") rel = path2.posix.basename(targetId);
+  let rel = path3.posix.relative(fromDir, targetId);
+  if (rel === "") rel = path3.posix.basename(targetId);
   return `${rel}.md`;
 }
 function parseLinksFromDoc(doc2) {
@@ -5410,11 +5643,11 @@ function backendFor(bundle) {
   return bundle.backend ?? new FilesystemBackend(bundle.root);
 }
 async function initBundle(root, options2 = {}) {
-  const resolved = path3.resolve(root);
+  const resolved = path4.resolve(root);
   const backend = new FilesystemBackend(resolved);
   if (await backend.readReserved("", "index.md") === null) {
     const okfVersion = options2.okfVersion ?? "0.1";
-    const name = path3.basename(resolved);
+    const name = path4.basename(resolved);
     const body = `# ${name}
 
 An Open Knowledge Format bundle.
@@ -5819,7 +6052,7 @@ function retryDelayMs(attempt) {
   const backoff = Math.min(RETRY_CAP_MS, RETRY_BASE_MS * 2 ** attempt);
   return backoff + Math.floor(Math.random() * RETRY_JITTER_MS);
 }
-function delay(ms) {
+function delay2(ms) {
   return new Promise((resolve2) => setTimeout(resolve2, ms));
 }
 function encodeId(id) {
@@ -5856,13 +6089,13 @@ var RemoteBackend = class {
       try {
         const res = await this.fetchImpl(new Request(url, init2));
         if (RETRIABLE_STATUS.has(res.status) && attempt < this.maxRetries) {
-          await delay(retryDelayMs(attempt));
+          await delay2(retryDelayMs(attempt));
           continue;
         }
         return res;
       } catch (err) {
         if (attempt < this.maxRetries) {
-          await delay(retryDelayMs(attempt));
+          await delay2(retryDelayMs(attempt));
           continue;
         }
         throw err;
@@ -6130,13 +6363,13 @@ function describeShape(value) {
   if (typeof value === "object") return "an object";
   return typeof value;
 }
-function toStringArrayLenient(value, path21, docId, warnings) {
+function toStringArrayLenient(value, path22, docId, warnings) {
   if (!Array.isArray(value)) {
     if (value !== void 0) {
       warnings.push({
         code: "KIND_CONVENTION_BAD_SHAPE",
-        message: `kind convention '${docId}' has a non-list '${path21}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
-        field: path21,
+        message: `kind convention '${docId}' has a non-list '${path22}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
+        field: path22,
         severity: "warning"
       });
     }
@@ -6149,8 +6382,8 @@ function toStringArrayLenient(value, path21, docId, warnings) {
     } else {
       warnings.push({
         code: "KIND_CONVENTION_BAD_MEMBER",
-        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path21}'; skipping it.`,
-        field: path21,
+        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path22}'; skipping it.`,
+        field: path22,
         severity: "warning"
       });
     }
@@ -6504,7 +6737,7 @@ function parseConventionDoc(doc2) {
       });
     }
   }
-  const path21 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
+  const path22 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
   const freshnessHorizon = typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== "" ? fm.freshness_horizon.trim() : void 0;
   const kind2 = {
     id: doc2.id,
@@ -6513,7 +6746,7 @@ function parseConventionDoc(doc2) {
     fields: { required, optional, values, valueDescriptions, terminal, descriptions }
   };
   if (description !== void 0) kind2.description = description;
-  if (path21 !== void 0) kind2.path = path21;
+  if (path22 !== void 0) kind2.path = path22;
   if (links !== void 0) kind2.links = links;
   if (linkDescriptions !== void 0) kind2.linkDescriptions = linkDescriptions;
   if (expectsInbound !== void 0) kind2.expectsInbound = expectsInbound;
@@ -6805,14 +7038,14 @@ import {
   readdirSync,
   readFileSync as readFileSync2,
   readlinkSync,
-  realpathSync as realpathSync2,
+  realpathSync as realpathSync3,
   rmSync,
   rmdirSync,
   statSync,
   writeFileSync
 } from "node:fs";
-import { tmpdir } from "node:os";
-import path4 from "node:path";
+import { tmpdir as tmpdir2 } from "node:os";
+import path5 from "node:path";
 var BOARD_BRANCH = "board";
 var BOARD_REMOTE = "origin";
 var BOARD_REF = `${BOARD_REMOTE}/${BOARD_BRANCH}`;
@@ -6887,11 +7120,11 @@ function repoTopLevel(dir) {
 }
 function worktreeGitPath(boardPath, relative) {
   const raw = mustGit(boardPath, ["rev-parse", "--git-path", relative]).trim();
-  return path4.resolve(boardPath, raw);
+  return path5.resolve(boardPath, raw);
 }
 function realOrSame(p) {
   try {
-    return realpathSync2(p);
+    return realpathSync3(p);
   } catch {
     return p;
   }
@@ -6901,7 +7134,7 @@ function gitCommonDir(dir) {
   if (r.status !== 0) return null;
   const raw = r.stdout.trim();
   if (raw.length === 0) return null;
-  return realOrSame(path4.isAbsolute(raw) ? raw : path4.resolve(dir, raw));
+  return realOrSame(path5.isAbsolute(raw) ? raw : path5.resolve(dir, raw));
 }
 function sameGitCommonDir(a, b) {
   const aCommon = gitCommonDir(a);
@@ -6917,7 +7150,7 @@ function worktreeRootResolvesForOwner(boardPath, ownerTop) {
 }
 function rebaseWasFromBoardBranch(boardPath) {
   for (const state of ["rebase-merge", "rebase-apply"]) {
-    const headNamePath = path4.join(worktreeGitPath(boardPath, state), "head-name");
+    const headNamePath = path5.join(worktreeGitPath(boardPath, state), "head-name");
     if (!existsSync2(headNamePath)) continue;
     try {
       if (readFileSync2(headNamePath, "utf8").trim() === `refs/heads/${BOARD_BRANCH}`) return true;
@@ -6935,13 +7168,13 @@ function repairedWorktreeIsBoard(boardPath, ownerTop) {
 function isProvisioned(dir) {
   const top = repoTopLevel(dir);
   if (!top) return false;
-  const boardPath = path4.join(top, BUNDLE_DIR);
+  const boardPath = path5.join(top, BUNDLE_DIR);
   if (!existsSync2(boardPath) || !worktreeRootResolvesForOwner(boardPath, top)) return false;
   const branch = runGit(boardPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
   return branch.status === 0 && branch.stdout.trim() === BOARD_BRANCH;
 }
 function hasWorktreeSignature(dir) {
-  const gitPath = path4.join(dir, ".git");
+  const gitPath = path5.join(dir, ".git");
   if (!existsSync2(gitPath)) return false;
   try {
     return statSync(gitPath).isFile();
@@ -7033,7 +7266,7 @@ function preShareWindowError(top, boardPath, originConfigured = true) {
 function provisionBoardWorktree(dir, budget = {}) {
   const top = repoTopLevel(dir);
   if (!top) return { kind: "no_repo" };
-  const boardPath = path4.join(top, BUNDLE_DIR);
+  const boardPath = path5.join(top, BUNDLE_DIR);
   if (isProvisioned(top)) return { kind: "already", boardPath };
   const hasOrigin = runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0;
   const deadline = Date.now() + (budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS);
@@ -7265,7 +7498,7 @@ function snapshotFilesystemFiles(root) {
           { details: { nested_git_paths: [relPath] } }
         );
       }
-      if (entry.isDirectory()) visit(path4.join(dir, entry.name), relPath);
+      if (entry.isDirectory()) visit(path5.join(dir, entry.name), relPath);
       else if (entry.isFile() || entry.isSymbolicLink()) files.push(relPath);
       else {
         throw new BoardGitError(
@@ -7287,8 +7520,8 @@ function assertBundleBytesMatchCommit(top, bundlePath, commit) {
     if (tab < 0) continue;
     const [mode, type, oid] = row.slice(0, tab).split(" ");
     const relPath = row.slice(tab + 1);
-    const absolute = path4.resolve(bundlePath, relPath);
-    if (!absolute.startsWith(`${path4.resolve(bundlePath)}${path4.sep}`)) {
+    const absolute = path5.resolve(bundlePath, relPath);
+    if (!absolute.startsWith(`${path5.resolve(bundlePath)}${path5.sep}`)) {
       mismatches.push(relPath);
       continue;
     }
@@ -7328,8 +7561,8 @@ function assertBundleBytesMatchCommit(top, bundlePath, commit) {
 function snapshotBundleCommit(top, bundlePath) {
   const gitDir = mustGit(top, ["rev-parse", "--absolute-git-dir"]).trim();
   const filesystemFiles = snapshotFilesystemFiles(bundlePath);
-  const scratch = mkdtempSync(path4.join(tmpdir(), "aslite-establish-index-"));
-  const indexFile = path4.join(scratch, "index");
+  const scratch = mkdtempSync(path5.join(tmpdir2(), "aslite-establish-index-"));
+  const indexFile = path5.join(scratch, "index");
   const snapshotOptions = { gitDir, workTree: bundlePath, indexFile };
   try {
     mustGit(bundlePath, ["read-tree", "--empty"], snapshotOptions);
@@ -7418,8 +7651,8 @@ function fetchRebaseResolving(boardPath, exportDir) {
         let bodyExportPath = null;
         const isDoc = isConceptDocPath(relPath);
         if (local.status === 0) {
-          exportPath = path4.join(exportDir, relPath);
-          mkdirSync(path4.dirname(exportPath), { recursive: true, mode: 448 });
+          exportPath = path5.join(exportDir, relPath);
+          mkdirSync(path5.dirname(exportPath), { recursive: true, mode: 448 });
           writeFileSync(exportPath, local.stdout, { mode: 384 });
           if (isDoc) {
             try {
@@ -7511,7 +7744,7 @@ ${GITIGNORE_ENTRY}
   return out;
 }
 function ensureBoardGitignoreWorkingTree(top) {
-  const gitignorePath = path4.join(top, ".gitignore");
+  const gitignorePath = path5.join(top, ".gitignore");
   let content = "";
   try {
     content = readFileSync2(gitignorePath, "utf8");
@@ -7613,11 +7846,11 @@ function readDocBytesAtRef(dir, ref, relPath) {
 }
 
 // ../board-git/src/channel.ts
-import path6 from "node:path";
+import path7 from "node:path";
 
 // ../board-git/src/flow.ts
 import { existsSync as existsSync3, readFileSync as readFileSync3, renameSync, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
-import path5 from "node:path";
+import path6 from "node:path";
 function refCommit(top, ref) {
   const r = runGit(top, ["rev-parse", "--verify", "--quiet", ref]);
   const value = r.stdout.trim();
@@ -7639,7 +7872,7 @@ function resolveOriginRef(boardPath) {
 function hasLocalOnlyBundle(dir) {
   const top = repoTopLevel(dir);
   if (!top) return false;
-  return existsSync3(path5.join(top, BUNDLE_DIR, "index.md"));
+  return existsSync3(path6.join(top, BUNDLE_DIR, "index.md"));
 }
 function folderTreeAtHead(top) {
   const r = runGit(top, ["rev-parse", "--verify", "--quiet", `HEAD:${BUNDLE_DIR}`]);
@@ -7680,7 +7913,7 @@ function annotateLanded(boardPath, conflicts) {
 var ESTABLISH_MARKER_KEY = "agentstate.establishCommit";
 var COMMITTED_MARKER_KEY = "agentstate.establishCommittedShare";
 function markerPath(top, key) {
-  return path5.join(mustGit(top, ["rev-parse", "--absolute-git-dir"]).trim(), key);
+  return path6.join(mustGit(top, ["rev-parse", "--absolute-git-dir"]).trim(), key);
 }
 function readGitDirMarker(top, key) {
   try {
@@ -7789,7 +8022,7 @@ function probeRemoteBoardState(top, budget = {}) {
 function ownerRegistersBoardWorktree(top) {
   const r = runGit(top, ["worktree", "list", "--porcelain"]);
   if (r.status !== 0) return false;
-  return r.stdout.split("\n").some((l) => l.startsWith("worktree ") && path6.basename(l.slice("worktree ".length).trim()) === BUNDLE_DIR);
+  return r.stdout.split("\n").some((l) => l.startsWith("worktree ") && path7.basename(l.slice("worktree ".length).trim()) === BUNDLE_DIR);
 }
 function verifiedForeignBoardRoot(top) {
   const folderTree = folderTreeAtHead(top);
@@ -7814,7 +8047,7 @@ function dualBoardError(boardPath) {
 function detectBoardChannel(dir, options2 = {}) {
   const top = repoTopLevel(dir);
   if (!top) return localOnlyChannel();
-  const boardPath = path6.join(top, BUNDLE_DIR);
+  const boardPath = path7.join(top, BUNDLE_DIR);
   if (hasWorktreeSignature(boardPath)) {
     if (worktreeRootResolvesForOwner(boardPath, top)) return branchChannel();
     if (!worktreeRootResolves(boardPath) && ownerRegistersBoardWorktree(top)) return branchChannel();
@@ -7884,7 +8117,7 @@ function originDocsBetween(boardPath, fromRef, toRef) {
 
 // ../board-git/src/cursor.ts
 import { chmod, mkdir, readFile } from "node:fs/promises";
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash3 } from "node:crypto";
 import { basename as basename3, dirname as dirname2, join as join2, resolve } from "node:path";
 var DIR_MODE = 448;
 var REANCHOR_NOTE = "delta unavailable (history rewritten or repositioned)";
@@ -7907,7 +8140,7 @@ ${resolve(src.checkoutRoot)}`;
 ${resolve(src.root)}`;
 }
 function keyDigest(key) {
-  return createHash2("sha256").update(key, "utf8").digest("hex").slice(0, 32);
+  return createHash3("sha256").update(key, "utf8").digest("hex").slice(0, 32);
 }
 var SELF_ACTORS_CAP = 64;
 var EMPTY_STATE = {
@@ -8134,11 +8367,11 @@ function createSyncStore(options2) {
 }
 
 // ../board-git/src/engine.ts
-import { existsSync as existsSync4, realpathSync as realpathSync3, statSync as statSync2 } from "node:fs";
-import path7 from "node:path";
+import { existsSync as existsSync4, realpathSync as realpathSync4, statSync as statSync2 } from "node:fs";
+import path8 from "node:path";
 function realOrSame2(p) {
   try {
-    return realpathSync3(p);
+    return realpathSync4(p);
   } catch {
     return p;
   }
@@ -8148,23 +8381,23 @@ function isLinkedWorktree(p) {
   if (r.status !== 0) return false;
   const [gitDirRaw, commonDirRaw] = r.stdout.trim().split("\n");
   if (!gitDirRaw || !commonDirRaw) return false;
-  const commonDir = path7.isAbsolute(commonDirRaw) ? commonDirRaw : path7.resolve(p, commonDirRaw);
+  const commonDir = path8.isAbsolute(commonDirRaw) ? commonDirRaw : path8.resolve(p, commonDirRaw);
   return realOrSame2(gitDirRaw) !== realOrSame2(commonDir);
 }
 function hasGitFileSignature(p) {
   try {
-    return statSync2(path7.join(p, ".git")).isFile();
+    return statSync2(path8.join(p, ".git")).isFile();
   } catch {
     return false;
   }
 }
 function retargetStaleBoardInteriorByPath(dir) {
-  let cur = path7.resolve(dir);
+  let cur = path8.resolve(dir);
   for (; ; ) {
-    if (path7.basename(cur) === BUNDLE_DIR && hasGitFileSignature(cur)) {
-      return path7.dirname(cur);
+    if (path8.basename(cur) === BUNDLE_DIR && hasGitFileSignature(cur)) {
+      return path8.dirname(cur);
     }
-    const parent = path7.dirname(cur);
+    const parent = path8.dirname(cur);
     if (parent === cur) return null;
     cur = parent;
   }
@@ -8172,8 +8405,8 @@ function retargetStaleBoardInteriorByPath(dir) {
 function retargetBoardInterior(dir) {
   try {
     const top = repoTopLevel(dir);
-    if (top && path7.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
-      return path7.dirname(top);
+    if (top && path8.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
+      return path8.dirname(top);
     }
   } catch {
   }
@@ -8183,7 +8416,7 @@ function healStaleRebaseBeforeProvisioning(dir) {
   try {
     const top = repoTopLevel(dir);
     if (!top) return;
-    const candidateBoardPath = path7.join(top, BUNDLE_DIR);
+    const candidateBoardPath = path8.join(top, BUNDLE_DIR);
     if (!existsSync4(candidateBoardPath)) return;
     const boardTop = repoTopLevel(candidateBoardPath);
     if (!boardTop || realOrSame2(boardTop) !== realOrSame2(candidateBoardPath)) return;
@@ -8222,35 +8455,35 @@ function provisionAnnouncement(outcome) {
 }
 
 // ../board-git/src/autopull.ts
-import path8 from "node:path";
-import { realpathSync as realpathSync4, statSync as statSync3 } from "node:fs";
+import path9 from "node:path";
+import { realpathSync as realpathSync5, statSync as statSync3 } from "node:fs";
 var AUTO_PULL_STALE_MS = 5 * 6e4;
 var AUTO_PULL_BUDGET_MS = 2e3;
 var AUTO_PULL_CONNECT_TIMEOUT_SECONDS = 2;
 var NO_AUTOPULL_ENV = "AGENTSTATE_LITE_NO_AUTOPULL";
 function realOrSame3(p) {
   try {
-    return realpathSync4(p);
+    return realpathSync5(p);
   } catch {
     return p;
   }
 }
 function hasGitFileSignature2(p) {
   try {
-    return statSync3(path8.join(p, ".git")).isFile();
+    return statSync3(path9.join(p, ".git")).isFile();
   } catch {
     return false;
   }
 }
 function findBoardCandidate(start) {
-  let cur = path8.resolve(start);
+  let cur = path9.resolve(start);
   for (; ; ) {
-    if (path8.basename(cur) === BUNDLE_DIR && hasGitFileSignature2(cur)) {
-      return { top: path8.dirname(cur), boardPath: cur };
+    if (path9.basename(cur) === BUNDLE_DIR && hasGitFileSignature2(cur)) {
+      return { top: path9.dirname(cur), boardPath: cur };
     }
-    const candidate = path8.join(cur, BUNDLE_DIR);
+    const candidate = path9.join(cur, BUNDLE_DIR);
     if (hasGitFileSignature2(candidate)) return { top: cur, boardPath: candidate };
-    const parent = path8.dirname(cur);
+    const parent = path9.dirname(cur);
     if (parent === cur) return null;
     cur = parent;
   }
@@ -8294,7 +8527,7 @@ async function maybeAutoPull(deps, dir, opts = {}) {
     if (!candidate) return "no-board";
     const boardPath = candidate.boardPath;
     if (opts.requireBoardBundle !== false) {
-      const root = dir !== void 0 ? path8.resolve(dir) : await deps.resolveBundleRoot(start);
+      const root = dir !== void 0 ? path9.resolve(dir) : await deps.resolveBundleRoot(start);
       if (!root || realOrSame3(root) !== realOrSame3(boardPath)) return "different-bundle";
     }
     const key = resolveBundleKey(boardPath);
@@ -8304,7 +8537,7 @@ async function maybeAutoPull(deps, dir, opts = {}) {
     if (ageOk(state.cache?.updatedAt)) return "fresh";
     if (ageOk(state.autoPullAttemptAt)) return "throttled";
     const gitTop = repoTopLevel(candidate.top);
-    if (!gitTop || realOrSame3(path8.join(gitTop, BUNDLE_DIR)) !== realOrSame3(boardPath) || !isProvisioned(gitTop)) {
+    if (!gitTop || realOrSame3(path9.join(gitTop, BUNDLE_DIR)) !== realOrSame3(boardPath) || !isProvisioned(gitTop)) {
       return "no-board";
     }
     await deps.store.recordAutoPullAttempt(key, now);
@@ -8435,8 +8668,8 @@ async function inTreeFetchAndRecord(store, top, key, budget = {}, now = () => /*
 }
 
 // src/bundle.ts
-import { promises as fs2 } from "node:fs";
-import path9 from "node:path";
+import { promises as fs3 } from "node:fs";
+import path10 from "node:path";
 
 // src/errors.ts
 var EXIT = {
@@ -8554,13 +8787,13 @@ function asHandled(err) {
 
 // src/invocation.ts
 import { fileURLToPath } from "node:url";
-import { realpathSync as realpathSync5 } from "node:fs";
+import { realpathSync as realpathSync6 } from "node:fs";
 import { delimiter, join as join3 } from "node:path";
-import { homedir as homedir2 } from "node:os";
+import { homedir as homedir3 } from "node:os";
 var PACKAGE_NAME = "agentstate-lite";
 var BIN_NAMES = ["agentstate-lite", "aslite"];
 function collapseHomeDirectory2(p) {
-  const home2 = homedir2();
+  const home2 = homedir3();
   if (home2 && (p === home2 || p.startsWith(home2 + "/"))) {
     return "~" + p.slice(home2.length);
   }
@@ -8568,7 +8801,7 @@ function collapseHomeDirectory2(p) {
 }
 function realOrUndefined(p) {
   try {
-    return realpathSync5(p);
+    return realpathSync6(p);
   } catch {
     return void 0;
   }
@@ -8623,29 +8856,29 @@ function normalizeServer(raw) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`server URL must use http or https: ${raw}`);
   }
-  const path21 = url.pathname.replace(/\/+$/, "");
-  return { base: url.origin + path21, resource: url.origin };
+  const path22 = url.pathname.replace(/\/+$/, "");
+  return { base: url.origin + path22, resource: url.origin };
 }
 
 // src/credentials.ts
 import { chmod as chmod2, mkdir as mkdir2, open, readFile as readFile2, rename, unlink } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { homedir as homedir3 } from "node:os";
+import { homedir as homedir4 } from "node:os";
 import { join as join4 } from "node:path";
 var CRED_DIR_NAME = ".agentstate";
 var CRED_FILE_NAME = "okf-config.json";
 var DIR_MODE2 = 448;
 var FILE_MODE = 384;
-function credentialsDir(home2 = homedir3()) {
+function credentialsDir(home2 = homedir4()) {
   return join4(home2, CRED_DIR_NAME);
 }
-function credentialsPath(home2 = homedir3()) {
+function credentialsPath(home2 = homedir4()) {
   return join4(credentialsDir(home2), CRED_FILE_NAME);
 }
 async function writeFileAtomic0600(dir, fileName, content) {
   await mkdir2(dir, { recursive: true, mode: DIR_MODE2 });
   await chmod2(dir, DIR_MODE2);
-  const path21 = join4(dir, fileName);
+  const path22 = join4(dir, fileName);
   const tmpPath = join4(dir, `.${fileName}.${randomBytes(8).toString("hex")}.tmp`);
   const handle = await open(tmpPath, "wx", FILE_MODE);
   try {
@@ -8655,14 +8888,14 @@ async function writeFileAtomic0600(dir, fileName, content) {
     await handle.close();
   }
   try {
-    await rename(tmpPath, path21);
+    await rename(tmpPath, path22);
   } catch (err) {
     await unlink(tmpPath).catch(() => {
     });
     throw err;
   }
 }
-async function loadCredentials(home2 = homedir3()) {
+async function loadCredentials(home2 = homedir4()) {
   let raw;
   try {
     raw = await readFile2(credentialsPath(home2), "utf8");
@@ -8684,7 +8917,7 @@ async function loadCredentials(home2 = homedir3()) {
 function isNonEmptyString(v) {
   return typeof v === "string" && v.length > 0;
 }
-async function getApiKeyForOrigin(origin, home2 = homedir3()) {
+async function getApiKeyForOrigin(origin, home2 = homedir4()) {
   const creds = await loadCredentials(home2);
   const key = creds?.remotes?.[origin]?.api_key;
   return isNonEmptyString(key) ? key : void 0;
@@ -8693,32 +8926,32 @@ async function getApiKeyForOrigin(origin, home2 = homedir3()) {
 // src/bundle.ts
 async function exists(p) {
   try {
-    await fs2.stat(p);
+    await fs3.stat(p);
     return true;
   } catch {
     return false;
   }
 }
 function resolveTargetDir(dirFlag) {
-  return path9.resolve(dirFlag ?? process.cwd());
+  return path10.resolve(dirFlag ?? process.cwd());
 }
 async function findAncestorWithFile(start, filename) {
-  let dir = path9.resolve(start);
+  let dir = path10.resolve(start);
   while (true) {
-    if (await exists(path9.join(dir, filename))) return dir;
-    const parent = path9.dirname(dir);
+    if (await exists(path10.join(dir, filename))) return dir;
+    const parent = path10.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
 }
 var CONVENTIONAL_BUNDLE_DIR_NAME = BUNDLE_DIR;
 async function findBundleRoot(start) {
-  let dir = path9.resolve(start);
+  let dir = path10.resolve(start);
   while (true) {
-    if (await exists(path9.join(dir, "index.md"))) return dir;
-    const conventional = path9.join(dir, CONVENTIONAL_BUNDLE_DIR_NAME);
-    if (await exists(path9.join(conventional, "index.md"))) return conventional;
-    const parent = path9.dirname(dir);
+    if (await exists(path10.join(dir, "index.md"))) return dir;
+    const conventional = path10.join(dir, CONVENTIONAL_BUNDLE_DIR_NAME);
+    if (await exists(path10.join(conventional, "index.md"))) return conventional;
+    const parent = path10.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
@@ -8745,10 +8978,10 @@ function bindingUriIntent(value) {
 async function resolveProjectBinding(startDir = process.cwd()) {
   const dir = await findAncestorWithFile(startDir, PROJECT_BINDING_FILE_NAME);
   if (!dir) return null;
-  const file = path9.join(dir, PROJECT_BINDING_FILE_NAME);
+  const file = path10.join(dir, PROJECT_BINDING_FILE_NAME);
   let raw;
   try {
-    raw = await fs2.readFile(file, "utf8");
+    raw = await fs3.readFile(file, "utf8");
   } catch (err) {
     throw new CliError(
       "USAGE",
@@ -8784,7 +9017,7 @@ async function resolveProjectBinding(startDir = process.cwd()) {
       { help: `${cliInvocation()} <command> --remote ${remote}` }
     );
   }
-  return { file, target: path9.resolve(dir, trimmed) };
+  return { file, target: path10.resolve(dir, trimmed) };
 }
 function wrapTransportErrors(remote) {
   return async (request) => {
@@ -8838,18 +9071,18 @@ async function resolveRemoteFlag(remoteFlag, dirFlag) {
   return void 0;
 }
 async function canonicalBundleRoot(root, notFoundMessage, help) {
-  if (!await exists(path9.join(root, "index.md"))) {
+  if (!await exists(path10.join(root, "index.md"))) {
     throw new CliError("NOT_FOUND", notFoundMessage, { help });
   }
   try {
-    return await fs2.realpath(root);
+    return await fs3.realpath(root);
   } catch {
     throw new CliError("NOT_FOUND", notFoundMessage, { help });
   }
 }
 async function resolveLocalBundleTarget(dirFlag, startDir = process.cwd()) {
   if (dirFlag !== void 0) {
-    const requested = path9.resolve(startDir, dirFlag);
+    const requested = path10.resolve(startDir, dirFlag);
     const canonicalRoot2 = await canonicalBundleRoot(
       requested,
       `no OKF bundle at ${requested} (no index.md)`,
@@ -9655,13 +9888,13 @@ function parseRecipeFiles(files, source) {
 
 // src/recipe-ref.ts
 import os from "node:os";
-import path10 from "node:path";
+import path11 from "node:path";
 function looksLikeRecipePath(ref) {
   return ref.includes("/") || ref.startsWith("~");
 }
 function expandRecipePath(ref) {
   if (ref === "~") return os.homedir();
-  if (ref.startsWith("~/")) return path10.join(os.homedir(), ref.slice(2));
+  if (ref.startsWith("~/")) return path11.join(os.homedir(), ref.slice(2));
   return ref;
 }
 
@@ -9737,19 +9970,19 @@ function resolveBuiltinSync(name) {
 var CONTEXT_NOTES_RECIPE = resolveBuiltinSync("context-notes");
 
 // src/recipe-source-filesystem.ts
-import { promises as fs3 } from "node:fs";
-import path11 from "node:path";
+import { promises as fs4 } from "node:fs";
+import path12 from "node:path";
 async function readRecipeDir(root) {
   const files = [];
-  const rootReal = await fs3.realpath(root);
-  const manifestPath = path11.join(root, "recipe.md");
-  const manifestStat = await fs3.stat(manifestPath).catch(() => null);
+  const rootReal = await fs4.realpath(root);
+  const manifestPath = path12.join(root, "recipe.md");
+  const manifestStat = await fs4.stat(manifestPath).catch(() => null);
   if (manifestStat?.isFile()) {
-    const manifestReal = await fs3.realpath(manifestPath).catch(() => null);
-    if (!manifestReal || manifestReal !== rootReal && !manifestReal.startsWith(rootReal + path11.sep)) {
+    const manifestReal = await fs4.realpath(manifestPath).catch(() => null);
+    if (!manifestReal || manifestReal !== rootReal && !manifestReal.startsWith(rootReal + path12.sep)) {
       throw new RecipeUnsafePathSignal("recipe.md");
     }
-    const bytes = await fs3.readFile(manifestPath, "utf8");
+    const bytes = await fs4.readFile(manifestPath, "utf8");
     files.push({ path: "recipe.md", bytes });
     const { frontmatter } = parseMarkdown(bytes);
     if (frontmatter.content_policy === "definitions-only" || frontmatter.pages !== void 0) {
@@ -9757,17 +9990,17 @@ async function readRecipeDir(root) {
       return files;
     }
   }
-  const conventionsRoot = path11.join(root, "conventions");
-  const conventionsStat = await fs3.stat(conventionsRoot).catch(() => null);
+  const conventionsRoot = path12.join(root, "conventions");
+  const conventionsStat = await fs4.stat(conventionsRoot).catch(() => null);
   if (conventionsStat?.isDirectory()) {
     await walkConventions(conventionsRoot, "conventions", rootReal, files);
   }
   return files;
 }
 async function walkRecipeFiles(dir, relPrefix, rootReal, out, skip) {
-  const entries = await fs3.readdir(dir, { withFileTypes: true });
+  const entries = await fs4.readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
-    const abs = path11.join(dir, entry.name);
+    const abs = path12.join(dir, entry.name);
     const rel = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
     if (skip.has(rel)) continue;
     if (entry.isDirectory()) {
@@ -9775,19 +10008,19 @@ async function walkRecipeFiles(dir, relPrefix, rootReal, out, skip) {
       continue;
     }
     if (!entry.isFile() && !entry.isSymbolicLink()) continue;
-    const real = await fs3.realpath(abs).catch(() => null);
-    if (!real || real !== rootReal && !real.startsWith(rootReal + path11.sep)) {
+    const real = await fs4.realpath(abs).catch(() => null);
+    if (!real || real !== rootReal && !real.startsWith(rootReal + path12.sep)) {
       throw new RecipeUnsafePathSignal(rel);
     }
-    const stat2 = await fs3.stat(real).catch(() => null);
+    const stat2 = await fs4.stat(real).catch(() => null);
     if (!stat2?.isFile()) throw new RecipeUnsafePathSignal(rel);
-    out.push({ path: rel, bytes: await fs3.readFile(abs, "utf8") });
+    out.push({ path: rel, bytes: await fs4.readFile(abs, "utf8") });
   }
 }
 async function walkConventions(dir, relPrefix, rootReal, out) {
-  const entries = await fs3.readdir(dir, { withFileTypes: true });
+  const entries = await fs4.readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
-    const abs = path11.join(dir, entry.name);
+    const abs = path12.join(dir, entry.name);
     const rel = `${relPrefix}/${entry.name}`;
     if (entry.isDirectory()) {
       await walkConventions(abs, rel, rootReal, out);
@@ -9795,11 +10028,11 @@ async function walkConventions(dir, relPrefix, rootReal, out) {
     }
     if (!entry.isFile() && !entry.isSymbolicLink()) continue;
     if (!rel.endsWith(".md")) continue;
-    const real = await fs3.realpath(abs).catch(() => null);
-    if (!real || real !== rootReal && !real.startsWith(rootReal + path11.sep)) {
+    const real = await fs4.realpath(abs).catch(() => null);
+    if (!real || real !== rootReal && !real.startsWith(rootReal + path12.sep)) {
       throw new RecipeUnsafePathSignal(rel);
     }
-    out.push({ path: rel, bytes: await fs3.readFile(abs, "utf8") });
+    out.push({ path: rel, bytes: await fs4.readFile(abs, "utf8") });
   }
 }
 var RecipeUnsafePathSignal = class extends Error {
@@ -9815,11 +10048,11 @@ function filesRecipeSource() {
     async resolve(ref) {
       if (!looksLikeRecipePath(ref)) return null;
       const expanded = expandRecipePath(ref);
-      const real = await fs3.realpath(path11.resolve(expanded)).catch(() => null);
+      const real = await fs4.realpath(path12.resolve(expanded)).catch(() => null);
       if (!real) {
         return { ok: false, error: { code: "RECIPE_NOT_FOUND", message: `no recipe folder at '${ref}'` } };
       }
-      const stat2 = await fs3.stat(real).catch(() => null);
+      const stat2 = await fs4.stat(real).catch(() => null);
       if (!stat2 || !stat2.isDirectory()) {
         return { ok: false, error: { code: "RECIPE_UNSAFE_PATH", message: `'${ref}' is not a directory` } };
       }
@@ -9876,10 +10109,10 @@ Options:
   -h, --help              Show this help
 `;
 function insideGitRepo(dir) {
-  let cur = path12.resolve(dir);
+  let cur = path13.resolve(dir);
   for (; ; ) {
-    if (existsSync5(path12.join(cur, ".git"))) return true;
-    const parent = path12.dirname(cur);
+    if (existsSync5(path13.join(cur, ".git"))) return true;
+    const parent = path13.dirname(cur);
     if (parent === cur) return false;
     cur = parent;
   }
@@ -10226,7 +10459,7 @@ function readErrorToCliError(err, id, remoteUrl) {
 
 // src/commands/doc/write.ts
 import { parseArgs as parseArgs2 } from "node:util";
-import { promises as fs4 } from "node:fs";
+import { promises as fs5 } from "node:fs";
 
 // src/kind-write.ts
 function defaultTimestampAndValidateKind(candidate, registry, opts) {
@@ -10409,13 +10642,13 @@ async function mutateDoc(opts) {
 }
 
 // src/board-attribution.ts
-import path13 from "node:path";
+import path14 from "node:path";
 
 // src/cursor.ts
-import { homedir as homedir4 } from "node:os";
+import { homedir as homedir5 } from "node:os";
 import { join as join5 } from "node:path";
 var SYNC_STATE_DIR_NAME = "sync";
-function syncStateDir(home2 = homedir4()) {
+function syncStateDir(home2 = homedir5()) {
   return join5(credentialsDir(home2), SYNC_STATE_DIR_NAME);
 }
 var defaultSyncStore = createSyncStore({
@@ -10427,7 +10660,7 @@ var defaultSyncStore = createSyncStore({
 function boardPostPersistHook(bundle, actor) {
   if (!actor || actor === "unknown") return void 0;
   if (bundle.backend !== void 0) return void 0;
-  if (path13.basename(bundle.root) !== BUNDLE_DIR) return void 0;
+  if (path14.basename(bundle.root) !== BUNDLE_DIR) return void 0;
   return async () => {
     try {
       await defaultSyncStore.recordSelfActors(resolveBundleKey(bundle.root), [actor]);
@@ -10507,7 +10740,7 @@ async function docWrite(argv, deps) {
     body = values.body;
     bodySourceGiven = true;
   } else if (values["body-file"]) {
-    body = await fs4.readFile(values["body-file"], "utf8");
+    body = await fs5.readFile(values["body-file"], "utf8");
     bodySourceGiven = true;
   } else {
     const stdinBody = await readStdin();
@@ -10602,7 +10835,7 @@ async function docWrite(argv, deps) {
 }
 
 // src/commands/doc/update.ts
-import { promises as fs5 } from "node:fs";
+import { promises as fs6 } from "node:fs";
 import { parseArgs as parseArgs3 } from "node:util";
 var DOC_UPDATE_FIELD_FLAGS = ["title", "description", "tag", "type", "body", "body-file"];
 var DOC_UPDATE_VALUE_FLAGS = /* @__PURE__ */ new Set([
@@ -10791,7 +11024,7 @@ async function docUpdate(argv, deps) {
       if (!p.keepTimestamp) nextFrontmatter.timestamp = (/* @__PURE__ */ new Date()).toISOString();
       let nextBody = existing.body;
       if (p.body !== void 0) nextBody = p.body;
-      else if (p.bodyFile) nextBody = await fs5.readFile(p.bodyFile, "utf8");
+      else if (p.bodyFile) nextBody = await fs6.readFile(p.bodyFile, "utf8");
       else if (stdinBody !== void 0) nextBody = stdinBody;
       guardDroppedLinks(bundle, existing, nextBody, p.replaceLinks);
       if (p.kindFields.size > 0) {
@@ -10847,8 +11080,8 @@ async function docUpdate(argv, deps) {
 
 // src/commands/doc/read.ts
 import { parseArgs as parseArgs4 } from "node:util";
-import { promises as fs6 } from "node:fs";
-import path14 from "node:path";
+import { promises as fs7 } from "node:fs";
+import path15 from "node:path";
 
 // src/autopull.ts
 async function maybeAutoPull2(dir, opts = {}) {
@@ -10963,7 +11196,7 @@ async function docReadInner(argv, deps) {
         stderr(render(result, resolveMode(values)));
         return;
       }
-      await fs6.writeFile(bodyOut, bytes);
+      await fs7.writeFile(bodyOut, bytes);
       stdout(render(result, resolveMode(values)));
     };
     await runToTarget2();
@@ -11037,7 +11270,7 @@ async function docReadInner(argv, deps) {
       try {
         assertSafeConceptId(id);
         rel = pathFromConceptId(id);
-        bytes = await fs6.readFile(path14.join(bundle.root, rel));
+        bytes = await fs7.readFile(path15.join(bundle.root, rel));
       } catch (err) {
         throw readErrorToCliError(err, id, values.remote);
       }
@@ -11057,7 +11290,7 @@ async function docReadInner(argv, deps) {
     }
     const warning = inBundlePollutionWarning(bundle, out);
     if (warning) result.warning = warning;
-    await fs6.writeFile(out, bytes);
+    await fs7.writeFile(out, bytes);
     stdout(render(result, resolveMode(values)));
   };
   await runToTarget();
@@ -11073,10 +11306,10 @@ function requestsStdoutByteChannel(argv) {
 }
 async function assertSafeBodyOutTarget(bundle, bodyOut, id) {
   if (bundle.backend) return;
-  const lexicalTarget = path14.resolve(bodyOut);
-  const rootReal = await fs6.realpath(path14.resolve(bundle.root)).catch(() => path14.resolve(bundle.root));
+  const lexicalTarget = path15.resolve(bodyOut);
+  const rootReal = await fs7.realpath(path15.resolve(bundle.root)).catch(() => path15.resolve(bundle.root));
   const effectiveTarget = await effectiveOutputPath(lexicalTarget);
-  const inside = (candidate, base) => candidate === base || candidate.startsWith(base + path14.sep);
+  const inside = (candidate, base) => candidate === base || candidate.startsWith(base + path15.sep);
   const unsafeLexical = inside(lexicalTarget, rootReal) && lexicalTarget.endsWith(".md");
   const unsafeEffective = inside(effectiveTarget, rootReal) && effectiveTarget.endsWith(".md");
   if (!unsafeLexical && !unsafeEffective) return;
@@ -11091,11 +11324,11 @@ async function effectiveOutputPath(absoluteTarget) {
   const missingSuffix = [];
   while (true) {
     try {
-      return path14.join(await fs6.realpath(probe), ...missingSuffix);
+      return path15.join(await fs7.realpath(probe), ...missingSuffix);
     } catch {
-      const parent = path14.dirname(probe);
+      const parent = path15.dirname(probe);
       if (parent === probe) return absoluteTarget;
-      missingSuffix.unshift(path14.basename(probe));
+      missingSuffix.unshift(path15.basename(probe));
       probe = parent;
     }
   }
@@ -11123,9 +11356,9 @@ function formatFieldValue(value) {
 }
 function inBundlePollutionWarning(bundle, out) {
   if (bundle.backend) return void 0;
-  const resolvedOut = path14.resolve(out);
+  const resolvedOut = path15.resolve(out);
   const root = bundle.root;
-  const isInside = resolvedOut === root || resolvedOut.startsWith(root + path14.sep);
+  const isInside = resolvedOut === root || resolvedOut.startsWith(root + path15.sep);
   if (!isInside) return void 0;
   if (isReservedFile(resolvedOut)) {
     return `--out ${out} resolves to ${resolvedOut}, which is INSIDE this bundle (${root}) at a reserved OKF filename \u2014 the write will CLOBBER that reserved file (index.md/log.md is never re-parsed as a concept doc). Pass a path outside the bundle if that is not intended.`;
@@ -11285,7 +11518,7 @@ async function doc(argv, deps = {}) {
 
 // src/commands/promote.ts
 import { parseArgs as parseArgs7 } from "node:util";
-import { promises as fs7 } from "node:fs";
+import { promises as fs8 } from "node:fs";
 var PROMOTE_USAGE = `agentstate-lite promote \u2014 move a local file's bytes into the store (the reverse of 'doc read --out')
 
 Usage:
@@ -11387,7 +11620,7 @@ async function promote(argv, deps = {}) {
 async function promoteDoc(file, key, bundle, opts, stdout, mode, remoteUrl) {
   let raw;
   try {
-    raw = await fs7.readFile(file, "utf8");
+    raw = await fs8.readFile(file, "utf8");
   } catch (err) {
     throw promoteFileReadError(err, file);
   }
@@ -11429,7 +11662,7 @@ async function promoteDoc(file, key, bundle, opts, stdout, mode, remoteUrl) {
 async function promoteBlob(file, key, bundle, opts, stdout, mode, remoteUrl) {
   let bytes;
   try {
-    bytes = await fs7.readFile(file);
+    bytes = await fs8.readFile(file);
   } catch (err) {
     throw promoteFileReadError(err, file);
   }
@@ -11488,7 +11721,7 @@ function promoteWriteErrorToCliError(err, key, file, remoteUrl) {
 
 // src/commands/pull.ts
 import { parseArgs as parseArgs8 } from "node:util";
-import { promises as fs8 } from "node:fs";
+import { promises as fs9 } from "node:fs";
 var PULL_USAGE = `agentstate-lite pull \u2014 pull a doc or blob's bytes out of the store (the reverse of 'promote')
 
 Usage:
@@ -11636,7 +11869,7 @@ async function pull(argv, deps = {}) {
     }
     const warning = inBundlePollutionWarning(bundle, out);
     if (warning) receipt.warning = warning;
-    await fs8.writeFile(out, result.bytes);
+    await fs9.writeFile(out, result.bytes);
     stdout(render(receipt, mode));
   };
   if (!streamMode) {
@@ -12562,7 +12795,7 @@ async function list(argv, deps = {}) {
 
 // src/commands/new.ts
 import { parseArgs as parseArgs13 } from "node:util";
-import { promises as fs9 } from "node:fs";
+import { promises as fs10 } from "node:fs";
 var NEW_USAGE = `agentstate-lite new \u2014 create a new instance of a bundle-declared kind
 
 Usage:
@@ -12868,7 +13101,7 @@ async function newCommand(argv, deps = {}) {
       });
     }
     try {
-      suppliedBody = await fs9.readFile(bodyFile, "utf8");
+      suppliedBody = await fs10.readFile(bodyFile, "utf8");
     } catch (err) {
       throw new CliError(
         "USAGE",
@@ -14052,12 +14285,7 @@ function buildRouter(backend) {
       // deferred to v1 (docs/WIRE-PROTOCOL.md)
     };
     return jsonResponse(200, {
-      // `history` and `enforced_cas` have always been the SAME boolean on every adapter this
-      // router has ever served (a backend either keeps real history + enforces CAS, or does
-      // neither) — the seam's `capabilities()` shape deliberately doesn't grow a second field
-      // for a distinction no adapter has ever needed; this preserves the wire's existing
-      // `history` field from that one value rather than inventing a new one.
-      history: caps.enforced_cas,
+      history: caps.history ?? caps.enforced_cas,
       enforced_cas: caps.enforced_cas,
       projections: caps.projections ?? true,
       backlinks: caps.backlinks ?? false,
@@ -14206,9 +14434,8 @@ Options:
 Connect a client once this is running:
   agentstate-lite list --remote http://127.0.0.1:<port>
 
-Caveat: concurrent writes to the SAME doc from multiple clients hitting THIS server converge
-losslessly (FilesystemBackend serializes same-process writes per doc); a SECOND server (or a
-direct local CLI write) over the SAME directory is still best-effort \u2014 see STATUS.md.
+Caveat: concurrent writes to the same target across local clients and processes are serialized.
+A process crash can leave a runtime lock that fails closed until inspected and removed.
 `;
 var DEFAULT_SERVE_PORT = 4818;
 function defaultWaitForShutdown() {
@@ -14265,7 +14492,7 @@ async function serve2(argv, deps = {}) {
         url,
         root: bundle.root,
         auth: "none (v0 reference server; loopback-only default \u2014 see docs/WIRE-PROTOCOL.md)",
-        concurrency: "lossless for concurrent writers hitting THIS server (same-process, per-doc serialized); still best-effort across a SECOND serve process or a direct local write to the same directory (see STATUS.md)",
+        concurrency: "lossless per target across same-user local processes; a crash-leftover lock fails closed until inspected and removed",
         help: [`${cliInvocation()} list --remote ${url}`]
       },
       resolveMode(values)
@@ -14293,7 +14520,7 @@ import { spawn as spawn2 } from "node:child_process";
 import { createServer as createServer2 } from "node:http";
 
 // src/bundle-name.ts
-import path15 from "node:path";
+import path16 from "node:path";
 var BUNDLE_NAME_DOC_ID = "docs/bundle";
 var BUNDLE_NAME_DOC_TYPE = "Bundle Name";
 var FALLBACK_NAME = "bundle";
@@ -14311,9 +14538,9 @@ async function deriveBundleDisplayName(bundle) {
     }
   } catch {
   }
-  const base = path15.basename(bundle.root);
+  const base = path16.basename(bundle.root);
   if (base === CONVENTIONAL_BUNDLE_DIR_NAME) {
-    const parent = path15.basename(path15.dirname(bundle.root));
+    const parent = path16.basename(path16.dirname(bundle.root));
     if (parent) return { name: parent, source: "conventional-parent" };
   }
   return { name: base || FALLBACK_NAME, source: "root-basename" };
@@ -15025,19 +15252,19 @@ async function bootUiServer(options2) {
 
 // src/ui/url-file.ts
 import { readFile as readFile3, unlink as unlink2 } from "node:fs/promises";
-import { homedir as homedir5 } from "node:os";
+import { homedir as homedir6 } from "node:os";
 import { join as join6 } from "node:path";
 var UI_URL_FILE_NAME = "ui-url";
-function uiUrlFilePath(home2 = homedir5()) {
+function uiUrlFilePath(home2 = homedir6()) {
   return join6(credentialsDir(home2), UI_URL_FILE_NAME);
 }
-async function writeUiUrlFile(url, home2 = homedir5()) {
+async function writeUiUrlFile(url, home2 = homedir6()) {
   try {
     await writeFileAtomic0600(credentialsDir(home2), UI_URL_FILE_NAME, url + "\n");
   } catch {
   }
 }
-async function clearUiUrlFile(url, home2 = homedir5()) {
+async function clearUiUrlFile(url, home2 = homedir6()) {
   try {
     const current = (await readFile3(uiUrlFilePath(home2), "utf8")).trim();
     if (current === url.trim()) await unlink2(uiUrlFilePath(home2));
@@ -15220,13 +15447,13 @@ async function ui(argv, deps = {}) {
 
 // src/commands/sync.ts
 import { readFileSync as readFileSync5 } from "node:fs";
-import { promises as fs10 } from "node:fs";
-import path17 from "node:path";
+import { promises as fs11 } from "node:fs";
+import path18 from "node:path";
 import { parseArgs as parseArgs22 } from "node:util";
 
 // src/commands/hook.ts
 import { existsSync as existsSync6, readFileSync as readFileSync4, writeFileSync as writeFileSync3, rmSync as rmSync2 } from "node:fs";
-import { homedir as homedir6 } from "node:os";
+import { homedir as homedir7 } from "node:os";
 import { join as join7, dirname as dirname3 } from "node:path";
 import { mkdirSync as mkdirSync2 } from "node:fs";
 import { parseArgs as parseArgs21 } from "node:util";
@@ -15320,23 +15547,23 @@ function targetsFor(base) {
     opencodePlugin: join7(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
   };
 }
-function readSettings(path21) {
-  if (!existsSync6(path21)) return {};
+function readSettings(path22) {
+  if (!existsSync6(path22)) return {};
   try {
-    return JSON.parse(readFileSync4(path21, "utf8"));
+    return JSON.parse(readFileSync4(path22, "utf8"));
   } catch {
     return {};
   }
 }
-function writeSettings(path21, settings) {
-  mkdirSync2(dirname3(path21), { recursive: true });
-  writeFileSync3(path21, `${JSON.stringify(settings, null, 2)}
+function writeSettings(path22, settings) {
+  mkdirSync2(dirname3(path22), { recursive: true });
+  writeFileSync3(path22, `${JSON.stringify(settings, null, 2)}
 `);
 }
-function opencodePluginInstalled(path21) {
-  if (!existsSync6(path21)) return false;
+function opencodePluginInstalled(path22) {
+  if (!existsSync6(path22)) return false;
   try {
-    return readFileSync4(path21, "utf8").includes(OPENCODE_MANAGED_MARKER);
+    return readFileSync4(path22, "utf8").includes(OPENCODE_MANAGED_MARKER);
   } catch {
     return false;
   }
@@ -15426,7 +15653,7 @@ export const AxiAgentstateLiteAmbientContextPlugin = async ({ directory }) => {
 };
 `;
 }
-function hookNeedsUpdate(bases = [process.cwd(), homedir6()]) {
+function hookNeedsUpdate(bases = [process.cwd(), homedir7()]) {
   for (const base of bases) {
     const targets = targetsFor(base);
     for (const p of [targets.claudeSettings, targets.codexHooks]) {
@@ -15442,7 +15669,7 @@ function hookNeedsUpdate(bases = [process.cwd(), homedir6()]) {
   }
   return false;
 }
-function hookInstalled(bases = [process.cwd(), homedir6()]) {
+function hookInstalled(bases = [process.cwd(), homedir7()]) {
   for (const base of bases) {
     const targets = targetsFor(base);
     for (const p of [targets.claudeSettings, targets.codexHooks]) {
@@ -15484,7 +15711,7 @@ async function hook(argv, deps = {}) {
       help: `${cliInvocation()} hook ${sub} --scope project|global`
     });
   }
-  const base = deps.base ?? (scope === "global" ? homedir6() : process.cwd());
+  const base = deps.base ?? (scope === "global" ? homedir7() : process.cwd());
   const targets = targetsFor(base);
   const mode = resolveMode(values);
   if (sub === "status") {
@@ -15569,10 +15796,10 @@ async function hook(argv, deps = {}) {
     return;
   }
   let changed = false;
-  for (const path21 of [targets.claudeSettings, targets.codexHooks]) {
-    const [updated, didChange] = computeHookUninstall(readSettings(path21));
+  for (const path22 of [targets.claudeSettings, targets.codexHooks]) {
+    const [updated, didChange] = computeHookUninstall(readSettings(path22));
     if (didChange) {
-      writeSettings(path21, updated);
+      writeSettings(path22, updated);
       changed = true;
     }
   }
@@ -15614,7 +15841,7 @@ async function hookInstallHintOnce(key, inv, installed = hookInstalled) {
 
 // src/commands/sync-establish.ts
 import { existsSync as existsSync7, lstatSync as lstatSync2, readdirSync as readdirSync2, renameSync as renameSync2, rmSync as rmSync3 } from "node:fs";
-import path16 from "node:path";
+import path17 from "node:path";
 var ESTABLISH_DONE = "the shared board is live \u2014 .agentstate-lite/ now syncs over the 'board' branch";
 var ESTABLISH_ALREADY = "already established";
 function establishNextSteps(inv) {
@@ -15639,7 +15866,7 @@ function assertPlainBundleShape(bundlePath, inv) {
       `'${bundlePath}' must be a real, plain directory \u2014 symlinks and non-directories are never followed by establish`
     );
   }
-  if (existsSync7(path16.join(bundlePath, ".git"))) {
+  if (existsSync7(path17.join(bundlePath, ".git"))) {
     throw new CliError(
       "RUNTIME",
       `'${bundlePath}' already contains its own '.git' \u2014 establish only operates on a plain bundle folder`
@@ -15650,7 +15877,7 @@ function assertPlainBundleShape(bundlePath, inv) {
       help: runInitHelp
     });
   }
-  const indexPath = path16.join(bundlePath, "index.md");
+  const indexPath = path17.join(bundlePath, "index.md");
   if (!existsSync7(indexPath)) {
     throw new CliError(
       "RUNTIME",
@@ -15676,7 +15903,7 @@ function assertFreshSource(top, boardPath, inv) {
 async function assertNotBoundElsewhere(top, boardPath) {
   const binding = await resolveProjectBinding(top);
   if (!binding) return;
-  const boundIsConventional = path16.resolve(binding.target) === boardPath;
+  const boundIsConventional = path17.resolve(binding.target) === boardPath;
   if (boundIsConventional) return;
   throw new CliError(
     "RUNTIME",
@@ -15701,7 +15928,7 @@ function removeVerifiedBackup(top, backupPath, expectedCommit, inv) {
   rmSync3(backupPath, { recursive: true, force: false });
 }
 function finishLocalConversion(top, sourcePath, publishedCommit, expectedTree, inv) {
-  const boardPath = path16.join(top, BUNDLE_DIR);
+  const boardPath = path17.join(top, BUNDLE_DIR);
   const backupPath = `${boardPath}.establish-backup`;
   const remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
   if (!remoteCommit || !isAncestor(top, publishedCommit, remoteCommit)) {
@@ -15822,7 +16049,7 @@ async function establishBoard(dir, inv, mode, stdout, deps, opts = {}) {
   }
   fetchOriginRequired(top);
   clearStaleCommittedMarker(top);
-  const boardPath = path16.join(top, BUNDLE_DIR);
+  const boardPath = path17.join(top, BUNDLE_DIR);
   const backupPath = `${boardPath}.establish-backup`;
   let marker = readGitDirMarker(top, ESTABLISH_MARKER_KEY);
   let remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
@@ -15854,7 +16081,7 @@ async function establishBoard(dir, inv, mode, stdout, deps, opts = {}) {
         throw new CliError("RUNTIME", "the local board branch could not be provisioned for explicit establishment");
       }
     }
-    const indexPath = path16.join(boardPath, "index.md");
+    const indexPath = path17.join(boardPath, "index.md");
     if (!existsSync7(indexPath) || lstatSync2(indexPath).isSymbolicLink() || !lstatSync2(indexPath).isFile()) {
       throw new CliError("RUNTIME", `the local '${BOARD_BRANCH}' worktree is not a valid bundle (root index.md missing)`);
     }
@@ -16532,7 +16759,7 @@ var SYNC_IN_TREE_CURRENT = "checkout is current with upstream";
 async function syncInTree(dir, pullOnly, inv, mode, limit, stdout, deps) {
   const top = repoTopLevel(dir);
   if (!top) throw new CliError("RUNTIME", "not inside a git repository");
-  const boardPath = path17.join(top, BUNDLE_DIR);
+  const boardPath = path18.join(top, BUNDLE_DIR);
   if (!pullOnly) {
     const hasOrigin = runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0;
     throw new CliError("USAGE", syncInTreeRefusalMessage(inv, hasOrigin), {
@@ -16701,7 +16928,7 @@ async function syncCommand(argv, deps = {}) {
     return;
   }
   const boardPath = outcome.boardPath;
-  const top = path17.dirname(boardPath);
+  const top = path18.dirname(boardPath);
   if (outcome.kind === "repaired") {
     healStaleRebaseBeforeProvisioning(dir);
   }
@@ -16881,7 +17108,7 @@ async function showIncoming(id, values, deps) {
         { details: { state: "no-repo" } }
       );
     }
-    if (path17.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
+    if (path18.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
       throw new CliError("USAGE", `--show-incoming needs a repo-relative doc id or path without '..' segments: ${id}`);
     }
     let readRef = `refs/remotes/${BOARD_REF}`;
@@ -16943,7 +17170,7 @@ async function showIncoming(id, values, deps) {
         stderr(render(receipt, mode));
         return;
       }
-      await fs10.writeFile(out, bytes);
+      await fs11.writeFile(out, bytes);
       stdout(render(receipt, mode));
       return;
     }
@@ -17191,13 +17418,13 @@ function helpIndexText(invocation) {
 
 // src/commands/home.ts
 import { parseArgs as parseArgs23 } from "node:util";
-import path19 from "node:path";
+import path20 from "node:path";
 
 // src/catalog.ts
-import { randomUUID as randomUUID2 } from "node:crypto";
+import { randomUUID as randomUUID3 } from "node:crypto";
 import { chmod as chmod3, mkdir as mkdir3, open as open2, readFile as readFile4, stat, unlink as unlink3 } from "node:fs/promises";
-import { homedir as homedir7 } from "node:os";
-import path18 from "node:path";
+import { homedir as homedir8 } from "node:os";
+import path19 from "node:path";
 var CATALOG_FILE_NAME = "catalog.json";
 var CATALOG_LOCK_FILE_NAME = "catalog.lock";
 var CATALOG_SCHEMA_VERSION = 1;
@@ -17211,13 +17438,13 @@ var ID_PATTERN = /^bnd_[0-9a-f]{32}$/;
 function catalogDir(home2) {
   return credentialsDir(home2);
 }
-function catalogPath(home2 = homedir7()) {
-  return path18.join(catalogDir(home2), CATALOG_FILE_NAME);
+function catalogPath(home2 = homedir8()) {
+  return path19.join(catalogDir(home2), CATALOG_FILE_NAME);
 }
-function catalogLockPath(home2 = homedir7()) {
-  return path18.join(catalogDir(home2), CATALOG_LOCK_FILE_NAME);
+function catalogLockPath(home2 = homedir8()) {
+  return path19.join(catalogDir(home2), CATALOG_LOCK_FILE_NAME);
 }
-function isObject(value) {
+function isObject2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 function hasExactKeys(value, expected) {
@@ -17240,7 +17467,7 @@ function assertCatalogLabel(label) {
   }
 }
 function validateEntry(value, file, index) {
-  if (!isObject(value) || !hasExactKeys(value, ["id", "label", "locator"])) {
+  if (!isObject2(value) || !hasExactKeys(value, ["id", "label", "locator"])) {
     throw invalidCatalog(file, `entries[${index}] must contain exactly id, label, and locator`);
   }
   if (typeof value.id !== "string" || !ID_PATTERN.test(value.id)) {
@@ -17249,13 +17476,13 @@ function validateEntry(value, file, index) {
   if (typeof value.label !== "string" || !LABEL_PATTERN.test(value.label) || value.label.startsWith("bnd_")) {
     throw invalidCatalog(file, `entries[${index}].label is not a valid workspace label`);
   }
-  if (!isObject(value.locator) || !hasExactKeys(value.locator, ["kind", "path"])) {
+  if (!isObject2(value.locator) || !hasExactKeys(value.locator, ["kind", "path"])) {
     throw invalidCatalog(file, `entries[${index}].locator must contain exactly kind and path`);
   }
   if (value.locator.kind !== "local-path") {
     throw invalidCatalog(file, `entries[${index}].locator.kind must be "local-path"`);
   }
-  if (typeof value.locator.path !== "string" || !path18.isAbsolute(value.locator.path) || path18.normalize(value.locator.path) !== value.locator.path) {
+  if (typeof value.locator.path !== "string" || !path19.isAbsolute(value.locator.path) || path19.normalize(value.locator.path) !== value.locator.path) {
     throw invalidCatalog(file, `entries[${index}].locator.path must be a normalized absolute path`);
   }
   return {
@@ -17271,7 +17498,7 @@ function parseCatalog(raw, file) {
   } catch (err) {
     throw invalidCatalog(file, `invalid JSON (${err instanceof Error ? err.message : String(err)})`);
   }
-  if (!isObject(parsed)) throw invalidCatalog(file, "top level must be an object");
+  if (!isObject2(parsed)) throw invalidCatalog(file, "top level must be an object");
   if (parsed.schema_version !== CATALOG_SCHEMA_VERSION) {
     if (typeof parsed.schema_version === "number" && parsed.schema_version > CATALOG_SCHEMA_VERSION) {
       throw new CliError(
@@ -17299,7 +17526,7 @@ function parseCatalog(raw, file) {
   }
   return { schema_version: CATALOG_SCHEMA_VERSION, entries };
 }
-async function loadCatalog(home2 = homedir7(), signal) {
+async function loadCatalog(home2 = homedir8(), signal) {
   const file = catalogPath(home2);
   let raw;
   try {
@@ -17327,7 +17554,7 @@ function defaultProcessExists(pid) {
 function readLockMetadata(raw) {
   try {
     const value = JSON.parse(raw);
-    if (!isObject(value) || typeof value.pid !== "number" || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.created_at_ms !== "number" || !Number.isFinite(value.created_at_ms) || typeof value.token !== "string" || value.token.length === 0) {
+    if (!isObject2(value) || typeof value.pid !== "number" || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.created_at_ms !== "number" || !Number.isFinite(value.created_at_ms) || typeof value.token !== "string" || value.token.length === 0) {
       return null;
     }
     return { pid: value.pid, created_at_ms: value.created_at_ms, token: value.token };
@@ -17336,16 +17563,16 @@ function readLockMetadata(raw) {
   }
 }
 async function acquireCatalogLock(options2) {
-  const home2 = options2.home ?? homedir7();
+  const home2 = options2.home ?? homedir8();
   const dir = catalogDir(home2);
   const lockPath = catalogLockPath(home2);
   const now = options2.now ?? Date.now;
   const pid = options2.pid ?? process.pid;
   const sleep = options2.sleep ?? ((ms) => new Promise((resolve2) => setTimeout(resolve2, ms)));
-  const processExists = options2.processExists ?? defaultProcessExists;
+  const processExists2 = options2.processExists ?? defaultProcessExists;
   const waitMs = options2.lockWaitMs ?? DEFAULT_LOCK_WAIT_MS;
   const pollMs = options2.lockPollMs ?? DEFAULT_LOCK_POLL_MS;
-  const token = randomUUID2();
+  const token = randomUUID3();
   const started = now();
   await mkdir3(dir, { recursive: true, mode: DIR_MODE3 });
   await chmod3(dir, DIR_MODE3);
@@ -17383,7 +17610,7 @@ async function acquireCatalogLock(options2) {
     } catch (err) {
       if (err.code === "ENOENT") continue;
     }
-    if (owner && now() - owner.created_at_ms >= STALE_LOCK_MIN_AGE_MS && !processExists(owner.pid)) {
+    if (owner && now() - owner.created_at_ms >= STALE_LOCK_MIN_AGE_MS && !processExists2(owner.pid)) {
       throw new CliError("TRANSIENT", `stale workspace catalog lock at ${lockPath} belongs to absent PID ${owner.pid}`, {
         details: { retryable: true, stale: true, lock_path: lockPath, owner_pid: owner.pid },
         help: `remove ${lockPath} after confirming PID ${owner.pid} is absent, then retry`
@@ -17405,7 +17632,7 @@ async function acquireCatalogLock(options2) {
   }
 }
 async function mutateCatalog(decide, options2) {
-  const home2 = options2.home ?? homedir7();
+  const home2 = options2.home ?? homedir8();
   const release = await acquireCatalogLock({ ...options2, home: home2 });
   try {
     const current = await loadCatalog(home2);
@@ -17425,7 +17652,7 @@ async function mutateCatalog(decide, options2) {
 }
 function generatedId(options2, existing) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
-    const id = options2.createId?.() ?? `bnd_${randomUUID2().replaceAll("-", "")}`;
+    const id = options2.createId?.() ?? `bnd_${randomUUID3().replaceAll("-", "")}`;
     if (!ID_PATTERN.test(id)) throw new Error(`catalog id generator returned invalid id: ${id}`);
     if (!existing.has(id)) return id;
   }
@@ -17433,7 +17660,7 @@ function generatedId(options2, existing) {
 }
 async function addCatalogEntry(label, canonicalPath, options2 = {}) {
   assertCatalogLabel(label);
-  if (!path18.isAbsolute(canonicalPath)) throw new CliError("USAGE", "workspace catalog paths must be absolute");
+  if (!path19.isAbsolute(canonicalPath)) throw new CliError("USAGE", "workspace catalog paths must be absolute");
   const result = await mutateCatalog(async (current) => {
     const target = await resolveLocalBundleTarget(canonicalPath);
     if (target.canonicalRoot !== canonicalPath) {
@@ -17479,7 +17706,7 @@ async function entryAvailable(entry) {
     return false;
   }
 }
-async function listCatalogEntries(home2 = homedir7()) {
+async function listCatalogEntries(home2 = homedir8()) {
   const catalog2 = await loadCatalog(home2);
   return Promise.all(
     [...catalog2.entries].sort((a, b) => a.label.localeCompare(b.label)).map(async (entry) => ({ ...entry, available: await entryAvailable(entry) }))
@@ -17495,7 +17722,7 @@ function classifySelector(selector) {
   assertCatalogLabel(selector);
   return "label";
 }
-async function resolveCatalogEntry(selector, home2 = homedir7()) {
+async function resolveCatalogEntry(selector, home2 = homedir8()) {
   const catalog2 = await loadCatalog(home2);
   const kind2 = classifySelector(selector);
   const entry = catalog2.entries.find((item) => item[kind2] === selector);
@@ -17571,7 +17798,7 @@ async function defaultSummarizeBundle(dir) {
 }
 async function discoverSummarizeBundle(startDir) {
   try {
-    const root = await findBundleRoot(path19.resolve(startDir));
+    const root = await findBundleRoot(path20.resolve(startDir));
     return root ? defaultSummarizeBundle(root) : null;
   } catch {
     return null;
@@ -17656,7 +17883,7 @@ async function defaultLoadBoardStatus(dir) {
   try {
     const top = repoTopLevel(retargetBoardInterior(dir ?? process.cwd()));
     if (!top) return null;
-    const boardPath = path19.join(top, BUNDLE_DIR);
+    const boardPath = path20.join(top, BUNDLE_DIR);
     if (!isProvisioned(top)) {
       const remoteRefExists = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0;
       const probed = remoteRefExists || runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
@@ -17904,7 +18131,7 @@ async function home(argv, deps = {}) {
 
 // src/commands/session-start.ts
 import { parseArgs as parseArgs24 } from "node:util";
-import path20 from "node:path";
+import path21 from "node:path";
 var SESSION_START_PULL_BUDGET_MS = 7e3;
 var SESSION_START_CONNECT_TIMEOUT_SECONDS = 5;
 var MIN_USEFUL_BUDGET_MS = 250;
@@ -17949,7 +18176,7 @@ async function sessionStartPull(dir, budgetMs = SESSION_START_PULL_BUDGET_MS, no
     if (detection.channel.mode === "in-tree") {
       const top = repoTopLevel(startDir);
       if (!top) return void 0;
-      const boardPath2 = path20.join(top, BUNDLE_DIR);
+      const boardPath2 = path21.join(top, BUNDLE_DIR);
       const key2 = resolveBundleKey(boardPath2);
       await defaultSyncStore.refreshMarker(key2);
       if (remaining() < MIN_USEFUL_BUDGET_MS) return { offline: true, boardPath: boardPath2 };
@@ -18124,7 +18351,7 @@ async function bundleCommand(argv, deps = {}) {
 
 // src/commands/catalog.ts
 import { parseArgs as parseArgs26 } from "node:util";
-import { homedir as homedir8 } from "node:os";
+import { homedir as homedir9 } from "node:os";
 var CATALOG_USAGE = `agentstate-lite catalog \u2014 register and resolve this user's workspaces
 
 Usage:
@@ -18182,7 +18409,7 @@ function requestsPathField(argv) {
 async function catalogInner(argv, deps) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const cwd = deps.cwd ?? (() => process.cwd());
-  const home2 = deps.home ?? homedir8;
+  const home2 = deps.home ?? homedir9;
   const parsed = parseOrUsage(
     () => parseArgs26({
       args: argv,
