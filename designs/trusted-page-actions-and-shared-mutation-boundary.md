@@ -2,7 +2,7 @@
 type: Design
 title: Trusted Page Actions and a Shared Mutation Boundary
 actor: mike/codex
-timestamp: '2026-07-16T02:32:44.761Z'
+timestamp: '2026-07-16T02:58:51.015Z'
 ---
 # Trusted Page Actions and a Shared Mutation Boundary
 
@@ -39,6 +39,17 @@ The repository already has most of the low-level machinery:
 - The wire and storage seams already surface version conflicts.
 
 The missing architectural seam is a CLI-neutral document mutation service that trusted non-CLI consumers can call without bypassing document-level invariants.
+
+## Layering decision after the mutation audit
+
+The completed mutation audit separates two complementary guarantees:
+
+1. `FilesystemBackend` must make a version premise atomic across independent local processes. This protects the product as it exists now: two agents, or an agent CLI racing the UI/`serve` process, cannot both report success while one update disappears.
+2. The shared document mutation service must make document policy identical across trusted callers. It prevents the CLI and a future UI action from drifting on kind validation, semantic no-ops, actor propagation, retry posture, and final receipts.
+
+The shared-service extraction is now unblocked by the audit and may be developed independently. Cross-process filesystem CAS is not a source-code dependency of that refactor, but it is a correctness prerequisite for shipping writable Page actions: putting CLI and UI callers through one service does not make separate processes' filesystem check-and-write sequence atomic.
+
+Therefore the preferred sequence is: enforce cross-process filesystem CAS; pin the remaining `regenerateIndex` adversarial proof; extract the CLI-neutral document service without behavior change; only then expose the first human-confirmed Page mutation. These remain separate reviewed units. The filesystem work stays below semantic consumers, while the shared service remains document-policy-specific and does not absorb links, blobs, deletes, recipes, or reserved-file operations that correctly use lower-level primitives.
 
 ## Decision 1: extract the document mutation service below the CLI
 

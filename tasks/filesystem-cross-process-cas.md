@@ -1,13 +1,14 @@
 ---
 type: Task
 title: Enforce FilesystemBackend CAS across independent agent processes
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   Close the remaining silent lost-update window when separate CLI/serve
   processes mutate one local bundle.
 actor: mike/codex
-timestamp: '2026-07-16T02:51:41.428Z'
+assignee: mike/codex
+timestamp: '2026-07-16T02:58:51.127Z'
 ---
 # Behavioral claim
 
