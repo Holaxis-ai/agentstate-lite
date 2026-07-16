@@ -1,11 +1,56 @@
 ---
 type: Plan
 title: >-
-  Plan: rename the Page kind to View — dual-read window, shipped migration tool,
-  gated removal (UNDER VETTING)
+  Plan: rename the Page kind to View — PANEL-VETTED; three shapes await the
+  founders' ruling (C recommended)
 actor: brian-claude
-timestamp: '2026-07-16T15:31:48.395Z'
+timestamp: '2026-07-16T15:39:00.304Z'
 ---
+## PANEL VERDICTS + THE FOUNDERS' SHAPE DECISION (2026-07-16 — read this first)
+
+Skeptic: APPROVE-WITH-MODIFICATIONS. Mechanic: buildable, nothing unrealizable, three
+corrections, sizes grew. The panel surfaced a genuinely cheaper shape; the choice is a
+founders' call. THREE OPTIONS:
+
+- OPTION A — full plan below, AS MODIFIED: type rename + prefix moves + shipped
+  migration tool + two releases + live migration campaign. True sizes post-panel:
+  U1 M/L (alias-normalization is a 4-site typed-contract change: resolvePage
+  boolean->string|null threading bridge/PageFrame/App), U2 L at HIGH risk (the link
+  rewriter is hand-rolled per link — read + extractMarkdownLinks + resolve + replace
+  relative hrefs + CAS; resume must PROBE-then-act, not catch-VersionConflict-as-done),
+  U3 S (sequenced AFTER U2 — the banner names the command U2 creates), U4 M/L
+  (examples/pages->views cascades through BOTH distribution-resources tuple columns +
+  the review-workflow recipe + e2e harness re-seed), U5 M gated. MANDATORY panel
+  modifications if A: (M1) link rewrite touches ONLY markdown-link edges to moved docs
+  — NEVER bare prose or archival prefixes (the board has ~25 prose mentions in
+  historical records that must stay byte-identical; rewriting them falsifies review
+  history); (M2) the ordering gate mechanizes via the awareness store: enumerate the
+  board's known sync actors by name and require per-actor confirmation (no version
+  handshake exists in the protocol; enumerate-and-confirm is the floor); (M3)
+  parameterize core/page.ts (hasSafePageSegments already takes the prefix — wrappers
+  only; a parallel module would violate gate 3).
+- OPTION B — the skeptic's steel-man: RENAME THE TYPE ONLY. Dual type-match Page|View
+  in the shell (arguably permanent — one predicate) + the full teaching pass (U4).
+  Prefixes stay forever as internal ABI — the same argument the plan uses to keep
+  open-page's wire name. No tool, no removal release, no migrations, no gate, no
+  strand risk STRUCTURALLY. Cost ~S/M + U4. Residual: new View docs under a prefix
+  cosmetically named pages-registry/ — visible only in raw ids, which authoring
+  agents never type.
+- OPTION C (RECOMMENDED) — B plus forward-only prefixes: additionally accept
+  views-registry//views/ for NEW content (near-free: the grammar helper is already
+  prefix-parameterized), old content stays put forever, nothing migrates. Residual:
+  heterogeneous prefixes old-vs-new — cosmetic. Forecloses nothing: option A's
+  migration can still be built later against this vetted plan if pristine namespaces
+  ever earn their cost.
+
+SKEPTIC EVIDENCE THAT DROVE THE STEEL-MAN: the board's blobs contain NO hardcoded
+type/prefix queries except open-page navigation targets; only TWO real markdown links
+point at registry docs; the entire risk budget of A exists solely because ids move.
+Fold-in note: the founders' original defect statement was the KIND NAME in agent
+teaching — options B/C fix exactly that.
+
+DECISION PENDING (Brian ruling; Mike, weigh in — this doc is the shared framing).
+
 Binding implementation plan, code-grounded (2026-07-16, planner agent; VETTING IN
 PROGRESS — a skeptic + mechanic panel adjudicates before any build). Goal: remove the
 Page-vs-pages interface defect WITHOUT stranding any project's dashboards.
