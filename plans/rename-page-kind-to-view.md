@@ -1,11 +1,51 @@
 ---
 type: Plan
 title: >-
-  Plan: rename the Page kind to View — PANEL-VETTED; three shapes await the
-  founders' ruling (C recommended)
-actor: brian-claude
-timestamp: '2026-07-16T15:39:00.304Z'
+  Plan: rename the Page kind to View — RULING: Option C+ (type-only + forward
+  prefixes + nudge/audit); awaiting Mike's ack
+actor: brian
+timestamp: '2026-07-16T15:55:03.378Z'
 ---
+## RULING: OPTION C+ (Brian, 2026-07-16 — awaiting Mike's ack before any build)
+
+Chosen shape: C (type-only rename + forward-only prefixes) PLUS the convergence pair
+that emerged from Brian's drift challenge — a write-time legacy nudge and a
+re-runnable status audit. Nothing destructive anywhere in scope; nothing ever
+migrates; no project can be stranded, structurally.
+
+FINAL SCOPE, collapsed to three reviewable units:
+- UNIT 1 (S/M, ordinary tier) — dual reads: shell type-match accepts Page|View
+  (permanent); grammar accepts views-registry//views/ alongside the legacy prefixes
+  (parameterized wrappers over the existing prefix-parameterized helper, per panel
+  M3); the two two-query merges the mechanic located (server.ts nonce allowlist both
+  modes, api listPages). NOT needed under C+: alias-normalization (ids never move),
+  twin-dedup (no twins), recipe-parser dual grammar for OLD content (new recipes
+  author views-*).
+- UNIT 2 (S, ordinary tier) — the legacy-detection primitive, ONE predicate feeding
+  two surfaces: a write-time hint when a doc is authored with type Page ("legacy name
+  for View — new dashboards use type: View"), and a status AUDIT section (count +
+  ids of legacy-typed docs; old-prefix items listed as informational). Re-runnable,
+  read-only, zero mutation. This is the convergence mechanism: drift self-corrects
+  at the authoring moment (the channel agents heed) and the stock stays visible.
+- UNIT 3 (M/L, ordinary tier; regenerated-prose care) — the teaching pass: View
+  canonical everywhere agents learn (reference.ts, skill-render, ui help), examples +
+  review-workflow recipe re-authored under views-registry//views/ with type View
+  (cascades through distribution-resources both tuple columns + e2e harness re-seed),
+  docs/how-it-works section 7 + glossary updated (incl. retiring the capitalization-
+  collision caveat), conventions: NEW bundles seed conventions/view.md; this board
+  gains it alongside the grandfathered page convention.
+
+EXPLICITLY OUT OF SCOPE (deferred behind real demand, per the lazy rule — the audit
+is the work-list if that day comes): the migration tool, any id/prefix moves of
+existing content, the removal release, alias-normalization, ordering gates, any
+rewrite of historical prose. Old Page-typed content under old prefixes is LEGAL
+FOREVER; dual-read is permanent by design.
+
+WHY C+ over the full plan (one line): the defect was the KIND NAME in agent teaching;
+C+ fixes exactly that, converges new authoring by gradient (nudge) with visibility
+(audit), at ~a fifth of the cost and none of the destructive-write risk — and
+forecloses nothing.
+
 ## PANEL VERDICTS + THE FOUNDERS' SHAPE DECISION (2026-07-16 — read this first)
 
 Skeptic: APPROVE-WITH-MODIFICATIONS. Mechanic: buildable, nothing unrealizable, three
