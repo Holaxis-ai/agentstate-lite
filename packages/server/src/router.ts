@@ -490,14 +490,9 @@ function buildRouter(backend: StorageBackend): (req: Request) => Promise<Respons
   }
 
   function handleCapabilities(): Response {
-    // A degenerate backend states its limits instead of pretending (the FilesystemBackend
-    // honesty rule, promoted to the wire — docs/WIRE-PROTOCOL.md "Capabilities discovery").
-    // v0.1 (Stage-1 Unit 2b Part B): prefer the backend's OWN self-declaration
-    // (`StorageBackend.capabilities?.()`, `core/src/types.ts`) when it implements one — this
-    // is what lets a THIRD adapter report its real guarantees instead of
-    // being guessed at. `FilesystemBackend`/`MemoryBackend` deliberately do NOT implement it,
-    // so they fall through to the original `instanceof MemoryBackend` inference — the standing
-    // proof this addition is additive (neither in-repo adapter needed to change).
+    // Prefer a backend's own declaration; the fallback preserves compatibility for adapters
+    // written before capabilities() existed. History and CAS are independent: the filesystem
+    // now enforces CAS across processes but intentionally retains only its current revision.
     const declared = backend.capabilities?.();
     const caps = declared ?? {
       enforced_cas: backend instanceof MemoryBackend,
@@ -506,12 +501,7 @@ function buildRouter(backend: StorageBackend): (req: Request) => Promise<Respons
       backlinks: false, // deferred to v1 (docs/WIRE-PROTOCOL.md)
     };
     return jsonResponse(200, {
-      // `history` and `enforced_cas` have always been the SAME boolean on every adapter this
-      // router has ever served (a backend either keeps real history + enforces CAS, or does
-      // neither) — the seam's `capabilities()` shape deliberately doesn't grow a second field
-      // for a distinction no adapter has ever needed; this preserves the wire's existing
-      // `history` field from that one value rather than inventing a new one.
-      history: caps.enforced_cas,
+      history: caps.history ?? caps.enforced_cas,
       enforced_cas: caps.enforced_cas,
       projections: caps.projections ?? true,
       backlinks: caps.backlinks ?? false,

@@ -220,23 +220,9 @@ test("doc read --out --remote: canonical re-serialization is byte-identical to a
 });
 
 /**
- * Multi-writer convergence over `MemoryBackend`, not `FilesystemBackend`, and that choice is
- * load-bearing. `FilesystemBackend.write()`'s compare-and-swap is DOCUMENTED best-effort
- * (`core/src/backend.ts`: "hash the current bytes and compare... cannot fully close the
- * check-then-write race, POSIX has no atomic conditional rename"). Driving genuinely concurrent
- * writes to the SAME doc through one real `serve()` process exposed exactly that: `currentVersion()`
- * and the eventual `atomicWrite()` are separated by two `await` points, so under real concurrency
- * MANY writers can all observe the SAME pre-write version, all pass the CAS check, and all proceed
- * to write — producing SILENT lost updates (every individual `link add` reports `changed:true`, yet
- * the final doc reflects only ONE of them) rather than the `VersionConflict`s that `link add`'s
- * bounded retry loop is designed to catch and resolve. That is a genuine, pre-existing gap in the
- * DEGENERATE filesystem adapter's concurrency story, not something this CLI-wiring unit should
- * redesign (recorded honestly in STATUS.md's caveats instead). `MemoryBackend` has REAL enforced
- * CAS (see `core/src/memory-backend.ts` and `dual-backend.test.ts`), so testing convergence against
- * it here proves the thing Stage 1 Unit 3 actually claims: the WIRE PROTOCOL plus `link add`'s
- * bounded CAS-retry loop converge correctly under real concurrent HTTP load when the backend's CAS
- * is properly enforced — exactly the contract a document-centric remote backend (the flagship,
- * CLAUDE.md gate 3) provides.
+ * Multi-writer convergence over the historical MemoryBackend hard case. The filesystem adapter
+ * now enforces the same CAS premise through a cross-process lock; the separate test below keeps
+ * this wire-protocol proof backend-independent.
  *
  * Writer count is 5, not more, and that bound is load-bearing too: `link add`'s retry budget is
  * `LINK_ADD_MAX_ATTEMPTS = 5` (link.ts), which tolerates at most 4 `VersionConflict`s per writer
@@ -274,24 +260,15 @@ test("multi-writer convergence: N concurrent `link add`s to the SAME source doc 
 });
 
 /**
- * Same concurrent-writer shape as above, now over the DEGENERATE `FilesystemBackend` adapter too —
- * PROMOTED from a "never crashes" smoke check to a full lossless-convergence assertion, mirroring
- * the `MemoryBackend` test above. This is safe to assert now (previously it was NOT) because
- * `FilesystemBackend` gained a same-process per-key mutex (`core/src/backend.ts`'s
- * `FilesystemBackend.locks`/`withLock`) that serializes each write's full check-then-write critical
- * section per resolved file path: concurrent writers to the SAME doc now genuinely race for ONE
- * winner per round and get real `VersionConflict`s to retry on, instead of all silently "succeeding"
- * while only the last write survives. That closes the gap ONLY within one process — this is exactly
- * the `serve` case (multiple CLI clients -> one `serve` process -> one `FilesystemBackend`), which is
- * what this suite drives. Cross-process concurrent writers (two `serve` instances, or `serve` plus a
- * direct local CLI write, over the same directory) remain best-effort — see STATUS.md.
+ * Same concurrent-writer shape over FilesystemBackend through one server. A stronger built-process
+ * proof in `filesystem-cross-process-cas.test.ts` exercises independent local writers directly.
  *
  * Writer count is 5, not more, for the SAME reason as the `MemoryBackend` test above:
  * `LINK_ADD_MAX_ATTEMPTS = 5` in `link.ts` tolerates at most 4 `VersionConflict`s per writer under
  * worst-case lockstep interleaving. Do NOT raise the writer count here without also reasoning about
  * that budget (see the comment on the `MemoryBackend` test).
  */
-test("multi-writer convergence over FilesystemBackend (served, same-process): N concurrent `link add`s to the SAME source doc through one server now converge losslessly, thanks to the same-process per-key mutex", async () => {
+test("multi-writer convergence over FilesystemBackend: N concurrent `link add`s through one server converge losslessly", async () => {
   const dir = await tempDir();
   try {
     const bundle: Bundle = { root: dir };

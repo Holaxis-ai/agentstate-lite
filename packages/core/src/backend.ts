@@ -8,9 +8,8 @@
  * rename). It is the DEGENERATE case of the seam's hard contract: `version` is the
  * SHA of the on-disk bytes, and `versions()` reports only the single current
  * revision because a plain filesystem keeps no history. Compare-and-swap is
- * serialized (and therefore ATOMIC) for concurrent writers WITHIN this process (a
- * per-key promise-chain mutex, see `FilesystemBackend.locks`), but stays best-effort
- * (hash-then-rename, no atomic conditional write on POSIX) ACROSS processes.
+ * serialized per physical target across processes by a private runtime lock directory;
+ * a process-local promise queue avoids filesystem polling among callers in one process.
  * `MemoryBackend`
  * (`memory-backend.ts`) implements the SAME contract for the hard case; a remote
  * (HTTP/CF/D1) adapter is a FUTURE plug-in, never a rewrite of the engine.
@@ -36,6 +35,7 @@ import {
   toPosix,
 } from "./paths.js";
 import { InvalidInputError } from "./errors.js";
+import { withFilesystemMutationLock } from "./filesystem-lock.js";
 import { blobVersion, defaultActor, VersionConflict, versionOfBytes } from "./versioning.js";
 import type {
   BlobKey,
@@ -188,7 +188,8 @@ export class FilesystemBackend implements StorageBackend {
   private readonly root: string;
 
   /**
-   * Per-resolved-path promise chain serializing writes WITHIN this process.
+   * Per-resolved-path promise chain serializing writes within this process before the
+   * same-user cross-process filesystem lock is acquired.
    *
    * `write()`/`writeReserved()`'s compare-and-swap is check-then-write across two
    * `await`s (read the current version, then `atomicWrite`): without serialization, N
@@ -196,10 +197,10 @@ export class FilesystemBackend implements StorageBackend {
    * version, all pass the CAS check, and all proceed to write — every writer reports
    * success, only the last write survives, and no `VersionConflict` is ever thrown to
    * trigger a caller's retry loop. Queuing each write's full check-then-write critical
-   * section behind this per-key chain makes that section atomic per file WITHIN one
-   * process, so at most one writer can win a given `expectedVersion` and the rest
-   * observe a genuine `VersionConflict`. Reads stay lock-free (they are already
-   * consistent via atomic rename).
+   * section behind this per-key chain avoids needless polling between local callers.
+   * `withFilesystemMutationLock` then makes the same critical section exclusive across
+   * independent processes, so at most one writer can satisfy a given version premise.
+   * Reads stay lock-free because target replacement is atomic.
    *
    * STATIC, not per-instance: `core/src/bundle.ts`'s `backendFor()` constructs a FRESH
    * `FilesystemBackend` on every bundle operation when the caller passes a bare
@@ -215,10 +216,9 @@ export class FilesystemBackend implements StorageBackend {
    * `writeReserved()` (`index.md`/`log.md`) share one queue per physical file — the
    * only thing that actually needs serializing is contention on the same bytes.
    *
-   * Scope: this closes the race WITHIN one process only. Two `serve` processes (or a
-   * `serve` plus a direct local CLI invocation) over the same directory remain
-   * best-effort — see `docs/` / `STATUS.md`; only a document-centric remote backend
-   * with a real atomic conditional write closes the cross-process case.
+   * The external runtime lock is used for conditional and unconditional mutations alike: an
+   * unconditional writer must not move the target between another process's version
+   * check and write. A crash leftover fails closed with inspectable owner metadata.
    */
   private static readonly locks = new Map<string, Promise<unknown>>();
 
@@ -240,7 +240,8 @@ export class FilesystemBackend implements StorageBackend {
   private withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const locks = FilesystemBackend.locks;
     const tail = locks.get(key) ?? Promise.resolve();
-    const run = tail.then(fn, fn);
+    const locked = () => withFilesystemMutationLock(key, fn, { portableRoot: this.root });
+    const run = tail.then(locked, locked);
     const settled = run.then(
       () => undefined,
       () => undefined,
@@ -300,14 +301,11 @@ export class FilesystemBackend implements StorageBackend {
     assertSafeConceptId(id);
     const raw = stringifyDoc(doc.frontmatter, doc.body ?? "");
     const target = this.abs(pathFromConceptId(id));
-    // The whole check-then-write section runs inside `withLock` so concurrent writers to
-    // THIS id queue instead of racing the version check (see `locks`'s doc comment).
+    // The whole check-then-write section runs inside one local + same-user cross-process critical section.
     return this.withLock(target, async () => {
       if (options.expectedVersion !== undefined) {
-        // Compare-and-swap: hash the current bytes and compare. Serialized per-key via
-        // `withLock`, this is now atomic WITHIN this process; a concurrent writer in a
-        // DIFFERENT process (or POSIX's lack of an atomic conditional rename) is still a
-        // narrower, best-effort case — see `locks`'s doc comment.
+        // Compare-and-swap: hash the current bytes and compare while every filesystem
+        // mutation of this physical target is excluded by the same lock.
         const current = await this.currentVersionAt(target);
         if (current !== options.expectedVersion) {
           throw new VersionConflict(id, options.expectedVersion, current);
@@ -503,5 +501,15 @@ export class FilesystemBackend implements StorageBackend {
     const filtered = prefix ? keys.filter((k) => k.startsWith(prefix)) : keys;
     filtered.sort((a, b) => a.localeCompare(b));
     return filtered;
+  }
+
+  capabilities() {
+    return {
+      history: false,
+      enforced_cas: true,
+      blobs: true,
+      projections: true,
+      backlinks: false,
+    } as const;
   }
 }
