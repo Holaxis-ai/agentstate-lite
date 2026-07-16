@@ -8,7 +8,7 @@ description: >-
   processes mutate one local bundle.
 actor: mike/codex
 assignee: mike/codex
-timestamp: '2026-07-16T12:19:00.236Z'
+timestamp: '2026-07-16T13:39:55.497Z'
 ---
 # Behavioral claim
 
@@ -43,5 +43,6 @@ Draft PR: https://github.com/Holaxis-ai/agentstate-lite/pull/77
 - Active, stale, malformed, symlink-alias, and case-alias lock behavior is deterministic and fail-closed. Crash leftovers carry private owner metadata and are never auto-stolen.
 - Review against the merged `board-git` extraction found that adjacent locks could be captured by `git add -A` or greenfield snapshots. Runtime locks now live in a private per-user namespace selected outside the portable bundle; exact sync-staging and establishment-snapshot regressions pin that invariant.
 - Filesystem `enforced_cas` and retained `history` are now reported independently (`true` and `false`, respectively).
-- PR #77 was rebased onto current `main`; GitHub reports it mergeable with no source conflict against PRs #78-#81.
-- Exact commit `0aa9332` passed the full `npm run check` in a detached worktree, deterministic two-process CAS and five-process `link add` proofs, the two exact Git capture regressions, exact-SHA review, and an adversarial SIGKILL/recovery probe.
+- PR #77 was cleanly rebased onto current `main` after PR #82; no manual conflict resolution or patch change was required. GitHub reports it mergeable.
+- Exact commit `512b4c0` passed the full `npm run check` in a detached worktree, including PR #82's establish/window journeys, deterministic two-process CAS and five-process `link add` proofs, the two exact Git capture regressions, and an adversarial SIGKILL/recovery probe.
+- Post-rebase integration inspection found no conflict between the external CAS runtime state and PR #82's Git journeys. The prior patch review found no actionable issue; an independent second-agent review remains outstanding while the PR is draft.
