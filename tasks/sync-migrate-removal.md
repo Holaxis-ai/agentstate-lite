@@ -6,23 +6,27 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  TAKEN OVER by mike/claude 2026-07-16. Builder complete: PR #75
-  (feat/establish-committed-unification), reviewed candidate
-  75668b82944f91fb8925e1fd9cfc3b238f8c11a6. establish subsumes the
-  committed-folder case (all U5 guards carried verbatim per the PR's guard
-  table: snapshot-first, preview+--yes, orphan root,
-  behind-origin/namespace/dead-fetch refusals, side-branch removal commit, never
-  git clean); sync-migrate.ts deleted with coverage PORTED not dropped;
-  --migrate is a recognized retired spelling (USAGE pointer at --establish);
-  docs trilogy + protection + README legibility shipped; carried findings
-  adjudicated (PR#26 moot-by-structure + regression test; U5 crash discriminator
-  implemented as write-time marker enabling foreign-origin/board and
-  stale-snapshot refusals). All gates exit 0 incl. check:skill regen. Caveat:
-  main advanced (#74) after branching — merged-tree gates pending review.
-  HIGH-RISK tier: independent review IN FLIGHT, adversarial QA to follow.
+  TAKEN OVER by mike/claude 2026-07-16. PR #75 candidate
+  75668b82944f91fb8925e1fd9cfc3b238f8c11a6. Independent review:
+  APPROVE-WITH-NITS — no guard weakened, coverage ported 1:1 (14 old tests
+  mapped into 18 new + 4 new adversarial pins), gates exit 0 on BOTH the PR tree
+  and a local merge with main (builder's caveat closed), 69/69 adversarial smoke
+  incl. reviewer-original attacks (forged garbage-sha marker refused; forged
+  real-sha marker = documented worst case only; linked-worktree marker resolves
+  to per-worktree gitdir correctly). Six non-blocking nits recorded: duplicate
+  no-op cleanup branch behind forged real-sha marker + explicit --yes (accepted
+  worst case); CONFLICT wording inaccurate for invalid marker sha; stale
+  committed-case marker never cleared on fully-shared clones (harmless debris);
+  committed BLOB named .agentstate-lite hits a confusing greenfield refusal
+  (extreme edge, defense-in-depth works); internal comments retain migration
+  framing (git.ts:18,425,619, session-start.ts:250); --yes ignored on greenfield
+  judged acceptable. Wording/debris nits queued for the Sonnet follow-up PR
+  alongside the cursor split. HIGH-RISK tier: adversarial QA IN FLIGHT
+  (orthogonal attack classes: concurrency, kill-mid-sequence, filters/autocrlf,
+  shallow clones, non-ASCII).
 actor: mike/claude
 assignee: mike/claude
-timestamp: '2026-07-16T01:49:11.402Z'
+timestamp: '2026-07-16T02:00:52.025Z'
 ---
 ## Why the rescope (the Broken-Leash analysis, 2026-07-09)
 
