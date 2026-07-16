@@ -6959,25 +6959,76 @@ function shellQuote(s) {
 function moveAsideHelp(boardPath, note) {
   return `mv ${shellQuote(boardPath)} ${shellQuote(`${boardPath}.bak`)}  # ${note}`;
 }
-function preShareWindowError(boardPath, originConfigured = true) {
-  if (!originConfigured) {
-    return new BoardGitError(
-      "RUNTIME",
-      `a previously fetched '${BOARD_REF}' ref shows this project's board was shared, but no '${BOARD_REMOTE}' remote is configured here any more \u2014 '${BUNDLE_DIR}' is still the old folder committed on this branch, and sync cannot pull the shared board without the remote`,
-      {
-        details: { path: boardPath, state: "pre-share-window", origin_configured: false },
-        help: `git remote add ${BOARD_REMOTE} <url>  # restore the remote, 'git pull' once the cleanup PR merges, then re-run sync`
-      }
-    );
-  }
-  return new BoardGitError(
-    "RUNTIME",
-    `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is still the old folder committed on this branch \u2014 the folder-removal (cleanup) PR hasn't merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', then run sync again`,
-    {
-      details: { path: boardPath, state: "pre-share-window" },
-      help: "git pull  # after the cleanup PR merges, then re-run sync"
+function isShallowRepository(top) {
+  const r = runGit(top, ["rev-parse", "--is-shallow-repository"]);
+  return r.status !== 0 || r.stdout.trim() !== "false";
+}
+function tryFastForwardAdoptLocalBoard(top, localSha, remoteSha) {
+  if (localSha.length === 0 || remoteSha.length === 0) return false;
+  if (isShallowRepository(top)) return false;
+  const list2 = runGit(top, ["worktree", "list", "--porcelain"]);
+  if (list2.status !== 0) return false;
+  const lines = list2.stdout.split("\n");
+  if (lines.includes(`branch refs/heads/${BOARD_BRANCH}`)) return false;
+  for (const wt of lines.filter((l) => l.startsWith("worktree ")).map((l) => l.slice("worktree ".length))) {
+    if (!existsSync2(wt)) continue;
+    try {
+      if (detectStaleRebase(wt) && rebaseWasFromBoardBranch(wt)) return false;
+    } catch {
+      return false;
     }
-  );
+  }
+  if (runGit(top, ["merge-base", "--is-ancestor", localSha, remoteSha]).status !== 0) return false;
+  return runGit(top, ["update-ref", `refs/heads/${BOARD_BRANCH}`, remoteSha, localSha]).status === 0;
+}
+function trackedBoardRemnantPaths(top) {
+  const branch = currentBranch(top);
+  if (branch === "HEAD" || branch === BOARD_BRANCH) return null;
+  const remoteRef = `refs/remotes/${BOARD_REMOTE}/${branch}`;
+  if (runGit(top, ["rev-parse", "--verify", "--quiet", remoteRef]).status !== 0) return null;
+  if (runGit(top, ["cat-file", "-e", `${remoteRef}:${BUNDLE_DIR}`]).status === 0) return null;
+  if (runGit(top, ["merge-base", "--is-ancestor", remoteRef, "HEAD"]).status !== 0) return null;
+  const ls = runGit(top, ["ls-tree", "-r", "-z", "--name-only", "HEAD", "--", BUNDLE_DIR]);
+  if (ls.status !== 0) return null;
+  const paths = ls.stdout.split("\0").filter((p) => p.length > 0);
+  return paths.length > 0 ? paths : null;
+}
+function boardWindowGuidance(top, originConfigured = true) {
+  if (!originConfigured) {
+    return {
+      state: "pre-share-window",
+      originConfigured,
+      message: `a previously fetched '${BOARD_REF}' ref shows this project's board was shared, but no '${BOARD_REMOTE}' remote is configured here any more \u2014 '${BUNDLE_DIR}' is still the old folder committed on this branch, and sync cannot pull the shared board without the remote`,
+      help: `git remote add ${BOARD_REMOTE} <url>  # restore the remote, 'git pull' once the cleanup PR merges, then re-run sync`
+    };
+  }
+  const remnants = trackedBoardRemnantPaths(top);
+  if (remnants !== null) {
+    const plural = remnants.length !== 1;
+    return {
+      state: "window-remnant",
+      originConfigured,
+      trackedRemnants: remnants,
+      message: `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE} and the folder-removal (cleanup) commit has already been pulled here, but ${remnants.length} ${plural ? "paths" : "path"} under '${BUNDLE_DIR}/' ${plural ? "are" : "is"} still tracked on this branch \u2014 a board commit merged over the removal re-added ${plural ? "them" : "it"}, so 'git pull' has nothing left to fix: untrack ${plural ? "those paths" : "that path"}, then re-run sync`,
+      help: `git rm -r --cached -- ${BUNDLE_DIR} && git commit -m 'board: untrack leftover board paths', then mv ${BUNDLE_DIR} ${BUNDLE_DIR}.bak and re-run sync \u2014 it provisions the shared board; reconcile any docs from the backup afterwards with doc update`
+    };
+  }
+  return {
+    state: "pre-share-window",
+    originConfigured,
+    message: `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is still the old folder committed on this branch \u2014 the folder-removal (cleanup) PR hasn't merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', then run sync again`,
+    help: "git pull  # after the cleanup PR merges, then re-run sync"
+  };
+}
+function preShareWindowError(top, boardPath, originConfigured = true) {
+  const guidance = boardWindowGuidance(top, originConfigured);
+  const details = { path: boardPath, state: guidance.state };
+  if (!guidance.originConfigured) details.origin_configured = false;
+  if (guidance.trackedRemnants) {
+    const shown = guidance.trackedRemnants.slice(0, 20);
+    details.tracked_remnants = { shown: shown.length, total: guidance.trackedRemnants.length, rows: shown };
+  }
+  return new BoardGitError("RUNTIME", guidance.message, { details, help: guidance.help });
 }
 function provisionBoardWorktree(dir, budget = {}) {
   const top = repoTopLevel(dir);
@@ -7000,6 +7051,7 @@ function provisionBoardWorktree(dir, budget = {}) {
   };
   let remoteState = "absent";
   let remoteBoardKnownAbsent = false;
+  let liveFetch = false;
   if (hasOrigin) {
     const probe = runNetwork([
       "ls-remote",
@@ -7026,6 +7078,7 @@ function provisionBoardWorktree(dir, budget = {}) {
           `+refs/heads/${BOARD_BRANCH}:refs/remotes/${BOARD_REF}`
         ]);
         remoteState = fetch2?.status === 0 ? "absent" : "unknown";
+        liveFetch = fetch2?.status === 0;
       } else {
         remoteState = "unknown";
       }
@@ -7047,10 +7100,17 @@ function provisionBoardWorktree(dir, budget = {}) {
       remoteState
     };
   }
+  let ffAdopted;
+  const adoptLocalBoard = () => {
+    if (ffAdopted === void 0) {
+      ffAdopted = hasRemote && liveFetch && tryFastForwardAdoptLocalBoard(top, localBoard.stdout.trim(), remoteBoard.stdout.trim());
+    }
+    return ffAdopted;
+  };
   if (existsSync2(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
       if (hasRemote && !hasWorktreeSignature(boardPath) && runGit(top, ["cat-file", "-e", `HEAD:${BUNDLE_DIR}`]).status === 0) {
-        throw preShareWindowError(boardPath, hasOrigin);
+        throw preShareWindowError(top, boardPath, hasOrigin);
       }
       const hadSignature = hasWorktreeSignature(boardPath);
       let reason = "foreign";
@@ -7092,12 +7152,12 @@ function provisionBoardWorktree(dir, budget = {}) {
         help: messages[reason].help
       });
     }
-    if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote) {
+    if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote && !adoptLocalBoard()) {
       return { kind: "local_board", boardPath, remoteExists: hasRemote };
     }
     rmdirSync(boardPath);
   }
-  if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote) {
+  if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote && !adoptLocalBoard()) {
     return { kind: "local_board", boardPath, remoteExists: hasRemote };
   }
   const r = hasLocal ? runGit(top, [...RELATIVE_WORKTREE_CONFIG, "worktree", "add", boardPath, BOARD_BRANCH]) : runGit(top, [
@@ -7117,7 +7177,7 @@ function provisionBoardWorktree(dir, budget = {}) {
     }
     throw classifyGitError(failureOf(["worktree", "add"], r));
   }
-  return { kind: "provisioned", boardPath, source: hasLocal ? "local" : "remote" };
+  return { kind: "provisioned", boardPath, source: hasLocal && ffAdopted !== true ? "local" : "remote" };
 }
 function detectStaleRebase(boardPath) {
   return existsSync2(worktreeGitPath(boardPath, "rebase-merge")) || existsSync2(worktreeGitPath(boardPath, "rebase-apply"));
@@ -7638,9 +7698,21 @@ function writeGitDirMarker(top, key, commit) {
   renameSync(temporary, target);
 }
 function clearGitDirMarker(top, key) {
+  clearGitDirMarkerVerified(top, key);
+}
+function gitDirMarkerPath(top, key) {
+  return markerPath(top, key);
+}
+function clearGitDirMarkerVerified(top, key) {
   try {
-    unlinkSync(markerPath(top, key));
+    const target = markerPath(top, key);
+    try {
+      unlinkSync(target);
+    } catch {
+    }
+    return !existsSync3(target);
   } catch {
+    return false;
   }
 }
 function parseLsTreeZ(out) {
@@ -7752,8 +7824,10 @@ function detectBoardChannel(dir, options2 = {}) {
   const remote = options2.remoteBoardState ? options2.remoteBoardState(top) : probeRemoteBoardState(top, options2.budget);
   if (tracked) {
     if (remote === "exists") {
-      if (verifiedForeignBoardRoot(top)) throw dualBoardError(boardPath);
-      throw preShareWindowError(boardPath, runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0);
+      if (trackedBoardRemnantPaths(top) === null && verifiedForeignBoardRoot(top)) {
+        throw dualBoardError(boardPath);
+      }
+      throw preShareWindowError(top, boardPath, runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0);
     }
     if (remote === "absent") {
       return { kind: "channel", channel: { mode: "in-tree" } };
@@ -15688,6 +15762,22 @@ function finishLocalConversion(top, sourcePath, publishedCommit, expectedTree, i
     throw err;
   }
 }
+function markerCommitResolves(top, marker) {
+  return runGit(top, ["cat-file", "-e", `${marker}^{commit}`]).status === 0;
+}
+function clearStaleCommittedMarker(top) {
+  const marker = readGitDirMarker(top, COMMITTED_MARKER_KEY);
+  if (!marker) return;
+  const remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
+  if (!remoteCommit) return;
+  if (markerCommitResolves(top, marker) && isAncestor(top, marker, remoteCommit)) {
+    clearGitDirMarker(top, COMMITTED_MARKER_KEY);
+    return;
+  }
+  if (isShallowRepository(top)) return;
+  if (localBranchExists(top, BOARD_BRANCH) && !isProvisioned(top)) return;
+  clearGitDirMarker(top, COMMITTED_MARKER_KEY);
+}
 async function renderEstablished(top, conversion, snapshot2, inv, mode, stdout, deps) {
   const key = resolveBundleKey(conversion.boardPath);
   await defaultSyncStore.refreshMarker(key);
@@ -15731,6 +15821,7 @@ async function establishBoard(dir, inv, mode, stdout, deps, opts = {}) {
     return establishCommitted(top, inv, mode, Boolean(opts.yes), committedTree, stdout);
   }
   fetchOriginRequired(top);
+  clearStaleCommittedMarker(top);
   const boardPath = path16.join(top, BUNDLE_DIR);
   const backupPath = `${boardPath}.establish-backup`;
   let marker = readGitDirMarker(top, ESTABLISH_MARKER_KEY);
@@ -15887,7 +15978,7 @@ function committedPreviewRecord(inv, branch) {
     commit: `ONE commit on a new local '${CLEANUP_BRANCH}' branch removing ${BUNDLE_DIR}/ from '${branch}' and adding it to .gitignore \u2014 NOT pushed: you push that branch and open the PR yourself; nothing on '${branch}' is pushed or changed`,
     after_merge: `once the PR merges, on every clone: 'git pull' makes ${BUNDLE_DIR}/ vanish from '${branch}', and the next '${inv} sync' re-creates it from the ${BOARD_BRANCH} branch \u2014 nothing is lost`,
     both_worlds: bothWorldsLine(branch),
-    before_you_run: `every board writer should sync \u2014 at minimum commit \u2014 their board changes first: board work sitting uncommitted or unpushed on another machine cannot be detected from here, and it will NOT be on the new branch`,
+    before_you_run: `every board writer should sync \u2014 at minimum commit \u2014 their board changes first: board work sitting uncommitted or unpushed on another machine cannot be detected from here, and it will NOT be on the new branch; worse, a clone whose unpushed board commits merge over the cleanup PR keeps those ${BUNDLE_DIR}/ paths tracked on '${branch}', and sync will refuse there until they are untracked (git rm -r --cached)`,
     verified: `this preview already checked the machine-checkable preconditions: ${BOARD_REMOTE} is reachable, '${branch}' is not behind ${BOARD_REMOTE}/${branch} on board changes, and no '${BOARD_BRANCH}/\u2026' branches exist (they would block creating the '${BOARD_BRANCH}' branch)`,
     rollout_note: rolloutNote(inv, branch),
     run: `${inv} sync --establish --yes`
@@ -16027,22 +16118,38 @@ async function alreadyShared(top, inv, mode, yes, fetchOk, stdout) {
       );
     }
     const remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
-    const contained = remoteCommit !== void 0 && isAncestor(top, marker, remoteCommit);
-    if (!contained && fetchOk) {
+    const markerValid = markerCommitResolves(top, marker);
+    const contained = markerValid && remoteCommit !== void 0 && isAncestor(top, marker, remoteCommit);
+    if (!contained && fetchOk && isShallowRepository(top)) {
+      const unshallow = `git fetch --unshallow ${BOARD_REMOTE}`;
+      if (!yes) {
+        rec.note = `an earlier establishment on this clone was interrupted, but this clone's git history is shallow (truncated), so establish cannot verify whether that attempt's snapshot was published \u2014 deepen the history (${unshallow}), then re-run '${inv} sync --establish' (nothing has been changed by this run)`;
+      } else {
+        throw new CliError(
+          "RUNTIME",
+          `establish refused: this clone's git history is shallow (truncated), so the interrupted establishment's snapshot cannot be verified against origin/${BOARD_BRANCH}; nothing was changed`,
+          {
+            details: { snapshot_commit: marker },
+            help: `${unshallow}  # then re-run ${inv} sync --establish`
+          }
+        );
+      }
+    } else if (!contained && fetchOk) {
+      const story = markerValid ? `a different board is published on ${BOARD_REMOTE}/${BOARD_BRANCH} and this clone's earlier establishment snapshot is not part of it` : `this clone's establishment marker is invalid or unverifiable (it names a commit that cannot be found even after fetching), and the board published on ${BOARD_REMOTE}/${BOARD_BRANCH} cannot be tied to it`;
       if (!localBranchExists(top, BOARD_BRANCH)) {
-        clearGitDirMarker(top, COMMITTED_MARKER_KEY);
-        rec.cleared = `a different board was published to ${BOARD_REMOTE}/${BOARD_BRANCH} and this clone's earlier establishment attempt was never published \u2014 its stale marker has been cleared (the only change made by this run)`;
+        const cleared = clearGitDirMarkerVerified(top, COMMITTED_MARKER_KEY);
+        rec.cleared = cleared ? `${story} \u2014 its stale marker has been cleared (the only change made by this run)` : `${story} \u2014 its stale marker could NOT be removed (this run changed nothing); remove it by hand: rm ${gitDirMarkerPath(top, COMMITTED_MARKER_KEY)}`;
         rec.note = windowNote(top, inv, branch);
       } else if (!yes) {
-        rec.note = `a different board was published to ${BOARD_REMOTE}/${BOARD_BRANCH} \u2014 this clone's earlier '--establish --yes' lost that race and its attempted board was never published; nothing has been changed by this run`;
+        rec.note = `${story} \u2014 this clone's earlier '--establish --yes' did not win; nothing has been changed by this run`;
         rec.discard = `git branch -D ${BOARD_BRANCH}, then re-run '${inv} sync --establish' \u2014 the stale marker is cleared automatically once the branch is gone`;
       } else {
         throw new CliError(
           "CONFLICT",
-          `origin/${BOARD_BRANCH} does not contain this clone's interrupted establishment snapshot \u2014 a different board was published; nothing was changed, and the committed folder here is untouched`,
+          markerValid ? `origin/${BOARD_BRANCH} does not contain this clone's interrupted establishment snapshot \u2014 a different board is published now; nothing was changed, and the committed folder here is untouched` : `this clone's establishment marker is invalid or unverifiable \u2014 it names a commit that cannot be found even after fetching, so establish cannot tie it to what origin/${BOARD_BRANCH} publishes; nothing was changed, and the committed folder here is untouched`,
           {
             details: { snapshot_commit: marker },
-            help: `coordinate with whoever published origin/${BOARD_BRANCH}; to discard this clone's never-published attempt: git branch -D ${BOARD_BRANCH}, then re-run '${inv} sync --establish' \u2014 the stale marker is cleared automatically once the branch is gone`
+            help: `coordinate with whoever published origin/${BOARD_BRANCH}; to discard this clone's unpublished attempt: git branch -D ${BOARD_BRANCH}, then re-run '${inv} sync --establish' \u2014 the stale marker is cleared automatically once the branch is gone`
           }
         );
       }
@@ -16086,6 +16193,8 @@ async function alreadyShared(top, inv, mode, yes, fetchOk, stdout) {
   stdout(render(rec, mode));
 }
 function windowNote(top, inv, branch) {
+  const guidance = boardWindowGuidance(top);
+  if (guidance.state === "window-remnant") return guidance.message;
   const landedUpstream = pathLandedAbsentOnRemoteBranch(top, branch, BUNDLE_DIR);
   return landedUpstream ? `this clone still carries the committed ${BUNDLE_DIR}/ folder and the folder-removal has already landed on '${branch}' \u2014 run 'git pull' (the folder vanishes), then '${inv} sync' (it returns as the live board)` : `this clone still carries the committed ${BUNDLE_DIR}/ folder \u2014 once the folder-removal lands on the default branch: 'git pull' (the folder vanishes), then '${inv} sync' (it returns as the live board)`;
 }
@@ -16183,6 +16292,13 @@ branch alongside them). It reports 'already established' (exit 0) once a board b
 origin \u2014 with state-aware guidance, including re-creating the folder-removal commit when an
 interrupted run left it missing. Coordinate first: every board writer syncs (at minimum commits)
 their board work before anyone establishes.
+
+Two edge states are ACCEPTED rather than auto-resolved. (1) On a case-insensitive filesystem, a
+committed folder whose name differs from \`.agentstate-lite\` only by case (a state this CLI never
+creates) can misroute establishment \u2014 rename it to the exact lowercase spelling first. (2) Deleting
+the remote \`board\` branch in the middle of the both-worlds window (a deliberate, destructive,
+out-of-band act) leaves the prepared cleanup PR pointing at a board that no longer exists \u2014 do not
+merge that PR; re-run \`sync --establish\` to publish the board again first.
 
 Options:
   --pull-only          Only fast-forward from origin (never rebase); skip commit + push
@@ -17510,6 +17626,7 @@ function countOr(live, cached) {
 function buildBoardBlock(status2, pull2, inv) {
   if (!status2) return {};
   if (status2.state === "unprovisioned") return { firstContact: boardFirstContactLine(inv) };
+  if (status2.state === "window") return { firstContact: status2.line };
   const inTree = status2.state === "in-tree";
   const rec = {};
   if (pull2?.announcement) Object.assign(rec, pull2.announcement);
@@ -17541,7 +17658,16 @@ async function defaultLoadBoardStatus(dir) {
     if (!top) return null;
     const boardPath = path19.join(top, BUNDLE_DIR);
     if (!isProvisioned(top)) {
-      const probed = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0 || runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
+      const remoteRefExists = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0;
+      const probed = remoteRefExists || runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
+      if (remoteRefExists && folderTreeAtHead(top) !== null && !hasWorktreeSignature(boardPath)) {
+        try {
+          detectBoardChannel(top, { remoteBoardState: () => "exists" });
+        } catch (err) {
+          if (isBoardGitError(err)) return { state: "window", line: err.message };
+          throw err;
+        }
+      }
       if (probed) return { state: "unprovisioned" };
       if (folderTreeAtHead(top) !== null && !hasWorktreeSignature(boardPath)) {
         const key2 = resolveBundleKey(boardPath);
