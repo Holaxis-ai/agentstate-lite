@@ -9,7 +9,7 @@
 // the SAME head projection `list` uses (`queryHeads` — no bodies), so a scan is cheap.
 import { watch as fsWatch, type FSWatcher } from "node:fs";
 import { listBlobs, readBlob, queryHeads, type Bundle } from "@agentstate-lite/core";
-import { PAGE_BLOB_PREFIX } from "./pages.js";
+import { PAGE_BLOB_PREFIXES } from "./pages.js";
 
 /** The single-bundle reference router's bundle segment (mirrors the SPA client's `BUNDLE`). */
 const REMOTE_BUNDLE = "default";
@@ -57,16 +57,18 @@ export function isEmptyChange(e: ChangeEvent): boolean {
   );
 }
 
-/** Snapshot a local bundle: doc heads via `queryHeads` (no bodies), page-blob versions via `listBlobs(pages/)` + `readBlob` (pages are small; only the hot-reloadable prefix is scanned). Routes through core's engine wrappers, so a pluggable backend is honored (gate 3). */
+/** Snapshot a local bundle: doc heads via `queryHeads` (no bodies), page-blob versions via `listBlobs` over each accepted page prefix (`views/` + legacy `pages/`) + `readBlob` (pages are small; only the hot-reloadable prefixes are scanned). Routes through core's engine wrappers, so a pluggable backend is honored (gate 3). */
 export async function snapshotBundle(bundle: Bundle): Promise<Snapshot> {
   const heads = await queryHeads(bundle, {});
   const docs = new Map<string, string>(heads.map((h) => [h.id, h.version]));
   const blobs = new Map<string, string>();
-  let keys: string[] = [];
-  try {
-    keys = await listBlobs(bundle, PAGE_BLOB_PREFIX);
-  } catch {
-    keys = [];
+  const keys: string[] = [];
+  for (const prefix of PAGE_BLOB_PREFIXES) {
+    try {
+      keys.push(...(await listBlobs(bundle, prefix)));
+    } catch {
+      // an unreadable prefix contributes nothing to this snapshot
+    }
   }
   for (const key of keys) {
     try {

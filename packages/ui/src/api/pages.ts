@@ -12,7 +12,7 @@
 import { getDoc, listAllHeads, parseErrorEnvelope } from "./client.js";
 import type { Edge, EdgesResponse, Frontmatter } from "./types.js";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
-import { parseRegisteredPage, type BridgeCapability } from "../pages/registry.js";
+import { PAGE_TYPE_NAMES, parseRegisteredPage, type BridgeCapability } from "../pages/registry.js";
 
 /** `/__ui/config` shape (server `configResponse`). */
 export interface UiConfig {
@@ -41,9 +41,9 @@ export async function fetchConfig(): Promise<UiConfig> {
   return (await res.json()) as UiConfig;
 }
 
-/** Every `type: Page` registry doc with a usable `entry`, newest-first, projected for the launcher. */
+/** Every `type: View` (or legacy `type: Page`) registry doc with a usable `entry`, newest-first, projected for the launcher. The wire query takes ONE type, so the accepted names are fetched separately and merged (stable order: legacy first, then current — the sort below decides display order anyway). */
 export async function listPages(): Promise<PageEntry[]> {
-  const heads = await listAllHeads({ type: "Page" });
+  const heads = (await Promise.all(PAGE_TYPE_NAMES.map((type) => listAllHeads({ type })))).flat();
   const pages = heads
     .map((h) => pageFromFrontmatter(h.id, h.version, h.frontmatter))
     .filter((p): p is PageEntry => p !== null);

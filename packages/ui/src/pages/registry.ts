@@ -1,8 +1,18 @@
-/** Browser-side parsing for a usable registered bundle Page. */
+/** Browser-side parsing for a usable registered bundle Page/View. */
 
-import { isPageEntryKey, isPageRegistryId } from "@agentstate-lite/core/page";
+import { isAnyEntryKey, isAnyRegistryId, isPageTypeName, type PageTypeName } from "@agentstate-lite/core/page";
 
-export { isPageEntryKey, isPageRegistryId } from "@agentstate-lite/core/page";
+export {
+  isAnyEntryKey,
+  isAnyRegistryId,
+  isPageEntryKey,
+  isPageRegistryId,
+  isPageTypeName,
+  isViewEntryKey,
+  isViewRegistryId,
+  PAGE_TYPE_NAMES,
+  type PageTypeName,
+} from "@agentstate-lite/core/page";
 
 export type BridgeCapability = "none" | "bundle-read";
 
@@ -10,6 +20,8 @@ export interface RegisteredPage {
   id: string;
   entry: string;
   bridge: BridgeCapability;
+  /** Which accepted kind name matched — `View` (current) or `Page` (legacy). */
+  type: PageTypeName;
   title: string;
   description?: string;
   actor?: string;
@@ -25,16 +37,17 @@ export function resolveBridgeCapability(bridge: unknown): BridgeCapability {
   return bridge === "bundle-read" ? "bundle-read" : "none";
 }
 
-/** Parse a usable registered Page without exposing document contents or executable bytes. */
+/** Parse a usable registered Page/View without exposing document contents or executable bytes. */
 export function parseRegisteredPage(
   id: unknown,
   frontmatter: Record<string, unknown>,
 ): RegisteredPage | null {
-  if (!isPageRegistryId(id) || frontmatter.type !== "Page" || !isPageEntryKey(frontmatter.entry)) return null;
+  if (!isAnyRegistryId(id) || !isPageTypeName(frontmatter.type) || !isAnyEntryKey(frontmatter.entry)) return null;
   return {
     id,
     entry: frontmatter.entry,
     bridge: resolveBridgeCapability(frontmatter.bridge),
+    type: frontmatter.type,
     title: stringValue(frontmatter.title) ?? id,
     description: stringValue(frontmatter.description),
     actor: stringValue(frontmatter.actor),

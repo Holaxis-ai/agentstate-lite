@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { getDoc } from "./client.js";
-import { pageFromFrontmatter, resolvePageTarget } from "./pages.js";
+import { getDoc, listAllHeads } from "./client.js";
+import { listPages, pageFromFrontmatter, resolvePageTarget } from "./pages.js";
 import type { Frontmatter } from "./types.js";
 
 vi.mock("./client.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./client.js")>();
-  return { ...actual, getDoc: vi.fn() };
+  return { ...actual, getDoc: vi.fn(), listAllHeads: vi.fn() };
 });
 
 describe("pageFromFrontmatter", () => {
@@ -36,6 +36,41 @@ describe("pageFromFrontmatter", () => {
     expect(pageFromFrontmatter("docs/p", "v1", valid)).toBeNull();
     expect(pageFromFrontmatter("pages-registry/p", "v1", { ...valid, type: "Design" })).toBeNull();
     expect(pageFromFrontmatter("pages-registry/p", "v1", { ...valid, entry: "other/p.html" })).toBeNull();
+  });
+});
+
+describe("listPages", () => {
+  it("merges type View rows with legacy type Page rows — one query per accepted kind name, one sorted launcher list", async () => {
+    vi.mocked(listAllHeads).mockImplementation(async ({ type }) => {
+      if (type === "Page") {
+        return [
+          { id: "pages-registry/legacy", version: "v1", frontmatter: { type: "Page", title: "Legacy", entry: "pages/legacy.html", timestamp: "2026-07-01T00:00:00.000Z" } },
+        ];
+      }
+      if (type === "View") {
+        return [
+          { id: "views-registry/board", version: "v2", frontmatter: { type: "View", title: "Board", entry: "views/board.html", timestamp: "2026-07-02T00:00:00.000Z" } },
+        ];
+      }
+      return [];
+    });
+    const pages = await listPages();
+    expect(listAllHeads).toHaveBeenCalledWith({ type: "Page" });
+    expect(listAllHeads).toHaveBeenCalledWith({ type: "View" });
+    // Both kinds land in ONE list; ordering stays the launcher's stable newest-first sort.
+    expect(pages.map((p) => p.id)).toEqual(["views-registry/board", "pages-registry/legacy"]);
+    expect(pages.map((p) => p.entry)).toEqual(["views/board.html", "pages/legacy.html"]);
+  });
+});
+
+describe("pageFromFrontmatter (View)", () => {
+  it("projects a type View doc under views-registry//views/ for the launcher", () => {
+    const fm: Frontmatter = { type: "View", title: "Board", entry: "views/board.html", bridge: "bundle-read" };
+    expect(pageFromFrontmatter("views-registry/board", "v1", fm)).toMatchObject({
+      id: "views-registry/board",
+      entry: "views/board.html",
+      bridge: "bundle-read",
+    });
   });
 });
 

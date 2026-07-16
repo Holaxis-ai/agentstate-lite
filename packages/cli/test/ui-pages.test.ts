@@ -17,7 +17,7 @@ import { createRouter, serve, type ServerHandle } from "@agentstate-lite/server"
 import { bootUiServer, type UiServerHandle } from "../src/ui/server.js";
 import { PageNonceRegistry, pageCsp } from "../src/ui/pages.js";
 import { SseHub } from "../src/ui/events.js";
-import { diffSnapshots, isEmptyChange, startWatcher, type Snapshot } from "../src/ui/watch.js";
+import { diffSnapshots, isEmptyChange, snapshotBundle, startWatcher, type Snapshot } from "../src/ui/watch.js";
 import { writeUiUrlFile, clearUiUrlFile, uiUrlFilePath } from "../src/ui/url-file.js";
 
 // ── PageNonceRegistry ───────────────────────────────────────────────────────
@@ -226,6 +226,9 @@ async function bootPagesServer(): Promise<{ handle: UiServerHandle; origin: stri
   await writeBlob(bundle, "pages/test.html", Buffer.from("<!doctype html><title>t</title><p>hi</p>"), "text/html; charset=utf-8");
   await writeBlob(bundle, "secrets/creds.bin", Buffer.from("TOP-SECRET"), "application/octet-stream");
   await writeDoc(bundle, { id: "pages-registry/test", frontmatter: { type: "Page", title: "Test", entry: "pages/test.html" }, body: "" });
+  // A CURRENT-name View alongside the legacy Page — the dual-read window's mixed board.
+  await writeBlob(bundle, "views/board.html", Buffer.from("<!doctype html><title>board</title><p>view</p>"), "text/html; charset=utf-8");
+  await writeDoc(bundle, { id: "views-registry/board", frontmatter: { type: "View", title: "Board", entry: "views/board.html" }, body: "" });
   // A kind convention with a terminal declaration — the /__ui/kinds endpoint's fixture.
   await writeDoc(bundle, {
     id: "conventions/task",
@@ -382,6 +385,85 @@ test("A1: mint is confined to REGISTERED page entries — an off-limits blob can
     assert.equal((await mintKey("pages/test.html")).status, 200);
   } finally {
     await cleanup();
+  }
+});
+
+test("DUAL-READ: a type View doc under views-registry/ with a views/ blob mints and serves end-to-end, alongside the legacy Page", async () => {
+  const { origin, cleanup } = await bootPagesServer();
+  const mintKey = (key: string) =>
+    fetch(`${origin}/__page/mint`, {
+      method: "POST",
+      headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+      body: JSON.stringify({ key }),
+    });
+  try {
+    // The View's entry mints — the nonce allowlist merges type=View with legacy type=Page.
+    const mint = await mintKey("views/board.html");
+    assert.equal(mint.status, 200, "a registered View entry must mint");
+    const { url } = (await mint.json()) as { url: string };
+
+    // ...and its bytes serve through the nonce route with the page CSP (renders in the iframe).
+    const page = await fetch(`${origin}${url}`);
+    assert.equal(page.status, 200);
+    assert.match(page.headers.get("content-type") ?? "", /text\/html/);
+    assert.match(page.headers.get("content-security-policy") ?? "", /connect-src 'none'/);
+    assert.match(Buffer.from(await page.arrayBuffer()).toString("utf8"), /<title>board<\/title>/);
+
+    // The legacy Page on the SAME board still mints (mixed board: both kinds live).
+    assert.equal((await mintKey("pages/test.html")).status, 200, "the legacy Page must keep minting");
+
+    // Confinement is intact under the new prefix: views/ alone is not registration.
+    assert.equal((await mintKey("views/not-registered.html")).status, 403);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("DUAL-READ: the watcher's snapshot covers views/ blobs — a views/ hot-reload is observable, pages/ unchanged", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-views-watch-"));
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    await writeBlob(bundle, "pages/legacy.html", Buffer.from("<p>legacy</p>"), "text/html; charset=utf-8");
+    await writeBlob(bundle, "views/board.html", Buffer.from("<p>v1</p>"), "text/html; charset=utf-8");
+    await writeBlob(bundle, "secrets/creds.bin", Buffer.from("TOP-SECRET"), "application/octet-stream");
+
+    const before = await snapshotBundle(bundle);
+    assert.ok(before.blobs.has("pages/legacy.html"), "legacy pages/ blobs stay snapshotted");
+    assert.ok(before.blobs.has("views/board.html"), "views/ blobs are snapshotted for hot-reload");
+    assert.equal(before.blobs.has("secrets/creds.bin"), false, "non-page blobs stay out of the snapshot");
+
+    // A rewritten views/ blob diffs as a blob change — the SSE hot-reload signal.
+    await writeBlob(bundle, "views/board.html", Buffer.from("<p>v2</p>"), "text/html; charset=utf-8");
+    const change = diffSnapshots(before, await snapshotBundle(bundle));
+    assert.deepEqual(change.blobs.changed.map((b) => b.key), ["views/board.html"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("DUAL-READ: the dir-mode watcher EMITS a hot-reload change for a rewritten views/ blob", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-views-emit-"));
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    await writeBlob(bundle, "views/board.html", Buffer.from("<p>v1</p>"), "text/html; charset=utf-8");
+
+    const changedKeys: string[] = [];
+    const watcher = await startWatcher({
+      mode: "dir",
+      bundle,
+      debounceMs: 25,
+      onChange: (e) => changedKeys.push(...e.blobs.changed.map((b) => b.key)),
+    });
+    try {
+      await writeBlob(bundle, "views/board.html", Buffer.from("<p>v2</p>"), "text/html; charset=utf-8");
+      await waitFor(() => changedKeys.includes("views/board.html"));
+    } finally {
+      await watcher.stop();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
 
@@ -554,6 +636,45 @@ test("P2: remote mint paginates the Page registry to exhaustion — a page past 
       assert.equal((await mint("pages/deep.html")).status, 200, "an entry on the SECOND wire page must mint");
       assert.equal((await mint("pages/first.html")).status, 200);
       assert.equal((await mint("pages/not-registered.html")).status, 403, "confinement is intact across pagination");
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test("DUAL-READ: remote-mode mint queries type=View as well as legacy type=Page — a remote View entry mints", async () => {
+  // A fake remote with ONE doc per kind name: the mint allowlist must merge the two
+  // single-type wire queries (the wire's docs listing takes ONE type per request).
+  const queriedTypes = new Set<string>();
+  const server = createHttpServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    const type = url.searchParams.get("type");
+    if (type) queriedTypes.add(type);
+    const docs =
+      type === "View"
+        ? [{ id: "views-registry/board", version: "v1", frontmatter: { type: "View", entry: "views/board.html" } }]
+        : type === "Page"
+          ? [{ id: "pages-registry/legacy", version: "v1", frontmatter: { type: "Page", entry: "pages/legacy.html" } }]
+          : [];
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ docs, next_cursor: null }));
+  });
+  const remoteOrigin = await listenOn(server);
+  try {
+    const handle = await bootUiServer({ mode: "remote", port: 0, remoteBase: remoteOrigin, sessionSecret: SECRET });
+    try {
+      const mint = (key: string) =>
+        fetch(`http://${handle.host}:${handle.port}/__page/mint`, {
+          method: "POST",
+          headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+          body: JSON.stringify({ key }),
+        });
+      assert.equal((await mint("views/board.html")).status, 200, "a remote View entry must mint");
+      assert.equal((await mint("pages/legacy.html")).status, 200, "a remote legacy Page entry must keep minting");
+      assert.equal((await mint("views/not-registered.html")).status, 403, "confinement is intact under the new prefix");
+      assert.ok(queriedTypes.has("Page") && queriedTypes.has("View"), `both kind names queried (got: ${[...queriedTypes].join(",")})`);
     } finally {
       await handle.close();
     }

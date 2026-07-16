@@ -20,7 +20,7 @@
 import { isTerminal } from "@agentstate-lite/core/kinds";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
 import type { DocHead, Edge, ReadDocResponse } from "../api/types.js";
-import { isPageRegistryId, type BridgeCapability } from "./registry.js";
+import { isAnyRegistryId, type BridgeCapability } from "./registry.js";
 
 export const BRIDGE_PROTOCOL = "v0";
 
@@ -185,8 +185,8 @@ export async function handleBridgeRequest(
   if (!isBridgeRequest(msg)) return { reply: null };
   const { id, type } = msg;
   if (type === "open-page") {
-    if (!isPageRegistryId(msg.pageId)) {
-      return { reply: fail(id, "USAGE", "open-page requires a valid pages-registry/<id> pageId") };
+    if (!isAnyRegistryId(msg.pageId)) {
+      return { reply: fail(id, "USAGE", "open-page requires a valid views-registry/<id> (or legacy pages-registry/<id>) pageId") };
     }
     try {
       if (!(await deps.resolvePage(msg.pageId))) {

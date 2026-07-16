@@ -32,6 +32,7 @@ import {
   type OkfDocument,
   type ValidationWarning,
 } from "@agentstate-lite/core";
+import { PAGE_REGISTRY_PREFIX, VIEW_REGISTRY_PREFIX } from "@agentstate-lite/core/page";
 import { isDeepStrictEqual } from "node:util";
 import { CliError } from "./errors.js";
 import type { LoadedRecipe } from "./recipe-source.js";
@@ -482,8 +483,12 @@ export async function applyRecipe(
 async function assertPortableTargetsCompatible(bundle: Bundle, recipe: LoadedRecipe, now: string): Promise<void> {
   const registries = new Map<ConceptId, OkfDocument>();
   if (recipe.pages.length > 0) {
-    const registryDocs = await query(bundle, { prefix: "pages-registry/" });
-    for (const doc of registryDocs) registries.set(doc.id, doc);
+    // Both accepted registry prefixes (views-registry/ current, pages-registry/ legacy) — the
+    // query takes ONE prefix, so run it per prefix and merge (ids never collide across prefixes).
+    for (const prefix of [PAGE_REGISTRY_PREFIX, VIEW_REGISTRY_PREFIX]) {
+      const registryDocs = await query(bundle, { prefix });
+      for (const doc of registryDocs) registries.set(doc.id, doc);
+    }
   }
   for (const page of recipe.pages) {
     const existingBlob = await readBlob(bundle, page.entry);
