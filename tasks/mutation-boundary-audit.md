@@ -1,14 +1,15 @@
 ---
 type: Task
 title: Audit mutation coverage and close only demonstrated invariant gaps
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   Inventory every state-changing surface by mutation posture, verify
   CAS/no-op/final-version/actor/post-success behavior, and create small defect
   tasks for real gaps.
 actor: mike/codex
-timestamp: '2026-07-16T00:38:03.611Z'
+assignee: mike/codex
+timestamp: '2026-07-16T02:38:10.689Z'
 ---
 # Scope
 
