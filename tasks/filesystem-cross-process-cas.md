@@ -8,7 +8,7 @@ description: >-
   processes mutate one local bundle.
 actor: mike/codex
 assignee: mike/codex
-timestamp: '2026-07-16T14:02:11.417Z'
+timestamp: '2026-07-16T14:02:37.689Z'
 ---
 # Behavioral claim
 
@@ -47,3 +47,9 @@ Draft PR: https://github.com/Holaxis-ai/agentstate-lite/pull/77
 - Independent reading review at `512b4c0` required two changes. The POSIX `/tmp` choice is now explained and pinned by real child processes with different `TMPDIR` values; the canonical `docs/wire-protocol` bundle doc now records independent `history`/`enforced_cas` capabilities and the filesystem backend's `{ history:false, enforced_cas:true }` guarantee.
 - Exact commit `61ff46f` passed the full `npm run check` in a detached worktree, including PR #82's establish/window journeys, deterministic two-process CAS and five-process `link add` proofs, the two exact Git capture regressions, the distinct-`TMPDIR` proof, and an adversarial SIGKILL/recovery probe.
 - Post-rebase integration inspection found no conflict between the external CAS runtime state and PR #82's Git journeys. The PR remains draft pending reviewer confirmation of the amended exact SHA.
+
+# Recorded non-gating follow-ups
+
+- Preserve `FilesystemMutationLockError` structure (`lockPath`, owner, stale/malformed state, actionable removal guidance) through CLI and wire error envelopes; coordinate with [wire error classification](wire-error-classification.md).
+- Dogfood crash-leftover recovery before deciding whether a dedicated inspect/remove command or a narrowly gated stale-lock recovery policy is warranted. Never add automatic stealing without evidence that PID reuse and cross-host ambiguity are safely handled.
+- Watch release-failure semantics and the existing-directory scan cost in field use; neither changes this PR's safety claim or merits speculative optimization now.
