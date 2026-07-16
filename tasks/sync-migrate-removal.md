@@ -6,27 +6,24 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  TAKEN OVER by mike/claude 2026-07-16. PR #75 candidate
-  75668b82944f91fb8925e1fd9cfc3b238f8c11a6. Independent review:
-  APPROVE-WITH-NITS — no guard weakened, coverage ported 1:1 (14 old tests
-  mapped into 18 new + 4 new adversarial pins), gates exit 0 on BOTH the PR tree
-  and a local merge with main (builder's caveat closed), 69/69 adversarial smoke
-  incl. reviewer-original attacks (forged garbage-sha marker refused; forged
-  real-sha marker = documented worst case only; linked-worktree marker resolves
-  to per-worktree gitdir correctly). Six non-blocking nits recorded: duplicate
-  no-op cleanup branch behind forged real-sha marker + explicit --yes (accepted
-  worst case); CONFLICT wording inaccurate for invalid marker sha; stale
-  committed-case marker never cleared on fully-shared clones (harmless debris);
-  committed BLOB named .agentstate-lite hits a confusing greenfield refusal
-  (extreme edge, defense-in-depth works); internal comments retain migration
-  framing (git.ts:18,425,619, session-start.ts:250); --yes ignored on greenfield
-  judged acceptable. Wording/debris nits queued for the Sonnet follow-up PR
-  alongside the cursor split. HIGH-RISK tier: adversarial QA IN FLIGHT
-  (orthogonal attack classes: concurrency, kill-mid-sequence, filters/autocrlf,
-  shallow clones, non-ASCII).
+  TAKEN OVER by mike/claude 2026-07-16. PR #75 candidate 75668b8. Ladder:
+  builder DONE; independent review APPROVE-WITH-NITS (no guard weakened,
+  coverage ported 1:1, gates green on PR + merged trees, 69/69 smoke);
+  adversarial QA verdict SHIP — no wrong tree/mutated code branch/data loss
+  under concurrency, SIGKILL-mid-push, rejecting hooks, autocrlf/CRLF filters,
+  shallow clones, non-ASCII. ONE new-in-PR defect gates the merge: F1 (MEDIUM) —
+  divergent race loser gets a false exit-0 'board branch pushed, re-run --yes'
+  note (it is the WINNER's board) and the containment CONFLICT's help (git
+  branch -D board) loops without clearing the marker; no documented escape until
+  the winner's cleanup merges. FIX IN FLIGHT on the same branch: state (b) runs
+  the containment check without --yes and reports truthfully; a
+  definitively-lost marker (snapshot not contained + local board branch gone) is
+  cleared with a truthful receipt; loser-journey test pinned. Pre-existing
+  findings F2-F6 recorded as tasks/establish-window-journey-defects (not
+  blockers). Merge after delta review of the fix.
 actor: mike/claude
 assignee: mike/claude
-timestamp: '2026-07-16T02:00:52.025Z'
+timestamp: '2026-07-16T02:21:19.299Z'
 ---
 ## Why the rescope (the Broken-Leash analysis, 2026-07-09)
 
