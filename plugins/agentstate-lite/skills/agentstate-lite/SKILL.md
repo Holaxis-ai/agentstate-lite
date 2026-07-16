@@ -136,8 +136,8 @@ the rest of the line unchanged.
   — Boot the reference wire-protocol server over a local bundle (loopback, no auth)
 - `"$ASLITE" ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
   — Boot the local web UI: a launcher for the bundle's pages (type: Page docs rendered in sandboxed iframes, with live updates) — same origin, loopback-only. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"
-- `"$ASLITE" sync [--establish | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
-  — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it
+- `"$ASLITE" sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
+  — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A bundle folder already committed on the code branch is the same flag's hard case: preview first, --yes executes, and the folder's removal from the code branch rides a prepared side-branch commit you push and open as a PR. A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it
 
 ### Session
 
@@ -151,21 +151,27 @@ the rest of the line unchanged.
 Unless the user directs otherwise, a project's workspace bundle lives in a `.agentstate-lite/`
 folder at the project root. Two verbs, two different jobs — `init` always creates a LOCAL
 bundle (solo use is first-class, nothing forces sharing); `sync` is how a project's board
-becomes — or stays — shared memory across clones and teammates:
+becomes — or stays — shared memory across clones and teammates. Three modes:
 
-- **Joining an existing project** — if `.agentstate-lite/` is already in the clone, there is
-  NOTHING to set up. If it isn't but the project already shares its board (the repo's remote
-  has a `board` branch), `sync` is the setup verb — run it once and it creates the folder and
-  pulls the shared state. NEVER init a project that already has a workspace: that creates a
-  divergent second bundle.
-- **Starting fresh (greenfield)** — `init` creates a bundle that doesn't exist anywhere yet.
-  It is LOCAL until you choose to share it: run `sync --establish` once to publish it (creates
-  the `board` branch, pushes it) — teammates then just run `sync` to join. Never automatic:
-  a bare `sync` never establishes on its own (it would silently publish a bundle nobody asked
-  to share); on a local-only bundle it reports the local-only state, whose note points at
-  `--establish`. Staying local-only indefinitely is a supported mode, not a limbo.
-  If origin cannot be checked, `sync` reports the shared-board state as unknown and waits for
-  a retry instead of recommending publication.
+- **A local-only board** — `init` creates a bundle that doesn't exist anywhere yet, and it
+  stays LOCAL until someone chooses to share it. This is a first-class mode, not a limbo:
+  everything works offline and remote-free, and board changes stay on this machine. A bare
+  `sync` on a local-only bundle reports that state honestly (its note points at `--establish`)
+  — it never establishes on its own, which would silently publish a bundle nobody asked to
+  share.
+- **Joining an existing shared board** — if `.agentstate-lite/` is already in the clone, there
+  is NOTHING to set up. If it isn't but the project already shares its board (the repo's
+  remote has a `board` branch), `sync` is the setup verb — run it once and it creates the
+  folder and pulls the shared state. NEVER init a project that already has a workspace: that
+  creates a divergent second bundle.
+- **Sharing a board (`sync --establish`, once)** — the explicit act that publishes a local
+  bundle as the repo's `board` branch; teammates then just run `sync` to join. It handles
+  both shapes: an uncommitted local folder is snapshotted, pushed, and converted in place;
+  a folder ALREADY COMMITTED on the code branch gets a preview first — re-run with `--yes`
+  to execute, which also prepares a cleanup commit on a side branch that you push and open
+  as a PR (it removes the folder from the code branch; the board branch takes over after the
+  merge). If origin cannot be checked, `sync` reports the shared-board state as unknown and
+  waits for a retry instead of recommending publication.
 
 ```sh
 "$ASLITE" sync                            # existing shared project — provisions the board; a local-only bundle reports its state
@@ -280,6 +286,20 @@ and appends that path to the root working-tree `.gitignore`; teammates then just
 detects that state, notes `already established`, and proceeds as an ordinary sync instead of
 erroring).
 
+The same flag handles a bundle folder ALREADY COMMITTED on the code branch: `sync --establish`
+prints a preview and changes nothing; `sync --establish --yes` creates the `board` branch from
+the folder's current files (files only — the folder's history stays on the code branch),
+pushes it, and prepares ONE commit on a local `board-cleanup` branch that removes the folder
+from the code branch and gitignores it — you push that branch and open the PR yourself;
+nothing on the code branch is pushed or changed. Until that PR merges, the old committed
+folder is a frozen read-only snapshot; after the merge, `git pull` then `sync` brings the
+live board back on every clone.
+
+Sharing is an explicit act: nothing ever creates or publishes a board branch on its own —
+only `sync --establish` does. The session-start hook and the read-time refresh below only
+ever PULL an already-shared board (bounded, fast-forward, never a push); your changes leave
+the machine only when you run `sync`.
+
 When a doc changed on BOTH sides, sync converges instead of stopping: your teammate's version
 is kept on the board, YOURS is saved to an export file named in the receipt, and the run
 exits 5 with one row per conflicted doc. Reconcile with the doc verbs, never git:
@@ -302,7 +322,9 @@ Your OWN changes still only leave the machine when you run `sync`. To disable th
 disables it; the variable's presence is the switch.
 
 On projects that share their board you may notice a `board` branch in the repo's GitHub —
-that's the board; never merge it into main.
+that's the board; it never merges into main (it has no common history with it, by design).
+Protect it like main: enable delete and force-push protection on `board` in the repo settings
+— sync only ever appends commits to it.
 
 ## Remote bundle access (--remote, serve)
 
