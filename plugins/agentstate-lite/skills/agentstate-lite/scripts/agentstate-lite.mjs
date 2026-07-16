@@ -3894,26 +3894,26 @@ function applyReplacer(root, replacer) {
   if (replacedRoot === void 0) return transformChildren(root, replacer, []);
   return transformChildren(normalizeValue(replacedRoot), replacer, []);
 }
-function transformChildren(value, replacer, path18) {
-  if (isJsonObject(value)) return transformObject(value, replacer, path18);
-  if (isJsonArray(value)) return transformArray(value, replacer, path18);
+function transformChildren(value, replacer, path21) {
+  if (isJsonObject(value)) return transformObject(value, replacer, path21);
+  if (isJsonArray(value)) return transformArray(value, replacer, path21);
   return value;
 }
-function transformObject(obj, replacer, path18) {
+function transformObject(obj, replacer, path21) {
   const result = {};
   for (const [key, value] of Object.entries(obj)) {
-    const childPath = [...path18, key];
+    const childPath = [...path21, key];
     const replacedValue = replacer(key, value, childPath);
     if (replacedValue === void 0) continue;
     result[key] = transformChildren(normalizeValue(replacedValue), replacer, childPath);
   }
   return result;
 }
-function transformArray(arr, replacer, path18) {
+function transformArray(arr, replacer, path21) {
   const result = [];
   for (let i = 0; i < arr.length; i++) {
     const value = arr[i];
-    const childPath = [...path18, i];
+    const childPath = [...path21, i];
     const replacedValue = replacer(String(i), value, childPath);
     if (replacedValue === void 0) continue;
     const normalizedValue = normalizeValue(replacedValue);
@@ -3940,11 +3940,11 @@ function resolveOptions(options2) {
 }
 
 // ../../node_modules/axi-sdk-js/dist/output.js
-function collapseHomeDirectory(path18, homeDir = homedir()) {
-  if (!path18.startsWith(homeDir)) {
-    return path18;
+function collapseHomeDirectory(path21, homeDir = homedir()) {
+  if (!path21.startsWith(homeDir)) {
+    return path21;
   }
-  return `~${path18.slice(homeDir.length)}`;
+  return `~${path21.slice(homeDir.length)}`;
 }
 function homeHeaderOutput(options2) {
   return {
@@ -4048,7 +4048,7 @@ function isUpdateAvailable(current, latest) {
 }
 var nodeFs = {
   existsSync,
-  readFileSync: (path18, encoding) => readFileSync(path18, encoding)
+  readFileSync: (path21, encoding) => readFileSync(path21, encoding)
 };
 function readNearestPackageJson(startPath, fs11 = nodeFs) {
   let dir = dirname(startPath);
@@ -4075,36 +4075,36 @@ function readNearestPackageJson(startPath, fs11 = nodeFs) {
 }
 function detectInstallMethod(options2) {
   const env = options2.env ?? process.env;
-  const path18 = options2.entry.replaceAll("\\", "/");
-  if (path18.includes("/_npx/") || /\/dlx-[^/]+\//.test(path18) || path18.includes("/pnpm/dlx/") || path18.includes("/bun/install/cache/")) {
+  const path21 = options2.entry.replaceAll("\\", "/");
+  if (path21.includes("/_npx/") || /\/dlx-[^/]+\//.test(path21) || path21.includes("/pnpm/dlx/") || path21.includes("/bun/install/cache/")) {
     return { kind: "npx" };
   }
-  const homebrewFormula = homebrewFormulaFromPath(path18, env);
+  const homebrewFormula = homebrewFormulaFromPath(path21, env);
   if (homebrewFormula) {
     return { kind: "homebrew", formula: homebrewFormula };
   }
   const pnpmHome = normalizePathRoot(env.PNPM_HOME);
-  if (isPathInsideRoot(path18, pnpmHome) || isKnownPnpmGlobalStore(path18, env)) {
+  if (isPathInsideRoot(path21, pnpmHome) || isKnownPnpmGlobalStore(path21, env)) {
     return { kind: "pnpm-global" };
   }
-  if (isKnownNpmGlobalInstall(path18, env)) {
+  if (isKnownNpmGlobalInstall(path21, env)) {
     return { kind: "npm-global" };
   }
   return { kind: "unknown" };
 }
-function normalizePathRoot(path18) {
-  const normalized = path18?.replaceAll("\\", "/").replace(/\/+$/, "");
+function normalizePathRoot(path21) {
+  const normalized = path21?.replaceAll("\\", "/").replace(/\/+$/, "");
   return normalized && normalized.length > 0 ? normalized : void 0;
 }
-function isPathInsideRoot(path18, root) {
-  return root !== void 0 && (path18 === root || path18.startsWith(`${root}/`));
+function isPathInsideRoot(path21, root) {
+  return root !== void 0 && (path21 === root || path21.startsWith(`${root}/`));
 }
-function homebrewFormulaFromPath(path18, env) {
+function homebrewFormulaFromPath(path21, env) {
   for (const root of homebrewCellarRoots(env)) {
-    if (!isPathInsideRoot(path18, root)) {
+    if (!isPathInsideRoot(path21, root)) {
       continue;
     }
-    const relative = path18.slice(root.length).replace(/^\/+/, "");
+    const relative = path21.slice(root.length).replace(/^\/+/, "");
     const formula = relative.split("/")[0];
     if (formula) {
       return formula;
@@ -4132,12 +4132,12 @@ function homebrewCellarRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownPnpmGlobalStore(path18, env) {
+function isKnownPnpmGlobalStore(path21, env) {
   return pnpmGlobalStoreRoots(env).some((root) => {
-    if (!isPathInsideRoot(path18, root)) {
+    if (!isPathInsideRoot(path21, root)) {
       return false;
     }
-    const relative = path18.slice(root.length).replace(/^\/+/, "");
+    const relative = path21.slice(root.length).replace(/^\/+/, "");
     return /^\d+\/\.pnpm\//.test(relative);
   });
 }
@@ -4155,8 +4155,8 @@ function pnpmGlobalStoreRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownNpmGlobalInstall(path18, env) {
-  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path18, root)) || isKnownVersionManagerNpmGlobal(path18, env);
+function isKnownNpmGlobalInstall(path21, env) {
+  return npmGlobalNodeModulesRoots(env).some((root) => isPathInsideRoot(path21, root)) || isKnownVersionManagerNpmGlobal(path21, env);
 }
 function npmGlobalNodeModulesRoots(env) {
   const roots = [
@@ -4182,8 +4182,8 @@ function npmGlobalNodeModulesRoots(env) {
   }
   return [...new Set(roots)];
 }
-function isKnownVersionManagerNpmGlobal(path18, env) {
-  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path18, root) && path18.includes("/lib/node_modules/"));
+function isKnownVersionManagerNpmGlobal(path21, env) {
+  return versionManagerNodeRoots(env).some((root) => isPathInsideRoot(path21, root) && path21.includes("/lib/node_modules/"));
 }
 function versionManagerNodeRoots(env) {
   const roots = [];
@@ -4419,7 +4419,7 @@ async function runUpdate(options2) {
   const binName = binNameFromArgv(invokedAs);
   const mode = parseUpdateArgs(options2.args, binName);
   const platform = options2.platform ?? process.platform;
-  const realpath = options2.realpath ?? ((path18) => realpathSync(path18));
+  const realpath = options2.realpath ?? ((path21) => realpathSync(path21));
   const entry = resolveEntry(invokedAs, realpath);
   const fs11 = options2.fs ?? nodeFs;
   const fromPackageJson = entry ? readNearestPackageJson(entry, fs11) : {};
@@ -4775,7 +4775,7 @@ function computeCodexConfigUpdate(content) {
 // src/commands/init.ts
 import { parseArgs } from "node:util";
 import { existsSync as existsSync5 } from "node:fs";
-import path11 from "node:path";
+import path12 from "node:path";
 
 // ../core/src/bundle.ts
 import path3 from "node:path";
@@ -6130,13 +6130,13 @@ function describeShape(value) {
   if (typeof value === "object") return "an object";
   return typeof value;
 }
-function toStringArrayLenient(value, path18, docId, warnings) {
+function toStringArrayLenient(value, path21, docId, warnings) {
   if (!Array.isArray(value)) {
     if (value !== void 0) {
       warnings.push({
         code: "KIND_CONVENTION_BAD_SHAPE",
-        message: `kind convention '${docId}' has a non-list '${path18}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
-        field: path18,
+        message: `kind convention '${docId}' has a non-list '${path21}' (${describeShape(value)}; expected a list of strings); ignoring it.`,
+        field: path21,
         severity: "warning"
       });
     }
@@ -6149,8 +6149,8 @@ function toStringArrayLenient(value, path18, docId, warnings) {
     } else {
       warnings.push({
         code: "KIND_CONVENTION_BAD_MEMBER",
-        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path18}'; skipping it.`,
-        field: path18,
+        message: `kind convention '${docId}' has a non-scalar member (${describeShape(v)}) in '${path21}'; skipping it.`,
+        field: path21,
         severity: "warning"
       });
     }
@@ -6504,7 +6504,7 @@ function parseConventionDoc(doc2) {
       });
     }
   }
-  const path18 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
+  const path21 = typeof fm.path === "string" && fm.path.trim() !== "" ? fm.path.trim() : void 0;
   const freshnessHorizon = typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== "" ? fm.freshness_horizon.trim() : void 0;
   const kind2 = {
     id: doc2.id,
@@ -6513,7 +6513,7 @@ function parseConventionDoc(doc2) {
     fields: { required, optional, values, valueDescriptions, terminal, descriptions }
   };
   if (description !== void 0) kind2.description = description;
-  if (path18 !== void 0) kind2.path = path18;
+  if (path21 !== void 0) kind2.path = path21;
   if (links !== void 0) kind2.links = links;
   if (linkDescriptions !== void 0) kind2.linkDescriptions = linkDescriptions;
   if (expectsInbound !== void 0) kind2.expectsInbound = expectsInbound;
@@ -6959,7 +6959,17 @@ function shellQuote(s) {
 function moveAsideHelp(boardPath, note) {
   return `mv ${shellQuote(boardPath)} ${shellQuote(`${boardPath}.bak`)}  # ${note}`;
 }
-function preShareWindowError(boardPath) {
+function preShareWindowError(boardPath, originConfigured = true) {
+  if (!originConfigured) {
+    return new BoardGitError(
+      "RUNTIME",
+      `a previously fetched '${BOARD_REF}' ref shows this project's board was shared, but no '${BOARD_REMOTE}' remote is configured here any more \u2014 '${BUNDLE_DIR}' is still the old folder committed on this branch, and sync cannot pull the shared board without the remote`,
+      {
+        details: { path: boardPath, state: "pre-share-window", origin_configured: false },
+        help: `git remote add ${BOARD_REMOTE} <url>  # restore the remote, 'git pull' once the cleanup PR merges, then re-run sync`
+      }
+    );
+  }
   return new BoardGitError(
     "RUNTIME",
     `the '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but '${BUNDLE_DIR}' here is still the old folder committed on this branch \u2014 the folder-removal (cleanup) PR hasn't merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', then run sync again`,
@@ -7040,7 +7050,7 @@ function provisionBoardWorktree(dir, budget = {}) {
   if (existsSync2(boardPath)) {
     if (readdirSync(boardPath).length > 0) {
       if (hasRemote && !hasWorktreeSignature(boardPath) && runGit(top, ["cat-file", "-e", `HEAD:${BUNDLE_DIR}`]).status === 0) {
-        throw preShareWindowError(boardPath);
+        throw preShareWindowError(boardPath, hasOrigin);
       }
       const hadSignature = hasWorktreeSignature(boardPath);
       let reason = "foreign";
@@ -7521,11 +7531,14 @@ function currentHead(boardPath) {
   }
   return r.stdout.trim();
 }
-function countUncommitted(boardPath) {
-  const r = runGit(boardPath, ["status", "--porcelain"]);
+function countUncommitted(boardPath, prefix) {
+  const r = runGit(boardPath, ["status", "--porcelain", ...prefix ? ["--", prefix] : []]);
   if (r.status !== 0) return 0;
   return r.stdout.split("\n").filter((l) => l.trim().length > 0).length;
 }
+
+// ../board-git/src/channel.ts
+import path6 from "node:path";
 
 // ../board-git/src/flow.ts
 import { existsSync as existsSync3, readFileSync as readFileSync3, renameSync, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
@@ -7644,6 +7657,84 @@ function createRemovalCommit(top, message) {
   const mktreeInput = entries.map((e) => `${e.mode} ${e.type} ${e.sha}	${e.name}\0`).join("");
   const newTree = mustGit(top, ["mktree", "-z"], { input: mktreeInput }).trim();
   return mustGit(top, ["commit-tree", newTree, "-p", "HEAD"], { input: message }).trim();
+}
+
+// ../board-git/src/channel.ts
+var INDETERMINATE_TRACKED_REASON = `'${BUNDLE_DIR}/' is committed on the current branch, but ${BOARD_REMOTE} could not be checked for a shared '${BOARD_BRANCH}' branch \u2014 refusing to classify: an existing shared board must never be shadowed by guessing in-tree`;
+var INDETERMINATE_UNTRACKED_REASON = `${BOARD_REMOTE} could not be checked for a shared '${BOARD_BRANCH}' branch and no previously fetched evidence exists \u2014 refusing to classify: mode-sensitive operations (establish, conversion) should refuse and retry when ${BOARD_REMOTE} is reachable; local reads are unaffected`;
+function branchChannel() {
+  return { kind: "channel", channel: { mode: "branch", branch: BOARD_BRANCH, remote: BOARD_REMOTE } };
+}
+function localOnlyChannel() {
+  return { kind: "channel", channel: { mode: "local-only" } };
+}
+function probeRemoteBoardState(top, budget = {}) {
+  const fetchedRef = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0;
+  const hasOrigin = runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0;
+  if (!hasOrigin) return fetchedRef ? "exists" : "absent";
+  let probeStatus = null;
+  try {
+    probeStatus = runGit(top, ["ls-remote", "--exit-code", BOARD_REMOTE, `refs/heads/${BOARD_BRANCH}`], {
+      timeoutMs: budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS,
+      connectTimeoutSeconds: budget.connectTimeoutSeconds
+    }).status;
+  } catch (err) {
+    if (!isBoardGitError(err) || err.code !== "TRANSIENT") throw err;
+    probeStatus = null;
+  }
+  if (probeStatus === 0) return "exists";
+  if (probeStatus === 2) return "absent";
+  return fetchedRef ? "exists" : "unknown";
+}
+function ownerRegistersBoardWorktree(top) {
+  const r = runGit(top, ["worktree", "list", "--porcelain"]);
+  if (r.status !== 0) return false;
+  return r.stdout.split("\n").some((l) => l.startsWith("worktree ") && path6.basename(l.slice("worktree ".length).trim()) === BUNDLE_DIR);
+}
+function verifiedForeignBoardRoot(top) {
+  const folderTree = folderTreeAtHead(top);
+  if (folderTree === null) return false;
+  if (refCommit(top, `refs/remotes/${BOARD_REF}`) === void 0) return false;
+  const roots = runGit(top, ["rev-list", "--max-parents=0", `refs/remotes/${BOARD_REF}`]);
+  if (roots.status !== 0) return false;
+  const shas = roots.stdout.split("\n").map((s) => s.trim()).filter((s) => s.length > 0);
+  if (shas.length === 0) return false;
+  return shas.every((sha) => treeOf(top, sha) !== folderTree);
+}
+function dualBoardError(boardPath) {
+  return new BoardGitError(
+    "CONFLICT",
+    `a shared '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE} AND '${BUNDLE_DIR}' is committed on the current branch with content that never seeded that branch \u2014 two competing board locations; nothing is safe to adopt automatically`,
+    {
+      details: { path: boardPath, state: "dual-board" },
+      help: `choose one explicitly: keep the shared branch (reconcile the committed folder's docs onto it, then remove the folder from this branch), or keep the committed folder (coordinate with your team before retiring the remote '${BOARD_BRANCH}' branch)`
+    }
+  );
+}
+function detectBoardChannel(dir, options2 = {}) {
+  const top = repoTopLevel(dir);
+  if (!top) return localOnlyChannel();
+  const boardPath = path6.join(top, BUNDLE_DIR);
+  if (hasWorktreeSignature(boardPath)) {
+    if (worktreeRootResolvesForOwner(boardPath, top)) return branchChannel();
+    if (!worktreeRootResolves(boardPath) && ownerRegistersBoardWorktree(top)) return branchChannel();
+  }
+  const tracked = folderTreeAtHead(top) !== null;
+  if (!tracked && localBranchExists(top, BOARD_BRANCH)) return branchChannel();
+  const remote = options2.remoteBoardState ? options2.remoteBoardState(top) : probeRemoteBoardState(top, options2.budget);
+  if (tracked) {
+    if (remote === "exists") {
+      if (verifiedForeignBoardRoot(top)) throw dualBoardError(boardPath);
+      throw preShareWindowError(boardPath, runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0);
+    }
+    if (remote === "absent") {
+      return { kind: "channel", channel: { mode: "in-tree" } };
+    }
+    return { kind: "indeterminate", probe: "remote-board", folderTracked: true, reason: INDETERMINATE_TRACKED_REASON };
+  }
+  if (remote === "exists") return branchChannel();
+  if (remote === "absent") return localOnlyChannel();
+  return { kind: "indeterminate", probe: "remote-board", folderTracked: false, reason: INDETERMINATE_UNTRACKED_REASON };
 }
 
 // ../board-git/src/diff.ts
@@ -7936,7 +8027,7 @@ function createSyncStore(options2) {
 
 // ../board-git/src/engine.ts
 import { existsSync as existsSync4, realpathSync as realpathSync3, statSync as statSync2 } from "node:fs";
-import path6 from "node:path";
+import path7 from "node:path";
 function realOrSame2(p) {
   try {
     return realpathSync3(p);
@@ -7949,23 +8040,23 @@ function isLinkedWorktree(p) {
   if (r.status !== 0) return false;
   const [gitDirRaw, commonDirRaw] = r.stdout.trim().split("\n");
   if (!gitDirRaw || !commonDirRaw) return false;
-  const commonDir = path6.isAbsolute(commonDirRaw) ? commonDirRaw : path6.resolve(p, commonDirRaw);
+  const commonDir = path7.isAbsolute(commonDirRaw) ? commonDirRaw : path7.resolve(p, commonDirRaw);
   return realOrSame2(gitDirRaw) !== realOrSame2(commonDir);
 }
 function hasGitFileSignature(p) {
   try {
-    return statSync2(path6.join(p, ".git")).isFile();
+    return statSync2(path7.join(p, ".git")).isFile();
   } catch {
     return false;
   }
 }
 function retargetStaleBoardInteriorByPath(dir) {
-  let cur = path6.resolve(dir);
+  let cur = path7.resolve(dir);
   for (; ; ) {
-    if (path6.basename(cur) === BUNDLE_DIR && hasGitFileSignature(cur)) {
-      return path6.dirname(cur);
+    if (path7.basename(cur) === BUNDLE_DIR && hasGitFileSignature(cur)) {
+      return path7.dirname(cur);
     }
-    const parent = path6.dirname(cur);
+    const parent = path7.dirname(cur);
     if (parent === cur) return null;
     cur = parent;
   }
@@ -7973,8 +8064,8 @@ function retargetStaleBoardInteriorByPath(dir) {
 function retargetBoardInterior(dir) {
   try {
     const top = repoTopLevel(dir);
-    if (top && path6.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
-      return path6.dirname(top);
+    if (top && path7.basename(top) === BUNDLE_DIR && isLinkedWorktree(top)) {
+      return path7.dirname(top);
     }
   } catch {
   }
@@ -7984,7 +8075,7 @@ function healStaleRebaseBeforeProvisioning(dir) {
   try {
     const top = repoTopLevel(dir);
     if (!top) return;
-    const candidateBoardPath = path6.join(top, BUNDLE_DIR);
+    const candidateBoardPath = path7.join(top, BUNDLE_DIR);
     if (!existsSync4(candidateBoardPath)) return;
     const boardTop = repoTopLevel(candidateBoardPath);
     if (!boardTop || realOrSame2(boardTop) !== realOrSame2(candidateBoardPath)) return;
@@ -8023,7 +8114,7 @@ function provisionAnnouncement(outcome) {
 }
 
 // ../board-git/src/autopull.ts
-import path7 from "node:path";
+import path8 from "node:path";
 import { realpathSync as realpathSync4, statSync as statSync3 } from "node:fs";
 var AUTO_PULL_STALE_MS = 5 * 6e4;
 var AUTO_PULL_BUDGET_MS = 2e3;
@@ -8038,20 +8129,20 @@ function realOrSame3(p) {
 }
 function hasGitFileSignature2(p) {
   try {
-    return statSync3(path7.join(p, ".git")).isFile();
+    return statSync3(path8.join(p, ".git")).isFile();
   } catch {
     return false;
   }
 }
 function findBoardCandidate(start) {
-  let cur = path7.resolve(start);
+  let cur = path8.resolve(start);
   for (; ; ) {
-    if (path7.basename(cur) === BUNDLE_DIR && hasGitFileSignature2(cur)) {
-      return { top: path7.dirname(cur), boardPath: cur };
+    if (path8.basename(cur) === BUNDLE_DIR && hasGitFileSignature2(cur)) {
+      return { top: path8.dirname(cur), boardPath: cur };
     }
-    const candidate = path7.join(cur, BUNDLE_DIR);
+    const candidate = path8.join(cur, BUNDLE_DIR);
     if (hasGitFileSignature2(candidate)) return { top: cur, boardPath: candidate };
-    const parent = path7.dirname(cur);
+    const parent = path8.dirname(cur);
     if (parent === cur) return null;
     cur = parent;
   }
@@ -8095,7 +8186,7 @@ async function maybeAutoPull(deps, dir, opts = {}) {
     if (!candidate) return "no-board";
     const boardPath = candidate.boardPath;
     if (opts.requireBoardBundle !== false) {
-      const root = dir !== void 0 ? path7.resolve(dir) : await deps.resolveBundleRoot(start);
+      const root = dir !== void 0 ? path8.resolve(dir) : await deps.resolveBundleRoot(start);
       if (!root || realOrSame3(root) !== realOrSame3(boardPath)) return "different-bundle";
     }
     const key = resolveBundleKey(boardPath);
@@ -8105,7 +8196,7 @@ async function maybeAutoPull(deps, dir, opts = {}) {
     if (ageOk(state.cache?.updatedAt)) return "fresh";
     if (ageOk(state.autoPullAttemptAt)) return "throttled";
     const gitTop = repoTopLevel(candidate.top);
-    if (!gitTop || realOrSame3(path7.join(gitTop, BUNDLE_DIR)) !== realOrSame3(boardPath) || !isProvisioned(gitTop)) {
+    if (!gitTop || realOrSame3(path8.join(gitTop, BUNDLE_DIR)) !== realOrSame3(boardPath) || !isProvisioned(gitTop)) {
       return "no-board";
     }
     await deps.store.recordAutoPullAttempt(key, now);
@@ -8126,9 +8217,118 @@ async function maybeAutoPull(deps, dir, opts = {}) {
   }
 }
 
+// ../board-git/src/intree.ts
+var IN_TREE_CURSOR_TIER = "git-intree";
+function resolveInTreeUpstream(top) {
+  const head = runGit(top, ["symbolic-ref", "-q", "--short", "HEAD"]);
+  if (head.status !== 0) return { state: "none", reason: "detached-head" };
+  const branch = head.stdout.trim();
+  if (branch.length === 0) return { state: "none", reason: "detached-head" };
+  const upstream = runGit(top, ["for-each-ref", "--format=%(upstream:short)", `refs/heads/${branch}`]);
+  const ref = upstream.status === 0 ? upstream.stdout.trim() : "";
+  if (ref.length === 0) return { state: "none", reason: "no-upstream" };
+  const remoteR = runGit(top, ["config", "--get", `branch.${branch}.remote`]);
+  const remoteName = remoteR.status === 0 ? remoteR.stdout.trim() : "";
+  const remote = remoteName.length === 0 || remoteName === "." ? null : remoteName;
+  return { state: "ok", config: { branch, ref, remote } };
+}
+function inTreeUpstreamSha(top, ref) {
+  const r = runGit(top, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+  const sha = r.stdout.trim();
+  return r.status === 0 && sha.length > 0 ? sha : null;
+}
+function inTreeBehindCount(top, upstream, prefix = BUNDLE_DIR) {
+  const r = runGit(top, ["rev-list", "--count", `HEAD..${upstream}`, "--", prefix]);
+  if (r.status !== 0) return null;
+  const n = Number.parseInt(r.stdout.trim(), 10);
+  return Number.isFinite(n) ? n : null;
+}
+function inTreeUnpushedCount(top, upstream, prefix = BUNDLE_DIR) {
+  const r = runGit(top, ["rev-list", "--count", `${upstream}..HEAD`, "--", prefix]);
+  if (r.status !== 0) return null;
+  const n = Number.parseInt(r.stdout.trim(), 10);
+  return Number.isFinite(n) ? n : null;
+}
+async function inTreeFetchAndRecord(store, top, key, budget = {}, now = () => /* @__PURE__ */ new Date()) {
+  const resolution = resolveInTreeUpstream(top);
+  if (resolution.state === "none") return { state: "no-upstream", reason: resolution.reason };
+  const { ref, remote } = resolution.config;
+  if (remote !== null) {
+    let failure;
+    try {
+      const fetched = runGit(top, ["fetch", "--prune", remote], {
+        timeoutMs: budget.fetchTimeoutMs ?? NETWORK_TIMEOUT_MS,
+        connectTimeoutSeconds: budget.connectTimeoutSeconds
+      });
+      if (fetched.status !== 0) {
+        failure = classifyGitError({
+          args: ["fetch", "--prune", remote],
+          status: fetched.status,
+          stdout: fetched.stdout,
+          stderr: fetched.stderr
+        });
+      }
+    } catch (err) {
+      if (!isBoardGitError(err)) throw err;
+      failure = err;
+    }
+    if (failure) return { state: "fetch-failed", failure };
+  }
+  const sha = inTreeUpstreamSha(top, ref);
+  if (sha === null) return { state: "unusable-upstream", ref };
+  const prefix = BUNDLE_DIR;
+  const unpushedCount2 = inTreeUnpushedCount(top, sha, prefix) ?? 0;
+  const uncommittedCount = countUncommitted(top, prefix);
+  const behind = inTreeBehindCount(top, sha, prefix) ?? 0;
+  const stored = await store.readCursor(key);
+  const token = stored && stored.tier === IN_TREE_CURSOR_TIER && typeof stored.token === "string" ? stored.token : void 0;
+  if (token !== void 0) {
+    const exists2 = runGit(top, ["cat-file", "-e", `${token}^{commit}`]).status === 0;
+    const isAncestorOfUpstream = exists2 && runGit(top, ["merge-base", "--is-ancestor", token, sha]).status === 0;
+    if (!isAncestorOfUpstream) {
+      await store.recordReanchor(key, { tier: IN_TREE_CURSOR_TIER, token: sha }, { unpushedCount: unpushedCount2, uncommittedCount }, now);
+      return {
+        state: "refreshed",
+        upstreamRef: ref,
+        upstreamSha: sha,
+        changes: [],
+        behind,
+        unpushedCount: unpushedCount2,
+        uncommittedCount,
+        reanchored: true
+      };
+    }
+  }
+  let baseline;
+  if (token !== void 0) {
+    baseline = token;
+  } else {
+    const mb = runGit(top, ["merge-base", "HEAD", sha]);
+    baseline = mb.status === 0 && mb.stdout.trim().length > 0 ? mb.stdout.trim() : sha;
+  }
+  const changes = diffDocsBetween(top, baseline, sha, { prefix });
+  await store.writeCursor(key, { tier: IN_TREE_CURSOR_TIER, token: sha });
+  await store.writeCache(key, {
+    updatedAt: now().toISOString(),
+    delta: toDeltaRows(changes),
+    unpushedCount: unpushedCount2,
+    uncommittedCount
+  });
+  return {
+    state: "refreshed",
+    upstreamRef: ref,
+    upstreamSha: sha,
+    changes,
+    behind,
+    unpushedCount: unpushedCount2,
+    uncommittedCount,
+    reanchored: false
+  };
+}
+
 // src/bundle.ts
 import { promises as fs2 } from "node:fs";
-import path8 from "node:path";
+import path9 from "node:path";
 
 // src/errors.ts
 var EXIT = {
@@ -8315,8 +8515,8 @@ function normalizeServer(raw) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`server URL must use http or https: ${raw}`);
   }
-  const path18 = url.pathname.replace(/\/+$/, "");
-  return { base: url.origin + path18, resource: url.origin };
+  const path21 = url.pathname.replace(/\/+$/, "");
+  return { base: url.origin + path21, resource: url.origin };
 }
 
 // src/credentials.ts
@@ -8337,7 +8537,7 @@ function credentialsPath(home2 = homedir3()) {
 async function writeFileAtomic0600(dir, fileName, content) {
   await mkdir2(dir, { recursive: true, mode: DIR_MODE2 });
   await chmod2(dir, DIR_MODE2);
-  const path18 = join4(dir, fileName);
+  const path21 = join4(dir, fileName);
   const tmpPath = join4(dir, `.${fileName}.${randomBytes(8).toString("hex")}.tmp`);
   const handle = await open(tmpPath, "wx", FILE_MODE);
   try {
@@ -8347,7 +8547,7 @@ async function writeFileAtomic0600(dir, fileName, content) {
     await handle.close();
   }
   try {
-    await rename(tmpPath, path18);
+    await rename(tmpPath, path21);
   } catch (err) {
     await unlink(tmpPath).catch(() => {
     });
@@ -8392,25 +8592,25 @@ async function exists(p) {
   }
 }
 function resolveTargetDir(dirFlag) {
-  return path8.resolve(dirFlag ?? process.cwd());
+  return path9.resolve(dirFlag ?? process.cwd());
 }
 async function findAncestorWithFile(start, filename) {
-  let dir = path8.resolve(start);
+  let dir = path9.resolve(start);
   while (true) {
-    if (await exists(path8.join(dir, filename))) return dir;
-    const parent = path8.dirname(dir);
+    if (await exists(path9.join(dir, filename))) return dir;
+    const parent = path9.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
 }
 var CONVENTIONAL_BUNDLE_DIR_NAME = BUNDLE_DIR;
 async function findBundleRoot(start) {
-  let dir = path8.resolve(start);
+  let dir = path9.resolve(start);
   while (true) {
-    if (await exists(path8.join(dir, "index.md"))) return dir;
-    const conventional = path8.join(dir, CONVENTIONAL_BUNDLE_DIR_NAME);
-    if (await exists(path8.join(conventional, "index.md"))) return conventional;
-    const parent = path8.dirname(dir);
+    if (await exists(path9.join(dir, "index.md"))) return dir;
+    const conventional = path9.join(dir, CONVENTIONAL_BUNDLE_DIR_NAME);
+    if (await exists(path9.join(conventional, "index.md"))) return conventional;
+    const parent = path9.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
@@ -8437,7 +8637,7 @@ function bindingUriIntent(value) {
 async function resolveProjectBinding(startDir = process.cwd()) {
   const dir = await findAncestorWithFile(startDir, PROJECT_BINDING_FILE_NAME);
   if (!dir) return null;
-  const file = path8.join(dir, PROJECT_BINDING_FILE_NAME);
+  const file = path9.join(dir, PROJECT_BINDING_FILE_NAME);
   let raw;
   try {
     raw = await fs2.readFile(file, "utf8");
@@ -8476,7 +8676,7 @@ async function resolveProjectBinding(startDir = process.cwd()) {
       { help: `${cliInvocation()} <command> --remote ${remote}` }
     );
   }
-  return { file, target: path8.resolve(dir, trimmed) };
+  return { file, target: path9.resolve(dir, trimmed) };
 }
 function wrapTransportErrors(remote) {
   return async (request) => {
@@ -8530,7 +8730,7 @@ async function resolveRemoteFlag(remoteFlag, dirFlag) {
   return void 0;
 }
 async function canonicalBundleRoot(root, notFoundMessage, help) {
-  if (!await exists(path8.join(root, "index.md"))) {
+  if (!await exists(path9.join(root, "index.md"))) {
     throw new CliError("NOT_FOUND", notFoundMessage, { help });
   }
   try {
@@ -8541,7 +8741,7 @@ async function canonicalBundleRoot(root, notFoundMessage, help) {
 }
 async function resolveLocalBundleTarget(dirFlag, startDir = process.cwd()) {
   if (dirFlag !== void 0) {
-    const requested = path8.resolve(startDir, dirFlag);
+    const requested = path9.resolve(startDir, dirFlag);
     const canonicalRoot2 = await canonicalBundleRoot(
       requested,
       `no OKF bundle at ${requested} (no index.md)`,
@@ -9347,13 +9547,13 @@ function parseRecipeFiles(files, source) {
 
 // src/recipe-ref.ts
 import os from "node:os";
-import path9 from "node:path";
+import path10 from "node:path";
 function looksLikeRecipePath(ref) {
   return ref.includes("/") || ref.startsWith("~");
 }
 function expandRecipePath(ref) {
   if (ref === "~") return os.homedir();
-  if (ref.startsWith("~/")) return path9.join(os.homedir(), ref.slice(2));
+  if (ref.startsWith("~/")) return path10.join(os.homedir(), ref.slice(2));
   return ref;
 }
 
@@ -9430,15 +9630,15 @@ var CONTEXT_NOTES_RECIPE = resolveBuiltinSync("context-notes");
 
 // src/recipe-source-filesystem.ts
 import { promises as fs3 } from "node:fs";
-import path10 from "node:path";
+import path11 from "node:path";
 async function readRecipeDir(root) {
   const files = [];
   const rootReal = await fs3.realpath(root);
-  const manifestPath = path10.join(root, "recipe.md");
+  const manifestPath = path11.join(root, "recipe.md");
   const manifestStat = await fs3.stat(manifestPath).catch(() => null);
   if (manifestStat?.isFile()) {
     const manifestReal = await fs3.realpath(manifestPath).catch(() => null);
-    if (!manifestReal || manifestReal !== rootReal && !manifestReal.startsWith(rootReal + path10.sep)) {
+    if (!manifestReal || manifestReal !== rootReal && !manifestReal.startsWith(rootReal + path11.sep)) {
       throw new RecipeUnsafePathSignal("recipe.md");
     }
     const bytes = await fs3.readFile(manifestPath, "utf8");
@@ -9449,7 +9649,7 @@ async function readRecipeDir(root) {
       return files;
     }
   }
-  const conventionsRoot = path10.join(root, "conventions");
+  const conventionsRoot = path11.join(root, "conventions");
   const conventionsStat = await fs3.stat(conventionsRoot).catch(() => null);
   if (conventionsStat?.isDirectory()) {
     await walkConventions(conventionsRoot, "conventions", rootReal, files);
@@ -9459,7 +9659,7 @@ async function readRecipeDir(root) {
 async function walkRecipeFiles(dir, relPrefix, rootReal, out, skip) {
   const entries = await fs3.readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
-    const abs = path10.join(dir, entry.name);
+    const abs = path11.join(dir, entry.name);
     const rel = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
     if (skip.has(rel)) continue;
     if (entry.isDirectory()) {
@@ -9468,7 +9668,7 @@ async function walkRecipeFiles(dir, relPrefix, rootReal, out, skip) {
     }
     if (!entry.isFile() && !entry.isSymbolicLink()) continue;
     const real = await fs3.realpath(abs).catch(() => null);
-    if (!real || real !== rootReal && !real.startsWith(rootReal + path10.sep)) {
+    if (!real || real !== rootReal && !real.startsWith(rootReal + path11.sep)) {
       throw new RecipeUnsafePathSignal(rel);
     }
     const stat2 = await fs3.stat(real).catch(() => null);
@@ -9479,7 +9679,7 @@ async function walkRecipeFiles(dir, relPrefix, rootReal, out, skip) {
 async function walkConventions(dir, relPrefix, rootReal, out) {
   const entries = await fs3.readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
-    const abs = path10.join(dir, entry.name);
+    const abs = path11.join(dir, entry.name);
     const rel = `${relPrefix}/${entry.name}`;
     if (entry.isDirectory()) {
       await walkConventions(abs, rel, rootReal, out);
@@ -9488,7 +9688,7 @@ async function walkConventions(dir, relPrefix, rootReal, out) {
     if (!entry.isFile() && !entry.isSymbolicLink()) continue;
     if (!rel.endsWith(".md")) continue;
     const real = await fs3.realpath(abs).catch(() => null);
-    if (!real || real !== rootReal && !real.startsWith(rootReal + path10.sep)) {
+    if (!real || real !== rootReal && !real.startsWith(rootReal + path11.sep)) {
       throw new RecipeUnsafePathSignal(rel);
     }
     out.push({ path: rel, bytes: await fs3.readFile(abs, "utf8") });
@@ -9507,7 +9707,7 @@ function filesRecipeSource() {
     async resolve(ref) {
       if (!looksLikeRecipePath(ref)) return null;
       const expanded = expandRecipePath(ref);
-      const real = await fs3.realpath(path10.resolve(expanded)).catch(() => null);
+      const real = await fs3.realpath(path11.resolve(expanded)).catch(() => null);
       if (!real) {
         return { ok: false, error: { code: "RECIPE_NOT_FOUND", message: `no recipe folder at '${ref}'` } };
       }
@@ -9568,10 +9768,10 @@ Options:
   -h, --help              Show this help
 `;
 function insideGitRepo(dir) {
-  let cur = path11.resolve(dir);
+  let cur = path12.resolve(dir);
   for (; ; ) {
-    if (existsSync5(path11.join(cur, ".git"))) return true;
-    const parent = path11.dirname(cur);
+    if (existsSync5(path12.join(cur, ".git"))) return true;
+    const parent = path12.dirname(cur);
     if (parent === cur) return false;
     cur = parent;
   }
@@ -9966,6 +10166,13 @@ function isNoopPatch(existing, candidate, compareTimestamp) {
   const { timestamp: _b, ...restCandidate } = candidate.frontmatter;
   return valuesEqual(restExisting, restCandidate);
 }
+async function firePostPersist(hook2) {
+  if (!hook2) return;
+  try {
+    await hook2();
+  } catch {
+  }
+}
 function attributeCandidate(candidate, actor, persistActor) {
   if (!persistActor || actor === void 0) return candidate;
   return { ...candidate, frontmatter: { ...candidate.frontmatter, actor } };
@@ -9981,6 +10188,7 @@ async function mutateDoc(opts) {
     const warnings = validate(candidate);
     try {
       const { doc: saved, version } = await writeDocVersioned(bundle, { id, ...candidate }, { expectedVersion: null, actor: opts.actor });
+      await firePostPersist(opts.onPersisted);
       return { doc: saved, version, warnings };
     } catch (err) {
       if (err instanceof VersionConflict) {
@@ -10028,6 +10236,7 @@ async function mutateDoc(opts) {
         },
         maxAttempts
       });
+      await firePostPersist(opts.onPersisted);
       return { doc: savedDoc2, version: outcome.version, warnings };
     } catch (err) {
       if (err instanceof VersionConflict) {
@@ -10081,6 +10290,7 @@ async function mutateDoc(opts) {
       // behavior (a benign concurrent writer is retried, not failed).
       maxAttempts: hardCas ? 1 : maxAttempts
     });
+    if (outcome.wrote) await firePostPersist(opts.onPersisted);
     return outcome.wrote ? { doc: savedDoc, changed: true, version: outcome.version, warnings: outcome.result.warnings } : { doc: outcome.result.doc, changed: false, version: outcome.version, warnings: [] };
   } catch (err) {
     if (err instanceof VersionConflict) {
@@ -10088,6 +10298,34 @@ async function mutateDoc(opts) {
     }
     throw err;
   }
+}
+
+// src/board-attribution.ts
+import path13 from "node:path";
+
+// src/cursor.ts
+import { homedir as homedir4 } from "node:os";
+import { join as join5 } from "node:path";
+var SYNC_STATE_DIR_NAME = "sync";
+function syncStateDir(home2 = homedir4()) {
+  return join5(credentialsDir(home2), SYNC_STATE_DIR_NAME);
+}
+var defaultSyncStore = createSyncStore({
+  stateDir: () => syncStateDir(),
+  writeAtomic: writeFileAtomic0600
+});
+
+// src/board-attribution.ts
+function boardPostPersistHook(bundle, actor) {
+  if (!actor || actor === "unknown") return void 0;
+  if (bundle.backend !== void 0) return void 0;
+  if (path13.basename(bundle.root) !== BUNDLE_DIR) return void 0;
+  return async () => {
+    try {
+      await defaultSyncStore.recordSelfActors(resolveBundleKey(bundle.root), [actor]);
+    } catch {
+    }
+  };
 }
 
 // src/actor.ts
@@ -10200,6 +10438,9 @@ async function docWrite(argv, deps) {
     helpOnKindReject: `${cliInvocation()} kinds`,
     actor,
     persistActor: true,
+    // Board self-attribution (PR C): fires only after a substantive persisted write — never a
+    // refused/failed one — and only for the conventional board bundle (see board-attribution.ts).
+    onPersisted: boardPostPersistHook(bundle, actor),
     buildCandidate: (fresh) => {
       if (isConventionPath && fresh && fresh.frontmatter.type === "Convention") {
         const governs = typeof fresh.frontmatter.governs === "string" && fresh.frontmatter.governs.trim() ? fresh.frontmatter.governs : "(unknown)";
@@ -10429,6 +10670,9 @@ async function docUpdate(argv, deps) {
     actor,
     persistActor: true,
     expectedVersion: p.expectedVersion?.trim(),
+    // Board self-attribution (PR C): a `changed: false` no-op never records (mutate.ts's
+    // post-persist contract), so ambient attribution cannot manufacture a "self" actor.
+    onPersisted: boardPostPersistHook(bundle, actor),
     buildCandidate: async (existingDoc) => {
       const existing = existingDoc;
       const nextFrontmatter = { ...existing.frontmatter };
@@ -10496,19 +10740,7 @@ async function docUpdate(argv, deps) {
 // src/commands/doc/read.ts
 import { parseArgs as parseArgs4 } from "node:util";
 import { promises as fs6 } from "node:fs";
-import path12 from "node:path";
-
-// src/cursor.ts
-import { homedir as homedir4 } from "node:os";
-import { join as join5 } from "node:path";
-var SYNC_STATE_DIR_NAME = "sync";
-function syncStateDir(home2 = homedir4()) {
-  return join5(credentialsDir(home2), SYNC_STATE_DIR_NAME);
-}
-var defaultSyncStore = createSyncStore({
-  stateDir: () => syncStateDir(),
-  writeAtomic: writeFileAtomic0600
-});
+import path14 from "node:path";
 
 // src/autopull.ts
 async function maybeAutoPull2(dir, opts = {}) {
@@ -10697,7 +10929,7 @@ async function docReadInner(argv, deps) {
       try {
         assertSafeConceptId(id);
         rel = pathFromConceptId(id);
-        bytes = await fs6.readFile(path12.join(bundle.root, rel));
+        bytes = await fs6.readFile(path14.join(bundle.root, rel));
       } catch (err) {
         throw readErrorToCliError(err, id, values.remote);
       }
@@ -10733,10 +10965,10 @@ function requestsStdoutByteChannel(argv) {
 }
 async function assertSafeBodyOutTarget(bundle, bodyOut, id) {
   if (bundle.backend) return;
-  const lexicalTarget = path12.resolve(bodyOut);
-  const rootReal = await fs6.realpath(path12.resolve(bundle.root)).catch(() => path12.resolve(bundle.root));
+  const lexicalTarget = path14.resolve(bodyOut);
+  const rootReal = await fs6.realpath(path14.resolve(bundle.root)).catch(() => path14.resolve(bundle.root));
   const effectiveTarget = await effectiveOutputPath(lexicalTarget);
-  const inside = (candidate, base) => candidate === base || candidate.startsWith(base + path12.sep);
+  const inside = (candidate, base) => candidate === base || candidate.startsWith(base + path14.sep);
   const unsafeLexical = inside(lexicalTarget, rootReal) && lexicalTarget.endsWith(".md");
   const unsafeEffective = inside(effectiveTarget, rootReal) && effectiveTarget.endsWith(".md");
   if (!unsafeLexical && !unsafeEffective) return;
@@ -10751,11 +10983,11 @@ async function effectiveOutputPath(absoluteTarget) {
   const missingSuffix = [];
   while (true) {
     try {
-      return path12.join(await fs6.realpath(probe), ...missingSuffix);
+      return path14.join(await fs6.realpath(probe), ...missingSuffix);
     } catch {
-      const parent = path12.dirname(probe);
+      const parent = path14.dirname(probe);
       if (parent === probe) return absoluteTarget;
-      missingSuffix.unshift(path12.basename(probe));
+      missingSuffix.unshift(path14.basename(probe));
       probe = parent;
     }
   }
@@ -10783,9 +11015,9 @@ function formatFieldValue(value) {
 }
 function inBundlePollutionWarning(bundle, out) {
   if (bundle.backend) return void 0;
-  const resolvedOut = path12.resolve(out);
+  const resolvedOut = path14.resolve(out);
   const root = bundle.root;
-  const isInside = resolvedOut === root || resolvedOut.startsWith(root + path12.sep);
+  const isInside = resolvedOut === root || resolvedOut.startsWith(root + path14.sep);
   if (!isInside) return void 0;
   if (isReservedFile(resolvedOut)) {
     return `--out ${out} resolves to ${resolvedOut}, which is INSIDE this bundle (${root}) at a reserved OKF filename \u2014 the write will CLOBBER that reserved file (index.md/log.md is never re-parsed as a concept doc). Pass a path outside the bundle if that is not intended.`;
@@ -12557,6 +12789,8 @@ async function newCommand(argv, deps = {}) {
     helpOnKindReject: `${cliInvocation()} kinds`,
     actor,
     persistActor: true,
+    // Board self-attribution (PR C): fires only after the expect-absent CAS create persisted.
+    onPersisted: boardPostPersistHook(bundle, actor),
     buildCandidate: () => ({ frontmatter, body }),
     errors: {
       alreadyExists: () => new CliError(
@@ -13951,7 +14185,7 @@ import { spawn as spawn2 } from "node:child_process";
 import { createServer as createServer2 } from "node:http";
 
 // src/bundle-name.ts
-import path13 from "node:path";
+import path15 from "node:path";
 var BUNDLE_NAME_DOC_ID = "docs/bundle";
 var BUNDLE_NAME_DOC_TYPE = "Bundle Name";
 var FALLBACK_NAME = "bundle";
@@ -13969,9 +14203,9 @@ async function deriveBundleDisplayName(bundle) {
     }
   } catch {
   }
-  const base = path13.basename(bundle.root);
+  const base = path15.basename(bundle.root);
   if (base === CONVENTIONAL_BUNDLE_DIR_NAME) {
-    const parent = path13.basename(path13.dirname(bundle.root));
+    const parent = path15.basename(path15.dirname(bundle.root));
     if (parent) return { name: parent, source: "conventional-parent" };
   }
   return { name: base || FALLBACK_NAME, source: "root-basename" };
@@ -14879,7 +15113,7 @@ async function ui(argv, deps = {}) {
 // src/commands/sync.ts
 import { readFileSync as readFileSync5 } from "node:fs";
 import { promises as fs10 } from "node:fs";
-import path15 from "node:path";
+import path17 from "node:path";
 import { parseArgs as parseArgs22 } from "node:util";
 
 // src/commands/hook.ts
@@ -14978,23 +15212,23 @@ function targetsFor(base) {
     opencodePlugin: join7(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
   };
 }
-function readSettings(path18) {
-  if (!existsSync6(path18)) return {};
+function readSettings(path21) {
+  if (!existsSync6(path21)) return {};
   try {
-    return JSON.parse(readFileSync4(path18, "utf8"));
+    return JSON.parse(readFileSync4(path21, "utf8"));
   } catch {
     return {};
   }
 }
-function writeSettings(path18, settings) {
-  mkdirSync2(dirname3(path18), { recursive: true });
-  writeFileSync3(path18, `${JSON.stringify(settings, null, 2)}
+function writeSettings(path21, settings) {
+  mkdirSync2(dirname3(path21), { recursive: true });
+  writeFileSync3(path21, `${JSON.stringify(settings, null, 2)}
 `);
 }
-function opencodePluginInstalled(path18) {
-  if (!existsSync6(path18)) return false;
+function opencodePluginInstalled(path21) {
+  if (!existsSync6(path21)) return false;
   try {
-    return readFileSync4(path18, "utf8").includes(OPENCODE_MANAGED_MARKER);
+    return readFileSync4(path21, "utf8").includes(OPENCODE_MANAGED_MARKER);
   } catch {
     return false;
   }
@@ -15227,10 +15461,10 @@ async function hook(argv, deps = {}) {
     return;
   }
   let changed = false;
-  for (const path18 of [targets.claudeSettings, targets.codexHooks]) {
-    const [updated, didChange] = computeHookUninstall(readSettings(path18));
+  for (const path21 of [targets.claudeSettings, targets.codexHooks]) {
+    const [updated, didChange] = computeHookUninstall(readSettings(path21));
     if (didChange) {
-      writeSettings(path18, updated);
+      writeSettings(path21, updated);
       changed = true;
     }
   }
@@ -15272,7 +15506,7 @@ async function hookInstallHintOnce(key, inv, installed = hookInstalled) {
 
 // src/commands/sync-establish.ts
 import { existsSync as existsSync7, lstatSync as lstatSync2, readdirSync as readdirSync2, renameSync as renameSync2, rmSync as rmSync3 } from "node:fs";
-import path14 from "node:path";
+import path16 from "node:path";
 var ESTABLISH_DONE = "the shared board is live \u2014 .agentstate-lite/ now syncs over the 'board' branch";
 var ESTABLISH_ALREADY = "already established";
 function establishNextSteps(inv) {
@@ -15297,7 +15531,7 @@ function assertPlainBundleShape(bundlePath, inv) {
       `'${bundlePath}' must be a real, plain directory \u2014 symlinks and non-directories are never followed by establish`
     );
   }
-  if (existsSync7(path14.join(bundlePath, ".git"))) {
+  if (existsSync7(path16.join(bundlePath, ".git"))) {
     throw new CliError(
       "RUNTIME",
       `'${bundlePath}' already contains its own '.git' \u2014 establish only operates on a plain bundle folder`
@@ -15308,7 +15542,7 @@ function assertPlainBundleShape(bundlePath, inv) {
       help: runInitHelp
     });
   }
-  const indexPath = path14.join(bundlePath, "index.md");
+  const indexPath = path16.join(bundlePath, "index.md");
   if (!existsSync7(indexPath)) {
     throw new CliError(
       "RUNTIME",
@@ -15334,7 +15568,7 @@ function assertFreshSource(top, boardPath, inv) {
 async function assertNotBoundElsewhere(top, boardPath) {
   const binding = await resolveProjectBinding(top);
   if (!binding) return;
-  const boundIsConventional = path14.resolve(binding.target) === boardPath;
+  const boundIsConventional = path16.resolve(binding.target) === boardPath;
   if (boundIsConventional) return;
   throw new CliError(
     "RUNTIME",
@@ -15359,7 +15593,7 @@ function removeVerifiedBackup(top, backupPath, expectedCommit, inv) {
   rmSync3(backupPath, { recursive: true, force: false });
 }
 function finishLocalConversion(top, sourcePath, publishedCommit, expectedTree, inv) {
-  const boardPath = path14.join(top, BUNDLE_DIR);
+  const boardPath = path16.join(top, BUNDLE_DIR);
   const backupPath = `${boardPath}.establish-backup`;
   const remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
   if (!remoteCommit || !isAncestor(top, publishedCommit, remoteCommit)) {
@@ -15459,7 +15693,7 @@ async function establishBoard(dir, inv, mode, stdout, deps, opts = {}) {
     return establishCommitted(top, inv, mode, Boolean(opts.yes), committedTree, stdout);
   }
   fetchOriginRequired(top);
-  const boardPath = path14.join(top, BUNDLE_DIR);
+  const boardPath = path16.join(top, BUNDLE_DIR);
   const backupPath = `${boardPath}.establish-backup`;
   let marker = readGitDirMarker(top, ESTABLISH_MARKER_KEY);
   let remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
@@ -15491,7 +15725,7 @@ async function establishBoard(dir, inv, mode, stdout, deps, opts = {}) {
         throw new CliError("RUNTIME", "the local board branch could not be provisioned for explicit establishment");
       }
     }
-    const indexPath = path14.join(boardPath, "index.md");
+    const indexPath = path16.join(boardPath, "index.md");
     if (!existsSync7(indexPath) || lstatSync2(indexPath).isSymbolicLink() || !lstatSync2(indexPath).isFile()) {
       throw new CliError("RUNTIME", `the local '${BOARD_BRANCH}' worktree is not a valid bundle (root index.md missing)`);
     }
@@ -15883,6 +16117,16 @@ If the push fails after a local commit already landed (offline, revoked/expired 
 locked repository), the receipt still reports what committed/pulled successfully \u2014 your work is
 saved locally either way, and re-running sync retries the push.
 
+A board can also ride IN-TREE: \`.agentstate-lite/\` committed WITH the code on the current
+branch, with no dedicated \`board\` branch anywhere. That is a supported, read-side mode \u2014 sync
+recognizes it and behaves accordingly: \`sync --pull-only\` fetches the branch's own tracking
+upstream and reports incoming board doc changes (your normal \`git pull\` delivers them);
+\`session-start\`/\`home\` show the same upstream awareness; \`--show-incoming <id>\` reads the
+upstream version. Sharing YOUR board changes rides your normal commit/push \u2014 a full \`sync\`
+refuses (it would have to publish the code branch itself) and \`sync --establish\` remains the
+explicit conversion to a dedicated \`board\` branch. If the branch has no upstream (or a detached
+HEAD), in-tree awareness honestly reports that there is no comparison basis rather than guessing.
+
 Board-READING commands (\`list\`, \`doc read\`, \`status\`, \`home\`, \`link show\`) also keep a
 provisioned board fresh opportunistically: when the board's awareness state is older than ~5
 minutes, the read first runs the same fast-forward-only pull \`--pull-only\` uses (time-boxed to
@@ -16124,6 +16368,52 @@ function syncRemoteStateUnknownNote(inv, hasLocalBundle) {
   const local = hasLocalBundle ? "your local bundle remains usable and sync committed nothing. " : "sync changed nothing. ";
   return local + `Retry \`${inv} sync\` when origin is available; a shared board may already exist.`;
 }
+var SYNC_IN_TREE_BOARD_LINE = `in-tree \u2014 board docs ride the current code branch (${BUNDLE_DIR}/ is committed with the code)`;
+function syncInTreeRefusalMessage(inv) {
+  return `this board rides your code branch \u2014 '${BUNDLE_DIR}/' is committed with the code, so a full sync would have to publish the code branch itself; share board changes with your normal git commit/push, run '${inv} sync --pull-only' to fetch-and-report incoming board changes, or run '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch`;
+}
+var SYNC_IN_TREE_NO_BASIS = "no-comparison-basis";
+function inTreeNoBasisNote(reason, ref) {
+  const cause = reason === "detached-head" ? "the checkout is on a detached HEAD (no branch, so no tracking upstream)" : reason === "no-upstream" ? "the current branch has no upstream tracking configured" : `the branch's tracking ref '${ref ?? "?"}' does not resolve (never fetched, or deleted on the remote)`;
+  return `${cause} \u2014 there is nothing to fetch from or compare against, so board freshness is unknown; sync will not guess an upstream`;
+}
+function inTreePullHint(behind) {
+  return `${behind} incoming board ${behind === 1 ? "change is" : "changes are"} not yet in this checkout \u2014 run 'git pull' to get ${behind === 1 ? "it" : "them"}`;
+}
+var SYNC_IN_TREE_CURRENT = "checkout is current with upstream";
+async function syncInTree(dir, pullOnly, inv, mode, limit, stdout, deps) {
+  const top = repoTopLevel(dir);
+  if (!top) throw new CliError("RUNTIME", "not inside a git repository");
+  const boardPath = path17.join(top, BUNDLE_DIR);
+  if (!pullOnly) {
+    throw new CliError("USAGE", syncInTreeRefusalMessage(inv), {
+      details: { path: boardPath, state: "in-tree" },
+      help: `${inv} sync --establish`
+    });
+  }
+  const key = resolveBundleKey(boardPath);
+  await defaultSyncStore.refreshMarker(key);
+  const result = await inTreeFetchAndRecord(defaultSyncStore, top, key);
+  if (result.state === "fetch-failed") throw result.failure;
+  const rec = { board: SYNC_IN_TREE_BOARD_LINE };
+  if (result.state === "no-upstream") {
+    rec.state = SYNC_IN_TREE_NO_BASIS;
+    rec.note = inTreeNoBasisNote(result.reason);
+  } else if (result.state === "unusable-upstream") {
+    rec.state = SYNC_IN_TREE_NO_BASIS;
+    rec.note = inTreeNoBasisNote("unusable-upstream", result.ref);
+  } else {
+    rec.upstream = result.upstreamRef;
+    rec.incoming = cap2(toIncomingRows(result.changes), limit);
+    const notes = [];
+    if (result.reanchored) notes.push(REANCHOR_NOTE);
+    notes.push(result.behind > 0 ? inTreePullHint(result.behind) : SYNC_IN_TREE_CURRENT);
+    rec.note = notes.join("; ");
+  }
+  const hookHint = await hookInstallHintOnce(key, inv, deps.hookInstalled);
+  if (hookHint) rec.hint = hookHint;
+  stdout(render(rec, mode));
+}
 async function sync(argv, deps = {}) {
   try {
     await syncCommand(argv, deps);
@@ -16214,6 +16504,11 @@ async function syncCommand(argv, deps = {}) {
     establishAlreadyNote = ESTABLISH_ALREADY;
   }
   healStaleRebaseBeforeProvisioning(dir);
+  const detection = detectBoardChannel(dir);
+  if (detection.kind === "channel" && detection.channel.mode === "in-tree") {
+    await syncInTree(dir, pullOnly, inv, mode, limit, stdout, deps);
+    return;
+  }
   const outcome = provisionBoardWorktree(dir, { allowLocalBranch: false });
   if (outcome.kind === "local_board") {
     if (outcome.remoteExists) {
@@ -16257,7 +16552,7 @@ async function syncCommand(argv, deps = {}) {
     return;
   }
   const boardPath = outcome.boardPath;
-  const top = path15.dirname(boardPath);
+  const top = path17.dirname(boardPath);
   if (outcome.kind === "repaired") {
     healStaleRebaseBeforeProvisioning(dir);
   }
@@ -16397,7 +16692,18 @@ async function syncCommand(argv, deps = {}) {
 }
 var SHOW_INCOMING_AS_OF = "last fetch";
 var SHOW_INCOMING_ABSENT_STATE = "absent upstream \u2014 not on origin/board as of the last fetch (deleted upstream, or a new local doc)";
+var SHOW_INCOMING_IN_TREE_ABSENT_STATE = `absent upstream \u2014 not under ${BUNDLE_DIR}/ on the branch's tracking upstream as of the last fetch (deleted upstream, or a new local doc)`;
 var SHOW_INCOMING_NO_UPSTREAM = "there is no fetched origin/board state to show \u2014 either this board is local-only (no remote board branch, so no incoming versions exist), or nothing has been fetched yet";
+function showIncomingInTreeNoBasis(inv, reason, ref) {
+  return new CliError(
+    "NO_UPSTREAM",
+    `this board rides the current branch, and ${inTreeNoBasisNote(reason, ref)}`,
+    {
+      details: { state: "in-tree" },
+      help: `configure tracking (git branch --set-upstream-to=<remote>/<branch>) or fetch once, then re-run ${inv} sync --show-incoming <id>`
+    }
+  );
+}
 function attachBodyPreview(rec, body, byteHatch) {
   if (body.length > BODY_PREVIEW_LIMIT) {
     rec.body = body.slice(0, BODY_PREVIEW_LIMIT);
@@ -16426,16 +16732,27 @@ async function showIncoming(id, values, deps) {
         { details: { state: "no-repo" } }
       );
     }
-    if (path15.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
+    if (path17.isAbsolute(id) || id.split("/").some((seg) => seg === "..")) {
       throw new CliError("USAGE", `--show-incoming needs a repo-relative doc id or path without '..' segments: ${id}`);
     }
+    let readRef = `refs/remotes/${BOARD_REF}`;
+    let pathPrefix = "";
     if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
       if (runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0) {
         throw ffSwallowToError("no-upstream", inv, top);
       }
-      throw new CliError("NO_UPSTREAM", SHOW_INCOMING_NO_UPSTREAM, {
-        help: `on a shared board, run ${inv} sync --pull-only once to fetch origin/board, then re-run --show-incoming`
-      });
+      if (folderTreeAtHead(top) !== null) {
+        const resolution = resolveInTreeUpstream(top);
+        if (resolution.state === "none") throw showIncomingInTreeNoBasis(inv, resolution.reason);
+        const sha = inTreeUpstreamSha(top, resolution.config.ref);
+        if (sha === null) throw showIncomingInTreeNoBasis(inv, "unusable-upstream", resolution.config.ref);
+        readRef = sha;
+        pathPrefix = `${BUNDLE_DIR}/`;
+      } else {
+        throw new CliError("NO_UPSTREAM", SHOW_INCOMING_NO_UPSTREAM, {
+          help: `on a shared board, run ${inv} sync --pull-only once to fetch origin/board, then re-run --show-incoming`
+        });
+      }
     }
     const candidates = [];
     let conceptIdOk = true;
@@ -16448,10 +16765,10 @@ async function showIncoming(id, values, deps) {
     if (candidates.every((c) => c.relPath !== id)) candidates.push({ relPath: id, isDoc: false });
     let hit = null;
     for (const probe of candidates) {
-      if (runGit(top, ["cat-file", "-e", `refs/remotes/${BOARD_REF}:${probe.relPath}`]).status !== 0) {
+      if (runGit(top, ["cat-file", "-e", `${readRef}:${pathPrefix}${probe.relPath}`]).status !== 0) {
         continue;
       }
-      const shown = runGitBytes(top, ["show", `refs/remotes/${BOARD_REF}:${probe.relPath}`]);
+      const shown = runGitBytes(top, ["show", `${readRef}:${pathPrefix}${probe.relPath}`]);
       if (shown.status !== 0) {
         throw classifyGitError({ args: ["show"], status: shown.status, stdout: "", stderr: shown.stderr });
       }
@@ -16463,7 +16780,7 @@ async function showIncoming(id, values, deps) {
         sync: "show-incoming",
         id,
         as_of: SHOW_INCOMING_AS_OF,
-        state: SHOW_INCOMING_ABSENT_STATE
+        state: pathPrefix === "" ? SHOW_INCOMING_ABSENT_STATE : SHOW_INCOMING_IN_TREE_ABSENT_STATE
       };
       (streamMode ? stderr : stdout)(render(state, mode));
       return;
@@ -16648,7 +16965,7 @@ var COMMAND_GROUPS = [
       },
       {
         usage: "sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]",
-        summary: "Share the board branch with a remote \u2014 commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A bundle folder already committed on the code branch is the same flag's hard case: preview first, --yes executes, and the folder's removal from the code branch rides a prepared side-branch commit you push and open as a PR. A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale \u2014 silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it"
+        summary: "Share the board branch with a remote \u2014 commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A bundle folder already committed on the code branch is the same flag's hard case: preview first, --yes executes, and the folder's removal from the code branch rides a prepared side-branch commit you push and open as a PR. A bundle committed with code and NO board branch anywhere is the IN-TREE mode (read-side): full sync refuses (sharing rides your normal commit/push), --pull-only fetches the branch's tracking upstream and reports incoming board docs ('git pull' delivers them), and --establish converts to a dedicated board branch. A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale \u2014 silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it"
       }
     ]
   },
@@ -16730,13 +17047,13 @@ function helpIndexText(invocation) {
 
 // src/commands/home.ts
 import { parseArgs as parseArgs23 } from "node:util";
-import path17 from "node:path";
+import path19 from "node:path";
 
 // src/catalog.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
 import { chmod as chmod3, mkdir as mkdir3, open as open2, readFile as readFile4, stat, unlink as unlink3 } from "node:fs/promises";
 import { homedir as homedir7 } from "node:os";
-import path16 from "node:path";
+import path18 from "node:path";
 var CATALOG_FILE_NAME = "catalog.json";
 var CATALOG_LOCK_FILE_NAME = "catalog.lock";
 var CATALOG_SCHEMA_VERSION = 1;
@@ -16751,10 +17068,10 @@ function catalogDir(home2) {
   return credentialsDir(home2);
 }
 function catalogPath(home2 = homedir7()) {
-  return path16.join(catalogDir(home2), CATALOG_FILE_NAME);
+  return path18.join(catalogDir(home2), CATALOG_FILE_NAME);
 }
 function catalogLockPath(home2 = homedir7()) {
-  return path16.join(catalogDir(home2), CATALOG_LOCK_FILE_NAME);
+  return path18.join(catalogDir(home2), CATALOG_LOCK_FILE_NAME);
 }
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -16794,7 +17111,7 @@ function validateEntry(value, file, index) {
   if (value.locator.kind !== "local-path") {
     throw invalidCatalog(file, `entries[${index}].locator.kind must be "local-path"`);
   }
-  if (typeof value.locator.path !== "string" || !path16.isAbsolute(value.locator.path) || path16.normalize(value.locator.path) !== value.locator.path) {
+  if (typeof value.locator.path !== "string" || !path18.isAbsolute(value.locator.path) || path18.normalize(value.locator.path) !== value.locator.path) {
     throw invalidCatalog(file, `entries[${index}].locator.path must be a normalized absolute path`);
   }
   return {
@@ -16972,7 +17289,7 @@ function generatedId(options2, existing) {
 }
 async function addCatalogEntry(label, canonicalPath, options2 = {}) {
   assertCatalogLabel(label);
-  if (!path16.isAbsolute(canonicalPath)) throw new CliError("USAGE", "workspace catalog paths must be absolute");
+  if (!path18.isAbsolute(canonicalPath)) throw new CliError("USAGE", "workspace catalog paths must be absolute");
   const result = await mutateCatalog(async (current) => {
     const target = await resolveLocalBundleTarget(canonicalPath);
     if (target.canonicalRoot !== canonicalPath) {
@@ -17110,7 +17427,7 @@ async function defaultSummarizeBundle(dir) {
 }
 async function discoverSummarizeBundle(startDir) {
   try {
-    const root = await findBundleRoot(path17.resolve(startDir));
+    const root = await findBundleRoot(path19.resolve(startDir));
     return root ? defaultSummarizeBundle(root) : null;
   } catch {
     return null;
@@ -17124,6 +17441,17 @@ var BOARD_OFFLINE_NOTE = "board sync offline \u2014 showing last known state";
 var BOARD_CHANGES_SHOWN_LIMIT = 10;
 function boardFirstContactLine(inv) {
   return `not yet provisioned \u2014 run \`${inv} sync\` to set it up`;
+}
+var BOARD_IN_TREE_LINE = `rides this branch \u2014 '${BUNDLE_DIR}/' is committed with the code; teammates' board changes arrive with your normal 'git pull'`;
+var IN_TREE_SINCE_FIELD = "since_this_machine_last_checked";
+function inTreePullHintLine(n) {
+  return `${n} incoming board ${n === 1 ? "change is" : "changes are"} not yet in this checkout \u2014 run 'git pull' to get ${n === 1 ? "it" : "them"}`;
+}
+function inTreeUnpushedLine(n) {
+  return `${n} board ${n === 1 ? "commit" : "commits"} on this branch not yet pushed \u2014 'git push' shares ${n === 1 ? "it" : "them"}`;
+}
+function inTreeUncommittedLine(n) {
+  return `${n} uncommitted board ${n === 1 ? "change" : "changes"} \u2014 commit ${n === 1 ? "it" : "them"} with your normal git flow to share`;
 }
 function hookUpdateNote(inv) {
   return `the installed SessionStart hook predates \`session-start\` \u2014 re-run \`${inv} hook install\` to pick up the board-aware hook`;
@@ -17154,19 +17482,21 @@ function countOr(live, cached) {
 function buildBoardBlock(status2, pull2, inv) {
   if (!status2) return {};
   if (status2.state === "unprovisioned") return { firstContact: boardFirstContactLine(inv) };
+  const inTree = status2.state === "in-tree";
   const rec = {};
   if (pull2?.announcement) Object.assign(rec, pull2.announcement);
   const rows = status2.cache?.delta ?? [];
   const visible = rows.filter((r) => !status2.selfActors.includes(r.actor));
   if (visible.length > 0) {
-    rec.since_this_machine_last_synced = sinceLine(visible);
+    rec[inTree ? IN_TREE_SINCE_FIELD : "since_this_machine_last_synced"] = sinceLine(visible);
     rec.changes = visible.slice(0, BOARD_CHANGES_SHOWN_LIMIT).map(docLine);
   }
   const unpushed = countOr(status2.unpushed, status2.cache?.unpushedCount);
   const uncommitted = countOr(status2.uncommitted, status2.cache?.uncommittedCount);
-  if (unpushed > 0) rec.unpushed = unpushedLine(unpushed);
-  if (uncommitted > 0) rec.uncommitted = uncommittedLine(uncommitted);
+  if (unpushed > 0) rec.unpushed = inTree ? inTreeUnpushedLine(unpushed) : unpushedLine(unpushed);
+  if (uncommitted > 0) rec.uncommitted = inTree ? inTreeUncommittedLine(uncommitted) : uncommittedLine(uncommitted);
   const notes = [];
+  if (inTree && (status2.behind ?? 0) > 0) notes.push(inTreePullHintLine(status2.behind));
   if (pull2?.offline) notes.push(BOARD_OFFLINE_NOTE);
   if (pull2?.notes) notes.push(...pull2.notes);
   if (status2.cache?.note) notes.push(status2.cache.note);
@@ -17174,17 +17504,32 @@ function buildBoardBlock(status2, pull2, inv) {
   if (status2.cache && !pull2?.refreshed && Object.keys(rec).length > 0) {
     rec.as_of = status2.cache.updatedAt;
   }
-  if (Object.keys(rec).length === 0) return { block: BOARD_UP_TO_DATE };
+  if (Object.keys(rec).length === 0) return { block: inTree ? BOARD_IN_TREE_LINE : BOARD_UP_TO_DATE };
   return { block: rec };
 }
 async function defaultLoadBoardStatus(dir) {
   try {
     const top = repoTopLevel(retargetBoardInterior(dir ?? process.cwd()));
     if (!top) return null;
-    const boardPath = path17.join(top, BUNDLE_DIR);
+    const boardPath = path19.join(top, BUNDLE_DIR);
     if (!isProvisioned(top)) {
       const probed = runGit(top, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status === 0 || runGit(top, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
-      return probed ? { state: "unprovisioned" } : null;
+      if (probed) return { state: "unprovisioned" };
+      if (folderTreeAtHead(top) !== null && !hasWorktreeSignature(boardPath)) {
+        const key2 = resolveBundleKey(boardPath);
+        const state2 = await defaultSyncStore.readSyncState(key2);
+        const upstream = resolveInTreeUpstream(top);
+        const sha = upstream.state === "ok" ? inTreeUpstreamSha(top, upstream.config.ref) : null;
+        return {
+          state: "in-tree",
+          cache: state2.cache,
+          selfActors: state2.selfActors ?? [],
+          unpushed: sha === null ? null : inTreeUnpushedCount(top, sha),
+          uncommitted: countUncommitted(top, BUNDLE_DIR),
+          behind: sha === null ? null : inTreeBehindCount(top, sha)
+        };
+      }
+      return null;
     }
     const key = resolveBundleKey(boardPath);
     const state = await defaultSyncStore.readSyncState(key);
@@ -17405,6 +17750,7 @@ async function home(argv, deps = {}) {
 
 // src/commands/session-start.ts
 import { parseArgs as parseArgs24 } from "node:util";
+import path20 from "node:path";
 var SESSION_START_PULL_BUDGET_MS = 7e3;
 var SESSION_START_CONNECT_TIMEOUT_SECONDS = 5;
 var MIN_USEFUL_BUDGET_MS = 250;
@@ -17429,12 +17775,47 @@ Options:
   -h, --help     Show this help
 `;
 var OFFLINE_REASONS = /* @__PURE__ */ new Set(["network", "auth", "busy", "git-missing"]);
+var OFFLINE_CODES = /* @__PURE__ */ new Set(["TRANSIENT", "AUTH_REQUIRED", "GIT_BUSY", "GIT_MISSING"]);
 async function sessionStartPull(dir, budgetMs = SESSION_START_PULL_BUDGET_MS, now = Date.now) {
   const deadline = now() + budgetMs;
   const remaining = () => Math.max(0, deadline - now());
   try {
     const startDir = retargetBoardInterior(dir ?? process.cwd());
     if (remaining() < MIN_USEFUL_BUDGET_MS) return { offline: true };
+    let detection;
+    try {
+      detection = detectBoardChannel(startDir, {
+        budget: { fetchTimeoutMs: remaining(), connectTimeoutSeconds: SESSION_START_CONNECT_TIMEOUT_SECONDS }
+      });
+    } catch {
+      return void 0;
+    }
+    if (detection.kind === "indeterminate") return void 0;
+    if (detection.channel.mode === "local-only") return void 0;
+    if (detection.channel.mode === "in-tree") {
+      const top = repoTopLevel(startDir);
+      if (!top) return void 0;
+      const boardPath2 = path20.join(top, BUNDLE_DIR);
+      const key2 = resolveBundleKey(boardPath2);
+      await defaultSyncStore.refreshMarker(key2);
+      if (remaining() < MIN_USEFUL_BUDGET_MS) return { offline: true, boardPath: boardPath2 };
+      const result = await inTreeFetchAndRecord(defaultSyncStore, top, key2, {
+        fetchTimeoutMs: remaining(),
+        connectTimeoutSeconds: SESSION_START_CONNECT_TIMEOUT_SECONDS
+      });
+      if (result.state === "refreshed") return { offline: false, refreshed: true, boardPath: boardPath2 };
+      if (result.state === "fetch-failed") {
+        if (OFFLINE_CODES.has(result.failure.code)) return { offline: true, boardPath: boardPath2 };
+        return {
+          offline: false,
+          boardPath: boardPath2,
+          notes: [
+            `board fetch skipped (${result.failure.code}) \u2014 run \`${cliInvocation()} sync --pull-only\` for the full story`
+          ]
+        };
+      }
+      return { offline: false, boardPath: boardPath2 };
+    }
     let outcome;
     try {
       outcome = provisionBoardWorktree(startDir, {
