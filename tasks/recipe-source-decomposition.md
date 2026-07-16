@@ -5,10 +5,11 @@ status: in_progress
 priority: '2'
 assignee: mike/codex
 description: >-
-  Implemented behind the stable recipe-source façade in PR #74; full gate and
-  independent exact-SHA review passed. Awaiting merge.
+  Implemented in PR #74; full gate, independent exact-SHA review, and
+  byte-identical pre/post module and CLI differential proofs passed. Awaiting
+  merge.
 actor: mike/codex
-timestamp: '2026-07-16T01:31:51.980Z'
+timestamp: '2026-07-16T01:41:25.695Z'
 ---
 # Scope
 
