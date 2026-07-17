@@ -11,12 +11,12 @@ description: >-
   claiming.
 actor: claude-fable-5
 assignee: claude-fable-5
-timestamp: '2026-07-17T23:52:17.666Z'
+timestamp: '2026-07-17T23:59:43.446Z'
 ---
-Branch mutation-testing (commit 8e58859, cut from post-#86 main) pushed; independent review in flight; PR pending human open.
+Branch mutation-testing GREEN and reviewed — ready for PR. Commits: 8e58859 (the unit; independently reviewed PASS, high confidence — score math verified byte-identical to Stryker's clear-text, cwd-pin exit-ordering confirmed against the actual hook incl. the forceBail signal path, inPlace restore proven byte-and-mode clean, CI proven read-only) + 69cabee (the review's two hardenings: env-quoted mutate dispatch input — anti-injection — and a summary step that tolerates a missing report).
 
-What shipped: Stryker 9.6.1 + tap-runner riding the repo's OWN node --test ts-loader invocation (no second test framework). Per-package stryker.config.json (core, cli); npm scripts mutation:core / mutation:cli / mutation:survivors; inPlace mode (workspace-hoisted deps + the cli build's sibling-src aliases break sandbox copying). cli's buildCommand runs node build.mjs ONCE post-instrumentation — the bundle builds from source, so mutation switching reaches even the dist-spawning tests (env spread propagates the active-mutant var). scripts/stryker-cwd-pin.cjs preloads before the tap hook so chdir-ing tests (home.test.ts hermetic cwd) can't break the hook's relative-path exit write — found empirically, fixed by exit-handler registration order. scripts/mutation-survivors.mjs (+3 tests in test:scripts) extracts the named-gap rows from mutation.json. Workflow .github/workflows/mutation-tests.yml: weekly cron + workflow_dispatch (target core|cli|both, optional mutate glob, force), incremental state cached, reports as artifacts, survivors to job summary — DELIBERATELY not a PR gate.
+What shipped: Stryker 9.6.1 + tap-runner over the repo's own node --test ts-loader; per-package configs (inPlace; cli buildCommand once post-instrumentation so mutants reach the dist-spawning tests); scripts/stryker-cwd-pin.cjs (exit-handler-order fix for chdir-ing tests); scripts/mutation-survivors.mjs + tests (named-gap extractor, in test:scripts); mutation-tests.yml (weekly + dispatch, never a PR gate, incremental cache, artifacts, survivors in job summary); CLAUDE.md + gitignore.
 
-Validation: real scoped runs green both packages — core src/paths.ts: 135 mutants, score 76.30, 26 survivors + 6 no-coverage (the suite's first measured number; real gaps already visible); cli src/actor.ts: 29 mutants, score 75.86. Sources restored byte-and-mode clean; npm run check exit 0.
+First measurements (scoped smokes): core paths.ts score 76.30 (26 survivors + 6 no-coverage), cli actor.ts score 75.86. Real gaps already named.
 
-Caveats/hazards recorded: run mutation ONLY via the npm scripts (a root-cwd npx stryker run once dropped the plugin bundle's exec bit during inPlace restore — recovered via git checkout; the -w scripts pin cwd); full-suite cli mutation cost is unmeasured (scoped smoke only) — first scheduled CI run will size it; survivor FILING is a manual step fed by the job summary, not automated.
+Remaining: human opens+merges PR (description delivered); first scheduled/dispatch run sizes the full-suite cost; recurring survivors get filed as board tasks (manual, by design). Flip to done at merge.
