@@ -4,11 +4,12 @@ title: Extract the shared document mutation service below the CLI
 status: in_progress
 priority: '2'
 description: >-
-  Refactor document mutation policy into a CLI-neutral service so CLI and future
-  trusted UI actions share one invariant-preserving execution boundary; no Page
-  write capability or behavior change.
+  PR #85 extracts the shared document mutation service below the CLI with no
+  intended behavior change. Full repository gate passed; independent exact-SHA
+  review approved 134bee91e7d499f92935ec4e035890a4affacd28 with no findings.
+  Awaiting merge.
 actor: mike/codex
-timestamp: '2026-07-17T02:30:59.062Z'
+timestamp: '2026-07-17T02:48:47.017Z'
 ---
 # Behavioral claim
 
