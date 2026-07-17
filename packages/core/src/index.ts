@@ -108,10 +108,24 @@ export {
 } from "./versioning.js";
 
 // The ONE versioned-mutation boundary (CLAUDE.md gate 3): a shared read-decide-CAS-retry
-// primitive, so `mutateDoc`/`addLink` (CLI) and `appendLog`/`regenerateIndex` (here in core)
-// consume the SAME loop instead of five independently hand-rolled copies of it.
+// primitive consumed by document, link, log, and index mutation policies instead of
+// independently hand-rolled loops.
 export { versionedMutation } from "./mutation.js";
 export type { MutationDecision, VersionedMutationOptions, VersionedMutationOutcome } from "./mutation.js";
+
+// Shared document mutation policy below any transport or presentation boundary. CLI and
+// future trusted consumers reuse create/overwrite/patch semantics without importing CLI code.
+export {
+  mutateDocument,
+  DocumentNotFoundError,
+  KindConformanceError,
+} from "./document-mutation.js";
+export type {
+  DocumentMutationCandidate,
+  DocumentMutationMode,
+  DocumentMutationResult,
+  MutateDocumentOptions,
+} from "./document-mutation.js";
 
 // ── Extensions (additive; do not break the contract) ──────────────────────────
 
@@ -166,6 +180,7 @@ export {
   CONVENTIONS_PREFIX,
   CONVENTION_TYPE,
   validateAgainstKind,
+  validateDocumentAgainstRegistry,
   freshnessHorizonMs,
   kindConventionDoc,
   parseConventionDoc,
@@ -173,7 +188,7 @@ export {
   isTerminal,
 } from "./kinds.js";
 export { loadKinds } from "./kinds-load.js";
-export type { KindConvention, KindFields, KindRegistry } from "./kinds.js";
+export type { KindConvention, KindFields, KindRegistry, RegistryValidationResult } from "./kinds.js";
 
 // Ported MIME utilities (holaxis-agentstate `packages/schemas/src/content-type.ts`).
 // `resolveContentType` is the ONE place a blob's content-type is resolved (explicit

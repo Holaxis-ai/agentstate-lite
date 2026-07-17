@@ -7,7 +7,12 @@
 // timestamp-less write of a governed type would warn about the very field the engine is about to
 // stamp in anyway). B8 (CLI-layer one-of-each rule): this is the ONE place that decision is made — a
 // parallel copy in `promote.ts` is forbidden.
-import { validateAgainstKind, type KindRegistry, type OkfDocument, type ValidationWarning } from "@agentstate-lite/core";
+import {
+  validateDocumentAgainstRegistry,
+  type KindRegistry,
+  type OkfDocument,
+  type ValidationWarning,
+} from "@agentstate-lite/core";
 import { CliError } from "./errors.js";
 
 /** Options for {@link defaultTimestampAndValidateKind}. */
@@ -35,14 +40,8 @@ export function defaultTimestampAndValidateKind(
   registry: KindRegistry,
   opts: KindValidateOptions,
 ): ValidationWarning[] {
-  const fm = candidate.frontmatter;
-  if (typeof fm.timestamp !== "string" || fm.timestamp.trim() === "") {
-    fm.timestamp = new Date().toISOString();
-  }
-  const kind = registry.kinds.get(String(fm.type));
-  if (!kind) return [];
-  const warnings = validateAgainstKind(candidate, kind);
-  if (warnings.length > 0 && opts.strict) {
+  const { kind, warnings } = validateDocumentAgainstRegistry(candidate, registry);
+  if (kind && warnings.length > 0 && opts.strict) {
     throw new CliError(
       "USAGE",
       `'${candidate.id}' does not satisfy the '${kind.governs}' kind: ${warnings.map((w) => w.message).join("; ")}`,
