@@ -739,7 +739,7 @@ export interface RegistryValidationResult {
  * value that will actually be persisted, never a still-missing pre-write candidate.
  * The registry is supplied by the caller so mutation does not perform hidden discovery.
  */
-export function validateDocumentAgainstRegistry(
+export function defaultTimestampAndValidateAgainstRegistry(
   doc: OkfDocument,
   registry: KindRegistry,
 ): RegistryValidationResult {

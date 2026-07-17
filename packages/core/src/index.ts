@@ -180,7 +180,7 @@ export {
   CONVENTIONS_PREFIX,
   CONVENTION_TYPE,
   validateAgainstKind,
-  validateDocumentAgainstRegistry,
+  defaultTimestampAndValidateAgainstRegistry,
   freshnessHorizonMs,
   kindConventionDoc,
   parseConventionDoc,

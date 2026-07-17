@@ -21,6 +21,7 @@ import {
   type Version,
 } from "@agentstate-lite/core";
 import { CliError, classifyBundleError } from "./errors.js";
+import { kindConformanceCliError } from "./kind-write.js";
 
 export type MutateMode = DocumentMutationMode;
 
@@ -75,10 +76,7 @@ async function firePostPersist(hook: (() => void | Promise<void>) | undefined): 
 
 function translateMutationError(error: unknown, opts: MutateDocOptions): never {
   if (error instanceof KindConformanceError) {
-    throw new CliError("USAGE", error.message, {
-      help: opts.helpOnKindReject,
-      details: { violations: error.violations },
-    });
+    throw kindConformanceCliError(error, opts.helpOnKindReject);
   }
   if (error instanceof DocumentNotFoundError) {
     throw opts.errors.notFound?.() ?? new CliError("NOT_FOUND", error.message);

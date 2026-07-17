@@ -9,7 +9,7 @@
  */
 
 import { InvalidInputError } from "./errors.js";
-import { validateDocumentAgainstRegistry } from "./kinds.js";
+import { defaultTimestampAndValidateAgainstRegistry } from "./kinds.js";
 import { versionedMutation } from "./mutation.js";
 import { VersionConflict } from "./versioning.js";
 import { readDocVersioned, writeDocVersioned } from "./bundle.js";
@@ -136,7 +136,7 @@ function validateCandidate(
   registry: KindRegistry,
   strict: boolean,
 ): ValidationWarning[] {
-  const { kind, warnings } = validateDocumentAgainstRegistry({ id, ...candidate }, registry);
+  const { kind, warnings } = defaultTimestampAndValidateAgainstRegistry({ id, ...candidate }, registry);
   if (strict && kind && warnings.length > 0) {
     throw new KindConformanceError(id, kind.governs, warnings);
   }
