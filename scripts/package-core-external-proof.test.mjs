@@ -73,7 +73,10 @@ test("packed core installs, typechecks, and runs outside the monorepo", async ()
     await runNpm(
       [
         "install",
-        "--offline",
+        // prefer-offline, not offline: resolving core's real dependency range (gray-matter)
+        // needs a registry packument on a cold cache — `npm ci` caches tarballs by exact URL,
+        // never packuments, so a fresh machine/CI runner cannot resolve ranges fully offline.
+        "--prefer-offline",
         "--ignore-scripts",
         "--no-audit",
         "--no-fund",

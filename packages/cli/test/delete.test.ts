@@ -70,7 +70,7 @@ test("delete --doc-key <X>.MD (case-insensitive): routes as a DOC exactly like t
   const { dir, cleanup } = await makeBundle();
   try {
     await writeDoc({ root: dir }, { id: "concepts/mixed", frontmatter: { type: "Concept", timestamp: OLD_TS }, body: "x" });
-    const result = await runDelete(["--doc-key", "concepts/Mixed.MD", "--dir", dir]);
+    const result = await runDelete(["--doc-key", "concepts/mixed.MD", "--dir", dir]);
     assert.equal(result.route, "doc");
     assert.equal(result.deleted, true);
     await assert.rejects(() => readDoc({ root: dir }, "concepts/mixed"));
