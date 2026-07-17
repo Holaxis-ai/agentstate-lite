@@ -293,3 +293,39 @@ test("the npm-target SKILL teaches Views, with zero stale Page vocabulary", () =
   assert.doesNotMatch(renderedNpm, /bundle Pages/);
   assert.doesNotMatch(renderedNpm, /pages-registry\//);
 });
+
+test("no CLI teaching source (usage/help strings included) says Page except as a legacy note", () => {
+  // The render pins above can't see prose that never reaches a render — --help/usage strings and
+  // command summaries live as literals in source (the fix-round's finding class). Scan the
+  // teaching sources directly: any line with the standalone word `Page`/`Pages` must be a legacy
+  // note (contain "legacy"). Identifiers (PageTypeName, PAGE_*, pageId, open-page, …) don't
+  // survive a \bPages?\b word-boundary match, so no allowlist is needed.
+  const teachingSources = [
+    "src/reference.ts",
+    "src/skill-render.ts",
+    ...readdirSync(path.join(here, "../src/commands"))
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => `src/commands/${f}`),
+  ];
+  for (const relative of teachingSources) {
+    const lines = readFileSync(path.join(here, "..", relative), "utf8").split("\n");
+    lines.forEach((line, i) => {
+      if (/\bPages?\b/.test(line) && !/legacy/i.test(line)) {
+        assert.fail(`${relative}:${i + 1} teaches canonical Page (no "legacy" on the line): ${line.trim()}`);
+      }
+    });
+  }
+});
+
+test("examples markdown teaches only View — the word Page appears solely in legacy notes", () => {
+  const examplesRoot = path.join(REPO_ROOT, "examples");
+  const mdFiles = relativeFileInventory(examplesRoot).filter((f) => f.endsWith(".md"));
+  for (const relative of mdFiles) {
+    const lines = readFileSync(path.join(examplesRoot, relative), "utf8").split("\n");
+    lines.forEach((line, i) => {
+      if (/\bPages?\b/.test(line) && !/legacy/i.test(line)) {
+        assert.fail(`examples/${relative}:${i + 1} teaches canonical Page (no "legacy" on the line): ${line.trim()}`);
+      }
+    });
+  }
+});

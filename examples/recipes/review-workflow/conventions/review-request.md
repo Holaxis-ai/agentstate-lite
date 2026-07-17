@@ -40,5 +40,5 @@ sections: [Context, Requested decision, Acceptance criteria, Reviewer response]
 
 Create a Review Request when a decision must survive chat history and remain visible to humans and
 agents. The named reviewer owns the response; the requester owns scope, evidence, resubmission, and
-cancellation. Record responses through version-guarded, attributed updates. The Page is a
+cancellation. Record responses through version-guarded, attributed updates. The View is a
 projection and never becomes the decision authority.

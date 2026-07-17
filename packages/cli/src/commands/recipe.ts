@@ -28,7 +28,7 @@ Applies a recipe's definitions to the bundle. <name-or-path> is a built-in name 
 with '~' — a local folder literally named 'foo' is reachable only as './foo'). A recipe folder
 is 'recipe.md' (type: Recipe manifest) plus one or more 'conventions/*.md' docs. A portable recipe
 may opt into 'content_policy: definitions-only' and explicitly declare static 'type: Reference'
-docs plus self-contained Page registry/HTML pairs; instance data and undeclared files are then
+docs plus self-contained View registry/HTML pairs; instance data and undeclared files are then
 rejected before any write.
 
 Idempotent: a doc the recipe would install that already exists is left untouched (changed:false
