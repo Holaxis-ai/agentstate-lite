@@ -79,9 +79,14 @@ function jsonError(status: number, code: string, message: string): Response {
   });
 }
 
-/** A minimal readable error rendered INSIDE the page iframe (the page route serves HTML, so a JSON envelope would show as raw text). Carries the page CSP so the error frame is as locked-down as a real page. */
-function pageError(status: number, message: string): Response {
-  const body = `<!doctype html><meta charset="utf-8"><title>page unavailable</title><p>${message}</p>`;
+/** Escape text for interpolation into HTML (the standard `&<>\"'` five). The ONE escape primitive for the serve path — every {@link pageError} message flows through it, because a message on that path can carry remote-originated text (e.g. an upstream failure's error string) and must never reach the iframe as markup. */
+export function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+/** A minimal readable error rendered INSIDE the page iframe (the page route serves HTML, so a JSON envelope would show as raw text). Carries the page CSP so the error frame is as locked-down as a real page. The message is ALWAYS HTML-escaped — it is data, never markup. Exported for the escaping pin (ui-pages.test.ts); not otherwise a public API. */
+export function pageError(status: number, message: string): Response {
+  const body = `<!doctype html><meta charset="utf-8"><title>page unavailable</title><p>${escapeHtml(message)}</p>`;
   return new Response(body, {
     status,
     headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": pageCsp(), "referrer-policy": "no-referrer" },

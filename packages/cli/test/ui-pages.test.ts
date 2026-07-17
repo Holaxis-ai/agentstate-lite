@@ -14,7 +14,7 @@ import { connect } from "node:net";
 
 import { deleteDoc, initBundle, readDoc, writeBlob, writeDoc, RemoteBackend, type Bundle } from "@agentstate-lite/core";
 import { createRouter, serve, type ServerHandle } from "@agentstate-lite/server";
-import { bootUiServer, type UiServerHandle } from "../src/ui/server.js";
+import { bootUiServer, escapeHtml, pageError, type UiServerHandle } from "../src/ui/server.js";
 import { PageNonceRegistry, pageCsp } from "../src/ui/pages.js";
 import { SseHub } from "../src/ui/events.js";
 import { diffSnapshots, isEmptyChange, snapshotBundle, startWatcher, type Snapshot } from "../src/ui/watch.js";
@@ -51,6 +51,26 @@ test("PageNonceRegistry: bounded by a cap — the oldest nonce is evicted once f
   reg.mint("pages/d.html"); // over cap -> evict the oldest
   assert.equal(reg.size(), 3);
   assert.equal(reg.resolve(oldest), null, "the oldest nonce was evicted");
+});
+
+test("XSS pin: pageError HTML-escapes its message — script tags, quotes, and ampersands arrive as text, never markup", async () => {
+  assert.equal(escapeHtml(`<script>alert("x")</script> & 'quotes'`), "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; &#39;quotes&#39;");
+
+  // Exercise the TEMPLATE exactly as served: a hostile message (the shape a remote's error text
+  // could take on the serve path) must reach the iframe escaped, with the page content-type + CSP.
+  const hostile = `remote said <script>alert("x")</script> & 'gotcha'`;
+  const res = pageError(502, hostile);
+  assert.equal(res.status, 502);
+  assert.match(res.headers.get("content-type") ?? "", /text\/html/);
+  assert.match(res.headers.get("content-security-policy") ?? "", /connect-src 'none'/);
+  const body = await res.text();
+  assert.ok(!body.includes("<script>"), "raw markup from the message must never reach the page body");
+  assert.ok(
+    body.includes("remote said &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; &#39;gotcha&#39;"),
+    "the human message stays legible in escaped form",
+  );
+  // The template's own chrome is intact around the escaped payload.
+  assert.match(body, /<title>page unavailable<\/title>/);
 });
 
 test("pageCsp: locks the page to inert bytes — connect-src 'none', frame-ancestors 'self'", () => {
@@ -550,6 +570,50 @@ test("ONE-PREDICATE: a FAILED per-type registry query fails the WHOLE mint enume
       assert.equal(res.status, 502, "a half-read registry must fail the mint, not serve a partial allowlist");
       const body = (await res.json()) as { error?: { code?: string } };
       assert.equal(body.error?.code, "RUNTIME");
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test("XSS pin (route-level): the serve-time 502 error page is served as escaped HTML with the failure legible", async () => {
+  // Healthy remote long enough to mint, then the View listing starts failing — the nonce route
+  // must answer with the 502 ERROR PAGE (text/html + page CSP), its message intact and inert.
+  let failViews = false;
+  const server = createHttpServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    const type = url.searchParams.get("type");
+    if (type === "View" && failViews) {
+      res.writeHead(500, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { code: "RUNTIME", message: "boom" } }));
+      return;
+    }
+    const docs = type === "Page" ? [{ id: "pages-registry/legacy", version: "v1", frontmatter: { type: "Page", entry: "pages/legacy.html" } }] : [];
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ docs, next_cursor: null }));
+  });
+  const remoteOrigin = await listenOn(server);
+  try {
+    const handle = await bootUiServer({ mode: "remote", port: 0, remoteBase: remoteOrigin, sessionSecret: SECRET });
+    try {
+      const mint = await fetch(`http://${handle.host}:${handle.port}/__page/mint`, {
+        method: "POST",
+        headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+        body: JSON.stringify({ key: "pages/legacy.html" }),
+      });
+      assert.equal(mint.status, 200);
+      const { url } = (await mint.json()) as { url: string };
+
+      failViews = true;
+      const page = await fetch(`http://${handle.host}:${handle.port}${url}`);
+      assert.equal(page.status, 502);
+      assert.match(page.headers.get("content-type") ?? "", /text\/html/);
+      assert.match(page.headers.get("content-security-policy") ?? "", /connect-src 'none'/);
+      const body = await page.text();
+      assert.match(body, /could not be read/, "the failure stays legible to the human");
+      assert.match(body, /returned status 500/);
     } finally {
       await handle.close();
     }
