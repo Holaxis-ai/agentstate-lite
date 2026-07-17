@@ -7,7 +7,7 @@ description: >-
   Add the missing deterministic proof for the reserved-index CAS boundary while
   preserving its one-scan self-healing policy.
 actor: mike/codex
-timestamp: '2026-07-17T02:19:46.872Z'
+timestamp: '2026-07-17T02:27:49.057Z'
 ---
 # Behavioral claim
 
@@ -27,3 +27,9 @@ timestamp: '2026-07-17T02:19:46.872Z'
 - Core mutation/backend suites remain green.
 
 [identified by](../designs/mutation-boundary-audit.md)
+
+# Implementation status
+
+Draft PR [#84](https://github.com/Holaxis-ai/agentstate-lite/pull/84) adds the two deterministic
+race proofs without changing runtime code. The tests pass against the current guarded implementation
+and fail when the index write is temporarily made unconditional. The full repository gate is green.
