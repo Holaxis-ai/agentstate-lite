@@ -4,7 +4,7 @@ title: >-
   How agentstate-lite works: CLI, engine, sync, and the dynamic UI (with
   plain-language sections)
 actor: brian-claude
-timestamp: '2026-07-16T14:53:26.040Z'
+timestamp: '2026-07-17T17:52:18.109Z'
 ---
 ## What this is
 
@@ -55,9 +55,11 @@ top of that folder without ever replacing it.
 - VERSION TOKEN / CAS — every read returns a content-hash version; a write may say
   "only if it's still version X" (compare-and-swap). This is what makes claiming a
   task race-safe between agents.
-- PAGE — a doc of type Page registering a self-contained HTML blob (pages/*.html) as
+- VIEW — a doc of type View registering a self-contained HTML blob (views/*.html) as
   a dashboard; rendered by the ui shell in a sandboxed iframe over the read-only
-  bridge. Pages are bundle content: authored, synced, and versioned like any doc.
+  bridge. Views are bundle content: authored, synced, and versioned like any doc.
+  `Page` is the accepted legacy name — legacy-typed docs under the old
+  pages-registry//pages/ prefixes keep working and never need migrating.
 - SKILL / PLUGIN — the distribution channel: a marketplace plugin carrying the
   self-contained CLI plus the SKILL text that teaches agents to use it.
 - TOON — the compact structured-text format receipts render in on stdout.
@@ -65,8 +67,7 @@ top of that folder without ever replacing it.
 IN PLAIN LANGUAGE: a bundle is a notebook (the physical format); a board is THE
 team notebook (the one whose job is tracking your shared work). The board branch is
 the parallel git track the team notebook travels on. Docs are pages of the notebook;
-kinds are the stationery templates; recipes are packs of templates; pages (confusingly
-capitalized differently) are interactive dashboards stored inside the notebook itself.
+kinds are the stationery templates; recipes are packs of templates; views are interactive dashboards stored inside the notebook itself.
 
 ## 3. The data model: a bundle
 
@@ -165,16 +166,17 @@ the board in both directions. If you and a teammate edited the same card, the to
 keeps theirs, hands yours back as a file, and tells you exactly how to merge the two —
 you never see a git conflict marker.
 
-## 7. The dynamic UI: pages are documents
+## 7. The dynamic UI: views are documents
 
 `aslite ui` boots a LOOPBACK-ONLY web server over the bundle and prints a one-time
 tokened URL (the token becomes an HttpOnly cookie on first load; it dies with the
-process). The SPA it serves is just a LAUNCHER: it lists registered pages — docs of
-`type: Page` naming a title and an entry blob — and renders each page in a sandboxed
-iframe.
+process). The SPA it serves is just a LAUNCHER: it lists registered views — docs of
+`type: View` naming a title and an entry blob — and renders each view in a sandboxed
+iframe. (`Page` is the accepted legacy name: existing `type: Page` docs under the
+legacy pages-registry//pages/ prefixes keep working and never need migrating.)
 
-The pages themselves are BUNDLE CONTENT: self-contained HTML files stored as blobs
-under pages/, authored by anyone (mostly agents), versioned, attributed, and synced to
+The views themselves are BUNDLE CONTENT: self-contained HTML files stored as blobs
+under views/, authored by anyone (mostly agents), versioned, attributed, and synced to
 teammates like any doc. The board's own Board/Roadmap/Memory dashboards are exactly
 this — they arrived on Mike's machine via ordinary sync.
 
@@ -183,7 +185,7 @@ Security is BY CONSTRUCTION, not policy:
   opaque origin, and its CSP allows NO network at all — no fetch, no websocket.
 - Its only channel is postMessage to the shell, which brokers a READ-ONLY request set
   (protocol v0): hello, query (frontmatter rows), read (one doc), edges (the graph
-  primitive), subscribe (change events), open-page (navigation). There is no mutation
+  primitive), subscribe (change events), open-page (navigation — a wire verb, stable across the rename). There is no mutation
   message — the shell defines no write handler.
 - Each page's registry doc must DECLARE `bridge: bundle-read` to get data at all;
   fail-closed — an undeclared page can navigate but every data request errors.
