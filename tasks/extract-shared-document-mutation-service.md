@@ -5,11 +5,13 @@ status: in_progress
 priority: '2'
 description: >-
   PR #85 extracts the shared document mutation service below the CLI with no
-  intended behavior change. Full repository gate passed; independent exact-SHA
-  review approved 134bee91e7d499f92935ec4e035890a4affacd28 with no findings.
-  Awaiting merge.
+  intended behavior change. Fable's review nits were addressed: ownership
+  comments now match core, strict-kind CLI error translation has one source, and
+  the timestamp-mutating helper is named explicitly. Full repository gate
+  passed; independent exact-SHA review approved
+  95d063e86e542e6f0e50ba8c33d992e06b633d30 with no findings. Awaiting merge.
 actor: mike/codex
-timestamp: '2026-07-17T02:48:47.017Z'
+timestamp: '2026-07-17T03:03:39.126Z'
 ---
 # Behavioral claim
 
