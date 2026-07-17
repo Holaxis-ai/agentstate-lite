@@ -1,13 +1,13 @@
 ---
 type: Task
 title: Pin regenerateIndex conflict and create-race behavior
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Add the missing deterministic proof for the reserved-index CAS boundary while
   preserving its one-scan self-healing policy.
 actor: mike/codex
-timestamp: '2026-07-16T02:51:41.533Z'
+timestamp: '2026-07-17T02:19:46.872Z'
 ---
 # Behavioral claim
 
