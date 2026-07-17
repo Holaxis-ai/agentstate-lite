@@ -2,15 +2,15 @@
 name: agentstate-lite
 description: >-
   Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and live
-  bundle Pages) from the shell via the agentstate-lite CLI. Use when an agent
+  bundle Views) from the shell via the agentstate-lite CLI. Use when an agent
   needs to persist a context note across sessions, store a decision/spec as a doc, link concepts,
-  query a bundle, share the project's board with teammates (`sync`), or open its local Page UI.
+  query a bundle, share the project's board with teammates (`sync`), or open its local View UI.
   Runs standalone via `npx -y agentstate-lite`.
 ---
 
 # agentstate-lite
 
-read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Pages).
+read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Views).
 
 It is a standalone npm package. Every example below runs with no install via `npx -y agentstate-lite …`; if the
 tool is installed globally you can drop the `npx -y ` prefix and call `agentstate-lite …` (or the
@@ -73,14 +73,14 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
 - `npx -y agentstate-lite recipes [--remote <url>]`
   — List built-in recipes and whether each is already applied to this bundle
 - `npx -y agentstate-lite recipe add <name-or-path> [--remote <url>]`
-  — Apply a recipe's content-free definitions — Kinds plus optional declared References and Pages — idempotently
+  — Apply a recipe's content-free definitions — Kinds plus optional declared References and Views — idempotently
 
 ### Remote
 
 - `npx -y agentstate-lite serve [--dir <path>] [--host <h>] [--port <p>]`
   — Boot the reference wire-protocol server over a local bundle (loopback, no auth)
 - `npx -y agentstate-lite ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
-  — Boot the local web UI: a launcher for the bundle's pages (type: Page docs rendered in sandboxed iframes, with live updates) — same origin, loopback-only. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"
+  — Boot the local web UI: a launcher for the bundle's views (type: View docs rendered in sandboxed iframes, with live updates; legacy Page docs keep working) — same origin, loopback-only. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"
 - `npx -y agentstate-lite sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
   — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A bundle folder already committed on the code branch is the same flag's hard case: preview first, --yes executes, and the folder's removal from the code branch rides a prepared side-branch commit you push and open as a PR. A bundle committed with code and NO board branch anywhere is the IN-TREE mode (read-side): full sync refuses (sharing rides your normal commit/push), --pull-only fetches the branch's tracking upstream and reports incoming board docs ('git pull' delivers them), and --establish converts to a dedicated board branch. A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it
 

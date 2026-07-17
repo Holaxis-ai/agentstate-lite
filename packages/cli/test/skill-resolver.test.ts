@@ -83,8 +83,8 @@ function plantExecutable(path: string): void {
 }
 
 function plantDir(path: string): void {
-  mkdirSync(join(path, "pages", "references"), { recursive: true });
-  writeFileSync(join(path, "pages", "references", "page-authoring-v0.md"), "stub reference\n");
+  mkdirSync(join(path, "views", "references"), { recursive: true });
+  writeFileSync(join(path, "views", "references", "view-authoring-v0.md"), "stub reference\n");
 }
 
 /** A minimal env with no real `agentstate-lite` reachable on PATH, so host discovery is exercised. */

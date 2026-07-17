@@ -24,7 +24,7 @@
 
 /** The one-sentence tagline. */
 export const DESCRIPTION =
-  "read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Pages)";
+  "read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Views)";
 
 /** A single command's usage line + a one-line summary of what it does. */
 export interface CommandRef {
@@ -154,7 +154,7 @@ export const COMMAND_GROUPS: CommandGroup[] = [
       {
         usage: "recipe add <name-or-path> [--remote <url>]",
         summary:
-          "Apply a recipe's content-free definitions — Kinds plus optional declared References and Pages — idempotently",
+          "Apply a recipe's content-free definitions — Kinds plus optional declared References and Views — idempotently",
       },
     ],
   },
@@ -168,7 +168,7 @@ export const COMMAND_GROUPS: CommandGroup[] = [
       {
         usage: "ui [--dir <path> | --remote <url>] [--port <p>] [--open]",
         summary:
-          "Boot the local web UI: a launcher for the bundle's pages (type: Page docs rendered in sandboxed iframes, with live updates) — same origin, loopback-only. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type \"Bundle Name\" --title \"<name>\"",
+          "Boot the local web UI: a launcher for the bundle's views (type: View docs rendered in sandboxed iframes, with live updates; legacy Page docs keep working) — same origin, loopback-only. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type \"Bundle Name\" --title \"<name>\"",
       },
       {
         usage:

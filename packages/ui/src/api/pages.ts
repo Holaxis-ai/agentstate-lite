@@ -22,7 +22,7 @@ export interface UiConfig {
   name: string;
 }
 
-/** A `type: Page` registry doc, projected to the launcher's card fields (provenance included). */
+/** A `type: View` (or legacy `type: Page`) registry doc, projected to the launcher's card fields (provenance included). */
 export interface PageEntry {
   id: string;
   version: string;

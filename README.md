@@ -114,7 +114,7 @@ settings — sync only ever appends commits to it.
 
 - **Every concept is a typed markdown document.** One required frontmatter field — `type` — plus
   whatever fields its schema declares. New concepts are new types, not new subsystems. Byte-exact
-  artifacts such as Page HTML live as blobs referenced by those documents.
+  artifacts such as View HTML live as blobs referenced by those documents.
 - **Schemas are documents too.** A "kind" is declared by a convention doc inside the
   bundle; validation fires at write time (warn by default, `--strict` to reject). The
   bundle describes itself.
@@ -131,12 +131,12 @@ settings — sync only ever appends commits to it.
   backends plug in underneath with byte-identical version tokens.
 - **Recipes install capability as text.** A recipe is a folder of definitions, applied
   idempotently — it seeds schemas and may carry explicitly declared static References and
-  self-contained Pages, then the bundle owns them. A `definitions-only` package rejects instance
+  self-contained Views, then the bundle owns them. A `definitions-only` package rejects instance
   data and undeclared files. Three
   recipes ship built-in (`context-notes`, `work-tracking`, `roadmap`);
   `examples/recipes/claims` is the minimal custom-Kind example, while
   `examples/recipes/review-workflow` is a complete content-free cognitive ecosystem: a
-  self-describing Review Request kind plus a generic live Page, with no review instances.
+  self-describing Review Request kind plus a generic live View, with no review instances.
 
 Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf)
 — plain markdown any conformant tool can read.
@@ -157,14 +157,15 @@ Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPla
 
 - **Everything is pre-1.0.** Breaking changes are likely; nothing is on npm yet.
 - **Recipes as composition** is a thesis under test, not a result. The repository includes
-  small first-party definitions-only packages, including a Kind-plus-Page reference, but package
+  small first-party definitions-only packages, including a Kind-plus-View reference, but package
   dependencies, upgrades, migrations, and marketplace discovery remain future work. "Cookbooks"
   (composed recipes with typed-link glue) are design intent only.
-- **Bundle Pages and the local web UI** are functional but still early. `ui` launches registered
-  Pages in sandboxed iframes; data Pages receive a narrow read-only bridge with live change events,
-  while content Pages receive no bundle-data capability. Pages can navigate to other registered
-  Pages, and Page-bearing definitions-only recipes can carry the operating model, registry entry,
-  HTML, and authoring reference together. Authoring is still HTML/agent-driven rather than a
+- **Bundle Views and the local web UI** are functional but still early. `ui` launches registered
+  Views in sandboxed iframes; data Views receive a narrow read-only bridge with live change events,
+  while content Views receive no bundle-data capability. Views can navigate to other registered
+  Views, and View-bearing definitions-only recipes can carry the operating model, registry entry,
+  HTML, and authoring reference together. (`Page` is the accepted legacy name for the kind —
+  existing `type: Page` docs keep working and never need migrating.) Authoring is still HTML/agent-driven rather than a
   polished end-user builder, so treat the surface as a preview.
 - **The public package ends at a generic remote boundary.** `serve` exposes a bundle through the
   versioned wire protocol, and bundle commands can target a service explicitly with `--remote`.

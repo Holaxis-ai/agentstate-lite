@@ -62,7 +62,7 @@ test("P1: the session token never reaches a framed page — address bar scrubbed
       .not.toContain(token as string);
 
     // The session survives the scrub (cookie-auth'd from here on): open a page.
-    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
+    await page.locator('[data-page-id="views-registry/roadmap"]').click();
     const handle = await page.waitForSelector("iframe.page-frame-iframe");
     const frame = await handle.contentFrame();
     if (!frame) throw new Error("iframe had no content frame");

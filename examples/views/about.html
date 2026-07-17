@@ -51,37 +51,37 @@
 </head>
 <body>
 <main>
-  <div class="kicker">Content page</div>
+  <div class="kicker">Content view</div>
   <h1>About this bundle</h1>
   <p>
-    This page is a <strong>content page</strong>: a self-contained HTML file that carries no
+    This view is a <strong>content view</strong>: a self-contained HTML file that carries no
     bundle data of its own and asks the shell for none. It is promoted and served exactly like
-    any other bundle page — versioned, attributed, and portable as a plain HTML file — but it
+    any other bundle view — versioned, attributed, and portable as a plain HTML file — but it
     declares <code>bridge: none</code> in its registry doc, so the shell refuses every bundle-data
-    request on its behalf. It may still ask the trusted shell to open another registered Page.
+    request on its behalf. It may still ask the trusted shell to open another registered View.
   </p>
 
   <div class="card">
-    <h2>Two kinds of page, one mechanism</h2>
+    <h2>Two kinds of view, one mechanism</h2>
     <ul>
-      <li><strong>Data pages</strong> (<code>bridge: bundle-read</code>) — read live bundle
-        data through the shell's read-only postMessage bridge. Pulse and Roadmap are data pages.</li>
-      <li><strong>Content pages</strong> (<code>bridge: none</code>, this page) — arbitrary
+      <li><strong>Data views</strong> (<code>bridge: bundle-read</code>) — read live bundle
+        data through the shell's read-only postMessage bridge. Pulse and Roadmap are data views.</li>
+      <li><strong>Content views</strong> (<code>bridge: none</code>, this view) — arbitrary
         self-contained HTML: a report, a rendered design doc, a diagram, a note. No bridge calls,
         no bundle access, enforced by the shell rather than left to convention.</li>
     </ul>
   </div>
 
   <button id="toggle" type="button">Why no bridge call here?</button>
-  <button id="open-roadmap" type="button">Open the Roadmap Page</button>
+  <button id="open-roadmap" type="button">Open the Roadmap view</button>
   <div id="detail">
     <p>
       Nothing below was fetched from anywhere — it is inert markup toggled by a few lines of
-      inline JS. A content page may still use scripts for local interaction (this button, for
+      inline JS. A content view may still use scripts for local interaction (this button, for
       instance); what it cannot do is reach the bundle's data API, because the shell denies every
-      bundle-data request a <code>bridge: none</code> page sends, regardless of what the page's own
-      script asks for. Page navigation reveals only whether the requested registered Page exists;
-      it does not expose that Page's data or HTML.
+      bundle-data request a <code>bridge: none</code> view sends, regardless of what the view's own
+      script asks for. View navigation reveals only whether the requested registered View exists;
+      it does not expose that View's data or HTML.
     </p>
   </div>
 
@@ -94,7 +94,7 @@
       document.getElementById("detail").classList.toggle("open");
     });
     document.getElementById("open-roadmap").addEventListener("click", function () {
-      openPage("pages-registry/roadmap");
+      openPage("views-registry/roadmap");
     });
   </script>
 </main>

@@ -25,7 +25,7 @@ import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 
-export const UI_USAGE = `agentstate-lite ui — boot the local web UI: a launcher for the bundle's pages (type: Page docs, framed sandboxed with live updates)
+export const UI_USAGE = `agentstate-lite ui — boot the local web UI: a launcher for the bundle's views (type: View docs, framed sandboxed with live updates; legacy type: Page docs keep working)
 
 Usage:
   agentstate-lite ui [--dir <path> | --remote <url>] [--port <n>] [--open]

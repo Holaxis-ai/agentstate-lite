@@ -1,7 +1,8 @@
 /**
  * Launcher (tasks/ui-pages-spike): the ui command's SOLE landing surface. Shows the bundle summary
- * plus every `type: Page` registry doc as a card (title, description, entry key, and provenance —
- * actor + timestamp), grouped by the page's ENFORCED `bridge` capability: "Dashboards"
+ * plus every `type: View` (or legacy `type: Page`) registry doc as a card (title, description,
+ * entry key, and provenance — actor + timestamp), grouped by the view's ENFORCED `bridge`
+ * capability: "Dashboards"
  * (`bundle-read` — live bundle data) and "Documents" (`none` — arbitrary self-contained HTML,
  * zero bundle access). The grouping is a read of the SAME field the bridge broker enforces
  * (`../pages/bridge.js`'s `resolveBridgeCapability`) — it can never claim a page is one thing while
@@ -96,8 +97,8 @@ export function Launcher() {
       )}
       {!pagesQuery.isPending && !pagesQuery.isError && pages.length === 0 && (
         <p className="launcher-empty">
-          No <code>type: Page</code> docs in this bundle yet. Promote an HTML page under <code>pages/</code> and declare a{" "}
-          <code>Page</code> registry doc — see <code>examples/pages/</code>.
+          No <code>type: View</code> docs in this bundle yet. Promote an HTML view under <code>views/</code> and declare a{" "}
+          <code>View</code> registry doc — see <code>examples/views/</code>. (Legacy <code>type: Page</code> docs keep working.)
         </p>
       )}
     </div>
