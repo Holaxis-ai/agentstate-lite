@@ -1,17 +1,17 @@
 ---
 type: Task
 title: Extract the shared document mutation service below the CLI
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  PR #85 extracts the shared document mutation service below the CLI with no
-  intended behavior change. Fable's review nits were addressed: ownership
-  comments now match core, strict-kind CLI error translation has one source, and
-  the timestamp-mutating helper is named explicitly. Full repository gate
-  passed; independent exact-SHA review approved
-  95d063e86e542e6f0e50ba8c33d992e06b633d30 with no findings. Awaiting merge.
+  Merged PR #85 as d5f3ac9989ded06308fbd893fb5493458b404561. Document mutation
+  policy now lives in core's CLI-neutral service; the CLI is a presentation
+  adapter. Fable's ownership/message/naming nits were closed, the full
+  repository gate passed, and independent exact-SHA review approved
+  95d063e86e542e6f0e50ba8c33d992e06b633d30 with no findings. No Page write
+  capability was introduced.
 actor: mike/codex
-timestamp: '2026-07-17T03:03:39.126Z'
+timestamp: '2026-07-17T03:08:35.020Z'
 ---
 # Behavioral claim
 
