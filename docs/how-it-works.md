@@ -4,7 +4,7 @@ title: >-
   How agentstate-lite works: CLI, engine, sync, and the dynamic UI (with
   plain-language sections)
 actor: brian-claude
-timestamp: '2026-07-17T17:52:18.109Z'
+timestamp: '2026-07-17T20:54:24.401Z'
 ---
 ## What this is
 
@@ -181,20 +181,20 @@ teammates like any doc. The board's own Board/Roadmap/Memory dashboards are exac
 this — they arrived on Mike's machine via ordinary sync.
 
 Security is BY CONSTRUCTION, not policy:
-- The iframe is sandbox="allow-scripts" with no allow-same-origin: the page runs at an
+- The iframe is sandbox="allow-scripts" with no allow-same-origin: the view runs at an
   opaque origin, and its CSP allows NO network at all — no fetch, no websocket.
 - Its only channel is postMessage to the shell, which brokers a READ-ONLY request set
   (protocol v0): hello, query (frontmatter rows), read (one doc), edges (the graph
   primitive), subscribe (change events), open-page (navigation — a wire verb, stable across the rename). There is no mutation
   message — the shell defines no write handler.
-- Each page's registry doc must DECLARE `bridge: bundle-read` to get data at all;
+- Each view's registry doc must DECLARE `bridge: bundle-read` to get data at all;
   fail-closed — an undeclared page can navigate but every data request errors.
-- Page bytes are served via a short-lived nonce the shell mints per page; the nonce
+- View bytes are served via a short-lived nonce the shell mints per page; the nonce
   opens no data route, the session cookie opens no page route.
 
 LIVENESS: the server watches the bundle (fs events locally, polling for remotes) and
 pushes change deltas over one SSE stream to the shell, which fans them to subscribed
-pages — so a dashboard re-renders when a teammate's sync lands. When a page's own
+views — so a dashboard re-renders when a teammate's sync lands. When a view's own
 HTML blob changes, the shell hot-reloads its iframe with a fresh nonce.
 
 IN PLAIN LANGUAGE: dashboards are web pages that live INSIDE the notebook. The viewer
