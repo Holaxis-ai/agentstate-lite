@@ -99,6 +99,100 @@ test("parseRecipeFiles: definitions-only package materializes an explicitly decl
   assert.deepEqual(result.recipe.references, []);
 });
 
+const VIEW_MANIFEST: RecipeFile = {
+  path: "recipe.md",
+  bytes:
+    "---\ntype: Recipe\nid: portable-view\ntitle: Portable view\nversion: \"1\"\nsummary: Definitions only.\n" +
+    "content_policy: definitions-only\npages:\n" +
+    "  - registry: views-registry/board.md\n    entry: views/board.html\n---\n",
+};
+
+const VIEW_REGISTRY_FILE: RecipeFile = {
+  path: "views-registry/board.md",
+  bytes: "---\ntype: View\ntitle: Board\nentry: views/board.html\nbridge: bundle-read\n---\nA board view.\n",
+};
+
+const VIEW_HTML: RecipeFile = {
+  path: "views/board.html",
+  bytes: "<!doctype html><title>Board</title>",
+};
+
+test("parseRecipeFiles: a type View pair under views-registry//views/ materializes alongside the legacy grammar", () => {
+  const result = parseRecipeFiles([VIEW_MANIFEST, VALID_TERM, VIEW_REGISTRY_FILE, VIEW_HTML], "test:portable-view");
+  assert.equal(result.ok, true, result.ok ? "" : result.error.message);
+  if (!result.ok) return;
+  assert.equal(result.recipe.pages.length, 1);
+  assert.equal(result.recipe.pages[0]!.registry.id, "views-registry/board");
+  assert.equal(result.recipe.pages[0]!.registry.frontmatter.type, "View");
+  assert.equal(result.recipe.pages[0]!.entry, "views/board.html");
+  assert.equal(result.recipe.pages[0]!.html, VIEW_HTML.bytes);
+});
+
+test("parseRecipeFiles: View paths ride the SAME safe-segment grammar, and error strings teach both accepted forms", () => {
+  // Unsafe views-form paths are rejected exactly like their pages-form counterparts.
+  for (const [registry, entry] of [
+    ["views-registry/has space.md", "views/board.html"],
+    ["views-registry/.hidden.md", "views/board.html"],
+    ["views-registry/board.md", "views/.hidden.html"],
+    ["views-registry/board.md", "views/assets.md/board.html"],
+  ] as const) {
+    const manifest: RecipeFile = {
+      ...VIEW_MANIFEST,
+      bytes: VIEW_MANIFEST.bytes.replace("views-registry/board.md", registry).replace("views/board.html", entry),
+    };
+    const registryFile: RecipeFile = { path: registry, bytes: VIEW_REGISTRY_FILE.bytes.replace("views/board.html", entry) };
+    const html: RecipeFile = { path: entry, bytes: VIEW_HTML.bytes };
+    const result = parseRecipeFiles([manifest, VALID_TERM, registryFile, html], `test:unsafe-view:${registry}:${entry}`);
+    assert.equal(result.ok, false, `${registry} -> ${entry} must be rejected`);
+    if (result.ok) continue;
+    assert.equal(result.error.code, "RECIPE_UNSAFE_PATH");
+  }
+
+  // An off-namespace registry path names BOTH accepted prefixes in its error.
+  const badRegistry = parseRecipeFiles(
+    [
+      { ...VIEW_MANIFEST, bytes: VIEW_MANIFEST.bytes.replace("views-registry/board.md", "docs/board.md") },
+      VALID_TERM,
+      { ...VIEW_REGISTRY_FILE, path: "docs/board.md" },
+      VIEW_HTML,
+    ],
+    "test:off-namespace-registry",
+  );
+  assert.equal(badRegistry.ok, false);
+  if (!badRegistry.ok) {
+    assert.match(badRegistry.error.message, /views-registry\//);
+    assert.match(badRegistry.error.message, /pages-registry\//);
+  }
+
+  // An off-namespace entry path names BOTH accepted prefixes in its error.
+  const badEntry = parseRecipeFiles(
+    [
+      { ...VIEW_MANIFEST, bytes: VIEW_MANIFEST.bytes.replace("views/board.html", "assets/board.html") },
+      VALID_TERM,
+      { ...VIEW_REGISTRY_FILE, bytes: VIEW_REGISTRY_FILE.bytes.replace("views/board.html", "assets/board.html") },
+      { ...VIEW_HTML, path: "assets/board.html" },
+    ],
+    "test:off-namespace-entry",
+  );
+  assert.equal(badEntry.ok, false);
+  if (!badEntry.ok) {
+    assert.match(badEntry.error.message, /views\//);
+    assert.match(badEntry.error.message, /pages\//);
+  }
+
+  // A registry doc that is neither View nor Page fails, and the error teaches both names.
+  const badType = parseRecipeFiles(
+    [VIEW_MANIFEST, VALID_TERM, { ...VIEW_REGISTRY_FILE, bytes: VIEW_REGISTRY_FILE.bytes.replace("type: View", "type: Design") }, VIEW_HTML],
+    "test:bad-view-type",
+  );
+  assert.equal(badType.ok, false);
+  if (!badType.ok) {
+    assert.equal(badType.error.code, "RECIPE_MALFORMED");
+    assert.match(badType.error.message, /type: View/);
+    assert.match(badType.error.message, /type: Page/);
+  }
+});
+
 test("parseRecipeFiles: definitions-only package materializes an explicitly declared operating Reference", () => {
   const result = parseRecipeFiles(
     [REFERENCE_MANIFEST, VALID_TERM, PAGE_REGISTRY, PAGE_HTML, PAGE_REFERENCE],

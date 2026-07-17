@@ -1,12 +1,37 @@
 /**
- * Pure Page registry/entry path grammar shared by every Page producer and consumer.
+ * Pure Page/View registry/entry path grammar shared by every producer and consumer.
  *
- * Page registry ids are concept ids under `pages-registry/`; Page entries are opaque
- * blob keys under `pages/`. Both retain exact, case-preserving nested paths while
- * rejecting spellings that discovery or storage cannot safely round-trip.
+ * `View` is the current kind name; `Page` is its legacy spelling — both stay readable
+ * (existing content never migrates). Registry ids are concept ids under
+ * `views-registry/` (legacy `pages-registry/`); entries are opaque blob keys under
+ * `views/` (legacy `pages/`). Both retain exact, case-preserving nested paths while
+ * rejecting spellings that discovery or storage cannot safely round-trip. ONE segment
+ * grammar, parameterized by prefix — never a parallel module per name.
  */
 
 import { assertSafeBlobKey, assertSafeConceptId } from "./paths.js";
+
+/** Legacy registry-id prefix for `type: Page` docs. */
+export const PAGE_REGISTRY_PREFIX = "pages-registry/";
+/** Legacy blob-key prefix for Page entries. */
+export const PAGE_ENTRY_PREFIX = "pages/";
+/** Current registry-id prefix for `type: View` docs. */
+export const VIEW_REGISTRY_PREFIX = "views-registry/";
+/** Current blob-key prefix for View entries. */
+export const VIEW_ENTRY_PREFIX = "views/";
+
+/**
+ * The kind names the launcher/registry surfaces accept: `View` (current) and `Page`
+ * (legacy). Exact, case-sensitive match — the same strictness the original
+ * `type === "Page"` check applied.
+ */
+export const PAGE_TYPE_NAMES = ["Page", "View"] as const;
+export type PageTypeName = (typeof PAGE_TYPE_NAMES)[number];
+
+/** True iff `value` is exactly one of the accepted kind names (`Page` | `View`). */
+export function isPageTypeName(value: unknown): value is PageTypeName {
+  return value === "Page" || value === "View";
+}
 
 const PAGE_SEGMENT = /^[A-Za-z0-9._-]+$/;
 
@@ -17,9 +42,8 @@ function hasSafePageSegments(value: string, prefix: string): boolean {
   return segments.every((segment) => !segment.startsWith(".") && PAGE_SEGMENT.test(segment));
 }
 
-/** Strict concept-id grammar for Page registry documents. Nested ids and ordinary dots are valid. */
-export function isPageRegistryId(id: unknown): id is string {
-  if (typeof id !== "string" || id.endsWith(".md") || !hasSafePageSegments(id, "pages-registry/")) {
+function isRegistryIdUnder(id: unknown, prefix: string): id is string {
+  if (typeof id !== "string" || id.endsWith(".md") || !hasSafePageSegments(id, prefix)) {
     return false;
   }
   try {
@@ -30,13 +54,69 @@ export function isPageRegistryId(id: unknown): id is string {
   }
 }
 
-/** Strict blob-key grammar for executable Page entries. */
-export function isPageEntryKey(entry: unknown): entry is string {
-  if (typeof entry !== "string" || !hasSafePageSegments(entry, "pages/")) return false;
+function isEntryKeyUnder(entry: unknown, prefix: string): entry is string {
+  if (typeof entry !== "string" || !hasSafePageSegments(entry, prefix)) return false;
   try {
     assertSafeBlobKey(entry);
     return true;
   } catch {
     return false;
   }
+}
+
+/** Strict concept-id grammar for legacy Page registry documents (`pages-registry/…`). Nested ids and ordinary dots are valid. */
+export function isPageRegistryId(id: unknown): id is string {
+  return isRegistryIdUnder(id, PAGE_REGISTRY_PREFIX);
+}
+
+/** Strict concept-id grammar for View registry documents (`views-registry/…`) — the SAME segment rules as {@link isPageRegistryId}. */
+export function isViewRegistryId(id: unknown): id is string {
+  return isRegistryIdUnder(id, VIEW_REGISTRY_PREFIX);
+}
+
+/** True iff `id` is a valid registry id under EITHER accepted prefix (`views-registry/` or legacy `pages-registry/`). */
+export function isAnyRegistryId(id: unknown): id is string {
+  return isPageRegistryId(id) || isViewRegistryId(id);
+}
+
+/** Strict blob-key grammar for legacy executable Page entries (`pages/…`). */
+export function isPageEntryKey(entry: unknown): entry is string {
+  return isEntryKeyUnder(entry, PAGE_ENTRY_PREFIX);
+}
+
+/** Strict blob-key grammar for executable View entries (`views/…`) — the SAME segment rules as {@link isPageEntryKey}. */
+export function isViewEntryKey(entry: unknown): entry is string {
+  return isEntryKeyUnder(entry, VIEW_ENTRY_PREFIX);
+}
+
+/** True iff `entry` is a valid entry key under EITHER accepted prefix (`views/` or legacy `pages/`). */
+export function isAnyEntryKey(entry: unknown): entry is string {
+  return isPageEntryKey(entry) || isViewEntryKey(entry);
+}
+
+/** A COMPLETE, valid Page/View registration — the narrow triple every consumer needs. */
+export interface PageRegistration {
+  /** The registry doc's concept id (under an accepted registry prefix). */
+  id: string;
+  /** Which accepted kind name the doc declares — `View` (current) or `Page` (legacy). */
+  type: PageTypeName;
+  /** The declared executable entry blob key (under an accepted entry prefix). */
+  entry: string;
+}
+
+/**
+ * THE one registration predicate: a doc is a usable Page/View registration iff its id satisfies
+ * an accepted registry-id grammar ({@link isAnyRegistryId}), its `type` is exactly an accepted
+ * kind name ({@link isPageTypeName}), AND its `entry` satisfies an accepted entry-key grammar
+ * ({@link isAnyEntryKey}). Returns the validated triple, or `null`.
+ *
+ * This is a SECURITY boundary shared by every surface that decides what counts as a registered
+ * page — the launcher/`open-page` parse (ui `parseRegisteredPage`), the `ui` command's
+ * nonce-mint allowlist, and its serve-time re-verification. All of them MUST consume this one
+ * function: a doc any surface rejects must be un-mintable and un-servable everywhere, never
+ * "rejected by the launcher but still served by the nonce route".
+ */
+export function parseRegistration(id: unknown, frontmatter: Record<string, unknown>): PageRegistration | null {
+  if (!isAnyRegistryId(id) || !isPageTypeName(frontmatter.type) || !isAnyEntryKey(frontmatter.entry)) return null;
+  return { id, type: frontmatter.type, entry: frontmatter.entry };
 }

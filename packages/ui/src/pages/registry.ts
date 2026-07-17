@@ -1,8 +1,20 @@
-/** Browser-side parsing for a usable registered bundle Page. */
+/** Browser-side parsing for a usable registered bundle Page/View. */
 
-import { isPageEntryKey, isPageRegistryId } from "@agentstate-lite/core/page";
+import { parseRegistration, type PageTypeName } from "@agentstate-lite/core/page";
 
-export { isPageEntryKey, isPageRegistryId } from "@agentstate-lite/core/page";
+export {
+  isAnyEntryKey,
+  isAnyRegistryId,
+  isPageEntryKey,
+  isPageRegistryId,
+  isPageTypeName,
+  isViewEntryKey,
+  isViewRegistryId,
+  PAGE_TYPE_NAMES,
+  parseRegistration,
+  type PageRegistration,
+  type PageTypeName,
+} from "@agentstate-lite/core/page";
 
 export type BridgeCapability = "none" | "bundle-read";
 
@@ -10,6 +22,8 @@ export interface RegisteredPage {
   id: string;
   entry: string;
   bridge: BridgeCapability;
+  /** Which accepted kind name matched — `View` (current) or `Page` (legacy). */
+  type: PageTypeName;
   title: string;
   description?: string;
   actor?: string;
@@ -25,17 +39,19 @@ export function resolveBridgeCapability(bridge: unknown): BridgeCapability {
   return bridge === "bundle-read" ? "bundle-read" : "none";
 }
 
-/** Parse a usable registered Page without exposing document contents or executable bytes. */
+/** Parse a usable registered Page/View without exposing document contents or executable bytes. Validity is decided ENTIRELY by core's {@link parseRegistration} — the one predicate the server's mint/serve allowlist shares — so this surface can never accept a doc the server rejects (or vice versa). */
 export function parseRegisteredPage(
   id: unknown,
   frontmatter: Record<string, unknown>,
 ): RegisteredPage | null {
-  if (!isPageRegistryId(id) || frontmatter.type !== "Page" || !isPageEntryKey(frontmatter.entry)) return null;
+  const registration = parseRegistration(id, frontmatter);
+  if (!registration) return null;
   return {
-    id,
-    entry: frontmatter.entry,
+    id: registration.id,
+    entry: registration.entry,
     bridge: resolveBridgeCapability(frontmatter.bridge),
-    title: stringValue(frontmatter.title) ?? id,
+    type: registration.type,
+    title: stringValue(frontmatter.title) ?? registration.id,
     description: stringValue(frontmatter.description),
     actor: stringValue(frontmatter.actor),
     timestamp: stringValue(frontmatter.timestamp),

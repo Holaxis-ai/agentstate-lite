@@ -58,7 +58,7 @@ import {
   ROADMAP_DESC_BODY,
   applyRecipe,
 } from "../src/recipes.js";
-import { CONTEXT_NOTES_RECIPE } from "../src/recipe-source.js";
+import { CONTEXT_NOTES_RECIPE, parseRecipeFiles, type RecipeFile } from "../src/recipe-source.js";
 
 const T = "2026-07-01T00:00:00.000Z";
 const EXAMPLE_RECIPE_FIXTURE = path.resolve(import.meta.dirname, "fixtures/example-recipe");
@@ -771,6 +771,47 @@ test("applyRecipe carries serialized Claim lifecycle descriptions through the or
     assert.equal(result.changed, true);
     const registry = await loadKinds({ root: dir });
     assert.deepEqual(registry.kinds.get("Claim")?.fields.valueDescriptions, claim.fields.valueDescriptions);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("DUAL-READ: a recipe carrying a type View pair under views-registry//views/ parses and APPLIES — doc + blob land intact", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const files: RecipeFile[] = [
+      {
+        path: "recipe.md",
+        bytes:
+          '---\ntype: Recipe\nid: view-recipe\ntitle: View recipe\nversion: "1"\nsummary: A View-kind package.\n' +
+          "content_policy: definitions-only\npages:\n  - registry: views-registry/board.md\n    entry: views/board.html\n---\n",
+      },
+      { path: "conventions/term.md", bytes: "---\ntype: Convention\ngoverns: Term\n---\n# Term\n" },
+      { path: "views-registry/board.md", bytes: "---\ntype: View\ntitle: Board\nentry: views/board.html\nbridge: bundle-read\n---\nA board view.\n" },
+      { path: "views/board.html", bytes: "<!doctype html><title>Board</title>" },
+    ];
+    const loaded = parseRecipeFiles(files, "test:view-recipe");
+    assert.equal(loaded.ok, true, loaded.ok ? "" : loaded.error.message);
+    if (!loaded.ok) return;
+
+    const result = await applyRecipe({ root: dir }, loaded.recipe, T);
+    assert.equal(result.changed, true);
+    assert.equal(result.pages.length, 1);
+    assert.equal(result.pages[0]!.registry_id, "views-registry/board");
+    assert.equal(result.pages[0]!.entry, "views/board.html");
+
+    const raw = await readFile(path.join(dir, "views-registry", "board.md"), "utf8");
+    const { frontmatter } = parseMarkdown(raw);
+    assert.equal(frontmatter.type, "View");
+    assert.equal(frontmatter.entry, "views/board.html");
+    const blob = await readBlob({ root: dir }, "views/board.html");
+    assert.equal(Buffer.from(blob!.bytes).toString("utf8"), "<!doctype html><title>Board</title>");
+
+    // Idempotent + preflight-parity: a second apply is changed:false (the views-registry/ prefix
+    // is covered by the existing-registry preflight, so an identical re-apply never conflicts).
+    const second = await applyRecipe({ root: dir }, loaded.recipe, T);
+    assert.equal(second.changed, false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

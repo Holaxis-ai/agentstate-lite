@@ -14,9 +14,16 @@
 //
 // The nonce is a capability, not a durable grant: short-TTL, single bundle-run, in-memory only.
 import { randomBytes } from "node:crypto";
+import { PAGE_ENTRY_PREFIX, VIEW_ENTRY_PREFIX } from "@agentstate-lite/core/page";
 
-/** Bundle-relative key prefix page HTML blobs live under (`promote <file> --doc-key pages/<name>.html`). The watcher only snapshots blobs under this prefix for hot-reload — see `watch.ts`. */
-export const PAGE_BLOB_PREFIX = "pages/";
+/** LEGACY bundle-relative key prefix page HTML blobs live under (`promote <file> --doc-key pages/<name>.html`). */
+export const PAGE_BLOB_PREFIX: string = PAGE_ENTRY_PREFIX;
+
+/** Current bundle-relative key prefix View HTML blobs live under (`views/<name>.html`). */
+export const VIEW_BLOB_PREFIX: string = VIEW_ENTRY_PREFIX;
+
+/** Every accepted page-blob prefix (current `views/` + legacy `pages/`) — the mint guard and the watcher's hot-reload snapshot (`watch.ts`) honor BOTH; existing content never migrates. */
+export const PAGE_BLOB_PREFIXES: readonly string[] = [PAGE_BLOB_PREFIX, VIEW_BLOB_PREFIX];
 
 /**
  * Nonce contract: a minted nonce authorizes exactly ONE blob key and is REUSABLE within a tight

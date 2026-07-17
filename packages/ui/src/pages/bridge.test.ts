@@ -72,6 +72,23 @@ describe("handleBridgeRequest", () => {
     expect(deps.read).not.toHaveBeenCalled();
   });
 
+  it("open-page navigates to a views-registry/ id — the dual-read window's current prefix, no alias-normalization", async () => {
+    const resolvePage = vi.fn(async () => true);
+    const deps = stubDeps({ resolvePage });
+    const outcome = await handleBridgeRequest(
+      { bridge: "v0", id: "nav-view", type: "open-page", pageId: "views-registry/board" },
+      deps,
+      "none",
+    );
+    expect(outcome).toEqual({ reply: null, openPageId: "views-registry/board" });
+    expect(resolvePage).toHaveBeenCalledWith("views-registry/board");
+    // The same safe-segment strictness applies under the new prefix.
+    for (const pageId of ["views-registry/", "views-registryevil/x", "views-registry/x.md", "views-registry/../x", "views/x.html"]) {
+      const { reply } = await handleBridgeRequest({ bridge: "v0", id: "bad", type: "open-page", pageId }, deps, "none");
+      expect((reply as { error: { code: string } }).error.code, pageId).toBe("USAGE");
+    }
+  });
+
   it("open-page rejects malformed ids before resolving and reports unusable targets without metadata", async () => {
     const resolvePage = vi.fn(async () => false);
     const deps = stubDeps({ resolvePage });

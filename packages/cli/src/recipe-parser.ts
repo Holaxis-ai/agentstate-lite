@@ -12,7 +12,15 @@ import {
   type OkfDocument,
   type ValidationWarning,
 } from "@agentstate-lite/core";
-import { isPageEntryKey, isPageRegistryId } from "@agentstate-lite/core/page";
+import {
+  isAnyEntryKey,
+  isAnyRegistryId,
+  isPageTypeName,
+  PAGE_ENTRY_PREFIX,
+  PAGE_REGISTRY_PREFIX,
+  VIEW_ENTRY_PREFIX,
+  VIEW_REGISTRY_PREFIX,
+} from "@agentstate-lite/core/page";
 
 /** One recipe file: a path relative to the recipe root (posix), with its UTF-8 text. */
 export interface RecipeFile {
@@ -221,26 +229,26 @@ function parsePageDeclarations(manifest: Record<string, unknown>, recipeId: stri
         },
       };
     }
-    if (!registry.startsWith("pages-registry/") || !registry.endsWith(".md")) {
+    if ((!registry.startsWith(VIEW_REGISTRY_PREFIX) && !registry.startsWith(PAGE_REGISTRY_PREFIX)) || !registry.endsWith(".md")) {
       return {
         ok: false,
         error: {
           code: "RECIPE_UNSAFE_PATH",
-          message: `recipe '${recipeId}': Page registry '${registry}' must be a .md file under 'pages-registry/'`,
+          message: `recipe '${recipeId}': Page registry '${registry}' must be a .md file under '${VIEW_REGISTRY_PREFIX}' (or legacy '${PAGE_REGISTRY_PREFIX}')`,
         },
       };
     }
-    if (!entry.startsWith("pages/") || !entry.endsWith(".html")) {
+    if ((!entry.startsWith(VIEW_ENTRY_PREFIX) && !entry.startsWith(PAGE_ENTRY_PREFIX)) || !entry.endsWith(".html")) {
       return {
         ok: false,
         error: {
           code: "RECIPE_UNSAFE_PATH",
-          message: `recipe '${recipeId}': Page entry '${entry}' must be a .html file under 'pages/'`,
+          message: `recipe '${recipeId}': Page entry '${entry}' must be a .html file under '${VIEW_ENTRY_PREFIX}' (or legacy '${PAGE_ENTRY_PREFIX}')`,
         },
       };
     }
     const registryId = registry.slice(0, -3);
-    if (!isPageRegistryId(registryId) || !isPageEntryKey(entry) || isReservedFile(registry)) {
+    if (!isAnyRegistryId(registryId) || !isAnyEntryKey(entry) || isReservedFile(registry)) {
       return {
         ok: false,
         error: { code: "RECIPE_UNSAFE_PATH", message: `recipe '${recipeId}' contains an unsafe Page path` },
@@ -476,12 +484,12 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
       };
     }
     const { frontmatter, body } = parseMarkdown(registryFile.bytes);
-    if (frontmatter.type !== "Page") {
+    if (!isPageTypeName(frontmatter.type)) {
       return {
         ok: false,
         error: {
           code: "RECIPE_MALFORMED",
-          message: `recipe '${id}': '${declaration.registry}' must declare 'type: Page'`,
+          message: `recipe '${id}': '${declaration.registry}' must declare 'type: View' (or legacy 'type: Page')`,
         },
       };
     }

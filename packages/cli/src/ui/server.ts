@@ -16,12 +16,13 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { requestFromIncomingMessage, writeResponseToServerResponse } from "@agentstate-lite/server";
 import { readBlob, queryHeads, assertSafeBlobKey, loadKinds, queryEdges, type Bundle, type EdgeFilter } from "@agentstate-lite/core";
+import { PAGE_TYPE_NAMES, parseRegistration } from "@agentstate-lite/core/page";
 import { deriveBundleDisplayName } from "../bundle-name.js";
 import { isAllowedHost } from "./host.js";
 import { checkAuth, mintSessionSecret, sessionCookieHeader } from "./session.js";
 import { serveAsset } from "./assets.js";
 import { proxyToRemote } from "./proxy.js";
-import { PageNonceRegistry, pageCsp, PAGE_BLOB_PREFIX } from "./pages.js";
+import { PageNonceRegistry, pageCsp, PAGE_BLOB_PREFIXES } from "./pages.js";
 import { SseHub } from "./events.js";
 import { startWatcher, type ChangeEvent, type WatcherHandle } from "./watch.js";
 
@@ -78,9 +79,14 @@ function jsonError(status: number, code: string, message: string): Response {
   });
 }
 
-/** A minimal readable error rendered INSIDE the page iframe (the page route serves HTML, so a JSON envelope would show as raw text). Carries the page CSP so the error frame is as locked-down as a real page. */
-function pageError(status: number, message: string): Response {
-  const body = `<!doctype html><meta charset="utf-8"><title>page unavailable</title><p>${message}</p>`;
+/** Escape text for interpolation into HTML (the standard `&<>\"'` five). The ONE escape primitive for the serve path — every {@link pageError} message flows through it, because a message on that path can carry remote-originated text (e.g. an upstream failure's error string) and must never reach the iframe as markup. */
+export function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+/** A minimal readable error rendered INSIDE the page iframe (the page route serves HTML, so a JSON envelope would show as raw text). Carries the page CSP so the error frame is as locked-down as a real page. The message is ALWAYS HTML-escaped — it is data, never markup. Exported for the escaping pin (ui-pages.test.ts); not otherwise a public API. */
+export function pageError(status: number, message: string): Response {
+  const body = `<!doctype html><meta charset="utf-8"><title>page unavailable</title><p>${escapeHtml(message)}</p>`;
   return new Response(body, {
     status,
     headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": pageCsp(), "referrer-policy": "no-referrer" },
@@ -113,7 +119,14 @@ async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonc
   // Re-verify registration at SERVE time, not only at mint time: deleting/retargeting a page's
   // registry doc revokes its live nonces immediately, instead of leaving a still-serving window
   // for the rest of the nonce TTL (tasks/ui-pages-spike P1 — doc-lifecycle revocation).
-  if (!(await registeredPageEntries(options)).has(key)) {
+  let registered: Set<string>;
+  try {
+    registered = await registeredPageEntries(options);
+  } catch (err) {
+    // Fail-closed AND honest: an unreadable registry means "cannot verify", not "not registered".
+    return pageError(502, `The bundle's page registry could not be read (${err instanceof Error ? err.message : String(err)}). Try again.`);
+  }
+  if (!registered.has(key)) {
     return pageError(403, "This page is no longer registered in the bundle (its registry doc was removed or retargeted).");
   }
   const blob = await readPageBlob(options, key);
@@ -130,43 +143,62 @@ async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonc
   });
 }
 
-/** The set of blob keys declared as a `type: Page` doc's `entry` — the ONLY keys a nonce may be minted for (mode-aware: local `queryHeads`, or the remote's `type=Page` head projection). */
+/**
+ * The set of entry blob keys declared by a COMPLETE, VALID registration — the ONLY keys a nonce
+ * may be minted (or kept servable) for. Validity is decided ENTIRELY by core's
+ * {@link parseRegistration} (registry-id grammar + exact accepted type + entry grammar) — the
+ * SAME predicate the launcher's `parseRegisteredPage` consumes, so a doc the launcher rejects
+ * can never mint or serve here. Mode-aware: local `queryHeads`, or the remote's per-type head
+ * projection paginated to exhaustion. Both queries take ONE type, so the accepted names are
+ * fetched separately and merged.
+ *
+ * Failure policy (adjudicated in review): ANY per-type query failure fails the WHOLE enumeration
+ * (this function throws) — never a partial set. A partial set would let mint/serve act on a
+ * half-read registry while launcher discovery (whose own two-query merge already all-or-nothing
+ * fails) reports an error: the two surfaces must agree, and a fail-closed error beats silently
+ * degraded partial availability at a security boundary. Callers map the throw to an explicit
+ * 5xx ("cannot verify"), not to "not registered".
+ */
 async function registeredPageEntries(options: UiServerOptions): Promise<Set<string>> {
   const entries = new Set<string>();
   if (options.mode === "dir") {
-    for (const head of await queryHeads(options.bundle!, { type: "Page" })) {
-      const entry = head.frontmatter.entry;
-      if (typeof entry === "string" && entry) entries.add(entry);
+    for (const type of PAGE_TYPE_NAMES) {
+      for (const head of await queryHeads(options.bundle!, { type })) {
+        const registration = parseRegistration(head.id, head.frontmatter);
+        if (registration) entries.add(registration.entry);
+      }
     }
     return entries;
   }
-  // Paginate to EXHAUSTION, exactly like the launcher's own page listing — a mint-side ceiling
-  // would strand every page past it (listed but unopenable, failing closed for no reason).
   const headers: Record<string, string> = {};
   if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
-  let cursor: string | undefined;
-  do {
-    const url = new URL(`${options.remoteBase}/v0/bundles/${REMOTE_BUNDLE}/docs`);
-    url.searchParams.set("fields", "frontmatter");
-    url.searchParams.set("type", "Page");
-    url.searchParams.set("limit", "200");
-    if (cursor) url.searchParams.set("cursor", cursor);
-    const res = await fetch(url, { headers });
-    if (!res.ok) break; // fail closed: an unreadable registry mints (and serves) nothing extra
-    const body = (await res.json()) as { docs: { frontmatter: Record<string, unknown> }[]; next_cursor?: string | null };
-    for (const d of body.docs) {
-      const entry = d.frontmatter.entry;
-      if (typeof entry === "string" && entry) entries.add(entry);
-    }
-    cursor = body.next_cursor ?? undefined;
-  } while (cursor);
+  for (const type of PAGE_TYPE_NAMES) {
+    let cursor: string | undefined;
+    do {
+      const url = new URL(`${options.remoteBase}/v0/bundles/${REMOTE_BUNDLE}/docs`);
+      url.searchParams.set("fields", "frontmatter");
+      url.searchParams.set("type", type);
+      url.searchParams.set("limit", "200");
+      if (cursor) url.searchParams.set("cursor", cursor);
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        throw new Error(`the remote page registry could not be read (type=${type} listing returned status ${res.status})`);
+      }
+      const body = (await res.json()) as { docs: { id?: unknown; frontmatter: Record<string, unknown> }[]; next_cursor?: string | null };
+      for (const d of body.docs) {
+        const registration = parseRegistration(d.id, d.frontmatter);
+        if (registration) entries.add(registration.entry);
+      }
+      cursor = body.next_cursor ?? undefined;
+    } while (cursor);
+  }
   return entries;
 }
 
 /**
  * Mint a nonce for the requested (session-authed) page key. Confinement (tasks/ui-pages-spike A1):
- * a nonce may ONLY be minted for a key that (a) lives under the page blob prefix AND (b) is the
- * declared `entry` of a `type: Page` registry doc. This is what stops the nonce mechanism from
+ * a nonce may ONLY be minted for a key that (a) lives under an accepted page-blob prefix AND (b) is
+ * the declared `entry` of a `type: View` (or legacy `type: Page`) registry doc. This is what stops the nonce mechanism from
  * being turned into a read-anything-blob primitive (e.g. minting `secrets/creds.bin`) even by a
  * compromised same-origin shell — a nonce only ever exists for a bundle-declared page.
  */
@@ -184,12 +216,18 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
   } catch (err) {
     return jsonError(400, "USAGE", err instanceof Error ? err.message : `unsafe page key '${key}'`);
   }
-  if (!key.startsWith(PAGE_BLOB_PREFIX)) {
-    return jsonError(403, "FORBIDDEN", `page keys must live under '${PAGE_BLOB_PREFIX}'; '${key}' does not`);
+  if (!PAGE_BLOB_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+    return jsonError(403, "FORBIDDEN", `page keys must live under '${PAGE_BLOB_PREFIXES.join("' or '")}'; '${key}' does not`);
   }
-  const entries = await registeredPageEntries(options);
+  let entries: Set<string>;
+  try {
+    entries = await registeredPageEntries(options);
+  } catch (err) {
+    // Fail-closed AND honest: an unreadable registry means "cannot verify", not "not registered".
+    return jsonError(502, "RUNTIME", `could not read the page registry (${err instanceof Error ? err.message : String(err)})`);
+  }
   if (!entries.has(key)) {
-    return jsonError(403, "FORBIDDEN", `'${key}' is not a registered page (no type:Page doc declares it as 'entry')`);
+    return jsonError(403, "FORBIDDEN", `'${key}' is not the entry of any valid type:View (or legacy type:Page) registration`);
   }
   const nonce = runtime.nonces.mint(key);
   return new Response(JSON.stringify({ nonce, url: `/__page/${nonce}` }), {
