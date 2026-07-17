@@ -726,6 +726,31 @@ export function validateAgainstKind(doc: OkfDocument, kind: KindConvention): Val
   return warnings;
 }
 
+/** Result of validating a document through a bundle's already-loaded kind registry. */
+export interface RegistryValidationResult {
+  /** The governing kind, when the document's type is declared in this registry. */
+  kind?: KindConvention;
+  warnings: ValidationWarning[];
+}
+
+/**
+ * Default a document timestamp before evaluating its governing kind. This ordering is
+ * shared by every trusted document writer: a kind requiring `timestamp` validates the
+ * value that will actually be persisted, never a still-missing pre-write candidate.
+ * The registry is supplied by the caller so mutation does not perform hidden discovery.
+ */
+export function defaultTimestampAndValidateAgainstRegistry(
+  doc: OkfDocument,
+  registry: KindRegistry,
+): RegistryValidationResult {
+  if (typeof doc.frontmatter.timestamp !== "string" || doc.frontmatter.timestamp.trim() === "") {
+    doc.frontmatter.timestamp = new Date().toISOString();
+  }
+  const kind = registry.kinds.get(String(doc.frontmatter.type));
+  if (!kind) return { warnings: [] };
+  return { kind, warnings: validateAgainstKind(doc, kind) };
+}
+
 /**
  * True iff `frontmatter` carries a terminal value on any field `kind.fields.terminal` declares
  * (task board `tasks/status-terminal-declaration.md`) — THE one derivation every consumer calls

@@ -1021,10 +1021,8 @@ test("doc write: warn-by-default when a kind governs --type (exit 0, warnings[] 
     const result = JSON.parse(out) as Record<string, unknown>;
     assert.equal(result.doc, "written");
     const warnings = result.warnings as Array<Record<string, unknown>>;
-    // EXACTLY the missing-title warning — no phantom 'timestamp' warning alongside it (a
-    // timestamp-less write is auto-defaulted by the engine, and doc.ts now defaults
-    // frontmatter.timestamp BEFORE validation runs so validation sees the value that will
-    // actually be persisted; regression coverage for the post-review finding F1).
+    // Exactly the missing-title warning: core defaults a timestamp-less candidate before
+    // validation, so validation sees the value that will actually be persisted.
     assert.equal(warnings.length, 1);
     assert.equal(warnings[0]!.field, "title");
 

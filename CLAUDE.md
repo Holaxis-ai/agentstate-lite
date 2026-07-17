@@ -122,6 +122,13 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   `writeReserved` honors CAS (FilesystemBackend cross-process lock + hash/rename; MemoryBackend
   in-memory enforcement), and `appendLog`/`regenerateIndex` are read-CAS-write with a bounded retry — so the
   provenance surface (`log.md`) no longer loses entries under a concurrent writer.
+- **Document mutation policy lives below the CLI** in core's `mutateDocument` service
+  (`core/src/document-mutation.ts`). It owns create-only / overwrite / patch behavior, fresh
+  read-decide-CAS-retry coupling, hard CAS, semantic no-op detection, timestamp-before-kind
+  validation, actor propagation, and final-version receipts. Trusted consumers pass an already
+  loaded kind registry and receive typed core failures. The CLI's `mutateDoc` is only an adapter for
+  CLI error wording, remote hints, help text, and the best-effort board-attribution hook. Do not
+  duplicate this policy in a future UI or server action path.
 - Keep exactly **ONE** frontmatter parser, **ONE** bundle walk, **ONE** link resolver, and
   **ONE** human-facing runtime: the local `ui` shell plus bundle-authored Pages. Do not
   reintroduce a parallel static viewer or a second parser inside Page tooling; Pages consume

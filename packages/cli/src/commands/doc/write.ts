@@ -115,9 +115,8 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
 
   // If a kind convention governs `type`, validate against it — WARN-by-default (attach `warnings[]`
   // to the receipt, still write, exit 0); `--strict` upgrades a non-empty warning set to a USAGE
-  // error (exit 2) that does NOT write. `mutateDoc`'s "overwrite" mode runs this decision (via
-  // `kind-write.ts`'s shared `defaultTimestampAndValidateKind` — B8, also consumed by `promote`'s
-  // `.md` route) BEFORE writing, defaulting `frontmatter.timestamp` first so a kind that requires
+  // error (exit 2) that does NOT write. Core's shared document mutation service runs this decision
+  // before writing, defaulting `frontmatter.timestamp` first so a kind that requires
   // `timestamp` validates against the value that will actually be persisted. A conventions-free
   // bundle (no Convention docs) loads an empty registry, so this is a no-op.
   const registry = await loadKinds(bundle);
