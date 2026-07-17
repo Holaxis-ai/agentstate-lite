@@ -16,7 +16,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { requestFromIncomingMessage, writeResponseToServerResponse } from "@agentstate-lite/server";
 import { readBlob, queryHeads, assertSafeBlobKey, loadKinds, queryEdges, type Bundle, type EdgeFilter } from "@agentstate-lite/core";
-import { PAGE_TYPE_NAMES } from "@agentstate-lite/core/page";
+import { PAGE_TYPE_NAMES, parseRegistration } from "@agentstate-lite/core/page";
 import { deriveBundleDisplayName } from "../bundle-name.js";
 import { isAllowedHost } from "./host.js";
 import { checkAuth, mintSessionSecret, sessionCookieHeader } from "./session.js";
@@ -114,7 +114,14 @@ async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonc
   // Re-verify registration at SERVE time, not only at mint time: deleting/retargeting a page's
   // registry doc revokes its live nonces immediately, instead of leaving a still-serving window
   // for the rest of the nonce TTL (tasks/ui-pages-spike P1 — doc-lifecycle revocation).
-  if (!(await registeredPageEntries(options)).has(key)) {
+  let registered: Set<string>;
+  try {
+    registered = await registeredPageEntries(options);
+  } catch (err) {
+    // Fail-closed AND honest: an unreadable registry means "cannot verify", not "not registered".
+    return pageError(502, `The bundle's page registry could not be read (${err instanceof Error ? err.message : String(err)}). Try again.`);
+  }
+  if (!registered.has(key)) {
     return pageError(403, "This page is no longer registered in the bundle (its registry doc was removed or retargeted).");
   }
   const blob = await readPageBlob(options, key);
@@ -131,20 +138,33 @@ async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonc
   });
 }
 
-/** The set of blob keys declared as a `type: View` (or legacy `type: Page`) doc's `entry` — the ONLY keys a nonce may be minted for (mode-aware: local `queryHeads`, or the remote's per-type head projection). Both queries take ONE type, so the accepted names are fetched separately and merged (stable order: legacy first, then current — a Set, so ordering only affects iteration). */
+/**
+ * The set of entry blob keys declared by a COMPLETE, VALID registration — the ONLY keys a nonce
+ * may be minted (or kept servable) for. Validity is decided ENTIRELY by core's
+ * {@link parseRegistration} (registry-id grammar + exact accepted type + entry grammar) — the
+ * SAME predicate the launcher's `parseRegisteredPage` consumes, so a doc the launcher rejects
+ * can never mint or serve here. Mode-aware: local `queryHeads`, or the remote's per-type head
+ * projection paginated to exhaustion. Both queries take ONE type, so the accepted names are
+ * fetched separately and merged.
+ *
+ * Failure policy (adjudicated in review): ANY per-type query failure fails the WHOLE enumeration
+ * (this function throws) — never a partial set. A partial set would let mint/serve act on a
+ * half-read registry while launcher discovery (whose own two-query merge already all-or-nothing
+ * fails) reports an error: the two surfaces must agree, and a fail-closed error beats silently
+ * degraded partial availability at a security boundary. Callers map the throw to an explicit
+ * 5xx ("cannot verify"), not to "not registered".
+ */
 async function registeredPageEntries(options: UiServerOptions): Promise<Set<string>> {
   const entries = new Set<string>();
   if (options.mode === "dir") {
     for (const type of PAGE_TYPE_NAMES) {
       for (const head of await queryHeads(options.bundle!, { type })) {
-        const entry = head.frontmatter.entry;
-        if (typeof entry === "string" && entry) entries.add(entry);
+        const registration = parseRegistration(head.id, head.frontmatter);
+        if (registration) entries.add(registration.entry);
       }
     }
     return entries;
   }
-  // Paginate to EXHAUSTION, exactly like the launcher's own page listing — a mint-side ceiling
-  // would strand every page past it (listed but unopenable, failing closed for no reason).
   const headers: Record<string, string> = {};
   if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
   for (const type of PAGE_TYPE_NAMES) {
@@ -156,11 +176,13 @@ async function registeredPageEntries(options: UiServerOptions): Promise<Set<stri
       url.searchParams.set("limit", "200");
       if (cursor) url.searchParams.set("cursor", cursor);
       const res = await fetch(url, { headers });
-      if (!res.ok) break; // fail closed: an unreadable registry mints (and serves) nothing extra
-      const body = (await res.json()) as { docs: { frontmatter: Record<string, unknown> }[]; next_cursor?: string | null };
+      if (!res.ok) {
+        throw new Error(`the remote page registry could not be read (type=${type} listing returned status ${res.status})`);
+      }
+      const body = (await res.json()) as { docs: { id?: unknown; frontmatter: Record<string, unknown> }[]; next_cursor?: string | null };
       for (const d of body.docs) {
-        const entry = d.frontmatter.entry;
-        if (typeof entry === "string" && entry) entries.add(entry);
+        const registration = parseRegistration(d.id, d.frontmatter);
+        if (registration) entries.add(registration.entry);
       }
       cursor = body.next_cursor ?? undefined;
     } while (cursor);
@@ -192,9 +214,15 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
   if (!PAGE_BLOB_PREFIXES.some((prefix) => key.startsWith(prefix))) {
     return jsonError(403, "FORBIDDEN", `page keys must live under '${PAGE_BLOB_PREFIXES.join("' or '")}'; '${key}' does not`);
   }
-  const entries = await registeredPageEntries(options);
+  let entries: Set<string>;
+  try {
+    entries = await registeredPageEntries(options);
+  } catch (err) {
+    // Fail-closed AND honest: an unreadable registry means "cannot verify", not "not registered".
+    return jsonError(502, "RUNTIME", `could not read the page registry (${err instanceof Error ? err.message : String(err)})`);
+  }
   if (!entries.has(key)) {
-    return jsonError(403, "FORBIDDEN", `'${key}' is not a registered page (no type:View or legacy type:Page doc declares it as 'entry')`);
+    return jsonError(403, "FORBIDDEN", `'${key}' is not the entry of any valid type:View (or legacy type:Page) registration`);
   }
   const nonce = runtime.nonces.mint(key);
   return new Response(JSON.stringify({ nonce, url: `/__page/${nonce}` }), {

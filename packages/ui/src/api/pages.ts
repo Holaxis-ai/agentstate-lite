@@ -41,7 +41,17 @@ export async function fetchConfig(): Promise<UiConfig> {
   return (await res.json()) as UiConfig;
 }
 
-/** Every `type: View` (or legacy `type: Page`) registry doc with a usable `entry`, newest-first, projected for the launcher. The wire query takes ONE type, so the accepted names are fetched separately and merged (stable order: legacy first, then current — the sort below decides display order anyway). */
+/**
+ * Every valid `type: View` (or legacy `type: Page`) registration, newest-first, projected for the
+ * launcher. Validity is core's `parseRegistration` (via {@link pageFromFrontmatter} ->
+ * `parseRegisteredPage`) — the SAME predicate the server's mint/serve allowlist consumes. The wire
+ * query takes ONE type, so the accepted names are fetched separately and merged (stable order:
+ * legacy first, then current — the sort below decides display order anyway).
+ *
+ * Failure policy (matches the server's allowlist enumeration): if EITHER per-type query fails, the
+ * WHOLE listing fails (`Promise.all` rejects) — never a partial launcher that hides one kind while
+ * the mint route still errors, or vice versa.
+ */
 export async function listPages(): Promise<PageEntry[]> {
   const heads = (await Promise.all(PAGE_TYPE_NAMES.map((type) => listAllHeads({ type })))).flat();
   const pages = heads

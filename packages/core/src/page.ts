@@ -93,3 +93,30 @@ export function isViewEntryKey(entry: unknown): entry is string {
 export function isAnyEntryKey(entry: unknown): entry is string {
   return isPageEntryKey(entry) || isViewEntryKey(entry);
 }
+
+/** A COMPLETE, valid Page/View registration — the narrow triple every consumer needs. */
+export interface PageRegistration {
+  /** The registry doc's concept id (under an accepted registry prefix). */
+  id: string;
+  /** Which accepted kind name the doc declares — `View` (current) or `Page` (legacy). */
+  type: PageTypeName;
+  /** The declared executable entry blob key (under an accepted entry prefix). */
+  entry: string;
+}
+
+/**
+ * THE one registration predicate: a doc is a usable Page/View registration iff its id satisfies
+ * an accepted registry-id grammar ({@link isAnyRegistryId}), its `type` is exactly an accepted
+ * kind name ({@link isPageTypeName}), AND its `entry` satisfies an accepted entry-key grammar
+ * ({@link isAnyEntryKey}). Returns the validated triple, or `null`.
+ *
+ * This is a SECURITY boundary shared by every surface that decides what counts as a registered
+ * page — the launcher/`open-page` parse (ui `parseRegisteredPage`), the `ui` command's
+ * nonce-mint allowlist, and its serve-time re-verification. All of them MUST consume this one
+ * function: a doc any surface rejects must be un-mintable and un-servable everywhere, never
+ * "rejected by the launcher but still served by the nonce route".
+ */
+export function parseRegistration(id: unknown, frontmatter: Record<string, unknown>): PageRegistration | null {
+  if (!isAnyRegistryId(id) || !isPageTypeName(frontmatter.type) || !isAnyEntryKey(frontmatter.entry)) return null;
+  return { id, type: frontmatter.type, entry: frontmatter.entry };
+}

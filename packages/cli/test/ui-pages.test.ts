@@ -229,6 +229,13 @@ async function bootPagesServer(): Promise<{ handle: UiServerHandle; origin: stri
   // A CURRENT-name View alongside the legacy Page — the dual-read window's mixed board.
   await writeBlob(bundle, "views/board.html", Buffer.from("<!doctype html><title>board</title><p>view</p>"), "text/html; charset=utf-8");
   await writeDoc(bundle, { id: "views-registry/board", frontmatter: { type: "View", title: "Board", entry: "views/board.html" }, body: "" });
+  // INVALID registrations (the one-predicate review fold-in): docs the launcher rejects must not
+  // mint or serve either, even when their declared entry's bytes exist under an accepted prefix.
+  await writeBlob(bundle, "pages/loose.html", Buffer.from("<!doctype html><title>loose</title>"), "text/html; charset=utf-8");
+  await writeDoc(bundle, { id: "notes/loose", frontmatter: { type: "Page", title: "Loose", entry: "pages/loose.html" }, body: "" });
+  await writeBlob(bundle, "pages/has space.html", Buffer.from("<!doctype html><title>spacey</title>"), "text/html; charset=utf-8");
+  await writeDoc(bundle, { id: "pages-registry/spacey", frontmatter: { type: "Page", title: "Spacey", entry: "pages/has space.html" }, body: "" });
+  await writeDoc(bundle, { id: "views-registry/offprefix", frontmatter: { type: "View", title: "Off prefix", entry: "secrets/creds.bin" }, body: "" });
   // A kind convention with a terminal declaration — the /__ui/kinds endpoint's fixture.
   await writeDoc(bundle, {
     id: "conventions/task",
@@ -416,6 +423,138 @@ test("DUAL-READ: a type View doc under views-registry/ with a views/ blob mints 
     assert.equal((await mintKey("views/not-registered.html")).status, 403);
   } finally {
     await cleanup();
+  }
+});
+
+test("ONE-PREDICATE: an entry declared ONLY by an invalid registration cannot mint (dir mode) — invalid registry id, malformed entry, off-prefix entry", async () => {
+  const { origin, cleanup } = await bootPagesServer();
+  const mintKey = (key: string) =>
+    fetch(`${origin}/__page/mint`, {
+      method: "POST",
+      headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+      body: JSON.stringify({ key }),
+    });
+  try {
+    // notes/loose (type Page, valid entry, INVALID registry id) declares pages/loose.html and its
+    // bytes exist — the launcher rejects that doc, so mint must too.
+    assert.equal((await mintKey("pages/loose.html")).status, 403, "an invalid registry id must not put its entry on the allowlist");
+    // pages-registry/spacey declares a NONEMPTY entry that fails the entry grammar; the key itself
+    // passes blob-key safety AND the prefix guard, so a 403 here is the registration predicate.
+    assert.equal((await mintKey("pages/has space.html")).status, 403, "a malformed declared entry must not mint");
+    // views-registry/offprefix declares an off-prefix entry — never mintable (prefix guard AND predicate).
+    assert.equal((await mintKey("secrets/creds.bin")).status, 403);
+    // The valid registrations on the same board still mint (the predicate rejects docs, not the board).
+    assert.equal((await mintKey("pages/test.html")).status, 200);
+    assert.equal((await mintKey("views/board.html")).status, 200);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("ONE-PREDICATE: serve-time re-verification rides the same predicate — an INVALID registration cannot keep a live nonce serving", async () => {
+  const { origin, dir, cleanup } = await bootPagesServer();
+  try {
+    const mint = await fetch(`${origin}/__page/mint`, {
+      method: "POST",
+      headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+      body: JSON.stringify({ key: "pages/test.html" }),
+    });
+    assert.equal(mint.status, 200);
+    const { url } = (await mint.json()) as { url: string };
+    assert.equal((await fetch(`${origin}${url}`)).status, 200);
+
+    // Remove the VALID registration and re-declare the same entry from an INVALID one (a type
+    // Page doc outside the registry namespace). The launcher rejects that doc; serve-time
+    // re-verification must too — the invalid registration cannot keep the entry alive.
+    const bundle: Bundle = { root: dir };
+    await deleteDoc(bundle, "pages-registry/test");
+    await writeDoc(bundle, { id: "notes/test-slot", frontmatter: { type: "Page", title: "Squatter", entry: "pages/test.html" }, body: "" });
+    assert.equal((await fetch(`${origin}${url}`)).status, 403, "an invalid registration must not resurrect a revoked entry");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("ONE-PREDICATE: remote-mode mint filters rows through the registration predicate — invalid ids, malformed entries, and WRONG-TYPED rows from the wire cannot mint", async () => {
+  // A (misbehaving) remote returns poisoned rows inside its per-type listings: an invalid registry
+  // id, a row whose returned type does not match an accepted name, and a malformed entry. The
+  // allowlist must trust the PREDICATE, not the query params it sent.
+  const server = createHttpServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    const type = url.searchParams.get("type");
+    const docs =
+      type === "Page"
+        ? [
+            { id: "pages-registry/legacy", version: "v1", frontmatter: { type: "Page", entry: "pages/legacy.html" } },
+            { id: "notes/loose", version: "v1", frontmatter: { type: "Page", entry: "pages/loose2.html" } },
+            { id: "pages-registry/wrongtype", version: "v1", frontmatter: { type: "Design", entry: "pages/wt.html" } },
+          ]
+        : type === "View"
+          ? [
+              { id: "views-registry/board", version: "v1", frontmatter: { type: "View", entry: "views/board.html" } },
+              { id: "views-registry/spacey", version: "v1", frontmatter: { type: "View", entry: "views/has space.html" } },
+            ]
+          : [];
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ docs, next_cursor: null }));
+  });
+  const remoteOrigin = await listenOn(server);
+  try {
+    const handle = await bootUiServer({ mode: "remote", port: 0, remoteBase: remoteOrigin, sessionSecret: SECRET });
+    try {
+      const mint = (key: string) =>
+        fetch(`http://${handle.host}:${handle.port}/__page/mint`, {
+          method: "POST",
+          headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+          body: JSON.stringify({ key }),
+        });
+      assert.equal((await mint("pages/legacy.html")).status, 200);
+      assert.equal((await mint("views/board.html")).status, 200);
+      assert.equal((await mint("pages/loose2.html")).status, 403, "an invalid registry id from the wire must not mint");
+      assert.equal((await mint("pages/wt.html")).status, 403, "a wrong-typed row from the wire must not mint");
+      assert.equal((await mint("views/has space.html")).status, 403, "a malformed declared entry from the wire must not mint");
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test("ONE-PREDICATE: a FAILED per-type registry query fails the WHOLE mint enumeration (strict consistency) — never a partial allowlist", async () => {
+  // type=Page succeeds, type=View 500s. Policy: the enumeration is all-or-nothing — mint must NOT
+  // proceed on the surviving type (it would act on a half-read registry while launcher discovery,
+  // whose Promise.all merge fails whole, reports an error). Expect an explicit 5xx envelope, not
+  // a 403 pretending to know the key is unregistered, and not a 200.
+  const server = createHttpServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    const type = url.searchParams.get("type");
+    if (type === "View") {
+      res.writeHead(500, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { code: "RUNTIME", message: "boom" } }));
+      return;
+    }
+    const docs = type === "Page" ? [{ id: "pages-registry/legacy", version: "v1", frontmatter: { type: "Page", entry: "pages/legacy.html" } }] : [];
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ docs, next_cursor: null }));
+  });
+  const remoteOrigin = await listenOn(server);
+  try {
+    const handle = await bootUiServer({ mode: "remote", port: 0, remoteBase: remoteOrigin, sessionSecret: SECRET });
+    try {
+      const res = await fetch(`http://${handle.host}:${handle.port}/__page/mint`, {
+        method: "POST",
+        headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+        body: JSON.stringify({ key: "pages/legacy.html" }),
+      });
+      assert.equal(res.status, 502, "a half-read registry must fail the mint, not serve a partial allowlist");
+      const body = (await res.json()) as { error?: { code?: string } };
+      assert.equal(body.error?.code, "RUNTIME");
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    server.close();
   }
 });
 

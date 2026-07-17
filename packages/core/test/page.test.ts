@@ -12,6 +12,7 @@ import {
   PAGE_ENTRY_PREFIX,
   PAGE_REGISTRY_PREFIX,
   PAGE_TYPE_NAMES,
+  parseRegistration,
   VIEW_ENTRY_PREFIX,
   VIEW_REGISTRY_PREFIX,
 } from "../src/page.js";
@@ -167,5 +168,51 @@ test("isPageTypeName accepts exactly the registered kind names — same strictne
   assert.equal(isPageTypeName("View"), true);
   for (const invalid of ["page", "view", "VIEW", " View", "View ", "Views", "Pages", "", undefined, null, 1, ["View"]]) {
     assert.equal(isPageTypeName(invalid), false, JSON.stringify(invalid));
+  }
+});
+
+test("parseRegistration: THE one registration predicate — valid triples parse, in both namespaces", () => {
+  assert.deepEqual(parseRegistration("pages-registry/about", { type: "Page", entry: "pages/about.html" }), {
+    id: "pages-registry/about",
+    type: "Page",
+    entry: "pages/about.html",
+  });
+  assert.deepEqual(parseRegistration("views-registry/board", { type: "View", entry: "views/board.html" }), {
+    id: "views-registry/board",
+    type: "View",
+    entry: "views/board.html",
+  });
+  // Names and prefixes are accepted independently (ids never move under the dual-read window).
+  assert.deepEqual(parseRegistration("pages-registry/board", { type: "View", entry: "pages/board.html" })?.type, "View");
+});
+
+test("parseRegistration: rejects an invalid registry id even when the entry is valid (the mint/serve drift hole)", () => {
+  for (const id of ["notes/foo", "docs/x", "pages-registryevil/x", "pages-registry/x.md", "pages-registry/../x", "", undefined]) {
+    assert.equal(parseRegistration(id, { type: "Page", entry: "pages/about.html" }), null, String(id));
+    assert.equal(parseRegistration(id, { type: "View", entry: "views/board.html" }), null, String(id));
+  }
+});
+
+test("parseRegistration: rejects a nonempty malformed or off-prefix entry even when id and type are valid", () => {
+  for (const entry of [
+    "secrets/creds.bin",
+    "pages/has space.html",
+    "pages/../x.html",
+    "pages/.hidden.html",
+    "views/has space.html",
+    "views-registry/x.html",
+    "pages",
+    "",
+    undefined,
+    1,
+  ]) {
+    assert.equal(parseRegistration("pages-registry/about", { type: "Page", entry }), null, JSON.stringify(entry));
+    assert.equal(parseRegistration("views-registry/board", { type: "View", entry }), null, JSON.stringify(entry));
+  }
+});
+
+test("parseRegistration: rejects any type outside the exact accepted names, even with valid id + entry", () => {
+  for (const type of ["Design", "page", "View ", " Page", "", undefined, null, 1]) {
+    assert.equal(parseRegistration("pages-registry/about", { type, entry: "pages/about.html" }), null, JSON.stringify(type));
   }
 });

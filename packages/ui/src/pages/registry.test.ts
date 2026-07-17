@@ -41,6 +41,9 @@ describe("Page registry authority", () => {
     expect(parseRegisteredPage("docs/about", fm)).toBeNull();
     expect(parseRegisteredPage("pages-registry/about", { ...fm, type: "Design" })).toBeNull();
     expect(parseRegisteredPage("pages-registry/about", { ...fm, entry: "other/about.html" })).toBeNull();
+    // In-prefix but malformed entries fail the SAME core predicate the server allowlist uses.
+    expect(parseRegisteredPage("pages-registry/about", { ...fm, entry: "pages/has space.html" })).toBeNull();
+    expect(parseRegisteredPage("notes/about", fm)).toBeNull();
   });
 
   it("accepts type View over the views-registry//views/ namespaces with the same strictness", () => {
