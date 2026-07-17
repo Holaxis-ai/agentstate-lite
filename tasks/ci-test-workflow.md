@@ -3,7 +3,7 @@ type: Task
 title: >-
   CI test workflow on every PR + main (Node 20+25 matrix) — the repo currently
   has NO test CI
-status: in_progress
+status: done
 priority: '1'
 description: >-
   Part of plans/test-suite-confidence (Brian's suite-assurance program,
@@ -11,7 +11,7 @@ description: >-
   claiming.
 actor: claude-fable-5
 assignee: claude-fable-5
-timestamp: '2026-07-17T21:19:23.200Z'
+timestamp: '2026-07-17T23:28:54.188Z'
 ---
 PR #86 (branch ci-test-workflow) GREEN and fully reviewed — ready to merge. All three CI jobs pass on 597adb7: gate (node 22), gate (node 26), built-CLI smoke on the engines floor (node 20); every gate phase verified executed on-runner (workspace suites, test:scripts, verify:npm-package, check:skill, e2e 14/14).
 
