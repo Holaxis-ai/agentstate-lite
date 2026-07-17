@@ -20,3 +20,10 @@ packages/worker/wrangler.local.jsonc
 
 # the shared board — managed on the 'board' branch by aslite sync
 .agentstate-lite/
+
+# Stryker mutation-testing output (npm run mutation:core / mutation:cli) — reports are CI
+# artifacts, never committed; .stryker-tmp holds inPlace-mode backups during a run;
+# stryker-output-<pid>.json files are tap-runner child results a killed child can orphan.
+packages/*/reports/
+packages/*/.stryker-tmp/
+packages/*/stryker-output-*.json

@@ -1,0 +1,113 @@
+name: Mutation tests
+
+# Measures the SUITE, not the code: Stryker seeds artificial defects into packages/core/src and
+# packages/cli/src and reports how many the test suite kills — tasks/mutation-testing, item 2 of
+# plans/test-suite-confidence ("a number, not a feeling"). Survivors are the suite's named gaps;
+# the run's job summary lists them for filing as board tasks.
+#
+# DELIBERATELY NOT A PR GATE: mutation runs are compute-heavy (the plan's explicit call —
+# scheduled/on-demand only), and the score is a measurement, never a merge blocker. Runs weekly
+# plus on demand (workflow_dispatch, with a target picker and an optional mutate-glob to scope an
+# investigation to one area).
+#
+# Per-package runs (cwd = the package dir, matching each stryker.config.json): core needs the
+# sibling dists built (its wire-protocol tests import @agentstate-lite/server's dist); cli
+# additionally has Stryker run `node build.mjs` once AFTER instrumentation (mutation switching:
+# one build carries every mutant into the esbuild bundle, activated per run via env), so the
+# minority of cli tests that spawn the BUILT bundle exercise mutants too.
+#
+# The incremental file is cached per package+node so scheduled runs only re-test what changed;
+# a monthly-ish `force: true` dispatch is the recommended drift flush.
+on:
+  schedule:
+    - cron: "17 5 * * 1" # weekly, Monday 05:17 UTC
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which package(s) to mutate"
+        type: choice
+        options: [both, core, cli]
+        default: both
+      mutate:
+        description: "Optional mutate glob override (e.g. src/paths.ts), relative to the package"
+        type: string
+        required: false
+      force:
+        description: "Ignore the cached incremental state (full re-run)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-tests
+  cancel-in-progress: false
+
+env:
+  AGENTSTATE_LITE_NO_AUTOPULL: 1
+
+jobs:
+  mutate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: core
+            workspace: "@agentstate-lite/core"
+          - package: cli
+            workspace: agentstate-lite
+    name: mutation (${{ matrix.package }})
+    if: github.event_name == 'schedule' || inputs.target == 'both' || inputs.target == matrix.package
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Restore incremental state
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.force) }}
+        uses: actions/cache/restore@v4
+        with:
+          path: packages/${{ matrix.package }}/reports/stryker-incremental.json
+          key: stryker-incremental-${{ matrix.package }}-${{ github.sha }}
+          restore-keys: |
+            stryker-incremental-${{ matrix.package }}-
+
+      - name: Run Stryker
+        # -w runs the package's own `mutation` script with cwd = the package dir (what each
+        # stryker.config.json expects); ONE npm layer, so `--`-forwarded flags reach stryker.
+        run: npm run mutation -w ${{ matrix.workspace }} -- --incremental ${{ github.event_name == 'workflow_dispatch' && inputs.mutate != '' && format('--mutate {0}', inputs.mutate) || '' }}
+
+      - name: Survivors to job summary
+        if: always()
+        run: |
+          {
+            echo "## Mutation survivors (${{ matrix.package }})"
+            echo '```'
+            npm run --silent mutation:survivors -- "packages/${{ matrix.package }}/reports/mutation/mutation.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-${{ matrix.package }}-${{ github.run_id }}
+          path: packages/${{ matrix.package }}/reports/mutation/
+          if-no-files-found: ignore
+
+      - name: Save incremental state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: packages/${{ matrix.package }}/reports/stryker-incremental.json
+          key: stryker-incremental-${{ matrix.package }}-${{ github.sha }}
