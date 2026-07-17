@@ -16,7 +16,7 @@ description: >-
   with the vetted Option-A blueprint on plans/rename-page-kind-to-view.
 actor: brian-claude
 assignee: brian-claude
-timestamp: '2026-07-16T17:04:59.982Z'
+timestamp: '2026-07-17T21:05:48.167Z'
 ---
 [informed by](joint-ontology-session.md)
 
@@ -37,3 +37,12 @@ timestamp: '2026-07-16T17:04:59.982Z'
   the accepted-prefix-pair lists live at ~4 grep-reachable sites; consolidating into
   core ACCEPTED_*_PREFIXES arrays is folded into the PARKED Unit-5/deprecation scope
   (deprecation day = ~4 files today, 1 after that consolidation).
+
+- U3 APPROVED (cf4f0d3+99589d2, feat/view-teaching, pushed): View canonical across
+  every teaching surface; examples re-authored under views-*; both distribution-
+  resources columns renamed (atomicity verified); deliberate legacy e2e fixture pins
+  dual-read in a real browser; tripwire test engages under either merge order; the
+  stale-prose CLASS closed with word-boundary grep-pins over all teaching sources.
+  Residual (trivial, ride any later ui unit): PageFrame.tsx:117 error string says
+  "registered Page" — one-word fix to "registered View". Board docs applied same day
+  (how-it-works section 7 + glossary; conventions/view.md).
