@@ -1,13 +1,15 @@
 ---
 type: Task
 title: Pin regenerateIndex conflict and create-race behavior
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Add the missing deterministic proof for the reserved-index CAS boundary while
-  preserving its one-scan self-healing policy.
+  Shipped in PR #84: deterministic existing-index and create-race proofs confirm
+  regenerateIndex retries against the fresh head, preserves root okf_version,
+  returns persisted content, and retains the deliberate one-scan/self-healing
+  policy. No runtime change was required.
 actor: mike/codex
-timestamp: '2026-07-17T02:27:49.057Z'
+timestamp: '2026-07-17T02:29:46.422Z'
 ---
 # Behavioral claim
 
