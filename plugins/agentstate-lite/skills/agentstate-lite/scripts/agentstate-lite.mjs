@@ -6831,6 +6831,14 @@ function validateAgainstKind(doc2, kind2) {
   }
   return warnings;
 }
+function defaultTimestampAndValidateAgainstRegistry(doc2, registry) {
+  if (typeof doc2.frontmatter.timestamp !== "string" || doc2.frontmatter.timestamp.trim() === "") {
+    doc2.frontmatter.timestamp = (/* @__PURE__ */ new Date()).toISOString();
+  }
+  const kind2 = registry.kinds.get(String(doc2.frontmatter.type));
+  if (!kind2) return { warnings: [] };
+  return { kind: kind2, warnings: validateAgainstKind(doc2, kind2) };
+}
 function isTerminal(kind2, frontmatter) {
   const fm = frontmatter;
   for (const [field, terminalValues] of Object.entries(kind2.fields.terminal)) {
@@ -6881,6 +6889,138 @@ function kindConventionDoc(kind2, prose, timestamp) {
   if (kind2.sections && kind2.sections.length > 0) frontmatter.sections = kind2.sections;
   if (kind2.freshnessHorizon !== void 0) frontmatter.freshness_horizon = kind2.freshnessHorizon;
   return { id: kind2.id, frontmatter, body: prose };
+}
+
+// ../core/src/document-mutation.ts
+var DEFAULT_MAX_ATTEMPTS = 5;
+var KindConformanceError = class extends InvalidInputError {
+  id;
+  governs;
+  violations;
+  constructor(id, governs, violations) {
+    super(`'${id}' does not satisfy the '${governs}' kind: ${violations.map((warning) => warning.message).join("; ")}`);
+    this.name = "KindConformanceError";
+    this.id = id;
+    this.governs = governs;
+    this.violations = violations;
+  }
+};
+var DocumentNotFoundError = class extends Error {
+  id;
+  constructor(id) {
+    super(`no concept document at id '${id}'`);
+    this.name = "DocumentNotFoundError";
+    this.id = id;
+  }
+};
+function valuesEqual(a, b) {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    return a.length === b.length && a.every((value, index) => valuesEqual(value, b[index]));
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const aRecord = a;
+    const bRecord = b;
+    const aKeys = Object.keys(aRecord);
+    const bKeys = Object.keys(bRecord);
+    return aKeys.length === bKeys.length && aKeys.every((key) => valuesEqual(aRecord[key], bRecord[key]));
+  }
+  return false;
+}
+function isNoopPatch(existing, candidate, compareTimestamp) {
+  if (candidate.body !== existing.body) return false;
+  if (compareTimestamp) return valuesEqual(existing.frontmatter, candidate.frontmatter);
+  const { timestamp: _existingTimestamp, ...existingRest } = existing.frontmatter;
+  const { timestamp: _candidateTimestamp, ...candidateRest } = candidate.frontmatter;
+  return valuesEqual(existingRest, candidateRest);
+}
+function attributeCandidate(candidate, actor, persistActor) {
+  if (!persistActor || actor === void 0) return candidate;
+  return { ...candidate, frontmatter: { ...candidate.frontmatter, actor } };
+}
+function validateCandidate(id, candidate, registry, strict) {
+  const { kind: kind2, warnings } = defaultTimestampAndValidateAgainstRegistry({ id, ...candidate }, registry);
+  if (strict && kind2 && warnings.length > 0) {
+    throw new KindConformanceError(id, kind2.governs, warnings);
+  }
+  return warnings;
+}
+async function mutateDocument(opts) {
+  const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  const onAbsent = opts.onAbsent ?? "fail";
+  const compareTimestamp = opts.compareTimestamp ?? false;
+  const persistActor = opts.persistActor ?? false;
+  if (opts.mode === "create-only") {
+    const candidate = attributeCandidate(await opts.buildCandidate(void 0), opts.actor, persistActor);
+    const warnings = validateCandidate(opts.id, candidate, opts.registry, opts.strict);
+    const { doc: doc2, version } = await writeDocVersioned(opts.bundle, { id: opts.id, ...candidate }, {
+      expectedVersion: null,
+      actor: opts.actor
+    });
+    return { doc: doc2, changed: true, version, warnings };
+  }
+  const readExisting = async () => {
+    try {
+      const { doc: doc2, version } = await readDocVersioned(opts.bundle, opts.id);
+      return { state: doc2, version };
+    } catch (error) {
+      if (error?.code === "ENOENT") return { state: void 0, version: null };
+      throw error;
+    }
+  };
+  if (opts.mode === "overwrite") {
+    let savedDoc2;
+    let warnings = [];
+    const outcome2 = await versionedMutation({
+      read: readExisting,
+      decide: async (existing) => {
+        const candidate = attributeCandidate(await opts.buildCandidate(existing), opts.actor, persistActor);
+        warnings = validateCandidate(opts.id, candidate, opts.registry, opts.strict);
+        return { action: "write", next: { id: opts.id, ...candidate }, result: void 0 };
+      },
+      write: async (next, expectedVersion) => {
+        const written = await writeDocVersioned(opts.bundle, next, { expectedVersion, actor: opts.actor });
+        savedDoc2 = written.doc;
+        return written.version;
+      },
+      maxAttempts
+    });
+    return { doc: savedDoc2, changed: true, version: outcome2.version, warnings };
+  }
+  let lastReadVersion = null;
+  let savedDoc;
+  const hardCas = opts.expectedVersion !== void 0;
+  const outcome = await versionedMutation({
+    read: async () => {
+      const read = await readExisting();
+      lastReadVersion = read.version;
+      if (read.state === void 0 && onAbsent === "fail") throw new DocumentNotFoundError(opts.id);
+      return read;
+    },
+    decide: async (existing) => {
+      if (hardCas && lastReadVersion !== opts.expectedVersion) {
+        throw new VersionConflict(opts.id, opts.expectedVersion, lastReadVersion);
+      }
+      const candidate = await opts.buildCandidate(existing);
+      if (existing && isNoopPatch(existing, candidate, compareTimestamp)) {
+        return { action: "done", result: { doc: existing, warnings: [] } };
+      }
+      const attributed = attributeCandidate(candidate, opts.actor, persistActor);
+      const warnings = validateCandidate(opts.id, attributed, opts.registry, opts.strict);
+      return { action: "write", next: { id: opts.id, ...attributed }, result: { warnings } };
+    },
+    write: async (next, expectedVersion) => {
+      const written = await writeDocVersioned(opts.bundle, next, {
+        expectedVersion: hardCas ? opts.expectedVersion : expectedVersion,
+        actor: opts.actor
+      });
+      savedDoc = written.doc;
+      return written.version;
+    },
+    maxAttempts: hardCas ? 1 : maxAttempts
+  });
+  return outcome.wrote ? { doc: savedDoc, changed: true, version: outcome.version, warnings: outcome.result.warnings } : { doc: outcome.result.doc, changed: false, version: outcome.version, warnings: [] };
 }
 
 // ../core/src/kinds-load.ts
@@ -10462,51 +10602,24 @@ import { parseArgs as parseArgs2 } from "node:util";
 import { promises as fs5 } from "node:fs";
 
 // src/kind-write.ts
+function kindConformanceCliError(error, help) {
+  return new CliError("USAGE", error.message, {
+    help,
+    details: { violations: error.violations }
+  });
+}
 function defaultTimestampAndValidateKind(candidate, registry, opts) {
-  const fm = candidate.frontmatter;
-  if (typeof fm.timestamp !== "string" || fm.timestamp.trim() === "") {
-    fm.timestamp = (/* @__PURE__ */ new Date()).toISOString();
-  }
-  const kind2 = registry.kinds.get(String(fm.type));
-  if (!kind2) return [];
-  const warnings = validateAgainstKind(candidate, kind2);
-  if (warnings.length > 0 && opts.strict) {
-    throw new CliError(
-      "USAGE",
-      `'${candidate.id}' does not satisfy the '${kind2.governs}' kind: ${warnings.map((w) => w.message).join("; ")}`,
-      // In a --strict REJECTION these validation issues CAUSED the failure, so surface them under
-      // `violations` — NOT `warnings`, which reads as "advisory, write went through anyway". The
-      // ValidationWarning type is deliberately advisory-only (severity "warning"|"info", no "error"),
-      // so the rename conveys "these blocked the write" without inventing a severity the type forbids.
-      { help: opts.helpOnReject, details: { violations: warnings } }
+  const { kind: kind2, warnings } = defaultTimestampAndValidateAgainstRegistry(candidate, registry);
+  if (kind2 && warnings.length > 0 && opts.strict) {
+    throw kindConformanceCliError(
+      new KindConformanceError(candidate.id, kind2.governs, warnings),
+      opts.helpOnReject
     );
   }
   return warnings;
 }
 
 // src/mutate.ts
-var DEFAULT_MAX_ATTEMPTS = 5;
-function valuesEqual(a, b) {
-  if (a === b) return true;
-  if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b)) return false;
-    return a.length === b.length && a.every((v, i) => valuesEqual(v, b[i]));
-  }
-  if (a && b && typeof a === "object" && typeof b === "object") {
-    const keysA = Object.keys(a);
-    const keysB = Object.keys(b);
-    if (keysA.length !== keysB.length) return false;
-    return keysA.every((k) => valuesEqual(a[k], b[k]));
-  }
-  return false;
-}
-function isNoopPatch(existing, candidate, compareTimestamp) {
-  if (candidate.body !== existing.body) return false;
-  if (compareTimestamp) return valuesEqual(existing.frontmatter, candidate.frontmatter);
-  const { timestamp: _a, ...restExisting } = existing.frontmatter;
-  const { timestamp: _b, ...restCandidate } = candidate.frontmatter;
-  return valuesEqual(restExisting, restCandidate);
-}
 async function firePostPersist(hook2) {
   if (!hook2) return;
   try {
@@ -10514,130 +10627,41 @@ async function firePostPersist(hook2) {
   } catch {
   }
 }
-function attributeCandidate(candidate, actor, persistActor) {
-  if (!persistActor || actor === void 0) return candidate;
-  return { ...candidate, frontmatter: { ...candidate.frontmatter, actor } };
+function translateMutationError(error, opts) {
+  if (error instanceof KindConformanceError) {
+    throw kindConformanceCliError(error, opts.helpOnKindReject);
+  }
+  if (error instanceof DocumentNotFoundError) {
+    throw opts.errors.notFound?.() ?? new CliError("NOT_FOUND", error.message);
+  }
+  if (error instanceof VersionConflict) {
+    if (opts.mode === "create-only") {
+      throw opts.errors.alreadyExists?.() ?? new CliError("ALREADY_EXISTS", `'${opts.id}' already exists`);
+    }
+    throw opts.errors.staleHead?.(error) ?? new CliError("STALE_HEAD", error.message);
+  }
+  throw classifyBundleError(error, opts.remoteUrl);
 }
 async function mutateDoc(opts) {
-  const { bundle, id, mode, registry, strict, helpOnKindReject, buildCandidate, errors } = opts;
-  const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-  const onAbsent = opts.onAbsent ?? "fail";
-  const compareTimestamp = opts.compareTimestamp ?? false;
-  const validate = (candidate) => defaultTimestampAndValidateKind({ id, ...candidate }, registry, { strict, helpOnReject: helpOnKindReject });
-  if (mode === "create-only") {
-    const candidate = attributeCandidate(await buildCandidate(void 0), opts.actor, opts.persistActor ?? false);
-    const warnings = validate(candidate);
-    try {
-      const { doc: saved, version } = await writeDocVersioned(bundle, { id, ...candidate }, { expectedVersion: null, actor: opts.actor });
-      await firePostPersist(opts.onPersisted);
-      return { doc: saved, version, warnings };
-    } catch (err) {
-      if (err instanceof VersionConflict) {
-        throw errors.alreadyExists ? errors.alreadyExists() : new CliError("ALREADY_EXISTS", `'${id}' already exists`);
-      }
-      throw classifyBundleError(err, opts.remoteUrl);
-    }
-  }
-  const readExisting = async () => {
-    try {
-      const { doc: doc2, version } = await readDocVersioned(bundle, id);
-      return { state: doc2, version };
-    } catch (err) {
-      if (err?.code === "ENOENT") return { state: void 0, version: null };
-      throw classifyBundleError(err, opts.remoteUrl);
-    }
-  };
-  if (mode === "overwrite") {
-    let savedDoc2;
-    let warnings = [];
-    try {
-      const outcome = await versionedMutation({
-        read: readExisting,
-        decide: async (existing) => {
-          const candidate = attributeCandidate(
-            await buildCandidate(existing),
-            opts.actor,
-            opts.persistActor ?? false
-          );
-          warnings = validate(candidate);
-          return { action: "write", next: { id, ...candidate }, result: void 0 };
-        },
-        write: async (next, expectedVersion) => {
-          try {
-            const { doc: saved, version } = await writeDocVersioned(bundle, next, {
-              expectedVersion,
-              actor: opts.actor
-            });
-            savedDoc2 = saved;
-            return version;
-          } catch (err) {
-            if (err instanceof VersionConflict) throw err;
-            throw classifyBundleError(err, opts.remoteUrl);
-          }
-        },
-        maxAttempts
-      });
-      await firePostPersist(opts.onPersisted);
-      return { doc: savedDoc2, version: outcome.version, warnings };
-    } catch (err) {
-      if (err instanceof VersionConflict) {
-        throw errors.staleHead ? errors.staleHead(err) : new CliError("STALE_HEAD", err.message);
-      }
-      throw err;
-    }
-  }
-  let lastReadVersion = null;
-  let savedDoc;
-  const hardCas = opts.expectedVersion !== void 0;
   try {
-    const outcome = await versionedMutation({
-      read: async () => {
-        const read = await readExisting();
-        lastReadVersion = read.version;
-        if (read.state === void 0 && onAbsent === "fail") {
-          throw errors.notFound ? errors.notFound() : new CliError("NOT_FOUND", `no concept document at id '${id}'`);
-        }
-        return read;
-      },
-      decide: async (existing) => {
-        if (hardCas && lastReadVersion !== opts.expectedVersion) {
-          const conflict = new VersionConflict(id, opts.expectedVersion, lastReadVersion);
-          throw errors.staleHead ? errors.staleHead(conflict) : new CliError("STALE_HEAD", conflict.message);
-        }
-        const candidate = await buildCandidate(existing);
-        if (existing && isNoopPatch(existing, candidate, compareTimestamp)) {
-          return { action: "done", result: { doc: existing, warnings: [] } };
-        }
-        const attributed = attributeCandidate(candidate, opts.actor, opts.persistActor ?? false);
-        const warnings = validate(attributed);
-        return { action: "write", next: { id, ...attributed }, result: { warnings } };
-      },
-      write: async (next, expectedVersion) => {
-        const writeVersion = hardCas ? opts.expectedVersion : expectedVersion;
-        try {
-          const { doc: saved, version } = await writeDocVersioned(bundle, next, {
-            expectedVersion: writeVersion,
-            actor: opts.actor
-          });
-          savedDoc = saved;
-          return version;
-        } catch (err) {
-          if (err instanceof VersionConflict) throw err;
-          throw classifyBundleError(err, opts.remoteUrl);
-        }
-      },
-      // An EXPLICIT caller token makes a conflict terminal (hard CAS, no retry) — the whole point of
-      // an optimistic "claim: update IFF unchanged". Without one, keep the pre-existing bounded-retry
-      // behavior (a benign concurrent writer is retried, not failed).
-      maxAttempts: hardCas ? 1 : maxAttempts
+    const result = await mutateDocument({
+      bundle: opts.bundle,
+      id: opts.id,
+      mode: opts.mode,
+      registry: opts.registry,
+      strict: opts.strict,
+      buildCandidate: opts.buildCandidate,
+      onAbsent: opts.onAbsent,
+      maxAttempts: opts.maxAttempts,
+      compareTimestamp: opts.compareTimestamp,
+      actor: opts.actor,
+      persistActor: opts.persistActor,
+      expectedVersion: opts.expectedVersion
     });
-    if (outcome.wrote) await firePostPersist(opts.onPersisted);
-    return outcome.wrote ? { doc: savedDoc, changed: true, version: outcome.version, warnings: outcome.result.warnings } : { doc: outcome.result.doc, changed: false, version: outcome.version, warnings: [] };
-  } catch (err) {
-    if (err instanceof VersionConflict) {
-      throw errors.staleHead ? errors.staleHead(err) : new CliError("STALE_HEAD", err.message);
-    }
-    throw err;
+    if (result.changed) await firePostPersist(opts.onPersisted);
+    return opts.mode === "patch" ? result : { doc: result.doc, version: result.version, warnings: result.warnings };
+  } catch (error) {
+    translateMutationError(error, opts);
   }
 }
 
