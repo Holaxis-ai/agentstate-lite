@@ -1,14 +1,14 @@
 ---
 type: Task
 title: Extract the shared document mutation service below the CLI
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Refactor document mutation policy into a CLI-neutral service so CLI and future
   trusted UI actions share one invariant-preserving execution boundary; no Page
   write capability or behavior change.
 actor: mike/codex
-timestamp: '2026-07-16T02:32:44.914Z'
+timestamp: '2026-07-17T02:30:59.062Z'
 ---
 # Behavioral claim
 
