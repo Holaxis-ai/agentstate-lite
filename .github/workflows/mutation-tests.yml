@@ -85,7 +85,11 @@ jobs:
       - name: Run Stryker
         # -w runs the package's own `mutation` script with cwd = the package dir (what each
         # stryker.config.json expects); ONE npm layer, so `--`-forwarded flags reach stryker.
-        run: npm run mutation -w ${{ matrix.workspace }} -- --incremental ${{ github.event_name == 'workflow_dispatch' && inputs.mutate != '' && format('--mutate {0}', inputs.mutate) || '' }}
+        # The dispatch input rides an env var, quoted in shell — never templated into the
+        # script — so a hostile input value cannot inject commands.
+        env:
+          MUTATE: ${{ inputs.mutate }}
+        run: npm run mutation -w ${{ matrix.workspace }} -- --incremental ${MUTATE:+--mutate "$MUTATE"}
 
       - name: Survivors to job summary
         if: always()
@@ -93,7 +97,12 @@ jobs:
           {
             echo "## Mutation survivors (${{ matrix.package }})"
             echo '```'
-            npm run --silent mutation:survivors -- "packages/${{ matrix.package }}/reports/mutation/mutation.json"
+            report="packages/${{ matrix.package }}/reports/mutation/mutation.json"
+            if [ -f "$report" ]; then
+              npm run --silent mutation:survivors -- "$report"
+            else
+              echo "no mutation report was written — see the Run Stryker step"
+            fi
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
