@@ -9,7 +9,8 @@ name: CI tests
 #
 # 1. `gate` — the full repository gate on a Node {22, 26} matrix (ubuntu). 22 is the oldest
 #    release line whose runtime can execute the TEST HARNESS (the ts-loaders use
-#    module.registerHooks, added in 22.15, plus native type stripping, 22.6+) and an active LTS;
+#    module.registerHooks, added in 22.15, plus unflagged native type stripping, 22.18+) and an
+#    active LTS;
 #    26 is current. The gate itself is ONE step running root `npm run check` — the same command
 #    CLAUDE.md names as the pre-ship gate — so the CI surface cannot drift from the local one
 #    (the parallel-surfaces drift class this plan targets). `check` covers: build, typecheck,
