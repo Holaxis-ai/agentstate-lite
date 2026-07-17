@@ -1,15 +1,26 @@
 name: CI tests
 
-# The repo's test gate, run where it previously never ran: on every PR and every push to main,
-# across a Node {20, 25} matrix (LTS floor per the CLI's engine requirement + current) on ubuntu —
+# The repo's test gate, run where it previously never ran: on every PR and every push to main —
 # tasks/ci-test-workflow, item 1 of plans/test-suite-confidence. This catches the environmental
-# defect class (e.g. node-version-dependent gzip bytes) that a single-machine gate cannot.
+# defect class (node-version-dependent behavior, case-sensitive filesystems, machines without a
+# global git identity) that a single-machine gate cannot.
 #
-# The gate itself is ONE step running root `npm run check` — the same command CLAUDE.md names as
-# the pre-ship gate — so the CI surface cannot drift from the local one (the parallel-surfaces
-# drift class this plan targets). The steps before it are environment setup only. `check` covers:
-# build, typecheck, workspace tests (board-git + core + cli + server + ui), test:scripts,
-# verify:npm-package, check:skill, and the e2e chromium lane (deterministic since #69's drain fix).
+# Two jobs:
+#
+# 1. `gate` — the full repository gate on a Node {22, 26} matrix (ubuntu). 22 is the oldest
+#    release line whose runtime can execute the TEST HARNESS (the ts-loaders use
+#    module.registerHooks, added in 22.15, plus native type stripping, 22.6+) and an active LTS;
+#    26 is current. The gate itself is ONE step running root `npm run check` — the same command
+#    CLAUDE.md names as the pre-ship gate — so the CI surface cannot drift from the local one
+#    (the parallel-surfaces drift class this plan targets). `check` covers: build, typecheck,
+#    workspace tests (board-git + core + cli + server + ui), test:scripts, verify:npm-package,
+#    check:skill, and the e2e chromium lane (deterministic since #69's drain fix).
+#
+# 2. `smoke-node-20` — the published CLI claims `engines: node >=20`, a floor the source-based
+#    gate can no longer exercise (see above). This job builds the bundle on current Node, then
+#    switches the runtime to Node 20 and drives the BUILT artifact through the CLAUDE.md smoke
+#    list (init, doc write/read, list, link add/show, status) — testing exactly the claim the
+#    engines field makes: the shipped bundle runs on 20.
 #
 # The chromium pre-install exists because e2e:gate's own `playwright install chromium` does not
 # install OS-level dependencies; `--with-deps` here does, and makes the gate's install a no-op.
@@ -37,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20, 25]
+        node-version: [22, 26]
     name: gate (node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -57,3 +68,37 @@ jobs:
 
       - name: Run the repository gate (npm run check)
         run: npm run check
+
+  smoke-node-20:
+    name: built-CLI smoke on the engines floor (node 20)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Drive the built bundle on Node 20
+        run: |
+          node --version | grep -q '^v20\.' # the smoke is meaningless on any other runtime
+          CLI=packages/cli/dist/agentstate-lite.mjs
+          DIR="$RUNNER_TEMP/smoke-bundle"
+          node "$CLI" init --dir "$DIR"
+          node "$CLI" doc write specs/auth --type Spec --title "Auth" --body "smoke body" --dir "$DIR"
+          node "$CLI" doc read specs/auth --dir "$DIR"
+          node "$CLI" doc write notes/one --type Note --title "One" --body "x" --dir "$DIR"
+          node "$CLI" link add specs/auth notes/one --dir "$DIR"
+          node "$CLI" link show specs/auth --dir "$DIR"
+          node "$CLI" list --dir "$DIR"
+          node "$CLI" status --dir "$DIR"
