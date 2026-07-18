@@ -1,16 +1,16 @@
 ---
 type: Reference
-title: Bundle View authoring — bridge v0
-protocol: v0
+title: Bundle View authoring — read bridge v0 and trusted actions v1
+protocol: v0+v1
 timestamp: "2026-07-17T00:00:00.000Z"
 ---
 
-# Bundle View authoring — bridge v0
+# Bundle View authoring — read bridge v0 and trusted actions v1
 
 Use this reference when creating or revising a human-facing View in this bundle. It travels with
 View-bearing portable recipes so View work does not depend on an agent-harness skill. The installed
 CLI remains the authority for the runtime implementation; this document describes the stable `v0`
-contract the View declares and consumes.
+read contract and the deliberately narrow `v1` trusted-action contract.
 
 A **bundle View** is a self-contained HTML file promoted into an agentstate-lite bundle as a blob
 under `views/…`, declared by a `type: View` registry doc, and rendered by `agentstate-lite ui`
@@ -35,8 +35,10 @@ The `ui` server serves two privilege tiers on one loopback origin:
 The iframe is `sandbox="allow-scripts"` with **no** `allow-same-origin`, so the view runs at an
 **opaque origin**. Combined with a strict per-view CSP (`connect-src 'none'`), the view **cannot
 open any network request at all** — no fetch, XHR, WebSocket, or EventSource. Its only channel to
-the outside is `postMessage` to the shell, which brokers a narrow, **read-only** request set on
-its behalf. A leaked token would still be useless: there is no code path from the view to the API.
+the outside is `postMessage` to the shell. The stable v0 bridge is read-only. A View that declares
+`bundle-propose` may additionally ask trusted shell chrome to prepare one v1 scalar-field action;
+the View still receives no credential or write endpoint, and only the human's shell-native Apply
+choice authorizes the CAS write.
 
 ## Message shapes
 
@@ -55,8 +57,8 @@ view's own iframe; the view drops any message whose `event.source` is not `windo
 | `subscribe` | —                                                          | `{ ok: true }`, then a stream of `change` events          |
 | `open-page` | `{ pageId: "views-registry/…" }`                           | none; fire-and-forget shell navigation                    |
 
-`open-page` is the sole capability-independent action: both `bridge: none` and
-`bridge: bundle-read` Views may ask the shell to open another usable registered View. The shell
+`open-page` is the sole capability-independent action: `bridge: none`, `bridge: bundle-read`, and
+`bridge: bundle-propose` Views may ask the shell to open another usable registered View. The shell
 accepts only a conservative `views-registry/…` (or legacy `pages-registry/…`) concept id,
 validates that it resolves to a `type: View` (or legacy `type: Page`) doc with a safe `views/…`
 (or legacy `pages/…`) entry, and mounts the target normally with its own sandbox, nonce, and
@@ -110,6 +112,23 @@ lower-level event stream.
 **There are no mutation messages in v0.** Read-only is enforced *by construction*: the shell
 defines no write/delete/update handler, so any such request returns an `error` reply.
 
+### Trusted action bridge v1
+
+`bridge: bundle-propose` includes the v0 read surface and adds two exact v1 requests:
+
+- `{ bridge: "v1", type: "read-versioned", id, docId }` returns one canonical document and the
+  version from the same read.
+- `{ bridge: "v1", type: "action.propose", requestId, action: { kind:
+  "document.set-field", docId, field, value, expectedVersion } }` proposes changing one declared
+  scalar field on an existing governed document.
+
+The shell independently re-reads the View registry, exact HTML version, target document, and Kind;
+shows canonical before/after values outside the iframe; and commits only after the human chooses
+Apply. The approval token and immutable launch identity never enter the iframe. A stale target is a
+visible conflict and is never retried behind the human's back. V1 is local `--dir` only and excludes
+body writes, links, creation, deletion, remote writes, and persistent grants. Start the shell with
+`aslite ui --actor <name>` (or set `AGENTSTATE_LITE_ACTOR`) to enable proposals.
+
 ## Live updates
 
 The shell (only) holds one `EventSource('/events')`. The server watches the bundle — `fs.watch`
@@ -125,16 +144,18 @@ requests at all — and the shell, not the view, is what enforces it:
 
 - `bridge: bundle-read` — a **data view**. The shell answers `hello`/`query`/`read`/`edges`/
   `subscribe` as described above.
+- `bridge: bundle-propose` — an **interactive view**. It receives the same read surface and may
+  submit the narrow v1 proposal above. Each proposal still requires trusted-shell confirmation.
 - `bridge: none` — a **content view**. The shell replies to every bundle-data request with a
   `FORBIDDEN` error, before touching any bundle data. It may still use `open-page` navigation.
 - The `View` convention declares `bridge` REQUIRED — every view is an intentional
   classification, not a silent default. At runtime the shell still fails closed for a doc this
   convention didn't govern (an external bundle, a hand-edited file that skipped the lint): absent,
   malformed, or any other value is treated as `bridge: none`. A view only gets bundle access by
-  declaring exactly `bundle-read`.
+  declaring exactly `bundle-read` or `bundle-propose`.
 
-The launcher groups views by this same field: "Dashboards" for `bundle-read`, "Documents" for
-`none`.
+The launcher groups views by this same field: "Dashboards" for `bundle-read`, "Interactive" for
+`bundle-propose`, and "Documents" for `none`.
 
 ## Authoring a view
 

@@ -379,7 +379,7 @@ uncovered install must fail loudly here, never silently as an empty `$REFS`-root
 A **bundle view** is a self-contained HTML file living IN the bundle: promoted as a blob under
 `views/…`, declared by a `type: View` registry doc (`title`, `entry`), and rendered by
 `"$ASLITE" ui` inside a sandboxed, opaque-origin iframe (`sandbox="allow-scripts"`, no network
-access) — its only channel out is a **read-only** postMessage bridge to the shell.
+access) — its only channel out is a narrow postMessage bridge to the trusted shell.
 (`Page` is the accepted legacy name: existing `type: Page` docs under `pages-registry/`/`pages/`
 keep working and never need migrating — author NEW views as `type: View`.)
 
@@ -387,9 +387,13 @@ The bridge (protocol `v0`) has five read-only data request types: `hello` (bundl
 (frontmatter-filtered rows — the same head projection `list` uses), `read` (one doc), `edges`
 (the general from/to/text graph query — backlinks and containment both reduce to this), and
 `subscribe` (opt into a server-pushed `change` event whenever the watched bundle moves). There
-is no mutation message — read-only is enforced by construction, not convention. `open-page`
+is no mutation message in v0 — read-only is enforced by construction. A View that declares
+`bundle-propose` may use the local-only v1 contract to propose ONE governed scalar-field
+change; the trusted shell revalidates it, shows canonical before/after values, and writes
+only after explicit human confirmation with hard CAS. The View never receives a write token.
+`open-page`
 (a wire verb, stable across the rename) is a separate fire-and-forget shell action available
-to either View capability; it opens only another valid registered View and returns none of
+to every View capability; it opens only another valid registered View and returns none of
 that target's content or metadata.
 
 Author a view in four steps:
