@@ -223,6 +223,15 @@ bundle-relative**.
   `npm run verify:npm-package` to prove the exact tarball allowlist, zero-runtime-dependency
   boundary, both command names on an isolated `PATH`, an offline create/query workflow, and no
   writes to the committed plugin channel. `prepublishOnly` runs the same proof.
+- **Mutation testing measures the SUITE, on demand — never a merge gate.** `npm run
+  mutation:core` / `mutation:cli` run Stryker (tap-runner over the repo's own `node --test`
+  ts-loader invocation; `inPlace`, so run them in a clean tree — a crash restores from
+  `.stryker-tmp`, or `git checkout` recovers) against `packages/{core,cli}/src`; build from the
+  repo root FIRST (core's tests import sibling dists; cli's config rebuilds its bundle once,
+  post-instrumentation, via `buildCommand`). CI runs both weekly and by dispatch
+  (`.github/workflows/mutation-tests.yml`), publishing the survivor list — the suite's named
+  gaps — to the job summary (`npm run mutation:survivors` locally); file recurring survivors as
+  board tasks rather than chasing a score.
 - **Verify a gate by its own exit code, never through a pipe.** A piped tail or grep (`npm test |
   tail`, `... | grep -v Skip`) reports the PIPE's last command's exit status, not the gate's — a
   failing gate can read as green. Run gates unpiped, or redirect to a file and grep the file
