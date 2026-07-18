@@ -18690,7 +18690,7 @@ async function sessionStart(argv, deps = {}) {
   await home(homeArgv, {
     stdout,
     // ALWAYS a defined boardPull — session-start IS the pull step, so home's own opportunistic
-    // trigger must never run under it (fix round LOW 4). A pull that resolved to `undefined`
+    // trigger must never run under it. A pull that resolved to `undefined`
     // (no repo / no board anywhere / provisioning refused or threw) is handed to home as a plain
     // non-refreshing outcome: home's render ignores the offline flag unless a REAL provisioned
     // board is probed (buildBoardBlock's own contract), so the render is unchanged — but a fresh
