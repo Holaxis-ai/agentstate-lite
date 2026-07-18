@@ -118,6 +118,23 @@ export interface TopologyOptions {
   provision?: boolean;
 }
 
+/**
+ * Bare-origin init with background maintenance OFF (receive.autogc / maintenance.auto / gc.auto):
+ * receive-pack otherwise leaves a DETACHED `git maintenance run --auto --quiet --detach` running
+ * in origin after every push — a concurrent modifier of the very repo the next fixture step
+ * clones. Paired with the clones' `--no-local`: a local-path clone file-walks the source's
+ * objects and is documented to race with concurrent modification (git-clone(1): "similar to
+ * running cp -r <src> <dst> while modifying <src>") — observed in CI as
+ * `fatal: failed to copy file to '…/objects/…': No such file or directory` mid-topology.
+ */
+function initBareOrigin(dir: string): void {
+  git(dir, ["init", "--bare", "origin.git"]);
+  const origin = path.join(dir, "origin.git");
+  git(origin, ["config", "receive.autogc", "false"]);
+  git(origin, ["config", "maintenance.auto", "false"]);
+  git(origin, ["config", "gc.auto", "0"]);
+}
+
 /** The frontmatter of the docs seeded onto the board branch — targets for modify/delete fixtures. */
 const SEED_DOCS: ReadonlyArray<{ id: string; frontmatter: Frontmatter; body: string }> = [
   { id: "tasks/seed-one", frontmatter: { type: "Task", title: "Seed one", actor: "mike" }, body: "# Seed one\n\nseed body\n" },
@@ -156,14 +173,14 @@ export async function makeTwoCloneTopology(options: TopologyOptions = {}): Promi
   git(seed, ["checkout", "main"]); // restore the user-code working tree
 
   // 3. Bare origin; publish both branches; default HEAD → main (a clone checks out main).
-  git(dir, ["init", "--bare", "origin.git"]);
+  initBareOrigin(dir);
   git(seed, ["remote", "add", "origin", origin]);
   git(seed, ["push", "origin", "main", BOARD_BRANCH]);
   git(origin, ["symbolic-ref", "HEAD", "refs/heads/main"]);
 
   // 4. Two clones.
-  git(dir, ["clone", origin, "A"]);
-  git(dir, ["clone", origin, "B"]);
+  git(dir, ["clone", "--no-local", origin, "A"]);
+  git(dir, ["clone", "--no-local", origin, "B"]);
   const a: BoardRepo = { name: "A", root: path.join(dir, "A"), board: path.join(dir, "A", BUNDLE_DIR) };
   const b: BoardRepo = { name: "B", root: path.join(dir, "B"), board: path.join(dir, "B", BUNDLE_DIR) };
   if (provision) {
@@ -205,13 +222,13 @@ export async function makeCommittedFolderTopology(): Promise<TwoCloneTopology> {
   git(seed, ["add", "-A"]);
   git(seed, ["commit", "-m", "initial project with the board committed on main"]);
 
-  git(dir, ["init", "--bare", "origin.git"]);
+  initBareOrigin(dir);
   git(seed, ["remote", "add", "origin", origin]);
   git(seed, ["push", "origin", "main"]);
   git(origin, ["symbolic-ref", "HEAD", "refs/heads/main"]);
 
-  git(dir, ["clone", origin, "A"]);
-  git(dir, ["clone", origin, "B"]);
+  git(dir, ["clone", "--no-local", origin, "A"]);
+  git(dir, ["clone", "--no-local", origin, "B"]);
   const a: BoardRepo = { name: "A", root: path.join(dir, "A"), board: path.join(dir, "A", BUNDLE_DIR) };
   const b: BoardRepo = { name: "B", root: path.join(dir, "B"), board: path.join(dir, "B", BUNDLE_DIR) };
   return { dir, origin, a, b, cleanup: () => rm(dir, { recursive: true, force: true }) };
@@ -237,13 +254,13 @@ export async function makeGreenfieldTopology(): Promise<TwoCloneTopology> {
   git(seed, ["add", "-A"]);
   git(seed, ["commit", "-m", "initial project"]);
 
-  git(dir, ["init", "--bare", "origin.git"]);
+  initBareOrigin(dir);
   git(seed, ["remote", "add", "origin", origin]);
   git(seed, ["push", "origin", "main"]);
   git(origin, ["symbolic-ref", "HEAD", "refs/heads/main"]);
 
-  git(dir, ["clone", origin, "A"]);
-  git(dir, ["clone", origin, "B"]);
+  git(dir, ["clone", "--no-local", origin, "A"]);
+  git(dir, ["clone", "--no-local", origin, "B"]);
   const a: BoardRepo = { name: "A", root: path.join(dir, "A"), board: path.join(dir, "A", BUNDLE_DIR) };
   const b: BoardRepo = { name: "B", root: path.join(dir, "B"), board: path.join(dir, "B", BUNDLE_DIR) };
   return { dir, origin, a, b, cleanup: () => rm(dir, { recursive: true, force: true }) };
