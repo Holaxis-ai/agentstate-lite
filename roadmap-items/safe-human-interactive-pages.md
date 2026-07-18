@@ -1,6 +1,6 @@
 ---
 type: Roadmap Item
-title: Safe human-interactive Pages
+title: Safe human-interactive Views
 status: active
 description: >-
   ACTIVE — shared mutation service and independently approved trusted-action
@@ -10,8 +10,8 @@ description: >-
 sequence: >-
   Extract shared mutation service → specify trusted action protocol → prove one
   local field update → adversarial security QA
-actor: mike/codex
-timestamp: '2026-07-17T03:27:51.274Z'
+actor: brian-claude
+timestamp: '2026-07-18T18:23:08.438Z'
 ---
 [contains](../tasks/extract-shared-document-mutation-service.md)
 
