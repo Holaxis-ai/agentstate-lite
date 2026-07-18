@@ -48,17 +48,33 @@ env:
   AGENTSTATE_LITE_NO_AUTOPULL: 1
 
 jobs:
+  # The target picker cannot live in a job-level `if` (the `matrix` context is not available
+  # there — the original spelling failed WORKFLOW PARSING, so no run of this file ever started).
+  # Compute the matrix instead: schedule (empty inputs) and target=both run both packages.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          core='{"package":"core","workspace":"@agentstate-lite/core"}'
+          cli='{"package":"cli","workspace":"agentstate-lite"}'
+          case "${TARGET:-both}" in
+            core) include="$core" ;;
+            cli) include="$cli" ;;
+            *) include="$core,$cli" ;;
+          esac
+          echo "matrix={\"include\":[$include]}" >> "$GITHUB_OUTPUT"
+
   mutate:
+    needs: plan
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - package: core
-            workspace: "@agentstate-lite/core"
-          - package: cli
-            workspace: agentstate-lite
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
     name: mutation (${{ matrix.package }})
-    if: github.event_name == 'schedule' || inputs.target == 'both' || inputs.target == matrix.package
     runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
