@@ -1,4 +1,4 @@
-// Host allowlist for the `ui` command (plans/ui-v1.md rev 3.2, "Host check (exact algorithm,
+// Host allowlist for the loopback UI server (plans/ui-v1.md rev 3.2, "Host check (exact algorithm,
 // review-pinned)"): parse `Host`, strip the port (bracket-aware for IPv6), then EXACT-match
 // against a fixed set — never substring (a substring check reopens DNS rebinding: a hostile
 // DNS name like "127.0.0.1.evil.example" would pass a naive `.includes("127.0.0.1")`).

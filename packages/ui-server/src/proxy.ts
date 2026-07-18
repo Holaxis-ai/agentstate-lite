@@ -1,4 +1,4 @@
-// Reverse-proxy `/v0/*` to a `--remote` origin (plans/ui-v1.md rev 3.2): Bearer injection is
+// Reverse-proxy `/v0/*` to an explicit remote origin (plans/ui-v1.md rev 3.2): Bearer injection is
 // CONDITIONAL on a stored key existing for that origin (a loopback `serve` target typically has
 // none — the zero-cloud E2E depends on this staying a no-op in that case); when present, the
 // `Authorization` header is OVERWRITTEN, never appended. Hop-by-hop headers are stripped both

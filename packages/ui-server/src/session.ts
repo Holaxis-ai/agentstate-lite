@@ -1,4 +1,4 @@
-// Per-run session token minting + cookie plumbing for the `ui` command (plans/ui-v1.md rev
+// Per-run session token minting + cookie plumbing for the loopback UI server (plans/ui-v1.md rev
 // 3.2, "Session token — v1, not an upgrade path"): a bare loopback proxy widens the trust
 // boundary past the 0600 credentials file on a multi-user host (any local user could otherwise
 // drive the key through it), so a random per-run secret gates every request. The printed URL

@@ -5,16 +5,23 @@
  * command's tests do (`packages/cli/test/serve.test.ts`).
  */
 import { spawn, type ChildProcessByStdio } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Readable } from "node:stream";
+import { gzipSync } from "node:zlib";
 import type { Frontmatter } from "@agentstate-lite/core";
+import {
+  bootUiServer,
+  createEmbeddedAssetHandler,
+  type EmbeddedUiAssets,
+} from "@agentstate-lite/ui-server";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // packages/ui/e2e -> repo root -> packages/cli/dist/agentstate-lite.mjs
 export const CLI_DIST = path.resolve(here, "../../cli/dist/agentstate-lite.mjs");
+const UI_DIST = path.resolve(here, "../dist");
 
 /** The exact stdio shape `bootUi` spawns with (`stdio: ["ignore", "pipe", "pipe"]`) — stdin is `null` since it's ignored. */
 type UiChild = ChildProcessByStdio<null, Readable, Readable>;
@@ -218,12 +225,48 @@ export async function bootUiOverPagesBundle(seedTasks: SeedTask[]): Promise<Runn
   };
 }
 
-/** The slice of the CLI's `UiServerHandle` the resilience spec drives (local mirror — see the import note below). */
+/** The slice of the shared runtime handle the resilience spec drives. */
 export interface InProcessUiServer {
   host: string;
   port: number;
   token: string;
   close(): Promise<void>;
+}
+
+function assetContentType(file: string): string {
+  switch (path.extname(file)) {
+    case ".html": return "text/html; charset=utf-8";
+    case ".js": return "text/javascript; charset=utf-8";
+    case ".css": return "text/css; charset=utf-8";
+    case ".svg": return "image/svg+xml";
+    case ".png": return "image/png";
+    case ".woff2": return "font/woff2";
+    default: return "application/octet-stream";
+  }
+}
+
+let embeddedAssetsPromise: Promise<EmbeddedUiAssets> | undefined;
+function loadEmbeddedUiAssets(): Promise<EmbeddedUiAssets> {
+  embeddedAssetsPromise ??= (async () => {
+    const assets: Record<string, { contentType: string; gzipBase64: string }> = {};
+    const walk = async (dir: string): Promise<void> => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) await walk(full);
+        else if (entry.isFile()) {
+          const relative = path.relative(UI_DIST, full).split(path.sep).join("/");
+          const bytes = await readFile(full);
+          assets[`/${relative}`] = {
+            contentType: assetContentType(full),
+            gzipBase64: gzipSync(bytes).toString("base64"),
+          };
+        }
+      }
+    };
+    await walk(UI_DIST);
+    return assets;
+  })();
+  return embeddedAssetsPromise;
 }
 
 /**
@@ -234,21 +277,17 @@ export interface InProcessUiServer {
  * correctly — makes impossible from the outside (the secret rotates every boot).
  */
 export async function bootUiServerInProcess(opts: { dir: string; port?: number; sessionSecret: string }): Promise<InProcessUiServer> {
-  // Non-literal specifier ON PURPOSE: a literal would pull the CLI's node-typed sources into THIS
-  // package's DOM-flavored tsc program (typecheck breakage in a file this package doesn't own);
-  // Playwright's loader still resolves the .js -> .ts source at runtime.
-  const uiServerModule = "../../cli/src/ui/server.js";
-  const { bootUiServer } = (await import(uiServerModule)) as {
-    bootUiServer: (options: Record<string, unknown>) => Promise<InProcessUiServer>;
-  };
   const { createRouter } = await import("@agentstate-lite/server");
   const bundle = { root: opts.dir };
+  const assets = await loadEmbeddedUiAssets();
   return bootUiServer({
     mode: "dir",
     port: opts.port ?? 0,
     router: createRouter(bundle),
     bundle,
     sessionSecret: opts.sessionSecret,
+    serveAsset: createEmbeddedAssetHandler(assets),
+    resolveBundleDisplayName: async () => path.basename(opts.dir),
   });
 }
 

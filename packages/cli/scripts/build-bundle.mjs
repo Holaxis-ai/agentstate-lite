@@ -47,6 +47,9 @@ export async function buildCliBundle(outfile) {
       // server/src/index.ts is guard-free re-exports (createRouter + serve) — its only deps are
       // core + node:http, so aliasing straight to it keeps the esbuild bundle ONE self-contained file.
       "@agentstate-lite/server": r("../server/src/index.ts"),
+      // The loopback UI runtime is a private workspace package; source-alias it so the npm CLI
+      // remains one self-contained artifact with no workspace dependency at install time.
+      "@agentstate-lite/ui-server": r("../ui-server/src/index.ts"),
     },
     // NOTE: esbuild hoists the entry file's own `#!/usr/bin/env node` shebang (src/index.ts) to
     // the top of the output, so the banner must NOT repeat it (two shebangs = a syntax error).

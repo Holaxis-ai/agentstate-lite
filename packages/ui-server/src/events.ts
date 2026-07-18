@@ -1,4 +1,4 @@
-// The `ui` command's Server-Sent-Events fan-out (tasks/ui-pages-spike, "Live updates"): the SHELL
+// The loopback UI server's Server-Sent-Events fan-out (tasks/ui-pages-spike, "Live updates"): the SHELL
 // (and only the shell) holds an `EventSource('/events')`; pages never see SSE — their
 // `connect-src 'none'` CSP forbids it. The watcher (`watch.ts`) diffs head-version snapshots and
 // calls {@link SseHub.broadcast}; the shell then fans each change into subscribed iframes over the

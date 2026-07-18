@@ -5,8 +5,15 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hostnameOf, isAllowedHost } from "../src/ui/host.js";
-import { checkAuth, mintSessionSecret, sessionCookieHeader, readCookie, constantTimeEqual } from "../src/ui/session.js";
+import {
+  checkAuth,
+  constantTimeEqual,
+  hostnameOf,
+  isAllowedHost,
+  mintSessionSecret,
+  readCookie,
+  sessionCookieHeader,
+} from "@agentstate-lite/ui-server";
 
 test("hostnameOf strips a port from a plain host", () => {
   assert.equal(hostnameOf("127.0.0.1:4818"), "127.0.0.1");
