@@ -10751,6 +10751,17 @@ async function mutateDoc(opts) {
   }
 }
 
+// src/legacy-page.ts
+function isLegacyPageDoc(frontmatter) {
+  return frontmatter["type"] === "Page";
+}
+var LEGACY_PAGE_REGISTRY_PREFIX = "pages-registry/";
+var LEGACY_PAGE_BLOB_PREFIX = "pages/";
+function isLegacyRegistryDocId(id) {
+  return id.startsWith(LEGACY_PAGE_REGISTRY_PREFIX);
+}
+var LEGACY_PAGE_TYPE_HINT = "type 'Page' is the legacy name for the 'View' kind \u2014 existing Page docs keep working and never need migrating; author new dashboards with --type View.";
+
 // src/board-attribution.ts
 import path14 from "node:path";
 
@@ -10940,6 +10951,7 @@ async function docWrite(argv, deps) {
     receipt.note = `'doc write' is a FULL replace and dropped ${droppedFields.length} frontmatter field(s) not re-supplied: ${droppedFields.join(", ")}. To change fields while preserving the rest (e.g. a status set by 'doc update' or 'new'), use '${cliInvocation()} doc update ${id}' instead.`;
   }
   if (result.warnings.length > 0) receipt.warnings = result.warnings;
+  if (isLegacyPageDoc(saved.frontmatter)) receipt.hint = LEGACY_PAGE_TYPE_HINT;
   receipt.help = [`${cliInvocation()} doc read ${saved.id}`];
   stdout(render(receipt, resolveMode(values)));
 }
@@ -11184,6 +11196,7 @@ async function docUpdate(argv, deps) {
     version: result.version
   };
   if (result.warnings.length > 0) receipt.warnings = result.warnings;
+  if (isLegacyPageDoc(result.doc.frontmatter)) receipt.hint = LEGACY_PAGE_TYPE_HINT;
   receipt.help = [`${cliInvocation()} doc read ${result.doc.id}`];
   stdout(render(receipt, mode));
 }
@@ -11766,6 +11779,7 @@ async function promoteDoc(file, key, bundle, opts, stdout, mode, remoteUrl) {
     size_bytes: Buffer.byteLength(raw, "utf8")
   };
   if (warnings.length > 0) receipt.warnings = warnings;
+  if (isLegacyPageDoc(candidate.frontmatter)) receipt.hint = LEGACY_PAGE_TYPE_HINT;
   receipt.help = [`${cliInvocation()} pull --doc-key ${key} --out <path>`];
   stdout(render(receipt, mode));
 }
@@ -13306,6 +13320,7 @@ async function newCommand(argv, deps = {}) {
   }
   if (parsedLinks.length > 0) receipt.links = linkResults;
   receipt.version = finalVersion;
+  if (isLegacyPageDoc(saved.frontmatter)) receipt.hint = LEGACY_PAGE_TYPE_HINT;
   const help = [`${cliInvocation()} doc read ${saved.id}`];
   const HINTS_PER_DIRECTION = 3;
   for (const { source, linkType } of inboundLinkDecls(registry, kind2).slice(0, HINTS_PER_DIRECTION)) {
@@ -13930,9 +13945,14 @@ Category semantics (one line each):
                       terminal declarations existed). Non-terminal instances sort first: by the
                       declared terminal set when the kind has one, else by the legacy hardcoded
                       status === "done" fallback.
+  legacy_naming      Informational, never a warning: docs typed 'Page' (the legacy name for the
+                      'View' kind) plus items still under the legacy pages-registry//pages/ id
+                      prefixes \u2014 all fully supported, nothing migrates. Omitted when the bundle
+                      carries none.
 
-This is a whole-bundle read (one registry load + one query, batched) \u2014 acceptable for an explicitly
-batch-analysis command; over --remote it is one whole-bundle fetch, not a per-doc round trip.
+This is a whole-bundle read (one registry load + one query + one prefix-scoped blob listing,
+batched) \u2014 acceptable for an explicitly batch-analysis command; over --remote it is one
+whole-bundle fetch, not a per-doc round trip.
 
 Exit is ALWAYS 0 once the analysis runs: findings are reports, not errors. (A --fail-on-findings CI
 flag is a recorded future item, not built here.)
@@ -13985,9 +14005,12 @@ async function status(argv, deps = {}) {
   if (!remote) await (deps.autoPull ?? maybeAutoPull2)(values.dir);
   const bundle = await openBundle(values.dir, remote);
   const malformedRows = [];
-  const [registry, docs] = await Promise.all([
+  const [registry, docs, legacyBlobKeys] = await Promise.all([
     loadKinds(bundle),
-    query(bundle, {}, { onSkip: (s) => malformedRows.push({ id: s.id, reason: s.reason }) })
+    query(bundle, {}, { onSkip: (s) => malformedRows.push({ id: s.id, reason: s.reason }) }),
+    // legacy_naming audit (below): blob keys still under the legacy pages/ prefix — one extra
+    // prefix-scoped listing on a command that is already an explicit whole-bundle read.
+    listBlobs(bundle, LEGACY_PAGE_BLOB_PREFIX)
   ]);
   const byId = new Set(docs.map((d) => d.id));
   const docsById = new Map(docs.map((d) => [d.id, d]));
@@ -14078,6 +14101,11 @@ async function status(argv, deps = {}) {
     return String(a.row.id).localeCompare(String(b.row.id));
   });
   const missingExpectedRows = missingExpectedRanked.map((e) => e.row);
+  const pageTypedRows = docs.filter((doc2) => isLegacyPageDoc(doc2.frontmatter)).map((doc2) => ({ id: doc2.id }));
+  const legacyPrefixRows = [
+    ...docs.filter((doc2) => isLegacyRegistryDocId(doc2.id)).map((doc2) => ({ id: doc2.id, store: "doc" })),
+    ...legacyBlobKeys.slice().sort().map((key) => ({ id: key, store: "blob" }))
+  ];
   const malformed = cap(malformedRows, limit);
   const lint = cap(lintRows, limit);
   const unresolved = cap(unresolvedRows, limit);
@@ -14113,6 +14141,18 @@ async function status(argv, deps = {}) {
   if (linkTypeViolations.total > 0) out.link_type_violations_rows = linkTypeViolations;
   if (missingExpectedLinks.total > 0) out.missing_expected_links_rows = missingExpectedLinks;
   if (registryLint.total > 0) out.registry_lint = registryLint;
+  const pageTyped = cap(pageTypedRows, limit);
+  const legacyPrefix = cap(legacyPrefixRows, limit);
+  if (pageTyped.total > 0 || legacyPrefix.total > 0) {
+    const legacy = {
+      note: "informational \u2014 'Page' is the legacy name for the 'View' kind; legacy-typed docs and old-prefix ids stay fully supported and never migrate. These counts size a future full deprecation.",
+      page_typed_docs: pageTyped.total,
+      legacy_prefix_items: legacyPrefix.total
+    };
+    if (pageTyped.total > 0) legacy.page_typed_rows = pageTyped;
+    if (legacyPrefix.total > 0) legacy.legacy_prefix_rows = legacyPrefix;
+    out.legacy_naming = legacy;
+  }
   stdout(render(out, resolveMode(values)));
 }
 
