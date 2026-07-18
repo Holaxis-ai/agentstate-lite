@@ -41,6 +41,8 @@ const bridgeDeps: BridgeDeps = {
   resolvePage: resolvePageTarget,
 };
 
+const ACTION_CONFIRMATION_ARM_MS = 500;
+
 interface PendingAction {
   seq: number;
   requestId: string;
@@ -79,14 +81,28 @@ export function PageFrame({ pageId }: { pageId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<ActionConfirmation | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [actionArmed, setActionArmed] = useState(false);
 
   const discardPendingAction = useCallback(() => {
     const pending = pendingActionRef.current;
     pendingActionRef.current = null;
     setConfirmation(null);
     setActionBusy(false);
+    setActionArmed(false);
     if (pending?.approvalToken) void cancelTrustedAction(pending.approvalToken).catch(() => {});
   }, []);
+
+  // A hostile View controls when this dialog appears. Keep both predictable button targets inert
+  // long enough that the click which triggered the proposal (or its immediate follow-up) cannot
+  // become accidental confirmation in trusted shell chrome.
+  useEffect(() => {
+    if (!confirmation) {
+      setActionArmed(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setActionArmed(true), ACTION_CONFIRMATION_ARM_MS);
+    return () => window.clearTimeout(timer);
+  }, [confirmation]);
 
   const ownFrame = useCallback((node: HTMLIFrameElement | null) => {
     iframeRef.current = node;
@@ -273,6 +289,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
               pending.confirmation = result.confirmation;
               pending.inFlight = false;
               setActionBusy(false);
+              setActionArmed(false);
               setConfirmation(result.confirmation);
               return;
             }
@@ -346,7 +363,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
 
   const settleConfirmation = useCallback(async (decision: "commit" | "cancel") => {
     const pending = pendingActionRef.current;
-    if (!pending?.approvalToken || pending.inFlight) return;
+    if (!actionArmed || !pending?.approvalToken || pending.inFlight) return;
     pending.inFlight = true;
     setActionBusy(true);
     const seq = pending.seq;
@@ -369,7 +386,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
         "*",
       );
     }
-  }, []);
+  }, [actionArmed]);
 
   return (
     <div className="page-frame">
@@ -420,8 +437,8 @@ export function PageFrame({ pageId }: { pageId: string }) {
             </dl>
             <p className="action-confirmation-note">The write is conditional on the exact document, View, HTML, and Kind versions shown to the shell.</p>
             <div className="action-confirmation-buttons">
-              <button type="button" disabled={actionBusy} onClick={() => void settleConfirmation("cancel")}>Cancel</button>
-              <button type="button" className="action-apply" disabled={actionBusy} onClick={() => void settleConfirmation("commit")}>
+              <button type="button" disabled={actionBusy || !actionArmed} onClick={() => void settleConfirmation("cancel")}>Cancel</button>
+              <button type="button" className="action-apply" disabled={actionBusy || !actionArmed} onClick={() => void settleConfirmation("commit")}>
                 {actionBusy ? "Applying…" : "Apply change"}
               </button>
             </div>

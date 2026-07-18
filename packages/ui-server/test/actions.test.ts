@@ -123,7 +123,7 @@ test("trusted action: target races conflict and changed View bytes revoke withou
   assert.equal((await readDocVersioned(changedView.bundle, "tasks/alpha")).doc.frontmatter.status, "todo");
 });
 
-test("trusted action: rejects absent actor, undeclared fields, and semantic no-ops", async () => {
+test("trusted action: rejects absent actor, undeclared fields, non-scalar replacement, and semantic no-ops", async () => {
   const noActor = await fixture("");
   const target = await readDocVersioned(noActor.bundle, "tasks/alpha");
   const action = { kind: "document.set-field", docId: "tasks/alpha", field: "status", value: "done", expectedVersion: target.version };
@@ -135,10 +135,24 @@ test("trusted action: rejects absent actor, undeclared fields, and semantic no-o
     (await governed.service.prepare(governed.launch.launchId, { ...action, field: "surprise", expectedVersion: governedTarget.version })).status,
     "rejected",
   );
+  await writeDoc(governed.bundle, {
+    ...governedTarget.doc,
+    frontmatter: { ...governedTarget.doc.frontmatter, status: ["todo"] },
+  });
+  const structuredTarget = await readDocVersioned(governed.bundle, "tasks/alpha");
+  const structured = await governed.service.prepare(governed.launch.launchId, {
+    ...action,
+    expectedVersion: structuredTarget.version,
+  });
+  assert.equal(structured.status, "rejected");
+  assert.match(structured.message ?? "", /non-scalar value/);
+
+  await writeDoc(governed.bundle, governedTarget.doc);
+  const restoredTarget = await readDocVersioned(governed.bundle, "tasks/alpha");
   const unchanged = await governed.service.prepare(governed.launch.launchId, {
     ...action,
     value: "todo",
-    expectedVersion: governedTarget.version,
+    expectedVersion: restoredTarget.version,
   });
   assert.equal(unchanged.status, "unchanged");
   assert.equal(governed.service.size(), 0);

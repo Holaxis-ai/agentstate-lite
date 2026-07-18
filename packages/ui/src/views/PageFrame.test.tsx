@@ -325,6 +325,16 @@ describe("PageFrame: registered Page navigation", () => {
     expect(JSON.stringify(postSpy.mock.calls)).not.toContain("shell-secret-token");
 
     const apply = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Apply change")!;
+    const cancel = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Cancel")!;
+    expect(apply.disabled).toBe(true);
+    expect(cancel.disabled).toBe(true);
+    apply.click();
+    expect(commitTrustedAction).not.toHaveBeenCalled();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 550));
+    });
+    expect(apply.disabled).toBe(false);
+    expect(cancel.disabled).toBe(false);
     await act(async () => {
       apply.click();
       await flush();

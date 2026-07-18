@@ -153,6 +153,14 @@ function scalarEqual(a: unknown, b: ActionScalar): boolean {
   return typeof a === typeof b && a === b;
 }
 
+function isActionScalar(value: unknown): value is ActionScalar {
+  return (
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value))
+  );
+}
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
@@ -179,11 +187,7 @@ export function parseDocumentSetFieldAction(value: unknown): DocumentSetFieldAct
     throw new Error("expectedVersion must be a non-empty string of at most 256 characters");
   }
   const scalar = value.value;
-  if (
-    (typeof scalar !== "string" && typeof scalar !== "number" && typeof scalar !== "boolean") ||
-    (typeof scalar === "number" && !Number.isFinite(scalar)) ||
-    (typeof scalar === "string" && Buffer.byteLength(scalar, "utf8") > 4096)
-  ) {
+  if (!isActionScalar(scalar) || (typeof scalar === "string" && Buffer.byteLength(scalar, "utf8") > 4096)) {
     throw new Error("value must be a string (at most 4 KiB), finite number, or boolean");
   }
   return { kind: "document.set-field", docId, field, value: scalar, expectedVersion };
@@ -350,7 +354,16 @@ export class TrustedActionService {
     if (!kind.fields.required.includes(action.field) && !kind.fields.optional.includes(action.field)) {
       return rejected(`field '${action.field}' is not declared by the '${kind.governs}' Kind`);
     }
-    if (scalarEqual(target.doc.frontmatter[action.field], action.value)) {
+    const beforeRaw = target.doc.frontmatter[action.field];
+    let before: ActionScalar | null;
+    if (beforeRaw === undefined || beforeRaw === null) {
+      before = null;
+    } else if (!isActionScalar(beforeRaw)) {
+      return rejected(`field '${action.field}' currently contains a non-scalar value; trusted scalar actions cannot replace it`);
+    } else {
+      before = beforeRaw;
+    }
+    if (scalarEqual(beforeRaw, action.value)) {
       return {
         status: "unchanged",
         action: "document.set-field",
@@ -382,8 +395,6 @@ export class TrustedActionService {
     if (this.pending.size >= this.maxApprovals) return rejected("the trusted shell has too many pending confirmations; cancel one and try again");
     const token = randomBytes(32).toString("base64url");
     const expiresAt = this.now() + this.approvalTtlMs;
-    const beforeRaw = target.doc.frontmatter[action.field];
-    const before = typeof beforeRaw === "string" || typeof beforeRaw === "number" || typeof beforeRaw === "boolean" ? beforeRaw : null;
     this.pending.set(token, {
       token,
       expiresAt,

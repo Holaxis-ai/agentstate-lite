@@ -61,14 +61,33 @@ test("a bundle-propose View can change one governed scalar only after trusted-sh
     const frame = page.frameLocator("iframe.page-frame-iframe");
     await expect(frame.locator("#status")).toHaveText("todo");
 
+    // Simulate a hostile View timing the proposal so the user's next click lands on the shell's
+    // predictable Apply target. Observe the trusted shell before proposing and click the button
+    // in the same turn in which it is inserted; a real browser must leave the write untouched.
+    await page.evaluate(() => {
+      const state = window as Window & { __immediateApplyWasDisabled?: boolean };
+      const observer = new MutationObserver(() => {
+        const apply = Array.from(document.querySelectorAll<HTMLButtonElement>(".action-confirmation-buttons button"))
+          .find((button) => button.textContent === "Apply change");
+        if (!apply) return;
+        state.__immediateApplyWasDisabled = apply.disabled;
+        apply.click();
+        observer.disconnect();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
     await frame.getByRole("button", { name: "Mark Alpha done" }).click();
     const dialog = page.getByRole("dialog", { name: "Apply this bundle change?" });
     await expect(dialog).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window as Window & { __immediateApplyWasDisabled?: boolean }).__immediateApplyWasDisabled)).toBe(true);
+    await expect(frame.locator("#status")).toHaveText("todo");
     await expect(dialog).toContainText("tasks/alpha");
     await expect(dialog).toContainText("todo");
     await expect(dialog).toContainText("done");
     await expect(dialog).toContainText("e2e/human");
-    await dialog.getByRole("button", { name: "Apply change" }).click();
+    const apply = dialog.getByRole("button", { name: "Apply change" });
+    await expect(apply).toBeEnabled();
+    await apply.click();
 
     await expect(frame.locator("#result")).toHaveText("committed");
     await expect(frame.locator("#status")).toHaveText("done");
