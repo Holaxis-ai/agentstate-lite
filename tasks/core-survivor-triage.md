@@ -3,29 +3,24 @@ type: Task
 title: >-
   Consume the first core mutation report: triage 852 survivors, pin the
   consequential clusters
-status: in_progress
+status: done
 priority: '2'
 assignee: mike/claude
 description: >-
-  CLAIMED mike/claude. Phase: BUILT — PR #99 (test/core-survivor-pins, candidate
-  72ca662), test-only, merges on green lanes (trivial tier). RESULTS: all 1,044
-  rows classified — 201 A-pinned (29 tests, EVERY kill red-proven by an
-  automated harness; 1 claim correctly reclassified equivalent), 599 A-backlog
-  (ranked; led by filesystem-lock parseOwner leniency + unsafe-lock-root
-  cluster, bundle appendLog/regenerateIndex ~99, kinds convention-parsing
-  leniency, remote-backend retry/actor), 121 B message-strings, 101 C dead-code
-  candidates (filed with per-mutant reasons — notable: blob-key '..' guard
-  subsumed by the dot-prefix rule), 22 D artifacts (env-conditional, NOT
-  child-process attribution — the instrument is sound). CALIBRATION:
-  filesystem-lock's 154 survivors are REAL (4/5 hand-check genuine); 32 worst
-  pinned, 80 backlog. Full per-mutant classification: board blob
-  artifacts/core-mutation-triage-2026-07-18.jsonl (pull with: aslite pull
-  --doc-key artifacts/core-mutation-triage-2026-07-18.jsonl --out <f>). FILED
-  QUESTIONS: relativeHref('dir/doc','dir.md')==='dir.md' latent-behavior
-  question (deliberately NOT pinned — do not freeze dubious behavior);
-  API-design finding spun out as tasks/filesystem-lock-testability-seam. Flip
-  done at merge.
+  SHIPPED: PR #99 merged. 29 tests / 201 red-proven mutant kills across core's
+  consequential clusters (filesystem-lock 32, content-type 47-kill table test,
+  document-mutation 22, backend 17, versioning/paths/links/frontmatter/memory
+  77, kinds-logic 6); every kill proven by an automated apply-fail-restore-green
+  harness. All 1,044 survivor rows classified; full per-mutant JSONL on the
+  board: artifacts/core-mutation-triage-2026-07-18.jsonl. Key findings on
+  record: filesystem-lock's survivors are REAL (calibrated 4/5 genuine — the
+  instrument's attribution is sound); API-design finding spun out as
+  tasks/filesystem-lock-testability-seam (codex handoff); relativeHref
+  latent-behavior question deliberately NOT pinned; blob-key '..' guard noted
+  subsumed (class C, no deletion). Next weekly core run measures the score delta
+  from these 201 kills. Backlog (599 ranked A-class) lives in the blob + PR body
+  — future surplus-capacity evenings start there.
 actor: mike/claude
-timestamp: '2026-07-18T14:26:06.715Z'
+timestamp: '2026-07-18T14:33:19.960Z'
 ---
 
