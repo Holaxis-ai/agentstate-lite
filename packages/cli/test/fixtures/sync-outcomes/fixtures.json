@@ -126,13 +126,13 @@
       "key": "establish.namespace-conflict.greenfield",
       "variant": "default",
       "kind": "envelope",
-      "bytes": "error:\n  code: RUNTIME\n  message: \"branches named 'board/…' block establishment: board/x, board/y\"\n  details:\n    conflicting_branches[2]: board/x,board/y\n"
+      "bytes": "error:\n  code: RUNTIME\n  message: \"branches named 'board/…' block establishment: board/x (local), board/y (on origin)\"\n  details:\n    conflicting_branches[2]: board/x (local),board/y (on origin)\n"
     },
     {
       "key": "establish.namespace-conflict.committed",
       "variant": "default",
       "kind": "envelope",
-      "bytes": "error:\n  code: RUNTIME\n  message: \"establish refused: branches named 'board/…' exist — git cannot create a 'board' branch alongside them: board/x, board/y\"\n  details:\n    conflicting_branches[2]: board/x,board/y\n  help: \"delete or rename these branches, then re-run aslite sync --establish --yes\"\n"
+      "bytes": "error:\n  code: RUNTIME\n  message: \"establish refused: branches named 'board/…' exist — git cannot create a 'board' branch alongside them: board/x (local), board/y (on origin)\"\n  details:\n    conflicting_branches[2]: board/x (local),board/y (on origin)\n  help: \"delete or rename these branches, then re-run aslite sync --establish --yes\"\n"
     },
     {
       "key": "establish.board-branch-mismatch",

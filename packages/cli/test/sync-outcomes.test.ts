@@ -52,7 +52,9 @@ const MARKER = "3f786850e387550fdab836ed7e6dc881de23001b";
 const MARKER_PATH = "/repo/.git/agentstate.establishCommittedShare";
 const BRANCH = "main";
 const REF = "origin/main";
-const CONFLICTING = ["board/x", "board/y"];
+// Annotated the way boardNamespaceConflicts actually reports them (review fixup: the bare names
+// captured originally are a shape no real invocation produces).
+const CONFLICTING = ["board/x (local)", "board/y (on origin)"];
 const BEHIND = [
   "1111111111111111111111111111111111111111",
   "2222222222222222222222222222222222222222",
