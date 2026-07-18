@@ -12,6 +12,8 @@ import {
   FilesystemMutationLockError,
   filesystemMutationLockPath,
   filesystemMutationLockRoot,
+  isPrivateFilesystemMutationLockRoot,
+  parseFilesystemMutationLockOwner,
 } from "../src/filesystem-lock.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -20,6 +22,29 @@ const CAS_CHILD = path.join(HERE, "fixtures", "filesystem-cas-child.ts");
 
 async function tempDir(): Promise<string> {
   return fs.mkdtemp(path.join(tmpdir(), "aslite-fs-lock-"));
+}
+
+async function isolatedLockPaths(): Promise<{
+  root: string;
+  portableRoot: string;
+  lockRoot: string;
+  target: string;
+}> {
+  const root = await tempDir();
+  const portableRoot = path.join(root, "bundle");
+  const lockRoot = path.join(root, "runtime");
+  await fs.mkdir(portableRoot);
+  return { root, portableRoot, lockRoot, target: path.join(portableRoot, "doc.md") };
+}
+
+function replaceFsMethod(
+  name: "lstat" | "mkdir" | "rm" | "writeFile",
+  replacement: (...args: unknown[]) => unknown,
+): () => void {
+  const mutable = fs as unknown as Record<string, unknown>;
+  const original = mutable[name];
+  Object.defineProperty(mutable, name, { configurable: true, writable: true, value: replacement });
+  return () => Object.defineProperty(mutable, name, { configurable: true, writable: true, value: original });
 }
 
 async function eventually<T>(promise: Promise<T>, timeoutMs = 3_000): Promise<T> {
@@ -406,6 +431,8 @@ test("pin: release refuses a changed or malformed owner token and never removes 
         assert.ok(err instanceof FilesystemMutationLockError);
         assert.match(err.message, /refusing to release/);
         assert.equal(err.owner?.token, "someone-else");
+        assert.equal(err.stale, false);
+        assert.equal(err.malformed, false);
         return true;
       },
     );
@@ -538,4 +565,313 @@ test("pin: timeout diagnosis distinguishes held vs stale vs foreign-host vs malf
   assert.equal(malformed.malformed, true);
   assert.match(malformed.message, /owner metadata is missing or malformed/);
   assert.match(malformed.message, /only after confirming no process is mutating the target/);
+});
+
+test("an explicit lock root isolates runtime state while preserving the portable-root boundary", async () => {
+  const harness = await isolatedLockPaths();
+  try {
+    const release = await acquireFilesystemMutationLock(harness.target, {
+      portableRoot: harness.portableRoot,
+      lockRoot: harness.lockRoot,
+    });
+    const entries = await fs.readdir(harness.lockRoot);
+    assert.equal(entries.length, 1);
+    assert.match(entries[0]!, /^[a-f0-9]{64}\.lock$/);
+    assert.equal((await fs.stat(harness.lockRoot)).mode & 0o777, 0o700);
+    await release();
+    assert.deepEqual(await fs.readdir(harness.lockRoot), []);
+
+    const nestedLockRoot = path.join(harness.root, "missing-parent", "runtime");
+    const releaseNested = await acquireFilesystemMutationLock(harness.target, {
+      portableRoot: harness.portableRoot,
+      lockRoot: nestedLockRoot,
+    });
+    assert.equal((await fs.stat(nestedLockRoot)).isDirectory(), true);
+    await releaseNested();
+
+    await assert.rejects(
+      () =>
+        acquireFilesystemMutationLock(harness.target, {
+          portableRoot: path.join(harness.root, "not-created-yet"),
+          lockRoot: path.join(harness.root, "not-created-yet", "locks"),
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof FilesystemMutationLockError);
+        assert.equal(err.stale, false);
+        assert.equal(err.malformed, true);
+        assert.match(err.message, /cannot place filesystem mutation locks/);
+        return true;
+      },
+    );
+  } finally {
+    await fs.rm(harness.root, { recursive: true, force: true });
+  }
+});
+
+test("private lock-root policy rejects each unsafe fact independently", () => {
+  const valid = {
+    directory: true,
+    symbolicLink: false,
+    ownerUid: 501,
+    expectedUid: 501,
+    mode: 0o40700,
+    enforcePrivateMode: true,
+  };
+  assert.equal(isPrivateFilesystemMutationLockRoot(valid), true);
+
+  const unsafe = [
+    { name: "not a directory", facts: { ...valid, directory: false } },
+    { name: "symbolic link", facts: { ...valid, symbolicLink: true } },
+    { name: "foreign owner", facts: { ...valid, ownerUid: 502 } },
+    { name: "group-readable", facts: { ...valid, mode: 0o40740 } },
+  ];
+  for (const fixture of unsafe) {
+    assert.equal(isPrivateFilesystemMutationLockRoot(fixture.facts), false, fixture.name);
+  }
+  assert.equal(
+    isPrivateFilesystemMutationLockRoot({ ...valid, expectedUid: undefined, ownerUid: 999 }),
+    true,
+    "platforms without numeric uid do not invent an ownership comparison",
+  );
+  assert.equal(
+    isPrivateFilesystemMutationLockRoot({ ...valid, mode: 0o40777, enforcePrivateMode: false }),
+    true,
+    "platforms without POSIX modes do not enforce POSIX bits",
+  );
+});
+
+test("an injected lock root exercises file, symlink, and mode refusals without shared state", async (t) => {
+  const cases = ["file", "symlink", "mode"] as const;
+  for (const kind of cases) {
+    await t.test(kind, async (t) => {
+      if (kind === "mode" && process.platform === "win32") {
+        t.skip("POSIX mode contract");
+        return;
+      }
+      const harness = await isolatedLockPaths();
+      try {
+        if (kind === "file") await fs.writeFile(harness.lockRoot, "not a directory");
+        if (kind === "symlink") {
+          const realRoot = path.join(harness.root, "real-runtime");
+          await fs.mkdir(realRoot, { mode: 0o700 });
+          await fs.symlink(realRoot, harness.lockRoot, "dir");
+        }
+        if (kind === "mode") await fs.mkdir(harness.lockRoot, { mode: 0o755 });
+
+        await assert.rejects(
+          () =>
+            acquireFilesystemMutationLock(harness.target, {
+              portableRoot: harness.portableRoot,
+              lockRoot: harness.lockRoot,
+            }),
+          (err: unknown) => {
+            assert.ok(err instanceof FilesystemMutationLockError);
+            assert.equal(err.lockPath, path.resolve(harness.lockRoot));
+            assert.equal(err.owner, null);
+            assert.equal(err.stale, false);
+            assert.equal(err.malformed, true);
+            assert.match(err.message, /refusing unsafe filesystem mutation lock root/);
+            return true;
+          },
+        );
+      } finally {
+        await fs.rm(harness.root, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+test("owner metadata is accepted only when every field has its exact safe shape", () => {
+  const valid = {
+    pid: process.pid,
+    hostname: hostname(),
+    created_at_ms: Date.now(),
+    token: "token",
+    target: "/tmp/doc.md",
+  };
+  assert.deepEqual(parseFilesystemMutationLockOwner(valid), valid);
+
+  const invalid = [
+    ["null", null],
+    ["array", []],
+    ["string", "owner"],
+    ["missing fields", {}],
+    ["pid string", { ...valid, pid: "1" }],
+    ["pid fraction", { ...valid, pid: 1.5 }],
+    ["pid zero", { ...valid, pid: 0 }],
+    ["pid negative", { ...valid, pid: -1 }],
+    ["pid unsafe", { ...valid, pid: Number.MAX_SAFE_INTEGER + 1 }],
+    ["hostname number", { ...valid, hostname: 1 }],
+    ["hostname empty", { ...valid, hostname: "" }],
+    ["created_at_ms string", { ...valid, created_at_ms: "1" }],
+    ["created_at_ms infinite", { ...valid, created_at_ms: Number.POSITIVE_INFINITY }],
+    ["token number", { ...valid, token: 1 }],
+    ["token empty", { ...valid, token: "" }],
+    ["target number", { ...valid, target: 1 }],
+    ["target empty", { ...valid, target: "" }],
+  ] as const;
+  for (const [name, value] of invalid) {
+    assert.equal(parseFilesystemMutationLockOwner(value), null, name);
+  }
+});
+
+test("wait and poll options accept zero and reject every non-safe-integer class", async () => {
+  const harness = await isolatedLockPaths();
+  try {
+    const invalid = [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1];
+    for (const value of invalid) {
+      await assert.rejects(
+        () => acquireFilesystemMutationLock(harness.target, { lockRoot: harness.lockRoot, waitMs: value }),
+        (err: unknown) => err instanceof TypeError && /waitMs must be a non-negative safe integer/.test(err.message),
+      );
+      await assert.rejects(
+        () => acquireFilesystemMutationLock(harness.target, { lockRoot: harness.lockRoot, pollMs: value }),
+        (err: unknown) => err instanceof TypeError && /pollMs must be a non-negative safe integer/.test(err.message),
+      );
+    }
+
+    const release = await acquireFilesystemMutationLock(harness.target, {
+      lockRoot: harness.lockRoot,
+      waitMs: 0,
+      pollMs: 0,
+    });
+    await release();
+  } finally {
+    await fs.rm(harness.root, { recursive: true, force: true });
+  }
+});
+
+test("lock-root creation and lock claims propagate non-contention filesystem failures", async () => {
+  const harness = await isolatedLockPaths();
+  const originalMkdir = fs.mkdir;
+  const rootFailure = Object.assign(new Error("root denied"), { code: "EACCES" });
+  let restore = replaceFsMethod("mkdir", (...args) => {
+    if (path.resolve(String(args[0])) === path.resolve(harness.lockRoot)) return Promise.reject(rootFailure);
+    return Reflect.apply(originalMkdir, fs, args);
+  });
+  try {
+    await assert.rejects(
+      () => acquireFilesystemMutationLock(harness.target, { lockRoot: harness.lockRoot }),
+      (err: unknown) => err === rootFailure,
+    );
+  } finally {
+    restore();
+  }
+
+  await fs.mkdir(harness.lockRoot, { mode: 0o700 });
+  const claimFailure = Object.assign(new Error("claim denied"), { code: "EACCES" });
+  restore = replaceFsMethod("mkdir", (...args) => {
+    if (String(args[0]).endsWith(".lock")) return Promise.reject(claimFailure);
+    return Reflect.apply(originalMkdir, fs, args);
+  });
+  try {
+    await assert.rejects(
+      () => acquireFilesystemMutationLock(harness.target, { lockRoot: harness.lockRoot, waitMs: 0 }),
+      (err: unknown) => err === claimFailure,
+    );
+  } finally {
+    restore();
+    await fs.rm(harness.root, { recursive: true, force: true });
+  }
+});
+
+test("owner-record failure preserves exclusive-create flags and rolls back the claimed directory", async () => {
+  const harness = await isolatedLockPaths();
+  const originalWriteFile = fs.writeFile;
+  const writeFailure = Object.assign(new Error("owner write failed"), { code: "EIO" });
+  let observedOptions: unknown;
+  const restore = replaceFsMethod("writeFile", (...args) => {
+    if (path.basename(String(args[0])) === "owner.json") {
+      observedOptions = args[2];
+      return Promise.reject(writeFailure);
+    }
+    return Reflect.apply(originalWriteFile, fs, args);
+  });
+  try {
+    await assert.rejects(
+      () => acquireFilesystemMutationLock(harness.target, { lockRoot: harness.lockRoot }),
+      (err: unknown) => err === writeFailure,
+    );
+    assert.deepEqual(observedOptions, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    assert.deepEqual(await fs.readdir(harness.lockRoot), []);
+  } finally {
+    restore();
+    await fs.rm(harness.root, { recursive: true, force: true });
+  }
+});
+
+test("release reports removal failures with complete typed details", async () => {
+  const harness = await isolatedLockPaths();
+  try {
+    const release = await acquireFilesystemMutationLock(harness.target, { lockRoot: harness.lockRoot });
+    const [lockName] = await fs.readdir(harness.lockRoot);
+    assert.ok(lockName);
+    const lockPath = path.join(harness.lockRoot, lockName);
+    const originalRm = fs.rm;
+    const restore = replaceFsMethod("rm", (...args) => {
+      if (path.resolve(String(args[0])) === path.resolve(lockPath)) return Promise.reject(new Error("busy"));
+      return Reflect.apply(originalRm, fs, args);
+    });
+    try {
+      await assert.rejects(
+        () => release(),
+        (err: unknown) => {
+          assert.ok(err instanceof FilesystemMutationLockError);
+          assert.equal(err.lockPath, lockPath);
+          assert.equal(err.owner?.pid, process.pid);
+          assert.equal(err.stale, false);
+          assert.equal(err.malformed, false);
+          assert.match(err.message, /mutation completed but filesystem lock/);
+          assert.match(err.message, /busy/);
+          return true;
+        },
+      );
+    } finally {
+      restore();
+      await fs.rm(harness.root, { recursive: true, force: true });
+    }
+  } catch (err) {
+    await fs.rm(harness.root, { recursive: true, force: true });
+    throw err;
+  }
+});
+
+test("canonical-target probing propagates errors and skips redundant scans for exact entries", async () => {
+  const harness = await isolatedLockPaths();
+  await fs.writeFile(harness.target, "x");
+  const canonicalTarget = path.join(
+    await fs.realpath(path.dirname(harness.target)),
+    path.basename(harness.target),
+  );
+  const originalLstat = fs.lstat;
+  const probeFailure = Object.assign(new Error("probe denied"), { code: "EACCES" });
+  let restore = replaceFsMethod("lstat", (...args) => {
+    if (path.resolve(String(args[0])) === canonicalTarget) return Promise.reject(probeFailure);
+    return Reflect.apply(originalLstat, fs, args);
+  });
+  try {
+    await assert.rejects(
+      () => acquireFilesystemMutationLock(harness.target, { lockRoot: harness.lockRoot }),
+      (err: unknown) => err === probeFailure,
+    );
+  } finally {
+    restore();
+  }
+
+  let targetProbes = 0;
+  restore = replaceFsMethod("lstat", (...args) => {
+    if (path.resolve(String(args[0])) === canonicalTarget) {
+      targetProbes += 1;
+      if (targetProbes > 1) return Promise.reject(new Error("redundant target scan"));
+    }
+    return Reflect.apply(originalLstat, fs, args);
+  });
+  try {
+    const release = await acquireFilesystemMutationLock(harness.target, { lockRoot: harness.lockRoot });
+    assert.equal(targetProbes, 1);
+    await release();
+  } finally {
+    restore();
+    await fs.rm(harness.root, { recursive: true, force: true });
+  }
 });
