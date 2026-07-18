@@ -5,21 +5,20 @@ status: in_progress
 priority: '2'
 assignee: mike/claude
 description: >-
-  CLAIMED mike/claude, ACTIVE. Phase: BUILT — PR #92 (feat/sync-outcome-table),
-  candidate 67f528aa6287d0362869e49c4f82c145f3bd11fd, base db6d866. 57 rows (37
-  error + 20 line) in cli/src/sync-outcomes.ts; 70 rendered-byte fixtures
-  captured AT BASE before any src change; agreement suite enforces closed
-  bidirectional row<->fixture coverage; 48-section base-vs-head transcript
-  battery across sync/establish/home/session-start BYTE-IDENTICAL; consumers net
-  -238 lines; existing suites byte-unmodified; all gates exit 0. Survivor
-  seeding honestly deferred (cli mutation job >1h at ship; every arm hand-pinned
-  instead, several upgraded regex->bytes). Seven judgment calls flagged for
-  review incl. the new existingDirRefusal package factory hoist,
-  line-rows-carry-no-code, and the committed-vs-greenfield mismatch split.
-  Follow-up list filed in the PR (copy inconsistencies preserved per the
-  freeze). Empirical review IN FLIGHT (plan reviewer, context-continuous); QA
-  (routing-equivalence) next; then merge.
+  CLAIMED mike/claude, ACTIVE. Phase: BUILD REVIEWED — PR #92 candidate 67f528a,
+  verdict APPROVE-WITH-NITS (context-continuous reviewer, empirically
+  calibrated: fixture provenance PROVEN — 67/70 fixtures regenerated from a
+  separate base build byte-identical, no forgery; 41-section independent
+  base-vs-head battery across four surfaces zero drift incl. one accidental
+  unenumerated combination state; agreement suite red-probed 3/3; all judgment
+  calls adjudicated correct; freeze honesty verified — nothing quietly unified).
+  Nits: two namespace fixtures pin unrealizable params (fixture-only fixup
+  requested from the builder pre-merge, base-captured); PR arithmetic (59 rows,
+  net -239); follow-up list to name four more inline refusal arms;
+  agreement-test-convention coordination (done in this write); survivor re-check
+  when the cli mutation job lands. NEXT: fixture fixup -> mandatory QA
+  (routing-equivalence on constructed unenumerated/combination states) -> merge.
 actor: mike/claude
-timestamp: '2026-07-18T04:07:28.714Z'
+timestamp: '2026-07-18T04:28:54.692Z'
 ---
 

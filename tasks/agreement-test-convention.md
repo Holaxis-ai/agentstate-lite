@@ -6,10 +6,16 @@ title: >-
 status: todo
 priority: '2'
 description: >-
-  Part of plans/test-suite-confidence (Brian's suite-assurance program,
-  2026-07-17). Read the plan doc for the full rationale and scope before
-  claiming.
-actor: brian
-timestamp: '2026-07-17T16:18:13.292Z'
+  Part of plans/test-suite-confidence (Brian's suite-assurance program). Read
+  the plan doc before claiming. FIRST INSTANCE NOW EXISTS (2026-07-18,
+  coordinated per plans/sync-outcome-table): PR #92's agreement suite
+  (packages/cli/test/sync-outcomes.test.ts) is the pattern realized — one
+  table-driven test enumerating 59 rows against pre-refactor rendered-byte
+  fixtures with closed bidirectional row<->fixture coverage and cross-surface
+  sharing pins (sync == establish == home for the window family). When this task
+  is claimed, codify the convention from that live example rather than inventing
+  fresh, and run the inventory pass the plan calls for.
+actor: mike/claude
+timestamp: '2026-07-18T04:28:54.796Z'
 ---
 
