@@ -5,18 +5,21 @@ status: in_progress
 priority: '2'
 assignee: mike/claude
 description: >-
-  CLAIMED mike/claude, ACTIVE. Phase: plan v2+edits APPROVED-FOR-PROMOTION
-  (design review needs-rework -> v2 -> resolution check: all nine findings
-  resolved; two required boundary edits + two nits folded). PROMOTED as
-  plans/sync-outcome-table. Architecture: CLI-side table
-  (packages/cli/src/sync-outcomes.ts) composing package factories as rows;
-  internal per-site keys; details.state only where it exists today; rows carry
-  CliErrorCode, never exit; rendered-byte per-row fixtures (fixture-FIRST:
-  captured from pre-refactor code); marker-string boundary = templates in,
-  record assembly out; QA mandatory scoped to routing-equivalence under
-  constructed unenumerated/combination states. BUILD LAUNCHING now; cli survivor
-  map consumed when run 29628092134 lands.
+  CLAIMED mike/claude, ACTIVE. Phase: BUILT — PR #92 (feat/sync-outcome-table),
+  candidate 67f528aa6287d0362869e49c4f82c145f3bd11fd, base db6d866. 57 rows (37
+  error + 20 line) in cli/src/sync-outcomes.ts; 70 rendered-byte fixtures
+  captured AT BASE before any src change; agreement suite enforces closed
+  bidirectional row<->fixture coverage; 48-section base-vs-head transcript
+  battery across sync/establish/home/session-start BYTE-IDENTICAL; consumers net
+  -238 lines; existing suites byte-unmodified; all gates exit 0. Survivor
+  seeding honestly deferred (cli mutation job >1h at ship; every arm hand-pinned
+  instead, several upgraded regex->bytes). Seven judgment calls flagged for
+  review incl. the new existingDirRefusal package factory hoist,
+  line-rows-carry-no-code, and the committed-vs-greenfield mismatch split.
+  Follow-up list filed in the PR (copy inconsistencies preserved per the
+  freeze). Empirical review IN FLIGHT (plan reviewer, context-continuous); QA
+  (routing-equivalence) next; then merge.
 actor: mike/claude
-timestamp: '2026-07-18T03:21:29.333Z'
+timestamp: '2026-07-18T04:07:28.714Z'
 ---
 
