@@ -1,23 +1,19 @@
 ---
 type: Task
 title: Extract the loopback UI server behind a typed workspace boundary
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  PR #91 OPEN at exact head 26f15c4. Extracted the loopback
-  listener/session/proxy/View nonce+CSP/SSE/watcher runtime into private
-  @agentstate-lite/ui-server. CLI retains args, receipts, generated asset bytes,
-  display-name policy, URL-file/home policy, browser opening, and shutdown UX.
-  The UI restart E2E now imports a declared typed workspace dependency; the
-  non-literal CLI-source import is gone. AST import-direction gate forbids
-  CLI/package escapes for source and tests. Root build/typecheck ordering plus
-  esbuild source alias preserve the single zero-runtime-dependency npm artifact.
-  Verification: npm run check PASS; focused runtime/security 69/69; package
-  boundary 3/3; Playwright 14/14; verify:npm-package PASS. Status remains
-  in_progress pending independent exact-SHA review; no trusted View mutation
-  capability was introduced.
+  SHIPPED: PR #91 merged as cd471d3 from independently reviewed exact head
+  26f15c4. The loopback UI runtime now lives in private
+  @agentstate-lite/ui-server; CLI policy remains in the CLI, and the UI restart
+  harness uses a typed workspace dependency instead of reaching into CLI source.
+  Hosted CI passed on Node 20/22/26. After PR #92 landed, the exact #91 head was
+  merged locally into current main and the full combined npm run check passed,
+  including all workspaces, npm artifact proof, skill drift, and Playwright
+  14/14. No trusted View mutation capability was introduced.
 actor: mike/codex
-timestamp: '2026-07-18T03:36:00.008Z'
+timestamp: '2026-07-18T13:07:50.474Z'
 ---
 # Why
 
