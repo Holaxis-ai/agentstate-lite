@@ -20,7 +20,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile, unlink, realpath, readFile } from "node:fs/promises";
-import { writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -89,6 +89,54 @@ export function git(cwd: string, args: string[], overrides?: Record<string, stri
     );
   }
   return r.stdout;
+}
+
+// ── identity-less environment (tasks/sync-fallback-identity's fresh-container shape) ──────────
+
+/** Env vars git itself consults for identity — stripped from the child process for the duration. */
+const NO_IDENTITY_ENV_VARS = ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "EMAIL"] as const;
+
+let forcedNoIdentitySystemConfig: string | undefined;
+
+/**
+ * A `GIT_CONFIG_SYSTEM` file forcing `user.useConfigOnly=true` — git's own switch to disable its
+ * OS-account guess (`<username>@<hostname>`), which EMPIRICALLY still resolves an identity on a
+ * dev machine even with every config/env source scrubbed (a real account exists there), unlike a
+ * genuinely account-less fresh-container UID. This reproduces the identical "Please tell me who
+ * you are" failure class deterministically, on any machine. Lazily created once per process.
+ */
+function noIdentitySystemConfigPath(): string {
+  if (!forcedNoIdentitySystemConfig) {
+    const dir = mkdtempSync(path.join(tmpdir(), "aslite-no-identity-"));
+    const file = path.join(dir, "force-no-identity.gitconfig");
+    writeFileSync(file, "[user]\n\tuseConfigOnly = true\n");
+    forcedNoIdentitySystemConfig = file;
+  }
+  return forcedNoIdentitySystemConfig;
+}
+
+/**
+ * Run `fn` with git's identity resolution genuinely unable to succeed ANYWHERE it looks (env,
+ * local/global/system config, the OS-account guess) — the fresh-container / identity-less-CI-runner
+ * shape `identityFlags` (porcelain.ts) guards against. Mutates `process.env` for the duration
+ * (every code-under-test git spawn inherits it via `porcelain.ts`'s own `gitEnv`), restoring the
+ * exact prior values afterward. A fixture repo built BEFORE entering this must carry NO local
+ * `user.name`/`user.email` of its own (this harness's setup calls never write any).
+ */
+export async function withNoGitIdentity<T>(fn: () => Promise<T> | T): Promise<T> {
+  const keys = [...NO_IDENTITY_ENV_VARS, "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"] as const;
+  const saved = new Map<string, string | undefined>(keys.map((k) => [k, process.env[k]]));
+  for (const k of NO_IDENTITY_ENV_VARS) delete process.env[k];
+  process.env.GIT_CONFIG_GLOBAL = "/dev/null";
+  process.env.GIT_CONFIG_SYSTEM = noIdentitySystemConfigPath();
+  try {
+    return await fn();
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
 }
 
 // ── topology ─────────────────────────────────────────────────────────────────
