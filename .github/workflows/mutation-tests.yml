@@ -10,7 +10,8 @@ name: Mutation tests
 # plus on demand (workflow_dispatch, with a target picker and an optional mutate-glob to scope an
 # investigation to one area).
 #
-# Per-package runs (cwd = the package dir, matching each stryker.config.json): core needs the
+# Per-package runs (cwd = the package dir, matching each stryker.config.json): core and board-git
+# mutate their whole src (fast suites); core needs the
 # sibling dists built (its wire-protocol tests import @agentstate-lite/server's dist); cli
 # additionally has Stryker run `node build.mjs` once AFTER instrumentation (mutation switching:
 # one build carries every mutant into the esbuild bundle, activated per run via env), so the
@@ -32,7 +33,7 @@ on:
       target:
         description: "Which package(s) to mutate"
         type: choice
-        options: [both, core, cli]
+        options: [both, core, cli, board-git]
         default: both
       mutate:
         description: "Optional mutate glob override (e.g. src/paths.ts), relative to the package"
@@ -68,10 +69,12 @@ jobs:
         run: |
           core='{"package":"core","workspace":"@agentstate-lite/core"}'
           cli='{"package":"cli","workspace":"agentstate-lite"}'
+          boardgit='{"package":"board-git","workspace":"@agentstate-lite/board-git"}'
           case "${TARGET:-both}" in
             core) include="$core" ;;
             cli) include="$cli" ;;
-            *) include="$core,$cli" ;;
+            board-git) include="$boardgit" ;;
+            *) include="$core,$cli,$boardgit" ;;
           esac
           echo "matrix={\"include\":[$include]}" >> "$GITHUB_OUTPUT"
 
