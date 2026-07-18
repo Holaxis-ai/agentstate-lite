@@ -1465,3 +1465,55 @@ test("legacy-alias awareness: the fresh-bundle path is unchanged — the renamed
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("legacy-alias awareness: an INCOMPLETE legacy pair (registry doc without its blob) does NOT suppress the fresh View install", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    await runJson(recipe, ["add", LEGACY_REVIEW_WORKFLOW_V1, "--dir", dir]);
+    // Sever the pair: the legacy registry doc stays, its blob is gone (crash leftover / hand-rm).
+    await rm(path.join(dir, "pages", "review-workflow", "reviews.html"));
+
+    const reapply = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
+    const pages = reapply.pages as Array<Record<string, unknown>>;
+    assert.equal(pages.length, 1);
+    assert.equal(pages[0]!.legacy_present, undefined, "a partial legacy pair must not read as satisfying");
+    assert.equal(pages[0]!.registry_changed, true);
+    assert.equal(pages[0]!.entry_changed, true);
+    assert.equal(pages[0]!.changed, true);
+
+    // The View pair really landed: registry doc queryable, blob readable.
+    const viewIds = (await query(bundle, { prefix: VIEW_REGISTRY_PREFIX })).map((d) => d.id);
+    assert.deepEqual(viewIds, ["views-registry/review-workflow-reviews"]);
+    assert.ok(await readBlob(bundle, "views/review-workflow/reviews.html"));
+
+    // Tally: page pair + reference created; review-request convention existing; view convention
+    // still legacy-satisfied by conventions/page (the convention probe is independent of the pair).
+    assert.deepEqual(reapply.counts, { created: 2, existing: 1, legacy_present: 1 });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("legacy-alias awareness: the mirror partial pair (blob without its registry doc) also gets the fresh View install", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    await runJson(recipe, ["add", LEGACY_REVIEW_WORKFLOW_V1, "--dir", dir]);
+    // Sever the pair the other way: the blob stays, the legacy registry doc is gone.
+    await rm(path.join(dir, "pages-registry", "review-workflow-reviews.md"));
+
+    const reapply = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
+    const pages = reapply.pages as Array<Record<string, unknown>>;
+    assert.equal(pages[0]!.legacy_present, undefined);
+    assert.equal(pages[0]!.changed, true);
+    const viewIds = (await query(bundle, { prefix: VIEW_REGISTRY_PREFIX })).map((d) => d.id);
+    assert.deepEqual(viewIds, ["views-registry/review-workflow-reviews"]);
+    assert.ok(await readBlob(bundle, "views/review-workflow/reviews.html"));
+    assert.deepEqual(reapply.counts, { created: 2, existing: 1, legacy_present: 1 });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
