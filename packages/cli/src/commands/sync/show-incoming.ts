@@ -3,7 +3,7 @@
 // `--out -` stderr envelope), labeled "as of last fetch" (no implicit fetch, ever).
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { assertSafeConceptId, parseMarkdown, pathFromConceptId } from "@agentstate-lite/core";
+import { assertSafeConceptId, isReservedFile, parseMarkdown, pathFromConceptId } from "@agentstate-lite/core";
 import {
   BOARD_BRANCH,
   BOARD_REF,
@@ -119,6 +119,12 @@ export async function showIncoming(
     // id → repo-relative path, PROBE-FIRST (no string-shape heuristic — a dotted concept id like
     // `notes/v1.2` is legal): the CONCEPT interpretation first, the verbatim raw path (log.md, a
     // stray blob) as fallback. Bytes, not utf8: --out must deliver the blob's exact bytes.
+    // The derived path keeps concept-first precedence, but its CLASSIFICATION follows what the
+    // file IS: when the derivation lands on a reserved filename (`log.md` / `index.md` at any
+    // nesting — no frontmatter, no concept identity — under ANY spelling: `log`, `log.md`,
+    // `tasks/index`), the probe is RAW — honest `path:` plus literal content, never a fabricated
+    // `id:`. A `.md`-suffixed NON-reserved doc id collapses onto its own path and stays a DOC,
+    // matching `doc read` for the same spelling.
     interface Probe { relPath: string; isDoc: boolean }
     const candidates: Probe[] = [];
     let conceptIdOk = true;
@@ -127,7 +133,10 @@ export async function showIncoming(
     } catch {
       conceptIdOk = false;
     }
-    if (conceptIdOk) candidates.push({ relPath: pathFromConceptId(id), isDoc: true });
+    if (conceptIdOk) {
+      const conceptRelPath = pathFromConceptId(id);
+      candidates.push({ relPath: conceptRelPath, isDoc: !isReservedFile(conceptRelPath) });
+    }
     if (candidates.every((c) => c.relPath !== id)) candidates.push({ relPath: id, isDoc: false });
 
     let hit: { probe: Probe; bytes: Buffer } | null = null;
@@ -180,7 +189,9 @@ export async function showIncoming(
     const byteHatch = `${inv} sync --show-incoming ${id} --out <file>`;
     const rec: Record<string, unknown> = {};
     if (!hit.probe.isDoc) {
-      rec.path = id;
+      // The path SHOWN is the one actually read — for a bare reserved spelling (`log`) that is
+      // the derived `log.md`, not the input echo.
+      rec.path = hit.probe.relPath;
       rec.as_of = SHOW_INCOMING_AS_OF;
       attachBodyPreview(rec, content, byteHatch);
     } else {

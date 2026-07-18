@@ -787,6 +787,71 @@ test("commit grammar: multi-actor → `board: N docs from M actors` (subject nam
   }
 });
 
+// ── stageAndCommit: non-ASCII doc id through the RECEIPT/SUBJECT path (U3b review follow-up,
+//    tasks/sync-nonascii-path-pins) — diffDocsBetween already pins café through changesSince/
+//    originDocsBetween (git-porcelain.test.ts's "diffDocsBetween" tests); stageAndCommit's own
+//    name-status parse had no such pin. Under core.quotepath=off (the wrapper invariant) a
+//    non-ASCII path comes back as raw UTF-8; under the default quotepath=true it would come back
+//    C-quoted, failing `isConceptDocPath`'s `.md` suffix check and silently dropping the doc from
+//    both the receipt AND the subject's count — a two-doc commit reads as one.
+
+test("stageAndCommit: non-ASCII doc id crosses the receipt's doc rows and commit subject unmangled", async () => {
+  const topo = await makeTwoCloneTopology();
+  try {
+    await writeBoardDoc(topo.a, "tasks/api", { frontmatter: { type: "Task", title: "Api", actor: "mike" }, body: "# Api\n" });
+    await writeBoardDoc(topo.a, "tasks/café", { frontmatter: { type: "Task", title: "Café", actor: "mike" }, body: "# Café\n" });
+    const r = stageAndCommit(topo.a.board);
+    assert.equal(r.committed, true);
+    // Multi-doc single-actor grammar: the count must be 2, not 1 — a mangled non-ASCII id would
+    // silently fail isConceptDocPath and drop out of the count (the garbling class this pins).
+    assert.equal(r.subject, "board: mike — 2 docs");
+    assert.equal(headSubject(topo.a.board), "board: mike — 2 docs");
+    const byId = new Map(r.docs.map((d) => [d.docId, d]));
+    assert.deepEqual(byId.get("tasks/café"), {
+      docId: "tasks/café",
+      actor: "mike",
+      verb: "added",
+      kind: "Task",
+      title: "Café",
+    });
+    assert.match(headBody(topo.a.board), /^added Task tasks\/café$/m);
+  } finally {
+    await topo.cleanup();
+  }
+});
+
+// ── the TAB residual (tasks/sync-nonascii-path-pins DoD 2): `--name-status` now runs `-z`, so a
+//    literal TAB inside a path is immune, matching the conflict list's `--name-only -z`. A human-
+//    format `--name-status` line would C-quote a TAB (git always quotes control bytes, independent
+//    of core.quotepath) — the OLD tab-split parser never un-quoted that, so relPath came back as the
+//    literal quoted-and-escaped string instead of the real path. `-z` framing sidesteps quoting
+//    entirely: raw bytes, one NUL per field.
+
+test("stageAndCommit: -z name-status framing survives a literal TAB byte inside a doc path", async () => {
+  const topo = await makeTwoCloneTopology();
+  try {
+    const tabbedId = "tasks/ta\tb";
+    await writeFile(
+      path.join(topo.a.board, `${tabbedId}.md`),
+      "---\ntype: Task\ntitle: Tabbed\nactor: mike\n---\n# Tabbed\n",
+    );
+    const r = stageAndCommit(topo.a.board);
+    assert.equal(r.committed, true);
+    assert.equal(r.subject, `board: mike — added ${tabbedId}`);
+    assert.equal(headSubject(topo.a.board), `board: mike — added ${tabbedId}`);
+    const byId = new Map(r.docs.map((d) => [d.docId, d]));
+    assert.deepEqual(byId.get(tabbedId), {
+      docId: tabbedId,
+      actor: "mike",
+      verb: "added",
+      kind: "Task",
+      title: "Tabbed",
+    });
+  } finally {
+    await topo.cleanup();
+  }
+});
+
 // ── changesSince: enriched feed, actor FROM FRONTMATTER (adjudication F) ──────
 
 test("changesSince: actor comes from the doc's FRONTMATTER, never the commit subject or git author", async () => {

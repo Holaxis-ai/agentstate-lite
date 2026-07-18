@@ -54,6 +54,7 @@ export function diffDocsBetween(
     "diff",
     "--name-status",
     "--no-renames",
+    "-z",
     `${fromRef}..${toRef}`,
     ...(opts.prefix ? ["--", opts.prefix] : []),
   ];
