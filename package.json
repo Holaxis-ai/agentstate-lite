@@ -21,6 +21,7 @@
     "build:plugin-bundle": "npm run build:plugin-bundle -w agentstate-lite",
     "mutation:core": "npm run mutation -w @agentstate-lite/core",
     "mutation:cli": "npm run mutation -w agentstate-lite",
+    "mutation:board-git": "npm run mutation -w @agentstate-lite/board-git",
     "mutation:survivors": "node scripts/mutation-survivors.mjs"
   },
   "devDependencies": {

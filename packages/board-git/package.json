@@ -20,7 +20,8 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --import ./test/ts-loader.mjs ./test/*.test.ts"
+    "test": "node --test --import ./test/ts-loader.mjs ./test/*.test.ts",
+    "mutation": "stryker run"
   },
   "dependencies": {
     "@agentstate-lite/core": "*"
