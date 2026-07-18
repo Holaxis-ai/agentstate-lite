@@ -4,31 +4,22 @@ title: 'Sync receipt honesty + error-message polish (PR#13 review, items 7-8)'
 status: todo
 priority: '2'
 description: >-
-  ITEMS 7 + 4 CLOSED via PR #104 (merge 43ab16a, 2026-07-18): item 7 —
-  show-incoming now classifies by the DERIVED path (reserved files render honest
-  'path:' under ANY spelling — log, log.md, nested tasks/index.md — while
-  .md-spelled doc ids stay parsed docs, matching doc read; the review found two
-  rule defects in round 1, fixed in one remedy commit). Item 4 — ALREADY FIXED
-  2026-07-08 (the U6-era truth pass replaced the SYNC_USAGE phrase; this record
-  was stale). RESIDUE (record note, not a task): porcelain.ts:604
-  existingDirRefusal wrong_branch copy still says '(a linked worktree or nested
-  repo)' — byte-frozen by #92 fixtures; fold into the next unit that touches
-  porcelain copy. ITEM 3 DECIDED (Mike, 2026-07-18), Sonnet-safe, now UNBLOCKED
-  (#104 landed; same porcelain files): fallback git identity = resolved ACTOR as
-  user.name (fallback 'agentstate-lite'), email
-  <actor-slug>@agentstate-lite.invalid (RFC 2606, repo precedent
-  test-suite@example.invalid); applied per-invocation via -c flags ONLY when
-  identity resolution fails; never writes config; users with real identities
-  untouched. Safety basis: commit authorship provably non-load-bearing
-  in-product (no consumer parses authors/subjects; frontmatter is the
-  attribution channel). Accepted judgment point: the committed-case cleanup
-  commit carries the synthetic identity into code-repo history via the
-  human-opened PR — accepted as honest (machine-authored) vs the flow dying in
-  fresh containers. DoD: guarded flag-set + a fresh-container (empty gitconfig)
-  test through a real sync commit + the cleanup-commit path. Items 1/10, 2, 5/9,
-  6, 8 remain parked per the standing stance.
+  ITEMS 7 + 4 CLOSED via PR #104 (43ab16a) and ITEM 3 CLOSED via PR #108
+  (ea85b31) — see tasks/sync-fallback-identity for the full item-3 record
+  (fallback git identity: identityFlags primitive, dual-var probe conjunct,
+  no-override guarantee review-proven; two discoveries recorded there incl. the
+  cli test-script GIT_AUTHOR_NAME masking). Item 7: show-incoming classifies by
+  the DERIVED path (reserved files render honest 'path:' under any spelling;
+  .md-spelled doc ids stay parsed docs, matching doc read). Item 4: already
+  fixed 2026-07-08 (U6 truth pass; the record here was stale). RESIDUE (record
+  note, not a task): porcelain.ts:604 existingDirRefusal wrong_branch copy still
+  says '(a linked worktree or nested repo)' — byte-frozen by #92 fixtures; fold
+  into the next unit that touches porcelain copy. REMAINING PARKED per the
+  standing stance (no demand signal): items 1/10 (cross-run receipt under-report
+  — document-at-minimum decision still open), 2 (non-FF push rejection
+  classification), 5/9 (single-branch clone narrow refspec), 6, 8.
 actor: mike/claude
-timestamp: '2026-07-18T16:35:20.866Z'
+timestamp: '2026-07-18T19:09:38.231Z'
 ---
 From the PR#13 three-lane review (all empirical):
 1. Cross-run receipt under-report: fetch-succeeded-then-failed run → NEXT run
