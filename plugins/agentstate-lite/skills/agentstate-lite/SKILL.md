@@ -2,17 +2,17 @@
 name: agentstate-lite
 description: >-
   Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and live
-  bundle Pages) via the self-contained agentstate-lite CLI bundled in this
+  bundle Views) via the self-contained agentstate-lite CLI bundled in this
   skill (scripts/agentstate-lite — a committed, zero-dependency bundle; no npm install
   required). Use when an agent needs to persist a context note across sessions, store a
   decision/spec as a doc, link concepts, query a bundle, share the project's board with
   teammates (`sync`), run a local wire-protocol server (`serve` / `--remote`), or open the
-  bundle's local Page UI.
+  bundle's local View UI.
 ---
 
 # agentstate-lite
 
-read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Pages).
+read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Views).
 
 This skill bundles a **self-contained** `agentstate-lite` CLI at `scripts/agentstate-lite` (a
 committed, zero-dependency `.mjs` esbuild bundle, run through a small bash shim). It runs under
@@ -128,14 +128,14 @@ the rest of the line unchanged.
 - `"$ASLITE" recipes [--remote <url>]`
   — List built-in recipes and whether each is already applied to this bundle
 - `"$ASLITE" recipe add <name-or-path> [--remote <url>]`
-  — Apply a recipe's content-free definitions — Kinds plus optional declared References and Pages — idempotently
+  — Apply a recipe's content-free definitions — Kinds plus optional declared References and Views — idempotently
 
 ### Remote
 
 - `"$ASLITE" serve [--dir <path>] [--host <h>] [--port <p>]`
   — Boot the reference wire-protocol server over a local bundle (loopback, no auth)
 - `"$ASLITE" ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
-  — Boot the local web UI: a launcher for the bundle's pages (type: Page docs rendered in sandboxed iframes, with live updates) — same origin, loopback-only. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"
+  — Boot the local web UI: a launcher for the bundle's views (type: View docs rendered in sandboxed iframes, with live updates; legacy Page docs keep working) — same origin, loopback-only. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"
 - `"$ASLITE" sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
   — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A bundle folder already committed on the code branch is the same flag's hard case: preview first, --yes executes, and the folder's removal from the code branch rides a prepared side-branch commit you push and open as a PR. A bundle committed with code and NO board branch anywhere is the IN-TREE mode (read-side): full sync refuses (sharing rides your normal commit/push), --pull-only fetches the branch's tracking upstream and reports incoming board docs ('git pull' delivers them), and --establish converts to a dedicated board branch. A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it
 
@@ -345,7 +345,7 @@ implementation in the meantime.
 
 ## Shipped references — worked examples & contracts alongside the CLI
 
-A few capabilities below (bundle pages, custom recipes) are backed by a full contract or a
+A few capabilities below (bundle views, custom recipes) are backed by a full contract or a
 worked example shipped in this skill's `references/` folder rather than inlined here, so a
 plain session that never touches them pays nothing for them. Resolve the path once:
 
@@ -374,36 +374,39 @@ one authority, regenerated on every release, never hand-duplicated. If the resol
 comes up empty, the `references/` folder isn't installed where this skill can find it — an
 uncovered install must fail loudly here, never silently as an empty `$REFS`-rooted path later.
 
-## Bundle pages — ship a live UI as bundle content
+## Bundle views — ship a live UI as bundle content
 
-A **bundle page** is a self-contained HTML file living IN the bundle: promoted as a blob under
-`pages/…`, declared by a `type: Page` registry doc (`title`, `entry`), and rendered by
+A **bundle view** is a self-contained HTML file living IN the bundle: promoted as a blob under
+`views/…`, declared by a `type: View` registry doc (`title`, `entry`), and rendered by
 `"$ASLITE" ui` inside a sandboxed, opaque-origin iframe (`sandbox="allow-scripts"`, no network
 access) — its only channel out is a **read-only** postMessage bridge to the shell.
+(`Page` is the accepted legacy name: existing `type: Page` docs under `pages-registry/`/`pages/`
+keep working and never need migrating — author NEW views as `type: View`.)
 
 The bridge (protocol `v0`) has five read-only data request types: `hello` (bundle identity), `query`
 (frontmatter-filtered rows — the same head projection `list` uses), `read` (one doc), `edges`
 (the general from/to/text graph query — backlinks and containment both reduce to this), and
 `subscribe` (opt into a server-pushed `change` event whenever the watched bundle moves). There
 is no mutation message — read-only is enforced by construction, not convention. `open-page`
-is a separate fire-and-forget shell action available to either Page capability; it opens only
-another valid registered Page and returns none of that target's content or metadata.
+(a wire verb, stable across the rename) is a separate fire-and-forget shell action available
+to either View capability; it opens only another valid registered View and returns none of
+that target's content or metadata.
 
-Author a page in four steps:
+Author a view in four steps:
 
 ```bash
-# 1. write a self-contained pages/my-page.html (inline CSS/JS, no external hosts),
+# 1. write a self-contained views/my-view.html (inline CSS/JS, no external hosts),
 #    embedding the bridge client copied from the shipped contract below
-"$ASLITE" promote my-page.html --doc-key pages/my-page.html                        # 2. promote the HTML blob
-"$ASLITE" promote my-page-registry.md --doc-key pages-registry/my-page.md           # 3. promote its type: Page doc (title, entry)
-"$ASLITE" promote "$REFS/pages/conventions/page.md" --doc-key conventions/page.md   # 4. declare the Page convention (once per bundle, ready-made)
+"$ASLITE" promote my-view.html --doc-key views/my-view.html                        # 2. promote the HTML blob
+"$ASLITE" promote my-view-registry.md --doc-key views-registry/my-view.md           # 3. promote its type: View doc (title, entry)
+"$ASLITE" promote "$REFS/views/conventions/view.md" --doc-key conventions/view.md   # 4. declare the View convention (once per bundle, ready-made)
 ```
 
 Full message shapes, the trust model, the copy-paste bridge client with safe live-refresh
 examples (including a live graph view over Roadmap Items) are in the shipped contract:
 
 ```bash
-cat "$REFS/pages/references/page-authoring-v0.md"
+cat "$REFS/views/references/view-authoring-v0.md"
 ```
 
 ## Notes
@@ -429,9 +432,9 @@ cat "$REFS/pages/references/page-authoring-v0.md"
   then `"$ASLITE" recipe add <folder>` to apply it (built-in recipes are named directly, e.g.
   `"$ASLITE" recipe add work-tracking`).
 - Packaging a content-free cognitive ecosystem: `$REFS/recipes/review-workflow/` carries a
-  self-describing Review Request kind plus a generic live Page, but no review instances. A
+  self-describing Review Request kind plus a generic live View, but no review instances. A
   definitions-only recipe may contain only its manifest, convention docs, explicitly declared
-  static Reference docs, and Page registry/HTML pairs; install it with the same `recipe add <folder>` command.
+  static Reference docs, and View registry/HTML pairs; install it with the same `recipe add <folder>` command.
 - A full interop-shaped example bundle (externally-authored markdown: unquoted timestamps,
   relative links, wrapped bullets) ships at `$REFS/sample-bundle/` — copy it and point `--dir` at
   the copy to explore a populated bundle without writing one from scratch.

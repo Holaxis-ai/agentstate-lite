@@ -1,45 +1,50 @@
 ---
 type: Reference
-title: Bundle Page authoring — bridge v0
+title: Bundle View authoring — bridge v0
 protocol: v0
-timestamp: "2026-07-15T00:00:00.000Z"
+timestamp: "2026-07-17T00:00:00.000Z"
 ---
 
-# Bundle Page authoring — bridge v0
+# Bundle View authoring — bridge v0
 
-Use this reference when creating or revising a human-facing Page in this bundle. It travels with
-Page-bearing portable recipes so Page work does not depend on an agent-harness skill. The installed
+Use this reference when creating or revising a human-facing View in this bundle. It travels with
+View-bearing portable recipes so View work does not depend on an agent-harness skill. The installed
 CLI remains the authority for the runtime implementation; this document describes the stable `v0`
-contract the Page declares and consumes.
+contract the View declares and consumes.
 
-A **bundle Page** is a self-contained HTML file promoted into an agentstate-lite bundle as a blob
-under `pages/…`, declared by a `type: Page` registry doc, and rendered by `agentstate-lite ui`
-inside a **sandboxed iframe**. Pages are bundle content — authored, versioned, attributed, and
+A **bundle View** is a self-contained HTML file promoted into an agentstate-lite bundle as a blob
+under `views/…`, declared by a `type: View` registry doc, and rendered by `agentstate-lite ui`
+inside a **sandboxed iframe**. Views are bundle content — authored, versioned, attributed, and
 synced like any other doc — while the shell is the launcher and trusted data broker.
 
-## Trust model (why a page can never touch a credential)
+`Page` is the accepted legacy name for this kind: existing `type: Page` docs under the legacy
+`pages-registry/`/`pages/` prefixes keep working and never need migrating — author new views as
+`type: View` under `views-registry/`/`views/`. Bridge wire names (the `open-page` verb, its
+`pageId` payload field) are stable ABI and did not change with the rename.
+
+## Trust model (why a view can never touch a credential)
 
 The `ui` server serves two privilege tiers on one loopback origin:
 
 - **Data API** (`/v0/*`): reachable ONLY with the shell's per-run session token/cookie.
-- **Page bytes** (`/__page/<nonce>`): a page's static HTML, served for a short-lived **nonce**
-  the session-authed shell mints (`POST /__page/mint`) for that page's one blob key. The nonce
+- **View bytes** (`/__page/<nonce>`): a view's static HTML, served for a short-lived **nonce**
+  the session-authed shell mints (`POST /__page/mint`) for that view's one blob key. The nonce
   is not the session token, so it is rejected by every data route; the session token does not
   open the page route to arbitrary keys.
 
-The iframe is `sandbox="allow-scripts"` with **no** `allow-same-origin`, so the page runs at an
-**opaque origin**. Combined with a strict per-page CSP (`connect-src 'none'`), the page **cannot
+The iframe is `sandbox="allow-scripts"` with **no** `allow-same-origin`, so the view runs at an
+**opaque origin**. Combined with a strict per-view CSP (`connect-src 'none'`), the view **cannot
 open any network request at all** — no fetch, XHR, WebSocket, or EventSource. Its only channel to
 the outside is `postMessage` to the shell, which brokers a narrow, **read-only** request set on
-its behalf. A leaked token would still be useless: there is no code path from the page to the API.
+its behalf. A leaked token would still be useless: there is no code path from the view to the API.
 
 ## Message shapes
 
 Every message carries `bridge: "v0"`. A request carries an `id`; the reply echoes it as
 `"<type>:result"` (or `"error"`). The shell drops any message whose `event.source` is not the
-page's own iframe; the page drops any message whose `event.source` is not `window.parent`.
+view's own iframe; the view drops any message whose `event.source` is not `window.parent`.
 
-### Page → shell (requests)
+### View → shell (requests)
 
 | type        | payload                                                    | reply `result`                                             |
 | ----------- | ---------------------------------------------------------- | ---------------------------------------------------------- |
@@ -48,15 +53,16 @@ page's own iframe; the page drops any message whose `event.source` is not `windo
 | `read`      | `{ docId }`                                                | `{ id, frontmatter, body }`                                |
 | `edges`     | `{ params: { from?, to?, text? } }`                        | `{ edges: { from, to, text }[], count }`                   |
 | `subscribe` | —                                                          | `{ ok: true }`, then a stream of `change` events          |
-| `open-page` | `{ pageId: "pages-registry/…" }`                           | none; fire-and-forget shell navigation                    |
+| `open-page` | `{ pageId: "views-registry/…" }`                           | none; fire-and-forget shell navigation                    |
 
 `open-page` is the sole capability-independent action: both `bridge: none` and
-`bridge: bundle-read` Pages may ask the shell to open another usable registered Page. The shell
-accepts only a conservative `pages-registry/…` concept id, validates that it resolves to a
-`type: Page` with a safe `pages/…` entry, and mounts the target normally with its own sandbox,
-nonce, and bridge capability. It returns no target body, frontmatter, entry, HTML, or nonce. A
-failed attempt can reveal that one caller-supplied registry id is not usable; this bounded
-existence oracle is the only information exposed by navigation.
+`bridge: bundle-read` Views may ask the shell to open another usable registered View. The shell
+accepts only a conservative `views-registry/…` (or legacy `pages-registry/…`) concept id,
+validates that it resolves to a `type: View` (or legacy `type: Page`) doc with a safe `views/…`
+(or legacy `pages/…`) entry, and mounts the target normally with its own sandbox, nonce, and
+bridge capability. It returns no target body, frontmatter, entry, HTML, or nonce. A failed
+attempt can reveal that one caller-supplied registry id is not usable; this bounded existence
+oracle is the only information exposed by navigation.
 
 `DocHead` is `{ id, version, frontmatter }` — the same **head projection** `list` uses (full
 frontmatter, never a body). `query` params:
@@ -84,21 +90,21 @@ Backlinks are `edges({ to: docId })`; a container's contents are `edges({ from: 
 backlinks-only bridge call. A source linking to the same target twice with different text yields
 two rows (no dedup), matching `queryEdges`'s own granularity.
 
-### Shell → page (server-initiated)
+### Shell → view (server-initiated)
 
 | type     | payload                                              |
 | -------- | --------------------------------------------------- |
 | `change` | `{ event: { changes: [{ id, version }], removed: [id] } }` |
 
-`change` is pushed only to a page that has `subscribe`d. It is a **delta signal** — refetch with
+`change` is pushed only to a view that has `subscribe`d. It is a **delta signal** — refetch with
 `query` against it rather than trusting it as a full state. Removed ids have been deleted.
 
-For live data pages, prefer `Bridge.watch(refresh)` over assembling the startup sequence yourself.
+For live data views, prefer `Bridge.watch(refresh)` over assembling the startup sequence yourself.
 It subscribes before the first snapshot, passes an ordered batch of raw `change` event payloads to
 each refresh, and never overlaps refresh calls. Events arriving during a refresh are coalesced into
 one follow-up batch. A failed refresh does not poison later event-driven refreshes; `watch` does not
 retry on a timer. Its returned Promise covers subscription plus the first refresh, so handle that
-Promise to surface startup failures. Raw `subscribe` remains available when a page needs the
+Promise to surface startup failures. Raw `subscribe` remains available when a view needs the
 lower-level event stream.
 
 **There are no mutation messages in v0.** Read-only is enforced *by construction*: the shell
@@ -108,63 +114,63 @@ defines no write/delete/update handler, so any such request returns an `error` r
 
 The shell (only) holds one `EventSource('/events')`. The server watches the bundle — `fs.watch`
 in `--dir` mode, a poll in `--remote` mode — diffs content-addressed **version tokens**, and pushes
-a change delta. The shell fans doc changes into subscribed pages as `change` events, and
-**hot-reloads** a page's iframe (with a fresh nonce) when the page's own HTML blob changes. (Remote
-page-blob hot-reload is a labeled follow-up; live doc updates work in both modes.)
+a change delta. The shell fans doc changes into subscribed views as `change` events, and
+**hot-reloads** a view's iframe (with a fresh nonce) when the view's own HTML blob changes. (Remote
+view-blob hot-reload is a labeled follow-up; live doc updates work in both modes.)
 
 ## `bridge` — the enforced data/content split
 
-The registry doc's `bridge` field decides whether the shell will answer THIS page's bridge
-requests at all — and the shell, not the page, is what enforces it:
+The registry doc's `bridge` field decides whether the shell will answer THIS view's bridge
+requests at all — and the shell, not the view, is what enforces it:
 
-- `bridge: bundle-read` — a **data page**. The shell answers `hello`/`query`/`read`/`edges`/
+- `bridge: bundle-read` — a **data view**. The shell answers `hello`/`query`/`read`/`edges`/
   `subscribe` as described above.
-- `bridge: none` — a **content page**. The shell replies to every bundle-data request with a
+- `bridge: none` — a **content view**. The shell replies to every bundle-data request with a
   `FORBIDDEN` error, before touching any bundle data. It may still use `open-page` navigation.
-- The `Page` convention declares `bridge` REQUIRED — every page is an intentional
+- The `View` convention declares `bridge` REQUIRED — every view is an intentional
   classification, not a silent default. At runtime the shell still fails closed for a doc this
   convention didn't govern (an external bundle, a hand-edited file that skipped the lint): absent,
-  malformed, or any other value is treated as `bridge: none`. A page only gets bundle access by
+  malformed, or any other value is treated as `bridge: none`. A view only gets bundle access by
   declaring exactly `bundle-read`.
 
-The launcher groups pages by this same field: "Dashboards" for `bundle-read`, "Documents" for
+The launcher groups views by this same field: "Dashboards" for `bundle-read`, "Documents" for
 `none`.
 
-## Authoring a page
+## Authoring a view
 
-Start from an installed Page when possible—the working HTML is both a template and executable
+Start from an installed View when possible—the working HTML is both a template and executable
 evidence of the bridge version it uses:
 
 ```sh
-aslite blobs --prefix pages/
-aslite pull --doc-key pages/review-workflow/reviews.html --out my-page.html
+aslite blobs --prefix views/
+aslite pull --doc-key views/review-workflow/reviews.html --out my-view.html
 ```
 
 Adapt the HTML as a self-contained file with inline CSS and JavaScript and no external hosts. A
-data Page embeds the bridge client below. A content Page (`bridge: none`) may use only its
+data View embeds the bridge client below. A content View (`bridge: none`) may use only its
 fire-and-forget `openPage` helper; its bundle-data calls return `FORBIDDEN`.
 
 Install the HTML blob and its registry entry:
 
 ```sh
-aslite promote my-page.html --doc-key pages/my-page.html
-aslite new "Page" my-page \
-  --title "My page" \
-  --entry pages/my-page.html \
+aslite promote my-view.html --doc-key views/my-view.html
+aslite new "View" my-view \
+  --title "My view" \
+  --entry views/my-view.html \
   --bridge bundle-read \
   --description "A live view of this bundle."
 aslite ui --open
 ```
 
-`new "Page" my-page` applies the Page Kind's declared `pages-registry/` path. Use `bridge: none`
-for a static report or diagram. Re-promoting the HTML updates the open Page; the shell reloads it
-with a fresh nonce. If the bundle does not yet declare the Page Kind, install its Page-bearing
-recipe or promote the supplied `conventions/page.md` once before creating the registry entry.
+`new "View" my-view` applies the View Kind's declared `views-registry/` path. Use `bridge: none`
+for a static report or diagram. Re-promoting the HTML updates the open View; the shell reloads it
+with a fresh nonce. If the bundle does not yet declare the View Kind, install its View-bearing
+recipe or promote the supplied `conventions/view.md` once before creating the registry entry.
 
-The seed pages here are working examples: `pulse.html`/`roadmap.html` are `bridge: bundle-read`
-data pages — `roadmap.html` is the one that exercises the `edges` request end-to-end (a live graph
+The seed views here are working examples: `pulse.html`/`roadmap.html` are `bridge: bundle-read`
+data views — `roadmap.html` is the one that exercises the `edges` request end-to-end (a live graph
 view of Roadmap Items and the tasks each one `contains`) — and `about.html` is a `bridge: none`
-content page (no bridge calls at all). `demo.sh` (repo only) wires all of this over a scratch copy
+content view (no bridge calls at all). `demo.sh` (repo only) wires all of this over a scratch copy
 of this repo's own board.
 
 ## The bridge client (embedded copy)
@@ -239,7 +245,7 @@ of this repo's own board.
 })();
 ```
 
-A live page supplies only its domain snapshot and render work:
+A live view supplies only its domain snapshot and render work:
 
 ```js
 Bridge.watch(async function (events) {

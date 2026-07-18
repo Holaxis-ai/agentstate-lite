@@ -1,7 +1,7 @@
 ---
-type: Page
+type: View
 title: Roadmap
-entry: pages/roadmap.html
+entry: views/roadmap.html
 description: Live graph view — Roadmap Items grouped by status, each expandable to its contained tasks with a derived rollup bar.
 bridge: bundle-read
 actor: mike/claude

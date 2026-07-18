@@ -223,7 +223,7 @@
     s = s.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
     s = s.replace(/(^|\W)\*([^*\s][^*]*)\*/g, "$1<i>$2</i>");
     s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function (_m, text, href) {
-      if (/^https?:\/\//.test(href)) return '<span class="extlink" title="external: ' + esc(href) + ' (links out are disabled inside a sandboxed page)">' + text + ' ↗</span>';
+      if (/^https?:\/\//.test(href)) return '<span class="extlink" title="external: ' + esc(href) + ' (links out are disabled inside a sandboxed view)">' + text + ' ↗</span>';
       return '<a class="doclink" data-href="' + esc(href) + '">' + text + "</a>";
     });
     return s;
