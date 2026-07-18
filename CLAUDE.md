@@ -270,19 +270,36 @@ bundle-relative**.
   the public remote (github.com/Holaxis-ai/agentstate-lite) after each committed unit. The
   pre-public development history lives on the local `archive/pre-public` branch — NEVER push
   it (it predates the open-source scrub).
-- **Review and QA are risk-tiered.** Every PR remains one coherent claim and must pass the
-  relevant automated and pre-ship gates above. Apply judgment to the whole change and its
-  consequences, not its label:
+- **Review and QA are risk-tiered by change-type, and standing gates absorb review work.**
+  Every PR remains one coherent claim and must pass the relevant automated and pre-ship gates
+  above. Assurance effort tracks RESIDUAL risk — the risk left after the machine gates (CI on
+  every PR, drift gates, import-direction tests, parity/agreement suites, mutation runs) have
+  had their say. Apply judgment to the whole change and its consequences, not its label:
   - Trivial docs, metadata, dependency, or test-only corrections with no runtime-behavior or
     consequential-mechanism change may ship after author validation and the relevant automated
     checks; independent review and dedicated QA are not mandatory.
+  - Behavior-preserving changes carrying a MECHANICAL parity contract (pre-change rendered-byte
+    fixtures, byte-parity transcript batteries, agreement suites): Builder → ONE independent
+    review whose center of gravity is the CONTRACT'S PROVENANCE — prove the fixtures/battery
+    derive from the pre-change code, spot-re-run a sample, probe the contract red once. No
+    separate QA stage unless that review finds drift or the contract cannot cover a reachable
+    state. Do not build a second from-scratch verification battery to re-prove what the
+    contract already pins.
   - Ordinary code changes require independent review of the exact SHA plus the repository gate;
     dedicated QA is optional based on the change's risk and the review findings.
-  - High-risk boundaries — security/auth, concurrency, destructive writes, migrations/deployments,
-    remote-target selection, reconnect/replay, or similarly consequential mechanics — require
-    Builder → independent review → adversarial QA.
+  - New or changed MECHANICS on high-risk boundaries — security/auth, concurrency, destructive
+    writes, migrations/deployments, remote-target selection, reconnect/replay — require
+    Builder → independent review → adversarial QA, with QA aimed at what no gate can reach
+    (true multi-process concurrency, interruption, states nobody enumerated).
   - Do not game a lower tier by splitting or relabeling a consequential change. A reviewer may
-    escalate the tier when evidence or findings justify it.
+    escalate the tier when evidence or findings justify it — and may recommend de-escalation
+    with the reasoning stated, which the orchestrating session decides.
+- **The ladder is subject to its own epistemics.** Per-unit board records carry findings per
+  review/QA stage. When a stage's find-rate is zero across consecutive units of the same
+  change-type, that is evidence the stage is redundant with the standing gates for that
+  change-type — retire or thin it there deliberately (a recorded decision, not silent decay).
+  A stage that keeps finding real defects keeps its place. Words like "verified" and "proven"
+  remain testable claims at every stage.
 - **When independent review or QA is required, use these review-process conventions:**
   - Agents that touch git or run tests work in an ISOLATED worktree/checkout, never the
     shared working tree; reviewers detach onto the exact sha under review.
@@ -294,6 +311,11 @@ bundle-relative**.
   - Reviewers verify empirically where feasible (built artifact, scratch environments),
     label each finding empirical vs reasoned, and report survived attacks alongside
     findings so an APPROVE is calibrated.
+  - Reviewers AUDIT the builder's verification rather than rebuilding it: check its
+    construction, re-run a sampled subset, and probe it red once — a full independent
+    re-verification is reserved for provenance checks and for evidence of drift. Where CI
+    already ran the repository gate on the exact SHA, cite that run instead of re-running the
+    full gate locally; re-run locally only what the review has reason to distrust.
 - **Security disclosure:** a defect that is (a) exploitable by someone other than the
   victim AND (b) present on main goes through a private GitHub Security Advisory —
   fix privately, merge, then disclose — never a public PR comment or board doc.
