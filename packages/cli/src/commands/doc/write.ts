@@ -1,5 +1,5 @@
 // `doc write <id>` — see `../doc.ts`'s header comment for the full F1 (P1, data loss) rationale and
-// the round-review stdin-detection fix this verb's body-source guard depends on.
+// the stdin-detection rule this verb's body-source guard depends on.
 import { parseArgs } from "node:util";
 import { promises as fs } from "node:fs";
 import { loadKinds, type Frontmatter, type OkfDocument } from "@agentstate-lite/core";
@@ -131,8 +131,8 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
   // EACH write attempt and hands it to `buildCandidate` as `fresh` — so every read-dependent decision
   // below (schema-loss refusal, F1 body-blank refusal, link-drop guard, dropped-fields) evaluates
   // against a version-matched snapshot on EVERY attempt, never a stale read from before a concurrent
-  // writer's change (P1 review fix, generalized in the mutation-boundary consolidation: these three
-  // guards used to ride a single upfront peek taken before `mutateDoc` ever ran, so a Convention
+  // writer's change. These guards must not ride a single upfront peek taken before `mutateDoc`
+  // runs, because a Convention
   // created concurrently between that peek and the write, or a competing writer filling/racing the
   // body, could slip past a guard that decided from stale bytes). `--replace-links` still means "I
   // accept dropping MY OWN read's links" — it disables ONLY `guardDroppedLinks`'s own check below,

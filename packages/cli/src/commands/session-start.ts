@@ -1,7 +1,6 @@
 // `agentstate-lite session-start` — the SessionStart hook payload (sync-verb plan §U4).
 //
-// ONE subcommand, pull-then-render IN-PROCESS (adjudication E, the architect's ruling — never two
-// hook entries, never a compound shell string):
+// One subcommand, pull-then-render in-process — never two hook entries or a compound shell string:
 //
 //   1. a TIME-BOXED, best-effort board pull ({@link sessionStartPull}): provision the board
 //      worktree if needed (loud, per the board-branch-sync rider-2 announcements) → fetch →
@@ -21,7 +20,7 @@
 // A pull that loses its time box is ABANDONED (its in-flight git op is killed); this run renders
 // the last-known cache with the pinned offline note, and the NEXT session's pull refreshes it.
 //
-// BUDGET FLOOR + LOCAL-OP CONTRACT (PR#24 review fix round — a stated contract, not an accident):
+// Budget floor and local-op contract:
 //   • Every NETWORK boundary (the provision fetch, ffPull's fetch) is double-protected: a
 //     {@link MIN_USEFUL_BUDGET_MS} guard immediately before the op takes the offline path when
 //     the budget is effectively spent, AND git.ts's runGitBytes chokepoint treats a non-positive
@@ -134,7 +133,7 @@ export async function sessionStartPull(
   try {
     const startDir = retargetBoardInterior(dir ?? process.cwd());
 
-    // Budget guard at the FIRST network boundary (PR#24 fix round): retargetBoardInterior above
+    // Budget guard at the first network boundary: retargetBoardInterior above
     // already spent local-git time, and a tiny/zero injected budget can be spent at entry — never
     // hand a decayed slice to the provision fetch. (The residual guard-to-spawn decay race is
     // closed at the runGitBytes floor — see the module header.)
@@ -318,7 +317,7 @@ export async function sessionStart(argv: string[], deps: Partial<SessionStartDep
   await home(homeArgv, {
     stdout,
     // ALWAYS a defined boardPull — session-start IS the pull step, so home's own opportunistic
-    // trigger must never run under it (fix round LOW 4). A pull that resolved to `undefined`
+    // trigger must never run under it. A pull that resolved to `undefined`
     // (no repo / no board anywhere / provisioning refused or threw) is handed to home as a plain
     // non-refreshing outcome: home's render ignores the offline flag unless a REAL provisioned
     // board is probed (buildBoardBlock's own contract), so the render is unchanged — but a fresh

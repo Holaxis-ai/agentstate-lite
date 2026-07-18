@@ -32,8 +32,8 @@ function realOrSame(p: string): string {
 
 /**
  * True when `p` is inside a LINKED git worktree: its per-worktree git dir differs from the shared
- * common dir. A standalone repo — including an unrelated nested repo squatting at the bundle path
- * (sync review round 2, finding 1) — resolves both to the SAME directory.
+ * common dir. A standalone repo — including an unrelated nested repo at the bundle path — resolves
+ * both to the same directory.
  */
 function isLinkedWorktree(p: string): boolean {
   const r = runGit(p, ["rev-parse", "--absolute-git-dir", "--git-common-dir"]);
@@ -93,7 +93,7 @@ export function retargetBoardInterior(dir: string): string {
 }
 
 /**
- * Sync's STEP-0 entry self-heal (adjudication C) — run BEFORE `provisionBoardWorktree`:
+ * Sync's step-0 entry self-heal runs before `provisionBoardWorktree`:
  * `isProvisioned` requires the `board` branch checked out, but a REBASE detaches HEAD, so a
  * genuinely-provisioned-but-wedged worktree would misclassify as a stray directory and the refusal
  * would fire before the heal ever ran. The probe touches ONLY a candidate that is (a) its OWN
@@ -122,14 +122,14 @@ export function healStaleRebaseBeforeProvisioning(dir: string): void {
 
 /**
  * The per-clone cursor/cache/marker key (U2's `bundleKey`) for THIS board worktree — THE one
- * derivation (cache-per-clone review advisory (a): sync/home/session-start/autopull all REUSE
- * this; a second independent derivation is the real state-split risk). NOTE for callers: this
+ * derivation: sync, home, session-start, and autopull all reuse this because a second independent
+ * derivation would split state. NOTE for callers: this
  * realpaths the board path itself (`realOrSame`) — pass the board worktree path as resolved from
  * the repo top, and do NOT pre-normalize it differently. Keyed by the `origin` remote URL (git
  * worktrees share one remote config with their main worktree) with an empty subpath (the board
  * branch's root IS the bundle root — gate 2) PLUS the board worktree's own realpath as the
- * checkout identity — two clones of one origin on one machine must never share a state file
- * (PR#13 review, item 4). Falls back to the absolute board path alone when no origin URL resolves
+ * checkout identity — two clones of one origin on one machine must never share a state file.
+ * Falls back to the absolute board path alone when no origin URL resolves
  * (U2's own path fallback for a remote-less repo).
  */
 export function resolveBundleKey(boardPath: string): string {

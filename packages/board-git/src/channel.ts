@@ -8,10 +8,9 @@
 // Rule 1 keys on the WEAK structural signature (worktree machinery owned by this repo — the
 // porcelain signature helpers), NEVER `isProvisioned`: a rebase detaches HEAD, so a genuinely
 // provisioned but wedged-mid-rebase board is never "on the board branch" until healed — keying on
-// the branch would misclassify it as not-branch and regress the heal pipeline (this exact
-// misclassification was fixed over multiple historical review rounds).
+// the branch would misclassify it as not-branch and bypass the heal pipeline.
 //
-// Remote-unknown FAILS CLOSED (plans/board-git-package, second review required change 1):
+// Remote-unknown fails closed:
 // "definitively absent" requires a probe that SUCCEEDED; a dead probe with no previously fetched
 // evidence is a typed INDETERMINATE outcome — never "absent", never `in-tree`, never `local-only`.
 // Classifying uncertainty as in-tree could hide an existing shared board and create two competing
@@ -155,7 +154,7 @@ function ownerRegistersBoardWorktree(top: string): boolean {
  * True ONLY when locally held `origin/board` objects PROVE the shared branch was never seeded
  * from this folder: every root commit's tree differs from `HEAD:.agentstate-lite`'s tree. Any
  * unverifiable state (no fetched ref, unreadable history) returns false, deliberately routing to
- * the pre-share-window arm — its pull-first guidance is the reviewer-proven safe default for a
+ * the pre-share-window arm — its pull-first guidance is the safe default for a
  * tracked folder facing an existing remote board, and it is what today's provisioning emits for
  * BOTH states.
  */

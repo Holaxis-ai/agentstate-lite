@@ -38,11 +38,9 @@
 // state here is a per-CLONE fact: the cursor is "what THIS CHECKOUT's board last saw" (each
 // clone's board worktree has its own HEAD), the unpushed/uncommitted backstop counts are computed
 // against this checkout's worktree, and the cache's delta rows derive from the per-clone cursor.
-// An earlier revision keyed by remote+subpath only ("every checkout of the same shared board on
-// this machine shares one cursor") — empirically WRONG (PR#13 review, item 4): two clones of one
-// origin on one machine shared one state file, so clone A's clean sync erased clone B's
-// "unpushed: 2" backstop state — the backstop failed exactly on its target case, and the
-// agent-worktree pattern makes same-machine multi-clone the norm. The remote-URL component is
+// The board path is part of identity, not incidental storage location: two clones of one origin
+// on one machine must not share a state file, because one clone's clean sync could erase the
+// other's unpushed backstop and advance its `since` cursor. The remote-URL component is
 // KEPT alongside the checkout root so a recycled path (project X's clone deleted, project Y
 // cloned at the same location) reads the old state as foreign instead of inheriting it. The key
 // is hashed into the state file's name and ALSO stored inside the file; a read whose stored key
@@ -91,8 +89,8 @@ export const REANCHOR_NOTE = "delta unavailable (history rewritten or reposition
  * knows all three), or, for a repo with no remote, the absolute bundle root alone. Deliberately
  * per-CLONE, not per-remote-per-machine: two checkouts of the same shared board on one machine
  * get two keys, because the cursor and the unpushed/uncommitted backstop counts are facts about
- * ONE checkout's worktree (PR#13 review, item 4 — the shared-key shape let one clone's clean
- * sync erase another's stranded-unpushed state). U4's honesty story is per-checkout too: "since
+ * ONE checkout's worktree; otherwise one clone's clean sync can erase another's stranded-unpushed
+ * state. The awareness story is per-checkout too: "since
  * this checkout last synced" is the delta a session sitting in that checkout can act on.
  */
 export type BundleKeySource =
@@ -158,7 +156,7 @@ export interface SyncCursor {
 /**
  * One enriched delta row — THE single feed shape (produced by U1's `changesSince`, rendered by
  * U3's sync envelope and U4's home face, and the future activity feed's row). `actor` is sourced
- * PER-DOC FROM FRONTMATTER, never from a commit subject (adjudication F) — this store only
+ * per-doc from frontmatter, never from a commit subject — this store only
  * persists it.
  */
 export interface AwarenessDeltaRow {
@@ -202,8 +200,8 @@ export interface BoardPendingMarker {
 /**
  * The actors THIS CLONE has committed to the board (U4's "self" identity — how the home render
  * knows which awareness-delta rows are self-authored and filters them from the human count). There
- * is no machine-level identity to derive "self" from (adjudication F rejected git authorship as an
- * attribution source), so self is DEFINED operationally: every actor that appeared in a doc THIS
+ * is no machine-level identity to derive "self" from, and git authorship is not document
+ * attribution, so self is defined operationally: every actor that appeared in a doc this
  * checkout's own `sync` committed is recorded here at commit time. A clone that never committed
  * anything has an empty list and filters nothing — honest for a read-only session. `"unknown"`
  * (core's absent-actor placeholder) is deliberately NEVER recorded: filtering it would also hide a

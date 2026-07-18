@@ -10,9 +10,8 @@
 // --body-file, or a real, NON-EMPTY stdin pipe) or `--blank-body` opts in explicitly. A NEW doc with
 // no body source is unaffected (an empty body is a valid creation).
 //
-// Round-review finding (P1, BLOCKING — the guard above was bypassed in agent harnesses): stdin
-// detection used to be `process.stdin.isTTY` alone. In an agent harness stdin is commonly a
-// character device with `isTTY === undefined` (neither `true` nor a real pipe), which the old logic
+// Stdin detection cannot rely on `process.stdin.isTTY` alone. In an agent harness stdin is commonly
+// a character device with `isTTY === undefined` (neither `true` nor a real pipe), which the old logic
 // read as "there's a pipe" and consumed as `""` — an EXPLICIT empty body source that walked straight
 // past the F1 guard, reproducing the exact silent body-blanking F1 was meant to close. `defaultReadStdin`
 // now fstats fd 0 and only reads when it is a FIFO (a shell pipe), a regular file (`< file`
@@ -32,8 +31,7 @@
 // governing kind convention validates the RESULT and attaches `warnings[]` (warn-by-default,
 // `--strict` upgrades to a rejecting USAGE error).
 //
-// Live-incident finding (P1, BLOCKING — `doc update` hung forever): the round-review fix above only
-// closes the FALSE-POSITIVE "there's a pipe" case (a character device misread as real input). It does
+// The character-device check only closes the false-positive "there's a pipe" case. It does
 // NOT help when fd 0 genuinely IS a FIFO/socket/file (so `hasRealStdinInput` correctly says "real
 // data source") but its write end is held open with nothing ever written and never closed — the shape
 // many agent harnesses hand a spawned process by default. Reading such an fd to EOF blocks forever.

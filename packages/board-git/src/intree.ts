@@ -9,7 +9,7 @@
 //     fail-soft, never touching the working tree), then diff `<cursor>..<upstream>` through THE
 //     one prefix-aware `diffDocsBetween` (ids prefix-STRIPPED before doc-id/reserved
 //     interpretation, so `.agentstate-lite/index.md` still reads as reserved). Enrichment stays
-//     per-doc-frontmatter at the upstream ref — never commit authors (adjudication F).
+//     per-doc frontmatter at the upstream ref — never commit authors.
 //   • DELIVERY is the user's normal `git pull`. Nothing here merges, rebases, or checks out —
 //     sync's "touches nothing outside the board" invariant cannot survive a write-side in-tree
 //     mode (pushing the code branch publishes code), so the write verbs refuse at the CLI.

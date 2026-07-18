@@ -208,7 +208,7 @@ export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Pro
       const existing = existingDoc!;
       const fm = existing.frontmatter;
 
-      // Domain-invariant re-check (P1 review finding, mutation-boundary consolidation): the
+      // Domain-invariant re-check: the
       // primitive's CAS pairing guarantees this attempt's `existing` is a version-matched fresh
       // read — it does NOT guarantee the doc still means what we assumed when we looked it up via
       // `loadKinds` above. A concurrent writer could rename this SAME convention's `governs` (e.g.
@@ -257,7 +257,7 @@ export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Pro
           const prev = hasOwn(valuesMap, fieldName) && Array.isArray(valuesMap[fieldName])
             ? (valuesMap[fieldName] as unknown[]).map(String)
             : undefined;
-          // Collision-resistant comparison (P2 review fix): the old `prev.join(" ") !==
+          // Collision-resistant comparison: `prev.join(" ") !==
           // vals.join(" ")` conflated DIFFERENT enum lists that happen to join to the same string
           // — e.g. ["a b","c"] and ["a","b c"] BOTH become "a b c" — so `--values "a,b c"` over an
           // existing ["a b","c"] wrongly reported changed:false. Length + element-wise instead; no
@@ -306,8 +306,8 @@ export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Pro
       // owns (required/optional/values, omitted when now-empty so the convention stays clean).
       // Every OTHER sibling key — `terminal` today, any future declaration key — passes through
       // VERBATIM, matching the registry's lenient-parse posture: an unrelated `kind field` edit
-      // must never destroy a declaration it doesn't understand (PR #20 review, regression-pinned
-      // in kind.test.ts). `changed`/no-op detection is now `mutateDoc`'s job (structural comparison
+      // must never destroy a declaration it doesn't understand (regression-pinned in
+      // kind.test.ts). `changed`/no-op detection is `mutateDoc`'s job (structural comparison
       // against the existing doc, ignoring timestamp — this command never refreshes it).
       const newFields: Record<string, unknown> = { ...fieldsObj };
       if (required.length > 0) newFields.required = required;

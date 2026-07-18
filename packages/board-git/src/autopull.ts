@@ -10,9 +10,8 @@
 // when it fails: the pull's only observable products are the refreshed board content the read now
 // serves and the same cursor/cache/marker writes a session-start pull would have made.
 //
-// INLINE vs DETACHED — adjudicated INLINE (the one open design question the task left to the
-// builder). DETACHED (fire a one-shot `sync --pull-only` child, serve THIS read instantly from
-// current state, let the NEXT read be fresh) was REJECTED, with reasoning:
+// INLINE, NOT DETACHED: firing a one-shot `sync --pull-only` child and serving this read from the
+// old state would make only the next read fresh. Inline pull is required because:
 //   1. It serves the triggering read STALE by construction. The demand signal is "regular,
 //      automatic, silent board freshness"; a detached child delivers freshness only to a read
 //      that may never come, while the read that detected the staleness — the one moment we KNOW
@@ -31,8 +30,8 @@
 // the attempt-side throttle below backs off failing pulls too, so an offline machine pays one
 // bounded probe per window, not one per read.
 //
-// DEFAULT-ON, INCLUDING NON-TTY — adjudicated ON everywhere, with the {@link NO_AUTOPULL_ENV}
-// opt-out ({@code AGENTSTATE_LITE_NO_AUTOPULL=1}) for scripted/CI contexts. Reasoning: the CLI's
+// DEFAULT-ON, INCLUDING NON-TTY, with the {@link NO_AUTOPULL_ENV} opt-out
+// ({@code AGENTSTATE_LITE_NO_AUTOPULL=1}) for scripted/CI contexts. The CLI's
 // primary consumers are AGENTS driving it non-interactively (stdout is a pipe in every Claude
 // Code/Codex session) — a TTY gate would disable the feature for exactly its target audience. CI
 // is protected structurally, not by sniffing: the trigger is DETECTION-GATED (a CI checkout has no
@@ -49,7 +48,7 @@
 //   • DETECTION-GATED — a read must NEVER provision: nothing on this path calls
 //     `provisionBoardWorktree`. On an unprovisioned checkout the trigger simply doesn't fire
 //     (provisioning stays sync/session-start's job).
-//   • DETECTION IS CHEAP, not just correct (fix round — the check runs on EVERY non-triggering
+//   • DETECTION IS CHEAP, not just correct: the check runs on EVERY non-triggering
 //     read, so its cost is the tax everyone pays): checks are ordered cheapest-first.
 //     (1) An FS-ONLY pre-gate ({@link findBoardCandidate}: the `.git`-FILE linked-worktree
 //     signature walk — the same structural signal engine.ts's board-interior retarget walk
@@ -120,8 +119,8 @@ function hasGitFileSignature(p: string): boolean {
 /**
  * The FS-ONLY pre-gate (module header, "detection is cheap"): walk up from `start` looking for a
  * provisioned-LOOKING board checkout — either an ancestor NAMED `.agentstate-lite` carrying the
- * `.git`-FILE signature (the caller stands INSIDE the board worktree — sync round-2 finding 2's
- * retarget shape, resolved here without a spawn), or an ancestor directory whose
+ * `.git`-FILE signature (the caller may stand inside the board worktree, so this retarget is
+ * resolved without a spawn), or an ancestor directory whose
  * `.agentstate-lite/.git` is a file (the conventional project-top shape). ZERO process spawns:
  * one `stat` per level (two on a `.agentstate-lite`-named level). A hit is a CANDIDATE only — a
  * submodule or an unrelated linked worktree shares this signature — so the STALE path re-verifies
