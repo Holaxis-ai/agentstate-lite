@@ -7273,6 +7273,19 @@ function mustGit(dir, args, opts = {}) {
   if (r.status !== 0) throw classifyGitError(failureOf(args, r));
   return r.stdout;
 }
+var IDENTITY_FALLBACK_ACTOR = "agentstate-lite";
+function slugifyActor(actor) {
+  const slug = actor.toLowerCase().replace(/[^a-z0-9.-]+/g, "-").replace(/^-+|-+$/g, "");
+  return slug.length > 0 ? slug : IDENTITY_FALLBACK_ACTOR;
+}
+function hasResolvableIdentity(dir) {
+  return runGit(dir, ["var", "GIT_AUTHOR_IDENT"]).status === 0 && runGit(dir, ["var", "GIT_COMMITTER_IDENT"]).status === 0;
+}
+function identityFlags(dir, actor) {
+  if (hasResolvableIdentity(dir)) return [];
+  const name = actor && actor.trim().length > 0 ? actor.trim() : IDENTITY_FALLBACK_ACTOR;
+  return ["-c", `user.name=${name}`, "-c", `user.email=${slugifyActor(name)}@agentstate-lite.invalid`];
+}
 function repoTopLevel(dir) {
   if (!existsSync2(dir)) return null;
   const r = runGit(dir, ["rev-parse", "--show-toplevel"]);
@@ -7625,13 +7638,19 @@ function enrichDocChange(boardPath, relPath, verb, rev, runOptions = {}, idPath 
   }
   return { docId, actor, verb, kind: kind2, title };
 }
+function primaryActor(docs) {
+  if (docs.length === 0) return void 0;
+  const actors = [...new Set(docs.map((d) => d.actor))];
+  return actors.length === 1 ? actors[0] : void 0;
+}
 function commitSubject(docs) {
   if (docs.length === 0) return "board: bundle maintenance";
   const first = docs[0];
   if (docs.length === 1) return `board: ${first.actor} \u2014 ${first.verb} ${first.docId}`;
-  const actors = [...new Set(docs.map((d) => d.actor))];
-  if (actors.length === 1) return `board: ${actors[0]} \u2014 ${docs.length} docs`;
-  return `board: ${docs.length} docs from ${actors.length} actors`;
+  const single = primaryActor(docs);
+  if (single) return `board: ${single} \u2014 ${docs.length} docs`;
+  const actorCount = new Set(docs.map((d) => d.actor)).size;
+  return `board: ${docs.length} docs from ${actorCount} actors`;
 }
 function stageAndCommit(boardPath) {
   mustGit(boardPath, ["add", "-A"]);
@@ -7652,7 +7671,11 @@ function stageAndCommit(boardPath) {
 
 ${bodyLines.join("\n")}
 `;
-  mustGit(boardPath, ["commit", "--no-verify", "-F", "-"], { input: message });
+  mustGit(
+    boardPath,
+    [...identityFlags(boardPath, primaryActor(docs)), "commit", "--no-verify", "-F", "-"],
+    { input: message }
+  );
   const sha = mustGit(boardPath, ["rev-parse", "HEAD"]).trim();
   return { committed: true, sha, subject, docs };
 }
@@ -7783,7 +7806,9 @@ function snapshotBundleCommit(top, bundlePath) {
 
 ${bodyLines.join("\n")}
 `;
-    const sha = mustGit(top, ["commit-tree", tree], { input: message }).trim();
+    const sha = mustGit(top, [...identityFlags(top, primaryActor(docs)), "commit-tree", tree], {
+      input: message
+    }).trim();
     assertBundleBytesMatchCommit(top, bundlePath, sha);
     return { committed: true, sha, tree, subject, docs };
   } finally {
@@ -7796,7 +7821,8 @@ function fetchRebaseResolving(boardPath, exportDir) {
   if (runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
     return { status: "no_upstream" };
   }
-  const r = runGit(boardPath, ["rebase", BOARD_REF], { rebase: true, timeoutMs: NETWORK_TIMEOUT_MS });
+  const idFlags = identityFlags(boardPath);
+  const r = runGit(boardPath, [...idFlags, "rebase", BOARD_REF], { rebase: true, timeoutMs: NETWORK_TIMEOUT_MS });
   if (r.status === 0) return { status: "clean" };
   if (!detectStaleRebase(boardPath)) throw classifyGitError(failureOf(["rebase", BOARD_REF], r));
   const listConflicted = () => mustGit(boardPath, ["diff", "--name-only", "-z", "--diff-filter=U"]).split("\0").filter((l) => l.length > 0);
@@ -7812,7 +7838,7 @@ function fetchRebaseResolving(boardPath, exportDir) {
       }
       const conflicted = listConflicted();
       if (conflicted.length === 0) {
-        runGit(boardPath, ["rebase", "--skip"], { rebase: true });
+        runGit(boardPath, [...idFlags, "rebase", "--skip"], { rebase: true });
         continue;
       }
       for (const relPath of conflicted) {
@@ -7851,7 +7877,7 @@ function fetchRebaseResolving(boardPath, exportDir) {
           bodyExportPath
         });
       }
-      const cont = runGit(boardPath, ["rebase", "--continue"], { rebase: true });
+      const cont = runGit(boardPath, [...idFlags, "rebase", "--continue"], { rebase: true });
       if (cont.status !== 0 && !detectStaleRebase(boardPath)) {
         throw classifyGitError(failureOf(["rebase", "--continue"], cont));
       }
@@ -8136,7 +8162,9 @@ The folder's history stays on '${branch}'.
 `;
 }
 function createBoardRootCommit(top, treeSha, branch) {
-  const sha = mustGit(top, ["commit-tree", treeSha], { input: boardCommitMessage(branch) }).trim();
+  const sha = mustGit(top, [...identityFlags(top), "commit-tree", treeSha], {
+    input: boardCommitMessage(branch)
+  }).trim();
   mustGit(top, ["branch", BOARD_BRANCH, sha]);
   return sha;
 }
@@ -8159,7 +8187,7 @@ function createRemovalCommit(top, message) {
   entries.sort((a, b) => treeSortKey(a) < treeSortKey(b) ? -1 : treeSortKey(a) > treeSortKey(b) ? 1 : 0);
   const mktreeInput = entries.map((e) => `${e.mode} ${e.type} ${e.sha}	${e.name}\0`).join("");
   const newTree = mustGit(top, ["mktree", "-z"], { input: mktreeInput }).trim();
-  return mustGit(top, ["commit-tree", newTree, "-p", "HEAD"], { input: message }).trim();
+  return mustGit(top, [...identityFlags(top), "commit-tree", newTree, "-p", "HEAD"], { input: message }).trim();
 }
 
 // ../board-git/src/channel.ts
