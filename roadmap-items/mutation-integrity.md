@@ -20,8 +20,8 @@ sequence: >-
   Audit complete → enforce cross-process filesystem CAS → pin regenerateIndex
   adversarial proof → extract CLI-neutral document policy for trusted UI actions
   → add BoardChannel post-persist subscriber
-actor: mike/claude
-timestamp: '2026-07-18T15:42:49.522Z'
+actor: mike/codex
+timestamp: '2026-07-18T16:25:40.918Z'
 ---
 [contains](../tasks/mutation-boundary-audit.md)
 
@@ -30,3 +30,5 @@ timestamp: '2026-07-18T15:42:49.522Z'
 [contains](../tasks/filesystem-cross-process-cas.md)
 
 [contains](../tasks/regenerate-index-cas-proof.md)
+
+[contains](../tasks/document-mutation-survivor-hardening.md)
