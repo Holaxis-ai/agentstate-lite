@@ -118,6 +118,9 @@ async function recipeAdd(argv: string[], stdout: (s: string) => void): Promise<v
   };
   if (result.pages.length > 0) receipt.pages = result.pages;
   if (result.references.length > 0) receipt.references = result.references;
+  // Honest artifact tally — `legacy_present` > 0 means an existing legacy-named install already
+  // satisfies that many artifacts (Option C+: nothing migrates, nothing is duplicated).
+  receipt.counts = result.counts;
   if (warnings.length > 0) receipt.warnings = warnings;
   receipt.help = [`${cliInvocation()} recipes`, `${cliInvocation()} kinds`];
 

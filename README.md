@@ -165,7 +165,7 @@ Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPla
   while content Views receive no bundle-data capability. Views can navigate to other registered
   Views, and View-bearing definitions-only recipes can carry the operating model, registry entry,
   HTML, and authoring reference together. (`Page` is the accepted legacy name for the kind —
-  existing `type: Page` docs keep working and never need migrating.) Authoring is still HTML/agent-driven rather than a
+  existing legacy `type: Page` docs keep working and never need migrating.) Authoring is still HTML/agent-driven rather than a
   polished end-user builder, so treat the surface as a preview.
 - **The public package ends at a generic remote boundary.** `serve` exposes a bundle through the
   versioned wire protocol, and bundle commands can target a service explicitly with `--remote`.

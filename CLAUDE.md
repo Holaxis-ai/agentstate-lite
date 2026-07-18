@@ -8,7 +8,7 @@ its own import-direction test with no allowlist; command UX stays in the CLI),
 `packages/server` (`@agentstate-lite/server`
 — the wire-protocol REFERENCE server, a pure consumer of core; see gate 3 and Scope),
 `packages/ui` (the browser SPA — PRIVATE workspace; only its BUILT assets ship, gzip-embedded
-into the CLI bundle; it launches bundle-authored Pages, see gate 4), and `packages/cli` —
+into the CLI bundle; it launches bundle-authored Views, see gate 4), and `packages/cli` —
 the **publishable npm package `agentstate-lite`** (bins `agentstate-lite` / `aslite`), an
 esbuild bundle that inlines core + board-git + server + the built UI assets + deps into one
 self-contained ESM file. The filesystem is the
@@ -130,8 +130,8 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   CLI error wording, remote hints, help text, and the best-effort board-attribution hook. Do not
   duplicate this policy in a future UI or server action path.
 - Keep exactly **ONE** frontmatter parser, **ONE** bundle walk, **ONE** link resolver, and
-  **ONE** human-facing runtime: the local `ui` shell plus bundle-authored Pages. Do not
-  reintroduce a parallel static viewer or a second parser inside Page tooling; Pages consume
+  **ONE** human-facing runtime: the local `ui` shell plus bundle-authored Views. Do not
+  reintroduce a parallel static viewer or a second parser inside View tooling; Views consume
   core semantics through the reference server's read-only bridge.
 - **Kind conventions (`core/src/kinds.ts`) are ONE registry, in core, consumed everywhere —
   not a schema fork.** A bundle MAY declare document kinds as plain OKF convention docs
@@ -162,15 +162,17 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   consumer (server/an MCP surface) needs kind awareness, it calls `loadKinds` itself
   — do not thread a second registry implementation through a different layer.
 
-### 4. Human visibility — the local `ui` command + bundle-authored Pages
+### 4. Human visibility — the local `ui` command + bundle-authored Views
 
 The human-visibility surface is the **local `agentstate-lite ui` command**: one loopback
 server serving the embedded SPA over a bundle (`--dir` mounts the reference router
 in-process; `--remote` reverse-proxies with the stored key; per-run token + Host allowlist
-+ CSP). The shell is a launcher for registered `type: Page` docs rendered in sandboxed
-iframes; Pages are bundle content, and their live data access goes through the read-only
++ CSP). The shell is a launcher for registered `type: View` docs rendered in sandboxed
+iframes (`Page` is the accepted legacy kind name — legacy-typed docs under the legacy
+prefixes keep working and never migrate); Views are bundle content, and their live data
+access goes through the read-only
 bridge. The former `packages/viewer` / `view` → `viz.html` surface is removed — author human
-views as Pages rather than adding a second rendering engine. The multi-human collaboration
+views as bundle Views rather than adding a second rendering engine. The multi-human collaboration
 substrate (hosted worker, auth, admin) is FROZEN per bundle doc `docs/core` and preserved outside
 the OSS repository — it is not a build or deployment target without an explicit human decision.
 
@@ -337,8 +339,8 @@ the bundle):
   over one pluggable `RecipeSource` pipeline.
 - **Scans are cheap end to end:** `list`/`query` ride head projections (`queryHeads`) so a
   capable remote can return frontmatter without transferring document bodies.
-- **The local `ui` command + bundle Pages** (gate 4): the SPA-over-loopback launcher is shipped
-  and working in both modes; registered Pages are the one human-facing rendering primitive. The
+- **The local `ui` command + bundle Views** (gate 4): the SPA-over-loopback launcher is shipped
+  and working in both modes; registered Views are the one human-facing rendering primitive. The
   bundle now also holds the project's own plans/research/changelog-archive docs — the records
   convention above.
 - **The `sync` verb (git tier)** — shares a project's board over a `board` branch on the
