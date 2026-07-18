@@ -4,15 +4,17 @@ title: Replace review chronology in source comments with stable rationale
 status: in_progress
 priority: '3'
 description: >-
-  Implementation complete on commit 11f0279, draft PR #98. Mechanically
-  comment-only across 21 production-source files: 86 targeted
-  review/adjudication/history marker lines on origin/main reduced to 0; stable
-  CAS, Git, data-loss, attribution, and UI-security rationale retained; 30 net
-  comment lines removed. Automated changed-line audit found no executable edits.
-  Final npm run check passed, including all workspace suites, npm-package proof,
-  skill drift check, and 14 Playwright e2e tests. Keep in_progress until PR #98
-  merges.
-actor: codex
-timestamp: '2026-07-18T14:20:59.793Z'
+  PR #98 MERGED (efec2eb) via rebase over the #97 carve (sync.ts hunk dropped
+  with verified zero loss — the carve independently cleaned that content).
+  Independent review APPROVE-WITH-NITS: comment-onlyness proven at token level
+  21/21 files; ~90% marker reduction (83->8 by the reviewer's pattern set, NOT
+  the claimed 86->0). REMAINING for this task before it flips done: the 3
+  in-scope misses (board-git/src/engine.ts:78, flow.ts:191, porcelain.ts:1409) +
+  5 out-of-changeset stragglers (cli/src/cli.ts, commands/sync-establish.ts —
+  note post-#97 these live in commands/sync/ modules); one arguable dilution
+  flagged (list.ts's considered-and-REJECTED framing weakened). One small
+  follow-up commit sweeps the 8; review record on PR #98.
+actor: mike/claude
+timestamp: '2026-07-18T15:39:48.421Z'
 ---
 

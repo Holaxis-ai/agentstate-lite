@@ -3,24 +3,24 @@ type: Task
 title: >-
   Make the cli mutation run operable: scoped dispatch seeding for the
   incremental cache
-status: in_progress
+status: done
 priority: '3'
 description: >-
-  FIX MERGED (PR #94): the cli Stryker config's default mutate list is now a
-  curated set of invariant-bearing modules (errors, mutate/board-attribution,
-  bundle resolution, actor, sync family, outcome table) — the whole-CLI default
-  was proven inoperable (first run cancelled at the 300-min ceiling, zero
-  report). Anything else stays measurable via the workflow's existing mutate
-  dispatch input, which overrides the config. Also fixed the stale cache-key
-  header comment. VALIDATION IN FLIGHT: dispatch run 29646598944 (target=cli) is
-  the empirical proof — it must complete within the ceiling and produce the
-  first-ever cli survivor report; record its actual cost here when it finishes,
-  then flip this task done. That report also discharges tasks/mutation-testing's
-  survivor-recheck promise for sync.ts/sync-establish.ts (every in-scope arm is
-  row+fixture-pinned since #92 — expected outcome: few or no actionable
-  survivors in converted arms).
+  SHIPPED + VALIDATED: PR #94 (curated module scope) proven operable — the
+  validation dispatch (run 29646598944) completed in 104 MINUTES vs the old
+  full-CLI run's 5-hour cancellation. First cli baseline: score 73.64% over the
+  curated invariant-bearing modules (1,969 mutants: 1,450 detected, 358
+  survived, 161 no-coverage; 444 gaps sit in the sync family). CAVEAT recorded
+  honestly: this run's checkout predates the #97 carve and #101/#103
+  row-completion — the sync-family numbers describe the pre-carve monoliths, so
+  the NEXT weekly run (against the phase modules + completed table) is the
+  meaningful sync baseline; #92's survivor-recheck promise is discharged at
+  baseline level, with the per-arm check deferred to that next run. Survivor
+  triage of the 519 is an INVENTORY, not a backlog (per the standing stance) —
+  file work from it only on demand signals or surplus evenings, starting from
+  the sync-family cluster.
 actor: mike/claude
 assignee: mike/claude
-timestamp: '2026-07-18T13:41:12.077Z'
+timestamp: '2026-07-18T15:39:48.315Z'
 ---
 
