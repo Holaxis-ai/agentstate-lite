@@ -138,10 +138,10 @@ function gitEnv(rebase: boolean, connectTimeoutSeconds = 10, indexFile?: string)
  * downstream parse that feeds the parsed string back into git as a path/pathspec (`show :3:<p>`,
  * `checkout -- <p>`, `rm -- <p>`, `show <rev>:<p>`) then MISSES the real file. Off = raw UTF-8
  * bytes out, exactly what the filesystem and pathspecs expect — killing the class for EVERY
- * path-parsing consumer (name-status in stageAndCommit/changesSince, sync.ts's origin diff) at
- * the one chokepoint, like LC_ALL=C does for prose. A truly hostile name (a TAB inside a
- * filename would still break `--name-status`'s tab-split) is additionally handled by `-z` NUL
- * framing where the stakes are a stuck loop (see `fetchRebaseResolving`'s conflict list).
+ * path-parsing consumer at the one chokepoint, like LC_ALL=C does for prose. Every
+ * `--name-status` invocation additionally passes `-z` (see {@link nameStatusRows}) so a TAB,
+ * newline, or other control byte inside a path is immune too, matching the conflict list's
+ * `--name-only -z` (see `fetchRebaseResolving`).
  */
 export function runGit(dir: string, args: string[], opts: RunOptions = {}): GitRunResult {
   const r = runGitBytes(dir, args, opts);
@@ -874,17 +874,26 @@ export function isConceptDocPath(relPath: string): boolean {
   return relPath.endsWith(".md") && !isReservedFile(relPath);
 }
 
-/** Parse `--name-status` output lines into `[statusLetter, path]` pairs (rename detection is off). */
+/**
+ * Parse `--name-status -z --no-renames` output into `[statusLetter, path]` pairs. Every record is
+ * exactly two NUL-terminated fields (status, then path) — `--no-renames` guarantees no third
+ * (old-path) field ever appears. NUL framing is raw and unquoted BY DEFINITION (matching the
+ * conflict list's `--name-only -z`), so a path carrying a TAB, newline, or any other byte a
+ * human-format `\t`/`\n`-delimited parse would mis-split (or, once C-quoted, round-trip WRONG)
+ * comes through correctly. Only the trailing empty field git emits after the final NUL is
+ * dropped — an interior empty field is never assumed to be a filler and would misalign the
+ * pairing instead of being silently skipped.
+ */
 export function nameStatusRows(out: string): Array<{ letter: string; relPath: string }> {
-  return out
-    .split("\n")
-    .map((l) => l.trimEnd())
-    .filter((l) => l.length > 0)
-    .map((l) => {
-      const [letter = "", ...rest] = l.split("\t");
-      return { letter: letter.trim().charAt(0), relPath: rest.join("\t") };
-    })
-    .filter((r) => r.letter.length > 0 && r.relPath.length > 0);
+  const fields = out.split("\0");
+  if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop();
+  const rows: Array<{ letter: string; relPath: string }> = [];
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const letter = (fields[i] ?? "").trim().charAt(0);
+    const relPath = fields[i + 1] ?? "";
+    if (letter.length > 0 && relPath.length > 0) rows.push({ letter, relPath });
+  }
+  return rows;
 }
 
 /** Map a name-status letter to the doc verb (`T` type-change reads as an update). */
@@ -973,7 +982,7 @@ export function stageAndCommit(boardPath: string): CommitResult {
     return { committed: false, docs: [] };
   }
 
-  const rows = nameStatusRows(mustGit(boardPath, ["diff", "--cached", "--name-status", "--no-renames"]));
+  const rows = nameStatusRows(mustGit(boardPath, ["diff", "--cached", "--name-status", "--no-renames", "-z"]));
   const docs: DocChange[] = [];
   for (const { letter, relPath } of rows) {
     if (!isConceptDocPath(relPath)) continue;
@@ -1143,7 +1152,7 @@ export function snapshotBundleCommit(top: string, bundlePath: string): BundleSna
     const rows = nameStatusRows(
       mustGit(
         bundlePath,
-        ["diff", "--cached", "--name-status", "--no-renames", emptyTree],
+        ["diff", "--cached", "--name-status", "--no-renames", "-z", emptyTree],
         snapshotOptions,
       ),
     );

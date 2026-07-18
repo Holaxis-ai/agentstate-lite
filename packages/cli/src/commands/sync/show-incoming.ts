@@ -3,7 +3,7 @@
 // `--out -` stderr envelope), labeled "as of last fetch" (no implicit fetch, ever).
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { assertSafeConceptId, parseMarkdown, pathFromConceptId } from "@agentstate-lite/core";
+import { assertSafeConceptId, isReservedFile, parseMarkdown, pathFromConceptId } from "@agentstate-lite/core";
 import {
   BOARD_BRANCH,
   BOARD_REF,
@@ -119,6 +119,12 @@ export async function showIncoming(
     // id → repo-relative path, PROBE-FIRST (no string-shape heuristic — a dotted concept id like
     // `notes/v1.2` is legal): the CONCEPT interpretation first, the verbatim raw path (log.md, a
     // stray blob) as fallback. Bytes, not utf8: --out must deliver the blob's exact bytes.
+    // A `.md`-suffixed id collapses the two interpretations onto the SAME repo-relative path
+    // (`pathFromConceptId` strips a trailing `.md` and re-adds it) — with only one candidate,
+    // that hit would otherwise take the doc branch unconditionally, mislabeling a reserved file
+    // (`log.md`, `index.md` at any nesting — no frontmatter to parse) with a fabricated `id:`.
+    // Both the collapse itself and an explicitly reserved id classify RAW: honest `path:` plus
+    // the literal content, never a concept identity the input never actually named.
     interface Probe { relPath: string; isDoc: boolean }
     const candidates: Probe[] = [];
     let conceptIdOk = true;
@@ -127,8 +133,10 @@ export async function showIncoming(
     } catch {
       conceptIdOk = false;
     }
-    if (conceptIdOk) candidates.push({ relPath: pathFromConceptId(id), isDoc: true });
-    if (candidates.every((c) => c.relPath !== id)) candidates.push({ relPath: id, isDoc: false });
+    const conceptRelPath = conceptIdOk ? pathFromConceptId(id) : null;
+    const collapsesToRaw = conceptRelPath === id || isReservedFile(id);
+    if (conceptIdOk && !collapsesToRaw) candidates.push({ relPath: conceptRelPath!, isDoc: true });
+    candidates.push({ relPath: id, isDoc: false });
 
     let hit: { probe: Probe; bytes: Buffer } | null = null;
     for (const probe of candidates) {

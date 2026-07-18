@@ -511,6 +511,41 @@ test("show-incoming: an existing upstream doc renders parsed frontmatter + body,
   }
 });
 
+// ── review fix (item 7, tasks/sync-receipt-edge-polish): a reserved path never classifies as a
+// doc, even though probe-first resolution collapses concept and raw onto the SAME relPath for any
+// `.md`-suffixed input (BEFORE: `id: log.md` — a fabricated concept identity for a file with no
+// frontmatter; AFTER: `path: log.md`, honest raw classification) ────────────────────────────────
+
+test("show-incoming: log.md renders `path:`, never `id:` — a reserved file is never mislabeled as a doc (root and nested)", async () => {
+  const topo = await makeTwoCloneTopology();
+  const { homes, cleanup } = await tempHomes(1);
+  const [homeB] = homes;
+  try {
+    await writeFile(path.join(topo.a.board, "log.md"), "- 2026-07-18T00:00:00.000Z mike wrote tasks/seed-one\n");
+    commitBoard(topo.a, "board: seed log.md");
+    pushBoard(topo.a);
+    // A NESTED reserved file (index.md/log.md are reserved at ANY directory level, gate 2).
+    await writeFile(path.join(topo.a.board, "tasks", "index.md"), "# nested reserved index\n");
+    commitBoard(topo.a, "board: seed nested tasks/index.md");
+    pushBoard(topo.a);
+    fetchBoard(topo.b);
+
+    const rootLog = await runSync(homeB!, ["--show-incoming", "log.md", "--dir", topo.b.root]);
+    assert.equal(rootLog.err, undefined, rootLog.err?.message);
+    assert.match(rootLog.out, /^path: log\.md$/m, "reserved root file renders `path:`");
+    assert.doesNotMatch(rootLog.out, /^id: log\.md$/m, "never `id: log.md` — no fabricated concept identity");
+    assert.match(rootLog.out, /mike wrote tasks\/seed-one/, "raw content, no frontmatter parse attempted");
+
+    const nestedIndex = await runSync(homeB!, ["--show-incoming", "tasks/index.md", "--dir", topo.b.root]);
+    assert.equal(nestedIndex.err, undefined, nestedIndex.err?.message);
+    assert.match(nestedIndex.out, /^path: tasks\/index\.md$/m, "a NESTED reserved file renders `path:` too");
+    assert.doesNotMatch(nestedIndex.out, /^id: tasks\/index\.md$/m);
+  } finally {
+    await cleanup();
+    await topo.cleanup();
+  }
+});
+
 test("show-incoming: a doc that is NEW upstream (never pulled locally) renders from the last-fetched ref", async () => {
   const topo = await makeTwoCloneTopology();
   const { homes, cleanup } = await tempHomes(2);
