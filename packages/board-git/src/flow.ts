@@ -11,6 +11,7 @@ import {
   BOARD_REF,
   BOARD_REMOTE,
   BUNDLE_DIR,
+  identityFlags,
   mustGit,
   repoTopLevel,
   runGit,
@@ -251,7 +252,9 @@ function boardCommitMessage(branch: string): string {
  * only; the working tree and index are untouched.
  */
 export function createBoardRootCommit(top: string, treeSha: string, branch: string): string {
-  const sha = mustGit(top, ["commit-tree", treeSha], { input: boardCommitMessage(branch) }).trim();
+  const sha = mustGit(top, [...identityFlags(top), "commit-tree", treeSha], {
+    input: boardCommitMessage(branch),
+  }).trim();
   mustGit(top, ["branch", BOARD_BRANCH, sha]);
   return sha;
 }
@@ -284,5 +287,5 @@ export function createRemovalCommit(top: string, message: string): string {
   entries.sort((a, b) => (treeSortKey(a) < treeSortKey(b) ? -1 : treeSortKey(a) > treeSortKey(b) ? 1 : 0));
   const mktreeInput = entries.map((e) => `${e.mode} ${e.type} ${e.sha}\t${e.name}\0`).join("");
   const newTree = mustGit(top, ["mktree", "-z"], { input: mktreeInput }).trim();
-  return mustGit(top, ["commit-tree", newTree, "-p", "HEAD"], { input: message }).trim();
+  return mustGit(top, [...identityFlags(top), "commit-tree", newTree, "-p", "HEAD"], { input: message }).trim();
 }

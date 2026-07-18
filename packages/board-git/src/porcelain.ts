@@ -25,6 +25,13 @@
  *   - No raw git on stdout: every failure routes through `classifyGitError` (errors.ts)
  *     into the typed `BoardGitError` taxonomy; the CLI command boundary maps it to exit codes.
  *
+ * IDENTITY FALLBACK: every commit-CREATING call (`stageAndCommit`, `snapshotBundleCommit`,
+ * `flow.ts`'s `createBoardRootCommit`/`createRemovalCommit`, and every non-`--abort` rebase
+ * invocation in `fetchRebase`/`fetchRebaseResolving` — a replay needs committer identity too)
+ * prepends {@link identityFlags}'s per-invocation `-c user.*` args. `[]` on a machine with a
+ * resolvable identity — byte-identical to before this existed; the synthetic identity only when
+ * git itself could not construct one anywhere (fresh container / identity-less CI runner).
+ *
  * CONFLICT BOUNDARY: {@link fetchRebase} DETECTS a same-doc conflict — collects the conflicted ids
  * via `diff --name-only --diff-filter=U` — and `git rebase --abort`s cleanly (ZERO data movement;
  * kept for any consumer that must never move data). The converging mechanic is
@@ -215,6 +222,54 @@ export function mustGit(dir: string, args: string[], opts: RunOptions = {}): str
   const r = runGit(dir, args, opts);
   if (r.status !== 0) throw classifyGitError(failureOf(args, r));
   return r.stdout;
+}
+
+// ── identity fallback (fresh-container / identity-less-CI-runner safety net) ──
+
+/** The literal fallback identity when no actor is already flowing into the commit path. */
+const IDENTITY_FALLBACK_ACTOR = "agentstate-lite";
+
+/** Lowercase; any run of non `[a-z0-9.-]` collapses to one `-`; trimmed of leading/trailing `-`. */
+function slugifyActor(actor: string): string {
+  const slug = actor
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug.length > 0 ? slug : IDENTITY_FALLBACK_ACTOR;
+}
+
+/**
+ * True when git can construct BOTH commit identities in `dir` from everything IT ITSELF respects
+ * (env `GIT_AUTHOR_*`/`GIT_COMMITTER_*`/`EMAIL`, local/global/system config, the OS-account
+ * guess) — probed via `git var GIT_AUTHOR_IDENT` AND `git var GIT_COMMITTER_IDENT`, the exact
+ * constructions git performs before a real commit. Both probes are required: author alone
+ * false-negatives the real CI shape where only `GIT_AUTHOR_NAME`/`GIT_AUTHOR_EMAIL` are exported
+ * — the author ident resolves, yet the commit still dies "Committer identity unknown"
+ * (empirically verified). A nonzero exit on either is git's own verdict that it would refuse the
+ * commit — never string-matched, never re-derived.
+ */
+function hasResolvableIdentity(dir: string): boolean {
+  return (
+    runGit(dir, ["var", "GIT_AUTHOR_IDENT"]).status === 0 &&
+    runGit(dir, ["var", "GIT_COMMITTER_IDENT"]).status === 0
+  );
+}
+
+/**
+ * The per-invocation `-c user.name=… -c user.email=…` fallback for a commit-creating git call —
+ * NEVER a config write, on disk or otherwise. `[]` when `dir` already has a resolvable identity
+ * (every user with real git config gets byte-identical argv to before this existed); the four
+ * `-c` args ONLY when resolution genuinely fails, so a fresh container or an identity-less CI
+ * runner can still commit. `user.name` is `actor` — the resolved actor string already flowing
+ * into the commit path — falling back to the literal {@link IDENTITY_FALLBACK_ACTOR} when `actor`
+ * is absent or blank; `user.email` is `<slug of that name>@agentstate-lite.invalid` (RFC 2606).
+ * The ONE primitive every sync-family commit-creating call site consumes — see porcelain.ts's
+ * module header for the site map.
+ */
+export function identityFlags(dir: string, actor?: string): string[] {
+  if (hasResolvableIdentity(dir)) return [];
+  const name = actor && actor.trim().length > 0 ? actor.trim() : IDENTITY_FALLBACK_ACTOR;
+  return ["-c", `user.name=${name}`, "-c", `user.email=${slugifyActor(name)}@agentstate-lite.invalid`];
 }
 
 // ── repo/worktree discovery ───────────────────────────────────────────────────
@@ -952,6 +1007,18 @@ export interface CommitResult {
 }
 
 /**
+ * The change set's single named actor — the same rule {@link commitSubject} names an actor by:
+ * exactly one distinct actor across every doc change. `undefined` for zero docs (nothing to name)
+ * or more than one distinct actor (ambiguous) — {@link identityFlags}'s literal fallback covers
+ * both, so the commit-identity fallback never invents a false single actor.
+ */
+function primaryActor(docs: DocChange[]): string | undefined {
+  if (docs.length === 0) return undefined;
+  const actors = [...new Set(docs.map((d) => d.actor))];
+  return actors.length === 1 ? actors[0] : undefined;
+}
+
+/**
  * The commit-subject grammar (test-pinned, §U1): stable `board:` prefix; single-doc
  * `board: <actor> — <verb> <id>`; multi-doc single-actor `board: <actor> — N docs` (NEVER
  * "1 docs" — one doc always takes the single-doc form); multi-actor `board: N docs from M actors`
@@ -962,9 +1029,10 @@ function commitSubject(docs: DocChange[]): string {
   if (docs.length === 0) return "board: bundle maintenance";
   const first = docs[0]!;
   if (docs.length === 1) return `board: ${first.actor} — ${first.verb} ${first.docId}`;
-  const actors = [...new Set(docs.map((d) => d.actor))];
-  if (actors.length === 1) return `board: ${actors[0]} — ${docs.length} docs`;
-  return `board: ${docs.length} docs from ${actors.length} actors`;
+  const single = primaryActor(docs);
+  if (single) return `board: ${single} — ${docs.length} docs`;
+  const actorCount = new Set(docs.map((d) => d.actor)).size;
+  return `board: ${docs.length} docs from ${actorCount} actors`;
 }
 
 /**
@@ -999,7 +1067,11 @@ export function stageAndCommit(boardPath: string): CommitResult {
       ? docs.map((d) => `${d.verb} ${d.kind} ${d.docId}`)
       : rows.map((r) => `${r.letter} ${r.relPath}`);
   const message = `${subject}\n\n${bodyLines.join("\n")}\n`;
-  mustGit(boardPath, ["commit", "--no-verify", "-F", "-"], { input: message });
+  mustGit(
+    boardPath,
+    [...identityFlags(boardPath, primaryActor(docs)), "commit", "--no-verify", "-F", "-"],
+    { input: message },
+  );
   const sha = mustGit(boardPath, ["rev-parse", "HEAD"]).trim();
   return { committed: true, sha, subject, docs };
 }
@@ -1169,7 +1241,9 @@ export function snapshotBundleCommit(top: string, bundlePath: string): BundleSna
         ? docs.map((d) => `${d.verb} ${d.kind} ${d.docId}`)
         : rows.map((r) => `${r.letter} ${r.relPath}`);
     const message = `${subject}\n\n${bodyLines.join("\n")}\n`;
-    const sha = mustGit(top, ["commit-tree", tree], { input: message }).trim();
+    const sha = mustGit(top, [...identityFlags(top, primaryActor(docs)), "commit-tree", tree], {
+      input: message,
+    }).trim();
     assertBundleBytesMatchCommit(top, bundlePath, sha);
     return { committed: true, sha, tree, subject, docs };
   } finally {
@@ -1197,7 +1271,14 @@ export type FetchRebaseOutcome =
  */
 export function fetchRebase(boardPath: string): FetchRebaseOutcome {
   mustGit(boardPath, ["fetch", "--prune", BOARD_REMOTE], { timeoutMs: NETWORK_TIMEOUT_MS });
-  const r = runGit(boardPath, ["rebase", BOARD_REF], { rebase: true, timeoutMs: NETWORK_TIMEOUT_MS });
+  // Computed ONCE and reused for every rebase invocation below (never `--abort`, which commits
+  // nothing): a replayed commit needs COMMITTER identity too, the same failure class as a plain
+  // commit — see porcelain.ts's module header site map.
+  const idFlags = identityFlags(boardPath);
+  const r = runGit(boardPath, [...idFlags, "rebase", BOARD_REF], {
+    rebase: true,
+    timeoutMs: NETWORK_TIMEOUT_MS,
+  });
   if (r.status === 0) return { status: "clean" };
   if (detectStaleRebase(boardPath)) {
     const conflicted = mustGit(boardPath, ["diff", "--name-only", "--diff-filter=U"])
@@ -1305,7 +1386,11 @@ export function fetchRebaseResolving(boardPath: string, exportDir: string): Fetc
   if (runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/remotes/${BOARD_REF}`]).status !== 0) {
     return { status: "no_upstream" };
   }
-  const r = runGit(boardPath, ["rebase", BOARD_REF], { rebase: true, timeoutMs: NETWORK_TIMEOUT_MS });
+  // Computed ONCE and reused for every rebase invocation in this function (never `--abort`, which
+  // commits nothing): a replayed commit needs COMMITTER identity too, the same failure class as a
+  // plain commit — see porcelain.ts's module header site map.
+  const idFlags = identityFlags(boardPath);
+  const r = runGit(boardPath, [...idFlags, "rebase", BOARD_REF], { rebase: true, timeoutMs: NETWORK_TIMEOUT_MS });
   if (r.status === 0) return { status: "clean" };
   if (!detectStaleRebase(boardPath)) throw classifyGitError(failureOf(["rebase", BOARD_REF], r));
 
@@ -1333,7 +1418,7 @@ export function fetchRebaseResolving(boardPath: string, exportDir: string): Fetc
         // No unmerged files at this stop: the replayed commit became EMPTY (every change it
         // carried was a conflicted path kept at upstream) — drop it. `--skip` may itself stop on
         // the NEXT commit's conflict (tolerated nonzero); the loop handles that stop normally.
-        runGit(boardPath, ["rebase", "--skip"], { rebase: true });
+        runGit(boardPath, [...idFlags, "rebase", "--skip"], { rebase: true });
         continue;
       }
       for (const relPath of conflicted) {
@@ -1388,7 +1473,7 @@ export function fetchRebaseResolving(boardPath: string, exportDir: string): Fetc
       // Advance non-interactively. A nonzero exit that leaves the rebase state behind is a NEW
       // stop (the next commit's conflict, or an empty commit) — the loop resolves it; a nonzero
       // exit with NO rebase state left is a genuine failure.
-      const cont = runGit(boardPath, ["rebase", "--continue"], { rebase: true });
+      const cont = runGit(boardPath, [...idFlags, "rebase", "--continue"], { rebase: true });
       if (cont.status !== 0 && !detectStaleRebase(boardPath)) {
         throw classifyGitError(failureOf(["rebase", "--continue"], cont));
       }
