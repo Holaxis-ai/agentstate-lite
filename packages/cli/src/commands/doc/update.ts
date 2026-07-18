@@ -9,6 +9,7 @@ import { CliError } from "../../errors.js";
 import { render, resolveMode } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
 import { mutateDoc } from "../../mutate.js";
+import { isLegacyPageDoc, LEGACY_PAGE_TYPE_HINT } from "../../legacy-page.js";
 import { boardPostPersistHook } from "../../board-attribution.js";
 import { resolveActor } from "../../actor.js";
 import { DOC_UPDATE_USAGE, type DocCliDeps, defaultReadStdin, guardDroppedLinks } from "./common.js";
@@ -412,6 +413,9 @@ export async function docUpdate(argv: string[], deps: Partial<DocCliDeps>): Prom
     version: result.version,
   };
   if (result.warnings.length > 0) receipt.warnings = result.warnings;
+  // Legacy-naming nudge (legacy-page.ts): fires on the RESULT doc's type at an authoring moment
+  // only — never blocks, never on reads.
+  if (isLegacyPageDoc(result.doc.frontmatter)) receipt.hint = LEGACY_PAGE_TYPE_HINT;
   receipt.help = [`${cliInvocation()} doc read ${result.doc.id}`];
   stdout(render(receipt, mode));
 }

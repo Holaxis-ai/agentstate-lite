@@ -45,6 +45,7 @@ import { parseOrUsage } from "../args.js";
 import { render, resolveMode, type OutputMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 import { defaultTimestampAndValidateKind } from "../kind-write.js";
+import { isLegacyPageDoc, LEGACY_PAGE_TYPE_HINT } from "../legacy-page.js";
 
 export const PROMOTE_USAGE = `agentstate-lite promote — move a local file's bytes into the store (the reverse of 'doc read --out')
 
@@ -223,6 +224,9 @@ async function promoteDoc(
     size_bytes: Buffer.byteLength(raw, "utf8"),
   };
   if (warnings.length > 0) receipt.warnings = warnings;
+  // Legacy-naming nudge (legacy-page.ts): the doc route is an authoring moment too — receipt-only,
+  // never an error. The blob route has no frontmatter to inspect and stays untouched.
+  if (isLegacyPageDoc(candidate.frontmatter)) receipt.hint = LEGACY_PAGE_TYPE_HINT;
   // A10: a ready-to-paste PULL hint closes the loop in the other direction.
   receipt.help = [`${cliInvocation()} pull --doc-key ${key} --out <path>`];
   stdout(render(receipt, mode));

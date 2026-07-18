@@ -62,6 +62,7 @@ import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 import { mutateDoc } from "../mutate.js";
+import { isLegacyPageDoc, LEGACY_PAGE_TYPE_HINT } from "../legacy-page.js";
 import { boardPostPersistHook } from "../board-attribution.js";
 import { resolveActor } from "../actor.js";
 import { addLink } from "./link.js";
@@ -647,6 +648,8 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
   // The content-addressed token of the FINAL document state after every successful/no-op link
   // attempt. This is the truthful CAS basis for a follow-up `doc update --expected-version`.
   receipt.version = finalVersion;
+  // Legacy-naming nudge (legacy-page.ts): authoring-moment only — never blocks, never on reads.
+  if (isLegacyPageDoc(saved.frontmatter)) receipt.hint = LEGACY_PAGE_TYPE_HINT;
 
   // Point-of-use link teaching (AXI §9): the moment an instance is created is when its declared
   // relationships are actionable — surface them as complete, placeholder-parameterized commands

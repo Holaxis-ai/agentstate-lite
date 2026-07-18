@@ -9,6 +9,7 @@ import { parseOrUsage } from "../../args.js";
 import { render, resolveMode } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
 import { mutateDoc } from "../../mutate.js";
+import { isLegacyPageDoc, LEGACY_PAGE_TYPE_HINT } from "../../legacy-page.js";
 import { boardPostPersistHook } from "../../board-attribution.js";
 import { resolveActor } from "../../actor.js";
 import { DOC_WRITE_USAGE, type DocCliDeps, defaultReadStdin, guardDroppedLinks } from "./common.js";
@@ -236,6 +237,8 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
       `or 'new'), use '${cliInvocation()} doc update ${id}' instead.`;
   }
   if (result.warnings.length > 0) receipt.warnings = result.warnings;
+  // Legacy-naming nudge (legacy-page.ts): authoring-moment only — never blocks, never on reads.
+  if (isLegacyPageDoc(saved.frontmatter)) receipt.hint = LEGACY_PAGE_TYPE_HINT;
   receipt.help = [`${cliInvocation()} doc read ${saved.id}`];
 
   stdout(render(receipt, resolveMode(values)));
