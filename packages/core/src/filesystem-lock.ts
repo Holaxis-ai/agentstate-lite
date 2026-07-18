@@ -21,6 +21,17 @@ export interface FilesystemMutationLockOptions {
   pollMs?: number;
   /** Portable tree that must never contain runtime lock state. FilesystemBackend supplies its root. */
   portableRoot?: string;
+  /** Explicit runtime namespace for isolated consumers/tests; the default remains per-user and external. */
+  lockRoot?: string;
+}
+
+export interface FilesystemMutationLockRootFacts {
+  directory: boolean;
+  symbolicLink: boolean;
+  ownerUid: number;
+  expectedUid: number | undefined;
+  mode: number;
+  enforcePrivateMode: boolean;
 }
 
 export class FilesystemMutationLockError extends Error {
@@ -94,17 +105,34 @@ export function filesystemMutationLockRoot(portableRoot?: string): string {
   );
 }
 
+function explicitFilesystemMutationLockRoot(root: string, portableRoot?: string): string {
+  const requested = path.resolve(root);
+  if (portableRoot === undefined) return requested;
+
+  const portable = canonicalExistingPath(portableRoot);
+  if (!pathContains(portable, canonicalExistingPath(requested))) return requested;
+  throw new FilesystemMutationLockError(
+    `cannot place filesystem mutation locks outside portable root '${portable}'`,
+    { lockPath: portable, owner: null, stale: false, malformed: true },
+  );
+}
+
 /** Runtime lock directory for one already-canonical physical target. */
 export function filesystemMutationLockPath(target: string, portableRoot?: string): string {
+  return filesystemMutationLockPathInRoot(target, filesystemMutationLockRoot(portableRoot));
+}
+
+function filesystemMutationLockPathInRoot(target: string, lockRoot: string): string {
   const digest = createHash("sha256").update(path.resolve(target)).digest("hex");
-  return path.join(filesystemMutationLockRoot(portableRoot), `${digest}.lock`);
+  return path.join(lockRoot, `${digest}.lock`);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function parseOwner(value: unknown): FilesystemMutationLockOwner | null {
+/** @internal Pure metadata validator shared by acquisition diagnostics and focused tests. */
+export function parseFilesystemMutationLockOwner(value: unknown): FilesystemMutationLockOwner | null {
   if (!isObject(value)) return null;
   if (
     typeof value.pid !== "number" ||
@@ -132,7 +160,9 @@ function parseOwner(value: unknown): FilesystemMutationLockOwner | null {
 
 async function readOwner(lockPath: string): Promise<FilesystemMutationLockOwner | null> {
   try {
-    return parseOwner(JSON.parse(await fs.readFile(path.join(lockPath, OWNER_FILE), "utf8")));
+    return parseFilesystemMutationLockOwner(
+      JSON.parse(await fs.readFile(path.join(lockPath, OWNER_FILE), "utf8")),
+    );
   } catch {
     return null;
   }
@@ -159,6 +189,13 @@ function positiveOption(value: number | undefined, fallback: number, name: strin
   return resolved;
 }
 
+/** @internal Pure policy seam so ownership refusal is testable without privileged filesystem setup. */
+export function isPrivateFilesystemMutationLockRoot(facts: FilesystemMutationLockRootFacts): boolean {
+  const wrongOwner = facts.expectedUid !== undefined && facts.ownerUid !== facts.expectedUid;
+  const unsafeMode = facts.enforcePrivateMode && (facts.mode & 0o777) !== 0o700;
+  return facts.directory && !facts.symbolicLink && !wrongOwner && !unsafeMode;
+}
+
 async function ensurePrivateLockRoot(root: string): Promise<void> {
   try {
     await fs.mkdir(root, { recursive: true, mode: 0o700 });
@@ -168,9 +205,16 @@ async function ensurePrivateLockRoot(root: string): Promise<void> {
 
   const stat = await fs.lstat(root);
   const uid = process.getuid?.();
-  const wrongOwner = uid !== undefined && stat.uid !== uid;
-  const unsafeMode = process.platform !== "win32" && (stat.mode & 0o777) !== 0o700;
-  if (!stat.isDirectory() || stat.isSymbolicLink() || wrongOwner || unsafeMode) {
+  if (
+    !isPrivateFilesystemMutationLockRoot({
+      directory: stat.isDirectory(),
+      symbolicLink: stat.isSymbolicLink(),
+      ownerUid: stat.uid,
+      expectedUid: uid,
+      mode: stat.mode,
+      enforcePrivateMode: process.platform !== "win32",
+    })
+  ) {
     throw new FilesystemMutationLockError(
       `refusing unsafe filesystem mutation lock root '${root}'; it must be a private directory owned by this user`,
       { lockPath: root, owner: null, stale: false, malformed: true },
@@ -249,9 +293,11 @@ export async function acquireFilesystemMutationLock(
   const portableRoot = options.portableRoot
     ? await fs.realpath(options.portableRoot).catch(() => path.resolve(options.portableRoot!))
     : undefined;
-  const lockRoot = filesystemMutationLockRoot(portableRoot);
+  const lockRoot = options.lockRoot !== undefined
+    ? explicitFilesystemMutationLockRoot(options.lockRoot, portableRoot)
+    : filesystemMutationLockRoot(portableRoot);
   await ensurePrivateLockRoot(lockRoot);
-  const lockPath = filesystemMutationLockPath(targetCanonical, portableRoot);
+  const lockPath = filesystemMutationLockPathInRoot(targetCanonical, lockRoot);
   const owner: FilesystemMutationLockOwner = {
     pid: process.pid,
     hostname: hostname(),
