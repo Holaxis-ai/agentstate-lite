@@ -231,13 +231,13 @@ var require_section_matter = __commonJS({
         }
       }
       for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
+        var line2 = lines[i];
         var len = stack.length;
-        var ln = line.trim();
+        var ln = line2.trim();
         if (isDelimiter(ln, delim)) {
           if (ln.length === 3 && i !== 0) {
             if (len === 0 || len === 2) {
-              content.push(line);
+              content.push(line2);
               continue;
             }
             stack.push(ln);
@@ -254,7 +254,7 @@ var require_section_matter = __commonJS({
           stack.push(ln);
           continue;
         }
-        content.push(line);
+        content.push(line2);
       }
       if (sections === null) {
         initSections(content.join("\n"));
@@ -264,11 +264,11 @@ var require_section_matter = __commonJS({
       file.sections = sections;
       return file;
     };
-    function isDelimiter(line, delim) {
-      if (line.slice(0, delim.length) !== delim) {
+    function isDelimiter(line2, delim) {
+      if (line2.slice(0, delim.length) !== delim) {
         return false;
       }
-      if (line.charAt(delim.length + 1) === delim.slice(-1)) {
+      if (line2.charAt(delim.length + 1) === delim.slice(-1)) {
         return false;
       }
       return true;
@@ -382,11 +382,11 @@ var require_mark = __commonJS({
   "../../node_modules/js-yaml/lib/js-yaml/mark.js"(exports2, module2) {
     "use strict";
     var common = require_common();
-    function Mark(name, buffer, position, line, column) {
+    function Mark(name, buffer, position, line2, column) {
       this.name = name;
       this.buffer = buffer;
       this.position = position;
-      this.line = line;
+      this.line = line2;
       this.column = column;
     }
     Mark.prototype.getSnippet = function getSnippet(indent, maxLength) {
@@ -2662,18 +2662,18 @@ var require_dumper = __commonJS({
       this.usedDuplicates = null;
     }
     function indentString(string, spaces) {
-      var ind = common.repeat(" ", spaces), position = 0, next = -1, result = "", line, length = string.length;
+      var ind = common.repeat(" ", spaces), position = 0, next = -1, result = "", line2, length = string.length;
       while (position < length) {
         next = string.indexOf("\n", position);
         if (next === -1) {
-          line = string.slice(position);
+          line2 = string.slice(position);
           position = length;
         } else {
-          line = string.slice(position, next + 1);
+          line2 = string.slice(position, next + 1);
           position = next + 1;
         }
-        if (line.length && line !== "\n") result += ind;
-        result += line;
+        if (line2.length && line2 !== "\n") result += ind;
+        result += line2;
       }
       return result;
     }
@@ -2809,33 +2809,33 @@ var require_dumper = __commonJS({
       var moreIndented;
       var match;
       while (match = lineRe.exec(string)) {
-        var prefix = match[1], line = match[2];
-        moreIndented = line[0] === " ";
-        result += prefix + (!prevMoreIndented && !moreIndented && line !== "" ? "\n" : "") + foldLine(line, width);
+        var prefix = match[1], line2 = match[2];
+        moreIndented = line2[0] === " ";
+        result += prefix + (!prevMoreIndented && !moreIndented && line2 !== "" ? "\n" : "") + foldLine(line2, width);
         prevMoreIndented = moreIndented;
       }
       return result;
     }
-    function foldLine(line, width) {
-      if (line === "" || line[0] === " ") return line;
+    function foldLine(line2, width) {
+      if (line2 === "" || line2[0] === " ") return line2;
       var breakRe = / [^ ]/g;
       var match;
       var start = 0, end, curr = 0, next = 0;
       var result = "";
-      while (match = breakRe.exec(line)) {
+      while (match = breakRe.exec(line2)) {
         next = match.index;
         if (next - start > width) {
           end = curr > start ? curr : next;
-          result += "\n" + line.slice(start, end);
+          result += "\n" + line2.slice(start, end);
           start = end + 1;
         }
         curr = next;
       }
       result += "\n";
-      if (line.length - start > width && curr > start) {
-        result += line.slice(start, curr) + "\n" + line.slice(curr + 1);
+      if (line2.length - start > width && curr > start) {
+        result += line2.slice(start, curr) + "\n" + line2.slice(curr + 1);
       } else {
-        result += line.slice(start);
+        result += line2.slice(start);
       }
       return result.slice(1);
     }
@@ -3820,17 +3820,17 @@ function extractTabularHeader(rows) {
   if (isTabularArray(rows, firstKeys)) return firstKeys;
 }
 function isTabularArray(rows, header) {
-  for (const row of rows) {
-    if (Object.keys(row).length !== header.length) return false;
+  for (const row2 of rows) {
+    if (Object.keys(row2).length !== header.length) return false;
     for (const key of header) {
-      if (!(key in row)) return false;
-      if (!isJsonPrimitive(row[key])) return false;
+      if (!(key in row2)) return false;
+      if (!isJsonPrimitive(row2[key])) return false;
     }
   }
   return true;
 }
 function* writeTabularRowsLines(rows, header, depth, options2) {
-  for (const row of rows) yield indentedLine(depth, encodeAndJoinPrimitives(header.map((key) => row[key]), options2.delimiter), options2.indent);
+  for (const row2 of rows) yield indentedLine(depth, encodeAndJoinPrimitives(header.map((key) => row2[key]), options2.delimiter), options2.indent);
 }
 function* encodeMixedArrayAsListItemsLines(prefix, items, depth, options2) {
   yield indentedLine(depth, formatHeader(items.length, {
@@ -4732,8 +4732,8 @@ function computeCodexConfigUpdate(content) {
   let inFeatures = false;
   let sawFeatures = false;
   for (let index = 0; index < updated.length; index++) {
-    const line = updated[index];
-    const section = line.match(/^\s*(\[{1,2})([^\]]+)(\]{1,2})\s*(?:#.*)?$/);
+    const line2 = updated[index];
+    const section = line2.match(/^\s*(\[{1,2})([^\]]+)(\]{1,2})\s*(?:#.*)?$/);
     if (section) {
       const isTableHeader = section[1] === "[" && section[3] === "]" || section[1] === "[[" && section[3] === "]]";
       if (!isTableHeader) {
@@ -4751,14 +4751,14 @@ function computeCodexConfigUpdate(content) {
     if (!inFeatures) {
       continue;
     }
-    const flag = line.match(/^\s*hooks\s*=\s*(true|false)\s*(?:#.*)?$/);
+    const flag = line2.match(/^\s*hooks\s*=\s*(true|false)\s*(?:#.*)?$/);
     if (!flag) {
       continue;
     }
     if (flag[1] === "true") {
       return [content, false];
     }
-    updated[index] = line.replace(/false/, "true");
+    updated[index] = line2.replace(/false/, "true");
     return [updated.join(newline), true];
   }
   if (sawFeatures) {
@@ -6187,7 +6187,7 @@ var RemoteBackend = class {
       const res = await this.send(`/docs${qs ? `?${qs}` : ""}`, { method: "GET" });
       if (!res.ok) throw await this.toError(res, errorContext);
       const payload = await res.json();
-      for (const row of payload.docs) rows.push(mapRow(row));
+      for (const row2 of payload.docs) rows.push(mapRow(row2));
       if (!payload.next_cursor) break;
       cursor = payload.next_cursor;
     }
@@ -6196,7 +6196,7 @@ var RemoteBackend = class {
   async list(prefix) {
     const params = new URLSearchParams();
     if (prefix) params.set("prefix", prefix);
-    return this.pageDocs(params, (row) => row.id, prefix ?? "");
+    return this.pageDocs(params, (row2) => row2.id, prefix ?? "");
   }
   /**
    * The seam's OPTIONAL head-projection push-down, over the SAME `GET /docs` route
@@ -6217,7 +6217,7 @@ var RemoteBackend = class {
     for (const tag of filter.tags ?? []) params.append("tag", tag);
     return this.pageDocs(
       params,
-      (row) => ({ id: row.id, frontmatter: row.frontmatter, version: row.version }),
+      (row2) => ({ id: row2.id, frontmatter: row2.frontmatter, version: row2.version }),
       filter.prefix ?? ""
     );
   }
@@ -7106,8 +7106,8 @@ function isBoardGitError(v) {
   return candidate.name === "BoardGitError" && typeof candidate.code === "string" && BOARD_GIT_ERROR_CODES.includes(candidate.code) && typeof candidate.message === "string";
 }
 function firstGitLine(f) {
-  const line = f.stderr.split("\n").find((l) => l.trim().length > 0) ?? f.stdout.split("\n").find((l) => l.trim().length > 0) ?? "";
-  return line.trim();
+  const line2 = f.stderr.split("\n").find((l) => l.trim().length > 0) ?? f.stdout.split("\n").find((l) => l.trim().length > 0) ?? "";
+  return line2.trim();
 }
 function classifyGitError(f) {
   const op = f.args[0] ?? "git";
@@ -7162,8 +7162,8 @@ ${f.stdout}`;
       details: { op, retryable: true }
     });
   }
-  const line = firstGitLine(f);
-  return new BoardGitError("RUNTIME", `git ${op} failed${line ? `: ${line}` : ""}`, {
+  const line2 = firstGitLine(f);
+  return new BoardGitError("RUNTIME", `git ${op} failed${line2 ? `: ${line2}` : ""}`, {
     details: { op, exit_status: f.status }
   });
 }
@@ -7403,6 +7403,30 @@ function preShareWindowError(top, boardPath, originConfigured = true) {
   }
   return new BoardGitError("RUNTIME", guidance.message, { details, help: guidance.help });
 }
+function existingDirRefusal(reason, boardPath, top) {
+  const messages = {
+    foreign: {
+      message: `a non-empty '${BUNDLE_DIR}' directory already exists at ${boardPath} but is not the shared board checkout \u2014 move it aside, then re-run sync`,
+      help: moveAsideHelp(boardPath, "then re-run sync; reconcile any local-only docs afterwards")
+    },
+    foreign_checkout: {
+      message: `'${BUNDLE_DIR}' at ${boardPath} is git checkout machinery, but it belongs to a different git repository than ${top} \u2014 move it aside, then re-run sync to provision this repo's board from origin/board`,
+      help: moveAsideHelp(boardPath, "then re-run sync; the existing checkout is untouched, just relocated")
+    },
+    unrepairable: {
+      message: `'${BUNDLE_DIR}' at ${boardPath} looks like the board checkout with stale pointers that 'git worktree repair' could not fix (its git-internal registration is likely gone) \u2014 move it aside, then re-run sync to re-provision fresh from origin/board`,
+      help: moveAsideHelp(boardPath, "then re-run sync; recover any local-only, unpushed docs from the backup afterwards")
+    },
+    wrong_branch: {
+      message: `'${BUNDLE_DIR}' at ${boardPath} is git checkout machinery (a linked worktree or nested repo), but it is not checked out to the '${BOARD_BRANCH}' branch (nor mid-rebase from it) \u2014 it is likely used for something else \u2014 move it aside, then re-run sync to re-provision the board fresh from origin/board`,
+      help: moveAsideHelp(boardPath, "then re-run sync; the existing checkout is untouched, just relocated")
+    }
+  };
+  return new BoardGitError("RUNTIME", messages[reason].message, {
+    details: { path: boardPath },
+    help: messages[reason].help
+  });
+}
 function provisionBoardWorktree(dir, budget = {}) {
   const top = repoTopLevel(dir);
   if (!top) return { kind: "no_repo" };
@@ -7502,28 +7526,7 @@ function provisionBoardWorktree(dir, budget = {}) {
           }
         }
       }
-      const messages = {
-        foreign: {
-          message: `a non-empty '${BUNDLE_DIR}' directory already exists at ${boardPath} but is not the shared board checkout \u2014 move it aside, then re-run sync`,
-          help: moveAsideHelp(boardPath, "then re-run sync; reconcile any local-only docs afterwards")
-        },
-        foreign_checkout: {
-          message: `'${BUNDLE_DIR}' at ${boardPath} is git checkout machinery, but it belongs to a different git repository than ${top} \u2014 move it aside, then re-run sync to provision this repo's board from origin/board`,
-          help: moveAsideHelp(boardPath, "then re-run sync; the existing checkout is untouched, just relocated")
-        },
-        unrepairable: {
-          message: `'${BUNDLE_DIR}' at ${boardPath} looks like the board checkout with stale pointers that 'git worktree repair' could not fix (its git-internal registration is likely gone) \u2014 move it aside, then re-run sync to re-provision fresh from origin/board`,
-          help: moveAsideHelp(boardPath, "then re-run sync; recover any local-only, unpushed docs from the backup afterwards")
-        },
-        wrong_branch: {
-          message: `'${BUNDLE_DIR}' at ${boardPath} is git checkout machinery (a linked worktree or nested repo), but it is not checked out to the '${BOARD_BRANCH}' branch (nor mid-rebase from it) \u2014 it is likely used for something else \u2014 move it aside, then re-run sync to re-provision the board fresh from origin/board`,
-          help: moveAsideHelp(boardPath, "then re-run sync; the existing checkout is untouched, just relocated")
-        }
-      };
-      throw new BoardGitError("RUNTIME", messages[reason].message, {
-        details: { path: boardPath },
-        help: messages[reason].help
-      });
+      throw existingDirRefusal(reason, boardPath, top);
     }
     if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote && !adoptLocalBoard()) {
       return { kind: "local_board", boardPath, remoteExists: hasRemote };
@@ -7655,11 +7658,11 @@ function assertBundleBytesMatchCommit(top, bundlePath, commit) {
   const listed = runGit(top, ["ls-tree", "-r", "-z", commit]);
   if (listed.status !== 0) throw classifyGitError(failureOf(["ls-tree", "-r", "-z", commit], listed));
   const mismatches = [];
-  for (const row of listed.stdout.split("\0").filter(Boolean)) {
-    const tab = row.indexOf("	");
+  for (const row2 of listed.stdout.split("\0").filter(Boolean)) {
+    const tab = row2.indexOf("	");
     if (tab < 0) continue;
-    const [mode, type, oid] = row.slice(0, tab).split(" ");
-    const relPath = row.slice(tab + 1);
+    const [mode, type, oid] = row2.slice(0, tab).split(" ");
+    const relPath = row2.slice(tab + 1);
     const absolute = path5.resolve(bundlePath, relPath);
     if (!absolute.startsWith(`${path5.resolve(bundlePath)}${path5.sep}`)) {
       mismatches.push(relPath);
@@ -7712,7 +7715,7 @@ function snapshotBundleCommit(top, bundlePath) {
       snapshotOptions
     );
     const stagedRows = mustGit(bundlePath, ["ls-files", "--stage", "-z"], snapshotOptions).split("\0").filter(Boolean);
-    const gitlinks = stagedRows.filter((row) => row.startsWith("160000 ")).map((row) => row.slice(row.indexOf("	") + 1));
+    const gitlinks = stagedRows.filter((row2) => row2.startsWith("160000 ")).map((row2) => row2.slice(row2.indexOf("	") + 1));
     if (gitlinks.length > 0) {
       throw new BoardGitError(
         "RUNTIME",
@@ -7720,7 +7723,7 @@ function snapshotBundleCommit(top, bundlePath) {
         { details: { nested_git_paths: gitlinks } }
       );
     }
-    const stagedFiles = stagedRows.map((row) => row.slice(row.indexOf("	") + 1)).sort();
+    const stagedFiles = stagedRows.map((row2) => row2.slice(row2.indexOf("	") + 1)).sort();
     if (stagedFiles.length !== filesystemFiles.length || stagedFiles.some((file, index) => file !== filesystemFiles[index])) {
       const staged = new Set(stagedFiles);
       const filesystem = new Set(filesystemFiles);
@@ -8321,9 +8324,9 @@ function asCache(v) {
   if (!Array.isArray(v.delta)) return null;
   const delta = [];
   for (const raw of v.delta) {
-    const row = asDeltaRow(raw);
-    if (row === null) return null;
-    delta.push(row);
+    const row2 = asDeltaRow(raw);
+    if (row2 === null) return null;
+    delta.push(row2);
   }
   if (!isCount(v.unpushedCount) || !isCount(v.uncommittedCount)) return null;
   if (v.note !== void 0 && typeof v.note !== "string") return null;
@@ -12826,14 +12829,14 @@ async function list(argv, deps = {}) {
     return typeof s === "string" && s.length > COLUMN_CELL_CAP ? s.slice(0, COLUMN_CELL_CAP) + "\u2026" : s;
   };
   const projectMinimal = (d) => {
-    const row = {
+    const row2 = {
       id: d.id,
       type: typeof d.frontmatter.type === "string" ? d.frontmatter.type : "",
       title: typeof d.frontmatter.title === "string" ? d.frontmatter.title : d.id.split("/").pop() ?? d.id,
       timestamp: typeof d.frontmatter.timestamp === "string" ? d.frontmatter.timestamp : ""
     };
-    for (const f of extraFields) row[f] = cell(d.frontmatter[f]);
-    return row;
+    for (const f of extraFields) row2[f] = cell(d.frontmatter[f]);
+    return row2;
   };
   const fieldsFlagGiven = values.fields !== void 0;
   let kindCols;
@@ -12849,12 +12852,12 @@ async function list(argv, deps = {}) {
   }
   const rows = kindCols ? docs.map((d) => {
     const fm = d.frontmatter;
-    const row = {
+    const row2 = {
       id: d.id,
       title: typeof fm.title === "string" ? fm.title : d.id.split("/").pop() ?? d.id
     };
-    for (const c of kindCols) row[c] = cell(fm[c]);
-    return row;
+    for (const c of kindCols) row2[c] = cell(fm[c]);
+    return row2;
   }) : docs.map(projectMinimal);
   const total = rows.length;
   const shownRows = limit > 0 ? rows.slice(0, limit) : rows;
@@ -13394,34 +13397,34 @@ Options:
   -h, --help            Show this help
 `;
 function toRow(kind2) {
-  const row = {
+  const row2 = {
     governs: kind2.governs,
     required: kind2.fields.required,
     optional: kind2.fields.optional
   };
-  if (kind2.description) row.description = kind2.description;
-  if (Object.keys(kind2.fields.descriptions).length > 0) row.descriptions = kind2.fields.descriptions;
-  if (Object.keys(kind2.fields.values).length > 0) row.values = kind2.fields.values;
+  if (kind2.description) row2.description = kind2.description;
+  if (Object.keys(kind2.fields.descriptions).length > 0) row2.descriptions = kind2.fields.descriptions;
+  if (Object.keys(kind2.fields.values).length > 0) row2.values = kind2.fields.values;
   if (Object.keys(kind2.fields.valueDescriptions ?? {}).length > 0) {
-    row.value_descriptions = kind2.fields.valueDescriptions;
+    row2.value_descriptions = kind2.fields.valueDescriptions;
   }
-  if (Object.keys(kind2.fields.terminal).length > 0) row.terminal = kind2.fields.terminal;
-  if (kind2.links && Object.keys(kind2.links).length > 0) row.links = kind2.links;
+  if (Object.keys(kind2.fields.terminal).length > 0) row2.terminal = kind2.fields.terminal;
+  if (kind2.links && Object.keys(kind2.links).length > 0) row2.links = kind2.links;
   if (kind2.linkDescriptions && Object.keys(kind2.linkDescriptions).length > 0) {
-    row.link_descriptions = kind2.linkDescriptions;
+    row2.link_descriptions = kind2.linkDescriptions;
   }
-  if (kind2.expectsInbound && Object.keys(kind2.expectsInbound).length > 0) row.expects_inbound = kind2.expectsInbound;
-  if (kind2.path) row.path = kind2.path;
+  if (kind2.expectsInbound && Object.keys(kind2.expectsInbound).length > 0) row2.expects_inbound = kind2.expectsInbound;
+  if (kind2.path) row2.path = kind2.path;
   if (kind2.sections && kind2.sections.length > 0) {
-    row.sections = kind2.sections;
-    row.required_headings = kind2.sections.map((section) => `# ${section}`);
+    row2.sections = kind2.sections;
+    row2.required_headings = kind2.sections.map((section) => `# ${section}`);
   }
   if (kind2.freshnessHorizon) {
-    row.horizon = kind2.freshnessHorizon;
+    row2.horizon = kind2.freshnessHorizon;
     const ms = freshnessHorizonMs(kind2);
-    if (ms !== void 0) row.horizon_ms = ms;
+    if (ms !== void 0) row2.horizon_ms = ms;
   }
-  return row;
+  return row2;
 }
 async function kinds(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
@@ -14063,12 +14066,12 @@ async function status(argv, deps = {}) {
     const edges = inboundEdges.get(doc2.id) ?? [];
     const missing = Object.entries(kind2.expectsInbound).filter(([text, sourceKind]) => !edges.some((e) => e.text === text && e.sourceType === sourceKind)).map(([text]) => text);
     if (missing.length === 0) continue;
-    const row = { id: doc2.id };
+    const row2 = { id: doc2.id };
     const declaresStatus = kind2.fields.required.includes("status") || kind2.fields.optional.includes("status");
-    if (declaresStatus) row.status = doc2.frontmatter.status;
-    row.missing = missing;
-    const sortsFirst = terminalDeclared ? isTerminal(kind2, doc2.frontmatter) : row.status === "done";
-    missingExpectedRanked.push({ row, sortsFirst });
+    if (declaresStatus) row2.status = doc2.frontmatter.status;
+    row2.missing = missing;
+    const sortsFirst = terminalDeclared ? isTerminal(kind2, doc2.frontmatter) : row2.status === "done";
+    missingExpectedRanked.push({ row: row2, sortsFirst });
   }
   missingExpectedRanked.sort((a, b) => {
     if (a.sortsFirst !== b.sortsFirst) return a.sortsFirst ? 1 : -1;
@@ -15973,6 +15976,342 @@ async function hookInstallHintOnce(key, inv, installed = hookInstalled) {
 // src/commands/sync-establish.ts
 import { existsSync as existsSync7, lstatSync as lstatSync2, readdirSync as readdirSync2, renameSync as renameSync2, rmSync as rmSync3 } from "node:fs";
 import path17 from "node:path";
+
+// src/sync-outcomes.ts
+function upstreamHelp(inv) {
+  return `if a teammate already shares this project's board, make sure your \`origin\` remote points at the SAME repository they pushed the \`board\` branch to; if nobody has started sharing this project's board yet, run \`${inv} sync --establish\` to start \u2014 until then a local-only board is a supported mode: every local command keeps working, and nothing leaves this machine`;
+}
+function syncInTreeRefusalMessage(inv, hasOrigin = true) {
+  const establishRemedy = hasOrigin ? `run '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch` : `this repo has no '${BOARD_REMOTE}' remote yet \u2014 run 'git remote add ${BOARD_REMOTE} <url>', then '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch`;
+  return `this board rides your code branch \u2014 '${BUNDLE_DIR}/' is committed with the code, so a full sync would have to publish the code branch itself; share board changes with your normal git commit/push, run '${inv} sync --pull-only' to fetch-and-report incoming board changes, or ${establishRemedy}`;
+}
+function inTreeNoBasisNote(reason, ref) {
+  const cause = reason === "detached-head" ? "the checkout is on a detached HEAD (no branch, so no tracking upstream)" : reason === "no-upstream" ? "the current branch has no upstream tracking configured" : `the branch's tracking ref '${ref ?? "?"}' does not resolve (never fetched, or deleted on the remote)`;
+  return `${cause} \u2014 there is nothing to fetch from or compare against, so board freshness is unknown; sync will not guess an upstream`;
+}
+var BOARD_UP_TO_DATE = "up to date";
+var BOARD_OFFLINE_NOTE = "board sync offline \u2014 showing last known state";
+function boardFirstContactLine(inv) {
+  return `not yet provisioned \u2014 run \`${inv} sync\` to set it up`;
+}
+var BOARD_IN_TREE_LINE = `rides this branch \u2014 '${BUNDLE_DIR}/' is committed with the code; teammates' board changes arrive with your normal 'git pull'`;
+function inTreePullHintLine(n) {
+  return `${n} incoming board ${n === 1 ? "change is" : "changes are"} not yet in this checkout \u2014 run 'git pull' to get ${n === 1 ? "it" : "them"}`;
+}
+function inTreeUnpushedLine(n) {
+  return `${n} board ${n === 1 ? "commit" : "commits"} on this branch not yet pushed \u2014 'git push' shares ${n === 1 ? "it" : "them"}`;
+}
+function inTreeUncommittedLine(n) {
+  return `${n} uncommitted board ${n === 1 ? "change" : "changes"} \u2014 commit ${n === 1 ? "it" : "them"} with your normal git flow to share`;
+}
+function unpushedLine(n) {
+  return `${n} local board ${n === 1 ? "commit" : "commits"} not yet pushed \u2014 run sync when online`;
+}
+function uncommittedLine(n) {
+  return `${n} uncommitted board ${n === 1 ? "change" : "changes"} \u2014 run sync to share ${n === 1 ? "it" : "them"}`;
+}
+var row = (r) => r;
+var line = (message) => ({ message });
+function unshallowCmd() {
+  return `git fetch --unshallow ${BOARD_REMOTE}`;
+}
+var SYNC_OUTCOMES = {
+  // ffSwallowToError family: `sync --pull-only`'s structured translation of the fail-soft pull's
+  // swallow reasons (the SessionStart caller swallows the same reasons silently).
+  "ff.git-missing": row({
+    code: "GIT_MISSING",
+    message: () => "sync needs git, which isn't installed on this machine",
+    help: () => "install git (https://git-scm.com/downloads), then re-run the command"
+  }),
+  "ff.no-upstream.unpublished": row({
+    code: "NO_UPSTREAM",
+    message: (p) => `board not published yet \u2014 run '${p.inv} sync --establish' to publish it explicitly`,
+    help: (p) => `${p.inv} sync --establish`
+  }),
+  "ff.no-upstream.unlinked": row({
+    code: "NO_UPSTREAM",
+    message: () => "the board branch isn't linked to a remote \u2014 there is nothing to pull from or push to (a local-only board is a supported mode; sharing needs a remote 'board' branch)",
+    help: (p) => upstreamHelp(p.inv)
+  }),
+  "ff.auth": row({
+    code: "AUTH_REQUIRED",
+    message: () => "sync was denied access to the remote (or the repository is not visible to your credentials)",
+    details: () => ({ best_effort: true })
+  }),
+  "ff.network": row({
+    code: "TRANSIENT",
+    message: () => "sync could not reach the remote \u2014 offline or the host is unreachable; retry",
+    details: () => ({ retryable: true })
+  }),
+  "ff.busy": row({
+    code: "GIT_BUSY",
+    message: () => "another git process is using this repository \u2014 retry once it finishes",
+    details: () => ({ retryable: true })
+  }),
+  "ff.diverged": row({
+    code: "CONFLICT",
+    message: (p) => `the board has local commits not yet pushed, and origin has moved too \u2014 \`sync --pull-only\` only fast-forwards; run \`${p.inv} sync\` (without --pull-only) to reconcile`
+  }),
+  "ff.conflict": row({
+    code: "CONFLICT",
+    message: (p) => `the board checkout has unresolved conflicts \u2014 run \`${p.inv} sync\` (without --pull-only) to reconcile`
+  }),
+  "ff.dirty": row({
+    code: "RUNTIME",
+    message: () => "the board checkout has uncommitted local changes that a fast-forward-only pull would overwrite \u2014 commit or discard them, or run a full sync instead of --pull-only"
+  }),
+  "ff.detached-head": row({
+    code: "RUNTIME",
+    message: () => "the board checkout is in a detached-HEAD state \u2014 sync needs the board branch checked out",
+    details: () => ({ state: "detached-head" })
+  }),
+  "ff.not-a-repo": row({
+    code: "RUNTIME",
+    message: () => "the board checkout is not a git repository \u2014 run sync again to re-provision it"
+  }),
+  "ff.unclassified": row({
+    code: "RUNTIME",
+    message: (p) => `sync's pull step failed for an unclassified reason (${p.reason}) \u2014 re-run, or run without --pull-only`
+  }),
+  // Provisioning's local_board outcomes (bare sync never adopts or publishes a local branch).
+  "sync.local-board.remote-exists": row({
+    code: "CONFLICT",
+    message: () => `both a local '${BOARD_BRANCH}' branch and origin/${BOARD_BRANCH} exist, but the local branch is not the managed board checkout \u2014 bare sync will not guess which history is safe`,
+    help: (p) => `preserve or rename the local branch (for example: git branch -m ${BOARD_BRANCH} ${BOARD_BRANCH}-local-backup), then re-run '${p.inv} sync' to join origin/${BOARD_BRANCH}`
+  }),
+  "sync.local-board.unpublished": row({
+    code: "NO_UPSTREAM",
+    message: () => `a local '${BOARD_BRANCH}' branch exists but has not been explicitly adopted or published \u2014 bare sync will not check it out or create origin/${BOARD_BRANCH}`,
+    help: (p) => `${p.inv} sync --establish`
+  }),
+  // The in-tree board's write refusal + the viewer's no-comparison-basis refusal.
+  "in-tree.sync-refusal": row({
+    code: "USAGE",
+    message: (p) => syncInTreeRefusalMessage(p.inv, p.hasOrigin),
+    details: (p) => ({ path: p.boardPath, state: "in-tree" }),
+    help: (p) => p.hasOrigin ? `${p.inv} sync --establish` : `git remote add ${BOARD_REMOTE} <url>`
+  }),
+  "in-tree.show-incoming.no-basis": row({
+    code: "NO_UPSTREAM",
+    message: (p) => `this board rides the current branch, and ${inTreeNoBasisNote(p.reason, p.ref)}`,
+    details: () => ({ state: "in-tree" }),
+    help: (p) => `configure tracking (git branch --set-upstream-to=<remote>/<branch>) or fetch once, then re-run ${p.inv} sync --show-incoming <id>`
+  }),
+  // establish's refusal arms (committed-folder preconditions + the greenfield namespace guard).
+  "establish.behind-origin": row({
+    code: "RUNTIME",
+    message: (p) => `establish refused: '${p.branch}' is behind ${BOARD_REMOTE}/${p.branch} with board changes \u2014 establishing from this stale state would strand a teammate's board commits on the frozen folder forever`,
+    details: (p) => ({ behind_board_commits: p.behind.length, commits: p.behind.slice(0, 20) }),
+    help: (p) => `git pull, then re-run ${p.inv} sync --establish --yes`
+  }),
+  "establish.namespace-conflict.greenfield": row({
+    code: "RUNTIME",
+    message: (p) => `branches named '${BOARD_BRANCH}/\u2026' block establishment: ${p.conflicts.join(", ")}`,
+    details: (p) => ({ conflicting_branches: p.conflicts })
+  }),
+  "establish.namespace-conflict.committed": row({
+    code: "RUNTIME",
+    message: (p) => `establish refused: branches named '${BOARD_BRANCH}/\u2026' exist \u2014 git cannot create a '${BOARD_BRANCH}' branch alongside them: ${p.conflicts.join(", ")}`,
+    details: (p) => ({ conflicting_branches: p.conflicts }),
+    help: (p) => `delete or rename these branches, then re-run ${p.inv} sync --establish --yes`
+  }),
+  "establish.board-branch-mismatch": row({
+    code: "RUNTIME",
+    message: () => `a local '${BOARD_BRANCH}' branch already exists and does not match the committed folder \u2014 if it is left over from an interrupted establishment, delete it (git branch -D ${BOARD_BRANCH}); if it is used for something else, rename it \u2014 then re-run`
+  }),
+  "establish.detached-head.committed": row({
+    code: "RUNTIME",
+    message: () => `the repository is on a detached HEAD \u2014 check out the branch that carries the committed ${BUNDLE_DIR}/ folder, then re-run`
+  }),
+  "establish.detached-head.marker": row({
+    code: "RUNTIME",
+    message: (p) => `the repository is on a detached HEAD \u2014 check out the branch that carries the committed ${BUNDLE_DIR}/ folder, then re-run '${p.inv} sync --establish --yes'`
+  }),
+  // The committed-case marker (crash/lost-race provenance) refusal arms.
+  "marker.shallow.refusal": row({
+    code: "RUNTIME",
+    message: () => `establish refused: this clone's git history is shallow (truncated), so the interrupted establishment's snapshot cannot be verified against origin/${BOARD_BRANCH}; nothing was changed`,
+    details: (p) => ({ snapshot_commit: p.marker }),
+    help: (p) => `${unshallowCmd()}  # then re-run ${p.inv} sync --establish`
+  }),
+  "marker.lost-race.conflict": row({
+    code: "CONFLICT",
+    message: (p) => p.markerValid ? `origin/${BOARD_BRANCH} does not contain this clone's interrupted establishment snapshot \u2014 a different board is published now; nothing was changed, and the committed folder here is untouched` : `this clone's establishment marker is invalid or unverifiable \u2014 it names a commit that cannot be found even after fetching, so establish cannot tie it to what origin/${BOARD_BRANCH} publishes; nothing was changed, and the committed folder here is untouched`,
+    details: (p) => ({ snapshot_commit: p.marker }),
+    help: (p) => `coordinate with whoever published origin/${BOARD_BRANCH}; to discard this clone's unpublished attempt: git branch -D ${BOARD_BRANCH}, then re-run '${p.inv} sync --establish' \u2014 the stale marker is cleared automatically once the branch is gone`
+  }),
+  "marker.offline.refusal": row({
+    code: "TRANSIENT",
+    message: () => `establish refused: could not reach '${BOARD_REMOTE}' \u2014 finishing the interrupted establishment re-creates the folder-removal commit, which must be cut from a fresh view of ${BOARD_REMOTE}; get online, then re-run`,
+    details: () => ({ retryable: true })
+  }),
+  "marker.tree-changed.conflict": row({
+    code: "CONFLICT",
+    message: (p) => `${BUNDLE_DIR}/ changed on '${p.branch}' after the interrupted establishment pushed its snapshot \u2014 re-creating the folder-removal now would strand those newer board changes on the frozen folder; nothing was changed`,
+    details: (p) => ({ snapshot_tree: p.snapshotTree, current_tree: p.currentTree }),
+    help: (p) => `the newer changes stay recoverable in '${p.branch}' history; after the cleanup PR merges and this clone joins via '${p.inv} sync', re-apply them with doc update`
+  }),
+  // The three marker-unavailable wordings — per-site rows, inconsistencies frozen as-is.
+  "marker.unavailable.tree": row({
+    code: "RUNTIME",
+    message: (p) => `the establishment marker names an unavailable tree (${p.marker})`
+  }),
+  "marker.unavailable.commit.moved": row({
+    code: "RUNTIME",
+    message: (p) => `the establishment marker names an unavailable commit (${p.marker}); nothing was moved`
+  }),
+  "marker.unavailable.commit.changed": row({
+    code: "RUNTIME",
+    message: (p) => `the establishment marker names an unavailable commit (${p.marker}); nothing was changed`
+  }),
+  // Package-side rows: the factories stay the construction sites (thrown inside board-git);
+  // these rows COMPOSE them so the agreement suite enumerates their arms. `top` must be a repo in
+  // the row's state (the factory probes it for the remnant discrimination).
+  "window.pre-share": row({
+    code: "RUNTIME",
+    message: (p) => preShareWindowError(p.top, p.boardPath, true).message,
+    help: (p) => preShareWindowError(p.top, p.boardPath, true).help,
+    details: (p) => preShareWindowError(p.top, p.boardPath, true).details
+  }),
+  "window.pre-share.no-origin": row({
+    code: "RUNTIME",
+    message: (p) => preShareWindowError(p.top, p.boardPath, false).message,
+    help: (p) => preShareWindowError(p.top, p.boardPath, false).help,
+    details: (p) => preShareWindowError(p.top, p.boardPath, false).details
+  }),
+  "window.remnant": row({
+    code: "RUNTIME",
+    message: (p) => preShareWindowError(p.top, p.boardPath, true).message,
+    help: (p) => preShareWindowError(p.top, p.boardPath, true).help,
+    details: (p) => preShareWindowError(p.top, p.boardPath, true).details
+  }),
+  "window.dual-board": row({
+    code: "CONFLICT",
+    message: (p) => dualBoardError(p.boardPath).message,
+    help: (p) => dualBoardError(p.boardPath).help,
+    details: (p) => dualBoardError(p.boardPath).details
+  }),
+  "provision.foreign": row({
+    code: "RUNTIME",
+    message: (p) => existingDirRefusal("foreign", p.boardPath, p.top).message,
+    help: (p) => existingDirRefusal("foreign", p.boardPath, p.top).help,
+    details: (p) => existingDirRefusal("foreign", p.boardPath, p.top).details
+  }),
+  "provision.foreign-checkout": row({
+    code: "RUNTIME",
+    message: (p) => existingDirRefusal("foreign_checkout", p.boardPath, p.top).message,
+    help: (p) => existingDirRefusal("foreign_checkout", p.boardPath, p.top).help,
+    details: (p) => existingDirRefusal("foreign_checkout", p.boardPath, p.top).details
+  }),
+  "provision.unrepairable": row({
+    code: "RUNTIME",
+    message: (p) => existingDirRefusal("unrepairable", p.boardPath, p.top).message,
+    help: (p) => existingDirRefusal("unrepairable", p.boardPath, p.top).help,
+    details: (p) => existingDirRefusal("unrepairable", p.boardPath, p.top).details
+  }),
+  "provision.wrong-branch": row({
+    code: "RUNTIME",
+    message: (p) => existingDirRefusal("wrong_branch", p.boardPath, p.top).message,
+    help: (p) => existingDirRefusal("wrong_branch", p.boardPath, p.top).help,
+    details: (p) => existingDirRefusal("wrong_branch", p.boardPath, p.top).details
+  })
+};
+function syncOutcomeError(key, params) {
+  const r = SYNC_OUTCOMES[key];
+  const details = r.details?.(params);
+  const help = r.help?.(params);
+  return new CliError(r.code, r.message(params), {
+    ...details !== void 0 ? { details } : {},
+    ...help !== void 0 ? { help } : {}
+  });
+}
+var SYNC_OUTCOME_LINES = {
+  "line.in-tree.no-basis": line(
+    (p) => inTreeNoBasisNote(p.reason, p.ref)
+  ),
+  // establish's window notes for a clone with no local establishment work left (pull-first;
+  // probed per state at the site — the remnant state renders the package factory's message).
+  "line.window-note.landed": line(
+    (p) => `this clone still carries the committed ${BUNDLE_DIR}/ folder and the folder-removal has already landed on '${p.branch}' \u2014 run 'git pull' (the folder vanishes), then '${p.inv} sync' (it returns as the live board)`
+  ),
+  "line.window-note.pending": line(
+    (p) => `this clone still carries the committed ${BUNDLE_DIR}/ folder \u2014 once the folder-removal lands on the default branch: 'git pull' (the folder vanishes), then '${p.inv} sync' (it returns as the live board)`
+  ),
+  // alreadyShared's marker-state record FIELD templates (record assembly stays at the site).
+  "line.marker.story.lost-race": line(
+    () => `a different board is published on ${BOARD_REMOTE}/${BOARD_BRANCH} and this clone's earlier establishment snapshot is not part of it`
+  ),
+  "line.marker.story.unverifiable": line(
+    () => `this clone's establishment marker is invalid or unverifiable (it names a commit that cannot be found even after fetching), and the board published on ${BOARD_REMOTE}/${BOARD_BRANCH} cannot be tied to it`
+  ),
+  "line.marker.cleared.removed": line(
+    (p) => `${p.story} \u2014 its stale marker has been cleared (the only change made by this run)`
+  ),
+  "line.marker.cleared.failed": line(
+    (p) => `${p.story} \u2014 its stale marker could NOT be removed (this run changed nothing); remove it by hand: rm ${p.markerPath}`
+  ),
+  "line.marker.lost-race.note": line(
+    (p) => `${p.story} \u2014 this clone's earlier '--establish --yes' did not win; nothing has been changed by this run`
+  ),
+  "line.marker.lost-race.discard": line(
+    (p) => `git branch -D ${BOARD_BRANCH}, then re-run '${p.inv} sync --establish' \u2014 the stale marker is cleared automatically once the branch is gone`
+  ),
+  "line.marker.shallow.note": line(
+    (p) => `an earlier establishment on this clone was interrupted, but this clone's git history is shallow (truncated), so establish cannot verify whether that attempt's snapshot was published \u2014 deepen the history (${unshallowCmd()}), then re-run '${p.inv} sync --establish' (nothing has been changed by this run)`
+  ),
+  "line.marker.interrupted-offer.note": line(
+    (p) => `an interrupted establishment left the board branch pushed but no folder-removal commit \u2014 re-run '${p.inv} sync --establish --yes' to re-create it on '${p.cleanupBranch}' (nothing has been changed by this run)`
+  ),
+  "line.marker.offline.note": line(
+    (p) => `an earlier establishment on this clone was interrupted, but '${BOARD_REMOTE}' cannot be reached to verify what was published \u2014 get online, then re-run '${p.inv} sync --establish' (nothing has been changed by this run)`
+  ),
+  "line.marker.prepared.note": line(
+    (p) => `the folder-removal commit is already prepared on '${p.cleanupBranch}' \u2014 push it and open its PR`
+  ),
+  // home's board-block lines (bound to the shared templates above).
+  "line.home.first-contact": line((p) => boardFirstContactLine(p.inv)),
+  "line.home.up-to-date": line(() => BOARD_UP_TO_DATE),
+  "line.home.offline-note": line(() => BOARD_OFFLINE_NOTE),
+  "line.home.in-tree": line(() => BOARD_IN_TREE_LINE),
+  "line.home.unpushed": line((p) => unpushedLine(p.n)),
+  "line.home.uncommitted": line((p) => uncommittedLine(p.n)),
+  "line.home.in-tree.unpushed": line((p) => inTreeUnpushedLine(p.n)),
+  "line.home.in-tree.uncommitted": line((p) => inTreeUncommittedLine(p.n)),
+  "line.home.in-tree.pull-hint": line((p) => inTreePullHintLine(p.n))
+};
+function syncOutcomeLine(key, params) {
+  return SYNC_OUTCOME_LINES[key].message(params);
+}
+function ffSwallowToError(reason, inv, boardPath) {
+  switch (reason) {
+    case "git-missing":
+      return syncOutcomeError("ff.git-missing", {});
+    case "no-upstream": {
+      const hasLocalBoard = boardPath !== void 0 && runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
+      return hasLocalBoard ? syncOutcomeError("ff.no-upstream.unpublished", { inv }) : syncOutcomeError("ff.no-upstream.unlinked", { inv });
+    }
+    case "auth":
+      return syncOutcomeError("ff.auth", {});
+    case "network":
+      return syncOutcomeError("ff.network", {});
+    case "busy":
+      return syncOutcomeError("ff.busy", {});
+    case "diverged":
+      return syncOutcomeError("ff.diverged", { inv });
+    case "conflict":
+      return syncOutcomeError("ff.conflict", { inv });
+    case "dirty":
+      return syncOutcomeError("ff.dirty", {});
+    case "detached-head":
+      return syncOutcomeError("ff.detached-head", {});
+    case "not-a-repo":
+      return syncOutcomeError("ff.not-a-repo", {});
+    default:
+      return syncOutcomeError("ff.unclassified", { reason });
+  }
+}
+
+// src/commands/sync-establish.ts
 var ESTABLISH_DONE = "the shared board is live \u2014 .agentstate-lite/ now syncs over the 'board' branch";
 var ESTABLISH_ALREADY = "already established";
 function establishNextSteps(inv) {
@@ -16195,7 +16534,7 @@ async function establishBoard(dir, inv, mode, stdout, deps, opts = {}) {
       }
       const markerTree = treeOf(top, marker);
       if (!markerTree) {
-        throw new CliError("RUNTIME", `the establishment marker names an unavailable tree (${marker})`);
+        throw syncOutcomeError("marker.unavailable.tree", { marker });
       }
       setBoardUpstream(boardPath);
       gitignoreNote(top);
@@ -16231,7 +16570,7 @@ async function establishBoard(dir, inv, mode, stdout, deps, opts = {}) {
   if (marker) {
     const markerTree = treeOf(top, marker);
     if (!markerTree) {
-      throw new CliError("RUNTIME", `the establishment marker names an unavailable commit (${marker}); nothing was moved`);
+      throw syncOutcomeError("marker.unavailable.commit.moved", { marker });
     }
     assertPlainBundleShape(recoverySource, inv);
     const currentSnapshot = snapshotBundleCommit(top, recoverySource);
@@ -16283,9 +16622,7 @@ async function establishBoard(dir, inv, mode, stdout, deps, opts = {}) {
   }
   const namespaceConflicts = boardNamespaceConflicts(top);
   if (namespaceConflicts.length > 0) {
-    throw new CliError("RUNTIME", `branches named '${BOARD_BRANCH}/\u2026' block establishment: ${namespaceConflicts.join(", ")}`, {
-      details: { conflicting_branches: namespaceConflicts }
-    });
+    throw syncOutcomeError("establish.namespace-conflict.greenfield", { conflicts: namespaceConflicts });
   }
   assertFreshSource(top, boardPath, inv);
   await assertNotBoundElsewhere(top, boardPath);
@@ -16352,14 +16689,7 @@ function committedNextSteps(inv, branch) {
 function assertNotBehindOnBoard(top, inv, branch) {
   const behind = behindBoardCommits(top, branch);
   if (behind !== null && behind.length > 0) {
-    throw new CliError(
-      "RUNTIME",
-      `establish refused: '${branch}' is behind ${BOARD_REMOTE}/${branch} with board changes \u2014 establishing from this stale state would strand a teammate's board commits on the frozen folder forever`,
-      {
-        details: { behind_board_commits: behind.length, commits: behind.slice(0, 20) },
-        help: `git pull, then re-run ${inv} sync --establish --yes`
-      }
-    );
+    throw syncOutcomeError("establish.behind-origin", { inv, branch, behind });
   }
 }
 function removalCommitMessage(inv, branch) {
@@ -16384,10 +16714,7 @@ async function establishCommitted(top, inv, mode, yes, treeSha, stdout) {
   }
   const branch = currentBranch(top);
   if (branch === "HEAD") {
-    throw new CliError(
-      "RUNTIME",
-      `the repository is on a detached HEAD \u2014 check out the branch that carries the committed ${BUNDLE_DIR}/ folder, then re-run`
-    );
+    throw syncOutcomeError("establish.detached-head.committed", {});
   }
   if (branch === BOARD_BRANCH) {
     throw new CliError(
@@ -16416,14 +16743,7 @@ async function establishCommitted(top, inv, mode, yes, treeSha, stdout) {
   }
   const namespaceConflicts = boardNamespaceConflicts(top);
   if (namespaceConflicts.length > 0) {
-    throw new CliError(
-      "RUNTIME",
-      `establish refused: branches named '${BOARD_BRANCH}/\u2026' exist \u2014 git cannot create a '${BOARD_BRANCH}' branch alongside them: ${namespaceConflicts.join(", ")}`,
-      {
-        details: { conflicting_branches: namespaceConflicts },
-        help: `delete or rename these branches, then re-run ${inv} sync --establish --yes`
-      }
-    );
+    throw syncOutcomeError("establish.namespace-conflict.committed", { inv, conflicts: namespaceConflicts });
   }
   let reuseBoardSha = null;
   if (localBranchExists(top, BOARD_BRANCH)) {
@@ -16431,10 +16751,7 @@ async function establishCommitted(top, inv, mode, yes, treeSha, stdout) {
     if (remnant.tree === treeSha && remnant.count === "1") {
       reuseBoardSha = remnant.sha;
     } else {
-      throw new CliError(
-        "RUNTIME",
-        `a local '${BOARD_BRANCH}' branch already exists and does not match the committed folder \u2014 if it is left over from an interrupted establishment, delete it (git branch -D ${BOARD_BRANCH}); if it is used for something else, rename it \u2014 then re-run`
-      );
+      throw syncOutcomeError("establish.board-branch-mismatch", {});
     }
   }
   if (!yes) {
@@ -16466,75 +16783,54 @@ async function alreadyShared(top, inv, mode, yes, fetchOk, stdout) {
   const marker = readGitDirMarker(top, COMMITTED_MARKER_KEY);
   if (localBranchExists(top, CLEANUP_BRANCH)) {
     clearGitDirMarker(top, COMMITTED_MARKER_KEY);
-    rec.note = `the folder-removal commit is already prepared on '${CLEANUP_BRANCH}' \u2014 push it and open its PR`;
+    rec.note = syncOutcomeLine("line.marker.prepared.note", { cleanupBranch: CLEANUP_BRANCH });
     rec.next_steps = committedNextSteps(inv, branch === "HEAD" ? "the default branch" : branch);
   } else if (marker) {
     if (branch === "HEAD") {
-      throw new CliError(
-        "RUNTIME",
-        `the repository is on a detached HEAD \u2014 check out the branch that carries the committed ${BUNDLE_DIR}/ folder, then re-run '${inv} sync --establish --yes'`
-      );
+      throw syncOutcomeError("establish.detached-head.marker", { inv });
     }
     const remoteCommit = refCommit(top, `refs/remotes/${BOARD_REF}`);
     const markerValid = markerCommitResolves(top, marker);
     const contained = markerValid && remoteCommit !== void 0 && isAncestor(top, marker, remoteCommit);
     if (!contained && fetchOk && isShallowRepository(top)) {
-      const unshallow = `git fetch --unshallow ${BOARD_REMOTE}`;
       if (!yes) {
-        rec.note = `an earlier establishment on this clone was interrupted, but this clone's git history is shallow (truncated), so establish cannot verify whether that attempt's snapshot was published \u2014 deepen the history (${unshallow}), then re-run '${inv} sync --establish' (nothing has been changed by this run)`;
+        rec.note = syncOutcomeLine("line.marker.shallow.note", { inv });
       } else {
-        throw new CliError(
-          "RUNTIME",
-          `establish refused: this clone's git history is shallow (truncated), so the interrupted establishment's snapshot cannot be verified against origin/${BOARD_BRANCH}; nothing was changed`,
-          {
-            details: { snapshot_commit: marker },
-            help: `${unshallow}  # then re-run ${inv} sync --establish`
-          }
-        );
+        throw syncOutcomeError("marker.shallow.refusal", { inv, marker });
       }
     } else if (!contained && fetchOk) {
-      const story = markerValid ? `a different board is published on ${BOARD_REMOTE}/${BOARD_BRANCH} and this clone's earlier establishment snapshot is not part of it` : `this clone's establishment marker is invalid or unverifiable (it names a commit that cannot be found even after fetching), and the board published on ${BOARD_REMOTE}/${BOARD_BRANCH} cannot be tied to it`;
+      const story = markerValid ? syncOutcomeLine("line.marker.story.lost-race", {}) : syncOutcomeLine("line.marker.story.unverifiable", {});
       if (!localBranchExists(top, BOARD_BRANCH)) {
         const cleared = clearGitDirMarkerVerified(top, COMMITTED_MARKER_KEY);
-        rec.cleared = cleared ? `${story} \u2014 its stale marker has been cleared (the only change made by this run)` : `${story} \u2014 its stale marker could NOT be removed (this run changed nothing); remove it by hand: rm ${gitDirMarkerPath(top, COMMITTED_MARKER_KEY)}`;
+        rec.cleared = cleared ? syncOutcomeLine("line.marker.cleared.removed", { story }) : syncOutcomeLine("line.marker.cleared.failed", {
+          story,
+          markerPath: gitDirMarkerPath(top, COMMITTED_MARKER_KEY)
+        });
         rec.note = windowNote(top, inv, branch);
       } else if (!yes) {
-        rec.note = `${story} \u2014 this clone's earlier '--establish --yes' did not win; nothing has been changed by this run`;
-        rec.discard = `git branch -D ${BOARD_BRANCH}, then re-run '${inv} sync --establish' \u2014 the stale marker is cleared automatically once the branch is gone`;
+        rec.note = syncOutcomeLine("line.marker.lost-race.note", { story });
+        rec.discard = syncOutcomeLine("line.marker.lost-race.discard", { inv });
       } else {
-        throw new CliError(
-          "CONFLICT",
-          markerValid ? `origin/${BOARD_BRANCH} does not contain this clone's interrupted establishment snapshot \u2014 a different board is published now; nothing was changed, and the committed folder here is untouched` : `this clone's establishment marker is invalid or unverifiable \u2014 it names a commit that cannot be found even after fetching, so establish cannot tie it to what origin/${BOARD_BRANCH} publishes; nothing was changed, and the committed folder here is untouched`,
-          {
-            details: { snapshot_commit: marker },
-            help: `coordinate with whoever published origin/${BOARD_BRANCH}; to discard this clone's unpublished attempt: git branch -D ${BOARD_BRANCH}, then re-run '${inv} sync --establish' \u2014 the stale marker is cleared automatically once the branch is gone`
-          }
-        );
+        throw syncOutcomeError("marker.lost-race.conflict", { inv, marker, markerValid });
       }
     } else if (!yes) {
-      rec.note = contained ? `an interrupted establishment left the board branch pushed but no folder-removal commit \u2014 re-run '${inv} sync --establish --yes' to re-create it on '${CLEANUP_BRANCH}' (nothing has been changed by this run)` : `an earlier establishment on this clone was interrupted, but '${BOARD_REMOTE}' cannot be reached to verify what was published \u2014 get online, then re-run '${inv} sync --establish' (nothing has been changed by this run)`;
+      rec.note = contained ? syncOutcomeLine("line.marker.interrupted-offer.note", { inv, cleanupBranch: CLEANUP_BRANCH }) : syncOutcomeLine("line.marker.offline.note", { inv });
     } else if (!fetchOk) {
-      throw new CliError(
-        "TRANSIENT",
-        `establish refused: could not reach '${BOARD_REMOTE}' \u2014 finishing the interrupted establishment re-creates the folder-removal commit, which must be cut from a fresh view of ${BOARD_REMOTE}; get online, then re-run`,
-        { details: { retryable: true } }
-      );
+      throw syncOutcomeError("marker.offline.refusal", {});
     } else {
       assertNotBehindOnBoard(top, inv, branch);
       const markerTree = treeOf(top, marker);
       if (!markerTree) {
-        throw new CliError("RUNTIME", `the establishment marker names an unavailable commit (${marker}); nothing was changed`);
+        throw syncOutcomeError("marker.unavailable.commit.changed", { marker });
       }
       const currentTree = folderTreeAtHead(top);
       if (currentTree !== markerTree) {
-        throw new CliError(
-          "CONFLICT",
-          `${BUNDLE_DIR}/ changed on '${branch}' after the interrupted establishment pushed its snapshot \u2014 re-creating the folder-removal now would strand those newer board changes on the frozen folder; nothing was changed`,
-          {
-            details: { snapshot_tree: markerTree, current_tree: currentTree ?? "absent" },
-            help: `the newer changes stay recoverable in '${branch}' history; after the cleanup PR merges and this clone joins via '${inv} sync', re-apply them with doc update`
-          }
-        );
+        throw syncOutcomeError("marker.tree-changed.conflict", {
+          inv,
+          branch,
+          snapshotTree: markerTree,
+          currentTree: currentTree ?? "absent"
+        });
       }
       const removalSha = createRemovalCommit(top, removalCommitMessage(inv, branch));
       mustGit(top, ["branch", CLEANUP_BRANCH, removalSha]);
@@ -16554,7 +16850,7 @@ function windowNote(top, inv, branch) {
   const guidance = boardWindowGuidance(top);
   if (guidance.state === "window-remnant") return guidance.message;
   const landedUpstream = pathLandedAbsentOnRemoteBranch(top, branch, BUNDLE_DIR);
-  return landedUpstream ? `this clone still carries the committed ${BUNDLE_DIR}/ folder and the folder-removal has already landed on '${branch}' \u2014 run 'git pull' (the folder vanishes), then '${inv} sync' (it returns as the live board)` : `this clone still carries the committed ${BUNDLE_DIR}/ folder \u2014 once the folder-removal lands on the default branch: 'git pull' (the folder vanishes), then '${inv} sync' (it returns as the live board)`;
+  return landedUpstream ? syncOutcomeLine("line.window-note.landed", { inv, branch }) : syncOutcomeLine("line.window-note.pending", { inv });
 }
 
 // src/commands/sync.ts
@@ -16681,9 +16977,6 @@ function pushFailureMessage(err) {
   if (err.code === "AUTH_REQUIRED" || err.code === "TRANSIENT") return PUSH_FAIL_SAFETY_MESSAGE;
   return `committed to the board locally \u2014 your work is saved. ${err.message}`;
 }
-function upstreamHelp(inv) {
-  return `if a teammate already shares this project's board, make sure your \`origin\` remote points at the SAME repository they pushed the \`board\` branch to; if nobody has started sharing this project's board yet, run \`${inv} sync --establish\` to start \u2014 until then a local-only board is a supported mode: every local command keeps working, and nothing leaves this machine`;
-}
 function withUpstreamHelp(err, inv) {
   if (err.code === "NO_UPSTREAM" && err.help === void 0) {
     return new CliError("NO_UPSTREAM", err.message, { details: err.details, help: upstreamHelp(inv) });
@@ -16770,92 +17063,20 @@ function frontmatterDiffKeys(boardPath, c) {
 }
 function toConflictRows(boardPath, conflicts) {
   return conflicts.map((c) => {
-    const row = c.isDoc ? { id: c.entry } : { path: c.entry };
-    if (c.isDoc) Object.assign(row, keptDocMeta(boardPath, c.relPath));
-    row.yours = c.exportPath !== null ? c.exportPath : "deleted locally \u2014 nothing to save";
-    if (c.bodyExportPath !== null) row.yours_body = c.bodyExportPath;
+    const row2 = c.isDoc ? { id: c.entry } : { path: c.entry };
+    if (c.isDoc) Object.assign(row2, keptDocMeta(boardPath, c.relPath));
+    row2.yours = c.exportPath !== null ? c.exportPath : "deleted locally \u2014 nothing to save";
+    if (c.bodyExportPath !== null) row2.yours_body = c.bodyExportPath;
     const diff = frontmatterDiffKeys(boardPath, c);
-    if (diff.length > 0) row.frontmatter_differs = diff;
-    row.theirs = c.landed ? "kept" : "kept (deleted upstream)";
-    return row;
+    if (diff.length > 0) row2.frontmatter_differs = diff;
+    row2.theirs = c.landed ? "kept" : "kept (deleted upstream)";
+    return row2;
   });
 }
 function withProvisionAnnouncement(err, outcome) {
   const announcement = provisionAnnouncement(outcome);
   if (!announcement) return err;
   return new CliError(err.code, err.message, { details: { ...err.details, ...announcement }, help: err.help });
-}
-function ffSwallowToError(reason, inv, boardPath) {
-  switch (reason) {
-    case "git-missing":
-      return new CliError("GIT_MISSING", "sync needs git, which isn't installed on this machine", {
-        help: "install git (https://git-scm.com/downloads), then re-run the command"
-      });
-    case "no-upstream": {
-      const hasLocalBoard = boardPath !== void 0 && runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
-      if (hasLocalBoard) {
-        return new CliError(
-          "NO_UPSTREAM",
-          `board not published yet \u2014 run '${inv} sync --establish' to publish it explicitly`,
-          { help: `${inv} sync --establish` }
-        );
-      }
-      return new CliError(
-        "NO_UPSTREAM",
-        "the board branch isn't linked to a remote \u2014 there is nothing to pull from or push to (a local-only board is a supported mode; sharing needs a remote 'board' branch)",
-        { help: upstreamHelp(inv) }
-      );
-    }
-    case "auth":
-      return new CliError(
-        "AUTH_REQUIRED",
-        "sync was denied access to the remote (or the repository is not visible to your credentials)",
-        { details: { best_effort: true } }
-      );
-    case "network":
-      return new CliError(
-        "TRANSIENT",
-        "sync could not reach the remote \u2014 offline or the host is unreachable; retry",
-        { details: { retryable: true } }
-      );
-    case "busy":
-      return new CliError(
-        "GIT_BUSY",
-        "another git process is using this repository \u2014 retry once it finishes",
-        { details: { retryable: true } }
-      );
-    case "diverged":
-      return new CliError(
-        "CONFLICT",
-        `the board has local commits not yet pushed, and origin has moved too \u2014 \`sync --pull-only\` only fast-forwards; run \`${inv} sync\` (without --pull-only) to reconcile`
-      );
-    case "conflict":
-      return new CliError(
-        "CONFLICT",
-        `the board checkout has unresolved conflicts \u2014 run \`${inv} sync\` (without --pull-only) to reconcile`
-      );
-    case "dirty":
-      return new CliError(
-        "RUNTIME",
-        "the board checkout has uncommitted local changes that a fast-forward-only pull would overwrite \u2014 commit or discard them, or run a full sync instead of --pull-only"
-      );
-    case "detached-head":
-      return new CliError(
-        "RUNTIME",
-        "the board checkout is in a detached-HEAD state \u2014 sync needs the board branch checked out",
-        { details: { state: "detached-head" } }
-      );
-    case "not-a-repo":
-      return new CliError(
-        "RUNTIME",
-        "the board checkout is not a git repository \u2014 run sync again to re-provision it"
-      );
-    default:
-      return new CliError(
-        "RUNTIME",
-        `sync's pull step failed for an unclassified reason (${reason}) \u2014 re-run, or run without --pull-only`
-      );
-  }
 }
 var UNKNOWN_FIELD = "unknown";
 function fmValue(v) {
@@ -16874,15 +17095,7 @@ function syncRemoteStateUnknownNote(inv, hasLocalBundle) {
   return local + `Retry \`${inv} sync\` when origin is available; a shared board may already exist.`;
 }
 var SYNC_IN_TREE_BOARD_LINE = `in-tree \u2014 board docs ride the current code branch (${BUNDLE_DIR}/ is committed with the code)`;
-function syncInTreeRefusalMessage(inv, hasOrigin = true) {
-  const establishRemedy = hasOrigin ? `run '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch` : `this repo has no '${BOARD_REMOTE}' remote yet \u2014 run 'git remote add ${BOARD_REMOTE} <url>', then '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch`;
-  return `this board rides your code branch \u2014 '${BUNDLE_DIR}/' is committed with the code, so a full sync would have to publish the code branch itself; share board changes with your normal git commit/push, run '${inv} sync --pull-only' to fetch-and-report incoming board changes, or ${establishRemedy}`;
-}
 var SYNC_IN_TREE_NO_BASIS = "no-comparison-basis";
-function inTreeNoBasisNote(reason, ref) {
-  const cause = reason === "detached-head" ? "the checkout is on a detached HEAD (no branch, so no tracking upstream)" : reason === "no-upstream" ? "the current branch has no upstream tracking configured" : `the branch's tracking ref '${ref ?? "?"}' does not resolve (never fetched, or deleted on the remote)`;
-  return `${cause} \u2014 there is nothing to fetch from or compare against, so board freshness is unknown; sync will not guess an upstream`;
-}
 function inTreePullHint(behind) {
   return `${behind} incoming board ${behind === 1 ? "change is" : "changes are"} not yet in this checkout \u2014 run 'git pull' to get ${behind === 1 ? "it" : "them"}`;
 }
@@ -16893,10 +17106,7 @@ async function syncInTree(dir, pullOnly, inv, mode, limit, stdout, deps) {
   const boardPath = path18.join(top, BUNDLE_DIR);
   if (!pullOnly) {
     const hasOrigin = runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0;
-    throw new CliError("USAGE", syncInTreeRefusalMessage(inv, hasOrigin), {
-      details: { path: boardPath, state: "in-tree" },
-      help: hasOrigin ? `${inv} sync --establish` : `git remote add ${BOARD_REMOTE} <url>`
-    });
+    throw syncOutcomeError("in-tree.sync-refusal", { inv, boardPath, hasOrigin });
   }
   const key = resolveBundleKey(boardPath);
   await defaultSyncStore.refreshMarker(key);
@@ -16905,10 +17115,10 @@ async function syncInTree(dir, pullOnly, inv, mode, limit, stdout, deps) {
   const rec = { board: SYNC_IN_TREE_BOARD_LINE };
   if (result.state === "no-upstream") {
     rec.state = SYNC_IN_TREE_NO_BASIS;
-    rec.note = inTreeNoBasisNote(result.reason);
+    rec.note = syncOutcomeLine("line.in-tree.no-basis", { reason: result.reason });
   } else if (result.state === "unusable-upstream") {
     rec.state = SYNC_IN_TREE_NO_BASIS;
-    rec.note = inTreeNoBasisNote("unusable-upstream", result.ref);
+    rec.note = syncOutcomeLine("line.in-tree.no-basis", { reason: "unusable-upstream", ref: result.ref });
   } else {
     rec.upstream = result.upstreamRef;
     rec.incoming = cap2(toIncomingRows(result.changes), limit);
@@ -17018,20 +17228,7 @@ async function syncCommand(argv, deps = {}) {
   }
   const outcome = provisionBoardWorktree(dir, { allowLocalBranch: false });
   if (outcome.kind === "local_board") {
-    if (outcome.remoteExists) {
-      throw new CliError(
-        "CONFLICT",
-        `both a local '${BOARD_BRANCH}' branch and origin/${BOARD_BRANCH} exist, but the local branch is not the managed board checkout \u2014 bare sync will not guess which history is safe`,
-        {
-          help: `preserve or rename the local branch (for example: git branch -m ${BOARD_BRANCH} ${BOARD_BRANCH}-local-backup), then re-run '${inv} sync' to join origin/${BOARD_BRANCH}`
-        }
-      );
-    }
-    throw new CliError(
-      "NO_UPSTREAM",
-      `a local '${BOARD_BRANCH}' branch exists but has not been explicitly adopted or published \u2014 bare sync will not check it out or create origin/${BOARD_BRANCH}`,
-      { help: `${inv} sync --establish` }
-    );
+    throw outcome.remoteExists ? syncOutcomeError("sync.local-board.remote-exists", { inv }) : syncOutcomeError("sync.local-board.unpublished", { inv });
   }
   if (outcome.kind === "no_repo") {
     stdout(render({ sync: "nothing to sync" }, mode));
@@ -17202,14 +17399,7 @@ var SHOW_INCOMING_ABSENT_STATE = "absent upstream \u2014 not on origin/board as 
 var SHOW_INCOMING_IN_TREE_ABSENT_STATE = `absent upstream \u2014 not under ${BUNDLE_DIR}/ on the branch's tracking upstream as of the last fetch (deleted upstream, or a new local doc)`;
 var SHOW_INCOMING_NO_UPSTREAM = "there is no fetched origin/board state to show \u2014 either this board is local-only (no remote board branch, so no incoming versions exist), or nothing has been fetched yet";
 function showIncomingInTreeNoBasis(inv, reason, ref) {
-  return new CliError(
-    "NO_UPSTREAM",
-    `this board rides the current branch, and ${inTreeNoBasisNote(reason, ref)}`,
-    {
-      details: { state: "in-tree" },
-      help: `configure tracking (git branch --set-upstream-to=<remote>/<branch>) or fetch once, then re-run ${inv} sync --show-incoming <id>`
-    }
-  );
+  return syncOutcomeError("in-tree.show-incoming.no-basis", { inv, reason, ref });
 }
 function attachBodyPreview(rec, body, byteHatch) {
   if (body.length > BODY_PREVIEW_LIMIT) {
@@ -17515,17 +17705,17 @@ function compactCommandReference(invocation) {
 function wrapText(text, width = 96) {
   const words = text.split(/\s+/).filter((w) => w.length > 0);
   const wrapped = [];
-  let line = "";
+  let line2 = "";
   for (const word of words) {
-    const candidate = line.length === 0 ? word : `${line} ${word}`;
-    if (candidate.length > width && line.length > 0) {
-      wrapped.push(line);
-      line = word;
+    const candidate = line2.length === 0 ? word : `${line2} ${word}`;
+    if (candidate.length > width && line2.length > 0) {
+      wrapped.push(line2);
+      line2 = word;
     } else {
-      line = candidate;
+      line2 = candidate;
     }
   }
-  if (line.length > 0) wrapped.push(line);
+  if (line2.length > 0) wrapped.push(line2);
   return wrapped.join("\n");
 }
 function helpIndexText(invocation) {
@@ -17938,23 +18128,8 @@ async function discoverSummarizeBundle(startDir) {
 async function defaultLoadWorkspaces(home2, signal) {
   return (await loadCatalog(home2, signal)).entries.map(({ label }) => ({ label })).sort((a, b) => a.label.localeCompare(b.label));
 }
-var BOARD_UP_TO_DATE = "up to date";
-var BOARD_OFFLINE_NOTE = "board sync offline \u2014 showing last known state";
 var BOARD_CHANGES_SHOWN_LIMIT = 10;
-function boardFirstContactLine(inv) {
-  return `not yet provisioned \u2014 run \`${inv} sync\` to set it up`;
-}
-var BOARD_IN_TREE_LINE = `rides this branch \u2014 '${BUNDLE_DIR}/' is committed with the code; teammates' board changes arrive with your normal 'git pull'`;
 var IN_TREE_SINCE_FIELD = "since_this_machine_last_checked";
-function inTreePullHintLine(n) {
-  return `${n} incoming board ${n === 1 ? "change is" : "changes are"} not yet in this checkout \u2014 run 'git pull' to get ${n === 1 ? "it" : "them"}`;
-}
-function inTreeUnpushedLine(n) {
-  return `${n} board ${n === 1 ? "commit" : "commits"} on this branch not yet pushed \u2014 'git push' shares ${n === 1 ? "it" : "them"}`;
-}
-function inTreeUncommittedLine(n) {
-  return `${n} uncommitted board ${n === 1 ? "change" : "changes"} \u2014 commit ${n === 1 ? "it" : "them"} with your normal git flow to share`;
-}
 function hookUpdateNote(inv) {
   return `the installed SessionStart hook predates \`session-start\` \u2014 re-run \`${inv} hook install\` to pick up the board-aware hook`;
 }
@@ -17968,15 +18143,9 @@ function sinceLine(rows) {
   const n = rows.length;
   return `${n} board ${n === 1 ? "change" : "changes"} from ${actorPhrase(rows)}`;
 }
-function docLine(row) {
-  const kindPart = row.kind && row.kind !== "unknown" ? `${row.kind} ` : "";
-  return `${row.actor} \xB7 ${row.verb} ${kindPart}"${row.title}"`;
-}
-function unpushedLine(n) {
-  return `${n} local board ${n === 1 ? "commit" : "commits"} not yet pushed \u2014 run sync when online`;
-}
-function uncommittedLine(n) {
-  return `${n} uncommitted board ${n === 1 ? "change" : "changes"} \u2014 run sync to share ${n === 1 ? "it" : "them"}`;
+function docLine(row2) {
+  const kindPart = row2.kind && row2.kind !== "unknown" ? `${row2.kind} ` : "";
+  return `${row2.actor} \xB7 ${row2.verb} ${kindPart}"${row2.title}"`;
 }
 function countOr(live, cached) {
   return live ?? cached ?? 0;
