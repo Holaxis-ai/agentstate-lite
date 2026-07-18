@@ -1588,3 +1588,31 @@ test("query: a Convention doc's frontmatter.fields survives query() as a plain n
     });
   });
 });
+
+// ── mutation-survivor pins (core-survivor-triage unit) ────────────────────────
+
+// kills: kinds.ts:208:15 Regex #1477
+// kills: kinds.ts:208:15 Regex #1482
+test("pin: splitSections splits only LINE-ANCHORED H1s, including a heading directly above its content line", async () => {
+  const { splitSections } = await import("../src/kinds.js");
+  assert.deepEqual(splitSections("# A\ncontent"), { A: "content" });
+  assert.deepEqual(splitSections("text with # inline\n\n# Real\nbody"), { Real: "body" });
+});
+
+// kills: kinds.ts:746:7 ConditionalExpression #2085
+// kills: kinds.ts:746:56 ConditionalExpression #2091
+// kills: kinds.ts:746:56 EqualityOperator #2092
+// kills: kinds.ts:746:56 MethodExpression #2093
+test("pin: defaultTimestampAndValidateAgainstRegistry preserves a valid timestamp and replaces a whitespace-only one", async () => {
+  const { defaultTimestampAndValidateAgainstRegistry } = await import("../src/kinds.js");
+  const empty = { kinds: new Map(), warnings: [] };
+
+  const keep = { id: "x", frontmatter: { type: "Note", timestamp: "2026-07-16T00:00:00.000Z" }, body: "" };
+  defaultTimestampAndValidateAgainstRegistry(keep, empty);
+  assert.equal(keep.frontmatter.timestamp, "2026-07-16T00:00:00.000Z");
+
+  const blank = { id: "y", frontmatter: { type: "Note", timestamp: "   " }, body: "" };
+  defaultTimestampAndValidateAgainstRegistry(blank, empty);
+  assert.notEqual(blank.frontmatter.timestamp, "   ");
+  assert.ok(!Number.isNaN(Date.parse(String(blank.frontmatter.timestamp))));
+});

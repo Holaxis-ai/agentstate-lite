@@ -329,3 +329,213 @@ test("two independent processes with different POSIX TMPDIR values share one CAS
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+// ── mutation-survivor pins (core-survivor-triage unit) ────────────────────────
+// Each test pins behavior a Stryker survivor from the first full core mutation
+// report (run 29628092134) proved unobserved. Every "kills:" line was red-proven:
+// the exact mutant applied → test fails; real code → passes.
+
+// kills: filesystem-lock.ts:50:36 BlockStatement #937
+// kills: filesystem-lock.ts:52:7 ConditionalExpression #940
+// kills: filesystem-lock.ts:52:7 EqualityOperator #941
+// kills: filesystem-lock.ts:52:33 StringLiteral #942
+// kills: filesystem-lock.ts:79:86 StringLiteral #970
+// kills: filesystem-lock.ts:84:27 StringLiteral #973
+// kills: filesystem-lock.ts:84:42 StringLiteral #974
+// kills: filesystem-lock.ts:90:7 ConditionalExpression #980
+// kills: filesystem-lock.ts:92:5 StringLiteral #982
+// kills: filesystem-lock.ts:93:5 ObjectLiteral #983
+// kills: filesystem-lock.ts:93:47 BooleanLiteral #984
+// kills: filesystem-lock.ts:93:65 BooleanLiteral #985
+test("pin: lock root is the exact system-sticky per-uid namespace, home fallback and impossible-root refusal included", async (t) => {
+  if (process.platform === "win32" || process.getuid === undefined) {
+    t.skip("POSIX-only path contract");
+    return;
+  }
+  const { realpathSync } = await import("node:fs");
+  const { homedir } = await import("node:os");
+  const uid = process.getuid();
+
+  // The default namespace: the SYSTEM-WIDE sticky dir (never a session TMPDIR), keyed by uid.
+  const tmpReal = realpathSync("/tmp");
+  assert.equal(
+    filesystemMutationLockRoot(),
+    path.join(tmpReal, `agentstate-lite-mutation-locks-uid-${uid}`),
+  );
+
+  // A portable root spanning /tmp forces the SECOND candidate: the exact home-dir namespace.
+  const homeReal = realpathSync(homedir());
+  assert.equal(
+    filesystemMutationLockRoot(tmpReal),
+    path.join(homeReal, ".agentstate", `mutation-locks-uid-${uid}`),
+  );
+
+  // A portable root containing EVERY candidate is refused with the typed, inspectable error.
+  assert.throws(
+    () => filesystemMutationLockRoot("/"),
+    (err: unknown) => {
+      assert.ok(err instanceof FilesystemMutationLockError);
+      assert.equal(err.stale, false);
+      assert.equal(err.malformed, true);
+      assert.match(err.message, /cannot place filesystem mutation locks/);
+      return true;
+    },
+  );
+});
+
+// kills: filesystem-lock.ts:279:13 ConditionalExpression #1187
+// kills: filesystem-lock.ts:279:13 OptionalChaining #1189
+// kills: filesystem-lock.ts:279:45 BlockStatement #1190
+// kills: filesystem-lock.ts:281:13 StringLiteral #1191
+// kills: filesystem-lock.ts:282:13 ObjectLiteral #1192
+test("pin: release refuses a changed or malformed owner token and never removes the foreign lock", async () => {
+  const root = await tempDir();
+  try {
+    const target = path.join(root, "doc.md");
+    const release = await acquireFilesystemMutationLock(target);
+    const canonicalTarget = path.join(await fs.realpath(path.dirname(target)), path.basename(target));
+    const lockPath = filesystemMutationLockPath(canonicalTarget);
+    const ownerFile = path.join(lockPath, "owner.json");
+    const original = await fs.readFile(ownerFile, "utf8");
+
+    const foreign = { ...(JSON.parse(original) as Record<string, unknown>), token: "someone-else" };
+    await fs.writeFile(ownerFile, JSON.stringify(foreign));
+    await assert.rejects(
+      () => release(),
+      (err: unknown) => {
+        assert.ok(err instanceof FilesystemMutationLockError);
+        assert.match(err.message, /refusing to release/);
+        assert.equal(err.owner?.token, "someone-else");
+        return true;
+      },
+    );
+    assert.equal((await fs.stat(lockPath)).isDirectory(), true, "foreign lock must not be removed");
+
+    // Malformed owner metadata is refused the SAME typed way (never a TypeError).
+    await fs.writeFile(ownerFile, "not json");
+    await assert.rejects(
+      () => release(),
+      (err: unknown) => err instanceof FilesystemMutationLockError && err.malformed === true,
+    );
+    assert.equal((await fs.stat(lockPath)).isDirectory(), true);
+
+    // Restoring the token makes the SAME release closure succeed and clean up.
+    await fs.writeFile(ownerFile, original);
+    await release();
+    await assert.rejects(() => fs.stat(lockPath));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+// kills: filesystem-lock.ts:145:17 BlockStatement #1062
+// kills: filesystem-lock.ts:146:12 ConditionalExpression #1064
+test("pin: a live-but-unsignalable owner (PID 1, EPERM) is diagnosed HELD, never stale", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("PID 1 EPERM semantics are POSIX");
+    return;
+  }
+  const root = await tempDir();
+  try {
+    const target = path.join(root, "doc.md");
+    const canonicalTarget = path.join(await fs.realpath(path.dirname(target)), path.basename(target));
+    const lockPath = filesystemMutationLockPath(canonicalTarget);
+    await fs.mkdir(filesystemMutationLockRoot(), { recursive: true, mode: 0o700 });
+    await fs.mkdir(lockPath, { recursive: true });
+    await fs.writeFile(
+      path.join(lockPath, "owner.json"),
+      JSON.stringify({ pid: 1, hostname: hostname(), created_at_ms: Date.now() - 60_000, token: "init", target: "unused" }),
+    );
+
+    await assert.rejects(
+      () => acquireFilesystemMutationLock(target, { waitMs: 20, pollMs: 5 }),
+      (err: unknown) => {
+        assert.ok(err instanceof FilesystemMutationLockError);
+        assert.equal(err.stale, false, "PID 1 exists (kill -0 → EPERM), so the lock is HELD, not stale");
+        assert.equal(err.malformed, false);
+        return true;
+      },
+    );
+    await fs.rm(lockPath, { recursive: true, force: true });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+// kills: filesystem-lock.ts:208:20 ConditionalExpression #1139
+// kills: filesystem-lock.ts:209:17 LogicalOperator #1147
+// kills: filesystem-lock.ts:211:7 ConditionalExpression #1151
+// kills: filesystem-lock.ts:211:18 BlockStatement #1153
+// kills: filesystem-lock.ts:213:7 StringLiteral #1154
+// kills: filesystem-lock.ts:214:7 StringLiteral #1155
+// kills: filesystem-lock.ts:215:14 ConditionalExpression #1156
+// kills: filesystem-lock.ts:215:14 ConditionalExpression #1157
+// kills: filesystem-lock.ts:215:21 BlockStatement #1158
+// kills: filesystem-lock.ts:217:7 StringLiteral #1159
+// kills: filesystem-lock.ts:218:7 StringLiteral #1160
+// kills: filesystem-lock.ts:219:10 BlockStatement #1161
+// kills: filesystem-lock.ts:221:7 StringLiteral #1162
+test("pin: timeout diagnosis distinguishes held vs stale vs foreign-host vs malformed in flags AND operator guidance", async () => {
+  // (a) live same-process owner → HELD message, stale flag false.
+  {
+    const root = await tempDir();
+    try {
+      const target = path.join(root, "doc.md");
+      const release = await acquireFilesystemMutationLock(target);
+      await assert.rejects(
+        () => acquireFilesystemMutationLock(target, { waitMs: 20, pollMs: 5 }),
+        (err: unknown) => {
+          assert.ok(err instanceof FilesystemMutationLockError);
+          assert.match(err.message, new RegExp(`held by PID ${process.pid} `));
+          assert.doesNotMatch(err.message, /stale filesystem mutation lock/);
+          return true;
+        },
+      );
+      await release();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  }
+
+  // Helper: leave a crafted lock, collect the timeout error, clean up.
+  const diagnose = async (owner: Record<string, unknown> | null) => {
+    const root = await tempDir();
+    try {
+      const target = path.join(root, "doc.md");
+      const canonicalTarget = path.join(await fs.realpath(path.dirname(target)), path.basename(target));
+      const lockPath = filesystemMutationLockPath(canonicalTarget);
+      await fs.mkdir(filesystemMutationLockRoot(), { recursive: true, mode: 0o700 });
+      await fs.mkdir(lockPath, { recursive: true });
+      if (owner) await fs.writeFile(path.join(lockPath, "owner.json"), JSON.stringify(owner));
+      let caught: unknown;
+      try {
+        await acquireFilesystemMutationLock(target, { waitMs: 20, pollMs: 5 });
+      } catch (err) {
+        caught = err;
+      }
+      await fs.rm(lockPath, { recursive: true, force: true });
+      assert.ok(caught instanceof FilesystemMutationLockError);
+      return caught;
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  };
+
+  // (b) same-host ABSENT pid → stale message with the exact operator guidance.
+  const stale = await diagnose({ pid: 999_999, hostname: hostname(), created_at_ms: Date.now() - 60_000, token: "dead", target: "unused" });
+  assert.equal(stale.stale, true);
+  assert.match(stale.message, /stale filesystem mutation lock/);
+  assert.match(stale.message, /absent PID 999999/);
+  assert.match(stale.message, /Inspect and remove the lock, then retry\./);
+
+  // (c) FOREIGN-host absent pid → NOT stale (we cannot probe another host's pids).
+  const foreign = await diagnose({ pid: 999_999, hostname: "some-other-host", created_at_ms: Date.now() - 60_000, token: "far", target: "unused" });
+  assert.equal(foreign.stale, false);
+  assert.doesNotMatch(foreign.message, /stale filesystem mutation lock/);
+
+  // (d) malformed owner metadata → malformed message with the confirm-first guidance.
+  const malformed = await diagnose(null);
+  assert.equal(malformed.malformed, true);
+  assert.match(malformed.message, /owner metadata is missing or malformed/);
+  assert.match(malformed.message, /only after confirming no process is mutating the target/);
+});

@@ -508,3 +508,16 @@ for (const [name, run] of RUNNERS) {
     });
   });
 }
+
+// ── mutation-survivor pins (core-survivor-triage unit) ────────────────────────
+
+// kills: memory-backend.ts:240:53 ConditionalExpression #2488
+// kills: memory-backend.ts:240:53 EqualityOperator #2489
+test("pin: MemoryBackend re-writing IDENTICAL bytes with a DIFFERENT explicit content-type updates the stored type (idempotence = bytes AND type)", async () => {
+  const backend = new MemoryBackend();
+  const bytes = enc("same bytes");
+  await backend.writeBlob("data/x.bin", bytes, "application/octet-stream");
+  await backend.writeBlob("data/x.bin", bytes, "text/plain; charset=utf-8");
+  const read = await backend.readBlob("data/x.bin");
+  assert.equal(read?.contentType, "text/plain; charset=utf-8");
+});

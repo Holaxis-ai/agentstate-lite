@@ -900,3 +900,108 @@ test("query still propagates a NON-ENOENT backend error (the skip-fallback is sc
   } as unknown as StorageBackend;
   await assert.rejects(() => query({ root: "mem://boom", backend }), /backend exploded/);
 });
+
+// ── mutation-survivor pins (core-survivor-triage unit) ────────────────────────
+// Red-proven pins for Stryker survivors from the first full core mutation report.
+
+// kills: backend.ts:143:9 ConditionalExpression #54
+// kills: backend.ts:143:9 MethodExpression #55
+// kills: backend.ts:147:16 ConditionalExpression #65
+// kills: backend.ts:147:16 LogicalOperator #67
+// kills: backend.ts:147:54 StringLiteral #69
+// kills: backend.ts:169:16 ConditionalExpression #87
+// kills: backend.ts:169:16 LogicalOperator #89
+// kills: backend.ts:169:35 MethodExpression #91
+// kills: backend.ts:169:35 MethodExpression #92
+test("pin: FilesystemBackend walks list only visible .md docs and only visible non-.md blobs (case-insensitive .md exclusion)", async () => {
+  await withFsBundle(async (bundle) => {
+    const { writeFile } = await import("node:fs/promises");
+    await writeDoc(bundle, { id: "docs/a", frontmatter: { type: "Concept", timestamp: T_DOC }, body: "x" });
+    await writeFile(path.join(bundle.root, "notes.txt"), "plain bytes");
+    await writeFile(path.join(bundle.root, ".hidden.md"), "---\ntype: Concept\n---\nhidden");
+    await writeFile(path.join(bundle.root, "REPORT.MD"), "raw"); // .MD: not a doc (case-sensitive walk), not a blob (case-INSENSITIVE exclusion)
+
+    assert.deepEqual(await bundle.backend.list(), ["docs/a"]);
+    assert.deepEqual(await bundle.backend.listBlobs(), ["notes.txt"]);
+  });
+});
+
+// kills: backend.ts:374:11 ConditionalExpression #179
+// kills: memory-backend.ts:163:17 MethodExpression #2429
+// kills: memory-backend.ts:163:56 ConditionalExpression #2432
+for (const [name, run] of RUNNERS) {
+  test(`pin: ${name}: list honors a prefix filter`, async () => {
+    await run(async (bundle) => {
+      await writeDoc(bundle, { id: "alpha/x", frontmatter: { type: "Concept", timestamp: T_DOC }, body: "" });
+      await writeDoc(bundle, { id: "beta/y", frontmatter: { type: "Concept", timestamp: T_DOC }, body: "" });
+      assert.deepEqual(await bundle.backend.list("alpha/"), ["alpha/x"]);
+    });
+  });
+}
+
+// kills: memory-backend.ts:164:5 MethodExpression #2437
+// kills: memory-backend.ts:164:14 ArrowFunction #2438
+// kills: memory-backend.ts:269:5 MethodExpression #2518
+// kills: memory-backend.ts:269:15 ArrowFunction #2519
+test("pin: MemoryBackend list and listBlobs are lexicographically sorted regardless of write order", async () => {
+  const backend = new MemoryBackend();
+  await backend.write("b", { id: "b", frontmatter: { type: "Concept", timestamp: T_DOC }, body: "" });
+  await backend.write("a", { id: "a", frontmatter: { type: "Concept", timestamp: T_DOC }, body: "" });
+  await backend.writeBlob("b.bin", new TextEncoder().encode("b"));
+  await backend.writeBlob("a.bin", new TextEncoder().encode("a"));
+  assert.deepEqual(await backend.list(), ["a", "b"]);
+  assert.deepEqual(await backend.listBlobs(), ["a.bin", "b.bin"]);
+});
+
+// kills: backend.ts:58:9 ConditionalExpression #2
+// kills: backend.ts:58:34 ConditionalExpression #8
+// kills: backend.ts:58:34 MethodExpression #10
+// kills: backend.ts:58:47 StringLiteral #11
+// kills: backend.ts:357:19 LogicalOperator #168
+test("pin: FilesystemBackend versions() derives actor from updated_by/actor with type+trim guards, else defaultActor", async () => {
+  await withFsBundle(async (bundle) => {
+    const { writeFile } = await import("node:fs/promises");
+    const cases: Array<[string, string, string]> = [
+      ["a", 'updated_by: "alice"', "alice"],
+      ["b", "updated_by: 42", defaultActor()],
+      ["c", 'updated_by: "   "', defaultActor()],
+      ["d", "", defaultActor()],
+      ["e", 'actor: "bob"', "bob"],
+    ];
+    for (const [id, line, expected] of cases) {
+      const fm = ["type: Concept", `timestamp: "${T_DOC}"`, line].filter(Boolean).join("\n");
+      await writeFile(path.join(bundle.root, `${id}.md`), `---\n${fm}\n---\nbody\n`);
+      const history = await bundle.backend.versions(id);
+      assert.equal(history[0]?.actor, expected, `id '${id}'`);
+    }
+  });
+});
+
+// kills: memory-backend.ts:131:14 MethodExpression #2401
+// kills: memory-backend.ts:134:14 MethodExpression #2406
+test("pin: MemoryBackend trims write attribution — whitespace-only actor falls back, whitespace-only agent is omitted", async () => {
+  const backend = new MemoryBackend();
+  await backend.write("a", { id: "a", frontmatter: { type: "Concept", timestamp: T_DOC }, body: "" }, { actor: "   " });
+  assert.equal((await backend.versions("a"))[0]?.actor, defaultActor());
+  await backend.write("b", { id: "b", frontmatter: { type: "Concept", timestamp: T_DOC }, body: "" }, { actor: "x", agent: "   " });
+  assert.equal((await backend.versions("b"))[0]?.agent, undefined);
+});
+
+// kills: backend.ts:178:34 Regex #96
+// kills: backend.ts:178:44 StringLiteral #98
+// kills: memory-backend.ts:84:34 Regex #2364
+// kills: memory-backend.ts:84:44 StringLiteral #2366
+// kills: memory-backend.ts:84:56 Regex #2367
+// kills: memory-backend.ts:84:63 StringLiteral #2368
+for (const [name, run] of RUNNERS) {
+  test(`pin: ${name}: reserved-file dir spellings './x', 'x/', and 'x' address the SAME file`, async () => {
+    await run(async (bundle) => {
+      await bundle.backend.writeReserved("sub/nested", "index.md", "nested-index");
+      assert.equal((await bundle.backend.readReserved("sub/nested", "index.md"))?.content, "nested-index");
+      assert.equal((await bundle.backend.readReserved("./sub/nested", "index.md"))?.content, "nested-index");
+      assert.equal((await bundle.backend.readReserved("sub/nested/", "index.md"))?.content, "nested-index");
+      await bundle.backend.writeReserved("", "log.md", "root-log");
+      assert.equal((await bundle.backend.readReserved("", "log.md"))?.content, "root-log");
+    });
+  });
+}
