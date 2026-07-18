@@ -23,8 +23,8 @@ description: >-
   REJECTED, do not re-propose: deleting the committed-folder establishment
   machinery — it is the supported in-tree -> dedicated-board upgrade path and a
   recorded permanent affordance.
-actor: codex
-timestamp: '2026-07-18T14:04:51.026Z'
+actor: mike/claude
+timestamp: '2026-07-18T14:47:41.965Z'
 ---
 [contains](../tasks/sync-establish-phase-carve.md)
 
@@ -33,3 +33,5 @@ timestamp: '2026-07-18T14:04:51.026Z'
 [contains](../tasks/simplification-audit.md)
 
 [contains](../tasks/source-comment-hygiene.md)
+
+[contains](../tasks/sync-copy-unification.md)
