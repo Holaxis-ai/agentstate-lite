@@ -7,24 +7,22 @@ status: in_progress
 priority: '2'
 assignee: mike/claude
 description: >-
-  CLAIMED mike/claude — ACTIVE (relaunched 2026-07-18 after a decision wobble
-  worth recording honestly: built->stopped->relaunched in one evening.
-  Adjudication: this unit is an OPTIONALITY PURCHASE, not demand-driven work —
-  safe, fully specified, mechanically harnessed (#92's fixtures + the journey
-  suites), executed because surplus/expiring capacity on the claude line makes
-  its marginal cost near zero. Both prior verdicts were correct under their
-  unstated assumptions: 'churn' under scarce budget, 'free option' under
-  expiring budget — the budget fact decides, and it is now stated.) Spec: split
-  sync.ts + sync-establish.ts by existing responsibility (orchestration;
-  conflict convergence + receipts; show-incoming; greenfield establishment;
-  committed-folder establishment/recovery) into internal modules with explicit
-  typed phase functions. Constraints (both review lines): NO new
-  package/framework/dup-state/compat layer; ALL existing tests AND #92 fixtures
-  BYTE-UNMODIFIED and green (fixtures pin rendered outcomes; journey suites pin
-  side-effect ORDERING — both bars); re-export shims; production LOC
-  flat-to-down; outcome table untouched. Review: parity-contract tier — one
-  provenance-centered review, no QA unless drift.
+  CLAIMED mike/claude, ACTIVE. Phase: BUILT — PR #97
+  (refactor/sync-establish-phase-carve), candidate
+  4ebd3b0793409b393eb25fec0f8442aa6c9e7b60, base 13b7fcd. sync.ts (1205->8) and
+  sync-establish.ts (919->4) are re-export shims; implementation in
+  commands/sync/: orchestrate (typed phase composition:
+  parse/inTree/provision/baseline/commit/pull/delta/push/receipt), converge,
+  show-incoming, establish (greenfield router), establish-committed (marker
+  states). NET -1 LOC. Parity contract: tests byte-unmodified (mechanically
+  proven empty diff incl. #92 fixtures + agreement suite), six-journey
+  23-invocation base-vs-head transcript byte-identical (base built from clean
+  13b7fcd BEFORE any edit), all gates + CI green on exact SHA. Builder judgment
+  calls for review: comment condensation (~35% of the LOC pay-down — probe for
+  lost load-bearing reasons), four ordering-near boundary placements, dedup
+  byte-equivalence claims, export-* shim surface. Provenance-centered review IN
+  FLIGHT (parity-contract tier: one review, QA only on drift).
 actor: mike/claude
-timestamp: '2026-07-18T13:31:59.236Z'
+timestamp: '2026-07-18T14:18:36.625Z'
 ---
 
