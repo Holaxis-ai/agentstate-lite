@@ -7591,10 +7591,15 @@ function isConceptDocPath(relPath) {
   return relPath.endsWith(".md") && !isReservedFile(relPath);
 }
 function nameStatusRows(out) {
-  return out.split("\n").map((l) => l.trimEnd()).filter((l) => l.length > 0).map((l) => {
-    const [letter = "", ...rest] = l.split("	");
-    return { letter: letter.trim().charAt(0), relPath: rest.join("	") };
-  }).filter((r) => r.letter.length > 0 && r.relPath.length > 0);
+  const fields = out.split("\0");
+  if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop();
+  const rows = [];
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const letter = (fields[i] ?? "").trim().charAt(0);
+    const relPath = fields[i + 1] ?? "";
+    if (letter.length > 0 && relPath.length > 0) rows.push({ letter, relPath });
+  }
+  return rows;
 }
 function verbOf(letter) {
   if (letter === "A") return "added";
@@ -7633,7 +7638,7 @@ function stageAndCommit(boardPath) {
   if (runGit(boardPath, ["diff", "--cached", "--quiet"]).status === 0) {
     return { committed: false, docs: [] };
   }
-  const rows = nameStatusRows(mustGit(boardPath, ["diff", "--cached", "--name-status", "--no-renames"]));
+  const rows = nameStatusRows(mustGit(boardPath, ["diff", "--cached", "--name-status", "--no-renames", "-z"]));
   const docs = [];
   for (const { letter, relPath } of rows) {
     if (!isConceptDocPath(relPath)) continue;
@@ -7761,7 +7766,7 @@ function snapshotBundleCommit(top, bundlePath) {
     const rows = nameStatusRows(
       mustGit(
         bundlePath,
-        ["diff", "--cached", "--name-status", "--no-renames", emptyTree],
+        ["diff", "--cached", "--name-status", "--no-renames", "-z", emptyTree],
         snapshotOptions
       )
     );
@@ -8243,6 +8248,7 @@ function diffDocsBetween(dir, fromRef, toRef, opts = {}) {
     "diff",
     "--name-status",
     "--no-renames",
+    "-z",
     `${fromRef}..${toRef}`,
     ...opts.prefix ? ["--", opts.prefix] : []
   ];
@@ -17219,7 +17225,10 @@ async function showIncoming(id, values, deps) {
     } catch {
       conceptIdOk = false;
     }
-    if (conceptIdOk) candidates.push({ relPath: pathFromConceptId(id), isDoc: true });
+    if (conceptIdOk) {
+      const conceptRelPath = pathFromConceptId(id);
+      candidates.push({ relPath: conceptRelPath, isDoc: !isReservedFile(conceptRelPath) });
+    }
     if (candidates.every((c) => c.relPath !== id)) candidates.push({ relPath: id, isDoc: false });
     let hit = null;
     for (const probe of candidates) {
@@ -17260,7 +17269,7 @@ async function showIncoming(id, values, deps) {
     const byteHatch = `${inv} sync --show-incoming ${id} --out <file>`;
     const rec = {};
     if (!hit.probe.isDoc) {
-      rec.path = id;
+      rec.path = hit.probe.relPath;
       rec.as_of = SHOW_INCOMING_AS_OF;
       attachBodyPreview(rec, content, byteHatch);
     } else {
