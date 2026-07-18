@@ -28,9 +28,9 @@ export interface RecipeFile {
   bytes: string;
 }
 
-/** One portable, content-free Page carried by a recipe package. */
+/** One portable, content-free View carried by a recipe package. */
 export interface RecipePage {
-  /** The `type: Page` registry document installed under `pages-registry/`. */
+  /** The `type: View` (or legacy `type: Page`) registry document installed under `views-registry/` (or legacy `pages-registry/`). */
   registry: OkfDocument;
   /** The self-contained HTML blob key declared by the registry document. */
   entry: string;
@@ -54,7 +54,7 @@ export interface LoadedRecipe {
   source: string;
   /** Convention docs, ids under `conventions/`. `timestamp` is stamped at APPLY, not here. */
   docs: OkfDocument[];
-  /** Optional Page definitions installed with the conventions; never Kind instances. */
+  /** Optional View definitions installed with the conventions; never Kind instances. */
   pages: RecipePage[];
   /** Optional operating references installed with the definitions; never project instances. */
   references: RecipeReference[];
@@ -234,7 +234,7 @@ function parsePageDeclarations(manifest: Record<string, unknown>, recipeId: stri
         ok: false,
         error: {
           code: "RECIPE_UNSAFE_PATH",
-          message: `recipe '${recipeId}': Page registry '${registry}' must be a .md file under '${VIEW_REGISTRY_PREFIX}' (or legacy '${PAGE_REGISTRY_PREFIX}')`,
+          message: `recipe '${recipeId}': View registry '${registry}' must be a .md file under '${VIEW_REGISTRY_PREFIX}' (or legacy '${PAGE_REGISTRY_PREFIX}')`,
         },
       };
     }
@@ -243,7 +243,7 @@ function parsePageDeclarations(manifest: Record<string, unknown>, recipeId: stri
         ok: false,
         error: {
           code: "RECIPE_UNSAFE_PATH",
-          message: `recipe '${recipeId}': Page entry '${entry}' must be a .html file under '${VIEW_ENTRY_PREFIX}' (or legacy '${PAGE_ENTRY_PREFIX}')`,
+          message: `recipe '${recipeId}': View entry '${entry}' must be a .html file under '${VIEW_ENTRY_PREFIX}' (or legacy '${PAGE_ENTRY_PREFIX}')`,
         },
       };
     }
@@ -251,7 +251,7 @@ function parsePageDeclarations(manifest: Record<string, unknown>, recipeId: stri
     if (!isAnyRegistryId(registryId) || !isAnyEntryKey(entry) || isReservedFile(registry)) {
       return {
         ok: false,
-        error: { code: "RECIPE_UNSAFE_PATH", message: `recipe '${recipeId}' contains an unsafe Page path` },
+        error: { code: "RECIPE_UNSAFE_PATH", message: `recipe '${recipeId}' contains an unsafe View path` },
       };
     }
     const registryTarget = registryId.toLowerCase();
@@ -261,7 +261,7 @@ function parsePageDeclarations(manifest: Record<string, unknown>, recipeId: stri
         ok: false,
         error: {
           code: "RECIPE_MALFORMED",
-          message: `recipe '${recipeId}' declares a duplicate Page registry or entry at pages[${index}]`,
+          message: `recipe '${recipeId}' declares a duplicate View registry or entry at pages[${index}]`,
         },
       };
     }
@@ -474,13 +474,13 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
       const missingPath = !registryFile ? declaration.registry : declaration.entry;
       return {
         ok: false,
-        error: { code: "RECIPE_MALFORMED", message: `recipe '${id}' is missing declared Page file '${missingPath}'` },
+        error: { code: "RECIPE_MALFORMED", message: `recipe '${id}' is missing declared View file '${missingPath}'` },
       };
     }
     if (entryFile.bytes.trim() === "") {
       return {
         ok: false,
-        error: { code: "RECIPE_MALFORMED", message: `recipe '${id}': Page entry '${declaration.entry}' is empty` },
+        error: { code: "RECIPE_MALFORMED", message: `recipe '${id}': View entry '${declaration.entry}' is empty` },
       };
     }
     const { frontmatter, body } = parseMarkdown(registryFile.bytes);

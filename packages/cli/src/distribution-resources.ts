@@ -35,18 +35,20 @@ function skillOnly(role: ResourceRole, entries: readonly SourceDestination[]): D
 
 export const DISTRIBUTION_RESOURCES: DistributionResource[] = [
   ...skillOnly("operating-reference", [
-    ["examples/pages/references/page-authoring-v0.md", "pages/references/page-authoring-v0.md"],
+    ["examples/views/references/view-authoring-v0.md", "views/references/view-authoring-v0.md"],
   ]),
 
-  // Bundle Page worked examples. Page-bearing recipes carry their own required operating model.
+  // Bundle View worked examples. View-bearing recipes carry their own required operating model.
+  // Both columns renamed pages→views with the kind (the dest column is the skill's shipped
+  // resource namespace — regenerated atomically with the SKILL.md prose that points at it).
   ...skillOnly("worked-example", [
-    ["examples/pages/pulse.html", "pages/pulse.html"],
-    ["examples/pages/roadmap.html", "pages/roadmap.html"],
-    ["examples/pages/about.html", "pages/about.html"],
-    ["examples/pages/conventions/page.md", "pages/conventions/page.md"],
-    ["examples/pages/pages-registry/pulse.md", "pages/pages-registry/pulse.md"],
-    ["examples/pages/pages-registry/roadmap.md", "pages/pages-registry/roadmap.md"],
-    ["examples/pages/pages-registry/about.md", "pages/pages-registry/about.md"],
+    ["examples/views/pulse.html", "views/pulse.html"],
+    ["examples/views/roadmap.html", "views/roadmap.html"],
+    ["examples/views/about.html", "views/about.html"],
+    ["examples/views/conventions/view.md", "views/conventions/view.md"],
+    ["examples/views/views-registry/pulse.md", "views/views-registry/pulse.md"],
+    ["examples/views/views-registry/roadmap.md", "views/views-registry/roadmap.md"],
+    ["examples/views/views-registry/about.md", "views/views-registry/about.md"],
   ]),
 
   // Installable definitions: the Claims example and the complete Review Workflow package.
@@ -58,18 +60,18 @@ export const DISTRIBUTION_RESOURCES: DistributionResource[] = [
       "examples/recipes/review-workflow/conventions/review-request.md",
       "recipes/review-workflow/conventions/review-request.md",
     ],
-    ["examples/recipes/review-workflow/conventions/page.md", "recipes/review-workflow/conventions/page.md"],
+    ["examples/recipes/review-workflow/conventions/view.md", "recipes/review-workflow/conventions/view.md"],
     [
-      "examples/recipes/review-workflow/pages-registry/review-workflow-reviews.md",
-      "recipes/review-workflow/pages-registry/review-workflow-reviews.md",
+      "examples/recipes/review-workflow/views-registry/review-workflow-reviews.md",
+      "recipes/review-workflow/views-registry/review-workflow-reviews.md",
     ],
     [
-      "examples/recipes/review-workflow/pages/review-workflow/reviews.html",
-      "recipes/review-workflow/pages/review-workflow/reviews.html",
+      "examples/recipes/review-workflow/views/review-workflow/reviews.html",
+      "recipes/review-workflow/views/review-workflow/reviews.html",
     ],
     [
-      "examples/recipes/review-workflow/references/page-authoring-v0.md",
-      "recipes/review-workflow/references/page-authoring-v0.md",
+      "examples/recipes/review-workflow/references/view-authoring-v0.md",
+      "recipes/review-workflow/references/view-authoring-v0.md",
     ],
   ]),
 
@@ -132,7 +134,7 @@ export const SKILL_COMMAND_RESOURCES: Record<string, string[]> = {
   recipes: [],
   "recipe add": ["recipes/claims/recipe.md", "recipes/review-workflow/recipe.md"],
   serve: [],
-  ui: ["pages/references/page-authoring-v0.md"],
+  ui: ["views/references/view-authoring-v0.md"],
   sync: [],
   "session-start": [],
   "hook install|status|uninstall": [],
@@ -155,8 +157,10 @@ export interface SkillCapabilityPattern {
  */
 export const SKILL_CAPABILITY_PATTERNS: SkillCapabilityPattern[] = [
   {
-    pattern: /type:\s*Page|bundle page|postMessage|sandboxed iframe/i,
-    requires: ["pages/references/page-authoring-v0.md"],
+    // `type: Page` stays in the pattern: it is the accepted legacy kind name, and any prose
+    // mentioning it (even a legacy note) must ship the authoring reference alongside.
+    pattern: /type:\s*View|type:\s*Page|bundle view|postMessage|sandboxed iframe/i,
+    requires: ["views/references/view-authoring-v0.md"],
   },
   {
     pattern: /recipe/i,

@@ -1,7 +1,7 @@
 ---
-type: Page
+type: View
 title: Pulse — activity feed
-entry: pages/pulse.html
+entry: views/pulse.html
 description: Live activity feed — every bundle doc, newest first, with type filters, search, and a markdown detail pane.
 bridge: bundle-read
 actor: mike/claude

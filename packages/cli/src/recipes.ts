@@ -32,7 +32,13 @@ import {
   type OkfDocument,
   type ValidationWarning,
 } from "@agentstate-lite/core";
-import { PAGE_REGISTRY_PREFIX, VIEW_REGISTRY_PREFIX } from "@agentstate-lite/core/page";
+import {
+  PAGE_ENTRY_PREFIX,
+  PAGE_REGISTRY_PREFIX,
+  PAGE_TYPE_NAMES,
+  VIEW_ENTRY_PREFIX,
+  VIEW_REGISTRY_PREFIX,
+} from "@agentstate-lite/core/page";
 import { isDeepStrictEqual } from "node:util";
 import { CliError } from "./errors.js";
 import type { LoadedRecipe } from "./recipe-source.js";
@@ -333,10 +339,13 @@ export const ROADMAP_DESC_BODY =
   "validation come from THIS recipe's conventions); only the \"task lacks an owning item\" lint\n" +
   "stays off.\n";
 
-/** Per-doc apply outcome: `changed: false` means the doc already existed (idempotent no-op). */
+/** Per-doc apply outcome: `changed: false` means the doc already existed (idempotent no-op), or —
+ * when `legacy_present` names a doc — that a legacy-named counterpart already satisfies it. */
 export interface RecipeDocResult {
   id: ConceptId;
   changed: boolean;
+  /** Set when creation was skipped because this existing legacy-named doc satisfies the artifact. */
+  legacy_present?: ConceptId;
 }
 
 export interface RecipePageResult {
@@ -345,6 +354,8 @@ export interface RecipePageResult {
   registry_changed: boolean;
   entry_changed: boolean;
   changed: boolean;
+  /** Set when creation was skipped because a COMPLETE legacy-named pair satisfies the artifact. */
+  legacy_present?: { registry: ConceptId; entry: string };
 }
 
 export interface RecipeReferenceResult {
@@ -356,6 +367,13 @@ export interface RecipeReferenceResult {
  * changed), and any non-fatal warnings collected at LOAD time (recipe.md reserved keys, skipped
  * malformed convention docs). Duplicate-`governs` against the TARGET bundle is a separate, POST-
  * apply check (`loadKinds(bundle)`) — the command layer's job, not this function's. */
+/** Per-artifact tally (docs + pages + references; a page's registry/entry pair is ONE artifact). */
+export interface ApplyRecipeCounts {
+  created: number;
+  existing: number;
+  legacy_present: number;
+}
+
 export interface ApplyRecipeResult {
   id: string;
   version: string;
@@ -363,8 +381,51 @@ export interface ApplyRecipeResult {
   docs: RecipeDocResult[];
   pages: RecipePageResult[];
   references: RecipeReferenceResult[];
+  counts: ApplyRecipeCounts;
   changed: boolean;
   warnings: ValidationWarning[];
+}
+
+// ── Legacy-alias awareness (plans/rename-page-kind-to-view, Option C+) ────────────────────────
+// A renamed recipe keeps its id/version but renames its artifact ids (views-registry//views/ over
+// the legacy pages-registry//pages/). Idempotency here is per-artifact expect-absent CAS, so
+// REAPPLYING the renamed recipe onto a bundle that installed the legacy edition would otherwise
+// create a complete SECOND set — two identical launcher cards under dual-read. Under C+ the
+// legacy install SATISFIES the requirement: before creating an artifact, probe its legacy-alias
+// counterpart — derived from CORE's legacy grammar (prefix constants + the kind-name pair), never
+// hardcoded here — and skip creation when the counterpart exists, reporting `legacy_present` in
+// the receipt. General by construction: any recipe whose artifacts ride the renamed prefixes or
+// govern the View kind benefits; for every other recipe each probe derives null and nothing
+// changes.
+
+/** Core orders {@link PAGE_TYPE_NAMES} `[legacy, current]` — `["Page", "View"]`. */
+const [LEGACY_VIEW_KIND_NAME, VIEW_KIND_NAME] = PAGE_TYPE_NAMES;
+
+function legacyRegistryAlias(id: ConceptId): ConceptId | null {
+  return id.startsWith(VIEW_REGISTRY_PREFIX)
+    ? `${PAGE_REGISTRY_PREFIX}${id.slice(VIEW_REGISTRY_PREFIX.length)}`
+    : null;
+}
+
+function legacyEntryAlias(key: string): string | null {
+  return key.startsWith(VIEW_ENTRY_PREFIX)
+    ? `${PAGE_ENTRY_PREFIX}${key.slice(VIEW_ENTRY_PREFIX.length)}`
+    : null;
+}
+
+function governsKind(doc: OkfDocument, kindName: string): boolean {
+  const governs = doc.frontmatter["governs"];
+  return typeof governs === "string" && governs.trim() === kindName;
+}
+
+/** The id of an existing convention doc governing the LEGACY kind name, or null. Called at most
+ * once per apply, and only when the recipe carries a convention governing the current name. */
+async function findLegacyViewConvention(bundle: Bundle): Promise<ConceptId | null> {
+  const conventions = await query(bundle, { prefix: CONVENTIONS_PREFIX, type: "Convention" });
+  for (const doc of conventions) {
+    if (governsKind(doc, LEGACY_VIEW_KIND_NAME)) return doc.id;
+  }
+  return null;
 }
 
 /**
@@ -393,8 +454,22 @@ export async function applyRecipe(
 ): Promise<ApplyRecipeResult> {
   await assertPortableTargetsCompatible(bundle, recipe, now);
 
+  // Legacy-alias probes (see the module comment above the alias helpers): resolved lazily, once.
+  const legacyConventionId = recipe.docs.some((d) => governsKind(d, VIEW_KIND_NAME))
+    ? await findLegacyViewConvention(bundle)
+    : null;
+  let legacyRegistryIds: Set<ConceptId> | null = null;
+  const legacyRegistryExists = async (id: ConceptId): Promise<boolean> => {
+    legacyRegistryIds ??= new Set((await query(bundle, { prefix: PAGE_REGISTRY_PREFIX })).map((doc) => doc.id));
+    return legacyRegistryIds.has(id);
+  };
+
   const docs: RecipeDocResult[] = [];
   for (const d of recipe.docs) {
+    if (legacyConventionId !== null && governsKind(d, VIEW_KIND_NAME)) {
+      docs.push({ id: d.id, changed: false, legacy_present: legacyConventionId });
+      continue;
+    }
     const doc: OkfDocument = { ...d, frontmatter: { ...d.frontmatter, timestamp: now } };
     let changed = true;
     try {
@@ -411,6 +486,26 @@ export async function applyRecipe(
 
   const pages: RecipePageResult[] = [];
   for (const page of recipe.pages) {
+    const registryAlias = legacyRegistryAlias(page.registry.id);
+    const entryAlias = legacyEntryAlias(page.entry);
+    if (registryAlias !== null && entryAlias !== null && (await legacyRegistryExists(registryAlias))) {
+      // Skip ONLY on a COMPLETE legacy pair: a partial legacy leftover (registry doc without its
+      // blob) must not suppress the new install — that would leave no working card at all.
+      // Creating under the new ids is always safe (expect-absent CAS; ids never collide across
+      // prefixes), and the leftover is the audit's business, not the installer's.
+      const legacyBlob = await readBlob(bundle, entryAlias);
+      if (legacyBlob !== null) {
+        pages.push({
+          registry_id: page.registry.id,
+          entry: page.entry,
+          registry_changed: false,
+          entry_changed: false,
+          changed: false,
+          legacy_present: { registry: registryAlias, entry: entryAlias },
+        });
+        continue;
+      }
+    }
     const desiredBytes = Buffer.from(page.html, "utf8");
     let entryChanged = true;
     try {
@@ -465,6 +560,13 @@ export async function applyRecipe(
     references.push({ id: desired.id, changed });
   }
 
+  const artifacts: Array<{ changed: boolean; legacy_present?: unknown }> = [...docs, ...pages, ...references];
+  const counts: ApplyRecipeCounts = {
+    created: artifacts.filter((a) => a.changed).length,
+    existing: artifacts.filter((a) => !a.changed && a.legacy_present === undefined).length,
+    legacy_present: artifacts.filter((a) => a.legacy_present !== undefined).length,
+  };
+
   return {
     id: recipe.id,
     version: recipe.version,
@@ -472,6 +574,7 @@ export async function applyRecipe(
     docs,
     pages,
     references,
+    counts,
     changed:
       docs.some((d) => d.changed) ||
       pages.some((page) => page.changed) ||

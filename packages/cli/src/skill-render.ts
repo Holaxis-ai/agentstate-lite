@@ -11,7 +11,7 @@
 // contains any rendering logic of its own, only the write/--check CLI shell.
 //
 // `renderNpm`'s output is BYTE-IDENTICAL to before this extraction (`check:skill` sees no churn).
-// The skill-target-only additions (Shipped references, Bundle pages, the Remote section's
+// The skill-target-only additions (Shipped references, Bundle views, the Remote section's
 // wire-protocol note, two extra Notes bullets) live entirely on `renderSkill`'s own path;
 // `renderNotesSection`'s shared body is unchanged — only its new `extraBullets` param is added,
 // defaulting to none so the npm call site reproduces the exact prior output.
@@ -550,13 +550,13 @@ export function renderNpm(): string {
     "  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and live",
   );
   lines.push(
-    "  bundle Pages) from the shell via the agentstate-lite CLI. Use when an agent",
+    "  bundle Views) from the shell via the agentstate-lite CLI. Use when an agent",
   );
   lines.push(
     "  needs to persist a context note across sessions, store a decision/spec as a doc, link concepts,",
   );
   lines.push(
-    "  query a bundle, share the project's board with teammates (`sync`), or open its local Page UI.",
+    "  query a bundle, share the project's board with teammates (`sync`), or open its local View UI.",
   );
   lines.push(`  Runs standalone via \`${NPX}\`.`);
   lines.push("---");
@@ -598,7 +598,7 @@ function renderShippedReferencesSection(): string[] {
   lines.push("## Shipped references — worked examples & contracts alongside the CLI");
   lines.push("");
   lines.push(
-    "A few capabilities below (bundle pages, custom recipes) are backed by a full contract or a",
+    "A few capabilities below (bundle views, custom recipes) are backed by a full contract or a",
   );
   lines.push(
     "worked example shipped in this skill's `references/` folder rather than inlined here, so a",
@@ -631,21 +631,23 @@ function renderShippedReferencesSection(): string[] {
   return lines;
 }
 
-/** `## Bundle pages` — the concept + v0 request-type names + the 4 authoring steps + a pointer. */
-function renderBundlePagesSection(): string[] {
+/** `## Bundle views` — the concept + v0 request-type names + the 4 authoring steps + a pointer. */
+function renderBundleViewsSection(): string[] {
   const lines: string[] = [];
-  lines.push("## Bundle pages — ship a live UI as bundle content");
+  lines.push("## Bundle views — ship a live UI as bundle content");
   lines.push("");
   lines.push(
-    "A **bundle page** is a self-contained HTML file living IN the bundle: promoted as a blob under",
+    "A **bundle view** is a self-contained HTML file living IN the bundle: promoted as a blob under",
   );
   lines.push(
-    "`pages/…`, declared by a `type: Page` registry doc (`title`, `entry`), and rendered by",
+    "`views/…`, declared by a `type: View` registry doc (`title`, `entry`), and rendered by",
   );
   lines.push(
     `\`${ASLITE} ui\` inside a sandboxed, opaque-origin iframe (\`sandbox="allow-scripts"\`, no network`,
   );
   lines.push("access) — its only channel out is a **read-only** postMessage bridge to the shell.");
+  lines.push("(`Page` is the accepted legacy name: existing `type: Page` docs under `pages-registry/`/`pages/`");
+  lines.push("keep working and never need migrating — author NEW views as `type: View`.)");
   lines.push("");
   lines.push(
     "The bridge (protocol `v0`) has five read-only data request types: `hello` (bundle identity), `query`",
@@ -660,22 +662,23 @@ function renderBundlePagesSection(): string[] {
     "`subscribe` (opt into a server-pushed `change` event whenever the watched bundle moves). There",
   );
   lines.push("is no mutation message — read-only is enforced by construction, not convention. `open-page`");
-  lines.push("is a separate fire-and-forget shell action available to either Page capability; it opens only");
-  lines.push("another valid registered Page and returns none of that target's content or metadata.");
+  lines.push("(a wire verb, stable across the rename) is a separate fire-and-forget shell action available");
+  lines.push("to either View capability; it opens only another valid registered View and returns none of");
+  lines.push("that target's content or metadata.");
   lines.push("");
-  lines.push("Author a page in four steps:");
+  lines.push("Author a view in four steps:");
   lines.push("");
   lines.push("```bash");
-  lines.push("# 1. write a self-contained pages/my-page.html (inline CSS/JS, no external hosts),");
+  lines.push("# 1. write a self-contained views/my-view.html (inline CSS/JS, no external hosts),");
   lines.push("#    embedding the bridge client copied from the shipped contract below");
   lines.push(
-    `${ASLITE} promote my-page.html --doc-key pages/my-page.html                        # 2. promote the HTML blob`,
+    `${ASLITE} promote my-view.html --doc-key views/my-view.html                        # 2. promote the HTML blob`,
   );
   lines.push(
-    `${ASLITE} promote my-page-registry.md --doc-key pages-registry/my-page.md           # 3. promote its type: Page doc (title, entry)`,
+    `${ASLITE} promote my-view-registry.md --doc-key views-registry/my-view.md           # 3. promote its type: View doc (title, entry)`,
   );
   lines.push(
-    `${ASLITE} promote "$REFS/pages/conventions/page.md" --doc-key conventions/page.md   # 4. declare the Page convention (once per bundle, ready-made)`,
+    `${ASLITE} promote "$REFS/views/conventions/view.md" --doc-key conventions/view.md   # 4. declare the View convention (once per bundle, ready-made)`,
   );
   lines.push("```");
   lines.push("");
@@ -685,7 +688,7 @@ function renderBundlePagesSection(): string[] {
   lines.push("examples (including a live graph view over Roadmap Items) are in the shipped contract:");
   lines.push("");
   lines.push("```bash");
-  lines.push('cat "$REFS/pages/references/page-authoring-v0.md"');
+  lines.push('cat "$REFS/views/references/view-authoring-v0.md"');
   lines.push("```");
   lines.push("");
   return lines;
@@ -698,9 +701,9 @@ const SKILL_NOTES_ADDENDUM: string[] = [
   `  then \`${ASLITE} recipe add <folder>\` to apply it (built-in recipes are named directly, e.g.`,
   `  \`${ASLITE} recipe add work-tracking\`).`,
   "- Packaging a content-free cognitive ecosystem: `$REFS/recipes/review-workflow/` carries a",
-  "  self-describing Review Request kind plus a generic live Page, but no review instances. A",
+  "  self-describing Review Request kind plus a generic live View, but no review instances. A",
   "  definitions-only recipe may contain only its manifest, convention docs, explicitly declared",
-  "  static Reference docs, and Page registry/HTML pairs; install it with the same `recipe add <folder>` command.",
+  "  static Reference docs, and View registry/HTML pairs; install it with the same `recipe add <folder>` command.",
   "- A full interop-shaped example bundle (externally-authored markdown: unquoted timestamps,",
   "  relative links, wrapped bullets) ships at `$REFS/sample-bundle/` — copy it and point `--dir` at",
   "  the copy to explore a populated bundle without writing one from scratch.",
@@ -715,7 +718,7 @@ export function renderSkill(): string {
     "  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and live",
   );
   lines.push(
-    "  bundle Pages) via the self-contained agentstate-lite CLI bundled in this",
+    "  bundle Views) via the self-contained agentstate-lite CLI bundled in this",
   );
   lines.push(
     "  skill (scripts/agentstate-lite — a committed, zero-dependency bundle; no npm install",
@@ -729,7 +732,7 @@ export function renderSkill(): string {
   lines.push(
     "  teammates (`sync`), run a local wire-protocol server (`serve` / `--remote`), or open the",
   );
-  lines.push("  bundle's local Page UI.");
+  lines.push("  bundle's local View UI.");
   lines.push("---");
   lines.push("");
   lines.push(`# ${PKG}`);
@@ -862,7 +865,7 @@ export function renderSkill(): string {
   lines.push("implementation in the meantime.");
   lines.push("");
   lines.push(...renderShippedReferencesSection());
-  lines.push(...renderBundlePagesSection());
+  lines.push(...renderBundleViewsSection());
   lines.push(...renderNotesSection(SKILL_NOTES_ADDENDUM));
   return lines.join("\n");
 }

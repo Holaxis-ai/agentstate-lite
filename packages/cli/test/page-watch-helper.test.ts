@@ -10,9 +10,9 @@ import { SKILL_RESOURCES } from "../src/distribution-resources.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../../..");
 const authorities = {
-  contract: "examples/pages/references/page-authoring-v0.md",
-  pulse: "examples/pages/pulse.html",
-  roadmap: "examples/pages/roadmap.html",
+  contract: "examples/views/references/view-authoring-v0.md",
+  pulse: "examples/views/pulse.html",
+  roadmap: "examples/views/roadmap.html",
 } as const;
 
 function source(relative: string): string {

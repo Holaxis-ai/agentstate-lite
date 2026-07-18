@@ -3,7 +3,8 @@
  * prove — the launcher listing, the sandboxed opaque-origin iframe, the postMessage bridge
  * round-trip delivering data INTO the page, the structural network lock (a page's own fetch is
  * CSP-blocked), and a live update moving a card without a reload. Drives the REAL built CLI over a
- * fresh bundle seeded with the actual `examples/pages` seed pages (`harness.ts`).
+ * fresh bundle seeded with the actual `examples/views` seed views (`harness.ts`) — Pulse/Roadmap
+ * canonical `type: View`, About deliberately legacy `type: Page` (dual-read pinned end-to-end).
  */
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
@@ -16,12 +17,14 @@ const TASKS = [
   { id: "tasks/beta", frontmatter: { type: "Task", title: "Beta task", status: "blocked" }, body: "" },
 ];
 
-test("launcher lists the bundle's Page docs", async ({ page }) => {
+test("launcher lists the bundle's View docs (including a legacy Page doc)", async ({ page }) => {
   const ui = await bootUiOverPagesBundle([]);
   try {
     await page.goto(ui.url); // token -> cookie + SPA boot
-    await expect(page.locator('[data-page-id="pages-registry/pulse"]')).toBeVisible();
-    await expect(page.locator('[data-page-id="pages-registry/roadmap"]')).toBeVisible();
+    await expect(page.locator('[data-page-id="views-registry/pulse"]')).toBeVisible();
+    await expect(page.locator('[data-page-id="views-registry/roadmap"]')).toBeVisible();
+    // The legacy-typed About doc must list alongside the canonical Views (dual-read).
+    await expect(page.locator('[data-page-id="pages-registry/about"]')).toBeVisible();
     await expect(page.getByRole("heading", { name: "Pulse — activity feed" })).toBeVisible();
   } finally {
     await ui.cleanup();
@@ -32,7 +35,7 @@ test("a directly opened data Page completes its startup bridge queries before if
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
+    await page.locator('[data-page-id="views-registry/roadmap"]').click();
 
     const iframe = page.locator("iframe.page-frame-iframe");
     await expect(iframe).toBeVisible();
@@ -61,13 +64,13 @@ test("About navigation opens Roadmap and its startup bridge queries under the ta
     // Malformed/nonexistent targets stay put; the shell never constructs a route from them.
     const before = page.url();
     await about.locator("body").evaluate(() => {
-      (window as unknown as { openPage: (id: string) => void }).openPage("pages-registry/missing");
+      (window as unknown as { openPage: (id: string) => void }).openPage("views-registry/missing");
     });
     await page.waitForTimeout(100);
     expect(page.url()).toBe(before);
 
-    await about.getByRole("button", { name: "Open the Roadmap Page" }).click();
-    await expect(page).toHaveURL(/view=page&id=pages-registry%2Froadmap/);
+    await about.getByRole("button", { name: "Open the Roadmap view" }).click();
+    await expect(page).toHaveURL(/view=page&id=views-registry%2Froadmap/);
     const roadmap = page.frameLocator("iframe.page-frame-iframe");
     // Target capability is resolved independently: Roadmap receives bundle data although About
     // was bridge:none.
@@ -86,7 +89,7 @@ test("the sandboxed page is structurally blocked from reaching the data API (con
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
+    await page.locator('[data-page-id="views-registry/roadmap"]').click();
     const handle = await page.waitForSelector("iframe.page-frame-iframe");
     const frame = await handle.contentFrame();
     if (!frame) throw new Error("iframe had no content frame");
@@ -118,7 +121,7 @@ test("the sandboxed page cannot navigate its frame (or the top) to an external o
 
     await page.goto(ui.url);
     const topOriginBefore = new URL(page.url()).origin;
-    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
+    await page.locator('[data-page-id="views-registry/roadmap"]').click();
     const handle = await page.waitForSelector("iframe.page-frame-iframe");
     const frame = await handle.contentFrame();
     if (!frame) throw new Error("iframe had no content frame");
@@ -165,7 +168,7 @@ test("P1: an SSE outage self-heals — a change made while the stream was down a
   let second: Awaited<ReturnType<typeof bootUiServerInProcess>> | undefined;
   try {
     await page.goto(`http://127.0.0.1:${first.port}/?token=${secret}`);
-    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
+    await page.locator('[data-page-id="views-registry/roadmap"]').click();
     const frame = page.frameLocator("iframe.page-frame-iframe");
     const spike = frame.locator(".item", { hasText: "Spike work" });
     // Neither seeded task is done/canceled yet.
@@ -205,7 +208,7 @@ test("P1: a session-rotating restart surfaces 'Connection lost' instead of stayi
   let second: Awaited<ReturnType<typeof bootUiServerInProcess>> | undefined;
   try {
     await page.goto(`http://127.0.0.1:${first.port}/?token=restart-403-first-secret`);
-    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
+    await page.locator('[data-page-id="views-registry/roadmap"]').click();
     await expect(page.locator("iframe.page-frame-iframe")).toBeVisible();
 
     // The server goes away and comes back on the SAME port with a DIFFERENT secret — the open
@@ -225,9 +228,9 @@ test("P1: a session-rotating restart surfaces 'Connection lost' instead of stayi
   }
 });
 
-test("F2 regression: a malformed Page deep link shows a per-view error, NOT the terminal session-expired screen", async ({ page }) => {
+test("F2 regression: a malformed View deep link shows a per-view error, NOT the terminal session-expired screen", async ({ page }) => {
   // The bug the 403 fix above introduced: mintPageNonce also 403s (code FORBIDDEN) for a
-  // malformed Page doc — an `entry` outside `pages/`, or one no Page doc has registered — and
+  // malformed View doc — an `entry` outside an accepted prefix, or one no registry doc has registered — and
   // such a doc IS clickable today (the launcher doesn't filter entries by prefix). Session-death
   // and this confinement-refusal share nothing but the status code; only getDoc's 403 may trip
   // the terminal recovery screen (PageFrame.tsx's loadPage).
@@ -235,12 +238,12 @@ test("F2 regression: a malformed Page deep link shows a per-view error, NOT the 
   try {
     await writeDoc(
       { root: ui.dir },
-      { id: "pages-registry/bad", frontmatter: { type: "Page", title: "Bad page", entry: "not-a-page-prefix/oops.html" }, body: "" },
+      { id: "views-registry/bad", frontmatter: { type: "View", title: "Bad view", entry: "not-a-view-prefix/oops.html" }, body: "" },
     );
 
     await page.goto(ui.url); // establish the session cookie; malformed entries are filtered from the launcher
     const origin = new URL(ui.url).origin;
-    await page.goto(`${origin}/?view=page&id=pages-registry%2Fbad`);
+    await page.goto(`${origin}/?view=page&id=views-registry%2Fbad`);
 
     await expect(page.locator(".view-status-error")).toContainText(/could not open page/i);
     await expect(page.getByRole("heading", { name: "Connection lost" })).toHaveCount(0);
@@ -253,12 +256,12 @@ test("P1: deleting an open page's registry doc revokes the frame — the iframe 
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
+    await page.locator('[data-page-id="views-registry/roadmap"]').click();
     const frame = page.frameLocator("iframe.page-frame-iframe");
     await expect(frame.locator(".item .title", { hasText: "Spike work" })).toBeVisible();
 
     // Delete the registry doc on disk via the CLI — the watcher pushes the removal over SSE.
-    execFileSync(process.execPath, [CLI_DIST, "doc", "delete", "pages-registry/roadmap", "--dir", ui.dir], { stdio: "ignore" });
+    execFileSync(process.execPath, [CLI_DIST, "doc", "delete", "views-registry/roadmap", "--dir", ui.dir], { stdio: "ignore" });
 
     // The open frame is torn down (not merely stale) and an explicit revoked state shows.
     await expect(page.locator("iframe.page-frame-iframe")).toHaveCount(0, { timeout: 10_000 });
@@ -272,7 +275,7 @@ test("a status change streams live into the open page (roadmap rollup updates, n
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="pages-registry/roadmap"]').click();
+    await page.locator('[data-page-id="views-registry/roadmap"]').click();
 
     const frame = page.frameLocator("iframe.page-frame-iframe");
     const spike = frame.locator(".item", { hasText: "Spike work" });

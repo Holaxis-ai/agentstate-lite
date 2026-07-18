@@ -599,19 +599,19 @@ test("resolveRecipe: loads a real external recipe folder end to end (the fixture
   assert.deepEqual(result.recipe.governs, ["Term"]);
 });
 
-test("resolveRecipe: loads the content-free Review Workflow package with its declared Page", async () => {
+test("resolveRecipe: loads the content-free Review Workflow package with its declared View", async () => {
   const fixture = path.resolve(import.meta.dirname, "../../../examples/recipes/review-workflow");
   const result = await resolveRecipe(fixture);
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.recipe.id, "review-workflow");
   assert.equal(result.recipe.contentPolicy, "definitions-only");
-  assert.deepEqual([...result.recipe.governs].sort(), ["Page", "Review Request"]);
+  assert.deepEqual([...result.recipe.governs].sort(), ["Review Request", "View"]);
   assert.equal(result.recipe.pages.length, 1);
-  assert.equal(result.recipe.pages[0]!.registry.id, "pages-registry/review-workflow-reviews");
-  assert.equal(result.recipe.pages[0]!.entry, "pages/review-workflow/reviews.html");
+  assert.equal(result.recipe.pages[0]!.registry.id, "views-registry/review-workflow-reviews");
+  assert.equal(result.recipe.pages[0]!.entry, "views/review-workflow/reviews.html");
   assert.equal(result.recipe.references.length, 1);
-  assert.equal(result.recipe.references[0]!.doc.id, "references/page-authoring-v0");
+  assert.equal(result.recipe.references[0]!.doc.id, "references/view-authoring-v0");
 });
 
 test("resolveRecipe: definitions-only scans the full folder and rejects hidden instance data", async () => {

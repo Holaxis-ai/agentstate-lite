@@ -134,13 +134,13 @@ test("every skill-projected source exists on disk", () => {
   }
 });
 
-test("the shipped Page examples include capability-independent navigation from a content Page", () => {
+test("the shipped View examples include capability-independent navigation from a content View", () => {
   for (const dest of [
-    "pages/about.html",
-    "pages/pages-registry/about.md",
-    "pages/references/page-authoring-v0.md",
+    "views/about.html",
+    "views/views-registry/about.md",
+    "views/references/view-authoring-v0.md",
   ]) {
-    assert.ok(SKILL_DESTS.has(dest), `Page navigation reference is not skill-projected: ${dest}`);
+    assert.ok(SKILL_DESTS.has(dest), `View navigation reference is not skill-projected: ${dest}`);
   }
 });
 
@@ -167,16 +167,16 @@ test("the shipped review-workflow references exactly mirror the complete recipe 
   assert.deepEqual(actual, expected);
 });
 
-test("the portable recipe carries the canonical Page convention byte-for-byte", () => {
-  const canonical = readFileSync(path.join(REPO_ROOT, "examples/pages/conventions/page.md"));
-  const portable = readFileSync(path.join(REPO_ROOT, "examples/recipes/review-workflow/conventions/page.md"));
+test("the portable recipe carries the canonical View convention byte-for-byte", () => {
+  const canonical = readFileSync(path.join(REPO_ROOT, "examples/views/conventions/view.md"));
+  const portable = readFileSync(path.join(REPO_ROOT, "examples/recipes/review-workflow/conventions/view.md"));
   assert.deepEqual(portable, canonical);
 });
 
-test("the portable recipe carries the canonical bundle-native Page authoring reference byte-for-byte", () => {
-  const canonical = readFileSync(path.join(REPO_ROOT, "examples/pages/references/page-authoring-v0.md"));
+test("the portable recipe carries the canonical bundle-native View authoring reference byte-for-byte", () => {
+  const canonical = readFileSync(path.join(REPO_ROOT, "examples/views/references/view-authoring-v0.md"));
   const portable = readFileSync(
-    path.join(REPO_ROOT, "examples/recipes/review-workflow/references/page-authoring-v0.md"),
+    path.join(REPO_ROOT, "examples/recipes/review-workflow/references/view-authoring-v0.md"),
   );
   assert.deepEqual(portable, canonical);
 });
@@ -258,4 +258,100 @@ function resolvesToManifest(refPath: string): boolean {
 test("no phantom pointers — every $REFS/… path in the rendered SKILL.md resolves to a shipped dest or dir-prefix", () => {
   const phantoms = [...new Set(extractRefsPaths(rendered).filter((p) => !resolvesToManifest(p)))];
   assert.deepEqual(phantoms, [], `phantom $REFS/ path(s) — point nowhere in the skill projection: ${phantoms.join(", ")}`);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Teaching-channel pins (plans/rename-page-kind-to-view, Unit 3): View is CANONICAL in every
+// regenerated teaching surface; Page appears only as the accepted legacy name. These pins are
+// red-on-old — each failed against the pre-rename render.
+// ---------------------------------------------------------------------------------------------
+
+test("the rendered skill teaches View authoring canonically (views paths, type: View, View convention)", () => {
+  assert.match(rendered, /## Bundle views — ship a live UI as bundle content/);
+  assert.match(rendered, /`type: View` registry doc/);
+  assert.ok(rendered.includes("--doc-key views/my-view.html"), "authoring step 2 must promote under views/");
+  assert.ok(rendered.includes("--doc-key views-registry/my-view.md"), "authoring step 3 must target views-registry/");
+  assert.ok(rendered.includes('promote "$REFS/views/conventions/view.md" --doc-key conventions/view.md'), "authoring step 4 must install the View convention");
+  assert.ok(rendered.includes('cat "$REFS/views/references/view-authoring-v0.md"'), "the shipped contract pointer must be the View authoring reference");
+});
+
+test("the rendered skill mentions legacy Page exactly once — the legacy note, never authoring guidance", () => {
+  // The single accepted-legacy sentence. Any other `type: Page` occurrence is stale teaching.
+  const legacyMentions = rendered.match(/type: Page/g) ?? [];
+  assert.equal(legacyMentions.length, 1, "exactly one `type: Page` mention (the legacy note) may remain");
+  assert.match(rendered, /`Page` is the accepted legacy name/);
+  // No authoring guidance may target the legacy prefixes.
+  assert.doesNotMatch(rendered, /--doc-key pages\//);
+  assert.doesNotMatch(rendered, /--doc-key pages-registry\//);
+  assert.doesNotMatch(rendered, /conventions\/page\.md/);
+  assert.doesNotMatch(rendered, /page-authoring-v0/);
+});
+
+test("the npm-target SKILL teaches Views, with zero stale Page vocabulary", () => {
+  assert.match(renderedNpm, /live\s+bundle Views/);
+  assert.doesNotMatch(renderedNpm, /type: Page/);
+  assert.doesNotMatch(renderedNpm, /bundle Pages/);
+  assert.doesNotMatch(renderedNpm, /pages-registry\//);
+});
+
+test("no CLI teaching source (usage/help strings included) says Page except as a legacy note", () => {
+  // The render pins above can't see prose that never reaches a render — --help/usage strings and
+  // command summaries live as literals in source (the fix-round's finding class). Scan the
+  // teaching sources directly: any line with the standalone word `Page`/`Pages` must be a legacy
+  // note (contain "legacy"). Identifiers (PageTypeName, PAGE_*, pageId, open-page, …) don't
+  // survive a \bPages?\b word-boundary match, so no allowlist is needed.
+  const teachingSources = [
+    "src/reference.ts",
+    "src/skill-render.ts",
+    ...readdirSync(path.join(here, "../src/commands"))
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => `src/commands/${f}`),
+  ];
+  for (const relative of teachingSources) {
+    const lines = readFileSync(path.join(here, "..", relative), "utf8").split("\n");
+    lines.forEach((line, i) => {
+      if (/\bPages?\b/.test(line) && !/legacy/i.test(line)) {
+        assert.fail(`${relative}:${i + 1} teaches canonical Page (no "legacy" on the line): ${line.trim()}`);
+      }
+    });
+  }
+});
+
+test("examples markdown teaches only View — the word Page appears solely in legacy notes", () => {
+  const examplesRoot = path.join(REPO_ROOT, "examples");
+  const mdFiles = relativeFileInventory(examplesRoot).filter((f) => f.endsWith(".md"));
+  for (const relative of mdFiles) {
+    const lines = readFileSync(path.join(examplesRoot, relative), "utf8").split("\n");
+    lines.forEach((line, i) => {
+      if (/\bPages?\b/.test(line) && !/legacy/i.test(line)) {
+        assert.fail(`examples/${relative}:${i + 1} teaches canonical Page (no "legacy" on the line): ${line.trim()}`);
+      }
+    });
+  }
+});
+
+test("repo-level teaching docs (published README/package.json, root CLAUDE.md/README/AGENTS/STATUS) say Page only as a legacy note", () => {
+  // Fix-round-2 finding class: teaching surfaces OUTSIDE the cli package's src tree — the
+  // published npm README + package description, and the repo-root orchestrator guidance every
+  // agent session auto-reads. Same per-line rule as above. plugins/ is deliberately EXCLUDED:
+  // its SKILL.md + references tree is regenerated by the merge bot (scripts/ci-version-bundle.mjs
+  // snapshots and rewrites them), so it is generated output, not an authored teaching source.
+  const repoLevelSources = [
+    "packages/cli/README.md",
+    "packages/cli/package.json",
+    "CLAUDE.md",
+    "README.md",
+    "AGENTS.md",
+    "STATUS.md",
+  ];
+  for (const relative of repoLevelSources) {
+    const filePath = path.join(REPO_ROOT, relative);
+    if (!existsSync(filePath)) continue; // optional repo docs may come and go
+    const lines = readFileSync(filePath, "utf8").split("\n");
+    lines.forEach((line, i) => {
+      if (/\bPages?\b/.test(line) && !/legacy/i.test(line)) {
+        assert.fail(`${relative}:${i + 1} teaches canonical Page (no "legacy" on the line): ${line.trim()}`);
+      }
+    });
+  }
 });

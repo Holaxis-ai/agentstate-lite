@@ -126,16 +126,20 @@ export async function bootUiOverDirBundle(seedTasks: SeedTask[]): Promise<Runnin
 }
 
 /**
- * Seed a fresh temp bundle with the given Tasks AND the three seed pages
- * (`examples/pages/{pulse,roadmap,about}.html` blobs + their `type: Page` registry docs) — the
- * fixture for the pages-spike e2e (tasks/ui-pages-spike). The tasks are wired into a single
- * `roadmap-items/spike` doc via `contains` links, so the Roadmap page's `edges` request and
- * rollup bar have real data to render. Returns the bundle dir.
+ * Seed a fresh temp bundle with the given Tasks AND the three seed views
+ * (`examples/views/{pulse,roadmap,about}.html` blobs + their registry docs) — the fixture for the
+ * pages-spike e2e (tasks/ui-pages-spike). Pulse and Roadmap are seeded CANONICALLY
+ * (`type: View`, `views-registry/`/`views/`); About is DELIBERATELY seeded under the LEGACY
+ * spelling (`type: Page`, `pages-registry/`/`pages/`) so the suite pins dual-read end-to-end —
+ * a legacy doc must list, open, and navigate to a canonical View for as long as dual-read
+ * exists. The tasks are wired into a single `roadmap-items/spike` doc via `contains` links, so
+ * the Roadmap view's `edges` request and rollup bar have real data to render. Returns the
+ * bundle dir.
  */
 export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
   const { initBundle, writeDoc, writeBlob } = await import("@agentstate-lite/core");
   const { readFile } = await import("node:fs/promises");
-  const examples = path.resolve(here, "../../../examples/pages");
+  const examples = path.resolve(here, "../../../examples/views");
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-pages-e2e-"));
   await initBundle(dir);
   // The Task convention makes `doc update --status` patchable (the live-update driver) and gives
@@ -172,29 +176,30 @@ export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
   await writeDoc(
     { root: dir },
     {
-      id: "pages-registry/pulse",
-      frontmatter: { type: "Page", title: "Pulse — activity feed", entry: "pages/pulse.html", description: "Live document feed.", bridge: "bundle-read" },
+      id: "views-registry/pulse",
+      frontmatter: { type: "View", title: "Pulse — activity feed", entry: "views/pulse.html", description: "Live document feed.", bridge: "bundle-read" },
       body: "",
     },
   );
   await writeDoc(
     { root: dir },
     {
-      id: "pages-registry/roadmap",
-      frontmatter: { type: "Page", title: "Roadmap", entry: "pages/roadmap.html", description: "Roadmap items and their contained tasks.", bridge: "bundle-read" },
+      id: "views-registry/roadmap",
+      frontmatter: { type: "View", title: "Roadmap", entry: "views/roadmap.html", description: "Roadmap items and their contained tasks.", bridge: "bundle-read" },
       body: "",
     },
   );
+  // LEGACY on purpose (see the doc comment above): a `type: Page` doc under the legacy prefixes.
   await writeDoc(
     { root: dir },
     {
       id: "pages-registry/about",
-      frontmatter: { type: "Page", title: "About this bundle", entry: "pages/about.html", description: "Content-page navigation example.", bridge: "none" },
+      frontmatter: { type: "Page", title: "About this bundle", entry: "pages/about.html", description: "Content-view navigation example.", bridge: "none" },
       body: "",
     },
   );
-  await writeBlob({ root: dir }, "pages/pulse.html", await readFile(path.join(examples, "pulse.html")), "text/html; charset=utf-8");
-  await writeBlob({ root: dir }, "pages/roadmap.html", await readFile(path.join(examples, "roadmap.html")), "text/html; charset=utf-8");
+  await writeBlob({ root: dir }, "views/pulse.html", await readFile(path.join(examples, "pulse.html")), "text/html; charset=utf-8");
+  await writeBlob({ root: dir }, "views/roadmap.html", await readFile(path.join(examples, "roadmap.html")), "text/html; charset=utf-8");
   await writeBlob({ root: dir }, "pages/about.html", await readFile(path.join(examples, "about.html")), "text/html; charset=utf-8");
   return dir;
 }

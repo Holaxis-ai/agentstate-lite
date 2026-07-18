@@ -27,6 +27,7 @@ import path from "node:path";
 
 import {
   initBundle,
+  query,
   readBlob,
   writeBlob,
   writeDoc,
@@ -37,6 +38,7 @@ import {
   type Bundle,
   type KindConvention,
 } from "@agentstate-lite/core";
+import { parseRegistration, PAGE_REGISTRY_PREFIX, VIEW_REGISTRY_PREFIX } from "@agentstate-lite/core/page";
 import { serve, type ServerHandle } from "@agentstate-lite/server";
 
 import { init } from "../src/commands/init.js";
@@ -839,7 +841,7 @@ test("recipe add <path>: idempotent — second add of the SAME external recipe i
   }
 });
 
-test("portable Review Workflow: clean-room install carries Kinds, a Page, and its authoring Reference but zero Review Request instances", async () => {
+test("portable Review Workflow: clean-room install carries Kinds, a View, and its authoring Reference but zero Review Request instances", async () => {
   const dir = await tempDir();
   try {
     await initBundle(dir);
@@ -848,12 +850,12 @@ test("portable Review Workflow: clean-room install carries Kinds, a Page, and it
     assert.equal(first.changed, true);
     const pages = first.pages as Array<Record<string, unknown>>;
     assert.equal(pages.length, 1);
-    assert.equal(pages[0]!.registry_id, "pages-registry/review-workflow-reviews");
-    assert.equal(pages[0]!.entry, "pages/review-workflow/reviews.html");
+    assert.equal(pages[0]!.registry_id, "views-registry/review-workflow-reviews");
+    assert.equal(pages[0]!.entry, "views/review-workflow/reviews.html");
     assert.equal(pages[0]!.registry_changed, true);
     assert.equal(pages[0]!.entry_changed, true);
     const references = first.references as Array<Record<string, unknown>>;
-    assert.deepEqual(references, [{ id: "references/page-authoring-v0", changed: true }]);
+    assert.deepEqual(references, [{ id: "references/view-authoring-v0", changed: true }]);
 
     const bundle: Bundle = { root: dir };
     const registry = await loadKinds(bundle);
@@ -862,23 +864,23 @@ test("portable Review Workflow: clean-room install carries Kinds, a Page, and it
     assert.match(reviewKind!.description ?? "", /durable request/);
     assert.match(reviewKind!.fields.valueDescriptions.status?.approved ?? "", /terminal/);
 
-    const pageKind = registry.kinds.get("Page");
+    const pageKind = registry.kinds.get("View");
     assert.ok(pageKind);
-    assert.equal(pageKind!.path, "pages-registry/");
+    assert.equal(pageKind!.path, "views-registry/");
     assert.deepEqual(pageKind!.fields.required, ["title", "entry", "bridge"]);
     assert.deepEqual(pageKind!.fields.values.bridge, ["none", "bundle-read"]);
 
-    const pageDefinitions = await runJson(list, ["--type", "Page", "--dir", dir]);
-    assert.equal(pageDefinitions.count, 1, "the package carries exactly its declared Page definition");
-    assert.equal((pageDefinitions.docs as Array<Record<string, unknown>>)[0]!.id, "pages-registry/review-workflow-reviews");
+    const pageDefinitions = await runJson(list, ["--type", "View", "--dir", dir]);
+    assert.equal(pageDefinitions.count, 1, "the package carries exactly its declared View definition");
+    assert.equal((pageDefinitions.docs as Array<Record<string, unknown>>)[0]!.id, "views-registry/review-workflow-reviews");
 
-    const installedReference = await readFile(path.join(dir, "references", "page-authoring-v0.md"), "utf8");
+    const installedReference = await readFile(path.join(dir, "references", "view-authoring-v0.md"), "utf8");
     const parsedReference = parseMarkdown(installedReference);
     assert.equal(parsedReference.frontmatter.type, "Reference");
     assert.equal(parsedReference.frontmatter.protocol, "v0");
     assert.match(parsedReference.body, /does not depend on an agent-harness skill/);
-    const installedPageConvention = await readFile(path.join(dir, "conventions", "page.md"), "utf8");
-    assert.match(installedPageConvention, /\.\.\/references\/page-authoring-v0\.md/);
+    const installedPageConvention = await readFile(path.join(dir, "conventions", "view.md"), "utf8");
+    assert.match(installedPageConvention, /\.\.\/references\/view-authoring-v0\.md/);
 
     const before = await runJson(list, ["--type", "Review Request", "--dir", dir]);
     assert.equal(before.count, 0, "the package must not carry source Review Request instances");
@@ -921,9 +923,9 @@ test("portable Review Workflow: clean-room install carries Kinds, a Page, and it
       (err: unknown) => err instanceof CliError && err.code === "USAGE",
     );
 
-    const htmlBefore = await readFile(path.join(dir, "pages", "review-workflow", "reviews.html"), "utf8");
+    const htmlBefore = await readFile(path.join(dir, "views", "review-workflow", "reviews.html"), "utf8");
     const registryBefore = await readFile(
-      path.join(dir, "pages-registry", "review-workflow-reviews.md"),
+      path.join(dir, "views-registry", "review-workflow-reviews.md"),
       "utf8",
     );
     const second = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
@@ -931,13 +933,13 @@ test("portable Review Workflow: clean-room install carries Kinds, a Page, and it
     const secondPages = second.pages as Array<Record<string, unknown>>;
     assert.equal(secondPages[0]!.registry_changed, false);
     assert.equal(secondPages[0]!.entry_changed, false);
-    assert.deepEqual(second.references, [{ id: "references/page-authoring-v0", changed: false }]);
-    assert.equal(await readFile(path.join(dir, "pages", "review-workflow", "reviews.html"), "utf8"), htmlBefore);
+    assert.deepEqual(second.references, [{ id: "references/view-authoring-v0", changed: false }]);
+    assert.equal(await readFile(path.join(dir, "views", "review-workflow", "reviews.html"), "utf8"), htmlBefore);
     assert.equal(
-      await readFile(path.join(dir, "pages-registry", "review-workflow-reviews.md"), "utf8"),
+      await readFile(path.join(dir, "views-registry", "review-workflow-reviews.md"), "utf8"),
       registryBefore,
     );
-    assert.equal(await readFile(path.join(dir, "references", "page-authoring-v0.md"), "utf8"), installedReference);
+    assert.equal(await readFile(path.join(dir, "references", "view-authoring-v0.md"), "utf8"), installedReference);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -949,7 +951,7 @@ test("portable recipe preflights a different operating Reference before writing 
     await initBundle(dir);
     const bundle: Bundle = { root: dir };
     await writeDoc(bundle, {
-      id: "references/page-authoring-v0",
+      id: "references/view-authoring-v0",
       frontmatter: { type: "Reference", title: "Local guide", timestamp: T },
       body: "Bundle-owned guidance that differs from the portable package.\n",
     });
@@ -958,24 +960,24 @@ test("portable recipe preflights a different operating Reference before writing 
       (err: unknown) => {
         assert.ok(err instanceof CliError);
         assert.equal(err.code, "ALREADY_EXISTS");
-        assert.match(err.message, /references\/page-authoring-v0\.md/);
+        assert.match(err.message, /references\/view-authoring-v0\.md/);
         return true;
       },
     );
-    assert.equal(await readBlob(bundle, "pages/review-workflow/reviews.html"), null);
+    assert.equal(await readBlob(bundle, "views/review-workflow/reviews.html"), null);
     await assert.rejects(() => readFile(path.join(dir, "conventions", "review-request.md")));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("portable recipe refuses a different existing Page blob without overwriting it", async () => {
+test("portable recipe refuses a different existing View blob without overwriting it", async () => {
   const dir = await tempDir();
   try {
     await initBundle(dir);
     const bundle: Bundle = { root: dir };
     const existing = Buffer.from("<p>bundle author's page</p>");
-    await writeBlob(bundle, "pages/review-workflow/reviews.html", existing, "text/html; charset=utf-8");
+    await writeBlob(bundle, "views/review-workflow/reviews.html", existing, "text/html; charset=utf-8");
     await assert.rejects(
       () => runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]),
       (err: unknown) => {
@@ -985,7 +987,7 @@ test("portable recipe refuses a different existing Page blob without overwriting
         return true;
       },
     );
-    const after = await readBlob(bundle, "pages/review-workflow/reviews.html");
+    const after = await readBlob(bundle, "views/review-workflow/reviews.html");
     assert.ok(after);
     assert.equal(Buffer.from(after!.bytes).toString("utf8"), existing.toString("utf8"));
   } finally {
@@ -993,17 +995,17 @@ test("portable recipe refuses a different existing Page blob without overwriting
   }
 });
 
-test("portable recipe preflights a different Page registry before writing any package artifact", async () => {
+test("portable recipe preflights a different View registry before writing any package artifact", async () => {
   const dir = await tempDir();
   try {
     await initBundle(dir);
     const bundle: Bundle = { root: dir };
     await writeDoc(bundle, {
-      id: "pages-registry/review-workflow-reviews",
+      id: "views-registry/review-workflow-reviews",
       frontmatter: {
-        type: "Page",
+        type: "View",
         title: "Bundle author's reviews",
-        entry: "pages/review-workflow/reviews.html",
+        entry: "views/review-workflow/reviews.html",
         bridge: "none",
         timestamp: T,
       },
@@ -1013,7 +1015,7 @@ test("portable recipe preflights a different Page registry before writing any pa
       () => runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]),
       (err: unknown) => err instanceof CliError && err.code === "ALREADY_EXISTS",
     );
-    assert.equal(await readBlob(bundle, "pages/review-workflow/reviews.html"), null);
+    assert.equal(await readBlob(bundle, "views/review-workflow/reviews.html"), null);
     await assert.rejects(() => readFile(path.join(dir, "conventions", "review-request.md")));
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -1356,6 +1358,161 @@ test("SHIPPED example recipe (examples/recipes/claims): applies cleanly, declare
 
     const again = await runJson(recipe, ["add", SHIPPED_CLAIMS_RECIPE, "--dir", dir]);
     assert.equal(again.changed, false, "re-applying the shipped recipe must be an idempotent no-op");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── Legacy-alias awareness (plans/rename-page-kind-to-view, Option C+ — fix round 2) ───────────
+// The renamed recipe keeps id/version but renames every artifact id; per-artifact expect-absent
+// idempotency alone would give a bundle that applied the LEGACY v1 edition a complete second set
+// (two identical launcher cards under dual-read). The legacy install SATISFIES the requirement:
+// applyRecipe probes each artifact's legacy-alias counterpart and skips creation when it exists.
+
+const LEGACY_REVIEW_WORKFLOW_V1 = path.resolve(import.meta.dirname, "fixtures/review-workflow-legacy-v1");
+
+/** Emulate the launcher's listing with THE one registration predicate (core `parseRegistration`)
+ * over both accepted registry prefixes — the same authority `listPages`/the nonce mint consume. */
+async function usableRegistrations(bundle: Bundle) {
+  const docs = [
+    ...(await query(bundle, { prefix: PAGE_REGISTRY_PREFIX })),
+    ...(await query(bundle, { prefix: VIEW_REGISTRY_PREFIX })),
+  ];
+  return docs.map((doc) => parseRegistration(doc.id, doc.frontmatter)).filter((r) => r !== null);
+}
+
+test("legacy-alias awareness: reapplying the renamed Review Workflow onto a legacy v1 install creates NO duplicate set", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+
+    // 1. The OLD v1 edition (vendored byte-for-byte from pre-rename main, sha ded8183) installs
+    //    the legacy-named set: type Page under pages-registry//pages/, conventions/page.
+    const legacy = await runJson(recipe, ["add", LEGACY_REVIEW_WORKFLOW_V1, "--dir", dir]);
+    assert.equal(legacy.changed, true);
+    assert.equal((legacy.pages as Array<Record<string, unknown>>)[0]!.registry_id, "pages-registry/review-workflow-reviews");
+
+    // 2. The NEW renamed edition reapplies: the legacy install satisfies the View-shaped
+    //    artifacts — nothing is duplicated, and the receipt says so.
+    const reapply = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
+    const counts = reapply.counts as Record<string, number>;
+    assert.equal(counts.legacy_present, 2, "the View convention + the page pair are legacy-satisfied");
+
+    const pages = reapply.pages as Array<Record<string, unknown>>;
+    assert.equal(pages.length, 1);
+    assert.equal(pages[0]!.registry_id, "views-registry/review-workflow-reviews");
+    assert.equal(pages[0]!.changed, false);
+    assert.deepEqual(pages[0]!.legacy_present, {
+      registry: "pages-registry/review-workflow-reviews",
+      entry: "pages/review-workflow/reviews.html",
+    });
+
+    const docs = reapply.docs as Array<Record<string, unknown>>;
+    const viewConvention = docs.find((d) => d.id === "conventions/view");
+    assert.ok(viewConvention);
+    assert.equal(viewConvention!.changed, false);
+    assert.equal(viewConvention!.legacy_present, "conventions/page");
+    const reviewRequest = docs.find((d) => d.id === "conventions/review-request");
+    assert.equal(reviewRequest!.changed, false, "same-id convention is the ordinary existing no-op");
+
+    // The re-taught authoring reference is genuinely NEW content at a NEW id — it installs (there
+    // is no principled alias for reference docs, and updated teaching should reach legacy bundles).
+    assert.deepEqual(reapply.references, [{ id: "references/view-authoring-v0", changed: true }]);
+    assert.equal(reapply.changed, true, "the reference install is the only change");
+
+    // 3. NOTHING landed under the new prefixes — no second set on disk.
+    assert.equal((await query(bundle, { prefix: VIEW_REGISTRY_PREFIX })).length, 0);
+    assert.equal(await readBlob(bundle, "views/review-workflow/reviews.html"), null);
+    const conventionIds = (await query(bundle, { prefix: "conventions/" })).map((d) => d.id);
+    assert.ok(!conventionIds.includes("conventions/view"), "no duplicate View convention");
+
+    // 4. Launcher-level: THE one registration predicate sees exactly ONE usable card.
+    const registrations = await usableRegistrations(bundle);
+    assert.equal(registrations.length, 1);
+    assert.equal(registrations[0]!.id, "pages-registry/review-workflow-reviews");
+
+    // 5. A THIRD apply is a complete no-op with the same legacy skips — stable, re-runnable.
+    const third = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
+    assert.equal(third.changed, false);
+    assert.equal((third.counts as Record<string, number>).legacy_present, 2);
+    assert.deepEqual(third.references, [{ id: "references/view-authoring-v0", changed: false }]);
+    assert.equal((await usableRegistrations(bundle)).length, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("legacy-alias awareness: the fresh-bundle path is unchanged — the renamed recipe installs the View set normally", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    const first = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
+    assert.equal(first.changed, true);
+    const counts = first.counts as Record<string, number>;
+    assert.equal(counts.legacy_present, 0, "no legacy content, no legacy skips");
+    assert.ok(counts.created >= 4, "conventions + page pair + reference all created");
+
+    const viewIds = (await query(bundle, { prefix: VIEW_REGISTRY_PREFIX })).map((d) => d.id);
+    assert.deepEqual(viewIds, ["views-registry/review-workflow-reviews"]);
+    assert.ok(await readBlob(bundle, "views/review-workflow/reviews.html"));
+    const registrations = await usableRegistrations(bundle);
+    assert.equal(registrations.length, 1);
+    assert.equal(registrations[0]!.id, "views-registry/review-workflow-reviews");
+    assert.equal(registrations[0]!.type, "View");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("legacy-alias awareness: an INCOMPLETE legacy pair (registry doc without its blob) does NOT suppress the fresh View install", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    await runJson(recipe, ["add", LEGACY_REVIEW_WORKFLOW_V1, "--dir", dir]);
+    // Sever the pair: the legacy registry doc stays, its blob is gone (crash leftover / hand-rm).
+    await rm(path.join(dir, "pages", "review-workflow", "reviews.html"));
+
+    const reapply = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
+    const pages = reapply.pages as Array<Record<string, unknown>>;
+    assert.equal(pages.length, 1);
+    assert.equal(pages[0]!.legacy_present, undefined, "a partial legacy pair must not read as satisfying");
+    assert.equal(pages[0]!.registry_changed, true);
+    assert.equal(pages[0]!.entry_changed, true);
+    assert.equal(pages[0]!.changed, true);
+
+    // The View pair really landed: registry doc queryable, blob readable.
+    const viewIds = (await query(bundle, { prefix: VIEW_REGISTRY_PREFIX })).map((d) => d.id);
+    assert.deepEqual(viewIds, ["views-registry/review-workflow-reviews"]);
+    assert.ok(await readBlob(bundle, "views/review-workflow/reviews.html"));
+
+    // Tally: page pair + reference created; review-request convention existing; view convention
+    // still legacy-satisfied by conventions/page (the convention probe is independent of the pair).
+    assert.deepEqual(reapply.counts, { created: 2, existing: 1, legacy_present: 1 });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("legacy-alias awareness: the mirror partial pair (blob without its registry doc) also gets the fresh View install", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    await runJson(recipe, ["add", LEGACY_REVIEW_WORKFLOW_V1, "--dir", dir]);
+    // Sever the pair the other way: the blob stays, the legacy registry doc is gone.
+    await rm(path.join(dir, "pages-registry", "review-workflow-reviews.md"));
+
+    const reapply = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
+    const pages = reapply.pages as Array<Record<string, unknown>>;
+    assert.equal(pages[0]!.legacy_present, undefined);
+    assert.equal(pages[0]!.changed, true);
+    const viewIds = (await query(bundle, { prefix: VIEW_REGISTRY_PREFIX })).map((d) => d.id);
+    assert.deepEqual(viewIds, ["views-registry/review-workflow-reviews"]);
+    assert.ok(await readBlob(bundle, "views/review-workflow/reviews.html"));
+    assert.deepEqual(reapply.counts, { created: 2, existing: 1, legacy_present: 1 });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
