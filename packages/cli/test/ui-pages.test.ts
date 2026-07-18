@@ -16,7 +16,7 @@ import { deleteDoc, initBundle, readDoc, writeBlob, writeDoc, RemoteBackend, typ
 import { createRouter, serve, type ServerHandle } from "@agentstate-lite/server";
 import { bootUiServer, escapeHtml, pageError, type UiServerHandle } from "../src/ui/server.js";
 import {
-  PageNonceRegistry,
+  PageLaunchRegistry,
   SseHub,
   diffSnapshots,
   isEmptyChange,
@@ -27,37 +27,61 @@ import {
 } from "@agentstate-lite/ui-server";
 import { writeUiUrlFile, clearUiUrlFile, uiUrlFilePath } from "../src/ui/url-file.js";
 
-// ── PageNonceRegistry ───────────────────────────────────────────────────────
+// ── PageLaunchRegistry ───────────────────────────────────────────────────────
 
-test("PageNonceRegistry: mint returns an opaque nonce that resolves to its ONE key", () => {
-  const reg = new PageNonceRegistry();
-  const nonce = reg.mint("pages/a.html");
-  assert.equal(reg.resolve(nonce), "pages/a.html");
-  assert.notEqual(nonce, "pages/a.html");
-  assert.equal(reg.resolve("never-minted"), null);
+function launchInput(key: string) {
+  return {
+    registryId: `pages-registry/${key.split("/").pop()!.replace(/\.html$/, "")}`,
+    registryType: "Page" as const,
+    registryVersion: `registry-${key}`,
+    registryTitle: key,
+    entryKey: key,
+    contentType: "text/html; charset=utf-8",
+    contentVersion: `content-${key}`,
+    bytes: new TextEncoder().encode(key),
+    capability: "bundle-read" as const,
+  };
+}
+
+test("PageLaunchRegistry: mint returns opaque ids that resolve to one immutable launch", () => {
+  const reg = new PageLaunchRegistry();
+  const launch = reg.mint(launchInput("pages/a.html"));
+  assert.equal(reg.resolveNonce(launch.nonce)?.entryKey, "pages/a.html");
+  assert.equal(reg.resolveLaunch(launch.launchId)?.contentVersion, "content-pages/a.html");
+  assert.notEqual(launch.nonce, "pages/a.html");
+  assert.equal(reg.resolveNonce("never-minted"), null);
 });
 
-test("PageNonceRegistry: two mints of the same key yield DISTINCT nonces", () => {
-  const reg = new PageNonceRegistry();
-  assert.notEqual(reg.mint("pages/a.html"), reg.mint("pages/a.html"));
+test("PageLaunchRegistry: two mints of the same source yield distinct launches", () => {
+  const reg = new PageLaunchRegistry();
+  assert.notEqual(reg.mint(launchInput("pages/a.html")).launchId, reg.mint(launchInput("pages/a.html")).launchId);
 });
 
-test("PageNonceRegistry: an expired nonce resolves to null (and is swept)", () => {
-  const reg = new PageNonceRegistry(-1000); // already-expired TTL
-  const nonce = reg.mint("pages/a.html");
-  assert.equal(reg.resolve(nonce), null);
+test("PageLaunchRegistry: an expired launch resolves to null (and is swept)", () => {
+  const reg = new PageLaunchRegistry(-1000); // already-expired TTL
+  const launch = reg.mint(launchInput("pages/a.html"));
+  assert.equal(reg.resolveNonce(launch.nonce), null);
   assert.equal(reg.size(), 0);
 });
 
-test("PageNonceRegistry: bounded by a cap — the oldest nonce is evicted once full (no unbounded growth)", () => {
-  const reg = new PageNonceRegistry(60_000, 3);
-  const oldest = reg.mint("pages/a.html");
-  reg.mint("pages/b.html");
-  reg.mint("pages/c.html");
+test("PageLaunchRegistry: bounded by a cap — the oldest launch is revoked once full", () => {
+  const reg = new PageLaunchRegistry(60_000, 3);
+  const oldest = reg.mint(launchInput("pages/a.html"));
+  reg.mint(launchInput("pages/b.html"));
+  reg.mint(launchInput("pages/c.html"));
   assert.equal(reg.size(), 3);
-  reg.mint("pages/d.html"); // over cap -> evict the oldest
+  reg.mint(launchInput("pages/d.html"));
   assert.equal(reg.size(), 3);
-  assert.equal(reg.resolve(oldest), null, "the oldest nonce was evicted");
+  assert.equal(reg.resolveLaunch(oldest.launchId), null, "the oldest launch was revoked");
+});
+
+test("PageLaunchRegistry: the byte nonce expires quickly without breaking an already-loaded frame's launch", () => {
+  let now = 1_000;
+  const reg = new PageLaunchRegistry(60_000, 3, () => now, 10);
+  const launch = reg.mint(launchInput("pages/a.html"));
+  now += 11;
+  assert.equal(reg.resolveNonce(launch.nonce), null, "a leaked page URL loses byte access at the nonce TTL");
+  assert.equal(reg.resolveLaunch(launch.launchId)?.entryKey, "pages/a.html", "the loaded frame can still propose until its longer launch TTL");
 });
 
 test("XSS pin: pageError HTML-escapes its message — script tags, quotes, and ampersands arrive as text, never markup", async () => {

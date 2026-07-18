@@ -79,6 +79,7 @@ describe("Page registry authority", () => {
 
   it("parses bridge grants fail-closed", () => {
     expect(resolveBridgeCapability("bundle-read")).toBe("bundle-read");
+    expect(resolveBridgeCapability("bundle-propose")).toBe("bundle-propose");
     for (const value of [undefined, "none", "Bundle-Read", "bundle-write", true]) {
       expect(resolveBridgeCapability(value)).toBe("none");
     }

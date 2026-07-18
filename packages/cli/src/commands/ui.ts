@@ -24,17 +24,20 @@ import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
+import { resolveActor } from "../actor.js";
 
 export const UI_USAGE = `agentstate-lite ui — boot the local web UI: a launcher for the bundle's views (type: View docs, framed sandboxed with live updates; legacy type: Page docs keep working)
 
 Usage:
-  agentstate-lite ui [--dir <path> | --remote <url>] [--port <n>] [--open]
+  agentstate-lite ui [--dir <path> | --remote <url>] [--port <n>] [--actor <name>] [--open]
 
 Options:
   --dir <path>          Bundle directory (default: discovered from the cwd) — mounts the
                          reference router in-process
   --remote <url>         Reverse-proxy /v0/* to a deployed remote instead (explicit only)
   --port <p>            Port to bind (default: 0 — an OS-assigned ephemeral port)
+  --actor <name>        Advisory identity for human-confirmed local View actions. Precedence:
+                         --actor > AGENTSTATE_LITE_ACTOR > absent. Read-only Views need none
   --open                Open the printed URL in a browser once the server is listening
   --json                Emit compact JSON instead of TOON
   -h, --help            Show this help
@@ -127,6 +130,7 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
           dir: { type: "string" },
           remote: { type: "string" },
           port: { type: "string" },
+          actor: { type: "string" },
           open: { type: "boolean" },
           json: { type: "boolean" },
           help: { type: "boolean", short: "h" },
@@ -153,6 +157,7 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
   }
 
   const remoteFlag = await resolveRemoteFlag(values.remote, values.dir);
+  const actor = resolveActor(values.actor, { help: `${cliInvocation()} ui --actor <name>` });
   let options: UiServerOptions;
   let rootLabel: string;
 
@@ -179,12 +184,12 @@ export async function ui(argv: string[], deps: Partial<UiCliDeps> = {}): Promise
     // engine-level RemoteBackend plumbing every other kind/graph-aware command uses over --remote;
     // the SPA's /v0 data path stays the raw proxy.
     const kindsBundle = await openBundle(undefined, remoteFlag);
-    options = { mode: "remote", port, remoteBase: base, apiKey, kindsBundle };
+    options = { mode: "remote", port, remoteBase: base, apiKey, kindsBundle, actor };
     rootLabel = base;
   } else {
     const bundle = await openBundle(values.dir);
     const router = createRouter(bundle);
-    options = { mode: "dir", port, router, bundle };
+    options = { mode: "dir", port, router, bundle, actor };
     rootLabel = bundle.root;
   }
 

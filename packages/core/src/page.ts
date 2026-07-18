@@ -28,6 +28,18 @@ export const VIEW_ENTRY_PREFIX = "views/";
 export const PAGE_TYPE_NAMES = ["Page", "View"] as const;
 export type PageTypeName = (typeof PAGE_TYPE_NAMES)[number];
 
+/**
+ * The shell-enforced capability requested by a registered View. `bundle-propose` includes the
+ * read surface but grants no direct write authority: it may only propose a narrow action for the
+ * trusted shell and human to confirm. Unknown values fail closed to `none`.
+ */
+export type BridgeCapability = "none" | "bundle-read" | "bundle-propose";
+
+/** One capability resolver shared by registry parsing and the loopback server's security gates. */
+export function resolveBridgeCapability(value: unknown): BridgeCapability {
+  return value === "bundle-read" || value === "bundle-propose" ? value : "none";
+}
+
 /** True iff `value` is exactly one of the accepted kind names (`Page` | `View`). */
 export function isPageTypeName(value: unknown): value is PageTypeName {
   return value === "Page" || value === "View";

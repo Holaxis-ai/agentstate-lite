@@ -12,6 +12,7 @@
 import { getDoc, listAllHeads, parseErrorEnvelope } from "./client.js";
 import type { Edge, EdgesResponse, Frontmatter } from "./types.js";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
+import type { ActionConfirmation, ActionPrepareResult, ActionTerminalResult, DocumentSetFieldAction } from "@agentstate-lite/ui-server";
 import { PAGE_TYPE_NAMES, parseRegisteredPage, type BridgeCapability } from "../pages/registry.js";
 
 /** `/__ui/config` shape (server `configResponse`). */
@@ -139,15 +140,39 @@ function toArray(v: string | string[] | undefined): string[] {
   return Array.isArray(v) ? v : [v];
 }
 
-/** Mint a nonce for `key` and return the relative page-bytes URL (`/__page/<nonce>`) to load in the iframe. */
-export async function mintPageNonce(key: string): Promise<string> {
+/** Resolve one registry doc to an immutable frame launch and its nonce-gated byte URL. */
+export async function mintPageNonce(registryId: string): Promise<{ url: string; launchId: string }> {
   const res = await fetch("/__page/mint", {
     method: "POST",
     credentials: "same-origin",
     headers: { "content-type": "application/json", "X-Requested-With": "agentstate-lite-ui" },
-    body: JSON.stringify({ key }),
+    body: JSON.stringify({ registryId }),
   });
   if (!res.ok) throw await parseErrorEnvelope(res);
-  const data = (await res.json()) as { url: string };
-  return data.url;
+  return (await res.json()) as { url: string; launchId: string };
 }
+
+async function postTrustedAction<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json", "X-Requested-With": "agentstate-lite-ui" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await parseErrorEnvelope(res);
+  return (await res.json()) as T;
+}
+
+export function prepareTrustedAction(launchId: string, action: DocumentSetFieldAction): Promise<ActionPrepareResult> {
+  return postTrustedAction("/__ui/actions/prepare", { launchId, action });
+}
+
+export function commitTrustedAction(approvalToken: string): Promise<ActionTerminalResult> {
+  return postTrustedAction("/__ui/actions/commit", { approvalToken });
+}
+
+export function cancelTrustedAction(approvalToken: string): Promise<ActionTerminalResult> {
+  return postTrustedAction("/__ui/actions/cancel", { approvalToken });
+}
+
+export type { ActionConfirmation, ActionPrepareResult, ActionTerminalResult, DocumentSetFieldAction };

@@ -39,7 +39,8 @@ Views.
 - **Agent-native.** The primary interface is a small, predictable CLI designed to be driven by
   AI agents, with a `SessionStart` hook installer for Claude Code / Codex / OpenCode.
 - **Human-visible.** `agentstate-lite ui --open` launches the bundle's registered Views, which can
-  present live bundle data through the read-only bridge. (`Page` is the accepted legacy name for
+  present live data through the read-only v0 bridge or propose one human-confirmed local scalar
+  action through v1. (`Page` is the accepted legacy name for
   the View kind — existing legacy content keeps working.)
 
 ## Optional: a shared remote bundle
