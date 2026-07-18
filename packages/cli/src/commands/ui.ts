@@ -5,7 +5,7 @@
 //
 // Source resolution follows the explicit-only remote rule (`resolveRemoteFlag`: only `--remote`
 // activates HTTP; otherwise local bundle discovery) — EXCEPT `ui` builds its OWN
-// remote handling (a reverse proxy, `packages/cli/src/ui/proxy.ts`) rather than routing through
+// remote handling (the reverse proxy in `@agentstate-lite/ui-server`) rather than routing through
 // `openBundle`'s `RemoteBackend` path, since the SPA needs the raw `/v0/*` wire surface
 // same-origin, not the engine-level `StorageBackend` abstraction.
 //

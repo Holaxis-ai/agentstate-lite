@@ -15,9 +15,16 @@ import { connect } from "node:net";
 import { deleteDoc, initBundle, readDoc, writeBlob, writeDoc, RemoteBackend, type Bundle } from "@agentstate-lite/core";
 import { createRouter, serve, type ServerHandle } from "@agentstate-lite/server";
 import { bootUiServer, escapeHtml, pageError, type UiServerHandle } from "../src/ui/server.js";
-import { PageNonceRegistry, pageCsp } from "../src/ui/pages.js";
-import { SseHub } from "../src/ui/events.js";
-import { diffSnapshots, isEmptyChange, snapshotBundle, startWatcher, type Snapshot } from "../src/ui/watch.js";
+import {
+  PageNonceRegistry,
+  SseHub,
+  diffSnapshots,
+  isEmptyChange,
+  pageCsp,
+  snapshotBundle,
+  startWatcher,
+  type Snapshot,
+} from "@agentstate-lite/ui-server";
 import { writeUiUrlFile, clearUiUrlFile, uiUrlFilePath } from "../src/ui/url-file.js";
 
 // ── PageNonceRegistry ───────────────────────────────────────────────────────

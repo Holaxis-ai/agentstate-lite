@@ -13,7 +13,7 @@ interface UiConfig {
   remoteUrl: string | null;
 }
 
-/** Best-effort read of the ui server's own local (non-wire-protocol) bootstrap endpoint — see `packages/cli/src/ui/server.ts`'s `/__ui/config`. Never throws; falls back to `null` so this screen always renders something. */
+/** Best-effort read of the ui server's own local (non-wire-protocol) bootstrap endpoint — see `packages/ui-server/src/server.ts`'s `/__ui/config`. Never throws; falls back to `null` so this screen always renders something. */
 function useUiConfig(): UiConfig | null {
   const [config, setConfig] = useState<UiConfig | null>(null);
   useEffect(() => {

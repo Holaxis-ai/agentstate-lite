@@ -1,4 +1,4 @@
-// Change detection for the `ui` command's live-update surface (tasks/ui-pages-spike): take a
+// Change detection for the loopback UI server's live-update surface (tasks/ui-pages-spike): take a
 // SNAPSHOT of every doc's + page-blob's version token, and on each filesystem event (`--dir`) or
 // poll tick (`--remote`) diff a fresh snapshot against the last to derive a minimal change delta,
 // which `server.ts` broadcasts to the shell over SSE. Version tokens are content-addressed, so a

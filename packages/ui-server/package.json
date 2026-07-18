@@ -1,0 +1,33 @@
+{
+  "name": "@agentstate-lite/ui-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reusable loopback host for the local AgentState Lite UI shell. CLI policy and generated assets remain consumer-owned.",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --import ./test/ts-loader.mjs ./test/*.test.ts"
+  },
+  "dependencies": {
+    "@agentstate-lite/core": "*",
+    "@agentstate-lite/server": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.4.0"
+  }
+}

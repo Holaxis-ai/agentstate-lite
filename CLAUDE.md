@@ -7,6 +7,8 @@ porcelain/diff/state-store/engine/flow/autopull; imports ONLY node + core, machi
 its own import-direction test with no allowlist; command UX stays in the CLI),
 `packages/server` (`@agentstate-lite/server`
 — the wire-protocol REFERENCE server, a pure consumer of core; see gate 3 and Scope),
+`packages/ui-server` (`@agentstate-lite/ui-server` — the private reusable loopback shell host;
+imports only Node + core + server, while CLI policy and generated assets stay in the CLI),
 `packages/ui` (the browser SPA — PRIVATE workspace; only its BUILT assets ship, gzip-embedded
 into the CLI bundle; it launches bundle-authored Views, see gate 4), and `packages/cli` —
 the **publishable npm package `agentstate-lite`** (bins `agentstate-lite` / `aslite`), an

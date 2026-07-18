@@ -48,6 +48,7 @@
     "@agentstate-lite/board-git": "*",
     "@agentstate-lite/core": "*",
     "@agentstate-lite/server": "*",
+    "@agentstate-lite/ui-server": "*",
     "@toon-format/toon": "2.3.0",
     "@types/node": "^22.0.0",
     "axi-sdk-js": "0.1.8",

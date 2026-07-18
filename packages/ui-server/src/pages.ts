@@ -1,4 +1,4 @@
-// The PAGE-BYTES privilege tier of the `ui` command (tasks/ui-pages-spike): a bundle page is a
+// The PAGE-BYTES privilege tier of the loopback UI server (tasks/ui-pages-spike): a bundle page is a
 // self-contained HTML blob promoted into the store under `pages/…`. It is served to a SANDBOXED,
 // OPAQUE-ORIGIN iframe (`sandbox="allow-scripts"`, no `allow-same-origin`) whose ONLY channel to
 // the rest of the world is a postMessage bridge to the shell — never a direct fetch of the data
