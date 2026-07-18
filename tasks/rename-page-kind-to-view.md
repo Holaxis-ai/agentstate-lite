@@ -1,7 +1,7 @@
 ---
 type: Task
 title: Rename the Page kind to View (code + reusable bundle migration)
-status: in_progress
+status: done
 priority: '2'
 description: >-
   BUILD DISPATCHED (Brian greenlit 2026-07-16 after the non-fork analysis: C+ is
@@ -16,7 +16,7 @@ description: >-
   with the vetted Option-A blueprint on plans/rename-page-kind-to-view.
 actor: brian-claude
 assignee: brian-claude
-timestamp: '2026-07-18T01:25:56.975Z'
+timestamp: '2026-07-18T18:22:16.123Z'
 ---
 [informed by](joint-ontology-session.md)
 
@@ -78,3 +78,16 @@ timestamp: '2026-07-18T01:25:56.975Z'
   identical. Tripwire ran ENGAGED for the first time (frozen exports unchanged); all
   gates direct exit codes 0. Reviewer verdict: CONFIRMED, no new findings. Pushed;
   PR #88 awaits re-review/merge.
+
+## UNIT CLOSED — Option C+ COMPLETE (2026-07-18)
+
+All three units merged to main: U1 dual reads (PR #83), U3 teaching pass (PR #87,
+two external-review fix rounds + partial-pair pin d12b402), U2 detection primitive +
+nudge + audit (PR #88, one external-review fix round at cf8afeb: promote-path nudge,
+exact type match, store-aware prefix audit). The rename is live: View is canonical
+everywhere agents learn; legacy Page docs/prefixes keep working under dual-read; the
+write-time nudge (doc write/update/new/promote) stops the legacy stock growing; the
+status legacy_naming audit is the standing sizing meter for any future deprecation.
+NOT done (parked by design): Option-A full migration/removal — blueprint on
+plans/rename-page-kind-to-view, gated on a founders' decision informed by the meter.
+Residual riding a later ui unit: PageFrame.tsx:117 "registered Page" error string.
