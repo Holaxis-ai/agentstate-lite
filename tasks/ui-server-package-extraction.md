@@ -1,14 +1,14 @@
 ---
 type: Task
 title: Extract the loopback UI server behind a typed workspace boundary
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   After board-git A1, extract the reusable bootUiServer runtime into a private
   workspace package while keeping CLI policy, credentials, URL-file handling,
   and generated assets in the CLI.
 actor: mike/codex
-timestamp: '2026-07-16T02:06:22.608Z'
+timestamp: '2026-07-18T03:24:04.582Z'
 ---
 # Why
 
