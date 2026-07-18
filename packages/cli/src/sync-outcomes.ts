@@ -19,6 +19,7 @@ import {
   existingDirRefusal,
   preShareWindowError,
   runGit,
+  type StatusRow,
 } from "@agentstate-lite/board-git";
 import { CliError, type CliErrorCode } from "./errors.js";
 
@@ -51,6 +52,11 @@ export function syncInTreeRefusalMessage(inv: string, hasOrigin: boolean = true)
     `${establishRemedy}`
   );
 }
+
+/** `--show-incoming` (branch mode) reads only the last fetched remote ref, never fetches implicitly. */
+export const SHOW_INCOMING_NO_UPSTREAM =
+  "there is no fetched origin/board state to show — either this board is local-only (no remote " +
+  "board branch, so no incoming versions exist), or nothing has been fetched yet";
 
 /** The in-tree no-comparison-basis reasons (upstream decision table — never a guessed ref). */
 export type InTreeNoBasisReason = "detached-head" | "no-upstream" | "unusable-upstream";
@@ -220,6 +226,15 @@ export const SYNC_OUTCOMES = {
       `bare sync will not check it out or create origin/${BOARD_BRANCH}`,
     help: (p) => `${p.inv} sync --establish`,
   }),
+  // Full sync's own no_upstream arm (the rebase step's decision table) — deliberately DIFFERENT
+  // copy from `ff.no-upstream.unpublished` (frozen inconsistency, filed PR #92 item 5).
+  "sync.full.no-upstream": row<{ inv: string }>({
+    code: "NO_UPSTREAM",
+    message: (p) =>
+      `the local board has not been published — bare sync never creates origin/${BOARD_BRANCH}; ` +
+      `run '${p.inv} sync --establish' to publish it explicitly`,
+    help: (p) => `${p.inv} sync --establish`,
+  }),
 
   // The in-tree board's write refusal + the viewer's no-comparison-basis refusal.
   "in-tree.sync-refusal": row<{ inv: string; boardPath: string; hasOrigin: boolean }>({
@@ -235,8 +250,23 @@ export const SYNC_OUTCOMES = {
     help: (p) =>
       `configure tracking (git branch --set-upstream-to=<remote>/<branch>) or fetch once, then re-run ${p.inv} sync --show-incoming <id>`,
   }),
+  // The branch-mode viewer's own no-comparison-basis refusal: nothing has been fetched at all yet
+  // (the in-tree row above covers the read-side-mode twin).
+  "show-incoming.no-upstream": row<{ inv: string }>({
+    code: "NO_UPSTREAM",
+    message: () => SHOW_INCOMING_NO_UPSTREAM,
+    help: (p) => `on a shared board, run ${p.inv} sync --pull-only once to fetch origin/board, then re-run --show-incoming`,
+  }),
 
   // establish's refusal arms (committed-folder preconditions + the greenfield namespace guard).
+  // guardCommittedPreconditions checks these, in order: on-board-branch, behind-origin,
+  // committed-dirty, cleanup-branch-exists, namespace-conflict.committed, board-branch-mismatch.
+  "establish.on-board-branch": row<Record<string, never>>({
+    code: "RUNTIME",
+    message: () =>
+      `the current branch is '${BOARD_BRANCH}' — run establish from the branch that carries the ` +
+      `committed folder ('${BOARD_BRANCH}' is the branch establishment creates)`,
+  }),
   "establish.behind-origin": row<{ inv: string; branch: string; behind: string[] }>({
     code: "RUNTIME",
     message: (p) =>
@@ -245,6 +275,21 @@ export const SYNC_OUTCOMES = {
       `folder forever`,
     details: (p) => ({ behind_board_commits: p.behind.length, commits: p.behind.slice(0, 20) }),
     help: (p) => `git pull, then re-run ${p.inv} sync --establish --yes`,
+  }),
+  "establish.committed-dirty": row<{ inv: string; rows: StatusRow[]; total: number }>({
+    code: "RUNTIME",
+    message: () =>
+      `establish refused: ${BUNDLE_DIR}/ has uncommitted changes — commit (or discard) them ` +
+      `first so the board branch carries the board's real current state`,
+    details: (p) => ({ uncommitted: { shown: p.rows.length, total: p.total, rows: p.rows } }),
+    help: (p) => `commit the board changes, then re-run ${p.inv} sync --establish --yes`,
+  }),
+  "establish.cleanup-branch-exists": row<{ cleanupBranch: string }>({
+    code: "RUNTIME",
+    message: (p) =>
+      `a '${p.cleanupBranch}' branch already exists — if it is left over from an interrupted ` +
+      `establishment, push it and open its PR (or delete it: git branch -D ${p.cleanupBranch}), ` +
+      `then re-run`,
   }),
   "establish.namespace-conflict.greenfield": row<{ conflicts: string[] }>({
     code: "RUNTIME",
@@ -258,6 +303,11 @@ export const SYNC_OUTCOMES = {
       `'${BOARD_BRANCH}' branch alongside them: ${p.conflicts.join(", ")}`,
     details: (p) => ({ conflicting_branches: p.conflicts }),
     help: (p) => `delete or rename these branches, then re-run ${p.inv} sync --establish --yes`,
+  }),
+  "establish.local-branch-unrecognized": row<Record<string, never>>({
+    code: "RUNTIME",
+    message: () =>
+      `a local '${BOARD_BRANCH}' branch already exists but is not the conventional board worktree; nothing was published`,
   }),
   "establish.board-branch-mismatch": row<Record<string, never>>({
     code: "RUNTIME",
@@ -489,6 +539,13 @@ export const SYNC_OUTCOME_LINES = {
   "line.home.in-tree.unpushed": line<{ n: number }>((p) => inTreeUnpushedLine(p.n)),
   "line.home.in-tree.uncommitted": line<{ n: number }>((p) => inTreeUncommittedLine(p.n)),
   "line.home.in-tree.pull-hint": line<{ n: number }>((p) => inTreePullHintLine(p.n)),
+  // session-start's pull-skip notes (board-block `note` field entries — exit 0, fail-soft).
+  "line.session-start.fetch-skipped": line<{ code: string; inv: string }>(
+    (p) => `board fetch skipped (${p.code}) — run \`${p.inv} sync --pull-only\` for the full story`,
+  ),
+  "line.session-start.pull-skipped": line<{ reason: string; inv: string }>(
+    (p) => `board pull skipped (${p.reason}) — run \`${p.inv} sync\` to reconcile`,
+  ),
 } as const;
 
 export type SyncOutcomeLineKey = keyof typeof SYNC_OUTCOME_LINES;

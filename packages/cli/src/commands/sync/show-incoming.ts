@@ -22,6 +22,10 @@ import { CliError, asHandled, toExit } from "../../errors.js";
 import { render, renderErrorEnvelope, resolveMode } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
 import { BODY_PREVIEW_LIMIT } from "../doc/common.js";
+// `--show-incoming` (branch mode) reads only the last fetched remote ref, never fetches
+// implicitly — the refusal string lives in THE sync-outcome table; this re-export keeps the
+// module's historical import surface stable.
+export { SHOW_INCOMING_NO_UPSTREAM } from "../../sync-outcomes.js";
 
 /** The staleness label every render carries: `origin/board` AS OF THE LAST FETCH — never an implicit fetch. */
 export const SHOW_INCOMING_AS_OF = "last fetch";
@@ -34,11 +38,6 @@ export const SHOW_INCOMING_ABSENT_STATE =
 export const SHOW_INCOMING_IN_TREE_ABSENT_STATE =
   `absent upstream — not under ${BUNDLE_DIR}/ on the branch's tracking upstream as of the last ` +
   "fetch (deleted upstream, or a new local doc)";
-
-/** `--show-incoming` reads only the last fetched remote ref and never fetches implicitly. */
-export const SHOW_INCOMING_NO_UPSTREAM =
-  "there is no fetched origin/board state to show — either this board is local-only (no remote " +
-  "board branch, so no incoming versions exist), or nothing has been fetched yet";
 
 /** The in-tree viewer's refusal when the branch has no usable upstream to read a version from. */
 export function showIncomingInTreeNoBasis(inv: string, reason: InTreeNoBasisReason, ref?: string): CliError {
@@ -113,9 +112,7 @@ export async function showIncoming(
         readRef = sha;
         pathPrefix = `${BUNDLE_DIR}/`;
       } else {
-        throw new CliError("NO_UPSTREAM", SHOW_INCOMING_NO_UPSTREAM, {
-          help: `on a shared board, run ${inv} sync --pull-only once to fetch origin/board, then re-run --show-incoming`,
-        });
+        throw syncOutcomeError("show-incoming.no-upstream", { inv });
       }
     }
 

@@ -1,6 +1,8 @@
 {
   "captured_from": "db6d8660aa6c64de579a9ebb1be5a385aa200c99",
   "note": "Rendered-byte fixtures captured from the PRE-refactor construction sites (sync-outcome-table unit). Envelope fixtures went through renderErrorEnvelope(toEnvelope(...)); line fixtures are the raw guidance-field strings. Fixed representative params: inv=aslite, boardPath=/repo/.agentstate-lite, top=/repo, branch=main.",
+  "captured_from_followups": "fe6bf0bc88ad77321e9bd5acca0ce381011a6adc",
+  "note_followups": "sync-copy-unification PR1's fixtures (added below the original db6d866 batch), verbatim-transcribed from the still-inline construction sites at origin/main's tip before any src change in this unit. Representative params match the batch above (inv=aslite) plus: cleanupBranch=board-cleanup, dirty rows=[{status:M,path:.agentstate-lite/tasks/a.md},{status:A,path:.agentstate-lite/tasks/b.md}] (statusRows' real StatusRow shape, TOON-tabularized), session-start fetch-skipped code=RUNTIME (a representative non-offline classifyGitError code), session-start pull-skipped reason=diverged (the one existing test's real scenario).",
   "fixtures": [
     {
       "key": "ff.git-missing",
@@ -421,6 +423,54 @@
       "variant": "n2",
       "kind": "line",
       "bytes": "2 incoming board changes are not yet in this checkout — run 'git pull' to get them"
+    },
+    {
+      "key": "sync.full.no-upstream",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: NO_UPSTREAM\n  message: the local board has not been published — bare sync never creates origin/board; run 'aslite sync --establish' to publish it explicitly\n  help: aslite sync --establish\n"
+    },
+    {
+      "key": "show-incoming.no-upstream",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: NO_UPSTREAM\n  message: \"there is no fetched origin/board state to show — either this board is local-only (no remote board branch, so no incoming versions exist), or nothing has been fetched yet\"\n  help: \"on a shared board, run aslite sync --pull-only once to fetch origin/board, then re-run --show-incoming\"\n"
+    },
+    {
+      "key": "establish.on-board-branch",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: the current branch is 'board' — run establish from the branch that carries the committed folder ('board' is the branch establishment creates)\n"
+    },
+    {
+      "key": "establish.committed-dirty",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"establish refused: .agentstate-lite/ has uncommitted changes — commit (or discard) them first so the board branch carries the board's real current state\"\n  details:\n    uncommitted:\n      shown: 2\n      total: 2\n      rows[2]{status,path}:\n        M,.agentstate-lite/tasks/a.md\n        A,.agentstate-lite/tasks/b.md\n  help: \"commit the board changes, then re-run aslite sync --establish --yes\"\n"
+    },
+    {
+      "key": "establish.cleanup-branch-exists",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"a 'board-cleanup' branch already exists — if it is left over from an interrupted establishment, push it and open its PR (or delete it: git branch -D board-cleanup), then re-run\"\n"
+    },
+    {
+      "key": "establish.local-branch-unrecognized",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: a local 'board' branch already exists but is not the conventional board worktree; nothing was published\n"
+    },
+    {
+      "key": "line.session-start.fetch-skipped",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "board fetch skipped (RUNTIME) — run `aslite sync --pull-only` for the full story"
+    },
+    {
+      "key": "line.session-start.pull-skipped",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "board pull skipped (diverged) — run `aslite sync` to reconcile"
     }
   ]
 }

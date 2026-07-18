@@ -28,7 +28,7 @@ import { CLEANUP_BRANCH } from "../src/commands/sync-establish.js";
 import { buildBoardBlock } from "../src/commands/home.js";
 import { toEnvelope, type CliError } from "../src/errors.js";
 import { renderErrorEnvelope } from "../src/output.js";
-import { boardWindowGuidance, preShareWindowError } from "@agentstate-lite/board-git";
+import { boardWindowGuidance, preShareWindowError, type StatusRow } from "@agentstate-lite/board-git";
 import { makeLocalBoardTop, makePlainTop, makeRemnantTop, type OutcomeState } from "./sync-outcome-states.js";
 
 interface Fixture {
@@ -61,6 +61,11 @@ const BEHIND = [
 ];
 const SNAPSHOT_TREE = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const CURRENT_TREE = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+// The committed-dirty fixture's representative statusRows() shape (PR1: sync-copy-unification).
+const DIRTY_ROWS: StatusRow[] = [
+  { status: "M", path: ".agentstate-lite/tasks/a.md" },
+  { status: "A", path: ".agentstate-lite/tasks/b.md" },
+];
 
 test("sync-outcome agreement: every row renders byte-identical to its pre-refactor fixture", async () => {
   const plainTop = await makePlainTop();
@@ -168,6 +173,20 @@ test("sync-outcome agreement: every row renders byte-identical to its pre-refact
       "line.home.in-tree.uncommitted#n2": () => syncOutcomeLine("line.home.in-tree.uncommitted", { n: 2 }),
       "line.home.in-tree.pull-hint#n1": () => syncOutcomeLine("line.home.in-tree.pull-hint", { n: 1 }),
       "line.home.in-tree.pull-hint#n2": () => syncOutcomeLine("line.home.in-tree.pull-hint", { n: 2 }),
+      // PR1 (sync-copy-unification): the remaining guidance sites become rows.
+      "sync.full.no-upstream#default": () => syncOutcomeError("sync.full.no-upstream", { inv: INV }),
+      "show-incoming.no-upstream#default": () => syncOutcomeError("show-incoming.no-upstream", { inv: INV }),
+      "establish.on-board-branch#default": () => syncOutcomeError("establish.on-board-branch", {}),
+      "establish.committed-dirty#default": () =>
+        syncOutcomeError("establish.committed-dirty", { inv: INV, rows: DIRTY_ROWS, total: DIRTY_ROWS.length }),
+      "establish.cleanup-branch-exists#default": () =>
+        syncOutcomeError("establish.cleanup-branch-exists", { cleanupBranch: CLEANUP_BRANCH }),
+      "establish.local-branch-unrecognized#default": () =>
+        syncOutcomeError("establish.local-branch-unrecognized", {}),
+      "line.session-start.fetch-skipped#default": () =>
+        syncOutcomeLine("line.session-start.fetch-skipped", { code: "RUNTIME", inv: INV }),
+      "line.session-start.pull-skipped#default": () =>
+        syncOutcomeLine("line.session-start.pull-skipped", { reason: "diverged", inv: INV }),
     };
 
     // CLOSED COVERAGE, both directions: every row has a fixture; every fixture has a row+builder.

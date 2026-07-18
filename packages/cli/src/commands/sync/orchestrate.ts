@@ -213,9 +213,13 @@ export const SYNC_IN_TREE_BOARD_LINE = `in-tree — board docs ride the current 
 /** The explicit "no comparison basis" state (upstream decision table: report nothing, honestly). */
 export const SYNC_IN_TREE_NO_BASIS = "no-comparison-basis";
 
-/** "N incoming board changes not yet in this checkout — run 'git pull' to get them". */
+/**
+ * "N incoming board changes not yet in this checkout — run 'git pull' to get them" — the receipt's
+ * own rendering of the same template home's `inTreePullHintLine` uses (byte-identical twin, filed
+ * PR #92 item 6; kept as ONE row, `line.home.in-tree.pull-hint`, looked up from both sites).
+ */
 export function inTreePullHint(behind: number): string {
-  return `${behind} incoming board ${behind === 1 ? "change is" : "changes are"} not yet in this checkout — run 'git pull' to get ${behind === 1 ? "it" : "them"}`;
+  return syncOutcomeLine("line.home.in-tree.pull-hint", { n: behind });
 }
 
 /** The in-tree `--pull-only` up-to-date state (nothing upstream this checkout lacks). */
@@ -494,14 +498,7 @@ async function pullPhase(run: SyncRun, board: SyncBoard, commitResult: CommitRes
     // First publication is ALWAYS explicit. A local branch name or an index.md file is evidence
     // of neither user consent nor transaction provenance; inferring either here can publish an
     // unrelated private branch. `--establish` owns snapshot, publish, and recovery.
-    throw await fail(
-      new CliError(
-        "NO_UPSTREAM",
-        `the local board has not been published — bare sync never creates origin/${BOARD_BRANCH}; ` +
-          `run '${run.inv} sync --establish' to publish it explicitly`,
-        { help: `${run.inv} sync --establish` },
-      ),
-    );
+    throw await fail(syncOutcomeError("sync.full.no-upstream", { inv: run.inv }));
   }
 }
 
