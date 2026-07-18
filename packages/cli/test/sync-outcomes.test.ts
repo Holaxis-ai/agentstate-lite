@@ -104,7 +104,7 @@ test("sync-outcome agreement: every row renders byte-identical to its pre-refact
       "establish.behind-origin#default": () =>
         syncOutcomeError("establish.behind-origin", { inv: INV, branch: BRANCH, behind: BEHIND }),
       "establish.namespace-conflict.greenfield#default": () =>
-        syncOutcomeError("establish.namespace-conflict.greenfield", { conflicts: CONFLICTING }),
+        syncOutcomeError("establish.namespace-conflict.greenfield", { inv: INV, conflicts: CONFLICTING }),
       "establish.namespace-conflict.committed#default": () =>
         syncOutcomeError("establish.namespace-conflict.committed", { inv: INV, conflicts: CONFLICTING }),
       "establish.board-branch-mismatch#default": () => syncOutcomeError("establish.board-branch-mismatch", {}),

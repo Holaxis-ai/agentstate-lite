@@ -374,7 +374,7 @@ async function publishGreenfieldBoard(
 ): Promise<EstablishOutcome> {
   const namespaceConflicts = boardNamespaceConflicts(top);
   if (namespaceConflicts.length > 0) {
-    throw syncOutcomeError("establish.namespace-conflict.greenfield", { conflicts: namespaceConflicts });
+    throw syncOutcomeError("establish.namespace-conflict.greenfield", { inv, conflicts: namespaceConflicts });
   }
   assertFreshSource(top, boardPath, inv);
   await assertNotBoundElsewhere(top, boardPath);

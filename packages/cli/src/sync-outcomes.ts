@@ -58,6 +58,43 @@ export const SHOW_INCOMING_NO_UPSTREAM =
   "there is no fetched origin/board state to show — either this board is local-only (no remote " +
   "board branch, so no incoming versions exist), or nothing has been fetched yet";
 
+/**
+ * "The local board hasn't been published yet" — unified wording (PR2, sync-copy-unification):
+ * `ff.no-upstream.unpublished` (`--pull-only`) and `sync.full.no-upstream` (full sync's own
+ * rebase-phase decision) reported the SAME state with different copy; this is the winning variant
+ * (it explains WHY bare sync won't auto-create the branch, the more actionable of the two).
+ */
+export function boardNotPublishedMessage(inv: string): string {
+  return (
+    `the local board has not been published — bare sync never creates origin/${BOARD_BRANCH}; ` +
+    `run '${inv} sync --establish' to publish it explicitly`
+  );
+}
+
+/**
+ * Branches named `board/…` block creating the `board` ref itself — unified wording (PR2): the
+ * greenfield and committed-case namespace guards reported the same git-level conflict with
+ * different copy; this is the committed-case's fuller variant (it explains WHY and, unlike the
+ * greenfield copy before this unit, both sites now carry actionable help).
+ */
+export function namespaceConflictMessage(conflicts: string[]): string {
+  return (
+    `establish refused: branches named '${BOARD_BRANCH}/…' exist — git cannot create a ` +
+    `'${BOARD_BRANCH}' branch alongside them: ${conflicts.join(", ")}`
+  );
+}
+
+/**
+ * The establishment marker names a commit `treeOf()` cannot resolve (never fetched, or GC'd) —
+ * unified wording (PR2): three call sites tested the identical condition with different copy
+ * ("tree" vs "commit"; one site had no reassurance tail at all). "commit" is the technically
+ * accurate noun (the marker names a commit, not a tree); "nothing was changed" is the neutral verb
+ * that holds true at every call site (each throws before any mutation).
+ */
+export function markerUnavailableMessage(marker: string): string {
+  return `the establishment marker names an unavailable commit (${marker}); nothing was changed`;
+}
+
 /** The in-tree no-comparison-basis reasons (upstream decision table — never a guessed ref). */
 export type InTreeNoBasisReason = "detached-head" | "no-upstream" | "unusable-upstream";
 
@@ -153,7 +190,7 @@ export const SYNC_OUTCOMES = {
   }),
   "ff.no-upstream.unpublished": row<{ inv: string }>({
     code: "NO_UPSTREAM",
-    message: (p) => `board not published yet — run '${p.inv} sync --establish' to publish it explicitly`,
+    message: (p) => boardNotPublishedMessage(p.inv),
     help: (p) => `${p.inv} sync --establish`,
   }),
   "ff.no-upstream.unlinked": row<{ inv: string }>({
@@ -226,13 +263,12 @@ export const SYNC_OUTCOMES = {
       `bare sync will not check it out or create origin/${BOARD_BRANCH}`,
     help: (p) => `${p.inv} sync --establish`,
   }),
-  // Full sync's own no_upstream arm (the rebase step's decision table) — deliberately DIFFERENT
-  // copy from `ff.no-upstream.unpublished` (frozen inconsistency, filed PR #92 item 5).
+  // Full sync's own no_upstream arm (the rebase step's decision table) — same state as
+  // `ff.no-upstream.unpublished` (`--pull-only`'s translation), now the same copy (PR2 unification;
+  // filed PR #92 item 5).
   "sync.full.no-upstream": row<{ inv: string }>({
     code: "NO_UPSTREAM",
-    message: (p) =>
-      `the local board has not been published — bare sync never creates origin/${BOARD_BRANCH}; ` +
-      `run '${p.inv} sync --establish' to publish it explicitly`,
+    message: (p) => boardNotPublishedMessage(p.inv),
     help: (p) => `${p.inv} sync --establish`,
   }),
 
@@ -291,16 +327,18 @@ export const SYNC_OUTCOMES = {
       `establishment, push it and open its PR (or delete it: git branch -D ${p.cleanupBranch}), ` +
       `then re-run`,
   }),
-  "establish.namespace-conflict.greenfield": row<{ conflicts: string[] }>({
+  // Unified wording (PR2, filed PR #92 item 2): the greenfield guard previously carried a bare,
+  // help-less message; it now matches the committed-case copy AND gains actionable help (greenfield
+  // publication never needs --yes, so its remedy omits the flag the committed-case one carries).
+  "establish.namespace-conflict.greenfield": row<{ inv: string; conflicts: string[] }>({
     code: "RUNTIME",
-    message: (p) => `branches named '${BOARD_BRANCH}/…' block establishment: ${p.conflicts.join(", ")}`,
+    message: (p) => namespaceConflictMessage(p.conflicts),
     details: (p) => ({ conflicting_branches: p.conflicts }),
+    help: (p) => `delete or rename these branches, then re-run ${p.inv} sync --establish`,
   }),
   "establish.namespace-conflict.committed": row<{ inv: string; conflicts: string[] }>({
     code: "RUNTIME",
-    message: (p) =>
-      `establish refused: branches named '${BOARD_BRANCH}/…' exist — git cannot create a ` +
-      `'${BOARD_BRANCH}' branch alongside them: ${p.conflicts.join(", ")}`,
+    message: (p) => namespaceConflictMessage(p.conflicts),
     details: (p) => ({ conflicting_branches: p.conflicts }),
     help: (p) => `delete or rename these branches, then re-run ${p.inv} sync --establish --yes`,
   }),
@@ -375,18 +413,19 @@ export const SYNC_OUTCOMES = {
       `the newer changes stay recoverable in '${p.branch}' history; after the cleanup PR ` +
       `merges and this clone joins via '${p.inv} sync', re-apply them with doc update`,
   }),
-  // The three marker-unavailable wordings — per-site rows, inconsistencies frozen as-is.
+  // Unified wording (PR2, filed PR #92 item 3): three call sites test the identical treeOf()
+  // failure; all now render markerUnavailableMessage (see its doc comment for the rationale).
   "marker.unavailable.tree": row<{ marker: string }>({
     code: "RUNTIME",
-    message: (p) => `the establishment marker names an unavailable tree (${p.marker})`,
+    message: (p) => markerUnavailableMessage(p.marker),
   }),
   "marker.unavailable.commit.moved": row<{ marker: string }>({
     code: "RUNTIME",
-    message: (p) => `the establishment marker names an unavailable commit (${p.marker}); nothing was moved`,
+    message: (p) => markerUnavailableMessage(p.marker),
   }),
   "marker.unavailable.commit.changed": row<{ marker: string }>({
     code: "RUNTIME",
-    message: (p) => `the establishment marker names an unavailable commit (${p.marker}); nothing was changed`,
+    message: (p) => markerUnavailableMessage(p.marker),
   }),
 
   // Package-side rows: the factories stay the construction sites (thrown inside board-git);
