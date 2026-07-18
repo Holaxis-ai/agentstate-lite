@@ -4,11 +4,20 @@ title: Extract the loopback UI server behind a typed workspace boundary
 status: in_progress
 priority: '2'
 description: >-
-  After board-git A1, extract the reusable bootUiServer runtime into a private
-  workspace package while keeping CLI policy, credentials, URL-file handling,
-  and generated assets in the CLI.
+  PR #91 OPEN at exact head 26f15c4. Extracted the loopback
+  listener/session/proxy/View nonce+CSP/SSE/watcher runtime into private
+  @agentstate-lite/ui-server. CLI retains args, receipts, generated asset bytes,
+  display-name policy, URL-file/home policy, browser opening, and shutdown UX.
+  The UI restart E2E now imports a declared typed workspace dependency; the
+  non-literal CLI-source import is gone. AST import-direction gate forbids
+  CLI/package escapes for source and tests. Root build/typecheck ordering plus
+  esbuild source alias preserve the single zero-runtime-dependency npm artifact.
+  Verification: npm run check PASS; focused runtime/security 69/69; package
+  boundary 3/3; Playwright 14/14; verify:npm-package PASS. Status remains
+  in_progress pending independent exact-SHA review; no trusted View mutation
+  capability was introduced.
 actor: mike/codex
-timestamp: '2026-07-18T03:24:04.582Z'
+timestamp: '2026-07-18T03:36:00.008Z'
 ---
 # Why
 
