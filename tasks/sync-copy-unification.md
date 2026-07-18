@@ -3,25 +3,28 @@ type: Task
 title: >-
   Sync-family copy: convert the remaining guidance sites to rows, then unify the
   recorded inconsistencies
-status: in_progress
+status: done
 priority: '3'
 assignee: mike/claude
 description: >-
-  CLAIMED mike/claude. Phase: BUILT, both PRs open. PR #101 (candidate 8f5ccf4,
-  behavior-frozen): 9 guidance sites -> rows (incl. one task-claim find beyond
-  #92's list: show-incoming's branch-mode NO_UPSTREAM); fixtures 70->78
-  fixture-first from pre-change code; existing fixtures/assertions pure-append
-  byte-unmodified; net -25 LOC in phase modules; flag-usage guards left inline
-  with reasoning. PR #102 (candidate 93b57ac, stacked, declared changes): 3
-  unifications shipped as 4 fixture deltas (namespace-conflict incl. new
-  greenfield help field; marker-unavailable x3 -> one accurate wording verified
-  true at all 3 call sites; no-upstream duplicate adoption — FLAGGED judgment
-  call, independently revertable); one pinned-string edit (documented); the two
-  boundary items properly flagged-not-shipped (inv-into-package argued
-  wontfix-as-designed; detached-HEAD taxonomy untouched). All gates exit 0 both
-  PRs. Reviews IN FLIGHT: #101 provenance (parity tier), #102 fixture-diff.
-  Merge order 101 -> 102.
+  SHIPPED: PR #101 + #102 merged (candidates 8f5ccf4, 93b57ac; stacked, merged
+  in order). #101: nine guidance sites became rows (fixtures 70->78,
+  fixture-first — reviewer regenerated ALL 8 from a base build byte-identical;
+  existing artifacts pure-append; net -25 LOC; every inline construction
+  deleted, no two-paths; the inTreePullHint consolidation proven by textual
+  identity). #102: three declared copy unifications as exactly 4 fixture deltas
+  — namespace-conflict (greenfield gains a correct no---yes help, verified
+  against the real dispatch), marker-unavailable x3 -> one wording ('nothing was
+  changed' verified true at all 3 call sites pre-mutation), no-upstream
+  duplicate adoption (flagged judgment call adjudicated KEEP on the merits).
+  Both boundary decisions preserved: zero board-git files touched — bare-'sync'
+  package stance and error taxonomy intact, recorded as wontfix-as-designed in
+  the PR. Reviews: both APPROVE, no findings, all verification independent. THE
+  SYNC-FAMILY COPY STORY IS COMPLETE: every refusal-with-guidance is an
+  enumerated row; every wording deliberate; remaining inconsistencies are
+  recorded decisions, not accidents. Next unblocked per sequencing: test-file
+  splits (nothing behavior-frozen in flight).
 actor: mike/claude
-timestamp: '2026-07-18T15:20:06.748Z'
+timestamp: '2026-07-18T15:32:03.755Z'
 ---
 
