@@ -8,7 +8,16 @@
     "forceBail": true
   },
   "buildCommand": "node build.mjs",
-  "mutate": ["src/**/*.ts", "!src/**/*.d.ts", "!src/generated/**"],
+  "mutate": [
+    "src/errors.ts",
+    "src/mutate.ts",
+    "src/board-attribution.ts",
+    "src/bundle.ts",
+    "src/actor.ts",
+    "src/sync-outcomes.ts",
+    "src/commands/sync.ts",
+    "src/commands/sync-establish.ts"
+  ],
   "inPlace": true,
   "disableTypeChecks": true,
   "coverageAnalysis": "perTest",

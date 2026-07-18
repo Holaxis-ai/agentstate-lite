@@ -16,7 +16,13 @@ name: Mutation tests
 # one build carries every mutant into the esbuild bundle, activated per run via env), so the
 # minority of cli tests that spawn the BUILT bundle exercise mutants too.
 #
-# The incremental file is cached per package+node so scheduled runs only re-test what changed;
+# The cli config's default `mutate` list is a CURATED set of invariant-bearing modules (error
+# taxonomy, mutation/attribution policy, bundle resolution, the sync family, the outcome table)
+# — a whole-CLI run exceeds this job's 300-minute ceiling and produces no report at all. To
+# measure anything outside the curated set, dispatch with the `mutate` glob input (it overrides
+# the config list for that run). Core mutates its whole src (a full run fits comfortably).
+#
+# The incremental file is cached per package so scheduled runs only re-test what changed;
 # a monthly-ish `force: true` dispatch is the recommended drift flush.
 on:
   schedule:
