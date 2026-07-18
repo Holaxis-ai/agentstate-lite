@@ -16037,6 +16037,15 @@ function syncInTreeRefusalMessage(inv, hasOrigin = true) {
   return `this board rides your code branch \u2014 '${BUNDLE_DIR}/' is committed with the code, so a full sync would have to publish the code branch itself; share board changes with your normal git commit/push, run '${inv} sync --pull-only' to fetch-and-report incoming board changes, or ${establishRemedy}`;
 }
 var SHOW_INCOMING_NO_UPSTREAM = "there is no fetched origin/board state to show \u2014 either this board is local-only (no remote board branch, so no incoming versions exist), or nothing has been fetched yet";
+function boardNotPublishedMessage(inv) {
+  return `the local board has not been published \u2014 bare sync never creates origin/${BOARD_BRANCH}; run '${inv} sync --establish' to publish it explicitly`;
+}
+function namespaceConflictMessage(conflicts) {
+  return `establish refused: branches named '${BOARD_BRANCH}/\u2026' exist \u2014 git cannot create a '${BOARD_BRANCH}' branch alongside them: ${conflicts.join(", ")}`;
+}
+function markerUnavailableMessage(marker) {
+  return `the establishment marker names an unavailable commit (${marker}); nothing was changed`;
+}
 function inTreeNoBasisNote(reason, ref) {
   const cause = reason === "detached-head" ? "the checkout is on a detached HEAD (no branch, so no tracking upstream)" : reason === "no-upstream" ? "the current branch has no upstream tracking configured" : `the branch's tracking ref '${ref ?? "?"}' does not resolve (never fetched, or deleted on the remote)`;
   return `${cause} \u2014 there is nothing to fetch from or compare against, so board freshness is unknown; sync will not guess an upstream`;
@@ -16077,7 +16086,7 @@ var SYNC_OUTCOMES = {
   }),
   "ff.no-upstream.unpublished": row({
     code: "NO_UPSTREAM",
-    message: (p) => `board not published yet \u2014 run '${p.inv} sync --establish' to publish it explicitly`,
+    message: (p) => boardNotPublishedMessage(p.inv),
     help: (p) => `${p.inv} sync --establish`
   }),
   "ff.no-upstream.unlinked": row({
@@ -16136,11 +16145,12 @@ var SYNC_OUTCOMES = {
     message: () => `a local '${BOARD_BRANCH}' branch exists but has not been explicitly adopted or published \u2014 bare sync will not check it out or create origin/${BOARD_BRANCH}`,
     help: (p) => `${p.inv} sync --establish`
   }),
-  // Full sync's own no_upstream arm (the rebase step's decision table) — deliberately DIFFERENT
-  // copy from `ff.no-upstream.unpublished` (frozen inconsistency, filed PR #92 item 5).
+  // Full sync's own no_upstream arm (the rebase step's decision table) — same state as
+  // `ff.no-upstream.unpublished` (`--pull-only`'s translation), now the same copy (PR2 unification;
+  // filed PR #92 item 5).
   "sync.full.no-upstream": row({
     code: "NO_UPSTREAM",
-    message: (p) => `the local board has not been published \u2014 bare sync never creates origin/${BOARD_BRANCH}; run '${p.inv} sync --establish' to publish it explicitly`,
+    message: (p) => boardNotPublishedMessage(p.inv),
     help: (p) => `${p.inv} sync --establish`
   }),
   // The in-tree board's write refusal + the viewer's no-comparison-basis refusal.
@@ -16186,14 +16196,18 @@ var SYNC_OUTCOMES = {
     code: "RUNTIME",
     message: (p) => `a '${p.cleanupBranch}' branch already exists \u2014 if it is left over from an interrupted establishment, push it and open its PR (or delete it: git branch -D ${p.cleanupBranch}), then re-run`
   }),
+  // Unified wording (PR2, filed PR #92 item 2): the greenfield guard previously carried a bare,
+  // help-less message; it now matches the committed-case copy AND gains actionable help (greenfield
+  // publication never needs --yes, so its remedy omits the flag the committed-case one carries).
   "establish.namespace-conflict.greenfield": row({
     code: "RUNTIME",
-    message: (p) => `branches named '${BOARD_BRANCH}/\u2026' block establishment: ${p.conflicts.join(", ")}`,
-    details: (p) => ({ conflicting_branches: p.conflicts })
+    message: (p) => namespaceConflictMessage(p.conflicts),
+    details: (p) => ({ conflicting_branches: p.conflicts }),
+    help: (p) => `delete or rename these branches, then re-run ${p.inv} sync --establish`
   }),
   "establish.namespace-conflict.committed": row({
     code: "RUNTIME",
-    message: (p) => `establish refused: branches named '${BOARD_BRANCH}/\u2026' exist \u2014 git cannot create a '${BOARD_BRANCH}' branch alongside them: ${p.conflicts.join(", ")}`,
+    message: (p) => namespaceConflictMessage(p.conflicts),
     details: (p) => ({ conflicting_branches: p.conflicts }),
     help: (p) => `delete or rename these branches, then re-run ${p.inv} sync --establish --yes`
   }),
@@ -16237,18 +16251,19 @@ var SYNC_OUTCOMES = {
     details: (p) => ({ snapshot_tree: p.snapshotTree, current_tree: p.currentTree }),
     help: (p) => `the newer changes stay recoverable in '${p.branch}' history; after the cleanup PR merges and this clone joins via '${p.inv} sync', re-apply them with doc update`
   }),
-  // The three marker-unavailable wordings — per-site rows, inconsistencies frozen as-is.
+  // Unified wording (PR2, filed PR #92 item 3): three call sites test the identical treeOf()
+  // failure; all now render markerUnavailableMessage (see its doc comment for the rationale).
   "marker.unavailable.tree": row({
     code: "RUNTIME",
-    message: (p) => `the establishment marker names an unavailable tree (${p.marker})`
+    message: (p) => markerUnavailableMessage(p.marker)
   }),
   "marker.unavailable.commit.moved": row({
     code: "RUNTIME",
-    message: (p) => `the establishment marker names an unavailable commit (${p.marker}); nothing was moved`
+    message: (p) => markerUnavailableMessage(p.marker)
   }),
   "marker.unavailable.commit.changed": row({
     code: "RUNTIME",
-    message: (p) => `the establishment marker names an unavailable commit (${p.marker}); nothing was changed`
+    message: (p) => markerUnavailableMessage(p.marker)
   }),
   // Package-side rows: the factories stay the construction sites (thrown inside board-git);
   // these rows COMPOSE them so the agreement suite enumerates their arms. `top` must be a repo in
@@ -16882,7 +16897,7 @@ async function resumeInterruptedEstablishment(top, st, marker, inv, mode, stdout
 async function publishGreenfieldBoard(top, boardPath, inv, mode, stdout, deps) {
   const namespaceConflicts = boardNamespaceConflicts(top);
   if (namespaceConflicts.length > 0) {
-    throw syncOutcomeError("establish.namespace-conflict.greenfield", { conflicts: namespaceConflicts });
+    throw syncOutcomeError("establish.namespace-conflict.greenfield", { inv, conflicts: namespaceConflicts });
   }
   assertFreshSource(top, boardPath, inv);
   await assertNotBoundElsewhere(top, boardPath);
