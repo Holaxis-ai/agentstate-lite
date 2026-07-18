@@ -42,6 +42,7 @@ import {
   fetchRebase,
   fetchRebaseResolving,
   identityFlags,
+  runGit,
   stageAndCommit,
 } from "../src/index.js";
 
@@ -57,9 +58,16 @@ test("identityFlags: [] once git already has a resolvable identity — byte-iden
   const scratch = await mkdtemp(path.join(tmpdir(), "aslite-identity-flags-"));
   try {
     git(scratch, ["init", "-q", "-b", "main"]);
-    // Ambient default (no withNoGitIdentity): the host resolves SOME identity — its own config, or
-    // the OS-account guess — exactly the case that must get zero overrides.
-    assert.deepEqual(identityFlags(scratch), []);
+    // The resolvable identity is CONSTRUCTED (a local repo config — one of the sources git itself
+    // consults), never ambient host state: a hermetic CI runner resolves NO ambient identity at
+    // all (empirically: both gate lanes), so a test leaning on the host's own config/guess is
+    // machine-dependent. Run under withNoGitIdentity so the local config is the ONLY live source
+    // — deterministic everywhere, and it pins that the probe respects local config specifically.
+    git(scratch, ["config", "user.name", "Configured User"]);
+    git(scratch, ["config", "user.email", "configured@example.invalid"]);
+    await withNoGitIdentity(() => {
+      assert.deepEqual(identityFlags(scratch), []);
+    });
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }
@@ -90,6 +98,33 @@ test("identityFlags: the four -c args once resolution genuinely fails — actor 
       assert.deepEqual(identityFlags(scratch, "!!!"), [
         "-c",
         "user.name=!!!",
+        "-c",
+        "user.email=agentstate-lite@agentstate-lite.invalid",
+      ]);
+    });
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+});
+
+test("identityFlags: author-only env (GIT_AUTHOR_* set, NO committer source) still injects — the author probe alone would return [] and the commit would die 'Committer identity unknown'", async () => {
+  const scratch = await mkdtemp(path.join(tmpdir(), "aslite-identity-flags-"));
+  try {
+    git(scratch, ["init", "-q", "-b", "main"]);
+    await withNoGitIdentity(() => {
+      // A real CI shape: only the author pair exported. Set INSIDE the wrapper (its restore pass
+      // overwrites these on exit, so nothing leaks past this test).
+      process.env.GIT_AUTHOR_NAME = "Env Author";
+      process.env.GIT_AUTHOR_EMAIL = "env-author@example.invalid";
+      // The hole, empirically: git itself resolves the author ident but NOT the committer ident —
+      // an author-only probe would read this as "resolvable" and suppress the flags.
+      assert.equal(runGit(scratch, ["var", "GIT_AUTHOR_IDENT"]).status, 0, "author ident resolves from env");
+      assert.notEqual(runGit(scratch, ["var", "GIT_COMMITTER_IDENT"]).status, 0, "committer ident does NOT resolve");
+      // So the flags MUST be injected. (Semantics are safe by construction: env beats -c for the
+      // author, so a commit gets author=env, committer=synthetic.)
+      assert.deepEqual(identityFlags(scratch), [
+        "-c",
+        "user.name=agentstate-lite",
         "-c",
         "user.email=agentstate-lite@agentstate-lite.invalid",
       ]);

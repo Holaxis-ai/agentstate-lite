@@ -239,14 +239,20 @@ function slugifyActor(actor: string): string {
 }
 
 /**
- * True when git can construct a commit identity in `dir` from everything IT ITSELF respects (env
- * `GIT_AUTHOR_*`/`GIT_COMMITTER_*`/`EMAIL`, local/global/system config, the OS-account guess) —
- * probed via `git var GIT_AUTHOR_IDENT`, the exact construction git performs before a real commit.
- * A nonzero exit is git's own verdict that it would refuse the commit with "Please tell me who
- * you are" — never string-matched, never re-derived.
+ * True when git can construct BOTH commit identities in `dir` from everything IT ITSELF respects
+ * (env `GIT_AUTHOR_*`/`GIT_COMMITTER_*`/`EMAIL`, local/global/system config, the OS-account
+ * guess) — probed via `git var GIT_AUTHOR_IDENT` AND `git var GIT_COMMITTER_IDENT`, the exact
+ * constructions git performs before a real commit. Both probes are required: author alone
+ * false-negatives the real CI shape where only `GIT_AUTHOR_NAME`/`GIT_AUTHOR_EMAIL` are exported
+ * — the author ident resolves, yet the commit still dies "Committer identity unknown"
+ * (empirically verified). A nonzero exit on either is git's own verdict that it would refuse the
+ * commit — never string-matched, never re-derived.
  */
 function hasResolvableIdentity(dir: string): boolean {
-  return runGit(dir, ["var", "GIT_AUTHOR_IDENT"]).status === 0;
+  return (
+    runGit(dir, ["var", "GIT_AUTHOR_IDENT"]).status === 0 &&
+    runGit(dir, ["var", "GIT_COMMITTER_IDENT"]).status === 0
+  );
 }
 
 /**

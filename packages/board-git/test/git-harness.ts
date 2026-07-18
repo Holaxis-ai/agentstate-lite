@@ -124,11 +124,15 @@ function noIdentitySystemConfigPath(): string {
  * `user.name`/`user.email` of its own (this harness's setup calls never write any).
  */
 export async function withNoGitIdentity<T>(fn: () => Promise<T> | T): Promise<T> {
-  const keys = [...NO_IDENTITY_ENV_VARS, "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"] as const;
+  const keys = [...NO_IDENTITY_ENV_VARS, "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM"] as const;
   const saved = new Map<string, string | undefined>(keys.map((k) => [k, process.env[k]]));
   for (const k of NO_IDENTITY_ENV_VARS) delete process.env[k];
   process.env.GIT_CONFIG_GLOBAL = "/dev/null";
   process.env.GIT_CONFIG_SYSTEM = noIdentitySystemConfigPath();
+  // An ambient GIT_CONFIG_NOSYSTEM=1 makes git skip the system config file entirely — silently
+  // defeating the forced useConfigOnly above and letting the OS-account guess back in on a dev
+  // machine (empirically reproduced). Neutralized so no host env shape re-enables an identity.
+  delete process.env.GIT_CONFIG_NOSYSTEM;
   try {
     return await fn();
   } finally {
