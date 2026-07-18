@@ -16,7 +16,7 @@ description: >-
   with the vetted Option-A blueprint on plans/rename-page-kind-to-view.
 actor: brian-claude
 assignee: brian-claude
-timestamp: '2026-07-17T21:05:48.167Z'
+timestamp: '2026-07-18T00:14:29.877Z'
 ---
 [informed by](joint-ontology-session.md)
 
@@ -46,3 +46,22 @@ timestamp: '2026-07-17T21:05:48.167Z'
   Residual (trivial, ride any later ui unit): PageFrame.tsx:117 error string says
   "registered Page" — one-word fix to "registered View". Board docs applied same day
   (how-it-works section 7 + glossary; conventions/view.md).
+
+- U3 EXTERNAL REVIEW (PR #87), two fix rounds, both re-verified and pushed:
+  Round 1 (99589d2): three stale canonical-Page help strings purged; word-boundary
+  pins close the class over CLI sources + examples. Round 2 (e72917c): P1 —
+  repo-level teaching surfaces (npm README, package.json description, root
+  CLAUDE.md/README) View-worded; a THIRD pin over repo-level files mechanically
+  proven to trip on all 16 pre-fix lines; plugins/ tree excluded as bot-regenerated
+  (verified against ci-version-bundle.mjs). P2 — applyRecipe legacy-alias
+  satisfaction: complete-pair gating (a partial legacy leftover never suppresses a
+  fresh install), probes derived from core constants (non-View recipes unaffected),
+  honest receipts {created, existing, legacy_present}; old v1 recipe vendored
+  byte-for-byte from ded8183 as the regression fixture. Reviewer independently
+  reproduced legacy-install -> renamed-reapply on the built CLI: zero duplicates,
+  ONE launcher card, stable third apply. VERDICT: CONFIRMED, APPROVE stands at
+  e72917c. Residual (cheap follow-up): the partial-pair case has no committed test.
+
+- U2 RE-ANCHORED onto post-#83/#86 main (a61c86d, force-pushed): rebase clean, hint
+  wiring intact, full check gate green by direct exit code (e2e 14/14). Ready for
+  its PR.
