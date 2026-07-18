@@ -1,0 +1,426 @@
+{
+  "captured_from": "db6d8660aa6c64de579a9ebb1be5a385aa200c99",
+  "note": "Rendered-byte fixtures captured from the PRE-refactor construction sites (sync-outcome-table unit). Envelope fixtures went through renderErrorEnvelope(toEnvelope(...)); line fixtures are the raw guidance-field strings. Fixed representative params: inv=aslite, boardPath=/repo/.agentstate-lite, top=/repo, branch=main.",
+  "fixtures": [
+    {
+      "key": "ff.git-missing",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: GIT_MISSING\n  message: \"sync needs git, which isn't installed on this machine\"\n  help: \"install git (https://git-scm.com/downloads), then re-run the command\"\n"
+    },
+    {
+      "key": "ff.no-upstream.unpublished",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: NO_UPSTREAM\n  message: board not published yet — run 'aslite sync --establish' to publish it explicitly\n  help: aslite sync --establish\n"
+    },
+    {
+      "key": "ff.no-upstream.unlinked",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: NO_UPSTREAM\n  message: the board branch isn't linked to a remote — there is nothing to pull from or push to (a local-only board is a supported mode; sharing needs a remote 'board' branch)\n  help: \"if a teammate already shares this project's board, make sure your `origin` remote points at the SAME repository they pushed the `board` branch to; if nobody has started sharing this project's board yet, run `aslite sync --establish` to start — until then a local-only board is a supported mode: every local command keeps working, and nothing leaves this machine\"\n"
+    },
+    {
+      "key": "ff.auth",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: AUTH_REQUIRED\n  message: sync was denied access to the remote (or the repository is not visible to your credentials)\n  details:\n    best_effort: true\n"
+    },
+    {
+      "key": "ff.network",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: TRANSIENT\n  message: sync could not reach the remote — offline or the host is unreachable; retry\n  details:\n    retryable: true\n"
+    },
+    {
+      "key": "ff.busy",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: GIT_BUSY\n  message: another git process is using this repository — retry once it finishes\n  details:\n    retryable: true\n"
+    },
+    {
+      "key": "ff.diverged",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: CONFLICT\n  message: \"the board has local commits not yet pushed, and origin has moved too — `sync --pull-only` only fast-forwards; run `aslite sync` (without --pull-only) to reconcile\"\n"
+    },
+    {
+      "key": "ff.conflict",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: CONFLICT\n  message: the board checkout has unresolved conflicts — run `aslite sync` (without --pull-only) to reconcile\n"
+    },
+    {
+      "key": "ff.dirty",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"the board checkout has uncommitted local changes that a fast-forward-only pull would overwrite — commit or discard them, or run a full sync instead of --pull-only\"\n"
+    },
+    {
+      "key": "ff.detached-head",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: the board checkout is in a detached-HEAD state — sync needs the board branch checked out\n  details:\n    state: detached-head\n"
+    },
+    {
+      "key": "ff.not-a-repo",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: the board checkout is not a git repository — run sync again to re-provision it\n"
+    },
+    {
+      "key": "ff.unclassified",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"sync's pull step failed for an unclassified reason (mystery-reason) — re-run, or run without --pull-only\"\n"
+    },
+    {
+      "key": "sync.local-board.remote-exists",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: CONFLICT\n  message: \"both a local 'board' branch and origin/board exist, but the local branch is not the managed board checkout — bare sync will not guess which history is safe\"\n  help: \"preserve or rename the local branch (for example: git branch -m board board-local-backup), then re-run 'aslite sync' to join origin/board\"\n"
+    },
+    {
+      "key": "sync.local-board.unpublished",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: NO_UPSTREAM\n  message: a local 'board' branch exists but has not been explicitly adopted or published — bare sync will not check it out or create origin/board\n  help: aslite sync --establish\n"
+    },
+    {
+      "key": "in-tree.sync-refusal",
+      "variant": "origin",
+      "kind": "envelope",
+      "bytes": "error:\n  code: USAGE\n  message: \"this board rides your code branch — '.agentstate-lite/' is committed with the code, so a full sync would have to publish the code branch itself; share board changes with your normal git commit/push, run 'aslite sync --pull-only' to fetch-and-report incoming board changes, or run 'aslite sync --establish' to move the board to a dedicated 'board' branch\"\n  details:\n    path: /repo/.agentstate-lite\n    state: in-tree\n  help: aslite sync --establish\n"
+    },
+    {
+      "key": "in-tree.sync-refusal",
+      "variant": "no-origin",
+      "kind": "envelope",
+      "bytes": "error:\n  code: USAGE\n  message: \"this board rides your code branch — '.agentstate-lite/' is committed with the code, so a full sync would have to publish the code branch itself; share board changes with your normal git commit/push, run 'aslite sync --pull-only' to fetch-and-report incoming board changes, or this repo has no 'origin' remote yet — run 'git remote add origin <url>', then 'aslite sync --establish' to move the board to a dedicated 'board' branch\"\n  details:\n    path: /repo/.agentstate-lite\n    state: in-tree\n  help: git remote add origin <url>\n"
+    },
+    {
+      "key": "in-tree.show-incoming.no-basis",
+      "variant": "detached-head",
+      "kind": "envelope",
+      "bytes": "error:\n  code: NO_UPSTREAM\n  message: \"this board rides the current branch, and the checkout is on a detached HEAD (no branch, so no tracking upstream) — there is nothing to fetch from or compare against, so board freshness is unknown; sync will not guess an upstream\"\n  details:\n    state: in-tree\n  help: \"configure tracking (git branch --set-upstream-to=<remote>/<branch>) or fetch once, then re-run aslite sync --show-incoming <id>\"\n"
+    },
+    {
+      "key": "in-tree.show-incoming.no-basis",
+      "variant": "no-upstream",
+      "kind": "envelope",
+      "bytes": "error:\n  code: NO_UPSTREAM\n  message: \"this board rides the current branch, and the current branch has no upstream tracking configured — there is nothing to fetch from or compare against, so board freshness is unknown; sync will not guess an upstream\"\n  details:\n    state: in-tree\n  help: \"configure tracking (git branch --set-upstream-to=<remote>/<branch>) or fetch once, then re-run aslite sync --show-incoming <id>\"\n"
+    },
+    {
+      "key": "in-tree.show-incoming.no-basis",
+      "variant": "unusable-upstream",
+      "kind": "envelope",
+      "bytes": "error:\n  code: NO_UPSTREAM\n  message: \"this board rides the current branch, and the branch's tracking ref 'origin/main' does not resolve (never fetched, or deleted on the remote) — there is nothing to fetch from or compare against, so board freshness is unknown; sync will not guess an upstream\"\n  details:\n    state: in-tree\n  help: \"configure tracking (git branch --set-upstream-to=<remote>/<branch>) or fetch once, then re-run aslite sync --show-incoming <id>\"\n"
+    },
+    {
+      "key": "establish.behind-origin",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"establish refused: 'main' is behind origin/main with board changes — establishing from this stale state would strand a teammate's board commits on the frozen folder forever\"\n  details:\n    behind_board_commits: 2\n    commits[2]: \"1111111111111111111111111111111111111111\",\"2222222222222222222222222222222222222222\"\n  help: \"git pull, then re-run aslite sync --establish --yes\"\n"
+    },
+    {
+      "key": "establish.namespace-conflict.greenfield",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"branches named 'board/…' block establishment: board/x (local), board/y (on origin)\"\n  details:\n    conflicting_branches[2]: board/x (local),board/y (on origin)\n"
+    },
+    {
+      "key": "establish.namespace-conflict.committed",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"establish refused: branches named 'board/…' exist — git cannot create a 'board' branch alongside them: board/x (local), board/y (on origin)\"\n  details:\n    conflicting_branches[2]: board/x (local),board/y (on origin)\n  help: \"delete or rename these branches, then re-run aslite sync --establish --yes\"\n"
+    },
+    {
+      "key": "establish.board-branch-mismatch",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"a local 'board' branch already exists and does not match the committed folder — if it is left over from an interrupted establishment, delete it (git branch -D board); if it is used for something else, rename it — then re-run\"\n"
+    },
+    {
+      "key": "establish.detached-head.committed",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"the repository is on a detached HEAD — check out the branch that carries the committed .agentstate-lite/ folder, then re-run\"\n"
+    },
+    {
+      "key": "establish.detached-head.marker",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"the repository is on a detached HEAD — check out the branch that carries the committed .agentstate-lite/ folder, then re-run 'aslite sync --establish --yes'\"\n"
+    },
+    {
+      "key": "marker.shallow.refusal",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"establish refused: this clone's git history is shallow (truncated), so the interrupted establishment's snapshot cannot be verified against origin/board; nothing was changed\"\n  details:\n    snapshot_commit: 3f786850e387550fdab836ed7e6dc881de23001b\n  help: git fetch --unshallow origin  # then re-run aslite sync --establish\n"
+    },
+    {
+      "key": "marker.lost-race.conflict",
+      "variant": "valid",
+      "kind": "envelope",
+      "bytes": "error:\n  code: CONFLICT\n  message: \"origin/board does not contain this clone's interrupted establishment snapshot — a different board is published now; nothing was changed, and the committed folder here is untouched\"\n  details:\n    snapshot_commit: 3f786850e387550fdab836ed7e6dc881de23001b\n  help: \"coordinate with whoever published origin/board; to discard this clone's unpublished attempt: git branch -D board, then re-run 'aslite sync --establish' — the stale marker is cleared automatically once the branch is gone\"\n"
+    },
+    {
+      "key": "marker.lost-race.conflict",
+      "variant": "unverifiable",
+      "kind": "envelope",
+      "bytes": "error:\n  code: CONFLICT\n  message: \"this clone's establishment marker is invalid or unverifiable — it names a commit that cannot be found even after fetching, so establish cannot tie it to what origin/board publishes; nothing was changed, and the committed folder here is untouched\"\n  details:\n    snapshot_commit: 3f786850e387550fdab836ed7e6dc881de23001b\n  help: \"coordinate with whoever published origin/board; to discard this clone's unpublished attempt: git branch -D board, then re-run 'aslite sync --establish' — the stale marker is cleared automatically once the branch is gone\"\n"
+    },
+    {
+      "key": "marker.offline.refusal",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: TRANSIENT\n  message: \"establish refused: could not reach 'origin' — finishing the interrupted establishment re-creates the folder-removal commit, which must be cut from a fresh view of origin; get online, then re-run\"\n  details:\n    retryable: true\n"
+    },
+    {
+      "key": "marker.tree-changed.conflict",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: CONFLICT\n  message: .agentstate-lite/ changed on 'main' after the interrupted establishment pushed its snapshot — re-creating the folder-removal now would strand those newer board changes on the frozen folder; nothing was changed\n  details:\n    snapshot_tree: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    current_tree: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n  help: \"the newer changes stay recoverable in 'main' history; after the cleanup PR merges and this clone joins via 'aslite sync', re-apply them with doc update\"\n"
+    },
+    {
+      "key": "marker.unavailable.tree",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: the establishment marker names an unavailable tree (3f786850e387550fdab836ed7e6dc881de23001b)\n"
+    },
+    {
+      "key": "marker.unavailable.commit.moved",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: the establishment marker names an unavailable commit (3f786850e387550fdab836ed7e6dc881de23001b); nothing was moved\n"
+    },
+    {
+      "key": "marker.unavailable.commit.changed",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: the establishment marker names an unavailable commit (3f786850e387550fdab836ed7e6dc881de23001b); nothing was changed\n"
+    },
+    {
+      "key": "window.pre-share",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"the 'board' branch exists on origin, but '.agentstate-lite' here is still the old folder committed on this branch — the folder-removal (cleanup) PR hasn't merged yet, or this clone hasn't pulled it: once it lands, run 'git pull', then run sync again\"\n  details:\n    path: /repo/.agentstate-lite\n    state: pre-share-window\n  help: \"git pull  # after the cleanup PR merges, then re-run sync\"\n"
+    },
+    {
+      "key": "window.pre-share.no-origin",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"a previously fetched 'origin/board' ref shows this project's board was shared, but no 'origin' remote is configured here any more — '.agentstate-lite' is still the old folder committed on this branch, and sync cannot pull the shared board without the remote\"\n  details:\n    path: /repo/.agentstate-lite\n    state: pre-share-window\n    origin_configured: false\n  help: \"git remote add origin <url>  # restore the remote, 'git pull' once the cleanup PR merges, then re-run sync\"\n"
+    },
+    {
+      "key": "window.remnant",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"the 'board' branch exists on origin and the folder-removal (cleanup) commit has already been pulled here, but 1 path under '.agentstate-lite/' is still tracked on this branch — a board commit merged over the removal re-added it, so 'git pull' has nothing left to fix: untrack that path, then re-run sync\"\n  details:\n    path: /repo/.agentstate-lite\n    state: window-remnant\n    tracked_remnants:\n      shown: 1\n      total: 1\n      rows[1]: .agentstate-lite/tasks/extra.md\n  help: \"git rm -r --cached -- .agentstate-lite && git commit -m 'board: untrack leftover board paths', then mv .agentstate-lite .agentstate-lite.bak and re-run sync — it provisions the shared board; reconcile any docs from the backup afterwards with doc update\"\n"
+    },
+    {
+      "key": "window.dual-board",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: CONFLICT\n  message: a shared 'board' branch exists on origin AND '.agentstate-lite' is committed on the current branch with content that never seeded that branch — two competing board locations; nothing is safe to adopt automatically\n  details:\n    path: /repo/.agentstate-lite\n    state: dual-board\n  help: \"choose one explicitly: keep the shared branch (reconcile the committed folder's docs onto it, then remove the folder from this branch), or keep the committed folder (coordinate with your team before retiring the remote 'board' branch)\"\n"
+    },
+    {
+      "key": "provision.foreign",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"a non-empty '.agentstate-lite' directory already exists at /repo/.agentstate-lite but is not the shared board checkout — move it aside, then re-run sync\"\n  details:\n    path: /repo/.agentstate-lite\n  help: mv '/repo/.agentstate-lite' '/repo/.agentstate-lite.bak'  # then re-run sync; reconcile any local-only docs afterwards\n"
+    },
+    {
+      "key": "provision.foreign-checkout",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"'.agentstate-lite' at /repo/.agentstate-lite is git checkout machinery, but it belongs to a different git repository than /repo — move it aside, then re-run sync to provision this repo's board from origin/board\"\n  details:\n    path: /repo/.agentstate-lite\n  help: \"mv '/repo/.agentstate-lite' '/repo/.agentstate-lite.bak'  # then re-run sync; the existing checkout is untouched, just relocated\"\n"
+    },
+    {
+      "key": "provision.unrepairable",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"'.agentstate-lite' at /repo/.agentstate-lite looks like the board checkout with stale pointers that 'git worktree repair' could not fix (its git-internal registration is likely gone) — move it aside, then re-run sync to re-provision fresh from origin/board\"\n  details:\n    path: /repo/.agentstate-lite\n  help: \"mv '/repo/.agentstate-lite' '/repo/.agentstate-lite.bak'  # then re-run sync; recover any local-only, unpushed docs from the backup afterwards\"\n"
+    },
+    {
+      "key": "provision.wrong-branch",
+      "variant": "default",
+      "kind": "envelope",
+      "bytes": "error:\n  code: RUNTIME\n  message: \"'.agentstate-lite' at /repo/.agentstate-lite is git checkout machinery (a linked worktree or nested repo), but it is not checked out to the 'board' branch (nor mid-rebase from it) — it is likely used for something else — move it aside, then re-run sync to re-provision the board fresh from origin/board\"\n  details:\n    path: /repo/.agentstate-lite\n  help: \"mv '/repo/.agentstate-lite' '/repo/.agentstate-lite.bak'  # then re-run sync; the existing checkout is untouched, just relocated\"\n"
+    },
+    {
+      "key": "line.in-tree.no-basis",
+      "variant": "detached-head",
+      "kind": "line",
+      "bytes": "the checkout is on a detached HEAD (no branch, so no tracking upstream) — there is nothing to fetch from or compare against, so board freshness is unknown; sync will not guess an upstream"
+    },
+    {
+      "key": "line.in-tree.no-basis",
+      "variant": "no-upstream",
+      "kind": "line",
+      "bytes": "the current branch has no upstream tracking configured — there is nothing to fetch from or compare against, so board freshness is unknown; sync will not guess an upstream"
+    },
+    {
+      "key": "line.in-tree.no-basis",
+      "variant": "unusable-upstream",
+      "kind": "line",
+      "bytes": "the branch's tracking ref 'origin/main' does not resolve (never fetched, or deleted on the remote) — there is nothing to fetch from or compare against, so board freshness is unknown; sync will not guess an upstream"
+    },
+    {
+      "key": "line.window-note.landed",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "this clone still carries the committed .agentstate-lite/ folder and the folder-removal has already landed on 'main' — run 'git pull' (the folder vanishes), then 'aslite sync' (it returns as the live board)"
+    },
+    {
+      "key": "line.window-note.pending",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "this clone still carries the committed .agentstate-lite/ folder — once the folder-removal lands on the default branch: 'git pull' (the folder vanishes), then 'aslite sync' (it returns as the live board)"
+    },
+    {
+      "key": "line.marker.story.lost-race",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "a different board is published on origin/board and this clone's earlier establishment snapshot is not part of it"
+    },
+    {
+      "key": "line.marker.story.unverifiable",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "this clone's establishment marker is invalid or unverifiable (it names a commit that cannot be found even after fetching), and the board published on origin/board cannot be tied to it"
+    },
+    {
+      "key": "line.marker.cleared.removed",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "a different board is published on origin/board and this clone's earlier establishment snapshot is not part of it — its stale marker has been cleared (the only change made by this run)"
+    },
+    {
+      "key": "line.marker.cleared.failed",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "this clone's establishment marker is invalid or unverifiable (it names a commit that cannot be found even after fetching), and the board published on origin/board cannot be tied to it — its stale marker could NOT be removed (this run changed nothing); remove it by hand: rm /repo/.git/agentstate.establishCommittedShare"
+    },
+    {
+      "key": "line.marker.lost-race.note",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "a different board is published on origin/board and this clone's earlier establishment snapshot is not part of it — this clone's earlier '--establish --yes' did not win; nothing has been changed by this run"
+    },
+    {
+      "key": "line.marker.lost-race.discard",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "git branch -D board, then re-run 'aslite sync --establish' — the stale marker is cleared automatically once the branch is gone"
+    },
+    {
+      "key": "line.marker.shallow.note",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "an earlier establishment on this clone was interrupted, but this clone's git history is shallow (truncated), so establish cannot verify whether that attempt's snapshot was published — deepen the history (git fetch --unshallow origin), then re-run 'aslite sync --establish' (nothing has been changed by this run)"
+    },
+    {
+      "key": "line.marker.interrupted-offer.note",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "an interrupted establishment left the board branch pushed but no folder-removal commit — re-run 'aslite sync --establish --yes' to re-create it on 'board-cleanup' (nothing has been changed by this run)"
+    },
+    {
+      "key": "line.marker.offline.note",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "an earlier establishment on this clone was interrupted, but 'origin' cannot be reached to verify what was published — get online, then re-run 'aslite sync --establish' (nothing has been changed by this run)"
+    },
+    {
+      "key": "line.marker.prepared.note",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "the folder-removal commit is already prepared on 'board-cleanup' — push it and open its PR"
+    },
+    {
+      "key": "line.home.first-contact",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "not yet provisioned — run `aslite sync` to set it up"
+    },
+    {
+      "key": "line.home.up-to-date",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "up to date"
+    },
+    {
+      "key": "line.home.offline-note",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "board sync offline — showing last known state"
+    },
+    {
+      "key": "line.home.in-tree",
+      "variant": "default",
+      "kind": "line",
+      "bytes": "rides this branch — '.agentstate-lite/' is committed with the code; teammates' board changes arrive with your normal 'git pull'"
+    },
+    {
+      "key": "line.home.unpushed",
+      "variant": "n1",
+      "kind": "line",
+      "bytes": "1 local board commit not yet pushed — run sync when online"
+    },
+    {
+      "key": "line.home.unpushed",
+      "variant": "n2",
+      "kind": "line",
+      "bytes": "2 local board commits not yet pushed — run sync when online"
+    },
+    {
+      "key": "line.home.uncommitted",
+      "variant": "n1",
+      "kind": "line",
+      "bytes": "1 uncommitted board change — run sync to share it"
+    },
+    {
+      "key": "line.home.uncommitted",
+      "variant": "n2",
+      "kind": "line",
+      "bytes": "2 uncommitted board changes — run sync to share them"
+    },
+    {
+      "key": "line.home.in-tree.unpushed",
+      "variant": "n1",
+      "kind": "line",
+      "bytes": "1 board commit on this branch not yet pushed — 'git push' shares it"
+    },
+    {
+      "key": "line.home.in-tree.unpushed",
+      "variant": "n2",
+      "kind": "line",
+      "bytes": "2 board commits on this branch not yet pushed — 'git push' shares them"
+    },
+    {
+      "key": "line.home.in-tree.uncommitted",
+      "variant": "n1",
+      "kind": "line",
+      "bytes": "1 uncommitted board change — commit it with your normal git flow to share"
+    },
+    {
+      "key": "line.home.in-tree.uncommitted",
+      "variant": "n2",
+      "kind": "line",
+      "bytes": "2 uncommitted board changes — commit them with your normal git flow to share"
+    },
+    {
+      "key": "line.home.in-tree.pull-hint",
+      "variant": "n1",
+      "kind": "line",
+      "bytes": "1 incoming board change is not yet in this checkout — run 'git pull' to get it"
+    },
+    {
+      "key": "line.home.in-tree.pull-hint",
+      "variant": "n2",
+      "kind": "line",
+      "bytes": "2 incoming board changes are not yet in this checkout — run 'git pull' to get them"
+    }
+  ]
+}

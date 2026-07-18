@@ -173,8 +173,11 @@ function verifiedForeignBoardRoot(top: string): boolean {
   return shas.every((sha) => treeOf(top, sha) !== folderTree);
 }
 
-/** The genuinely-dual refusal: two competing board locations, verified against local objects. */
-function dualBoardError(boardPath: string): BoardGitError {
+/**
+ * The genuinely-dual refusal: two competing board locations, verified against local objects.
+ * Exported (additively) so the CLI's sync-outcome table can enumerate it as a package-side row.
+ */
+export function dualBoardError(boardPath: string): BoardGitError {
   return new BoardGitError(
     "CONFLICT",
     `a shared '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE} AND '${BUNDLE_DIR}' is committed ` +

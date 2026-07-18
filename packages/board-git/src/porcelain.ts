@@ -577,6 +577,42 @@ export function preShareWindowError(top: string, boardPath: string, originConfig
   return new BoardGitError("RUNTIME", guidance.message, { details, help: guidance.help });
 }
 
+/** How a non-empty, non-adoptable pre-existing `.agentstate-lite` directory was classified. */
+export type ExistingDirRefusalReason = "foreign" | "foreign_checkout" | "unrepairable" | "wrong_branch";
+
+/**
+ * The provisioning refusal for a pre-existing `.agentstate-lite` that cannot be adopted, worded to
+ * the case actually observed — never telling someone to move aside a worktree that repair simply
+ * could not fix, or one that IS the board checkout, as if it were foreign junk. Every remedy stays
+ * NON-DESTRUCTIVE (`mv`, never `rm`) — none of these reasons make the directory's CONTENT
+ * worthless, only unsafe for sync to adopt automatically. ONE factory so the CLI's sync-outcome
+ * table can enumerate the four arms against provisioning's own bytes.
+ */
+export function existingDirRefusal(reason: ExistingDirRefusalReason, boardPath: string, top: string): BoardGitError {
+  const messages: Record<ExistingDirRefusalReason, { message: string; help: string }> = {
+    foreign: {
+      message: `a non-empty '${BUNDLE_DIR}' directory already exists at ${boardPath} but is not the shared board checkout — move it aside, then re-run sync`,
+      help: moveAsideHelp(boardPath, "then re-run sync; reconcile any local-only docs afterwards"),
+    },
+    foreign_checkout: {
+      message: `'${BUNDLE_DIR}' at ${boardPath} is git checkout machinery, but it belongs to a different git repository than ${top} — move it aside, then re-run sync to provision this repo's board from origin/board`,
+      help: moveAsideHelp(boardPath, "then re-run sync; the existing checkout is untouched, just relocated"),
+    },
+    unrepairable: {
+      message: `'${BUNDLE_DIR}' at ${boardPath} looks like the board checkout with stale pointers that 'git worktree repair' could not fix (its git-internal registration is likely gone) — move it aside, then re-run sync to re-provision fresh from origin/board`,
+      help: moveAsideHelp(boardPath, "then re-run sync; recover any local-only, unpushed docs from the backup afterwards"),
+    },
+    wrong_branch: {
+      message: `'${BUNDLE_DIR}' at ${boardPath} is git checkout machinery (a linked worktree or nested repo), but it is not checked out to the '${BOARD_BRANCH}' branch (nor mid-rebase from it) — it is likely used for something else — move it aside, then re-run sync to re-provision the board fresh from origin/board`,
+      help: moveAsideHelp(boardPath, "then re-run sync; the existing checkout is untouched, just relocated"),
+    },
+  };
+  return new BoardGitError("RUNTIME", messages[reason].message, {
+    details: { path: boardPath },
+    help: messages[reason].help,
+  });
+}
+
 /**
  * SELF-HEALING board-worktree provisioning (all branches empirically grounded, §U1):
  * `git fetch --prune origin` runs BEFORE `board` is referenced (best-effort: offline provisioning still
@@ -721,7 +757,7 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
       // self-heal FIRST, reachable ONLY because the worktree signature is present (never for a
       // plain foreign directory — the U3a #1 never-touch guarantee).
       const hadSignature = hasWorktreeSignature(boardPath);
-      let reason: "foreign" | "foreign_checkout" | "unrepairable" | "wrong_branch" = "foreign";
+      let reason: ExistingDirRefusalReason = "foreign";
       if (hadSignature) {
         if (worktreeRootResolves(boardPath) && !sameGitCommonDir(boardPath, top)) {
           reason = "foreign_checkout";
@@ -745,32 +781,8 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
           }
         }
       }
-      // REFUSE, worded to the case actually observed — never telling someone to move aside a
-      // worktree that repair simply could not fix, or one that IS the board checkout, as if it
-      // were foreign junk. Every remedy stays NON-DESTRUCTIVE (`mv`, never `rm`) — none of these
-      // reasons make the directory's CONTENT worthless, only unsafe for sync to adopt automatically.
-      const messages: Record<typeof reason, { message: string; help: string }> = {
-        foreign: {
-          message: `a non-empty '${BUNDLE_DIR}' directory already exists at ${boardPath} but is not the shared board checkout — move it aside, then re-run sync`,
-          help: moveAsideHelp(boardPath, "then re-run sync; reconcile any local-only docs afterwards"),
-        },
-        foreign_checkout: {
-          message: `'${BUNDLE_DIR}' at ${boardPath} is git checkout machinery, but it belongs to a different git repository than ${top} — move it aside, then re-run sync to provision this repo's board from origin/board`,
-          help: moveAsideHelp(boardPath, "then re-run sync; the existing checkout is untouched, just relocated"),
-        },
-        unrepairable: {
-          message: `'${BUNDLE_DIR}' at ${boardPath} looks like the board checkout with stale pointers that 'git worktree repair' could not fix (its git-internal registration is likely gone) — move it aside, then re-run sync to re-provision fresh from origin/board`,
-          help: moveAsideHelp(boardPath, "then re-run sync; recover any local-only, unpushed docs from the backup afterwards"),
-        },
-        wrong_branch: {
-          message: `'${BUNDLE_DIR}' at ${boardPath} is git checkout machinery (a linked worktree or nested repo), but it is not checked out to the '${BOARD_BRANCH}' branch (nor mid-rebase from it) — it is likely used for something else — move it aside, then re-run sync to re-provision the board fresh from origin/board`,
-          help: moveAsideHelp(boardPath, "then re-run sync; the existing checkout is untouched, just relocated"),
-        },
-      };
-      throw new BoardGitError("RUNTIME", messages[reason].message, {
-        details: { path: boardPath },
-        help: messages[reason].help,
-      });
+      // REFUSE, worded to the case actually observed (see {@link existingDirRefusal}).
+      throw existingDirRefusal(reason, boardPath, top);
     }
     if (hasLocal && budget.allowLocalBranch === false && !localMatchesRemote && !adoptLocalBoard()) {
       return { kind: "local_board", boardPath, remoteExists: hasRemote };

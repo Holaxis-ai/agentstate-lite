@@ -383,43 +383,36 @@ export type BoardStatus =
       behind: number | null;
     };
 
-/** Pinned moment-(e) strings (research/sync-verb-ux-review (e); machine-honest per adjudication). */
-export const BOARD_UP_TO_DATE = "up to date";
-export const BOARD_OFFLINE_NOTE = "board sync offline — showing last known state";
+// The board block's guidance-line templates live in THE sync-outcome table (../sync-outcomes.ts);
+// these re-exports keep the module's historical import surface stable.
+import {
+  BOARD_IN_TREE_LINE,
+  BOARD_OFFLINE_NOTE,
+  BOARD_UP_TO_DATE,
+  boardFirstContactLine,
+  inTreePullHintLine,
+  inTreeUncommittedLine,
+  inTreeUnpushedLine,
+  uncommittedLine,
+  unpushedLine,
+} from "../sync-outcomes.js";
+export {
+  BOARD_IN_TREE_LINE,
+  BOARD_OFFLINE_NOTE,
+  BOARD_UP_TO_DATE,
+  boardFirstContactLine,
+  inTreePullHintLine,
+  inTreeUncommittedLine,
+  inTreeUnpushedLine,
+  uncommittedLine,
+  unpushedLine,
+} from "../sync-outcomes.js";
+
 /** Cap on the rendered per-doc human lines (the since-line header carries the full count). */
 export const BOARD_CHANGES_SHOWN_LIMIT = 10;
 
-/** The probe-gated first-contact line — NEVER "run init" (the divergent-second-bundle footgun). */
-export function boardFirstContactLine(inv: string): string {
-  return `not yet provisioned — run \`${inv} sync\` to set it up`;
-}
-
-/**
- * The IN-TREE board line (board-git PR C) — doubles as first contact AND the quiet steady state:
- * it is true whether or not this render could verify freshness, so it never over-claims currency
- * the way "up to date" would for a mode whose plain render never fetches.
- */
-export const BOARD_IN_TREE_LINE =
-  `rides this branch — '${BUNDLE_DIR}/' is committed with the code; teammates' board changes ` +
-  "arrive with your normal 'git pull'";
-
 /** In-tree since-header: session-start's fetch is the "check", there is no sync verb here. */
 export const IN_TREE_SINCE_FIELD = "since_this_machine_last_checked";
-
-/** "2 incoming board changes are not yet in this checkout — run 'git pull' to get them". */
-export function inTreePullHintLine(n: number): string {
-  return `${n} incoming board ${n === 1 ? "change is" : "changes are"} not yet in this checkout — run 'git pull' to get ${n === 1 ? "it" : "them"}`;
-}
-
-/** In-tree unpushed backstop (prefix-scoped): sharing rides the normal git flow, never sync. */
-export function inTreeUnpushedLine(n: number): string {
-  return `${n} board ${n === 1 ? "commit" : "commits"} on this branch not yet pushed — 'git push' shares ${n === 1 ? "it" : "them"}`;
-}
-
-/** In-tree uncommitted backstop (prefix-scoped). */
-export function inTreeUncommittedLine(n: number): string {
-  return `${n} uncommitted board ${n === 1 ? "change" : "changes"} — commit ${n === 1 ? "it" : "them"} with your normal git flow to share`;
-}
 
 /** The hook-reinstall prompt (U6-inherited): the installed hook predates `session-start`. */
 export function hookUpdateNote(inv: string): string {
@@ -448,16 +441,6 @@ export function sinceLine(rows: Array<Pick<AwarenessDeltaRow, "actor">>): string
 export function docLine(row: Pick<AwarenessDeltaRow, "actor" | "verb" | "kind" | "title">): string {
   const kindPart = row.kind && row.kind !== "unknown" ? `${row.kind} ` : "";
   return `${row.actor} · ${row.verb} ${kindPart}"${row.title}"`;
-}
-
-/** "2 local board commits not yet pushed — run sync when online" (pack (e), never "1 commits"). */
-export function unpushedLine(n: number): string {
-  return `${n} local board ${n === 1 ? "commit" : "commits"} not yet pushed — run sync when online`;
-}
-
-/** The backstop's other half: uncommitted board changes (the agent that never ran sync at all). */
-export function uncommittedLine(n: number): string {
-  return `${n} uncommitted board ${n === 1 ? "change" : "changes"} — run sync to share ${n === 1 ? "it" : "them"}`;
 }
 
 /** `n` when it parses as a live count; the cache's persisted count otherwise (last-known fallback). */
