@@ -37,7 +37,7 @@ import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { collectLinkDeclarations } from "../link-types.js";
-import { isLegacyPageDoc, legacyPagePrefixOf, LEGACY_PAGE_BLOB_PREFIX } from "../legacy-page.js";
+import { isLegacyPageDoc, isLegacyRegistryDocId, LEGACY_PAGE_BLOB_PREFIX } from "../legacy-page.js";
 
 export const STATUS_USAGE = `agentstate-lite status — read-only whole-bundle health report (bundle lint)
 
@@ -343,8 +343,11 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   const pageTypedRows: Record<string, unknown>[] = docs
     .filter((doc) => isLegacyPageDoc(doc.frontmatter))
     .map((doc) => ({ id: doc.id }));
+  // STORE-AWARE: docs count only under the legacy registry prefix; blob keys only under the
+  // legacy entry prefix (already prefix-scoped at the `listBlobs` call above) — a concept doc
+  // that merely lives at e.g. `pages/manual` is not a legacy item.
   const legacyPrefixRows: Record<string, unknown>[] = [
-    ...docs.filter((doc) => legacyPagePrefixOf(doc.id) !== null).map((doc) => ({ id: doc.id, store: "doc" })),
+    ...docs.filter((doc) => isLegacyRegistryDocId(doc.id)).map((doc) => ({ id: doc.id, store: "doc" })),
     ...legacyBlobKeys
       .slice()
       .sort()

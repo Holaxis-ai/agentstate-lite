@@ -2,11 +2,12 @@
  * The legacy-naming primitive (src/legacy-page.ts, plans/rename-page-kind-to-view Option C+ Unit 2):
  * ONE predicate feeding two read-only surfaces —
  *
- *   1. the write-time nudge: `new`/`doc write`/`doc update` SUCCESS receipts carry the ONE hint
- *      line when (and only when) the produced doc is typed 'Page'; never on reads, never a block;
+ *   1. the write-time nudge: `new`/`doc write`/`doc update`/`promote` (.md route) SUCCESS receipts
+ *      carry the ONE hint line when (and only when) the produced doc is typed 'Page'; never on
+ *      reads, never a block;
  *   2. `status`'s `legacy_naming` audit section: count + ids of Page-typed docs plus an
- *      informational count of items under the legacy pages-registry//pages/ prefixes, omitted
- *      entirely on a legacy-free bundle.
+ *      informational, STORE-AWARE count of items under the legacy pages-registry//pages/
+ *      prefixes, omitted entirely on a legacy-free bundle.
  *
  * Runs the command functions in-process against real temp filesystem bundles (the
  * `doc.test.ts`/`status.test.ts` pattern, including the explicit `readStdin` override — see
@@ -14,7 +15,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -22,13 +23,13 @@ import { initBundle, writeBlob, writeDoc } from "@agentstate-lite/core";
 
 import {
   isLegacyPageDoc,
-  legacyPagePrefixOf,
-  LEGACY_PAGE_BLOB_PREFIX,
-  LEGACY_PAGE_REGISTRY_PREFIX,
+  isLegacyEntryBlobKey,
+  isLegacyRegistryDocId,
   LEGACY_PAGE_TYPE_HINT,
 } from "../src/legacy-page.js";
 import { doc } from "../src/commands/doc.js";
 import { newCommand } from "../src/commands/new.js";
+import { promote } from "../src/commands/promote.js";
 import { status } from "../src/commands/status.js";
 
 async function tempDir(): Promise<string> {
@@ -56,12 +57,25 @@ async function runStatusJson(argv: string[]): Promise<Record<string, unknown>> {
   return JSON.parse(out) as Record<string, unknown>;
 }
 
+/** Run `promote` in-process, capturing + parsing its `--json` stdout. */
+async function runPromoteJson(argv: string[]): Promise<Record<string, unknown>> {
+  let out = "";
+  await promote([...argv, "--json"], { stdout: (s) => (out += s) });
+  return JSON.parse(out) as Record<string, unknown>;
+}
+
 // ── 1. The predicate itself ──────────────────────────────────────────────────────────────────────
 
-test("isLegacyPageDoc: 'Page' matches, trimmed; 'View'/case-variants/non-strings never do", () => {
+test("isLegacyPageDoc: EXACT 'Page' only, matching core's exact grammar; 'View'/whitespace/case-variants/non-strings never do", () => {
   assert.equal(isLegacyPageDoc({ type: "Page" }), true);
-  assert.equal(isLegacyPageDoc({ type: " Page " }), true, "surrounding whitespace is trimmed");
-  assert.equal(isLegacyPageDoc({ type: "\tPage\n" }), true);
+  // EXACT, no trimming — the same strictness as core's `isPageTypeName`. A whitespace-padded
+  // value can only reach consumers via a deliberately QUOTED YAML scalar (`type: " Page "`):
+  // plain scalars are whitespace-trimmed by the YAML parser itself, and the one frontmatter
+  // parse layer (core/src/frontmatter.ts) does no further `type` normalization. Core rejects
+  // the quoted form as a registration, so counting it legacy here would nudge/audit a doc
+  // dual-read does not accept.
+  assert.equal(isLegacyPageDoc({ type: " Page " }), false, "quoted whitespace-padded type is not legacy (core's grammar is exact)");
+  assert.equal(isLegacyPageDoc({ type: "\tPage\n" }), false);
   assert.equal(isLegacyPageDoc({ type: "View" }), false);
   assert.equal(isLegacyPageDoc({ type: "page" }), false, "type values are case-sensitive — 'page' is another type, not a near-miss");
   assert.equal(isLegacyPageDoc({ type: "PAGE" }), false);
@@ -72,14 +86,19 @@ test("isLegacyPageDoc: 'Page' matches, trimmed; 'View'/case-variants/non-strings
   assert.equal(isLegacyPageDoc({ type: ["Page"] }), false);
 });
 
-test("legacyPagePrefixOf: informational classifier — legacy prefixes report, everything else is null", () => {
-  assert.equal(legacyPagePrefixOf("pages-registry/dash"), LEGACY_PAGE_REGISTRY_PREFIX);
-  assert.equal(legacyPagePrefixOf("pages/dash.html"), LEGACY_PAGE_BLOB_PREFIX);
-  assert.equal(legacyPagePrefixOf("views-registry/dash"), null);
-  assert.equal(legacyPagePrefixOf("views/dash.html"), null);
-  assert.equal(legacyPagePrefixOf("pages-registry2/dash"), null, "prefix match is segment-exact, not substring");
-  assert.equal(legacyPagePrefixOf("notes/pages/dash"), null, "only a LEADING legacy prefix classifies");
-  assert.equal(legacyPagePrefixOf(""), null);
+test("store-aware classifiers: doc ids classify only against pages-registry/, blob keys only against pages/", () => {
+  assert.equal(isLegacyRegistryDocId("pages-registry/dash"), true);
+  assert.equal(isLegacyRegistryDocId("pages/manual"), false, "a doc under pages/ is NOT a legacy item — that prefix belongs to the BLOB store");
+  assert.equal(isLegacyRegistryDocId("views-registry/dash"), false);
+  assert.equal(isLegacyRegistryDocId("pages-registry2/dash"), false, "prefix match is segment-exact, not substring");
+  assert.equal(isLegacyRegistryDocId("notes/pages-registry/dash"), false, "only a LEADING legacy prefix classifies");
+  assert.equal(isLegacyRegistryDocId(""), false);
+
+  assert.equal(isLegacyEntryBlobKey("pages/dash.html"), true);
+  assert.equal(isLegacyEntryBlobKey("pages-registry/dash"), false, "a registry-prefixed key is not a legacy BLOB item");
+  assert.equal(isLegacyEntryBlobKey("views/dash.html"), false);
+  assert.equal(isLegacyEntryBlobKey("notes/pages/dash.html"), false);
+  assert.equal(isLegacyEntryBlobKey(""), false);
 });
 
 // ── 2. The write-time nudge (authoring moments only) ─────────────────────────────────────────────
@@ -154,6 +173,39 @@ test("nudge: 'new' of a bundle-declared Page kind hints; another kind does not",
     assert.equal("hint" in widget, false);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("nudge: 'promote' of a Page-typed .md registry doc hints (the documented View-authoring route); View docs and blob promotions never do", async () => {
+  const dir = await tempDir();
+  const files = await tempDir();
+  try {
+    await initBundle(dir);
+    await writeFile(
+      path.join(files, "legacy.md"),
+      "---\ntype: Page\ntitle: Legacy Dash\nentry: pages/legacy.html\n---\nA legacy-typed registry doc.\n",
+    );
+    await writeFile(
+      path.join(files, "fresh.md"),
+      "---\ntype: View\ntitle: Fresh Dash\nentry: views/fresh.html\n---\nA current registry doc.\n",
+    );
+    await writeFile(path.join(files, "dash.html"), "<html></html>");
+
+    const legacy = await runPromoteJson([path.join(files, "legacy.md"), "--doc-key", "pages-registry/legacy.md", "--dir", dir]);
+    assert.equal(legacy.promote, "written", "the nudge never blocks — the promotion succeeded");
+    assert.equal(legacy.route, "doc");
+    assert.equal(legacy.hint, LEGACY_PAGE_TYPE_HINT);
+
+    const fresh = await runPromoteJson([path.join(files, "fresh.md"), "--doc-key", "views-registry/fresh.md", "--dir", dir]);
+    assert.equal("hint" in fresh, false, "a View-typed promotion gets no hint");
+
+    // Blob promotions have no frontmatter to inspect — even under the legacy blob prefix.
+    const blob = await runPromoteJson([path.join(files, "dash.html"), "--doc-key", "pages/dash.html", "--dir", dir]);
+    assert.equal(blob.route, "blob");
+    assert.equal("hint" in blob, false, "blob promotions are untouched");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(files, { recursive: true, force: true });
   }
 });
 
@@ -242,6 +294,37 @@ test("status: legacy_naming counts a seeded mixed bundle correctly — Page-type
     assert.ok((legacy.note as string).includes("informational"));
   } finally {
     await cleanup();
+  }
+});
+
+test("status: legacy_naming is STORE-AWARE — a concept doc under pages/ is never counted; the registry doc and pages/ blob still are", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle = await initBundle(dir);
+    const now = new Date().toISOString();
+    // The cross-store decoy: an unrelated concept doc whose id merely lives under pages/ —
+    // that prefix is legacy only in the BLOB store, so this doc must NOT count.
+    await writeDoc(bundle, {
+      id: "pages/manual",
+      frontmatter: { type: "Note", title: "A doc that just lives under pages/", timestamp: now },
+      body: "",
+    });
+    await writeDoc(bundle, {
+      id: "pages-registry/dash",
+      frontmatter: { type: "Page", title: "Dash", entry: "pages/dash.html", timestamp: now },
+      body: "",
+    });
+    await writeBlob(bundle, "pages/dash.html", new TextEncoder().encode("<html></html>"), "text/html");
+
+    const result = await runStatusJson(["--dir", dir]);
+    const legacy = result.legacy_naming as Record<string, unknown>;
+    assert.equal(legacy.legacy_prefix_items, 2, "registry doc + pages/ blob only — never the pages/ concept doc");
+    const prefixRows = legacy.legacy_prefix_rows as { rows: { id: string; store: string }[] };
+    assert.ok(prefixRows.rows.some((r) => r.id === "pages-registry/dash" && r.store === "doc"));
+    assert.ok(prefixRows.rows.some((r) => r.id === "pages/dash.html" && r.store === "blob"));
+    assert.ok(!prefixRows.rows.some((r) => r.id === "pages/manual"), "the cross-store decoy doc must not appear");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
 
