@@ -79,6 +79,13 @@ import {
 import { REANCHOR_NOTE, defaultSyncStore } from "../cursor.js";
 import { hookInstallHintOnce, type SyncCliDeps } from "../sync-cli.js";
 import { ESTABLISH_ALREADY, establishBoard } from "./sync-establish.js";
+import {
+  ffSwallowToError,
+  syncOutcomeError,
+  syncOutcomeLine,
+  upstreamHelp,
+  type InTreeNoBasisReason,
+} from "../sync-outcomes.js";
 import { CliError, asHandled, cliErrorFromBoardGit, toExit } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, renderErrorEnvelope, resolveMode } from "../output.js";
@@ -238,15 +245,9 @@ export function pushFailureMessage(err: CliError): string {
   return `committed to the board locally — your work is saved. ${err.message}`;
 }
 
-/** Route a missing upstream to either the existing shared repo or explicit first publication. */
-export function upstreamHelp(inv: string): string {
-  return (
-    `if a teammate already shares this project's board, make sure your \`origin\` remote points at ` +
-    `the SAME repository they pushed the \`board\` branch to; if nobody has started sharing this ` +
-    `project's board yet, run \`${inv} sync --establish\` to start — until then a local-only ` +
-    `board is a supported mode: every local command keeps working, and nothing leaves this machine`
-  );
-}
+// The refusal/guidance envelope templates this command renders live in THE sync-outcome table
+// (../sync-outcomes.ts); these re-exports keep the module's historical import surface stable.
+export { ffSwallowToError, inTreeNoBasisNote, syncInTreeRefusalMessage, upstreamHelp } from "../sync-outcomes.js";
 
 /**
  * Attach {@link upstreamHelp} to a NO_UPSTREAM CliError (idempotent — never doubles up); any other
@@ -476,88 +477,6 @@ function withProvisionAnnouncement(err: CliError, outcome: ProvisionOutcome): Cl
   return new CliError(err.code, err.message, { details: { ...err.details, ...announcement }, help: err.help });
 }
 
-/**
- * Map a fail-soft pull reason to the capped CliError taxonomy. `boardPath` distinguishes a local
- * unpublished board from a project with no shared board configured.
- */
-export function ffSwallowToError(reason: string, inv: string, boardPath?: string): CliError {
-  switch (reason) {
-    case "git-missing":
-      return new CliError("GIT_MISSING", "sync needs git, which isn't installed on this machine", {
-        help: "install git (https://git-scm.com/downloads), then re-run the command",
-      });
-    case "no-upstream": {
-      const hasLocalBoard =
-        boardPath !== undefined &&
-        runGit(boardPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${BOARD_BRANCH}`]).status === 0;
-      if (hasLocalBoard) {
-        return new CliError(
-          "NO_UPSTREAM",
-          `board not published yet — run '${inv} sync --establish' to publish it explicitly`,
-          { help: `${inv} sync --establish` },
-        );
-      }
-      return new CliError(
-        "NO_UPSTREAM",
-        "the board branch isn't linked to a remote — there is nothing to pull from or push to " +
-          "(a local-only board is a supported mode; sharing needs a remote 'board' branch)",
-        { help: upstreamHelp(inv) },
-      );
-    }
-    case "auth":
-      return new CliError(
-        "AUTH_REQUIRED",
-        "sync was denied access to the remote (or the repository is not visible to your credentials)",
-        { details: { best_effort: true } },
-      );
-    case "network":
-      return new CliError(
-        "TRANSIENT",
-        "sync could not reach the remote — offline or the host is unreachable; retry",
-        { details: { retryable: true } },
-      );
-    case "busy":
-      return new CliError(
-        "GIT_BUSY",
-        "another git process is using this repository — retry once it finishes",
-        { details: { retryable: true } },
-      );
-    case "diverged":
-      return new CliError(
-        "CONFLICT",
-        `the board has local commits not yet pushed, and origin has moved too — \`sync --pull-only\` ` +
-          `only fast-forwards; run \`${inv} sync\` (without --pull-only) to reconcile`,
-      );
-    case "conflict":
-      return new CliError(
-        "CONFLICT",
-        `the board checkout has unresolved conflicts — run \`${inv} sync\` (without --pull-only) to reconcile`,
-      );
-    case "dirty":
-      return new CliError(
-        "RUNTIME",
-        "the board checkout has uncommitted local changes that a fast-forward-only pull would " +
-          "overwrite — commit or discard them, or run a full sync instead of --pull-only",
-      );
-    case "detached-head":
-      return new CliError(
-        "RUNTIME",
-        "the board checkout is in a detached-HEAD state — sync needs the board branch checked out",
-        { details: { state: "detached-head" } },
-      );
-    case "not-a-repo":
-      return new CliError(
-        "RUNTIME",
-        "the board checkout is not a git repository — run sync again to re-provision it",
-      );
-    default:
-      return new CliError(
-        "RUNTIME",
-        `sync's pull step failed for an unclassified reason (${reason}) — re-run, or run without --pull-only`,
-      );
-  }
-}
-
 const UNKNOWN_FIELD = "unknown";
 function fmValue(v: unknown): string {
   return typeof v === "string" && v.trim().length > 0 ? v.trim() : UNKNOWN_FIELD;
@@ -596,37 +515,8 @@ export function syncRemoteStateUnknownNote(inv: string, hasLocalBundle: boolean)
 /** The in-tree board's one-line identity, led by every in-tree receipt. */
 export const SYNC_IN_TREE_BOARD_LINE = `in-tree — board docs ride the current code branch (${BUNDLE_DIR}/ is committed with the code)`;
 
-/**
- * Full sync's in-tree refusal (write-side is a non-goal: pushing the branch publishes code).
- * `hasOrigin` false (no `origin` remote configured at all) names that dead end instead of
- * pointing at `sync --establish`, which would just refuse again with nothing else to try.
- */
-export function syncInTreeRefusalMessage(inv: string, hasOrigin: boolean = true): string {
-  const establishRemedy = hasOrigin
-    ? `run '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch`
-    : `this repo has no '${BOARD_REMOTE}' remote yet — run 'git remote add ${BOARD_REMOTE} <url>', ` +
-      `then '${inv} sync --establish' to move the board to a dedicated '${BOARD_BRANCH}' branch`;
-  return (
-    `this board rides your code branch — '${BUNDLE_DIR}/' is committed with the code, so a full ` +
-    `sync would have to publish the code branch itself; share board changes with your normal git ` +
-    `commit/push, run '${inv} sync --pull-only' to fetch-and-report incoming board changes, or ` +
-    `${establishRemedy}`
-  );
-}
-
 /** The explicit "no comparison basis" state (upstream decision table: report nothing, honestly). */
 export const SYNC_IN_TREE_NO_BASIS = "no-comparison-basis";
-
-/** Human phrasing per decision-table reason — never a guessed `origin/<branch>`. */
-export function inTreeNoBasisNote(reason: "detached-head" | "no-upstream" | "unusable-upstream", ref?: string): string {
-  const cause =
-    reason === "detached-head"
-      ? "the checkout is on a detached HEAD (no branch, so no tracking upstream)"
-      : reason === "no-upstream"
-        ? "the current branch has no upstream tracking configured"
-        : `the branch's tracking ref '${ref ?? "?"}' does not resolve (never fetched, or deleted on the remote)`;
-  return `${cause} — there is nothing to fetch from or compare against, so board freshness is unknown; sync will not guess an upstream`;
-}
 
 /** "N incoming board changes not yet in this checkout — run 'git pull' to get them". */
 export function inTreePullHint(behind: number): string {
@@ -659,10 +549,7 @@ async function syncInTree(
 
   if (!pullOnly) {
     const hasOrigin = runGit(top, ["remote", "get-url", BOARD_REMOTE]).status === 0;
-    throw new CliError("USAGE", syncInTreeRefusalMessage(inv, hasOrigin), {
-      details: { path: boardPath, state: "in-tree" },
-      help: hasOrigin ? `${inv} sync --establish` : `git remote add ${BOARD_REMOTE} <url>`,
-    });
+    throw syncOutcomeError("in-tree.sync-refusal", { inv, boardPath, hasOrigin });
   }
 
   const key = resolveBundleKey(boardPath);
@@ -676,10 +563,10 @@ async function syncInTree(
   const rec: Record<string, unknown> = { board: SYNC_IN_TREE_BOARD_LINE };
   if (result.state === "no-upstream") {
     rec.state = SYNC_IN_TREE_NO_BASIS;
-    rec.note = inTreeNoBasisNote(result.reason);
+    rec.note = syncOutcomeLine("line.in-tree.no-basis", { reason: result.reason });
   } else if (result.state === "unusable-upstream") {
     rec.state = SYNC_IN_TREE_NO_BASIS;
-    rec.note = inTreeNoBasisNote("unusable-upstream", result.ref);
+    rec.note = syncOutcomeLine("line.in-tree.no-basis", { reason: "unusable-upstream", ref: result.ref });
   } else {
     rec.upstream = result.upstreamRef;
     rec.incoming = cap(toIncomingRows(result.changes), limit);
@@ -831,24 +718,9 @@ async function syncCommand(argv: string[], deps: Partial<SyncCliDeps> = {}): Pro
   // Provisioning owns the distinction between known remote absence and a failed remote check.
   const outcome = provisionBoardWorktree(dir, { allowLocalBranch: false });
   if (outcome.kind === "local_board") {
-    if (outcome.remoteExists) {
-      throw new CliError(
-        "CONFLICT",
-        `both a local '${BOARD_BRANCH}' branch and origin/${BOARD_BRANCH} exist, but the local branch ` +
-          `is not the managed board checkout — bare sync will not guess which history is safe`,
-        {
-          help:
-            `preserve or rename the local branch (for example: git branch -m ${BOARD_BRANCH} ` +
-            `${BOARD_BRANCH}-local-backup), then re-run '${inv} sync' to join origin/${BOARD_BRANCH}`,
-        },
-      );
-    }
-    throw new CliError(
-      "NO_UPSTREAM",
-      `a local '${BOARD_BRANCH}' branch exists but has not been explicitly adopted or published — ` +
-        `bare sync will not check it out or create origin/${BOARD_BRANCH}`,
-      { help: `${inv} sync --establish` },
-    );
+    throw outcome.remoteExists
+      ? syncOutcomeError("sync.local-board.remote-exists", { inv })
+      : syncOutcomeError("sync.local-board.unpublished", { inv });
   }
   if (outcome.kind === "no_repo") {
     stdout(render({ sync: "nothing to sync" }, mode));
@@ -1130,15 +1002,8 @@ export const SHOW_INCOMING_NO_UPSTREAM =
   "board branch, so no incoming versions exist), or nothing has been fetched yet";
 
 /** The in-tree viewer's refusal when the branch has no usable upstream to read a version from. */
-export function showIncomingInTreeNoBasis(inv: string, reason: "detached-head" | "no-upstream" | "unusable-upstream", ref?: string): CliError {
-  return new CliError(
-    "NO_UPSTREAM",
-    `this board rides the current branch, and ${inTreeNoBasisNote(reason, ref)}`,
-    {
-      details: { state: "in-tree" },
-      help: `configure tracking (git branch --set-upstream-to=<remote>/<branch>) or fetch once, then re-run ${inv} sync --show-incoming <id>`,
-    },
-  );
+export function showIncomingInTreeNoBasis(inv: string, reason: InTreeNoBasisReason, ref?: string): CliError {
+  return syncOutcomeError("in-tree.show-incoming.no-basis", { inv, reason, ref });
 }
 
 /** Attach the doc-read body semantics to a render record: truncate large bodies, point at the byte hatch. */
