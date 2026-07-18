@@ -3,23 +3,28 @@ type: Task
 title: >-
   Carve sync.ts + sync-establish.ts into explicit phase functions
   (behavior-frozen)
-status: blocked
+status: in_progress
 priority: '2'
-assignee: ''
+assignee: mike/claude
 description: >-
-  BLOCKED ON A DEMAND SIGNAL — deliberately not executed (adjudicated
-  2026-07-18, cross-line review). The carve was launched and stopped within
-  minutes: the safety argument (fresh #92 fixtures, quiet files) was excellent
-  but the VALUE argument was absent — the fixtures are committed artifacts that
-  do not expire, the defect record that motivated the work was already fixed by
-  #75/#82/#92, no queued unit touches these files, and quiet files generate no
-  friction to relieve. Execute this carve AS THE OPENING MOVE of the first real
-  unit that must change sync.ts/sync-establish.ts (candidates: awareness-path
-  unification, in-tree v2 work, a recurring-defect or merge-conflict pattern) —
-  the constraints in this record and #92's parity harness apply unchanged
-  whenever that day comes. Do not execute on file-size or memory-freshness
-  arguments alone.
+  CLAIMED mike/claude — ACTIVE (relaunched 2026-07-18 after a decision wobble
+  worth recording honestly: built->stopped->relaunched in one evening.
+  Adjudication: this unit is an OPTIONALITY PURCHASE, not demand-driven work —
+  safe, fully specified, mechanically harnessed (#92's fixtures + the journey
+  suites), executed because surplus/expiring capacity on the claude line makes
+  its marginal cost near zero. Both prior verdicts were correct under their
+  unstated assumptions: 'churn' under scarce budget, 'free option' under
+  expiring budget — the budget fact decides, and it is now stated.) Spec: split
+  sync.ts + sync-establish.ts by existing responsibility (orchestration;
+  conflict convergence + receipts; show-incoming; greenfield establishment;
+  committed-folder establishment/recovery) into internal modules with explicit
+  typed phase functions. Constraints (both review lines): NO new
+  package/framework/dup-state/compat layer; ALL existing tests AND #92 fixtures
+  BYTE-UNMODIFIED and green (fixtures pin rendered outcomes; journey suites pin
+  side-effect ORDERING — both bars); re-export shims; production LOC
+  flat-to-down; outcome table untouched. Review: parity-contract tier — one
+  provenance-centered review, no QA unless drift.
 actor: mike/claude
-timestamp: '2026-07-18T13:28:48.364Z'
+timestamp: '2026-07-18T13:31:59.236Z'
 ---
 
