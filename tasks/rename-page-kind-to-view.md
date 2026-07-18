@@ -16,7 +16,7 @@ description: >-
   with the vetted Option-A blueprint on plans/rename-page-kind-to-view.
 actor: brian-claude
 assignee: brian-claude
-timestamp: '2026-07-18T00:14:29.877Z'
+timestamp: '2026-07-18T00:21:18.126Z'
 ---
 [informed by](joint-ontology-session.md)
 
@@ -60,7 +60,7 @@ timestamp: '2026-07-18T00:14:29.877Z'
   byte-for-byte from ded8183 as the regression fixture. Reviewer independently
   reproduced legacy-install -> renamed-reapply on the built CLI: zero duplicates,
   ONE launcher card, stable third apply. VERDICT: CONFIRMED, APPROVE stands at
-  e72917c. Residual (cheap follow-up): the partial-pair case has no committed test.
+  e72917c. Residual CLOSED at d12b402 (test-only): both partial-pair directions pinned in recipes.test.ts; full check green.
 
 - U2 RE-ANCHORED onto post-#83/#86 main (a61c86d, force-pushed): rebase clean, hint
   wiring intact, full check gate green by direct exit code (e2e 14/14). Ready for
