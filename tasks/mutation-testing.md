@@ -3,15 +3,18 @@ type: Task
 title: >-
   Automated mutation testing (Stryker, core+cli): measure the suite's kill rate,
   file survivors
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Part of plans/test-suite-confidence (Brian's suite-assurance program,
-  2026-07-17). Read the plan doc for the full rationale and scope before
-  claiming.
-actor: claude-fable-5
+  SHIPPED — PR #89 merged at a0aba13d12eab991dcc4b31799f3aa46b9b10c7c from
+  independently reviewed exact head 69cabee01ba8bf36ed761ffc29af04853a722e41.
+  Full CI passed on Node 22/26 plus Node 20 CLI smoke; an independent scoped run
+  reproduced 135 mutants, 76.30% score, and byte-and-mode-exact source
+  restoration. Nonblocking follow-ups remain optional: narrow the reporter's
+  exit-0 wording and harden incremental-cache save semantics.
+actor: mike/codex
 assignee: claude-fable-5
-timestamp: '2026-07-17T23:59:43.446Z'
+timestamp: '2026-07-18T02:41:56.878Z'
 ---
 Branch mutation-testing GREEN and reviewed — ready for PR. Commits: 8e58859 (the unit; independently reviewed PASS, high confidence — score math verified byte-identical to Stryker's clear-text, cwd-pin exit-ordering confirmed against the actual hook incl. the forceBail signal path, inPlace restore proven byte-and-mode clean, CI proven read-only) + 69cabee (the review's two hardenings: env-quoted mutate dispatch input — anti-injection — and a summary step that tolerates a missing report).
 
