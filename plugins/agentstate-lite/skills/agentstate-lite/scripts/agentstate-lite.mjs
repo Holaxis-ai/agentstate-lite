@@ -5033,14 +5033,24 @@ function filesystemMutationLockRoot(portableRoot) {
     { lockPath: portable, owner: null, stale: false, malformed: true }
   );
 }
-function filesystemMutationLockPath(target, portableRoot) {
+function explicitFilesystemMutationLockRoot(root, portableRoot) {
+  const requested = path.resolve(root);
+  if (portableRoot === void 0) return requested;
+  const portable = canonicalExistingPath(portableRoot);
+  if (!pathContains(portable, canonicalExistingPath(requested))) return requested;
+  throw new FilesystemMutationLockError(
+    `cannot place filesystem mutation locks outside portable root '${portable}'`,
+    { lockPath: portable, owner: null, stale: false, malformed: true }
+  );
+}
+function filesystemMutationLockPathInRoot(target, lockRoot) {
   const digest = createHash("sha256").update(path.resolve(target)).digest("hex");
-  return path.join(filesystemMutationLockRoot(portableRoot), `${digest}.lock`);
+  return path.join(lockRoot, `${digest}.lock`);
 }
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-function parseOwner(value) {
+function parseFilesystemMutationLockOwner(value) {
   if (!isObject(value)) return null;
   if (typeof value.pid !== "number" || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.hostname !== "string" || value.hostname.length === 0 || typeof value.created_at_ms !== "number" || !Number.isFinite(value.created_at_ms) || typeof value.token !== "string" || value.token.length === 0 || typeof value.target !== "string" || value.target.length === 0) {
     return null;
@@ -5055,7 +5065,9 @@ function parseOwner(value) {
 }
 async function readOwner(lockPath) {
   try {
-    return parseOwner(JSON.parse(await fs.readFile(path.join(lockPath, OWNER_FILE), "utf8")));
+    return parseFilesystemMutationLockOwner(
+      JSON.parse(await fs.readFile(path.join(lockPath, OWNER_FILE), "utf8"))
+    );
   } catch {
     return null;
   }
@@ -5078,6 +5090,11 @@ function positiveOption(value, fallback, name) {
   }
   return resolved;
 }
+function isPrivateFilesystemMutationLockRoot(facts) {
+  const wrongOwner = facts.expectedUid !== void 0 && facts.ownerUid !== facts.expectedUid;
+  const unsafeMode = facts.enforcePrivateMode && (facts.mode & 511) !== 448;
+  return facts.directory && !facts.symbolicLink && !wrongOwner && !unsafeMode;
+}
 async function ensurePrivateLockRoot(root) {
   try {
     await fs.mkdir(root, { recursive: true, mode: 448 });
@@ -5086,9 +5103,14 @@ async function ensurePrivateLockRoot(root) {
   }
   const stat2 = await fs.lstat(root);
   const uid = process.getuid?.();
-  const wrongOwner = uid !== void 0 && stat2.uid !== uid;
-  const unsafeMode = process.platform !== "win32" && (stat2.mode & 511) !== 448;
-  if (!stat2.isDirectory() || stat2.isSymbolicLink() || wrongOwner || unsafeMode) {
+  if (!isPrivateFilesystemMutationLockRoot({
+    directory: stat2.isDirectory(),
+    symbolicLink: stat2.isSymbolicLink(),
+    ownerUid: stat2.uid,
+    expectedUid: uid,
+    mode: stat2.mode,
+    enforcePrivateMode: process.platform !== "win32"
+  })) {
     throw new FilesystemMutationLockError(
       `refusing unsafe filesystem mutation lock root '${root}'; it must be a private directory owned by this user`,
       { lockPath: root, owner: null, stale: false, malformed: true }
@@ -5137,9 +5159,9 @@ async function acquireFilesystemMutationLock(target, options2 = {}) {
   const canonicalDir = await fs.realpath(targetDir);
   const targetCanonical = await canonicalTargetInDirectory(canonicalDir, path.basename(targetResolved));
   const portableRoot = options2.portableRoot ? await fs.realpath(options2.portableRoot).catch(() => path.resolve(options2.portableRoot)) : void 0;
-  const lockRoot = filesystemMutationLockRoot(portableRoot);
+  const lockRoot = options2.lockRoot !== void 0 ? explicitFilesystemMutationLockRoot(options2.lockRoot, portableRoot) : filesystemMutationLockRoot(portableRoot);
   await ensurePrivateLockRoot(lockRoot);
-  const lockPath = filesystemMutationLockPath(targetCanonical, portableRoot);
+  const lockPath = filesystemMutationLockPathInRoot(targetCanonical, lockRoot);
   const owner = {
     pid: process.pid,
     hostname: hostname(),
