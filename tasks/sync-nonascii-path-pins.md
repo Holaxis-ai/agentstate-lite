@@ -4,13 +4,19 @@ title: Pin non-ASCII doc ids through the name-status parsers (U3b review follow-
 status: todo
 priority: '2'
 description: >-
-  The quotepath wrapper invariant (U3b) incidentally fixed latent garbled-id
-  bugs in stageAndCommit receipts, changesSince deltas, and originDocsBetween
-  incoming rows — but those paths have no pinned non-ASCII tests, and a literal
-  TAB in a filename would still break their tab-split parsing (the -z conflict
-  list is immune).
-actor: brian-claude
-timestamp: '2026-07-08T16:16:00.371Z'
+  RE-SCOPED to post-carve reality (2026-07-18 verification): the original three
+  name-status parsers are now ONE consolidated parser family — changesSince and
+  originDocsBetween both ride diffDocsBetween (board-git diff.ts), which HAS an
+  explicit non-ASCII pin (café through prefix strip, doc ids + delta rows,
+  git-porcelain.test.ts:1033) — DoD(1) is two-thirds subsumed. REMAINING: (a)
+  one pinned test driving a non-ASCII id through stageAndCommit's
+  RECEIPT/SUBJECT path specifically (no such pin exists — verified by grep); (b)
+  DoD(2) the TAB residual decision: convert the name-status framing to -z
+  (immune, matching the conflict list) or record the limitation explicitly.
+  Small unit now; the quotepath=off wrapper invariant continues to carry the
+  behavior meanwhile.
+actor: mike/claude
+timestamp: '2026-07-18T15:42:49.629Z'
 ---
 From the U3b review rounds (builder finding, reviewer-confirmed): three merged
 name-status parsers — stageAndCommit's staged diff (git.ts:400), changesSince's cursor

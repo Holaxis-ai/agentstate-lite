@@ -4,12 +4,18 @@ title: 'Sync receipt honesty + error-message polish (PR#13 review, items 7-8)'
 status: todo
 priority: '2'
 description: >-
-  Bundle of accepted-but-recorded receipt divergences and message-quality fixes
-  from the PR#13 panel: cross-run under-report, non-ff push message,
-  git-identity fallback, --help worktree language, single-branch refspec hint,
-  code-repo linked-worktree raw fatal.
-actor: brian-claude
-timestamp: '2026-07-15T02:57:02.865Z'
+  KEPT OPEN — verified NOT subsumed (2026-07-18 audit): the ten items are
+  mechanics/honesty fixes, not copy — the outcome-table and copy-unification
+  units deliberately excluded them. LIVENESS EVIDENCE: PR #92's QA independently
+  re-observed item 1's class (odd-but-equal obs 4: 'already up to date' receipt
+  while the branch still fast-forwards after an out-of-band fetch) — the
+  cross-run under-report is real and current. NOW CHEAPER: items 2/3/5/9's
+  message halves become outcome-table rows when fixed (one row + fixture each,
+  post-#101 the table is complete); items 4/8's vocabulary overlaps the recorded
+  error-taxonomy boundary (coordinate with tasks/wire-error-classification
+  rather than fix piecemeal). Original ten-item body unchanged below.
+actor: mike/claude
+timestamp: '2026-07-18T15:42:49.736Z'
 ---
 From the PR#13 three-lane review (all empirical):
 1. Cross-run receipt under-report: fetch-succeeded-then-failed run → NEXT run
