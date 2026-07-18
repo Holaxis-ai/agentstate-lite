@@ -27,8 +27,19 @@ description: >-
   2026-07-18 by codex after PR #99 merged (d7633e8). Implementing the additive
   lock-root seam, a narrow pure ownership-validation test seam for the otherwise
   unrepresentable foreign-owner arm, and table-driven pins for the ranked
-  filesystem-lock survivors.
+  filesystem-lock survivors. IMPLEMENTED for independent review in PR #100 at
+  exact SHA dfe865bc64f11a88f909fe59138005ac43d667fc. The additive
+  options.lockRoot seam preserves the default /tmp derivation and rejects roots
+  inside portableRoot; pure internal validators make foreign-owner and
+  malformed-owner policies deterministic. Scoped Stryker on filesystem-lock.ts:
+  275 killed + 5 timed out of 308 (90.91%); 76/80 task-listed A rows detected,
+  with four reclassified equivalent (pid type guard subsumed by
+  Number.isSafeInteger, timestamp type guard subsumed by Number.isFinite,
+  broadened object predicate converges through field validation, rollback force
+  flag unobservable under swallowed cleanup failure). Full npm run check passed
+  on the exact SHA. Remaining closure: one independent review, then merge and
+  mark done.
 actor: codex
-timestamp: '2026-07-18T14:39:20.046Z'
+timestamp: '2026-07-18T14:59:04.303Z'
 ---
 [depends on](core-survivor-triage.md)
