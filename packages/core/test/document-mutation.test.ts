@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { readDocVersioned, writeDocVersioned } from "../src/bundle.js";
 import {
+  DocumentNotFoundError,
   KindConformanceError,
   mutateDocument,
 } from "../src/document-mutation.js";
@@ -35,6 +36,40 @@ class RaceOnceBackend extends MemoryBackend {
       await super.write(id, race.doc, { expectedVersion: options.expectedVersion, actor: "competitor" });
     }
     return super.write(id, doc, options);
+  }
+}
+
+class RaceEveryWriteBackend extends MemoryBackend {
+  private racing = false;
+  writeAttempts = 0;
+
+  startRacing(): void {
+    this.racing = true;
+  }
+
+  override async write(id: ConceptId, doc: OkfDocument, options: WriteOptions = {}): Promise<Version> {
+    if (this.racing && id === "notes/a") {
+      this.writeAttempts++;
+      const current = await this.read(id);
+      await super.write(id, {
+        ...current.doc,
+        body: `${current.doc.body}|competitor-${this.writeAttempts}`,
+      }, { expectedVersion: options.expectedVersion, actor: "competitor" });
+    }
+    return super.write(id, doc, options);
+  }
+}
+
+class ReadFailureBackend extends MemoryBackend {
+  private readonly failure: unknown;
+
+  constructor(failure: unknown) {
+    super();
+    this.failure = failure;
+  }
+
+  override async read(_id: ConceptId): Promise<never> {
+    throw this.failure;
   }
 }
 
@@ -190,6 +225,301 @@ test("writes propagate actor attribution and return the actual persisted head ve
   assert.equal(result.version, head.version);
   assert.equal(result.doc.frontmatter.actor, "mike/codex");
   assert.equal(history[0]!.actor, "mike/codex");
+});
+
+test("overwrite re-reads after a CAS race and returns its final persisted receipt", async () => {
+  const backend = new RaceOnceBackend();
+  const bundle = bundleFor(backend);
+  await writeDocVersioned(bundle, { id: "notes/a", ...candidate("A", "base") });
+  backend.raceNextWrite("notes/a", { id: "notes/a", ...candidate("A", "base|theirs") });
+
+  const seen: string[] = [];
+  const result = await mutateDocument({
+    bundle,
+    id: "notes/a",
+    mode: "overwrite",
+    registry: EMPTY_REGISTRY,
+    strict: false,
+    actor: "mike/codex",
+    buildCandidate: (existing) => {
+      seen.push(existing!.body);
+      return candidate("A", `${existing!.body}|mine`);
+    },
+  });
+
+  const head = await readDocVersioned(bundle, "notes/a");
+  assert.deepEqual(seen, ["base", "base|theirs"]);
+  assert.equal(result.changed, true);
+  assert.equal(result.doc.body, "base|theirs|mine");
+  assert.equal(result.version, head.version);
+  assert.deepEqual(result.warnings, []);
+  assert.equal((await backend.versions("notes/a"))[0]?.actor, "mike/codex");
+});
+
+test("overwrite reports its write posture even when the candidate is byte-identical", async () => {
+  const backend = new MemoryBackend();
+  const bundle = bundleFor(backend);
+  const initial = await writeDocVersioned(bundle, { id: "notes/a", ...candidate("A", "same") });
+
+  const result = await mutateDocument({
+    bundle,
+    id: "notes/a",
+    mode: "overwrite",
+    registry: EMPTY_REGISTRY,
+    strict: false,
+    buildCandidate: (existing) => ({
+      frontmatter: structuredClone(existing!.frontmatter),
+      body: existing!.body,
+    }),
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.version, initial.version);
+  assert.deepEqual(result.warnings, []);
+});
+
+test("onAbsent:create retries an expect-absent patch against a concurrent creator", async () => {
+  const backend = new RaceOnceBackend();
+  const bundle = bundleFor(backend);
+  backend.raceNextWrite("notes/a", { id: "notes/a", ...candidate("A", "theirs") });
+
+  const seen: Array<string | undefined> = [];
+  const result = await mutateDocument({
+    bundle,
+    id: "notes/a",
+    mode: "patch",
+    registry: EMPTY_REGISTRY,
+    strict: false,
+    onAbsent: "create",
+    buildCandidate: (existing) => {
+      seen.push(existing?.body);
+      return candidate("A", existing ? `${existing.body}|mine` : "mine");
+    },
+  });
+
+  assert.deepEqual(seen, [undefined, "theirs"]);
+  assert.equal(result.doc.body, "theirs|mine");
+  assert.equal(result.version, (await readDocVersioned(bundle, "notes/a")).version);
+});
+
+test("maxAttempts bounds ordinary document retries", async () => {
+  const backend = new RaceEveryWriteBackend();
+  const bundle = bundleFor(backend);
+  await writeDocVersioned(bundle, { id: "notes/a", ...candidate("A", "base") });
+  backend.startRacing();
+
+  await assert.rejects(
+    () => mutateDocument({
+      bundle,
+      id: "notes/a",
+      mode: "patch",
+      registry: EMPTY_REGISTRY,
+      strict: false,
+      maxAttempts: 2,
+      buildCandidate: (existing) => candidate("A", `${existing!.body}|mine`),
+    }),
+    VersionConflict,
+  );
+
+  assert.equal(backend.writeAttempts, 2);
+});
+
+test("non-ENOENT read failures propagate unchanged", async () => {
+  for (const failure of [new Error("backend unavailable"), null]) {
+    const bundle = bundleFor(new ReadFailureBackend(failure));
+    await assert.rejects(
+      () => mutateDocument({
+        bundle,
+        id: "notes/a",
+        mode: "patch",
+        registry: EMPTY_REGISTRY,
+        strict: false,
+        buildCandidate: () => candidate("A", "body"),
+      }),
+      (error: unknown) => error === failure,
+    );
+  }
+});
+
+test("array-valued frontmatter participates structurally in patch no-op detection", async () => {
+  const backend = new MemoryBackend();
+  const bundle = bundleFor(backend);
+  await writeDocVersioned(bundle, {
+    id: "notes/a",
+    frontmatter: {
+      type: "Note",
+      title: "A",
+      tags: ["alpha", "beta"],
+      emptyArray: [],
+      secondEmptyArray: [],
+      thirdEmptyArray: [],
+      metadata: {},
+      timestamp: "2026-07-16T00:00:00.000Z",
+    },
+    body: "same",
+  });
+
+  const patchFrontmatter = (update: (frontmatter: Record<string, unknown>) => void) =>
+    mutateDocument({
+      bundle,
+      id: "notes/a",
+      mode: "patch",
+      registry: EMPTY_REGISTRY,
+      strict: false,
+      buildCandidate: (existing) => {
+        const frontmatter = structuredClone(existing!.frontmatter) as Record<string, unknown>;
+        update(frontmatter);
+        return { frontmatter, body: existing!.body };
+      },
+    });
+
+  const equal = await patchFrontmatter(() => undefined);
+  assert.equal(equal.changed, false);
+  assert.deepEqual(equal.warnings, []);
+
+  const oneElementChanged = await patchFrontmatter((frontmatter) => {
+    frontmatter.tags = ["alpha", "gamma"];
+  });
+  assert.equal(oneElementChanged.changed, true);
+
+  const lengthChanged = await patchFrontmatter((frontmatter) => {
+    frontmatter.tags = ["alpha"];
+  });
+  assert.equal(lengthChanged.changed, true);
+
+  const arrayToObject = await patchFrontmatter((frontmatter) => {
+    frontmatter.tags = {};
+  });
+  assert.equal(arrayToObject.changed, true);
+
+  const emptyArrayToEmptyObject = await patchFrontmatter((frontmatter) => {
+    frontmatter.emptyArray = {};
+  });
+  assert.equal(emptyArrayToEmptyObject.changed, true);
+
+  const emptyArrayToNonemptyArray = await patchFrontmatter((frontmatter) => {
+    frontmatter.secondEmptyArray = ["new"];
+  });
+  assert.equal(emptyArrayToNonemptyArray.changed, true);
+
+  const emptyArrayToArrayLikeObject = await patchFrontmatter((frontmatter) => {
+    frontmatter.thirdEmptyArray = { length: 0 };
+  });
+  assert.equal(emptyArrayToArrayLikeObject.changed, true);
+
+  const objectToPrimitive = await patchFrontmatter((frontmatter) => {
+    frontmatter.metadata = 1;
+  });
+  assert.equal(objectToPrimitive.changed, true);
+});
+
+test("persistActor without an actor does not synthesize an actor field", async () => {
+  const backend = new MemoryBackend();
+  const result = await mutateDocument({
+    bundle: bundleFor(backend),
+    id: "notes/a",
+    mode: "create-only",
+    registry: EMPTY_REGISTRY,
+    strict: false,
+    persistActor: true,
+    buildCandidate: () => candidate("A", "body"),
+  });
+
+  assert.equal(Object.prototype.hasOwnProperty.call(result.doc.frontmatter, "actor"), false);
+});
+
+test("typed document mutation failures carry stable consumer-facing metadata", async () => {
+  const backend = new MemoryBackend();
+  const bundle = bundleFor(backend);
+
+  await assert.rejects(
+    () => mutateDocument({
+      bundle,
+      id: "notes/missing",
+      mode: "patch",
+      registry: EMPTY_REGISTRY,
+      strict: false,
+      buildCandidate: () => candidate("A", "body"),
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof DocumentNotFoundError);
+      assert.equal(error.name, "DocumentNotFoundError");
+      assert.equal(error.id, "notes/missing");
+      assert.equal(error.message, "no concept document at id 'notes/missing'");
+      return true;
+    },
+  );
+
+  const noteKind: KindConvention = {
+    id: "conventions/note",
+    title: "Note",
+    governs: "Note",
+    fields: {
+      required: ["title", "timestamp", "status"],
+      optional: [],
+      values: {},
+      terminal: {},
+      descriptions: {},
+    },
+  };
+  const registry: KindRegistry = { kinds: new Map([["Note", noteKind]]), warnings: [] };
+  await assert.rejects(
+    () => mutateDocument({
+      bundle,
+      id: "notes/invalid",
+      mode: "create-only",
+      registry,
+      strict: true,
+      buildCandidate: () => ({ frontmatter: { type: "Note" }, body: "body" }),
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof KindConformanceError);
+      assert.equal(error.name, "KindConformanceError");
+      assert.equal(error.id, "notes/invalid");
+      assert.equal(error.governs, "Note");
+      assert.ok(error.violations.length >= 2);
+      assert.equal(
+        error.message,
+        `'notes/invalid' does not satisfy the 'Note' kind: ${error.violations.map((warning) => warning.message).join("; ")}`,
+      );
+      return true;
+    },
+  );
+});
+
+test("non-strict patch returns kind warnings from the winning write decision", async () => {
+  const backend = new MemoryBackend();
+  const bundle = bundleFor(backend);
+  await writeDocVersioned(bundle, { id: "notes/a", ...candidate("A", "base") });
+  const noteKind: KindConvention = {
+    id: "conventions/note",
+    title: "Note",
+    governs: "Note",
+    fields: {
+      required: ["title", "timestamp", "status"],
+      optional: [],
+      values: {},
+      terminal: {},
+      descriptions: {},
+    },
+  };
+
+  const result = await mutateDocument({
+    bundle,
+    id: "notes/a",
+    mode: "patch",
+    registry: { kinds: new Map([["Note", noteKind]]), warnings: [] },
+    strict: false,
+    buildCandidate: (existing) => {
+      const frontmatter = { ...existing!.frontmatter };
+      delete frontmatter.title;
+      return { frontmatter, body: "changed" };
+    },
+  });
+
+  assert.equal(result.changed, true);
+  assert.ok(result.warnings.some((warning) => warning.field === "title"));
+  assert.ok(result.warnings.some((warning) => warning.field === "status"));
 });
 
 // ── mutation-survivor pins (core-survivor-triage unit) ────────────────────────
