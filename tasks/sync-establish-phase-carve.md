@@ -3,23 +3,23 @@ type: Task
 title: >-
   Carve sync.ts + sync-establish.ts into explicit phase functions
   (behavior-frozen)
-status: in_progress
+status: blocked
 priority: '2'
-assignee: mike/claude
+assignee: ''
 description: >-
-  CLAIMED mike/claude 2026-07-18. Split the two command files by existing
-  responsibility — sync orchestration; conflict convergence + receipts;
-  show-incoming; greenfield establishment; committed-folder
-  establishment/recovery — into internal modules with explicit phase functions,
-  typed inputs/results. Constraints (jointly specified by both review lines): NO
-  new package, NO state-machine framework, NO duplicated state or compat layer;
-  existing behavioral tests AND #92's fixtures/agreement suite BYTE-UNMODIFIED
-  and green (side-effect ORDERING is pinned by the journey suites, not the
-  fixtures — both bars apply); re-export shims where tests import command-module
-  symbols; production LOC flat-to-down; outcome-table consumption unchanged.
-  Review tier: parity-contract — builder + ONE provenance-centered review; no QA
-  unless drift found.
+  BLOCKED ON A DEMAND SIGNAL — deliberately not executed (adjudicated
+  2026-07-18, cross-line review). The carve was launched and stopped within
+  minutes: the safety argument (fresh #92 fixtures, quiet files) was excellent
+  but the VALUE argument was absent — the fixtures are committed artifacts that
+  do not expire, the defect record that motivated the work was already fixed by
+  #75/#82/#92, no queued unit touches these files, and quiet files generate no
+  friction to relieve. Execute this carve AS THE OPENING MOVE of the first real
+  unit that must change sync.ts/sync-establish.ts (candidates: awareness-path
+  unification, in-tree v2 work, a recurring-defect or merge-conflict pattern) —
+  the constraints in this record and #92's parity harness apply unchanged
+  whenever that day comes. Do not execute on file-size or memory-freshness
+  arguments alone.
 actor: mike/claude
-timestamp: '2026-07-18T13:24:43.746Z'
+timestamp: '2026-07-18T13:28:48.364Z'
 ---
 

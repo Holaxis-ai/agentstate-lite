@@ -3,26 +3,28 @@ type: Roadmap Item
 title: >-
   Change-surface simplification: smaller files, one authority per concern, no
   behavior change
-status: active
+status: queued
 description: >-
   Reduce everyday change friction by internal decomposition and deletion — never
-  new packages or generalized frameworks. EXECUTABLE NOW:
-  tasks/sync-establish-phase-carve (first unit — rides PR #92's fixture suite
-  while fresh; the files with the repo's entire recent defect history) and
-  tasks/cli-mutation-scoping (the cli Stryker job died at the 5h ceiling; scoped
-  dispatch seeding is required for the instrument to work at all). CANDIDATES
-  (held here, not tasks, until the first unit's value is reassessed):
-  porcelain.ts internal split (safest, no expiring enabler — good second);
-  home.ts module split; kinds.ts parseConventionDoc decomposition (WAIT for
-  demonstrated typed-sections demand); recipes.ts definitions-vs-engine split;
-  giant test-file splits (SEQUENCE AFTER behavior-frozen refactors — 'suites
-  byte-unmodified' is their parity bar and mass test moves destroy it
-  mid-flight). REJECTED, do not re-propose: deleting the committed-folder
-  establishment/recovery machinery — it is the supported in-tree ->
-  dedicated-board upgrade path (a first-class mode since PR #80) and a recorded
-  permanent affordance of the share verb, not migration debris.
+  new packages or generalized frameworks. STANDING STANCE (2026-07-18, both
+  review lines converged): RESTRAINT — stable, heavily-tested code is not
+  refactored on size, safety, or memory-freshness arguments; a unit executes
+  only when a real feature, recurring defect, or merge-conflict pattern supplies
+  the demand, and then the decomposition is that unit's opening move. This item
+  is the OBSERVATION HOLDER, not a commitment queue. CANDIDATES with their
+  trigger conditions: sync/establish phase carve
+  (tasks/sync-establish-phase-carve, blocked on demand — constraints recorded
+  there); porcelain.ts internal split (trigger: demonstrated merge conflicts or
+  repeated navigation errors); home.ts split (same); kinds.ts parser
+  decomposition (trigger: demonstrated typed-sections feature pressure);
+  recipes.ts split (trigger: recipe-work collisions); test-file splits (trigger:
+  after any behavior-frozen refactor completes, never during). EXECUTABLE NOW:
+  tasks/cli-mutation-scoping only (the instrument literally cannot finish).
+  REJECTED, do not re-propose: deleting the committed-folder establishment
+  machinery — it is the supported in-tree -> dedicated-board upgrade path and a
+  recorded permanent affordance.
 actor: mike/claude
-timestamp: '2026-07-18T13:24:44.166Z'
+timestamp: '2026-07-18T13:28:48.465Z'
 ---
 [contains](../tasks/sync-establish-phase-carve.md)
 
