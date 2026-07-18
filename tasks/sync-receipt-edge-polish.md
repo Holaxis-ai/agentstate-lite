@@ -5,17 +5,24 @@ status: todo
 priority: '2'
 description: >-
   KEPT OPEN — verified NOT subsumed (2026-07-18 audit); ten-item body below. IN
-  FLIGHT via the residue-sweep unit (with tasks/sync-nonascii-path-pins): items
-  7 (show-incoming reserved-path mislabel + regression test) and 4 (--help
-  worktree-vocabulary one-liner). Item 3 (git-identity fallback) awaits a
-  one-line human decision on the fallback identity. Items 1/10 (cross-run
-  receipt semantics: fix-or-document decision), 2 (push-race matcher —
-  taxonomy-adjacent), 5/9 (refspec probe vs wording — design choice), 6
-  (investigate first), 8 (coordinate with tasks/wire-error-classification)
-  remain parked pending demand or decisions, per the standing stance. Liveness
-  evidence and row-cheapness notes in the prior revision stand.
+  FLIGHT via the residue-sweep unit: items 7 + 4. ITEM 3 DECIDED (Mike,
+  2026-07-18) and now Sonnet-safe, queued as a tiny follow-up AFTER the sweep
+  lands (same porcelain files — no parallel builders): fallback git identity for
+  sync-family commits = resolved ACTOR as user.name (fallback
+  'agentstate-lite'), email <actor-slug>@agentstate-lite.invalid (RFC 2606, repo
+  precedent test-suite@example.invalid); applied per-invocation via -c flags
+  ONLY when identity resolution fails; never writes config; users with real
+  identities untouched. Safety basis: commit authorship is provably
+  non-load-bearing in-product (no consumer parses authors/subjects — flake-hunt
+  verification; frontmatter is the attribution channel). Accepted judgment
+  point: the committed-case cleanup commit carries the synthetic identity into
+  code-repo history via the human-opened PR — accepted as honest
+  (machine-authored) vs the flow dying in fresh containers. DoD: guarded
+  flag-set + a fresh-container (empty gitconfig) test through a real sync commit
+  + the cleanup-commit path. Items 1/10, 2, 5/9, 6, 8 remain parked per the
+  standing stance.
 actor: mike/claude
-timestamp: '2026-07-18T15:46:10.408Z'
+timestamp: '2026-07-18T15:50:01.712Z'
 ---
 From the PR#13 three-lane review (all empirical):
 1. Cross-run receipt under-report: fetch-succeeded-then-failed run → NEXT run
