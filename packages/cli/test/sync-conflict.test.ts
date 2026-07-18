@@ -511,12 +511,12 @@ test("show-incoming: an existing upstream doc renders parsed frontmatter + body,
   }
 });
 
-// ── review fix (item 7, tasks/sync-receipt-edge-polish): a reserved path never classifies as a
-// doc, even though probe-first resolution collapses concept and raw onto the SAME relPath for any
-// `.md`-suffixed input (BEFORE: `id: log.md` — a fabricated concept identity for a file with no
-// frontmatter; AFTER: `path: log.md`, honest raw classification) ────────────────────────────────
+// ── review fix (item 7, tasks/sync-receipt-edge-polish): a reserved file never classifies as a
+// doc, under ANY spelling — the guard is on the DERIVED path (the doc/delete + link idiom), so
+// `log`, `log.md`, and nested `tasks/index.md` all render an honest `path:`, while a
+// `.md`-suffixed NON-reserved doc id stays a parsed DOC exactly like `doc read` ────────────────
 
-test("show-incoming: log.md renders `path:`, never `id:` — a reserved file is never mislabeled as a doc (root and nested)", async () => {
+test("show-incoming: a reserved file renders `path:`, never `id:`, under every spelling; .md-spelled doc ids stay docs", async () => {
   const topo = await makeTwoCloneTopology();
   const { homes, cleanup } = await tempHomes(1);
   const [homeB] = homes;
@@ -540,6 +540,23 @@ test("show-incoming: log.md renders `path:`, never `id:` — a reserved file is 
     assert.equal(nestedIndex.err, undefined, nestedIndex.err?.message);
     assert.match(nestedIndex.out, /^path: tasks\/index\.md$/m, "a NESTED reserved file renders `path:` too");
     assert.doesNotMatch(nestedIndex.out, /^id: tasks\/index\.md$/m);
+
+    // The BARE spelling resolves through the concept derivation to the same reserved file —
+    // still raw, and the render names the file it actually read (`log.md`, not an input echo).
+    const bareLog = await runSync(homeB!, ["--show-incoming", "log", "--dir", topo.b.root]);
+    assert.equal(bareLog.err, undefined, bareLog.err?.message);
+    assert.match(bareLog.out, /^path: log\.md$/m, "bare `log` renders the DERIVED reserved path");
+    assert.doesNotMatch(bareLog.out, /^id: log$/m, "no fabricated concept identity via the bare spelling");
+    assert.match(bareLog.out, /mike wrote tasks\/seed-one/);
+
+    // A `.md`-suffixed NON-reserved doc id collapses onto its own path but stays a DOC — the
+    // same classification `doc read tasks/seed-one.md` gives that spelling.
+    const mdDoc = await runSync(homeB!, ["--show-incoming", "tasks/seed-one.md", "--dir", topo.b.root]);
+    assert.equal(mdDoc.err, undefined, mdDoc.err?.message);
+    assert.match(mdDoc.out, /^id: tasks\/seed-one\.md$/m, ".md-spelled doc id renders PARSED, not raw");
+    assert.doesNotMatch(mdDoc.out, /^path: tasks\/seed-one\.md$/m);
+    assert.match(mdDoc.out, /Task/, "parsed frontmatter fields present");
+    assert.match(mdDoc.out, /Seed one/);
   } finally {
     await cleanup();
     await topo.cleanup();

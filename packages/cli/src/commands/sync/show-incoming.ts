@@ -119,12 +119,12 @@ export async function showIncoming(
     // id → repo-relative path, PROBE-FIRST (no string-shape heuristic — a dotted concept id like
     // `notes/v1.2` is legal): the CONCEPT interpretation first, the verbatim raw path (log.md, a
     // stray blob) as fallback. Bytes, not utf8: --out must deliver the blob's exact bytes.
-    // A `.md`-suffixed id collapses the two interpretations onto the SAME repo-relative path
-    // (`pathFromConceptId` strips a trailing `.md` and re-adds it) — with only one candidate,
-    // that hit would otherwise take the doc branch unconditionally, mislabeling a reserved file
-    // (`log.md`, `index.md` at any nesting — no frontmatter to parse) with a fabricated `id:`.
-    // Both the collapse itself and an explicitly reserved id classify RAW: honest `path:` plus
-    // the literal content, never a concept identity the input never actually named.
+    // The derived path keeps concept-first precedence, but its CLASSIFICATION follows what the
+    // file IS: when the derivation lands on a reserved filename (`log.md` / `index.md` at any
+    // nesting — no frontmatter, no concept identity — under ANY spelling: `log`, `log.md`,
+    // `tasks/index`), the probe is RAW — honest `path:` plus literal content, never a fabricated
+    // `id:`. A `.md`-suffixed NON-reserved doc id collapses onto its own path and stays a DOC,
+    // matching `doc read` for the same spelling.
     interface Probe { relPath: string; isDoc: boolean }
     const candidates: Probe[] = [];
     let conceptIdOk = true;
@@ -133,10 +133,11 @@ export async function showIncoming(
     } catch {
       conceptIdOk = false;
     }
-    const conceptRelPath = conceptIdOk ? pathFromConceptId(id) : null;
-    const collapsesToRaw = conceptRelPath === id || isReservedFile(id);
-    if (conceptIdOk && !collapsesToRaw) candidates.push({ relPath: conceptRelPath!, isDoc: true });
-    candidates.push({ relPath: id, isDoc: false });
+    if (conceptIdOk) {
+      const conceptRelPath = pathFromConceptId(id);
+      candidates.push({ relPath: conceptRelPath, isDoc: !isReservedFile(conceptRelPath) });
+    }
+    if (candidates.every((c) => c.relPath !== id)) candidates.push({ relPath: id, isDoc: false });
 
     let hit: { probe: Probe; bytes: Buffer } | null = null;
     for (const probe of candidates) {
@@ -188,7 +189,9 @@ export async function showIncoming(
     const byteHatch = `${inv} sync --show-incoming ${id} --out <file>`;
     const rec: Record<string, unknown> = {};
     if (!hit.probe.isDoc) {
-      rec.path = id;
+      // The path SHOWN is the one actually read — for a bare reserved spelling (`log`) that is
+      // the derived `log.md`, not the input echo.
+      rec.path = hit.probe.relPath;
       rec.as_of = SHOW_INCOMING_AS_OF;
       attachBodyPreview(rec, content, byteHatch);
     } else {
