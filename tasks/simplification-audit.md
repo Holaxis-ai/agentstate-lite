@@ -4,23 +4,22 @@ title: 'Bounded read-only simplification audit (codex charter, 2026-07-18)'
 status: todo
 priority: '3'
 description: >-
-  GATED: run only after the Page->View sequence settles (#88 merged + teaching
-  stable) and never at the expense of the trusted human-action thread. Charter
-  per context-notes/simplification-audit-recommendation: fixed main SHA; ~one
-  day; READ-ONLY (zero code changes); return AT MOST five ranked opportunities,
-  each naming the duplicated authority or mixed responsibility, the
-  deletion/consolidation, the parity tests proving safety, expected net
-  reduction, risk, and one-claim PR size. Priorities: Page->View transitional
-  compat (post-retirement), duplicated policy across adapters, modules mixing
-  orchestration with domain decisions (sync/establish state machines are the
-  standing candidate), obsolete migration/non-default remote paths,
-  generated/reference ownership (distribution machinery — note the
-  npm-bundle-bootstrap design is the larger product-gated lever), mutation
-  survivors suggesting redundant conditions (survival alone is NOT proof of
-  removability). Excluded: style/naming churn, speculative extraction,
-  rearrangement without net deletion. Winners execute as separate one-claim PRs;
-  no broad cleanup branch.
+  The chartered bounded audit
+  (context-notes/simplification-audit-recommendation) — now the RANKING RECORD
+  for roadmap-items/change-surface-simplification. Gate is OPEN (#88 merged
+  62abca0; View sequence settled). ADJUDICATED WORKING LIST (two independent
+  hotspot analyses merged + jointly corrected, 2026-07-18): first unit =
+  sync/establish phase carve (defect-evidence + the expiring #92 fixture enabler
+  beat porcelain's size ranking); porcelain internal split second;
+  home/kinds/recipes/test-splits held as candidates with sequencing rules on the
+  roadmap item; committed-folder machinery deletion REJECTED (supported
+  in-tree->branch upgrade path). Remaining audit work when claimed: the half-day
+  EVIDENCE pass the charter describes — git churn + merge-conflict history +
+  core survivor map (cli map pending tasks/cli-mutation-scoping) — to validate
+  or re-rank the candidate list, ≤5 ranked opportunities with parity tests, net
+  reduction, risk, PR size each. No code changes; winners execute as separate
+  one-claim units.
 actor: mike/claude
-timestamp: '2026-07-18T02:53:52.904Z'
+timestamp: '2026-07-18T13:24:44.390Z'
 ---
 [charter](../context-notes/simplification-audit-recommendation.md)
