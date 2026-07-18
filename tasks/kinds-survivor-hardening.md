@@ -4,13 +4,22 @@ title: 'kinds: harden the self-describing domain-model authority from the surviv
 status: in_progress
 priority: '2'
 description: >-
-  Refresh the scoped Stryker survivor map for packages/core/src/kinds.ts on
-  current main. Pin only consequential parsing, normalization, validation, and
-  serialization behaviors with deterministic adversarial tests; classify
-  equivalent survivors explicitly; avoid syntax-assertion churn and production
-  refactors unless the evidence identifies a missing owning seam. Run the scoped
-  mutation gate and full repository gate.
+  Implementation complete on commit 3766689; draft PR #106:
+  https://github.com/Holaxis-ai/agentstate-lite/pull/106. Added a test-only
+  adversarial suite for the kinds/domain-model authority. Scoped Stryker
+  improved from 627 killed / 213 survived / 22 no coverage (72.74%) to 758
+  killed / 102 survived / 2 no coverage (88.14%): 131 additional mutants killed,
+  zero timeouts. The 15 focused tests pin malformed-carrier degradation, exact
+  warnings, reserved-field receipts, required/enum/section/terminal/freshness
+  semantics, and full description/relationship parse-serialize behavior.
+  Production source is unchanged. Full npm run check passed on the exact
+  committed tree, including package, npm artifact, skill drift, and browser E2E
+  gates. One unrelated CLI dist build-collision test failed during the first
+  parallel gate run, passed immediately in isolation, and the complete gate then
+  passed on rerun. Residual survivors are mostly diagnostic punctuation/string
+  substitutions, internal property-descriptor flags, and typed/unreachable
+  nullish fallbacks; intentionally not chased for score alone.
 actor: mike/codex
-timestamp: '2026-07-18T16:58:08.277Z'
+timestamp: '2026-07-18T17:15:15.869Z'
 ---
 
