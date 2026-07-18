@@ -190,3 +190,156 @@ test("content-type: extension inference + warning policy", () => {
   const noext = inferContentTypeForNewBlob("README", "text/plain");
   assert.equal(noext.warning, undefined);
 });
+
+// ── mutation-survivor pins (core-survivor-triage unit) ────────────────────────
+// Red-proven pins for Stryker survivors from the first full core mutation report.
+
+// kills: paths.ts:92:7 ConditionalExpression #2695
+// kills: paths.ts:92:7 LogicalOperator #2696
+// kills: paths.ts:92:7 ConditionalExpression #2697
+// kills: paths.ts:92:34 ConditionalExpression #2700
+// kills: paths.ts:92:34 MethodExpression #2702
+// kills: paths.ts:92:49 StringLiteral #2703
+// kills: paths.ts:92:53 BlockStatement #2704
+test("pin: assertSafeBlobKey failures are typed InvalidInputError — empty, whitespace-only, and non-string keys", async () => {
+  const { assertSafeBlobKey } = await import("../src/paths.js");
+  const { InvalidInputError } = await import("../src/errors.js");
+  for (const bad of ["", "   ", 42 as unknown as string]) {
+    assert.throws(() => assertSafeBlobKey(bad), InvalidInputError, `key ${JSON.stringify(bad)}`);
+  }
+});
+
+// kills: paths.ts:20:27 StringLiteral #2641
+// kills: paths.ts:20:40 Regex #2642
+// kills: paths.ts:20:51 StringLiteral #2643
+// kills: paths.ts:37:41 Regex #2650
+// kills: paths.ts:38:24 StringLiteral #2653
+// kills: paths.ts:43:36 Regex #2658
+// kills: paths.ts:43:46 StringLiteral #2659
+// kills: paths.ts:43:58 Regex #2660
+test("pin: id/path normalization edges — absolute strip, non-.md passthrough, duplicate separators, mid-name .md", () => {
+  assert.equal(conceptIdFromPath("/abs/x.md"), "abs/x");
+  assert.equal(conceptIdFromPath("notes.txt"), "notes.txt");
+  assert.equal(conceptIdFromPath("a//b.md"), "a/b");
+  assert.equal(conceptIdFromPath("a\\b.md"), "a/b");
+  assert.equal(pathFromConceptId("/a"), "a.md");
+  assert.equal(pathFromConceptId("x.md.y"), "x.md.y.md");
+});
+
+// kills: paths.ts:53:7 ConditionalExpression #2667
+// kills: paths.ts:53:33 MethodExpression #2672
+// kills: paths.ts:127:7 ConditionalExpression #2753
+// kills: paths.ts:127:32 BlockStatement #2756
+test("pin: concept-id and reserved-dir guard failures are typed InvalidInputError — whitespace-only and non-string inputs", async () => {
+  const { InvalidInputError } = await import("../src/errors.js");
+  assert.throws(() => assertSafeConceptId("   "), InvalidInputError);
+  assert.throws(() => assertSafeConceptId(42 as unknown as string), InvalidInputError);
+  assert.throws(() => assertSafeReservedDir(42 as unknown as string), InvalidInputError);
+});
+
+// kills: links.ts:42:13 MethodExpression #2254
+// kills: links.ts:43:10 Regex #2260
+// kills: links.ts:43:75 MethodExpression #2266
+// kills: links.ts:78:31 Regex #2325
+// kills: links.ts:78:31 Regex #2326
+// kills: links.ts:84:27 Regex #2330
+test("pin: isExternalHref anchors at the start and trims; resolveConceptId clamps runaway ../ and strips only the FINAL .md", () => {
+  assert.equal(isExternalHref("dir/https://example.com"), false);
+  assert.equal(isExternalHref("   https://example.com/x   "), true);
+  assert.equal(isExternalHref("#anchor"), true);
+  assert.equal(resolveConceptId("a/b", "../../../x.md"), "x");
+  assert.equal(resolveConceptId("a/b", "b../c.md"), "a/b../c");
+  assert.equal(resolveConceptId("r", "a.md-plan.md"), "a.md-plan");
+});
+
+// kills: links.ts:98:30 Regex #2337
+// kills: links.ts:98:50 Regex #2339
+// kills: links.ts:100:19 ConditionalExpression #2342
+test("pin: relativeHref edges — multi-slash absolute targets, mid-name .md, and a root-level fromId", () => {
+  assert.equal(relativeHref("a/b", "//x.md"), "../x.md");
+  assert.equal(relativeHref("r", "/a.md-plan.md"), "a.md-plan.md");
+  assert.equal(relativeHref("readme", "x.md"), "x.md");
+});
+
+// kills: freshness.ts:57:11 ConditionalExpression #1257
+// kills: freshness.ts:57:11 LogicalOperator #1259
+// kills: freshness.ts:57:29 EqualityOperator #1263
+// kills: freshness.ts:67:47 EqualityOperator #1276
+test("pin: freshness boundary equality is FRESH (age == maxAgeMs, dep == ts) and an unusable dep never marks stale", () => {
+  const doc: OkfDocument = { id: "d", frontmatter: { type: "Note", timestamp: "2026-07-16T00:00:00.000Z" }, body: "" };
+  const now = new Date(Date.parse("2026-07-16T00:00:00.000Z") + 1000);
+  assert.equal(freshness(doc, { now, maxAgeMs: 1000 }).verdict, "fresh");
+  assert.equal(freshness(doc, { now, dependsOn: ["2026-07-16T00:00:00.000Z"] }).verdict, "fresh");
+  assert.equal(freshness(doc, { now, dependsOn: ["not-a-date"] }).verdict, "fresh");
+});
+
+// kills: content-type.ts map StringLiterals #676 #678 #679 #680 #681 #682 #683 #684 #685 #686 #687 #688 #689 #690 #691 #692 #693 #694 #695 #696 #697 #698 #699 #700 #701 #702 #703 #704 #705 #706 #707 #708 #709
+// kills: content-type.ts:84:10 ConditionalExpression #721
+// kills: content-type.ts:84:10 EqualityOperator #723
+// kills: content-type.ts:122:39 ConditionalExpression #737
+// kills: content-type.ts:122:39 MethodExpression #739
+// kills: content-type.ts:122:59 StringLiteral #740
+// kills: content-type.ts:138:12 ObjectLiteral #747
+// kills: content-type.ts:138:47 BooleanLiteral #748
+// kills: content-type.ts:145:14 ObjectLiteral #756
+// kills: content-type.ts:145:45 BooleanLiteral #757
+// kills: content-type.ts:153:16 StringLiteral #763
+// kills: content-type.ts:154:19 StringLiteral #764
+// kills: content-type.ts:163:15 BooleanLiteral #766
+// kills: content-type.ts:167:14 StringLiteral #770
+// kills: content-type.ts:168:17 StringLiteral #771
+test("pin: the extension→MIME table, inference flags, and override trimming are the served content-type contract", async () => {
+  const { EXTENSION_CONTENT_TYPES, DEFAULT_BLOB_CONTENT_TYPE, resolveContentType } = await import("../src/content-type.js");
+  assert.deepEqual({ ...EXTENSION_CONTENT_TYPES }, {
+    html: "text/html; charset=utf-8",
+    htm: "text/html; charset=utf-8",
+    md: "text/markdown; charset=utf-8",
+    markdown: "text/markdown; charset=utf-8",
+    txt: "text/plain; charset=utf-8",
+    text: "text/plain; charset=utf-8",
+    log: "text/plain; charset=utf-8",
+    csv: "text/csv; charset=utf-8",
+    tsv: "text/tab-separated-values; charset=utf-8",
+    json: "application/json; charset=utf-8",
+    jsonl: "application/json; charset=utf-8",
+    ndjson: "application/json; charset=utf-8",
+    xml: "application/xml; charset=utf-8",
+    yaml: "application/yaml; charset=utf-8",
+    yml: "application/yaml; charset=utf-8",
+    toml: "application/toml; charset=utf-8",
+    css: "text/css; charset=utf-8",
+    js: "text/javascript; charset=utf-8",
+    mjs: "text/javascript; charset=utf-8",
+    cjs: "text/javascript; charset=utf-8",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    bmp: "image/bmp",
+    ico: "image/x-icon",
+    svg: "image/svg+xml",
+    pdf: "application/pdf",
+    zip: "application/zip",
+    gz: "application/gzip",
+    tar: "application/x-tar",
+    wasm: "application/wasm",
+    woff: "font/woff",
+    woff2: "font/woff2",
+  });
+
+  assert.equal(extensionOfDocKey("file."), undefined);
+  assert.equal(resolveContentType("x.png", "   "), "image/png");
+  assert.equal(resolveContentType("x.png", ""), "image/png");
+  assert.equal(resolveContentType("x.unknownext"), DEFAULT_BLOB_CONTENT_TYPE);
+
+  assert.deepEqual(inferContentTypeForNewBlob("noext", "fb/x"), { contentType: "fb/x", inferred: false });
+  assert.deepEqual(inferContentTypeForNewBlob("a.png", "image/png"), { contentType: "image/png", inferred: true });
+  const warned = inferContentTypeForNewBlob("a.png", "application/octet-stream");
+  assert.equal(warned.warning?.field, "content_type");
+  assert.equal(warned.warning?.severity, "info");
+  const fallback = inferContentTypeForNewBlob("a.xyz", "fb/y");
+  assert.equal(fallback.inferred, false);
+  assert.equal(fallback.warning?.field, "content_type");
+  assert.equal(fallback.warning?.severity, "info");
+});
