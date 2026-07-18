@@ -203,11 +203,7 @@ function guardCommittedPreconditions(top: string, inv: string, treeSha: string):
     throw syncOutcomeError("establish.detached-head.committed", {});
   }
   if (branch === BOARD_BRANCH) {
-    throw new CliError(
-      "RUNTIME",
-      `the current branch is '${BOARD_BRANCH}' — run establish from the branch that carries the ` +
-        `committed folder ('${BOARD_BRANCH}' is the branch establishment creates)`,
-    );
+    throw syncOutcomeError("establish.on-board-branch", {});
   }
 
   assertNotBehindOnBoard(top, inv, branch);
@@ -215,24 +211,11 @@ function guardCommittedPreconditions(top: string, inv: string, treeSha: string):
   const dirty = statusRows(top, BUNDLE_DIR);
   if (dirty.length > 0) {
     const shown = dirty.slice(0, 20);
-    throw new CliError(
-      "RUNTIME",
-      `establish refused: ${BUNDLE_DIR}/ has uncommitted changes — commit (or discard) them ` +
-        `first so the board branch carries the board's real current state`,
-      {
-        details: { uncommitted: { shown: shown.length, total: dirty.length, rows: shown } },
-        help: `commit the board changes, then re-run ${inv} sync --establish --yes`,
-      },
-    );
+    throw syncOutcomeError("establish.committed-dirty", { inv, rows: shown, total: dirty.length });
   }
 
   if (localBranchExists(top, CLEANUP_BRANCH)) {
-    throw new CliError(
-      "RUNTIME",
-      `a '${CLEANUP_BRANCH}' branch already exists — if it is left over from an interrupted ` +
-        `establishment, push it and open its PR (or delete it: git branch -D ${CLEANUP_BRANCH}), ` +
-        `then re-run`,
-    );
+    throw syncOutcomeError("establish.cleanup-branch-exists", { cleanupBranch: CLEANUP_BRANCH });
   }
 
   const namespaceConflicts = boardNamespaceConflicts(top);

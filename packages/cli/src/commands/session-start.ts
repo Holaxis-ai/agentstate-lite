@@ -68,6 +68,7 @@ import { pullBoardAndRecord } from "../autopull.js";
 import { defaultSummarizeBundle, discoverSummarizeBundle, home, type BoardPullOutcome } from "./home.js";
 import { cliInvocation } from "../invocation.js";
 import { parseOrUsage } from "../args.js";
+import { syncOutcomeLine } from "../sync-outcomes.js";
 
 /** Pull budget: ≤ 7s total (plan §U4), under hook.ts's 10s HOOK_TIMEOUT_SECONDS. */
 export const SESSION_START_PULL_BUDGET_MS = 7_000;
@@ -178,7 +179,7 @@ export async function sessionStartPull(
           offline: false,
           boardPath,
           notes: [
-            `board fetch skipped (${result.failure.code}) — run \`${cliInvocation()} sync --pull-only\` for the full story`,
+            syncOutcomeLine("line.session-start.fetch-skipped", { code: result.failure.code, inv: cliInvocation() }),
           ],
         };
       }
@@ -232,7 +233,7 @@ export async function sessionStartPull(
         offline: false,
         boardPath,
         ...(announcement ? { announcement } : {}),
-        notes: [`board pull skipped (${pulled.swallowed}) — run \`${cliInvocation()} sync\` to reconcile`],
+        notes: [syncOutcomeLine("line.session-start.pull-skipped", { reason: pulled.swallowed, inv: cliInvocation() })],
       };
     }
     // The ONE outcome that rewrote the cache — the render may skip its as_of freshness label.

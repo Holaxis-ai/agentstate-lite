@@ -448,10 +448,7 @@ export async function establishBoard(
     return { already: true };
   }
   if (st.localCommit) {
-    throw new CliError(
-      "RUNTIME",
-      `a local '${BOARD_BRANCH}' branch already exists but is not the conventional board worktree; nothing was published`,
-    );
+    throw syncOutcomeError("establish.local-branch-unrecognized", {});
   }
   if (existsSync(st.backupPath)) {
     throw new CliError(
