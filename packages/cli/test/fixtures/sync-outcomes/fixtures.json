@@ -14,7 +14,7 @@
       "key": "ff.no-upstream.unpublished",
       "variant": "default",
       "kind": "envelope",
-      "bytes": "error:\n  code: NO_UPSTREAM\n  message: board not published yet — run 'aslite sync --establish' to publish it explicitly\n  help: aslite sync --establish\n"
+      "bytes": "error:\n  code: NO_UPSTREAM\n  message: the local board has not been published — bare sync never creates origin/board; run 'aslite sync --establish' to publish it explicitly\n  help: aslite sync --establish\n"
     },
     {
       "key": "ff.no-upstream.unlinked",
@@ -128,7 +128,7 @@
       "key": "establish.namespace-conflict.greenfield",
       "variant": "default",
       "kind": "envelope",
-      "bytes": "error:\n  code: RUNTIME\n  message: \"branches named 'board/…' block establishment: board/x (local), board/y (on origin)\"\n  details:\n    conflicting_branches[2]: board/x (local),board/y (on origin)\n"
+      "bytes": "error:\n  code: RUNTIME\n  message: \"establish refused: branches named 'board/…' exist — git cannot create a 'board' branch alongside them: board/x (local), board/y (on origin)\"\n  details:\n    conflicting_branches[2]: board/x (local),board/y (on origin)\n  help: \"delete or rename these branches, then re-run aslite sync --establish\"\n"
     },
     {
       "key": "establish.namespace-conflict.committed",
@@ -188,13 +188,13 @@
       "key": "marker.unavailable.tree",
       "variant": "default",
       "kind": "envelope",
-      "bytes": "error:\n  code: RUNTIME\n  message: the establishment marker names an unavailable tree (3f786850e387550fdab836ed7e6dc881de23001b)\n"
+      "bytes": "error:\n  code: RUNTIME\n  message: the establishment marker names an unavailable commit (3f786850e387550fdab836ed7e6dc881de23001b); nothing was changed\n"
     },
     {
       "key": "marker.unavailable.commit.moved",
       "variant": "default",
       "kind": "envelope",
-      "bytes": "error:\n  code: RUNTIME\n  message: the establishment marker names an unavailable commit (3f786850e387550fdab836ed7e6dc881de23001b); nothing was moved\n"
+      "bytes": "error:\n  code: RUNTIME\n  message: the establishment marker names an unavailable commit (3f786850e387550fdab836ed7e6dc881de23001b); nothing was changed\n"
     },
     {
       "key": "marker.unavailable.commit.changed",
