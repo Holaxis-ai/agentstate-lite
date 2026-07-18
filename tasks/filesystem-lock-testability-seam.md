@@ -3,7 +3,7 @@ type: Task
 title: >-
   filesystem-lock: injectable lock-root seam (API design) + the 80-survivor pin
   backlog
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   HANDOFF-READY (suggested owner: the codex line — they built the module in PR
@@ -23,8 +23,12 @@ description: >-
   artifacts); 32 worst already pinned in #99. Constraints: seam is additive-only
   (default behavior byte-identical; the TMPDIR-stability comment's reasoning
   must survive); tier = ordinary (one review); pins follow #99's red-proof
-  discipline (mutant applied -> test fails -> restore -> green).
-actor: mike/claude
-timestamp: '2026-07-18T14:26:06.932Z'
+  discipline (mutant applied -> test fails -> restore -> green). CLAIMED
+  2026-07-18 by codex after PR #99 merged (d7633e8). Implementing the additive
+  lock-root seam, a narrow pure ownership-validation test seam for the otherwise
+  unrepresentable foreign-owner arm, and table-driven pins for the ranked
+  filesystem-lock survivors.
+actor: codex
+timestamp: '2026-07-18T14:39:20.046Z'
 ---
 [depends on](core-survivor-triage.md)
