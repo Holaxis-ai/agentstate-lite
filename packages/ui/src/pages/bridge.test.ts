@@ -235,11 +235,20 @@ describe("handleBridgeRequest: bridge capability enforcement", () => {
     expect((reply as { type: string }).type).toBe("hello:result");
     expect(deps.config).toHaveBeenCalled();
   });
+
+  it("bundle-propose inherits the v0 read surface without receiving direct write handlers", async () => {
+    const deps = stubDeps();
+    const { reply } = await handleBridgeRequest({ bridge: "v0", id: "1", type: "hello" }, deps, "bundle-propose");
+    expect((reply as { result: { grant: string } }).result.grant).toBe("propose");
+    const unknown = await handleBridgeRequest({ bridge: "v0", id: "2", type: "write" }, deps, "bundle-propose");
+    expect((unknown.reply as { error: { code: string } }).error.code).toBe("USAGE");
+  });
 });
 
 describe("resolveBridgeCapability", () => {
-  it("honors ONLY the exact string 'bundle-read'", () => {
+  it("honors only the exact read and propose strings", () => {
     expect(resolveBridgeCapability("bundle-read")).toBe("bundle-read");
+    expect(resolveBridgeCapability("bundle-propose")).toBe("bundle-propose");
   });
 
   it("FAIL-CLOSED: absent, malformed, or any other value denies ('none')", () => {

@@ -11,7 +11,7 @@
  * `../views/PageFrame.tsx`.
  *
  * ENFORCED CAPABILITY (designs/page-model-and-viewer-deprecation): a page's Page-convention
- * `bridge` field — `none | bundle-read` — gates all bundle-data operations. A `none` page may
+ * `bridge` field — `none | bundle-read | bundle-propose` — gates bundle-data operations. A `none` page may
  * navigate to another registered Page but gets an error reply for every data request. The data
  * gate lives HERE, in the router, and is enforced by the
  * caller passing the framed page's {@link BridgeCapability} — never by anything the sandboxed
@@ -197,14 +197,14 @@ export async function handleBridgeRequest(
       return { reply: fail(id, "RUNTIME", err instanceof Error ? err.message : String(err)) };
     }
   }
-  if (capability !== "bundle-read") {
+  if (capability !== "bundle-read" && capability !== "bundle-propose") {
     return { reply: fail(id, "FORBIDDEN", "this page declares bridge: none — no bundle access") };
   }
   try {
     switch (type) {
       case "hello": {
         const c = await deps.config();
-        return { reply: ok(id, type, { bundle: { root: c.root, name: c.name }, mode: c.mode, protocol: BRIDGE_PROTOCOL, grant: "read" }) };
+        return { reply: ok(id, type, { bundle: { root: c.root, name: c.name }, mode: c.mode, protocol: BRIDGE_PROTOCOL, grant: capability === "bundle-propose" ? "propose" : "read" }) };
       }
       case "query": {
         const params = normalizeQueryParams(msg.params);

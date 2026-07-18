@@ -14,13 +14,19 @@
 // `pages.ts`, `events.ts`, `watch.ts`.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { requestFromIncomingMessage, writeResponseToServerResponse } from "@agentstate-lite/server";
-import { readBlob, queryHeads, assertSafeBlobKey, loadKinds, queryEdges, type Bundle, type EdgeFilter } from "@agentstate-lite/core";
-import { PAGE_TYPE_NAMES, parseRegistration } from "@agentstate-lite/core/page";
+import { assertSafeBlobKey, blobVersion, readBlob, readDocVersioned, loadKinds, queryEdges, queryHeads, type Bundle, type EdgeFilter, type Frontmatter } from "@agentstate-lite/core";
+import { PAGE_TYPE_NAMES, parseRegistration, resolveBridgeCapability } from "@agentstate-lite/core/page";
 import { isAllowedHost } from "./host.js";
 import { checkAuth, mintSessionSecret, sessionCookieHeader } from "./session.js";
 import type { UiAssetHandler } from "./assets.js";
 import { proxyToRemote } from "./proxy.js";
-import { PageNonceRegistry, pageCsp, PAGE_BLOB_PREFIXES } from "./pages.js";
+import { pageCsp } from "./pages.js";
+import {
+  PageLaunchRegistry,
+  TrustedActionService,
+  launchIsCurrent,
+  type ActionTerminalResult,
+} from "./actions.js";
 import { SseHub } from "./events.js";
 import { startWatcher, type ChangeEvent, type WatcherHandle } from "./watch.js";
 
@@ -56,6 +62,8 @@ export interface UiServerOptions {
   resolveBundleDisplayName?: (bundle: Bundle) => Promise<string>;
   /** Injectable for tests; defaults to a fresh random secret per boot (never reused across runs). */
   sessionSecret?: string;
+  /** Advisory identity recorded by a confirmed local View action. Read-only UI needs no actor. */
+  actor?: string;
 }
 
 export interface UiServerHandle {
@@ -68,7 +76,8 @@ export interface UiServerHandle {
 
 /** Per-run mutable state the request handler closes over: the page-nonce registry, the SSE fan-out, the change watcher, and the shutdown signal (aborts remote-mode upstream requests at close()). */
 interface UiRuntime {
-  nonces: PageNonceRegistry;
+  launches: PageLaunchRegistry;
+  actions?: TrustedActionService;
   sse: SseHub;
   watcher?: WatcherHandle;
   shutdown: AbortController;
@@ -95,48 +104,88 @@ export function pageError(status: number, message: string): Response {
   });
 }
 
-/** Percent-encode each `/`-separated segment of a blob key independently (mirrors the SPA client's `encodeIdPath`). */
-function encodeBlobKeyPath(key: string): string {
-  return key.split("/").map(encodeURIComponent).join("/");
-}
-
 /** Read a page blob's bytes + content-type in either mode: local backend (`--dir`) or the remote's blob route (`--remote`). `null` when absent. */
-async function readPageBlob(options: UiServerOptions, key: string): Promise<{ bytes: Uint8Array; contentType: string } | null> {
+async function readPageBlob(options: UiServerOptions, key: string): Promise<{ bytes: Uint8Array; contentType: string; version: string } | null> {
   if (options.mode === "dir") {
     const r = await readBlob(options.bundle!, key);
-    return r ? { bytes: r.bytes, contentType: r.contentType } : null;
+    return r ? { bytes: r.bytes, contentType: r.contentType, version: r.version } : null;
   }
-  const target = `${options.remoteBase}/v0/bundles/${REMOTE_BUNDLE}/blobs/${encodeBlobKeyPath(key)}`;
+  const encoded = key.split("/").map(encodeURIComponent).join("/");
+  const target = `${options.remoteBase}/v0/bundles/${REMOTE_BUNDLE}/blobs/${encoded}`;
   const headers: Record<string, string> = {};
   if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
   const res = await fetch(target, { headers });
   if (!res.ok) return null;
-  return { bytes: new Uint8Array(await res.arrayBuffer()), contentType: res.headers.get("content-type") ?? "application/octet-stream" };
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  return { bytes, contentType: res.headers.get("content-type") ?? "application/octet-stream", version: res.headers.get("x-version") ?? blobVersion(bytes) };
+}
+
+interface RegistryHead {
+  id: string;
+  version: string;
+  frontmatter: Frontmatter;
+}
+
+/** Compatibility read for remote hosts that expose the wire surface but are not mounted as a Bundle. */
+async function remoteRegistryHeads(options: UiServerOptions): Promise<RegistryHead[]> {
+  const headers: Record<string, string> = {};
+  if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
+  const heads: RegistryHead[] = [];
+  for (const type of PAGE_TYPE_NAMES) {
+    let cursor: string | undefined;
+    do {
+      const url = new URL(`${options.remoteBase}/v0/bundles/${REMOTE_BUNDLE}/docs`);
+      url.searchParams.set("fields", "frontmatter");
+      url.searchParams.set("type", type);
+      url.searchParams.set("limit", "200");
+      if (cursor) url.searchParams.set("cursor", cursor);
+      const response = await fetch(url, { headers });
+      if (!response.ok) throw new Error(`type=${type} listing returned status ${response.status}`);
+      const body = (await response.json()) as { docs?: RegistryHead[]; next_cursor?: string | null };
+      if (!Array.isArray(body.docs)) throw new Error(`type=${type} listing returned malformed data`);
+      heads.push(...body.docs);
+      cursor = body.next_cursor ?? undefined;
+    } while (cursor);
+  }
+  return heads;
 }
 
 /** Serve a page's bytes for a resolved nonce — the ONLY thing a nonce authorizes, and only ITS one key. */
 async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonce: string): Promise<Response> {
-  const key = runtime.nonces.resolve(nonce);
-  if (!key) return pageError(403, "This page link is unknown or has expired. Reopen the page from the launcher.");
-  // Re-verify registration at SERVE time, not only at mint time: deleting/retargeting a page's
-  // registry doc revokes its live nonces immediately, instead of leaving a still-serving window
-  // for the rest of the nonce TTL.
-  let registered: Set<string>;
+  const launch = runtime.launches.resolveNonce(nonce);
+  if (!launch) return pageError(403, "This view link is unknown or has expired. Reopen the view from the launcher.");
+  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
+  let current = false;
   try {
-    registered = await registeredPageEntries(options);
-  } catch (err) {
-    // Fail-closed AND honest: an unreadable registry means "cannot verify", not "not registered".
-    return pageError(502, `The bundle's page registry could not be read (${err instanceof Error ? err.message : String(err)}). Try again.`);
+    if (bundle) {
+      current = await launchIsCurrent(bundle, launch);
+    } else if (options.mode === "remote") {
+      const head = (await remoteRegistryHeads(options)).find((candidate) => candidate.id === launch.registryId);
+      const registration = head ? parseRegistration(head.id, head.frontmatter) : null;
+      const blob = registration ? await readPageBlob(options, registration.entry) : null;
+      current = Boolean(
+        head &&
+        registration &&
+        head.version === launch.registryVersion &&
+        registration.type === launch.registryType &&
+        registration.entry === launch.entryKey &&
+        resolveBridgeCapability(head.frontmatter.bridge) === launch.capability &&
+        blob &&
+        blob.version === launch.contentVersion &&
+        blob.contentType === launch.contentType,
+      );
+    }
+  } catch (error) {
+    return pageError(502, `The bundle's View registry could not be read (${error instanceof Error ? error.message : String(error)}). Try again.`);
   }
-  if (!registered.has(key)) {
-    return pageError(403, "This page is no longer registered in the bundle (its registry doc was removed or retargeted).");
+  if (!current) {
+    runtime.launches.revoke(launch.launchId);
+    return pageError(403, "This view changed after it was opened. Reopen it from the launcher.");
   }
-  const blob = await readPageBlob(options, key);
-  if (!blob) return pageError(404, `No page bytes found for '${key}'.`);
-  return new Response(blob.bytes, {
+  return new Response(launch.bytes, {
     status: 200,
     headers: {
-      "content-type": blob.contentType,
+      "content-type": launch.contentType,
       "content-security-policy": pageCsp(),
       "x-content-type-options": "nosniff",
       "cache-control": "no-store",
@@ -146,93 +195,80 @@ async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonc
 }
 
 /**
- * The set of entry blob keys declared by a COMPLETE, VALID registration — the ONLY keys a nonce
- * may be minted (or kept servable) for. Validity is decided ENTIRELY by core's
- * {@link parseRegistration} (registry-id grammar + exact accepted type + entry grammar) — the
- * SAME predicate the launcher's `parseRegisteredPage` consumes, so a doc the launcher rejects
- * can never mint or serve here. Mode-aware: local `queryHeads`, or the remote's per-type head
- * projection paginated to exhaustion. Both queries take ONE type, so the accepted names are
- * fetched separately and merged.
- *
- * Any per-type query failure fails the whole enumeration
- * (this function throws) — never a partial set. A partial set would let mint/serve act on a
- * half-read registry while launcher discovery (whose own two-query merge already all-or-nothing
- * fails) reports an error: the two surfaces must agree, and a fail-closed error beats silently
- * degraded partial availability at a security boundary. Callers map the throw to an explicit
- * 5xx ("cannot verify"), not to "not registered".
- */
-async function registeredPageEntries(options: UiServerOptions): Promise<Set<string>> {
-  const entries = new Set<string>();
-  if (options.mode === "dir") {
-    for (const type of PAGE_TYPE_NAMES) {
-      for (const head of await queryHeads(options.bundle!, { type })) {
-        const registration = parseRegistration(head.id, head.frontmatter);
-        if (registration) entries.add(registration.entry);
-      }
-    }
-    return entries;
-  }
-  const headers: Record<string, string> = {};
-  if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
-  for (const type of PAGE_TYPE_NAMES) {
-    let cursor: string | undefined;
-    do {
-      const url = new URL(`${options.remoteBase}/v0/bundles/${REMOTE_BUNDLE}/docs`);
-      url.searchParams.set("fields", "frontmatter");
-      url.searchParams.set("type", type);
-      url.searchParams.set("limit", "200");
-      if (cursor) url.searchParams.set("cursor", cursor);
-      const res = await fetch(url, { headers });
-      if (!res.ok) {
-        throw new Error(`the remote page registry could not be read (type=${type} listing returned status ${res.status})`);
-      }
-      const body = (await res.json()) as { docs: { id?: unknown; frontmatter: Record<string, unknown> }[]; next_cursor?: string | null };
-      for (const d of body.docs) {
-        const registration = parseRegistration(d.id, d.frontmatter);
-        if (registration) entries.add(registration.entry);
-      }
-      cursor = body.next_cursor ?? undefined;
-    } while (cursor);
-  }
-  return entries;
-}
-
-/**
- * Mint a nonce for the requested session-authenticated page key. Confinement:
- * a nonce may ONLY be minted for a key that (a) lives under an accepted page-blob prefix AND (b) is
- * the declared `entry` of a `type: View` (or legacy `type: Page`) registry doc. This is what stops the nonce mechanism from
- * being turned into a read-anything-blob primitive (e.g. minting `secrets/creds.bin`) even by a
- * compromised same-origin shell — a nonce only ever exists for a bundle-declared page.
+ * Mint an immutable launch from a registry id. The server resolves the registration and exact HTML
+ * itself; the shell never gets to pair an arbitrary key with a trusted registry identity.
  */
 async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOptions): Promise<Response> {
-  let payload: { key?: unknown };
+  let payload: { registryId?: unknown; key?: unknown };
   try {
-    payload = (await req.json()) as { key?: unknown };
+    payload = (await req.json()) as { registryId?: unknown; key?: unknown };
   } catch {
-    return jsonError(400, "USAGE", "request body must be JSON { key }");
+    return jsonError(400, "USAGE", "request body must be JSON { registryId }");
   }
-  const key = typeof payload.key === "string" ? payload.key.trim() : "";
-  if (!key) return jsonError(400, "USAGE", "request body must include a non-empty page key");
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return jsonError(400, "USAGE", "request body must contain exactly registryId");
+  }
+  const keys = Object.keys(payload).sort();
+  if (keys.length !== 1 || (keys[0] !== "registryId" && keys[0] !== "key")) {
+    return jsonError(400, "USAGE", "request body must contain exactly registryId");
+  }
+  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
+
+  let registryId = typeof payload.registryId === "string" ? payload.registryId.trim() : "";
+  const legacyKey = typeof payload.key === "string" ? payload.key.trim() : "";
+  if (!registryId && legacyKey) {
+    try {
+      assertSafeBlobKey(legacyKey);
+    } catch (error) {
+      return jsonError(400, "USAGE", error instanceof Error ? error.message : String(error));
+    }
+    const matches: string[] = [];
+    try {
+      const heads = bundle
+        ? (await Promise.all(PAGE_TYPE_NAMES.map((type) => queryHeads(bundle, { type })))).flat()
+        : await remoteRegistryHeads(options);
+      for (const head of heads) {
+        const registration = parseRegistration(head.id, head.frontmatter);
+        if (registration?.entry === legacyKey) matches.push(registration.id);
+      }
+    } catch (error) {
+      return jsonError(502, "RUNTIME", `could not read the View registry (${error instanceof Error ? error.message : String(error)})`);
+    }
+    registryId = matches.sort()[0] ?? "";
+    if (!registryId) return jsonError(403, "FORBIDDEN", `'${legacyKey}' is not the entry of any valid registered View`);
+  }
+  if (!registryId) return jsonError(400, "USAGE", "request body must include a non-empty registryId");
+
+  let registryRead: Awaited<ReturnType<typeof readDocVersioned>>;
   try {
-    assertSafeBlobKey(key);
+    if (bundle) {
+      registryRead = await readDocVersioned(bundle, registryId);
+    } else {
+      const head = (await remoteRegistryHeads(options)).find((candidate) => candidate.id === registryId);
+      if (!head) return jsonError(404, "NOT_FOUND", `View registry '${registryId}' does not exist`);
+      registryRead = { doc: { id: head.id, frontmatter: head.frontmatter, body: "" }, version: head.version };
+    }
   } catch (err) {
-    return jsonError(400, "USAGE", err instanceof Error ? err.message : `unsafe page key '${key}'`);
+    return jsonError((err as NodeJS.ErrnoException)?.code === "ENOENT" ? 404 : 502, "RUNTIME", err instanceof Error ? err.message : String(err));
   }
-  if (!PAGE_BLOB_PREFIXES.some((prefix) => key.startsWith(prefix))) {
-    return jsonError(403, "FORBIDDEN", `page keys must live under '${PAGE_BLOB_PREFIXES.join("' or '")}'; '${key}' does not`);
+  const registration = parseRegistration(registryRead.doc.id, registryRead.doc.frontmatter);
+  if (!registration) {
+    return jsonError(403, "FORBIDDEN", `'${registryId}' is not a valid type:View (or legacy type:Page) registration`);
   }
-  let entries: Set<string>;
-  try {
-    entries = await registeredPageEntries(options);
-  } catch (err) {
-    // Fail-closed AND honest: an unreadable registry means "cannot verify", not "not registered".
-    return jsonError(502, "RUNTIME", `could not read the page registry (${err instanceof Error ? err.message : String(err)})`);
-  }
-  if (!entries.has(key)) {
-    return jsonError(403, "FORBIDDEN", `'${key}' is not the entry of any valid type:View (or legacy type:Page) registration`);
-  }
-  const nonce = runtime.nonces.mint(key);
-  return new Response(JSON.stringify({ nonce, url: `/__page/${nonce}` }), {
+  const blob = await readPageBlob(options, registration.entry);
+  if (!blob) return jsonError(404, "NOT_FOUND", `no View bytes found for '${registration.entry}'`);
+  const launch = runtime.launches.mint({
+    registryId: registration.id,
+    registryType: registration.type,
+    registryVersion: registryRead.version,
+    registryTitle: typeof registryRead.doc.frontmatter.title === "string" ? registryRead.doc.frontmatter.title : registration.id,
+    entryKey: registration.entry,
+    contentType: blob.contentType,
+    contentVersion: blob.version,
+    bytes: blob.bytes,
+    capability: resolveBridgeCapability(registryRead.doc.frontmatter.bridge),
+  });
+  return new Response(JSON.stringify({ nonce: launch.nonce, url: `/__page/${launch.nonce}`, launchId: launch.launchId }), {
     status: 200,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
@@ -337,6 +373,76 @@ async function edgesResponse(options: UiServerOptions, url: URL): Promise<Respon
   });
 }
 
+function actionJson(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
+function exactOwnKeys(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return false;
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+const MAX_TRUSTED_ACTION_BODY_BYTES = 16 * 1024;
+
+async function actionPayload(req: Request, keys: readonly string[]): Promise<Record<string, unknown> | Response> {
+  if (req.headers.get("x-requested-with") !== "agentstate-lite-ui") {
+    return jsonError(403, "FORBIDDEN", "trusted actions require X-Requested-With: agentstate-lite-ui");
+  }
+  if (req.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") {
+    return jsonError(415, "USAGE", "trusted action requests require application/json");
+  }
+  const declaredLength = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_TRUSTED_ACTION_BODY_BYTES) {
+    return jsonError(413, "USAGE", "trusted action request body must be at most 16 KiB");
+  }
+  let text: string;
+  try {
+    text = await req.text();
+  } catch {
+    return jsonError(400, "USAGE", "trusted action request body could not be read");
+  }
+  if (Buffer.byteLength(text, "utf8") > MAX_TRUSTED_ACTION_BODY_BYTES) {
+    return jsonError(413, "USAGE", "trusted action request body must be at most 16 KiB");
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return jsonError(400, "USAGE", "trusted action request body must be valid JSON");
+  }
+  return exactOwnKeys(value, keys) ? value : jsonError(400, "USAGE", `trusted action request must contain exactly ${keys.join(", ")}`);
+}
+
+async function prepareAction(req: Request, options: UiServerOptions, runtime: UiRuntime): Promise<Response> {
+  const payload = await actionPayload(req, ["launchId", "action"]);
+  if (payload instanceof Response) return payload;
+  if (options.mode !== "dir" || !runtime.actions) {
+    const result: ActionTerminalResult = { status: "rejected", action: "document.set-field", message: "trusted View actions are available only in local --dir mode" };
+    return actionJson(result);
+  }
+  const launchId = typeof payload.launchId === "string" ? payload.launchId : "";
+  if (!launchId || launchId.length > 256) return jsonError(400, "USAGE", "launchId must be a non-empty string of at most 256 characters");
+  return actionJson(await runtime.actions.prepare(launchId, payload.action));
+}
+
+async function finishAction(req: Request, runtime: UiRuntime, operation: "commit" | "cancel"): Promise<Response> {
+  const payload = await actionPayload(req, ["approvalToken"]);
+  if (payload instanceof Response) return payload;
+  const token = typeof payload.approvalToken === "string" ? payload.approvalToken : "";
+  if (!token || token.length > 256) return jsonError(400, "USAGE", "approvalToken must be a non-empty string of at most 256 characters");
+  if (!runtime.actions) {
+    return actionJson({ status: "rejected", action: "document.set-field", message: "trusted View actions are unavailable" } satisfies ActionTerminalResult);
+  }
+  return actionJson(operation === "commit" ? await runtime.actions.commit(token) : runtime.actions.cancel(token));
+}
+
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -389,6 +495,12 @@ async function handleRequest(
   let response: Response;
   if (url.pathname === "/__page/mint" && request.method === "POST") {
     response = await handleMint(request, runtime, options);
+  } else if (url.pathname === "/__ui/actions/prepare" && request.method === "POST") {
+    response = await prepareAction(request, options, runtime);
+  } else if (url.pathname === "/__ui/actions/commit" && request.method === "POST") {
+    response = await finishAction(request, runtime, "commit");
+  } else if (url.pathname === "/__ui/actions/cancel" && request.method === "POST") {
+    response = await finishAction(request, runtime, "cancel");
   } else if (url.pathname === "/__ui/config") {
     response = await configResponse(options);
   } else if (url.pathname === "/__ui/kinds") {
@@ -431,7 +543,13 @@ const CLOSE_DRAIN_WATCHDOG_MS = 5_000;
 /** Boot the `ui` command's http listener and resolve once it is listening. */
 export async function bootUiServer(options: UiServerOptions): Promise<UiServerHandle> {
   const sessionSecret = options.sessionSecret ?? mintSessionSecret();
-  const runtime: UiRuntime = { nonces: new PageNonceRegistry(), sse: new SseHub(), shutdown: new AbortController() };
+  const launches = new PageLaunchRegistry();
+  const runtime: UiRuntime = {
+    launches,
+    actions: options.mode === "dir" && options.bundle ? new TrustedActionService(options.bundle, launches, options.actor) : undefined,
+    sse: new SseHub(),
+    shutdown: new AbortController(),
+  };
   runtime.watcher = await bootWatcher(options, runtime.sse);
 
   return new Promise((resolve, reject) => {

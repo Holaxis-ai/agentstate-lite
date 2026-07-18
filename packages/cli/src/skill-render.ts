@@ -645,7 +645,7 @@ function renderBundleViewsSection(): string[] {
   lines.push(
     `\`${ASLITE} ui\` inside a sandboxed, opaque-origin iframe (\`sandbox="allow-scripts"\`, no network`,
   );
-  lines.push("access) — its only channel out is a **read-only** postMessage bridge to the shell.");
+  lines.push("access) — its only channel out is a narrow postMessage bridge to the trusted shell.");
   lines.push("(`Page` is the accepted legacy name: existing `type: Page` docs under `pages-registry/`/`pages/`");
   lines.push("keep working and never need migrating — author NEW views as `type: View`.)");
   lines.push("");
@@ -661,9 +661,13 @@ function renderBundleViewsSection(): string[] {
   lines.push(
     "`subscribe` (opt into a server-pushed `change` event whenever the watched bundle moves). There",
   );
-  lines.push("is no mutation message — read-only is enforced by construction, not convention. `open-page`");
+  lines.push("is no mutation message in v0 — read-only is enforced by construction. A View that declares");
+  lines.push("`bundle-propose` may use the local-only v1 contract to propose ONE governed scalar-field");
+  lines.push("change; the trusted shell revalidates it, shows canonical before/after values, and writes");
+  lines.push("only after explicit human confirmation with hard CAS. The View never receives a write token.");
+  lines.push("`open-page`");
   lines.push("(a wire verb, stable across the rename) is a separate fire-and-forget shell action available");
-  lines.push("to either View capability; it opens only another valid registered View and returns none of");
+  lines.push("to every View capability; it opens only another valid registered View and returns none of");
   lines.push("that target's content or metadata.");
   lines.push("");
   lines.push("Author a view in four steps:");

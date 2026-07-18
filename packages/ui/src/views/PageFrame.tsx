@@ -6,19 +6,31 @@
  *   1. Resolves the page's registry doc -> its `entry` blob key -> a minted nonce URL (the `src`),
  *      and its declared `bridge` capability (fail-closed via {@link resolveBridgeCapability}).
  *   2. Listens for the page's postMessage requests, VALIDATING `event.source` is this iframe, and
- *      brokers them read-only through {@link handleBridgeRequest} — gated by that capability, so
- *      a `none` page is denied regardless of what the sandboxed page itself sends.
+ *      brokers v0 reads through {@link handleBridgeRequest}; `bundle-propose` may additionally
+ *      prepare one v1 action for explicit confirmation in trusted shell chrome.
  *   3. Fans SSE doc changes into the subscribed page as bridge `change` events, and HOT-RELOADS the
  *      iframe (fresh nonce) when the page's own HTML blob changes.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDoc, listAllHeads, ApiError } from "../api/client.js";
-import { mintPageNonce, fetchConfig, fetchKinds, fetchEdges, invalidateKinds, resolvePageTarget } from "../api/pages.js";
+import {
+  cancelTrustedAction,
+  commitTrustedAction,
+  mintPageNonce,
+  prepareTrustedAction,
+  fetchConfig,
+  fetchKinds,
+  fetchEdges,
+  invalidateKinds,
+  resolvePageTarget,
+  type ActionConfirmation,
+} from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { handleBridgeRequest, changeMessage, type BridgeDeps } from "../pages/bridge.js";
 import { parseRegisteredPage, type BridgeCapability } from "../pages/registry.js";
 import { navigate } from "../routing.js";
 import { setInterceptorStatus } from "../query/interceptor.js";
+import { actionError, actionReply, parseActionBridgeMessage } from "../pages/actions.js";
 
 const bridgeDeps: BridgeDeps = {
   config: fetchConfig,
@@ -28,6 +40,18 @@ const bridgeDeps: BridgeDeps = {
   edges: fetchEdges,
   resolvePage: resolvePageTarget,
 };
+
+interface PendingAction {
+  seq: number;
+  requestId: string;
+  approvalToken?: string;
+  confirmation?: ActionConfirmation;
+  inFlight: boolean;
+}
+
+function scalarLabel(value: string | number | boolean | null): string {
+  return value === null ? "(not set)" : JSON.stringify(value);
+}
 
 export function PageFrame({ pageId }: { pageId: string }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -46,11 +70,23 @@ export function PageFrame({ pageId }: { pageId: string }) {
   // Bumped on every (re)load trigger, revoke, and unmount — a resolution that finishes after a
   // newer one started (or after a revoke) must not clobber the newer state.
   const loadSeqRef = useRef(0);
+  const launchIdRef = useRef<string | null>(null);
+  const pendingActionRef = useRef<PendingAction | null>(null);
   const [src, setSrc] = useState<string | null>(null);
   const [frameSeq, setFrameSeq] = useState<number | null>(null);
   const [entryKey, setEntryKey] = useState<string | null>(null);
   const [title, setTitle] = useState<string>(pageId);
   const [error, setError] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<ActionConfirmation | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
+
+  const discardPendingAction = useCallback(() => {
+    const pending = pendingActionRef.current;
+    pendingActionRef.current = null;
+    setConfirmation(null);
+    setActionBusy(false);
+    if (pending?.approvalToken) void cancelTrustedAction(pending.approvalToken).catch(() => {});
+  }, []);
 
   const ownFrame = useCallback((node: HTMLIFrameElement | null) => {
     iframeRef.current = node;
@@ -64,14 +100,16 @@ export function PageFrame({ pageId }: { pageId: string }) {
   // P1 (doc-lifecycle revocation): tear the frame down to an explicit terminal state — the
   // sandboxed iframe unmounts, so its bridge access ends WITH its registry doc, not after it.
   const revoke = useCallback((reason: string) => {
+    discardPendingAction();
     loadSeqRef.current++;
     subscribedRef.current = false;
     bridgeCapabilityRef.current = "none";
+    launchIdRef.current = null;
     setSrc(null);
     setFrameSeq(null);
     setEntryKey(null);
     setError(reason);
-  }, []);
+  }, [discardPendingAction]);
 
   /**
    * Resolve registry doc -> entry key -> nonce URL and (re)load the frame. The ONE path for
@@ -79,6 +117,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
    * reload always re-reads what the doc currently declares and re-mints against the live registry.
    */
   const loadPage = useCallback(async () => {
+    discardPendingAction();
     const seq = ++loadSeqRef.current;
     // Pre-revoke IMMEDIATELY, synchronously, before the async getDoc/mint round-trip below. This
     // is the ONE entry point every re-resolution path shares (mount, page switch, a live
@@ -89,6 +128,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
     // through the getDoc/mint round-trip (P1).
     subscribedRef.current = false;
     bridgeCapabilityRef.current = "none";
+    launchIdRef.current = null;
 
     // getDoc is split from the mint below because ONLY its 403 is trip-worthy: `/v0/*` has no
     // other 403 source than this ui server's own session gate, so a 403 here is ALWAYS a dead
@@ -115,19 +155,21 @@ export function PageFrame({ pageId }: { pageId: string }) {
       const { doc } = loaded;
       const registered = parseRegisteredPage(pageId, doc.frontmatter);
       if (!registered) throw new Error(`page '${pageId}' is not a usable registered Page`);
-      const url = await mintPageNonce(registered.entry);
+      const minted = await mintPageNonce(pageId);
       if (seq !== loadSeqRef.current) return;
       subscribedRef.current = false;
       bridgeCapabilityRef.current = registered.bridge;
+      launchIdRef.current = minted.launchId;
       setEntryKey(registered.entry);
       setTitle(registered.title);
       setError(null);
       setFrameSeq(seq);
-      setSrc(url);
+      setSrc(minted.url);
     } catch (e) {
       if (seq !== loadSeqRef.current) return;
       subscribedRef.current = false;
       bridgeCapabilityRef.current = "none";
+      launchIdRef.current = null;
       setSrc(null);
       setFrameSeq(null);
       setEntryKey(null);
@@ -139,7 +181,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
       // with the WRONG advice over what's really just a dismissable per-view error.
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [pageId]);
+  }, [discardPendingAction, pageId]);
 
   // Resolve registry doc -> entry key -> nonce URL on mount / page switch. The bridge-capability
   // reset now happens unconditionally at the TOP of loadPage itself (every re-resolution path
@@ -152,11 +194,13 @@ export function PageFrame({ pageId }: { pageId: string }) {
     setError(null);
     void loadPage();
     return () => {
+      discardPendingAction();
       loadSeqRef.current++;
     };
-  }, [loadPage]);
+  }, [discardPendingAction, loadPage]);
 
-  // Broker page->shell bridge requests (source-validated, read-only).
+  // Broker page->shell bridge requests. v0 remains read-only; v1 may only prepare a trusted,
+  // human-confirmed action and never receives the launch id or approval token.
   useEffect(() => {
     const onMessage = (ev: MessageEvent) => {
       const frame = iframeRef.current;
@@ -170,6 +214,80 @@ export function PageFrame({ pageId }: { pageId: string }) {
       // boundary (P1).
       const seq = loadSeqRef.current;
       const capability = bridgeCapabilityRef.current;
+
+      const actionMessage = parseActionBridgeMessage(ev.data);
+      if (actionMessage !== null) {
+        const post = (reply: Record<string, unknown>): void => {
+          if (seq === loadSeqRef.current && frame.contentWindow) frame.contentWindow.postMessage(reply, "*");
+        };
+        const raw = ev.data as { id?: unknown; requestId?: unknown };
+        if (!actionMessage.ok) {
+          if (typeof raw.requestId === "string") {
+            post(actionReply(raw.requestId, { status: "rejected", action: "document.set-field", message: actionMessage.message }));
+          } else {
+            post(actionError(typeof raw.id === "string" ? raw.id : undefined, actionMessage.message));
+          }
+          return;
+        }
+        if (capability !== "bundle-propose") {
+          if (actionMessage.message.type === "action.propose") {
+            post(actionReply(actionMessage.message.requestId, {
+              status: "rejected",
+              action: "document.set-field",
+              message: "this View does not declare bridge: bundle-propose",
+            }));
+          } else {
+            post(actionError(actionMessage.message.id, "this View does not declare bridge: bundle-propose"));
+          }
+          return;
+        }
+        if (actionMessage.message.type === "read-versioned") {
+          const readMessage = actionMessage.message;
+          void getDoc(readMessage.docId).then(
+            (result) => post({ bridge: "v1", id: readMessage.id, type: "read-versioned:result", result }),
+            (error) => post(actionError(readMessage.id, error instanceof Error ? error.message : String(error))),
+          );
+          return;
+        }
+
+        const requestId = actionMessage.message.requestId;
+        if (pendingActionRef.current) {
+          post(actionReply(requestId, { status: "rejected", action: "document.set-field", message: "this frame already has a pending proposal" }));
+          return;
+        }
+        const launchId = launchIdRef.current;
+        if (!launchId) {
+          post(actionReply(requestId, { status: "revoked", action: "document.set-field", message: "the frame launch is no longer current" }));
+          return;
+        }
+        const pending: PendingAction = { seq, requestId, inFlight: true };
+        pendingActionRef.current = pending;
+        void prepareTrustedAction(launchId, actionMessage.message.action).then(
+          (result) => {
+            if (seq !== loadSeqRef.current || pendingActionRef.current !== pending) {
+              if (result.status === "prepared") void cancelTrustedAction(result.approvalToken).catch(() => {});
+              return;
+            }
+            if (result.status === "prepared") {
+              pending.approvalToken = result.approvalToken;
+              pending.confirmation = result.confirmation;
+              pending.inFlight = false;
+              setActionBusy(false);
+              setConfirmation(result.confirmation);
+              return;
+            }
+            pendingActionRef.current = null;
+            post(actionReply(requestId, result));
+          },
+          (error) => {
+            if (seq !== loadSeqRef.current || pendingActionRef.current !== pending) return;
+            pendingActionRef.current = null;
+            post(actionReply(requestId, { status: "failed", action: "document.set-field", message: error instanceof Error ? error.message : String(error) }));
+          },
+        );
+        return;
+      }
+
       void handleBridgeRequest(ev.data, bridgeDeps, capability).then((outcome) => {
         if (seq !== loadSeqRef.current) return; // frame reloaded/revoked since receipt — drop it
         if (outcome.openPageId) {
@@ -179,8 +297,10 @@ export function PageFrame({ pageId }: { pageId: string }) {
           // under it then fail the fence above and cannot navigate a second time.
           navigationConsumedRef.current = true;
           loadSeqRef.current++;
+          discardPendingAction();
           subscribedRef.current = false;
           bridgeCapabilityRef.current = "none";
+          launchIdRef.current = null;
           navigate({ view: "page", id: outcome.openPageId });
           return;
         }
@@ -190,7 +310,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [pageId]);
+  }, [discardPendingAction, pageId]);
 
   // Live: push doc changes to the subscribed page; REVOKE when this page's registry doc is
   // removed (P1 — an open frame must not keep reading through the bridge after its page is
@@ -224,6 +344,33 @@ export function PageFrame({ pageId }: { pageId: string }) {
     });
   }, [loadPage]);
 
+  const settleConfirmation = useCallback(async (decision: "commit" | "cancel") => {
+    const pending = pendingActionRef.current;
+    if (!pending?.approvalToken || pending.inFlight) return;
+    pending.inFlight = true;
+    setActionBusy(true);
+    const seq = pending.seq;
+    try {
+      const result = decision === "commit"
+        ? await commitTrustedAction(pending.approvalToken)
+        : await cancelTrustedAction(pending.approvalToken);
+      if (seq !== loadSeqRef.current || pendingActionRef.current !== pending) return;
+      pendingActionRef.current = null;
+      setConfirmation(null);
+      setActionBusy(false);
+      iframeRef.current?.contentWindow?.postMessage(actionReply(pending.requestId, result), "*");
+    } catch (error) {
+      if (seq !== loadSeqRef.current || pendingActionRef.current !== pending) return;
+      pendingActionRef.current = null;
+      setConfirmation(null);
+      setActionBusy(false);
+      iframeRef.current?.contentWindow?.postMessage(
+        actionReply(pending.requestId, { status: "failed", action: "document.set-field", message: error instanceof Error ? error.message : String(error) }),
+        "*",
+      );
+    }
+  }, []);
+
   return (
     <div className="page-frame">
       <div className="page-frame-bar">
@@ -253,6 +400,33 @@ export function PageFrame({ pageId }: { pageId: string }) {
         />
       ) : (
         <p className="view-status">Opening page…</p>
+      )}
+      {confirmation && (
+        <div className="action-confirmation-backdrop" role="presentation">
+          <section className="action-confirmation" role="dialog" aria-modal="true" aria-labelledby="action-confirmation-title">
+            <p className="action-confirmation-eyebrow">AgentState confirmation</p>
+            <h2 id="action-confirmation-title">Apply this bundle change?</h2>
+            <p>
+              View <code>{confirmation.source.registryId}</code> proposes changing <strong>{confirmation.target.title}</strong>.
+            </p>
+            <dl>
+              <div><dt>Document</dt><dd><code>{confirmation.target.docId}</code></dd></div>
+              <div><dt>Kind</dt><dd>{confirmation.target.kind}</dd></div>
+              <div><dt>Field</dt><dd><code>{confirmation.field}</code></dd></div>
+              <div><dt>Before</dt><dd><code>{scalarLabel(confirmation.before)}</code></dd></div>
+              <div><dt>After</dt><dd><code>{scalarLabel(confirmation.after)}</code></dd></div>
+              <div><dt>Actor</dt><dd><code>{confirmation.actor}</code></dd></div>
+              <div><dt>Timestamp</dt><dd><code>{confirmation.timestamp}</code></dd></div>
+            </dl>
+            <p className="action-confirmation-note">The write is conditional on the exact document, View, HTML, and Kind versions shown to the shell.</p>
+            <div className="action-confirmation-buttons">
+              <button type="button" disabled={actionBusy} onClick={() => void settleConfirmation("cancel")}>Cancel</button>
+              <button type="button" className="action-apply" disabled={actionBusy} onClick={() => void settleConfirmation("commit")}>
+                {actionBusy ? "Applying…" : "Apply change"}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );

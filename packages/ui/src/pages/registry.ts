@@ -1,6 +1,11 @@
 /** Browser-side parsing for a usable registered bundle Page/View. */
 
-import { parseRegistration, type PageTypeName } from "@agentstate-lite/core/page";
+import {
+  parseRegistration,
+  resolveBridgeCapability,
+  type BridgeCapability,
+  type PageTypeName,
+} from "@agentstate-lite/core/page";
 
 export {
   isAnyEntryKey,
@@ -12,11 +17,11 @@ export {
   isViewRegistryId,
   PAGE_TYPE_NAMES,
   parseRegistration,
+  resolveBridgeCapability,
+  type BridgeCapability,
   type PageRegistration,
   type PageTypeName,
 } from "@agentstate-lite/core/page";
-
-export type BridgeCapability = "none" | "bundle-read";
 
 export interface RegisteredPage {
   id: string;
@@ -32,11 +37,6 @@ export interface RegisteredPage {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-/** Only the exact grant string enables bundle reads; every other value fails closed. */
-export function resolveBridgeCapability(bridge: unknown): BridgeCapability {
-  return bridge === "bundle-read" ? "bundle-read" : "none";
 }
 
 /** Parse a usable registered Page/View without exposing document contents or executable bytes. Validity is decided ENTIRELY by core's {@link parseRegistration} — the one predicate the server's mint/serve allowlist shares — so this surface can never accept a doc the server rejects (or vice versa). */

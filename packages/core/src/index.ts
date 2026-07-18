@@ -12,7 +12,7 @@
  * module implements bundle I/O, standard-markdown cross-links (never wikilinks),
  * derived backlinks, freshness derived from `timestamp`, and reserved-file
  * (`index.md`/`log.md`) handling. Human-facing bundle Pages consume this engine through the
- * reference server's read-only browser bridge.
+ * reference server's narrow browser bridge (read-only v0 plus shell-confirmed local proposals).
  *
  * The public function signatures below are contract-stable; everything past the
  * "extensions" line is additive (pure helpers, reserved-file accessors, and the

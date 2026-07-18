@@ -14,9 +14,10 @@ describe("pageFromFrontmatter", () => {
     expect(pageFromFrontmatter("pages-registry/about", "v1", fm)?.bridge).toBe("none");
   });
 
-  it("honors ONLY the exact string 'bundle-read'", () => {
+  it("honors only the two exact shell capabilities", () => {
     const fm: Frontmatter = { type: "Page", title: "Pulse", entry: "pages/pulse.html", bridge: "bundle-read" };
     expect(pageFromFrontmatter("pages-registry/pulse", "v1", fm)?.bridge).toBe("bundle-read");
+    expect(pageFromFrontmatter("pages-registry/pulse", "v1", { ...fm, bridge: "bundle-propose" })?.bridge).toBe("bundle-propose");
   });
 
   it("FAIL-CLOSED: a malformed or unrecognized 'bridge' value denies (none), same as absent", () => {

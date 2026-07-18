@@ -15,7 +15,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { PageFrame } from "./PageFrame.js";
 import { getDoc, listAllHeads } from "../api/client.js";
-import { mintPageNonce, resolvePageTarget } from "../api/pages.js";
+import { cancelTrustedAction, commitTrustedAction, mintPageNonce, prepareTrustedAction, resolvePageTarget } from "../api/pages.js";
 import { subscribeToChanges } from "../pages/pageEvents.js";
 import { __resetInterceptorForTests } from "../query/interceptor.js";
 
@@ -29,7 +29,10 @@ vi.mock("../api/client.js", async (importOriginal) => {
 });
 
 vi.mock("../api/pages.js", () => ({
-  mintPageNonce: vi.fn(async (entry: string) => `/__page/nonce-${entry}`),
+  mintPageNonce: vi.fn(async (registryId: string) => ({ url: `/__page/nonce-${registryId}`, launchId: `launch-${registryId}` })),
+  prepareTrustedAction: vi.fn(),
+  commitTrustedAction: vi.fn(),
+  cancelTrustedAction: vi.fn(async () => ({ status: "cancelled", action: "document.set-field" })),
   fetchConfig: vi.fn(async () => ({ root: "/tmp/b", name: "b", mode: "dir" })),
   fetchKinds: vi.fn(async () => []),
   fetchEdges: vi.fn(async () => []),
@@ -274,6 +277,64 @@ describe("PageFrame: registered Page navigation", () => {
       await flush();
     });
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it("keeps approval in trusted shell chrome and posts only the terminal action result", async () => {
+    const source = await mount({ type: "View", bridge: "bundle-propose" });
+    const postSpy = vi.spyOn(source, "postMessage");
+    vi.mocked(prepareTrustedAction).mockResolvedValue({
+      status: "prepared",
+      approvalToken: "shell-secret-token",
+      expiresAt: Date.now() + 60_000,
+      confirmation: {
+        source: { registryId: "pages-registry/p", title: "P", registryVersion: "rv1", contentVersion: "bv1" },
+        target: { docId: "tasks/alpha", title: "Alpha", kind: "Task", version: "dv1" },
+        field: "status",
+        before: "todo",
+        after: "done",
+        actor: "mike/test",
+        timestamp: "2026-07-18T12:00:00.000Z",
+      },
+    });
+    vi.mocked(commitTrustedAction).mockResolvedValue({
+      status: "committed",
+      action: "document.set-field",
+      docId: "tasks/alpha",
+      field: "status",
+      changed: true,
+      version: "dv2",
+      confirmed: true,
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent("message", {
+        source,
+        data: {
+          bridge: "v1",
+          type: "action.propose",
+          requestId: "action-1",
+          action: { kind: "document.set-field", docId: "tasks/alpha", field: "status", value: "done", expectedVersion: "dv1" },
+        },
+      }));
+      await flush();
+    });
+
+    expect(prepareTrustedAction).toHaveBeenCalledWith("launch-pages-registry/p", expect.objectContaining({ field: "status", value: "done" }));
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain("Apply this bundle change?");
+    expect(container.textContent).toContain("mike/test");
+    expect(JSON.stringify(postSpy.mock.calls)).not.toContain("shell-secret-token");
+
+    const apply = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Apply change")!;
+    await act(async () => {
+      apply.click();
+      await flush();
+    });
+    expect(commitTrustedAction).toHaveBeenCalledWith("shell-secret-token");
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(postSpy.mock.calls).toContainEqual([
+      expect.objectContaining({ bridge: "v1", requestId: "action-1", type: "action.result", result: expect.objectContaining({ status: "committed", version: "dv2" }) }),
+      "*",
+    ]);
   });
 
   it("drops navigation whose source generation became stale during validation", async () => {

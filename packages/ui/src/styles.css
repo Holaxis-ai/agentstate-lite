@@ -269,6 +269,7 @@ body {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 3.25rem);
+  position: relative;
 }
 
 /* Teal underline — you are inside an active/open page (distinct from the launcher's neutral,
@@ -311,6 +312,104 @@ body {
   width: 100%;
   border: none;
   background: var(--surface-card);
+}
+
+.action-confirmation-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+
+.action-confirmation {
+  width: min(34rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 5rem);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 1.25rem;
+  background: var(--surface-card);
+  border: 2px solid var(--color-structure);
+  border-radius: var(--radius);
+  box-shadow: 0 1.5rem 4rem color-mix(in srgb, var(--text-primary) 30%, transparent);
+}
+
+.action-confirmation h2 {
+  margin: 0 0 0.75rem;
+  font: 500 1.5rem/1.2 var(--font-display);
+}
+
+.action-confirmation-eyebrow {
+  margin: 0 0 0.25rem;
+  color: var(--color-structure);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.action-confirmation dl {
+  margin: 1rem 0;
+  border-block: 1px solid var(--rule);
+}
+
+.action-confirmation dl div {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.action-confirmation dl div:last-child {
+  border-bottom: 0;
+}
+
+.action-confirmation dt {
+  color: var(--text-secondary);
+}
+
+.action-confirmation dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.action-confirmation code {
+  font-family: var(--font-mono);
+}
+
+.action-confirmation-note {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.action-confirmation-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.action-confirmation-buttons button {
+  padding: 0.5rem 0.85rem;
+  font: inherit;
+  cursor: pointer;
+  color: var(--text-primary);
+  background: var(--surface-card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.action-confirmation-buttons .action-apply {
+  color: #fff;
+  background: var(--color-structure);
+  border-color: var(--color-structure);
+}
+
+.action-confirmation-buttons button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .relogin-screen {

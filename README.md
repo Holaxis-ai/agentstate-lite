@@ -162,7 +162,8 @@ Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPla
   (composed recipes with typed-link glue) are design intent only.
 - **Bundle Views and the local web UI** are functional but still early. `ui` launches registered
   Views in sandboxed iframes; data Views receive a narrow read-only bridge with live change events,
-  while content Views receive no bundle-data capability. Views can navigate to other registered
+  while `bundle-propose` Views may ask trusted shell chrome to confirm one local, CAS-guarded
+  scalar-field change. Content Views receive no bundle-data capability. Views can navigate to other registered
   Views, and View-bearing definitions-only recipes can carry the operating model, registry entry,
   HTML, and authoring reference together. (`Page` is the accepted legacy name for the kind —
   existing legacy `type: Page` docs keep working and never need migrating.) Authoring is still HTML/agent-driven rather than a

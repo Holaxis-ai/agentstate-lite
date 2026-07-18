@@ -53,6 +53,33 @@ test("a directly opened data Page completes its startup bridge queries before if
   }
 });
 
+test("a bundle-propose View can change one governed scalar only after trusted-shell confirmation", async ({ page }) => {
+  const ui = await bootUiOverPagesBundle(TASKS);
+  try {
+    await page.goto(ui.url);
+    await page.locator('[data-page-id="views-registry/trusted-action"]').click();
+    const frame = page.frameLocator("iframe.page-frame-iframe");
+    await expect(frame.locator("#status")).toHaveText("todo");
+
+    await frame.getByRole("button", { name: "Mark Alpha done" }).click();
+    const dialog = page.getByRole("dialog", { name: "Apply this bundle change?" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("tasks/alpha");
+    await expect(dialog).toContainText("todo");
+    await expect(dialog).toContainText("done");
+    await expect(dialog).toContainText("e2e/human");
+    await dialog.getByRole("button", { name: "Apply change" }).click();
+
+    await expect(frame.locator("#result")).toHaveText("committed");
+    await expect(frame.locator("#status")).toHaveText("done");
+    const persisted = JSON.parse(execFileSync(process.execPath, [CLI_DIST, "doc", "read", "tasks/alpha", "--dir", ui.dir, "--json"], { encoding: "utf8" }));
+    expect(persisted.status).toBe("done");
+    expect(persisted.actor).toBe("e2e/human");
+  } finally {
+    await ui.cleanup();
+  }
+});
+
 test("About navigation opens Roadmap and its startup bridge queries under the target capability, with browser history", async ({ page }) => {
   const ui = await bootUiOverPagesBundle(TASKS);
   try {

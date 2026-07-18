@@ -499,12 +499,12 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
         error: { code: "RECIPE_MALFORMED", message: `recipe '${id}': '${declaration.registry}' needs a title` },
       };
     }
-    if (frontmatter.bridge !== "none" && frontmatter.bridge !== "bundle-read") {
+    if (frontmatter.bridge !== "none" && frontmatter.bridge !== "bundle-read" && frontmatter.bridge !== "bundle-propose") {
       return {
         ok: false,
         error: {
           code: "RECIPE_MALFORMED",
-          message: `recipe '${id}': '${declaration.registry}' needs bridge: none or bridge: bundle-read`,
+          message: `recipe '${id}': '${declaration.registry}' needs bridge: none, bridge: bundle-read, or bridge: bundle-propose`,
         },
       };
     }

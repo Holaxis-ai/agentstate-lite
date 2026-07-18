@@ -9,7 +9,19 @@ export {
 } from "./assets.js";
 export { SseHub } from "./events.js";
 export { hostnameOf, isAllowedHost } from "./host.js";
-export { PAGE_BLOB_PREFIXES, PageNonceRegistry, pageCsp } from "./pages.js";
+export { PAGE_BLOB_PREFIXES, pageCsp } from "./pages.js";
+export {
+  PageLaunchRegistry,
+  TrustedActionService,
+  launchIsCurrent,
+  parseDocumentSetFieldAction,
+  type ActionConfirmation,
+  type ActionPrepareResult,
+  type ActionScalar,
+  type ActionTerminalResult,
+  type DocumentSetFieldAction,
+  type PageLaunch,
+} from "./actions.js";
 export { proxyToRemote } from "./proxy.js";
 export { checkAuth, constantTimeEqual, mintSessionSecret, readCookie, sessionCookieHeader } from "./session.js";
 export { bootUiServer, escapeHtml, pageError, type UiServerHandle, type UiServerOptions } from "./server.js";

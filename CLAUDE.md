@@ -134,7 +134,9 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
 - Keep exactly **ONE** frontmatter parser, **ONE** bundle walk, **ONE** link resolver, and
   **ONE** human-facing runtime: the local `ui` shell plus bundle-authored Views. Do not
   reintroduce a parallel static viewer or a second parser inside View tooling; Views consume
-  core semantics through the reference server's read-only bridge.
+  core semantics through the reference server's narrow bridge. V0 remains read-only; the only
+  write-capable surface is `bundle-propose`, which prepares one governed scalar-field change for
+  explicit trusted-shell confirmation and hard CAS through core's mutation service.
 - **Kind conventions (`core/src/kinds.ts`) are ONE registry, in core, consumed everywhere —
   not a schema fork.** A bundle MAY declare document kinds as plain OKF convention docs
   (`type: Convention`) naming the `type` value they govern, its required/optional fields,
@@ -172,8 +174,9 @@ in-process; `--remote` reverse-proxies with the stored key; per-run token + Host
 + CSP). The shell is a launcher for registered `type: View` docs rendered in sandboxed
 iframes (`Page` is the accepted legacy kind name — legacy-typed docs under the legacy
 prefixes keep working and never migrate); Views are bundle content, and their live data
-access goes through the read-only
-bridge. The former `packages/viewer` / `view` → `viz.html` surface is removed — author human
+access goes through the narrow bridge. V0 data access remains read-only; a local `--dir` View may
+opt into `bundle-propose` for one human-confirmed, version-guarded scalar-field action. The former
+`packages/viewer` / `view` → `viz.html` surface is removed — author human
 views as bundle Views rather than adding a second rendering engine. The multi-human collaboration
 substrate (hosted worker, auth, admin) is FROZEN per bundle doc `docs/core` and preserved outside
 the OSS repository — it is not a build or deployment target without an explicit human decision.

@@ -191,6 +191,14 @@ export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
   await writeDoc(
     { root: dir },
     {
+      id: "views-registry/trusted-action",
+      frontmatter: { type: "View", title: "Trusted action", entry: "views/trusted-action.html", description: "Confirmed scalar update proof.", bridge: "bundle-propose" },
+      body: "",
+    },
+  );
+  await writeDoc(
+    { root: dir },
+    {
       id: "views-registry/roadmap",
       frontmatter: { type: "View", title: "Roadmap", entry: "views/roadmap.html", description: "Roadmap items and their contained tasks.", bridge: "bundle-read" },
       body: "",
@@ -207,6 +215,31 @@ export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
   );
   await writeBlob({ root: dir }, "views/pulse.html", await readFile(path.join(examples, "pulse.html")), "text/html; charset=utf-8");
   await writeBlob({ root: dir }, "views/roadmap.html", await readFile(path.join(examples, "roadmap.html")), "text/html; charset=utf-8");
+  await writeBlob(
+    { root: dir },
+    "views/trusted-action.html",
+    new TextEncoder().encode(`<!doctype html><meta charset="utf-8"><title>Trusted action</title>
+      <strong id="status">reading</strong><button id="propose" disabled>Mark Alpha done</button><p id="result"></p>
+      <script>
+        let version;
+        const read = () => parent.postMessage({bridge:'v1',type:'read-versioned',id:'read',docId:'tasks/alpha'},'*');
+        addEventListener('message', (event) => {
+          if (event.source !== parent || event.data?.bridge !== 'v1') return;
+          if (event.data.type === 'read-versioned:result') {
+            version = event.data.result.version;
+            document.querySelector('#status').textContent = event.data.result.doc.frontmatter.status;
+            document.querySelector('#propose').disabled = false;
+          }
+          if (event.data.type === 'action.result') {
+            document.querySelector('#result').textContent = event.data.result.status;
+            if (event.data.result.status === 'committed') read();
+          }
+        });
+        document.querySelector('#propose').onclick = () => parent.postMessage({bridge:'v1',type:'action.propose',requestId:'finish',action:{kind:'document.set-field',docId:'tasks/alpha',field:'status',value:'done',expectedVersion:version}},'*');
+        read();
+      </script>`),
+    "text/html; charset=utf-8",
+  );
   await writeBlob({ root: dir }, "pages/about.html", await readFile(path.join(examples, "about.html")), "text/html; charset=utf-8");
   return dir;
 }
@@ -214,7 +247,7 @@ export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
 /** Boot the real CLI's `ui --dir` over a freshly seeded pages bundle (see {@link seedPagesBundle}). */
 export async function bootUiOverPagesBundle(seedTasks: SeedTask[]): Promise<RunningUi & { dir: string; cleanup: () => Promise<void> }> {
   const dir = await seedPagesBundle(seedTasks);
-  const running = await bootUi(["--dir", dir]);
+  const running = await bootUi(["--dir", dir, "--actor", "e2e/human"]);
   return {
     ...running,
     dir,

@@ -868,7 +868,7 @@ test("portable Review Workflow: clean-room install carries Kinds, a View, and it
     assert.ok(pageKind);
     assert.equal(pageKind!.path, "views-registry/");
     assert.deepEqual(pageKind!.fields.required, ["title", "entry", "bridge"]);
-    assert.deepEqual(pageKind!.fields.values.bridge, ["none", "bundle-read"]);
+    assert.deepEqual(pageKind!.fields.values.bridge, ["none", "bundle-read", "bundle-propose"]);
 
     const pageDefinitions = await runJson(list, ["--type", "View", "--dir", dir]);
     assert.equal(pageDefinitions.count, 1, "the package carries exactly its declared View definition");
@@ -877,7 +877,7 @@ test("portable Review Workflow: clean-room install carries Kinds, a View, and it
     const installedReference = await readFile(path.join(dir, "references", "view-authoring-v0.md"), "utf8");
     const parsedReference = parseMarkdown(installedReference);
     assert.equal(parsedReference.frontmatter.type, "Reference");
-    assert.equal(parsedReference.frontmatter.protocol, "v0");
+    assert.equal(parsedReference.frontmatter.protocol, "v0+v1");
     assert.match(parsedReference.body, /does not depend on an agent-harness skill/);
     const installedPageConvention = await readFile(path.join(dir, "conventions", "view.md"), "utf8");
     assert.match(installedPageConvention, /\.\.\/references\/view-authoring-v0\.md/);
