@@ -1,23 +1,29 @@
 ---
 type: Task
 title: 'Sync outcome table: one enumerable authority for refusal/guidance states'
-status: in_progress
+status: done
 priority: '2'
 assignee: mike/claude
 description: >-
-  CLAIMED mike/claude, ACTIVE. Phase: FIXUP CONFIRMED — PR #92 head 9d317da
-  (reviewed 67f528a + one fixture-fixup commit). Reviewer independently
-  re-verified the fixup: only the 2 namespace fixtures + test constant changed,
-  zero src; annotated values are the two REAL annotation arms (better coverage
-  than the review battery itself had); byte-provenance proven two ways against
-  base db6d866; agreement suite green. APPROVE-WITH-NITS stands, all actionable
-  nits closed (PR body corrected, follow-up list extended,
-  agreement-test-convention coordinated). LAST RUNG: mandatory QA in flight —
-  routing equivalence on constructed unenumerated/combination states, base
-  db6d866 vs head 9d317da, both built CLIs side by side. Merge on SHIP. Survivor
-  re-check vs the new suite deferred to the still-running cli mutation job
-  (post-merge promise recorded in the PR).
+  SHIPPED: PR #92 merged (reviewed 67f528a + confirmed fixup 9d317da). The
+  sync-family's 59 refusal/guidance envelope constructions across
+  sync.ts/sync-establish.ts/home.ts now live in ONE CLI-side table
+  (cli/src/sync-outcomes.ts) composing the package factories, byte-frozen. Full
+  ladder: plan v1 -> design review NEEDS-REWORK (architecture corrected:
+  CLI-side placement, per-site keys, no details.state expansion) -> v2 +
+  resolution check APPROVE -> build (70 pre-refactor fixtures, 48-section
+  battery) -> build review APPROVE-WITH-NITS (fixture provenance PROVEN: 67/70
+  regenerated from base; 41-section independent battery; red probes 3/3) ->
+  fixup independently confirmed -> adversarial QA SHIP (routing equivalence: 478
+  runs, ~90 states incl. combination/hostile-content/path-of-entry/environmental
+  attacks, ZERO differences; harness validity red-probed). Consumers net -239
+  lines; agreement-test pattern's first instance (coordinated on
+  tasks/agreement-test-convention); follow-up copy-unification list filed in the
+  PR. POST-MERGE PROMISE: when mutation run 29628092134's cli job lands,
+  re-check survivors in sync.ts/sync-establish.ts against the new suite (rows
+  make pins cheap). QA odd-but-equal observations recorded in the QA report for
+  future grooming.
 actor: mike/claude
-timestamp: '2026-07-18T04:37:35.022Z'
+timestamp: '2026-07-18T05:04:24.608Z'
 ---
 
