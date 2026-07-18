@@ -16,7 +16,7 @@ description: >-
   with the vetted Option-A blueprint on plans/rename-page-kind-to-view.
 actor: brian-claude
 assignee: brian-claude
-timestamp: '2026-07-18T00:21:18.126Z'
+timestamp: '2026-07-18T01:25:56.975Z'
 ---
 [informed by](joint-ontology-session.md)
 
@@ -65,3 +65,16 @@ timestamp: '2026-07-18T00:21:18.126Z'
 - U2 RE-ANCHORED onto post-#83/#86 main (a61c86d, force-pushed): rebase clean, hint
   wiring intact, full check gate green by direct exit code (e2e 14/14). Ready for
   its PR.
+
+- U2 EXTERNAL REVIEW (PR #88, codex): three findings, all fixed at cf8afeb (one commit
+  on the reviewed head f76b536) and independently re-verified. P1 — promote's doc route
+  now applies the shared legacy nudge (receipt-level, blob route untouched); the
+  documented authoring path can no longer grow the legacy stock silently. P2a —
+  isLegacyPageDoc is exact (=== "Page"), matching core's registration grammar; the one
+  parse layer does no type trimming (YAML trims plain scalars; only a QUOTED " Page "
+  arrives padded, and core rejects it) — trim-pinning test reversed in place. P2b —
+  legacyPagePrefixOf REMOVED (no second path); store-aware isLegacyRegistryDocId (docs)
+  + isLegacyEntryBlobKey (blobs); cross-store decoy pinned, --remote path verified
+  identical. Tripwire ran ENGAGED for the first time (frozen exports unchanged); all
+  gates direct exit codes 0. Reviewer verdict: CONFIRMED, no new findings. Pushed;
+  PR #88 awaits re-review/merge.
