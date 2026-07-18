@@ -1,7 +1,7 @@
 ---
 type: Task
 title: Pin non-ASCII doc ids through the name-status parsers (U3b review follow-up)
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   RE-SCOPED to post-carve reality (2026-07-18 verification): the original three
@@ -16,7 +16,8 @@ description: >-
   Small unit now; the quotepath=off wrapper invariant continues to carry the
   behavior meanwhile.
 actor: mike/claude
-timestamp: '2026-07-18T15:42:49.629Z'
+assignee: mike/claude
+timestamp: '2026-07-18T15:46:10.303Z'
 ---
 From the U3b review rounds (builder finding, reviewer-confirmed): three merged
 name-status parsers — stageAndCommit's staged diff (git.ts:400), changesSince's cursor
