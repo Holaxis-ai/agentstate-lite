@@ -13,9 +13,9 @@
 // prepended onto the id unless the id already carries it. The engine (`writeDoc`) itself performs NO
 // kind validation — this command is the one place that reads the registry and decides.
 //
-// Round-review finding: `new` is CREATE-ONLY, not create-or-overwrite. It used to call `writeDoc`
-// unconditionally, so `new` on an id that already carries a document silently REPLACED its
-// title/body/every field with the freshly scaffolded ones — the same silent-data-loss class F1
+// `new` is create-only, not create-or-overwrite. Calling `writeDoc` unconditionally on an existing
+// id would replace its title/body/every field with the freshly scaffolded ones — the same
+// silent-data-loss class F1
 // closed for `doc write`. It now writes with the engine's expect-absent compare-and-swap
 // (`expectedVersion: null`, the same create-race-closing pattern the CLI's recipe machinery
 // (`applyRecipe`) uses): the write succeeds only if the target id does not yet exist, and a

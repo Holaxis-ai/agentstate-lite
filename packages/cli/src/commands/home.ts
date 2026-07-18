@@ -26,14 +26,14 @@
 // sync/session-start's pull steps write. The RENDER's OFFLINE GUARANTEE is preserved: the default
 // board loader spawns git for LOCAL-ONLY plumbing (rev-parse/status against the checkout on disk —
 // never fetch/pull/push, no network I/O of any kind), reuses sync.ts's exported
-// `resolveBundleKey` (THE one state-key derivation — cache-per-clone review advisory (a)), and is
+// `resolveBundleKey` (the one state-key derivation, preserving cache-per-clone identity), and is
 // double-guarded like the summarizer: any throw (git missing, no repo, unreadable state) degrades
 // to "no board block", never a failed session. The live "did a pull just happen / fail" signal is
 // NEVER probed here — `session-start` (the pull-then-render hook command) passes its own pull
 // outcome IN-PROCESS via `HomeDeps.boardPull`; a plain `home` render labels the cache with
 // `as_of` instead of guessing at network state.
 //
-// OPPORTUNISTIC FRESHNESS (tasks/sync-opportunistic-pull — the ONE deliberate amendment to "home
+// OPPORTUNISTIC FRESHNESS — the one deliberate amendment to "home
 // never touches the network"): a plain LOCAL `home` invocation — a board-READING command — first
 // runs autopull.ts's `maybeAutoPull`, the silent, time-boxed, ff-only, detection-gated stale-cache
 // pull every board-reading command shares. Everything the old guarantee protected still holds
@@ -99,7 +99,7 @@ export interface HomeRow {
 /** A compact, cheap summary of the CWD's bundle — the home dashboard's content (AXI §4 aggregates). */
 export interface BundleSummary {
   /**
-   * Human display name (tasks/bundle-display-name): THE derivation in `bundle-name.ts` —
+   * Human display name from the one derivation in `bundle-name.ts` —
    * explicit `docs/bundle` doc, else the conventional dir's PARENT folder, else the root
    * basename — so a conventional bundle identifies its PROJECT, not the `.agentstate-lite`
    * folder every project shares. Optional: injected test fakes may omit it (block omits the
@@ -420,8 +420,8 @@ export function hookUpdateNote(inv: string): string {
 }
 
 /**
- * The actor phrase, built from the ACTUAL actors of the visible rows (cursor-honesty adjudication:
- * never assume one teammate) — unique, first-appearance order: "mike", "mike and sara",
+ * The actor phrase is built from the actual actors of visible rows rather than assuming one
+ * teammate — unique, first-appearance order: "mike", "mike and sara",
  * "mike, sara and jo".
  */
 export function actorPhrase(rows: Array<Pick<AwarenessDeltaRow, "actor">>): string {
@@ -494,8 +494,7 @@ export function buildBoardBlock(
   // Freshness labeling: only a render straight after a SUCCESSFUL pull (pull.refreshed — the
   // pull actually rewrote the cache) may skip it. Everything else — plain home, an offline pull,
   // AND a local-state swallow (diverged/dirty: offline:false but the cache was NOT refreshed) —
-  // must label the cache's age (review round: the old `!pull || pull.offline` condition let the
-  // swallowed case masquerade as fresh).
+  // must label the cache's age; otherwise a swallowed local-state result can masquerade as fresh.
   if (status.cache && !pull?.refreshed && Object.keys(rec).length > 0) {
     rec.as_of = status.cache.updatedAt;
   }
@@ -521,7 +520,7 @@ export async function defaultLoadBoardStatus(dir?: string): Promise<BoardStatus 
     // Retarget when sitting INSIDE the board worktree (exactly where an agent lands after
     // `doc write --dir .agentstate-lite`) — otherwise the worktree reads as its OWN repo top,
     // `<board>/.agentstate-lite` doesn't exist, and the shared refs would misreport the live
-    // board as "unprovisioned" (sync round-2 finding 2's shape, reused via its exported fix).
+    // board as "unprovisioned".
     const top = repoTopLevel(retargetBoardInterior(dir ?? process.cwd()));
     if (!top) return null;
     const boardPath = path.join(top, BUNDLE_DIR);
@@ -648,11 +647,11 @@ export function buildHomeView(
     view.bundle = bundleBlock;
   } else if (summary) {
     const bundleBlock: Record<string, unknown> = {};
-    // Identity first (tasks/bundle-display-name): the derived project name, so a conventional
+    // Identity first: the derived project name, so a conventional
     // `.agentstate-lite` bundle reads as ITS project, not as the folder every project shares.
     if (summary.name) {
       bundleBlock.name = summary.name;
-      // Progressive disclosure (PR #67 review): when the name is merely DERIVED from the parent
+      // Progressive disclosure: when the name is merely derived from the parent
       // folder, one line teaches the explicit override — the only shipped surface that names the
       // exact command. Home-only (the ui config stays machine-clean), and only for rung (b), so
       // an explicitly named bundle never sees it.

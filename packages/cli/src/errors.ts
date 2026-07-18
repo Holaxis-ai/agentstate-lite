@@ -50,7 +50,7 @@ export type CliErrorCode =
    */
   | "NO_UPSTREAM"
   /**
-   * sync U1 (adjudication B): another git process holds the repository lock (`index.lock` exists —
+   * Another git process holds the repository lock (`index.lock` exists —
    * a concurrent sync, or the user's own git mid-operation). Exit 1 with `details.retryable: true`
    * — a STRUCTURED RETRY envelope, never a raw git strand on stdout.
    */

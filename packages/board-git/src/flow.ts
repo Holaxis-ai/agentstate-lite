@@ -135,7 +135,7 @@ export function boardBranchRemnant(top: string): BoardBranchRemnant {
  * A {@link ResolvedConflict} annotated with whether the kept-upstream version actually LANDED at
  * HEAD (false = the teammate's side DELETED the file, so keep-upstream meant removing it). The
  * one `cat-file -e HEAD:<path>` probe per conflict happens in {@link annotateLanded}; the CLI's
- * message builder, row projector, and help-chain pick (review fix 2) all read the SAME answer —
+ * message builder, row projector, and help-chain pick all read the same answer —
  * the help chain must never name a doc whose file is gone (`doc update` on it fails NOT_FOUND).
  */
 export type LandedConflict = ResolvedConflict & { landed: boolean };

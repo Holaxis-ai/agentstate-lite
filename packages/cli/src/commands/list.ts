@@ -7,7 +7,7 @@
 // ({ id, type, title, timestamp }) so TOON renders them as a compact scannable table; the full
 // frontmatter + body of any row is available via `agentstate-lite doc read <id>`.
 //
-// Tier-1 kind capabilities (plans/tier1-kind-capabilities.md), two GENERIC (no per-kind code) additions:
+// Two generic kind capabilities (no per-kind code):
 //
 //   - Kind-aware columns (Fork A): a `--type <X>`-scoped query, with NO `--fields` override, where a
 //     loaded kind convention governs `X`, projects `{id, title, ...kind's declared fields}` instead of
@@ -21,7 +21,7 @@
 //     kind, any field), not CLI-side — so it rides the engine's one filter locus over --remote for
 //     free, same as the existing type/tags facets (applied to pushed-down heads, never bodies).
 //
-// tasks/list-field-sets.md + tasks/status-terminal-declaration.md (field-query semantics unit):
+// Field-query semantics:
 //
 //   - Set membership on `--field`: a COMMA in the value is OR-within-that-field (`status=todo,
 //     in_progress`), AND unchanged across different `--field` flags/keys. A single-member value (no
@@ -125,7 +125,7 @@ export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Pro
 
   // Fork B: --field key=value (repeatable, ANDed across different keys). Split on the FIRST "="
   // (a deliberate value containing "=" survives); an empty key, or a token with no "=" at all, is
-  // USAGE (exit 2). tasks/list-field-sets.md: a COMMA in the value is now the SET-MEMBERSHIP
+  // USAGE (exit 2). A comma in the value is the set-membership
   // separator (OR within that one field) — the value is split on "," into members (each taken
   // verbatim, not trimmed, same as before a comma existed, so a deliberately spaced member
   // survives untouched); an EMPTY member (--field status=todo,,done, or a leading/trailing comma)
@@ -223,7 +223,7 @@ export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Pro
     return registryCache;
   };
 
-  // tasks/list-field-sets.md: OR-within-field post-filter for every multi-member --field (comma
+  // OR-within-field post-filter for every multi-member --field (comma
   // sets). AND across fields (a doc must satisfy EVERY field's set), each field itself OR'd across
   // its declared members. Reuses core's OWN exact-match predicate (`matchesFilter`) per candidate
   // member instead of a second value-coercion implementation — reader-side only, no engine/wire
@@ -232,7 +232,7 @@ export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Pro
     docs = docs.filter((d) => members.some((m) => matchesFilter(d, { fields: { [field]: m } })));
   }
 
-  // tasks/status-terminal-declaration.md: --open excludes a doc whose OWN kind declares a terminal
+  // --open excludes a doc whose own kind declares a terminal
   // set (`kind.fields.terminal`) that its current frontmatter matches (`isTerminal`) — purely
   // declaration-driven: an ungoverned type, a governed type with no terminal declaration, or a doc
   // missing the field are all kept (not-terminal is the safe default). A bundle where NO kind
@@ -342,15 +342,14 @@ export async function list(argv: string[], deps: Partial<ListCliDeps> = {}): Pro
     );
   }
   // --open on a bundle with zero terminal declarations is a structural no-op (nothing to exclude) —
-  // said explicitly so the flag is never silently meaningless (tasks/status-terminal-declaration.md).
+  // said explicitly so the flag is never silently meaningless.
   if (openNoopReason) help.push(openNoopReason);
-  // Discovery hint for the kind-column projection (Fork A): the felt friction this closes is an
+  // Discovery hint for the kind-column projection: the felt friction this closes is an
   // agent typing `--fields status,priority` on every board scan because nothing advertises that
   // `--type Task` projects those columns automatically. When a MINIMAL-schema result turns out to
   // be uniformly ONE governed kind with projectable fields, say so — ONE help line, never a
-  // schema change (a data-dependent projection was considered and REJECTED: output columns must
-  // key on the INVOCATION, not on what the bundle happens to contain today — see
-  // plans/list-hint-arity.md decision 1). The registry load is gated behind uniformity + the
+  // schema change: output columns key on the invocation, not on current bundle contents. The
+  // registry load is gated behind uniformity and the
   // absence of --type/--fields, so mixed/unscoped scans (and every conventions-free bundle) pay
   // nothing; when it fires over --remote it costs one thin conventions/ round-trip.
   if (!kindCols && !fieldsFlagGiven && !filter.type && docs.length > 0) {

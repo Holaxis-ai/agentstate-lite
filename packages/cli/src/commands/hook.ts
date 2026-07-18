@@ -3,8 +3,8 @@
 // Since sync-verb §U4 the installed hook runs `<bin> session-start` — ONE subcommand doing a
 // time-boxed best-effort board pull and THEN rendering the home view (identity + auth + bundle
 // dashboard + board awareness) as ambient context, so an agent orients — with its teammates'
-// board changes already pulled — before its first action (AXI §7; adjudication E: a single
-// unconditional hook command, never two entries or a compound shell string).
+// board changes already pulled — before its first action. It is a single unconditional hook
+// command, never two entries or a compound shell string.
 //
 // MULTI-RUNTIME (AXI §7 "default app targets"): install writes a real SessionStart hook for ALL of
 //   • Claude Code   → <base>/.claude/settings.json           (SessionStart command hook)

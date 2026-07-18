@@ -26,10 +26,8 @@
  * and wrong domain-wise. Every consumer's `decide` MUST derive its ENTIRE decision — including
  * re-checking any mutable invariant it depends on — from the `state` it was just handed, not
  * from anything captured before the loop began; the primitive cannot enforce this for a
- * caller (see `kind.ts`'s `buildCandidate`, which re-verifies `governs` on every attempt for
- * exactly this reason — a review finding on the first version of this fix, which re-spliced
- * field lists per attempt but never re-checked that the convention still governed the kind
- * being edited).
+ * caller. For example, `kind.ts`'s `buildCandidate` re-verifies `governs` on every attempt; merely
+ * re-splicing field lists would not prove that the convention still governs the kind being edited.
  */
 
 import { VersionConflict } from "./versioning.js";

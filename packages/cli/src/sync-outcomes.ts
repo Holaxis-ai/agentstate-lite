@@ -68,7 +68,7 @@ export function inTreeNoBasisNote(reason: InTreeNoBasisReason, ref?: string): st
 
 // ── home's board-block line templates (home.ts re-exports these names) ────────
 
-/** Pinned moment-(e) strings (research/sync-verb-ux-review (e); machine-honest per adjudication). */
+/** Test-pinned, machine-honest home board-status strings. */
 export const BOARD_UP_TO_DATE = "up to date";
 export const BOARD_OFFLINE_NOTE = "board sync offline — showing last known state";
 

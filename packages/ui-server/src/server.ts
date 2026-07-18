@@ -1,13 +1,12 @@
-// The reusable loopback UI node:http listener: ONE server, same origin, either mode (plans/ui-v1.md
-// rev 3.2). Every request passes the Host allowlist, then the token/cookie session check, then
+// The reusable loopback UI node:http listener: one server, same origin, either mode. Every request
+// passes the Host allowlist, then the token/cookie session check, then
 // (for a mutation) the `X-Requested-With` check, before it ever reaches the router / proxy /
 // asset layer — see each helper module's own doc comment for why each gate exists.
 //
 // Reuses the server package's exported node:http adapter ({@link requestFromIncomingMessage} /
-// {@link writeResponseToServerResponse}) rather than forking Request/Response marshaling — the
-// SMALL ADDITIVE surface `plans/ui-v1.md` rev 3.2 calls for instead of a second implementation.
+// {@link writeResponseToServerResponse}) so Request/Response marshaling has one implementation.
 //
-// PAGES SPIKE (tasks/ui-pages-spike) adds a SECOND privilege tier alongside the data API: a
+// Bundle Views add a second privilege tier alongside the data API: a
 // PAGE-BYTES route (`/__page/<nonce>`) that serves a bundle page's static HTML to a sandboxed,
 // opaque-origin iframe, gated by a per-page nonce the session-authed shell mints (`POST
 // /__page/mint`) — NOT by the session token, so a page structurally cannot reach `/v0/*`. Plus an
@@ -25,7 +24,7 @@ import { PageNonceRegistry, pageCsp, PAGE_BLOB_PREFIXES } from "./pages.js";
 import { SseHub } from "./events.js";
 import { startWatcher, type ChangeEvent, type WatcherHandle } from "./watch.js";
 
-/** No `--host` in v1 (rev 3.2: "a network-exposed key proxy is a different feature with its own review") — always loopback. */
+/** Always loopback: a network-exposed key proxy is a different feature and security boundary. */
 const HOST = "127.0.0.1";
 
 /** The single-bundle reference router's bundle segment (mirrors the SPA client's `BUNDLE`). */
@@ -121,7 +120,7 @@ async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonc
   if (!key) return pageError(403, "This page link is unknown or has expired. Reopen the page from the launcher.");
   // Re-verify registration at SERVE time, not only at mint time: deleting/retargeting a page's
   // registry doc revokes its live nonces immediately, instead of leaving a still-serving window
-  // for the rest of the nonce TTL (tasks/ui-pages-spike P1 — doc-lifecycle revocation).
+  // for the rest of the nonce TTL.
   let registered: Set<string>;
   try {
     registered = await registeredPageEntries(options);
@@ -155,7 +154,7 @@ async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonc
  * projection paginated to exhaustion. Both queries take ONE type, so the accepted names are
  * fetched separately and merged.
  *
- * Failure policy (adjudicated in review): ANY per-type query failure fails the WHOLE enumeration
+ * Any per-type query failure fails the whole enumeration
  * (this function throws) — never a partial set. A partial set would let mint/serve act on a
  * half-read registry while launcher discovery (whose own two-query merge already all-or-nothing
  * fails) reports an error: the two surfaces must agree, and a fail-closed error beats silently
@@ -199,7 +198,7 @@ async function registeredPageEntries(options: UiServerOptions): Promise<Set<stri
 }
 
 /**
- * Mint a nonce for the requested (session-authed) page key. Confinement (tasks/ui-pages-spike A1):
+ * Mint a nonce for the requested session-authenticated page key. Confinement:
  * a nonce may ONLY be minted for a key that (a) lives under an accepted page-blob prefix AND (b) is
  * the declared `entry` of a `type: View` (or legacy `type: Page`) registry doc. This is what stops the nonce mechanism from
  * being turned into a read-anything-blob primitive (e.g. minting `secrets/creds.bin`) even by a

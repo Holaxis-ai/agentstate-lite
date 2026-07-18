@@ -253,11 +253,9 @@ export interface DocCliDeps {
  * True when fd 0 (stdin) is a real data source — a FIFO (a shell pipe), a regular file (input
  * redirection, `< file`), or a connected socket — as opposed to an interactive TTY, a character
  * device (e.g. `/dev/null`, or the redirected-but-dataless stdin many agent harnesses hand a spawned
- * process), or an fd that can't be fstat'd at all. `process.stdin.isTTY` alone is NOT sufficient: in
- * an agent harness stdin is commonly a character device with `isTTY === undefined`, which the old
- * `defaultReadStdin` read as "there's a pipe, consume it" — reading `""` and handing the F1 guard an
- * EXPLICIT empty body source, bypassing it in exactly the harness shape a fresh-agent reviewer
- * reproduced live.
+ * process), or an fd that can't be fstat'd at all. `process.stdin.isTTY` alone is not sufficient:
+ * agent harnesses commonly supply a character device with `isTTY === undefined`, which otherwise
+ * looks like an empty pipe and bypasses the empty-body guard.
  *
  * `isSocket()` is included alongside `isFIFO()`/`isFile()` for a platform-specific reason found while
  * building this fix's own integration test: on macOS (unlike Linux), libuv implements Node's
@@ -286,7 +284,7 @@ export async function defaultReadStdin(): Promise<string | undefined> {
 }
 
 /**
- * Occurrence-aware drop detection (review round 3): core deliberately allows MULTIPLE links from the
+ * Occurrence-aware drop detection: core deliberately allows multiple links from the
  * same source to the SAME target with DIFFERENT text — link text is the only relationship-type signal
  * OKF's untyped edges carry (see `backlinks`/`link show --text`), so `[supports](b.md)` and
  * `[contradicts](b.md)` in one doc are two distinct, independently meaningful edges, not duplicates. A
@@ -351,12 +349,12 @@ function computeDroppedLinks(existingLinks: Link[], nextLinks: Link[]): Link[] {
  * occurrence-aware check still catches a same-target partial drop that a bare target-only `some()`
  * would miss. Over-firing on relabeling would
  * train agents to reflexively pass `--replace-links`, which hollows the guard for the drop case that
- * actually matters (review adjudication, round 2). `replaceLinks` (the caller's `--replace-links` flag)
+ * actually matters. `replaceLinks` (the caller's `--replace-links` flag)
  * opts into a real drop deliberately — no separate `link remove` needed, since a full-body replace
  * already performs removal.
  *
- * Called BEFORE any write happens — see the P1 review fix (round 3): `doc write`'s caller now couples
- * this guard's read to a compare-and-swap write (`mutateDoc`'s `coupleRead`) so a concurrent writer
+ * Called before any write happens. `doc write` couples this guard's read to a compare-and-swap
+ * write (`mutateDoc`'s `coupleRead`) so a concurrent writer
  * landing between the read this guard evaluates and the eventual write can never be silently
  * clobbered — a refusal here always leaves the stored doc byte-for-byte unchanged, and a retry after a
  * conflict re-evaluates against the doc's CURRENT state, not a stale snapshot.

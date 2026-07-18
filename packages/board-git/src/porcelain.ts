@@ -1,17 +1,16 @@
 /**
- * `porcelain.ts` — the board's git PORCELAIN layer (U1, plans/sync-verb-implementation §U1;
- * relocated from the CLI's `git.ts` by board-git A1).
+ * `porcelain.ts` — the board's git porcelain layer.
  *
- * ONE spawn wrapper ({@link runGit}) enforces the plan's "global porcelain invariants" on every
+ * ONE spawn wrapper ({@link runGit}) enforces the global porcelain invariants on every
  * invocation; the exported ops (provision, stage-and-commit, fetch-rebase, push, ff-pull,
  * unpushed-count, stale-rebase detect/abort) are the ONLY vocabulary the CLI's sync command
- * (U3a) and SessionStart pull (U4) speak (the ref-to-ref doc diff family rides them from
- * `diff.ts`). `@agentstate-lite/core` never learns git exists — this package CONSUMES core (its
+ * and SessionStart pull speak (the ref-to-ref doc diff family rides them from `diff.ts`).
+ * `@agentstate-lite/core` never learns git exists — this package CONSUMES core (its
  * one frontmatter parser, its one path/reserved-file vocabulary) and is consumed by the CLI.
  *
  * Invariants (every call):
  *   - `git -C <dir>` with GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE SCRUBBED from the environment
- *     (inherited values override `-C` — reproduced by the review panel).
+ *     because inherited values override `-C`.
  *   - GIT_TERMINAL_PROMPT=0 and GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=10' — the
  *     no-hang class is killed at the wrapper, not per call site.
  *   - GIT_EDITOR/GIT_SEQUENCE_EDITOR=true on rebase ops (nothing interactive can open).
@@ -28,9 +27,9 @@
  *
  * CONFLICT BOUNDARY: {@link fetchRebase} DETECTS a same-doc conflict — collects the conflicted ids
  * via `diff --name-only --diff-filter=U` — and `git rebase --abort`s cleanly (ZERO data movement;
- * U3a's interim shape, kept for any consumer that must never move data). The CONVERGING mechanic
- * (U3b) is {@link fetchRebaseResolving}: keep the upstream version, export the local version, and
- * COMPLETE the rebase — the full-sync path's op since U3b.
+ * kept for any consumer that must never move data). The converging mechanic is
+ * {@link fetchRebaseResolving}: keep the upstream version, export the local version, and complete
+ * the rebase.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -63,8 +62,8 @@ export const BOARD_REF = `${BOARD_REMOTE}/${BOARD_BRANCH}`;
 export const BUNDLE_DIR = ".agentstate-lite";
 
 /**
- * Worktree-portability config forced on every worktree-CREATING/-REPAIRING invocation (field
- * finding 2026-07-08): git >= 2.48's `worktree.useRelativePaths` writes BOTH the linked worktree's
+ * Worktree-portability config forced on every worktree-creating or repairing invocation: git >=
+ * 2.48's `worktree.useRelativePaths` writes both the linked worktree's
  * `.git` file and the main repo's `worktrees/<name>/gitdir` registration as paths RELATIVE to each
  * other, instead of the pre-2.48 default of absolute paths on both sides. Since the board worktree
  * always lives INSIDE the repo it belongs to (`<repoTop>/.agentstate-lite`), a relative pointer is
@@ -98,8 +97,8 @@ export interface RunOptions {
   /** True for rebase ops: forces GIT_EDITOR/GIT_SEQUENCE_EDITOR=true so nothing interactive opens. */
   rebase?: boolean;
   /**
-   * ssh ConnectTimeout override, in seconds (default 10). U4's SessionStart pull passes 5 — the
-   * plan's "connect ≤ 5s" budget — so a black-holed ssh host is abandoned inside the pull budget
+   * ssh ConnectTimeout override, in seconds (default 10). SessionStart passes 5 so a black-holed
+   * ssh host is abandoned inside the pull budget
    * rather than eating it whole. The spawnSync `timeoutMs` kill is the HARD enforcement either
    * way (https remotes never consult ssh); this only makes the ssh case fail faster and cleaner.
    */
@@ -133,7 +132,7 @@ function gitEnv(rebase: boolean, connectTimeoutSeconds = 10, indexFile?: string)
  * inspects `status`). A spawn-level failure (no git binary, fired timeout) can never be a
  * legitimate outcome, so it THROWS the classified `BoardGitError` (GIT_MISSING / TRANSIENT) directly.
  *
- * `-c core.quotepath=off` is a WRAPPER INVARIANT (U3b review fix 1): with git's default
+ * `-c core.quotepath=off` is a wrapper invariant: with git's default
  * `core.quotepath=true`, any non-ASCII path (e.g. `tasks/café.md`) comes back C-QUOTED in
  * diff/status output (`"tasks/caf\303\251.md"`, surrounding quotes included) — and every
  * downstream parse that feeds the parsed string back into git as a path/pathspec (`show :3:<p>`,
@@ -157,7 +156,7 @@ export interface GitRunBytesResult {
 }
 
 /**
- * The ONE spawn site (U3b round-2 review, REQUIRED 1): every git invocation — text or binary —
+ * The one spawn site: every git invocation — text or binary —
  * flows through here, so the wrapper invariants (scrubbed env, locale pin, quotepath off, no-hang
  * timeouts, non-interactive editors) hold for both. `stdout` is returned as a Buffer of the EXACT
  * bytes git produced; {@link runGit} is the utf8-decoding projection every text parser rides.
@@ -166,7 +165,7 @@ export interface GitRunBytesResult {
  * string silently rewrites invalid sequences to U+FFFD.
  */
 export function runGitBytes(dir: string, args: string[], opts: RunOptions = {}): GitRunBytesResult {
-  // TIME-BOX FLOOR (PR#24 review, MEDIUM — empirically verified): Node's spawnSync treats
+  // Time-box floor: Node's spawnSync treats
   // `timeout: 0` as NO timeout at all (a zero waits for the child indefinitely), and a
   // synchronous spawn cannot be preempted by any timer — so a caller whose sliced budget
   // decayed to 0 between its own guard and this spawn would HANG the exact path the budget
@@ -317,8 +316,7 @@ function rebaseWasFromBoardBranch(boardPath: string): boolean {
  * detached HEAD for an unrelated reason (no rebase in progress at all), would otherwise be
  * misreported as a successful "repaired" board checkout — and every downstream sync step
  * (`stageAndCommit`, `fetchRebaseResolving`, `push`) would then operate against content that was
- * NEVER the shared board (cold-review finding, confirmed live via two probes: a sidecar branch
- * checked out in the worktree, and a plain non-rebase detached HEAD). This is genuinely on
+ * never the shared board. This is genuinely on
  * `board` when EITHER the branch is attached and literally `board`, OR HEAD is detached BECAUSE
  * of a wedged rebase that was itself started FROM `board` ({@link rebaseWasFromBoardBranch}) — any
  * other detached state (or any other named branch) is NOT accepted, and falls through to refusal.
@@ -356,7 +354,7 @@ export type ProvisionOutcome =
    */
   | { kind: "provisioned"; boardPath: string; source: "local" | "remote" }
   /**
-   * A pre-existing worktree carrying STALE pointers (the sandbox/mount-move field finding —
+   * A pre-existing worktree carrying stale pointers after a sandbox or mount move —
    * `.git` file / `worktrees/<name>/gitdir` still name the OLD absolute path) was structurally
    * repaired via `git worktree repair`. Distinct from `already`: a repair IS a git mutation
    * (rewrites the pointer files) and must be ANNOUNCEABLE, never folded into the silent-no-op
@@ -393,8 +391,8 @@ export function hasWorktreeSignature(dir: string): boolean {
 }
 
 /**
- * Attempt `git worktree repair` on a worktree with a stale/mismatched `.git` file (empirically
- * verified live against the field finding: after the enclosing repo is moved/remounted, this
+ * Attempt `git worktree repair` on a worktree with a stale/mismatched `.git` file. After the
+ * enclosing repo is moved or remounted, this
  * rewrites BOTH the linked worktree's `.git` file and the main repo's `worktrees/<name>/gitdir`
  * registration to agree again — and, with {@link RELATIVE_WORKTREE_CONFIG}, to RELATIVE paths, so
  * a capable git converts an inherited absolute setup while repairing it). Run from the repo TOP
@@ -550,15 +548,15 @@ export function boardWindowGuidance(top: string, originConfigured = true): Board
 }
 
 /**
- * The PRE-SHARE-WINDOW refusal (U5 fix round, review MEDIUM 3): the board branch already exists
+ * The pre-share-window refusal: the board branch already exists
  * on the remote, but THIS clone's checked-out branch still TRACKS the folder (the old committed
  * copy — the folder-removal PR hasn't merged, or this clone hasn't pulled it). A bare "move it
- * aside" is DANGEROUS in exactly this state (it hand-builds the overlay hazard — reviewer-proven);
+ * aside" is dangerous in exactly this state because it hand-builds the overlay hazard;
  * the only safe advice is pull-first. ONE factory so `provisionBoardWorktree` and channel
  * detection (`channel.ts`) stay verbatim-identical, mechanically.
  *
  * Two truth arms refine the default wording without changing the refusal semantics:
- *  - `originConfigured: false` (board-git PR C, carried from B's review): the only board-branch
+ *  - `originConfigured: false`: the only board-branch
  *    evidence is a PREVIOUSLY FETCHED `origin/board` ref while no `origin` remote is configured
  *    any more — the default wording would falsely claim the branch "exists on origin", and its
  *    bare `git pull` help cannot work with no remote to pull from;
@@ -623,7 +621,7 @@ export function existingDirRefusal(reason: ExistingDirRefusalReason, boardPath: 
  * success. The `--no-track` add reproduces the no-tracking-config state a shared board can arrive
  * in — which is exactly why every other op uses EXPLICIT `origin/board` refs.
  *
- * WORKTREE PORTABILITY (2026-07-08 field finding): a fresh `add` writes RELATIVE pointers
+ * Worktree portability: a fresh `add` writes relative pointers
  * ({@link RELATIVE_WORKTREE_CONFIG}, git >= 2.48; silently ignored on older git — no version
  * probing). And a pre-existing NON-EMPTY directory that carries a worktree signature (a `.git`
  * FILE — {@link hasWorktreeSignature}) is NOT automatically foreign: it may be a genuine board
@@ -768,7 +766,7 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
         // fixing POINTERS, not un-wedging a rebase (a worktree ALSO wedged mid-rebase stays on a
         // DETACHED HEAD until healed — the heal-ordering edge, the caller re-runs the entry heal
         // once it sees `repaired`) — but a bare pointer-resolves check is NOT sufficient proof this
-        // is genuinely the board checkout at all (cold-review finding: `git worktree repair` is a
+        // is genuinely the board checkout at all (`git worktree repair` is a
         // safe no-op on an ALREADY-healthy worktree regardless of which branch it's on, so a
         // sidecar worktree someone genuinely uses for something else, or one merely left on a
         // plain detached HEAD, would otherwise be silently misreported as "repaired").
@@ -832,7 +830,7 @@ export function provisionBoardWorktree(dir: string, budget: NetworkBudgetOptions
   return { kind: "provisioned", boardPath, source: hasLocal && ffAdopted !== true ? "local" : "remote" };
 }
 
-// ── stale-rebase self-heal primitives (consumed at SYNC ENTRY by U3a, adjudication C) ─
+// ── stale-rebase self-heal primitives consumed at sync entry ───────────────────
 
 /** True when the board worktree is wedged mid-rebase (a crash/kill left `rebase-merge` behind). */
 export function detectStaleRebase(boardPath: string): boolean {
@@ -853,8 +851,8 @@ export type DocVerb = "added" | "updated" | "deleted";
 
 /**
  * One board doc's change, ENRICHED from its own frontmatter. `actor` is read PER-DOC FROM
- * FRONTMATTER — never from a commit subject or git author (adjudication F: commit metadata is a
- * human mirror, not the attribution source).
+ * FRONTMATTER — never from a commit subject or git author, because commit metadata is a human
+ * mirror rather than the attribution source.
  */
 export interface DocChange {
   docId: string;
@@ -1170,7 +1168,7 @@ export function snapshotBundleCommit(top: string, bundlePath: string): BundleSna
   }
 }
 
-// ── fetch + rebase (conflict = DETECT ONLY, adjudication A) ───────────────────
+// ── fetch + rebase (conflict = detect only) ───────────────────────────────────
 
 export type FetchRebaseOutcome =
   | { status: "clean" }
@@ -1184,7 +1182,7 @@ export type FetchRebaseOutcome =
 /**
  * `git fetch --prune origin` then `git rebase origin/board` (explicit ref; editors forced non-interactive).
  * On conflict: collect `diff --name-only --diff-filter=U`, `rebase --abort`, and REPORT — zero
- * data movement in U1 (the converging mechanic is U3b). Any other rebase failure (it should not
+ * data movement. Any other rebase failure (it should not
  * happen on the sync path — full sync commits first, so the rebase starts clean) is classified
  * and thrown.
  */
@@ -1204,7 +1202,7 @@ export function fetchRebase(boardPath: string): FetchRebaseOutcome {
   throw classifyGitError(failureOf(["rebase", BOARD_REF], r));
 }
 
-// ── fetch + rebase, CONVERGING (U3b, plans/sync-verb-implementation §U3b) ─────
+// ── fetch + rebase, converging ────────────────────────────────────────────────
 
 /** One conflicted file the converging rebase resolved (keep-upstream + export-local). */
 export interface ResolvedConflict {
@@ -1213,20 +1211,20 @@ export interface ResolvedConflict {
   /** The doc id for a concept doc; the repo-relative path VERBATIM for a reserved/non-doc file. */
   entry: string;
   /**
-   * True when `entry` is a concept-doc id — the AUTHORITATIVE doc-vs-raw discriminator (derived
-   * from the path shape at resolution time, round-2 REQUIRED 2). Consumers must branch on THIS,
+   * True when `entry` is a concept-doc id — the authoritative doc-vs-raw discriminator derived
+   * from the path shape at resolution time. Consumers must branch on this,
    * never re-derive from the entry string (a dotted doc id like `notes/v1.2` is
    * indistinguishable from a raw path by string shape alone).
    */
   isDoc: boolean;
   /**
-   * Absolute path of the exported LOCAL version — the FULL-FIDELITY artifact (the blob's exact
-   * bytes, round-2 REQUIRED 1) — or null when the local side had no content to save (the local
+   * Absolute path of the exported local version — the full-fidelity artifact containing the
+   * blob's exact bytes — or null when the local side had no content to save (the local
    * commit DELETED the file — no stage-3 blob exists).
    */
   exportPath: string | null;
   /**
-   * Absolute path of the exported LOCAL version's BODY ONLY (round-2 REQUIRED 3): the artifact
+   * Absolute path of the exported local version's body only: the artifact
    * the reconcile chain's `doc update <id> --body-file <file>` can consume LITERALLY —
    * `--body-file` treats its input as a body, so feeding it the full export would nest the YAML
    * frontmatter into the body. Written only for a concept doc whose local blob parses as OKF
@@ -1260,16 +1258,15 @@ const MAX_REBASE_STOPS = 1000;
 
 /**
  * `git fetch --prune origin` then `git rebase origin/board`, RESOLVING same-doc conflicts with the
- * CONVERGING mechanic (U3b — replaces U3a's detect-and-abort interim guard on the full-sync path;
- * {@link fetchRebase} keeps its detect-only shape for any consumer that must never move data).
+ * converging mechanic ({@link fetchRebase} keeps its detect-only shape for consumers that must
+ * never move data).
  *
  * WARNING — rebase INVERTS ours/theirs. Replaying local commits ONTO origin/board makes
  * HEAD/stage-2 ("ours") the UPSTREAM version and stage-3 ("theirs") YOUR local version. That
  * inversion is why every step below uses EXPLICIT refs (`origin/board`, `:3:`) and NEVER
  * `--ours`/`--theirs`.
  *
- * The exact verified sequence (research/sync-verb-review Round 2; test-pinned), per conflicted
- * `<path>`:
+ * The test-pinned sequence for each conflicted `<path>`:
  *   1. `git show :3:<path> > <export-file>` — FIRST (`:3:` = theirs-in-rebase = the LOCAL
  *      version → this is "yours saved").
  *   2. `git checkout origin/board -- <path>` — keep the UPSTREAM (teammate's) version.
@@ -1286,9 +1283,9 @@ const MAX_REBASE_STOPS = 1000;
  * On ANY unexpected failure mid-loop the rebase is ABORTED before rethrowing — the worktree is
  * never left mid-state on any path.
  *
- * Export files land at `<exportDir>/<relPath>` — the blob's EXACT BYTES (round-2 REQUIRED 1) —
- * with a `<relPath minus .md>.body.md` body-only companion for parseable concept docs (round-2
- * REQUIRED 3, the `doc update --body-file` input). Created 0700/0600; the caller passes a
+ * Export files land at `<exportDir>/<relPath>` with the blob's exact bytes and a
+ * `<relPath minus .md>.body.md` body-only companion for parseable concept docs. The companion is
+ * the `doc update --body-file` input. Created 0700/0600; the caller passes a
  * per-bundle dir OUTSIDE the worktree (see cursor.ts `syncExportsDir`).
  */
 export function fetchRebaseResolving(boardPath: string, exportDir: string): FetchRebaseResolvingOutcome {
@@ -1303,7 +1300,7 @@ export function fetchRebaseResolving(boardPath: string, exportDir: string): Fetc
   if (r.status === 0) return { status: "clean" };
   if (!detectStaleRebase(boardPath)) throw classifyGitError(failureOf(["rebase", BOARD_REF], r));
 
-  // `-z` NUL framing (U3b review fix 1): the conflict list is the one parse whose corruption
+  // `-z` NUL framing: the conflict list is the one parse whose corruption
   // means a STUCK LOOP (a mis-parsed path fails `show :3:`/`checkout`/`rm` on every iteration),
   // so it must be robust even against names the tab/newline-split parsers can't express — NUL
   // output is raw and unquoted BY DEFINITION, independent of any quotepath setting.
@@ -1332,7 +1329,7 @@ export function fetchRebaseResolving(boardPath: string, exportDir: string): Fetc
       }
       for (const relPath of conflicted) {
         // 1. EXPORT yours FIRST: `:3:` = theirs-in-rebase = the LOCAL version (the inversion).
-        // BYTES, not a utf8 string (round-2 REQUIRED 1): the export must round-trip the blob
+        // Bytes, not a utf8 string: the export must round-trip the blob
         // byte-identically — a binary/invalid-UTF-8 blob routed through a string is corrupted
         // (invalid sequences become U+FFFD).
         const local = runGitBytes(boardPath, ["show", `:3:${relPath}`]);
@@ -1343,10 +1340,10 @@ export function fetchRebaseResolving(boardPath: string, exportDir: string): Fetc
           exportPath = path.join(exportDir, relPath);
           mkdirSync(path.dirname(exportPath), { recursive: true, mode: 0o700 });
           writeFileSync(exportPath, local.stdout, { mode: 0o600 });
-          // The BODY-ONLY companion (round-2 REQUIRED 3): the literally-executable
+          // The body-only companion is the literally executable
           // `doc update --body-file` input. Only for a concept doc whose blob parses as OKF
-          // markdown AND whose bytes round-trip utf8 cleanly (round-3 LOW 2: a doc that PARSES
-          // after a lossy decode — an invalid byte became U+FFFD — would get a CORRUPTED body
+          // markdown and whose bytes round-trip utf8 cleanly. A doc that parses after a lossy
+          // decode — an invalid byte became U+FFFD — would get a corrupted body
           // companion while the full export stays exact, and the emitted chain would apply the
           // corruption; skip the companion, and with it the runnable chain, instead). A parse
           // failure likewise just means no runnable chain — the full export remains either way.
@@ -1437,15 +1434,15 @@ export function setBoardUpstream(boardPath: string): void {
 
 /**
  * `git fetch origin`, returning whether it succeeded (nonzero tolerated at THIS layer — the
- * CALLER decides what a dead fetch means). The committed-folder establish path REFUSES on false
- * (U5 fix round, review HIGH 1): the act cannot complete offline anyway — the mandatory `push -u`
+ * caller decides what a dead fetch means). The committed-folder establish path refuses on false:
+ * the act cannot complete offline anyway — the mandatory `push -u`
  * would fail — and tolerating a dead fetch is exactly what would let a stale clone establish while
  * a teammate's board commit sat unseen on origin (the behind-origin freshness guard needs a LIVE
  * origin to be worth anything). Renamed from `fetchOriginTolerated`: the old name described a
  * tolerance its one real consumer no longer extends.
  */
 export function fetchOrigin(top: string): boolean {
-  // `--prune` matters here (same D/F class as review adjudication 5): a STALE
+  // `--prune` matters here: a stale
   // `refs/remotes/origin/board/<x>` tracking ref — left behind after the remote offender was
   // deleted — would block the push's own local `refs/remotes/origin/board` tracking-ref update.
   // Pruning against the live remote clears it before the namespace check even runs.
@@ -1458,8 +1455,7 @@ export function fetchOriginRequired(top: string): void {
 }
 
 /**
- * U5 fix round (review adjudication 5, empirically confirmed against THIS repo's own origin,
- * which carried `board/sync-verb-tasks`): branch names under the `board/` namespace make
+ * Branch names under the `board/` namespace make
  * `refs/heads/board` UNCREATABLE — git refs form a directory tree, so `refs/heads/board/<x>`
  * (a directory) and `refs/heads/board` (a file) conflict, and the establishment's `push -u` is
  * rejected by the remote. This lists the REMOTE offenders (`ls-remote --heads origin board/*`)
