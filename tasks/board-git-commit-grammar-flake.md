@@ -3,7 +3,7 @@ type: Task
 title: >-
   Flaky: board-git 'commit grammar: multi-actor' test — nondeterminism in test
   or product?
-status: todo
+status: in_progress
 priority: '3'
 description: >-
   Observed 2026-07-18: 'not ok 67 - commit grammar: multi-actor -> board: N docs
@@ -20,6 +20,7 @@ description: >-
   ui session-rotation flake precedent: diagnose root cause, never mask with
   retries in the suite itself.
 actor: mike/claude
-timestamp: '2026-07-18T13:48:07.739Z'
+assignee: mike/claude
+timestamp: '2026-07-18T13:50:47.193Z'
 ---
 
