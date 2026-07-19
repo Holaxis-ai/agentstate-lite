@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'Agreement test: bridge query and CLI list share valid filtering semantics'
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   PR #38 proved these parallel surfaces can drift: bridge limit:0 returned no
@@ -12,6 +12,6 @@ description: >-
   intentionally differ. Prefer one core-owned filtering primitive if that is
   simpler, while retaining a public-projection agreement proof.
 actor: mike/codex
-timestamp: '2026-07-19T01:58:25.243Z'
+timestamp: '2026-07-19T02:16:33.205Z'
 ---
 
