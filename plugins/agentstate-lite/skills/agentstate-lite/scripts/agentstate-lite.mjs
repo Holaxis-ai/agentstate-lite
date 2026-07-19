@@ -10621,10 +10621,12 @@ Options:
                        every case; not applicable to --out - or to --remote.
   --body-out <path>    Write ONLY the parsed markdown body (no YAML frontmatter) as UTF-8. The
                        receipt includes the version from the SAME read, so the safe edit cycle is:
-                         agentstate-lite doc read <id> --body-out ./body.md --json
-                         # edit ./body.md; copy the receipt's version
-                         agentstate-lite doc update <id> --body-file ./body.md \\
+                         agentstate-lite doc read <id> --body-out <path-outside-bundle> --json
+                         # edit that file; copy the receipt's version
+                         agentstate-lite doc update <id> --body-file <path-outside-bundle> \\
                            --expected-version <version>
+                       Choose a unique path OUTSIDE the bundle: a .md target inside a local bundle
+                       is refused below, so the safe-cycle path must never be bundle-relative.
                        Use --body-out - to stream body bytes to stdout (receipt/errors go to stderr).
                        An empty body is a valid zero-byte result. A .md target inside a local bundle
                        is refused: body-only markdown has no OKF frontmatter and would corrupt or
@@ -10644,7 +10646,7 @@ ${COMMON_OPTIONS}
 Examples:
   agentstate-lite doc read concepts/auth
   agentstate-lite doc read concepts/auth --out ./auth.md
-  agentstate-lite doc read concepts/auth --body-out ./auth-body.md
+  agentstate-lite doc read concepts/auth --body-out <path-outside-bundle>
   agentstate-lite doc read concepts/auth --field head_version
 `;
 var DOC_HISTORY_USAGE = `agentstate-lite doc history \u2014 show a doc's attributed version chain (newest first)
@@ -12370,22 +12372,37 @@ function collectLinkDeclarations(registry) {
 }
 
 // src/commands/link.ts
+var LINK_COMMON_OPTIONS = `Common options:
+  --dir <path>         Bundle directory (default: discovered from the cwd)
+  --remote <url>       Talk to a wire-protocol server instead of a local bundle
+                       (mutually exclusive with --dir; remote access is always explicit)
+  --json               Emit compact JSON instead of TOON
+  -h, --help           Show this help`;
 var LINK_USAGE = `agentstate-lite link \u2014 add a cross-link, show a concept's links + backlinks, or query the bundle's whole edge graph
 
 Usage:
-  agentstate-lite link add <from> <to> [--text <t>] [--actor <name>]
-  agentstate-lite link show <id> [--limit <n>] [--text <t>]
-  agentstate-lite link list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]
+  agentstate-lite link add  <from> <to> [options]   Add a cross-link (idempotent)
+  agentstate-lite link show <id> [options]          Show a concept's outbound links + derived backlinks
+  agentstate-lite link list [options]               Query the whole bundle's derived edge list, filtered
+
+Run 'agentstate-lite link <verb> --help' for a verb's full options.
+
+${LINK_COMMON_OPTIONS}
+`;
+var LINK_ADD_USAGE = `agentstate-lite link add \u2014 append a cross-link from one concept to another (idempotent)
+
+Usage:
+  agentstate-lite link add <from> <to> [--text <t>] [--actor <name>] [options]
 
 Idempotent: re-adding the same target with the same exact display text is a no-op \u2014 exit 0,
 changed:false, no duplicate link, no timestamp refresh. Different text to the same target is a
 distinct semantic edge and is added.
 
-Graph lint (link add only): if this bundle declares a kind's 'links' vocabulary (see 'kinds --help')
-and --text matches a declared type, the just-written link is checked against the actual source/target
-kinds; a mismatch or a same-spelling-different-case near miss attaches a 'warnings' array to the
-success envelope (exit 0 \u2014 the link is already written). An untyped --text (no declared match, any
-casing) or a conventions-free bundle never warns.
+Graph lint: if this bundle declares a kind's 'links' vocabulary (see 'kinds --help') and --text
+matches a declared type, the just-written link is checked against the actual source/target kinds;
+a mismatch or a same-spelling-different-case near miss attaches a 'warnings' array to the success
+envelope (exit 0 \u2014 the link is already written). An untyped --text (no declared match, any casing)
+or a conventions-free bundle never warns.
 
 Target-existence honesty (link add only, LOCAL bundles only): dangling links stay LEGAL \u2014 a link to
 a target with no document yet is a forward-declaration, by design. When the target is absent at link
@@ -12394,39 +12411,68 @@ tells the truth; a link to an existing target's receipt is unchanged. Checked on
 --dir bundle (confirming existence costs a read that would be an extra network round trip over
 --remote), so a --remote link-add receipt never carries this signal.
 
-link list queries the WHOLE bundle's derived edge list (the same edges 'show' computes per-concept),
-filtered \u2014 the atom a blast-radius/containment/ontology question reduces to. --from/--to each accept
-a single concept id, a trailing-slash prefix ('tasks/' matches every id starting with that literal
-string \u2014 one rule, no glob), or are repeatable for a union (OR) within that one flag; giving BOTH
---from and --to ANDs them. Dangling edges (a link to a doc that doesn't exist yet) are included.
+Options:
+  --text <t>           Link display text (default: the target id)
+  --keep-timestamp     Preserve the source's existing timestamp (default: refresh to now,
+                       since adding a cross-link is a meaningful change)
+  --actor <name>       Attribute a newly-added link in the source doc and backend history.
+                       Falls back to AGENTSTATE_LITE_ACTOR; an existing link remains a true no-op.
+${LINK_COMMON_OPTIONS}
+
+Examples:
+  agentstate-lite link add tasks/review tasks/spec --text "depends on"
+  agentstate-lite link show tasks/review
+`;
+var LINK_SHOW_USAGE = `agentstate-lite link show \u2014 show a concept's outbound links and derived backlinks
+
+Usage:
+  agentstate-lite link show <id> [--limit <n>] [--text <t>] [options]
+
+Reports the concept's outbound links (core 'parseLinks') and its "cited by" backlinks (derived by
+reversing the resolved link graph, never stored \u2014 core 'backlinks'), each row carrying the citing/
+cited link's 'text' \u2014 the only relationship-type signal OKF's untyped edges carry.
 
 Options:
-  --text <t>            (link add) Link display text (default: the target id)
-                         (link show) Filter outbound links AND backlinks to those whose text is
-                         EXACTLY <t> (case-sensitive, not a substring match); empty/missing value
-                         is a usage error. outbound_count/backlink_count report the FILTERED
-                         totals when set. A filter that matches nothing is a valid empty result,
-                         not an error \u2014 its help line names the distinct link texts that ARE
-                         present, so a near-miss (typo/case) is visible.
-                         (link list) Same exact-match semantics, over the whole filtered edge set.
-  --from <id|prefix/>   (link list) Restrict to edges whose source matches this id or prefix
-                         (repeatable \u2014 union/OR across repeats)
-  --to <id|prefix/>     (link list) Restrict to edges whose target matches this id or prefix
-                         (repeatable \u2014 union/OR across repeats)
-  --limit <n>          (link show) Cap each of the outbound/backlink lists (default: 50; 0 =
-                         unlimited); outbound_count/backlink_count always report the true
-                         (post-filter) totals
-                         (link list) Cap the returned edge rows (default: 100; 0 = unlimited);
-                         count always reports the true (post-filter) total
-  --keep-timestamp      Preserve the source's existing timestamp (default: refresh to now,
-                         since adding a cross-link is a meaningful change)
-  --actor <name>        Attribute a newly-added link in the source doc and backend history.
-                         Falls back to AGENTSTATE_LITE_ACTOR; an existing link remains a true no-op.
-  --dir <path>          Bundle directory (default: discovered from the cwd)
-  --remote <url>        Talk to a wire-protocol server instead of a local bundle
-                         (mutually exclusive with --dir; remote access is always explicit)
-  --json                Emit compact JSON instead of TOON
-  -h, --help            Show this help
+  --text <t>           Filter outbound links AND backlinks to those whose text is EXACTLY <t>
+                       (case-sensitive, not a substring match); empty/missing value is a usage
+                       error. outbound_count/backlink_count report the FILTERED totals when set.
+                       A filter that matches nothing is a valid empty result, not an error \u2014 its
+                       help line names the distinct link texts that ARE present, so a near-miss
+                       (typo/case) is visible.
+  --limit <n>          Cap each of the outbound/backlink lists (default: 50; 0 = unlimited);
+                       outbound_count/backlink_count always report the true (post-filter) totals
+${LINK_COMMON_OPTIONS}
+
+Examples:
+  agentstate-lite link show tasks/review
+  agentstate-lite link show tasks/review --text "depends on"
+`;
+var LINK_LIST_USAGE = `agentstate-lite link list \u2014 query the whole bundle's derived edge list, filtered
+
+Usage:
+  agentstate-lite link list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>] [options]
+
+Queries the WHOLE bundle's derived edge list (the same edges 'link show' computes per-concept),
+filtered \u2014 the atom a blast-radius/containment/ontology question reduces to. --from/--to each
+accept a single concept id, a trailing-slash prefix ('tasks/' matches every id starting with that
+literal string \u2014 one rule, no glob), or are repeatable for a union (OR) within that one flag;
+giving BOTH --from and --to ANDs them. Dangling edges (a link to a doc that doesn't exist yet) are
+included.
+
+Options:
+  --from <id|prefix/>  Restrict to edges whose source matches this id or prefix (repeatable \u2014
+                       union/OR across repeats)
+  --to <id|prefix/>    Restrict to edges whose target matches this id or prefix (repeatable \u2014
+                       union/OR across repeats)
+  --text <t>           Exact-match filter over the whole filtered edge set (same semantics as
+                       'link show --text', scoped to --from/--to instead of one concept)
+  --limit <n>          Cap the returned edge rows (default: 100; 0 = unlimited); count always
+                       reports the true (post-filter) total
+${LINK_COMMON_OPTIONS}
+
+Examples:
+  agentstate-lite link list --from tasks/
+  agentstate-lite link list --to tasks/review --text "depends on"
 `;
 var LINK_ADD_MAX_ATTEMPTS = 5;
 function docType(doc2) {
@@ -12637,7 +12683,7 @@ async function linkAdd(argv, stdout) {
     "link add"
   );
   if (values.help) {
-    stdout(LINK_USAGE);
+    stdout(LINK_ADD_USAGE);
     return;
   }
   const from = positionals[0]?.trim();
@@ -12700,7 +12746,7 @@ async function linkShow(argv, stdout, autoPull) {
     "link show"
   );
   if (values.help) {
-    stdout(LINK_USAGE);
+    stdout(LINK_SHOW_USAGE);
     return;
   }
   const DEFAULT_LIMIT3 = 50;
@@ -12798,7 +12844,7 @@ async function linkList(argv, stdout) {
     "link list"
   );
   if (values.help) {
-    stdout(LINK_USAGE);
+    stdout(LINK_LIST_USAGE);
     return;
   }
   let textFilter;
@@ -18416,7 +18462,7 @@ var COMMAND_GROUPS = [
       },
       {
         usage: "doc history <id> [--remote <url>]",
-        summary: "Show a doc's attributed version history (newest first) \u2014 the tokens for --expected-version"
+        summary: "Show a doc's version history (newest first; a history-keeping backend returns the full attributed chain, a local bundle just the current revision) \u2014 the tokens for --expected-version"
       },
       {
         usage: "doc delete <id> [--expected-version <v>] [--remote <url>]",

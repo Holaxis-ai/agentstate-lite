@@ -98,7 +98,7 @@ the rest of the line unchanged.
 - `"$ASLITE" doc read <id> [--out (<path> | -) | --body-out (<path> | -) | --field <name>] [--remote <url>]`
   — Read a doc, export its raw markdown, export its body with a same-read CAS version, or print one raw field for scripting
 - `"$ASLITE" doc history <id> [--remote <url>]`
-  — Show a doc's attributed version history (newest first) — the tokens for --expected-version
+  — Show a doc's version history (newest first; a history-keeping backend returns the full attributed chain, a local bundle just the current revision) — the tokens for --expected-version
 - `"$ASLITE" doc delete <id> [--expected-version <v>] [--remote <url>]`
   — Hard-delete a doc (idempotent: absent -> deleted:false, exit 0)
 - `"$ASLITE" list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--open] [--limit <n>] [--remote <url>]`
