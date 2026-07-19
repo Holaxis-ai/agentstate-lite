@@ -41,12 +41,14 @@ export const PUSH_FAIL_SAFETY_MESSAGE =
   "re-run sync when you're back online or your access is restored.";
 
 /**
- * The push-failure warning: AUTH_REQUIRED and TRANSIENT ("offline or auth") get the EXACT pinned
- * safety string; any other classification keeps the SAME safety-first framing — a local commit
- * already landed regardless of why the push failed — with the classified message appended.
+ * The push-failure warning: auth and connectivity failures get the exact generic safety string;
+ * a non-fast-forward retry and other classifications keep the same safety-first framing with
+ * their actionable message appended.
  */
 export function pushFailureMessage(err: CliError): string {
-  if (err.code === "AUTH_REQUIRED" || err.code === "TRANSIENT") return PUSH_FAIL_SAFETY_MESSAGE;
+  const genericConnectivityFailure =
+    err.code === "AUTH_REQUIRED" || (err.code === "TRANSIENT" && err.details?.reason !== "non-fast-forward");
+  if (genericConnectivityFailure) return PUSH_FAIL_SAFETY_MESSAGE;
   return `committed to the board locally — your work is saved. ${err.message}`;
 }
 

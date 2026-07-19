@@ -959,6 +959,28 @@ test("push: an unreachable remote throws a CLASSIFIED BoardGitError (best-effort
   }
 });
 
+test("push: a two-clone race is a retryable non-fast-forward, not a generic runtime failure", async () => {
+  const topo = await makeTwoCloneTopology();
+  try {
+    await writeBoardDoc(topo.a, "tasks/from-a", { frontmatter: { type: "Task", title: "From A" }, body: "# A\n" });
+    stageAndCommit(topo.a.board);
+    await writeBoardDoc(topo.b, "tasks/from-b", { frontmatter: { type: "Task", title: "From B" }, body: "# B\n" });
+    stageAndCommit(topo.b.board);
+
+    push(topo.b.board);
+    const err = capture(() => push(topo.a.board));
+
+    assert.ok(isBoardGitError(err));
+    assert.equal(err.code, "TRANSIENT");
+    assert.equal(err.details?.retryable, true);
+    assert.equal(err.details?.reason, "non-fast-forward");
+    assert.match(err.message, /teammate pushed/);
+    assert.match(err.message, /re-run sync/);
+  } finally {
+    await topo.cleanup();
+  }
+});
+
 // ── classifyGitError unit matrix (stable signals → taxonomy) ──────────────────
 
 test("classifyGitError: spawn ENOENT → GIT_MISSING (a distinct, branchable code)", () => {
@@ -1013,6 +1035,20 @@ test("classifyGitError: network signals → TRANSIENT, distinct from AUTH", () =
     const err = classifyGitError({ args: ["fetch"], status: 128, stdout: "", stderr: f.stderr, timedOut: f.timedOut });
     assert.equal(err.code, "TRANSIENT", f.stderr || "(timeout)");
     assert.equal(err.details?.retryable, true);
+  }
+});
+
+test("classifyGitError: non-fast-forward push signals → actionable retry", () => {
+  for (const stderr of [
+    "To /tmp/origin.git\n ! [rejected]        board -> board (fetch first)\nerror: failed to push some refs to '/tmp/origin.git'",
+    "To github.com:x/y.git\n ! [rejected]        board -> board (non-fast-forward)\nerror: failed to push some refs",
+    "Updates were rejected because the tip of your current branch is behind its remote counterpart.",
+  ]) {
+    const err = classifyGitError({ args: ["push"], status: 1, stdout: "", stderr });
+    assert.equal(err.code, "TRANSIENT", stderr);
+    assert.equal(err.details?.retryable, true);
+    assert.equal(err.details?.reason, "non-fast-forward");
+    assert.match(err.message, /re-run sync/);
   }
 });
 
