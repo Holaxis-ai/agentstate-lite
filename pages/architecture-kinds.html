@@ -81,7 +81,7 @@
       <dt class="done">Shipped · Kind</dt><dd><strong>PR #42.</strong> What an instance represents, when to create it, and how it differs from neighboring Kinds.</dd>
       <dt class="done">Shipped · Fields</dt><dd><strong>PR #42.</strong> What information belongs in each field, surfaced through discovery and creation help.</dd>
       <dt class="done">Shipped · Relationships</dt><dd><strong>PR #51.</strong> What an outbound link asserts and in which direction—ownership, evidence, decomposition, dependency, or something else.</dd>
-      <dt>Next · Enums</dt><dd><strong>PR #52 in progress.</strong> The domain meaning of lifecycle, confidence, approval, quality, and publication values—not merely their spelling.</dd>
+      <dt class="done">Shipped · Enums</dt><dd><strong>PR #52.</strong> The domain meaning of lifecycle, confidence, approval, quality, and publication values—not merely their spelling.</dd>
       <dt>Evidence-gated</dt><dd>Section descriptions and examples only if dogfooding shows that the first four layers do not prevent real misuse.</dd>
     </dl>
     <div class="grid">
@@ -108,11 +108,11 @@
     <div class="kicker">Honest boundaries</div><h2>What this does not claim</h2>
     <div class="boundary">
       <article><h3>Implemented now</h3><ul><li>Plain bundle-owned Convention docs and one Kind registry</li><li>Machine-readable Kind, field, and relationship descriptions through parser, registry, CLI discovery/help, recipes, and UI transport</li><li>Generic Kind-aware CLI creation, validation, queries, and typed links</li><li>Version tokens, compare-and-swap writes, attribution, and history</li><li>Sandboxed Pages with explicit content-only or read-only bridge capability</li><li>Live invalidation and Page-to-Page registered navigation</li><li>Data-only, expect-absent recipe application</li></ul></article>
-      <article><h3>Not implemented now</h3><ul><li>Machine-readable enum-value descriptions on current <code>main</code> (PR #52 is in progress)</li><li>Section descriptions or examples without dogfood evidence</li><li>Page mutation controls or human identity authorization</li><li>A durable, ordered, replayable event journal</li><li>Complete recipe packages with automatic skill/Page/hook adoption</li><li>Recipe upgrade, migration, dependency, or rollback machinery</li><li>A general workflow or ontology engine</li></ul></article>
+      <article><h3>Not implemented now</h3><ul><li>Section descriptions or examples without dogfood evidence</li><li>Human identity authorization (a View may propose one Kind-declared scalar change, applied only after trusted-shell human confirmation — broader mutation controls remain out)</li><li>A durable, ordered, replayable event journal</li><li>Complete recipe packages with automatic skill/Page/hook adoption</li><li>Recipe upgrade, migration, dependency, or rollback machinery</li><li>A general workflow or ontology engine</li></ul></article>
     </div>
   </section>
 
-  <p class="source">Grounded in the shipped Kind/field-description unit (PR #42), shipped relationship descriptions (PR #51), “Self-describing Kinds: a semantic contract for agent-managed domains,” and “AgentState as a Portable Cognitive Ecosystem.” Status labels distinguish shipped work from enum-value descriptions still in progress in PR #52.</p>
+  <p class="source">Grounded in the shipped Kind/field-description unit (PR #42), shipped relationship descriptions (PR #51), “Self-describing Kinds: a semantic contract for agent-managed domains,” and “AgentState as a Portable Cognitive Ecosystem.” All four semantic layers—Kind (PR #42), fields (PR #42), relationships (PR #51), and enum values (PR #52)—are shipped.</p>
 </main>
 <script>
   (function(){var PROTO="v0";document.getElementById("open-reviews").addEventListener("click",function(){parent.postMessage({bridge:PROTO,type:"open-page",pageId:"pages-registry/reviews"},"*")})})();

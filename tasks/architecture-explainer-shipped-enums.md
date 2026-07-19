@@ -1,24 +1,21 @@
 ---
 type: Task
 title: 'Architecture explainer: mark enum descriptions shipped'
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  [VERIFIED 2026-07-19, KEEP — still accurate] PR #52 is confirmed merged (gh pr
-  view 52: mergedAt 2026-07-13T19:51:05Z) and tasks/kind-enum-value-descriptions
-  is done, but the source Page asset pages/architecture-kinds.html (pulled
-  2026-07-19) still says at line 84 'Next · Enums — PR #52 in progress', at line
-  111 lists 'Machine-readable enum-value descriptions on current main (PR #52 is
-  in progress)' under 'Not implemented now', and line 115 says enum-value
-  descriptions are 'still in progress in PR #52'.
-  review-requests/kinds-and-descriptions-architecture is still status
-  changes_requested. The correction described below has not been made. Refresh
-  the Kinds architecture Page and the review's label audit after PR #52:
-  enum-value descriptions are shipped/current on main, not Next or in progress.
-  Remove stale not-implemented wording while preserving the evidence gate for
-  section descriptions/examples.
+  DONE 2026-07-19 (direct board-content edit, no PR —
+  pages/architecture-kinds.html is bundle content, promoted back via CAS). Fixed
+  all three stale PR-#52 references (the enums dt is now 'Shipped · Enums / PR
+  #52' matching its shipped siblings; the not-implemented bullet removed; the
+  source note now states all four semantic layers shipped). ALSO fixed one
+  adjacent staleness found in the same pass: the not-implemented list still
+  claimed 'Page mutation controls' are absent — stale since PR #109 shipped
+  trusted View actions; reworded to state precisely what exists (one
+  Kind-declared scalar proposal behind trusted-shell human confirmation) and
+  what remains out (broader mutation controls, human identity authorization).
 actor: mike/claude
-timestamp: '2026-07-19T14:10:08.032Z'
+timestamp: '2026-07-19T14:11:35.311Z'
 ---
 # Required correction
 
