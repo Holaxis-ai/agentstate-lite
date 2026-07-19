@@ -3,7 +3,7 @@ type: Task
 title: >-
   Agreement tests: one contract with N surfaces gets one per-row table test
   (rule + inventory)
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Part of plans/test-suite-confidence (Brian's suite-assurance program). Read
@@ -15,7 +15,7 @@ description: >-
   sharing pins (sync == establish == home for the window family). When this task
   is claimed, codify the convention from that live example rather than inventing
   fresh, and run the inventory pass the plan calls for.
-actor: mike/claude
-timestamp: '2026-07-18T04:28:54.796Z'
+actor: mike/codex
+timestamp: '2026-07-19T01:55:33.997Z'
 ---
 
