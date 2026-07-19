@@ -22,6 +22,7 @@ import {
   toPosix,
 } from "./paths.js";
 import { InvalidInputError } from "./errors.js";
+import { matchesFilter } from "./query-filter.js";
 import { VersionConflict } from "./versioning.js";
 import type {
   BlobKey,
@@ -42,6 +43,10 @@ import type {
   VersionInfo,
   WriteOptions,
 } from "./types.js";
+
+// Compatibility export: the implementation lives in the browser-safe module, while existing
+// direct engine-module consumers keep their historical import path.
+export { matchesFilter } from "./query-filter.js";
 
 /** A written concept document together with the {@link Version} the backend recorded for it. */
 export interface WriteResult {
@@ -285,37 +290,6 @@ export interface QueryOptions {
    * loud default (a malformed doc throws an attributed {@link MalformedDocumentError}).
    */
   onSkip?: (skip: SkippedDoc) => void;
-}
-
-/**
- * THE canonical {@link QueryFilter} predicate — every facet (`prefix`, `type`, `tags`,
- * `fields`), ANDed. One implementation, three consumers: {@link query}, {@link queryHeads}
- * (which re-applies it to whatever a backend's push-down returned — gate 3: a backend may
- * over-return, the engine owns semantics), and the reference router's `GET /docs` handler
- * (which previously carried its own inline type/tag copy of this logic).
- */
-export function matchesFilter(
-  doc: { id: ConceptId; frontmatter: Frontmatter },
-  filter: QueryFilter,
-): boolean {
-  if (filter.prefix && !doc.id.startsWith(filter.prefix)) return false;
-  if (filter.type && doc.frontmatter.type !== filter.type) return false;
-  if (filter.tags && filter.tags.length > 0) {
-    const tags = Array.isArray(doc.frontmatter.tags) ? doc.frontmatter.tags : [];
-    if (!filter.tags.every((t) => tags.includes(t))) return false;
-  }
-  if (filter.fields) {
-    const fm = doc.frontmatter as Record<string, unknown>;
-    for (const [k, want] of Object.entries(filter.fields)) {
-      const raw = fm[k];
-      const actual =
-        raw === undefined || raw === null
-          ? []
-          : (Array.isArray(raw) ? raw : [raw]).map((v) => String(v));
-      if (!actual.includes(want)) return false;
-    }
-  }
-  return true;
 }
 
 /**

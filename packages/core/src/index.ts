@@ -137,7 +137,8 @@ export type { QueryOptions, SkippedDoc } from "./bundle.js";
 // definition sites (bundle.ts/types.ts). The delete-tolerant batch read they share
 // (`readManyExisting`) is internal: its one-time export for the reference router was
 // withdrawn when the router switched to consuming `queryHeads` wholesale.
-export { queryHeads, matchesFilter } from "./bundle.js";
+export { queryHeads } from "./bundle.js";
+export { matchesFilter } from "./query-filter.js";
 export type { HeadResult } from "./types.js";
 
 // Reserved-file (§6 index.md / §7 log.md) accessors + index regeneration.

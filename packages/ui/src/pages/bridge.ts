@@ -17,6 +17,7 @@
  * caller passing the framed page's {@link BridgeCapability} — never by anything the sandboxed
  * page itself claims.
  */
+import { matchesFilter } from "@agentstate-lite/core/query-filter";
 import { isTerminal } from "@agentstate-lite/core/kinds";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
 import type { DocHead, Edge, ReadDocResponse } from "../api/types.js";
@@ -140,6 +141,15 @@ export function normalizeEdgeParams(raw: unknown): EdgeParams {
  * kind is kept, and a bundle where no kind declares a terminal set filters nothing.
  */
 export function applyRowFilters(rows: DocHead[], params: QueryParams, kinds: KindConvention[] = []): DocHead[] {
+  return applyQueryFilters(rows, params, kinds).rows;
+}
+
+/** Apply the shared valid query semantics and retain the pre-limit total for an honest receipt. */
+export function applyQueryFilters(
+  rows: DocHead[],
+  params: QueryParams,
+  kinds: KindConvention[] = [],
+): { rows: DocHead[]; count: number } {
   let out = rows;
   if (params.field) {
     const eq = params.field.indexOf("=");
@@ -150,7 +160,9 @@ export function applyRowFilters(rows: DocHead[], params: QueryParams, kinds: Kin
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      out = out.filter((r) => values.includes(String(r.frontmatter[key] ?? "")));
+      out = out.filter((row) =>
+        values.some((value) => matchesFilter(row, { fields: { [key]: value } })),
+      );
     }
   }
   if (params.open) {
@@ -160,11 +172,12 @@ export function applyRowFilters(rows: DocHead[], params: QueryParams, kinds: Kin
       return !kind || !isTerminal(kind, r.frontmatter);
     });
   }
+  const count = out.length;
   // `limit > 0` caps; `limit: 0` (and absent) means UNLIMITED — matching the CLI's documented
   // `list --limit 0 = unlimited` contract (commands/list.ts). Slicing at 0 would silently return
   // an empty result with no error, exactly the footgun a page author hits by passing 0 for "all".
   if (typeof params.limit === "number" && params.limit > 0) out = out.slice(0, params.limit);
-  return out;
+  return { rows: out, count };
 }
 
 /**
@@ -209,8 +222,8 @@ export async function handleBridgeRequest(
       case "query": {
         const params = normalizeQueryParams(msg.params);
         const rows = await deps.query({ type: params.type, prefix: params.prefix });
-        const filtered = applyRowFilters(rows, params, params.open ? await deps.kinds() : []);
-        return { reply: ok(id, type, { rows: filtered, count: filtered.length }) };
+        const filtered = applyQueryFilters(rows, params, params.open ? await deps.kinds() : []);
+        return { reply: ok(id, type, filtered) };
       }
       case "read": {
         const docId = typeof msg.docId === "string" ? msg.docId : "";

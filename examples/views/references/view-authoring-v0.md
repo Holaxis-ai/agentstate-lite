@@ -71,13 +71,15 @@ frontmatter, never a body). `query` params:
 
 - `type` / `prefix` — server-side facets (a bundle-relative id prefix, a frontmatter `type`).
 - `field` — a client-side `key=value` filter; comma-separated values are OR (`status=todo,blocked`).
+  Scalar and array-valued fields use the same string-coerced membership rule as CLI `list`.
 - `open` — drop terminal rows, derived from the BUNDLE'S OWN kind conventions exactly like
   `list --open`: a row is dropped iff the convention governing its `type` declares the row's
   current field value(s) terminal (`fields.terminal`, e.g. the Task kind's `done`/`canceled`).
   A row with no governing kind is kept; a bundle where no kind declares a terminal set filters
   nothing. (The shell loads the registry once per change from the server, which builds it with
   core's `loadKinds` — one registry, no bridge-side schema.)
-- `limit` — cap the row count after filtering.
+- `limit` — a positive number caps `rows`; `0` or absence is unlimited. `count` remains the total
+  matched after `field`/`open` filtering and before the cap, matching CLI `list`.
 
 `edges` is the general graph query — the ONE primitive every edge-shaped question reduces to
 (the same `queryEdges` atom `link list` is a CLI face over). `params`:
