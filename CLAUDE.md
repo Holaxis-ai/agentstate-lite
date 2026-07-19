@@ -198,6 +198,9 @@ bundle-relative**.
   adjudication narrative belong in the PR or project bundle, not beside the code.
 - Treat words such as **canonical**, **parity**, and **gate** as testable claims. Use them only when
   the implementation or an executable check directly proves the stated relationship.
+- When one behavioral contract has multiple public surfaces, exercise every surface from one
+  per-row agreement table. Prefer one owning primitive when the behavior can be collapsed;
+  agreement tests pin irreducible projections and boundaries, not duplicated implementations.
 - Add deterministic adversarial tests for dangerous boundaries, including concurrency,
   authentication, migration, reconnect/replay, and destructive writes.
 - Consolidation removes the superseded implementation, tests, and commentary in the same unit;
