@@ -16160,7 +16160,7 @@ old hook rendered the home view without pulling the board first.
 
 Options:
   --scope project   Write to the CURRENT project (default): .claude/, .codex/, .config/opencode/
-  --scope global    Write to the USER home (~/.claude, ~/.codex, ~/.config/opencode)
+  --scope global    Write to each host's configured USER home (environment override or default)
   --json            Emit compact JSON instead of TOON
   -h, --help        Show this help
 `;
@@ -16228,12 +16228,35 @@ function readHookStatus(settings) {
   }
   return { installed: false };
 }
-function targetsFor(base) {
+function targetsForBase(base) {
   return {
     claudeSettings: join7(base, ".claude", "settings.json"),
     codexHooks: join7(base, ".codex", "hooks.json"),
+    codexConfig: join7(base, ".codex", "config.toml"),
     opencodePlugin: join7(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
   };
+}
+function configuredPath(value, fallback) {
+  return value === void 0 || value.length === 0 ? fallback : value;
+}
+function globalHookTargets(home2 = homedir7(), env = process.env) {
+  const claudeHome = configuredPath(env.CLAUDE_CONFIG_DIR, join7(home2, ".claude"));
+  const codexHome = configuredPath(env.CODEX_HOME, join7(home2, ".codex"));
+  const xdgConfigHome = configuredPath(env.XDG_CONFIG_HOME, join7(home2, ".config"));
+  const opencodeHome = configuredPath(env.OPENCODE_CONFIG_DIR, join7(xdgConfigHome, "opencode"));
+  return {
+    claudeSettings: join7(claudeHome, "settings.json"),
+    codexHooks: join7(codexHome, "hooks.json"),
+    codexConfig: join7(codexHome, "config.toml"),
+    opencodePlugin: join7(opencodeHome, "plugins", OPENCODE_PLUGIN_FILENAME)
+  };
+}
+function targetSets(bases, deps) {
+  if (bases !== void 0) return bases.map(targetsForBase);
+  const cwd = deps.cwd ?? process.cwd();
+  const home2 = deps.home ?? homedir7();
+  const env = deps.env ?? process.env;
+  return [targetsForBase(cwd), globalHookTargets(home2, env)];
 }
 function readSettings(path23) {
   if (!existsSync6(path23)) return {};
@@ -16341,9 +16364,8 @@ export const AxiAgentstateLiteAmbientContextPlugin = async ({ directory }) => {
 };
 `;
 }
-function hookNeedsUpdate(bases = [process.cwd(), homedir7()]) {
-  for (const base of bases) {
-    const targets = targetsFor(base);
+function hookNeedsUpdate(bases, deps = {}) {
+  for (const targets of targetSets(bases, deps)) {
     for (const p of [targets.claudeSettings, targets.codexHooks]) {
       const s = readHookStatus(readSettings(p));
       if (s.installed && s.command !== void 0 && !s.command.includes(HOOK_SUBCOMMAND)) return true;
@@ -16357,9 +16379,8 @@ function hookNeedsUpdate(bases = [process.cwd(), homedir7()]) {
   }
   return false;
 }
-function hookInstalled(bases = [process.cwd(), homedir7()]) {
-  for (const base of bases) {
-    const targets = targetsFor(base);
+function hookInstalled(bases, deps = {}) {
+  for (const targets of targetSets(bases, deps)) {
     for (const p of [targets.claudeSettings, targets.codexHooks]) {
       if (readHookStatus(readSettings(p)).installed) return true;
     }
@@ -16399,8 +16420,7 @@ async function hook(argv, deps = {}) {
       help: `${cliInvocation()} hook ${sub} --scope project|global`
     });
   }
-  const base = deps.base ?? (scope === "global" ? homedir7() : process.cwd());
-  const targets = targetsFor(base);
+  const targets = deps.base !== void 0 ? targetsForBase(deps.base) : scope === "global" ? globalHookTargets(deps.home ?? homedir7(), deps.env ?? process.env) : targetsForBase(deps.cwd ?? process.cwd());
   const mode = resolveMode(values);
   if (sub === "status") {
     const claude = readHookStatus(readSettings(targets.claudeSettings));
@@ -16445,7 +16465,7 @@ async function hook(argv, deps = {}) {
         errors.push(`${target}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    const codexConfigPath = join7(base, ".codex", "config.toml");
+    const codexConfigPath = targets.codexConfig;
     try {
       const current = existsSync6(codexConfigPath) ? readFileSync4(codexConfigPath, "utf8") : "";
       const [updated, changed2] = computeCodexConfigUpdate(current);
