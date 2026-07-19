@@ -9,7 +9,7 @@
  */
 
 import { InvalidInputError } from "./errors.js";
-import { defaultTimestampAndValidateAgainstRegistry } from "./kinds.js";
+import { defaultTimestampAndValidateAgainstRegistry, validateAgainstKind } from "./kinds.js";
 import { versionedMutation } from "./mutation.js";
 import { VersionConflict } from "./versioning.js";
 import { readDocVersioned, writeDocVersioned } from "./bundle.js";
@@ -150,16 +150,17 @@ function validateCandidate(
 
 /**
  * True when `existing` already satisfies ITS OWN governing kind — the monotone ratchet's
- * precondition (probe: tasks/overwrite-ratchet-survey). Validated on a shallow frontmatter
- * clone so this read-only check never mutates the `existing` object a concurrent caller
- * (e.g. `buildCandidate`) may still be holding a reference to.
+ * precondition (probe: tasks/overwrite-ratchet-survey). Validates the RAW existing
+ * frontmatter — no timestamp defaulting — because the existing doc IS its raw bytes; nothing
+ * normalizes it unless written. This keeps the ratchet in agreement with `status`'s
+ * `conformance_debt` (both call `validateAgainstKind` on the same unmodified frontmatter;
+ * see tasks/conforms-raw-alignment). `validateAgainstKind` only reads `doc.frontmatter`, so
+ * passing `existing` directly is safe — no defensive clone needed.
  */
 function conforms(existing: OkfDocument, registry: KindRegistry): boolean {
-  const check = defaultTimestampAndValidateAgainstRegistry(
-    { id: existing.id, frontmatter: { ...existing.frontmatter }, body: existing.body },
-    registry,
-  );
-  return check.kind !== undefined && check.warnings.length === 0;
+  const kind = registry.kinds.get(String(existing.frontmatter.type));
+  if (!kind) return false;
+  return validateAgainstKind(existing, kind).length === 0;
 }
 
 export async function mutateDocument(opts: MutateDocumentOptions): Promise<DocumentMutationResult> {

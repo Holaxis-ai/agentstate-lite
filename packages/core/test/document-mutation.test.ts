@@ -8,6 +8,7 @@ import {
   mutateDocument,
 } from "../src/document-mutation.js";
 import { MemoryBackend } from "../src/memory-backend.js";
+import { validateAgainstKind } from "../src/kinds.js";
 import { VersionConflict } from "../src/versioning.js";
 import type { KindConvention, KindRegistry } from "../src/kinds.js";
 import type { Bundle, ConceptId, OkfDocument, Version, WriteOptions } from "../src/types.js";
@@ -973,4 +974,83 @@ test("overwrite ratchet: --strict over an already-conforming existing doc still 
 
   // No write happened at all (strict throws before the write attempt, exactly as pre-unit).
   assert.equal((await backend.versions("tasks/g")).length, 1);
+});
+
+// ── raw-conformance alignment (tasks/conforms-raw-alignment) ─────────────────────────────────
+//
+// PR #119 review finding 1 (MEDIUM, empirical): the ratchet's `conforms()` used to validate a
+// write-normalized clone of `existing` (timestamp defaulted per kinds.ts's one-validator rule)
+// while `status`'s `conformance_debt` validates the RAW frontmatter — so an externally-authored
+// doc missing a kind-required timestamp counted as DEBT to `status` yet CONFORMING to the
+// ratchet, earning an over-strict refusal where staging leniency should apply. `conforms()` now
+// validates the raw existing frontmatter (no timestamp defaulting); the candidate side is
+// unaffected (still write-normalized, per `validateCandidate`).
+
+// Reviewer's exact probe: an externally-authored doc missing a kind-required timestamp, then a
+// dropping overwrite → writes with warnings, NOT refused (staging leniency restored).
+// RED-PROOF: restoring the ratchet's old defaulting behavior (calling
+// `defaultTimestampAndValidateAgainstRegistry` on a clone of `existing` inside `conforms()`,
+// instead of `validateAgainstKind` on the raw frontmatter) makes this test fail — the defaulted
+// clone would look conforming (timestamp back-filled), the ratchet would fire, and the write
+// would throw `KindConformanceError` instead of succeeding with warnings.
+test("overwrite ratchet: an externally-authored existing doc missing a kind-required timestamp keeps lenient staging on a dropping overwrite", async () => {
+  const backend = new MemoryBackend();
+  const bundle = bundleFor(backend);
+  // Externally-authored: written straight to the BACKEND, bypassing `writeDocVersioned`'s
+  // bundle-level timestamp guarantee (bundle.ts:131-139 defaults `timestamp` on every engine
+  // write) — the same raw, never-normalized shape a hand-authored bundle doc arrives in.
+  await backend.write("notes/ext", {
+    id: "notes/ext",
+    frontmatter: { type: "Note", title: "External" }, // timestamp MISSING — raw, never defaulted
+    body: "b",
+  });
+
+  const result = await mutateDocument({
+    bundle,
+    id: "notes/ext",
+    mode: "overwrite",
+    registry: TASK_NOTE_REGISTRY,
+    strict: false,
+    buildCandidate: () => ({
+      frontmatter: { type: "Note" }, // drops title too — still nonconforming, but a WRITE, not a throw
+      body: "b2",
+    }),
+  });
+
+  assert.equal(result.changed, true);
+  assert.ok(result.warnings.some((warning) => warning.field === "title"));
+});
+
+// Cross-surface agreement pin: the SAME fixture that counts as debt to `status`'s
+// `conformance_debt` (validateAgainstKind on the raw doc, packages/cli/src/commands/status.ts)
+// also gets ratchet leniency — the two surfaces no longer disagree about this doc.
+test("cross-surface agreement: a fixture that counts as status's conformance_debt also gets ratchet leniency, not an over-strict refusal", async () => {
+  const backend = new MemoryBackend();
+  const bundle = bundleFor(backend);
+  // Written straight to the backend (see the probe test above) — bypasses `writeDocVersioned`'s
+  // bundle-level timestamp guarantee so the fixture stays raw/never-normalized.
+  await backend.write("notes/agree", {
+    id: "notes/agree",
+    frontmatter: { type: "Note", title: "External" }, // timestamp MISSING — raw external fixture
+    body: "b",
+  });
+
+  // status's own mechanism: validateAgainstKind on the RAW read doc, no timestamp defaulting —
+  // a doc failing this is exactly what status counts toward conformance_debt.
+  const { doc: rawDoc } = await readDocVersioned(bundle, "notes/agree");
+  const statusWarnings = validateAgainstKind(rawDoc, NOTE_KIND);
+  assert.ok(statusWarnings.some((warning) => warning.field === "timestamp"));
+
+  // The SAME fixture must get ratchet leniency: a dropping overwrite writes with warnings, not
+  // a refusal — proving the two surfaces now agree about this exact doc.
+  const result = await mutateDocument({
+    bundle,
+    id: "notes/agree",
+    mode: "overwrite",
+    registry: TASK_NOTE_REGISTRY,
+    strict: false,
+    buildCandidate: () => ({ frontmatter: { type: "Note" }, body: "b2" }), // drops title too
+  });
+  assert.equal(result.changed, true);
+  assert.ok(result.warnings.some((warning) => warning.field === "title"));
 });
