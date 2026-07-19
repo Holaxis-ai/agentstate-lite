@@ -10683,11 +10683,49 @@ function hasRealStdinInput() {
     return false;
   }
 }
+var STDIN_FIRST_BYTE_TIMEOUT_MS = 200;
+var STDIN_SILENT_TIMEOUT = Symbol("agentstate-lite.stdin-silent-timeout");
+var STDIN_SILENT_NOTE = `stdin was open but silent after ${STDIN_FIRST_BYTE_TIMEOUT_MS}ms \u2014 body treated as empty; use --body/--body-file for slow producers`;
+function readStdinBounded(stream, timeoutMs) {
+  return new Promise((resolve2, reject) => {
+    const chunks = [];
+    let gaveUp = false;
+    function cleanup() {
+      clearTimeout(timer);
+      stream.removeListener("data", onData);
+      stream.removeListener("end", onEnd);
+      stream.removeListener("error", onError);
+    }
+    function onData(chunk) {
+      clearTimeout(timer);
+      chunks.push(chunk);
+    }
+    function onEnd() {
+      if (gaveUp) return;
+      cleanup();
+      resolve2(Buffer.concat(chunks).toString("utf8"));
+    }
+    function onError(err) {
+      if (gaveUp) return;
+      cleanup();
+      reject(err);
+    }
+    const timer = setTimeout(() => {
+      gaveUp = true;
+      cleanup();
+      stream.pause();
+      stream.unref?.();
+      resolve2(STDIN_SILENT_TIMEOUT);
+    }, timeoutMs);
+    timer.unref();
+    stream.on("data", onData);
+    stream.on("end", onEnd);
+    stream.on("error", onError);
+  });
+}
 async function defaultReadStdin() {
   if (!hasRealStdinInput()) return void 0;
-  const chunks = [];
-  for await (const chunk of process.stdin) chunks.push(chunk);
-  return Buffer.concat(chunks).toString("utf8");
+  return readStdinBounded(process.stdin, STDIN_FIRST_BYTE_TIMEOUT_MS);
 }
 function computeDroppedLinks(existingLinks, nextLinks) {
   const nextByTarget = /* @__PURE__ */ new Map();
@@ -10949,6 +10987,7 @@ async function docWrite(argv, deps) {
   const actor = resolveActor(values.actor, { help: `${cliInvocation()} doc write ${id} --actor <name>` });
   let body;
   let bodySourceGiven;
+  let stdinSilentTimeout = false;
   if (values.body !== void 0) {
     body = values.body;
     bodySourceGiven = true;
@@ -10956,7 +10995,9 @@ async function docWrite(argv, deps) {
     body = await fs5.readFile(values["body-file"], "utf8");
     bodySourceGiven = true;
   } else {
-    const stdinBody = await readStdin();
+    const stdinRead = await readStdin();
+    stdinSilentTimeout = stdinRead === STDIN_SILENT_TIMEOUT;
+    const stdinBody = typeof stdinRead === "string" ? stdinRead : void 0;
     bodySourceGiven = stdinBody !== void 0 && stdinBody !== "";
     body = stdinBody ?? "";
   }
@@ -11041,6 +11082,10 @@ async function docWrite(argv, deps) {
   if (droppedFields.length > 0) {
     receipt.dropped_fields = droppedFields;
     receipt.note = `'doc write' is a FULL replace and dropped ${droppedFields.length} frontmatter field(s) not re-supplied: ${droppedFields.join(", ")}. To change fields while preserving the rest (e.g. a status set by 'doc update' or 'new'), use '${cliInvocation()} doc update ${id}' instead.`;
+  }
+  if (stdinSilentTimeout) {
+    receipt.note = receipt.note ? `${receipt.note}
+${STDIN_SILENT_NOTE}` : STDIN_SILENT_NOTE;
   }
   if (result.warnings.length > 0) receipt.warnings = result.warnings;
   if (isLegacyPageDoc(saved.frontmatter)) receipt.hint = LEGACY_PAGE_TYPE_HINT;
@@ -11197,15 +11242,19 @@ async function docUpdate(argv, deps) {
   const actor = resolveActor(p.actor, { help: `${cliInvocation()} doc update ${id} --actor <name>` });
   const otherFieldGiven = p.title !== void 0 || p.description !== void 0 || p.tags !== void 0 && p.tags.length > 0 || p.type !== void 0 || p.kindFields.size > 0;
   let stdinBody;
+  let stdinSilentTimeout = false;
   if (p.body === void 0 && !p.bodyFile && !otherFieldGiven) {
     const raw = await readStdin();
-    stdinBody = raw !== void 0 && raw !== "" ? raw : void 0;
+    stdinSilentTimeout = raw === STDIN_SILENT_TIMEOUT;
+    stdinBody = typeof raw === "string" && raw !== "" ? raw : void 0;
   }
   const anyFieldGiven = otherFieldGiven || p.body !== void 0 || Boolean(p.bodyFile) || stdinBody !== void 0;
   if (!anyFieldGiven) {
     throw new CliError(
       "USAGE",
-      `doc update requires at least one field to patch (${DOC_UPDATE_FIELD_FLAGS.map((f) => `--${f}`).join("/")} or a kind-declared --<field>, e.g. --status)`,
+      `doc update requires at least one field to patch (${DOC_UPDATE_FIELD_FLAGS.map((f) => `--${f}`).join("/")} or a kind-declared --<field>, e.g. --status)` + // The same silent-stdin signal doc write's receipt carries (see write.ts): when the probe
+      // timed out, "nothing to patch" may really mean "your piped body arrived too late".
+      (stdinSilentTimeout ? `. Note: ${STDIN_SILENT_NOTE}.` : ""),
       { help: `${cliInvocation()} doc update ${id} --title <t>` }
     );
   }
