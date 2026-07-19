@@ -49,7 +49,19 @@ export interface RunningUi {
   stop: () => Promise<void>;
 }
 
-function waitForReceipt(child: UiChild): Promise<UiReceipt> {
+/** Cap on how much captured stderr a boot-failure rejection message carries — enough to diagnose a flake without dumping unbounded child output into a test failure. */
+const BOOT_FAILURE_STDERR_TAIL_CHARS = 4_000;
+
+/** The last {@link BOOT_FAILURE_STDERR_TAIL_CHARS} of `stderr`, prefixed to mark a truncation. Empty input renders as a plain "(no stderr captured)" note, never a blank/misleading suffix. */
+function stderrTailForError(stderr: string): string {
+  const trimmed = stderr.trim();
+  if (!trimmed) return " (no stderr captured)";
+  const tail = trimmed.length > BOOT_FAILURE_STDERR_TAIL_CHARS ? `…(truncated)…${trimmed.slice(-BOOT_FAILURE_STDERR_TAIL_CHARS)}` : trimmed;
+  return `\n--- captured stderr ---\n${tail}`;
+}
+
+/** `getStderr` returns whatever the child's stderr has accumulated SO FAR — read live at rejection time (tasks/ui-e2e-harness-boot-flake: an early-exit boot failure is otherwise undiagnosable — "ui command exited early" with no clue why). */
+function waitForReceipt(child: UiChild, getStderr: () => string): Promise<UiReceipt> {
   return new Promise((resolve, reject) => {
     let settled = false;
     let buf = "";
@@ -76,7 +88,11 @@ function waitForReceipt(child: UiChild): Promise<UiReceipt> {
     };
     child.stdout.on("data", onData);
     child.once("error", (err) => settle(() => reject(err)));
-    child.once("exit", (code) => settle(() => reject(new Error(`ui command exited early (code ${code}) before printing a receipt`))));
+    child.once("exit", (code) =>
+      settle(() =>
+        reject(new Error(`ui command exited early (code ${code}) before printing a receipt${stderrTailForError(getStderr())}`)),
+      ),
+    );
   });
 }
 
@@ -92,7 +108,7 @@ async function bootUi(args: string[]): Promise<RunningUi> {
   child.stderr.on("data", (c: Buffer) => {
     stderr += c.toString("utf8");
   });
-  const receipt = await waitForReceipt(child);
+  const receipt = await waitForReceipt(child, () => stderr);
   return {
     receipt,
     url: receipt.url,
