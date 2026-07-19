@@ -35,6 +35,7 @@ import { existsSync } from "node:fs";
 
 import { initBundle, readDoc, writeDoc } from "@agentstate-lite/core";
 import { commitBoard, makeTwoCloneTopology, pushBoard, writeBoardDoc } from "../../board-git/test/git-harness.js";
+import { STDIN_SILENT_NOTE } from "../src/commands/doc/common.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cliPackageRoot = path.resolve(here, "..");
@@ -319,6 +320,10 @@ test("built CLI: `doc write` with NO body source completes PROMPTLY (does not ha
     assert.ok(elapsedMs < BOUND_MS, `expected a prompt exit well under ${BOUND_MS}ms, took ${elapsedMs}ms`);
     const result = JSON.parse(stdout) as Record<string, unknown>;
     assert.equal(result.doc, "written");
+    // The residual silent case is NOT silent: a write that proceeded with an empty body because a
+    // real open pipe stayed quiet past the probe bound says so on its receipt — an agent whose slow
+    // producer's bytes arrived too late can tell this apart from a deliberate body-less write.
+    assert.equal(result.note, STDIN_SILENT_NOTE);
 
     const saved = await readDoc({ root: dir }, "concepts/open-pipe");
     assert.equal(saved.body, "\n", "no body source arrived within the bound — an empty body, exactly the documented empty-pipe semantics");
@@ -360,6 +365,8 @@ test("built CLI: a legit piped body arriving AFTER the first-byte bound has star
     });
 
     assert.equal(exitCode, 0, `expected exit 0, got ${exitCode}; stdout=${stdout}`);
+    // A DELIVERED piped body is not the silent-timeout path — no note.
+    assert.equal("note" in (JSON.parse(stdout) as Record<string, unknown>), false);
     const saved = await readDoc({ root: dir }, "concepts/slow-pipe");
     // BYTE-EXACT pin of the legit piped-body path (the DoD's explicit ask): the FULL, exact
     // concatenation of both chunks, with the engine's usual single trailing-newline normalization —
@@ -370,7 +377,7 @@ test("built CLI: a legit piped body arriving AFTER the first-byte bound has star
   }
 });
 
-test("built CLI: `--body \"\"` (explicit empty) is unchanged by the stdin-probe bound — it never touches stdin at all, even with an open-never-written pipe on fd 0", async () => {
+test("built CLI: `--body \"\"` (explicit empty) never consults stdin — a byte sitting in an open, never-closed pipe on fd 0 neither contaminates the body nor hangs the process", async () => {
   const dir = await tempDir();
   try {
     await initBundle(dir);
@@ -379,9 +386,22 @@ test("built CLI: `--body \"\"` (explicit empty) is unchanged by the stdin-probe 
       [cliBin, "doc", "write", "concepts/explicit-empty", "--type", "Concept", "--body", "", "--dir", dir, "--json"],
       { stdio: ["pipe", "pipe", "pipe"] },
     );
+    // The child normally exits while this parent still holds the pipe; a write racing that exit can
+    // surface EPIPE on the parent's stream — expected here, never a failure.
+    child.stdin.on("error", () => {});
+    // CONTENT-BASED discrimination, no wall-clock assertion anywhere (a whole-child-lifetime bound
+    // like the earlier `elapsedMs < 150` was machine-dependent by construction — node boot + bundle
+    // load vary per runner). A byte goes into the pipe IMMEDIATELY and the pipe is NEVER closed: if
+    // `--body ""` ever regressed to consult stdin, the bounded probe would see this byte, disarm its
+    // first-byte timeout, and read on toward an EOF that never comes — a hang this test's kill-timer
+    // turns red deterministically — or, were the byte delivered as the body instead, the byte-exact
+    // empty-body assertion below fails. (A DELAYED write — e.g. at ~300ms — would race the ~200ms
+    // probe bound: a byte landing after a hypothetical probe's timeout would let that regression
+    // slip green, so the byte is written up front, before the child can possibly probe.)
+    child.stdin.write("must-never-be-consumed");
+
     let stdout = "";
     child.stdout.on("data", (d) => (stdout += d));
-    const start = Date.now();
     const exitCode = await new Promise<number | null>((resolve, reject) => {
       const timer = setTimeout(() => {
         child.kill("SIGKILL");
@@ -392,14 +412,84 @@ test("built CLI: `--body \"\"` (explicit empty) is unchanged by the stdin-probe 
         resolve(code);
       });
     });
-    const elapsedMs = Date.now() - start;
 
     assert.equal(exitCode, 0, `expected exit 0, got ${exitCode}; stdout=${stdout}`);
-    // Well under the ~200ms stdin-probe bound — proof this path never even STARTED the probe, since
-    // --body (even "") is the one unambiguous explicit-empty channel (doc/common.ts's own doc comment).
-    assert.ok(elapsedMs < 150, `expected an near-instant exit (never touching stdin), took ${elapsedMs}ms`);
+    const receipt = JSON.parse(stdout) as Record<string, unknown>;
+    assert.equal(receipt.doc, "written");
+    assert.equal("note" in receipt, false, "--body '' is an explicit source — never the silent-stdin-timeout path");
     const saved = await readDoc({ root: dir }, "concepts/explicit-empty");
+    // Still EMPTY: the byte waiting in the pipe never reached the body — --body "" is the one
+    // unambiguous explicit-empty channel and stdin was never consulted.
     assert.equal(saved.body, "\n");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("built CLI: a NEW-doc `doc write` with stdin from /dev/null (no real data source — never probed, never timed out) succeeds with NO silent-stdin note", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    // stdio: ["ignore", …] = /dev/null on fd 0 — a character device `hasRealStdinInput` rejects
+    // up front, so the bounded probe (and its timeout sentinel) never runs at all.
+    const result = spawnSync(
+      "node",
+      [cliBin, "doc", "write", "concepts/devnull-new", "--type", "Concept", "--title", "T", "--dir", dir, "--json"],
+      { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" },
+    );
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stdout=${result.stdout} stderr=${result.stderr}`,
+    );
+    const receipt = JSON.parse(result.stdout) as Record<string, unknown>;
+    assert.equal(receipt.doc, "written");
+    assert.equal("note" in receipt, false, "no-real-source stdin is not the silent-TIMEOUT path — no note");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("built CLI: `doc update` with NO field flags and an OPEN-never-written pipe on stdin exits PROMPTLY with USAGE (never hangs) and NAMES the silent-stdin condition — the same signal doc write's receipt carries", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    await writeDoc(
+      { root: dir },
+      { id: "concepts/no-fields", frontmatter: { type: "Concept", title: "T", timestamp: OLD_TS }, body: "Original body." },
+    );
+
+    // No field flags at all, so update's LAST-RESORT stdin consultation runs — against a pipe whose
+    // write end this test holds open forever without writing. Pre-fix, this exact shape read to EOF
+    // and hung; post-fix it must exit USAGE promptly, and the error must say WHY there was nothing
+    // to patch (the caller's piped body may simply have arrived too late).
+    const child = spawn("node", [cliBin, "doc", "update", "concepts/no-fields", "--dir", dir, "--json"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    const exitCode = await new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new Error("doc update did not exit — the bounded probe must keep the no-field path from hanging"));
+      }, 5000);
+      child.on("exit", (code) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
+    });
+
+    assert.equal(exitCode, 2, `expected USAGE exit 2, got ${exitCode}; stdout=${stdout}`);
+    // Error envelopes render as TOON on stdout (see the F1 guard test above's identical note).
+    assert.match(stdout, /code: USAGE/);
+    assert.match(stdout, /requires at least one field to patch/);
+    assert.ok(stdout.includes(STDIN_SILENT_NOTE), `the envelope must name the silent-stdin condition; stdout=${stdout}`);
+
+    // Nothing was touched.
+    const after = await readFile(path.join(dir, "concepts", "no-fields.md"), "utf8");
+    assert.match(after, /Original body\./);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

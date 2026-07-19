@@ -12,7 +12,14 @@ import { mutateDoc } from "../../mutate.js";
 import { isLegacyPageDoc, LEGACY_PAGE_TYPE_HINT } from "../../legacy-page.js";
 import { boardPostPersistHook } from "../../board-attribution.js";
 import { resolveActor } from "../../actor.js";
-import { DOC_WRITE_USAGE, type DocCliDeps, defaultReadStdin, guardDroppedLinks } from "./common.js";
+import {
+  DOC_WRITE_USAGE,
+  type DocCliDeps,
+  defaultReadStdin,
+  guardDroppedLinks,
+  STDIN_SILENT_NOTE,
+  STDIN_SILENT_TIMEOUT,
+} from "./common.js";
 
 export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promise<void> {
   const stdout = deps.stdout ?? ((s: string) => void process.stdout.write(s));
@@ -71,6 +78,10 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
   // empty pipe). This is the F1 guard below's load-bearing distinction.
   let body: string;
   let bodySourceGiven: boolean;
+  // The probe found a real-but-silent stdin (see STDIN_SILENT_TIMEOUT in common.ts): same "nothing
+  // given" body decision as `undefined`, but surfaced as a receipt `note` below — a NEW doc created
+  // with an empty body while a slow producer's bytes arrive too late must not be silent.
+  let stdinSilentTimeout = false;
   if (values.body !== undefined) {
     body = values.body;
     bodySourceGiven = true;
@@ -78,7 +89,9 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
     body = await fs.readFile(values["body-file"], "utf8");
     bodySourceGiven = true;
   } else {
-    const stdinBody = await readStdin();
+    const stdinRead = await readStdin();
+    stdinSilentTimeout = stdinRead === STDIN_SILENT_TIMEOUT;
+    const stdinBody = typeof stdinRead === "string" ? stdinRead : undefined;
     bodySourceGiven = stdinBody !== undefined && stdinBody !== "";
     body = stdinBody ?? "";
   }
@@ -235,6 +248,12 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
       `'doc write' is a FULL replace and dropped ${droppedFields.length} frontmatter field(s) not re-supplied: ` +
       `${droppedFields.join(", ")}. To change fields while preserving the rest (e.g. a status set by 'doc update' ` +
       `or 'new'), use '${cliInvocation()} doc update ${id}' instead.`;
+  }
+  // ONLY on the silent-timeout path (never for /dev/null-shaped stdin, an explicit --body, or a
+  // delivered pipe): the write proceeded with an empty body after fd 0 — a real open pipe — stayed
+  // silent past the probe bound. Joined after a dropped-fields note when both apply (both are true).
+  if (stdinSilentTimeout) {
+    receipt.note = receipt.note ? `${receipt.note}\n${STDIN_SILENT_NOTE}` : STDIN_SILENT_NOTE;
   }
   if (result.warnings.length > 0) receipt.warnings = result.warnings;
   // Legacy-naming nudge (legacy-page.ts): authoring-moment only — never blocks, never on reads.
