@@ -3,30 +3,24 @@ type: Task
 title: >-
   PR #54 review follow-ups: .md segments in Page grammar; fail-fast dot entries
   in recipe walk
-status: in_progress
+status: done
 priority: '3'
 description: >-
-  [VERIFIED 2026-07-19, KEEP — both findings empirically reproduced] (1) node
-  --input-type=module against the built packages/core/dist/page.js:
-  isPageRegistryId('pages-registry/x.md/y') === true while
-  isPageEntryKey('pages/x.md/y') === false — the divergence is unchanged.
-  isRegistryIdUnder (core/src/page.ts:57) and isEntryKeyUnder now share the SAME
-  hasSafePageSegments helper, but isRegistryIdUnder still calls
-  assertSafeConceptId (paths.ts:52, no mid-path .md check) while isEntryKeyUnder
-  calls assertSafeBlobKey (paths.ts:91-116, which DOES reject any segment ending
-  in .md at any depth) — so the fix has not been applied to the concept-id side.
-  (2) packages/cli/src/recipe-source-filesystem.ts's walkRecipeFiles (lines
-  38-63) still has no dot-prefixed-entry check before recursing (line 50-51) or
-  reading a file's bytes as UTF-8 (line 61) — a .git/ dir inside a recipe root
-  is still read object-by-object before any grammar rejection. Original text
-  preserved: Two non-blocking findings from the independent PR #54 review: Page
-  grammar accepts mid-path .md segments (doc/dir collision); portable-recipe
-  walk reads dot-prefixed entries (.git contents) before rejecting them. Close
-  the two non-blocking findings from the independent PR #54 review (merged as
-  288e989); details and empirical probes in the review note
-  (context-notes/pr-54-independent-review.md).
+  DONE — PR #123 merged 638e2c6 (2026-07-19), APPROVE-WITH-NITS, both #54
+  findings closed. (1) Grammar: mid-path .md segments now rejected by the ONE
+  parseRegistration predicate all three consumers share (launcher/mint/serve can
+  never disagree). DELIBERATE BREAKING TIGHTENING recorded per review: a wild
+  doc with a mid-path-.md REGISTRY id and clean entry was servable before and is
+  launcher-invisible after — the shape is the documented on-disk collision
+  hazard, the doc stays readable, re-registering under a clean id recovers it.
+  (2) Recipe walk: dot entries fail fast, rejection names the dot entry itself.
+  Review settled the git-clone question EMPIRICALLY: base ALREADY rejected
+  git-cloned folders (definitions-only policy, after reading .git
+  object-by-object) — zero new unusability, clearer + faster refusal. Record
+  correction: PR parent was 15a6f79 (an ancestor of merge-time main), not
+  be5846a as the batch brief assumed — no overlap in the gap, verified.
 actor: mike/claude
-timestamp: '2026-07-19T14:10:07.926Z'
+timestamp: '2026-07-19T14:57:34.029Z'
 ---
 # Objective
 

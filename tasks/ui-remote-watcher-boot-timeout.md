@@ -3,25 +3,18 @@ type: Task
 title: >-
   Remote-mode ui: the watcher's initial fetch at boot has no timeout (a dead
   upstream hangs bootUiServer)
-status: in_progress
+status: done
 priority: '3'
 description: >-
-  [VERIFIED 2026-07-19, KEEP — still accurate] Grepped for 'AbortSignal.timeout'
-  in packages/ui-server/src and packages/cli/src — no matches.
-  packages/ui-server/src/watch.ts:141 ('let last = await takeSnapshot(opts,
-  aborter.signal)') is still the untimed initial fetch; aborter.signal only
-  fires on stop() (server shutdown), never on a boot deadline. server.ts's
-  bootWatcher (line 525) is awaited directly by bootUiServer, and its own
-  comment ('a watcher that cannot start ... leaves the UI fully usable') only
-  covers a watcher that THROWS, not one that hangs — a dead --remote upstream
-  still hangs the boot path exactly as described. Found by adversarial QA during
-  the PR #69 shutdown review (2026-07-15): in --remote mode, bootUiServer's
-  watcher performs its initial fetch with no timeout (undici default ~300s) — an
-  upstream that never responds hangs the BOOT path (the shutdown path is now
-  fine: proxied requests abort on close). Fix direction: time-box the initial
-  watcher fetch (AbortSignal.timeout) and surface a structured boot error; align
-  with session-start's budget discipline.
+  DONE — PR #121 merged 1680ee5 (2026-07-19), APPROVE. Boot-time watcher
+  snapshot fetch bounded (AbortSignal.timeout, ~5s, test seam); on timeout boot
+  DEGRADES honestly — server serves watcherless with the pre-existing [ui
+  watcher] stderr line — never hangs, never silent. The ongoing poll loop keeps
+  its own abort signal (unbounded long-lived watch untouched); --dir unchanged.
+  Red-proof note: the reverted state hung the whole node --test process on a
+  dangling fetch — the bug demonstrating itself. Same unbounded-wait class as
+  the PR #117 stdin hang, second site cured.
 actor: mike/claude
-timestamp: '2026-07-19T14:10:07.715Z'
+timestamp: '2026-07-19T14:57:33.809Z'
 ---
 

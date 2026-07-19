@@ -4,11 +4,19 @@ title: Prove founder-to-founder sharing of an AgentState recipe plugin
 status: todo
 priority: '2'
 description: >-
-  Package one useful external recipe as a real plugin; publish, install, apply,
-  and version-refresh it across the founders' machines with reproducible
-  evidence.
-actor: openai/codex
-timestamp: '2026-07-11T02:59:45.923Z'
+  [NOTE 2026-07-19, from the PR #123 review — a limitation this flow will hit if
+  it ever rides a bare git clone] recipe add on a git-CLONED folder has NEVER
+  worked: the definitions-only grammar rejects the .git contents (post-#123 it
+  fails fast naming .git with a clear message; pre-#123 it read .git
+  object-by-object first). If founder-to-founder sharing is proven via the
+  plugin channel (the expected path — shipped recipe folders carry no .git),
+  nothing changes; if a bare-clone flow is ever wanted, the walk needs a
+  DELIBERATE skip-dot-entries mode or documented .git removal — a decision, not
+  a bug fix. Original: Package one useful external recipe as a real plugin;
+  publish, install, apply, and version-refresh it across the founders' machines
+  with reproducible evidence.
+actor: mike/claude
+timestamp: '2026-07-19T14:57:52.593Z'
 ---
 # Objective
 
