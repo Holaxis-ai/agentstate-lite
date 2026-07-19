@@ -2,19 +2,19 @@
 type: Task
 title: Kind-conformance refusals emit a ready-to-run completing command
 description: >-
-  TIER-1 (100% confident) child of roadmap-items/conformance-ergonomics. CLAIMED
-  2026-07-19 (mike/claude line, Sonnet builder). When doc update (or doc write
-  --strict) refuses on kind violations, the envelope's help today points at the
-  registry (kinds). Change: the help carries a LITERAL completing argv for the
-  failing doc — one doc update command naming every missing required field as a
-  flag with a placeholder value. Enum fields include the allowed values in the
-  placeholder. CLI-side only (mutate.ts adapter owns error wording per gate 3);
-  core's typed failure already carries the violation list. DoD: a test that
-  EXECUTES the emitted string (placeholder filled) against the failing doc and
-  asserts convergence to conformance — the CLAUDE.md emitted-command-chain
-  discipline; plus a pin that non-kind USAGE errors are untouched.
+  DONE — PR #115 merged (2026-07-19), one review round, APPROVE.
+  Kind-conformance refusals now carry a literal completing doc update argv (enum
+  fields show <a|b|c>); the DoD test EXECUTES the emitted bytes through the real
+  built CLI and asserts convergence — the emitted-command-chain discipline,
+  review-verified as genuine. Builder's self-caught edge shipped in-unit: a doc
+  write --strict refusal on a NEVER-PERSISTED doc falls back to the kinds
+  pointer instead of emitting a doc update that would 404 (existence decided
+  free in patch/create-only modes; conservative best-effort read in overwrite).
+  Review confirmed the sync-to-async translateMutationError conversion swallows
+  nothing (single caller, return-awaited). This unlocks
+  tasks/overwrite-monotone-ratchet's sequencing gate.
 actor: mike/claude
-status: in_progress
-timestamp: '2026-07-19T02:54:58.977Z'
+status: done
+timestamp: '2026-07-19T03:53:34.117Z'
 ---
 

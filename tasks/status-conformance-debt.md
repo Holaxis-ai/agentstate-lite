@@ -2,20 +2,17 @@
 type: Task
 title: status surfaces bundle-level kind-conformance debt (frontmatter-scoped)
 description: >-
-  TIER-1 (100% confident) child of roadmap-items/conformance-ergonomics. CLAIMED
-  2026-07-19 (mike/claude line, Sonnet builder). The ratchet only engages on
-  touch, so debt accumulates invisibly. Change: the status command gains a
-  conformance section — count of governed docs with FRONTMATTER-level kind
-  violations (missing required fields, enum violations) plus up to a capped list
-  of ids, and a help hatch pointing at doc update. SCOPE GUARDS: frontmatter
-  checks only, ridden off heads — NO body reads (body-section linting stays out;
-  cost must stay O(heads)); a conventions-free bundle's status output stays
-  BYTE-IDENTICAL (gate 2/3 — pin it); counts always present when kinds exist,
-  AXI-minimal rows. DoD: fixture bundle with kinds + seeded violations asserting
-  count/ids/help; byte pin for the conventions-free case; a cost sanity note
-  (the walk is the existing status walk, no new I/O class).
+  DONE — PR #116 merged (2026-07-19), one review round, APPROVE. status now
+  emits conformance_debt (count of governed docs carrying frontmatter-level kind
+  violations) + capped conformance_debt_docs rows + a doc update help hatch —
+  the un-engaged ratchet is now measurable. Scope guards held and review-proven:
+  zero new I/O (rides the existing validateAgainstKind pass), section violations
+  excluded by an enumerated-exhaustive code set, per-doc dedup pinned (5
+  warnings → 3 docs), and conventions-free bundles byte-identical (pins captured
+  from the PRE-change build, provenance proven three-way by the reviewer's own
+  base build).
 actor: mike/claude
-status: in_progress
-timestamp: '2026-07-19T02:50:26.043Z'
+status: done
+timestamp: '2026-07-19T03:53:34.222Z'
 ---
 
