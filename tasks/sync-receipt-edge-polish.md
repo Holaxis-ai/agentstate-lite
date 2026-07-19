@@ -4,22 +4,15 @@ title: 'Sync receipt honesty + error-message polish (PR#13 review, items 7-8)'
 status: in_progress
 priority: '2'
 description: >-
-  ITEMS 7 + 4 CLOSED via PR #104 (43ab16a) and ITEM 3 CLOSED via PR #108
-  (ea85b31) — see tasks/sync-fallback-identity for the full item-3 record
-  (fallback git identity: identityFlags primitive, dual-var probe conjunct,
-  no-override guarantee review-proven; two discoveries recorded there incl. the
-  cli test-script GIT_AUTHOR_NAME masking). Item 7: show-incoming classifies by
-  the DERIVED path (reserved files render honest 'path:' under any spelling;
-  .md-spelled doc ids stay parsed docs, matching doc read). Item 4: already
-  fixed 2026-07-08 (U6 truth pass; the record here was stale). RESIDUE (record
-  note, not a task): porcelain.ts:604 existingDirRefusal wrong_branch copy still
-  says '(a linked worktree or nested repo)' — byte-frozen by #92 fixtures; fold
-  into the next unit that touches porcelain copy. REMAINING PARKED per the
-  standing stance (no demand signal): items 1/10 (cross-run receipt under-report
-  — document-at-minimum decision still open), 2 (non-FF push rejection
-  classification), 5/9 (single-branch clone narrow refspec), 6, 8.
+  ITEM 2 ACTIVE in draft PR #126 (commit 8932c71): a real two-clone
+  non-fast-forward push now classifies TRANSIENT/retryable with specific
+  teammate-race guidance, and the CLI partial receipt preserves both the
+  local-commit reassurance and re-run-sync action. Focused tests plus full npm
+  run check passed. This unit intentionally leaves cross-run receipt accounting
+  and the other parked PR #13 findings untouched. Previously closed: items 7 + 4
+  via PR #104 and item 3 via PR #108.
 actor: mike/codex
-timestamp: '2026-07-19T23:15:05.971Z'
+timestamp: '2026-07-19T23:21:16.089Z'
 ---
 From the PR#13 three-lane review (all empirical):
 1. Cross-run receipt under-report: fetch-succeeded-then-failed run → NEXT run
