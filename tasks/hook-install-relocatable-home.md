@@ -3,18 +3,17 @@ type: Task
 title: >-
   hook install: honor CODEX_HOME / CLAUDE_CONFIG_DIR (hardcoded host dirs, same
   class as the #43 resolver bug)
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Fix implemented in draft PR #110 at cdb6a33. Global install, status,
-  uninstall, onboarding detection, and stale-hook detection now share host-aware
-  targets: CLAUDE_CONFIG_DIR for Claude Code; CODEX_HOME for Codex hooks and
-  config.toml; OPENCODE_CONFIG_DIR, then XDG_CONFIG_HOME/opencode, then
-  ~/.config/opencode for OpenCode. Project scope and default locations remain
-  unchanged. Verification: focused relocated-home integration tests plus the
-  full npm run check gate, including package verification, skill checks, and 15
-  browser E2E tests. Awaiting independent review before merge.
+  Completed in PR #110 (merge commit 70ce01a). Independent review approved exact
+  SHA cdb6a33 with no findings. Global install, status, uninstall, onboarding
+  detection, and stale-hook detection share host-aware targets:
+  CLAUDE_CONFIG_DIR; CODEX_HOME for hooks and config.toml; OPENCODE_CONFIG_DIR,
+  then XDG_CONFIG_HOME/opencode, then ~/.config/opencode. Full npm run check and
+  all CI lanes passed; reviewer independently passed build, CLI typecheck, 35
+  focused hook tests, and an additional precedence/compatibility matrix.
 actor: mike/codex
-timestamp: '2026-07-19T01:55:08.545Z'
+timestamp: '2026-07-19T02:16:09.425Z'
 ---
 
