@@ -17,6 +17,7 @@
 // defaulting to none so the npm call site reproduces the exact prior output.
 import { DESCRIPTION, COMMAND_GROUPS, commandName, type CommandGroup } from "./reference.js";
 import { SKILL_RESOURCES } from "./distribution-resources.js";
+import { HOST_CONFIG_ROOTS, renderShellHostConfigRoot } from "./host-config.js";
 
 export { SKILL_RESOURCES, commandName };
 
@@ -42,7 +43,8 @@ const ASLITE = '"$ASLITE"';
 // `claude` binary — it resolves `settings.json`/`projects` from `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`,
 // i.e. the var REPLACES `~/.claude` wholesale, not merges with it), Codex via `CODEX_HOME` (confirmed
 // against the installed `codex` binary's own `--help`, e.g. `$CODEX_HOME/<name>.config.toml`). Bash's
-// `${VAR:-default}` expresses that fallback inline.
+// `${VAR:-default}` expresses that fallback inline. The same host definitions drive global hook
+// targets, so install and discovery cannot independently drift on an env name or fallback folder.
 //
 // OpenCode is deliberately NOT here. It never reads SKILL.md at all: its SessionStart integration
 // is the ambient-context plugin built by `commands/hook.ts`'s `buildOpenCodePluginSource`, which
@@ -50,12 +52,11 @@ const ASLITE = '"$ASLITE"';
 // (`hookCommand()`) — there is no skill-relative install path for this resolver to discover, by
 // construction (confirmed against axi-sdk-js: OpenCode gets a managed plugin file, not a
 // skill/plugin-cache directory layout). If a future OpenCode surface ever loads this skill's own
-// files by a discoverable convention path, add its root here — not a third resolver. (Note:
-// `commands/hook.ts` itself has the SAME hardcoded-`$HOME` gap for Claude/Codex — out of scope here,
-// a sibling fix on a different command.)
+// files by a discoverable convention path, add it to the shared host authority only when hook and
+// discovery semantics really are the same.
 export const SKILL_HOST_HOMES = [
-  '"${CLAUDE_CONFIG_DIR:-$HOME/.claude}"',
-  '"${CODEX_HOME:-$HOME/.codex}"',
+  renderShellHostConfigRoot(HOST_CONFIG_ROOTS.claude),
+  renderShellHostConfigRoot(HOST_CONFIG_ROOTS.codex),
 ];
 
 // Test-facing projection of every supported host/channel shape. Keep the compatibility matrix
