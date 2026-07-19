@@ -567,20 +567,13 @@ test("built CLI: default auto-pull wiring is LIVE — `list` pulls a stale board
   }
 });
 
-// ── probe-help-surface-fixes finding 1: `doc read --help`'s safe edit cycle must literally run ────
-//
-// Cold-start usability probe (2026-07-19): the documented example (`--body-out ./body.md`) FAILED
-// when copy-pasted from the bundle root — a `./`-relative target resolves INSIDE the bundle, which
-// `--body-out` refuses (a body-only .md file has no OKF frontmatter). The refusal is correct
-// behavior (see `assertSafeBodyOutTarget`'s own doc comment); the EXAMPLE was wrong. Fixed to an
-// honestly-outside path (`/tmp/body.md`). This test extracts the two example command lines from the
-// BUILT CLI's ACTUAL `--help` output (never a hardcoded copy of the source string) and runs them as
-// REAL subprocesses with cwd SET TO THE BUNDLE ROOT — the exact "copy-paste from the bundle root"
-// shape the probe hit — asserting the full safe-edit-cycle chain succeeds end to end.
+// Extract and execute the actual help example from the bundle root. The documented outside-path
+// placeholder is substituted with a file in this test's unique scratch tree, never a shared path.
 
-test("built CLI: `doc read --help`'s documented safe-edit-cycle example, extracted from the ACTUAL help text and run character-for-character from the bundle root, succeeds end to end", async () => {
-  const dir = await tempDir();
-  const bodyOutTarget = "/tmp/body.md";
+test("built CLI: `doc read --help`'s documented safe-edit-cycle example, extracted from the ACTUAL help text and run from the bundle root with placeholders substituted, succeeds end to end", async () => {
+  const scratch = await tempDir();
+  const dir = path.join(scratch, "bundle");
+  const bodyOutTarget = path.join(scratch, "body.md");
   try {
     await initBundle(dir);
     await writeDoc(
@@ -599,17 +592,18 @@ test("built CLI: `doc read --help`'s documented safe-edit-cycle example, extract
     );
     assert.ok(updateLineMatch, `expected a two-line 'doc update <id> --body-file ... --expected-version <version>' example in:\n${helpText}`);
 
-    // The example's OWN target path must be the honestly-outside one this fix uses — not a stale
-    // in-bundle path a future edit could silently reintroduce.
-    assert.match(readLineMatch![1]!, /--body-out \/tmp\/body\.md/);
+    assert.match(readLineMatch![1]!, /--body-out <path-outside-bundle>/);
+    assert.match(updateLineMatch![1]!, /--body-file <path-outside-bundle>/);
 
     const substitute = (line: string, version?: string): string[] => {
-      const withId = line.replace(/<id>/g, "concepts/a").replace(/<version>/g, version ?? "<version>");
+      const withId = line
+        .replace(/<id>/g, "concepts/a")
+        .replace(/<path-outside-bundle>/g, bodyOutTarget)
+        .replace(/<version>/g, version ?? "<version>");
       return withId.trim().split(/\s+/).slice(1); // drop the leading 'agentstate-lite' token
     };
 
-    // Step 1: the documented `doc read <id> --body-out /tmp/body.md --json`, run from the BUNDLE
-    // ROOT — the exact shape that failed pre-fix.
+    // Run the documented read from the bundle root — the exact shape the help promises.
     const readArgs = substitute(readLineMatch![1]!);
     const readResult = spawnSync("node", [cliBin, ...readArgs], { cwd: dir, encoding: "utf8" });
     assert.equal(
@@ -624,12 +618,10 @@ test("built CLI: `doc read --help`'s documented safe-edit-cycle example, extract
     const exportedBody = await readFile(bodyOutTarget, "utf8");
     assert.equal(exportedBody, "Original body.\n");
 
-    // "# edit /tmp/body.md" — the documented manual step.
+    // Perform the documented manual edit.
     await writeFile(bodyOutTarget, "Edited body.\n", "utf8");
 
-    // Step 2: the documented `doc update <id> --body-file /tmp/body.md --expected-version
-    // <version>`, joined exactly as a shell line-continuation would join it, run from the SAME
-    // bundle root, with the receipt's own version substituted in for <version>.
+    // Join the documented line continuation and use the receipt's own version.
     const updateLine = `${updateLineMatch![1]} ${updateLineMatch![2]}`;
     const updateArgs = substitute(updateLine, version);
     const updateResult = spawnSync("node", [cliBin, ...updateArgs], { cwd: dir, encoding: "utf8" });
@@ -642,7 +634,6 @@ test("built CLI: `doc read --help`'s documented safe-edit-cycle example, extract
     const after = await readDoc({ root: dir }, "concepts/a");
     assert.equal(after.body, "Edited body.\n", "the safe-edit-cycle example must actually land the edit");
   } finally {
-    await rm(dir, { recursive: true, force: true });
-    await rm(bodyOutTarget, { force: true });
+    await rm(scratch, { recursive: true, force: true });
   }
 });

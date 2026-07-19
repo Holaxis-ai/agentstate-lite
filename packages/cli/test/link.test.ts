@@ -1285,6 +1285,8 @@ test("link add --help: focused on 'add' — carries its own flags (--text, --kee
   assert.match(text, /--actor <name>/);
   assert.match(text, /Idempotent: re-adding the same target/);
   assert.match(text, /Graph lint:/);
+  assert.match(text, /LINK_TARGET_ABSENT/, "link add help preserves the missing-target receipt signal");
+  assert.match(text, /--remote link-add receipt never carries this signal/);
   assert.doesNotMatch(text, /link show —/);
   assert.doesNotMatch(text, /link list —/);
   assert.doesNotMatch(text, /--from <id\|prefix\/>/, "link add help must not carry link list's flags");
