@@ -4,14 +4,14 @@ title: 'Agreement test: bridge query and CLI list share valid filtering semantic
 status: in_progress
 priority: '2'
 description: >-
-  PR #38 proved these parallel surfaces can drift: bridge limit:0 returned no
-  rows while CLI list defined zero as unlimited. Add one per-row agreement table
-  over their shared valid contract: field membership, open/terminal filtering,
-  positive cap, zero/unlimited, order, and count. Do not force malformed-input
-  behavior to agree; bridge JSON normalization and CLI usage errors
-  intentionally differ. Prefer one core-owned filtering primitive if that is
-  simpler, while retaining a public-projection agreement proof.
+  PR #112 aligns the View bridge and CLI list valid-query contract. The red
+  proof exposed two real drifts: array-valued field membership and total count
+  after a positive cap. The implementation extracts a browser-safe core
+  predicate, preserves pre-limit count, adds one table-driven agreement suite
+  for field/open/limit/order/count, and updates both View-authoring authorities.
+  Full npm run check passed; awaiting independent review at
+  c6bcd0d53c1c48a823393752be534d66ad8431d4.
 actor: mike/codex
-timestamp: '2026-07-19T02:16:33.205Z'
+timestamp: '2026-07-19T02:27:49.539Z'
 ---
 
