@@ -19,6 +19,10 @@ title: >-
   Pin the /__ui/actions/* auth layers with direct HTTP probe tests (PR#109 QA
   item 2)
 status: in_progress
-timestamp: '2026-07-19T12:55:16.635Z'
+timestamp: '2026-07-19T13:05:44.214Z'
 ---
 Parent context: PR #109 (trusted View actions) + the posted review at https://github.com/Holaxis-ai/agentstate-lite/pull/109#issuecomment-5012721593.
+
+Implementation: PR #118 — https://github.com/Holaxis-ai/agentstate-lite/pull/118
+
+Proof before publication: 3 endpoints × 7 fail-closed HTTP probes; focused suite 25/25; adversarial red proof showed a weakened exact-header guard allowed the wrong-header commit probe to mutate its isolated target; full npm run check passed.
