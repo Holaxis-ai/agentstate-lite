@@ -21,6 +21,9 @@ describe("Page registry authority", () => {
       "pages-registry/.hidden", "pages-registry/reviews/.draft",
       "pages-registry/x\\y", "pages-registry/x%2fy", "pages-registry/x?y", "pages-registry/x#y",
       "pages-registry/http:x", "pages-registry/has space", "https://example.test/pages-registry/x",
+      // PR #54 review finding 1 (tasks/pr-54-review-followups): a MID-PATH `.md` segment, checked
+      // case-insensitively, must be rejected too — not just a trailing one.
+      "pages-registry/x.md/y",
     ]) expect(isPageRegistryId(invalid), invalid).toBe(false);
   });
 
@@ -30,6 +33,8 @@ describe("Page registry authority", () => {
     for (const invalid of [
       "pages/", "pagesevil/x", "/pages/x", "pages/../x", "pages/.hidden.html",
       "pages/reviews/.draft.html", "pages/x%2f.html", "pages/x?raw",
+      // PR #54 review finding 1's exact literal shape, pinned on the entry-key side too.
+      "pages/x.MD/y.html",
     ]) {
       expect(isPageEntryKey(invalid), invalid).toBe(false);
     }

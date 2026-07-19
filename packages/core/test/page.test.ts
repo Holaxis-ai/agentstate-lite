@@ -31,6 +31,12 @@ test("Page registry ids reject paths that discovery cannot round-trip", () => {
     "docs/x",
     "/pages-registry/x",
     "pages-registry/x.md",
+    // PR #54 review finding 1 (tasks/pr-54-review-followups): a MID-PATH `.md` segment must be
+    // rejected too, not just a trailing one — it would create an on-disk directory that blocks a
+    // future doc write to id `pages-registry/x` (the entry-key side already rejected this shape
+    // via assertSafeBlobKey; the registry-id side did not). Checked case-insensitively.
+    "pages-registry/x.md/y",
+    "pages-registry/X.MD/y",
     "pages-registry/./x",
     "pages-registry/../x",
     "pages-registry/x//y",
@@ -73,6 +79,8 @@ test("Page entry keys reject paths that storage or discovery cannot round-trip",
     "pages/résumé.html",
     "pages/assets.md/review.html",
     "pages/assets.MD/review.html",
+    // PR #54 review finding 1's exact literal shape, pinned on the entry-key side too.
+    "pages/x.MD/y.html",
   ]) {
     assert.equal(isPageEntryKey(invalid), false, invalid);
   }
@@ -100,6 +108,8 @@ test("View registry ids reject the SAME safe-segment attacks the legacy grammar 
     "docs/x",
     "/views-registry/x",
     "views-registry/x.md",
+    "views-registry/x.md/y",
+    "views-registry/X.MD/y",
     "views-registry/./x",
     "views-registry/../x",
     "views-registry/x//y",
@@ -141,6 +151,7 @@ test("View entry keys preserve valid nested blob identities and reject the same 
     "views/résumé.html",
     "views/assets.md/review.html",
     "views/assets.MD/review.html",
+    "views/x.MD/y.html",
   ]) {
     assert.equal(isViewEntryKey(invalid), false, invalid);
     assert.equal(isAnyEntryKey(invalid), false, invalid);
@@ -187,7 +198,7 @@ test("parseRegistration: THE one registration predicate — valid triples parse,
 });
 
 test("parseRegistration: rejects an invalid registry id even when the entry is valid (the mint/serve drift hole)", () => {
-  for (const id of ["notes/foo", "docs/x", "pages-registryevil/x", "pages-registry/x.md", "pages-registry/../x", "", undefined]) {
+  for (const id of ["notes/foo", "docs/x", "pages-registryevil/x", "pages-registry/x.md", "pages-registry/x.md/y", "pages-registry/../x", "", undefined]) {
     assert.equal(parseRegistration(id, { type: "Page", entry: "pages/about.html" }), null, String(id));
     assert.equal(parseRegistration(id, { type: "View", entry: "views/board.html" }), null, String(id));
   }

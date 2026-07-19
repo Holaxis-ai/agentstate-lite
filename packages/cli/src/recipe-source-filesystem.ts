@@ -47,6 +47,15 @@ async function walkRecipeFiles(
     const abs = path.join(dir, entry.name);
     const rel = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
     if (skip.has(rel)) continue;
+    // Fail fast on a dot-prefixed entry — BEFORE recursing into it or reading its bytes (PR #54
+    // review finding 2, tasks/pr-54-review-followups). The recipe grammar can never accept a
+    // dot-prefixed path (parseRecipeFiles's definitions-only check would reject it anyway, as an
+    // undeclared file), so a `.git/` directory in a recipe root was previously walked and read
+    // OBJECT-BY-OBJECT as UTF-8 before that rejection ever fired — same eventual strictness, now
+    // with no wasted (and, for `.git`'s binary objects, potentially lossy/incorrect) reads.
+    if (entry.name.startsWith(".")) {
+      throw new RecipeUnsafePathSignal(rel, "dot-entry");
+    }
     if (entry.isDirectory()) {
       await walkRecipeFiles(abs, rel, rootReal, out, skip);
       continue;
@@ -84,9 +93,11 @@ async function walkConventions(dir: string, relPrefix: string, rootReal: string,
 
 class RecipeUnsafePathSignal extends Error {
   rel: string;
-  constructor(rel: string) {
-    super(`unsafe path '${rel}'`);
+  reason: "symlink-escape" | "dot-entry";
+  constructor(rel: string, reason: "symlink-escape" | "dot-entry" = "symlink-escape") {
+    super(`unsafe path '${rel}' (${reason})`);
     this.rel = rel;
+    this.reason = reason;
   }
 }
 
@@ -109,13 +120,11 @@ export function filesRecipeSource(): RecipeSource {
         files = await readRecipeDir(real);
       } catch (err) {
         if (err instanceof RecipeUnsafePathSignal) {
-          return {
-            ok: false,
-            error: {
-              code: "RECIPE_UNSAFE_PATH",
-              message: `recipe folder '${ref}' contains a symlink escaping the recipe root: '${err.rel}'`,
-            },
-          };
+          const message =
+            err.reason === "dot-entry"
+              ? `recipe folder '${ref}' contains a dot-prefixed path, which the recipe grammar can never accept: '${err.rel}'`
+              : `recipe folder '${ref}' contains a symlink escaping the recipe root: '${err.rel}'`;
+          return { ok: false, error: { code: "RECIPE_UNSAFE_PATH", message } };
         }
         throw err;
       }
