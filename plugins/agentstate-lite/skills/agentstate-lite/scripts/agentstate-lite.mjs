@@ -16144,9 +16144,22 @@ import { parseArgs as parseArgs22 } from "node:util";
 // src/commands/hook.ts
 import { existsSync as existsSync6, readFileSync as readFileSync4, writeFileSync as writeFileSync3, rmSync as rmSync2 } from "node:fs";
 import { homedir as homedir7 } from "node:os";
-import { join as join7, dirname as dirname3 } from "node:path";
+import { join as join8, dirname as dirname3 } from "node:path";
 import { mkdirSync as mkdirSync2 } from "node:fs";
 import { parseArgs as parseArgs21 } from "node:util";
+
+// src/host-config.ts
+import { join as join7 } from "node:path";
+var HOST_CONFIG_ROOTS = {
+  claude: { env: "CLAUDE_CONFIG_DIR", fallbackDirectory: ".claude" },
+  codex: { env: "CODEX_HOME", fallbackDirectory: ".codex" }
+};
+function resolveHostConfigRoot(config, home2, env) {
+  const configured = env[config.env];
+  return configured === void 0 || configured.length === 0 ? join7(home2, config.fallbackDirectory) : configured;
+}
+
+// src/commands/hook.ts
 var HOOK_USAGE = `agentstate-lite hook \u2014 manage the SessionStart board-aware hook
 
 Usage:
@@ -16232,25 +16245,25 @@ function readHookStatus(settings) {
 }
 function targetsForBase(base) {
   return {
-    claudeSettings: join7(base, ".claude", "settings.json"),
-    codexHooks: join7(base, ".codex", "hooks.json"),
-    codexConfig: join7(base, ".codex", "config.toml"),
-    opencodePlugin: join7(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
+    claudeSettings: join8(base, ".claude", "settings.json"),
+    codexHooks: join8(base, ".codex", "hooks.json"),
+    codexConfig: join8(base, ".codex", "config.toml"),
+    opencodePlugin: join8(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME)
   };
 }
 function configuredPath(value, fallback) {
   return value === void 0 || value.length === 0 ? fallback : value;
 }
 function globalHookTargets(home2 = homedir7(), env = process.env) {
-  const claudeHome = configuredPath(env.CLAUDE_CONFIG_DIR, join7(home2, ".claude"));
-  const codexHome = configuredPath(env.CODEX_HOME, join7(home2, ".codex"));
-  const xdgConfigHome = configuredPath(env.XDG_CONFIG_HOME, join7(home2, ".config"));
-  const opencodeHome = configuredPath(env.OPENCODE_CONFIG_DIR, join7(xdgConfigHome, "opencode"));
+  const claudeHome = resolveHostConfigRoot(HOST_CONFIG_ROOTS.claude, home2, env);
+  const codexHome = resolveHostConfigRoot(HOST_CONFIG_ROOTS.codex, home2, env);
+  const xdgConfigHome = configuredPath(env.XDG_CONFIG_HOME, join8(home2, ".config"));
+  const opencodeHome = configuredPath(env.OPENCODE_CONFIG_DIR, join8(xdgConfigHome, "opencode"));
   return {
-    claudeSettings: join7(claudeHome, "settings.json"),
-    codexHooks: join7(codexHome, "hooks.json"),
-    codexConfig: join7(codexHome, "config.toml"),
-    opencodePlugin: join7(opencodeHome, "plugins", OPENCODE_PLUGIN_FILENAME)
+    claudeSettings: join8(claudeHome, "settings.json"),
+    codexHooks: join8(codexHome, "hooks.json"),
+    codexConfig: join8(codexHome, "config.toml"),
+    opencodePlugin: join8(opencodeHome, "plugins", OPENCODE_PLUGIN_FILENAME)
   };
 }
 function targetSets(bases, deps) {
