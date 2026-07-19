@@ -38,6 +38,7 @@ import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { collectLinkDeclarations } from "../link-types.js";
 import { isLegacyPageDoc, isLegacyRegistryDocId, LEGACY_PAGE_BLOB_PREFIX } from "../legacy-page.js";
+import { cliInvocation } from "../invocation.js";
 
 export const STATUS_USAGE = `agentstate-lite status — read-only whole-bundle health report (bundle lint)
 
@@ -61,6 +62,12 @@ Category semantics (one line each):
                       error; fix its YAML or remove the file. This is the headline finding.
   kind_warnings      Frontmatter/section violations against a doc's OWN declared kind (a per-doc
                       lint; see 'kinds').
+  conformance_debt   Count of GOVERNED DOCS carrying at least one FRONTMATTER-level kind violation
+                      (a missing required field, an out-of-enum value, or wrong arity) — a per-DOC,
+                      frontmatter-only signal, deliberately narrower than 'kind_warnings' (a
+                      per-VIOLATION total that also counts body-section violations). Present (even
+                      at 0) whenever the bundle declares any kind at all; absent on a
+                      conventions-free bundle. See 'doc update' to fix a listed doc.
   unresolved_links   A link whose target isn't in the queried doc set — informational (OKF permits
                       links to not-yet-written knowledge), not broken.
   orphans            A concept doc with ZERO INBOUND links from OTHER concept docs. Outbound links
@@ -137,6 +144,13 @@ function cap(rows: Record<string, unknown>[], limit: number): Capped {
   return { shown: bounded.length, total: rows.length, rows: bounded };
 }
 
+/**
+ * `validateAgainstKind`'s codes that represent a FRONTMATTER-shaped violation (a missing required
+ * field, an out-of-enum value, or wrong arity) — every code EXCEPT `KIND_SECTION_MISSING` (a missing
+ * BODY heading, out of scope for `conformance_debt` below).
+ */
+const FRONTMATTER_VIOLATION_CODES = new Set(["KIND_FIELD_MISSING", "KIND_FIELD_VALUE", "KIND_FIELD_ARITY"]);
+
 /** A doc's `type` field, or "" when absent/non-string — the ONE place this coercion happens. */
 function docType(doc: OkfDocument): string {
   return typeof doc.frontmatter.type === "string" ? doc.frontmatter.type : "";
@@ -198,12 +212,24 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
 
   // Kind lint: for every doc whose `type` is governed by a declared kind, validate it (the ONE
   // validator `doc write`/`new` already use — no second implementation).
+  //
+  // Conformance debt (tasks/status-conformance-debt): re-grouped from this SAME lint pass, by DOC
+  // rather than by VIOLATION, and narrowed to FRONTMATTER-shaped codes only — no new query, no new
+  // pass over `docs`, and no read of `doc.body` of its OWN (validateAgainstKind's body-section check
+  // already ran, as part of computing `kind_warnings`, on docs this loop already has in hand; this
+  // block only inspects each warning's `code`, never `doc.body`). `KIND_SECTION_MISSING` (a missing
+  // body heading) is deliberately excluded — it names no frontmatter field a `doc update --<field>`
+  // could set.
   const lintRows: Record<string, unknown>[] = [];
+  const conformanceDebtDocs = new Map<string, string>(); // id -> type, first-seen (docs is id-sorted)
   for (const doc of docs) {
     const kind = registry.kinds.get(docType(doc));
     if (!kind) continue;
     for (const w of validateAgainstKind(doc, kind)) {
       lintRows.push({ id: doc.id, field: w.field ?? "", code: w.code });
+      if (FRONTMATTER_VIOLATION_CODES.has(w.code) && !conformanceDebtDocs.has(doc.id)) {
+        conformanceDebtDocs.set(doc.id, docType(doc));
+      }
     }
   }
 
@@ -366,6 +392,10 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   );
   const linkTypeViolations = cap(linkTypeViolationRows, limit);
   const missingExpectedLinks = cap(missingExpectedRows, limit);
+  const conformanceDebt = cap(
+    [...conformanceDebtDocs].map(([id, type]) => ({ id, type })),
+    limit,
+  );
 
   const out: Record<string, unknown> = {
     docs: docs.length,
@@ -387,10 +417,25 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   // the missing_expected_links lint evaluated them — not findings suppressed (a skipped instance
   // might have carried its expected edge and linted clean anyway).
   if (terminalSkipped > 0) out.terminal_skipped = terminalSkipped;
+  // Conformance debt (tasks/status-conformance-debt): present — even at 0 — whenever the bundle
+  // declares ANY kind at all, mirroring `kind_warnings`'s own always-shown-when-relevant shape;
+  // absent entirely on a conventions-free bundle (`registry.kinds.size === 0`), which is what keeps
+  // that bundle shape's status output BYTE-IDENTICAL to before this field existed (gate 2/3 — see
+  // status.test.ts's byte-identity pin). The row block + its fixing-command help hatch follow the
+  // SAME omitted-when-empty convention as every other finding category below.
+  if (registry.kinds.size > 0) out.conformance_debt = conformanceDebt.total;
   // Row-list blocks are omitted when empty (matching `kinds`/`doc write`'s existing omit-if-empty
   // convention) so a clean bundle's report stays a short summary, not nine empty categories.
   if (malformed.total > 0) out.malformed_docs = malformed;
   if (lint.total > 0) out.kind_lint = lint;
+  if (conformanceDebt.total > 0) {
+    out.conformance_debt_docs = {
+      ...conformanceDebt,
+      help:
+        `${cliInvocation()} doc update <id> --<field> <value>  — fix a listed doc's missing/invalid ` +
+        `field(s); see '${cliInvocation()} kinds' for each governing kind's declared fields`,
+    };
+  }
   if (unresolved.total > 0) out.unresolved = unresolved;
   if (orphans.total > 0) out.orphan_docs = orphans;
   if (stale.total > 0) out.stale_docs = stale;
