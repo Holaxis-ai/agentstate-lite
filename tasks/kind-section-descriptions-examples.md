@@ -4,10 +4,24 @@ title: Evaluate Kind section descriptions and examples after dogfood
 status: todo
 priority: '3'
 description: >-
-  Evidence-gated evaluation of section descriptions and examples after the core
-  semantic metadata is exercised in recipe transfer and generative Pages.
-actor: openai/codex
-timestamp: '2026-07-11T22:53:06.067Z'
+  [VERIFIED 2026-07-19, KEEP — wake condition not yet met] The
+  founder-to-founder recipe transfer (tasks/prove-recipe-plugin-sharing) is
+  still status todo/founders-gated. Searched context-notes/ and research/
+  prefixes for any dogfood record of section-description or example-related
+  failures from Page/domain-model authoring
+  (board/roadmap/memory/architecture-kinds/operating-model-explorer/personal-bundle-catalog-review
+  Pages all exist as authoring exercises) — found no such record. The evaluation
+  this task gates has not been triggered; original text preserved below.
+  Evaluate whether section descriptions and examples solve semantic failures
+  that remain after Kind, field, relationship, and enum descriptions are
+  dogfooded. This is evidence-gated discovery, not authorization to add every
+  plausible metadata key. Wake condition: run the founder-to-founder recipe
+  transfer and at least one generative Page/domain-model exercise using the
+  first three semantic-description units; record concrete recurring failure
+  cases. If no recurring failure remains, close this task without
+  implementation.
+actor: mike/claude
+timestamp: '2026-07-19T13:10:33.465Z'
 ---
 # Objective
 

@@ -6,11 +6,27 @@ title: >-
 status: todo
 priority: '3'
 description: >-
-  Two non-blocking findings from the independent PR #54 review: Page grammar
-  accepts mid-path .md segments (doc/dir collision); portable-recipe walk reads
-  dot-prefixed entries (.git contents) before rejecting them.
-actor: claude-fable
-timestamp: '2026-07-14T17:23:56.606Z'
+  [VERIFIED 2026-07-19, KEEP — both findings empirically reproduced] (1) node
+  --input-type=module against the built packages/core/dist/page.js:
+  isPageRegistryId('pages-registry/x.md/y') === true while
+  isPageEntryKey('pages/x.md/y') === false — the divergence is unchanged.
+  isRegistryIdUnder (core/src/page.ts:57) and isEntryKeyUnder now share the SAME
+  hasSafePageSegments helper, but isRegistryIdUnder still calls
+  assertSafeConceptId (paths.ts:52, no mid-path .md check) while isEntryKeyUnder
+  calls assertSafeBlobKey (paths.ts:91-116, which DOES reject any segment ending
+  in .md at any depth) — so the fix has not been applied to the concept-id side.
+  (2) packages/cli/src/recipe-source-filesystem.ts's walkRecipeFiles (lines
+  38-63) still has no dot-prefixed-entry check before recursing (line 50-51) or
+  reading a file's bytes as UTF-8 (line 61) — a .git/ dir inside a recipe root
+  is still read object-by-object before any grammar rejection. Original text
+  preserved: Two non-blocking findings from the independent PR #54 review: Page
+  grammar accepts mid-path .md segments (doc/dir collision); portable-recipe
+  walk reads dot-prefixed entries (.git contents) before rejecting them. Close
+  the two non-blocking findings from the independent PR #54 review (merged as
+  288e989); details and empirical probes in the review note
+  (context-notes/pr-54-independent-review.md).
+actor: mike/claude
+timestamp: '2026-07-19T13:10:46.303Z'
 ---
 # Objective
 
