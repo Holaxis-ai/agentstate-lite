@@ -205,6 +205,9 @@ async function promoteDoc(
   const warnings = defaultTimestampAndValidateKind(candidate, registry, {
     strict: opts.strict,
     helpOnReject: `${cliInvocation()} kinds`,
+    // I9: an omitted --expected-version is an EXPECT-ABSENT create (the doc does not yet exist); a
+    // present one implies the caller read the doc first to get that token, so it already exists.
+    docExists: opts.expectedVersion !== null,
   });
 
   let version: string;

@@ -3,16 +3,69 @@
 import {
   defaultTimestampAndValidateAgainstRegistry,
   KindConformanceError,
+  type ConceptId,
+  type KindConvention,
   type KindRegistry,
   type OkfDocument,
   type ValidationWarning,
 } from "@agentstate-lite/core";
 import { CliError } from "./errors.js";
+import { cliInvocation } from "./invocation.js";
 
-/** Translate a typed core rejection into the established strict-mode CLI contract. */
-export function kindConformanceCliError(error: KindConformanceError, help: string): CliError {
+/**
+ * Build a literal, ready-to-run `doc update <id>` argv that addresses every FIELD-level violation
+ * (missing/out-of-enum/wrong-arity) in `violations` — one `--<field> <placeholder>` per distinct
+ * DECLARED field (a member of `kind.fields.required`/`optional`), deduplicated in first-seen order.
+ * An enum-restricted field's placeholder lists its allowed values (`<a|b|c>`) instead of the generic
+ * `<value>` token, so the agent picks a real one rather than guessing. A violation naming something
+ * other than a declared field — `KIND_SECTION_MISSING` names a missing BODY HEADING, not a
+ * `doc update --<field>`-settable frontmatter key — has no flag that can complete it, so it is
+ * filtered out by the declared-field membership check; the caller falls back to its generic help
+ * when NOTHING is left. Returns `undefined` when `kind` is absent or no violation names a completable
+ * field, so the caller can fall back cleanly.
+ */
+function buildCompletingUpdateCommand(
+  id: ConceptId,
+  violations: ValidationWarning[],
+  kind: KindConvention | undefined,
+): string | undefined {
+  if (!kind) return undefined;
+  const declaredFields = new Set([...kind.fields.required, ...kind.fields.optional]);
+  const seen = new Set<string>();
+  const flags: string[] = [];
+  for (const violation of violations) {
+    const field = violation.field;
+    if (!field || seen.has(field) || !declaredFields.has(field)) continue;
+    seen.add(field);
+    const allowed = kind.fields.values[field];
+    const placeholder = allowed && allowed.length > 0 ? `<${allowed.join("|")}>` : "<value>";
+    flags.push(`--${field} ${placeholder}`);
+  }
+  if (flags.length === 0) return undefined;
+  return `${cliInvocation()} doc update ${id} ${flags.join(" ")}`;
+}
+
+/**
+ * Translate a typed core rejection into the established strict-mode CLI contract: `help` becomes a
+ * literal completing `doc update` command (placeholder values filled in by the caller) naming every
+ * violated field, falling back to `fallbackHelp` (the generic `kinds` pointer) when no violation
+ * names a completable field (e.g. only a body-section violation) OR when `docExists` is false — a
+ * `doc update <id>` command is only ever runnable against an EXISTING doc (`doc update`'s `onAbsent:
+ * "fail"`); a kind refusal on a doc that was never persisted (a rejected CREATE) has no id for
+ * `doc update` to patch, so emitting one there would be a completing command that 404s. Callers on a
+ * mutation mode that can create (`create-only`/`overwrite`) must determine `docExists` themselves —
+ * `patch` mode callers (the doc is a precondition of patching at all) may always pass `true`.
+ */
+export function kindConformanceCliError(
+  error: KindConformanceError,
+  registry: KindRegistry,
+  fallbackHelp: string,
+  docExists: boolean,
+): CliError {
+  const kind = registry.kinds.get(error.governs);
+  const completing = docExists ? buildCompletingUpdateCommand(error.id, error.violations, kind) : undefined;
   return new CliError("USAGE", error.message, {
-    help,
+    help: completing ?? fallbackHelp,
     details: { violations: error.violations },
   });
 }
@@ -21,8 +74,14 @@ export function kindConformanceCliError(error: KindConformanceError, help: strin
 export interface KindValidateOptions {
   /** Upgrade a non-empty warning set to a thrown USAGE CliError instead of returning it (no write happens). */
   strict: boolean;
-  /** The `help` fixing command attached to a `--strict` rejection. */
+  /** Fallback `help` for a `--strict` rejection whose violations name no completable field (see `kindConformanceCliError`). */
   helpOnReject: string;
+  /**
+   * Whether `candidate.id` already exists in the bundle — gates whether a `--strict` rejection's
+   * `help` may safely be a completing `doc update` command (see `kindConformanceCliError`). Callers
+   * writing via an expect-absent CREATE should pass `false`.
+   */
+  docExists: boolean;
 }
 
 /**
@@ -46,7 +105,9 @@ export function defaultTimestampAndValidateKind(
   if (kind && warnings.length > 0 && opts.strict) {
     throw kindConformanceCliError(
       new KindConformanceError(candidate.id, kind.governs, warnings),
+      registry,
       opts.helpOnReject,
+      opts.docExists,
     );
   }
   return warnings;

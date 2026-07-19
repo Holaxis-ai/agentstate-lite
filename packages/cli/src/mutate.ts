@@ -9,6 +9,7 @@ import {
   DocumentNotFoundError,
   KindConformanceError,
   mutateDocument,
+  readDoc,
   VersionConflict,
   type Bundle,
   type ConceptId,
@@ -43,6 +44,7 @@ export interface MutateDocOptions {
   mode: MutateMode;
   registry: KindRegistry;
   strict: boolean;
+  /** Fallback `help` for a kind rejection whose violations name no completable field (see `kindConformanceCliError`). */
   helpOnKindReject: string;
   buildCandidate: (existing: OkfDocument | undefined) => MutateCandidate | Promise<MutateCandidate>;
   onAbsent?: "fail" | "create";
@@ -74,9 +76,31 @@ async function firePostPersist(hook: (() => void | Promise<void>) | undefined): 
   }
 }
 
-function translateMutationError(error: unknown, opts: MutateDocOptions): never {
+/**
+ * Whether `id` can safely be assumed to already exist in `bundle`, for the purpose of deciding if a
+ * kind refusal's `help` may be a completing `doc update <id>` command (see
+ * `kindConformanceCliError`'s doc comment). `patch` mode requires an existing target
+ * (`mutateDocument`'s own precondition), so it's always `true` with no I/O. `create-only` is an
+ * expect-absent create, so it's always `false` with no I/O. `overwrite` can go either way — a real
+ * best-effort read is the only honest answer there; any read failure (including a genuine absence)
+ * is treated as "does not exist," the conservative choice that only ever suppresses a completing
+ * command, never emits a broken one.
+ */
+async function docExistsForMode(bundle: Bundle, id: ConceptId, mode: MutateMode): Promise<boolean> {
+  if (mode === "patch") return true;
+  if (mode === "create-only") return false;
+  try {
+    await readDoc(bundle, id);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function translateMutationError(error: unknown, opts: MutateDocOptions): Promise<never> {
   if (error instanceof KindConformanceError) {
-    throw kindConformanceCliError(error, opts.helpOnKindReject);
+    const docExists = await docExistsForMode(opts.bundle, opts.id, opts.mode);
+    throw kindConformanceCliError(error, opts.registry, opts.helpOnKindReject, docExists);
   }
   if (error instanceof DocumentNotFoundError) {
     throw opts.errors.notFound?.() ?? new CliError("NOT_FOUND", error.message);
@@ -113,6 +137,6 @@ export async function mutateDoc(opts: MutateDocOptions): Promise<MutateResult> {
       ? result
       : { doc: result.doc, version: result.version, warnings: result.warnings };
   } catch (error) {
-    translateMutationError(error, opts);
+    return await translateMutationError(error, opts);
   }
 }
