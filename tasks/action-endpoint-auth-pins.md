@@ -15,6 +15,10 @@ description: >-
   click-timing) and 3 (concurrent-writer race) from the QA list are covered: 1
   by 88ba95a's MutationObserver e2e, 3 by the service-level CAS race test.
 actor: mike/claude
-timestamp: '2026-07-19T02:35:30.551Z'
+title: >-
+  Pin the /__ui/actions/* auth layers with direct HTTP probe tests (PR#109 QA
+  item 2)
+status: todo
+timestamp: '2026-07-19T02:35:50.010Z'
 ---
 Parent context: PR #109 (trusted View actions) + the posted review at https://github.com/Holaxis-ai/agentstate-lite/pull/109#issuecomment-5012721593.
