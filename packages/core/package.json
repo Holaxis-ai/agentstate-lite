@@ -20,6 +20,10 @@
     "./page": {
       "types": "./dist/page.d.ts",
       "default": "./dist/page.js"
+    },
+    "./query-filter": {
+      "types": "./dist/query-filter.d.ts",
+      "default": "./dist/query-filter.js"
     }
   },
   "files": [
