@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'Agreement test: hook and skill discovery share Claude/Codex config roots'
-status: todo
+status: in_progress
 priority: '3'
 description: >-
   After PR #110 merges, pin one default-and-relocated root matrix across global
@@ -10,6 +10,6 @@ description: >-
   outside the shared matrix because it has no skill-discovery surface; its
   OPENCODE_CONFIG_DIR/XDG behavior remains hook-only.
 actor: mike/codex
-timestamp: '2026-07-19T01:58:25.398Z'
+timestamp: '2026-07-19T02:34:02.261Z'
 ---
 [depends on](hook-install-relocatable-home.md)
