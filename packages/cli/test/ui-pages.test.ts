@@ -264,6 +264,45 @@ test("P1: stop() ABORTS an in-flight snapshot request instead of leaving it dang
   }
 });
 
+test("startWatcher: a --remote upstream whose BOOT snapshot never responds REJECTS within the bound, not hangs (tasks/ui-remote-watcher-boot-timeout)", async () => {
+  // Never touches `res` at all — the ONLY way this request ends is the client's own boot-time
+  // timeout firing (undici's default is ~300s; unbound, this would hang `startWatcher` forever,
+  // which `bootUiServer` awaits directly — the exact disease this fix closes).
+  const server = createHttpServer(() => {});
+  const origin = await listenOn(server);
+  try {
+    const start = Date.now();
+    let rejection: unknown;
+    let hitSafetyCeiling = false;
+    // A generous 2s SAFETY ceiling around the real ~100ms test bound (never the production
+    // default) — if the fix regresses, this trips instead of the test itself hanging forever.
+    await Promise.race([
+      startWatcher({ mode: "remote", remoteBase: origin, bootTimeoutMs: 100, onChange: () => {} }).catch((err: unknown) => {
+        rejection = err;
+      }),
+      new Promise<void>((resolve) => {
+        const t = setTimeout(() => {
+          hitSafetyCeiling = true;
+          resolve();
+        }, 2_000);
+        t.unref?.();
+      }),
+    ]);
+    const elapsedMs = Date.now() - start;
+
+    assert.equal(hitSafetyCeiling, false, "startWatcher hung past the test's 2s safety ceiling — the boot-time bound did not fire");
+    assert.ok(rejection, "startWatcher must REJECT (not resolve) when its boot snapshot times out");
+    assert.equal(
+      (rejection as Error).name,
+      "TimeoutError",
+      `expected AbortSignal.timeout()'s TimeoutError to fire the rejection; got: ${String(rejection)}`,
+    );
+    assert.ok(elapsedMs < 1_000, `startWatcher took ${elapsedMs}ms to reject — expected near its OWN ~100ms bound, not a slower fallback`);
+  } finally {
+    server.close();
+  }
+});
+
 // ── privilege split (end-to-end over a real listener) ─────────────────────────
 
 const SECRET = "test-session-secret-pages-spike";
@@ -605,6 +644,68 @@ test("ONE-PREDICATE: a FAILED per-type registry query fails the WHOLE mint enume
       await handle.close();
     }
   } finally {
+    server.close();
+  }
+});
+
+test("bootUiServer: a --remote upstream that never responds on boot does not hang the UI boot — bounded, degraded-but-honest signal (tasks/ui-remote-watcher-boot-timeout)", async () => {
+  // Never touches `res` — the watcher's boot-time snapshot fetch against this origin can only end
+  // by timing itself out; `bootUiServer` must never wait that out.
+  const server = createHttpServer(() => {});
+  const origin = await listenOn(server);
+
+  const stderrChunks: string[] = [];
+  const originalWrite = process.stderr.write.bind(process.stderr);
+  process.stderr.write = ((chunk: unknown) => {
+    stderrChunks.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+
+  try {
+    const start = Date.now();
+    let handle: UiServerHandle | undefined;
+    let hitSafetyCeiling = false;
+    await Promise.race([
+      bootUiServer({
+        mode: "remote",
+        port: 0,
+        remoteBase: origin,
+        // Test-only override (never the production ~5s default) — keeps this test fast.
+        watcherBootTimeoutMs: 100,
+        sessionSecret: SECRET,
+      }).then((h) => {
+        handle = h;
+      }),
+      new Promise<void>((resolve) => {
+        const t = setTimeout(() => {
+          hitSafetyCeiling = true;
+          resolve();
+        }, 2_000);
+        t.unref?.();
+      }),
+    ]);
+    const elapsedMs = Date.now() - start;
+    process.stderr.write = originalWrite;
+
+    try {
+      assert.equal(hitSafetyCeiling, false, "bootUiServer hung past the test's 2s safety ceiling — the boot never returned");
+      assert.ok(handle, "bootUiServer must resolve to a handle even when the watcher degrades");
+      assert.ok(elapsedMs < 1_000, `bootUiServer took ${elapsedMs}ms — expected near the watcher's own ~100ms boot bound`);
+      // Degraded-but-HONEST: the timeout is surfaced (never a silent no-watch), and the UI is
+      // otherwise fully usable — a basic authenticated request still succeeds.
+      assert.ok(
+        stderrChunks.some((line) => line.includes("[ui watcher]") && /timeout/i.test(line)),
+        `expected a "[ui watcher] ... timeout ..." stderr line; got: ${JSON.stringify(stderrChunks)}`,
+      );
+      const res = await fetch(`http://${handle!.host}:${handle!.port}/__ui/config`, {
+        headers: { cookie: `aslite_ui_session=${SECRET}` },
+      });
+      assert.equal(res.status, 200, "the UI must remain fully usable even though the watcher degraded");
+    } finally {
+      if (handle) await handle.close();
+    }
+  } finally {
+    process.stderr.write = originalWrite;
     server.close();
   }
 });
