@@ -470,6 +470,190 @@ test("link show --text '' (empty/blank value): USAGE error, exit 2", async () =>
   }
 });
 
+// ── link-add-target-honesty: dangling links stay LEGAL, but the receipt now says so ────────────
+//
+// Cold-start usability probe finding 1 (2026-07-19): `link add` to a TYPO'D target returned the
+// identical success envelope as a deliberate forward-declaration. Dangling links stay allowed
+// (`link --help` already says so); the fix is receipt HONESTY — a `warnings[]` entry (the SAME
+// convention the graph-lint tests above pin), never a refusal.
+
+test("link add: an absent target attaches a LINK_TARGET_ABSENT warning to the success envelope (RED PROOF: dropping the signal fails this)", async () => {
+  const { dir, cleanup } = await makeFixtureBundle();
+  try {
+    // Reproduces the probe's exact transcript: 'concepts/ghots' is a typo for an id that was
+    // never written (no doc at that id in this fixture bundle).
+    const result = await linkAdd(dir, ["concepts/a", "concepts/ghots", "--text", "cites"]);
+    assert.equal(result.changed, true);
+    assert.equal(result.link, "added");
+    const warnings = result.warnings as Array<Record<string, unknown>>;
+    assert.ok(warnings, "expected a warnings array for a link to an absent target");
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0]!.code, "LINK_TARGET_ABSENT");
+    assert.equal(warnings[0]!.severity, "warning");
+    assert.equal(warnings[0]!.field, "to");
+    assert.match(warnings[0]!.message as string, /'concepts\/ghots' has no document yet/);
+    assert.match(warnings[0]!.message as string, /forward-declaration/);
+    assert.match(warnings[0]!.message as string, /doc write concepts\/ghots --type <t>/);
+
+    // The link itself IS written — forward-declaration stays legal, never refused.
+    const doc = await readDoc({ root: dir }, "concepts/a");
+    assert.match(doc.body, /\[cites\]\(ghots\.md\)/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link add: a PRESENT target's success receipt is byte-identical to the pre-fix envelope (no warnings key at all)", async () => {
+  const { dir, cleanup } = await makeFixtureBundle();
+  try {
+    const result = await linkAdd(dir, ["concepts/a", "concepts/b"]);
+    // Pinned from the actual pre-change CLI output (captured before this fix landed):
+    // {"link":"added","from":"concepts/a","to":"concepts/b","href":"b.md","text":"concepts/b",
+    //  "changed":true,"help":["... link show concepts/b"]} — no `warnings` key.
+    assert.deepEqual(Object.keys(result).sort(), ["changed", "from", "help", "href", "link", "text", "to"]);
+    assert.equal(result.link, "added");
+    assert.equal(result.from, "concepts/a");
+    assert.equal(result.to, "concepts/b");
+    assert.equal(result.href, "b.md");
+    assert.equal(result.text, "concepts/b");
+    assert.equal(result.changed, true);
+    assert.ok(!("warnings" in result), "a link to an existing target must never attach a warnings key");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link add: the idempotent no-op path (changed:false) never attaches LINK_TARGET_ABSENT, even when the target is still absent (mirrors the graph-lint idempotent-path skip — one convention, not two)", async () => {
+  const { dir, cleanup } = await makeFixtureBundle();
+  try {
+    const first = await linkAdd(dir, ["concepts/a", "concepts/ghost", "--text", "cites"]);
+    assert.equal(first.changed, true);
+    assert.ok(first.warnings, "first add of an absent-target edge should warn");
+
+    // Re-adding the EXACT SAME edge (same target + same text) while the target is STILL absent:
+    // converges to changed:false, and the no-op path performs no target-existence check at all.
+    const second = await linkAdd(dir, ["concepts/a", "concepts/ghost", "--text", "cites"]);
+    assert.equal(second.changed, false);
+    assert.equal(second.link, "exists");
+    assert.ok(!("warnings" in second), "the idempotent no-op path must never attach a warnings key");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link add: once the target is written, re-adding the same edge stays changed:false with no warning (the absent-target signal reflects state AT LINK TIME, not stale)", async () => {
+  const { dir, cleanup } = await makeFixtureBundle();
+  try {
+    const first = await linkAdd(dir, ["concepts/a", "concepts/ghost", "--text", "cites"]);
+    assert.equal(first.changed, true);
+    assert.ok(first.warnings, "first add of an absent-target edge should warn");
+
+    await writeDoc({ root: dir }, { id: "concepts/ghost", frontmatter: { type: "Concept", title: "Ghost" }, body: "" });
+
+    const second = await linkAdd(dir, ["concepts/a", "concepts/ghost", "--text", "cites"]);
+    assert.equal(second.changed, false, "the edge already exists — the no-op path never re-checks target existence");
+    assert.ok(!("warnings" in second));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link add: target-existence honesty is LOCAL-bundle only — a --remote link add to an absent target never carries the warning (no extra network round trip)", async () => {
+  const remoteBundle: Bundle = { root: "mem://link-target-honesty-remote", backend: new MemoryBackend() };
+  await writeDoc(remoteBundle, {
+    id: "concepts/a",
+    frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS },
+    body: "Body A.",
+  });
+  const handle: ServerHandle = await serve({ bundle: remoteBundle, port: 0 });
+  const url = `http://${handle.host}:${handle.port}`;
+  const originalFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+    requestCount++;
+    return originalFetch(...args);
+  }) as typeof fetch;
+  try {
+    let out = "";
+    await link(["add", "concepts/a", "concepts/ghost", "--remote", url, "--json"], {
+      stdout: (s) => (out += s),
+    });
+    const result = JSON.parse(out) as Record<string, unknown>;
+    assert.equal(result.changed, true);
+    assert.ok(
+      !("warnings" in result),
+      "a --remote link add to an absent target must never carry a target-existence warning",
+    );
+    // Exactly the same request count a --remote link add to a PRESENT target costs (below) — proof
+    // that no extra round trip was added for the absent-target case.
+    const requestsForAbsentTarget = requestCount;
+
+    // A direct in-process writeDoc against `remoteBundle`'s MemoryBackend, NOT through HTTP — sets
+    // up the present-target comparison below without spending any of its own fetch calls.
+    await writeDoc(remoteBundle, {
+      id: "concepts/b",
+      frontmatter: { type: "Concept", title: "B", timestamp: OLD_TS },
+      body: "Body B.",
+    });
+    requestCount = 0;
+    let out2 = "";
+    await link(["add", "concepts/a", "concepts/b", "--remote", url, "--json"], {
+      stdout: (s) => (out2 += s),
+    });
+    assert.equal(requestCount, requestsForAbsentTarget, "no extra HTTP request for an absent vs. present target");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await handle.close();
+  }
+});
+
+test("link add: a reserved-filename target is still rejected before any target-existence check runs (USAGE error, not a dangling-link warning)", async () => {
+  const { dir, cleanup } = await makeFixtureBundle();
+  try {
+    await assert.rejects(
+      () => link(["add", "concepts/a", "index", "--dir", dir, "--json"], { stdout: () => {} }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("link add: an absent target ALSO carries a type-conformance warning when --text matches a declared type — both warnings coexist in the SAME warnings[] array (one convention, not two)", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/box",
+      frontmatter: {
+        type: "Convention",
+        governs: "Box",
+        fields: { required: ["title"], optional: [] },
+        links: { contains: "Crate" },
+        timestamp: OLD_TS,
+      },
+      body: "Box declares its typed-edge vocabulary.",
+    });
+    await writeDoc(bundle, { id: "box-1", frontmatter: { type: "Box", title: "Box1", timestamp: OLD_TS }, body: "" });
+
+    // 'crate-1' is never written: the target is BOTH absent AND (once written) would need to be a
+    // Crate for 'contains' to conform — but since it's unresolved, the type-conformance half of the
+    // check is skipped (existing `lintLinkType` behavior) while the target-absent check still fires.
+    const result = await linkAdd(dir, ["box-1", "crate-1", "--text", "contains"]);
+    assert.equal(result.changed, true);
+    const warnings = result.warnings as Array<Record<string, unknown>>;
+    assert.ok(warnings, "expected a warnings array");
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0]!.code, "LINK_TARGET_ABSENT");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("link add: a wrong-kind violation (source AND target type mismatches against a declared 'links' vocabulary) attaches a warnings[] to the success envelope, exit 0 (the link is already written)", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-test-"));
   try {
