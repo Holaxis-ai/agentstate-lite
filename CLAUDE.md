@@ -389,27 +389,19 @@ the bundle):
   `doc update`, exit 5), `--show-incoming <id>` viewer, `--pull-only`, cursor + awareness
   cache (`packages/board-git` is the channel mechanics; the CLI's `commands/sync*.ts` +
   `cursor.ts`/`autopull.ts` wiring keep command UX — core never
-  learns git exists), and the SessionStart integration (U4): `session-start` — ONE hook
+  learns git exists), and the SessionStart integration: `session-start` — ONE hook
   subcommand doing a time-boxed (≤7s) best-effort pull then the home render in-process, with
   the board-awareness block ("since this machine last synced" attributed per actor,
   self-authored rows filtered, unpushed/uncommitted backstop, probe-gated "run sync — never
   init" first contact), wired by `hook install` across Claude Code/Codex/OpenCode
   (`commands/session-start.ts`, `commands/home.ts`'s board block, `commands/hook.ts`).
   An IN-TREE board — the bundle committed WITH code on the current branch, no board branch
-  anywhere — is a supported READ-SIDE mode (board-git PR C): `detectBoardChannel` routes at
+  anywhere — is a supported READ-SIDE mode: `detectBoardChannel` routes at
   sync's/session-start's own resolution points, awareness rides the branch's tracking upstream
   (decision table, never a guessed `origin/<branch>`; mode-scoped `git-intree` cursor;
   prefix-scoped diffs/backstops; NO autopull), delivery is the user's own `git pull`, write
   verbs refuse with guidance, and doc-write self-attribution rides mutate.ts's injected
   post-persist hook (`board-attribution.ts`).
-  The `sync --migrate` COMMAND (U5) was a TEMPORARY, founders-only flag — one-time
-  and `--yes`-gated (preview-first; files-not-history board branch pushed with tracking; the
-  folder-removal + gitignore commit prepared on a local `board-migration` branch for a
-  human-opened PR; never any `git clean`), surfaced in `sync --help` only (never taught in
-  the skill/reference channels). It has now been EXECUTED on this repo: the board lives on the
-  `board` branch and is gitignored on `main`, so the bundle-write convention above (share via
-  `aslite sync`) is the live path. The flag itself is SCHEDULED FOR REMOVAL in a follow-up PR
-  now that the migration is done.
 
 Standing gates on future work:
 
