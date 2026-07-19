@@ -7,9 +7,9 @@
 // command, never two entries or a compound shell string.
 //
 // MULTI-RUNTIME (AXI §7 "default app targets"): install writes a real SessionStart hook for ALL of
-//   • Claude Code   → <base>/.claude/settings.json           (SessionStart command hook)
-//   • Codex         → <base>/.codex/hooks.json + config.toml  (SessionStart hook + [features].hooks)
-//   • OpenCode      → <base>/.config/opencode/plugins/axi-agentstate-lite.js  (ambient-context plugin)
+//   • Claude Code   → project .claude/ or ${CLAUDE_CONFIG_DIR:-~/.claude}
+//   • Codex         → project .codex/ or ${CODEX_HOME:-~/.codex}
+//   • OpenCode      → project .config/opencode/ or its configured/XDG user config directory
 //
 // The portable COMMAND BASE (bare bin name when on PATH, else the absolute executable — never a
 // phantom) comes from invocation.ts's `hookCommand()`, which mirrors the axi-sdk-js
@@ -19,8 +19,8 @@
 // `<bin> session-start`) but carries the SDK-compatible managed-marker line, so status/uninstall —
 // and any SDK-side tooling matching that marker — keep working unchanged.
 //
-// SCOPE: `--scope project` (default) targets the current repo (base = cwd); `--scope global` targets
-// the user home (base = ~); project-scope OpenCode lands under `<cwd>/.config/opencode/plugins/`.
+// SCOPE: `--scope project` (default) targets the current repo; `--scope global` targets each
+// host's configured user directory. Project-scope OpenCode stays under `<cwd>/.config/opencode/`.
 import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
@@ -53,7 +53,7 @@ old hook rendered the home view without pulling the board first.
 
 Options:
   --scope project   Write to the CURRENT project (default): .claude/, .codex/, .config/opencode/
-  --scope global    Write to the USER home (~/.claude, ~/.codex, ~/.config/opencode)
+  --scope global    Write to each host's configured USER home (environment override or default)
   --json            Emit compact JSON instead of TOON
   -h, --help        Show this help
 `;
@@ -146,19 +146,53 @@ export function readHookStatus(settings: HookSettings): { installed: boolean; co
   return { installed: false };
 }
 
-/** The per-runtime target files for a scope base (~ for global, cwd for project). */
-interface HookTargets {
+/** The per-runtime target files for one resolved scope. */
+export interface HookTargets {
   claudeSettings: string;
   codexHooks: string;
+  codexConfig: string;
   opencodePlugin: string;
 }
 
-function targetsFor(base: string): HookTargets {
+function targetsForBase(base: string): HookTargets {
   return {
     claudeSettings: join(base, ".claude", "settings.json"),
     codexHooks: join(base, ".codex", "hooks.json"),
+    codexConfig: join(base, ".codex", "config.toml"),
     opencodePlugin: join(base, ".config", "opencode", "plugins", OPENCODE_PLUGIN_FILENAME),
   };
+}
+
+function configuredPath(value: string | undefined, fallback: string): string {
+  return value === undefined || value.length === 0 ? fallback : value;
+}
+
+/** Resolve global targets exactly where each host reads them. */
+export function globalHookTargets(home: string = homedir(), env: NodeJS.ProcessEnv = process.env): HookTargets {
+  const claudeHome = configuredPath(env.CLAUDE_CONFIG_DIR, join(home, ".claude"));
+  const codexHome = configuredPath(env.CODEX_HOME, join(home, ".codex"));
+  const xdgConfigHome = configuredPath(env.XDG_CONFIG_HOME, join(home, ".config"));
+  const opencodeHome = configuredPath(env.OPENCODE_CONFIG_DIR, join(xdgConfigHome, "opencode"));
+  return {
+    claudeSettings: join(claudeHome, "settings.json"),
+    codexHooks: join(codexHome, "hooks.json"),
+    codexConfig: join(codexHome, "config.toml"),
+    opencodePlugin: join(opencodeHome, "plugins", OPENCODE_PLUGIN_FILENAME),
+  };
+}
+
+export interface HookLocationDeps {
+  cwd?: string;
+  home?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
+function targetSets(bases: string[] | undefined, deps: HookLocationDeps): HookTargets[] {
+  if (bases !== undefined) return bases.map(targetsForBase);
+  const cwd = deps.cwd ?? process.cwd();
+  const home = deps.home ?? homedir();
+  const env = deps.env ?? process.env;
+  return [targetsForBase(cwd), globalHookTargets(home, env)];
 }
 
 function readSettings(path: string): HookSettings {
@@ -281,13 +315,12 @@ export const AxiAgentstateLiteAmbientContextPlugin = async ({ directory }) => {
 /**
  * U6-inherited re-install prompt signal (consumed by the home render): TRUE when a MANAGED
  * SessionStart hook is installed at any of the given scope bases (default: the cwd project scope
- * and the user-home global scope) whose command predates {@link HOOK_SUBCOMMAND} — i.e. the
+ * and each host's configured global target) whose command predates {@link HOOK_SUBCOMMAND} — i.e. the
  * pre-U4 home-only hook. Fs-only reads, tolerant of anything malformed; self-clearing (a re-run
  * `hook install` rewrites the command and this goes quiet).
  */
-export function hookNeedsUpdate(bases: string[] = [process.cwd(), homedir()]): boolean {
-  for (const base of bases) {
-    const targets = targetsFor(base);
+export function hookNeedsUpdate(bases?: string[], deps: HookLocationDeps = {}): boolean {
+  for (const targets of targetSets(bases, deps)) {
     for (const p of [targets.claudeSettings, targets.codexHooks]) {
       const s = readHookStatus(readSettings(p));
       if (s.installed && s.command !== undefined && !s.command.includes(HOOK_SUBCOMMAND)) return true;
@@ -305,15 +338,14 @@ export function hookNeedsUpdate(bases: string[] = [process.cwd(), homedir()]): b
 
 /**
  * True when ANY managed SessionStart hook is installed at any of the given scope bases (default:
- * the cwd project scope and the user-home global scope) — Claude Code settings, Codex hooks, or
+ * the cwd project scope and each host's configured global target) — Claude Code settings, Codex hooks, or
  * the OpenCode plugin. Fs-only reads, tolerant of anything malformed. This is the onboarding
  * last-mile signal sync's receipt hints on: no hook anywhere means new sessions never see the
  * board until someone runs `hook install`. (Contrast {@link hookNeedsUpdate}: installed but
  * PREDATING `session-start` — a different, self-clearing prompt on the home render.)
  */
-export function hookInstalled(bases: string[] = [process.cwd(), homedir()]): boolean {
-  for (const base of bases) {
-    const targets = targetsFor(base);
+export function hookInstalled(bases?: string[], deps: HookLocationDeps = {}): boolean {
+  for (const targets of targetSets(bases, deps)) {
     for (const p of [targets.claudeSettings, targets.codexHooks]) {
       if (readHookStatus(readSettings(p)).installed) return true;
     }
@@ -322,9 +354,9 @@ export function hookInstalled(bases: string[] = [process.cwd(), homedir()]): boo
   return false;
 }
 
-/** Injectable seam: scope base + stdout, defaulting to production. */
-export interface HookDeps {
-  /** Override the scope base directory (for tests). Default: ~ (global) or cwd (project). */
+/** Injectable filesystem-location and output seams, defaulting to production. */
+export interface HookDeps extends HookLocationDeps {
+  /** Override all scope targets with one legacy base directory (for focused tests). */
   base: string;
   stdout: (s: string) => void;
 }
@@ -372,8 +404,11 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
     });
   }
 
-  const base = deps.base ?? (scope === "global" ? homedir() : process.cwd());
-  const targets = targetsFor(base);
+  const targets = deps.base !== undefined
+    ? targetsForBase(deps.base)
+    : scope === "global"
+      ? globalHookTargets(deps.home ?? homedir(), deps.env ?? process.env)
+      : targetsForBase(deps.cwd ?? process.cwd());
   const mode = resolveMode(values);
 
   if (sub === "status") {
@@ -424,7 +459,7 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
       }
     }
     // Codex [features].hooks flag (config.toml) — same SDK updater the old installer used.
-    const codexConfigPath = join(base, ".codex", "config.toml");
+    const codexConfigPath = targets.codexConfig;
     try {
       const current = existsSync(codexConfigPath) ? readFileSync(codexConfigPath, "utf8") : "";
       const [updated, changed] = computeCodexConfigUpdate(current);
