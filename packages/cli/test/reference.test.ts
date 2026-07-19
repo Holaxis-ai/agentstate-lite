@@ -91,3 +91,30 @@ test("compactCommandReference: command names are deduplicated and hosted control
   assert.equal(commands["Invites & members (admin)"], undefined);
   assert.equal(commands["API keys"], undefined);
 });
+
+// ── probe-help-surface-fixes finding 2: `doc history`'s top-level one-liner is honest about
+// backend dependence ────────────────────────────────────────────────────────────────────────────
+//
+// Cold-start usability probe (2026-07-19): the top-level `--help`'s `doc history` blurb promised
+// "attributed version history" unconditionally, but a LOCAL backend returns just the single current
+// revision (`doc history --help`'s own full text already says so — see doc.test.ts's per-verb-help
+// test). RED PROOF: the pre-fix wording was exactly "Show a doc's attributed version history
+// (newest first) — the tokens for --expected-version", with no backend qualifier at all.
+
+test("COMMAND_GROUPS: the 'doc history' one-line summary names backend-dependence — a local bundle keeps just the current revision, not a promise of attributed history unconditionally", () => {
+  const docHistory = COMMAND_GROUPS.flatMap((g) => g.commands).find((c) => c.usage.startsWith("doc history"));
+  assert.ok(docHistory, "expected a 'doc history' command entry in COMMAND_GROUPS");
+  assert.match(docHistory!.summary, /local bundle/i);
+  assert.match(docHistory!.summary, /current revision/i);
+  assert.match(docHistory!.summary, /history-keeping backend/i);
+  // The --expected-version pointer (the summary's other job) survives the honesty fix.
+  assert.match(docHistory!.summary, /--expected-version/);
+});
+
+test("helpIndexText: the rendered top-level index carries doc history's honest, backend-dependent summary verbatim", () => {
+  const text = helpIndexText(INV);
+  assert.match(
+    text,
+    /doc history <id> \[--remote <url>\] — Show a doc's version history \(newest first; a history-keeping backend returns the full attributed chain, a local bundle just the current revision\) — the tokens for --expected-version/,
+  );
+});

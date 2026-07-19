@@ -58,22 +58,41 @@ import { cliInvocation } from "../invocation.js";
 import { collectLinkDeclarations } from "../link-types.js";
 import { resolveActor } from "../actor.js";
 
+/** The common flags every `link` subcommand accepts — appended to each verb's focused help. */
+const LINK_COMMON_OPTIONS = `Common options:
+  --dir <path>         Bundle directory (default: discovered from the cwd)
+  --remote <url>       Talk to a wire-protocol server instead of a local bundle
+                       (mutually exclusive with --dir; remote access is always explicit)
+  --json               Emit compact JSON instead of TOON
+  -h, --help           Show this help`;
+
+/** Family index for bare `link`; each subcommand owns its focused help below. */
 export const LINK_USAGE = `agentstate-lite link — add a cross-link, show a concept's links + backlinks, or query the bundle's whole edge graph
 
 Usage:
-  agentstate-lite link add <from> <to> [--text <t>] [--actor <name>]
-  agentstate-lite link show <id> [--limit <n>] [--text <t>]
-  agentstate-lite link list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]
+  agentstate-lite link add  <from> <to> [options]   Add a cross-link (idempotent)
+  agentstate-lite link show <id> [options]          Show a concept's outbound links + derived backlinks
+  agentstate-lite link list [options]               Query the whole bundle's derived edge list, filtered
+
+Run 'agentstate-lite link <verb> --help' for a verb's full options.
+
+${LINK_COMMON_OPTIONS}
+`;
+
+export const LINK_ADD_USAGE = `agentstate-lite link add — append a cross-link from one concept to another (idempotent)
+
+Usage:
+  agentstate-lite link add <from> <to> [--text <t>] [--actor <name>] [options]
 
 Idempotent: re-adding the same target with the same exact display text is a no-op — exit 0,
 changed:false, no duplicate link, no timestamp refresh. Different text to the same target is a
 distinct semantic edge and is added.
 
-Graph lint (link add only): if this bundle declares a kind's 'links' vocabulary (see 'kinds --help')
-and --text matches a declared type, the just-written link is checked against the actual source/target
-kinds; a mismatch or a same-spelling-different-case near miss attaches a 'warnings' array to the
-success envelope (exit 0 — the link is already written). An untyped --text (no declared match, any
-casing) or a conventions-free bundle never warns.
+Graph lint: if this bundle declares a kind's 'links' vocabulary (see 'kinds --help') and --text
+matches a declared type, the just-written link is checked against the actual source/target kinds;
+a mismatch or a same-spelling-different-case near miss attaches a 'warnings' array to the success
+envelope (exit 0 — the link is already written). An untyped --text (no declared match, any casing)
+or a conventions-free bundle never warns.
 
 Target-existence honesty (link add only, LOCAL bundles only): dangling links stay LEGAL — a link to
 a target with no document yet is a forward-declaration, by design. When the target is absent at link
@@ -82,39 +101,70 @@ tells the truth; a link to an existing target's receipt is unchanged. Checked on
 --dir bundle (confirming existence costs a read that would be an extra network round trip over
 --remote), so a --remote link-add receipt never carries this signal.
 
-link list queries the WHOLE bundle's derived edge list (the same edges 'show' computes per-concept),
-filtered — the atom a blast-radius/containment/ontology question reduces to. --from/--to each accept
-a single concept id, a trailing-slash prefix ('tasks/' matches every id starting with that literal
-string — one rule, no glob), or are repeatable for a union (OR) within that one flag; giving BOTH
---from and --to ANDs them. Dangling edges (a link to a doc that doesn't exist yet) are included.
+Options:
+  --text <t>           Link display text (default: the target id)
+  --keep-timestamp     Preserve the source's existing timestamp (default: refresh to now,
+                       since adding a cross-link is a meaningful change)
+  --actor <name>       Attribute a newly-added link in the source doc and backend history.
+                       Falls back to AGENTSTATE_LITE_ACTOR; an existing link remains a true no-op.
+${LINK_COMMON_OPTIONS}
+
+Examples:
+  agentstate-lite link add tasks/review tasks/spec --text "depends on"
+  agentstate-lite link show tasks/review
+`;
+
+export const LINK_SHOW_USAGE = `agentstate-lite link show — show a concept's outbound links and derived backlinks
+
+Usage:
+  agentstate-lite link show <id> [--limit <n>] [--text <t>] [options]
+
+Reports the concept's outbound links (core 'parseLinks') and its "cited by" backlinks (derived by
+reversing the resolved link graph, never stored — core 'backlinks'), each row carrying the citing/
+cited link's 'text' — the only relationship-type signal OKF's untyped edges carry.
 
 Options:
-  --text <t>            (link add) Link display text (default: the target id)
-                         (link show) Filter outbound links AND backlinks to those whose text is
-                         EXACTLY <t> (case-sensitive, not a substring match); empty/missing value
-                         is a usage error. outbound_count/backlink_count report the FILTERED
-                         totals when set. A filter that matches nothing is a valid empty result,
-                         not an error — its help line names the distinct link texts that ARE
-                         present, so a near-miss (typo/case) is visible.
-                         (link list) Same exact-match semantics, over the whole filtered edge set.
-  --from <id|prefix/>   (link list) Restrict to edges whose source matches this id or prefix
-                         (repeatable — union/OR across repeats)
-  --to <id|prefix/>     (link list) Restrict to edges whose target matches this id or prefix
-                         (repeatable — union/OR across repeats)
-  --limit <n>          (link show) Cap each of the outbound/backlink lists (default: 50; 0 =
-                         unlimited); outbound_count/backlink_count always report the true
-                         (post-filter) totals
-                         (link list) Cap the returned edge rows (default: 100; 0 = unlimited);
-                         count always reports the true (post-filter) total
-  --keep-timestamp      Preserve the source's existing timestamp (default: refresh to now,
-                         since adding a cross-link is a meaningful change)
-  --actor <name>        Attribute a newly-added link in the source doc and backend history.
-                         Falls back to AGENTSTATE_LITE_ACTOR; an existing link remains a true no-op.
-  --dir <path>          Bundle directory (default: discovered from the cwd)
-  --remote <url>        Talk to a wire-protocol server instead of a local bundle
-                         (mutually exclusive with --dir; remote access is always explicit)
-  --json                Emit compact JSON instead of TOON
-  -h, --help            Show this help
+  --text <t>           Filter outbound links AND backlinks to those whose text is EXACTLY <t>
+                       (case-sensitive, not a substring match); empty/missing value is a usage
+                       error. outbound_count/backlink_count report the FILTERED totals when set.
+                       A filter that matches nothing is a valid empty result, not an error — its
+                       help line names the distinct link texts that ARE present, so a near-miss
+                       (typo/case) is visible.
+  --limit <n>          Cap each of the outbound/backlink lists (default: 50; 0 = unlimited);
+                       outbound_count/backlink_count always report the true (post-filter) totals
+${LINK_COMMON_OPTIONS}
+
+Examples:
+  agentstate-lite link show tasks/review
+  agentstate-lite link show tasks/review --text "depends on"
+`;
+
+export const LINK_LIST_USAGE = `agentstate-lite link list — query the whole bundle's derived edge list, filtered
+
+Usage:
+  agentstate-lite link list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>] [options]
+
+Queries the WHOLE bundle's derived edge list (the same edges 'link show' computes per-concept),
+filtered — the atom a blast-radius/containment/ontology question reduces to. --from/--to each
+accept a single concept id, a trailing-slash prefix ('tasks/' matches every id starting with that
+literal string — one rule, no glob), or are repeatable for a union (OR) within that one flag;
+giving BOTH --from and --to ANDs them. Dangling edges (a link to a doc that doesn't exist yet) are
+included.
+
+Options:
+  --from <id|prefix/>  Restrict to edges whose source matches this id or prefix (repeatable —
+                       union/OR across repeats)
+  --to <id|prefix/>    Restrict to edges whose target matches this id or prefix (repeatable —
+                       union/OR across repeats)
+  --text <t>           Exact-match filter over the whole filtered edge set (same semantics as
+                       'link show --text', scoped to --from/--to instead of one concept)
+  --limit <n>          Cap the returned edge rows (default: 100; 0 = unlimited); count always
+                       reports the true (post-filter) total
+${LINK_COMMON_OPTIONS}
+
+Examples:
+  agentstate-lite link list --from tasks/
+  agentstate-lite link list --to tasks/review --text "depends on"
 `;
 
 /** Bounded compare-and-swap retry budget for `link add` (a concurrent writer moved the source doc). */
@@ -203,23 +253,8 @@ async function lintLinkType(
 }
 
 /**
- * Receipt-honesty check (link-add-target-honesty unit): a `link add` to a target with no
- * document YET is legal by design — forward-declaration, per `link --help` — but until now the
- * success receipt was byte-identical to a link at a real target, so the mistake surfaced only
- * later, in a `status` sweep (`unresolved_links`). This attaches a `warnings[]` entry — the SAME
- * convention `lintLinkType` above and `new --link`'s bad-type-match signal already use, not a
- * second one — when the target has no document at link time.
- *
- * LOCAL ONLY: confirming existence costs one extra read. That is free on a filesystem/memory
- * backend (this function is the only extra I/O `link add` now pays on a conventions-free local
- * bundle), but a genuine extra network round trip over `--remote` (`RemoteBackend.exists` is a
- * HEAD request `readDoc` doesn't otherwise make) that every remote link add would now pay for —
- * so the signal is a LOCAL-bundle receipt enhancement; `--remote` `link add` receipts are
- * unchanged (see `docs/WIRE-PROTOCOL.md`'s open-questions list for the same local/remote
- * divergence shape). Never throws for a missing target (that IS the case being reported); a
- * genuine read failure (e.g. a malformed target doc) propagates so the caller's existing
- * post-write-advisory fallback (`LINK_LINT_UNAVAILABLE`) covers it too, rather than inventing a
- * second unavailable-warning code.
+ * Warn when a newly linked local target is absent. Remote deliberately skips this advisory to
+ * avoid adding a HEAD request; non-absence read failures propagate to the post-write fallback.
  */
 async function targetAbsentWarning(
   bundle: Bundle,
@@ -307,13 +342,13 @@ export interface AddLinkResult {
   changed: boolean;
   /** The source document's current version after this call (written head or idempotent no-op head). */
   version: Version;
-  /** Present only when the write-time type-conformance lint (graph lints unit) attached one. */
+  /** Advisory type-conformance or local target-existence findings from the successful write. */
   warnings?: ValidationWarning[];
 }
 
 /**
  * Core link-add mutation: idempotent versioned-read → idempotency check → CAS write (bounded
- * retry) → write-time type-conformance lint. Extracted out of `linkAdd` below (the CLI
+ * retry) → write-time link guidance. Extracted out of `linkAdd` below (the CLI
  * subcommand, which composes this into its own receipt shape unchanged) so `new --link`
  * (`commands/new.ts` — one-step create+link) rides the EXACT SAME machinery instead of a second
  * hand-rolled link-writer (gate 3: one link resolver, no parallel implementation).
@@ -486,7 +521,7 @@ async function linkAdd(argv: string[], stdout: (s: string) => void): Promise<voi
     "link add",
   );
   if (values.help) {
-    stdout(LINK_USAGE);
+    stdout(LINK_ADD_USAGE);
     return;
   }
 
@@ -560,7 +595,7 @@ async function linkShow(
     "link show",
   );
   if (values.help) {
-    stdout(LINK_USAGE);
+    stdout(LINK_SHOW_USAGE);
     return;
   }
 
@@ -706,7 +741,7 @@ async function linkList(argv: string[], stdout: (s: string) => void): Promise<vo
     "link list",
   );
   if (values.help) {
-    stdout(LINK_USAGE);
+    stdout(LINK_LIST_USAGE);
     return;
   }
 

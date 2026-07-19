@@ -1233,3 +1233,113 @@ test("link list unknown subcommand message names 'list' among the known subcomma
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ── probe-help-surface-fixes finding 3: `link --help` / `link add --help` / `link show --help` /
+// `link list --help` no longer print the identical full block ──────────────────────────────────
+//
+// Cold-start usability probe (2026-07-19): all four calls printed byte-identical text — three
+// distinct calls yielding zero new information. Sliced per-subcommand (mirrors `doc`'s existing
+// family-index + focused-verb-help split): bare `link`/`link --help` stays a short INDEX pointing
+// at `link <verb> --help`; each verb gets its own focused help. Every previously-documented fact
+// must still be reachable SOMEWHERE across the four surfaces.
+
+async function captureHelp(argv: string[]): Promise<string> {
+  let out = "";
+  await link(argv, { stdout: (s) => (out += s) });
+  return out;
+}
+
+test("link --help / link add --help / link show --help / link list --help are four DISTINCT texts, not one repeated block", async () => {
+  const [bare, add, show, list] = await Promise.all([
+    captureHelp(["--help"]),
+    captureHelp(["add", "--help"]),
+    captureHelp(["show", "--help"]),
+    captureHelp(["list", "--help"]),
+  ]);
+  const texts = { bare, add, show, list };
+  const entries = Object.entries(texts);
+  for (let i = 0; i < entries.length; i += 1) {
+    for (let j = i + 1; j < entries.length; j += 1) {
+      const [nameA, textA] = entries[i]!;
+      const [nameB, textB] = entries[j]!;
+      assert.notEqual(textA, textB, `'${nameA}' help and '${nameB}' help must not be byte-identical`);
+    }
+  }
+});
+
+test("link --help (bare) is a short INDEX: names all three subcommands and points at 'link <verb> --help', without the full option manuals", async () => {
+  const text = await captureHelp(["--help"]);
+  assert.match(text, /link add\b/);
+  assert.match(text, /link show\b/);
+  assert.match(text, /link list\b/);
+  assert.match(text, /link <verb> --help/);
+  // The full-detail-only facts (a specific verb's own flags) are NOT in the index.
+  assert.doesNotMatch(text, /--keep-timestamp/, "the index must not carry link add's own flag detail");
+  assert.doesNotMatch(text, /--from <id\|prefix\/>/, "the index must not carry link list's own flag detail");
+});
+
+test("link add --help: focused on 'add' — carries its own flags (--text, --keep-timestamp, --actor) and the idempotency + graph-lint facts, but not link list's --from/--to/--limit-100 semantics", async () => {
+  const text = await captureHelp(["add", "--help"]);
+  assert.match(text, /link add —/);
+  assert.match(text, /--keep-timestamp/);
+  assert.match(text, /--actor <name>/);
+  assert.match(text, /Idempotent: re-adding the same target/);
+  assert.match(text, /Graph lint:/);
+  assert.match(text, /LINK_TARGET_ABSENT/, "link add help preserves the missing-target receipt signal");
+  assert.match(text, /--remote link-add receipt never carries this signal/);
+  assert.doesNotMatch(text, /link show —/);
+  assert.doesNotMatch(text, /link list —/);
+  assert.doesNotMatch(text, /--from <id\|prefix\/>/, "link add help must not carry link list's flags");
+});
+
+test("link show --help: focused on 'show' — carries --text/--limit's per-concept semantics and the outbound/backlink facts, but not link add's idempotency/graph-lint prose or link list's --from/--to", async () => {
+  const text = await captureHelp(["show", "--help"]);
+  assert.match(text, /link show —/);
+  assert.match(text, /outbound links/);
+  assert.match(text, /backlinks/);
+  assert.match(text, /--limit <n>/);
+  assert.doesNotMatch(text, /link add —/);
+  assert.doesNotMatch(text, /link list —/);
+  assert.doesNotMatch(text, /Idempotent: re-adding the same target/, "link show help must not carry link add's idempotency prose");
+  assert.doesNotMatch(text, /--from <id\|prefix\/>/, "link show help must not carry link list's flags");
+});
+
+test("link list --help: focused on 'list' — carries the whole-bundle-scan facts (--from/--to prefix+union+AND rule, dangling edges included), but not link add's/link show's own option detail", async () => {
+  const text = await captureHelp(["list", "--help"]);
+  assert.match(text, /link list —/);
+  assert.match(text, /--from <id\|prefix\/>/);
+  assert.match(text, /--to <id\|prefix\/>/);
+  assert.match(text, /trailing-slash prefix/);
+  assert.match(text, /Dangling edges/);
+  assert.doesNotMatch(text, /link add —/);
+  assert.doesNotMatch(text, /link show —/);
+  assert.doesNotMatch(text, /--keep-timestamp/, "link list help must not carry link add's flags");
+});
+
+test("every previously-documented fact from the old single combined block is reachable SOMEWHERE across the four help surfaces (nothing silently dropped by the slice)", async () => {
+  const combined = [
+    await captureHelp(["--help"]),
+    await captureHelp(["add", "--help"]),
+    await captureHelp(["show", "--help"]),
+    await captureHelp(["list", "--help"]),
+  ].join("\n---\n");
+
+  const mustAppearSomewhere = [
+    /Idempotent: re-adding the same target with the same exact display text is a no-op/,
+    /Different text to the same target is a\s+distinct semantic edge and is added/,
+    /Graph lint:/,
+    /a mismatch or a same-spelling-different-case near miss attaches a 'warnings' array/,
+    /An untyped --text \(no declared match, any casing\)\s+or a conventions-free bundle never warns/,
+    /Queries the WHOLE bundle's derived edge list/,
+    /a trailing-slash prefix \('tasks\/' matches every id starting with that/,
+    /giving BOTH --from and --to ANDs them/,
+    /Dangling edges \(a link to a doc that doesn't exist yet\) are\s+included/,
+    /Filter outbound links AND backlinks to those whose text is EXACTLY <t>/,
+    /Cap each of the outbound\/backlink lists \(default: 50; 0 = unlimited\)/,
+    /Falls back to AGENTSTATE_LITE_ACTOR; an existing link remains a true no-op/,
+    /Cap the returned edge rows \(default: 100; 0 = unlimited\)/,
+  ];
+  for (const re of mustAppearSomewhere) {
+    assert.match(combined, re, `expected this pre-slice fact to still be reachable somewhere: ${re}`);
+  }
+});

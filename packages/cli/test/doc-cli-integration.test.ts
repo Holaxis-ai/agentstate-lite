@@ -26,7 +26,7 @@
  */
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -564,5 +564,76 @@ test("built CLI: default auto-pull wiring is LIVE — `list` pulls a stale board
     await topo.cleanup();
     await rm(childHomeA, { recursive: true, force: true });
     await rm(childHomeB, { recursive: true, force: true });
+  }
+});
+
+// Extract and execute the actual help example from the bundle root. The documented outside-path
+// placeholder is substituted with a file in this test's unique scratch tree, never a shared path.
+
+test("built CLI: `doc read --help`'s documented safe-edit-cycle example, extracted from the ACTUAL help text and run from the bundle root with placeholders substituted, succeeds end to end", async () => {
+  const scratch = await tempDir();
+  const dir = path.join(scratch, "bundle");
+  const bodyOutTarget = path.join(scratch, "body.md");
+  try {
+    await initBundle(dir);
+    await writeDoc(
+      { root: dir },
+      { id: "concepts/a", frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS }, body: "Original body." },
+    );
+
+    const helpText = execFileSync("node", [cliBin, "doc", "read", "--help"], { encoding: "utf8" });
+
+    // Extract the exact two example lines (never a hand-copied literal — a drift in the source
+    // string would change what this regex matches, and thus what actually runs).
+    const readLineMatch = helpText.match(/^ {2,}(agentstate-lite doc read <id> --body-out \S+ --json)\s*$/m);
+    assert.ok(readLineMatch, `expected a 'doc read <id> --body-out ... --json' example line in:\n${helpText}`);
+    const updateLineMatch = helpText.match(
+      /^ {2,}(agentstate-lite doc update <id> --body-file \S+) \\\n\s*(--expected-version <version>)\s*$/m,
+    );
+    assert.ok(updateLineMatch, `expected a two-line 'doc update <id> --body-file ... --expected-version <version>' example in:\n${helpText}`);
+
+    assert.match(readLineMatch![1]!, /--body-out <path-outside-bundle>/);
+    assert.match(updateLineMatch![1]!, /--body-file <path-outside-bundle>/);
+
+    const substitute = (line: string, version?: string): string[] => {
+      const withId = line
+        .replace(/<id>/g, "concepts/a")
+        .replace(/<path-outside-bundle>/g, bodyOutTarget)
+        .replace(/<version>/g, version ?? "<version>");
+      return withId.trim().split(/\s+/).slice(1); // drop the leading 'agentstate-lite' token
+    };
+
+    // Run the documented read from the bundle root — the exact shape the help promises.
+    const readArgs = substitute(readLineMatch![1]!);
+    const readResult = spawnSync("node", [cliBin, ...readArgs], { cwd: dir, encoding: "utf8" });
+    assert.equal(
+      readResult.status,
+      0,
+      `the documented example must succeed when copy-pasted from the bundle root; ` +
+        `stdout=${readResult.stdout} stderr=${readResult.stderr}`,
+    );
+    const readReceipt = JSON.parse(readResult.stdout) as Record<string, unknown>;
+    const version = readReceipt.version as string;
+    assert.ok(version, "the safe edit cycle depends on the receipt's version");
+    const exportedBody = await readFile(bodyOutTarget, "utf8");
+    assert.equal(exportedBody, "Original body.\n");
+
+    // Perform the documented manual edit.
+    await writeFile(bodyOutTarget, "Edited body.\n", "utf8");
+
+    // Join the documented line continuation and use the receipt's own version.
+    const updateLine = `${updateLineMatch![1]} ${updateLineMatch![2]}`;
+    const updateArgs = substitute(updateLine, version);
+    const updateResult = spawnSync("node", [cliBin, ...updateArgs], { cwd: dir, encoding: "utf8" });
+    assert.equal(
+      updateResult.status,
+      0,
+      `the documented follow-up must succeed; stdout=${updateResult.stdout} stderr=${updateResult.stderr}`,
+    );
+
+    const after = await readDoc({ root: dir }, "concepts/a");
+    assert.equal(after.body, "Edited body.\n", "the safe-edit-cycle example must actually land the edit");
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
   }
 });
