@@ -36,6 +36,7 @@ import { cliInvocation, hookCommand, collapseHomeDirectory } from "../invocation
 import { render, resolveMode } from "../output.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
+import { HOST_CONFIG_ROOTS, resolveHostConfigRoot } from "../host-config.js";
 
 /** The marker the SDK/CLI match managed SessionStart hooks by (substring of the hook command). */
 export const HOOK_USAGE = `agentstate-lite hook — manage the SessionStart board-aware hook
@@ -169,8 +170,8 @@ function configuredPath(value: string | undefined, fallback: string): string {
 
 /** Resolve global targets exactly where each host reads them. */
 export function globalHookTargets(home: string = homedir(), env: NodeJS.ProcessEnv = process.env): HookTargets {
-  const claudeHome = configuredPath(env.CLAUDE_CONFIG_DIR, join(home, ".claude"));
-  const codexHome = configuredPath(env.CODEX_HOME, join(home, ".codex"));
+  const claudeHome = resolveHostConfigRoot(HOST_CONFIG_ROOTS.claude, home, env);
+  const codexHome = resolveHostConfigRoot(HOST_CONFIG_ROOTS.codex, home, env);
   const xdgConfigHome = configuredPath(env.XDG_CONFIG_HOME, join(home, ".config"));
   const opencodeHome = configuredPath(env.OPENCODE_CONFIG_DIR, join(xdgConfigHome, "opencode"));
   return {
