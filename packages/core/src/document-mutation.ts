@@ -13,7 +13,7 @@ import { defaultTimestampAndValidateAgainstRegistry } from "./kinds.js";
 import { versionedMutation } from "./mutation.js";
 import { VersionConflict } from "./versioning.js";
 import { readDocVersioned, writeDocVersioned } from "./bundle.js";
-import type { KindRegistry } from "./kinds.js";
+import type { KindRegistry, RegistryValidationResult } from "./kinds.js";
 import type { ValidationWarning } from "./content-type.js";
 import type {
   Bundle,
@@ -130,17 +130,36 @@ function attributeCandidate(
   return { ...candidate, frontmatter: { ...candidate.frontmatter, actor } };
 }
 
+/**
+ * Validate `candidate` against its own (possibly retyped) governing kind, defaulting its
+ * timestamp first. Returns the kind alongside the warnings so overwrite's ratchet (below) can
+ * reuse this ONE validation pass instead of re-deriving the candidate's kind separately.
+ */
 function validateCandidate(
   id: ConceptId,
   candidate: DocumentMutationCandidate,
   registry: KindRegistry,
   strict: boolean,
-): ValidationWarning[] {
-  const { kind, warnings } = defaultTimestampAndValidateAgainstRegistry({ id, ...candidate }, registry);
-  if (strict && kind && warnings.length > 0) {
-    throw new KindConformanceError(id, kind.governs, warnings);
+): RegistryValidationResult {
+  const result = defaultTimestampAndValidateAgainstRegistry({ id, ...candidate }, registry);
+  if (strict && result.kind && result.warnings.length > 0) {
+    throw new KindConformanceError(id, result.kind.governs, result.warnings);
   }
-  return warnings;
+  return result;
+}
+
+/**
+ * True when `existing` already satisfies ITS OWN governing kind — the monotone ratchet's
+ * precondition (probe: tasks/overwrite-ratchet-survey). Validated on a shallow frontmatter
+ * clone so this read-only check never mutates the `existing` object a concurrent caller
+ * (e.g. `buildCandidate`) may still be holding a reference to.
+ */
+function conforms(existing: OkfDocument, registry: KindRegistry): boolean {
+  const check = defaultTimestampAndValidateAgainstRegistry(
+    { id: existing.id, frontmatter: { ...existing.frontmatter }, body: existing.body },
+    registry,
+  );
+  return check.kind !== undefined && check.warnings.length === 0;
 }
 
 export async function mutateDocument(opts: MutateDocumentOptions): Promise<DocumentMutationResult> {
@@ -151,7 +170,7 @@ export async function mutateDocument(opts: MutateDocumentOptions): Promise<Docum
 
   if (opts.mode === "create-only") {
     const candidate = attributeCandidate(await opts.buildCandidate(undefined), opts.actor, persistActor);
-    const warnings = validateCandidate(opts.id, candidate, opts.registry, opts.strict);
+    const { warnings } = validateCandidate(opts.id, candidate, opts.registry, opts.strict);
     const { doc, version } = await writeDocVersioned(opts.bundle, { id: opts.id, ...candidate }, {
       expectedVersion: null,
       actor: opts.actor,
@@ -176,7 +195,24 @@ export async function mutateDocument(opts: MutateDocumentOptions): Promise<Docum
       read: readExisting,
       decide: async (existing) => {
         const candidate = attributeCandidate(await opts.buildCandidate(existing), opts.actor, persistActor);
-        warnings = validateCandidate(opts.id, candidate, opts.registry, opts.strict);
+        const validated = validateCandidate(opts.id, candidate, opts.registry, opts.strict);
+        warnings = validated.warnings;
+
+        // Monotone conformance ratchet (probe: tasks/overwrite-ratchet-survey, productionized
+        // here): a doc that already satisfies its governing kind may not regress into
+        // non-conformance through a lenient (non-strict) overwrite — once clean, always clean.
+        // A doc that has NEVER conformed keeps today's lenient staging behavior (warn, don't
+        // block), and dropping only OPTIONAL fields can't trip this (validateAgainstKind never
+        // warns on those), so this only ever fires on a REAL regression. Retyping to an
+        // ungoverned type is a documented escape: an ungoverned candidate carries zero
+        // warnings by construction, so the `warnings.length > 0` guard below never sees it.
+        // Scope: `promote`'s CAS-overwrite path (a different call site — direct
+        // `writeDocVersioned`, gated by its own `--expected-version`/`--strict`) is deliberately
+        // OUT of this rule; see its own comment.
+        if (!opts.strict && existing && warnings.length > 0 && conforms(existing, opts.registry)) {
+          throw new KindConformanceError(opts.id, validated.kind!.governs, warnings);
+        }
+
         return { action: "write", next: { id: opts.id, ...candidate }, result: undefined };
       },
       write: async (next, expectedVersion) => {
@@ -210,7 +246,7 @@ export async function mutateDocument(opts: MutateDocumentOptions): Promise<Docum
       }
 
       const attributed = attributeCandidate(candidate, opts.actor, persistActor);
-      const warnings = validateCandidate(opts.id, attributed, opts.registry, opts.strict);
+      const { warnings } = validateCandidate(opts.id, attributed, opts.registry, opts.strict);
       return { action: "write", next: { id: opts.id, ...attributed }, result: { warnings } };
     },
     write: async (next, expectedVersion) => {

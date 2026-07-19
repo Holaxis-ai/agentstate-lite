@@ -210,6 +210,10 @@ async function promoteDoc(
     docExists: opts.expectedVersion !== null,
   });
 
+  // Scope decision (tasks/overwrite-monotone-ratchet): this route writes directly through
+  // writeDocVersioned, not core's mutateDocument overwrite branch — the monotone conformance
+  // ratchet does not apply here. promote's byte channel already demands an explicit
+  // --expected-version CAS token for an overwrite and offers --strict; that stays the guard.
   let version: string;
   try {
     ({ version } = await writeDocVersioned(bundle, candidate, { expectedVersion: opts.expectedVersion }));

@@ -1812,18 +1812,42 @@ test("doc update: a standard value flag with no value (final argv token) is a cl
   }
 });
 
-test("doc write over an existing doc WARNS about dropped frontmatter fields — never silent (cold-start study r3)", async () => {
+test("doc write over a CONFORMING existing doc now REFUSES dropping a REQUIRED frontmatter field — the monotone conformance ratchet upgrades the old warn-only contract to a refusal, with a completing 'doc update' help (cold-start study r3; superseded by tasks/overwrite-monotone-ratchet)", async () => {
   const { dir, cleanup } = await makeTaskBundle();
   try {
     await writeDoc(
       { root: dir },
       { id: "tasks/x", frontmatter: { type: "Task", title: "T", status: "todo", timestamp: OLD_TS }, body: "b" },
     );
-    // A full doc write that does not re-supply `status` drops it (doc write is a full replace) — the
-    // receipt must surface that, not silently regress the field a prior `new`/`doc update` set.
-    const result = await runDoc(["write", "tasks/x", "--type", "Task", "--title", "T", "--body", "b", "--dir", dir]);
-    assert.deepEqual(result.dropped_fields, ["status"]);
-    assert.match(result.note as string, /doc update/);
+    const before = await readFile(path.join(dir, "tasks", "x.md"), "utf8");
+
+    // A full doc write that does not re-supply `status` would drop it (doc write is a full replace).
+    // The EXISTING doc conforms to the Task kind (title + status both present, zero warnings) — the
+    // monotone ratchet refuses a candidate that would regress it into non-conformance, instead of the
+    // old warn-and-write behavior this test used to pin.
+    await assert.rejects(
+      () =>
+        doc(["write", "tasks/x", "--type", "Task", "--title", "T", "--body", "b", "--dir", dir, "--json"], {
+          readStdin: async () => undefined,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.match(err.message, /status/);
+        // Composition with PR #115: the refusal's help is a literal completing 'doc update' argv
+        // naming the dropped required field — docExists resolves true (the doc exists by construction).
+        assert.equal(
+          err.help,
+          `${cliInvocation()} doc update tasks/x --status <todo|in_progress|blocked|done|canceled>`,
+        );
+        return true;
+      },
+    );
+
+    // Content preserved byte-for-byte — the refused write never touched disk.
+    const after = await readFile(path.join(dir, "tasks", "x.md"), "utf8");
+    assert.equal(after, before);
   } finally {
     await cleanup();
   }

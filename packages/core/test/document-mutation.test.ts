@@ -703,3 +703,274 @@ test("pin: the strict kind gate only throws for strict AND governed AND violatin
     assert.ok(result.warnings.length > 0);
   }
 });
+
+// ── monotone conformance ratchet on overwrite (tasks/overwrite-monotone-ratchet) ─────────────
+//
+// Probe: tasks/overwrite-ratchet-survey (1494 pass / 1 fail against main). Rule: in the
+// OVERWRITE branch's `decide`, when NOT strict AND an existing doc is present AND that
+// existing doc already conforms to ITS OWN governing kind (zero warnings), a candidate that
+// violates ITS OWN — possibly retyped — kind throws `KindConformanceError` instead of writing
+// with warnings. A never-conformed existing keeps today's lenient staging behavior. `promote`'s
+// CAS-overwrite path (direct `writeDocVersioned`, gated by its own `--expected-version`/
+// `--strict`) is a documented escape and stays out of this rule — see `promote.ts`'s own comment.
+
+const TASK_KIND: KindConvention = {
+  id: "conventions/task",
+  title: "Task",
+  governs: "Task",
+  fields: {
+    required: ["title", "status"],
+    optional: ["assignee"],
+    values: {},
+    terminal: {},
+    descriptions: {},
+  },
+};
+
+const NOTE_KIND: KindConvention = {
+  id: "conventions/note",
+  title: "Note",
+  governs: "Note",
+  fields: { required: ["title", "timestamp"], optional: [], values: {}, terminal: {}, descriptions: {} },
+};
+
+const TASK_NOTE_REGISTRY: KindRegistry = {
+  kinds: new Map([["Task", TASK_KIND], ["Note", NOTE_KIND]]),
+  warnings: [],
+};
+
+// (a) conforming existing + regressing candidate → KindConformanceError.
+// RED-PROOF: commenting out the ratchet's `if (!opts.strict && existing && warnings.length > 0
+// && conforms(existing, opts.registry))` throw in document-mutation.ts's overwrite `decide` makes
+// this test fail (the write would silently succeed with a warning instead of throwing).
+test("overwrite ratchet: a candidate that drops a REQUIRED field off an already-conforming existing Task is REFUSED, not warned", async () => {
+  const backend = new MemoryBackend();
+  const bundle = bundleFor(backend);
+  await writeDocVersioned(bundle, {
+    id: "tasks/a",
+    frontmatter: { type: "Task", title: "T", status: "todo", timestamp: "2026-07-16T00:00:00.000Z" },
+    body: "b",
+  });
+
+  await assert.rejects(
+    () => mutateDocument({
+      bundle,
+      id: "tasks/a",
+      mode: "overwrite",
+      registry: TASK_NOTE_REGISTRY,
+      strict: false,
+      buildCandidate: () => ({
+        frontmatter: { type: "Task", title: "T", timestamp: "2026-07-17T00:00:00.000Z" },
+        body: "b",
+      }),
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof KindConformanceError);
+      assert.equal(error.governs, "Task");
+      assert.ok(error.violations.some((warning) => warning.field === "status"));
+      return true;
+    },
+  );
+
+  // Refused: the existing conforming doc is untouched.
+  const after = await readDocVersioned(bundle, "tasks/a");
+  assert.equal(after.doc.frontmatter.status, "todo");
+  assert.equal((await backend.versions("tasks/a")).length, 1);
+});
+
+// (b) never-conformed existing + still-nonconforming candidate → writes with warnings (staging pin).
+test("overwrite ratchet: a NEVER-conforming existing Task (missing status from the start) keeps lenient staging — still-nonconforming candidate writes with warnings", async () => {
+  const backend = new MemoryBackend();
+  const bundle = bundleFor(backend);
+  await writeDocVersioned(bundle, {
+    id: "tasks/b",
+    frontmatter: { type: "Task", title: "T1", timestamp: "2026-07-16T00:00:00.000Z" }, // status missing — never conformed
+    body: "b",
+  });
+
+  const result = await mutateDocument({
+    bundle,
+    id: "tasks/b",
+    mode: "overwrite",
+    registry: TASK_NOTE_REGISTRY,
+    strict: false,
+    buildCandidate: () => ({
+      frontmatter: { type: "Task", title: "T2", timestamp: "2026-07-17T00:00:00.000Z" }, // still no status
+      body: "b2",
+    }),
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.doc.frontmatter.title, "T2");
+  assert.ok(result.warnings.some((warning) => warning.field === "status"));
+});
+
+// (c) conforming existing + candidate dropping only OPTIONAL fields → writes, no throw.
+// `assignee` is declared OPTIONAL on Task — validateAgainstKind never warns on a missing optional
+// field, so the candidate still conforms fully (warnings stay empty) and the ratchet never fires.
+test("overwrite ratchet: dropping only an OPTIONAL field off a conforming Task writes cleanly — conformance survives, the ratchet never fires", async () => {
+  const backend = new MemoryBackend();
+  const bundle = bundleFor(backend);
+  await writeDocVersioned(bundle, {
+    id: "tasks/c",
+    frontmatter: {
+      type: "Task",
+      title: "T",
+      status: "todo",
+      assignee: "alice",
+      timestamp: "2026-07-16T00:00:00.000Z",
+    },
+    body: "b",
+  });
+
+  const result = await mutateDocument({
+    bundle,
+    id: "tasks/c",
+    mode: "overwrite",
+    registry: TASK_NOTE_REGISTRY,
+    strict: false,
+    buildCandidate: () => ({
+      // assignee (optional) dropped; title + status (both required) still present.
+      frontmatter: { type: "Task", title: "T", status: "todo", timestamp: "2026-07-17T00:00:00.000Z" },
+      body: "b",
+    }),
+  });
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.warnings, []);
+  assert.equal(Object.prototype.hasOwnProperty.call(result.doc.frontmatter, "assignee"), false);
+});
+
+// (d) retype conforming-governed → UNGOVERNED type → writes (the documented escape pin).
+test("overwrite ratchet: retyping a conforming Task to an UNGOVERNED type is a visible escape — writes, no throw", async () => {
+  const backend = new MemoryBackend();
+  const bundle = bundleFor(backend);
+  await writeDocVersioned(bundle, {
+    id: "tasks/d",
+    frontmatter: { type: "Task", title: "T", status: "todo", timestamp: "2026-07-16T00:00:00.000Z" },
+    body: "b",
+  });
+
+  const result = await mutateDocument({
+    bundle,
+    id: "tasks/d",
+    mode: "overwrite",
+    registry: TASK_NOTE_REGISTRY,
+    strict: false,
+    buildCandidate: () => ({
+      frontmatter: { type: "Freeform", note: "no kind governs this" }, // ungoverned — no convention declares "Freeform"
+      body: "b2",
+    }),
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.doc.frontmatter.type, "Freeform");
+  assert.deepEqual(result.warnings, []);
+});
+
+// (e) retype conforming-A → nonconforming-B → refuses.
+test("overwrite ratchet: retyping a conforming Task into a NON-conforming Note (dropping Note's own required title) is refused", async () => {
+  const backend = new MemoryBackend();
+  const bundle = bundleFor(backend);
+  await writeDocVersioned(bundle, {
+    id: "tasks/e",
+    frontmatter: { type: "Task", title: "T", status: "todo", timestamp: "2026-07-16T00:00:00.000Z" },
+    body: "b",
+  });
+
+  await assert.rejects(
+    () => mutateDocument({
+      bundle,
+      id: "tasks/e",
+      mode: "overwrite",
+      registry: TASK_NOTE_REGISTRY,
+      strict: false,
+      buildCandidate: () => ({
+        frontmatter: { type: "Note", timestamp: "2026-07-17T00:00:00.000Z" }, // Note requires title too — missing
+        body: "b2",
+      }),
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof KindConformanceError);
+      assert.equal(error.governs, "Note");
+      assert.ok(error.violations.some((warning) => warning.field === "title"));
+      return true;
+    },
+  );
+
+  const after = await readDocVersioned(bundle, "tasks/e");
+  assert.equal(after.doc.frontmatter.type, "Task");
+});
+
+// Conventions-free byte-identity: the rule needs a non-empty registry to ever fire (`conforms`
+// always returns false when no kind is declared) — a bundle with NO kind conventions gets
+// byte-identical overwrite behavior to before this unit, even for a "regressing" candidate.
+test("overwrite ratchet: a conventions-free registry never fires the ratchet — byte-identical lenient overwrite behavior", async () => {
+  const backend = new MemoryBackend();
+  const bundle = bundleFor(backend);
+  await writeDocVersioned(bundle, {
+    id: "tasks/f",
+    frontmatter: { type: "Task", title: "T", status: "todo", timestamp: "2026-07-16T00:00:00.000Z" },
+    body: "b",
+  });
+
+  const result = await mutateDocument({
+    bundle,
+    id: "tasks/f",
+    mode: "overwrite",
+    registry: EMPTY_REGISTRY, // no Convention docs loaded — a cheap list-of-nothing
+    strict: false,
+    buildCandidate: () => ({
+      frontmatter: { type: "Task", title: "T", timestamp: "2026-07-17T00:00:00.000Z" }, // drops "status" too
+      body: "b2",
+    }),
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.doc.frontmatter.title, "T");
+  assert.equal(Object.prototype.hasOwnProperty.call(result.doc.frontmatter, "status"), false);
+  assert.deepEqual(result.warnings, []);
+});
+
+// `doc write --strict` behavior unchanged: strict already threw (inside validateCandidate, before
+// the ratchet's own check ever runs — guarded by `!opts.strict`) — pin one strict overwrite case
+// against an ALREADY-CONFORMING existing doc to prove no double-throw and no changed message
+// versus the pre-existing strict contract (`strict kind rejection is typed...` test above, same
+// message shape for create-only).
+test("overwrite ratchet: --strict over an already-conforming existing doc still throws the ORIGINAL strict-path error — one throw, unchanged message", async () => {
+  const backend = new MemoryBackend();
+  const bundle = bundleFor(backend);
+  await writeDocVersioned(bundle, {
+    id: "tasks/g",
+    frontmatter: { type: "Task", title: "T", status: "todo", timestamp: "2026-07-16T00:00:00.000Z" },
+    body: "b",
+  });
+
+  await assert.rejects(
+    () => mutateDocument({
+      bundle,
+      id: "tasks/g",
+      mode: "overwrite",
+      registry: TASK_NOTE_REGISTRY,
+      strict: true,
+      buildCandidate: () => ({
+        frontmatter: { type: "Task", title: "T", timestamp: "2026-07-17T00:00:00.000Z" }, // drops status
+        body: "b2",
+      }),
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof KindConformanceError);
+      assert.equal(error.name, "KindConformanceError");
+      assert.equal(error.id, "tasks/g");
+      assert.equal(error.governs, "Task");
+      assert.equal(
+        error.message,
+        `'tasks/g' does not satisfy the 'Task' kind: ${error.violations.map((warning) => warning.message).join("; ")}`,
+      );
+      return true;
+    },
+  );
+
+  // No write happened at all (strict throws before the write attempt, exactly as pre-unit).
+  assert.equal((await backend.versions("tasks/g")).length, 1);
+});
