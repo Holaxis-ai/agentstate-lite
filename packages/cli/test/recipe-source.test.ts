@@ -635,6 +635,52 @@ test("resolveRecipe: definitions-only scans the full folder and rejects hidden i
   }
 });
 
+// PR #54 review finding 2 (tasks/pr-54-review-followups): the full-inventory walk previously read
+// every file BEFORE the parser rejected it as undeclared — a `.git/` dir inside a recipe root was
+// read object-by-object as UTF-8. The grammar can never accept a dot-prefixed path, so the walk
+// now fails fast, before recursing into (or reading) a dot-prefixed entry.
+test("resolveRecipe: definitions-only fails FAST on a dot-prefixed directory — never reads into it", async () => {
+  const dir = await tempDir();
+  try {
+    await mkdir(path.join(dir, "conventions"), { recursive: true });
+    await writeFile(path.join(dir, "recipe.md"), PORTABLE_MANIFEST.bytes.replace(/pages:[\s\S]*?---\n$/, "---\n"));
+    await writeFile(path.join(dir, "conventions", "term.md"), VALID_TERM.bytes);
+    // A `.git/` directory with real content inside it — if the walk ever recursed into it, the
+    // rejection would name a file WITHIN `.git/` (e.g. `.git/HEAD`), never `.git` itself.
+    await mkdir(path.join(dir, ".git"), { recursive: true });
+    await writeFile(path.join(dir, ".git", "HEAD"), "ref: refs/heads/main\n");
+    const result = await resolveRecipe(dir);
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.equal(result.error.code, "RECIPE_UNSAFE_PATH");
+    assert.match(
+      result.error.message,
+      /'\.git'/,
+      `expected the rejection to name the dot-DIRECTORY itself, not a file inside it; got: ${result.error.message}`,
+    );
+    assert.doesNotMatch(result.error.message, /HEAD/, "the walk must reject '.git' before ever reading its contents");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveRecipe: definitions-only rejects a dot-prefixed FILE (.DS_Store) at walk time too — same strictness as before, now with no wasted read", async () => {
+  const dir = await tempDir();
+  try {
+    await mkdir(path.join(dir, "conventions"), { recursive: true });
+    await writeFile(path.join(dir, "recipe.md"), PORTABLE_MANIFEST.bytes.replace(/pages:[\s\S]*?---\n$/, "---\n"));
+    await writeFile(path.join(dir, "conventions", "term.md"), VALID_TERM.bytes);
+    await writeFile(path.join(dir, ".DS_Store"), "binary junk");
+    const result = await resolveRecipe(dir);
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.equal(result.error.code, "RECIPE_UNSAFE_PATH");
+    assert.match(result.error.message, /\.DS_Store/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("resolveRecipe: definitions-only policy spelling is exact across inventory discovery and parsing", async () => {
   const dir = await tempDir();
   try {
