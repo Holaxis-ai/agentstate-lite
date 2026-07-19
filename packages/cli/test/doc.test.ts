@@ -1360,6 +1360,159 @@ test("doc update --strict: upgrades a non-empty warning set to a USAGE error (ex
   }
 });
 
+// ── Kind-error completing command: a refusal's `help` is a literal `doc update` argv ──────────
+
+test("doc update --strict: a kind refusal's help is a literal completing 'doc update' command — one --<field> per missing required field, enum fields showing allowed values, non-flag violations (a missing body section) omitted", async () => {
+  const { dir, cleanup } = await makeTaskBundle();
+  try {
+    // Missing BOTH required fields (title, status — status is enum-restricted); title is patched
+    // (a no-op re-set) so the resulting candidate still lacks both, and the refusal fires against
+    // the FULL resulting frontmatter, not just the patched field.
+    await writeDoc({ root: dir }, { id: "tasks/x", frontmatter: { type: "Task", timestamp: OLD_TS }, body: "" });
+
+    await assert.rejects(
+      () =>
+        doc(["update", "tasks/x", "--description", "d", "--strict", "--dir", dir, "--json"], {
+          readStdin: async () => undefined,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.equal(
+          err.help,
+          `${cliInvocation()} doc update tasks/x --title <value> --status <todo|in_progress|blocked|done|canceled>`,
+        );
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc write --strict: a kind refusal OVERWRITING an EXISTING doc gets the same literal completing 'doc update' help (the id is still readable — the refused write never touched disk)", async () => {
+  const { dir, cleanup } = await makeTaskBundle();
+  try {
+    await writeDoc(
+      { root: dir },
+      { id: "tasks/z", frontmatter: { type: "Task", title: "Zed", timestamp: OLD_TS }, body: "" },
+    );
+
+    await assert.rejects(
+      () =>
+        doc(["write", "tasks/z", "--type", "Task", "--title", "Zed2", "--strict", "--dir", dir, "--json"], {
+          readStdin: async () => undefined,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.equal(
+          err.help,
+          `${cliInvocation()} doc update tasks/z --status <todo|in_progress|blocked|done|canceled>`,
+        );
+        return true;
+      },
+    );
+
+    // The refused write never touched disk — the id is still there for the emitted 'doc update'.
+    const after = await readDoc({ root: dir }, "tasks/z");
+    assert.equal(after.frontmatter.title, "Zed");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc write --strict: a kind refusal on a BRAND-NEW doc (never persisted) falls back to the generic 'kinds' help — a 'doc update' command would 404 against an id nothing ever wrote", async () => {
+  const { dir, cleanup } = await makeTaskBundle();
+  try {
+    await assert.rejects(
+      () =>
+        doc(["write", "tasks/y", "--type", "Task", "--strict", "--dir", dir, "--json"], {
+          readStdin: async () => undefined,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.equal(err.help, `${cliInvocation()} kinds`);
+        return true;
+      },
+    );
+
+    // Confirm the premise: genuinely nothing was persisted.
+    await assert.rejects(() => readDoc({ root: dir }, "tasks/y"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc update --strict: when EVERY violation is a body-section violation (no completable field), help falls back to the generic 'kinds' pointer", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    // Satisfies title/timestamp (Context Note's only fields) but omits the required '# Summary' heading.
+    await writeDoc(
+      { root: dir },
+      { id: "context-notes/x", frontmatter: { type: "Context Note", title: "X", timestamp: OLD_TS }, body: "no heading here" },
+    );
+
+    await assert.rejects(
+      () =>
+        doc(["update", "context-notes/x", "--description", "d", "--strict", "--dir", dir, "--json"], {
+          readStdin: async () => undefined,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.match(err.message, /Summary/);
+        assert.equal(err.help, `${cliInvocation()} kinds`);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc write: a non-kind USAGE error (missing --type) keeps its ORIGINAL help — untouched by the kind-completing-command change", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await assert.rejects(
+      () => doc(["write", "concepts/a", "--dir", dir, "--json"], { readStdin: async () => undefined }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.equal(err.help, `${cliInvocation()} doc write concepts/a --type <t>`);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc update: a non-kind USAGE error (no patchable field given) keeps its ORIGINAL help — untouched by the kind-completing-command change", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    await writeDoc({ root: dir }, { id: "concepts/a", frontmatter: { type: "Concept", timestamp: OLD_TS }, body: "" });
+    await assert.rejects(
+      () => doc(["update", "concepts/a", "--dir", dir, "--json"], { readStdin: async () => undefined }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.equal(err.exitCode, 2);
+        assert.equal(err.help, `${cliInvocation()} doc update concepts/a --title <t>`);
+        return true;
+      },
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
 // ── FACET 2: `doc update --<field>` patches kind-declared fields ───────────────────────────────
 
 test("doc update: status transition via a kind-declared --<field> flag — the headline recipe (--dir)", async () => {
