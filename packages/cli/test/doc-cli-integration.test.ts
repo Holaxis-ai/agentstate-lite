@@ -33,7 +33,7 @@ import { fileURLToPath } from "node:url";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
-import { initBundle, writeDoc } from "@agentstate-lite/core";
+import { initBundle, readDoc, writeDoc } from "@agentstate-lite/core";
 import { commitBoard, makeTwoCloneTopology, pushBoard, writeBoardDoc } from "../../board-git/test/git-harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -265,6 +265,141 @@ test("built CLI: `doc update` with NO other field flags still accepts a real pip
     assert.match(after, /Piped patch body\./);
     assert.doesNotMatch(after, /Original body\./);
     assert.match(after, /title: T/); // untouched
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── tasks/doc-write-stdin-open-pipe-hang: bound the stdin probe's wait for the FIRST byte ──────
+//
+// Live-reproduced (see the board task): `doc write` with NO --body/--body-file falls back to
+// probing piped stdin for a body; when stdin is a genuinely OPEN pipe/socket (`hasRealStdinInput`
+// correctly says "real data source") that never sends data and never closes — exactly how an agent
+// harness's `child_process.spawn(cli, { stdio: ["pipe", …] })` commonly wires a spawned process's
+// fd 0, and exactly the shape `doc.ts`'s own header comment already flagged as "would hang the same
+// way ... left unchanged" before this fix — the read blocked FOREVER on an EOF that would never
+// arrive. `doc write` (unlike `doc update`'s field-only path above) legitimately needs stdin as its
+// PRIMARY documented body channel even when other flags are given, so it cannot be gated away the
+// way `doc update`'s field-only case was; it needed the READ ITSELF bounded instead
+// (`readStdinBounded` in `doc/common.ts`).
+
+test("built CLI: `doc write` with NO body source completes PROMPTLY (does not hang) when stdin is an OPEN pipe that is never written to or closed — the live-reproduced hang this fix closes", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    // A BRAND-NEW id — a new doc with no body source is always a valid creation (no F1 guard to
+    // interfere), isolating the assertion to the stdin-probe bound itself.
+    const child = spawn(
+      "node",
+      [cliBin, "doc", "write", "concepts/open-pipe", "--type", "Concept", "--title", "Open pipe", "--dir", dir, "--json"],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    // Deliberately never write to child.stdin and never call .end() on it — the pipe's write end
+    // stays open (held by THIS test process) for the child's entire lifetime. A pre-fix run of this
+    // exact test (bound removed — the unconditional `for await` restored) was confirmed live to hang
+    // until the BOUND_MS kill fires below; that is this test's own red-proof.
+
+    let stdout = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    const start = Date.now();
+    const BOUND_MS = 5000; // generous relative to the ~200ms production bound — never flaky, never a real hang
+    const exitCode = await new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new Error(`doc write did not exit within ${BOUND_MS}ms — it must not block on stdin here`));
+      }, BOUND_MS);
+      child.on("exit", (code) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
+    });
+    const elapsedMs = Date.now() - start;
+
+    assert.equal(exitCode, 0, `expected exit 0, got ${exitCode}; stdout=${stdout}`);
+    assert.ok(elapsedMs < BOUND_MS, `expected a prompt exit well under ${BOUND_MS}ms, took ${elapsedMs}ms`);
+    const result = JSON.parse(stdout) as Record<string, unknown>;
+    assert.equal(result.doc, "written");
+
+    const saved = await readDoc({ root: dir }, "concepts/open-pipe");
+    assert.equal(saved.body, "\n", "no body source arrived within the bound — an empty body, exactly the documented empty-pipe semantics");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("built CLI: a legit piped body arriving AFTER the first-byte bound has started (a slow multi-chunk write spanning well past it) is still read to completion, byte-exact — the bound only guards the FIRST byte, never an in-progress transfer", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const child = spawn(
+      "node",
+      [cliBin, "doc", "write", "concepts/slow-pipe", "--type", "Concept", "--dir", dir, "--json"],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    let stdout = "";
+    child.stdout.on("data", (d) => (stdout += d));
+
+    // First chunk arrives immediately (well inside the ~200ms bound), disarming it permanently;
+    // the second chunk arrives 600ms later — well PAST the bound — proving the bound never re-arms
+    // mid-transfer.
+    child.stdin.write("chunk-one ");
+    setTimeout(() => {
+      child.stdin.write("chunk-two");
+      child.stdin.end();
+    }, 600);
+
+    const exitCode = await new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new Error("doc write did not exit — a slow multi-chunk piped body must still be read to completion"));
+      }, 5000);
+      child.on("exit", (code) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
+    });
+
+    assert.equal(exitCode, 0, `expected exit 0, got ${exitCode}; stdout=${stdout}`);
+    const saved = await readDoc({ root: dir }, "concepts/slow-pipe");
+    // BYTE-EXACT pin of the legit piped-body path (the DoD's explicit ask): the FULL, exact
+    // concatenation of both chunks, with the engine's usual single trailing-newline normalization —
+    // no truncation, no dropped bytes, no timeout artifact.
+    assert.equal(saved.body, "chunk-one chunk-two\n");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("built CLI: `--body \"\"` (explicit empty) is unchanged by the stdin-probe bound — it never touches stdin at all, even with an open-never-written pipe on fd 0", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const child = spawn(
+      "node",
+      [cliBin, "doc", "write", "concepts/explicit-empty", "--type", "Concept", "--body", "", "--dir", dir, "--json"],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    let stdout = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    const start = Date.now();
+    const exitCode = await new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new Error("doc write --body '' must never touch stdin, and so must never wait on it"));
+      }, 5000);
+      child.on("exit", (code) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
+    });
+    const elapsedMs = Date.now() - start;
+
+    assert.equal(exitCode, 0, `expected exit 0, got ${exitCode}; stdout=${stdout}`);
+    // Well under the ~200ms stdin-probe bound — proof this path never even STARTED the probe, since
+    // --body (even "") is the one unambiguous explicit-empty channel (doc/common.ts's own doc comment).
+    assert.ok(elapsedMs < 150, `expected an near-instant exit (never touching stdin), took ${elapsedMs}ms`);
+    const saved = await readDoc({ root: dir }, "concepts/explicit-empty");
+    assert.equal(saved.body, "\n");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

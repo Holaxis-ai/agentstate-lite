@@ -276,11 +276,83 @@ function hasRealStdinInput(): boolean {
   }
 }
 
+/**
+ * How long {@link defaultReadStdin} waits for the FIRST byte before concluding "nothing given" (see
+ * that function's doc comment for the full rationale). Exported so a test can assert on the exact
+ * bound rather than a magic number duplicated at the call site.
+ */
+export const STDIN_FIRST_BYTE_TIMEOUT_MS = 200;
+
+/**
+ * Read `stream` to EOF, but bound the wait for the FIRST byte to `timeoutMs`: no data at all within
+ * that window resolves `undefined` (the "nothing given" case) instead of blocking forever. This is
+ * the fix for `tasks/doc-write-stdin-open-pipe-hang`: `hasRealStdinInput()` correctly identifies an
+ * OPEN pipe/socket as a real data source, but an agent harness (or a Node `child_process` "pipe"
+ * stdio whose parent never writes and never calls `.end()`) can hand this process exactly such an fd
+ * with NOTHING ever sent and NO close — reading it to EOF unconditionally then blocks forever, the
+ * worst AXI failure class (a silent, unpriceable hang). Once ANY byte has arrived, the bound is
+ * permanently off: `clearTimeout` fires on the first `data` event, so a real piped body that starts
+ * slowly (a chunked network relay, a large file) is still read to completion with no further
+ * timeout — only the "is there anything here at all" question is time-boxed, never an in-progress
+ * transfer. On timeout, the stream is EXPLICITLY paused and released (`pause()` + `unref()`; see the
+ * inline comment below) — this CLI sets only `process.exitCode` and never calls `process.exit()`
+ * (index.ts), so an active read handle left on a still-open, still-silent pipe would otherwise keep
+ * the process alive indefinitely even after this function itself gives up.
+ */
+function readStdinBounded(stream: NodeJS.ReadStream, timeoutMs: number): Promise<string | undefined> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let gaveUp = false;
+
+    function cleanup(): void {
+      clearTimeout(timer);
+      stream.removeListener("data", onData);
+      stream.removeListener("end", onEnd);
+      stream.removeListener("error", onError);
+    }
+    function onData(chunk: Buffer): void {
+      clearTimeout(timer); // the FIRST byte disarms the bound permanently — never mid-stream.
+      chunks.push(chunk);
+    }
+    function onEnd(): void {
+      if (gaveUp) return; // already resolved on timeout; a late EOF has nothing left to report
+      cleanup();
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    }
+    function onError(err: Error): void {
+      if (gaveUp) return;
+      cleanup();
+      reject(err);
+    }
+
+    // `timer.unref()`: the TIMER ITSELF must never be what keeps the process alive while it waits —
+    // only a genuinely pending piece of work should do that.
+    const timer = setTimeout(() => {
+      gaveUp = true;
+      cleanup();
+      // Release the handle (see this function's doc comment) so a still-open, still-silent pipe
+      // cannot keep the process alive after this read has already given up on it.
+      stream.pause();
+      stream.unref?.();
+      resolve(undefined);
+    }, timeoutMs);
+    timer.unref();
+
+    stream.on("data", onData);
+    stream.on("end", onEnd);
+    stream.on("error", onError);
+  });
+}
+
+/**
+ * Resolves to the piped stdin content, or `undefined` when there is no real stdin data source (see
+ * `hasRealStdinInput`) OR nothing arrived within {@link STDIN_FIRST_BYTE_TIMEOUT_MS} of a real
+ * source (see `readStdinBounded`) — the bound that keeps an open-but-silent pipe from hanging this
+ * read forever.
+ */
 export async function defaultReadStdin(): Promise<string | undefined> {
   if (!hasRealStdinInput()) return undefined;
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString("utf8");
+  return readStdinBounded(process.stdin, STDIN_FIRST_BYTE_TIMEOUT_MS);
 }
 
 /**
