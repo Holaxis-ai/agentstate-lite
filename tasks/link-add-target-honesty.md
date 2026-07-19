@@ -18,7 +18,7 @@ description: >-
   RemoteBackend's link path know target existence in one round trip? — if not,
   state the divergence honestly rather than adding a read).
 actor: mike/claude
-status: todo
-timestamp: '2026-07-19T15:30:31.655Z'
+status: in_progress
+timestamp: '2026-07-19T15:34:35.652Z'
 ---
 

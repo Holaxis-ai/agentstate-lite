@@ -15,7 +15,7 @@ description: >-
   shared block once. DoD: each fixed surface pinned; the doc read example
   literally executed in a test from the bundle root.
 actor: mike/claude
-status: todo
-timestamp: '2026-07-19T15:30:31.894Z'
+status: in_progress
+timestamp: '2026-07-19T15:34:35.770Z'
 ---
 
