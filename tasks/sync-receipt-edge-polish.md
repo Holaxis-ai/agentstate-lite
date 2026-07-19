@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'Sync receipt honesty + error-message polish (PR#13 review, items 7-8)'
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   ITEMS 7 + 4 CLOSED via PR #104 (43ab16a) and ITEM 3 CLOSED via PR #108
@@ -18,8 +18,8 @@ description: >-
   standing stance (no demand signal): items 1/10 (cross-run receipt under-report
   — document-at-minimum decision still open), 2 (non-FF push rejection
   classification), 5/9 (single-branch clone narrow refspec), 6, 8.
-actor: mike/claude
-timestamp: '2026-07-18T19:09:38.231Z'
+actor: mike/codex
+timestamp: '2026-07-19T23:15:05.971Z'
 ---
 From the PR#13 three-lane review (all empirical):
 1. Cross-run receipt under-report: fetch-succeeded-then-failed run → NEXT run
