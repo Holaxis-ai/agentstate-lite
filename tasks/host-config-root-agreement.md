@@ -4,12 +4,12 @@ title: 'Agreement test: hook and skill discovery share Claude/Codex config roots
 status: in_progress
 priority: '3'
 description: >-
-  After PR #110 merges, pin one default-and-relocated root matrix across global
-  hook target resolution and generated skill discovery for Claude Code and
-  Codex. This invariant already drifted twice (#43 and #110). Keep OpenCode
-  outside the shared matrix because it has no skill-discovery surface; its
-  OPENCODE_CONFIG_DIR/XDG behavior remains hook-only.
+  PR #113 consolidates the already-aligned Claude/Codex env names and fallback
+  directories into one authority consumed by global hook targeting and generated
+  skill discovery. It adds a six-row default/empty/relocated agreement matrix,
+  leaves OpenCode hook-only, and changes no behavior. Full npm run check passed
+  at 0b462165d35c2131ba0476f05349c018145b22e9; awaiting independent review.
 actor: mike/codex
-timestamp: '2026-07-19T02:34:02.261Z'
+timestamp: '2026-07-19T02:40:09.569Z'
 ---
 [depends on](hook-install-relocatable-home.md)
