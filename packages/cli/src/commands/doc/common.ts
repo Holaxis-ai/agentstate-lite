@@ -157,10 +157,12 @@ Options:
                        every case; not applicable to --out - or to --remote.
   --body-out <path>    Write ONLY the parsed markdown body (no YAML frontmatter) as UTF-8. The
                        receipt includes the version from the SAME read, so the safe edit cycle is:
-                         agentstate-lite doc read <id> --body-out ./body.md --json
-                         # edit ./body.md; copy the receipt's version
-                         agentstate-lite doc update <id> --body-file ./body.md \\
+                         agentstate-lite doc read <id> --body-out /tmp/body.md --json
+                         # edit /tmp/body.md; copy the receipt's version
+                         agentstate-lite doc update <id> --body-file /tmp/body.md \\
                            --expected-version <version>
+                       /tmp/body.md is deliberately OUTSIDE the bundle: a .md target inside a local
+                       bundle is refused below, so the safe-cycle path must never be bundle-relative.
                        Use --body-out - to stream body bytes to stdout (receipt/errors go to stderr).
                        An empty body is a valid zero-byte result. A .md target inside a local bundle
                        is refused: body-only markdown has no OKF frontmatter and would corrupt or
@@ -180,7 +182,7 @@ ${COMMON_OPTIONS}
 Examples:
   agentstate-lite doc read concepts/auth
   agentstate-lite doc read concepts/auth --out ./auth.md
-  agentstate-lite doc read concepts/auth --body-out ./auth-body.md
+  agentstate-lite doc read concepts/auth --body-out /tmp/auth-body.md
   agentstate-lite doc read concepts/auth --field head_version
 `;
 

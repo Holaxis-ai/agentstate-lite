@@ -3275,7 +3275,7 @@ test("each doc verb's --help is focused on THAT verb, not the whole family manua
   const readHelp = await capture(["read", "--help"]);
   assert.match(readHelp, /doc read —/);
   assert.match(readHelp, /--body-out/);
-  assert.match(readHelp, /--body-file \.\/body\.md \\\n\s+--expected-version <version>/, "read help teaches the literal body-only CAS edit cycle");
+  assert.match(readHelp, /--body-file \/tmp\/body\.md \\\n\s+--expected-version <version>/, "read help teaches the literal body-only CAS edit cycle");
   assert.doesNotMatch(readHelp, /--blank-body/, "read help does not leak write-only flags");
   assert.doesNotMatch(readHelp, /doc delete —/);
 

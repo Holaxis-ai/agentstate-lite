@@ -26,7 +26,7 @@
  */
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -564,5 +564,85 @@ test("built CLI: default auto-pull wiring is LIVE — `list` pulls a stale board
     await topo.cleanup();
     await rm(childHomeA, { recursive: true, force: true });
     await rm(childHomeB, { recursive: true, force: true });
+  }
+});
+
+// ── probe-help-surface-fixes finding 1: `doc read --help`'s safe edit cycle must literally run ────
+//
+// Cold-start usability probe (2026-07-19): the documented example (`--body-out ./body.md`) FAILED
+// when copy-pasted from the bundle root — a `./`-relative target resolves INSIDE the bundle, which
+// `--body-out` refuses (a body-only .md file has no OKF frontmatter). The refusal is correct
+// behavior (see `assertSafeBodyOutTarget`'s own doc comment); the EXAMPLE was wrong. Fixed to an
+// honestly-outside path (`/tmp/body.md`). This test extracts the two example command lines from the
+// BUILT CLI's ACTUAL `--help` output (never a hardcoded copy of the source string) and runs them as
+// REAL subprocesses with cwd SET TO THE BUNDLE ROOT — the exact "copy-paste from the bundle root"
+// shape the probe hit — asserting the full safe-edit-cycle chain succeeds end to end.
+
+test("built CLI: `doc read --help`'s documented safe-edit-cycle example, extracted from the ACTUAL help text and run character-for-character from the bundle root, succeeds end to end", async () => {
+  const dir = await tempDir();
+  const bodyOutTarget = "/tmp/body.md";
+  try {
+    await initBundle(dir);
+    await writeDoc(
+      { root: dir },
+      { id: "concepts/a", frontmatter: { type: "Concept", title: "A", timestamp: OLD_TS }, body: "Original body." },
+    );
+
+    const helpText = execFileSync("node", [cliBin, "doc", "read", "--help"], { encoding: "utf8" });
+
+    // Extract the exact two example lines (never a hand-copied literal — a drift in the source
+    // string would change what this regex matches, and thus what actually runs).
+    const readLineMatch = helpText.match(/^ {2,}(agentstate-lite doc read <id> --body-out \S+ --json)\s*$/m);
+    assert.ok(readLineMatch, `expected a 'doc read <id> --body-out ... --json' example line in:\n${helpText}`);
+    const updateLineMatch = helpText.match(
+      /^ {2,}(agentstate-lite doc update <id> --body-file \S+) \\\n\s*(--expected-version <version>)\s*$/m,
+    );
+    assert.ok(updateLineMatch, `expected a two-line 'doc update <id> --body-file ... --expected-version <version>' example in:\n${helpText}`);
+
+    // The example's OWN target path must be the honestly-outside one this fix uses — not a stale
+    // in-bundle path a future edit could silently reintroduce.
+    assert.match(readLineMatch![1]!, /--body-out \/tmp\/body\.md/);
+
+    const substitute = (line: string, version?: string): string[] => {
+      const withId = line.replace(/<id>/g, "concepts/a").replace(/<version>/g, version ?? "<version>");
+      return withId.trim().split(/\s+/).slice(1); // drop the leading 'agentstate-lite' token
+    };
+
+    // Step 1: the documented `doc read <id> --body-out /tmp/body.md --json`, run from the BUNDLE
+    // ROOT — the exact shape that failed pre-fix.
+    const readArgs = substitute(readLineMatch![1]!);
+    const readResult = spawnSync("node", [cliBin, ...readArgs], { cwd: dir, encoding: "utf8" });
+    assert.equal(
+      readResult.status,
+      0,
+      `the documented example must succeed when copy-pasted from the bundle root; ` +
+        `stdout=${readResult.stdout} stderr=${readResult.stderr}`,
+    );
+    const readReceipt = JSON.parse(readResult.stdout) as Record<string, unknown>;
+    const version = readReceipt.version as string;
+    assert.ok(version, "the safe edit cycle depends on the receipt's version");
+    const exportedBody = await readFile(bodyOutTarget, "utf8");
+    assert.equal(exportedBody, "Original body.\n");
+
+    // "# edit /tmp/body.md" — the documented manual step.
+    await writeFile(bodyOutTarget, "Edited body.\n", "utf8");
+
+    // Step 2: the documented `doc update <id> --body-file /tmp/body.md --expected-version
+    // <version>`, joined exactly as a shell line-continuation would join it, run from the SAME
+    // bundle root, with the receipt's own version substituted in for <version>.
+    const updateLine = `${updateLineMatch![1]} ${updateLineMatch![2]}`;
+    const updateArgs = substitute(updateLine, version);
+    const updateResult = spawnSync("node", [cliBin, ...updateArgs], { cwd: dir, encoding: "utf8" });
+    assert.equal(
+      updateResult.status,
+      0,
+      `the documented follow-up must succeed; stdout=${updateResult.stdout} stderr=${updateResult.stderr}`,
+    );
+
+    const after = await readDoc({ root: dir }, "concepts/a");
+    assert.equal(after.body, "Edited body.\n", "the safe-edit-cycle example must actually land the edit");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(bodyOutTarget, { force: true });
   }
 });
