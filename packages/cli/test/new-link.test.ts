@@ -419,6 +419,11 @@ test("new --link: inherited names are undeclared while explicit own special-look
     const inheritedWarnings = ((inherited.links as Array<Record<string, unknown>>)[0]!.warnings ?? []) as Array<Record<string, unknown>>;
     assert.equal(inheritedWarnings[0]?.code, "LINK_TYPE_UNDECLARED_FOR_KIND");
 
+    // The target must EXIST here — otherwise a dangling target attaches its own LINK_TARGET_ABSENT
+    // warning (link-add-target-honesty unit), which is orthogonal to what THIS assertion checks
+    // (that an exactly-declared type, even a prototype-property-shaped one, never warns as
+    // undeclared).
+    await writeDoc(bundle, { id: "missing-target", frontmatter: { type: "Special Links", title: "MT", timestamp: T }, body: "" });
     const explicit = await runJson(newCommand, [
       "Special Links",
       "explicit",
@@ -524,6 +529,31 @@ test("new --link: a link that FAILS after the doc was already created — the do
 });
 
 test("new --link: receipt shape — a success entry carries exactly {type, target, changed, href}, no stray keys", async () => {
+  const { dir, bundle, cleanup } = await makeTaskBundle();
+  try {
+    // The target must EXIST for this receipt to be genuinely warning-free — a dangling target now
+    // attaches a LINK_TARGET_ABSENT warning (link-add-target-honesty unit), which is exactly the
+    // "stray key" this test would otherwise (correctly) start flagging. That behavior has its own
+    // dedicated coverage below; this test isolates the plain success-shape claim.
+    await writeDoc(bundle, { id: "tasks/nope", frontmatter: { type: "Task", title: "Nope", timestamp: T }, body: "" });
+    const result = await runJson(newCommand, [
+      "Task",
+      "t1",
+      "--title",
+      "T1",
+      "--link",
+      "depends on=tasks/nope",
+      "--dir",
+      dir,
+    ]);
+    const links = result.links as Array<Record<string, unknown>>;
+    assert.deepEqual(Object.keys(links[0]!).sort(), ["changed", "href", "target", "type"]);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new --link: a dangling target's LINK_TARGET_ABSENT warning rides the SAME warnings[] the type-conformance lint uses — the receipt shape gains exactly that one key", async () => {
   const { dir, cleanup } = await makeTaskBundle();
   try {
     const result = await runJson(newCommand, [
@@ -537,7 +567,10 @@ test("new --link: receipt shape — a success entry carries exactly {type, targe
       dir,
     ]);
     const links = result.links as Array<Record<string, unknown>>;
-    assert.deepEqual(Object.keys(links[0]!).sort(), ["changed", "href", "target", "type"]);
+    assert.deepEqual(Object.keys(links[0]!).sort(), ["changed", "href", "target", "type", "warnings"]);
+    const warnings = links[0]!.warnings as Array<Record<string, unknown>>;
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0]!.code, "LINK_TARGET_ABSENT");
   } finally {
     await cleanup();
   }

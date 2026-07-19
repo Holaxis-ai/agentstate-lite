@@ -18,7 +18,11 @@
 // carries a graph-lint `warnings[]` when the link's text matches a bundle-declared typed-edge
 // vocabulary entry (a kind's `links` map) but the actual source/target kinds don't conform, or when
 // the text is a same-spelling-different-case near miss of a declared type — warn-only, never
-// blocking, since the link is already written by the time this check runs.
+// blocking, since the link is already written by the time this check runs. The SAME `warnings[]`
+// carries a `LINK_TARGET_ABSENT` entry when the target has no document YET (dangling links stay
+// LEGAL — forward-declaration by design — this is receipt HONESTY, not a refusal); a present
+// target's receipt is unaffected. That check is LOCAL-bundle only (an extra `--remote` round trip
+// would tax every remote link add), so a `--remote` link-add receipt never carries it.
 //
 // The mutation itself (versioned-read → idempotency check → CAS write → lint) is factored into
 // the exported `addLink`, so `new --link` (`commands/new.ts`, one-step create+link) rides the
@@ -62,12 +66,7 @@ const LINK_COMMON_OPTIONS = `Common options:
   --json               Emit compact JSON instead of TOON
   -h, --help           Show this help`;
 
-/**
- * The FAMILY INDEX — printed only for a bare `link`/`link --help`. Each subcommand has its OWN
- * focused help (below, mirroring `doc`'s family-index + focused-verb-help split in `doc/common.ts`)
- * so a `link add --help`/`link show --help`/`link list --help` no longer all print the identical
- * full block (probe finding 3: three distinct calls yielding zero new information).
- */
+/** Family index for bare `link`; each subcommand owns its focused help below. */
 export const LINK_USAGE = `agentstate-lite link — add a cross-link, show a concept's links + backlinks, or query the bundle's whole edge graph
 
 Usage:
@@ -94,6 +93,13 @@ matches a declared type, the just-written link is checked against the actual sou
 a mismatch or a same-spelling-different-case near miss attaches a 'warnings' array to the success
 envelope (exit 0 — the link is already written). An untyped --text (no declared match, any casing)
 or a conventions-free bundle never warns.
+
+Target-existence honesty (link add only, LOCAL bundles only): dangling links stay LEGAL — a link to
+a target with no document yet is a forward-declaration, by design. When the target is absent at link
+time, the success envelope attaches a 'warnings' array entry (code LINK_TARGET_ABSENT) so the receipt
+tells the truth; a link to an existing target's receipt is unchanged. Checked only against a local
+--dir bundle (confirming existence costs a read that would be an extra network round trip over
+--remote), so a --remote link-add receipt never carries this signal.
 
 Options:
   --text <t>           Link display text (default: the target id)
@@ -246,6 +252,32 @@ async function lintLinkType(
   return [];
 }
 
+/**
+ * Warn when a newly linked local target is absent. Remote deliberately skips this advisory to
+ * avoid adding a HEAD request; non-absence read failures propagate to the post-write fallback.
+ */
+async function targetAbsentWarning(
+  bundle: Bundle,
+  to: string,
+  remoteUrl: string | undefined,
+): Promise<ValidationWarning | undefined> {
+  if (remoteUrl !== undefined) return undefined;
+  try {
+    await readDoc(bundle, to);
+    return undefined;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") throw err;
+    return {
+      code: "LINK_TARGET_ABSENT",
+      message:
+        `target '${to}' has no document yet — this link is a forward-declaration (dangling links ` +
+        `stay allowed); create it with \`${cliInvocation()} doc write ${to} --type <t>\`.`,
+      field: "to",
+      severity: "warning",
+    };
+  }
+}
+
 export async function link(argv: string[], deps: Partial<LinkCliDeps> = {}): Promise<void> {
   const stdout = deps.stdout ?? ((s: string) => void process.stdout.write(s));
   const sub = argv[0];
@@ -310,13 +342,13 @@ export interface AddLinkResult {
   changed: boolean;
   /** The source document's current version after this call (written head or idempotent no-op head). */
   version: Version;
-  /** Present only when the write-time type-conformance lint (graph lints unit) attached one. */
+  /** Advisory type-conformance or local target-existence findings from the successful write. */
   warnings?: ValidationWarning[];
 }
 
 /**
  * Core link-add mutation: idempotent versioned-read → idempotency check → CAS write (bounded
- * retry) → write-time type-conformance lint. Extracted out of `linkAdd` below (the CLI
+ * retry) → write-time link guidance. Extracted out of `linkAdd` below (the CLI
  * subcommand, which composes this into its own receipt shape unchanged) so `new --link`
  * (`commands/new.ts` — one-step create+link) rides the EXACT SAME machinery instead of a second
  * hand-rolled link-writer (gate 3: one link resolver, no parallel implementation).
@@ -421,9 +453,11 @@ export async function addLink(
     if (!outcome.wrote) {
       return { from: lastSource!.id, normalizedTo, href, text, changed: false, version: outcome.version! };
     }
-    // Write-time type-conformance lint (graph lints unit) — warn-only, never blocking: the link is
-    // already written by the time this runs. Skipped entirely on the idempotent no-op path above (a
-    // true no-op performs no registry load and no checks).
+    // Write-time type-conformance lint (graph lints unit) + target-existence honesty (link-add-
+    // target-honesty unit) — both warn-only, never blocking: the link is already written by the
+    // time either runs. Both are skipped entirely on the idempotent no-op path above (a true
+    // no-op performs no registry load and no checks — one convention, not a special case per
+    // warning kind).
     let warnings: ValidationWarning[];
     try {
       warnings = await lintLinkType(bundle, {
@@ -432,15 +466,17 @@ export async function addLink(
         to: normalizedTo,
         remoteUrl: opts.remoteUrl,
       });
+      const absent = await targetAbsentWarning(bundle, normalizedTo, opts.remoteUrl);
+      if (absent) warnings.push(absent);
     } catch (err) {
-      // The mutation is already durable and its version is known. Type conformance is explicitly
-      // advisory, so a registry/target read failure must not erase the successful write outcome or
-      // make a caller retry an operation that already landed. Surface the degraded lint as a
-      // warning while preserving the truthful post-write version.
+      // The mutation is already durable and its version is known. Both checks above are
+      // explicitly advisory, so a registry/target read failure must not erase the successful
+      // write outcome or make a caller retry an operation that already landed. Surface the
+      // degraded check as a warning while preserving the truthful post-write version.
       warnings = [
         {
           code: "LINK_LINT_UNAVAILABLE",
-          message: `link was written, but type-conformance guidance was unavailable: ${err instanceof Error ? err.message : String(err)}`,
+          message: `link was written, but link-metadata guidance was unavailable: ${err instanceof Error ? err.message : String(err)}`,
           field: "text",
           severity: "warning",
         },
