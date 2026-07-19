@@ -2,20 +2,15 @@
 type: Task
 title: Help-surface truth fixes from the cold-start probe (findings 2-4)
 description: >-
-  From the 2026-07-19 cold-start usability probe, three small empirical
-  findings, one coherent claim (help surfaces tell the truth): (1) doc read
-  --help's own 'safe edit cycle' example (--body-out ./body.md) FAILS when
-  copy-pasted from the bundle root — fix the example or accept the
-  bundle-root-relative target; decide which and pin the emitted example per the
-  emitted-command-chain discipline (a documented chain must literally run). (2)
-  doc history's one-line blurb promises 'attributed version history' but the
-  local backend returns count:1 — make the headline honest about
-  backend-dependence (the FULL help already is). (3) link/link add/link show
-  --help all print the identical full block — slice per subcommand or state the
-  shared block once. DoD: each fixed surface pinned; the doc read example
-  literally executed in a test from the bundle root.
-actor: mike/claude
-status: in_progress
-timestamp: '2026-07-19T15:34:35.770Z'
+  Shipped in PR #125 (merge da16b3dcf063899851df811f5a9d0d1ebc4b69a1). The safe
+  body-edit help cycle now uses an explicit path-outside-bundle placeholder; its
+  executable test substitutes a unique scratch path and cannot overwrite or
+  delete a shared temp file. Doc history help names backend dependence, and link
+  help is sliced into focused verb surfaces. The branch incorporated PR #124
+  without losing its target-absence guidance. Focused tests and full npm run
+  check passed locally; CI passed on Node 20, 22, and 26.
+actor: mike/codex
+status: done
+timestamp: '2026-07-19T16:43:41.620Z'
 ---
 
