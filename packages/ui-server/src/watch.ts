@@ -116,9 +116,26 @@ interface CommonWatcherOptions {
   onError?: (err: unknown) => void;
 }
 
+/**
+ * Bound on `--remote` mode's boot-time INITIAL snapshot fetch (tasks/ui-remote-watcher-boot-timeout,
+ * same disease class as the stdin-probe hang fixed in PR #117): `startWatcher` is awaited directly by
+ * `bootUiServer`, and a dead/unreachable upstream left this fetch on undici's default (~300s) timeout
+ * — a hung remote hung the entire `ui` boot. Exported so a test can assert on the exact bound rather
+ * than a magic number duplicated at the call site; `bootTimeoutMs` on `WatcherOptions` overrides it
+ * (a test seam — production callers get this default).
+ */
+export const DEFAULT_REMOTE_BOOT_TIMEOUT_MS = 5_000;
+
 export type WatcherOptions =
   | (CommonWatcherOptions & { mode: "dir"; bundle: Bundle; debounceMs?: number })
-  | (CommonWatcherOptions & { mode: "remote"; remoteBase: string; apiKey?: string; pollMs?: number });
+  | (CommonWatcherOptions & {
+      mode: "remote";
+      remoteBase: string;
+      apiKey?: string;
+      pollMs?: number;
+      /** Override {@link DEFAULT_REMOTE_BOOT_TIMEOUT_MS} for the boot-time initial snapshot only — never the ongoing poll. */
+      bootTimeoutMs?: number;
+    });
 
 async function takeSnapshot(opts: WatcherOptions, signal?: AbortSignal): Promise<Snapshot> {
   return opts.mode === "dir" ? snapshotBundle(opts.bundle) : snapshotRemote(opts.remoteBase, opts.apiKey, signal);
@@ -139,7 +156,16 @@ async function takeSnapshot(opts: WatcherOptions, signal?: AbortSignal): Promise
  */
 export async function startWatcher(opts: WatcherOptions): Promise<WatcherHandle> {
   const aborter = new AbortController();
-  let last = await takeSnapshot(opts, aborter.signal);
+  // Only the BOOT-time initial snapshot is time-boxed — `--dir` mode never leaves the process
+  // (no bound needed), and `--remote` mode's ONGOING polls already recover on their own schedule
+  // (a stuck poll just means the next tick tries again); it is specifically the unbounded FIRST
+  // fetch, awaited synchronously by `bootUiServer`, that could hang boot forever. On timeout,
+  // `takeSnapshot` throws and `startWatcher`'s own promise rejects — the caller (`bootWatcher` in
+  // server.ts) already treats any boot-time throw as a best-effort watcher failure: log to stderr,
+  // resolve the UI boot WITHOUT a watcher rather than hang it.
+  const bootSignal =
+    opts.mode === "remote" ? AbortSignal.timeout(opts.bootTimeoutMs ?? DEFAULT_REMOTE_BOOT_TIMEOUT_MS) : aborter.signal;
+  let last = await takeSnapshot(opts, bootSignal);
   let stopped = false;
   let running = false;
   let rerun = false;

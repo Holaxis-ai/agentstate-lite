@@ -64,6 +64,13 @@ export interface UiServerOptions {
   sessionSecret?: string;
   /** Advisory identity recorded by a confirmed local View action. Read-only UI needs no actor. */
   actor?: string;
+  /**
+   * `--remote` mode only: override the watcher's boot-time initial-snapshot timeout (default
+   * `DEFAULT_REMOTE_BOOT_TIMEOUT_MS` in `watch.ts`, ~5s) — a test seam
+   * (tasks/ui-remote-watcher-boot-timeout) so a "never-responding remote" boot-bound test doesn't
+   * have to wait out the real default.
+   */
+  watcherBootTimeoutMs?: number;
 }
 
 export interface UiServerHandle {
@@ -521,7 +528,13 @@ async function handleRequest(
   await writeResponseToServerResponse(res, response);
 }
 
-/** Boot the change watcher for live updates, feeding each diff into the SSE hub. Best-effort: a watcher that can't start (e.g. an unreachable remote at boot) leaves the UI fully usable, just without live push. */
+/**
+ * Boot the change watcher for live updates, feeding each diff into the SSE hub. Best-effort: a
+ * watcher that can't start (e.g. an unreachable remote at boot, or — tasks/ui-remote-watcher-boot-timeout
+ * — a `--remote` upstream that never responds, now bounded by `startWatcher`'s boot-time timeout so
+ * it THROWS instead of hanging) leaves the UI fully usable, just without live push. Either way the
+ * failure is logged to stderr (`onError`) — never a silent no-watch and never a hung boot.
+ */
 async function bootWatcher(options: UiServerOptions, sse: SseHub): Promise<WatcherHandle | undefined> {
   const onChange = (e: ChangeEvent): void => sse.broadcast(e);
   const onError = (err: unknown): void => {
@@ -530,7 +543,14 @@ async function bootWatcher(options: UiServerOptions, sse: SseHub): Promise<Watch
   try {
     return options.mode === "dir"
       ? await startWatcher({ mode: "dir", bundle: options.bundle!, onChange, onError })
-      : await startWatcher({ mode: "remote", remoteBase: options.remoteBase!, apiKey: options.apiKey, onChange, onError });
+      : await startWatcher({
+          mode: "remote",
+          remoteBase: options.remoteBase!,
+          apiKey: options.apiKey,
+          bootTimeoutMs: options.watcherBootTimeoutMs,
+          onChange,
+          onError,
+        });
   } catch (err) {
     onError(err);
     return undefined;
