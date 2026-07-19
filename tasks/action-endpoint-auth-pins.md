@@ -14,11 +14,11 @@ description: >-
   action side effect occurred. Test-only, Sonnet-safe, small. Items 1 (lure-View
   click-timing) and 3 (concurrent-writer race) from the QA list are covered: 1
   by 88ba95a's MutationObserver e2e, 3 by the service-level CAS race test.
-actor: mike/claude
+actor: mike/codex
 title: >-
   Pin the /__ui/actions/* auth layers with direct HTTP probe tests (PR#109 QA
   item 2)
-status: todo
-timestamp: '2026-07-19T02:35:50.010Z'
+status: in_progress
+timestamp: '2026-07-19T12:55:16.635Z'
 ---
 Parent context: PR #109 (trusted View actions) + the posted review at https://github.com/Holaxis-ai/agentstate-lite/pull/109#issuecomment-5012721593.
