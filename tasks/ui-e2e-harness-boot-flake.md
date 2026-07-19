@@ -3,7 +3,7 @@ type: Task
 title: >-
   Flaky e2e harness boot: 'ui command exited early (code 1) before printing a
   receipt' (F2, nondeterministic)
-status: todo
+status: in_progress
 priority: '3'
 description: >-
   [VERIFIED 2026-07-19, KEEP — still accurate] Read packages/ui/e2e/harness.ts:
@@ -24,6 +24,6 @@ description: >-
   tasks/ui-remote-watcher-boot-timeout (that's a hanging boot, this is an
   early-exit boot).
 actor: mike/claude
-timestamp: '2026-07-19T13:11:02.313Z'
+timestamp: '2026-07-19T14:10:07.820Z'
 ---
 

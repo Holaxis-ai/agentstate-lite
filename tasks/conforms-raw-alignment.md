@@ -27,7 +27,7 @@ description: >-
   counts in conformance_debt AND gets leniency); existing ratchet pins
   byte-unmodified. Small, Sonnet-safe.
 actor: mike/claude
-status: todo
-timestamp: '2026-07-19T13:20:25.244Z'
+status: in_progress
+timestamp: '2026-07-19T14:10:07.610Z'
 ---
 

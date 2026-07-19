@@ -3,7 +3,7 @@ type: Task
 title: >-
   PR #54 review follow-ups: .md segments in Page grammar; fail-fast dot entries
   in recipe walk
-status: todo
+status: in_progress
 priority: '3'
 description: >-
   [VERIFIED 2026-07-19, KEEP — both findings empirically reproduced] (1) node
@@ -26,7 +26,7 @@ description: >-
   288e989); details and empirical probes in the review note
   (context-notes/pr-54-independent-review.md).
 actor: mike/claude
-timestamp: '2026-07-19T13:10:46.303Z'
+timestamp: '2026-07-19T14:10:07.926Z'
 ---
 # Objective
 

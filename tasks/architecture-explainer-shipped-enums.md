@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'Architecture explainer: mark enum descriptions shipped'
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   [VERIFIED 2026-07-19, KEEP — still accurate] PR #52 is confirmed merged (gh pr
@@ -18,7 +18,7 @@ description: >-
   Remove stale not-implemented wording while preserving the evidence gate for
   section descriptions/examples.
 actor: mike/claude
-timestamp: '2026-07-19T13:10:19.693Z'
+timestamp: '2026-07-19T14:10:08.032Z'
 ---
 # Required correction
 

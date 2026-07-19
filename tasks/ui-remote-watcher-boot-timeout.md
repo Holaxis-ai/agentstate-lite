@@ -3,7 +3,7 @@ type: Task
 title: >-
   Remote-mode ui: the watcher's initial fetch at boot has no timeout (a dead
   upstream hangs bootUiServer)
-status: todo
+status: in_progress
 priority: '3'
 description: >-
   [VERIFIED 2026-07-19, KEEP — still accurate] Grepped for 'AbortSignal.timeout'
@@ -22,6 +22,6 @@ description: >-
   watcher fetch (AbortSignal.timeout) and surface a structured boot error; align
   with session-start's budget discipline.
 actor: mike/claude
-timestamp: '2026-07-19T13:11:57.732Z'
+timestamp: '2026-07-19T14:10:07.715Z'
 ---
 
