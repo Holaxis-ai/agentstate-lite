@@ -241,12 +241,15 @@ export interface DocCliDeps {
    * all. The default impl (`defaultReadStdin`) fstats fd 0 and only reads when it is a FIFO, a
    * regular file, or a connected socket — an interactive TTY, a character device (notably an agent
    * harness's redirected-but-dataless stdin, which reports `isTTY === undefined`, not `true`), or an
-   * fstat error all resolve to `undefined` without reading. The F1 body-source guard below
+   * fstat error all resolve to `undefined` without reading. A REAL source that stays silent past
+   * `STDIN_FIRST_BYTE_TIMEOUT_MS` resolves the `STDIN_SILENT_TIMEOUT` sentinel — same "nothing
+   * given" semantics as `undefined`, but distinguishable so the verb can surface
+   * `STDIN_SILENT_NOTE` on its receipt/error. The F1 body-source guard below
    * additionally treats an EMPTY resolved string the SAME as `undefined`: only a NON-EMPTY piped body
    * counts as "a body source was given" via this channel — `--body ""` is the one unambiguous
    * explicit-empty channel.
    */
-  readStdin: () => Promise<string | undefined>;
+  readStdin: () => Promise<StdinReadResult>;
 }
 
 /**
@@ -276,11 +279,107 @@ function hasRealStdinInput(): boolean {
   }
 }
 
-export async function defaultReadStdin(): Promise<string | undefined> {
+/**
+ * How long {@link defaultReadStdin} waits for the FIRST byte before concluding "nothing given" (see
+ * that function's doc comment for the full rationale). Exported so a test can assert on the exact
+ * bound rather than a magic number duplicated at the call site.
+ */
+export const STDIN_FIRST_BYTE_TIMEOUT_MS = 200;
+
+/**
+ * Sentinel resolved by {@link defaultReadStdin} when fd 0 IS a real data source (an open
+ * pipe/socket/file) but stayed SILENT past {@link STDIN_FIRST_BYTE_TIMEOUT_MS}. Consumers treat it
+ * exactly like `undefined` ("nothing given") for the body-source decision, but it additionally lets
+ * the verb surface {@link STDIN_SILENT_NOTE} — without it, a NEW doc created with an empty body
+ * while a slow producer's bytes arrive too late would be indistinguishable from a deliberate
+ * body-less write, a residual silent case. A distinct sentinel (not a boolean side channel) keeps
+ * the signal in the ONE owning primitive's return value, so `doc write` and `doc update` both
+ * receive it with no extra plumbing.
+ */
+export const STDIN_SILENT_TIMEOUT: unique symbol = Symbol("agentstate-lite.stdin-silent-timeout");
+
+/** What a {@link DocCliDeps.readStdin} adapter can resolve — see each member's meaning on `readStdin`'s doc comment. */
+export type StdinReadResult = string | undefined | typeof STDIN_SILENT_TIMEOUT;
+
+/** The receipt/error `note` a verb attaches when its stdin probe hit the silent-pipe timeout. */
+export const STDIN_SILENT_NOTE =
+  `stdin was open but silent after ${STDIN_FIRST_BYTE_TIMEOUT_MS}ms — body treated as empty; ` +
+  `use --body/--body-file for slow producers`;
+
+/**
+ * Read `stream` to EOF, but bound the wait for the FIRST byte to `timeoutMs`: no data at all within
+ * that window resolves {@link STDIN_SILENT_TIMEOUT} (treated as "nothing given", but distinguishable
+ * so the caller can surface {@link STDIN_SILENT_NOTE}) instead of blocking forever. This is
+ * the fix for `tasks/doc-write-stdin-open-pipe-hang`: `hasRealStdinInput()` correctly identifies an
+ * OPEN pipe/socket as a real data source, but an agent harness (or a Node `child_process` "pipe"
+ * stdio whose parent never writes and never calls `.end()`) can hand this process exactly such an fd
+ * with NOTHING ever sent and NO close — reading it to EOF unconditionally then blocks forever, the
+ * worst AXI failure class (a silent, unpriceable hang). Once ANY byte has arrived, the bound is
+ * permanently off: `clearTimeout` fires on the first `data` event, so a real piped body that starts
+ * slowly (a chunked network relay, a large file) is still read to completion with no further
+ * timeout — only the "is there anything here at all" question is time-boxed, never an in-progress
+ * transfer. On timeout, the stream is EXPLICITLY paused and released (`pause()` + `unref()`; see the
+ * inline comment below) — this CLI sets only `process.exitCode` and never calls `process.exit()`
+ * (index.ts), so an active read handle left on a still-open, still-silent pipe would otherwise keep
+ * the process alive indefinitely even after this function itself gives up.
+ */
+function readStdinBounded(
+  stream: NodeJS.ReadStream,
+  timeoutMs: number,
+): Promise<string | typeof STDIN_SILENT_TIMEOUT> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let gaveUp = false;
+
+    function cleanup(): void {
+      clearTimeout(timer);
+      stream.removeListener("data", onData);
+      stream.removeListener("end", onEnd);
+      stream.removeListener("error", onError);
+    }
+    function onData(chunk: Buffer): void {
+      clearTimeout(timer); // the FIRST byte disarms the bound permanently — never mid-stream.
+      chunks.push(chunk);
+    }
+    function onEnd(): void {
+      if (gaveUp) return; // already resolved on timeout; a late EOF has nothing left to report
+      cleanup();
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    }
+    function onError(err: Error): void {
+      if (gaveUp) return;
+      cleanup();
+      reject(err);
+    }
+
+    // `timer.unref()`: the TIMER ITSELF must never be what keeps the process alive while it waits —
+    // only a genuinely pending piece of work should do that.
+    const timer = setTimeout(() => {
+      gaveUp = true;
+      cleanup();
+      // Release the handle (see this function's doc comment) so a still-open, still-silent pipe
+      // cannot keep the process alive after this read has already given up on it.
+      stream.pause();
+      stream.unref?.();
+      resolve(STDIN_SILENT_TIMEOUT);
+    }, timeoutMs);
+    timer.unref();
+
+    stream.on("data", onData);
+    stream.on("end", onEnd);
+    stream.on("error", onError);
+  });
+}
+
+/**
+ * Resolves to the piped stdin content; `undefined` when there is no real stdin data source at all
+ * (see `hasRealStdinInput`); or {@link STDIN_SILENT_TIMEOUT} when a real source stayed silent past
+ * {@link STDIN_FIRST_BYTE_TIMEOUT_MS} (see `readStdinBounded`) — the bound that keeps an
+ * open-but-silent pipe from hanging this read forever.
+ */
+export async function defaultReadStdin(): Promise<StdinReadResult> {
   if (!hasRealStdinInput()) return undefined;
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString("utf8");
+  return readStdinBounded(process.stdin, STDIN_FIRST_BYTE_TIMEOUT_MS);
 }
 
 /**

@@ -12,7 +12,14 @@ import { mutateDoc } from "../../mutate.js";
 import { isLegacyPageDoc, LEGACY_PAGE_TYPE_HINT } from "../../legacy-page.js";
 import { boardPostPersistHook } from "../../board-attribution.js";
 import { resolveActor } from "../../actor.js";
-import { DOC_UPDATE_USAGE, type DocCliDeps, defaultReadStdin, guardDroppedLinks } from "./common.js";
+import {
+  DOC_UPDATE_USAGE,
+  type DocCliDeps,
+  defaultReadStdin,
+  guardDroppedLinks,
+  STDIN_SILENT_NOTE,
+  STDIN_SILENT_TIMEOUT,
+} from "./common.js";
 
 /** The `doc update` STANDARD patch fields; excludes control flags (--keep-timestamp/--strict/--dir/--remote/…). */
 const DOC_UPDATE_FIELD_FLAGS = ["title", "description", "tag", "type", "body", "body-file"] as const;
@@ -258,9 +265,14 @@ export async function docUpdate(argv: string[], deps: Partial<DocCliDeps>): Prom
   // non-empty check itself. Read stdin (if relevant) ONCE, before the CAS retry loop below — the
   // stream can only be consumed once.
   let stdinBody: string | undefined;
+  // See STDIN_SILENT_TIMEOUT in common.ts: a real-but-silent stdin reads as "nothing given", but the
+  // no-field USAGE error below names the condition so the caller can tell "I gave nothing" apart
+  // from "my piped body arrived too late".
+  let stdinSilentTimeout = false;
   if (p.body === undefined && !p.bodyFile && !otherFieldGiven) {
     const raw = await readStdin();
-    stdinBody = raw !== undefined && raw !== "" ? raw : undefined;
+    stdinSilentTimeout = raw === STDIN_SILENT_TIMEOUT;
+    stdinBody = typeof raw === "string" && raw !== "" ? raw : undefined;
   }
 
   // A patch verb with nothing to patch has no meaningful effect — reject rather than silently no-op,
@@ -275,7 +287,10 @@ export async function docUpdate(argv: string[], deps: Partial<DocCliDeps>): Prom
     throw new CliError(
       "USAGE",
       `doc update requires at least one field to patch (${DOC_UPDATE_FIELD_FLAGS.map((f) => `--${f}`).join("/")} ` +
-        `or a kind-declared --<field>, e.g. --status)`,
+        `or a kind-declared --<field>, e.g. --status)` +
+        // The same silent-stdin signal doc write's receipt carries (see write.ts): when the probe
+        // timed out, "nothing to patch" may really mean "your piped body arrived too late".
+        (stdinSilentTimeout ? `. Note: ${STDIN_SILENT_NOTE}.` : ""),
       { help: `${cliInvocation()} doc update ${id} --title <t>` },
     );
   }
