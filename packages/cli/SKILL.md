@@ -43,7 +43,7 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
 - `npx -y agentstate-lite doc read <id> [--out (<path> | -) | --body-out (<path> | -) | --field <name>] [--remote <url>]`
   — Read a doc, export its raw markdown, export its body with a same-read CAS version, or print one raw field for scripting
 - `npx -y agentstate-lite doc history <id> [--remote <url>]`
-  — Show a doc's attributed version history (newest first) — the tokens for --expected-version
+  — Show a doc's version history (newest first; a history-keeping backend returns the full attributed chain, a local bundle just the current revision) — the tokens for --expected-version
 - `npx -y agentstate-lite doc delete <id> [--expected-version <v>] [--remote <url>]`
   — Hard-delete a doc (idempotent: absent -> deleted:false, exit 0)
 - `npx -y agentstate-lite list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--open] [--limit <n>] [--remote <url>]`

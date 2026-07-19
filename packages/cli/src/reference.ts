@@ -88,7 +88,8 @@ export const COMMAND_GROUPS: CommandGroup[] = [
       },
       {
         usage: "doc history <id> [--remote <url>]",
-        summary: "Show a doc's attributed version history (newest first) — the tokens for --expected-version",
+        summary:
+          "Show a doc's version history (newest first; a history-keeping backend returns the full attributed chain, a local bundle just the current revision) — the tokens for --expected-version",
       },
       {
         usage: "doc delete <id> [--expected-version <v>] [--remote <url>]",
