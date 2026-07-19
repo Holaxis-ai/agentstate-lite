@@ -15,7 +15,7 @@
 // coverage for the new board surface.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -45,7 +45,9 @@ import { resolveBundleKey } from "@agentstate-lite/board-git";
 import {
   HOOK_TIMEOUT_SECONDS,
   buildOpenCodePluginSource,
+  globalHookTargets,
   hook,
+  hookInstalled,
   hookNeedsUpdate,
   sessionStartHookCommand,
 } from "../src/commands/hook.js";
@@ -698,6 +700,68 @@ test("hook install wires `session-start` into all three runtimes; status/uninsta
   } finally {
     await rm(base, { recursive: true, force: true });
   }
+});
+
+test("global hook operations honor each host's relocated config home", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "aslite-hook-relocated-"));
+  const homeDir = path.join(root, "home");
+  const claudeHome = path.join(root, "claude-config");
+  const codexHome = path.join(root, "codex-home");
+  const xdgHome = path.join(root, "xdg-config");
+  const cwd = path.join(root, "project");
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    CLAUDE_CONFIG_DIR: claudeHome,
+    CODEX_HOME: codexHome,
+    OPENCODE_CONFIG_DIR: "",
+    XDG_CONFIG_HOME: xdgHome,
+  };
+  const location = { cwd, home: homeDir, env };
+  try {
+    await mkdir(homeDir, { recursive: true });
+    await mkdir(cwd, { recursive: true });
+    const cap = capture();
+    await hook(["install", "--scope", "global"], { ...location, stdout: cap.stdout });
+
+    const claude = JSON.parse(await readFile(path.join(claudeHome, "settings.json"), "utf8"));
+    assert.ok(claude.hooks.SessionStart[0].hooks[0].command.endsWith(" session-start"));
+    const codex = JSON.parse(await readFile(path.join(codexHome, "hooks.json"), "utf8"));
+    assert.ok(codex.hooks.SessionStart[0].hooks[0].command.endsWith(" session-start"));
+    assert.match(await readFile(path.join(codexHome, "config.toml"), "utf8"), /hooks = true/);
+    assert.match(
+      await readFile(path.join(xdgHome, "opencode", "plugins", "axi-agentstate-lite.js"), "utf8"),
+      /axi-sdk-js managed opencode plugin: agentstate-lite/,
+    );
+    assert.equal(hookInstalled(undefined, location), true);
+    assert.equal(hookNeedsUpdate(undefined, location), false);
+
+    const status = capture();
+    await hook(["status", "--scope", "global"], { ...location, stdout: status.stdout });
+    assert.match(status.out(), /installed: true/);
+    assert.match(status.out(), new RegExp(codexHome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+    await assert.rejects(() => readFile(path.join(homeDir, ".claude", "settings.json")));
+    await assert.rejects(() => readFile(path.join(homeDir, ".codex", "hooks.json")));
+    await assert.rejects(() =>
+      readFile(path.join(homeDir, ".config", "opencode", "plugins", "axi-agentstate-lite.js")),
+    );
+
+    await hook(["uninstall", "--scope", "global"], { ...location, stdout: () => {} });
+    assert.equal(hookInstalled(undefined, location), false);
+    await assert.rejects(() =>
+      readFile(path.join(xdgHome, "opencode", "plugins", "axi-agentstate-lite.js")),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode's explicit config directory takes precedence over its XDG config root", () => {
+  const targets = globalHookTargets("/home/test", {
+    XDG_CONFIG_HOME: "/xdg",
+    OPENCODE_CONFIG_DIR: "/profiles/review",
+  });
+  assert.equal(targets.opencodePlugin, path.join("/profiles/review", "plugins", "axi-agentstate-lite.js"));
 });
 
 test("hook re-install prompt: a pre-session-start managed hook is detected and surfaced in home", async () => {
