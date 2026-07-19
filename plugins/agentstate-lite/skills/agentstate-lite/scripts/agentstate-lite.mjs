@@ -10749,9 +10749,27 @@ import { parseArgs as parseArgs2 } from "node:util";
 import { promises as fs5 } from "node:fs";
 
 // src/kind-write.ts
-function kindConformanceCliError(error, help) {
+function buildCompletingUpdateCommand(id, violations, kind2) {
+  if (!kind2) return void 0;
+  const declaredFields = /* @__PURE__ */ new Set([...kind2.fields.required, ...kind2.fields.optional]);
+  const seen = /* @__PURE__ */ new Set();
+  const flags = [];
+  for (const violation of violations) {
+    const field = violation.field;
+    if (!field || seen.has(field) || !declaredFields.has(field)) continue;
+    seen.add(field);
+    const allowed = kind2.fields.values[field];
+    const placeholder = allowed && allowed.length > 0 ? `<${allowed.join("|")}>` : "<value>";
+    flags.push(`--${field} ${placeholder}`);
+  }
+  if (flags.length === 0) return void 0;
+  return `${cliInvocation()} doc update ${id} ${flags.join(" ")}`;
+}
+function kindConformanceCliError(error, registry, fallbackHelp, docExists) {
+  const kind2 = registry.kinds.get(error.governs);
+  const completing = docExists ? buildCompletingUpdateCommand(error.id, error.violations, kind2) : void 0;
   return new CliError("USAGE", error.message, {
-    help,
+    help: completing ?? fallbackHelp,
     details: { violations: error.violations }
   });
 }
@@ -10760,7 +10778,9 @@ function defaultTimestampAndValidateKind(candidate, registry, opts) {
   if (kind2 && warnings.length > 0 && opts.strict) {
     throw kindConformanceCliError(
       new KindConformanceError(candidate.id, kind2.governs, warnings),
-      opts.helpOnReject
+      registry,
+      opts.helpOnReject,
+      opts.docExists
     );
   }
   return warnings;
@@ -10774,9 +10794,20 @@ async function firePostPersist(hook2) {
   } catch {
   }
 }
-function translateMutationError(error, opts) {
+async function docExistsForMode(bundle, id, mode) {
+  if (mode === "patch") return true;
+  if (mode === "create-only") return false;
+  try {
+    await readDoc(bundle, id);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function translateMutationError(error, opts) {
   if (error instanceof KindConformanceError) {
-    throw kindConformanceCliError(error, opts.helpOnKindReject);
+    const docExists = await docExistsForMode(opts.bundle, opts.id, opts.mode);
+    throw kindConformanceCliError(error, opts.registry, opts.helpOnKindReject, docExists);
   }
   if (error instanceof DocumentNotFoundError) {
     throw opts.errors.notFound?.() ?? new CliError("NOT_FOUND", error.message);
@@ -10808,7 +10839,7 @@ async function mutateDoc(opts) {
     if (result.changed) await firePostPersist(opts.onPersisted);
     return opts.mode === "patch" ? result : { doc: result.doc, version: result.version, warnings: result.warnings };
   } catch (error) {
-    translateMutationError(error, opts);
+    return await translateMutationError(error, opts);
   }
 }
 
@@ -11822,7 +11853,10 @@ async function promoteDoc(file, key, bundle, opts, stdout, mode, remoteUrl) {
   const registry = await loadKinds(bundle);
   const warnings = defaultTimestampAndValidateKind(candidate, registry, {
     strict: opts.strict,
-    helpOnReject: `${cliInvocation()} kinds`
+    helpOnReject: `${cliInvocation()} kinds`,
+    // I9: an omitted --expected-version is an EXPECT-ABSENT create (the doc does not yet exist); a
+    // present one implies the caller read the doc first to get that token, so it already exists.
+    docExists: opts.expectedVersion !== null
   });
   let version;
   try {
@@ -13972,6 +14006,12 @@ Category semantics (one line each):
                       error; fix its YAML or remove the file. This is the headline finding.
   kind_warnings      Frontmatter/section violations against a doc's OWN declared kind (a per-doc
                       lint; see 'kinds').
+  conformance_debt   Count of GOVERNED DOCS carrying at least one FRONTMATTER-level kind violation
+                      (a missing required field, an out-of-enum value, or wrong arity) \u2014 a per-DOC,
+                      frontmatter-only signal, deliberately narrower than 'kind_warnings' (a
+                      per-VIOLATION total that also counts body-section violations). Present (even
+                      at 0) whenever the bundle declares any kind at all; absent on a
+                      conventions-free bundle. See 'doc update' to fix a listed doc.
   unresolved_links   A link whose target isn't in the queried doc set \u2014 informational (OKF permits
                       links to not-yet-written knowledge), not broken.
   orphans            A concept doc with ZERO INBOUND links from OTHER concept docs. Outbound links
@@ -14031,6 +14071,7 @@ function cap(rows, limit) {
   const bounded = limit > 0 ? rows.slice(0, limit) : rows;
   return { shown: bounded.length, total: rows.length, rows: bounded };
 }
+var FRONTMATTER_VIOLATION_CODES = /* @__PURE__ */ new Set(["KIND_FIELD_MISSING", "KIND_FIELD_VALUE", "KIND_FIELD_ARITY"]);
 function docType2(doc2) {
   return typeof doc2.frontmatter.type === "string" ? doc2.frontmatter.type : "";
 }
@@ -14076,11 +14117,15 @@ async function status(argv, deps = {}) {
   const byId = new Set(docs.map((d) => d.id));
   const docsById = new Map(docs.map((d) => [d.id, d]));
   const lintRows = [];
+  const conformanceDebtDocs = /* @__PURE__ */ new Map();
   for (const doc2 of docs) {
     const kind2 = registry.kinds.get(docType2(doc2));
     if (!kind2) continue;
     for (const w of validateAgainstKind(doc2, kind2)) {
       lintRows.push({ id: doc2.id, field: w.field ?? "", code: w.code });
+      if (FRONTMATTER_VIOLATION_CODES.has(w.code) && !conformanceDebtDocs.has(doc2.id)) {
+        conformanceDebtDocs.set(doc2.id, docType2(doc2));
+      }
     }
   }
   const linkTypeDeclarations = collectLinkDeclarations(registry);
@@ -14179,6 +14224,10 @@ async function status(argv, deps = {}) {
   );
   const linkTypeViolations = cap(linkTypeViolationRows, limit);
   const missingExpectedLinks = cap(missingExpectedRows, limit);
+  const conformanceDebt = cap(
+    [...conformanceDebtDocs].map(([id, type]) => ({ id, type })),
+    limit
+  );
   const out = {
     docs: docs.length,
     kinds: registry.kinds.size,
@@ -14193,8 +14242,15 @@ async function status(argv, deps = {}) {
     missing_expected_links: missingExpectedLinks.total
   };
   if (terminalSkipped > 0) out.terminal_skipped = terminalSkipped;
+  if (registry.kinds.size > 0) out.conformance_debt = conformanceDebt.total;
   if (malformed.total > 0) out.malformed_docs = malformed;
   if (lint.total > 0) out.kind_lint = lint;
+  if (conformanceDebt.total > 0) {
+    out.conformance_debt_docs = {
+      ...conformanceDebt,
+      help: `${cliInvocation()} doc update <id> --<field> <value>  \u2014 fix a listed doc's missing/invalid field(s); see '${cliInvocation()} kinds' for each governing kind's declared fields`
+    };
+  }
   if (unresolved.total > 0) out.unresolved = unresolved;
   if (orphans.total > 0) out.orphan_docs = orphans;
   if (stale.total > 0) out.stale_docs = stale;
