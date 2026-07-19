@@ -34,6 +34,13 @@ async function runJson(argv: string[]): Promise<Record<string, unknown>> {
   return JSON.parse(out) as Record<string, unknown>;
 }
 
+/** Run `status` in the DEFAULT (TOON) render mode, capturing the raw stdout bytes verbatim. */
+async function runToon(argv: string[]): Promise<string> {
+  let out = "";
+  await status(argv, { stdout: (s) => (out += s) });
+  return out;
+}
+
 /**
  * A fixture bundle exercising every finding class the plan calls for:
  *   - `conventions/widget`   — declares the `Widget` kind (required title+status, an enum-restricted
@@ -173,6 +180,77 @@ test("status: a conventions-free freshly-initialized bundle is equally clean", a
   }
 });
 
+// ── Conformance-debt byte-identity pin (tasks/status-conformance-debt, gate 2/3) ───────────────
+//
+// A conventions-free bundle's status output must stay BYTE-IDENTICAL after the new
+// `conformance_debt`/`conformance_debt_docs` fields are added — those fields are gated on
+// `registry.kinds.size > 0`, so a conventions-free bundle (`registry.kinds.size === 0`) must never
+// emit them. Both string literals below were captured VERBATIM from the BUILT CLI
+// (`dist/agentstate-lite.mjs`) run against these exact two bundle shapes BEFORE this unit's status.ts
+// change landed — see the PR description for the exact commands run to capture them. A future
+// unrelated status.ts change that alters this exact output shape should update these literals
+// deliberately, not accidentally.
+
+test("status BYTE-IDENTITY PIN: examples/sample-bundle (conventions-free), TOON render — captured pre-change, must not shift by one byte", async () => {
+  const toon = await runToon(["--dir", SAMPLE_BUNDLE]);
+  assert.equal(
+    toon,
+    "docs: 4\n" +
+      "kinds: 0\n" +
+      "malformed: 0\n" +
+      "kind_warnings: 0\n" +
+      "unresolved_links: 0\n" +
+      "orphans: 0\n" +
+      "stale: 0\n" +
+      "no_timestamp: 0\n" +
+      "registry_warnings: 0\n" +
+      "link_type_violations: 0\n" +
+      "missing_expected_links: 0\n",
+  );
+});
+
+test("status BYTE-IDENTITY PIN: examples/sample-bundle (conventions-free), JSON render — captured pre-change", async () => {
+  let raw = "";
+  await status(["--dir", SAMPLE_BUNDLE, "--json"], { stdout: (s) => (raw += s) });
+  assert.equal(
+    raw,
+    '{"docs":4,"kinds":0,"malformed":0,"kind_warnings":0,"unresolved_links":0,"orphans":0,"stale":0,' +
+      '"no_timestamp":0,"registry_warnings":0,"link_type_violations":0,"missing_expected_links":0}\n',
+  );
+});
+
+test("status BYTE-IDENTITY PIN: a fresh conventions-free bundle (initBundle — seeds NOTHING), TOON and JSON — captured pre-change", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const toon = await runToon(["--dir", dir]);
+    assert.equal(
+      toon,
+      "docs: 0\n" +
+        "kinds: 0\n" +
+        "malformed: 0\n" +
+        "kind_warnings: 0\n" +
+        "unresolved_links: 0\n" +
+        "orphans: 0\n" +
+        "stale: 0\n" +
+        "no_timestamp: 0\n" +
+        "registry_warnings: 0\n" +
+        "link_type_violations: 0\n" +
+        "missing_expected_links: 0\n",
+    );
+
+    let raw = "";
+    await status(["--dir", dir, "--json"], { stdout: (s) => (raw += s) });
+    assert.equal(
+      raw,
+      '{"docs":0,"kinds":0,"malformed":0,"kind_warnings":0,"unresolved_links":0,"orphans":0,"stale":0,' +
+        '"no_timestamp":0,"registry_warnings":0,"link_type_violations":0,"missing_expected_links":0}\n',
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("status: fixture bundle exercises every finding class with the correct counts + rows", async () => {
   const { dir, cleanup } = await makeFixtureBundle();
   try {
@@ -199,6 +277,23 @@ test("status: fixture bundle exercises every finding class with the correct coun
     assert.ok(
       lint.rows.some((r) => r.id === "widgets/bad-enum" && r.field === "status" && r.code === "KIND_FIELD_VALUE"),
     );
+
+    // Conformance debt (tasks/status-conformance-debt): the Widget kind declares no `sections`, so
+    // every kind_warnings violation here IS frontmatter-shaped — debt equals the warning count in
+    // THIS fixture (the doc-vs-warning and section-exclusion distinctions get their OWN dedicated
+    // fixture below).
+    assert.equal(result.conformance_debt, 2);
+    const debt = result.conformance_debt_docs as {
+      shown: number;
+      total: number;
+      rows: Record<string, unknown>[];
+      help: string;
+    };
+    assert.equal(debt.shown, 2);
+    assert.equal(debt.total, 2);
+    assert.ok(debt.rows.some((r) => r.id === "widgets/missing-title" && r.type === "Widget"));
+    assert.ok(debt.rows.some((r) => r.id === "widgets/bad-enum" && r.type === "Widget"));
+    assert.match(debt.help, /doc update/);
 
     // Unresolved links: exactly the linker's dangling target — "unresolved", not "broken".
     assert.equal(result.unresolved_links, 1);
@@ -252,6 +347,136 @@ test("status: fixture bundle exercises every finding class with the correct coun
     assert.equal(registryLint.rows[0]!.code, "KIND_CONVENTION_MALFORMED");
   } finally {
     await cleanup();
+  }
+});
+
+// ── Conformance debt (tasks/status-conformance-debt) — DEDICATED fixture ────────────────────────
+//
+// A SEPARATE fixture (not `makeFixtureBundle()`) so this unit's own assertions never couple to that
+// shared fixture's unrelated hardcoded counts (docs/orphans/etc.) — isolates the two distinctions
+// `conformance_debt` exists to draw: (1) it counts DOCS, not WARNINGS (a doc with two frontmatter
+// violations counts once), and (2) it excludes BODY-SECTION violations entirely (the Task kind here
+// declares a `sections: [Notes]` requirement specifically to exercise that exclusion).
+async function makeConformanceDebtFixture(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  const dir = await tempDir();
+  const bundle = await initBundle(dir);
+  const now = new Date().toISOString();
+
+  await writeDoc(bundle, {
+    id: "conventions/task",
+    frontmatter: {
+      type: "Convention",
+      title: "Task",
+      governs: "Task",
+      fields: { required: ["title", "status"], optional: [], values: { status: ["todo", "done"] } },
+      sections: ["Notes"],
+      timestamp: now,
+    },
+    body: "The Task kind.",
+  });
+  // Frontmatter debt: ONE missing required field.
+  await writeDoc(bundle, {
+    id: "tasks/missing-status",
+    frontmatter: { type: "Task", title: "Missing status", timestamp: now },
+    body: "# Notes\n\nfine.",
+  });
+  // Frontmatter debt: ONE out-of-enum value.
+  await writeDoc(bundle, {
+    id: "tasks/bad-status",
+    frontmatter: { type: "Task", title: "Bad status", status: "bogus", timestamp: now },
+    body: "# Notes\n\nfine.",
+  });
+  // Frontmatter debt: TWO violations on the SAME doc (missing title AND missing status) — must
+  // still count as exactly ONE debt doc, unlike `kind_warnings` (which counts 2 here).
+  await writeDoc(bundle, {
+    id: "tasks/missing-both",
+    frontmatter: { type: "Task", timestamp: now },
+    body: "# Notes\n\nfine.",
+  });
+  // NOT frontmatter debt: satisfies title+status, but is missing the declared '# Notes' section —
+  // a KIND_SECTION_MISSING-only doc must be EXCLUDED from conformance_debt (it counts in
+  // kind_warnings, but there is no `doc update --<field>` that could fix a body heading).
+  await writeDoc(bundle, {
+    id: "tasks/section-only",
+    frontmatter: { type: "Task", title: "Section only", status: "todo", timestamp: now },
+    body: "No heading here.",
+  });
+  // Fully conformant — zero warnings anywhere.
+  await writeDoc(bundle, {
+    id: "tasks/clean",
+    frontmatter: { type: "Task", title: "Clean", status: "done", timestamp: now },
+    body: "# Notes\n\nAll good.",
+  });
+
+  return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+test("status: conformance_debt counts DOCS (not warnings) carrying a FRONTMATTER violation — a multi-violation doc counts once, a section-only violation is excluded", async () => {
+  const { dir, cleanup } = await makeConformanceDebtFixture();
+  try {
+    const result = await runJson(["--dir", dir]);
+
+    // kind_warnings: 1 (missing-status) + 1 (bad-status) + 2 (missing-both) + 1 (section-only) = 5.
+    assert.equal(result.kind_warnings, 5);
+
+    // conformance_debt: missing-status, bad-status, missing-both — 3 DOCS, not 4 warnings; clean
+    // and section-only are both absent (section-only has a kind_warnings entry but no debt entry).
+    assert.equal(result.conformance_debt, 3);
+    const debt = result.conformance_debt_docs as {
+      shown: number;
+      total: number;
+      rows: Record<string, unknown>[];
+      help: string;
+    };
+    assert.equal(debt.total, 3);
+    const debtIds = debt.rows.map((r) => r.id).sort();
+    assert.deepEqual(debtIds, ["tasks/bad-status", "tasks/missing-both", "tasks/missing-status"]);
+    for (const row of debt.rows) assert.equal(row.type, "Task");
+    // The help hatch points at 'doc update' with a placeholder shape an agent can fill — not just
+    // the generic 'kinds' pointer.
+    assert.match(debt.help, /doc update <id> --<field> <value>/);
+    assert.match(debt.help, /kinds/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("status: conformance_debt is present (even at 0) whenever the bundle declares a kind, but omitted on a conventions-free bundle", async () => {
+  // A bundle that declares a kind but has ZERO governed instances at all: conformance_debt must
+  // still be present, at 0 — 'present when kinds exist' does not mean 'present only when non-zero'.
+  const dir = await tempDir();
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/task",
+      frontmatter: {
+        type: "Convention",
+        title: "Task",
+        governs: "Task",
+        fields: { required: ["title"], optional: [], values: {} },
+        timestamp: new Date().toISOString(),
+      },
+      body: "The Task kind.",
+    });
+    const result = await runJson(["--dir", dir]);
+    assert.equal(result.kinds, 1);
+    assert.equal(result.conformance_debt, 0);
+    assert.equal("conformance_debt_docs" in result, false, "the row block is still omitted when empty");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+
+  // A conventions-free bundle: the field must be ABSENT, not present-at-0 (gate 2/3 byte-identity —
+  // see the dedicated BYTE-IDENTITY PIN tests above for the full-output-string version of this).
+  const freeDir = await tempDir();
+  try {
+    await initBundle(freeDir);
+    const result = await runJson(["--dir", freeDir]);
+    assert.equal(result.kinds, 0);
+    assert.equal("conformance_debt" in result, false);
+    assert.equal("conformance_debt_docs" in result, false);
+  } finally {
+    await rm(freeDir, { recursive: true, force: true });
   }
 });
 
