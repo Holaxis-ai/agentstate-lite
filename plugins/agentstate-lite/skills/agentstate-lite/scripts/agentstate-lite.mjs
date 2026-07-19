@@ -12387,6 +12387,13 @@ kinds; a mismatch or a same-spelling-different-case near miss attaches a 'warnin
 success envelope (exit 0 \u2014 the link is already written). An untyped --text (no declared match, any
 casing) or a conventions-free bundle never warns.
 
+Target-existence honesty (link add only, LOCAL bundles only): dangling links stay LEGAL \u2014 a link to
+a target with no document yet is a forward-declaration, by design. When the target is absent at link
+time, the success envelope attaches a 'warnings' array entry (code LINK_TARGET_ABSENT) so the receipt
+tells the truth; a link to an existing target's receipt is unchanged. Checked only against a local
+--dir bundle (confirming existence costs a read that would be an extra network round trip over
+--remote), so a --remote link-add receipt never carries this signal.
+
 link list queries the WHOLE bundle's derived edge list (the same edges 'show' computes per-concept),
 filtered \u2014 the atom a blast-radius/containment/ontology question reduces to. --from/--to each accept
 a single concept id, a trailing-slash prefix ('tasks/' matches every id starting with that literal
@@ -12470,6 +12477,21 @@ async function lintLinkType(bundle, args) {
     }
   }
   return [];
+}
+async function targetAbsentWarning(bundle, to, remoteUrl) {
+  if (remoteUrl !== void 0) return void 0;
+  try {
+    await readDoc(bundle, to);
+    return void 0;
+  } catch (err) {
+    if (err?.code !== "ENOENT") throw err;
+    return {
+      code: "LINK_TARGET_ABSENT",
+      message: `target '${to}' has no document yet \u2014 this link is a forward-declaration (dangling links stay allowed); create it with \`${cliInvocation()} doc write ${to} --type <t>\`.`,
+      field: "to",
+      severity: "warning"
+    };
+  }
 }
 async function link(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
@@ -12567,11 +12589,13 @@ async function addLink(bundle, from, to, opts = {}) {
         to: normalizedTo,
         remoteUrl: opts.remoteUrl
       });
+      const absent = await targetAbsentWarning(bundle, normalizedTo, opts.remoteUrl);
+      if (absent) warnings.push(absent);
     } catch (err) {
       warnings = [
         {
           code: "LINK_LINT_UNAVAILABLE",
-          message: `link was written, but type-conformance guidance was unavailable: ${err instanceof Error ? err.message : String(err)}`,
+          message: `link was written, but link-metadata guidance was unavailable: ${err instanceof Error ? err.message : String(err)}`,
           field: "text",
           severity: "warning"
         }
