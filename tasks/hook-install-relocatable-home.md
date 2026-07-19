@@ -3,7 +3,7 @@ type: Task
 title: >-
   hook install: honor CODEX_HOME / CLAUDE_CONFIG_DIR (hardcoded host dirs, same
   class as the #43 resolver bug)
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Sibling of the #43 cross-host resolver fix, found while fixing it.
@@ -22,7 +22,7 @@ description: >-
   OpenCode's ~/.config/opencode should honor XDG_CONFIG_HOME. Keep install
   idempotent + add per-host custom-home tests. P2: real install-to-wrong-place
   bug on custom-home hosts, but narrower audience than the SKILL resolver.
-actor: mike/claude
-timestamp: '2026-07-12T18:26:33.414Z'
+actor: mike/codex
+timestamp: '2026-07-19T01:46:10.195Z'
 ---
 
