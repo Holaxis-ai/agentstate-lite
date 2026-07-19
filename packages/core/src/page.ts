@@ -47,15 +47,26 @@ export function isPageTypeName(value: unknown): value is PageTypeName {
 
 const PAGE_SEGMENT = /^[A-Za-z0-9._-]+$/;
 
+/**
+ * `.md` (checked case-insensitively) is rejected on EVERY segment, not just the last: a mid-path
+ * segment like `x.md` in `pages-registry/x.md/y` would create an on-disk DIRECTORY literally named
+ * `x.md`, blocking a future concept-doc write to id `pages-registry/x` (the exact
+ * doc/dir collision {@link assertSafeBlobKey} already documents on the entry-key side) — PR #54
+ * review finding 1 (tasks/pr-54-review-followups). ONE shared check for both the registry-id and
+ * entry-key grammars, so the two paths can't drift again the way they did before this fix (the
+ * entry-key side already inherited this via `assertSafeBlobKey`; the registry-id side did not).
+ */
 function hasSafePageSegments(value: string, prefix: string): boolean {
   if (!value.startsWith(prefix) || value.length === prefix.length) return false;
   if (value.startsWith("/") || /[\\%?#]/.test(value)) return false;
   const segments = value.slice(prefix.length).split("/");
-  return segments.every((segment) => !segment.startsWith(".") && PAGE_SEGMENT.test(segment));
+  return segments.every(
+    (segment) => !segment.startsWith(".") && PAGE_SEGMENT.test(segment) && !segment.toLowerCase().endsWith(".md"),
+  );
 }
 
 function isRegistryIdUnder(id: unknown, prefix: string): id is string {
-  if (typeof id !== "string" || id.endsWith(".md") || !hasSafePageSegments(id, prefix)) {
+  if (typeof id !== "string" || !hasSafePageSegments(id, prefix)) {
     return false;
   }
   try {
