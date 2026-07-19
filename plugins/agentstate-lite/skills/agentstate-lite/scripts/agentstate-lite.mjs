@@ -6964,11 +6964,18 @@ function attributeCandidate(candidate, actor, persistActor) {
   return { ...candidate, frontmatter: { ...candidate.frontmatter, actor } };
 }
 function validateCandidate(id, candidate, registry, strict) {
-  const { kind: kind2, warnings } = defaultTimestampAndValidateAgainstRegistry({ id, ...candidate }, registry);
-  if (strict && kind2 && warnings.length > 0) {
-    throw new KindConformanceError(id, kind2.governs, warnings);
+  const result = defaultTimestampAndValidateAgainstRegistry({ id, ...candidate }, registry);
+  if (strict && result.kind && result.warnings.length > 0) {
+    throw new KindConformanceError(id, result.kind.governs, result.warnings);
   }
-  return warnings;
+  return result;
+}
+function conforms(existing, registry) {
+  const check = defaultTimestampAndValidateAgainstRegistry(
+    { id: existing.id, frontmatter: { ...existing.frontmatter }, body: existing.body },
+    registry
+  );
+  return check.kind !== void 0 && check.warnings.length === 0;
 }
 async function mutateDocument(opts) {
   const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
@@ -6977,7 +6984,7 @@ async function mutateDocument(opts) {
   const persistActor = opts.persistActor ?? false;
   if (opts.mode === "create-only") {
     const candidate = attributeCandidate(await opts.buildCandidate(void 0), opts.actor, persistActor);
-    const warnings = validateCandidate(opts.id, candidate, opts.registry, opts.strict);
+    const { warnings } = validateCandidate(opts.id, candidate, opts.registry, opts.strict);
     const { doc: doc2, version } = await writeDocVersioned(opts.bundle, { id: opts.id, ...candidate }, {
       expectedVersion: null,
       actor: opts.actor
@@ -7000,7 +7007,11 @@ async function mutateDocument(opts) {
       read: readExisting,
       decide: async (existing) => {
         const candidate = attributeCandidate(await opts.buildCandidate(existing), opts.actor, persistActor);
-        warnings = validateCandidate(opts.id, candidate, opts.registry, opts.strict);
+        const validated = validateCandidate(opts.id, candidate, opts.registry, opts.strict);
+        warnings = validated.warnings;
+        if (!opts.strict && existing && warnings.length > 0 && conforms(existing, opts.registry)) {
+          throw new KindConformanceError(opts.id, validated.kind.governs, warnings);
+        }
         return { action: "write", next: { id: opts.id, ...candidate }, result: void 0 };
       },
       write: async (next, expectedVersion) => {
@@ -7031,7 +7042,7 @@ async function mutateDocument(opts) {
         return { action: "done", result: { doc: existing, warnings: [] } };
       }
       const attributed = attributeCandidate(candidate, opts.actor, persistActor);
-      const warnings = validateCandidate(opts.id, attributed, opts.registry, opts.strict);
+      const { warnings } = validateCandidate(opts.id, attributed, opts.registry, opts.strict);
       return { action: "write", next: { id: opts.id, ...attributed }, result: { warnings } };
     },
     write: async (next, expectedVersion) => {
