@@ -5640,26 +5640,6 @@ function parseLinksFromDoc(doc2) {
   return links;
 }
 
-// ../core/src/mutation.ts
-var CAS_MAX_ATTEMPTS = 5;
-async function versionedMutation(opts) {
-  const maxAttempts = opts.maxAttempts ?? CAS_MAX_ATTEMPTS;
-  for (let attempt = 0; ; attempt++) {
-    const { state, version } = await opts.read();
-    const decision = await opts.decide(state, attempt);
-    if (decision.action === "done") {
-      return { result: decision.result, version, wrote: false };
-    }
-    try {
-      const newVersion = await opts.write(decision.next, version);
-      return { result: decision.result, version: newVersion, wrote: true };
-    } catch (err) {
-      if (err instanceof VersionConflict && attempt < maxAttempts - 1) continue;
-      throw err;
-    }
-  }
-}
-
 // ../core/src/query-filter.ts
 function matchesFilter(doc2, filter) {
   if (filter.prefix && !doc2.id.startsWith(filter.prefix)) return false;
@@ -6363,6 +6343,26 @@ var RemoteBackend = class {
     return keys;
   }
 };
+
+// ../core/src/mutation.ts
+var CAS_MAX_ATTEMPTS = 5;
+async function versionedMutation(opts) {
+  const maxAttempts = opts.maxAttempts ?? CAS_MAX_ATTEMPTS;
+  for (let attempt = 0; ; attempt++) {
+    const { state, version } = await opts.read();
+    const decision = await opts.decide(state, attempt);
+    if (decision.action === "done") {
+      return { result: decision.result, version, wrote: false };
+    }
+    try {
+      const newVersion = await opts.write(decision.next, version);
+      return { result: decision.result, version: newVersion, wrote: true };
+    } catch (err) {
+      if (err instanceof VersionConflict && attempt < maxAttempts - 1) continue;
+      throw err;
+    }
+  }
+}
 
 // ../core/src/kinds.ts
 var CONVENTIONS_PREFIX = "conventions/";
@@ -7162,6 +7162,13 @@ ${f.stdout}`;
       "GIT_BUSY",
       "another git process is using this repository \u2014 retry once it finishes",
       { details: { op, retryable: true } }
+    );
+  }
+  if (op === "push" && (/\[rejected\].*\((?:fetch first|non-fast-forward)\)/i.test(text) || /Updates were rejected because (?:the remote contains work|the tip of your current branch is behind)/i.test(text))) {
+    return new BoardGitError(
+      "TRANSIENT",
+      "a teammate pushed to the board at the same time \u2014 re-run sync to incorporate their changes and retry",
+      { details: { op, retryable: true, reason: "non-fast-forward" } }
     );
   }
   if (/'origin' does not appear to be a git repository/i.test(text) || /No such remote:? '?origin'?/i.test(text) || /invalid upstream ['"]?origin\//i.test(text) || /origin\/[^\s]+ - not something we can merge/i.test(text) || /couldn'?t find remote ref/i.test(text) || /src refspec [^\s]+ does not match any/i.test(text)) {
@@ -10652,7 +10659,7 @@ Examples:
 var DOC_HISTORY_USAGE = `agentstate-lite doc history \u2014 show a doc's attributed version chain (newest first)
 
 Usage:
-  agentstate-lite doc history <id> [options]
+  agentstate-lite doc history <id> [--limit <n>] [options]
 
 Lists version + actor + timestamp (and agent, when recorded) per revision, with a count. A
 history-keeping backend (a remote deployment) returns the full chain and its real per-write
@@ -10663,10 +10670,18 @@ file's OS owner as the actor (the filesystem backend keeps no per-write advisory
 history; the doc's own 'actor' frontmatter field \u2014 persisted from --actor or
 AGENTSTATE_LITE_ACTOR \u2014 is where per-doc attribution lives). The newest version is the token to
 pass to --expected-version for an optimistic doc update/delete.
+
+Options:
+  --limit <n>           Cap the number of revisions returned, newest first (default: 20; 0 =
+                        unlimited). A truncated result reports \`shown\` alongside the total
+                        \`count\`, and a help line names the escape (a higher --limit, or 0 for
+                        all). The newest revision is always included when truncated (it never
+                        gets cut off the front).
 ${COMMON_OPTIONS}
 
 Examples:
   agentstate-lite doc history concepts/auth
+  agentstate-lite doc history concepts/auth --limit 0
 `;
 var DOC_DELETE_USAGE = `agentstate-lite doc delete \u2014 hard-delete a concept document (idempotent)
 
@@ -11646,12 +11661,14 @@ function inBundlePollutionWarning(bundle, out) {
 
 // src/commands/doc/history.ts
 import { parseArgs as parseArgs5 } from "node:util";
+var DEFAULT_LIMIT = 20;
 async function docHistory(argv, deps) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const { values, positionals } = parseOrUsage(
     () => parseArgs5({
       args: argv,
       options: {
+        limit: { type: "string" },
         dir: { type: "string" },
         remote: { type: "string" },
         json: { type: "boolean" },
@@ -11670,6 +11687,16 @@ async function docHistory(argv, deps) {
     throw new CliError("USAGE", "doc history requires a concept <id> positional", {
       help: `${cliInvocation()} doc history <id>`
     });
+  }
+  let limit = DEFAULT_LIMIT;
+  if (values.limit !== void 0) {
+    const raw = values.limit.trim();
+    if (!/^\d+$/.test(raw)) {
+      throw new CliError("USAGE", "--limit must be a non-negative integer (0 = unlimited)", {
+        help: `${cliInvocation()} doc history ${id} --limit 20`
+      });
+    }
+    limit = Number(raw);
   }
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
   let versions;
@@ -11692,19 +11719,26 @@ async function docHistory(argv, deps) {
     );
     return;
   }
-  stdout(
-    render(
-      {
-        id,
-        count: versions.length,
-        versions: versions.map(
-          (v) => v.agent === void 0 ? { version: v.version, actor: v.actor, timestamp: v.timestamp } : { version: v.version, actor: v.actor, timestamp: v.timestamp, agent: v.agent }
-        ),
-        help: [`${cliInvocation()} doc update ${id} --expected-version ${versions[0].version}`]
-      },
-      resolveMode(values)
+  const total = versions.length;
+  const shown = limit > 0 ? versions.slice(0, limit) : versions;
+  const truncated = shown.length < total;
+  const out = {
+    id,
+    count: total,
+    versions: shown.map(
+      (v) => v.agent === void 0 ? { version: v.version, actor: v.actor, timestamp: v.timestamp } : { version: v.version, actor: v.actor, timestamp: v.timestamp, agent: v.agent }
     )
-  );
+  };
+  if (truncated) out.shown = shown.length;
+  const help = [];
+  if (truncated) {
+    help.push(
+      `showing ${shown.length} of ${total} \u2014 run \`${cliInvocation()} doc history ${id} --limit 0\` (or a higher --limit) for all`
+    );
+  }
+  help.push(`${cliInvocation()} doc update ${id} --expected-version ${versions[0].version}`);
+  out.help = help;
+  stdout(render(out, resolveMode(values)));
 }
 
 // src/commands/doc/delete.ts
@@ -12208,8 +12242,8 @@ async function blobs(argv, deps = {}) {
     stdout(BLOBS_USAGE);
     return;
   }
-  const DEFAULT_LIMIT3 = 100;
-  let limit = DEFAULT_LIMIT3;
+  const DEFAULT_LIMIT4 = 100;
+  let limit = DEFAULT_LIMIT4;
   if (values.limit !== void 0) {
     const raw = values.limit.trim();
     if (!/^\d+$/.test(raw)) {
@@ -12749,8 +12783,8 @@ async function linkShow(argv, stdout, autoPull) {
     stdout(LINK_SHOW_USAGE);
     return;
   }
-  const DEFAULT_LIMIT3 = 50;
-  let limit = DEFAULT_LIMIT3;
+  const DEFAULT_LIMIT4 = 50;
+  let limit = DEFAULT_LIMIT4;
   if (values.limit !== void 0) {
     const raw = values.limit.trim();
     if (!/^\d+$/.test(raw)) {
@@ -12868,8 +12902,8 @@ async function linkList(argv, stdout) {
       help: `${cliInvocation()} link list --to <id|prefix/>`
     });
   }
-  const DEFAULT_LIMIT3 = 100;
-  let limit = DEFAULT_LIMIT3;
+  const DEFAULT_LIMIT4 = 100;
+  let limit = DEFAULT_LIMIT4;
   if (values.limit !== void 0) {
     const raw = values.limit.trim();
     if (!/^\d+$/.test(raw)) {
@@ -13019,8 +13053,8 @@ async function list(argv, deps = {}) {
     }
     if (Object.keys(singleFields).length > 0) filter.fields = singleFields;
   }
-  const DEFAULT_LIMIT3 = 100;
-  let limit = DEFAULT_LIMIT3;
+  const DEFAULT_LIMIT4 = 100;
+  let limit = DEFAULT_LIMIT4;
   if (values.limit !== void 0) {
     const raw = values.limit.trim();
     if (!/^\d+$/.test(raw)) {
@@ -14196,7 +14230,7 @@ Options:
   --json                  Emit compact JSON instead of TOON
   -h, --help              Show this help
 `;
-var DEFAULT_LIMIT = 20;
+var DEFAULT_LIMIT2 = 20;
 function cap(rows, limit) {
   const bounded = limit > 0 ? rows.slice(0, limit) : rows;
   return { shown: bounded.length, total: rows.length, rows: bounded };
@@ -14225,7 +14259,7 @@ async function status(argv, deps = {}) {
     stdout(STATUS_USAGE);
     return;
   }
-  let limit = DEFAULT_LIMIT;
+  let limit = DEFAULT_LIMIT2;
   if (values.limit !== void 0) {
     const raw = values.limit.trim();
     if (!/^\d+$/.test(raw)) {
@@ -17705,7 +17739,8 @@ function cap2(rows, limit) {
 }
 var PUSH_FAIL_SAFETY_MESSAGE = "committed to the board locally \u2014 your work is saved. The push failed (offline or auth); re-run sync when you're back online or your access is restored.";
 function pushFailureMessage(err) {
-  if (err.code === "AUTH_REQUIRED" || err.code === "TRANSIENT") return PUSH_FAIL_SAFETY_MESSAGE;
+  const genericConnectivityFailure = err.code === "AUTH_REQUIRED" || err.code === "TRANSIENT" && err.details?.reason !== "non-fast-forward";
+  if (genericConnectivityFailure) return PUSH_FAIL_SAFETY_MESSAGE;
   return `committed to the board locally \u2014 your work is saved. ${err.message}`;
 }
 function withUpstreamHelp(err, inv) {
@@ -18130,7 +18165,7 @@ Options:
   --json               Emit compact JSON instead of TOON
   -h, --help           Show this help
 `;
-var DEFAULT_LIMIT2 = 20;
+var DEFAULT_LIMIT3 = 20;
 var SYNC_LOCAL_ONLY_MESSAGE = "local-only board \u2014 no shared board branch exists, so there is nothing to pull or push";
 function syncLocalOnlyNote(inv) {
   return `a supported mode: every local command works, and your board changes stay on this machine (sync committed nothing). To share the board with teammates, run \`${inv} sync --establish\` \u2014 it publishes the board as a 'board' branch on the repo's 'origin' remote (add one first if the repo has none); teammates then just run sync.`;
@@ -18243,7 +18278,7 @@ function parseSyncInvocation(argv, inv) {
       "--establish and --pull-only cannot be combined \u2014 establishing always publishes"
     );
   }
-  let limit = DEFAULT_LIMIT2;
+  let limit = DEFAULT_LIMIT3;
   if (values.limit !== void 0) {
     const raw = values.limit.trim();
     if (!/^\d+$/.test(raw)) {
@@ -18461,8 +18496,8 @@ var COMMAND_GROUPS = [
         summary: "Read a doc, export its raw markdown, export its body with a same-read CAS version, or print one raw field for scripting"
       },
       {
-        usage: "doc history <id> [--remote <url>]",
-        summary: "Show a doc's version history (newest first; a history-keeping backend returns the full attributed chain, a local bundle just the current revision) \u2014 the tokens for --expected-version"
+        usage: "doc history <id> [--limit <n>] [--remote <url>]",
+        summary: "Show a doc's version history (newest first, capped at 20 by default \u2014 --limit 0 for all; a history-keeping backend returns the full attributed chain, a local bundle just the current revision) \u2014 the tokens for --expected-version"
       },
       {
         usage: "doc delete <id> [--expected-version <v>] [--remote <url>]",
