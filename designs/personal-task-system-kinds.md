@@ -8,7 +8,7 @@ description: >-
   stable data contract for the collaborative board View; it excludes the
   surrounding private ontology and avoids required body ceremony.
 actor: openai/codex
-timestamp: '2026-07-20T21:33:34.199Z'
+timestamp: '2026-07-20T21:35:35.268Z'
 ---
 # Decision
 
@@ -59,6 +59,17 @@ fields:
       - high
       - medium
       - low
+  value_descriptions:
+    status:
+      todo: Ready to be worked but not yet started.
+      in_progress: Someone is actively advancing the Task.
+      blocked: The Task cannot proceed until a named dependency or condition changes.
+      done: The intended work is complete.
+      canceled: The Task was intentionally closed without completion.
+    priority:
+      high: Important or time-sensitive work that should be considered before ordinary Tasks.
+      medium: Normal planned work without exceptional urgency.
+      low: Optional or opportunistic work that may wait behind higher priorities.
   terminal:
     status:
       - done
@@ -108,6 +119,11 @@ fields:
       - active
       - paused
       - archived
+  value_descriptions:
+    status:
+      active: The Project is currently being pursued.
+      paused: Work is intentionally suspended but may resume.
+      archived: The Project is no longer active and is retained for context.
   terminal:
     status:
       - archived
