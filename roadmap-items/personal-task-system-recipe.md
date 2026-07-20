@@ -17,10 +17,16 @@ description: >-
   (research/ai-power-user-patterns) toward the 'second brain' story.
 actor: mike/claude
 status: active
-timestamp: '2026-07-20T21:23:38.073Z'
+timestamp: '2026-07-20T21:23:56.822Z'
 ---
 # Sequence (data first, then UI, then package)
 
 1. tasks/task-system-kind-design — the kind(s) + relationships (the DATA MODEL). First.
 2. tasks/task-system-board-ui — the collaborative board View: read + human write-back on #109. Where the visual UX lives (the differentiator).
 3. tasks/recipe-personal-task-system — hand-author + package the recipe folder; verify recipe add.
+
+[sequenced unit 1 (data model)](../tasks/task-system-kind-design.md)
+
+[sequenced unit 2 (board UI + write-back)](../tasks/task-system-board-ui.md)
+
+[sequenced unit 3 (package)](../tasks/recipe-personal-task-system.md)

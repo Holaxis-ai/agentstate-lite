@@ -16,6 +16,6 @@ description: >-
 actor: mike/claude
 status: todo
 priority: '2'
-timestamp: '2026-07-20T21:23:38.556Z'
+timestamp: '2026-07-20T21:23:56.929Z'
 ---
-
+[depends on the settled schema](task-system-kind-design.md)

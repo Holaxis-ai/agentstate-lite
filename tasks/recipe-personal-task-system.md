@@ -14,7 +14,7 @@ description: >-
 actor: mike/claude
 status: todo
 priority: '3'
-timestamp: '2026-07-20T21:23:38.676Z'
+timestamp: '2026-07-20T21:23:57.038Z'
 ---
 [the first shipped recipe](../roadmap-items/recipe-plugins.md)
 
@@ -23,3 +23,5 @@ timestamp: '2026-07-20T21:23:38.676Z'
 [working-memory layer is the next increment on top](../research/ai-power-user-patterns.md)
 
 [export is the portable way to extract this recipe (vs hand-author)](recipe-export.md)
+
+[depends on (packages the UI + kinds)](task-system-board-ui.md)
