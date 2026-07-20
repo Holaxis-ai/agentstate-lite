@@ -1,48 +1,82 @@
 ---
 type: Roadmap Item
-title: 'Recipe plugins: share installable agent operating systems'
+title: 'Product recipes: installable agent operating systems'
 status: active
 description: >-
-  Package Kinds, agent instructions, and optional Pages as
-  marketplace-distributed plugins while keeping adopted knowledge local and
-  portable.
-actor: mike/codex
-timestamp: '2026-07-15T16:34:12.412Z'
+  Ship data-free, view-backed operating models through the one RecipeSource
+  pipeline; built-ins travel with npm and become ordinary portable bundle
+  content when installed.
+actor: openai/codex
+sequence: >-
+  Product Manager built-in → installed-npm newcomer proof → second demonstrated
+  persona → only then generalize distribution
+timestamp: '2026-07-20T02:47:37.843Z'
 ---
 # Vision
 
-Make an AgentState recipe shareable as an installable agent plugin: the host marketplace distributes and versions the package, while AgentState applies the bundled recipe through the existing `recipe add <folder>` path. A plugin can carry a domain model (Kind conventions), the skill that teaches agents how to operate it, and optional Pages or scripts that make the model immediately useful.
+Make useful AgentState operating models installable as **product recipes**: data-free packages of
+Kinds, semantic descriptions, typed relationships, workflows, references, and pre-built Views.
+A user should be able to say “I am a product manager; set me up” instead of beginning with an
+infinitely flexible blank substrate.
 
-The long-term product unit is not merely a schema. It is a portable agent operating system for a domain: install a research, claims, product-planning, personal-CRM, or other workflow and an agent immediately knows the concepts, relationships, validation rules, commands, and human interfaces involved.
+The first distribution channel is the npm-installed AgentState CLI itself. Built-in recipes ship
+with the executable and flow through the same `RecipeSource` parser and create-only apply boundary
+as external folders:
+
+```sh
+aslite init --recipe product-manager --dir <workspace>
+aslite recipe add product-manager --dir <existing-bundle>
+```
+
+The installed result is ordinary bundle content. It remains readable and editable without npm,
+without a skill, and without any marketplace account.
 
 # Why this is valuable
 
-- **Collapses cold-start cost.** A user installs accumulated expertise instead of teaching every agent a workflow from scratch.
-- **Makes structure compound.** Kinds turn a useful conversational pattern into durable, executable shared context; plugins make that pattern reusable across people and projects.
-- **Creates a community distribution loop.** People can share complete agent workflows and generated interfaces, analogous to an Obsidian plugin or vault template, while the resulting knowledge remains ordinary local bundle content.
-- **Preserves ownership and portability.** The installed conventions are plain OKF Markdown, not opaque marketplace state or a hosted database schema.
-- **Separates distribution from execution.** Codex/Claude marketplaces handle discovery, versioned installation, and cache refresh; AgentState keeps one recipe parser and one safe apply boundary.
+- **Collapses cold-start cost.** Users choose an operating model rather than designing an ontology
+  before receiving value.
+- **Packages accumulated expertise.** Kinds, descriptions, relationships, workflows, and Views
+  travel together as one coherent starting system.
+- **Keeps the substrate flexible.** A product recipe creates ordinary OKF documents and HTML blobs;
+  users and agents can evolve them after installation.
+- **Makes npm installation land.** `npm install` provides both the general engine and immediately
+  useful product configurations.
+- **Preserves portability.** Recipes contain definitions, never another user's state.
 
-# Intended shape
+# Product contract
 
-- A recipe remains the data-only domain model: `recipe.md` plus `conventions/*.md`.
-- A host skill explains when and how agents should use those Kinds.
-- Optional plugin assets may include Pages, examples, and a small installer/orchestration script.
-- Installation is explicit, idempotent, and expect-absent: it never silently overwrites a bundle author's convention.
-- Data-only recipes and executable plugin assets are presented as distinct trust tiers.
+- A product recipe is a normal, definitions-only RecipeSource—not a new schema or installer.
+- Built-ins are packaged with the npm CLI; external folders use `recipe add <path>` through the same
+  validation and application path.
+- Installation is explicit, idempotent, and expect-absent. It never silently overwrites a bundle
+  author's convention, View, or reference.
+- A persona recipe may include the base definitions it needs. V1 does not add hidden dependency
+  resolution or automatic composition.
+- Recipe updates do not automatically mutate previously adopted bundle content. Previewable
+  migrations are a separate future problem.
+- Skills may teach the operating model, but the recipe body, Kind descriptions, and Views must be
+  sufficient for host-independent understanding.
 
-# Product constraints
+# Sequence
 
-- Do not create a second AgentState marketplace while host plugin marketplaces already solve distribution.
-- Do not conflate a plugin update with mutation of an adopted bundle. Today's recipe semantics are install-only; upgrading an existing domain model needs a separate previewable migration design.
-- Do not add hidden dependency resolution or automatic composition in the proof. The plugin skill may orchestrate existing generic commands explicitly.
+1. Ship the built-in, data-free `product-manager` recipe as the first concrete persona.
+2. Prove both greenfield `init --recipe product-manager` and adoption through `recipe add` on a
+   fresh installed npm artifact.
+3. Have a newcomer create valid product records and use the pre-built Views without founder help.
+4. Generalize only after a second demonstrated persona or domain requires it.
+5. Treat external recipe transport as a later distribution choice; never fork the recipe engine.
 
 # Success condition
 
-One founder can publish a recipe plugin and the other can install it from the real marketplace, apply it to a fresh local bundle without checking out the recipe's source repository, create validated instances, and see the same domain behavior. The handoff should be reproducible enough to become the reference packaging pattern for community recipe plugins.
+A new user installs AgentState from npm, selects the Product Manager recipe, and immediately receives
+a useful, view-backed workspace with an understandable domain model and zero preloaded user data.
+The resulting bundle continues to work as plain portable content if the npm package or Agent Skill
+is absent.
 
 [contains](../tasks/prove-recipe-plugin-sharing.md)
 
 [contains](../tasks/portable-recipe-packages-v1.md)
 
 [contains](../tasks/bundle-native-reference-docs.md)
+
+[contains](../tasks/persona-recipe-product-manager.md)
