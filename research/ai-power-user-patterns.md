@@ -4,18 +4,30 @@ title: >-
   AI-power-user markdown patterns: hot.md is fake, Memory Bank is the real
   convergence
 description: >-
-  Web research informing the persona-recipe decision. KEY: hot.md is fabricated
-  (AI-slop citation laundering — Karpathy's real pattern is the LLM Wiki,
-  index.md/log.md = OKF reserved files). Strongest real pattern = Cline's Memory
-  Bank (activeContext.md etc., cross-tool convergence), which maps ~1:1 onto OKF
-  kinds + freshness horizons. RECOMMENDATION: ship an 'AI power user' recipe
-  FIRST (not PM re-skin), scoped tightly to the session-to-session
-  working-memory gap — a Focus kind + a Session/Briefing kind + one relationship
-  + one Working Memory View. Full findings + sources + honest gaps in body.
+  Web research informing the persona-recipe decision. CORRECTION (Mike,
+  firsthand): the agent's 'hot.md is fabricated' finding was a FALSE NEGATIVE —
+  hot.md-style working-memory conventions are real and circulated on X (which
+  web-research agents can't reach); retracted. The working-memory / second-brain
+  recipe recommendation STANDS and is strengthened: scope a first recipe to
+  cross-session working memory (a hot.md-style Focus kind + Session/Briefing
+  kind + one relationship + one Working Memory View), differentiated from the
+  shipped work-tracking/Plan/Research. Cline Memory Bank + Karpathy LLM Wiki map
+  ~1:1 onto OKF kinds + freshness.
 actor: mike/claude
-timestamp: '2026-07-20T20:26:02.096Z'
+timestamp: '2026-07-20T20:34:59.572Z'
 ---
 # AI-power-user markdown patterns — research pass (2026-07-20)
+
+## CORRECTION (2026-07-20, Mike's firsthand knowledge) — the "hot.md is fabricated" finding was WRONG
+
+Mike saw hot.md-style working-memory conventions discussed and iterated on X (Twitter) — the
+community EXPANDED on Karpathy's base pattern with more sophisticated implementations. It is a real,
+circulating convention, NOT AI-slop. The research agent concluded "fabricated" as a FALSE NEGATIVE:
+X is gated from web search/fetch, so the agent could not see the primary venue and saw only
+downstream SEO echoes. Discount the agent's "fabricated/fad" calls on X-native patterns accordingly.
+Net effect: this STRENGTHENS the working-memory recipe case — the pattern people already improvise is
+real and resonant. The recommendation below stands; treat the "hot.md is fake" headline as retracted.
+
 
 Web research to inform the P1 persona-recipe decision (PM vs "AI power user"). Sonnet research
 agent, web-heavy. Purpose: ground the first shipped recipe in a convention people *already*
@@ -85,4 +97,4 @@ Explicitly LEAVE OUT: a GTD/inbox/todo kind (redundant with work-tracking), the 
   a spot-check with real users before committing design time.
 - OpenClaw/ClawHub daily-briefing tooling is too new to call durable vs single-vendor.
 
-[recommends AI-power-user (working-memory) recipe over PM](../tasks/persona-recipe-product-manager.md)
+[recommends AI-power-user / second-brain (working-memory) recipe over PM](../tasks/persona-recipe-product-manager.md)
