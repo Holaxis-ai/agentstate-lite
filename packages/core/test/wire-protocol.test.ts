@@ -32,8 +32,6 @@ import { MemoryBackend } from "../src/memory-backend.js";
 import {
   writeDocVersioned,
   readDocVersioned,
-  appendLog,
-  readLog,
   readBlob,
   writeBlob,
   existsBlob,
@@ -469,16 +467,6 @@ test("wire: reserved-file writeReserved honors compare-and-swap and expect-absen
   assert.equal((await backend.readReserved("", "log.md"))!.version, v2);
 
   assert.equal(await backend.readReserved("nope", "index.md"), null);
-});
-
-test("wire: appendLog's read-CAS-write retry works transparently over RemoteBackend", async () => {
-  const bundle = freshWireBundle();
-  const when = new Date("2026-07-01T00:00:00.000Z");
-  await appendLog(bundle, { dir: "", entry: "first entry", when });
-  await appendLog(bundle, { dir: "", entry: "second entry", when });
-  const log = await readLog(bundle, "");
-  assert.match(log ?? "", /first entry/);
-  assert.match(log ?? "", /second entry/);
 });
 
 test("wire: GET /docs list endpoint carries count + type/tag filters + fields=frontmatter projection", async () => {

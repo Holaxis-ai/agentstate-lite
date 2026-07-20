@@ -397,9 +397,8 @@ export class FilesystemBackend implements StorageBackend {
     assertSafeReservedDir(dir);
     const rel = reservedPath(dir, name);
     const target = this.abs(rel);
-    // Same per-key serialization as `write()` — see `locks`'s doc comment. Reserved files
-    // (`log.md` provenance especially) are the LEAST-safe write path, since `appendLog`'s
-    // read-CAS-write retry depends on a genuine `VersionConflict` under contention.
+    // Same per-key serialization as `write()` — see `locks`'s doc comment. A reserved-file
+    // read-modify-write depends on a genuine `VersionConflict` under contention.
     return this.withLock(target, async () => {
       if (options.expectedVersion !== undefined) {
         const current = await this.currentVersionAt(target);

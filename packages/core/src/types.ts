@@ -172,8 +172,8 @@ export interface WriteOptions {
    * throws a typed `VersionConflict`. When set to `null`, the write is an
    * **expect-absent create**: it succeeds ONLY if `id` does not currently exist;
    * otherwise it throws `VersionConflict` (with `expected: null`, `actual: <current>`).
-   * This closes the seam's create-race gap — `appendLog`/`regenerateIndex` use it for
-   * their first-ever-create path instead of an unconditional write. When omitted
+   * This closes the seam's create-race gap — bundle initialization and `regenerateIndex`
+   * use it for first-ever-create paths instead of an unconditional write. When omitted
    * entirely, the write is UNCONDITIONAL (last-writer-wins, the historical default).
    * Passing a version token for a not-yet-existing document is also a conflict (its
    * current version is "none").
@@ -261,7 +261,7 @@ export interface StorageBackend {
    * {@link Version}, or `null` if absent. The version is the CAS basis a caller
    * passes back as {@link WriteOptions.expectedVersion} to
    * {@link StorageBackend.writeReserved} for a read-modify-write that does not lose
-   * a concurrent writer's entry (the least-safe write path — `log.md` provenance).
+   * a concurrent writer's update.
    */
   readReserved(dir: string, name: ReservedFilename): Promise<ReservedReadResult | null>;
   /**

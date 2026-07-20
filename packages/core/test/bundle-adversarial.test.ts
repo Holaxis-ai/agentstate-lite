@@ -6,7 +6,6 @@ import { test } from "node:test";
 
 import { FilesystemBackend } from "../src/backend.js";
 import {
-  appendLog,
   deleteDoc,
   docVersions,
   initBundle,
@@ -17,7 +16,6 @@ import {
   queryHeads,
   readDocVersioned,
   readIndex,
-  readLog,
   regenerateIndex,
   writeDocVersioned,
 } from "../src/bundle.js";
@@ -290,10 +288,9 @@ test("edge selectors normalize one leading slash and strip only a terminal markd
   assert.deepEqual(await queryEdges(bundle, { to: "tasks/t.md/suffix" }), []);
 });
 
-test("readIndex and readLog distinguish absence, root version metadata, and raw nested content", async () => {
+test("readIndex distinguishes absence, root version metadata, and raw nested content", async () => {
   const bundle = memoryBundle();
   assert.equal(await readIndex(bundle), null);
-  assert.equal(await readLog(bundle), null);
 
   await bundle.backend!.writeReserved("", "index.md", "---\nokf_version: 7\n---\n# numeric\n");
   assert.deepEqual(await readIndex(bundle), { body: "# numeric\n" });
@@ -302,37 +299,6 @@ test("readIndex and readLog distinguish absence, root version metadata, and raw 
 
   await bundle.backend!.writeReserved("nested", "index.md", "# nested\n");
   assert.deepEqual(await readIndex(bundle, "nested"), { body: "# nested\n" });
-  await bundle.backend!.writeReserved("nested", "log.md", "# Log\nraw\n");
-  assert.equal(await readLog(bundle, "nested"), "# Log\nraw\n");
-});
-
-test("appendLog handles same-day prepend, new-day placement, verb formatting, no-title files, and nested dirs", async () => {
-  const bundle = memoryBundle();
-  const backend = bundle.backend!;
-  await appendLog(bundle, { dir: "fresh", entry: "first", when: new Date("2026-07-16T00:00:00.000Z") });
-  assert.equal(await readLog(bundle, "fresh"), "# Log\n\n## 2026-07-16\n\n- first\n\n");
-
-  await backend.writeReserved("", "log.md", "# Log\n\n## 2026-07-17\n\n- old day\n");
-  await appendLog(bundle, {
-    entry: "new day",
-    verb: "Creation",
-    when: new Date("2026-07-18T23:59:59.000Z"),
-  });
-  const first = (await readLog(bundle))!;
-  assert.ok(first.indexOf("## 2026-07-18") < first.indexOf("## 2026-07-17"));
-  assert.match(first, /- \*\*Creation\*\* new day/);
-
-  await appendLog(bundle, { entry: "same day", when: new Date("2026-07-18T00:00:01.000Z") });
-  const second = (await readLog(bundle))!;
-  assert.equal(second.match(/## 2026-07-18/g)?.length, 1);
-  assert.ok(second.indexOf("- same day") < second.indexOf("- **Creation** new day"));
-
-  await backend.writeReserved("untitled", "log.md", "legacy preamble");
-  await appendLog(bundle, { dir: "untitled", entry: "prepended", when: new Date("2026-07-19T00:00:00.000Z") });
-  const untitled = (await readLog(bundle, "untitled"))!;
-  assert.ok(untitled.startsWith("## 2026-07-19\n\n- prepended\n"));
-  assert.ok(untitled.endsWith("legacy preamble"));
-  assert.equal(await readLog(bundle, "other"), null, "the nested-dir option must not write at root or elsewhere");
 });
 
 test("regenerateIndex emits deterministic root sections, fallbacks, descriptions, and sorted subdirectories", async () => {

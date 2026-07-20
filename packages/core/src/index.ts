@@ -108,7 +108,7 @@ export {
 } from "./versioning.js";
 
 // The ONE versioned-mutation boundary (CLAUDE.md gate 3): a shared read-decide-CAS-retry
-// primitive consumed by document, link, log, and index mutation policies instead of
+// primitive consumed by document, link, and index mutation policies instead of
 // independently hand-rolled loops.
 export { versionedMutation } from "./mutation.js";
 export type { MutationDecision, VersionedMutationOptions, VersionedMutationOutcome } from "./mutation.js";
@@ -141,8 +141,8 @@ export { queryHeads } from "./bundle.js";
 export { matchesFilter } from "./query-filter.js";
 export type { HeadResult } from "./types.js";
 
-// Reserved-file (§6 index.md / §7 log.md) accessors + index regeneration.
-export { readIndex, readLog, appendLog, regenerateIndex } from "./bundle.js";
+// Reserved-file index accessor + regeneration. Raw index.md/log.md interop stays on the backend seam.
+export { readIndex, regenerateIndex } from "./bundle.js";
 
 // Pure, unit-testable path / link / note / freshness helpers.
 export {
