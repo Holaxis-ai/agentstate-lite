@@ -9,7 +9,7 @@ description: >-
   installed-tarball portability journey.
 actor: openai/codex-portable-index-cli
 assignee: openai/codex-portable-index-cli
-timestamp: '2026-07-20T02:15:06.641Z'
+timestamp: '2026-07-20T02:28:53.997Z'
 ---
 # Approved direction
 
@@ -66,3 +66,7 @@ In a scratch bundle, using the installed offline npm tarball:
 Depends on [Portable index core planner and ownership](prune-regenerate-index-api.md). Deliver as a separate CLI-focused PR after that unit merges, with full repository gate, npm-tarball journey proof, and independent exact-SHA review.
 
 [depends on](prune-regenerate-index-api.md)
+
+# Implementation record — 2026-07-19
+
+Unit 2 is implemented at commit `8f9d986936408175767f6dc77848070cf306e1a6` in [PR #131](https://github.com/Holaxis-ai/agentstate-lite/pull/131). The exact-SHA local full repository gate passed (`npm run check`, exit 0), including the 1,051-case CLI workspace, installed-package verification, generated npm-target skill check, and 15 Chromium UI/security E2E cases. The packed four-file npm artifact used for independent acceptance has SHA-256 `ab3b1bc07bebb3f1422b9f3ea48d7271f569158d5bbc6f665612fd64d2376291`. Independent mechanism review and a fresh-agent black-box installed-tarball journey are in progress. GitHub-hosted CI remains a separate signal and may be queued during the current Actions incident.
