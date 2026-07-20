@@ -9,7 +9,7 @@ description: >-
   installed-tarball portability journey.
 actor: openai/codex-portable-index-cli
 assignee: openai/codex-portable-index-cli
-timestamp: '2026-07-20T02:28:53.997Z'
+timestamp: '2026-07-20T02:42:36.873Z'
 ---
 # Approved direction
 
@@ -69,4 +69,10 @@ Depends on [Portable index core planner and ownership](prune-regenerate-index-ap
 
 # Implementation record — 2026-07-19
 
-Unit 2 is implemented at commit `8f9d986936408175767f6dc77848070cf306e1a6` in [PR #131](https://github.com/Holaxis-ai/agentstate-lite/pull/131). The exact-SHA local full repository gate passed (`npm run check`, exit 0), including the 1,051-case CLI workspace, installed-package verification, generated npm-target skill check, and 15 Chromium UI/security E2E cases. The packed four-file npm artifact used for independent acceptance has SHA-256 `ab3b1bc07bebb3f1422b9f3ea48d7271f569158d5bbc6f665612fd64d2376291`. Independent mechanism review and a fresh-agent black-box installed-tarball journey are in progress. GitHub-hosted CI remains a separate signal and may be queued during the current Actions incident.
+Unit 2 is implemented at exact commit `d3674df2ae33a6985fc8078a8c6abf95bddf0572` in [PR #131](https://github.com/Holaxis-ai/agentstate-lite/pull/131), intentionally left unmerged for owner review.
+
+The exact-SHA local full repository gate passed (`npm run check`, exit 0), including installed-package verification, generated npm-target skill validation, and 15 Chromium UI/security E2E cases. The focused portable-index command suite passes 7/7. GitHub's Node 20 built-CLI smoke is green; the Node 22/26 matrix remained in progress at the time of this record and is a separate hosted signal.
+
+Independent exact-SHA mechanism review is **APPROVE** with no remaining findings. Its first pass identified two P2 recovery-command issues: explicit `--dir` paths were not POSIX-shell-safe and `--check --force` dropped `--force` from its recovery instruction. Both now use one command builder, including embedded apostrophes, and a regression test reasserts zero-write preview behavior.
+
+Fresh-agent black-box acceptance against only the exact installed four-file npm tarball is **PASS**. Artifact SHA-256: `704fc331672de3e7ca7cc47776f463c0a9ac87e657e3895c9253c604bf95a072`. The journey proved recursive generation, byte-identical check/refusal paths, deliberate one-file adoption, five relative/resolving links, no-op rerun, and a final clean check. It also executed the emitted force-recovery command character-for-character through `/bin/sh -c`, with npm offline, against a bundle path containing spaces and an apostrophe; the command adopted exactly one index and exited 0.
