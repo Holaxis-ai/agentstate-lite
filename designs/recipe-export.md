@@ -4,18 +4,19 @@ title: >-
   recipe export: extract a data-free recipe from a working bundle (inverse of
   recipe add)
 description: >-
-  Proposed design for a 'recipe export' CLI command — the inverse of 'recipe
-  add'. Reads a working bundle, emits a portable DATA-FREE recipe folder
-  (recipe.md + conventions/*.md + views/ + opted-in references/) that 'recipe
-  add' installs elsewhere. Core rule: export DEFINITIONS (kind conventions under
-  conventions/, Views + HTML), never INSTANCES (data stripped); reference docs
-  are opt-in (--include-ref) since auto-distinguishing them from private data is
-  unsafe. Data-free BY CONSTRUCTION with an instances_stripped receipt as the
-  trust surface; round-trip (export -> add -> identical registry+views, zero
-  instances) is the correctness + portability proof. Local-only, deterministic.
-  Full design in body.
+  DEFERRED design (2026-07-20) — the first recipe is HAND-AUTHORED, not
+  exported. Preserved because the direction is sound for later. Review
+  corrections to fold in when built: call it 'instance-free' not 'data-free'
+  (definition prose/HTML can carry private info); the real missing seam is
+  first-class RECIPE OWNERSHIP (an optional per-bundle 'Recipe Definition'
+  manifest declaring which conventions/views/refs form a named recipe) — export
+  should follow declared membership, not scan-and-guess; strip source metadata
+  (timestamp/actor) as package normalization; --check = verify-output-current
+  (preview = --dry-run); output-dir ownership policy; best-effort leakage
+  warnings for HTML/registration bodies, reliable for markdown links. Original
+  mechanism design in body.
 actor: mike/claude
-timestamp: '2026-07-20T20:58:07.772Z'
+timestamp: '2026-07-20T21:19:07.389Z'
 ---
 # recipe export — extract a data-free recipe from a working bundle
 

@@ -2,34 +2,29 @@
 type: Task
 title: 'First shipped recipe: Personal Task System (agent-first, UI-writable)'
 description: >-
-  THE first minimally-usable shipped recipe (release-push non-negotiable #3;
-  decided 2026-07-20, supersedes the PM framing). Deliberately concrete, fast,
-  and demoable. SCOPE (minimal, graspable in one look): the existing
-  work-tracking Task kind + a board/dashboard View + the mark-done UI-WRITE
-  action (trusted View actions, #109) + one honest end-to-end test pass of #109
-  (which is shipped-but-barely-tested). DIFFERENTIATION lives entirely in the
-  framing: NOT 'a task app' (red ocean) but agent-first + human-writable UI —
-  your agent runs your tasks and you check them off live in a View, agent and
-  human on the same data. That collaboration loop is the demo and the product's
-  deepest differentiator; a task system is its most visceral vehicle, and this
-  doubles as the real-world test of #109. SOURCE MATERIAL: extract the DATA-FREE
-  recipe (kinds + relationships + Views + conventions ONLY — zero instance data)
-  from the founder's own real, daily-used PRIVATE task bundle (battle-tested by
-  months of dogfooding); generalize/tighten for a general user. GUARDRAIL: the
-  recipe ships structure only; the private task data never leaves the private
-  bundle (data-free recipe = the whole point). PORTABILITY PROOF: this doubles
-  as the recipe-portability test (real bundle -> data-free recipe folder ->
-  recipe add). No 'recipe export' command exists yet (verified) — decide at
-  build whether to author the recipe.md + conventions/*.md folder by hand from
-  the bundle's structure, or build a 'recipe export' capability (the stronger
-  portability proof, links prove-recipe-plugin-sharing). NEXT INCREMENT (not
-  this unit): the working-memory Focus/Session layer
-  (research/ai-power-user-patterns) grows on top toward the resonant 'second
-  brain' story. Parent: roadmap-items/recipe-plugins.
+  THE first minimally-usable shipped recipe (release-push non-negotiable #3).
+  DECIDED 2026-07-20: HAND-AUTHOR it, using the founder's real, private,
+  battle-tested task bundle as a REFERENCE IMPLEMENTATION — generalize /
+  simplify / change for a general user, NOT a verbatim extraction (automated
+  recipe-export is deferred; see tasks/recipe-export). Instance-free by
+  hand-authoring: carry structure only (Task kind + conventions + Views), zero
+  private data. CENTERPIECE (Mike's emphasis): a VERY GOOD visual UX/UI for a
+  HUMAN-AGENT COLLABORATIVE task system — a well-designed task board/dashboard
+  View where the human marks done / edits and the agent and human work the SAME
+  data live. That collaboration loop is the product's differentiator and the
+  demo; the visual quality is the point, not a checklist. BUILD NOTE: the UI
+  write-back UX is NOT yet implemented — #109 shipped the trusted-View-action
+  MECHANISM (a View proposes a Kind-declared scalar change, human-confirmed in
+  shell chrome, CAS-committed), but no bundle authors a good task-board View
+  that USES it. So the real work is authoring that write-back experience well,
+  on top of #109's plumbing — not merely testing #109. Deliverable: a
+  hand-authored recipe folder (recipe.md + conventions/*.md + views/)
+  installable via recipe add, whose task-board View supports human write-back
+  with excellent UX. Parent: roadmap-items/recipe-plugins.
 actor: mike/claude
 status: todo
 priority: '1'
-timestamp: '2026-07-20T20:58:08.336Z'
+timestamp: '2026-07-20T21:19:07.146Z'
 ---
 [the first shipped recipe](../roadmap-items/recipe-plugins.md)
 
