@@ -86,6 +86,8 @@ the rest of the line unchanged.
   — Register and deterministically resolve this user's explicitly named local workspaces
 - `"$ASLITE" init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]`
   — Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init
+- `"$ASLITE" index generate [--dir <path>] [--check] [--force] [--actor <name>]`
+  — Generate complete portable Markdown navigation explicitly; refuses curated indexes unless --force adopts them
 - `"$ASLITE" status [--limit <n>] [--remote <url>]`
   — Read-only bundle health report (kind lint, unresolved links, orphans, staleness, graph lints)
 

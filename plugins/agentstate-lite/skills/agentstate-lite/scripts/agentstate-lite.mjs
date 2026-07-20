@@ -3710,22 +3710,22 @@ function formatHeader(length, options2) {
   header += ":";
   return header;
 }
-function* encodeJsonValue(value, options2, depth) {
+function* encodeJsonValue(value, options2, depth2) {
   if (isJsonPrimitive(value)) {
     const encodedPrimitive = encodePrimitive(value, options2.delimiter);
     if (encodedPrimitive !== "") yield encodedPrimitive;
     return;
   }
-  if (isJsonArray(value)) yield* encodeArrayLines(void 0, value, depth, options2);
-  else if (isJsonObject(value)) yield* encodeObjectLines(value, depth, options2);
+  if (isJsonArray(value)) yield* encodeArrayLines(void 0, value, depth2, options2);
+  else if (isJsonObject(value)) yield* encodeObjectLines(value, depth2, options2);
 }
-function* encodeObjectLines(value, depth, options2, rootLiteralKeys, pathPrefix, remainingDepth) {
+function* encodeObjectLines(value, depth2, options2, rootLiteralKeys, pathPrefix, remainingDepth) {
   const keys = Object.keys(value);
-  if (depth === 0 && !rootLiteralKeys) rootLiteralKeys = new Set(keys.filter((k) => k.includes(".")));
+  if (depth2 === 0 && !rootLiteralKeys) rootLiteralKeys = new Set(keys.filter((k) => k.includes(".")));
   const effectiveFlattenDepth = remainingDepth ?? options2.flattenDepth;
-  for (const [key, val] of Object.entries(value)) yield* encodeKeyValuePairLines(key, val, depth, options2, keys, rootLiteralKeys, pathPrefix, effectiveFlattenDepth);
+  for (const [key, val] of Object.entries(value)) yield* encodeKeyValuePairLines(key, val, depth2, options2, keys, rootLiteralKeys, pathPrefix, effectiveFlattenDepth);
 }
-function* encodeKeyValuePairLines(key, value, depth, options2, siblings, rootLiteralKeys, pathPrefix, flattenDepth) {
+function* encodeKeyValuePairLines(key, value, depth2, options2, siblings, rootLiteralKeys, pathPrefix, flattenDepth) {
   const currentPath = pathPrefix ? `${pathPrefix}.${key}` : key;
   const effectiveFlattenDepth = flattenDepth ?? options2.flattenDepth;
   if (options2.keyFolding === "safe" && siblings) {
@@ -3735,64 +3735,64 @@ function* encodeKeyValuePairLines(key, value, depth, options2, siblings, rootLit
       const encodedFoldedKey = encodeKey(foldedKey);
       if (remainder === void 0) {
         if (isJsonPrimitive(leafValue)) {
-          yield indentedLine(depth, `${encodedFoldedKey}: ${encodePrimitive(leafValue, options2.delimiter)}`, options2.indent);
+          yield indentedLine(depth2, `${encodedFoldedKey}: ${encodePrimitive(leafValue, options2.delimiter)}`, options2.indent);
           return;
         } else if (isJsonArray(leafValue)) {
-          yield* encodeArrayLines(foldedKey, leafValue, depth, options2);
+          yield* encodeArrayLines(foldedKey, leafValue, depth2, options2);
           return;
         } else if (isJsonObject(leafValue) && isEmptyObject(leafValue)) {
-          yield indentedLine(depth, `${encodedFoldedKey}:`, options2.indent);
+          yield indentedLine(depth2, `${encodedFoldedKey}:`, options2.indent);
           return;
         }
       }
       if (isJsonObject(remainder)) {
-        yield indentedLine(depth, `${encodedFoldedKey}:`, options2.indent);
+        yield indentedLine(depth2, `${encodedFoldedKey}:`, options2.indent);
         const remainingDepth = effectiveFlattenDepth - segmentCount;
         const foldedPath = pathPrefix ? `${pathPrefix}.${foldedKey}` : foldedKey;
-        yield* encodeObjectLines(remainder, depth + 1, options2, rootLiteralKeys, foldedPath, remainingDepth);
+        yield* encodeObjectLines(remainder, depth2 + 1, options2, rootLiteralKeys, foldedPath, remainingDepth);
         return;
       }
     }
   }
   const encodedKey = encodeKey(key);
-  if (isJsonPrimitive(value)) yield indentedLine(depth, `${encodedKey}: ${encodePrimitive(value, options2.delimiter)}`, options2.indent);
-  else if (isJsonArray(value)) yield* encodeArrayLines(key, value, depth, options2);
+  if (isJsonPrimitive(value)) yield indentedLine(depth2, `${encodedKey}: ${encodePrimitive(value, options2.delimiter)}`, options2.indent);
+  else if (isJsonArray(value)) yield* encodeArrayLines(key, value, depth2, options2);
   else if (isJsonObject(value)) {
-    yield indentedLine(depth, `${encodedKey}:`, options2.indent);
-    if (!isEmptyObject(value)) yield* encodeObjectLines(value, depth + 1, options2, rootLiteralKeys, currentPath, effectiveFlattenDepth);
+    yield indentedLine(depth2, `${encodedKey}:`, options2.indent);
+    if (!isEmptyObject(value)) yield* encodeObjectLines(value, depth2 + 1, options2, rootLiteralKeys, currentPath, effectiveFlattenDepth);
   }
 }
-function* encodeArrayLines(key, value, depth, options2) {
+function* encodeArrayLines(key, value, depth2, options2) {
   if (value.length === 0) {
-    yield indentedLine(depth, key != null ? `${encodeKey(key)}: []` : "[]", options2.indent);
+    yield indentedLine(depth2, key != null ? `${encodeKey(key)}: []` : "[]", options2.indent);
     return;
   }
   if (isArrayOfPrimitives(value)) {
-    yield indentedLine(depth, encodeInlineArrayLine(value, options2.delimiter, key), options2.indent);
+    yield indentedLine(depth2, encodeInlineArrayLine(value, options2.delimiter, key), options2.indent);
     return;
   }
   if (isArrayOfArrays(value)) {
     if (value.every((arr) => isArrayOfPrimitives(arr))) {
-      yield* encodeArrayOfArraysAsListItemsLines(key, value, depth, options2);
+      yield* encodeArrayOfArraysAsListItemsLines(key, value, depth2, options2);
       return;
     }
   }
   if (isArrayOfObjects(value)) {
     const header = extractTabularHeader(value);
-    if (header) yield* encodeArrayOfObjectsAsTabularLines(key, value, header, depth, options2);
-    else yield* encodeMixedArrayAsListItemsLines(key, value, depth, options2);
+    if (header) yield* encodeArrayOfObjectsAsTabularLines(key, value, header, depth2, options2);
+    else yield* encodeMixedArrayAsListItemsLines(key, value, depth2, options2);
     return;
   }
-  yield* encodeMixedArrayAsListItemsLines(key, value, depth, options2);
+  yield* encodeMixedArrayAsListItemsLines(key, value, depth2, options2);
 }
-function* encodeArrayOfArraysAsListItemsLines(prefix, values, depth, options2) {
-  yield indentedLine(depth, formatHeader(values.length, {
+function* encodeArrayOfArraysAsListItemsLines(prefix, values, depth2, options2) {
+  yield indentedLine(depth2, formatHeader(values.length, {
     key: prefix,
     delimiter: options2.delimiter
   }), options2.indent);
   for (const arr of values) if (isArrayOfPrimitives(arr)) {
     const arrayLine = encodeInlineArrayLine(arr, options2.delimiter);
-    yield indentedListItem(depth + 1, arrayLine, options2.indent);
+    yield indentedListItem(depth2 + 1, arrayLine, options2.indent);
   }
 }
 function encodeInlineArrayLine(values, delimiter2, prefix) {
@@ -3804,13 +3804,13 @@ function encodeInlineArrayLine(values, delimiter2, prefix) {
   if (values.length === 0) return header;
   return `${header} ${joinedValue}`;
 }
-function* encodeArrayOfObjectsAsTabularLines(prefix, rows, header, depth, options2) {
-  yield indentedLine(depth, formatHeader(rows.length, {
+function* encodeArrayOfObjectsAsTabularLines(prefix, rows, header, depth2, options2) {
+  yield indentedLine(depth2, formatHeader(rows.length, {
     key: prefix,
     fields: header,
     delimiter: options2.delimiter
   }), options2.indent);
-  yield* writeTabularRowsLines(rows, header, depth + 1, options2);
+  yield* writeTabularRowsLines(rows, header, depth2 + 1, options2);
 }
 function extractTabularHeader(rows) {
   if (rows.length === 0) return;
@@ -3829,19 +3829,19 @@ function isTabularArray(rows, header) {
   }
   return true;
 }
-function* writeTabularRowsLines(rows, header, depth, options2) {
-  for (const row2 of rows) yield indentedLine(depth, encodeAndJoinPrimitives(header.map((key) => row2[key]), options2.delimiter), options2.indent);
+function* writeTabularRowsLines(rows, header, depth2, options2) {
+  for (const row2 of rows) yield indentedLine(depth2, encodeAndJoinPrimitives(header.map((key) => row2[key]), options2.delimiter), options2.indent);
 }
-function* encodeMixedArrayAsListItemsLines(prefix, items, depth, options2) {
-  yield indentedLine(depth, formatHeader(items.length, {
+function* encodeMixedArrayAsListItemsLines(prefix, items, depth2, options2) {
+  yield indentedLine(depth2, formatHeader(items.length, {
     key: prefix,
     delimiter: options2.delimiter
   }), options2.indent);
-  for (const item of items) yield* encodeListItemValueLines(item, depth + 1, options2);
+  for (const item of items) yield* encodeListItemValueLines(item, depth2 + 1, options2);
 }
-function* encodeObjectAsListItemLines(obj, depth, options2) {
+function* encodeObjectAsListItemLines(obj, depth2, options2) {
   if (isEmptyObject(obj)) {
-    yield indentedLine(depth, "-", options2.indent);
+    yield indentedLine(depth2, "-", options2.indent);
     return;
   }
   const entries = Object.entries(obj);
@@ -3850,44 +3850,44 @@ function* encodeObjectAsListItemLines(obj, depth, options2) {
   if (isJsonArray(firstValue) && isArrayOfObjects(firstValue)) {
     const header = extractTabularHeader(firstValue);
     if (header) {
-      yield indentedListItem(depth, formatHeader(firstValue.length, {
+      yield indentedListItem(depth2, formatHeader(firstValue.length, {
         key: firstKey,
         fields: header,
         delimiter: options2.delimiter
       }), options2.indent);
-      yield* writeTabularRowsLines(firstValue, header, depth + 2, options2);
-      if (restEntries.length > 0) yield* encodeObjectLines(Object.fromEntries(restEntries), depth + 1, options2);
+      yield* writeTabularRowsLines(firstValue, header, depth2 + 2, options2);
+      if (restEntries.length > 0) yield* encodeObjectLines(Object.fromEntries(restEntries), depth2 + 1, options2);
       return;
     }
   }
   const encodedKey = encodeKey(firstKey);
-  if (isJsonPrimitive(firstValue)) yield indentedListItem(depth, `${encodedKey}: ${encodePrimitive(firstValue, options2.delimiter)}`, options2.indent);
-  else if (isJsonArray(firstValue)) if (firstValue.length === 0) yield indentedListItem(depth, `${encodedKey}: []`, options2.indent);
-  else if (isArrayOfPrimitives(firstValue)) yield indentedListItem(depth, `${encodedKey}${encodeInlineArrayLine(firstValue, options2.delimiter)}`, options2.indent);
+  if (isJsonPrimitive(firstValue)) yield indentedListItem(depth2, `${encodedKey}: ${encodePrimitive(firstValue, options2.delimiter)}`, options2.indent);
+  else if (isJsonArray(firstValue)) if (firstValue.length === 0) yield indentedListItem(depth2, `${encodedKey}: []`, options2.indent);
+  else if (isArrayOfPrimitives(firstValue)) yield indentedListItem(depth2, `${encodedKey}${encodeInlineArrayLine(firstValue, options2.delimiter)}`, options2.indent);
   else {
-    yield indentedListItem(depth, `${encodedKey}${formatHeader(firstValue.length, { delimiter: options2.delimiter })}`, options2.indent);
-    for (const item of firstValue) yield* encodeListItemValueLines(item, depth + 2, options2);
+    yield indentedListItem(depth2, `${encodedKey}${formatHeader(firstValue.length, { delimiter: options2.delimiter })}`, options2.indent);
+    for (const item of firstValue) yield* encodeListItemValueLines(item, depth2 + 2, options2);
   }
   else if (isJsonObject(firstValue)) {
-    yield indentedListItem(depth, `${encodedKey}:`, options2.indent);
-    if (!isEmptyObject(firstValue)) yield* encodeObjectLines(firstValue, depth + 2, options2);
+    yield indentedListItem(depth2, `${encodedKey}:`, options2.indent);
+    if (!isEmptyObject(firstValue)) yield* encodeObjectLines(firstValue, depth2 + 2, options2);
   }
-  if (restEntries.length > 0) yield* encodeObjectLines(Object.fromEntries(restEntries), depth + 1, options2);
+  if (restEntries.length > 0) yield* encodeObjectLines(Object.fromEntries(restEntries), depth2 + 1, options2);
 }
-function* encodeListItemValueLines(value, depth, options2) {
-  if (isJsonPrimitive(value)) yield indentedListItem(depth, encodePrimitive(value, options2.delimiter), options2.indent);
-  else if (isJsonArray(value)) if (isArrayOfPrimitives(value)) yield indentedListItem(depth, encodeInlineArrayLine(value, options2.delimiter), options2.indent);
+function* encodeListItemValueLines(value, depth2, options2) {
+  if (isJsonPrimitive(value)) yield indentedListItem(depth2, encodePrimitive(value, options2.delimiter), options2.indent);
+  else if (isJsonArray(value)) if (isArrayOfPrimitives(value)) yield indentedListItem(depth2, encodeInlineArrayLine(value, options2.delimiter), options2.indent);
   else {
-    yield indentedListItem(depth, formatHeader(value.length, { delimiter: options2.delimiter }), options2.indent);
-    for (const item of value) yield* encodeListItemValueLines(item, depth + 1, options2);
+    yield indentedListItem(depth2, formatHeader(value.length, { delimiter: options2.delimiter }), options2.indent);
+    for (const item of value) yield* encodeListItemValueLines(item, depth2 + 1, options2);
   }
-  else if (isJsonObject(value)) yield* encodeObjectAsListItemLines(value, depth, options2);
+  else if (isJsonObject(value)) yield* encodeObjectAsListItemLines(value, depth2, options2);
 }
-function indentedLine(depth, content, indentSize) {
-  return " ".repeat(indentSize * depth) + content;
+function indentedLine(depth2, content, indentSize) {
+  return " ".repeat(indentSize * depth2) + content;
 }
-function indentedListItem(depth, content, indentSize) {
-  return indentedLine(depth, "- " + content, indentSize);
+function indentedListItem(depth2, content, indentSize) {
+  return indentedLine(depth2, "- " + content, indentSize);
 }
 function applyReplacer(root, replacer) {
   const replacedRoot = replacer("", root, []);
@@ -5589,6 +5589,9 @@ var FilesystemBackend = class _FilesystemBackend {
   }
 };
 
+// ../core/src/index-marker.ts
+var GENERATED_INDEX_MARKER = "<!-- agentstate-lite:generated-index:v1 -->";
+
 // ../core/src/links.ts
 import path3 from "node:path";
 var MD_LINK_RE = /\[([^\]]*)\]\(([^)\s]+)\)/g;
@@ -5669,7 +5672,8 @@ async function initBundle(root, options2 = {}) {
   if (await backend.readReserved("", "index.md") === null) {
     const okfVersion = options2.okfVersion ?? "0.1";
     const name = path4.basename(resolved);
-    const body = `# ${name}
+    const body = `${GENERATED_INDEX_MARKER}
+# ${name}
 
 An Open Knowledge Format bundle.
 `;
@@ -7054,6 +7058,222 @@ async function mutateDocument(opts) {
     maxAttempts: hardCas ? 1 : maxAttempts
   });
   return outcome.wrote ? { doc: savedDoc, changed: true, version: outcome.version, warnings: outcome.result.warnings } : { doc: outcome.result.doc, changed: false, version: outcome.version, warnings: [] };
+}
+
+// ../core/src/index-projection.ts
+var IndexProjectionWriteError = class extends Error {
+  name = "IndexProjectionWriteError";
+  failed;
+  completed;
+  pending;
+  constructor(failed, completed, pending, cause) {
+    super(`index projection write failed at '${displayDir(failed)}'`, { cause });
+    this.failed = failed;
+    this.completed = completed;
+    this.pending = pending;
+  }
+};
+function displayDir(dir) {
+  return dir === "" ? "index.md" : `${dir}/index.md`;
+}
+function inlineText(value) {
+  if (typeof value !== "string") return void 0;
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed === "" ? void 0 : collapsed;
+}
+function escapeLabel(value) {
+  return value.replace(/\\/g, "\\\\").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
+}
+function hrefSegment(value) {
+  return encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+}
+function ensureDirectory(map, dir) {
+  const existing = map.get(dir);
+  if (existing) return existing;
+  const created = { direct: [], children: /* @__PURE__ */ new Set() };
+  map.set(dir, created);
+  return created;
+}
+function depth(dir) {
+  return dir === "" ? 0 : dir.split("/").length;
+}
+function compareText(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function planIndexProjection(displayName, heads) {
+  const directories = /* @__PURE__ */ new Map();
+  ensureDirectory(directories, "");
+  for (const head of heads) {
+    assertSafeConceptId(head.id);
+    const normalized = toPosix(head.id).replace(/^\.\//, "");
+    const segments = normalized.split("/");
+    const conceptName = segments.pop();
+    let parent = "";
+    for (const child of segments) {
+      const next = parent === "" ? child : `${parent}/${child}`;
+      ensureDirectory(directories, parent).children.add(child);
+      ensureDirectory(directories, next);
+      parent = next;
+    }
+    ensureDirectory(directories, parent).direct.push({ ...head, id: parent === "" ? conceptName : `${parent}/${conceptName}` });
+  }
+  const rootTitle = inlineText(displayName) ?? "bundle";
+  const targets = [...directories.entries()].sort(([a], [b]) => compareText(a, b)).map(([dir, projection]) => {
+    const groups = /* @__PURE__ */ new Map();
+    const prefix = dir === "" ? "" : `${dir}/`;
+    for (const head of projection.direct) {
+      const fileName = head.id.slice(prefix.length);
+      const type = inlineText(head.frontmatter.type) ?? "Concept";
+      const title2 = inlineText(head.frontmatter.title) ?? fileName;
+      const description = inlineText(head.frontmatter.description);
+      const href = `${hrefSegment(fileName)}.md`;
+      const bullet = `* [${escapeLabel(title2)}](${href})${description ? ` - ${description}` : ""}`;
+      const group = groups.get(type) ?? [];
+      group.push(bullet);
+      groups.set(type, group);
+    }
+    const sections = [];
+    for (const type of [...groups.keys()].sort()) {
+      sections.push(`# ${type}
+
+${groups.get(type).sort().join("\n")}
+`);
+    }
+    if (projection.children.size > 0) {
+      const bullets = [...projection.children].sort().map((child) => `* [${escapeLabel(child)}](${hrefSegment(child)}/index.md)`);
+      sections.push(`# Subdirectories
+
+${bullets.join("\n")}
+`);
+    }
+    const title = dir === "" ? rootTitle : inlineText(dir.split("/").pop()) ?? "directory";
+    const body = `${GENERATED_INDEX_MARKER}
+# ${title}
+
+${sections.join("\n")}`.trimEnd() + "\n";
+    return { dir, body };
+  });
+  return { targets };
+}
+function markerOwnership(body) {
+  const lines = body.split("\n");
+  const exact = lines.filter((line2) => line2 === GENERATED_INDEX_MARKER).length;
+  const markerLike = lines.filter(
+    (line2) => /^\s*<!--\s*agentstate-lite:generated-index(?::[^>]*)?\s*-->\s*$/.test(line2)
+  ).length;
+  if (exact > 1) return { owned: false, reason: "duplicate-marker" };
+  if (exact === 1 && markerLike === 1 && lines[0] === GENERATED_INDEX_MARKER) return { owned: true };
+  if (markerLike > 0) return { owned: false, reason: "malformed-marker" };
+  return { owned: false, reason: "unmarked" };
+}
+function inspectExisting(dir, content) {
+  if (dir === "") {
+    try {
+      const { frontmatter, body } = parseMarkdown(content, "index.md");
+      const keys = Object.keys(frontmatter);
+      if (keys.length !== 1 || keys[0] !== "okf_version" || typeof frontmatter.okf_version !== "string") {
+        return { owned: false, body, reason: "malformed-root" };
+      }
+      return {
+        ...markerOwnership(body),
+        body,
+        okfVersion: frontmatter.okf_version
+      };
+    } catch {
+      return { owned: false, body: content, reason: "malformed-root" };
+    }
+  }
+  try {
+    const { frontmatter, body } = parseMarkdown(content, `${dir}/index.md`);
+    if (Object.keys(frontmatter).length > 0) {
+      return { owned: false, body, reason: "nested-frontmatter" };
+    }
+    return { ...markerOwnership(body), body };
+  } catch {
+    return { owned: false, body: content, reason: "nested-frontmatter" };
+  }
+}
+function desiredContent(dir, body, okfVersion) {
+  return dir === "" ? stringifyWithData({ okf_version: okfVersion ?? "0.1" }, body) : body;
+}
+async function prepareIndexProjection(bundle, plan, options2 = {}) {
+  const backend = backendFor(bundle);
+  const targets = [];
+  for (const planned of plan.targets) {
+    const current = await backend.readReserved(planned.dir, "index.md");
+    if (current === null) {
+      targets.push({
+        dir: planned.dir,
+        content: desiredContent(planned.dir, planned.body),
+        expectedVersion: null,
+        disposition: "missing"
+      });
+      continue;
+    }
+    const ownership = inspectExisting(planned.dir, current.content);
+    const content = desiredContent(planned.dir, planned.body, ownership.okfVersion);
+    if (ownership.owned) {
+      targets.push({
+        dir: planned.dir,
+        content,
+        expectedVersion: current.version,
+        disposition: current.content === content ? "unchanged" : "generated"
+      });
+    } else if (options2.force) {
+      targets.push({
+        dir: planned.dir,
+        content,
+        expectedVersion: current.version,
+        disposition: "adopted",
+        ...ownership.reason ? { reason: ownership.reason } : {}
+      });
+    } else {
+      targets.push({
+        dir: planned.dir,
+        content,
+        expectedVersion: current.version,
+        disposition: "refused",
+        ...ownership.reason ? { reason: ownership.reason } : {}
+      });
+    }
+  }
+  const refused = targets.filter((target) => target.disposition === "refused");
+  return refused.length > 0 ? { ready: false, targets, refused } : { ready: true, targets, refused: [] };
+}
+function writableDisposition(disposition) {
+  return disposition === "missing" || disposition === "generated" || disposition === "adopted";
+}
+async function applyIndexProjection(bundle, prepared, options2 = {}) {
+  if (!prepared.ready) {
+    throw new InvalidInputError("Cannot apply a refused index projection; re-prepare with explicit force to adopt it.");
+  }
+  const backend = backendFor(bundle);
+  const unchanged = prepared.targets.filter((target) => target.disposition === "unchanged").map((target) => target.dir);
+  const writable = prepared.targets.filter(
+    (target) => writableDisposition(target.disposition)
+  ).sort((a, b) => depth(b.dir) - depth(a.dir) || compareText(a.dir, b.dir));
+  const completed = [];
+  for (let index = 0; index < writable.length; index++) {
+    const target = writable[index];
+    try {
+      const version = await backend.writeReserved(target.dir, "index.md", target.content, {
+        expectedVersion: target.expectedVersion,
+        ...options2.actor !== void 0 ? { actor: options2.actor } : {}
+      });
+      completed.push({ dir: target.dir, disposition: target.disposition, version });
+    } catch (cause) {
+      throw new IndexProjectionWriteError(
+        target.dir,
+        completed,
+        writable.slice(index + 1).map((pending) => pending.dir),
+        cause
+      );
+    }
+  }
+  return { completed, unchanged, pending: [] };
 }
 
 // ../core/src/kinds-load.ts
@@ -18475,6 +18695,10 @@ var COMMAND_GROUPS = [
         summary: "Create (or open) an OKF knowledge bundle in a directory \u2014 greenfield setup; a project that already shares a board is set up by sync, not init"
       },
       {
+        usage: "index generate [--dir <path>] [--check] [--force] [--actor <name>]",
+        summary: "Generate complete portable Markdown navigation explicitly; refuses curated indexes unless --force adopts them"
+      },
+      {
         usage: "status [--limit <n>] [--remote <url>]",
         summary: "Read-only bundle health report (kind lint, unresolved links, orphans, staleness, graph lints)"
       }
@@ -19710,12 +19934,189 @@ async function catalogInner(argv, deps) {
   usage(`unknown catalog subcommand: ${subcommand}`);
 }
 
-// src/cli.ts
+// src/commands/index.ts
 import { parseArgs as parseArgs27 } from "node:util";
+var INDEX_USAGE = `agentstate-lite index \u2014 generate portable Markdown navigation
+
+Usage:
+  agentstate-lite index generate [--dir <path>] [--check] [--force] [--actor <name>]
+
+Scans concept metadata once and plans the bundle's complete index.md hierarchy. A normal run
+creates missing indexes and refreshes only files carrying AgentState's exact generated marker.
+If any existing target is unmarked or malformed, the whole run refuses before writing anything;
+--force is the explicit one-time adoption path and may replace curated prose.
+
+--check performs the identical scan and ownership preflight but never writes. It exits 0 only when
+the projection is clean; drift or refusal returns a structured CONFLICT (exit 5) whose details
+carry the same capped per-path classification as a normal receipt.
+
+Options:
+  --dir <path>       Local bundle directory (default: discovered from the cwd)
+  --check            Report drift/refusal without writing; clean is exit 0, otherwise exit 5
+  --force            Adopt and replace unmarked/malformed index files explicitly
+  --actor <name>     Attribute changed writes (overrides AGENTSTATE_LITE_ACTOR)
+  --json             Emit compact JSON instead of TOON on success
+  -h, --help         Show this help
+
+This command is local-only. It never syncs and has no --remote mode.
+`;
+var PATH_LIMIT = 15;
+function displayPath(dir) {
+  return dir === "" ? "index.md" : `${dir}/index.md`;
+}
+function shellArg(value) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+function generateCommand(options2 = {}) {
+  const flags = [
+    ...options2.check ? ["--check"] : [],
+    ...options2.force ? ["--force"] : [],
+    ...options2.dir !== void 0 ? ["--dir", shellArg(options2.dir)] : []
+  ];
+  return `${cliInvocation()} index generate${flags.length > 0 ? ` ${flags.join(" ")}` : ""}`;
+}
+function cappedPaths(dirs) {
+  const paths = dirs.map(displayPath);
+  return {
+    shown: Math.min(paths.length, PATH_LIMIT),
+    total: paths.length,
+    rows: paths.slice(0, PATH_LIMIT).map((path23) => ({ path: path23 }))
+  };
+}
+function dirsWith(targets, disposition) {
+  return targets.filter((target) => target.disposition === disposition).map((target) => target.dir);
+}
+function classificationFields(prepared) {
+  return {
+    targets: prepared.targets.length,
+    created: cappedPaths(dirsWith(prepared.targets, "missing")),
+    updated: cappedPaths(dirsWith(prepared.targets, "generated")),
+    unchanged: cappedPaths(dirsWith(prepared.targets, "unchanged")),
+    adopted: cappedPaths(dirsWith(prepared.targets, "adopted")),
+    refused: cappedPaths(dirsWith(prepared.targets, "refused"))
+  };
+}
+function completedDirs(completed) {
+  return completed.map((target) => target.dir);
+}
+function plannedChangeCount(prepared) {
+  return prepared.targets.filter((target) => target.disposition !== "unchanged" && target.disposition !== "refused").length;
+}
+function refusalError(prepared, displayName, scanned, check, dir) {
+  const details = {
+    index: check ? "checked" : "refused",
+    clean: false,
+    writes: 0,
+    display_name: displayName,
+    scanned,
+    ...classificationFields(prepared)
+  };
+  return new CliError("CONFLICT", "portable index generation refused: existing index files are not AgentState-owned", {
+    details,
+    help: check ? generateCommand({ dir, force: true }) : generateCommand({ dir, check: true })
+  });
+}
+async function indexCommand(argv, deps = {}) {
+  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
+  const { values, positionals } = parseOrUsage(
+    () => parseArgs27({
+      args: argv,
+      options: {
+        dir: { type: "string" },
+        check: { type: "boolean" },
+        force: { type: "boolean" },
+        actor: { type: "string" },
+        json: { type: "boolean" },
+        help: { type: "boolean", short: "h" }
+      },
+      allowPositionals: true
+    }),
+    "index"
+  );
+  if (values.help || positionals.length === 0) {
+    stdout(INDEX_USAGE);
+    return;
+  }
+  if (positionals.length !== 1 || positionals[0] !== "generate") {
+    throw new CliError("USAGE", `unknown index subcommand: ${positionals.join(" ")}`, {
+      help: `${cliInvocation()} index --help`
+    });
+  }
+  const actor = resolveActor(values.actor, {
+    help: `${cliInvocation()} index generate --actor <name>`
+  });
+  const bundle = await openBundle(values.dir);
+  const [{ name: displayName }, heads] = await Promise.all([
+    deriveBundleDisplayName(bundle),
+    queryHeads(bundle)
+  ]);
+  const plan = planIndexProjection(displayName, heads);
+  const prepared = await prepareIndexProjection(bundle, plan, { force: values.force });
+  if (!prepared.ready) {
+    throw refusalError(prepared, displayName, heads.length, values.check ?? false, values.dir);
+  }
+  const wouldChange = plannedChangeCount(prepared);
+  const fields = classificationFields(prepared);
+  if (values.check) {
+    const receipt = {
+      index: "checked",
+      clean: wouldChange === 0,
+      writes: 0,
+      would_change: wouldChange,
+      display_name: displayName,
+      scanned: heads.length,
+      ...fields,
+      help: [generateCommand({ dir: values.dir, force: values.force })]
+    };
+    if (wouldChange > 0) {
+      throw new CliError("CONFLICT", "portable index projection is not current", {
+        details: receipt,
+        help: generateCommand({ dir: values.dir, force: values.force })
+      });
+    }
+    stdout(render(receipt, resolveMode(values)));
+    return;
+  }
+  try {
+    const applied = await applyIndexProjection(bundle, prepared, { actor });
+    const receipt = {
+      index: applied.completed.length > 0 ? "generated" : "unchanged",
+      changed: applied.completed.length > 0,
+      writes: applied.completed.length,
+      display_name: displayName,
+      scanned: heads.length,
+      ...fields,
+      completed: cappedPaths(completedDirs(applied.completed)),
+      pending: cappedPaths(applied.pending),
+      help: [generateCommand({ dir: values.dir, check: true })]
+    };
+    stdout(render(receipt, resolveMode(values)));
+  } catch (error) {
+    if (!(error instanceof IndexProjectionWriteError)) throw error;
+    const cause = classifyBundleError(error.cause);
+    throw new CliError(cause.code, `${error.message}: ${cause.message}`, {
+      details: {
+        index: "partial",
+        display_name: displayName,
+        scanned: heads.length,
+        ...fields,
+        failed: displayPath(error.failed),
+        completed: cappedPaths(completedDirs(error.completed)),
+        pending: cappedPaths(error.pending),
+        ...cause.details ?? {}
+      },
+      help: generateCommand({ dir: values.dir, force: values.force })
+    });
+  }
+}
+
+// src/cli.ts
+import { parseArgs as parseArgs28 } from "node:util";
 var KNOWN_COMMANDS = [
   "init",
   "bundle",
   "catalog",
+  "index",
   "doc",
   "promote",
   "pull",
@@ -19750,7 +20151,7 @@ var wrap2 = (fn) => async (args) => {
 };
 function isGlobalOnlyHomeInvocation(argv) {
   try {
-    const { positionals } = parseArgs27({
+    const { positionals } = parseArgs28({
       args: argv,
       options: {
         remote: { type: "string" },
@@ -19768,7 +20169,7 @@ function isGlobalOnlyHomeInvocation(argv) {
 function hoistLeadingGlobalFlags(argv) {
   let tokens;
   try {
-    tokens = parseArgs27({
+    tokens = parseArgs28({
       args: argv,
       tokens: true,
       strict: false,
@@ -19833,6 +20234,7 @@ async function main(argv) {
       init: wrap2(init),
       bundle: wrap2(bundleCommand),
       catalog: wrap2(catalog),
+      index: wrap2(indexCommand),
       doc: wrap2(doc),
       promote: wrap2(promote),
       pull: wrap2(pull),
