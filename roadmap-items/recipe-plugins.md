@@ -8,24 +8,26 @@ description: >-
   content when installed.
 actor: openai/codex
 sequence: >-
-  Product Manager built-in → installed-npm newcomer proof → second demonstrated
-  persona → only then generalize distribution
-timestamp: '2026-07-20T02:52:39.957Z'
+  Personal Task System built-in → installed-npm newcomer proof → working-memory
+  Focus/Session layer → only then a second demonstrated domain recipe and
+  generalized distribution
+timestamp: '2026-07-20T21:52:54.208Z'
 ---
 # Vision
 
-Make useful AgentState operating models installable as **product recipes**: data-free packages of
+Make useful AgentState operating models installable as **product recipes**: instance-free packages of
 Kinds, semantic descriptions, typed relationships, workflows, references, and pre-built Views.
-A user should be able to say “I am a product manager; set me up” instead of beginning with an
-infinitely flexible blank substrate.
+A user should be able to choose a useful working system instead of beginning with an infinitely
+flexible blank substrate. The first concrete system is the human-agent collaborative Personal Task
+System; Product Manager remains a later domain candidate rather than the release-path dependency.
 
 The first distribution channel is the npm-installed AgentState CLI itself. Built-in recipes ship
 with the executable and flow through the same `RecipeSource` parser and create-only apply boundary
 as external folders:
 
 ```sh
-aslite init --recipe product-manager --dir <workspace>
-aslite recipe add product-manager --dir <existing-bundle>
+aslite init --recipe personal-task-system --dir <workspace>
+aslite recipe add personal-task-system --dir <existing-bundle>
 ```
 
 The installed result is ordinary bundle content. It remains readable and editable without npm,
@@ -41,7 +43,7 @@ without a skill, and without any marketplace account.
   users and agents can evolve them after installation.
 - **Makes npm installation land.** `npm install` provides both the general engine and immediately
   useful product configurations.
-- **Preserves portability.** Recipes contain definitions, never another user's state.
+- **Preserves portability.** Recipes contain definitions, never another user's instance state.
 
 # Product contract
 
@@ -59,19 +61,26 @@ without a skill, and without any marketplace account.
 
 # Sequence
 
-1. Ship the built-in, data-free `product-manager` recipe as the first concrete persona.
-2. Prove both greenfield `init --recipe product-manager` and adoption through `recipe add` on a
-   fresh installed npm artifact.
-3. Have a newcomer create valid product records and use the pre-built Views without founder help.
-4. Generalize only after a second demonstrated persona or domain requires it.
-5. Treat external recipe transport as a later distribution choice; never fork the recipe engine.
+1. Ship the built-in, instance-free `personal-task-system` recipe: settled Task + Project semantics,
+   then the collaborative human-writeable board View, then built-in registration by name.
+2. Prove both greenfield `init --recipe personal-task-system` and adoption through
+   `recipe add personal-task-system` on a fresh installed npm artifact.
+3. Have a newcomer create valid Tasks and Projects, collaborate with an agent, and use the pre-built
+   View without founder help.
+4. Add the working-memory Focus/Session layer after the task system; reconsider Product Manager or
+   another domain recipe only when it contributes a genuinely different operating model.
+5. Generalize distribution only after a second demonstrated recipe requires it. Treat external
+   recipe transport as a later choice; never fork the recipe engine.
 
 # Success condition
 
-A new user installs AgentState from npm, selects the Product Manager recipe, and immediately receives
-a useful, view-backed workspace with an understandable domain model and zero preloaded user data.
+A new user installs AgentState from npm, selects the Personal Task System recipe by name, and
+immediately receives a useful, view-backed workspace with an understandable Task + Project model,
+human-agent write-back, and zero preloaded user instances.
 The resulting bundle continues to work as plain portable content if the npm package or Agent Skill
 is absent.
+
+[first built-in product recipe](personal-task-system-recipe.md)
 
 [contains](../tasks/prove-recipe-plugin-sharing.md)
 
