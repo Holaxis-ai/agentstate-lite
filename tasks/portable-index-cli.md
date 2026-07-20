@@ -9,7 +9,7 @@ description: >-
   installed-tarball portability journey.
 actor: openai/codex-portable-index-cli
 assignee: openai/codex-portable-index-cli
-timestamp: '2026-07-20T02:42:36.873Z'
+timestamp: '2026-07-20T02:43:12.811Z'
 ---
 # Approved direction
 
@@ -71,7 +71,7 @@ Depends on [Portable index core planner and ownership](prune-regenerate-index-ap
 
 Unit 2 is implemented at exact commit `d3674df2ae33a6985fc8078a8c6abf95bddf0572` in [PR #131](https://github.com/Holaxis-ai/agentstate-lite/pull/131), intentionally left unmerged for owner review.
 
-The exact-SHA local full repository gate passed (`npm run check`, exit 0), including installed-package verification, generated npm-target skill validation, and 15 Chromium UI/security E2E cases. The focused portable-index command suite passes 7/7. GitHub's Node 20 built-CLI smoke is green; the Node 22/26 matrix remained in progress at the time of this record and is a separate hosted signal.
+The exact-SHA local full repository gate passed (`npm run check`, exit 0), including installed-package verification, generated npm-target skill validation, and 15 Chromium UI/security E2E cases. The focused portable-index command suite passes 7/7. GitHub-hosted checks are all green on the same SHA: Node 20 built-CLI smoke plus the Node 22 and Node 26 gates.
 
 Independent exact-SHA mechanism review is **APPROVE** with no remaining findings. Its first pass identified two P2 recovery-command issues: explicit `--dir` paths were not POSIX-shell-safe and `--check --force` dropped `--force` from its recovery instruction. Both now use one command builder, including embedded apostrophes, and a regression test reasserts zero-write preview behavior.
 
