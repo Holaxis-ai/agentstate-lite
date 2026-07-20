@@ -29,10 +29,12 @@ description: >-
 actor: mike/claude
 status: todo
 priority: '1'
-timestamp: '2026-07-20T20:51:09.994Z'
+timestamp: '2026-07-20T20:58:08.336Z'
 ---
 [the first shipped recipe](../roadmap-items/recipe-plugins.md)
 
 [doubles as the portability proof (bundle -> data-free recipe)](prove-recipe-plugin-sharing.md)
 
 [working-memory layer is the next increment on top](../research/ai-power-user-patterns.md)
+
+[export is the portable way to extract this recipe (vs hand-author)](recipe-export.md)
