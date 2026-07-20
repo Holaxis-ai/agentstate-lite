@@ -34,9 +34,18 @@ description: >-
   breadth (home.ts/establish.ts import many symbols) — LEGITIMATE coupling (the
   CLI genuinely uses many git primitives); the guarded cost (rename → edit
   import lists) is low-frequency + IDE-rename-assisted; the import boundary is
-  clean. At most a watch-item if primitive renames become frequent.
+  clean. At most a watch-item if primitive renames become frequent.  [DECLINE
+  (d) added 2026-07-19, analysis #3 finding 5]: autopull.ts adapter 're-export'
+  — DECLINED, premise corrected. It is NOT a pass-through shim: it is the CLI's
+  DI BINDING LAYER, binding board-git's pure autopull mechanic to
+  defaultSyncStore + findBundleRoot and re-exporting stable signatures for its 6
+  call sites. Collapsing it would duplicate the binding at each call site and
+  leak board-git's *With seam shape into every command — strictly worse, and it
+  would violate the one-way import boundary CLAUDE.md mandates. Stable
+  signatures are the benefit of a composition root, not evidence of a vestigial
+  shim.
 actor: mike/claude
 status: todo
-timestamp: '2026-07-20T01:22:28.461Z'
+timestamp: '2026-07-20T01:23:45.276Z'
 ---
 Evaluation discipline across six flagged smells in two analyses: agreed on the one function where branch density measurably hurts (+ its transposable-boolean signature, folded), declined the four that were cohesive, non-pathological, or legitimate coupling. Restraint stance: ships only if/when it earns a builder.
