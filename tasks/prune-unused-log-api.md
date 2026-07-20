@@ -1,14 +1,14 @@
 ---
 type: Task
 title: Prune unused high-level log.md API while preserving OKF interoperability
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Remove the unused readLog/appendLog convenience API and its helper-specific
   tests and claims, while preserving log.md reservation, generic reserved-file
   CAS/wire/sync support, and a future deterministic projection path.
 actor: openai/codex
-timestamp: '2026-07-20T00:41:38.969Z'
+timestamp: '2026-07-20T00:43:46.018Z'
 ---
 # Problem
 
