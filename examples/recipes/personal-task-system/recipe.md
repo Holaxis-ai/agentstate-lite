@@ -3,14 +3,20 @@ type: Recipe
 id: personal-task-system
 title: Personal Task System
 version: "1"
-summary: "Declares the Task and Project kinds for a lightweight personal task system."
+summary: "A portable personal task model with a live, human-editable board."
 content_policy: definitions-only
+references:
+  - references/view-authoring-v0.md
+pages:
+  - registry: views-registry/personal-task-system-board.md
+    entry: views/personal-task-system/board.html
 ---
 # Personal Task System
 
-Installs the portable Task and Project data model. Tasks may stand alone or link to an optional
-Project, and may declare dependencies on other Tasks. This definitions-only package carries no Task
-or Project instances.
+Installs the portable Task and Project data model plus a live board over that model. Tasks may stand
+alone or link to an optional Project, and may declare dependencies on other Tasks. The board lets a
+human filter and inspect the same data agents use, then propose status, priority, assignee, and due
+date changes through trusted shell confirmation.
 
-The collaborative board View is intentionally not part of this data-model unit. It can be added to
-this package later without changing the stable kind contract.
+This definitions-only package carries no Task or Project instances. Installing it gives an empty,
+ready-to-use operating model rather than another person's work.

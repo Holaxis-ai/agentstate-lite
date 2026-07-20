@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personal task board</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --canvas:#f4f2ed; --panel:#fffefb; --card:#ffffff; --ink:#17211d; --muted:#68736d;
+    --rule:#dcded8; --soft:#eceee9; --accent:#246b57; --accent-soft:#e2f0ea;
+    --danger:#a0473d; --warning:#a66d1f; --shadow:0 8px 28px rgba(25,35,30,.07);
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    --serif:"Iowan Old Style","Palatino Linotype",Georgia,serif;
+    --mono:ui-monospace,"SFMono-Regular",Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark) {
+    :root { --canvas:#111714; --panel:#17201c; --card:#1c2722; --ink:#edf2ef; --muted:#9facA5;
+      --rule:#33423b; --soft:#26332d; --accent:#73c1a6; --accent-soft:#203f35;
+      --danger:#e88e82; --warning:#e2ae63; --shadow:0 8px 28px rgba(0,0,0,.2); }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--canvas); color:var(--ink); font:14px/1.45 var(--sans); }
+  button,input,select { font:inherit; }
+  button { color:inherit; }
+  header { position:sticky; top:0; z-index:3; padding:20px 24px 16px; background:color-mix(in srgb,var(--panel) 94%,transparent); border-bottom:1px solid var(--rule); backdrop-filter:blur(12px); }
+  .title-row { display:flex; align-items:flex-end; gap:14px; }
+  h1 { margin:0; font:600 30px/1 var(--serif); letter-spacing:-.02em; }
+  .live { margin-left:auto; color:var(--accent); font:11px var(--mono); text-transform:uppercase; letter-spacing:.08em; }
+  .live::before { content:""; display:inline-block; width:7px; height:7px; margin-right:6px; border-radius:50%; background:currentColor; }
+  .summary { margin-top:7px; color:var(--muted); font-size:12px; }
+  .toolbar { display:grid; grid-template-columns:minmax(180px,1fr) auto auto; gap:10px; margin-top:16px; }
+  .toolbar input,.toolbar select { min-height:38px; border:1px solid var(--rule); border-radius:8px; background:var(--card); color:var(--ink); padding:8px 10px; outline:none; }
+  .toolbar input:focus,.toolbar select:focus { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent); }
+  main { padding:20px 24px 72px; overflow-x:auto; }
+  .board { display:grid; grid-template-columns:repeat(4,minmax(245px,1fr)); gap:14px; min-width:1030px; }
+  .column { min-height:280px; border:1px solid var(--rule); border-radius:12px; background:color-mix(in srgb,var(--panel) 72%,transparent); overflow:hidden; }
+  .column-head { display:flex; align-items:center; padding:13px 14px; border-bottom:1px solid var(--rule); }
+  .column-head h2 { margin:0; font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
+  .count { margin-left:auto; min-width:24px; padding:2px 7px; border-radius:999px; text-align:center; background:var(--soft); color:var(--muted); font:11px var(--mono); }
+  .cards { display:flex; flex-direction:column; gap:10px; padding:10px; }
+  .card { padding:13px; border:1px solid var(--rule); border-radius:10px; background:var(--card); box-shadow:0 2px 8px rgba(25,35,30,.035); }
+  .card-top { display:flex; align-items:center; gap:8px; }
+  .priority { width:8px; height:8px; border-radius:50%; background:var(--rule); flex:none; }
+  .priority.high { background:var(--danger); } .priority.medium { background:var(--warning); } .priority.low { background:var(--accent); }
+  .card h3 { margin:8px 0 7px; font:600 17px/1.25 var(--serif); }
+  .id { min-width:0; margin-left:auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font:10px var(--mono); }
+  .meta { display:flex; flex-wrap:wrap; gap:5px; min-height:21px; }
+  .chip { display:inline-flex; align-items:center; max-width:100%; padding:3px 7px; border-radius:999px; background:var(--soft); color:var(--muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chip.project { color:var(--accent); background:var(--accent-soft); }
+  .chip.overdue { color:var(--danger); }
+  .dependency { margin-top:8px; color:var(--muted); font-size:11px; }
+  .actions { display:flex; align-items:center; gap:6px; margin-top:11px; padding-top:10px; border-top:1px solid var(--soft); }
+  .actions button { min-height:30px; padding:5px 9px; border:1px solid var(--rule); border-radius:7px; background:transparent; cursor:pointer; font-size:12px; }
+  .actions button.primary { border-color:var(--accent); background:var(--accent); color:#fff; }
+  .actions button:hover:not(:disabled) { box-shadow:0 2px 8px rgba(0,0,0,.08); transform:translateY(-1px); }
+  .actions button:disabled { opacity:.48; cursor:wait; }
+  .edit { margin-left:auto; position:relative; }
+  .edit summary { cursor:pointer; color:var(--muted); font-size:12px; list-style:none; }
+  .edit summary::-webkit-details-marker { display:none; }
+  .edit-panel { position:absolute; right:0; top:28px; z-index:2; width:220px; padding:10px; border:1px solid var(--rule); border-radius:9px; background:var(--panel); box-shadow:var(--shadow); }
+  .edit-panel label { display:block; margin:0 0 9px; color:var(--muted); font-size:11px; }
+  .edit-panel select,.edit-panel input { width:100%; margin-top:3px; padding:6px; border:1px solid var(--rule); border-radius:6px; background:var(--card); color:var(--ink); }
+  .edit-panel button { width:100%; margin-top:2px; }
+  .empty { margin:8px; padding:24px 14px; border:1px dashed var(--rule); border-radius:9px; color:var(--muted); text-align:center; }
+  .empty.board-empty { grid-column:1/-1; margin-top:12vh; padding:38px; background:var(--panel); }
+  .empty strong { display:block; margin-bottom:5px; color:var(--ink); font:600 19px var(--serif); }
+  .toast { position:fixed; right:18px; bottom:18px; z-index:5; max-width:min(390px,calc(100vw - 36px)); padding:11px 14px; border:1px solid var(--rule); border-radius:9px; background:var(--panel); box-shadow:var(--shadow); transform:translateY(90px); opacity:0; transition:.2s ease; pointer-events:none; }
+  .toast.show { transform:translateY(0); opacity:1; }
+  .toast.error { border-color:var(--danger); }
+  @media (max-width:700px) { header { padding:17px 16px 14px; } main { padding:14px 16px 60px; } .toolbar { grid-template-columns:1fr 1fr; } .toolbar input { grid-column:1/-1; } }
+  @media (prefers-reduced-motion:reduce) { * { transition:none!important; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="title-row"><h1>Personal task board</h1><span class="live">live</span></div>
+  <div class="summary" id="summary">Connecting to the bundle…</div>
+  <div class="toolbar">
+    <input id="search" type="search" placeholder="Search tasks" aria-label="Search tasks">
+    <select id="project" aria-label="Filter by project"><option value="all">All projects</option></select>
+    <select id="priority" aria-label="Filter by priority">
+      <option value="all">All priorities</option><option value="high">High priority</option>
+      <option value="medium">Medium priority</option><option value="low">Low priority</option>
+      <option value="none">Unprioritized</option>
+    </select>
+  </div>
+</header>
+<main><div class="board" id="board"><div class="empty board-empty"><strong>Reading your work…</strong></div></div></main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+(function(){
+  "use strict";
+  var seq=0, pending={}, actionPending={}, subscribers=[];
+  function request(protocol,type,extra){ return new Promise(function(resolve,reject){
+    var id="r"+(++seq), message={bridge:protocol,type:type,id:id};
+    Object.keys(extra||{}).forEach(function(key){message[key]=extra[key]}); pending[protocol+":"+id]={resolve:resolve,reject:reject}; parent.postMessage(message,"*");
+  }); }
+  function propose(action){ return new Promise(function(resolve,reject){
+    var requestId="a"+(++seq); actionPending[requestId]={resolve:resolve,reject:reject};
+    parent.postMessage({bridge:"v1",type:"action.propose",requestId:requestId,action:action},"*");
+  }); }
+  addEventListener("message",function(event){
+    if(event.source!==parent) return; var message=event.data; if(!message) return;
+    if(message.bridge==="v0"&&message.type==="change"){subscribers.forEach(function(fn){fn(message.event)});return;}
+    if(message.bridge==="v1"&&message.type==="action.result"){
+      var ap=actionPending[message.requestId]; if(ap){delete actionPending[message.requestId];ap.resolve(message.result);} return;
+    }
+    var key=message.bridge+":"+message.id, p=pending[key]; if(!p)return; delete pending[key];
+    if(message.type==="error")p.reject(new Error(message.error&&message.error.message||"Bridge request failed")); else p.resolve(message.result);
+  });
+  window.Bridge={
+    query:function(params){return request("v0","query",{params:params})},
+    edges:function(params){return request("v0","edges",{params:params})},
+    subscribe:function(fn){subscribers.push(fn);return request("v0","subscribe",{})},
+    readVersioned:function(docId){return request("v1","read-versioned",{docId:docId})},
+    propose:propose
+  };
+})();
+
+(function(){
+  "use strict";
+  var board=document.getElementById("board"), summary=document.getElementById("summary"), toast=document.getElementById("toast");
+  var search=document.getElementById("search"), projectFilter=document.getElementById("project"), priorityFilter=document.getElementById("priority");
+  var tasks=[], projects={}, projectsByTask={}, dependenciesByTask={}, busy=false, refreshRunning=false, refreshQueued=false, toastTimer;
+  var columns=[
+    {status:"todo",label:"To do"},{status:"in_progress",label:"In progress"},
+    {status:"blocked",label:"Blocked"},{status:"done",label:"Done"}
+  ];
+  var rank={high:0,medium:1,low:2};
+  function fm(row){return row.frontmatter||{}}
+  function esc(value){return String(value==null?"":value).replace(/[&<>\"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'\"':"&quot;"}[c]})}
+  function showToast(message,isError){clearTimeout(toastTimer);toast.textContent=message;toast.className="toast show"+(isError?" error":"");toastTimer=setTimeout(function(){toast.className="toast"},4500)}
+  function dateValue(value){var match=String(value||"").match(/^(\d{4}-\d{2}-\d{2})/);return match?match[1]:""}
+  function dateLabel(value){var normalized=dateValue(value);if(!normalized)return "";var today=new Date();today.setHours(0,0,0,0);var due=new Date(normalized+"T00:00:00");return {text:"Due "+normalized,overdue:due<today}}
+  function sortTasks(a,b){var af=fm(a),bf=fm(b),ar=rank[af.priority]??3,br=rank[bf.priority]??3;if(ar!==br)return ar-br;var ad=af.due||"9999",bd=bf.due||"9999";return ad===bd?String(af.title||a.id).localeCompare(String(bf.title||b.id)):String(ad).localeCompare(String(bd))}
+  function primary(status){
+    if(status==="todo")return {label:"Start",value:"in_progress"};
+    if(status==="in_progress"||status==="blocked")return {label:"Complete",value:"done"};
+    if(status==="done"||status==="canceled")return {label:"Reopen",value:"todo"};
+    return null;
+  }
+  function filtered(){var q=search.value.trim().toLowerCase(),p=projectFilter.value,pri=priorityFilter.value;return tasks.filter(function(task){
+    var f=fm(task),projectId=projectsByTask[task.id];
+    if(f.status==="canceled")return false;
+    if(q&&!(String(f.title||"")+" "+task.id+" "+String(f.assignee||"")).toLowerCase().includes(q))return false;
+    if(p==="none"&&projectId)return false;if(p!=="all"&&p!=="none"&&projectId!==p)return false;
+    if(pri==="none"&&f.priority)return false;if(pri!=="all"&&pri!=="none"&&f.priority!==pri)return false;
+    return true;
+  }).sort(sortTasks)}
+  function card(task){var f=fm(task),projectId=projectsByTask[task.id],project=projects[projectId],due=dateLabel(f.due),action=primary(f.status),deps=dependenciesByTask[task.id]||[];
+    var html='<article class="card" data-task="'+esc(task.id)+'"><div class="card-top"><span class="priority '+esc(f.priority||"")+'" title="'+esc(f.priority||"unprioritized")+'"></span><span class="id">'+esc(task.id)+'</span></div><h3>'+esc(f.title||task.id)+'</h3><div class="meta">';
+    if(projectId)html+='<span class="chip project">'+esc(project&&fm(project).title||projectId)+'</span>';
+    if(f.assignee)html+='<span class="chip">'+esc(f.assignee)+'</span>';
+    if(due.text)html+='<span class="chip'+(due.overdue?' overdue':'')+'">'+esc(due.text)+'</span>';
+    html+='</div>';
+    if(deps.length)html+='<div class="dependency">Depends on '+deps.length+' task'+(deps.length===1?'':'s')+'</div>';
+    html+='<div class="actions">';if(action)html+='<button class="primary" data-field="status" data-value="'+action.value+'"'+(busy?' disabled':'')+'>'+action.label+'</button>';
+    html+='<details class="edit"><summary>Quick edit</summary><div class="edit-panel">'+
+      '<label>Priority<select data-edit="priority"><option value="high"'+(f.priority==='high'?' selected':'')+'>High</option><option value="medium"'+(f.priority==='medium'?' selected':'')+'>Medium</option><option value="low"'+(f.priority==='low'?' selected':'')+'>Low</option></select></label>'+
+      '<button data-save="priority"'+(busy?' disabled':'')+'>Propose priority</button>'+
+      '<label>Assignee<input data-edit="assignee" value="'+esc(f.assignee||'')+'" placeholder="Name or agent id"></label><button data-save="assignee"'+(busy?' disabled':'')+'>Propose assignee</button>'+
+      '<label>Due date<input data-edit="due" type="date" value="'+esc(dateValue(f.due))+'"></label><button data-save="due"'+(busy?' disabled':'')+'>Propose due date</button>'+
+      '</div></details></div></article>';return html;
+  }
+  function render(){var rows=filtered();summary.textContent=tasks.length+' tasks · '+Object.keys(projects).length+' projects · changes update live';
+    if(!tasks.length){board.innerHTML='<div class="empty board-empty"><strong>No tasks yet</strong>Ask your agent to create a Task; it will appear here live.</div>';return;}
+    var html='';columns.forEach(function(column){var matches=rows.filter(function(task){return fm(task).status===column.status});html+='<section class="column"><div class="column-head"><h2>'+column.label+'</h2><span class="count">'+matches.length+'</span></div><div class="cards">';
+      if(matches.length)matches.forEach(function(task){html+=card(task)});else html+='<div class="empty">Nothing here</div>';html+='</div></section>';});board.innerHTML=html;
+    board.querySelectorAll('[data-field]').forEach(function(button){button.addEventListener('click',function(){void change(button.closest('.card').dataset.task,button.dataset.field,button.dataset.value)})});
+    board.querySelectorAll('[data-save]').forEach(function(button){button.addEventListener('click',function(){var cardEl=button.closest('.card'),field=button.dataset.save,input=cardEl.querySelector('[data-edit="'+field+'"]');if(input.value)void change(cardEl.dataset.task,field,input.value);else showToast('Enter a value before proposing the change.',true)})});
+  }
+  function change(docId,field,value){if(busy)return Promise.resolve();busy=true;render();return Bridge.readVersioned(docId).then(function(result){
+    return Bridge.propose({kind:'document.set-field',docId:docId,field:field,value:value,expectedVersion:result.version});
+  }).then(function(result){busy=false;if(result.status==='committed'){showToast('Change committed.');return refresh()}showToast(result.message||('Change '+result.status+'.'),result.status!=='canceled');render();},function(error){busy=false;showToast(error.message,true);render();})}
+  function rebuildProjectFilter(){var selected=projectFilter.value,ids=Object.keys(projects).sort(function(a,b){return String(fm(projects[a]).title||a).localeCompare(String(fm(projects[b]).title||b))});var html='<option value="all">All projects</option><option value="none">No project</option>';ids.forEach(function(id){html+='<option value="'+esc(id)+'">'+esc(fm(projects[id]).title||id)+'</option>'});projectFilter.innerHTML=html;if(selected&&Array.from(projectFilter.options).some(function(o){return o.value===selected}))projectFilter.value=selected}
+  function refresh(){if(refreshRunning){refreshQueued=true;return Promise.resolve()}refreshRunning=true;return Promise.all([Bridge.query({type:'Task'}),Bridge.query({type:'Project'}),Bridge.edges({text:'part of'}),Bridge.edges({text:'depends on'})]).then(function(results){
+    tasks=results[0].rows||[];projects={};(results[1].rows||[]).forEach(function(row){projects[row.id]=row});projectsByTask={};(results[2].edges||[]).forEach(function(edge){projectsByTask[edge.from]=edge.to});dependenciesByTask={};(results[3].edges||[]).forEach(function(edge){(dependenciesByTask[edge.from]=dependenciesByTask[edge.from]||[]).push(edge.to)});rebuildProjectFilter();render();
+  }).catch(function(error){showToast('Could not read the bundle: '+error.message,true)}).finally(function(){refreshRunning=false;if(refreshQueued){refreshQueued=false;void refresh()}})}
+  [search,projectFilter,priorityFilter].forEach(function(control){control.addEventListener(control===search?'input':'change',render)});
+  Bridge.subscribe(function(){void refresh()}).then(refresh).catch(function(error){board.innerHTML='<div class="empty board-empty"><strong>Board unavailable</strong>'+esc(error.message)+'</div>'});
+})();
+</script>
+</body>
+</html>
