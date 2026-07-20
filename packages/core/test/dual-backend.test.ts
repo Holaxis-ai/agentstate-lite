@@ -24,15 +24,13 @@ import {
   readDocVersioned,
   docVersions,
   deleteDoc,
-  regenerateIndex,
-  readIndex,
   query,
 } from "../src/bundle.js";
 import { FilesystemBackend } from "../src/backend.js";
 import { MemoryBackend } from "../src/memory-backend.js";
 import { contentVersion, defaultActor, VersionConflict, versionOfBytes } from "../src/versioning.js";
 import { assertSafeConceptId, pathFromConceptId } from "../src/paths.js";
-import type { Bundle, OkfDocument, ReservedFilename, ReservedReadResult, StorageBackend } from "../src/types.js";
+import type { Bundle, OkfDocument, StorageBackend } from "../src/types.js";
 import { scenario, T_DOC, NOTE_ID } from "./scenario.js";
 
 /** Run `fn` against a bundle over a fresh temp-dir FilesystemBackend, then clean up. */
@@ -282,7 +280,7 @@ for (const [name, run] of RUNNERS) {
       await assert.rejects(() => deleteDoc(bundle, "log.md"), /reserved file/i);
 
       // Both reserved files are untouched.
-      assert.ok((await readIndex(bundle)) !== null);
+      assert.ok((await bundle.backend!.readReserved("", "index.md")) !== null);
       assert.ok((await bundle.backend!.readReserved("", "log.md")) !== null);
     });
   });
@@ -503,99 +501,6 @@ test("reserved-file version token is content-addressed and identical across back
   const memV = await new MemoryBackend().writeReserved("", "log.md", content);
   assert.equal(memV, fsV); // same bytes ⇒ same token, regardless of backend
   assert.equal(fsV, versionOfBytes(content)); // and it is exactly the content-address of the bytes
-});
-
-/** Inject a one-shot competing `index.md` write after a read returns its snapshot. */
-class RacingIndexMemoryBackend extends MemoryBackend {
-  private pending: (() => Promise<void>) | null = null;
-  listCalls = 0;
-  readManyCalls = 0;
-  indexReads = 0;
-
-  armRace(action: () => Promise<void>): void {
-    this.pending = action;
-  }
-
-  override async list(prefix?: string) {
-    this.listCalls += 1;
-    return super.list(prefix);
-  }
-
-  override async readMany(ids: string[]) {
-    this.readManyCalls += 1;
-    return super.readMany(ids);
-  }
-
-  override async readReserved(dir: string, name: ReservedFilename): Promise<ReservedReadResult | null> {
-    const result = await super.readReserved(dir, name);
-    if (name === "index.md") {
-      this.indexReads += 1;
-      if (this.pending) {
-        const action = this.pending;
-        this.pending = null;
-        await action();
-      }
-    }
-    return result;
-  }
-}
-
-test("regenerateIndex retries an existing-index conflict against the fresh root version", async () => {
-  const backend = new RacingIndexMemoryBackend();
-  const bundle: Bundle = { root: "mem://index-race", backend };
-  await writeDoc(bundle, {
-    id: "alpha",
-    frontmatter: { type: "Concept", title: "Alpha", timestamp: T_DOC },
-    body: "Alpha body.",
-  });
-  await backend.writeReserved("", "index.md", "---\nokf_version: '0.4'\n---\n# stale root\n");
-
-  backend.armRace(async () => {
-    await writeDoc(bundle, {
-      id: "beta",
-      frontmatter: { type: "Concept", title: "Beta", timestamp: T_DOC },
-      body: "Beta body.",
-    });
-    await backend.writeReserved("", "index.md", "---\nokf_version: '0.9'\n---\n# racing root\n");
-  });
-
-  const result = await regenerateIndex(bundle);
-
-  assert.equal(backend.indexReads, 2, "the stale CAS must retry against a fresh index snapshot");
-  assert.equal(backend.listCalls, 1, "an index conflict must not repeat the concept scan");
-  assert.equal(backend.readManyCalls, 1, "an index conflict must not repeat the concept batch read");
-  const persisted = (await backend.readReserved("", "index.md"))!.content;
-  assert.equal(result, persisted, "the receipt must be the actual final content written");
-  assert.match(persisted, /okf_version: ['"]?0\.9['"]?/);
-  assert.match(persisted, /\* \[Alpha\]\(alpha\.md\)/);
-  assert.doesNotMatch(persisted, /Beta/, "the deliberate one-scan policy does not rescan on an index retry");
-
-  const healed = await regenerateIndex(bundle);
-  assert.match(healed, /\* \[Beta\]\(beta\.md\)/, "the next regeneration self-heals a concurrent concept write");
-});
-
-test("regenerateIndex retries an absent-to-created index race without clobbering its root version", async () => {
-  const backend = new RacingIndexMemoryBackend();
-  const bundle: Bundle = { root: "mem://index-create-race", backend };
-  await writeDoc(bundle, {
-    id: "alpha",
-    frontmatter: { type: "Concept", title: "Alpha", timestamp: T_DOC },
-    body: "Alpha body.",
-  });
-
-  backend.armRace(async () => {
-    await backend.writeReserved("", "index.md", "---\nokf_version: '0.8'\n---\n# concurrently created root\n");
-  });
-
-  const result = await regenerateIndex(bundle);
-
-  assert.equal(backend.indexReads, 2, "the expect-absent conflict must retry against the created index");
-  assert.equal(backend.listCalls, 1, "a create race must not repeat the concept scan");
-  assert.equal(backend.readManyCalls, 1, "a create race must not repeat the concept batch read");
-  const persisted = (await backend.readReserved("", "index.md"))!.content;
-  assert.equal(result, persisted, "the receipt must be the actual final content written");
-  assert.match(persisted, /okf_version: ['"]?0\.8['"]?/);
-  assert.match(persisted, /\* \[Alpha\]\(alpha\.md\)/);
 });
 
 // ── path-traversal regression (P1 finding): the backend seam must guard ids/dirs ──

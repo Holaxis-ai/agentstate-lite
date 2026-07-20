@@ -141,8 +141,25 @@ export { queryHeads } from "./bundle.js";
 export { matchesFilter } from "./query-filter.js";
 export type { HeadResult } from "./types.js";
 
-// Reserved-file index accessor + regeneration. Raw index.md/log.md interop stays on the backend seam.
-export { readIndex, regenerateIndex } from "./bundle.js";
+// Portable, ownership-governed `index.md` projection. Raw reserved-file interop stays on the backend seam.
+export {
+  GENERATED_INDEX_MARKER,
+  IndexProjectionWriteError,
+  planIndexProjection,
+  prepareIndexProjection,
+  applyIndexProjection,
+} from "./index-projection.js";
+export type {
+  PlannedIndex,
+  IndexProjectionPlan,
+  IndexProjectionDisposition,
+  PreparedIndexTarget,
+  ReadyIndexProjection,
+  RefusedIndexProjection,
+  IndexProjectionPreparation,
+  AppliedIndexTarget,
+  IndexProjectionApplyResult,
+} from "./index-projection.js";
 
 // Pure, unit-testable path / link / note / freshness helpers.
 export {

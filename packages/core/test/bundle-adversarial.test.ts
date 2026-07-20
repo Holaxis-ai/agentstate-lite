@@ -15,11 +15,10 @@ import {
   queryEdges,
   queryHeads,
   readDocVersioned,
-  readIndex,
-  regenerateIndex,
   writeDocVersioned,
 } from "../src/bundle.js";
 import { InvalidInputError } from "../src/errors.js";
+import { parseMarkdown } from "../src/frontmatter.js";
 import { MemoryBackend } from "../src/memory-backend.js";
 import { VersionConflict } from "../src/versioning.js";
 import type {
@@ -69,7 +68,9 @@ test("initBundle writes one deterministic root index with expect-absent CAS and 
 
     await initBundle(root, { okfVersion: "never-overwrite" });
     assert.equal(writes.length, 1, "an existing root index must remain byte-untouched");
-    assert.deepEqual(await readIndex(bundle), {
+    const raw = (await new FilesystemBackend(bundle.root).readReserved("", "index.md"))!;
+    const parsed = parseMarkdown(raw.content);
+    assert.deepEqual({ body: parsed.body, okfVersion: parsed.frontmatter.okf_version }, {
       body: `# ${path.basename(root)}\n\nAn Open Knowledge Format bundle.\n`,
       okfVersion: "9.4",
     });
@@ -90,7 +91,8 @@ test("initBundle swallows only the expect-absent VersionConflict from a winning 
       throw new VersionConflict("index.md", null, version);
     };
     const raced = await initBundle(root);
-    assert.equal((await readIndex(raced))?.okfVersion, "0.1", "the default version remains deterministic");
+    const raw = (await new FilesystemBackend(raced.root).readReserved("", "index.md"))!;
+    assert.equal(parseMarkdown(raw.content).frontmatter.okf_version, "0.1", "the default version remains deterministic");
 
     await rm(root, { recursive: true, force: true });
     FilesystemBackend.prototype.writeReserved = async function () {
@@ -286,71 +288,4 @@ test("edge selectors normalize one leading slash and strip only a terminal markd
     ["tasks/t"],
   );
   assert.deepEqual(await queryEdges(bundle, { to: "tasks/t.md/suffix" }), []);
-});
-
-test("readIndex distinguishes absence, root version metadata, and raw nested content", async () => {
-  const bundle = memoryBundle();
-  assert.equal(await readIndex(bundle), null);
-
-  await bundle.backend!.writeReserved("", "index.md", "---\nokf_version: 7\n---\n# numeric\n");
-  assert.deepEqual(await readIndex(bundle), { body: "# numeric\n" });
-  await bundle.backend!.writeReserved("", "index.md", "---\nokf_version: '0.7'\n---\n# root\n");
-  assert.deepEqual(await readIndex(bundle), { body: "# root\n", okfVersion: "0.7" });
-
-  await bundle.backend!.writeReserved("nested", "index.md", "# nested\n");
-  assert.deepEqual(await readIndex(bundle, "nested"), { body: "# nested\n" });
-});
-
-test("regenerateIndex emits deterministic root sections, fallbacks, descriptions, and sorted subdirectories", async () => {
-  const backend = new ReverseListBackend();
-  const bundle: Bundle = { root: "mem://bundle", backend };
-  await backend.write("b", doc("b", { type: "Zeta", title: "Beta", description: "described", timestamp: T }));
-  await backend.write("c", doc("c", { type: "Zeta", title: "Alpha", timestamp: T }));
-  await backend.write("a", doc("a", { type: "Alpha", timestamp: T }));
-  await backend.write("fallback", doc("fallback", { type: 7, title: " ", description: 7, timestamp: T } as never));
-  await backend.write("zdir/item", doc("zdir/item", { type: "Nested", timestamp: T }));
-  await backend.write("child/item", doc("child/item", { type: "Nested", timestamp: T }));
-
-  const generated = await regenerateIndex(bundle);
-  assert.equal(generated, (await backend.readReserved("", "index.md"))!.content);
-  assert.deepEqual(await readIndex(bundle), {
-    okfVersion: "0.1",
-    body:
-      "# bundle\n\n" +
-      "# Alpha\n\n* [a](a.md)\n\n" +
-      "# Concept\n\n* [fallback](fallback.md)\n\n" +
-      "# Zeta\n\n* [Alpha](c.md)\n* [Beta](b.md) - described\n\n" +
-      "# Subdirectories\n\n* [child](child/index.md)\n* [zdir](zdir/index.md)\n",
-  });
-});
-
-test("regenerateIndex omits the subdirectory section when a directory contains only direct concepts", async () => {
-  const backend = new MemoryBackend();
-  const bundle: Bundle = { root: "mem://direct-only", backend };
-  await backend.write("only", doc("only", { type: "Note", title: "Only", timestamp: T }));
-  const generated = await regenerateIndex(bundle);
-  assert.equal((await readIndex(bundle))?.body, "# direct-only\n\n# Note\n\n* [Only](only.md)\n");
-  assert.doesNotMatch(generated, /Subdirectories/);
-});
-
-test("regenerateIndex normalizes a nested directory and writes a frontmatter-free nested index", async () => {
-  const backend = new MemoryBackend();
-  const bundle: Bundle = { root: "mem://bundle", backend };
-  await backend.write("child/z", doc("child/z", { type: "Note", title: "Zulu", timestamp: T }));
-  await backend.write("child/a", doc("child/a", { type: "Note", title: "Alpha", timestamp: T }));
-  await backend.write("child/grand/item", doc("child/grand/item", { type: "Deep", timestamp: T }));
-  await backend.write("outside", doc("outside", { type: "Outside", timestamp: T }));
-
-  const generated = await regenerateIndex(bundle, "./child/");
-  assert.equal(
-    generated,
-    "# child\n\n# Note\n\n* [Alpha](a.md)\n* [Zulu](z.md)\n\n# Subdirectories\n\n* [grand](grand/index.md)\n",
-  );
-  assert.deepEqual(await readIndex(bundle, "child"), { body: generated });
-  assert.equal(await readIndex(bundle), null);
-  assert.doesNotMatch(generated, /outside/i);
-
-  await backend.writeReserved("", "index.md", "---\nokf_version: '7.2'\n---\n# old\n");
-  const root = await regenerateIndex(bundle);
-  assert.match(root, /okf_version: ['"]?7\.2['"]?/);
 });
