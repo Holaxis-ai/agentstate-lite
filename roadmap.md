@@ -2,7 +2,7 @@
 type: Roadmap
 title: agentstate-lite — Roadmap (near-term spine)
 actor: mike/claude
-timestamp: '2026-07-20T21:19:39.168Z'
+timestamp: '2026-07-20T21:24:28.943Z'
 ---
 # agentstate-lite — Roadmap (near-term spine)
 
@@ -25,17 +25,18 @@ question whether we should be doing it now."
    markdown Agent Skill + session-start hooks, installed via npm; then retire the marketplace
    executable channel (`roadmap-items/distribution-neutral-resources`). npm is the distribution
    pattern, NOT the skills marketplace.
-3. **One minimally-usable shipped recipe** — `tasks/recipe-personal-task-system` (P1). DECIDED
-   2026-07-20: a **human-agent collaborative Personal Task System**, HAND-AUTHORED (the founder's
-   real private task bundle as a reference implementation, generalized/simplified — NOT automated
-   export, which is deferred: `tasks/recipe-export` needs first-class recipe ownership we don't have
-   yet). The centerpiece is a **very good visual UX** for the collaboration loop: your agent runs
-   your tasks and you mark them done / edit them live in a well-designed board View — that loop is
-   the differentiator, not a checklist. Real build: the write-back UX itself, on top of #109's
-   trusted-View-action mechanism (the plumbing shipped; a good task-board View that uses it did
-   not). NEXT INCREMENT: the working-memory `Focus`/`Session` layer
-   (`research/ai-power-user-patterns`) toward the "second brain" story. PM recipe
-   (`tasks/persona-recipe-product-manager`) deferred.
+3. **One minimally-usable shipped recipe** — `roadmap-items/personal-task-system-recipe` (P1). A
+   **human-agent collaborative Personal Task System**, HAND-AUTHORED (the founder's real private
+   task bundle as a reference implementation, generalized/simplified — automated export deferred,
+   `tasks/recipe-export`). Differentiator: your agent runs your tasks and you mark them done / edit
+   live in a well-designed board View — the collaboration loop, not a checklist; the visual UX
+   quality is the point. SEQUENCED (data first, then UI, then package):
+   (1) `tasks/task-system-kind-design` — the kind(s) + relationships (schema settles first);
+   (2) `tasks/task-system-board-ui` — the collaborative board View: read + human write-back on
+   #109's mechanism (the plumbing shipped; the good board that uses it is the real build);
+   (3) `tasks/recipe-personal-task-system` — hand-author + package the recipe, verify recipe add.
+   NEXT INCREMENT (after ship): the working-memory `Focus`/`Session` layer
+   (`research/ai-power-user-patterns`) toward the "second brain" story. PM recipe deferred.
 
 **Also in-window — now folded into #3:** UI mutation — interact with Views, mark a task done (#109
 shipped but
