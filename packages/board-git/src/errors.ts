@@ -111,6 +111,7 @@ function firstGitLine(f: GitFailure): string {
  *  - spawn `ENOENT` -> `GIT_MISSING`: git itself is not installed — a distinct, branchable code.
  *  - per-op timeout -> `TRANSIENT`: the no-hang invariant fired; retryable.
  *  - `index.lock` / "Another git process" -> `GIT_BUSY` with `details.retryable: true`.
+ *  - a non-fast-forward push -> `TRANSIENT`: another writer advanced the board; re-run sync.
  *  - missing `origin` remote / unresolvable `origin/board` -> `NO_UPSTREAM`.
  *  - credential/permission signals -> `AUTH_REQUIRED`. BEST-EFFORT by design: GitHub answers
  *    "Repository not found." for unauthorized-private, so not-found-shaped transport failures
@@ -140,6 +141,17 @@ export function classifyGitError(f: GitFailure): BoardGitError {
       "GIT_BUSY",
       "another git process is using this repository — retry once it finishes",
       { details: { op, retryable: true } },
+    );
+  }
+  if (
+    op === "push" &&
+    (/\[rejected\].*\((?:fetch first|non-fast-forward)\)/i.test(text) ||
+      /Updates were rejected because (?:the remote contains work|the tip of your current branch is behind)/i.test(text))
+  ) {
+    return new BoardGitError(
+      "TRANSIENT",
+      "a teammate pushed to the board at the same time — re-run sync to incorporate their changes and retry",
+      { details: { op, retryable: true, reason: "non-fast-forward" } },
     );
   }
   if (

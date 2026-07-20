@@ -277,7 +277,7 @@ test("ffSwallowToError: auth is exit 4, network/busy/dirty/diverged classify sen
   assert.equal(ffSwallowToError("totally-unknown-reason", "aslite").code, "RUNTIME");
 });
 
-test("pushFailureMessage: AUTH_REQUIRED and TRANSIENT get the EXACT pinned safety string (message pack d)", () => {
+test("pushFailureMessage: auth and connectivity failures get the exact pinned safety string", () => {
   const auth = new CliError("AUTH_REQUIRED", "git push was denied access to the remote");
   const network = new CliError("TRANSIENT", "git push could not reach the remote — offline; retry");
   assert.equal(pushFailureMessage(auth), PUSH_FAIL_SAFETY_MESSAGE);
@@ -286,6 +286,19 @@ test("pushFailureMessage: AUTH_REQUIRED and TRANSIENT get the EXACT pinned safet
     PUSH_FAIL_SAFETY_MESSAGE,
     "committed to the board locally — your work is saved. The push failed (offline or auth); " +
       "re-run sync when you're back online or your access is restored.",
+  );
+});
+
+test("pushFailureMessage: a non-fast-forward TRANSIENT keeps its actionable retry guidance", () => {
+  const race = new CliError(
+    "TRANSIENT",
+    "a teammate pushed to the board at the same time — re-run sync to incorporate their changes and retry",
+    { details: { op: "push", retryable: true, reason: "non-fast-forward" } },
+  );
+  assert.equal(
+    pushFailureMessage(race),
+    "committed to the board locally — your work is saved. " +
+      "a teammate pushed to the board at the same time — re-run sync to incorporate their changes and retry",
   );
 });
 
