@@ -2,14 +2,19 @@
 type: Task
 title: 'First persona recipe: Product Manager (data-free, views included)'
 description: >-
-  Build the first concrete product recipe as a built-in npm-shipped Product
-  Manager operating model: data-free Kinds, semantic relationships, references,
-  and pre-built Views, installable through init --recipe product-manager or
-  recipe add product-manager without a marketplace plugin.
+  DEFERRED (2026-07-20) — NOT the first shipped recipe. The Personal Task System
+  (tasks/recipe-personal-task-system) is the first ship: concrete, fast,
+  demoable, exercises #109's UI-write. A PM recipe remains a valid LATER
+  candidate, but reconsider it after the task system + working-memory recipes
+  ship — the AI-power-user research (research/ai-power-user-patterns) flags that
+  a PM recipe would largely re-skin already-shipped ground (work-tracking Task,
+  Plan, Research kinds). Original scope preserved: a built-in data-free Product
+  Manager operating model (kinds + relationships + references + Views),
+  installable via init --recipe / recipe add without a marketplace plugin.
 actor: mike/claude
 status: todo
-priority: '1'
-timestamp: '2026-07-20T20:13:42.084Z'
+priority: '3'
+timestamp: '2026-07-20T20:51:10.112Z'
 ---
 # Scope
 
