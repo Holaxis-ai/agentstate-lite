@@ -13,9 +13,9 @@ description: >-
   the product's differentiator — agent and human on the SAME data, live. DEPENDS
   ON tasks/task-system-kind-design (a settled schema). Do not start against an
   unsettled kind.
-actor: mike/claude
-status: todo
+actor: openai/codex
+status: in_progress
 priority: '2'
-timestamp: '2026-07-20T21:23:56.929Z'
+timestamp: '2026-07-20T21:56:51.626Z'
 ---
 [depends on the settled schema](task-system-kind-design.md)
