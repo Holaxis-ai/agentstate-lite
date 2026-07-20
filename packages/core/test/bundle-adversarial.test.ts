@@ -19,6 +19,7 @@ import {
 } from "../src/bundle.js";
 import { InvalidInputError } from "../src/errors.js";
 import { parseMarkdown } from "../src/frontmatter.js";
+import { GENERATED_INDEX_MARKER } from "../src/index-marker.js";
 import { MemoryBackend } from "../src/memory-backend.js";
 import { VersionConflict } from "../src/versioning.js";
 import type {
@@ -64,14 +65,17 @@ test("initBundle writes one deterministic root index with expect-absent CAS and 
     assert.equal(writes[0]!.name, "index.md");
     assert.deepEqual(writes[0]!.options, { expectedVersion: null });
     assert.match(writes[0]!.content, /okf_version: ['"]?9\.4['"]?/);
-    assert.match(writes[0]!.content, new RegExp(`# ${path.basename(root)}\\n\\nAn Open Knowledge Format bundle\\.\\n$`));
+    assert.match(
+      writes[0]!.content,
+      new RegExp(`${GENERATED_INDEX_MARKER}\\n# ${path.basename(root)}\\n\\nAn Open Knowledge Format bundle\\.\\n$`),
+    );
 
     await initBundle(root, { okfVersion: "never-overwrite" });
     assert.equal(writes.length, 1, "an existing root index must remain byte-untouched");
     const raw = (await new FilesystemBackend(bundle.root).readReserved("", "index.md"))!;
     const parsed = parseMarkdown(raw.content);
     assert.deepEqual({ body: parsed.body, okfVersion: parsed.frontmatter.okf_version }, {
-      body: `# ${path.basename(root)}\n\nAn Open Knowledge Format bundle.\n`,
+      body: `${GENERATED_INDEX_MARKER}\n# ${path.basename(root)}\n\nAn Open Knowledge Format bundle.\n`,
       okfVersion: "9.4",
     });
   } finally {

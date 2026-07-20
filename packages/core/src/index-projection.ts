@@ -10,11 +10,11 @@
 import { backendFor } from "./bundle.js";
 import { InvalidInputError } from "./errors.js";
 import { parseMarkdown, stringifyWithData } from "./frontmatter.js";
+import { GENERATED_INDEX_MARKER } from "./index-marker.js";
 import { assertSafeConceptId, toPosix } from "./paths.js";
 import type { Bundle, HeadResult, Version } from "./types.js";
 
-/** Whole-body ownership marker. Unmarked indexes remain human-owned by default. */
-export const GENERATED_INDEX_MARKER = "<!-- agentstate-lite:generated-index:v1 -->";
+export { GENERATED_INDEX_MARKER } from "./index-marker.js";
 
 /** One directory's deterministic, frontmatter-free body. `dir === ""` is the bundle root. */
 export interface PlannedIndex {

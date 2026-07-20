@@ -31,6 +31,8 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
   — Register and deterministically resolve this user's explicitly named local workspaces
 - `npx -y agentstate-lite init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]`
   — Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init
+- `npx -y agentstate-lite index generate [--dir <path>] [--check] [--force] [--actor <name>]`
+  — Generate complete portable Markdown navigation explicitly; refuses curated indexes unless --force adopts them
 - `npx -y agentstate-lite status [--limit <n>] [--remote <url>]`
   — Read-only bundle health report (kind lint, unresolved links, orphans, staleness, graph lints)
 

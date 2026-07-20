@@ -74,6 +74,7 @@ aslite list --type Task
 aslite doc update tasks/ship-parser --status in_progress
 aslite doc history tasks/ship-parser   # who changed what, when
 aslite ui                              # the bundle, rendered — local server, no cloud
+aslite index generate                  # optional: complete portable Markdown navigation
 aslite sync                            # ordinary shared-board updates — commits yours,
                                        # pulls theirs, pushes; leaves code files untouched
 ```
@@ -115,6 +116,9 @@ settings — sync only ever appends commits to it.
 - **Every concept is a typed markdown document.** One required frontmatter field — `type` — plus
   whatever fields its schema declares. New concepts are new types, not new subsystems. Byte-exact
   artifacts such as View HTML live as blobs referenced by those documents.
+- **Portable navigation is explicit.** `index generate` creates a complete relative-link
+  `index.md` hierarchy for GitHub, ordinary editors, and copied folders. It refreshes only marked
+  generated files and refuses curated indexes unless `--force` deliberately adopts them.
 - **Schemas are documents too.** A "kind" is declared by a convention doc inside the
   bundle; validation fires at write time (warn by default, `--strict` to reject). The
   bundle describes itself.
