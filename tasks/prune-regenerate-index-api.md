@@ -6,11 +6,11 @@ description: >-
   with a pure recursive planner and marker/CAS-governed write policy. BLOCKED
   only until PR #127 (the overlapping log-helper prune) merges; then branch from
   fresh origin/main.
-actor: openai/codex
-status: blocked
+actor: openai/codex-portable-index
+status: in_progress
 priority: '2'
 assignee: openai/codex-portable-index
-timestamp: '2026-07-20T01:11:53.939Z'
+timestamp: '2026-07-20T01:27:46.983Z'
 ---
 # Approved direction
 
