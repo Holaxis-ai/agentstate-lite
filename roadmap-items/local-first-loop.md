@@ -4,8 +4,8 @@ title: >-
   The local-first daily loop: board in git, product-native discovery, session
   hooks
 status: active
-actor: codex
-timestamp: '2026-07-14T21:01:16.241Z'
+actor: openai/codex
+timestamp: '2026-07-20T03:12:55.288Z'
 ---
 [contains](../tasks/project-binding.md)
 
@@ -66,3 +66,5 @@ timestamp: '2026-07-14T21:01:16.241Z'
 [contains](../tasks/doc-read-body-out.md)
 
 [contains](../tasks/new-complete-authoring.md)
+
+[contains](../tasks/bundle-visibility-safeguard.md)
