@@ -205,11 +205,9 @@ export async function docVersions(bundle: Bundle, id: ConceptId): Promise<Versio
  *
  * Non-cascading and NOT self-logging (D8, a deliberate decision): outbound/inbound links
  * are left exactly as written (backlinks are derived, so a dangling reference simply stops
- * resolving on the next graph walk), and this does NOT append a `log.md` "deleted" entry —
- * no other engine write path self-logs either, and doing so here would add a reserved-file
- * CAS write (and, over `--remote`, an extra round trip) that also re-seeds the very id
- * being deleted back into `log.md`'s provenance trail. A caller that wants a delete logged
- * calls `appendLog` itself.
+ * resolving on the next graph walk), and no engine mutation emits a `log.md` entry. Adding an
+ * asymmetric reserved-file side effect here would cost another CAS write (and, over `--remote`,
+ * another round trip) while re-seeding the deleted id in a second record.
  */
 export async function deleteDoc(bundle: Bundle, id: ConceptId, options?: DeleteOptions): Promise<boolean> {
   assertSafeConceptId(id);
@@ -536,73 +534,6 @@ export async function readIndex(
   return okfVersion !== undefined ? { body, okfVersion } : { body };
 }
 
-/** Read a `log.md` body for a directory, or `null` if absent. */
-export async function readLog(bundle: Bundle, dir = ""): Promise<string | null> {
-  const raw = await backendFor(bundle).readReserved(dir, "log.md");
-  return raw === null ? null : raw.content;
-}
-
-/** A `## YYYY-MM-DD` heading from an ISO instant. */
-function dateHeading(when: Date): string {
-  return `## ${when.toISOString().slice(0, 10)}`;
-}
-
-/**
- * Append a chronological entry to `log.md` (§7), newest-first. Entries are grouped
- * under `## YYYY-MM-DD` headings; a matching date group gets the entry prepended,
- * otherwise a new group is inserted at the top. `verb` (Update/Creation/…) is a
- * conventional leading bold marker.
- */
-export async function appendLog(
-  bundle: Bundle,
-  opts: { dir?: string; entry: string; when?: Date; verb?: string },
-): Promise<void> {
-  const backend = backendFor(bundle);
-  const dir = opts.dir ?? "";
-  const when = opts.when ?? new Date();
-  const heading = dateHeading(when);
-  const line = `- ${opts.verb ? `**${opts.verb}** ` : ""}${opts.entry}`;
-
-  // `log.md` is the provenance surface and the least-safe write path: a plain
-  // read-modify-write drops a concurrent writer's entry. `versionedMutation` (the ONE
-  // read-decide-CAS-retry primitive, `mutation.ts`) re-reads the current bytes WITH their
-  // version on EVERY attempt and re-splices against THAT read, never a stale one — a
-  // conflict re-reads and re-splices (never overwriting the racing entry) up to a bounded
-  // budget. The first-ever create uses `expectedVersion: null` (expect-absent), so even the
-  // create path is guarded — if a concurrent writer created the file between our read and
-  // our write, the CAS rejects and the retry re-reads to append instead of clobbering.
-  await versionedMutation<string, void>({
-    read: async () => {
-      const prior = await backend.readReserved(dir, "log.md");
-      return { state: prior?.content, version: prior?.version ?? null };
-    },
-    decide: (existing) => {
-      const content = existing ?? "# Log\n";
-      const lines = content.split("\n");
-
-      // Find an existing group for today's date.
-      const headingIdx = lines.findIndex((l) => l.trim() === heading);
-      let next: string;
-      if (headingIdx >= 0) {
-        lines.splice(headingIdx + 1, 0, line);
-        next = lines.join("\n");
-      } else {
-        // Insert a new date group directly after the top-of-file `# Log` title if present.
-        const titleIdx = lines.findIndex((l) => /^#\s+/.test(l.trim()));
-        const block = `${heading}\n\n${line}\n`;
-        if (titleIdx >= 0) {
-          lines.splice(titleIdx + 1, 0, "", block);
-          next = lines.join("\n");
-        } else {
-          next = `${block}\n${content}`;
-        }
-      }
-      return { action: "write", next, result: undefined };
-    },
-    write: (next, expectedVersion) => backend.writeReserved(dir, "log.md", next, { expectedVersion }),
-  });
-}
-
 /**
  * Regenerate a directory's `index.md` for progressive disclosure (§6): concepts
  * grouped by `type`, subdirectories under a "Subdirectories" heading, each a
@@ -660,8 +591,8 @@ export async function regenerateIndex(bundle: Bundle, dir = ""): Promise<string>
   const name = dirRel === "" ? path.basename(path.resolve(bundle.root)) : dirRel.split("/").pop()!;
   const body = `# ${name}\n\n${sections.join("\n")}`.trimEnd() + "\n";
 
-  // Bring the index write into the CAS model as well (the same read-modify-write hazard the
-  // log has): `versionedMutation` re-reads the current index WITH its version on EVERY attempt,
+  // Bring the index write into the CAS model as well: `versionedMutation` re-reads the current
+  // index WITH its version on EVERY attempt,
   // assembles the deterministic replacement (preserving the root okf_version declaration), and
   // compare-and-swaps; a conflict re-reads and re-assembles, bounded-retried. The first-ever
   // create uses `expectedVersion: null` (expect-absent) so the create path is guarded too.

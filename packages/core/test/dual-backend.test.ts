@@ -24,10 +24,8 @@ import {
   readDocVersioned,
   docVersions,
   deleteDoc,
-  appendLog,
   regenerateIndex,
   readIndex,
-  readLog,
   query,
 } from "../src/bundle.js";
 import { FilesystemBackend } from "../src/backend.js";
@@ -285,7 +283,7 @@ for (const [name, run] of RUNNERS) {
 
       // Both reserved files are untouched.
       assert.ok((await readIndex(bundle)) !== null);
-      assert.ok((await readLog(bundle)) !== null);
+      assert.ok((await bundle.backend!.readReserved("", "log.md")) !== null);
     });
   });
 }
@@ -505,72 +503,6 @@ test("reserved-file version token is content-addressed and identical across back
   const memV = await new MemoryBackend().writeReserved("", "log.md", content);
   assert.equal(memV, fsV); // same bytes ⇒ same token, regardless of backend
   assert.equal(fsV, versionOfBytes(content)); // and it is exactly the content-address of the bytes
-});
-
-/**
- * A {@link MemoryBackend} that fires a one-shot side effect right AFTER a `log.md`
- * read — simulating a concurrent writer that mutates the file between another
- * caller's read and its compare-and-swap write. Used to prove `appendLog`'s
- * read-CAS-write retry never loses the racing entry.
- */
-class RacingMemoryBackend extends MemoryBackend {
-  private pending: (() => Promise<void>) | null = null;
-  /** Arm a one-shot concurrent write to run right after the next `log.md` read. */
-  armRace(action: () => Promise<void>): void {
-    this.pending = action;
-  }
-  override async readReserved(dir: string, name: ReservedFilename): Promise<ReservedReadResult | null> {
-    const result = await super.readReserved(dir, name);
-    if (name === "log.md" && this.pending) {
-      const action = this.pending;
-      this.pending = null; // one-shot: the injected read below won't re-trigger
-      await action();
-    }
-    return result; // the PRE-race snapshot — its version is now stale
-  }
-}
-
-test("appendLog resolves a concurrent-writer conflict via read-CAS-write retry (no lost update)", async () => {
-  const backend = new RacingMemoryBackend();
-  const bundle: Bundle = { root: "mem://race", backend };
-  const when = new Date("2026-07-01T00:00:00.000Z");
-
-  await appendLog(bundle, { dir: "", entry: "first entry", when });
-
-  // A concurrent writer appends a line AFTER appendLog reads but BEFORE it writes, so
-  // appendLog's expectedVersion goes stale → its CAS write conflicts → it re-reads and retries.
-  backend.armRace(async () => {
-    const cur = (await backend.readReserved("", "log.md"))!.content;
-    await backend.writeReserved("", "log.md", cur + "- RACED entry\n");
-  });
-
-  await appendLog(bundle, { dir: "", entry: "second entry", when });
-
-  const log = (await backend.readReserved("", "log.md"))!.content;
-  // A naive read-modify-write would have overwritten the racing entry; the CAS retry preserves it.
-  assert.match(log, /RACED entry/);
-  assert.match(log, /first entry/);
-  assert.match(log, /second entry/);
-});
-
-test("appendLog resolves a concurrent-writer CREATE race via expect-absent CAS (no lost update)", async () => {
-  const backend = new RacingMemoryBackend();
-  const bundle: Bundle = { root: "mem://race-create", backend };
-  const when = new Date("2026-07-01T00:00:00.000Z");
-
-  // Arm a race that fires on appendLog's FIRST read (which sees the file absent), and
-  // concurrently CREATES log.md before appendLog's own expect-absent write lands. Before
-  // `expectedVersion: null` this create race was unguarded (the first-ever create was
-  // unconditional): appendLog's write would have silently clobbered the racer's file.
-  backend.armRace(async () => {
-    await backend.writeReserved("", "log.md", "# Log\n\n- RACED create\n");
-  });
-
-  await appendLog(bundle, { dir: "", entry: "first entry", when });
-
-  const log = (await backend.readReserved("", "log.md"))!.content;
-  assert.match(log, /RACED create/);
-  assert.match(log, /first entry/);
 });
 
 /** Inject a one-shot competing `index.md` write after a read returns its snapshot. */

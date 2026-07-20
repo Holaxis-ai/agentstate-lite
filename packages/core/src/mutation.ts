@@ -1,11 +1,11 @@
 /**
  * The ONE versioned-mutation boundary: every read-modify-write over this engine's
- * compare-and-swap seam (reserved files' `appendLog`/`regenerateIndex` here in core; the
- * CLI's `mutateDoc`/`addLink` on top of it) reduces to the SAME shape — a fresh versioned
+ * compare-and-swap seam (reserved-file index regeneration and document/link mutations)
+ * reduces to the SAME shape — a fresh versioned
  * read, a domain decision over exactly that read, and a CAS write bounded-retried on
  * conflict. This module is that shape, extracted once so the retry loop cannot drift
- * between its five prior hand-rolled copies (`bundle.ts`'s `appendLog`/`regenerateIndex`,
- * the CLI's `mutateDoc` overwrite+patch modes, `link add`) — see CLAUDE.md gate 3: ONE
+ * between the prior hand-rolled copies (`regenerateIndex`, document overwrite/patch, and
+ * `link add`) — see CLAUDE.md gate 3: ONE
  * implementation, consumed everywhere, not a schema fork.
  *
  * The structural property that kills the "stale decision paired with a fresher CAS token"
