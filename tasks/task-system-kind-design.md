@@ -14,10 +14,10 @@ description: >-
   (conventions/*.md) for the task system, reviewed against real usage, STABLE
   enough to build the board UI on without schema churn. This is the foundation
   the board View (tasks/task-system-board-ui) renders and writes back to.
-actor: openai/codex
-status: in_progress
+actor: openai/codex-reviewer
+status: done
 priority: '1'
-timestamp: '2026-07-20T21:43:00.504Z'
+timestamp: '2026-07-20T21:49:20.601Z'
 ---
 [implements recommended design](../designs/personal-task-system-kinds.md)
 
@@ -38,4 +38,13 @@ timestamp: '2026-07-20T21:43:00.504Z'
 - Verification: focused tests 2/2 passed; `npm run build`, `npm run typecheck`, and full
   `npm run check` passed (including package verification and 15 browser E2E tests).
 
-Status remains `in_progress` pending independent review of the exact commit above.
+# Independent review
+
+- Result: APPROVE, no findings, on exact SHA `07c8e0183f2301483adb79c76841a4074a7ebb31`.
+- Review comment: https://github.com/Holaxis-ai/agentstate-lite/pull/132#issuecomment-5027610853
+- Detached-checkout evidence: root build passed; focused tests passed 2/2; built-CLI sampling
+  confirmed terminal filtering and 30d/180d horizon behavior; an undeclared instance-file probe
+  failed closed under the definitions-only policy with exit 2.
+- Exact-SHA CI passed the Node 20 built-CLI smoke and Node 22/26 repository gates.
+
+The unit is complete and the Task/Project contract is ready for the downstream board View.
