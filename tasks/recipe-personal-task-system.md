@@ -3,18 +3,22 @@ type: Task
 title: 'First shipped recipe: Personal Task System (agent-first, UI-writable)'
 description: >-
   Third/final sequenced unit of roadmap-items/personal-task-system-recipe —
-  ASSEMBLE + PACKAGE the hand-authored recipe. From the settled kinds
-  (tasks/task-system-kind-design) + the board UI (tasks/task-system-board-ui),
-  hand-author the recipe folder (recipe.md + conventions/*.md + views/),
-  INSTANCE-FREE (structure only, no private data), installable via recipe add on
-  a fresh bundle. DoD: recipe add installs the kinds + Views clean on a fresh
-  bundle (round-trip); the recipe is graspable in one look. (The overall vision
-  + decisions now live on the roadmap item
-  roadmap-items/personal-task-system-recipe.)
+  ASSEMBLE + PACKAGE the hand-authored recipe AS A BUILT-IN. From the settled
+  kinds (tasks/task-system-kind-design) + the board UI
+  (tasks/task-system-board-ui), hand-author the recipe folder (recipe.md +
+  conventions/*.md + views/), INSTANCE-FREE (structure only, no private data).
+  SHIP AS A BUILT-IN: register it in the CLI's built-in recipe source (like
+  context-notes / work-tracking / roadmap) so it resolves BY NAME — 'init
+  --recipe personal-task-system' and 'recipe add personal-task-system' work
+  WITHOUT a folder path. DoD: (1) init --recipe personal-task-system on a FRESH
+  bundle works by name and produces a usable task-system bundle (kinds + Views
+  live); (2) recipes command lists it as a built-in; (3) round-trip clean
+  (idempotent re-add is changed:false). This is what the quickstart
+  (tasks/npm-quickstart-onboarding) calls.
 actor: mike/claude
 status: todo
 priority: '3'
-timestamp: '2026-07-20T21:23:57.038Z'
+timestamp: '2026-07-20T21:44:46.583Z'
 ---
 [the first shipped recipe](../roadmap-items/recipe-plugins.md)
 
