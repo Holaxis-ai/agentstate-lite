@@ -115,6 +115,6 @@ test("helpIndexText: the rendered top-level index carries doc history's honest, 
   const text = helpIndexText(INV);
   assert.match(
     text,
-    /doc history <id> \[--remote <url>\] — Show a doc's version history \(newest first; a history-keeping backend returns the full attributed chain, a local bundle just the current revision\) — the tokens for --expected-version/,
+    /doc history <id> \[--limit <n>\] \[--remote <url>\] — Show a doc's version history \(newest first, capped at 20 by default — --limit 0 for all; a history-keeping backend returns the full attributed chain, a local bundle just the current revision\) — the tokens for --expected-version/,
   );
 });

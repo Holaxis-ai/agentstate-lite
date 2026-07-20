@@ -189,7 +189,7 @@ Examples:
 export const DOC_HISTORY_USAGE = `agentstate-lite doc history — show a doc's attributed version chain (newest first)
 
 Usage:
-  agentstate-lite doc history <id> [options]
+  agentstate-lite doc history <id> [--limit <n>] [options]
 
 Lists version + actor + timestamp (and agent, when recorded) per revision, with a count. A
 history-keeping backend (a remote deployment) returns the full chain and its real per-write
@@ -200,10 +200,18 @@ file's OS owner as the actor (the filesystem backend keeps no per-write advisory
 history; the doc's own 'actor' frontmatter field — persisted from --actor or
 AGENTSTATE_LITE_ACTOR — is where per-doc attribution lives). The newest version is the token to
 pass to --expected-version for an optimistic doc update/delete.
+
+Options:
+  --limit <n>           Cap the number of revisions returned, newest first (default: 20; 0 =
+                        unlimited). A truncated result reports \`shown\` alongside the total
+                        \`count\`, and a help line names the escape (a higher --limit, or 0 for
+                        all). The newest revision is always included when truncated (it never
+                        gets cut off the front).
 ${COMMON_OPTIONS}
 
 Examples:
   agentstate-lite doc history concepts/auth
+  agentstate-lite doc history concepts/auth --limit 0
 `;
 
 export const DOC_DELETE_USAGE = `agentstate-lite doc delete — hard-delete a concept document (idempotent)
