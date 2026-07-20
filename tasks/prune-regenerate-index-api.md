@@ -10,7 +10,7 @@ actor: openai/codex-portable-index
 status: in_progress
 priority: '2'
 assignee: openai/codex-portable-index
-timestamp: '2026-07-20T01:27:46.983Z'
+timestamp: '2026-07-20T01:42:03.234Z'
 ---
 # Approved direction
 
@@ -79,3 +79,7 @@ This unit depends on [the log-helper prune](prune-unused-log-api.md) / PR #127 b
 Deliver as one core-focused PR with full repository gate and independent exact-SHA review. The follow-on CLI task is [Portable index CLI](portable-index-cli.md).
 
 [depends on](prune-unused-log-api.md)
+
+# Implementation record — 2026-07-19
+
+Unit 1 is implemented at commit `ede6c089b2ff171f19b63953ee719195aca8298d` in [PR #128](https://github.com/Holaxis-ai/agentstate-lite/pull/128). The local full repository gate passed (`npm run check`, exit 0), including the 391-case core suite, 34 npm-install proof cases, package verification, skill drift, and 15 Chromium UI/security E2E cases. Independent exact-SHA review is in progress. GitHub-hosted CI remains a separate signal and may be queued during the current GitHub Actions service incident.
