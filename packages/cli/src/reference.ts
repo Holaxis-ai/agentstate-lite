@@ -62,6 +62,11 @@ export const COMMAND_GROUPS: CommandGroup[] = [
           "Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init",
       },
       {
+        usage: "index generate [--dir <path>] [--check] [--force] [--actor <name>]",
+        summary:
+          "Generate complete portable Markdown navigation explicitly; refuses curated indexes unless --force adopts them",
+      },
+      {
         usage: "status [--limit <n>] [--remote <url>]",
         summary: "Read-only bundle health report (kind lint, unresolved links, orphans, staleness, graph lints)",
       },

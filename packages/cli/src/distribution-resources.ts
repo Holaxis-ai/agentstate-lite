@@ -116,6 +116,7 @@ export const SKILL_COMMAND_RESOURCES: Record<string, string[]> = {
   "bundle locate": [],
   catalog: [],
   init: [],
+  "index generate": [],
   status: [],
   "doc write": [],
   "doc update": [],

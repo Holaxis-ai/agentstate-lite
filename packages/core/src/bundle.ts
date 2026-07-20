@@ -13,6 +13,7 @@ import path from "node:path";
 
 import { FilesystemBackend } from "./backend.js";
 import { MalformedDocumentError, stringifyWithData } from "./frontmatter.js";
+import { GENERATED_INDEX_MARKER } from "./index-marker.js";
 import { parseLinksFromDoc } from "./links.js";
 import {
   assertSafeConceptId,
@@ -75,7 +76,7 @@ export async function initBundle(root: string, options: InitBundleOptions = {}):
   if ((await backend.readReserved("", "index.md")) === null) {
     const okfVersion = options.okfVersion ?? "0.1";
     const name = path.basename(resolved);
-    const body = `# ${name}\n\nAn Open Knowledge Format bundle.\n`;
+    const body = `${GENERATED_INDEX_MARKER}\n# ${name}\n\nAn Open Knowledge Format bundle.\n`;
     // Expect-absent create (Defect C hardening): a plain check-absent-then-unconditional-write
     // leaves a benign TOCTOU window — two racing `init`s of the SAME fresh directory both see
     // `null` and both write. Harmless in practice (both write byte-identical content, since `name`
