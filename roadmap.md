@@ -2,7 +2,7 @@
 type: Roadmap
 title: agentstate-lite — Roadmap (near-term spine)
 actor: mike/claude
-timestamp: '2026-07-20T21:24:28.943Z'
+timestamp: '2026-07-20T21:45:17.464Z'
 ---
 # agentstate-lite — Roadmap (near-term spine)
 
@@ -21,10 +21,16 @@ question whether we should be doing it now."
 
 1. **Name it** — `tasks/npm-package-identity` (P1). One shot at a good public name; check
    collisions (e.g. an existing "agentstate"). Gates the npm publish and the article narrative.
-2. **Ship via npm** — `tasks/npm-cli-skill-prerelease` (P1, blocked on the name). The CLI + a thin
-   markdown Agent Skill + session-start hooks, installed via npm; then retire the marketplace
-   executable channel (`roadmap-items/distribution-neutral-resources`). npm is the distribution
-   pattern, NOT the skills marketplace.
+2. **Ship via npm + the onboarding journey** — `tasks/npm-cli-skill-prerelease` (P1, blocked on the
+   name) ships the CLI + a thin markdown Agent Skill + session-start hooks via npm (then retire the
+   marketplace executable channel, `roadmap-items/distribution-neutral-resources`; npm is the
+   distribution pattern, NOT the skills marketplace). THE NEW-USER WORKFLOW must work end to end and
+   be TESTED — `tasks/npm-quickstart-onboarding` (P1) owns it: (a) `npm install` the CLI →
+   (b) install the skill/hook for the agent → (c) `init --recipe <name>` to create a bundle from a
+   BUILT-IN recipe BY NAME → (d) immediately productive. Recipes ship as BUILT-INS installable by
+   name (like `context-notes`/`work-tracking`), so `init --recipe personal-task-system` resolves
+   without a folder path. The task system is the first built-in recipe; the mechanism generalizes to
+   the others as they ship.
 3. **One minimally-usable shipped recipe** — `roadmap-items/personal-task-system-recipe` (P1). A
    **human-agent collaborative Personal Task System**, HAND-AUTHORED (the founder's real private
    task bundle as a reference implementation, generalized/simplified — automated export deferred,
