@@ -10,7 +10,7 @@ actor: openai/codex
 sequence: >-
   Product Manager built-in → installed-npm newcomer proof → second demonstrated
   persona → only then generalize distribution
-timestamp: '2026-07-20T02:47:37.843Z'
+timestamp: '2026-07-20T02:52:39.957Z'
 ---
 # Vision
 
@@ -80,3 +80,5 @@ is absent.
 [contains](../tasks/bundle-native-reference-docs.md)
 
 [contains](../tasks/persona-recipe-product-manager.md)
+
+[contains](../tasks/product-recipe-discovery.md)

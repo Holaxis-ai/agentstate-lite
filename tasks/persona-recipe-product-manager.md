@@ -8,7 +8,7 @@ description: >-
   recipe add product-manager without a marketplace plugin.
 actor: openai/codex
 status: todo
-timestamp: '2026-07-20T02:47:37.979Z'
+timestamp: '2026-07-20T02:52:40.080Z'
 ---
 # Scope
 
@@ -57,3 +57,5 @@ aslite recipe add product-manager --dir <bundle>
 - Generalizing personas before this one has been used successfully.
 
 [first concrete product recipe](../roadmap-items/recipe-plugins.md)
+
+[depends on](product-recipe-discovery.md)
