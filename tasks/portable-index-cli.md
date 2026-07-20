@@ -1,0 +1,67 @@
+---
+type: Task
+title: 'Portable index projection: explicit local CLI consumer'
+status: todo
+priority: '2'
+description: >-
+  After the core planner ships, add local-only index generate with recursive
+  generation, --check, --force adoption, actor/CAS receipts, and an
+  installed-tarball portability journey.
+actor: openai/codex
+timestamp: '2026-07-20T01:11:13.878Z'
+---
+# Approved direction
+
+Implement Unit 2 of [Portable generated indexes](../designs/portable-index-projection.md) after the core planner/ownership unit ships.
+
+# Objective
+
+Expose one explicit, local-first CLI consumer that lets a user or agent make a concrete bundle navigable in GitHub, ordinary Markdown editors, copied folders, and skill-free/npm-first environments without risking curated indexes.
+
+# Command contract
+
+```text
+aslite index generate [--dir <bundle>] [--check] [--force] [--actor <name>]
+```
+
+- Whole resolved local bundle is the only v1 scope; recursive completeness is mandatory.
+- Default execution creates missing indexes and refreshes marker-owned indexes.
+- Any unmarked or malformed-marker target refuses before all writes.
+- `--force` explicitly adopts/replaces unmarked indexes and lists every adoption.
+- `--check` runs the identical plan and safety classification but writes nothing. Its structured result distinguishes clean, drift, and refusal without making read-oriented commands mutate.
+- Actor precedence follows flag > `AGENTSTATE_LITE_ACTOR` > absent. Only changed reserved-file writes carry attribution.
+- Receipts report capped path lists and total counts for created, updated, unchanged, adopted, refused, completed, and pending outcomes as applicable. No-op execution exits 0 and writes nothing.
+- First slice is local-only: no `--remote`, no ambient target, and no automatic sync.
+
+# Scope
+
+1. Add command registration, generated CLI reference/help, structured AXI-conformant receipts, and typed error mapping over the core policy.
+2. Resolve display name through the existing bundle-display-name authority, falling back to the project folder rather than `.agentstate-lite`.
+3. Decide and pin `--check` exit semantics within the existing capped taxonomy; agents must be able to branch on structured fields rather than prose.
+4. Mark newly initialized tool-authored root stubs as generated only if doing so cannot change init's existing root identity/version behavior unexpectedly. Existing unmarked roots always require explicit force adoption; do not heuristically match legacy templates.
+5. Add only the minimum README/CLI-reference/skill discoverability needed for the shipped command. Correctness and command knowledge live in the npm CLI, not a skill-only reference.
+
+# Non-goals
+
+- No mutation, sync, read, home, session-start, hook, or View automation.
+- No remote CLI generation, export/package framework, event backbone, managed blocks, or per-directory configuration.
+- No recipe-bundled reserved files; generation happens only after definitions are installed into a concrete host bundle.
+
+# Acceptance journey
+
+In a scratch bundle, using the installed offline npm tarball:
+
+1. Initialize and add root, child, and grandchild concepts.
+2. `index generate --check` reports the full recursive plan and makes zero writes.
+3. The legacy unmarked root makes default generation refuse with zero changed files.
+4. `--force` adopts it; every generated relative link resolves.
+5. Rerun is a no-op.
+6. Editing one concept description makes `--check` report drift; generation updates only affected ancestor indexes.
+7. Removing/changing the marker makes default generation refuse.
+8. No command invokes sync or depends on plugin/skill installation.
+
+# Dependency and delivery
+
+Depends on [Portable index core planner and ownership](prune-regenerate-index-api.md). Deliver as a separate CLI-focused PR after that unit merges, with full repository gate, npm-tarball journey proof, and independent exact-SHA review.
+
+[depends on](prune-regenerate-index-api.md)
