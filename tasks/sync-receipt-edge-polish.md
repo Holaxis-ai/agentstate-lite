@@ -11,8 +11,8 @@ description: >-
   run check passed. This unit intentionally leaves cross-run receipt accounting
   and the other parked PR #13 findings untouched. Previously closed: items 7 + 4
   via PR #104 and item 3 via PR #108.
-actor: mike/codex
-timestamp: '2026-07-19T23:21:16.089Z'
+actor: mike/claude
+timestamp: '2026-07-20T01:40:25.648Z'
 ---
 From the PR#13 three-lane review (all empirical):
 1. Cross-run receipt under-report: fetch-succeeded-then-failed run → NEXT run
@@ -59,3 +59,7 @@ From the PR#13 three-lane review (all empirical):
 14. (error-boundary review, pre-existing) `--body-file <missing>` ENOENT surfaces raw
    RUNTIME/1 while promote's source ENOENT is USAGE naming the file — the
    call-site-knows-the-path translation principle applied unevenly.
+
+
+---
+**Item 2 SHIPPED** (2026-07-19): non-fast-forward push rejection now classifies as a retryable collaboration race with actionable "re-run sync" guidance — codex PR #126 (merge 3878372), independently reviewed (claude line, APPROVE). Parked items remaining: 1/10, 5/9, 6, 8.
