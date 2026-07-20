@@ -2,7 +2,7 @@
 type: Roadmap
 title: agentstate-lite — Roadmap (near-term spine)
 actor: mike/claude
-timestamp: '2026-07-18T13:24:44.273Z'
+timestamp: '2026-07-20T20:13:41.964Z'
 ---
 # agentstate-lite — Roadmap (near-term spine)
 
@@ -11,6 +11,43 @@ reconciling `docs/NORTH-STAR.md` §7 (the strategic staging), `STATUS.md` (what 
 task backlog. The EVENTUAL form is roadmap-items-as-docs under a `Roadmap` kind (see
 [the recipe/cookbook design](designs/recipes.md)); this single doc is the spine until that kind
 exists.
+
+# CURRENT FOCUS — the release push (2026-07-20 founders' call)
+
+A hard scope gate toward getting the product into test users' hands ahead of the astronomy-paper
+press window (~2-3 weeks; downloads could spike when the article lands). THREE non-negotiables —
+everything else is parked behind them. Per the call: "if something doesn't fit within these,
+question whether we should be doing it now."
+
+1. **Name it** — `tasks/npm-package-identity` (P1). One shot at a good public name; check
+   collisions (e.g. an existing "agentstate"). Gates the npm publish and the article narrative.
+2. **Ship via npm** — `tasks/npm-cli-skill-prerelease` (P1, blocked on the name). The CLI + a thin
+   markdown Agent Skill + session-start hooks, installed via npm; then retire the marketplace
+   executable channel (`roadmap-items/distribution-neutral-resources`). npm is the distribution
+   pattern, NOT the skills marketplace.
+3. **One minimally-usable shipped recipe** — `tasks/persona-recipe-product-manager` (P1). The long
+   pole (a mini design effort: kinds + relationships + views, agent-first). OPEN DECISION: which
+   persona ships first — Product Manager, or the "AI power user" pattern (Karpathy/Obsidian-style
+   hot.md / vault / end-of-day agent briefing) that people already improvise and that a warm test
+   user already lives daily.
+
+**Also in-window (lower):** UI mutation — interact with Views, mark a task done (#109 shipped but
+barely tested; needs a real test pass before user hands touch it).
+
+**PARKED behind the push (do the simple way, or defer):**
+- `roadmap-items/bundle-relationships` + `tasks/bundle-relationships-explore` — bundles referencing
+  each other; not needed for the first recipe.
+- A built-in **resource kind** — validated by both founders' independent dogfooding, but "do it the
+  simple way now": keep it recipe-local, NOT a core primitive yet. Raises the user-created-kind vs
+  later-shipped-kind name-collision question — a real design item, deferred.
+- Non-git / repo-root sync for non-developers — medium ROI, unknown effort; the git-branch sync
+  works today.
+- `tasks/bundle-visibility-safeguard` — real (the external-resource-to-sensitive-doc concern), but
+  not a release-push blocker.
+- Change-surface simplification + complexity-audit decompositions
+  (`roadmap-items/change-surface-simplification`, `tasks/alreadyshared-decomposition`,
+  `tasks/typed-view-models`) — restraint stance holds; not now.
+- Separate `@agentstate-lite/core` / `/server` npm packages — the CLI is what ships for the push.
 
 # Now — shipped (this session + prior)
 

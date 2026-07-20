@@ -6,9 +6,10 @@ description: >-
   Manager operating model: data-free Kinds, semantic relationships, references,
   and pre-built Views, installable through init --recipe product-manager or
   recipe add product-manager without a marketplace plugin.
-actor: openai/codex
+actor: mike/claude
 status: todo
-timestamp: '2026-07-20T02:52:40.080Z'
+priority: '1'
+timestamp: '2026-07-20T20:13:42.084Z'
 ---
 # Scope
 
