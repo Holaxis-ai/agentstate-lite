@@ -14,9 +14,9 @@ description: >-
   (conventions/*.md) for the task system, reviewed against real usage, STABLE
   enough to build the board UI on without schema churn. This is the foundation
   the board View (tasks/task-system-board-ui) renders and writes back to.
-actor: mike/claude
-status: todo
+actor: openai/codex
+status: in_progress
 priority: '1'
-timestamp: '2026-07-20T21:23:38.313Z'
+timestamp: '2026-07-20T21:33:56.748Z'
 ---
-
+[implements recommended design](../designs/personal-task-system-kinds.md)

@@ -15,9 +15,9 @@ description: >-
   MECHANISM; the good board View that uses it is the real build. NEXT INCREMENT
   (after ship): the working-memory Focus/Session layer
   (research/ai-power-user-patterns) toward the 'second brain' story.
-actor: mike/claude
+actor: openai/codex
 status: active
-timestamp: '2026-07-20T21:23:56.822Z'
+timestamp: '2026-07-20T21:33:56.605Z'
 ---
 # Sequence (data first, then UI, then package)
 
@@ -30,3 +30,5 @@ timestamp: '2026-07-20T21:23:56.822Z'
 [sequenced unit 2 (board UI + write-back)](../tasks/task-system-board-ui.md)
 
 [sequenced unit 3 (package)](../tasks/recipe-personal-task-system.md)
+
+[data-model decision](../designs/personal-task-system-kinds.md)
