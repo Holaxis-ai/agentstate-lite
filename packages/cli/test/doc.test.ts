@@ -52,6 +52,7 @@ import path from "node:path";
 import {
   initBundle,
   writeDoc,
+  writeDocVersioned,
   readDoc,
   readDocVersioned,
   docVersions,
@@ -64,6 +65,7 @@ import {
   type Version,
 } from "@agentstate-lite/core";
 import { serve, type ServerHandle } from "@agentstate-lite/server";
+import { encode } from "@toon-format/toon";
 
 import { doc, type DocCliDeps } from "../src/commands/doc.js";
 import { guardDroppedLinks } from "../src/commands/doc/common.js";
@@ -2303,6 +2305,187 @@ test("doc history over --remote against serve() (no auth, a HISTORY-KEEPING back
   } finally {
     await server.close();
   }
+});
+
+// ── doc history --limit: bounds the version chain (AXI unbounded-output gap, tasks/doc-history-cap) ─
+//
+// The filesystem backend is single-version (it keeps no history), so ONLY a real history-keeping
+// backend can exercise the cap. These tests boot a real `serve()` over a `MemoryBackend` bundle (a
+// REAL enforced version chain — see this repo's dual-backend tests), mirroring the existing --remote
+// doc-history tests above, and write the doc directly against the engine N times to build a long
+// chain without going through the CLI's write path.
+
+/** Write `n` sequential versions of `id` directly against the engine bundle. */
+async function writeNVersions(bundle: Bundle, id: string, n: number): Promise<void> {
+  for (let i = 0; i < n; i++) {
+    await writeDoc(bundle, { id, frontmatter: { type: "Concept", timestamp: T }, body: `v${i}` });
+  }
+}
+
+test("doc history --limit: default caps a long chain at 20, reports the TRUE total, and the truncation help names both a higher --limit and the --limit 0 all-escape", async () => {
+  const bundle: Bundle = { root: "mem://doc-history-cap-default", backend: new MemoryBackend() };
+  await writeNVersions(bundle, "concepts/many", 25);
+  const server = await bootServerOverBundle(bundle);
+  try {
+    const result = await runDoc(["history", "concepts/many", "--remote", server.url]);
+    assert.equal(result.count, 25, "count reports the TRUE total (all versions), not the shown page (a)");
+    assert.equal(result.shown, 20, "default cap is 20 (b, shown count)");
+    assert.equal((result.versions as unknown[]).length, 20, "the page itself is capped to 20 rows");
+    const help = result.help as string[];
+    assert.ok(
+      help.some((h) => /showing 20 of 25/.test(h) && /--limit 0/.test(h) && /--limit/.test(h)),
+      "truncation help names the escape: a higher --limit, or --limit 0 for all (c)",
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+test("doc history --limit 0: the all-escape returns every version, uncapped, with no shown field", async () => {
+  const bundle: Bundle = { root: "mem://doc-history-cap-zero", backend: new MemoryBackend() };
+  await writeNVersions(bundle, "concepts/many", 25);
+  const server = await bootServerOverBundle(bundle);
+  try {
+    const result = await runDoc(["history", "concepts/many", "--remote", server.url, "--limit", "0"]);
+    assert.equal(result.count, 25);
+    assert.equal((result.versions as unknown[]).length, 25, "--limit 0 returns ALL versions (d)");
+    assert.equal(result.shown, undefined, "nothing was truncated, so no shown field leaks in");
+  } finally {
+    await server.close();
+  }
+});
+
+test("doc history --limit <n>: an explicit in-between limit shows exactly n rows, still newest-first", async () => {
+  const bundle: Bundle = { root: "mem://doc-history-cap-mid", backend: new MemoryBackend() };
+  await writeNVersions(bundle, "concepts/many", 25);
+  const server = await bootServerOverBundle(bundle);
+  try {
+    const result = await runDoc(["history", "concepts/many", "--remote", server.url, "--limit", "10"]);
+    assert.equal(result.count, 25);
+    assert.equal(result.shown, 10);
+    const versions = result.versions as Array<{ timestamp: string }>;
+    assert.equal(versions.length, 10, "an explicit between-cap --limit shows exactly that many (e)");
+  } finally {
+    await server.close();
+  }
+});
+
+test("doc history --limit: a non-integer value is a clean USAGE error (exit 2) carrying THIS command's own message, not a crash", async () => {
+  const bundle: Bundle = { root: "mem://doc-history-cap-bad-limit", backend: new MemoryBackend() };
+  await writeDoc(bundle, { id: "concepts/one", frontmatter: { type: "Concept", timestamp: T }, body: "x" });
+  const server = await bootServerOverBundle(bundle);
+  try {
+    // These three reach OUR validation (node's parseArgs happily hands them through as plain
+    // string values), so they carry the exact tool-native message.
+    for (const bad of ["abc", "1.5", ""]) {
+      await assert.rejects(
+        () =>
+          doc(["history", "concepts/one", "--remote", server.url, "--limit", bad, "--json"], {
+            readStdin: async () => undefined,
+          }),
+        (err: unknown) => {
+          assert.ok(err instanceof CliError, `--limit ${JSON.stringify(bad)} should reject with a CliError`);
+          assert.equal(err.code, "USAGE");
+          assert.equal(err.exitCode, 2);
+          assert.match(err.message, /--limit must be a non-negative integer/);
+          return true;
+        },
+      );
+    }
+  } finally {
+    await server.close();
+  }
+});
+
+test("doc history --limit: a NEGATIVE value is still a clean USAGE error (exit 2), even though node's own parseArgs intercepts a dash-led token before it reaches our validation (matches this repo's existing --limit convention — see sync.test.ts's identical carve-out)", async () => {
+  const bundle: Bundle = { root: "mem://doc-history-cap-negative-limit", backend: new MemoryBackend() };
+  await writeDoc(bundle, { id: "concepts/one", frontmatter: { type: "Concept", timestamp: T }, body: "x" });
+  const server = await bootServerOverBundle(bundle);
+  try {
+    for (const bad of ["-1", "-20"]) {
+      await assert.rejects(
+        () =>
+          doc(["history", "concepts/one", "--remote", server.url, "--limit", bad, "--json"], {
+            readStdin: async () => undefined,
+          }),
+        (err: unknown) => {
+          assert.ok(err instanceof CliError, `--limit ${JSON.stringify(bad)} should reject with a CliError`);
+          assert.equal(err.code, "USAGE");
+          assert.equal(err.exitCode, 2);
+          return true;
+        },
+      );
+    }
+  } finally {
+    await server.close();
+  }
+});
+
+test("doc history --limit 0 is treated as the all-escape, not an error: exits 0 with count===shown-worth of versions", async () => {
+  const bundle: Bundle = { root: "mem://doc-history-cap-zero-not-error", backend: new MemoryBackend() };
+  await writeDoc(bundle, { id: "concepts/one", frontmatter: { type: "Concept", timestamp: T }, body: "x" });
+  const server = await bootServerOverBundle(bundle);
+  try {
+    let out = "";
+    await doc(["history", "concepts/one", "--remote", server.url, "--limit", "0", "--json"], {
+      stdout: (s) => (out += s),
+      readStdin: async () => undefined,
+    });
+    const result = JSON.parse(out) as Record<string, unknown>;
+    assert.equal(result.count, 1);
+    assert.equal((result.versions as unknown[]).length, 1);
+  } finally {
+    await server.close();
+  }
+});
+
+test("doc history byte-identity pin (DoD 4): a single-version filesystem-backed doc's default (no --limit) render carries EXACTLY the pre-cap field set {id,count,versions,help}, in that order — no new fields when total <= cap", async () => {
+  const { dir, cleanup } = await makeBundle();
+  try {
+    const written = await writeDocVersioned(
+      { root: dir },
+      {
+        id: "concepts/pin",
+        frontmatter: { type: "Concept", title: "Pin", actor: "pin-actor", timestamp: T },
+        body: "hello",
+      },
+    );
+
+    // JSON mode: exact key set AND order (deepEqual over Object.keys pins both at once — a `shown`
+    // key sneaking in, or a reordering, both fail this).
+    const result = await runDoc(["history", "concepts/pin", "--dir", dir]);
+    assert.deepEqual(Object.keys(result), ["id", "count", "versions", "help"]);
+    assert.equal(result.count, 1);
+    assert.equal(result.shown, undefined, "no shown field when nothing was truncated");
+    assert.deepEqual(result.versions, [{ version: written.version, actor: "pin-actor", timestamp: T }]);
+    assert.deepEqual(result.help, [
+      `${cliInvocation()} doc update concepts/pin --expected-version ${written.version}`,
+    ]);
+
+    // Default (TOON) mode: the literal rendered bytes, reproduced via the SAME encoder render() uses
+    // internally over the independently-constructed expected object — id/type/title/actor/timestamp/
+    // body are all fixed inputs and the version token is content-addressed, so this is a genuine
+    // byte-for-byte pin of the pre-`--limit` render shape, not an approximation.
+    let raw = "";
+    await doc(["history", "concepts/pin", "--dir", dir], { stdout: (s) => (raw += s), readStdin: async () => undefined });
+    const expected = {
+      id: "concepts/pin",
+      count: 1,
+      versions: [{ version: written.version, actor: "pin-actor", timestamp: T }],
+      help: [`${cliInvocation()} doc update concepts/pin --expected-version ${written.version}`],
+    };
+    assert.equal(raw, `${encode(expected)}\n`);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("doc history --limit --help: documents the flag, the default, and the escape", async () => {
+  let out = "";
+  await doc(["history", "--help"], { stdout: (s) => (out += s), readStdin: async () => undefined });
+  assert.match(out, /--limit <n>/);
+  assert.match(out, /default: 20/);
+  assert.match(out, /unlimited/);
 });
 
 // ── FACET 1: `doc read` shows kind-declared fields (detail view, Fork 3) ────────────────────────

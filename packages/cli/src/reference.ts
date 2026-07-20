@@ -87,9 +87,9 @@ export const COMMAND_GROUPS: CommandGroup[] = [
           "Read a doc, export its raw markdown, export its body with a same-read CAS version, or print one raw field for scripting",
       },
       {
-        usage: "doc history <id> [--remote <url>]",
+        usage: "doc history <id> [--limit <n>] [--remote <url>]",
         summary:
-          "Show a doc's version history (newest first; a history-keeping backend returns the full attributed chain, a local bundle just the current revision) — the tokens for --expected-version",
+          "Show a doc's version history (newest first, capped at 20 by default — --limit 0 for all; a history-keeping backend returns the full attributed chain, a local bundle just the current revision) — the tokens for --expected-version",
       },
       {
         usage: "doc delete <id> [--expected-version <v>] [--remote <url>]",
