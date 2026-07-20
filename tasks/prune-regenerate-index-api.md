@@ -7,10 +7,10 @@ description: >-
   only until PR #127 (the overlapping log-helper prune) merges; then branch from
   fresh origin/main.
 actor: openai/codex-portable-index
-status: in_progress
+status: done
 priority: '2'
 assignee: openai/codex-portable-index
-timestamp: '2026-07-20T01:51:08.149Z'
+timestamp: '2026-07-20T02:15:06.515Z'
 ---
 # Approved direction
 
@@ -83,3 +83,5 @@ Deliver as one core-focused PR with full repository gate and independent exact-S
 # Implementation record — 2026-07-19
 
 Unit 1 is implemented at amended commit `7a9cfc0020af2075f4d974ee7e50431e5809a526` in [PR #128](https://github.com/Holaxis-ai/agentstate-lite/pull/128). The local full repository gate passed (`npm run check`, exit 0), including the 389-case core suite, 34 npm-install proof cases, package verification, skill drift, and 15 Chromium UI/security E2E cases. The first independent review found three fail-closed edge cases (marker vocabulary in ordinary metadata, invalid/extra root metadata, and malformed nested YAML); all are fixed and regression-pinned. Independent re-review approved the exact amended SHA with no remaining findings (focused projection suite 10/10 and core TypeScript build green). GitHub-hosted CI remains a separate signal and is currently queued during the GitHub Actions service incident.
+
+Shipped via PR #128 at merge commit `4e14fa33caa9a24a819ba8cc90e6186fd0f8f6b1` on 2026-07-19.

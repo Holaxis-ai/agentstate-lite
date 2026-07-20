@@ -1,14 +1,15 @@
 ---
 type: Task
 title: 'Portable index projection: explicit local CLI consumer'
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   After the core planner ships, add local-only index generate with recursive
   generation, --check, --force adoption, actor/CAS receipts, and an
   installed-tarball portability journey.
-actor: openai/codex
-timestamp: '2026-07-20T01:11:13.878Z'
+actor: openai/codex-portable-index-cli
+assignee: openai/codex-portable-index-cli
+timestamp: '2026-07-20T02:15:06.641Z'
 ---
 # Approved direction
 
