@@ -10,7 +10,7 @@ actor: openai/codex-portable-index
 status: in_progress
 priority: '2'
 assignee: openai/codex-portable-index
-timestamp: '2026-07-20T01:43:38.078Z'
+timestamp: '2026-07-20T01:50:25.850Z'
 ---
 # Approved direction
 
@@ -82,4 +82,4 @@ Deliver as one core-focused PR with full repository gate and independent exact-S
 
 # Implementation record — 2026-07-19
 
-Unit 1 is implemented at commit `ede6c089b2ff171f19b63953ee719195aca8298d` in [PR #128](https://github.com/Holaxis-ai/agentstate-lite/pull/128). The local full repository gate passed (`npm run check`, exit 0), including the 387-case core suite, 34 npm-install proof cases, package verification, skill drift, and 15 Chromium UI/security E2E cases. Independent exact-SHA review is in progress. GitHub-hosted CI remains a separate signal and may be queued during the current GitHub Actions service incident.
+Unit 1 is implemented at amended commit `7a9cfc0020af2075f4d974ee7e50431e5809a526` in [PR #128](https://github.com/Holaxis-ai/agentstate-lite/pull/128). The local full repository gate passed (`npm run check`, exit 0), including the 389-case core suite, 34 npm-install proof cases, package verification, skill drift, and 15 Chromium UI/security E2E cases. The first independent review found three fail-closed edge cases (marker vocabulary in ordinary metadata, invalid/extra root metadata, and malformed nested YAML); all are fixed and regression-pinned, and exact-SHA re-review is in progress. GitHub-hosted CI remains a separate signal and may be queued during the current GitHub Actions service incident.
