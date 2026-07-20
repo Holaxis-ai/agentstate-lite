@@ -12,9 +12,8 @@
 import path from "node:path";
 
 import { FilesystemBackend } from "./backend.js";
-import { MalformedDocumentError, parseMarkdown, stringifyWithData } from "./frontmatter.js";
+import { MalformedDocumentError, stringifyWithData } from "./frontmatter.js";
 import { parseLinksFromDoc } from "./links.js";
-import { versionedMutation } from "./mutation.js";
 import {
   assertSafeConceptId,
   isReservedFile,
@@ -56,8 +55,8 @@ export interface WriteResult {
   version: Version;
 }
 
-/** Resolve the backend a bundle operation should use (defaults to a filesystem adapter). */
-function backendFor(bundle: Bundle): StorageBackend {
+/** @internal Resolve the backend a bundle operation should use (defaults to a filesystem adapter). */
+export function backendFor(bundle: Bundle): StorageBackend {
   return bundle.backend ?? new FilesystemBackend(bundle.root);
 }
 
@@ -518,109 +517,4 @@ export async function listBlobs(bundle: Bundle, prefix?: string): Promise<BlobKe
  */
 export async function deleteBlob(bundle: Bundle, key: BlobKey, options?: DeleteOptions): Promise<boolean> {
   return backendFor(bundle).deleteBlob(key, options);
-}
-
-// ── reserved files: index.md (§6) & log.md (§7) ───────────────────────────────
-
-/** Read an `index.md` (raw body + declared okf_version for the root index). Null if absent. */
-export async function readIndex(
-  bundle: Bundle,
-  dir = "",
-): Promise<{ body: string; okfVersion?: string } | null> {
-  const raw = await backendFor(bundle).readReserved(dir, "index.md");
-  if (raw === null) return null;
-  const { frontmatter, body } = parseMarkdown(raw.content);
-  const okfVersion = typeof frontmatter.okf_version === "string" ? frontmatter.okf_version : undefined;
-  return okfVersion !== undefined ? { body, okfVersion } : { body };
-}
-
-/**
- * Regenerate a directory's `index.md` for progressive disclosure (§6): concepts
- * grouped by `type`, subdirectories under a "Subdirectories" heading, each a
- * `* [title](child.md) - description` bullet with RELATIVE links (matching the
- * reference `index.py`). The bundle-root index preserves its `okf_version`
- * frontmatter; nested indexes carry none.
- *
- * Directory structure is derived from the backend's concept-id list (a subdir
- * appears when it contains at least one concept beneath it); this keeps index
- * regeneration backend-agnostic rather than assuming a filesystem tree.
- */
-export async function regenerateIndex(bundle: Bundle, dir = ""): Promise<string> {
-  const backend = backendFor(bundle);
-  const dirRel = toPosix(dir).replace(/^\.?\//, "").replace(/\/$/, "");
-  const prefix = dirRel === "" ? "" : `${dirRel}/`;
-  const ids = await backend.list(prefix === "" ? undefined : prefix);
-
-  const conceptsByType = new Map<string, string[]>();
-  const subdirs = new Set<string>();
-  const directIds: ConceptId[] = [];
-  for (const id of ids) {
-    const relToDir = id.slice(prefix.length);
-    const slash = relToDir.indexOf("/");
-    if (slash >= 0) {
-      subdirs.add(relToDir.slice(0, slash)); // deeper concept ⇒ an immediate subdir
-    } else {
-      directIds.push(id); // an immediate concept of this dir
-    }
-  }
-  // Batch-read the immediate concepts in one round-trip (backend-agnostic, not N reads).
-  for (const { doc } of await readManyExisting(backend, directIds)) {
-    const relToDir = doc.id.slice(prefix.length);
-    const { frontmatter } = doc;
-    const type =
-      typeof frontmatter.type === "string" && frontmatter.type.trim() !== "" ? frontmatter.type : "Concept";
-    const title =
-      typeof frontmatter.title === "string" && frontmatter.title.trim() !== "" ? frontmatter.title : relToDir;
-    const desc = typeof frontmatter.description === "string" ? frontmatter.description : "";
-    const bullet = `* [${title}](${relToDir}.md)${desc ? ` - ${desc}` : ""}`;
-    const arr = conceptsByType.get(type) ?? [];
-    arr.push(bullet);
-    conceptsByType.set(type, arr);
-  }
-
-  const sections: string[] = [];
-  for (const type of [...conceptsByType.keys()].sort()) {
-    const bullets = (conceptsByType.get(type) ?? []).sort();
-    sections.push(`# ${type}\n\n${bullets.join("\n")}\n`);
-  }
-  if (subdirs.size > 0) {
-    const bullets = [...subdirs].sort().map((name) => `* [${name}](${name}/index.md)`);
-    sections.push(`# Subdirectories\n\n${bullets.join("\n")}\n`);
-  }
-
-  const name = dirRel === "" ? path.basename(path.resolve(bundle.root)) : dirRel.split("/").pop()!;
-  const body = `# ${name}\n\n${sections.join("\n")}`.trimEnd() + "\n";
-
-  // Bring the index write into the CAS model as well: `versionedMutation` re-reads the current
-  // index WITH its version on EVERY attempt,
-  // assembles the deterministic replacement (preserving the root okf_version declaration), and
-  // compare-and-swaps; a conflict re-reads and re-assembles, bounded-retried. The first-ever
-  // create uses `expectedVersion: null` (expect-absent) so the create path is guarded too.
-  //
-  // NOTE (decision, deliberate — not a bug): the SCAN above (list + batch-read + `body`
-  // assembly) runs ONCE, outside this retry loop — a conflict here re-reads only the tiny
-  // `index.md` file, never re-scans the whole directory. A concept written concurrently with
-  // this regeneration can therefore be missing from the index this call produces even after a
-  // successful CAS retry; the index is self-healing (the next `regenerateIndex` call re-scans
-  // from scratch), and multiplying the scan cost per CAS attempt buys no durable correctness
-  // improvement over that self-healing property.
-  const outcome = await versionedMutation<string, string>({
-    read: async () => {
-      const prior = await backend.readReserved(dirRel, "index.md");
-      return { state: prior?.content, version: prior?.version ?? null };
-    },
-    decide: (priorContent) => {
-      let content: string;
-      if (dirRel === "") {
-        // Preserve/refresh the root okf_version declaration (only the root index may carry frontmatter).
-        const priorOkf = priorContent !== undefined ? parseMarkdown(priorContent).frontmatter.okf_version : undefined;
-        content = stringifyWithData({ okf_version: typeof priorOkf === "string" ? priorOkf : "0.1" }, body);
-      } else {
-        content = body; // nested index.md carries NO frontmatter (§3.1)
-      }
-      return { action: "write", next: content, result: content };
-    },
-    write: (next, expectedVersion) => backend.writeReserved(dirRel, "index.md", next, { expectedVersion }),
-  });
-  return outcome.result;
 }

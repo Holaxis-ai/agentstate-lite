@@ -122,7 +122,9 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   retry (preserving the idempotent `changed:false`). **Reserved files (`index.md`/`log.md`) are
   in the versioning/CAS model now**, not outside it: `readReserved` returns `{content, version}`,
   `writeReserved` honors CAS (FilesystemBackend cross-process lock + hash/rename; MemoryBackend
-  in-memory enforcement), and `regenerateIndex` is read-CAS-write with a bounded retry. `log.md`
+  in-memory enforcement). Portable-index projection preflights ownership across its whole target
+  set, then uses each preflight read's exact version for single-shot per-file CAS; a conflict stops
+  with completed/pending paths so a fresh run can resume without bypassing the global refusal. `log.md`
   remains an optional OKF reserved file carried by the generic seam and git sync; engine mutations
   do not automatically emit provenance entries into it.
 - **Document mutation policy lives below the CLI** in core's `mutateDocument` service

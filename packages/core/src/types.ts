@@ -172,8 +172,8 @@ export interface WriteOptions {
    * throws a typed `VersionConflict`. When set to `null`, the write is an
    * **expect-absent create**: it succeeds ONLY if `id` does not currently exist;
    * otherwise it throws `VersionConflict` (with `expected: null`, `actual: <current>`).
-   * This closes the seam's create-race gap — bundle initialization and `regenerateIndex`
-   * use it for first-ever-create paths instead of an unconditional write. When omitted
+   * This closes the seam's create-race gap — bundle initialization and portable-index
+   * projection use it for first-ever-create paths instead of an unconditional write. When omitted
    * entirely, the write is UNCONDITIONAL (last-writer-wins, the historical default).
    * Passing a version token for a not-yet-existing document is also a conflict (its
    * current version is "none").

@@ -381,8 +381,8 @@ export async function addLink(
   }
 
   // Versioned-read + compare-and-swap-write, riding the shared `versionedMutation` primitive
-  // (core's ONE read-decide-CAS-retry boundary — CLAUDE.md gate 3, the same one
-  // `regenerateIndex` and document mutation use): read the source WITH its version, check
+  // (core's ONE independently retryable read-decide-CAS boundary — CLAUDE.md gate 3, the same one
+  // document mutation uses): read the source WITH its version, check
   // idempotency, then write the appended link CONDITIONAL on that version. On a `VersionConflict`
   // (a concurrent writer moved the doc between our read and write), `decide` re-runs — re-reading
   // and re-checking idempotency (the racing write may have added this very link → converge to
