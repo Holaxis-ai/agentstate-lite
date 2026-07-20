@@ -2,7 +2,7 @@
 type: Roadmap
 title: agentstate-lite — Roadmap (near-term spine)
 actor: mike/claude
-timestamp: '2026-07-20T20:13:41.964Z'
+timestamp: '2026-07-20T20:51:53.905Z'
 ---
 # agentstate-lite — Roadmap (near-term spine)
 
@@ -25,13 +25,18 @@ question whether we should be doing it now."
    markdown Agent Skill + session-start hooks, installed via npm; then retire the marketplace
    executable channel (`roadmap-items/distribution-neutral-resources`). npm is the distribution
    pattern, NOT the skills marketplace.
-3. **One minimally-usable shipped recipe** — `tasks/persona-recipe-product-manager` (P1). The long
-   pole (a mini design effort: kinds + relationships + views, agent-first). OPEN DECISION: which
-   persona ships first — Product Manager, or the "AI power user" pattern (Karpathy/Obsidian-style
-   hot.md / vault / end-of-day agent briefing) that people already improvise and that a warm test
-   user already lives daily.
+3. **One minimally-usable shipped recipe** — `tasks/recipe-personal-task-system` (P1). DECIDED
+   2026-07-20: a **Personal Task System** (agent-first, UI-writable), not the PM re-skin. Concrete,
+   fast, demoable, and it doubles as the real test of #109 (mark-done UI write) and the recipe
+   PORTABILITY proof (extract the data-free recipe from the founder's real, private, battle-tested
+   task bundle — structure only, no private data). Differentiation is the framing: your agent runs
+   your tasks and you check them off live in a View — the collaboration loop, not a checklist.
+   NEXT INCREMENT (after ship): the working-memory `Focus`/`Session` layer
+   (`research/ai-power-user-patterns`) growing on top toward the "second brain" story. PM recipe
+   (`tasks/persona-recipe-product-manager`) deferred to a later candidate.
 
-**Also in-window (lower):** UI mutation — interact with Views, mark a task done (#109 shipped but
+**Also in-window — now folded into #3:** UI mutation — interact with Views, mark a task done (#109
+shipped but
 barely tested; needs a real test pass before user hands touch it).
 
 **PARKED behind the push (do the simple way, or defer):**
