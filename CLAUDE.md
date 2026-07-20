@@ -228,8 +228,11 @@ bundle-relative**.
   `npm run build:plugin-bundle`.
   **Always build from the REPO ROOT** — a package-scoped build leaves sibling `dist/`s stale and
   test files that import them crash confusingly. `npm run build` bundles the CLI to
-  `packages/cli/dist/agentstate-lite.mjs` (esbuild). Smoke-test the built CLI
-  (`node packages/cli/dist/agentstate-lite.mjs …`) — at minimum `init`, `doc write`/`doc read`,
+  `packages/cli/dist/agentstate-lite.mjs` (esbuild). Invoke the freshly-built CLI in-repo via the
+  repo-root **`./aslite`** shim (`./aslite doc write …`) — a short, shell-agnostic wrapper over that
+  dist; prefer it over the long `node packages/cli/dist/…` path and never alias the path into a shell
+  variable (`B="node …"; $B …` breaks under zsh, which does not word-split). The shim is dev-only and
+  never ships (`files: ["dist"]`). Smoke-test the built CLI — at minimum `init`, `doc write`/`doc read`,
   `list`, `link add`/`show`, and `status` on `examples/sample-bundle`. Run
   `npm run verify:npm-package` to prove the exact tarball allowlist, zero-runtime-dependency
   boundary, both command names on an isolated `PATH`, an offline create/query workflow, and no
