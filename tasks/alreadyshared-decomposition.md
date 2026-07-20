@@ -4,39 +4,39 @@ title: >-
   Decompose alreadyShared (interrupted-establish crash-recovery) —
   behavior-frozen
 description: >-
-  From a complexity analysis (Mike-shared 2026-07-19), VERIFIED against the code
-  this session. alreadyShared
-  (packages/cli/src/commands/sync/establish-committed.ts:323-417, ~95 lines) is
-  the one function in the tree where branch density genuinely hurts readability
-  (~5/10): a nested if(localBranchExists CLEANUP)/else if(marker){deep
-  if/else-if ladder}/else that mixes FOUR concerns in one body — state
-  detection, marker-provenance classification (contained / lost-race /
-  unverifiable / shallow), the one git clear-mutation (createRemovalCommit +
-  branch), and record/note assembly. The nested arms handle shallow-repo,
-  lost-race, contained-marker, offline, tree-changed, and detached-head cases
-  inline, each with a --yes vs !--yes fork. CONTAINED (one file, one narrow
-  purpose: crash-recovery of an interrupted committed-establish), so a
-  hard-to-follow function, NOT a system-wide god function — hence MILD and
-  DEFERRED, not urgent. RISK NOTE: this is interrupted-state recovery code — the
-  class where a careless refactor introduces a recovery bug that's hard to test.
-  So this is a PARITY-CONTRACT-tier unit: (1) characterize the current arms with
-  fixture tests FIRST — {shallow, lost-race, unverifiable-marker, offline,
-  tree-changed, detached-head, contained-clear} x {--yes, !--yes} — capturing
-  exact emitted records/notes/errors from the PRE-change code; (2) extract by
-  responsibility (a marker-provenance classifier returning a typed verdict, a
-  state detector, the clear-mutation) so the top-level reads as a flat decision
-  over named states; (3) outcomes byte-identical, fixtures as the frozen
-  contract. No behavior change. Priority low. Parent:
-  roadmap-items/change-surface-simplification (candidate shelf, alongside the
-  trigger-gated porcelain decomposition). PAIRED CANDIDATE DECLINED: the same
-  analysis flagged docUpdate (update.ts:209-436, ~227 lines) — evaluated and NOT
-  filed. Verified it's validation gates + ONE delegated mutateDoc call
-  (buildCandidate closure; mutateDoc owns the read-decide-CAS-retry loop), and
-  parseDocUpdateArgs (~120 lines) is a cohesive single-purpose grammar walk.
-  Long-but-cohesive, not a god function; refactoring it would be churn with no
-  demand signal. Recorded so it isn't re-litigated.
+  From TWO complexity analyses (Mike-shared 2026-07-19), each VERIFIED against
+  the code this session. SCOPE — behavior-frozen decomposition of alreadyShared
+  (packages/cli/src/commands/sync/establish-committed.ts:323-417, ~95 lines),
+  the one function where branch density genuinely hurts readability (~5/10): a
+  nested if(localBranchExists CLEANUP)/else if(marker){deep ladder}/else mixing
+  state detection, marker-provenance classification
+  (contained/lost-race/unverifiable/shallow), the createRemovalCommit
+  clear-mutation, and record/note assembly. Arms: shallow, lost-race,
+  unverifiable, offline, tree-changed, detached-head, contained-clear, each x
+  {--yes,!--yes}. FOLDED IN (analysis #2 finding 1): its signature is six bare
+  positionals (top, inv, mode, yes, fetchOk, stdout) with TWO adjacent booleans
+  (yes/fetchOk) — transposable in principle, though VERIFIED only ONE call site
+  (establish-committed.ts:282), so latent not active. Convert to an options/deps
+  object as part of this same touch (the codebase convention — HomeDeps etc.);
+  note establish.ts's similar multi-positional signature as a sibling to convert
+  in the same spirit. CONTAINED, MILD, DEFERRED (shelf, not queue) —
+  parity-contract tier: (1) characterize every arm with fixtures capturing
+  PRE-change emitted records/notes/errors; (2) extract a marker-provenance
+  classifier + state detector + the clear-mutation, options-object signature;
+  (3) byte-identical outcomes. Parent:
+  roadmap-items/change-surface-simplification. --- DECLINED CANDIDATES
+  (evaluated, NOT filed, recorded so they aren't re-litigated): (a) docUpdate
+  (update.ts:209-436) — long but delegated to mutateDoc + cohesive
+  parseDocUpdateArgs; refactoring = churn, no signal. (b) Deep-ish ../../
+  relative imports (9 each in doc/update.ts, doc/write.ts) — analysis itself
+  calls it 'not pathological'; normal two-level-folder importing, no correctness
+  angle; a barrel trades one indirection for another. (c) Wide board-git barrel
+  breadth (home.ts/establish.ts import many symbols) — LEGITIMATE coupling (the
+  CLI genuinely uses many git primitives); the guarded cost (rename → edit
+  import lists) is low-frequency + IDE-rename-assisted; the import boundary is
+  clean. At most a watch-item if primitive renames become frequent.
 actor: mike/claude
 status: todo
-timestamp: '2026-07-20T01:18:33.426Z'
+timestamp: '2026-07-20T01:22:28.461Z'
 ---
-Evaluation discipline: agreed on the one function where branch density measurably hurts (and where readability underwrites correctness confidence in a recovery path); declined the one the analysis itself exonerated. Restraint stance: this ships only if/when it earns a builder — it's shelf, not queue.
+Evaluation discipline across six flagged smells in two analyses: agreed on the one function where branch density measurably hurts (+ its transposable-boolean signature, folded), declined the four that were cohesive, non-pathological, or legitimate coupling. Restraint stance: ships only if/when it earns a builder.
