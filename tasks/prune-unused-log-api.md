@@ -4,11 +4,14 @@ title: Prune unused high-level log.md API while preserving OKF interoperability
 status: in_progress
 priority: '2'
 description: >-
-  Remove the unused readLog/appendLog convenience API and its helper-specific
-  tests and claims, while preserving log.md reservation, generic reserved-file
-  CAS/wire/sync support, and a future deterministic projection path.
+  IN REVIEW — PR #127 removes the unused readLog/appendLog API and helper-only
+  tests while preserving log.md reservation, generic reserved-file CAS/wire/sync
+  support, and future deterministic projection optionality. Exact SHA
+  4ae8518f369ff3be9945f25cd8afc4baad8c88b1 independently APPROVED after one
+  stale-comment finding was fixed. Local npm run check passed; awaiting required
+  GitHub CI and merge.
 actor: openai/codex
-timestamp: '2026-07-20T00:43:46.018Z'
+timestamp: '2026-07-20T00:54:43.470Z'
 ---
 # Problem
 
