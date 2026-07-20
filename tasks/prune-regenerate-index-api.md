@@ -9,7 +9,8 @@ description: >-
 actor: openai/codex
 status: blocked
 priority: '2'
-timestamp: '2026-07-20T01:11:13.750Z'
+assignee: openai/codex-portable-index
+timestamp: '2026-07-20T01:11:53.939Z'
 ---
 # Approved direction
 
