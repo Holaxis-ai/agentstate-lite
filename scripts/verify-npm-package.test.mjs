@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import {
   assertCommandInBin,
   assertPackageContract,
+  expectedTarballFiles,
   resolveCommandOnPath,
   sanitizedNpmEnvironment,
 } from "./verify-npm-package.mjs";
@@ -18,17 +19,20 @@ import { npmInvocation as uiBuildNpmInvocation } from "../packages/cli/scripts/e
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+const referenceFiles = ["views/pulse.html", "views/references/view-authoring-v0.md"];
 const receipt = {
   files: [
     { path: "package.json" },
     { path: "dist/agentstate-lite.mjs" },
     { path: "README.md" },
     { path: "LICENSE" },
+    { path: "SKILL.md" },
+    ...referenceFiles.map((relative) => ({ path: `references/${relative}` })),
   ],
 };
 const manifest = {
   name: "aslite",
-  files: ["dist"],
+  files: ["dist", "SKILL.md", "references"],
   bin: {
     aslite: "dist/agentstate-lite.mjs",
     "agentstate-lite": "dist/agentstate-lite.mjs",
@@ -36,22 +40,50 @@ const manifest = {
   devDependencies: { local: "*" },
 };
 
+test("the expected tarball set is the fixed base plus the references tree", () => {
+  assert.deepEqual(expectedTarballFiles(["a.md", "b/c.md"]), [
+    "LICENSE",
+    "README.md",
+    "SKILL.md",
+    "dist/agentstate-lite.mjs",
+    "package.json",
+    "references/a.md",
+    "references/b/c.md",
+  ]);
+});
+
 test("the npm package contract accepts the intended self-contained artifact", () => {
-  assert.doesNotThrow(() => assertPackageContract(receipt, manifest));
+  assert.doesNotThrow(() => assertPackageContract(receipt, manifest, referenceFiles));
 });
 
 test("the npm package contract rejects surface and runtime dependency drift", () => {
   assert.throws(
-    () => assertPackageContract({ files: [...receipt.files, { path: "src/index.ts" }] }, manifest),
+    () =>
+      assertPackageContract({ files: [...receipt.files, { path: "src/index.ts" }] }, manifest, referenceFiles),
     /must contain only/,
   );
   assert.throws(
-    () => assertPackageContract(receipt, { ...manifest, dependencies: { pako: "^2" } }),
+    () => assertPackageContract(receipt, { ...manifest, files: ["dist"] }, referenceFiles),
+    /deep-equal/,
+  );
+  assert.throws(
+    () => assertPackageContract(receipt, { ...manifest, dependencies: { pako: "^2" } }, referenceFiles),
     /dependencies must be empty/,
   );
   assert.throws(
-    () => assertPackageContract(receipt, { ...manifest, devDependencies: { local: "workspace:*" } }),
+    () => assertPackageContract(receipt, { ...manifest, devDependencies: { local: "workspace:*" } }, referenceFiles),
     /workspace: references/,
+  );
+});
+
+test("the npm package contract rejects a second .mjs executable even when the file set matches", () => {
+  const smuggled = [...referenceFiles, "scripts/helper.mjs"];
+  const smuggledReceipt = {
+    files: [...receipt.files, { path: "references/scripts/helper.mjs" }],
+  };
+  assert.throws(
+    () => assertPackageContract(smuggledReceipt, manifest, smuggled),
+    /exactly one \.mjs executable/,
   );
 });
 

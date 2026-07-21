@@ -10,7 +10,12 @@ import { fileURLToPath } from "node:url";
 const execFileAsync = promisify(execFile);
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(scriptPath), "..");
-const expectedFiles = ["LICENSE", "README.md", "dist/agentstate-lite.mjs", "package.json"];
+const baseExpectedFiles = ["LICENSE", "README.md", "SKILL.md", "dist/agentstate-lite.mjs", "package.json"];
+
+/** The exact expected tarball file set: the fixed base plus the committed references/ tree. */
+export function expectedTarballFiles(referenceFiles) {
+  return [...baseExpectedFiles, ...referenceFiles.map((relative) => `references/${relative}`)].sort();
+}
 const runtimeDependencyFields = [
   "dependencies",
   "optionalDependencies",
@@ -61,14 +66,20 @@ function hasWorkspaceReference(value) {
   return false;
 }
 
-export function assertPackageContract(receipt, manifest) {
+export function assertPackageContract(receipt, manifest, referenceFiles) {
+  const tarballFiles = receipt.files.map((file) => file.path).sort();
   assert.deepEqual(
-    receipt.files.map((file) => file.path).sort(),
-    expectedFiles,
-    "the npm tarball must contain only the CLI, manifest, README, and license",
+    tarballFiles,
+    expectedTarballFiles(referenceFiles),
+    "the npm tarball must contain only the CLI, manifest, README, license, SKILL.md, and references/",
+  );
+  assert.deepEqual(
+    tarballFiles.filter((file) => file.endsWith(".mjs")),
+    ["dist/agentstate-lite.mjs"],
+    "the tarball must carry exactly one .mjs executable (the dist bundle)",
   );
   assert.equal(manifest.name, "aslite");
-  assert.deepEqual(manifest.files, ["dist"]);
+  assert.deepEqual(manifest.files, ["dist", "SKILL.md", "references"]);
   assert.deepEqual(manifest.bin, {
     aslite: "dist/agentstate-lite.mjs",
     "agentstate-lite": "dist/agentstate-lite.mjs",
@@ -214,7 +225,30 @@ export async function verifyNpmPackage() {
         ? path.join(prefix, "node_modules", "aslite")
         : path.join(prefix, "lib", "node_modules", "aslite");
     const manifest = parseJson(await readFile(path.join(installedRoot, "package.json"), "utf8"), "installed package.json");
-    assertPackageContract(receipt, manifest);
+    const committedSkillRoot = path.join(repoRoot, "packages", "cli");
+    const referenceFiles = (await listFiles(path.join(committedSkillRoot, "references"))).map((relative) =>
+      relative.split(path.sep).join("/"),
+    );
+    assertPackageContract(receipt, manifest, referenceFiles);
+
+    // The shipped skill assets are byte-identical to the repo-committed generated ones (which
+    // check:skill pins to the renderer + resource manifest).
+    for (const relative of ["SKILL.md", ...referenceFiles.map((file) => `references/${file}`)]) {
+      const installed = await readFile(path.join(installedRoot, relative));
+      const committed = await readFile(path.join(committedSkillRoot, relative));
+      assert.ok(installed.equals(committed), `${relative} in the installed package differs from the committed copy`);
+    }
+    const installedSkill = await readFile(path.join(installedRoot, "SKILL.md"), "utf8");
+    assert.ok(
+      !installedSkill.includes("npx -y agentstate-lite"),
+      "the installed SKILL.md must not use the retired npm coordinate",
+    );
+    for (const marker of ["plugins/cache", 'ASLITE="$(']) {
+      assert.ok(
+        !installedSkill.includes(marker),
+        `the installed SKILL.md must not carry the marketplace-cache resolver (found ${JSON.stringify(marker)})`,
+      );
+    }
 
     const binDir = process.platform === "win32" ? prefix : path.join(prefix, "bin");
     const commandEnv = {

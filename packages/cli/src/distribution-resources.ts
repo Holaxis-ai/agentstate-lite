@@ -1,7 +1,9 @@
 // One inventory owns auxiliary contracts, portable recipes, examples, and fixtures. A channel is
-// only a projection target; it is never the source of truth. Today the skill projects these files
-// under its references/ folder while npm deliberately projects none. Future npm packaging adds an
-// npm target here instead of inventing a second copy manifest.
+// only a projection target; it is never the source of truth. Both channels project these files
+// under their references/ folder: the skill under plugins/…/skills/agentstate-lite/references/,
+// npm under packages/cli/references/ (committed, shipped in the tarball via package.json `files`).
+// The npm projection MIRRORS the skill projection dest-for-dest so one dest namespace serves the
+// command/capability tables for both channels.
 
 export const DISTRIBUTION_CHANNELS = ["skill", "npm"] as const;
 export type DistributionChannel = (typeof DISTRIBUTION_CHANNELS)[number];
@@ -29,19 +31,19 @@ export interface ProjectedResource {
 
 type SourceDestination = readonly [src: string, dest: string];
 
-function skillOnly(role: ResourceRole, entries: readonly SourceDestination[]): DistributionResource[] {
-  return entries.map(([src, dest]) => ({ src, role, targets: { skill: dest } }));
+function allChannels(role: ResourceRole, entries: readonly SourceDestination[]): DistributionResource[] {
+  return entries.map(([src, dest]) => ({ src, role, targets: { skill: dest, npm: dest } }));
 }
 
 export const DISTRIBUTION_RESOURCES: DistributionResource[] = [
-  ...skillOnly("operating-reference", [
+  ...allChannels("operating-reference", [
     ["examples/views/references/view-authoring-v0.md", "views/references/view-authoring-v0.md"],
   ]),
 
   // Bundle View worked examples. View-bearing recipes carry their own required operating model.
   // Both columns renamed pages→views with the kind (the dest column is the skill's shipped
   // resource namespace — regenerated atomically with the SKILL.md prose that points at it).
-  ...skillOnly("worked-example", [
+  ...allChannels("worked-example", [
     ["examples/views/pulse.html", "views/pulse.html"],
     ["examples/views/roadmap.html", "views/roadmap.html"],
     ["examples/views/about.html", "views/about.html"],
@@ -52,7 +54,7 @@ export const DISTRIBUTION_RESOURCES: DistributionResource[] = [
   ]),
 
   // Installable definitions: the Claims example and the complete Review Workflow package.
-  ...skillOnly("portable-recipe", [
+  ...allChannels("portable-recipe", [
     ["examples/recipes/claims/recipe.md", "recipes/claims/recipe.md"],
     ["examples/recipes/claims/conventions/claim.md", "recipes/claims/conventions/claim.md"],
     ["examples/recipes/review-workflow/recipe.md", "recipes/review-workflow/recipe.md"],
@@ -76,7 +78,7 @@ export const DISTRIBUTION_RESOURCES: DistributionResource[] = [
   ]),
 
   // Externally-shaped OKF interoperability fixture; never installed into an ordinary bundle.
-  ...skillOnly("interop-fixture", [
+  ...allChannels("interop-fixture", [
     ["examples/sample-bundle/index.md", "sample-bundle/index.md"],
     ["examples/sample-bundle/log.md", "sample-bundle/log.md"],
     ["examples/sample-bundle/concepts/index.md", "sample-bundle/concepts/index.md"],
@@ -99,8 +101,10 @@ export function projectResources(channel: DistributionChannel): ProjectedResourc
   });
 }
 
-/** Current plugin projection. npm remains intentionally empty until its resource UX is chosen. */
+/** The plugin-skill projection (plugins/…/skills/agentstate-lite/references/). */
 export const SKILL_RESOURCES = projectResources("skill");
+/** The npm projection (packages/cli/references/, shipped in the tarball) — mirrors SKILL_RESOURCES. */
+export const NPM_RESOURCES = projectResources("npm");
 
 // NOT DISTRIBUTED: the wire-protocol v0.1 contract currently lives only as project-bundle doc
 // `docs/wire-protocol`. Shipping it requires a tracked distribution-neutral source or a
@@ -108,7 +112,8 @@ export const SKILL_RESOURCES = projectResources("skill");
 
 /**
  * Every command NAME (as {@link commandName} in reference.ts would extract it from a usage
- * string) mapped to the SKILL_RESOURCES `dest`s its advertised capability depends on. `[]` means
+ * string) mapped to the shipped-reference `dest`s its advertised capability depends on. Because
+ * the npm projection mirrors the skill projection, ONE table serves both channels. `[]` means
  * self-contained — true of most commands. Checked for exhaustiveness against COMMAND_GROUPS by
  * test/skill-distribution.test.ts.
  */
@@ -141,16 +146,16 @@ export const SKILL_COMMAND_RESOURCES: Record<string, string[]> = {
   "hook install|status|uninstall": [],
 };
 
-/** One prose-level tripwire over the rendered skill projection. */
+/** One prose-level tripwire over BOTH rendered SKILL.md channels. */
 export interface SkillCapabilityPattern {
   pattern: RegExp;
   requires: string[];
 }
 
 /**
- * Checked against the ACTUAL rendered skill-target SKILL.md by test/skill-distribution.test.ts,
- * which fails on a DEAD pattern (one that matches nothing in the rendered text) as well as on a
- * `requires` entry missing from SKILL_RESOURCES.
+ * Checked against the ACTUAL rendered SKILL.md of each channel by test/skill-distribution.test.ts,
+ * which fails on a DEAD pattern (one that matches nothing in either rendered text) as well as on a
+ * `requires` entry missing from a channel's projection.
  *
  * Honest limit: this cannot recognize a semantically novel capability described in prose that no
  * pattern below anticipates — command-shaped coverage comes from SKILL_COMMAND_RESOURCES' exhaustiveness
