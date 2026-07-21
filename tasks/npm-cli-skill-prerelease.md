@@ -4,13 +4,14 @@ title: 'npm prerelease: authoritative CLI plus explicitly installable Agent Skil
 status: in_progress
 priority: '1'
 description: >-
-  PR #134 MERGED to main (c710ec6). PR2 feat/aslite-skill-channel rebased onto
-  main @ 1633c0b+1c76855, gates green, pushed — ready for Brian to open+merge.
-  Docs-convention branch docs/pr-fix-commit-convention @ e0b9e9a also awaiting
-  PR open. Then: Brian tests packed tarball locally (walkthrough delivered), npm
-  publish (human-gated), founder proof.
-actor: anthropic/claude
-timestamp: '2026-07-21T16:06:19.652Z'
+  PR #134 merged. PR #136 @ 1c76855 independently reviewed: CHANGES REQUESTED
+  for foreign temp-file deletion before refusal, non-recoverable manifest-first
+  upgrade failure, broken cwd-relative installed-reference commands, and
+  non-convergent empty-directory type drift. Exact-SHA CI and tarball proof are
+  green; fix and revalidate before merge. Then human-gated npm publish and
+  founder proof.
+actor: codex-reviewer
+timestamp: '2026-07-21T16:39:31.404Z'
 ---
 # Behavioral claim
 
