@@ -17,7 +17,7 @@ read and write a local OKF knowledge bundle (context notes, docs, cross-links, l
 This skill bundles a **self-contained** `agentstate-lite` CLI at `scripts/agentstate-lite` (a
 committed, zero-dependency `.mjs` esbuild bundle, run through a small bash shim). It runs under
 plain `node >= 20` — there is **no install step, no `npm install`, and no `node_modules`**. This
-is a SEPARATE distribution channel from the published npm package (`npx -y agentstate-lite`);
+is a SEPARATE distribution channel from the published npm package (`npx -y aslite`);
 both wrap the identical CLI source, so behavior and output are identical.
 
 ## Invocation — it is NOT on PATH
@@ -70,7 +70,7 @@ and stops, rather than silently handing you an empty command.
 **Runtime-hint note.** Every follow-up command the CLI itself prints (`help:` fields, error
 hints) uses its own resolved invocation. Off `PATH`, running the skill bundle now prints its own
 resolved absolute path there — directly runnable as printed, no substitution needed. If a bare
-`agentstate-lite` or an `npx -y agentstate-lite …` prefix ever shows up instead (e.g. a
+`aslite`/`agentstate-lite` or an `npx -y aslite …` prefix ever shows up instead (e.g. a
 different install answered the `PATH` probe), swap that leading token for `"$ASLITE"` and run
 the rest of the line unchanged.
 

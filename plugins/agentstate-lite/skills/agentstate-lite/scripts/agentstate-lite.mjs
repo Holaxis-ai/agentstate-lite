@@ -4665,62 +4665,6 @@ function mergeHomeHeader(header, output) {
 }
 
 // ../../node_modules/axi-sdk-js/dist/hooks.js
-function isManagedHook(hook2, marker) {
-  return typeof hook2?.command === "string" && hook2.command.includes(marker);
-}
-function computeSessionStartHookUpdate(settings, spec) {
-  const updated = structuredClone(settings);
-  let changed = false;
-  if (!updated.hooks) {
-    updated.hooks = {};
-    changed = true;
-  }
-  if (Array.isArray(updated.hooks.session_start)) {
-    const legacyHooks = updated.hooks.session_start.filter((hook2) => !isManagedHook(hook2, spec.marker));
-    if (legacyHooks.length !== updated.hooks.session_start.length) {
-      changed = true;
-      if (legacyHooks.length === 0) {
-        delete updated.hooks.session_start;
-      } else {
-        updated.hooks.session_start = legacyHooks;
-      }
-    }
-  }
-  if (!Array.isArray(updated.hooks.SessionStart)) {
-    updated.hooks.SessionStart = [];
-    changed = true;
-  }
-  for (const group of updated.hooks.SessionStart) {
-    if (!Array.isArray(group.hooks)) {
-      continue;
-    }
-    for (const hook2 of group.hooks) {
-      if (!isManagedHook(hook2, spec.marker)) {
-        continue;
-      }
-      const timeout = spec.timeoutSeconds ?? 10;
-      const isCorrect = hook2.command === spec.command && hook2.type === "command" && hook2.timeout === timeout;
-      if (isCorrect && !changed) {
-        return [settings, false];
-      }
-      hook2.command = spec.command;
-      hook2.type = "command";
-      hook2.timeout = timeout;
-      return [updated, true];
-    }
-  }
-  updated.hooks.SessionStart.push({
-    matcher: "",
-    hooks: [
-      {
-        type: "command",
-        command: spec.command,
-        timeout: spec.timeoutSeconds ?? 10
-      }
-    ]
-  });
-  return [updated, true];
-}
 function computeCodexConfigUpdate(content) {
   const newline = content.includes("\r\n") ? "\r\n" : "\n";
   const normalized = content.length === 0 ? "" : content;
@@ -9227,8 +9171,8 @@ import { fileURLToPath } from "node:url";
 import { realpathSync as realpathSync6 } from "node:fs";
 import { delimiter, join as join3 } from "node:path";
 import { homedir as homedir3 } from "node:os";
-var PACKAGE_NAME = "agentstate-lite";
-var BIN_NAMES = ["agentstate-lite", "aslite"];
+var PACKAGE_NAME = "aslite";
+var BIN_NAMES = ["aslite", "agentstate-lite"];
 function collapseHomeDirectory2(p) {
   const home2 = homedir3();
   if (home2 && (p === home2 || p.startsWith(home2 + "/"))) {
@@ -16591,7 +16535,17 @@ import path19 from "node:path";
 import { parseArgs as parseArgs22 } from "node:util";
 
 // src/commands/hook.ts
-import { existsSync as existsSync6, readFileSync as readFileSync4, writeFileSync as writeFileSync3, rmSync as rmSync2 } from "node:fs";
+import {
+  chmodSync,
+  existsSync as existsSync6,
+  lstatSync as lstatSync2,
+  readFileSync as readFileSync4,
+  realpathSync as realpathSync7,
+  renameSync as renameSync2,
+  rmSync as rmSync2,
+  statSync as statSync4,
+  writeFileSync as writeFileSync3
+} from "node:fs";
 import { homedir as homedir7 } from "node:os";
 import { join as join8, dirname as dirname3 } from "node:path";
 import { mkdirSync as mkdirSync2 } from "node:fs";
@@ -16629,16 +16583,89 @@ Options:
   -h, --help        Show this help
 `;
 var HOOK_MARKER = "agentstate-lite";
+var NEW_BIN_COMMAND_RE = /^\s*(?:"(?:[^"]*\/)?aslite"|(?:[^\s"]*\/)?aslite)(?:\s|$)/;
+function isManagedHookCommand(command) {
+  return command.includes(HOOK_MARKER) || NEW_BIN_COMMAND_RE.test(command);
+}
 var HOOK_TIMEOUT_SECONDS = 10;
 var HOOK_SUBCOMMAND = "session-start";
 var OPENCODE_PLUGIN_FILENAME = "axi-agentstate-lite.js";
 var OPENCODE_MANAGED_MARKER = `axi-sdk-js managed opencode plugin: ${HOOK_MARKER}`;
 function sessionStartHookCommand(base = hookCommand()) {
   const quoted = /\s/.test(base) ? JSON.stringify(base) : base;
-  return `${quoted} ${HOOK_SUBCOMMAND}`;
+  const command = `${quoted} ${HOOK_SUBCOMMAND}`;
+  if (!isManagedHookCommand(command)) {
+    throw new Error(
+      `composed hook command ${JSON.stringify(command)} would not be recognized as managed \u2014 refusing to install an orphan hook`
+    );
+  }
+  return command;
 }
-function isManagedHook2(hook2) {
-  return typeof hook2?.command === "string" && hook2.command.includes(HOOK_MARKER);
+function isManagedHook(hook2) {
+  return typeof hook2?.command === "string" && isManagedHookCommand(hook2.command);
+}
+function computeSessionStartHookInstall(settings, spec) {
+  const updated = structuredClone(settings);
+  let changed = false;
+  if (!updated.hooks) {
+    updated.hooks = {};
+    changed = true;
+  }
+  const hooks = updated.hooks;
+  if (Array.isArray(hooks.session_start)) {
+    const kept = hooks.session_start.filter((h) => !isManagedHook(h));
+    if (kept.length !== hooks.session_start.length) {
+      changed = true;
+      if (kept.length === 0) delete hooks.session_start;
+      else hooks.session_start = kept;
+    }
+  }
+  if (!Array.isArray(hooks.SessionStart)) {
+    hooks.SessionStart = [];
+    changed = true;
+  }
+  const timeout = spec.timeoutSeconds ?? HOOK_TIMEOUT_SECONDS;
+  let rewritten = false;
+  const newGroups = [];
+  for (const group of hooks.SessionStart) {
+    if (!Array.isArray(group?.hooks)) {
+      newGroups.push(group);
+      continue;
+    }
+    const keptHooks = [];
+    for (const h of group.hooks) {
+      if (!isManagedHook(h)) {
+        keptHooks.push(h);
+        continue;
+      }
+      if (rewritten) {
+        changed = true;
+        continue;
+      }
+      rewritten = true;
+      if (h.command !== spec.command || h.type !== "command" || h.timeout !== timeout) {
+        changed = true;
+        h.command = spec.command;
+        h.type = "command";
+        h.timeout = timeout;
+      }
+      keptHooks.push(h);
+    }
+    if (keptHooks.length !== group.hooks.length) {
+      if (keptHooks.length === 0) continue;
+      group.hooks = keptHooks;
+    }
+    newGroups.push(group);
+  }
+  hooks.SessionStart = newGroups;
+  if (!rewritten) {
+    hooks.SessionStart.push({
+      matcher: "",
+      hooks: [{ type: "command", command: spec.command, timeout }]
+    });
+    changed = true;
+  }
+  return changed ? [updated, true] : [settings, false];
 }
 function computeHookUninstall(settings) {
   const updated = structuredClone(settings);
@@ -16646,7 +16673,7 @@ function computeHookUninstall(settings) {
   const hooks = updated.hooks;
   if (!hooks) return [settings, false];
   if (Array.isArray(hooks.session_start)) {
-    const kept = hooks.session_start.filter((h) => !isManagedHook2(h));
+    const kept = hooks.session_start.filter((h) => !isManagedHook(h));
     if (kept.length !== hooks.session_start.length) {
       changed = true;
       if (kept.length === 0) delete hooks.session_start;
@@ -16656,11 +16683,11 @@ function computeHookUninstall(settings) {
   if (Array.isArray(hooks.SessionStart)) {
     const newGroups = [];
     for (const group of hooks.SessionStart) {
-      if (!Array.isArray(group.hooks)) {
+      if (!Array.isArray(group?.hooks)) {
         newGroups.push(group);
         continue;
       }
-      const keptHooks = group.hooks.filter((h) => !isManagedHook2(h));
+      const keptHooks = group.hooks.filter((h) => !isManagedHook(h));
       if (keptHooks.length !== group.hooks.length) {
         changed = true;
         if (keptHooks.length === 0) continue;
@@ -16678,15 +16705,15 @@ function readHookStatus(settings) {
   if (hooks) {
     if (Array.isArray(hooks.SessionStart)) {
       for (const group of hooks.SessionStart) {
-        if (!Array.isArray(group.hooks)) continue;
+        if (!Array.isArray(group?.hooks)) continue;
         for (const h of group.hooks) {
-          if (isManagedHook2(h)) return { installed: true, command: h.command };
+          if (isManagedHook(h)) return { installed: true, command: h.command };
         }
       }
     }
     if (Array.isArray(hooks.session_start)) {
       for (const h of hooks.session_start) {
-        if (isManagedHook2(h)) return { installed: true, command: h.command };
+        if (isManagedHook(h)) return { installed: true, command: h.command };
       }
     }
   }
@@ -16730,9 +16757,94 @@ function readSettings(path23) {
     return {};
   }
 }
+function isPlainObject3(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function readSettingsForInstall(path23) {
+  if (!existsSync6(path23)) return { ok: true, settings: {} };
+  let raw;
+  try {
+    raw = readFileSync4(path23, "utf8");
+  } catch (err) {
+    return { ok: false, reason: `unreadable (${err instanceof Error ? err.message : String(err)})` };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return { ok: false, reason: `unparseable JSON (${err instanceof Error ? err.message : String(err)})` };
+  }
+  if (!isPlainObject3(parsed)) {
+    return { ok: false, reason: "settings root is not a JSON object" };
+  }
+  const hooks = parsed.hooks;
+  if (hooks !== void 0) {
+    if (!isPlainObject3(hooks)) {
+      return { ok: false, reason: "`hooks` is not a JSON object" };
+    }
+    if (hooks.SessionStart !== void 0) {
+      if (!Array.isArray(hooks.SessionStart)) {
+        return { ok: false, reason: "`hooks.SessionStart` exists but is not an array" };
+      }
+      for (const [i, group] of hooks.SessionStart.entries()) {
+        if (!isPlainObject3(group)) {
+          return { ok: false, reason: `\`hooks.SessionStart[${i}]\` is not an object` };
+        }
+        if (group.hooks !== void 0) {
+          if (!Array.isArray(group.hooks)) {
+            return { ok: false, reason: `\`hooks.SessionStart[${i}].hooks\` exists but is not an array` };
+          }
+          for (const [j, entry] of group.hooks.entries()) {
+            if (!isPlainObject3(entry)) {
+              return { ok: false, reason: `\`hooks.SessionStart[${i}].hooks[${j}]\` is not an object` };
+            }
+          }
+        }
+      }
+    }
+    if (hooks.session_start !== void 0) {
+      if (!Array.isArray(hooks.session_start)) {
+        return { ok: false, reason: "`hooks.session_start` exists but is not an array" };
+      }
+      for (const [i, entry] of hooks.session_start.entries()) {
+        if (!isPlainObject3(entry)) {
+          return { ok: false, reason: `\`hooks.session_start[${i}]\` is not an object` };
+        }
+      }
+    }
+  }
+  return { ok: true, settings: parsed };
+}
+function resolveWriteDestination(path23) {
+  let isLink = false;
+  try {
+    isLink = lstatSync2(path23).isSymbolicLink();
+  } catch {
+    return path23;
+  }
+  if (!isLink) return path23;
+  try {
+    return realpathSync7(path23);
+  } catch {
+    throw new Error(`dangling symlink at ${path23} \u2014 refusing to write through it; fix or remove the link`);
+  }
+}
+function atomicWriteFileSync(path23, content) {
+  const destination = resolveWriteDestination(path23);
+  mkdirSync2(dirname3(destination), { recursive: true });
+  const mode = existsSync6(destination) ? statSync4(destination).mode & 4095 : void 0;
+  const tmp = `${destination}.tmp-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    writeFileSync3(tmp, content, mode !== void 0 ? { mode } : {});
+    if (mode !== void 0) chmodSync(tmp, mode);
+    renameSync2(tmp, destination);
+  } catch (err) {
+    rmSync2(tmp, { force: true });
+    throw err;
+  }
+}
 function writeSettings(path23, settings) {
-  mkdirSync2(dirname3(path23), { recursive: true });
-  writeFileSync3(path23, `${JSON.stringify(settings, null, 2)}
+  atomicWriteFileSync(path23, `${JSON.stringify(settings, null, 2)}
 `);
 }
 function opencodePluginInstalled(path23) {
@@ -16890,6 +17002,13 @@ async function hook(argv, deps = {}) {
     const claude = readHookStatus(readSettings(targets.claudeSettings));
     const codex = readHookStatus(readSettings(targets.codexHooks));
     const opencode = opencodePluginInstalled(targets.opencodePlugin);
+    let wouldInstall;
+    try {
+      wouldInstall = sessionStartHookCommand(deps.commandBase);
+    } catch {
+      wouldInstall = void 0;
+    }
+    const display = claude.command ? collapseHomeDirectory2(claude.command) : wouldInstall;
     stdout(
       render(
         {
@@ -16900,7 +17019,7 @@ async function hook(argv, deps = {}) {
             claude_code: claude.installed,
             codex: codex.installed,
             opencode,
-            command: claude.command ? collapseHomeDirectory2(claude.command) : sessionStartHookCommand(),
+            ...display !== void 0 ? { command: display } : {},
             targets: {
               claude_code: collapseHomeDirectory2(targets.claudeSettings),
               codex: collapseHomeDirectory2(targets.codexHooks),
@@ -16915,42 +17034,64 @@ async function hook(argv, deps = {}) {
   }
   if (sub === "install") {
     const errors = [];
-    const commandBase = hookCommand();
-    const command = sessionStartHookCommand(commandBase);
+    const refusals = [];
+    const failTarget = (target, err) => refusals.push(
+      `${collapseHomeDirectory2(target)}: ${err instanceof Error ? err.message : String(err)} \u2014 this target was not installed`
+    );
+    const commandBase = deps.commandBase ?? hookCommand();
+    let command;
+    try {
+      command = sessionStartHookCommand(commandBase);
+    } catch (err) {
+      throw new CliError("RUNTIME", err instanceof Error ? err.message : String(err), {
+        details: { command_base: collapseHomeDirectory2(commandBase) },
+        help: "install from a channel whose executable resolves as aslite/agentstate-lite (e.g. npm install -g aslite), then re-run hook install"
+      });
+    }
     for (const target of [targets.claudeSettings, targets.codexHooks]) {
       try {
-        const [updated, changed2] = computeSessionStartHookUpdate(readSettings(target), {
-          marker: HOOK_MARKER,
+        const read = readSettingsForInstall(target);
+        if (!read.ok) {
+          refusals.push(`${collapseHomeDirectory2(target)}: ${read.reason} \u2014 nothing was written to this file`);
+          continue;
+        }
+        const [updated, changed2] = computeSessionStartHookInstall(read.settings, {
           command,
           timeoutSeconds: HOOK_TIMEOUT_SECONDS
         });
         if (changed2) writeSettings(target, updated);
       } catch (err) {
-        errors.push(`${target}: ${err instanceof Error ? err.message : String(err)}`);
+        failTarget(target, err);
       }
     }
     const codexConfigPath = targets.codexConfig;
     try {
       const current = existsSync6(codexConfigPath) ? readFileSync4(codexConfigPath, "utf8") : "";
       const [updated, changed2] = computeCodexConfigUpdate(current);
-      if (changed2) {
-        mkdirSync2(dirname3(codexConfigPath), { recursive: true });
-        writeFileSync3(codexConfigPath, updated);
-      }
+      if (changed2) atomicWriteFileSync(codexConfigPath, updated);
     } catch (err) {
-      errors.push(`${codexConfigPath}: ${err instanceof Error ? err.message : String(err)}`);
+      failTarget(codexConfigPath, err);
     }
     try {
-      mkdirSync2(dirname3(targets.opencodePlugin), { recursive: true });
       const next = buildOpenCodePluginSource(commandBase);
       const current = existsSync6(targets.opencodePlugin) ? readFileSync4(targets.opencodePlugin, "utf8") : void 0;
       if (current !== void 0 && !current.includes(OPENCODE_MANAGED_MARKER)) {
         errors.push(`${targets.opencodePlugin}: refusing to overwrite unmanaged OpenCode plugin`);
       } else if (current !== next) {
-        writeFileSync3(targets.opencodePlugin, next);
+        atomicWriteFileSync(targets.opencodePlugin, next);
       }
     } catch (err) {
-      errors.push(`${targets.opencodePlugin}: ${err instanceof Error ? err.message : String(err)}`);
+      failTarget(targets.opencodePlugin, err);
+    }
+    if (refusals.length > 0) {
+      throw new CliError(
+        "RUNTIME",
+        `hook install failed for ${refusals.length} target(s); other targets were still processed`,
+        {
+          details: { refused: refusals, ...errors.length > 0 ? { errors } : {} },
+          help: "fix or remove the named file(s), then re-run hook install"
+        }
+      );
     }
     const out = {
       action: "install",
@@ -17012,7 +17153,7 @@ async function hookInstallHintOnce(key, inv, installed = hookInstalled) {
 }
 
 // src/commands/sync/establish.ts
-import { existsSync as existsSync7, lstatSync as lstatSync2, readdirSync as readdirSync2, renameSync as renameSync2, rmSync as rmSync3 } from "node:fs";
+import { existsSync as existsSync7, lstatSync as lstatSync3, readdirSync as readdirSync2, renameSync as renameSync3, rmSync as rmSync3 } from "node:fs";
 import path17 from "node:path";
 
 // src/sync-outcomes.ts
@@ -17640,7 +17781,7 @@ function assertPlainBundleShape(bundlePath, inv) {
       { help: runInitHelp }
     );
   }
-  const root = lstatSync2(bundlePath);
+  const root = lstatSync3(bundlePath);
   if (root.isSymbolicLink() || !root.isDirectory()) {
     throw new CliError(
       "RUNTIME",
@@ -17666,7 +17807,7 @@ function assertPlainBundleShape(bundlePath, inv) {
       { help: runInitHelp }
     );
   }
-  const index = lstatSync2(indexPath);
+  const index = lstatSync3(indexPath);
   if (index.isSymbolicLink() || !index.isFile()) {
     throw new CliError("RUNTIME", `'${indexPath}' must be a real file \u2014 establish never follows it through a symlink`);
   }
@@ -17743,7 +17884,7 @@ function finishLocalConversion(top, sourcePath, publishedCommit, expectedTree, i
     if (existsSync7(backupPath)) {
       throw new CliError("RUNTIME", `establish recovery backup already exists at ${backupPath}; nothing was moved`);
     }
-    renameSync2(boardPath, backupPath);
+    renameSync3(boardPath, backupPath);
     sourcePath = backupPath;
   }
   try {
@@ -17766,7 +17907,7 @@ function finishLocalConversion(top, sourcePath, publishedCommit, expectedTree, i
     clearGitDirMarker(top, ESTABLISH_MARKER_KEY);
     return { boardPath: provisionedPath, boardCommit: current, gitignore: note };
   } catch (err) {
-    if (!existsSync7(boardPath) && existsSync7(backupPath)) renameSync2(backupPath, boardPath);
+    if (!existsSync7(boardPath) && existsSync7(backupPath)) renameSync3(backupPath, boardPath);
     throw err;
   }
 }
@@ -17843,7 +17984,7 @@ async function publishLocalBoardBranch(top, boardPath, inv, mode, stdout, deps) 
     }
   }
   const indexPath = path17.join(boardPath, "index.md");
-  if (!existsSync7(indexPath) || lstatSync2(indexPath).isSymbolicLink() || !lstatSync2(indexPath).isFile()) {
+  if (!existsSync7(indexPath) || lstatSync3(indexPath).isSymbolicLink() || !lstatSync3(indexPath).isFile()) {
     throw new CliError("RUNTIME", `the local '${BOARD_BRANCH}' worktree is not a valid bundle (root index.md missing)`);
   }
   pushBoardUpstream(boardPath);
