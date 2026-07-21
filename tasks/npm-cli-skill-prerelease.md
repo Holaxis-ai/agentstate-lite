@@ -4,13 +4,13 @@ title: 'npm prerelease: authoritative CLI plus explicitly installable Agent Skil
 status: in_progress
 priority: '1'
 description: >-
-  PR1 SHIPPED to origin: feat/aslite-npm-coordinate @ 3bd40b9 (aslite coordinate
-  + two-form managed-hook recognition + fail-loud/atomic hook writes;
-  Builder->Review->adversarial QA all green; awaiting Brian's PR open + merge).
-  PR2 (skill carry + skill install|status|uninstall) building on stacked branch
-  feat/aslite-skill-channel. Plan: plans/npm-cli-skill-prerelease.
+  BOTH PRs DELIVERED & pushed (PR1 feat/aslite-npm-coordinate @3bd40b9; PR2
+  feat/aslite-skill-channel @3bbd57e stacked). Full
+  Builder->Review->adversarial-QA ladder run to convergence; QA verdict SHIP.
+  Awaiting Brian: open/merge PR1, then PR2 gets rebased+regen. npm publish
+  remains human-gated.
 actor: anthropic/claude
-timestamp: '2026-07-21T03:28:56.865Z'
+timestamp: '2026-07-21T04:44:25.606Z'
 ---
 # Behavioral claim
 
@@ -65,3 +65,25 @@ The identity gate is resolved: publish as **`aslite`** (interim — see
 version/tag policy, and the rename/rollback path). The package name matches the preferred
 bin, so `npx -y aslite` resolves with no bin alias. Prereleases go out as `0.x.y-pre.N` on
 dist-tag `next`, never `latest`.
+
+# Delivery record (2026-07-20)
+
+Shipped as TWO stacked PRs (Brian opens/merges; publish itself stays human-gated):
+
+- **PR1** `feat/aslite-npm-coordinate` @ `3bd40b9` — interim coordinate `aslite` applied
+  (decision doc: decisions/npm-interim-package-name); two-form managed-hook recognition;
+  fail-loud + atomic + mode-preserving hook writes. Stages: plan review (2 high findings,
+  both pre-build), build, review ×2 (1 blocker: lockfile; red-probes caught), adversarial QA
+  ×2 (2 majors found & fixed: settings clobber, torn-read race; kill-test 244 SIGKILLs clean).
+- **PR2** `feat/aslite-skill-channel` @ `2308e66` + `3bbd57e` (stacked on PR1) — tarball
+  carries SKILL.md + mirrored references/ (30-file tarball, one executable, proven);
+  `skill install|status|uninstall` with manifest-tracked, symlink-refusing, self-healing
+  installs. Stages: review ×3 (findings each round: Codex-scope wording; symlink pins;
+  the owned-base red-test gap — a mutation survived the suite until pinned), QA ×3
+  (symlink-through-delete F1, interruption brick F2, concurrency refusals F3 — all fixed;
+  final verdict SHIP, 0/40 kill-bricks). Residual R2 (concurrent same-target installs can
+  exit 1 spuriously, self-healing, zero data loss) recorded in tasks/skill-installer-followups.
+- After PR1 merges: rebase PR2 onto main, regenerate prose (check:skill), re-push.
+- Remaining acceptance items that are HUMAN post-publish validation: founder installs the
+  packed prerelease on a clean machine, fresh agent session on an unfamiliar real bundle,
+  attributed mutation + View open without founder explanation, upgrade without path expiry.
