@@ -13,7 +13,7 @@ description: >-
   (home/workspace/overview/hub) before tutorial copy hardens the word. Boundary:
   ui-rethink stays separate/post-window.
 actor: mike/claude
-timestamp: '2026-07-21T15:13:59.485Z'
+timestamp: '2026-07-21T15:21:07.726Z'
 ---
 # Intent
 
@@ -154,3 +154,5 @@ note, section-title, feed row, dialog); new surfaces compose from them.
 Deliberate deferral: bundle-DECLARED theming (workspace accent/logo, like the display-name
 doc). Cheap later (token injection at one seam) but new scope — an explicit future
 decision, never backed into.
+
+[distilled design](../designs/home-surface.md)
