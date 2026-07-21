@@ -13,6 +13,10 @@
  * FILTERED, so first-run reads as knowledge rather than plumbing: `conventions/` docs (kind
  * declarations) and the View/Page registry docs (the views grid already shows those) stay out of
  * the feed.
+ *
+ * Beneath the SSE mechanism, the query also inherits the app-wide 5s visible-tab poll
+ * (queryClient.ts's default `refetchInterval`) — the same SSE-fallback posture the pages query
+ * rides; heads-only and local, so the cost is one cheap scan (review follow-up: stated, chosen).
  */
 import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";

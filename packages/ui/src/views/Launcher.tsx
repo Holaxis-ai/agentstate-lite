@@ -23,7 +23,7 @@
  */
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchConfig, listPages, invalidateKinds, type PageEntry } from "../api/pages.js";
+import { fetchConfig, listPages, invalidateKinds, type PageEntry, type SharingSummary, type WorkspaceSummaryEntry } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import type { BridgeCapability } from "../pages/registry.js";
 import { navigate } from "../routing.js";
@@ -36,6 +36,67 @@ const BRIDGE_BADGES: Record<BridgeCapability, { label: string; className: string
   "bundle-propose": { label: "can edit", className: "badge badge-propose" },
   none: { label: "artifact", className: "badge badge-artifact" },
 };
+
+/**
+ * The trust chip's WORDS — the SPA owns wording over ui-server's state vocabulary
+ * (designs/home-surface truth table; every row pinned by Launcher.test.tsx). Rules: never
+ * fabricate in either direction; `unavailable` is honest refusal, never a guessed "private";
+ * `unscoped` (a non-conventional --dir bundle) makes NO claim at all (null — no chip).
+ */
+export function sharingChip(sharing: SharingSummary | null): { text: string; className: string; title?: string } | null {
+  if (sharing === null) return null;
+  switch (sharing.kind) {
+    case "private":
+      return { text: "private — this computer only", className: "chip chip-private" };
+    case "private_local_branch":
+      return { text: "private — local board branch, not yet shared", className: "chip chip-private" };
+    case "private_intree_no_remote":
+      return { text: "private — committed with code, no remote", className: "chip chip-private" };
+    case "private_intree_not_pushed":
+      return { text: "private — committed with code, not yet pushed", className: "chip chip-private" };
+    case "shared_branch":
+      return { text: `shared · ${sharing.remote ?? "remote"}`, className: "chip chip-shared" };
+    case "shared_intree":
+      return { text: `shared with the code · ${sharing.remote ?? "remote"}`, className: "chip chip-shared" };
+    case "hosted":
+      return { text: `hosted · ${sharing.remote ?? "remote"}`, className: "chip chip-shared" };
+    case "unavailable":
+      return { text: "sharing status unavailable", className: "chip chip-unavailable", title: sharing.reason };
+    case "unscoped":
+      return null;
+    default:
+      // An unknown future kind must not fabricate a claim — same posture as unavailable.
+      return { text: "sharing status unavailable", className: "chip chip-unavailable" };
+  }
+}
+
+/** The "where is this?" panel's sharing detail sentence (fuller than the chip; same truth rules). */
+function sharingDetail(sharing: SharingSummary | null): string {
+  if (sharing === null) return "no sharing information for this bundle";
+  switch (sharing.kind) {
+    case "private":
+      return "not shared — stays here until you run aslite sync --establish, or commit it with your code";
+    case "private_local_branch":
+      return "a local board branch exists but has never been pushed — aslite sync shares it";
+    case "private_intree_no_remote":
+      return "committed with the code, but this repo has no remote — pushing the repo shares it";
+    case "private_intree_not_pushed":
+      return "committed with the code, but no upstream evidence it has been shared — your next git push shares it";
+    case "shared_branch":
+      return `git — ${sharing.remote ?? "the repo's remote"}, on a dedicated board branch beside the code`;
+    case "shared_intree":
+      return `git — committed with the code and present on ${sharing.remote ?? "the tracking remote"} (as of the last fetch)`;
+    case "hosted":
+      return `served by ${sharing.remote ?? "a remote server"} — sharing is that server's policy`;
+    case "unavailable":
+      return `could not determine sharing state${sharing.reason ? ` — ${sharing.reason}` : ""}`;
+    case "unscoped":
+      return "no sharing claim — this folder is not the repo's conventional board";
+    default:
+      // Unknown future kind: refuse honestly, mirroring the chip (review F-3).
+      return "sharing status unavailable";
+  }
+}
 
 /** localStorage key for the first-run orientation's dismissal, scoped per bundle root. */
 export function orientationStorageKey(root: string): string {
@@ -56,27 +117,37 @@ export function Launcher() {
   const configQuery = useQuery({ queryKey: ["ui-config"], queryFn: fetchConfig, refetchInterval: false });
   const pagesQuery = useQuery({ queryKey: ["pages"], queryFn: listPages });
   const [orientationDismissed, setOrientationDismissed] = useState<boolean | null>(null);
+  const [whereOpen, setWhereOpen] = useState(false);
 
   useEffect(() => {
     return subscribeToChanges((e) => {
       invalidateKinds([...e.docs.changed.map((c) => c.id), ...e.docs.removed]);
       if (e.docs.changed.length > 0 || e.docs.removed.length > 0) {
         void queryClient.invalidateQueries({ queryKey: ["pages"] });
+        // Board doc changes are how a mid-session `sync` manifests — refetch the config so the
+        // sharing chip cannot freeze for a days-long server run (design-review F4; the server's
+        // TTL caps the cost of these invalidations).
+        void queryClient.invalidateQueries({ queryKey: ["ui-config"] });
       }
     });
   }, [queryClient]);
 
   // A reconnected SSE stream replays nothing — refetch the list so a page promoted/removed during
-  // the gap shows up (tasks/ui-pages-spike P1, connection resilience).
+  // the gap shows up (tasks/ui-pages-spike P1, connection resilience). Config included: the chip's
+  // truth may have moved during the gap.
   useEffect(() => {
     return subscribeToResync(() => {
       invalidateKinds();
       void queryClient.invalidateQueries({ queryKey: ["pages"] });
+      void queryClient.invalidateQueries({ queryKey: ["ui-config"] });
     });
   }, [queryClient]);
 
   const config = configQuery.data;
 
+  // Orientation is keyed on `config.root` — DELIBERATELY absent in `--remote` mode (root is null
+  // there): the orientation's privacy promise describes a LOCAL bundle and would be wrong for a
+  // hosted origin (review follow-up #3 — a decision, not an accident).
   useEffect(() => {
     if (config?.root == null) return;
     setOrientationDismissed(readOrientationDismissed(config.root));
@@ -96,6 +167,8 @@ export function Launcher() {
     setOrientationDismissed(true);
   };
 
+  const chip = config ? sharingChip(config.sharing ?? null) : null;
+
   return (
     <div className="launcher">
       <section className="launcher-summary">
@@ -104,12 +177,47 @@ export function Launcher() {
           {config ? (
             <>
               <span className="pill">{config.mode}</span>
-              {config.root && <code className="launcher-root">{config.root}</code>}
+              {chip && (
+                <span className={chip.className} title={chip.title ?? (config.sharing ? `as of ${formatWhen(config.sharing.as_of) ?? config.sharing.as_of}` : undefined)}>
+                  {chip.text}
+                </span>
+              )}
+              <button type="button" className="where-btn" aria-expanded={whereOpen} onClick={() => setWhereOpen((v) => !v)}>
+                {whereOpen ? "hide details" : "where is this?"}
+              </button>
             </>
           ) : (
             "Loading bundle…"
           )}
         </p>
+        {config && whereOpen && (
+          <dl className="where-panel">
+            <div>
+              <dt>{config.mode === "remote" ? "Server" : "Folder"}</dt>
+              <dd>
+                <code>{config.root ?? config.remoteUrl ?? "unknown"}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>Serving</dt>
+              <dd>
+                {config.mode === "remote"
+                  ? "reverse proxy to the server above — this window only (127.0.0.1)"
+                  : "local folder · this computer only (127.0.0.1, per-run session)"}
+              </dd>
+            </div>
+            <div>
+              <dt>Sharing</dt>
+              <dd>{sharingDetail(config.sharing)}</dd>
+            </div>
+            {config.sharing && (
+              <div>
+                <dt>As of</dt>
+                <dd>{formatWhen(config.sharing.as_of) ?? config.sharing.as_of}</dd>
+              </div>
+            )}
+          </dl>
+        )}
       </section>
 
       <div className="home-columns">
@@ -165,9 +273,59 @@ export function Launcher() {
             <h3>Activity</h3>
             <ActivityFeed />
           </section>
+          {config && (config.workspaces?.length ?? 0) > 0 && <WorkspacesBlock entries={config.workspaces} />}
         </aside>
       </div>
     </div>
+  );
+}
+
+/**
+ * The registered-workspaces block (tier 1: SEE, not switch — designs/home-surface). COLLAPSED by
+ * default: the demo/screenshot mitigation standing in for the deferred catalog privacy flag. Each
+ * row expands to its path + copy-paste open command; no availability probes ride this display.
+ */
+function WorkspacesBlock({ entries }: { entries: WorkspaceSummaryEntry[] }) {
+  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  return (
+    <section className="launcher-section">
+      <h3>
+        <button type="button" className="workspaces-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          Workspaces ({entries.length}) <span aria-hidden="true">{open ? "−" : "+"}</span>
+        </button>
+      </h3>
+      {open && (
+        <ul className="workspace-list">
+          {entries.map((entry) => (
+            <li key={entry.label} className="workspace">
+              <button
+                type="button"
+                className="workspace-row"
+                aria-expanded={!!expanded[entry.label]}
+                onClick={() => setExpanded((prev) => ({ ...prev, [entry.label]: !prev[entry.label] }))}
+              >
+                <span className="workspace-name">{entry.label}</span>
+                {entry.open && <span className="workspace-open">open</span>}
+                <span className="workspace-caret" aria-hidden="true">
+                  {expanded[entry.label] ? "−" : "+"}
+                </span>
+              </button>
+              {expanded[entry.label] && (
+                <>
+                  <span className="workspace-path">{entry.path}</span>
+                  {!entry.open && (
+                    <span className="workspace-cmd">
+                      open with <code>aslite ui --dir {entry.path}</code>
+                    </span>
+                  )}
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

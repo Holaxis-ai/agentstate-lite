@@ -36,6 +36,42 @@ const HOST = "127.0.0.1";
 /** The single-bundle reference router's bundle segment (mirrors the SPA client's `BUNDLE`). */
 const REMOTE_BUNDLE = "default";
 
+/**
+ * The home surface's sharing-chip state (designs/home-surface, the 9-row truth table). Declared
+ * HERE as a plain data shape — ui-server owns the vocabulary; the CLI maps its board-channel
+ * detection into it (the import-direction test forbids even type-only CLI/board-git imports).
+ * The SPA owns the WORDS; this enum owns the states. `hosted` is the one state this runtime
+ * derives itself (remote mode, from `remoteBase` — no injection involved).
+ */
+export type SharingStateKind =
+  | "private"
+  | "private_local_branch"
+  | "private_intree_no_remote"
+  | "private_intree_not_pushed"
+  | "shared_branch"
+  | "shared_intree"
+  | "hosted"
+  | "unavailable"
+  | "unscoped";
+
+/** One sharing-state reading, stamped with when it was computed (`as_of` — the loader is TTL-cached and offline-evidence-only, so freshness is part of the truth). */
+export interface SharingSummary {
+  kind: SharingStateKind;
+  /** Humanized remote for the shared/hosted kinds (`org/repo`, a host, or a path tail — consumer-degraded). */
+  remote?: string;
+  /** Short human reason for `unavailable` (a determinate refusal state or a probe failure — never silently "private"). */
+  reason?: string;
+  as_of: string;
+}
+
+/** One registered-workspace row for the home's collapsed workspaces block (labels + paths only — no availability probes; CLI policy decides the projection). */
+export interface WorkspaceSummaryEntry {
+  label: string;
+  path: string;
+  /** True when this entry IS the bundle this server is mounted over. */
+  open: boolean;
+}
+
 export interface UiServerOptions {
   mode: "dir" | "remote";
   port?: number;
@@ -60,6 +96,15 @@ export interface UiServerOptions {
   serveAsset: UiAssetHandler;
   /** Consumer-owned display-name policy; the runtime never imports CLI naming rules. */
   resolveBundleDisplayName?: (bundle: Bundle) => Promise<string>;
+  /**
+   * `--dir` mode, consumer-owned (the CLI injects its board-channel classification): the sharing
+   * summary for the home's trust chip. Called per config request — the consumer owns caching/TTL.
+   * A loader that THROWS reads as `unavailable` (never a fabricated "private"); absent loader in
+   * dir mode reads as no claim (`sharing: null`). Remote mode ignores it (`hosted` is derived here).
+   */
+  loadSharingSummary?: () => Promise<SharingSummary>;
+  /** `--dir` mode, consumer-owned: registered-workspace rows for the home's collapsed block (labels + paths only). A throwing loader reads as an empty list. */
+  loadWorkspaces?: () => Promise<WorkspaceSummaryEntry[]>;
   /** Injectable for tests; defaults to a fresh random secret per boot (never reused across runs). */
   sessionSecret?: string;
   /** Advisory identity recorded by a confirmed local View action. Read-only UI needs no actor. */
@@ -310,9 +355,49 @@ async function configResponse(options: UiServerOptions): Promise<Response> {
       remoteUrl: options.mode === "remote" ? (options.remoteBase ?? null) : null,
       root: options.mode === "dir" ? (options.bundle?.root ?? null) : (options.remoteBase ?? null),
       name,
+      sharing: await sharingSummary(options),
+      workspaces: await workspacesSummary(options),
     }),
     { status: 200, headers: { "content-type": "application/json; charset=utf-8" } },
   );
+}
+
+/**
+ * The trust chip's state. Remote mode is derived HERE (`hosted` off remoteBase); dir mode is the
+ * consumer's injected classification (absent loader = no claim, `null`). A THROWING loader is
+ * `unavailable`, never a fabricated "private" — a wrong "private" and a wrong "shared" are the
+ * same trust bug (designs/home-surface, the truth-table rules).
+ */
+async function sharingSummary(options: UiServerOptions): Promise<SharingSummary | null> {
+  if (options.mode === "remote") {
+    let host: string;
+    try {
+      host = new URL(options.remoteBase!).host;
+    } catch {
+      host = options.remoteBase ?? "remote";
+    }
+    return { kind: "hosted", remote: host, as_of: new Date().toISOString() };
+  }
+  if (!options.loadSharingSummary) return null;
+  try {
+    return await options.loadSharingSummary();
+  } catch (err) {
+    return {
+      kind: "unavailable",
+      reason: err instanceof Error ? err.message : String(err),
+      as_of: new Date().toISOString(),
+    };
+  }
+}
+
+/** The collapsed workspaces block's rows (dir mode, consumer-injected). Best-effort: a throwing loader is an empty list, never a failed config. */
+async function workspacesSummary(options: UiServerOptions): Promise<WorkspaceSummaryEntry[]> {
+  if (options.mode !== "dir" || !options.loadWorkspaces) return [];
+  try {
+    return await options.loadWorkspaces();
+  } catch {
+    return [];
+  }
 }
 
 /**

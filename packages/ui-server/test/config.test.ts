@@ -1,0 +1,124 @@
+/**
+ * `/__ui/config` sharing/workspaces contract (designs/home-surface, PR-B): the consumer-injected
+ * loaders pass through verbatim; a THROWING sharing loader reads as `unavailable` — NEVER a
+ * fabricated "private" (the truth-table's fail-honest rule); a throwing workspaces loader reads
+ * as an empty list; an absent loader makes no claim (`sharing: null`); remote mode derives
+ * `hosted` in the runtime itself with no injection.
+ */
+import test from "node:test";
+import assert from "node:assert/strict";
+import { get as httpGet } from "node:http";
+
+import { MemoryBackend, type Bundle } from "@agentstate-lite/core";
+import { createRouter } from "@agentstate-lite/server";
+import { bootUiServer, type SharingSummary, type UiServerHandle, type UiServerOptions } from "../src/server.js";
+
+const SECRET = "config-contract-secret";
+
+function stubAsset(): { status: number; headers: Record<string, string>; body: Uint8Array } {
+  return { status: 404, headers: { "content-type": "text/plain; charset=utf-8" }, body: new Uint8Array() };
+}
+
+async function fetchConfig(server: UiServerHandle): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    httpGet(
+      { hostname: server.host, port: server.port, path: "/__ui/config", headers: { cookie: `aslite_ui_session=${SECRET}` } },
+      (res) => {
+        let text = "";
+        res.setEncoding("utf8");
+        res.on("data", (c) => (text += c));
+        res.on("end", () => {
+          try {
+            assert.equal(res.statusCode, 200);
+            resolve(JSON.parse(text) as Record<string, unknown>);
+          } catch (err) {
+            reject(err instanceof Error ? err : new Error(String(err)));
+          }
+        });
+      },
+    ).on("error", reject);
+  });
+}
+
+function memoryBundle(): Bundle {
+  return { root: "mem://config-contract", backend: new MemoryBackend() };
+}
+
+async function bootDir(extra: Partial<UiServerOptions>): Promise<UiServerHandle> {
+  const bundle = memoryBundle();
+  return bootUiServer({
+    mode: "dir",
+    bundle,
+    router: createRouter(bundle),
+    sessionSecret: SECRET,
+    serveAsset: stubAsset,
+    ...extra,
+  });
+}
+
+const SHARED: SharingSummary = { kind: "shared_branch", remote: "org/repo", as_of: "2026-07-21T00:00:00.000Z" };
+
+test("config passes an injected sharing summary and workspaces through verbatim", async () => {
+  const server = await bootDir({
+    loadSharingSummary: async () => SHARED,
+    loadWorkspaces: async () => [{ label: "alpha", path: "/a", open: true }],
+  });
+  try {
+    const config = await fetchConfig(server);
+    assert.deepEqual(config.sharing, SHARED);
+    assert.deepEqual(config.workspaces, [{ label: "alpha", path: "/a", open: true }]);
+  } finally {
+    await server.close();
+  }
+});
+
+test("a THROWING sharing loader reads as unavailable with the reason — never a fabricated private", async () => {
+  const server = await bootDir({
+    loadSharingSummary: async () => {
+      throw new Error("git exploded");
+    },
+    loadWorkspaces: async () => {
+      throw new Error("catalog exploded");
+    },
+  });
+  try {
+    const config = await fetchConfig(server);
+    const sharing = config.sharing as SharingSummary;
+    assert.equal(sharing.kind, "unavailable");
+    assert.match(String(sharing.reason), /git exploded/);
+    assert.ok(sharing.as_of, "unavailable still carries as_of");
+    assert.deepEqual(config.workspaces, [], "a throwing workspaces loader is an empty list");
+  } finally {
+    await server.close();
+  }
+});
+
+test("an absent loader makes NO claim (sharing null), and workspaces default to empty", async () => {
+  const server = await bootDir({});
+  try {
+    const config = await fetchConfig(server);
+    assert.equal(config.sharing, null);
+    assert.deepEqual(config.workspaces, []);
+  } finally {
+    await server.close();
+  }
+});
+
+test("remote mode derives hosted from remoteBase in the runtime — no injection involved", async () => {
+  const server = await bootUiServer({
+    mode: "remote",
+    remoteBase: "http://127.0.0.1:1", // never dialed by the config route
+    sessionSecret: SECRET,
+    serveAsset: stubAsset,
+    watcherBootTimeoutMs: 1, // the live watcher's boot probe fails fast and is tolerated
+  });
+  try {
+    const config = await fetchConfig(server);
+    const sharing = config.sharing as SharingSummary;
+    assert.equal(sharing.kind, "hosted");
+    assert.equal(sharing.remote, "127.0.0.1:1");
+    assert.deepEqual(config.workspaces, [], "workspaces are a dir-mode block");
+  } finally {
+    await server.close();
+  }
+});

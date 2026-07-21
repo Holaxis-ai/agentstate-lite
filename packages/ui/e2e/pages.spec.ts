@@ -357,6 +357,20 @@ test("home surface: flat badged grid, live activity feed, first-run orientation 
     await expect(page.locator('[data-page-id="views-registry/pulse"]')).toBeVisible();
     await expect(page.locator(".orientation")).not.toBeVisible();
 
+    // Identity truth (PR-B): a git-less temp bundle is PRIVATE — chip up front, path only behind
+    // the disclosure, sharing detail inside the panel. The isolated HOME has no catalog, so no
+    // workspaces block renders.
+    const chip = page.locator(".chip");
+    await expect(chip).toHaveText("private — this computer only");
+    await expect(page.locator(".launcher-meta")).not.toContainText(ui.dir);
+    await page.locator(".where-btn").click();
+    const panel = page.locator(".where-panel");
+    await expect(panel).toContainText(ui.dir);
+    await expect(panel).toContainText("not shared");
+    await page.locator(".where-btn").click();
+    await expect(panel).toHaveCount(0);
+    await expect(page.locator(".workspaces-toggle")).toHaveCount(0);
+
     // ONE flat grid with capability badges — the capability-grouped sections are retired.
     await expect(page.locator(".launcher-grid")).toHaveCount(1);
     for (const retired of ["Dashboards", "Interactive", "Documents"]) {
@@ -369,7 +383,7 @@ test("home surface: flat badged grid, live activity feed, first-run orientation 
     const feed = page.locator(".feed-list");
     await expect(feed).toBeVisible();
     await expect(feed).toContainText("Alpha task");
-    await expect(feed.locator(".feed-row")).not.toContainText(["Pulse — activity feed"]);
+    await expect(feed.locator(".feed-row", { hasText: "Pulse — activity feed" })).toHaveCount(0);
 
     // Live: a NEW doc written behind the server lands in the feed without a reload.
     execFileSync(process.execPath, [

@@ -153,4 +153,17 @@ describe("ActivityFeed live contract", () => {
     });
     expect(vi.mocked(listAllHeads).mock.calls.length).toBe(callsAfterMount + 2);
   });
+
+  it("unmount with a PENDING debounce clears the timer — no refetch after teardown (review follow-up)", async () => {
+    await renderFeed();
+    const callsAfterMount = vi.mocked(listAllHeads).mock.calls.length;
+    await act(async () => {
+      changeHandler!({ docs: { changed: [{ id: "tasks/x", version: "v2" }], removed: [] }, blobs: { changed: [], removed: [] } });
+      root.unmount(); // before the debounce window elapses
+      await new Promise((resolve) => setTimeout(resolve, FEED_REFETCH_DEBOUNCE_MS + 100));
+    });
+    expect(vi.mocked(listAllHeads).mock.calls.length).toBe(callsAfterMount);
+    // afterEach unmounts again — recreate so it has a live root to tear down.
+    root = createRoot(container);
+  });
 });
