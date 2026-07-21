@@ -16849,7 +16849,7 @@ async function clearUiUrlFile(url, home2 = homedir7()) {
 }
 
 // src/commands/ui.ts
-var UI_USAGE = `agentstate-lite ui \u2014 boot the local web UI: a launcher for the bundle's views (type: View docs, framed sandboxed with live updates; legacy type: Page docs keep working)
+var UI_USAGE = `agentstate-lite ui \u2014 boot the local web UI over the bundle: read its docs as rendered pages (cross-links, backlinks), launch its registered Views (type: View docs framed sandboxed with live updates; legacy type: Page docs keep working), and see live activity, sharing status, and your workspaces
 
 Usage:
   agentstate-lite ui [--dir <path> | --remote <url>] [--port <n>] [--actor <name>] [--open]
@@ -19428,7 +19428,7 @@ var COMMAND_GROUPS = [
       },
       {
         usage: "ui [--dir <path> | --remote <url>] [--port <p>] [--open]",
-        summary: `Boot the local web UI: a launcher for the bundle's views (type: View docs rendered in sandboxed iframes, with live updates; legacy Page docs keep working) \u2014 same origin, loopback-only. The header shows the bundle's display name \u2014 derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"`
+        summary: `Boot the local web UI over the bundle (same origin, loopback-only): READ the bundle's docs as rendered pages (frontmatter, cross-links you can follow, derived backlinks), LAUNCH its registered Views (type: View docs framed in sandboxed iframes with live updates; legacy Page docs keep working), and see a live activity feed, the bundle's sharing status, and your registered workspaces. The header shows the bundle's display name \u2014 derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"`
       },
       {
         usage: "sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]",
