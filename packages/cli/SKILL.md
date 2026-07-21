@@ -1,20 +1,20 @@
 ---
-name: agentstate-lite
+name: aslite
 description: >-
   Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and live
-  bundle Views) from the shell via the agentstate-lite CLI. Use when an agent
+  bundle Views) from the shell via the aslite CLI. Use when an agent
   needs to persist a context note across sessions, store a decision/spec as a doc, link concepts,
   query a bundle, share the project's board with teammates (`sync`), or open its local View UI.
-  Runs standalone via `npx -y agentstate-lite`.
+  Runs standalone via `npx -y aslite`.
 ---
 
-# agentstate-lite
+# aslite
 
 read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Views).
 
-It is a standalone npm package. Every example below runs with no install via `npx -y agentstate-lite …`; if the
-tool is installed globally you can drop the `npx -y ` prefix and call `agentstate-lite …` (or the
-short alias `aslite …`) directly.
+It is a standalone npm package. Every example below runs with no install via `npx -y aslite …`; if the
+tool is installed globally you can drop the `npx -y ` prefix and call `aslite …` (or the
+long-form alias `agentstate-lite …`) directly.
 
 Output is TOON on stdout (a `--json` hatch exists). Errors are structured TOON on stdout with a
 capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found, 1 runtime).
@@ -25,72 +25,72 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
 
 ### Bundle
 
-- `npx -y agentstate-lite bundle locate [--dir <path>]`
+- `npx -y aslite bundle locate [--dir <path>]`
   — Resolve the exact canonical local bundle path and report why it won selection
-- `npx -y agentstate-lite catalog (add <label> [--dir <path>] | list | resolve <label-or-id> [--field path])`
+- `npx -y aslite catalog (add <label> [--dir <path>] | list | resolve <label-or-id> [--field path])`
   — Register and deterministically resolve this user's explicitly named local workspaces
-- `npx -y agentstate-lite init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]`
+- `npx -y aslite init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]`
   — Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init
-- `npx -y agentstate-lite index generate [--dir <path>] [--check] [--force] [--actor <name>]`
+- `npx -y aslite index generate [--dir <path>] [--check] [--force] [--actor <name>]`
   — Generate complete portable Markdown navigation explicitly; refuses curated indexes unless --force adopts them
-- `npx -y agentstate-lite status [--limit <n>] [--remote <url>]`
+- `npx -y aslite status [--limit <n>] [--remote <url>]`
   — Read-only bundle health report (kind lint, unresolved links, orphans, staleness, graph lints)
 
 ### Documents & links
 
-- `npx -y agentstate-lite doc write <id> --type <t> [--title <t>] [--body <s> | --body-file <p>] [--actor <n>] [--remote <url>]`
+- `npx -y aslite doc write <id> --type <t> [--title <t>] [--body <s> | --body-file <p>] [--actor <n>] [--remote <url>]`
   — Write a generic OKF concept document
-- `npx -y agentstate-lite doc update <id> [--<field> <value> ...] [--title <t>] [--tag <t>] [--type <t>] [--body <s> | --body-file <p>] [--expected-version <v>] [--actor <n>] [--remote <url>]`
+- `npx -y aslite doc update <id> [--<field> <value> ...] [--title <t>] [--tag <t>] [--type <t>] [--body <s> | --body-file <p>] [--expected-version <v>] [--actor <n>] [--remote <url>]`
   — Patch given fields (incl. kind-declared fields like --status) of an existing doc, preserving the rest; optimistic-CAS with --expected-version
-- `npx -y agentstate-lite doc read <id> [--out (<path> | -) | --body-out (<path> | -) | --field <name>] [--remote <url>]`
+- `npx -y aslite doc read <id> [--out (<path> | -) | --body-out (<path> | -) | --field <name>] [--remote <url>]`
   — Read a doc, export its raw markdown, export its body with a same-read CAS version, or print one raw field for scripting
-- `npx -y agentstate-lite doc history <id> [--limit <n>] [--remote <url>]`
+- `npx -y aslite doc history <id> [--limit <n>] [--remote <url>]`
   — Show a doc's version history (newest first, capped at 20 by default — --limit 0 for all; a history-keeping backend returns the full attributed chain, a local bundle just the current revision) — the tokens for --expected-version
-- `npx -y agentstate-lite doc delete <id> [--expected-version <v>] [--remote <url>]`
+- `npx -y aslite doc delete <id> [--expected-version <v>] [--remote <url>]`
   — Hard-delete a doc (idempotent: absent -> deleted:false, exit 0)
-- `npx -y agentstate-lite list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--open] [--limit <n>] [--remote <url>]`
+- `npx -y aslite list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--open] [--limit <n>] [--remote <url>]`
   — Query concepts over their frontmatter (alias: query) — a comma in --field's value is set membership (OR); --open excludes terminal instances (declared kinds only)
-- `npx -y agentstate-lite link (add <from> <to> [--text <t>] [--actor <n>] | show <id> [--limit <n>] [--text <t>] | list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]) [--remote <url>]`
+- `npx -y aslite link (add <from> <to> [--text <t>] [--actor <n>] | show <id> [--limit <n>] [--text <t>] | list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]) [--remote <url>]`
   — Add a cross-link, show a concept's links + backlinks, or query the whole bundle's derived edge list filtered by from/to (id or prefix/, repeatable/union) and exact-match text
 
 ### Artifacts
 
-- `npx -y agentstate-lite promote <file> --doc-key <key> [--content-type <mime>] [--expected-version <v>] [--remote <url>]`
+- `npx -y aslite promote <file> --doc-key <key> [--content-type <mime>] [--expected-version <v>] [--remote <url>]`
   — Move a local file's bytes into the store (a .md key routes through the engine; else a blob)
-- `npx -y agentstate-lite pull --doc-key <key> --out (<path> | -) [--remote <url>]`
+- `npx -y aslite pull --doc-key <key> --out (<path> | -) [--remote <url>]`
   — Pull a doc's canonical form or a blob's raw bytes out of the store (the reverse of promote)
-- `npx -y agentstate-lite blobs [--prefix <p>] [--limit <n>] [--remote <url>]`
+- `npx -y aslite blobs [--prefix <p>] [--limit <n>] [--remote <url>]`
   — List the store's blob (non-document) keys (documents are listed by 'list'/'query')
-- `npx -y agentstate-lite delete --doc-key <key> [--expected-version <v>] [--remote <url>]`
+- `npx -y aslite delete --doc-key <key> [--expected-version <v>] [--remote <url>]`
   — Hard-delete a doc or blob by key (idempotent: absent -> deleted:false, exit 0)
 
 ### Kinds
 
-- `npx -y agentstate-lite new "<Kind>" <id> --<field> <value> [...] [--body-file <path>] [--link "<type>=<target-id>" ...] [--no-prefix] [--actor <n>] [--remote <url>]`
+- `npx -y aslite new "<Kind>" <id> --<field> <value> [...] [--body-file <path>] [--link "<type>=<target-id>" ...] [--no-prefix] [--actor <n>] [--remote <url>]`
   — Create a new instance of a bundle-declared kind — initial Markdown may come from --body-file (otherwise declared sections are scaffolded); validates strictly, and repeatable --link wires typed cross-links in the same step
-- `npx -y agentstate-lite kinds [--remote <url>]`
+- `npx -y aslite kinds [--remote <url>]`
   — List the kind conventions this bundle declares (purpose, described fields, exact required body headings, typed-link vocabulary, horizon)
-- `npx -y agentstate-lite kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]`
+- `npx -y aslite kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]`
   — Edit a kind's schema — add/remove a declared field or enum value on its convention (idempotent)
-- `npx -y agentstate-lite recipes [--remote <url>]`
+- `npx -y aslite recipes [--remote <url>]`
   — List built-in recipes and whether each is already applied to this bundle
-- `npx -y agentstate-lite recipe add <name-or-path> [--remote <url>]`
+- `npx -y aslite recipe add <name-or-path> [--remote <url>]`
   — Apply a recipe's content-free definitions — Kinds plus optional declared References and Views — idempotently
 
 ### Remote
 
-- `npx -y agentstate-lite serve [--dir <path>] [--host <h>] [--port <p>]`
+- `npx -y aslite serve [--dir <path>] [--host <h>] [--port <p>]`
   — Boot the reference wire-protocol server over a local bundle (loopback, no auth)
-- `npx -y agentstate-lite ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
+- `npx -y aslite ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
   — Boot the local web UI: a launcher for the bundle's views (type: View docs rendered in sandboxed iframes, with live updates; legacy Page docs keep working) — same origin, loopback-only. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"
-- `npx -y agentstate-lite sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
+- `npx -y aslite sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
   — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A bundle folder already committed on the code branch is the same flag's hard case: preview first, --yes executes, and the folder's removal from the code branch rides a prepared side-branch commit you push and open as a PR. A bundle committed with code and NO board branch anywhere is the IN-TREE mode (read-side): full sync refuses (sharing rides your normal commit/push), --pull-only fetches the branch's tracking upstream and reports incoming board docs ('git pull' delivers them), and --establish converts to a dedicated board branch. A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it
 
 ### Session
 
-- `npx -y agentstate-lite session-start [--dir <path>]`
+- `npx -y aslite session-start [--dir <path>]`
   — The SessionStart hook payload: a time-boxed best-effort board pull, then the home view — every pull failure falls through to the render (exit 0)
-- `npx -y agentstate-lite hook install|status|uninstall [--scope project|global]`
+- `npx -y aslite hook install|status|uninstall [--scope project|global]`
   — Install the SessionStart hook (runs session-start: pull the board, then render) for Claude Code, Codex, OpenCode
 
 ## Workspaces — the project's bundle lives at `.agentstate-lite/` in the project root
@@ -121,9 +121,9 @@ becomes — or stays — shared memory across clones and teammates. Three modes:
   waits for a retry instead of recommending publication.
 
 ```sh
-npx -y agentstate-lite sync                            # existing shared project — provisions the board; a local-only bundle reports its state
-npx -y agentstate-lite init --dir .agentstate-lite     # greenfield — idempotent; creates a LOCAL bundle, or opens an existing one
-npx -y agentstate-lite sync --establish                # optional — start sharing a local bundle's board with teammates
+npx -y aslite sync                            # existing shared project — provisions the board; a local-only bundle reports its state
+npx -y aslite init --dir .agentstate-lite     # greenfield — idempotent; creates a LOCAL bundle, or opens an existing one
+npx -y aslite sync --establish                # optional — start sharing a local bundle's board with teammates
 ```
 
 That's the whole setup. The CLI discovers the conventional folder on its own (the way git
@@ -131,8 +131,8 @@ finds `.git`), so every command runs BARE from anywhere in the project tree — 
 config files:
 
 ```sh
-npx -y agentstate-lite list
-npx -y agentstate-lite doc read context-notes/cycle-1
+npx -y aslite list
+npx -y aslite doc read context-notes/cycle-1
 ```
 
 Surfaces that label the workspace (the `ui` header, home's bundle block) derive its DISPLAY
@@ -140,8 +140,8 @@ NAME from the project folder's name. To set it explicitly (it syncs to teammates
 board), write the well-known name doc — its title becomes the display name:
 
 ```sh
-npx -y agentstate-lite doc write docs/bundle --type "Bundle Name" --title "<display name>"
-npx -y agentstate-lite doc update docs/bundle --title "<new name>"   # rename later
+npx -y aslite doc write docs/bundle --type "Bundle Name" --title "<display name>"
+npx -y aslite doc update docs/bundle --title "<new name>"   # rename later
 ```
 
 The folder is LOCAL until you choose to share it: `aslite sync --establish` (once) publishes it
@@ -186,29 +186,29 @@ share this bundle? When the user's intent is ambiguous, ask rather than defaulti
 
 ```sh
 # One-time setup at the project root (see the Workspaces section) — run ONE of these:
-npx -y agentstate-lite sync                          # existing project that shares a board — sets up AND pulls the shared board
-npx -y agentstate-lite init --dir .agentstate-lite   # GREENFIELD — never on a project that already has a workspace; makes a LOCAL bundle
+npx -y aslite sync                          # existing project that shares a board — sets up AND pulls the shared board
+npx -y aslite init --dir .agentstate-lite   # GREENFIELD — never on a project that already has a workspace; makes a LOCAL bundle
 
 # Optional, after a greenfield init: start sharing this bundle's board with teammates
-npx -y agentstate-lite sync --establish
+npx -y aslite sync --establish
 
 # Everything after runs bare, from anywhere in the project tree
 # Create a context note (an OKF concept) for the next session
-npx -y agentstate-lite new "Context Note" cycle-1 --title "cycle-1" --actor <your-name>
-npx -y agentstate-lite doc update context-notes/cycle-1 --body "What this session did and what's next" --actor <your-name>
+npx -y aslite new "Context Note" cycle-1 --title "cycle-1" --actor <your-name>
+npx -y aslite doc update context-notes/cycle-1 --body "What this session did and what's next" --actor <your-name>
 
 # Read it back
-npx -y agentstate-lite doc read context-notes/cycle-1
+npx -y aslite doc read context-notes/cycle-1
 
 # Store a doc, cross-link it, and query the bundle
-npx -y agentstate-lite doc write specs/auth --type Spec --title "Auth" --body "…" --actor <your-name>
-npx -y agentstate-lite link add specs/auth context-notes/cycle-1
-npx -y agentstate-lite list --type Spec
+npx -y aslite doc write specs/auth --type Spec --title "Auth" --body "…" --actor <your-name>
+npx -y aslite link add specs/auth context-notes/cycle-1
+npx -y aslite list --type Spec
 
 # Share the board — recording work isn't done until it's shared
 # (safe everywhere: a local-only board just reports its state; outside any
 #  workspace it prints "sync: nothing to sync" — in both cases nothing is committed or pushed)
-npx -y agentstate-lite sync
+npx -y aslite sync
 ```
 
 ## Sharing the board — `sync`
@@ -252,9 +252,9 @@ is kept on the board, YOURS is saved to an export file named in the receipt, and
 exits 5 with one row per conflicted doc. Reconcile with the doc verbs, never git:
 
 ```sh
-npx -y agentstate-lite sync --show-incoming <id>                 # view the kept incoming version (as of the last fetch)
-npx -y agentstate-lite doc update <id> --body-file <export-file> # write your merged version on top
-npx -y agentstate-lite sync                                      # share it
+npx -y aslite sync --show-incoming <id>                 # view the kept incoming version (as of the last fetch)
+npx -y aslite doc update <id> --body-file <export-file> # write your merged version on top
+npx -y aslite sync                                      # share it
 ```
 
 `sync --pull-only` picks up teammates' changes without publishing local ones. If a push fails
@@ -282,8 +282,8 @@ stored per-origin credential is also consumed when present. Account and admin cr
 provisioning is outside the default CLI surface.
 
 ```bash
-npx -y agentstate-lite serve --dir ./my-bundle --port 4818 &
-npx -y agentstate-lite list --remote http://127.0.0.1:4818
+npx -y aslite serve --dir ./my-bundle --port 4818 &
+npx -y aslite list --remote http://127.0.0.1:4818
 ```
 
 ## Notes

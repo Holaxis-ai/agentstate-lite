@@ -63,16 +63,16 @@ test("kindsPointer: interpolated with the CALLER's resolved invocation, not a ha
   // reference.ts stays pure (no invocation.ts import): commandReference() takes the resolved
   // invocation prefix as a plain argument. A caller passing a DIFFERENT prefix (e.g. the
   // npx-fallback form an off-PATH install would resolve to) must see it reflected verbatim.
-  const npxForm = commandReference("npx -y agentstate-lite");
-  assert.equal(npxForm.kinds, "kinds are declared per-bundle — run `npx -y agentstate-lite kinds` to list them");
+  const npxForm = commandReference("npx -y aslite");
+  assert.equal(npxForm.kinds, "kinds are declared per-bundle — run `npx -y aslite kinds` to list them");
 
   const bareForm = commandReference("agentstate-lite");
   assert.equal(bareForm.kinds, "kinds are declared per-bundle — run `agentstate-lite kinds` to list them");
 
   // buildHomeView (home.ts) threads deps.invocation() through to commandReference() the same way.
   // (The 2-arg call omits the 3rd `summary` param — optional, so this stays the no-bundle path.)
-  const home = buildHomeView({ binPath: () => "/bin/agentstate-lite", invocation: () => "npx -y agentstate-lite" });
-  assert.equal(home.kinds, "kinds are declared per-bundle — run `npx -y agentstate-lite kinds` to list them");
+  const home = buildHomeView({ binPath: () => "/bin/agentstate-lite", invocation: () => "npx -y aslite" });
+  assert.equal(home.kinds, "kinds are declared per-bundle — run `npx -y aslite kinds` to list them");
 });
 
 test("kinds: on a seeded bundle, lists the Context Note kind with its declared shape + horizon", async () => {

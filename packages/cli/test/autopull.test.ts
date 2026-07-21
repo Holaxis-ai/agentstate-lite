@@ -433,7 +433,7 @@ test("hookInstalled: false on empty bases; true after `hook install` writes the 
   const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-installed-"));
   try {
     assert.equal(hookInstalled([base]), false);
-    await hook(["install"], { base, stdout: () => {} });
+    await hook(["install"], { base, commandBase: "aslite", stdout: () => {} });
     assert.equal(hookInstalled([base]), true);
   } finally {
     await rm(base, { recursive: true, force: true });

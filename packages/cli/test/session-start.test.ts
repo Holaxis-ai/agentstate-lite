@@ -15,10 +15,12 @@
 // coverage for the new board surface.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
-import { chmodSync } from "node:fs";
+import { chmod, lstat, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmodSync, existsSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   BOARD_OFFLINE_NOTE,
@@ -44,13 +46,20 @@ import { sync } from "../src/commands/sync.js";
 import { resolveBundleKey } from "@agentstate-lite/board-git";
 import {
   HOOK_TIMEOUT_SECONDS,
+  atomicWriteFileSync,
   buildOpenCodePluginSource,
+  computeHookUninstall,
+  computeSessionStartHookInstall,
   globalHookTargets,
   hook,
   hookInstalled,
   hookNeedsUpdate,
+  isManagedHookCommand,
+  readHookStatus,
+  readSettingsForInstall,
   sessionStartHookCommand,
 } from "../src/commands/hook.js";
+import { CliError } from "../src/errors.js";
 import { readCursor, readMarker, readSelfActors, type AwarenessCache } from "../src/cursor.js";
 import { initBundle, writeDoc } from "@agentstate-lite/core";
 import { addCatalogEntry } from "../src/catalog.js";
@@ -65,6 +74,48 @@ import {
 } from "../../board-git/test/git-harness.js";
 
 // ── scaffolding (mirrors sync.test.ts) ───────────────────────────────────────
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const cliPackageRoot = path.resolve(here, "..");
+const cliBin = path.join(cliPackageRoot, "dist", "agentstate-lite.mjs");
+
+/**
+ * Deterministic preferred-bin resolution for spawned `hook install`s (review finding: an
+ * in-process install writes hookCommand()'s absolute source path, whose RECOGNITION as managed
+ * depended on the checkout path containing the legacy "agentstate-lite" substring — falsely green
+ * on GitHub's checkout, red in a marker-free worktree). An `aslite` symlink to the BUILT dist on
+ * the child's PATH makes the spawned CLI resolve the bare preferred bin, so the written command
+ * is exactly `aslite session-start` at ANY checkout path.
+ */
+let preferredBinDirPromise: Promise<string> | undefined;
+function preferredBinDir(): Promise<string> {
+  preferredBinDirPromise ??= (async () => {
+    if (!existsSync(cliBin)) execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
+    const dir = await mkdtemp(path.join(tmpdir(), "aslite-preferred-bin-"));
+    await symlink(cliBin, path.join(dir, "aslite"));
+    return dir;
+  })();
+  return preferredBinDirPromise;
+}
+test.after(async () => {
+  if (preferredBinDirPromise) await rm(await preferredBinDirPromise, { recursive: true, force: true });
+});
+
+/** Spawn the built CLI as the bare `aslite` bin (see {@link preferredBinDir}). */
+async function runCliHook(
+  args: string[],
+  opts: { cwd: string; env?: NodeJS.ProcessEnv },
+): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  const binDir = await preferredBinDir();
+  const baseEnv = opts.env ?? process.env;
+  const result = spawnSync("aslite", args, {
+    cwd: opts.cwd,
+    env: { ...baseEnv, PATH: `${binDir}${path.delimiter}${baseEnv.PATH ?? ""}` },
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+  });
+  return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+}
 
 async function withHome<T>(home: string, run: () => Promise<T>): Promise<T> {
   const prevHome = process.env.HOME;
@@ -663,26 +714,29 @@ test("defaultLoadBoardStatus: provisioned board reports live counts + cache; boa
 test("hook install wires `session-start` into all three runtimes; status/uninstall agree", async () => {
   const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-base-"));
   try {
-    const cap = capture();
-    await hook(["install"], { base, stdout: cap.stdout });
-    assert.match(cap.out(), /session-start/);
+    // Spawned as the bare preferred bin so the WRITTEN command is exactly `aslite session-start`
+    // — deterministic managed-recognition at any checkout path (see preferredBinDir).
+    const install = await runCliHook(["hook", "install"], { cwd: base });
+    assert.equal(install.status, 0, install.stdout + install.stderr);
+    assert.match(install.stdout, /session-start/);
 
     const claude = JSON.parse(
       await import("node:fs/promises").then((fs) => fs.readFile(path.join(base, ".claude", "settings.json"), "utf8")),
     );
     const entry = claude.hooks.SessionStart[0].hooks[0];
-    assert.ok(entry.command.endsWith(" session-start"), `claude hook command: ${entry.command}`);
+    assert.equal(entry.command, "aslite session-start");
     assert.equal(entry.timeout, HOOK_TIMEOUT_SECONDS);
 
     const codex = JSON.parse(
       await import("node:fs/promises").then((fs) => fs.readFile(path.join(base, ".codex", "hooks.json"), "utf8")),
     );
-    assert.ok(codex.hooks.SessionStart[0].hooks[0].command.endsWith(" session-start"));
+    assert.equal(codex.hooks.SessionStart[0].hooks[0].command, "aslite session-start");
 
     const plugin = await import("node:fs/promises").then((fs) =>
       fs.readFile(path.join(base, ".config", "opencode", "plugins", "axi-agentstate-lite.js"), "utf8"),
     );
     assert.ok(plugin.includes("axi-sdk-js managed opencode plugin: agentstate-lite"));
+    assert.ok(plugin.includes('const command = "aslite"'));
     assert.ok(plugin.includes('"session-start"'));
 
     // A freshly installed hook needs no update…
@@ -720,13 +774,18 @@ test("global hook operations honor each host's relocated config home", async () 
   try {
     await mkdir(homeDir, { recursive: true });
     await mkdir(cwd, { recursive: true });
-    const cap = capture();
-    await hook(["install", "--scope", "global"], { ...location, stdout: cap.stdout });
+    // Spawned as the bare preferred bin (checkout-path-independent recognition of the written
+    // command); the child's HOME is redirected so global fallbacks resolve inside the fixture.
+    const install = await runCliHook(["hook", "install", "--scope", "global"], {
+      cwd,
+      env: { ...env, HOME: homeDir, USERPROFILE: homeDir },
+    });
+    assert.equal(install.status, 0, install.stdout + install.stderr);
 
     const claude = JSON.parse(await readFile(path.join(claudeHome, "settings.json"), "utf8"));
-    assert.ok(claude.hooks.SessionStart[0].hooks[0].command.endsWith(" session-start"));
+    assert.equal(claude.hooks.SessionStart[0].hooks[0].command, "aslite session-start");
     const codex = JSON.parse(await readFile(path.join(codexHome, "hooks.json"), "utf8"));
-    assert.ok(codex.hooks.SessionStart[0].hooks[0].command.endsWith(" session-start"));
+    assert.equal(codex.hooks.SessionStart[0].hooks[0].command, "aslite session-start");
     assert.match(await readFile(path.join(codexHome, "config.toml"), "utf8"), /hooks = true/);
     assert.match(
       await readFile(path.join(xdgHome, "opencode", "plugins", "axi-agentstate-lite.js"), "utf8"),
@@ -792,9 +851,12 @@ test("hook re-install prompt: a pre-session-start managed hook is detected and s
     assert.match(cap.out(), /hook_update: .*predates `session-start` — re-run `.* hook install`/);
     assert.equal(hookUpdateNote(INV).includes("hook install"), true);
 
-    // Re-running install rewrites the command — the prompt clears.
-    const capIn = capture();
-    await hook(["install"], { base, stdout: capIn.stdout });
+    // Re-running install rewrites the command — the prompt clears. Spawned as the bare preferred
+    // bin so the rewritten command is recognizably managed at any checkout path.
+    const install = await runCliHook(["hook", "install"], { cwd: base });
+    assert.equal(install.status, 0, install.stdout + install.stderr);
+    const rewritten = JSON.parse(await readFile(path.join(base, ".claude", "settings.json"), "utf8"));
+    assert.equal(rewritten.hooks.SessionStart[0].hooks[0].command, "aslite session-start");
     assert.equal(hookNeedsUpdate([base]), false);
   } finally {
     await rm(base, { recursive: true, force: true });
@@ -811,6 +873,563 @@ test("sessionStartHookCommand: bare base passes through; a spaced path is quoted
   const src = buildOpenCodePluginSource("/opt/bin/agentstate-lite");
   assert.ok(src.includes('const command = "/opt/bin/agentstate-lite"'));
   assert.ok(src.includes('const commandArgs = ["session-start"]'));
+});
+
+test("writer/recognizer agreement: every reachable hookCommand() base composes a command recognition claims", async () => {
+  // One table over the composer (writer) and isManagedHookCommand (recognizer) — the invariant
+  // the review addendum named: no channel may write a hook our own recognition would not claim.
+  const reachableBases = [
+    "aslite", //                                                       bare preferred bin on PATH
+    "agentstate-lite", //                                              bare legacy bin on PATH
+    "/usr/local/lib/node_modules/aslite/dist/agentstate-lite.mjs", //  npm-dist absolute path
+    "/Users/f b/node_modules/aslite/dist/agentstate-lite.mjs", //      absolute path WITH spaces (quoted form)
+    "/home/u/.claude/plugins/cache/m/agentstate-lite/1.0.0/skills/agentstate-lite/scripts/agentstate-lite.mjs", // skill-bundle shape
+  ];
+  for (const base of reachableBases) {
+    const composed = sessionStartHookCommand(base);
+    assert.equal(isManagedHookCommand(composed), true, `writer/recognizer drift for base: ${base}`);
+  }
+
+  // Negative — the GUARD, not just the predicate: a token-free exotic base is refused by the
+  // owning composer, and install over it refuses BEFORE writing anything anywhere.
+  const exotic = "/tmp/x/bin/mytool.mjs";
+  assert.throws(() => sessionStartHookCommand(exotic), /refusing to install an orphan hook/);
+
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-orphan-guard-"));
+  try {
+    const cap = capture();
+    await assert.rejects(
+      () => hook(["install"], { base, commandBase: exotic, stdout: cap.stdout }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "RUNTIME");
+        assert.equal(err.exitCode, 1);
+        assert.match(err.message, /would not be recognized as managed — refusing to install an orphan hook/);
+        return true;
+      },
+    );
+    assert.equal(cap.out(), "", "no success receipt for a refused install");
+    assert.deepEqual(await readdir(base), [], "nothing was written to ANY target");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+// ── 5b. managed-hook recognition across BOTH command forms (aslite coordinate) ─
+//
+// The npm coordinate rename made `aslite` the preferred bin, so a written hook command can be
+// `aslite session-start` — which the legacy `agentstate-lite` substring marker does NOT match.
+// These tests pin the two-form recognition rule and the upgrade path: install REWRITES a legacy
+// hook (no duplicate), reinstall over a correct new-form hook is a no-op, uninstall/status see
+// either form, and a foreign SessionStart hook is never touched.
+
+test("isManagedHookCommand: legacy substring + new-form `aslite` first-token bin, word-boundary strict", () => {
+  // Legacy form — the marker substring anywhere in the command.
+  assert.equal(isManagedHookCommand("agentstate-lite session-start"), true);
+  assert.equal(isManagedHookCommand("/opt/homebrew/bin/agentstate-lite session-start"), true);
+  assert.equal(isManagedHookCommand("npx -y agentstate-lite session-start"), true);
+  assert.equal(isManagedHookCommand('"/Users/f b/dist/agentstate-lite.mjs" session-start'), true);
+  // New form — bare, absolute, quoted-with-space; with or without args.
+  assert.equal(isManagedHookCommand("aslite session-start"), true);
+  assert.equal(isManagedHookCommand("aslite"), true);
+  assert.equal(isManagedHookCommand("/usr/local/bin/aslite session-start"), true);
+  assert.equal(isManagedHookCommand('"/Users/f b/bin/aslite" session-start'), true);
+  // Documented asymmetry: the new-form npx spelling is NOT recognized (first token `npx`) —
+  // the installer never emits an npx form, so only hand-authored hooks can hit this.
+  assert.equal(isManagedHookCommand("npx -y aslite session-start"), false);
+  // Never a false positive on a foreign command merely containing the letters.
+  assert.equal(isManagedHookCommand("easlite session-start"), false);
+  assert.equal(isManagedHookCommand("aslite2 session-start"), false);
+  assert.equal(isManagedHookCommand("/x/easlite session-start"), false);
+  assert.equal(isManagedHookCommand("some-tool --aslite"), false);
+  assert.equal(isManagedHookCommand("echo aslite-is-not-first"), false);
+  assert.equal(isManagedHookCommand("echo hello"), false);
+});
+
+const FOREIGN_HOOK = { type: "command", command: "some-other-tool session-start", timeout: 30 };
+
+test("computeSessionStartHookInstall: a LEGACY hook is rewritten IN PLACE — no duplicate appended", () => {
+  const settings = {
+    hooks: {
+      SessionStart: [
+        { matcher: "", hooks: [{ ...FOREIGN_HOOK }] },
+        { matcher: "", hooks: [{ type: "command", command: "agentstate-lite session-start", timeout: 10 }] },
+      ],
+    },
+  };
+  const [updated, changed] = computeSessionStartHookInstall(settings, { command: "aslite session-start" });
+  assert.equal(changed, true);
+  const groups = updated.hooks!.SessionStart!;
+  assert.equal(groups.length, 2, "no new group appended");
+  assert.deepEqual(groups[0]!.hooks, [FOREIGN_HOOK], "foreign hook untouched");
+  assert.deepEqual(groups[1]!.hooks, [
+    { type: "command", command: "aslite session-start", timeout: HOOK_TIMEOUT_SECONDS },
+  ]);
+});
+
+test("computeSessionStartHookInstall: reinstall over a correct NEW-form hook is a no-op", () => {
+  const settings = {
+    hooks: {
+      SessionStart: [
+        { matcher: "", hooks: [{ type: "command", command: "aslite session-start", timeout: HOOK_TIMEOUT_SECONDS }] },
+      ],
+    },
+  };
+  const [updated, changed] = computeSessionStartHookInstall(settings, { command: "aslite session-start" });
+  assert.equal(changed, false);
+  assert.equal(updated, settings, "the unchanged input object is returned");
+});
+
+test("computeSessionStartHookInstall: a legacy+new duplicate pair collapses to ONE managed hook", () => {
+  // The state an SDK-marker install would have left: a legacy hook plus an appended aslite one.
+  const settings = {
+    hooks: {
+      SessionStart: [
+        { matcher: "", hooks: [{ type: "command", command: "agentstate-lite session-start", timeout: 10 }] },
+        { matcher: "", hooks: [{ ...FOREIGN_HOOK }, { type: "command", command: "aslite session-start", timeout: 10 }] },
+      ],
+    },
+  };
+  const [updated, changed] = computeSessionStartHookInstall(settings, { command: "aslite session-start" });
+  assert.equal(changed, true);
+  const groups = updated.hooks!.SessionStart!;
+  const managed = groups.flatMap((g) => g.hooks ?? []).filter((h) => isManagedHookCommand(h.command ?? ""));
+  assert.equal(managed.length, 1, "exactly one managed hook survives");
+  assert.equal(groups[0]!.hooks![0]!.command, "aslite session-start", "first managed hook rewritten in place");
+  assert.deepEqual(groups[1]!.hooks, [FOREIGN_HOOK], "foreign hook survives the duplicate sweep");
+});
+
+test("uninstall + status recognize EITHER managed form; a foreign hook is never touched", () => {
+  for (const command of ["agentstate-lite session-start", "aslite session-start", "/usr/local/bin/aslite session-start"]) {
+    const settings = {
+      hooks: {
+        SessionStart: [
+          { matcher: "", hooks: [{ ...FOREIGN_HOOK }] },
+          { matcher: "", hooks: [{ type: "command", command, timeout: 10 }] },
+        ],
+      },
+    };
+    assert.deepEqual(readHookStatus(settings), { installed: true, command }, `status must see: ${command}`);
+    const [updated, changed] = computeHookUninstall(settings);
+    assert.equal(changed, true, `uninstall must remove: ${command}`);
+    assert.deepEqual(updated.hooks!.SessionStart, [{ matcher: "", hooks: [FOREIGN_HOOK] }]);
+    assert.equal(readHookStatus(updated).installed, false);
+  }
+  // A settings file with ONLY a foreign hook: uninstall is a no-op, status reports not installed.
+  const foreignOnly = { hooks: { SessionStart: [{ matcher: "", hooks: [{ ...FOREIGN_HOOK }] }] } };
+  const [after, changed] = computeHookUninstall(foreignOnly);
+  assert.equal(changed, false);
+  assert.equal(after, foreignOnly);
+  assert.equal(readHookStatus(foreignOnly).installed, false);
+});
+
+test("hookNeedsUpdate: a new-form `aslite session-start` hook is current; a bare `aslite` hook is flagged", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-newform-"));
+  const write = async (command: string) => {
+    await mkdir(path.join(base, ".claude"), { recursive: true });
+    await writeFile(
+      path.join(base, ".claude", "settings.json"),
+      JSON.stringify({ hooks: { SessionStart: [{ matcher: "", hooks: [{ type: "command", command, timeout: 10 }] }] } }),
+    );
+  };
+  try {
+    await write("aslite session-start");
+    assert.equal(hookNeedsUpdate([base]), false);
+    await write("aslite"); // pre-session-start shape under the new bin name
+    assert.equal(hookNeedsUpdate([base]), true);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("hook install over a seeded legacy hook converges on disk: rewrite, idempotent reinstall, clean uninstall", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-upgrade-"));
+  const settingsPath = path.join(base, ".claude", "settings.json");
+  try {
+    await mkdir(path.dirname(settingsPath), { recursive: true });
+    await writeFile(
+      settingsPath,
+      JSON.stringify(
+        {
+          hooks: {
+            SessionStart: [
+              { matcher: "", hooks: [{ ...FOREIGN_HOOK }] },
+              { matcher: "", hooks: [{ type: "command", command: "agentstate-lite session-start", timeout: 10 }] },
+            ],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    // Spawned as the bare preferred bin: the written command is EXACTLY `aslite session-start`,
+    // so this proof holds at any checkout path (the in-process variant wrote an absolute source
+    // path whose managed-recognition depended on the checkout path's substring — review finding).
+    const install = await runCliHook(["hook", "install"], { cwd: base });
+    assert.equal(install.status, 0, install.stdout + install.stderr);
+    const afterInstall = JSON.parse(await readFile(settingsPath, "utf8"));
+    const managed = (afterInstall.hooks.SessionStart as { hooks?: { command?: string }[] }[])
+      .flatMap((g) => g.hooks ?? [])
+      .filter((h) => isManagedHookCommand(h.command ?? ""));
+    assert.equal(managed.length, 1, "the legacy hook was rewritten, not duplicated");
+    assert.equal(managed[0]!.command, "aslite session-start");
+    assert.deepEqual(afterInstall.hooks.SessionStart[0].hooks, [FOREIGN_HOOK], "foreign hook untouched");
+
+    const bytesAfterInstall = await readFile(settingsPath, "utf8");
+    const reinstall = await runCliHook(["hook", "install"], { cwd: base });
+    assert.equal(reinstall.status, 0, reinstall.stdout + reinstall.stderr);
+    assert.equal(await readFile(settingsPath, "utf8"), bytesAfterInstall, "reinstall is a no-op on disk");
+
+    const uninstall = await runCliHook(["hook", "uninstall"], { cwd: base });
+    assert.equal(uninstall.status, 0, uninstall.stdout + uninstall.stderr);
+    const afterUninstall = JSON.parse(await readFile(settingsPath, "utf8"));
+    assert.deepEqual(afterUninstall.hooks.SessionStart, [{ matcher: "", hooks: [FOREIGN_HOOK] }]);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+// ── 5c. destructive-write discipline: fail-loud on malformed settings + atomic writes ─
+//
+// QA found the old install path silently clobbered settings it could not parse (readSettings
+// swallowed the parse error into `{}`, then a fresh hooks-only file was written over the user's
+// permissions/theme), and truncate-then-write let a concurrent reader observe a torn file and
+// trigger that same loss. These tests pin the fixed contract: install REFUSES a malformed file
+// (structured RUNTIME failure, byte-untouched), other targets still proceed, read-only paths and
+// uninstall never touch a malformed file, and managed writes go through temp + rename.
+
+test("hook install over invalid-JSON settings: structured RUNTIME error naming the file, bytes untouched, other targets still written", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-badjson-"));
+  const settingsPath = path.join(base, ".claude", "settings.json");
+  const poisoned = '{ "permissions": { "allow": ["Bash"] }, not json';
+  try {
+    await mkdir(path.dirname(settingsPath), { recursive: true });
+    await writeFile(settingsPath, poisoned);
+
+    await assert.rejects(
+      () => hook(["install"], { base, commandBase: "aslite", stdout: () => {} }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "RUNTIME");
+        assert.equal(err.exitCode, 1);
+        const refused = (err.details as { refused?: string[] })?.refused ?? [];
+        assert.equal(refused.length, 1);
+        assert.match(refused[0]!, /settings\.json/);
+        assert.match(refused[0]!, /unparseable JSON/);
+        assert.match(refused[0]!, /nothing was written/);
+        return true;
+      },
+    );
+
+    assert.equal(await readFile(settingsPath, "utf8"), poisoned, "the malformed file is byte-untouched");
+    // Other targets still proceeded despite the refusal.
+    const codex = JSON.parse(await readFile(path.join(base, ".codex", "hooks.json"), "utf8"));
+    assert.ok(codex.hooks.SessionStart[0].hooks[0].command.endsWith(" session-start"));
+    await readFile(path.join(base, ".config", "opencode", "plugins", "axi-agentstate-lite.js"), "utf8");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("hook install over a present-but-non-array SessionStart: refused, file untouched", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-nonarray-"));
+  const settingsPath = path.join(base, ".claude", "settings.json");
+  const authored = JSON.stringify({ theme: "dark", hooks: { SessionStart: { matcher: "" } } }, null, 2);
+  try {
+    await mkdir(path.dirname(settingsPath), { recursive: true });
+    await writeFile(settingsPath, authored);
+
+    await assert.rejects(
+      () => hook(["install"], { base, commandBase: "aslite", stdout: () => {} }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "RUNTIME");
+        const refused = (err.details as { refused?: string[] })?.refused ?? [];
+        assert.equal(refused.length, 1);
+        assert.match(refused[0]!, /`hooks\.SessionStart` exists but is not an array/);
+        return true;
+      },
+    );
+    assert.equal(await readFile(settingsPath, "utf8"), authored, "the user-authored value survives");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("readSettingsForInstall: shape table — absent ok, round-trippable ok, every malformed shape refused with a reason", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-hook-readshape-"));
+  const file = path.join(dir, "settings.json");
+  const table: Array<{ content: string | undefined; ok: boolean; reason?: RegExp }> = [
+    { content: undefined, ok: true },
+    { content: "{}", ok: true },
+    { content: '{"hooks":{"SessionStart":[]}}', ok: true },
+    { content: "not json", ok: false, reason: /unparseable JSON/ },
+    { content: '"just a string"', ok: false, reason: /not a JSON object/ },
+    { content: "[1,2]", ok: false, reason: /not a JSON object/ },
+    { content: '{"hooks": 3}', ok: false, reason: /`hooks` is not a JSON object/ },
+    { content: '{"hooks":{"SessionStart":{}}}', ok: false, reason: /`hooks\.SessionStart` exists but is not an array/ },
+    { content: '{"hooks":{"session_start":"x"}}', ok: false, reason: /`hooks\.session_start` exists but is not an array/ },
+  ];
+  try {
+    for (const row of table) {
+      if (row.content === undefined) await rm(file, { force: true });
+      else await writeFile(file, row.content);
+      const result = readSettingsForInstall(file);
+      assert.equal(result.ok, row.ok, `content ${JSON.stringify(row.content)}`);
+      if (!result.ok) assert.match(result.reason, row.reason!, `content ${JSON.stringify(row.content)}`);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("hook status + uninstall on invalid-JSON settings: no crash, no touch (pinned lenient read-only behavior)", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-lenient-"));
+  const settingsPath = path.join(base, ".claude", "settings.json");
+  const poisoned = "{ definitely broken";
+  try {
+    await mkdir(path.dirname(settingsPath), { recursive: true });
+    await writeFile(settingsPath, poisoned);
+
+    const capStatus = capture();
+    await hook(["status"], { base, stdout: capStatus.stdout });
+    assert.match(capStatus.out(), /installed: false/);
+    assert.equal(await readFile(settingsPath, "utf8"), poisoned);
+
+    const capUn = capture();
+    await hook(["uninstall"], { base, stdout: capUn.stdout });
+    assert.match(capUn.out(), /changed: false/);
+    assert.equal(await readFile(settingsPath, "utf8"), poisoned, "uninstall never rewrites a malformed file");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("atomicWriteFileSync: creates + replaces via same-dir temp + rename, leaving no temp residue", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-atomic-write-"));
+  const target = path.join(dir, "nested", "settings.json");
+  try {
+    atomicWriteFileSync(target, "first\n");
+    assert.equal(await readFile(target, "utf8"), "first\n");
+    atomicWriteFileSync(target, "second\n");
+    assert.equal(await readFile(target, "utf8"), "second\n");
+    // The rename step consumed the temp file — nothing else remains beside the target.
+    assert.deepEqual(await readdir(path.dirname(target)), ["settings.json"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("atomicWriteFileSync: replacing an existing file preserves its mode (0600 stays 0600)", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-atomic-mode-"));
+  const target = path.join(dir, "settings.json");
+  try {
+    await writeFile(target, "private\n");
+    await chmod(target, 0o600);
+    atomicWriteFileSync(target, "replaced\n");
+    assert.equal(await readFile(target, "utf8"), "replaced\n");
+    assert.equal((await stat(target)).mode & 0o777, 0o600, "the replacement must not widen the mode");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("atomicWriteFileSync: a failed rename cleans its temp — no residue beside the target", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-atomic-fail-"));
+  // The target path is a NON-EMPTY DIRECTORY, so the rename step deterministically fails after
+  // the temp file was created — exercising the cleanup branch.
+  const target = path.join(dir, "settings.json");
+  try {
+    await mkdir(target);
+    await writeFile(path.join(target, "occupant"), "x\n");
+    assert.throws(() => atomicWriteFileSync(target, "doomed\n"));
+    assert.deepEqual(await readdir(dir), ["settings.json"], "no temp residue after the failure");
+    assert.equal(await readFile(path.join(target, "occupant"), "utf8"), "x\n", "the obstacle is untouched");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("hook install preserves a 0600 settings.json mode while rewriting a legacy hook", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-mode-"));
+  const settingsPath = path.join(base, ".claude", "settings.json");
+  try {
+    await mkdir(path.dirname(settingsPath), { recursive: true });
+    await writeFile(
+      settingsPath,
+      JSON.stringify(
+        { hooks: { SessionStart: [{ matcher: "", hooks: [{ type: "command", command: "agentstate-lite session-start", timeout: 10 }] }] } },
+        null,
+        2,
+      ),
+    );
+    await chmod(settingsPath, 0o600);
+    await hook(["install"], { base, commandBase: "aslite", stdout: () => {} });
+    const rewritten = JSON.parse(await readFile(settingsPath, "utf8"));
+    assert.ok(rewritten.hooks.SessionStart[0].hooks[0].command.endsWith(" session-start"));
+    assert.equal((await stat(settingsPath)).mode & 0o777, 0o600, "install must not widen a private settings file");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("readSettingsForInstall: an unreadable file is refused as 'unreadable', not 'unparseable JSON'", async (t) => {
+  if (typeof process.getuid === "function" && process.getuid() === 0) {
+    t.skip("running as root — chmod 000 does not make a file unreadable");
+    return;
+  }
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-hook-unreadable-"));
+  const file = path.join(dir, "settings.json");
+  try {
+    await writeFile(file, "{}");
+    await chmod(file, 0o000);
+    const result = readSettingsForInstall(file);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.match(result.reason, /unreadable/);
+      assert.doesNotMatch(result.reason, /unparseable JSON/);
+    }
+  } finally {
+    await chmod(file, 0o600).catch(() => {});
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── 5d. symlinked settings (stow/dotfile management) + malformed-member hardening ─
+
+test("hook install writes THROUGH a symlinked settings.json: the link survives, its target updates atomically, mode preserved", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-symlink-"));
+  const dotfiles = path.join(base, "dotfiles");
+  const real = path.join(dotfiles, "claude-settings.json");
+  const link = path.join(base, ".claude", "settings.json");
+  try {
+    await mkdir(dotfiles, { recursive: true });
+    await writeFile(
+      real,
+      JSON.stringify(
+        { theme: "dark", hooks: { SessionStart: [{ matcher: "", hooks: [{ type: "command", command: "agentstate-lite session-start", timeout: 10 }] }] } },
+        null,
+        2,
+      ),
+    );
+    await chmod(real, 0o600);
+    await mkdir(path.dirname(link), { recursive: true });
+    await symlink(real, link);
+
+    const install = await runCliHook(["hook", "install"], { cwd: base });
+    assert.equal(install.status, 0, install.stdout + install.stderr);
+
+    // The review's reproduction: before the fix the link became a regular file and the dotfile
+    // target stayed stale. Now the link is STILL a link and the resolved target carries the update.
+    assert.equal((await lstat(link)).isSymbolicLink(), true, "the symlink must survive the install");
+    const updated = JSON.parse(await readFile(real, "utf8"));
+    assert.equal(updated.hooks.SessionStart[0].hooks[0].command, "aslite session-start");
+    assert.equal(updated.theme, "dark", "unrelated keys in the dotfile target survive");
+    assert.equal((await stat(real)).mode & 0o777, 0o600, "the target's mode is preserved");
+    assert.deepEqual(await readdir(dotfiles), ["claude-settings.json"], "no temp residue beside the target");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("hook install refuses a DANGLING symlinked settings.json: structured failure, link untouched, other targets proceed", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-dangling-"));
+  const link = path.join(base, ".claude", "settings.json");
+  const nowhere = path.join(base, "dotfiles", "missing.json");
+  try {
+    await mkdir(path.dirname(link), { recursive: true });
+    await symlink(nowhere, link);
+
+    await assert.rejects(
+      () => hook(["install"], { base, commandBase: "aslite", stdout: () => {} }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "RUNTIME");
+        const refused = (err.details as { refused?: string[] })?.refused ?? [];
+        assert.equal(refused.length, 1);
+        assert.match(refused[0]!, /dangling symlink/);
+        assert.match(refused[0]!, /settings\.json/);
+        return true;
+      },
+    );
+    assert.equal((await lstat(link)).isSymbolicLink(), true, "the dangling link is untouched");
+    assert.equal(existsSync(nowhere), false, "nothing was manufactured at the link's target");
+    // The other JSON target still proceeded.
+    JSON.parse(await readFile(path.join(base, ".codex", "hooks.json"), "utf8"));
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("hook install refuses a SessionStart [null] member: exit-1 class, file untouched, NO success receipt", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-nullmember-"));
+  const settingsPath = path.join(base, ".claude", "settings.json");
+  const poisoned = '{"hooks":{"SessionStart":[null]}}';
+  try {
+    await mkdir(path.dirname(settingsPath), { recursive: true });
+    await writeFile(settingsPath, poisoned);
+
+    const cap = capture();
+    await assert.rejects(
+      () => hook(["install"], { base, commandBase: "aslite", stdout: cap.stdout }),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "RUNTIME");
+        assert.equal(err.exitCode, 1);
+        const refused = (err.details as { refused?: string[] })?.refused ?? [];
+        assert.equal(refused.length, 1);
+        assert.match(refused[0]!, /`hooks\.SessionStart\[0\]` is not an object/);
+        return true;
+      },
+    );
+    // Receipt truthfulness: `installed: true` must never be emitted for a refused target.
+    assert.equal(cap.out(), "", "no success receipt for a failed install");
+    assert.equal(await readFile(settingsPath, "utf8"), poisoned, "the file is byte-untouched");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("status + uninstall tolerate malformed SessionStart members: skip without throwing, honest report, never touch", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-tolerant-"));
+  const settingsPath = path.join(base, ".claude", "settings.json");
+  const managedGroup = { matcher: "", hooks: [{ type: "command", command: "aslite session-start", timeout: 10 }] };
+  try {
+    // A malformed member BESIDE a real managed hook: status must still see the managed hook.
+    await mkdir(path.dirname(settingsPath), { recursive: true });
+    await writeFile(settingsPath, JSON.stringify({ hooks: { SessionStart: [null, managedGroup] } }));
+    const capStatus = capture();
+    await hook(["status"], { base, stdout: capStatus.stdout });
+    assert.match(capStatus.out(), /installed: true/);
+
+    // Uninstall removes the managed hook and preserves the malformed member verbatim.
+    await hook(["uninstall"], { base, stdout: () => {} });
+    const afterUninstall = JSON.parse(await readFile(settingsPath, "utf8"));
+    assert.deepEqual(afterUninstall.hooks.SessionStart, [null]);
+
+    // A file with ONLY a malformed member: status honest-false, uninstall a byte-no-op.
+    const onlyNull = '{"hooks":{"SessionStart":[null]}}';
+    await writeFile(settingsPath, onlyNull);
+    const capStatus2 = capture();
+    await hook(["status"], { base, stdout: capStatus2.stdout });
+    assert.match(capStatus2.out(), /installed: false/);
+    const capUn = capture();
+    await hook(["uninstall"], { base, stdout: capUn.stdout });
+    assert.match(capUn.out(), /changed: false/);
+    assert.equal(await readFile(settingsPath, "utf8"), onlyNull);
+
+    // Pure-layer totality: the walkers never throw on a malformed member.
+    assert.deepEqual(readHookStatus({ hooks: { SessionStart: [null] } } as never), { installed: false });
+    const [, unChanged] = computeHookUninstall({ hooks: { SessionStart: [null] } } as never);
+    assert.equal(unChanged, false);
+    const [installed] = computeSessionStartHookInstall({ hooks: { SessionStart: [null] } } as never, {
+      command: "aslite session-start",
+    });
+    assert.deepEqual(installed.hooks!.SessionStart![0], null, "a malformed member passes through untouched");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
 });
 
 // ── 6. no-repo / boardless session-start stays serene ─────────────────────────

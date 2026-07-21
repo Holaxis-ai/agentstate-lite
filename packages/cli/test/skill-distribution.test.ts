@@ -3,7 +3,7 @@
  * a backing contract/example under `references/` — the skill is one projection of the
  * distribution-neutral inventory in src/distribution-resources.ts.
  *
- * Runs in `npm test -w agentstate-lite`, hence `npm run check` — PR-side is the right layer here
+ * Runs in `npm test -w aslite`, hence `npm run check` — PR-side is the right layer here
  * because a gap is a SOURCE defect (a new command that never declares its shipped-contract
  * surface, or new prose that points at a file nobody added to the manifest): the bot that
  * regenerates plugins/ on merge to main would otherwise ship the gap FIRST, and only a human
