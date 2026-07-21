@@ -582,18 +582,40 @@ body {
   flex-direction: column;
 }
 
+.feed-item {
+  border-bottom: 1px solid var(--rule);
+}
+
+.feed-item:last-child {
+  border-bottom: none;
+}
+
+/* Each row is a BUTTON into the doc reader — the feed announces a doc, clicking reads it. */
 .feed-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   column-gap: 0.6rem;
   row-gap: 0.1rem;
   padding: 0.55rem 0.15rem;
-  border-bottom: 1px solid var(--rule);
   font-size: 0.83rem;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
 }
 
-.feed-row:last-child {
-  border-bottom: none;
+.feed-row:hover .feed-title,
+.feed-row:focus-visible .feed-title {
+  color: var(--color-structure);
+  text-decoration: underline;
+}
+
+.feed-row:focus-visible {
+  outline: 2px solid var(--color-structure);
+  outline-offset: -2px;
 }
 
 .feed-actor {
@@ -655,6 +677,268 @@ body {
       opacity: 1;
     }
   }
+}
+
+/* ── Doc reader (designs/doc-reader) — Blue bar = shell surface, teal = inside a View ── */
+.doc-bar {
+  border-bottom: 2px solid var(--color-structure);
+}
+
+.doc-page {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1.4rem 1.25rem 3rem;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.doc-head {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-card);
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.doc-head h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.55rem;
+  text-wrap: balance;
+}
+
+.doc-head-meta {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+}
+
+.doc-id {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.doc-chip {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 0.05rem 0.45rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.doc-when {
+  color: var(--color-signal);
+}
+
+.doc-body {
+  color: var(--text-primary);
+  line-height: 1.55;
+}
+
+.doc-body h1,
+.doc-body h2,
+.doc-body h3,
+.doc-body h4,
+.doc-body h5,
+.doc-body h6 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  margin: 1.4rem 0 0.5rem;
+}
+
+.doc-body h1 {
+  font-size: 1.35rem;
+}
+
+.doc-body h2 {
+  font-size: 1.25rem;
+}
+
+.doc-body h3 {
+  font-size: 1.1rem;
+}
+
+.doc-body p {
+  margin: 0 0 0.85rem;
+  max-width: 62ch;
+  color: var(--text-secondary);
+}
+
+.doc-body a {
+  color: var(--color-structure);
+}
+
+.doc-body code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  padding: 0.05rem 0.3rem;
+  border-radius: var(--radius);
+}
+
+.doc-body .doc-code {
+  background: var(--surface-alt);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  overflow-x: auto;
+  margin: 0 0 0.85rem;
+}
+
+.doc-body .doc-code code {
+  background: none;
+  padding: 0;
+}
+
+.doc-body blockquote {
+  margin: 0 0 0.85rem;
+  padding: 0.1rem 0 0.1rem 0.9rem;
+  border-left: 3px solid var(--rule);
+  color: var(--text-secondary);
+}
+
+.doc-body ul,
+.doc-body ol {
+  margin: 0 0 0.85rem;
+  padding-left: 1.4rem;
+  color: var(--text-secondary);
+}
+
+.doc-body hr {
+  border: none;
+  border-top: 1px solid var(--rule);
+  margin: 1.2rem 0;
+}
+
+.doc-task-item {
+  list-style: none;
+  margin-left: -1.2rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+/* The item's text is a block paragraph in mdast; keep it inline beside the checkbox. */
+.doc-task-item > p {
+  margin: 0;
+}
+
+.doc-task-item input {
+  flex: none;
+  transform: translateY(1px);
+}
+
+.doc-table-wrap {
+  overflow-x: auto;
+  margin: 0 0 0.85rem;
+}
+
+.doc-table-wrap table {
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.doc-table-wrap th,
+.doc-table-wrap td {
+  border: 1px solid var(--rule);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  color: var(--text-secondary);
+}
+
+.doc-table-wrap th {
+  color: var(--text-primary);
+  background: var(--surface-alt);
+}
+
+.doc-cell-center {
+  text-align: center;
+}
+
+.doc-cell-right {
+  text-align: right;
+}
+
+/* An external/unresolved/rejected target — visibly a non-link, deliberately inert. */
+.doc-link-inert {
+  color: var(--text-secondary);
+  border-bottom: 1px dotted var(--text-tertiary);
+  cursor: default;
+}
+
+/* Raw HTML in a body renders as LITERAL text (belt 1) — mono so it reads as source, not prose. */
+.doc-raw-html {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.doc-bounded-note {
+  border-left: 3px solid var(--color-signal);
+  background: color-mix(in srgb, var(--color-signal) 7%, var(--surface-card));
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+
+.doc-terminal {
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+
+.doc-backlinks {
+  margin-top: 1.6rem;
+  border-top: 1px solid var(--rule);
+  padding-top: 0.8rem;
+}
+
+.doc-backlinks h2 {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.doc-backlinks ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.83rem;
+}
+
+.doc-backlinks a {
+  color: var(--color-structure);
+}
+
+.doc-bl-text {
+  color: var(--text-secondary);
+}
+
+.doc-backlinks-empty {
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
 }
 
 /* ── Page frame (sandboxed iframe host) ─────────────────────────────── */

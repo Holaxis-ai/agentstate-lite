@@ -19,13 +19,54 @@
  * phantom concept id, which surfaced as a false-positive "unresolved link" in
  * `status` and could never become a real graph edge anywhere.
  *
- * These functions are pure and dependency-free (only `node:path` posix helpers),
- * hence directly unit-testable.
+ * These functions are pure and dependency-free — INCLUDING free of `node:path`:
+ * this module is the ONE link resolver (CLAUDE.md gate 3) and it now also runs in
+ * the BROWSER (the shell's doc reader routes links through it), where `node:path`
+ * does not bundle. The posix join/relative/basename logic is implemented as pure
+ * string helpers below, parity-pinned against `node:path.posix` by
+ * `links-path-parity.test.ts` and against browser bundling by
+ * `links-browser-bundle.test.ts`.
  */
 
-import path from "node:path";
 import { isReservedFile } from "./paths.js";
 import type { ConceptId, Link, OkfDocument } from "./types.js";
+
+/** Normalize posix segments with a stack: `.` drops, `..` pops (or survives at the front when nothing is left to pop — matching `path.posix.join` semantics), empty segments drop. Exported for the direct parity pin (links-path-parity.test.ts) — the resolver's `..`-past-root guard is otherwise masked by its leading-`../` post-strip. */
+export function normalizeSegments(segments: string[]): string[] {
+  const out: string[] = [];
+  for (const segment of segments) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === ".." && out.length > 0 && out[out.length - 1] !== "..") {
+      out.pop();
+      continue;
+    }
+    out.push(segment);
+  }
+  return out;
+}
+
+/** Pure `path.posix.join(base, rel)` for the two-argument, relative-path case this module uses. */
+function joinPosix(base: string, rel: string): string {
+  return normalizeSegments([...base.split("/"), ...rel.split("/")]).join("/");
+}
+
+/** Pure `path.posix.relative(from, to)` for already-rooted bundle paths (no leading `/`). */
+function relativePosix(from: string, to: string): string {
+  const fromSegments = normalizeSegments(from.split("/"));
+  const toSegments = normalizeSegments(to.split("/"));
+  let common = 0;
+  while (common < fromSegments.length && common < toSegments.length && fromSegments[common] === toSegments[common]) {
+    common++;
+  }
+  const ups = fromSegments.length - common;
+  return [...Array<string>(ups).fill(".."), ...toSegments.slice(common)].join("/");
+}
+
+/** Pure `path.posix.basename` (no extension handling — this module never needs it). */
+function basenamePosix(p: string): string {
+  const slash = p.lastIndexOf("/");
+  return slash >= 0 ? p.slice(slash + 1) : p;
+}
 
 /** A raw markdown link as written in the body, before resolution. */
 export interface RawLink {
@@ -72,7 +113,7 @@ export function resolveConceptId(fromId: ConceptId, href: string): ConceptId | n
     const slash = fromId.lastIndexOf("/");
     const fromDir = slash >= 0 ? fromId.slice(0, slash) : "";
     // posix.join normalizes `.`/`..` segments deterministically.
-    resolved = path.posix.join(fromDir, target);
+    resolved = joinPosix(fromDir, target);
   }
   // Strip any residual leading `../` that escaped the bundle root (best-effort).
   resolved = resolved.replace(/^(\.\.\/)+/, "");
@@ -98,8 +139,8 @@ export function relativeHref(fromId: ConceptId, target: string): string {
   const targetId = t.replace(/^\/+/, "").replace(/\.md$/, "");
   const slash = fromId.lastIndexOf("/");
   const fromDir = slash >= 0 ? fromId.slice(0, slash) : "";
-  let rel = path.posix.relative(fromDir, targetId);
-  if (rel === "") rel = path.posix.basename(targetId); // link to a concept in one's own dir
+  let rel = relativePosix(fromDir, targetId);
+  if (rel === "") rel = basenamePosix(targetId); // link to a concept in one's own dir
   return `${rel}.md`;
 }
 

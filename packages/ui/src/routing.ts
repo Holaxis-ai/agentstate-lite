@@ -9,9 +9,9 @@
  * window-touching store so routing logic is unit-testable without a DOM.
  */
 
-export type ViewName = "launcher" | "page";
+export type ViewName = "launcher" | "page" | "doc";
 
-const VIEW_NAMES: readonly ViewName[] = ["launcher", "page"];
+const VIEW_NAMES: readonly ViewName[] = ["launcher", "page", "doc"];
 
 function isViewName(v: string | null): v is ViewName {
   return v !== null && (VIEW_NAMES as readonly string[]).includes(v);
@@ -20,7 +20,8 @@ function isViewName(v: string | null): v is ViewName {
 /**
  * The parsed route: a view name plus its params. The pages-spike surface is exactly two views
  * (tasks/ui-pages-spike) — `launcher` (the landing, and the fallback for any unknown/legacy `view`
- * such as a stale `?view=board` deep link) and `page` (whose `id` is the registry doc to frame).
+ * such as a stale `?view=board` deep link), `page` (whose `id` is the registry doc to frame), and
+ * `doc` (whose `id` is the concept doc the reader renders — designs/doc-reader).
  */
 export interface Route {
   view: ViewName;

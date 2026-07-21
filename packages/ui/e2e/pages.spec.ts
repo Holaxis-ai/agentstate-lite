@@ -397,3 +397,52 @@ test("home surface: flat badged grid, live activity feed, first-run orientation 
     await ui.cleanup();
   }
 });
+
+test("doc reader: feed rows open rendered docs, links navigate, hostile content is inert, deep links work", async ({ page }) => {
+  const ui = await bootUiOverPagesBundle(TASKS);
+  const dialogs: string[] = [];
+  page.on("dialog", (dialog) => {
+    dialogs.push(dialog.message());
+    void dialog.dismiss();
+  });
+  try {
+    await page.goto(ui.url);
+    await page.locator(".orientation .orientation-dismiss").click();
+
+    // A doc written behind the server, carrying a resolvable link + hostile vectors.
+    execFileSync(process.execPath, [
+      CLI_DIST, "doc", "write", "notes/reader-probe",
+      "--type", "Context Note", "--title", "Reader probe", "--actor", "e2e",
+      "--body", 'See [alpha](../tasks/alpha.md). <script>window.__pwned=1</script> <img src=x onerror="window.__pwned=2"> [evil](javascript:alert(1))',
+      "--dir", ui.dir,
+    ]);
+
+    // It lands in the feed; clicking the row opens the READER (blue shell bar, not a framed View).
+    const row = page.locator(".feed-row", { hasText: "Reader probe" });
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await row.click();
+    await expect(page.locator(".doc-head h1")).toHaveText("Reader probe");
+    await expect(page.locator(".doc-bar")).toBeVisible();
+
+    // Hostile content is INERT: literal text, no elements, no handler side effects, no dialogs.
+    const body = page.locator(".doc-body");
+    await expect(body).toContainText("<script>window.__pwned=1</script>");
+    await expect(body.locator("script, img, iframe")).toHaveCount(0);
+    const pwned = await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned);
+    expect(pwned).toBeUndefined();
+
+    // The resolvable link navigates through the shell to the target doc; the javascript: link is inert.
+    await expect(body.locator("a")).toHaveCount(1);
+    await body.locator("a", { hasText: "alpha" }).click();
+    await expect(page.locator(".doc-head h1")).toHaveText("Alpha task");
+    await expect(page).toHaveURL(/view=doc&id=tasks%2Falpha/);
+
+    // Deep link: a fresh navigation straight to a doc URL renders the reader.
+    await page.goto(`${ui.url}&view=doc&id=notes/reader-probe`);
+    await expect(page.locator(".doc-head h1")).toHaveText("Reader probe");
+
+    expect(dialogs, "no dialog was ever triggered by the hostile doc").toEqual([]);
+  } finally {
+    await ui.cleanup();
+  }
+});

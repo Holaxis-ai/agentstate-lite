@@ -12,6 +12,7 @@ import { useInterceptorStatus } from "./query/interceptor.js";
 import { ReloginScreen } from "./views/ReloginScreen.js";
 import { Launcher } from "./views/Launcher.js";
 import { PageFrame } from "./views/PageFrame.js";
+import { DocPage } from "./views/DocPage.js";
 import { BrandMark } from "./BrandMark.js";
 
 export function App() {
@@ -21,7 +22,14 @@ export function App() {
 
   if (interceptorStatus !== "ok") return <ReloginScreen kind={interceptorStatus} />;
 
-  const view = route.view === "page" && route.id ? <PageFrame pageId={route.id} /> : <Launcher />;
+  const view =
+    route.view === "page" && route.id ? (
+      <PageFrame pageId={route.id} />
+    ) : route.view === "doc" && route.id ? (
+      <DocPage docId={route.id} />
+    ) : (
+      <Launcher />
+    );
 
   return (
     <div className="app">
