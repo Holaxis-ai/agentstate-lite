@@ -4,14 +4,16 @@ title: 'npm prerelease: authoritative CLI plus explicitly installable Agent Skil
 status: in_progress
 priority: '1'
 description: >-
-  PR #134 merged. PR #136 @ 1c76855 independently reviewed: CHANGES REQUESTED
-  for foreign temp-file deletion before refusal, non-recoverable manifest-first
-  upgrade failure, broken cwd-relative installed-reference commands, and
-  non-convergent empty-directory type drift. Exact-SHA CI and tarball proof are
-  green; fix and revalidate before merge. Then human-gated npm publish and
-  founder proof.
-actor: codex-reviewer
-timestamp: '2026-07-21T16:39:31.404Z'
+  PR #136 (PR2) RE-REVIEW-READY @ 1c5f212: four external findings fixed as
+  APPENDED commits (transitional union-manifest for upgrade interruption,
+  ownership-scoped debris sweep, type-aware convergence, $REFS base-dir
+  reference resolution); internal QA PASS incl. 40-kill UPGRADE matrix 0 bricked
+  + ownership invariant held at every kill point. Awaiting external re-review +
+  Brian merge. Then: local tarball test (walkthrough delivered), npm publish
+  (human-gated), founder proof. Standing caveat: R2 concurrency
+  (tasks/skill-installer-followups).
+actor: anthropic/claude
+timestamp: '2026-07-21T17:05:54.896Z'
 ---
 # Behavioral claim
 
