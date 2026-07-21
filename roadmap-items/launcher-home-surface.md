@@ -13,7 +13,7 @@ description: >-
   (home/workspace/overview/hub) before tutorial copy hardens the word. Boundary:
   ui-rethink stays separate/post-window.
 actor: mike/claude
-timestamp: '2026-07-21T14:22:22.757Z'
+timestamp: '2026-07-21T14:57:05.672Z'
 ---
 # Intent
 
@@ -82,3 +82,34 @@ renders a workspaces block from the catalog, and the human home should mirror it
   surface ALL workspace labels — including private ones — in a surface headed for
   test-user demos and screenshots. Mitigate by design (collapsed by default, or a
   catalog-side private flag home respects), not by accident.
+
+# Alignment with agent-authored Views + the content model (added 2026-07-21, after prototype review)
+
+Layer boundary (write it down so it never drifts): **the shell renders what is UNIVERSAL to
+every OKF bundle** — markdown docs, frontmatter, links/backlinks, the attributed timeline,
+kind-DECLARED chips (mechanism in the shell, meaning from the bundle) — and **anything
+domain-interactive is a View**. The shell never grows a built-in task board; that is a View,
+per the standing verdict that removed the old React board views. A possible future direction
+(the "window" reimagining, discussed 2026-07-21): make docs READABLE in the shell — activity
+rows and references click through to a rendered doc page. That is NEW SCOPE needing its own
+decision; it is compatible with one-parser/one-runtime (same shell, same APIs PageFrame uses).
+
+Three first-class content media, each with a distinct job (correcting an earlier framing that
+bridge:none pages get absorbed by a doc reader — WRONG, per Mike):
+
+1. **Markdown docs** — the knowledge substrate (diffable, queryable, linkable).
+2. **Self-contained HTML artifacts** (`bridge: none`) — the VISUAL medium: diagrams,
+   explainers, organized information. Agents' native artifact form; the sandbox +
+   connect-src 'none' CSP makes them SAFE bundle content with provenance. First-class,
+   not legacy. What changes with a readable shell is only that HTML stops being
+   conscripted for plain prose.
+3. **Live Views** (`bundle-read`/`bundle-propose`) — lenses/apps over live data.
+
+Synthesis candidates for the window direction: HTML artifacts render as sandboxed FIGURES
+inline in doc pages (same nonce/mint/CSP machinery, embedded instead of full-frame);
+a bridge `open-doc` handoff (sibling of `open-page`) so Views hand reading to the shell and
+stay thin; new-View registration surfaces as a timeline event ("your agent built you an
+app"); generative view creation (tasks/ui-generative-chat) lives INSIDE the window, next to
+the knowledge it lenses. The original launcher grouping's instinct — bridge:none things are
+different IN KIND — was right; only the "Documents" label and top-level-grouping expression
+were wrong. The distinction expresses as ROLE: artifacts = figures/gallery, views = lenses/tools.
