@@ -302,12 +302,25 @@ test("npm: bare-aslite channel identity — no npx examples, no retired coordina
   assert.ok(!renderedNpm.includes("npx -y agentstate-lite"), "retired npm coordinate must not appear");
   assert.ok(!renderedNpm.includes("plugins/cache"), "npm channel must not teach marketplace-cache discovery");
   assert.ok(!renderedNpm.includes('ASLITE="$('), "npm channel must not carry the skill-channel resolver");
-  assert.ok(!renderedNpm.includes("$REFS"), "npm channel reference pointers are relative paths, not $REFS");
 });
 
-test("npm: no orphans — every npm-shipped file (or an enclosing directory) is mentioned as references/… in the rendered npm SKILL.md", () => {
+test("npm: reference pointers ride $REFS set from the host-reported base dir — never bare cwd-relative paths", () => {
+  // The PR #136 review's reproduction: a bare `cat references/…` fails from the project root
+  // after a host install (shell paths resolve against the cwd, not SKILL.md's folder).
+  assert.ok(
+    renderedNpm.includes('REFS="<skill-base-dir>/references"'),
+    "the npm channel must instruct setting $REFS from the skill base directory the host reports",
+  );
+  assert.match(renderedNpm, /base directory/i);
+  assert.ok(!renderedNpm.includes('REFS="$('), "no discovery loop in the npm channel — the base dir is handed to the agent");
+  for (const banned of ["cat references/", "promote references/", "references/views", "references/recipes", "references/sample-bundle"]) {
+    assert.ok(!renderedNpm.includes(banned), `bare cwd-relative reference path in the npm render: ${banned}`);
+  }
+});
+
+test("npm: no orphans — every npm-shipped file (or an enclosing directory) is mentioned as $REFS/… in the rendered npm SKILL.md", () => {
   for (const { src, dest } of NPM_RESOURCES) {
-    const mentioned = destMentionCandidates(dest).some((candidate) => renderedNpm.includes(`references/${candidate}`));
+    const mentioned = destMentionCandidates(dest).some((candidate) => renderedNpm.includes(`$REFS/${candidate}`));
     assert.ok(
       mentioned,
       `\`${dest}\` (from ${src}) is npm-shipped but never mentioned in the rendered npm-target SKILL.md — an orphaned reference nobody points at.`,
@@ -315,12 +328,7 @@ test("npm: no orphans — every npm-shipped file (or an enclosing directory) is 
   }
 });
 
-/** Every `references/<path>` token in `text` — same bare-path shape as {@link extractRefsPaths}. */
-function extractNpmRefsPaths(text: string): string[] {
-  return [...text.matchAll(/references\/([A-Za-z0-9._/-]+)/g)].map((m) => m[1]!);
-}
-
-test("npm: no phantom pointers — every references/… path in the rendered npm SKILL.md resolves to a shipped dest or dir-prefix", () => {
+test("npm: no phantom pointers — every $REFS/… path in the rendered npm SKILL.md resolves to a shipped dest or dir-prefix", () => {
   const resolves = (refPath: string): boolean => {
     const normalized = refPath.endsWith("/") ? refPath.slice(0, -1) : refPath;
     for (const dest of NPM_DESTS) {
@@ -328,8 +336,8 @@ test("npm: no phantom pointers — every references/… path in the rendered npm
     }
     return false;
   };
-  const phantoms = [...new Set(extractNpmRefsPaths(renderedNpm).filter((p) => !resolves(p)))];
-  assert.deepEqual(phantoms, [], `phantom references/ path(s) — point nowhere in the npm projection: ${phantoms.join(", ")}`);
+  const phantoms = [...new Set(extractRefsPaths(renderedNpm).filter((p) => !resolves(p)))];
+  assert.deepEqual(phantoms, [], `phantom $REFS/ path(s) — point nowhere in the npm projection: ${phantoms.join(", ")}`);
 });
 
 // ---------------------------------------------------------------------------------------------

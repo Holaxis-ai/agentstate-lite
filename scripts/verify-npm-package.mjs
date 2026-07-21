@@ -249,6 +249,16 @@ export async function verifyNpmPackage() {
         `the installed SKILL.md must not carry the marketplace-cache resolver (found ${JSON.stringify(marker)})`,
       );
     }
+    assert.ok(
+      installedSkill.includes('REFS="<skill-base-dir>/references"'),
+      "the installed SKILL.md must instruct setting $REFS from the host-reported skill base directory",
+    );
+    for (const banned of ["cat references/", "promote references/"]) {
+      assert.ok(
+        !installedSkill.includes(banned),
+        `the installed SKILL.md must not emit cwd-relative reference commands (found ${JSON.stringify(banned)})`,
+      );
+    }
 
     const binDir = process.platform === "win32" ? prefix : path.join(prefix, "bin");
     const commandEnv = {
@@ -343,6 +353,18 @@ export async function verifyNpmPackage() {
     );
     assert.equal(skillStatus.skill.hosts.claude_code.state, "installed");
     assert.equal(skillStatus.skill.hosts.codex.state, "installed");
+
+    // Follow the installed SKILL.md's own $REFS instruction from the project ROOT: the host
+    // reports the skill base dir; REFS = <base>/references, and $REFS/<dest> resolves from any cwd.
+    const skillBaseDir = path.join(project, ".claude", "skills", "aslite");
+    const refsDir = path.join(skillBaseDir, "references");
+    const authoringViaRefs = await readFile(path.join(refsDir, "views", "references", "view-authoring-v0.md"));
+    assert.ok(
+      authoringViaRefs.equals(
+        await readFile(path.join(committedSkillRoot, "references", "views", "references", "view-authoring-v0.md")),
+      ),
+      "the $REFS composition instructed by the installed SKILL.md must resolve the shipped reference from the project root",
+    );
 
     const skillReinstall = parseJson(
       (await runCli("aslite", ["skill", "install", "--scope", "project", "--json"], { cwd: project })).stdout,

@@ -540,11 +540,13 @@ function renderRemoteAccessSection(invocation: string): string[] {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Shipped-reference pointer forms. Each channel installs the same reference tree but addresses it
-// differently: the skill channel resolves a `$REFS` shell variable (see
-// renderShippedReferencesSection), the npm channel uses plain paths relative to the installed
-// SKILL.md's own folder (`references/…` sits next to it in the package root and in a host-installed
-// skill folder alike — no resolver, no marketplace-cache discovery in that channel by design).
+// Shipped-reference pointer form — ONE `$REFS/<dest>` shape SHARED by both channels: shell
+// commands resolve against the process cwd, never the installed SKILL.md's folder, so a bare
+// relative `references/…` argument would fail from a project root after a host install. The
+// channels differ only in how `$REFS` gets DEFINED: the skill channel emits a cross-host
+// discovery resolver (renderShippedReferencesSection), while the npm channel instructs the
+// reader to set it from the skill base directory its host reports — trivially, no discovery
+// loop, no marketplace-cache search in that channel by design.
 // ---------------------------------------------------------------------------------------------
 
 interface RefPointer {
@@ -554,21 +556,16 @@ interface RefPointer {
   path(dest: string): string;
 }
 
-const SKILL_REF: RefPointer = {
+const REFS_POINTER: RefPointer = {
   arg: (dest) => `"$REFS/${dest}"`,
   path: (dest) => `$REFS/${dest}`,
-};
-
-const NPM_REF: RefPointer = {
-  arg: (dest) => `references/${dest}`,
-  path: (dest) => `references/${dest}`,
 };
 
 // ---------------------------------------------------------------------------------------------
 // npm target — packages/cli/SKILL.md, published-package channel.
 // ---------------------------------------------------------------------------------------------
 
-/** npm-channel `## Shipped references` — plain relative paths, no resolver. */
+/** npm-channel `## Shipped references` — `$REFS` set once from the host-reported skill base dir. */
 function renderNpmShippedReferencesSection(): string[] {
   const lines: string[] = [];
   lines.push("## Shipped references — worked examples & contracts alongside this file");
@@ -580,15 +577,25 @@ function renderNpmShippedReferencesSection(): string[] {
     "worked example shipped in this package's `references/` folder rather than inlined here. The",
   );
   lines.push(
-    "folder is installed NEXT TO this SKILL.md — in the npm package root, and in any host skill",
+    "folder sits NEXT TO this SKILL.md — in the npm package root, and in any host skill folder",
   );
+  lines.push("this file is installed into (`aslite skill install`).");
+  lines.push("");
   lines.push(
-    "folder this file is installed into — so every `references/…` path below is relative to this",
+    "Shell commands resolve paths against YOUR working directory, not this file's folder, so set",
   );
+  lines.push("`$REFS` once per session: your host names this skill's base directory when it loads it");
+  lines.push('(e.g. "Base directory for this skill: <path>"). Use that:');
+  lines.push("");
+  lines.push("```bash");
+  lines.push('REFS="<skill-base-dir>/references"   # substitute the base directory your host reported');
+  lines.push("```");
+  lines.push("");
   lines.push(
-    "file's own folder. Each file is a byte-for-byte copy of the matching file in the CLI's own",
+    "Every `$REFS/…` path below then runs from any cwd. Each shipped file is a byte-for-byte copy",
   );
-  lines.push("repo — one authority, regenerated on every release, never hand-duplicated.");
+  lines.push("of the matching file in the CLI's own repo — one authority, regenerated on every release,");
+  lines.push("never hand-duplicated.");
   lines.push("");
   return lines;
 }
@@ -648,8 +655,8 @@ export function renderNpm(): string {
   lines.push(...renderSyncSection(NPM_PKG));
   lines.push(...renderRemoteAccessSection(NPM_PKG));
   lines.push(...renderNpmShippedReferencesSection());
-  lines.push(...renderBundleViewsSection(NPM_PKG, NPM_REF));
-  lines.push(...renderNotesSection(referenceNotesAddendum(NPM_PKG, NPM_REF)));
+  lines.push(...renderBundleViewsSection(NPM_PKG, REFS_POINTER));
+  lines.push(...renderNotesSection(referenceNotesAddendum(NPM_PKG, REFS_POINTER)));
   return lines.join("\n");
 }
 
@@ -937,7 +944,7 @@ export function renderSkill(): string {
   lines.push("implementation in the meantime.");
   lines.push("");
   lines.push(...renderShippedReferencesSection());
-  lines.push(...renderBundleViewsSection(ASLITE, SKILL_REF));
-  lines.push(...renderNotesSection(referenceNotesAddendum(ASLITE, SKILL_REF)));
+  lines.push(...renderBundleViewsSection(ASLITE, REFS_POINTER));
+  lines.push(...renderNotesSection(referenceNotesAddendum(ASLITE, REFS_POINTER)));
   return lines.join("\n");
 }

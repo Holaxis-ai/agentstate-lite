@@ -299,10 +299,20 @@ aslite list --remote http://127.0.0.1:4818
 
 A few capabilities below (bundle views, custom recipes) are backed by a full contract or a
 worked example shipped in this package's `references/` folder rather than inlined here. The
-folder is installed NEXT TO this SKILL.md — in the npm package root, and in any host skill
-folder this file is installed into — so every `references/…` path below is relative to this
-file's own folder. Each file is a byte-for-byte copy of the matching file in the CLI's own
-repo — one authority, regenerated on every release, never hand-duplicated.
+folder sits NEXT TO this SKILL.md — in the npm package root, and in any host skill folder
+this file is installed into (`aslite skill install`).
+
+Shell commands resolve paths against YOUR working directory, not this file's folder, so set
+`$REFS` once per session: your host names this skill's base directory when it loads it
+(e.g. "Base directory for this skill: <path>"). Use that:
+
+```bash
+REFS="<skill-base-dir>/references"   # substitute the base directory your host reported
+```
+
+Every `$REFS/…` path below then runs from any cwd. Each shipped file is a byte-for-byte copy
+of the matching file in the CLI's own repo — one authority, regenerated on every release,
+never hand-duplicated.
 
 ## Bundle views — ship a live UI as bundle content
 
@@ -333,14 +343,14 @@ Author a view in four steps:
 #    embedding the bridge client copied from the shipped contract below
 aslite promote my-view.html --doc-key views/my-view.html                        # 2. promote the HTML blob
 aslite promote my-view-registry.md --doc-key views-registry/my-view.md           # 3. promote its type: View doc (title, entry)
-aslite promote references/views/conventions/view.md --doc-key conventions/view.md   # 4. declare the View convention (once per bundle, ready-made)
+aslite promote "$REFS/views/conventions/view.md" --doc-key conventions/view.md   # 4. declare the View convention (once per bundle, ready-made)
 ```
 
 Full message shapes, the trust model, the copy-paste bridge client with safe live-refresh
 examples (including a live graph view over Roadmap Items) are in the shipped contract:
 
 ```bash
-cat references/views/references/view-authoring-v0.md
+cat "$REFS/views/references/view-authoring-v0.md"
 ```
 
 ## Notes
@@ -362,13 +372,13 @@ cat references/views/references/view-authoring-v0.md
   with `--out`, editing it with text tools, and re-promoting it — that risks corrupting the
   frontmatter (the engine rejects it, but the right tool avoids the dance entirely).
 - Writing a custom recipe: a worked example (the `Claim` kind — event-lifecycle findings with
-  provenance, composed from lite primitives) ships at `references/recipes/claims/`; copy its shape,
+  provenance, composed from lite primitives) ships at `$REFS/recipes/claims/`; copy its shape,
   then `aslite recipe add <folder>` to apply it (built-in recipes are named directly, e.g.
   `aslite recipe add work-tracking`).
-- Packaging a content-free cognitive ecosystem: `references/recipes/review-workflow/` carries a
+- Packaging a content-free cognitive ecosystem: `$REFS/recipes/review-workflow/` carries a
   self-describing Review Request kind plus a generic live View, but no review instances. A
   definitions-only recipe may contain only its manifest, convention docs, explicitly declared
   static Reference docs, and View registry/HTML pairs; install it with the same `recipe add <folder>` command.
 - A full interop-shaped example bundle (externally-authored markdown: unquoted timestamps,
-  relative links, wrapped bullets) ships at `references/sample-bundle/` — copy it and point `--dir` at
+  relative links, wrapped bullets) ships at `$REFS/sample-bundle/` — copy it and point `--dir` at
   the copy to explore a populated bundle without writing one from scratch.
