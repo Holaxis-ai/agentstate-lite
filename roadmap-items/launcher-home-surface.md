@@ -13,7 +13,7 @@ description: >-
   (home/workspace/overview/hub) before tutorial copy hardens the word. Boundary:
   ui-rethink stays separate/post-window.
 actor: mike/claude
-timestamp: '2026-07-21T14:57:05.672Z'
+timestamp: '2026-07-21T15:11:10.495Z'
 ---
 # Intent
 
@@ -113,3 +113,20 @@ app"); generative view creation (tasks/ui-generative-chat) lives INSIDE the wind
 the knowledge it lenses. The original launcher grouping's instinct — bridge:none things are
 different IN KIND — was right; only the "Documents" label and top-level-grouping expression
 were wrong. The distinction expresses as ROLE: artifacts = figures/gallery, views = lenses/tools.
+
+# Progressive disclosure + sharing status (added 2026-07-21, prototype round 3)
+
+Principle (Mike): show user-meaningful STATE up front; put implementation MECHANICS one
+click behind. Paths, ports, branch names are mechanics — but never deleted (plain files you
+own is the product's soul; the path is the proof of ownership) — they live in a
+"where is this?" disclosure. The SHARING status is NOT mechanics, it is trust: whether the
+knowledge leaves this computer and where it goes stays front and center as a human chip —
+"private — this computer only" vs "shared · <org/repo>" plus sync freshness. This display is
+part of tasks/bundle-visibility-safeguard's answer (the p1 explicit-sharing-choice task), and
+the first-run orientation carries the promise in words ("everything stays private to this
+computer until you choose to share it"). Workspace rows likewise show names only; path +
+open command expand per row. Data note: the sync machinery already computes everything the
+chip needs (channel detection, awareness cache, unpushed backstop) — CLI injects a summary,
+same seam as the display name and catalog.
+
+[sharing chip advances this safeguard](../tasks/bundle-visibility-safeguard.md)
