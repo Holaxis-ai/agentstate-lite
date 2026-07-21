@@ -16,15 +16,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Launcher, orientationStorageKey } from "./Launcher.js";
-import { listPages } from "../api/pages.js";
+import { Launcher, orientationStorageKey, sharingChip } from "./Launcher.js";
+import { fetchConfig, listPages, type SharingSummary, type UiConfig } from "../api/pages.js";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const BUNDLE_ROOT = "/tmp/bundle";
+const BASE_CONFIG: UiConfig = { mode: "dir", remoteUrl: null, root: BUNDLE_ROOT, name: "bundle", sharing: null, workspaces: [] };
 
 vi.mock("../api/pages.js", () => ({
-  fetchConfig: vi.fn(async () => ({ mode: "dir", remoteUrl: null, root: BUNDLE_ROOT, name: "bundle" })),
+  fetchConfig: vi.fn(async () => ({ mode: "dir", remoteUrl: null, root: "/tmp/bundle", name: "bundle", sharing: null, workspaces: [] })),
   listPages: vi.fn(async () => []),
   invalidateKinds: vi.fn(),
 }));
@@ -73,6 +74,8 @@ describe("home surface", () => {
     storage = stubLocalStorage();
     vi.mocked(listPages).mockReset();
     vi.mocked(listPages).mockResolvedValue([]);
+    vi.mocked(fetchConfig).mockReset();
+    vi.mocked(fetchConfig).mockResolvedValue({ ...BASE_CONFIG });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -186,5 +189,102 @@ describe("home surface", () => {
       await flush();
     });
     expect(container.querySelector(".orientation")).toBeNull();
+  });
+
+  it("renders the sharing chip and the where-panel behind the disclosure (path no longer up front)", async () => {
+    storage.setItem(orientationStorageKey(BUNDLE_ROOT), "dismissed");
+    vi.mocked(fetchConfig).mockResolvedValue({
+      ...BASE_CONFIG,
+      sharing: { kind: "shared_branch", remote: "org/repo", as_of: "2026-07-21T12:00:00.000Z" },
+    });
+    await render();
+    for (let i = 0; i < 50 && !container.querySelector(".chip"); i++) {
+      await act(async () => {
+        await flush();
+      });
+    }
+
+    // The chip is up front; the raw path is NOT (progressive disclosure).
+    expect(container.querySelector(".chip")!.textContent).toBe("shared · org/repo");
+    expect(container.querySelector(".launcher-meta")!.textContent).not.toContain(BUNDLE_ROOT);
+    expect(container.querySelector(".where-panel")).toBeNull();
+
+    await act(async () => {
+      (container.querySelector(".where-btn") as HTMLButtonElement).click();
+      await flush();
+    });
+    const panel = container.querySelector(".where-panel");
+    expect(panel, "the disclosure opens the panel").not.toBeNull();
+    expect(panel!.textContent).toContain(BUNDLE_ROOT);
+    expect(panel!.textContent).toContain("dedicated board branch");
+  });
+
+  it("workspaces block is COLLAPSED by default; expanding reveals rows, then per-row paths", async () => {
+    storage.setItem(orientationStorageKey(BUNDLE_ROOT), "dismissed");
+    vi.mocked(fetchConfig).mockResolvedValue({
+      ...BASE_CONFIG,
+      workspaces: [
+        { label: "here", path: BUNDLE_ROOT, open: true },
+        { label: "other", path: "/tmp/other", open: false },
+      ],
+    });
+    await render();
+    for (let i = 0; i < 50 && !container.querySelector(".workspaces-toggle"); i++) {
+      await act(async () => {
+        await flush();
+      });
+    }
+
+    const toggle = container.querySelector(".workspaces-toggle") as HTMLButtonElement;
+    expect(toggle.textContent).toContain("Workspaces (2)");
+    expect(container.querySelector(".workspace-list"), "collapsed by default").toBeNull();
+
+    await act(async () => {
+      toggle.click();
+      await flush();
+    });
+    expect(container.querySelectorAll(".workspace")).toHaveLength(2);
+    expect(container.textContent).not.toContain("/tmp/other"); // paths stay behind the row expand
+
+    await act(async () => {
+      ([...container.querySelectorAll(".workspace-row")] as HTMLButtonElement[])
+        .find((b) => b.textContent!.includes("other"))!
+        .click();
+      await flush();
+    });
+    expect(container.textContent).toContain("/tmp/other");
+    expect(container.textContent).toContain("aslite ui --dir /tmp/other");
+  });
+});
+
+describe("sharingChip truth table (the SPA owns the words; every state row pinned)", () => {
+  const asOf = "2026-07-21T12:00:00.000Z";
+  const rows: Array<[SharingSummary["kind"], string | undefined, string | null, string]> = [
+    ["private", undefined, "private — this computer only", "chip chip-private"],
+    ["private_local_branch", undefined, "private — local board branch, not yet shared", "chip chip-private"],
+    ["private_intree_no_remote", undefined, "private — committed with code, no remote", "chip chip-private"],
+    ["shared_branch", "org/repo", "shared · org/repo", "chip chip-shared"],
+    ["shared_intree", "org/repo", "shared with the code · org/repo", "chip chip-shared"],
+    ["hosted", "host:1", "hosted · host:1", "chip chip-shared"],
+    ["unavailable", undefined, "sharing status unavailable", "chip chip-unavailable"],
+  ];
+
+  for (const [kind, remote, text, className] of rows) {
+    it(`${kind} → “${text}”`, () => {
+      const chip = sharingChip({ kind, remote, as_of: asOf });
+      expect(chip).not.toBeNull();
+      expect(chip!.text).toBe(text);
+      expect(chip!.className).toBe(className);
+    });
+  }
+
+  it("unscoped and null make NO claim (no chip at all)", () => {
+    expect(sharingChip({ kind: "unscoped", as_of: asOf })).toBeNull();
+    expect(sharingChip(null)).toBeNull();
+  });
+
+  it("an unknown future kind refuses honestly instead of fabricating", () => {
+    const chip = sharingChip({ kind: "surprise" as SharingSummary["kind"], as_of: asOf });
+    expect(chip!.text).toBe("sharing status unavailable");
   });
 });

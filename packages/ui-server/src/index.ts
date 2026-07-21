@@ -24,7 +24,16 @@ export {
 } from "./actions.js";
 export { proxyToRemote } from "./proxy.js";
 export { checkAuth, constantTimeEqual, mintSessionSecret, readCookie, sessionCookieHeader } from "./session.js";
-export { bootUiServer, escapeHtml, pageError, type UiServerHandle, type UiServerOptions } from "./server.js";
+export {
+  bootUiServer,
+  escapeHtml,
+  pageError,
+  type SharingStateKind,
+  type SharingSummary,
+  type UiServerHandle,
+  type UiServerOptions,
+  type WorkspaceSummaryEntry,
+} from "./server.js";
 export {
   diffSnapshots,
   isEmptyChange,

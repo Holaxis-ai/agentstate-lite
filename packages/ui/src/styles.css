@@ -333,6 +333,206 @@ body {
   outline-offset: 2px;
 }
 
+/* Sharing chip — the trust answer up front (blue = shared/hosted, quiet = private, dashed = unavailable). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: var(--radius);
+  font-size: 0.74rem;
+}
+
+.chip::before {
+  content: "";
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chip-shared {
+  color: var(--color-structure);
+  background: color-mix(in srgb, var(--color-structure) 12%, var(--surface-card));
+  border: 1px solid color-mix(in srgb, var(--color-structure) 30%, transparent);
+}
+
+.chip-private {
+  color: var(--text-secondary);
+  border: 1px solid var(--rule);
+  background: var(--surface-card);
+}
+
+.chip-unavailable {
+  color: var(--text-tertiary);
+  border: 1px dashed var(--text-tertiary);
+  background: var(--surface-card);
+}
+
+/* "where is this?" — the mechanics one click behind the state (progressive disclosure). */
+.where-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  color: var(--text-tertiary);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  padding: 0;
+}
+
+.where-btn:hover,
+.where-btn:focus-visible {
+  color: var(--color-structure);
+}
+
+.where-btn:focus-visible {
+  outline: 2px solid var(--color-structure);
+  outline-offset: 2px;
+}
+
+.where-panel {
+  margin: 0.7rem 0 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-card);
+  padding: 0.6rem 0.9rem;
+  max-width: 46rem;
+  font-size: 0.8rem;
+}
+
+.where-panel div {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.where-panel div:last-child {
+  border-bottom: 0;
+}
+
+.where-panel dt {
+  color: var(--text-tertiary);
+}
+
+.where-panel dd {
+  margin: 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.where-panel code {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+}
+
+/* Workspaces block (collapsed by default; names first, mechanics on expand). */
+.workspaces-toggle {
+  font: inherit;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.workspaces-toggle:hover,
+.workspaces-toggle:focus-visible {
+  color: var(--color-structure);
+}
+
+.workspaces-toggle:focus-visible {
+  outline: 2px solid var(--color-structure);
+  outline-offset: 2px;
+}
+
+.workspace-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.workspace {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-card);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.83rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.workspace-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+}
+
+.workspace-row:focus-visible {
+  outline: 2px solid var(--color-structure);
+  outline-offset: 2px;
+}
+
+.workspace-name {
+  font-weight: 600;
+}
+
+.workspace-open {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-process);
+  border: 1px solid color-mix(in srgb, var(--color-process) 40%, transparent);
+  border-radius: var(--radius);
+  padding: 0.05rem 0.4rem;
+}
+
+.workspace-caret {
+  margin-left: auto;
+  color: var(--text-tertiary);
+}
+
+.workspace-path {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.workspace-cmd {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+.workspace-cmd code {
+  font-family: var(--font-mono);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  padding: 0.05rem 0.3rem;
+  border-radius: var(--radius);
+  overflow-wrap: anywhere;
+}
+
 /* Capability badge — role-based wording over the SAME enforced bridge field (never the IA). */
 .badge {
   display: inline-flex;

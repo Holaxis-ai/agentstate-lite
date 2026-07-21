@@ -12,15 +12,17 @@
 import { getDoc, listAllHeads, parseErrorEnvelope } from "./client.js";
 import type { Edge, EdgesResponse, Frontmatter } from "./types.js";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
-import type { ActionConfirmation, ActionPrepareResult, ActionTerminalResult, DocumentSetFieldAction } from "@agentstate-lite/ui-server";
+import type { ActionConfirmation, ActionPrepareResult, ActionTerminalResult, DocumentSetFieldAction, SharingSummary, WorkspaceSummaryEntry } from "@agentstate-lite/ui-server";
 import { PAGE_TYPE_NAMES, parseRegisteredPage, type BridgeCapability } from "../pages/registry.js";
 
-/** `/__ui/config` shape (server `configResponse`). */
+/** `/__ui/config` shape (server `configResponse`). `sharing`/`workspaces` are ui-server's plain data shapes (type-only import — no runtime dependency), CLI-injected in dir mode. */
 export interface UiConfig {
   mode: string;
   remoteUrl: string | null;
   root: string | null;
   name: string;
+  sharing: SharingSummary | null;
+  workspaces: WorkspaceSummaryEntry[];
 }
 
 /** A `type: View` (or legacy `type: Page`) registry doc, projected to the launcher's card fields (provenance included). */
@@ -175,4 +177,4 @@ export function cancelTrustedAction(approvalToken: string): Promise<ActionTermin
   return postTrustedAction("/__ui/actions/cancel", { approvalToken });
 }
 
-export type { ActionConfirmation, ActionPrepareResult, ActionTerminalResult, DocumentSetFieldAction };
+export type { ActionConfirmation, ActionPrepareResult, ActionTerminalResult, DocumentSetFieldAction, SharingSummary, WorkspaceSummaryEntry };
