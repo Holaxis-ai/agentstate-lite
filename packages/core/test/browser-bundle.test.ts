@@ -1,0 +1,44 @@
+/**
+ * Isomorphic-boundary gate: every core subpath the BROWSER runtime-imports must bundle for the
+ * browser with no `node:*` builtin. The SPA (packages/ui) runtime-imports `@agentstate-lite/core`
+ * subpaths — `links` (resolveConceptId), `page` (parseRegistration), `query-filter` (matchesFilter),
+ * `kinds` (isTerminal) — into a bundle where node builtins do not resolve.
+ *
+ * This DECLARES that isomorphic surface once and gates it, rather than discovering a Node-only
+ * import the hard way at build time (the `links.ts` → `node:path` break, designs/doc-reader HIGH-1,
+ * cost a real detour). Each subpath is bundled with esbuild `platform: "browser"`; any node builtin
+ * sneaking in fails with "Could not resolve" (red-on-regression). Requires a prior root build — the
+ * sibling-dist convention other core tests document.
+ *
+ * ADD A SUBPATH HERE when the browser starts runtime-importing a new core subpath — keep this list
+ * in sync with the SPA's runtime `@agentstate-lite/core/*` imports.
+ */
+import test from "node:test";
+import assert from "node:assert/strict";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+/** subpath dist module -> a symbol the bundle must still carry (proves the entry resolved, not an empty file). */
+const BROWSER_SUBPATHS: Array<{ module: string; symbol: string }> = [
+  { module: "links.js", symbol: "resolveConceptId" },
+  { module: "page.js", symbol: "parseRegistration" },
+  { module: "query-filter.js", symbol: "matchesFilter" },
+  { module: "kinds.js", symbol: "isTerminal" },
+];
+
+for (const { module, symbol } of BROWSER_SUBPATHS) {
+  test(`core/${module} bundles for the browser with no node builtins`, async () => {
+    const result = await build({
+      entryPoints: [path.resolve(here, "../dist", module)],
+      bundle: true,
+      platform: "browser",
+      write: false,
+      logLevel: "silent",
+    });
+    assert.equal(result.errors.length, 0, `${module}: ${JSON.stringify(result.errors, null, 2)}`);
+    assert.ok(result.outputFiles[0]!.text.includes(symbol), `${module}: bundled output must carry ${symbol}`);
+  });
+}
