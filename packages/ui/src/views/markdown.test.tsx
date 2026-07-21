@@ -250,4 +250,12 @@ describe("markdown renderer", () => {
     const flood = Array.from({ length: MAX_NODES + 100 }, (_, i) => `p${i}`).join("\n\n");
     expect((await render(flood)).bounded).toBe(true);
   });
+
+  it("bounds an all-EDGE flood too — inline edge rows count against the node budget", async () => {
+    // A body of only bare concept-link paragraphs (all merge into one edge list) must degrade like
+    // any other path, not render every row unbounded past MAX_NODES.
+    const flood = Array.from({ length: MAX_NODES + 50 }, () => "[a](b.md)").join("\n\n");
+    expect((await render(flood, "docs/x")).bounded).toBe(true);
+    expect(container.querySelectorAll(".doc-edge-row").length).toBeLessThanOrEqual(MAX_NODES);
+  });
 });

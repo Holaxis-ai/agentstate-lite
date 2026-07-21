@@ -263,29 +263,38 @@ function renderNode(node: RootContent | Node, state: WalkState, depth: number, i
  */
 function renderEdgeList(links: Node[], state: WalkState, index: number): ReactNode {
   const { fromId, onNavigateDoc, titleFor } = state.options;
+  const rows: ReactNode[] = [];
+  for (let i = 0; i < links.length; i++) {
+    // Each row counts against the walk budget, like renderNode — a hostile all-edges body degrades
+    // (bounded) instead of rendering unboundedly past MAX_NODES.
+    if (state.count >= MAX_NODES) {
+      state.bounded = true;
+      break;
+    }
+    state.count++;
+    const to = resolveConceptId(fromId, (links[i] as { url?: string }).url ?? "");
+    if (to === null) continue; // isBareLinkBlock guarantees resolvability; defensive
+    const verb = textOf(links[i]!).trim();
+    const target = titleFor?.(to) ?? to;
+    rows.push(
+      <a
+        key={i}
+        className="doc-edge-row"
+        href={`?view=doc&id=${encodeURIComponent(to)}`}
+        onClick={(event) => {
+          event.preventDefault();
+          onNavigateDoc(to);
+        }}
+      >
+        <span className="doc-edge-verb">{verb}</span>
+        <span className="doc-edge-arrow" aria-hidden="true">→</span>
+        <span className="doc-edge-target">{target}</span>
+      </a>,
+    );
+  }
   return (
     <div key={index} className="doc-edge-list">
-      {links.map((link, i) => {
-        const to = resolveConceptId(fromId, (link as { url?: string }).url ?? "");
-        if (to === null) return null; // isBareLinkBlock guarantees resolvability; defensive
-        const verb = textOf(link).trim();
-        const target = titleFor?.(to) ?? to;
-        return (
-          <a
-            key={i}
-            className="doc-edge-row"
-            href={`?view=doc&id=${encodeURIComponent(to)}`}
-            onClick={(event) => {
-              event.preventDefault();
-              onNavigateDoc(to);
-            }}
-          >
-            <span className="doc-edge-verb">{verb}</span>
-            <span className="doc-edge-arrow" aria-hidden="true">→</span>
-            <span className="doc-edge-target">{target}</span>
-          </a>
-        );
-      })}
+      {rows}
     </div>
   );
 }
