@@ -153,8 +153,9 @@ export function DocPage({ docId }: { docId: string }) {
             <p className="doc-backlinks-empty">Nothing cites this doc yet.</p>
           ) : (
             <ul>
-              {backlinks.map((edge) => (
-                <li key={`${edge.from}:${edge.text}`}>
+              {backlinks.map((edge, index) => (
+                // Index-suffixed key: one doc may cite a target twice with identical link text.
+                <li key={`${edge.from}:${edge.text}:${index}`}>
                   <a
                     href={`?view=doc&id=${encodeURIComponent(edge.from)}`}
                     onClick={(event) => {

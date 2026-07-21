@@ -31,8 +31,8 @@
 import { isReservedFile } from "./paths.js";
 import type { ConceptId, Link, OkfDocument } from "./types.js";
 
-/** Normalize posix segments with a stack: `.` drops, `..` pops (or survives at the front when nothing is left to pop — matching `path.posix.join` semantics), empty segments drop. */
-function normalizeSegments(segments: string[]): string[] {
+/** Normalize posix segments with a stack: `.` drops, `..` pops (or survives at the front when nothing is left to pop — matching `path.posix.join` semantics), empty segments drop. Exported for the direct parity pin (links-path-parity.test.ts) — the resolver's `..`-past-root guard is otherwise masked by its leading-`../` post-strip. */
+export function normalizeSegments(segments: string[]): string[] {
   const out: string[] = [];
   for (const segment of segments) {
     if (segment === "" || segment === ".") continue;

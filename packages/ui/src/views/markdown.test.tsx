@@ -89,6 +89,23 @@ describe("markdown renderer", () => {
     "<noscript><img src=x onerror=alert(4)></noscript>",
   ].join("\n\n");
 
+  it("reference-style links and footnotes with hostile targets stay inert (review completeness LOW-1)", async () => {
+    await render(
+      [
+        "A [ref link][evil] and a [footnote][^1].",
+        "",
+        "[evil]: javascript:alert(1)",
+        "[^1]: javascript:alert(2)",
+      ].join("\n"),
+    );
+    for (const { tag, name, value } of allAttributes()) {
+      const lowered = value.toLowerCase().replace(/\s/g, "");
+      expect(lowered, `${tag}[${name}]`).not.toContain("javascript:");
+      if (tag === "a" && name === "href") expect(value).toMatch(/^\?view=doc&id=/);
+    }
+    expect(container.querySelector("script")).toBeNull();
+  });
+
   it("raw HTML renders as LITERAL TEXT — no elements, no handlers, visibly source", async () => {
     await render(RAW_HTML_VECTORS);
     for (const tag of ["script", "img", "svg", "math", "iframe", "style", "template", "noscript"]) {

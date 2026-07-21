@@ -10,8 +10,30 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { resolveConceptId, relativeHref, isExternalHref } from "../src/links.js";
+import { resolveConceptId, relativeHref, isExternalHref, normalizeSegments } from "../src/links.js";
 import { isReservedFile } from "../src/paths.js";
+
+/**
+ * Pin `normalizeSegments` DIRECTLY against `node:path.posix.join` (review LOW-2): the
+ * `resolveConceptId` parity table can't observe a `..`-past-root regression because the shared
+ * `replace(/^(\.\.\/)+/, "")` post-strip masks it — so a future refactor removing that strip could
+ * regress the segment normalizer unnoticed. This table sees the raw normalization, INCLUDING the
+ * mid-path and past-root `..` shapes an attacker reaches for.
+ */
+const SEGMENT_CASES = ["a/b/c", "a/./b", "a/../b", "../a", "a/b/../../c", "../../x", "a//b", "./a", "a/b/..", ""];
+
+test("normalizeSegments parity: pure normalizer === node:path.posix.join across the raw table", () => {
+  for (const input of SEGMENT_CASES) {
+    // path.posix.join with a `.` base yields the same normalization normalizeSegments performs,
+    // minus join's leading-`./` for a fully-popped path — compare on the segment arrays.
+    const expected = path.posix.join(".", input).split("/").filter((s) => s !== "." && s !== "");
+    assert.deepEqual(
+      normalizeSegments(input.split("/")),
+      expected,
+      `normalizeSegments(${JSON.stringify(input)})`,
+    );
+  }
+});
 
 /** The pre-change implementation, verbatim, on node:path.posix — the parity reference. */
 function referenceResolve(fromId: string, href: string): string | null {
