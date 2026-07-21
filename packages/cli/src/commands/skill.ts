@@ -20,8 +20,10 @@
 // idempotent/convergent: byte-stable, exit 0, changed:false when already current. Every write is
 // same-directory temp + rename (atomicWriteFileSync).
 //
-// The MANIFEST IS WRITTEN FIRST on install, so every reachable interruption point leaves a
-// MANAGED state: a manifest whose listed files are missing or partial is managed-stale — `status`
+// The MANIFEST IS WRITTEN FIRST on install — and an UPGRADE writes a TRANSITIONAL manifest
+// (files = union of old and new) before touching assets, converges assets, removes obsolete old
+// files, then writes the FINAL manifest (= exactly the asset set) — so every reachable
+// interruption point leaves a MANAGED state whose manifest owns everything on disk: `status`
 // reports stale, a re-run install converges over it (exit 0), and uninstall removes whatever
 // manifested files exist. A kill inside atomicWriteFileSync's write→rename window strands a
 // `<file>.tmp-<pid>-…` orphan; one whose base name we own is MANAGED DEBRIS — ignored by the
@@ -267,12 +269,12 @@ function readManifest(dir: string): SkillManifest | undefined | null {
   }
 }
 
-function manifestContent(assets: SkillAssets): string {
+function manifestContent(assets: SkillAssets, files: readonly string[] = assets.files): string {
   const manifest: SkillManifest = {
     package: "aslite",
     version: assets.version,
     installed_by: "aslite skill install",
-    files: assets.files,
+    files: [...files],
   };
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
@@ -309,20 +311,31 @@ function installIntoDir(dir: string, assets: SkillAssets): InstallResult {
     }
   }
   let changed = debrisRemoved;
-  // Manifest FIRST: every interruption point from here on leaves a MANAGED (at worst stale)
-  // state a re-run converges over — never the files-without-manifest shape install refuses.
-  const nextManifest = manifestContent(assets);
+  // Manifest FIRST — and on an UPGRADE over an existing valid manifest, a TRANSITIONAL manifest
+  // first: files = union(old manifested files, new asset files). Every interruption point then
+  // leaves a manifest that OWNS everything on disk (old survivors, partial new assets, or both),
+  // so the extras refusal can never fire on our own intermediate state; a re-run converges and
+  // uninstall removes only owned files. The FINAL manifest (= exactly the asset set) lands only
+  // after assets are converged AND obsolete old files are removed.
   const manifestPath = join(dir, SKILL_MANIFEST_FILENAME);
-  const manifestIsLink = isSymlink(manifestPath);
-  const currentManifest =
-    !manifestIsLink && existsSync(manifestPath) ? readFileSync(manifestPath, "utf8") : undefined;
-  if (currentManifest !== nextManifest) {
+  const finalManifest = manifestContent(assets);
+  const unionFiles = [...new Set([...(manifest?.files ?? []), ...assets.files])].sort();
+  const transitionalManifest = manifestContent(assets, unionFiles);
+  const writeManifest = (content: string): void => {
     // atomicWriteFileSync writes THROUGH a symlinked destination (right for user-owned settings);
     // skill-folder contents are wholly TOOL-owned, so a link here is unmanaged drift — converge by
     // REPLACING the link with a real file: unlink the link itself first (never its target).
-    if (manifestIsLink) rmSync(manifestPath, { force: true });
-    atomicWriteFileSync(manifestPath, nextManifest);
+    if (isSymlink(manifestPath)) rmSync(manifestPath, { force: true });
+    atomicWriteFileSync(manifestPath, content);
     changed = true;
+  };
+  const currentManifest =
+    !isSymlink(manifestPath) && existsSync(manifestPath) ? readFileSync(manifestPath, "utf8") : undefined;
+  // Steady state (current == final) and resumed-upgrade state (current == transitional) skip this
+  // write; anything else (fresh install, v1 manifest, symlinked/hand-edited manifest) gets the
+  // transitional content, which for a fresh install IS the final content (union == asset set).
+  if (currentManifest !== transitionalManifest && currentManifest !== finalManifest) {
+    writeManifest(transitionalManifest);
   }
   const wanted = new Set(assets.files);
   for (const relativePath of assets.files) {
@@ -343,6 +356,11 @@ function installIntoDir(dir: string, assets: SkillAssets): InstallResult {
       rmSync(join(dir, ...relativePath.split("/")), { force: true });
       changed = true;
     }
+  }
+  // FINAL manifest: exactly the asset set — written only now that the disk matches it.
+  const manifestAfterConverge = existsSync(manifestPath) ? readFileSync(manifestPath, "utf8") : undefined;
+  if (manifestAfterConverge !== finalManifest) {
+    writeManifest(finalManifest);
   }
   removeEmptyDirectories(dir, false);
   return { ok: true, changed };

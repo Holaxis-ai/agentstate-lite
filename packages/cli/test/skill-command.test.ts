@@ -36,11 +36,11 @@ const ASSET_FILES: Record<string, string> = {
 };
 
 /** Build a fake npm-layout distribution root; returns its dist executable path. */
-function makeDistribution(root: string, version = "9.9.9"): string {
+function makeDistribution(root: string, version = "9.9.9", files: Record<string, string> = ASSET_FILES): string {
   mkdirSync(path.join(root, "dist"), { recursive: true });
   writeFileSync(path.join(root, "dist", "agentstate-lite.mjs"), "// bundle\n");
   writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "aslite", version }) + "\n");
-  for (const [relative, content] of Object.entries(ASSET_FILES)) {
+  for (const [relative, content] of Object.entries(files)) {
     const target = path.join(root, ...relative.split("/"));
     mkdirSync(path.dirname(target), { recursive: true });
     writeFileSync(target, content);
@@ -511,6 +511,116 @@ test("the manifest's own tmp orphan: state reads MANAGED (status ignores without
   const fresh = await runSkill(["install"], { cwd, executable });
   assert.equal(fresh.skill.hosts.codex.changed, true);
   assert.equal((await runSkill(["status"], { cwd, executable })).skill.hosts.codex.state, "installed");
+});
+
+// ── upgrade transitions: every intermediate state is owned by its manifest ──
+
+const LEGACY_FILE = "references/legacy/old-contract.md";
+const V1_FILES: Record<string, string> = { ...ASSET_FILES, [LEGACY_FILE]: "# retired contract\n" };
+const UNION_FILES = [...new Set([...Object.keys(V1_FILES), ...Object.keys(ASSET_FILES)])].sort();
+
+/** A scratch with BOTH a v1 (extra legacy asset) and a v2 (standard) distribution. */
+function upgradeScratch(): { base: string; exe1: string; exe2: string } {
+  const base = mkdtempSync(path.join(tmpdir(), "aslite-skill-upgrade-"));
+  const exe1 = makeDistribution(path.join(base, "pkg-v1"), "1.0.0", V1_FILES);
+  const exe2 = makeDistribution(path.join(base, "pkg-v2"), "9.9.9", ASSET_FILES);
+  return { base, exe1, exe2 };
+}
+
+/** Hand-write the exact transitional manifest an interrupted v1→v2 upgrade leaves behind. */
+function writeTransitionalManifest(dir: string): void {
+  writeFileSync(
+    path.join(dir, SKILL_MANIFEST_FILENAME),
+    `${JSON.stringify({ package: "aslite", version: "9.9.9", installed_by: "aslite skill install", files: UNION_FILES }, null, 2)}\n`,
+  );
+}
+
+test("upgrade end-to-end: obsolete v1 asset removed, final manifest is exactly the v2 set", async () => {
+  const { base, exe1, exe2 } = upgradeScratch();
+  const cwd = path.join(base, "project");
+  mkdirSync(cwd, { recursive: true });
+  await runSkill(["install"], { cwd, executable: exe1 });
+  const dir = path.join(cwd, ".claude", "skills", "aslite");
+  assert.ok(existsSync(path.join(dir, ...LEGACY_FILE.split("/"))));
+
+  const upgraded = await runSkill(["install"], { cwd, executable: exe2 });
+  assert.equal(upgraded.skill.hosts.claude_code.changed, true);
+  assert.equal(existsSync(path.join(dir, ...LEGACY_FILE.split("/"))), false, "obsolete v1 asset converges away");
+  const manifest = JSON.parse(readFileSync(path.join(dir, SKILL_MANIFEST_FILENAME), "utf8"));
+  assert.deepEqual(manifest.files, Object.keys(ASSET_FILES).sort(), "final manifest owns exactly the v2 set");
+  assert.equal((await runSkill(["status"], { cwd, executable: exe2 })).skill.hosts.claude_code.state, "installed");
+});
+
+test("upgrade intermediate (transitional manifest + surviving v1 asset): stale, install converges, uninstall cleans", async () => {
+  const { base, exe1, exe2 } = upgradeScratch();
+  const cwd = path.join(base, "project");
+  mkdirSync(cwd, { recursive: true });
+  const dir = path.join(cwd, ".claude", "skills", "aslite");
+
+  // The kill point right after the transitional-manifest write: v1 files intact, union manifest.
+  const construct = async () => {
+    rmSync(path.join(cwd, ".claude"), { recursive: true, force: true });
+    rmSync(path.join(cwd, ".codex"), { recursive: true, force: true });
+    await runSkill(["install"], { cwd, executable: exe1 });
+    writeTransitionalManifest(dir);
+  };
+
+  await construct();
+  assert.equal((await runSkill(["status"], { cwd, executable: exe2 })).skill.hosts.claude_code.state, "stale");
+  const converge = await runSkill(["install"], { cwd, executable: exe2 });
+  assert.equal(converge.skill.hosts.claude_code.changed, true);
+  assert.equal(existsSync(path.join(dir, ...LEGACY_FILE.split("/"))), false);
+  assert.equal((await runSkill(["status"], { cwd, executable: exe2 })).skill.hosts.claude_code.state, "installed");
+
+  await construct();
+  const removed = await runSkill(["uninstall"], { cwd, executable: exe2 });
+  assert.equal(removed.skill.hosts.claude_code.changed, true);
+  assert.equal(existsSync(dir), false, "uninstall from the transitional state removes every owned file");
+});
+
+test("upgrade intermediate (transitional manifest + partial v2 assets): stale, install converges, uninstall cleans", async () => {
+  const { base, exe1, exe2 } = upgradeScratch();
+  const cwd = path.join(base, "project");
+  mkdirSync(cwd, { recursive: true });
+  const dir = path.join(cwd, ".claude", "skills", "aslite");
+
+  // The kill point mid-asset-writes: union manifest, one v2 asset missing, legacy still present.
+  const construct = async () => {
+    rmSync(path.join(cwd, ".claude"), { recursive: true, force: true });
+    rmSync(path.join(cwd, ".codex"), { recursive: true, force: true });
+    await runSkill(["install"], { cwd, executable: exe1 });
+    writeTransitionalManifest(dir);
+    rmSync(path.join(dir, "references", "views", "view-authoring.md"));
+  };
+
+  await construct();
+  assert.equal((await runSkill(["status"], { cwd, executable: exe2 })).skill.hosts.claude_code.state, "stale");
+  const converge = await runSkill(["install"], { cwd, executable: exe2 });
+  assert.equal(converge.skill.hosts.claude_code.changed, true);
+  assert.equal(
+    readFileSync(path.join(dir, "references", "views", "view-authoring.md"), "utf8"),
+    ASSET_FILES["references/views/view-authoring.md"],
+  );
+  assert.equal((await runSkill(["status"], { cwd, executable: exe2 })).skill.hosts.claude_code.state, "installed");
+
+  await construct();
+  const removed = await runSkill(["uninstall"], { cwd, executable: exe2 });
+  assert.equal(removed.skill.hosts.claude_code.changed, true);
+  assert.equal(existsSync(dir), false);
+});
+
+test("upgrade completed state (final manifest, exact v2 assets): installed, install no-op, uninstall cleans", async () => {
+  const { base, exe1, exe2 } = upgradeScratch();
+  const cwd = path.join(base, "project");
+  mkdirSync(cwd, { recursive: true });
+  await runSkill(["install"], { cwd, executable: exe1 });
+  await runSkill(["install"], { cwd, executable: exe2 });
+  const dir = path.join(cwd, ".claude", "skills", "aslite");
+
+  assert.equal((await runSkill(["status"], { cwd, executable: exe2 })).skill.hosts.claude_code.state, "installed");
+  assert.equal((await runSkill(["install"], { cwd, executable: exe2 })).skill.changed, false);
+  await runSkill(["uninstall"], { cwd, executable: exe2 });
+  assert.equal(existsSync(dir), false);
 });
 
 test("UNMANAGED folder + asset-named tmp + foreign file: refusal deletes NEITHER (ownership not established)", async () => {
