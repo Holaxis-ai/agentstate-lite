@@ -201,6 +201,37 @@ describe("markdown renderer", () => {
       await render("[contains](../tasks/a.md)\n[depends on](../tasks/b.md)", "roadmap-items/x");
       expect(container.querySelectorAll("a")).toHaveLength(0);
     });
+
+    it("KEEPS a bare NON-concept link block — external/anchor/non-.md links have no home in Links, so no silent loss", async () => {
+      // Each is its own paragraph with only that link — but none resolve to a concept edge, so the
+      // body is their ONLY home and must not drop them (review #143 finding 1).
+      await render(
+        "[the upstream spec](https://example.com/spec)\n\n[see the appendix](#appendix)\n\n[the raw file](../data/table.csv)",
+        "docs/x",
+      );
+      const text = container.textContent ?? "";
+      expect(text).toContain("the upstream spec");
+      expect(text).toContain("see the appendix");
+      expect(text).toContain("the raw file");
+    });
+
+    it("KEEPS a paragraph mixing a concept link with a non-concept link (errs toward no loss)", async () => {
+      await render("[contains](../tasks/a.md) [the spec](https://example.com)", "roadmap-items/x");
+      expect(container.textContent).toContain("the spec");
+      expect(container.textContent).toContain("contains");
+    });
+
+    it("KEEPS an image-only paragraph — an image is not a link (top-level scope + image guard)", async () => {
+      await render("![a diagram](../views/chart.png)", "tasks/x");
+      expect(container.textContent).toContain("[image: a diagram]");
+    });
+
+    it("KEEPS a bare concept-link nested in a blockquote — the lift is TOP-LEVEL only", async () => {
+      await render("> [contains](../tasks/a.md)", "roadmap-items/x");
+      const anchor = container.querySelector("blockquote a")!;
+      expect(anchor, "the nested concept link is not lifted").not.toBeNull();
+      expect(anchor.getAttribute("href")).toBe("?view=doc&id=tasks%2Fa");
+    });
   });
 
   it("bounds degrade honestly: oversized bodies and node floods report bounded", async () => {

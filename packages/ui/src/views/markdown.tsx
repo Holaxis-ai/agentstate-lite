@@ -70,24 +70,30 @@ function isBlankInline(node: Node): boolean {
 }
 
 /**
- * A "bare link block": a top-level paragraph whose ONLY content is one or more links (plus
- * inter-link whitespace / breaks) — no prose. These are edge references, and the reader's grouped
- * "Links" / "Cited by" sections already carry every edge WITH its target, so the body render drops
- * them: prose stays prose, relationships live in one place. A link EMBEDDED in a sentence (any
- * prose sibling) is untouched — that is real prose, not a reference block. Purely STRUCTURAL: it
- * never reads the link text, so it needs no declared vocabulary and handles undeclared verbs and
- * plain citations alike. Pure — the unit-tested discriminator.
+ * A "bare link block": a top-level paragraph whose ONLY content is CONCEPT links (plus inter-link
+ * whitespace / breaks) — no prose. These are edge references, and the reader's grouped "Links" /
+ * "Cited by" sections carry every concept edge WITH its target, so dropping them from the body
+ * loses nothing: prose stays prose, relationships live in one place. Two guards keep the
+ * "nothing is lost" premise TRUE by construction:
+ *   - a link EMBEDDED in a sentence (any prose sibling) → NOT a bare block, left untouched;
+ *   - a link the resolver REJECTS (external URL, `#anchor`, non-`.md`) is not a concept edge and
+ *     has no home in the Links section, so its paragraph is NOT droppable and stays in the body.
+ * Otherwise purely structural — it never reads the link text, so it needs no declared vocabulary
+ * and handles undeclared verbs and plain concept citations alike. Pure — the unit-tested
+ * discriminator.
  */
-export function isBareLinkBlock(node: Node): boolean {
+export function isBareLinkBlock(node: Node, fromId: string): boolean {
   if (node.type !== "paragraph") return false;
   let sawLink = false;
   for (const child of (node as Parent).children) {
     if (isBlankInline(child)) continue;
-    if (child.type === "link") {
+    if (child.type === "link" && resolveConceptId(fromId, (child as { url?: string }).url ?? "") !== null) {
       sawLink = true;
       continue;
     }
-    return false; // any prose text (or other inline) → real prose, leave it alone
+    // Prose text, an image, or a NON-concept link (external/anchor/non-.md — its only home is the
+    // body) → not a bare concept-link block, leave the whole paragraph in place.
+    return false;
   }
   return sawLink;
 }
@@ -259,10 +265,10 @@ export function renderMarkdown(body: string, options: RenderOptions): RenderedMa
     mdastExtensions: [gfmFromMarkdown()],
   });
   const state: WalkState = { count: 0, bounded: false, options };
-  // Lift bare link blocks (a paragraph that is only links) out of the prose — they are edge
-  // references, and the grouped "Links"/"Cited by" sections already show every edge with its target.
-  // A link inside a sentence stays in place.
-  const prose = tree.children.filter((child) => !isBareLinkBlock(child));
+  // Lift bare concept-link blocks (a paragraph that is only concept links) out of the prose — they
+  // are edge references, and the grouped "Links"/"Cited by" sections already show every edge with
+  // its target. A link inside a sentence, or a non-concept link, stays in place.
+  const prose = tree.children.filter((child) => !isBareLinkBlock(child, options.fromId));
   const element = <>{prose.map((child, index) => renderNode(child, state, 1, index))}</>;
   return { element, bounded: bounded || state.bounded };
 }
