@@ -129,7 +129,7 @@ export function resolveSkillAssets(executable?: string): SkillAssets {
     throw new CliError(
       "RUNTIME",
       "this executable is the marketplace skill bundle — that channel is installed and updated via the marketplace, and carries no separately installable skill assets",
-      { help: "`skill install` ships with the npm package: npm install -g aslite, then `aslite skill install`" },
+      { help: "`skill install` ships with the npm package: npm install -g @holaxis/aslite, then `aslite skill install`" },
     );
   }
   const root = dirname(dirname(exe));
@@ -273,7 +273,7 @@ function readManifest(dir: string): SkillManifest | undefined | null {
 
 function manifestContent(assets: SkillAssets, files: readonly string[] = assets.files): string {
   const manifest: SkillManifest = {
-    package: "aslite",
+    package: "@holaxis/aslite",
     version: assets.version,
     installed_by: "aslite skill install",
     files: [...files],

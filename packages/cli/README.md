@@ -1,10 +1,11 @@
-# aslite
+# @holaxis/aslite
 
 **An OKF-native, CLI-first, agent-facing knowledge store.** Context notes, docs, cross-links,
 and live bundle Views — as a plain folder of user-owned files that works offline,
 with an optional wire backend when a separate service hosts the bundle. `aslite` is the
 [agentstate-lite](https://github.com/Holaxis-ai/agentstate-lite) project's CLI, published under
-this interim npm coordinate.
+the interim npm coordinate `@holaxis/aslite` (the installed commands stay `aslite` and
+`agentstate-lite`).
 
 The npm artifact ships one self-contained executable file with **zero runtime dependencies**,
 plus the generated Agent Skill (`SKILL.md` and its `references/` folder — installable into host
@@ -17,18 +18,18 @@ command names from `PATH`, and exercises an offline bundle workflow.
 Once published, the package-facing flow is:
 
 ```sh
-npx -y aslite init
-npx -y aslite new "Context Note" cycle-1 --title "cycle-1"
-npx -y aslite doc update context-notes/cycle-1 --body "Chose token auth over sessions."
-npx -y aslite list
-npx -y aslite ui --open # opens a browser window: read the bundle's docs + launch its Views
+npx -y @holaxis/aslite init
+npx -y @holaxis/aslite new "Context Note" cycle-1 --title "cycle-1"
+npx -y @holaxis/aslite doc update context-notes/cycle-1 --body "Chose token auth over sessions."
+npx -y @holaxis/aslite list
+npx -y @holaxis/aslite ui --open # opens a browser window: read the bundle's docs + launch its Views
 ```
 
 Install it globally if you prefer (installs both the `aslite` command and the long-form alias
 `agentstate-lite`):
 
 ```sh
-npm install -g aslite
+npm install -g @holaxis/aslite
 aslite --help
 ```
 

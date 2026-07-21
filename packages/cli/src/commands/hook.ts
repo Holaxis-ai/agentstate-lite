@@ -733,7 +733,7 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
     } catch (err) {
       throw new CliError("RUNTIME", err instanceof Error ? err.message : String(err), {
         details: { command_base: collapseHomeDirectory(commandBase) },
-        help: "install from a channel whose executable resolves as aslite/agentstate-lite (e.g. npm install -g aslite), then re-run hook install",
+        help: "install from a channel whose executable resolves as aslite/agentstate-lite (e.g. npm install -g @holaxis/aslite), then re-run hook install",
       });
     }
     // Claude Code settings.json + Codex hooks.json: OUR SDK-modeled pure updater, recognizing

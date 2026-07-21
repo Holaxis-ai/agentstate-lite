@@ -881,8 +881,9 @@ test("writer/recognizer agreement: every reachable hookCommand() base composes a
   const reachableBases = [
     "aslite", //                                                       bare preferred bin on PATH
     "agentstate-lite", //                                              bare legacy bin on PATH
-    "/usr/local/lib/node_modules/aslite/dist/agentstate-lite.mjs", //  npm-dist absolute path
-    "/Users/f b/node_modules/aslite/dist/agentstate-lite.mjs", //      absolute path WITH spaces (quoted form)
+    "@holaxis/aslite", //                                              PACKAGE_NAME last-resort fallback (scoped coordinate; basename `aslite` matches through the slash)
+    "/usr/local/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs", // npm-dist absolute path (scoped install root)
+    "/Users/f b/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs", //    absolute path WITH spaces (quoted form)
     "/home/u/.claude/plugins/cache/m/agentstate-lite/1.0.0/skills/agentstate-lite/scripts/agentstate-lite.mjs", // skill-bundle shape
   ];
   for (const base of reachableBases) {
@@ -937,6 +938,7 @@ test("isManagedHookCommand: legacy substring + new-form `aslite` first-token bin
   // Documented asymmetry: the new-form npx spelling is NOT recognized (first token `npx`) —
   // the installer never emits an npx form, so only hand-authored hooks can hit this.
   assert.equal(isManagedHookCommand("npx -y aslite session-start"), false);
+  assert.equal(isManagedHookCommand("npx -y @holaxis/aslite session-start"), false);
   // Never a false positive on a foreign command merely containing the letters.
   assert.equal(isManagedHookCommand("easlite session-start"), false);
   assert.equal(isManagedHookCommand("aslite2 session-start"), false);

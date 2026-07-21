@@ -31,12 +31,13 @@ const receipt = {
   ],
 };
 const manifest = {
-  name: "aslite",
+  name: "@holaxis/aslite",
   files: ["dist", "SKILL.md", "references"],
   bin: {
     aslite: "dist/agentstate-lite.mjs",
     "agentstate-lite": "dist/agentstate-lite.mjs",
   },
+  publishConfig: { access: "public" },
   devDependencies: { local: "*" },
 };
 
@@ -74,6 +75,16 @@ test("the npm package contract rejects surface and runtime dependency drift", ()
     () => assertPackageContract(receipt, { ...manifest, devDependencies: { local: "workspace:*" } }, referenceFiles),
     /workspace: references/,
   );
+  // Scoped coordinate: a missing or restricted publishConfig must fail the contract, never
+  // silently publish private.
+  assert.throws(
+    () => assertPackageContract(receipt, { ...manifest, publishConfig: undefined }, referenceFiles),
+    /publishConfig\.access must be public/,
+  );
+  assert.throws(
+    () => assertPackageContract(receipt, { ...manifest, publishConfig: { access: "restricted" } }, referenceFiles),
+    /publishConfig\.access must be public/,
+  );
 });
 
 test("the npm package contract rejects a second .mjs executable even when the file set matches", () => {
@@ -94,7 +105,7 @@ test("npm subprocesses discard inherited lifecycle, workspace, prefix, and bin s
       npm_execpath: "/npm-cli.js",
       npm_config_dry_run: "true",
       NPM_CONFIG_WORKSPACES: "false",
-      npm_config_workspace: "aslite",
+      npm_config_workspace: "@holaxis/aslite",
       npm_config_prefix: "/wrong-prefix",
       npm_config_bin_links: "false",
     },
@@ -156,7 +167,7 @@ test("the complete proof survives poisoned npm lifecycle configuration", async (
       ...process.env,
       npm_config_dry_run: "true",
       npm_config_workspaces: "false",
-      npm_config_workspace: "aslite",
+      npm_config_workspace: "@holaxis/aslite",
       npm_config_prefix: path.join(tmpdir(), "wrong-agentstate-lite-prefix"),
       npm_config_bin_links: "false",
     },

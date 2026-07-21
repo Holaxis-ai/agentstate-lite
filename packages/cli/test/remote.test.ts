@@ -13,7 +13,7 @@
  *
  * Test build coupling: this file imports `@agentstate-lite/server`, which resolves to
  * `packages/server/dist` — fine under `npm run check` (build runs first), but a bare
- * `npm test -w aslite` with a stale/missing server build will fail to resolve this
+ * `npm test -w @holaxis/aslite` with a stale/missing server build will fail to resolve this
  * import. Mirrors `docs/WIRE-PROTOCOL.md`'s "Test coupling note".
  */
 import test from "node:test";

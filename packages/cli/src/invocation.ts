@@ -1,13 +1,14 @@
 // Resolve the running CLI's OWN invocation for emitted follow-up commands + the home-view identity.
 //
-// The CLI is a standalone, npm-publishable package (`aslite` — the interim npm coordinate; bin
-// names `aslite` / `agentstate-lite`). Per AXI §7/§10 a printed follow-up command must be
-// COPY-PASTE runnable and never a phantom path:
+// The CLI is a standalone, npm-publishable package (`@holaxis/aslite` — the scoped interim npm
+// coordinate; bin names `aslite` / `agentstate-lite` stay unscoped). Per AXI §7/§10 a printed
+// follow-up command must be COPY-PASTE runnable and never a phantom path:
 //
 //   • cliInvocation() — the runnable command PREFIX for hints/help. If a managed bin name resolves on
 //     PATH to THIS executable, we emit the bare name (`aslite`, portable across installs);
-//     otherwise we fall back to `npx -y aslite` (the npm-first distribution form), which runs
-//     the published package without a global install. Never an absolute dist path.
+//     otherwise we fall back to `npx -y @holaxis/aslite` (the npm-first distribution form), which
+//     runs the published package without a global install (npx picks the `aslite` bin — it matches
+//     the coordinate's unscoped part). Never an absolute dist path.
 //   • binPath() — the home-collapsed ABSOLUTE path of the running executable, for the home view's
 //     `bin:` identity field (AXI §10: "identify the tool itself before the live data").
 //
@@ -18,8 +19,8 @@ import { realpathSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { homedir } from "node:os";
 
-/** The npm package name — the token used for the `npx -y <pkg>` fallback and the bare-bin match. */
-export const PACKAGE_NAME = "aslite";
+/** The npm package coordinate — the token used for the `npx -y <pkg>` fallback (bins stay in BIN_NAMES). */
+export const PACKAGE_NAME = "@holaxis/aslite";
 /** The bin names this package installs (see package.json `bin`); the first is preferred for hints. */
 export const BIN_NAMES = ["aslite", "agentstate-lite"] as const;
 
@@ -87,7 +88,7 @@ export function isSkillBundlePath(exe: string): boolean {
 /**
  * The runnable command prefix for emitted follow-ups: the bare bin name when this executable is on
  * PATH; else, when running as the self-contained SKILL bundle, its own resolved absolute path
- * (directly runnable — no npm/npx involved in that channel); else `npx -y aslite` (the
+ * (directly runnable — no npm/npx involved in that channel); else `npx -y @holaxis/aslite` (the
  * npm dist/ bundle off PATH, or a dev/test run). Every `help:` field and success `help[]` entry is
  * built from this so a copy-pasted next step always runs the real tool.
  */

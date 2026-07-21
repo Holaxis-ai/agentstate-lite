@@ -21,11 +21,16 @@ import { HOST_CONFIG_ROOTS, renderShellHostConfigRoot } from "./host-config.js";
 export { NPM_RESOURCES, SKILL_RESOURCES, commandName };
 
 // The two channels carry DIFFERENT identities on purpose: the npm package publishes under the
-// interim coordinate `aslite` (decision: bundle doc decisions/npm-interim-package-name), while the
-// plugin/skill channel keeps its `agentstate-lite` identity and `skills/agentstate-lite` paths.
-const NPM_PKG = "aslite";
+// SCOPED interim coordinate `@holaxis/aslite` (npm rejected the unscoped `aslite` as too similar
+// to existing monikers), while the plugin/skill channel keeps its `agentstate-lite` identity and
+// `skills/agentstate-lite` paths. Within the npm channel there is a SECOND split: the COORDINATE
+// (`@holaxis/aslite`) appears only in install/npx command text, while the channel's skill
+// IDENTITY and command prefix stay the bare `aslite` bin — a skill name or install folder must
+// not contain `@` or `/`.
+const NPM_COORDINATE = "@holaxis/aslite";
+const NPM_BIN = "aslite";
 const SKILL_NAME = "agentstate-lite";
-const NPX = `npx -y ${NPM_PKG}`;
+const NPX = `npx -y ${NPM_COORDINATE}`;
 const ASLITE = '"$ASLITE"';
 
 // ---------------------------------------------------------------------------------------------
@@ -603,12 +608,12 @@ function renderNpmShippedReferencesSection(): string[] {
 /** npm-channel "not on PATH" guidance — install channels, no marketplace-cache discovery. */
 function renderNpmPathSection(): string[] {
   const lines: string[] = [];
-  lines.push(`## If \`${NPM_PKG}\` is not on PATH`);
+  lines.push(`## If \`${NPM_BIN}\` is not on PATH`);
   lines.push("");
-  lines.push(`Every example below assumes the \`${NPM_PKG}\` bin is on PATH. If it is not:`);
+  lines.push(`Every example below assumes the \`${NPM_BIN}\` bin is on PATH. If it is not:`);
   lines.push("");
-  lines.push(`- \`npm install -g ${NPM_PKG}\` puts it (and the long-form alias \`agentstate-lite\`) on PATH.`);
-  lines.push(`- \`${NPX} …\` runs any command below with no install at all — swap the leading \`${NPM_PKG}\``);
+  lines.push(`- \`npm install -g ${NPM_COORDINATE}\` puts it (and the long-form alias \`agentstate-lite\`) on PATH.`);
+  lines.push(`- \`${NPX} …\` runs any command below with no install at all — swap the leading \`${NPM_BIN}\``);
   lines.push("  for that prefix and the rest of the line runs unchanged.");
   lines.push("");
   return lines;
@@ -617,7 +622,7 @@ function renderNpmPathSection(): string[] {
 export function renderNpm(): string {
   const lines: string[] = [];
   lines.push("---");
-  lines.push(`name: ${NPM_PKG}`);
+  lines.push(`name: ${NPM_BIN}`);
   lines.push("description: >-");
   lines.push(
     "  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and live",
@@ -634,12 +639,12 @@ export function renderNpm(): string {
   lines.push(`  Runs standalone via \`${NPX}\`.`);
   lines.push("---");
   lines.push("");
-  lines.push(`# ${NPM_PKG}`);
+  lines.push(`# ${NPM_BIN}`);
   lines.push("");
   lines.push(`${DESCRIPTION}.`);
   lines.push("");
   lines.push(
-    `It is a standalone npm package installing two bins for the identical CLI: \`${NPM_PKG}\` and the`,
+    `It is a standalone npm package (\`${NPM_COORDINATE}\`) installing two bins for the identical CLI: \`${NPM_BIN}\` and the`,
   );
   lines.push("long-form alias `agentstate-lite`. Every example below uses the bare `aslite` bin.");
   lines.push("");
@@ -649,14 +654,14 @@ export function renderNpm(): string {
   lines.push("<!-- GENERATED from src/reference.ts by scripts/gen-skill.mjs — do not edit by hand. -->");
   lines.push("");
   lines.push(...renderNpmPathSection());
-  lines.push(...renderCommandsSection(COMMAND_GROUPS, NPM_PKG));
-  lines.push(...renderWorkspaceLocation(NPM_PKG));
-  lines.push(...renderTypicalFlow(NPM_PKG));
-  lines.push(...renderSyncSection(NPM_PKG));
-  lines.push(...renderRemoteAccessSection(NPM_PKG));
+  lines.push(...renderCommandsSection(COMMAND_GROUPS, NPM_BIN));
+  lines.push(...renderWorkspaceLocation(NPM_BIN));
+  lines.push(...renderTypicalFlow(NPM_BIN));
+  lines.push(...renderSyncSection(NPM_BIN));
+  lines.push(...renderRemoteAccessSection(NPM_BIN));
   lines.push(...renderNpmShippedReferencesSection());
-  lines.push(...renderBundleViewsSection(NPM_PKG, REFS_POINTER));
-  lines.push(...renderNotesSection(referenceNotesAddendum(NPM_PKG, REFS_POINTER)));
+  lines.push(...renderBundleViewsSection(NPM_BIN, REFS_POINTER));
+  lines.push(...renderNotesSection(referenceNotesAddendum(NPM_BIN, REFS_POINTER)));
   return lines.join("\n");
 }
 
@@ -828,7 +833,7 @@ export function renderSkill(): string {
     "plain `node >= 20` — there is **no install step, no `npm install`, and no `node_modules`**. This",
   );
   lines.push(
-    "is a SEPARATE distribution channel from the published npm package (`npx -y aslite`);",
+    "is a SEPARATE distribution channel from the published npm package (`npx -y @holaxis/aslite`);",
   );
   lines.push("both wrap the identical CLI source, so behavior and output are identical.");
   lines.push("");
@@ -919,7 +924,7 @@ export function renderSkill(): string {
     "resolved absolute path there — directly runnable as printed, no substitution needed. If a bare",
   );
   lines.push(
-    "`aslite`/`agentstate-lite` or an `npx -y aslite …` prefix ever shows up instead (e.g. a",
+    "`aslite`/`agentstate-lite` or an `npx -y @holaxis/aslite …` prefix ever shows up instead (e.g. a",
   );
   lines.push(
     `different install answered the \`PATH\` probe), swap that leading token for \`${ASLITE}\` and run`,
