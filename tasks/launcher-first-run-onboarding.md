@@ -25,9 +25,9 @@ description: >-
   (tasks/task-system-board-ui, still in_progress) so it orients toward something
   real; with the recipe deferral Mike is starting here directly.
 actor: mike/claude
-status: todo
+status: in_progress
 priority: '1'
-timestamp: '2026-07-21T14:06:30.594Z'
+timestamp: '2026-07-21T15:57:23.644Z'
 ---
 [the launcher IS the visual endpoint of 'productive'](npm-quickstart-onboarding.md)
 
