@@ -2,7 +2,7 @@
 type: Roadmap
 title: agentstate-lite — Roadmap (near-term spine)
 actor: mike/claude
-timestamp: '2026-07-21T14:18:25.285Z'
+timestamp: '2026-07-21T21:03:40.487Z'
 ---
 # agentstate-lite — Roadmap (near-term spine)
 
@@ -184,7 +184,7 @@ items the same way, so the whole chain (roadmap → item → task) is one filter
 
 [contains](roadmap-items/real-time-event-backbone.md)
 
-[contains](link-model-body-safe.md)
+[contains](roadmap-items/link-model-body-safe.md)
 
 [contains](roadmap-items/recipe-plugins.md)
 
