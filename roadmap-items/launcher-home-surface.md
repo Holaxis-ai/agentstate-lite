@@ -5,15 +5,18 @@ title: >-
   (naming open)
 status: active
 description: >-
-  Reshape the ui landing surface from a capability-grouped View launcher into
-  the human visual home + first-run tutorial. Flat recency grid with capability
-  badges (drop the Dashboards/Interactive/Documents grouping — 'Documents'
-  collides with the doc noun), orientation block, live recent-activity strip
-  over existing SSE. Open question: rename 'launcher'
-  (home/workspace/overview/hub) before tutorial copy hardens the word. Boundary:
-  ui-rethink stays separate/post-window.
+  Launcher becomes the human home + readable knowledge layer. SHIPPED so far:
+  Unit 1 (home surface — PR #135/#137), doc reader (PR #138 + ui-description
+  refresh #139), and Decision 2 of designs/document-discovery the
+  RELATIONSHIP-RICH READER (PR #140, merge cb7f159): each doc page shows typed
+  outbound links grouped by declared relationship + backlinks, bundle walkable
+  as its graph — plus the core browser-bundle isomorphic gate (#141). REMAINING
+  on designs/document-discovery: Decision 1 (grouped+horizon browse index —
+  prototyped+reviewed), Idea 3 (containment outline), plus doc-reader PR-3
+  (open-doc handoff). Naming (home vs launcher) still open pending test users.
+  Parked: tasks/edge-index-derive-on-read (edge-read scaling).
 actor: mike/claude
-timestamp: '2026-07-21T20:35:13.180Z'
+timestamp: '2026-07-21T21:33:56.116Z'
 ---
 # Intent
 
