@@ -2,7 +2,7 @@
 type: Design
 title: Document discovery and relationship navigation
 actor: mike/claude
-timestamp: '2026-07-21T20:35:13.063Z'
+timestamp: '2026-07-21T20:38:35.934Z'
 ---
 # Document discovery and relationship navigation
 
@@ -122,3 +122,5 @@ note for the design, not a blocker.
 [the surface this lives on](../designs/home-surface.md)
 
 [what this replaces as the next increment](../plans/doc-reader-build.md)
+
+[reader-enrichment plan](../plans/relationship-reader-build.md)
