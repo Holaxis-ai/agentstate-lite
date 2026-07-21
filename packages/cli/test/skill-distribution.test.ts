@@ -181,6 +181,14 @@ test("the portable recipe carries the canonical bundle-native View authoring ref
   assert.deepEqual(portable, canonical);
 });
 
+test("the View authoring reference documents hello grants for both read and proposal capabilities", () => {
+  const reference = readFileSync(
+    path.join(REPO_ROOT, "examples/views/references/view-authoring-v0.md"),
+    "utf8",
+  );
+  assert.match(reference, /hello\.result\.grant.*`"read"` for `bundle-read`.*`"propose"` for `bundle-propose`/);
+});
+
 // ---------------------------------------------------------------------------------------------
 // (4)+(5) Render the skill-target SKILL.md in memory and check it against the manifest in BOTH
 // directions: every capability pattern fires and is backed (dead pattern = fail), every shipped

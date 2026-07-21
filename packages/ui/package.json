@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "e2e": "playwright test",
-    "e2e:gate": "playwright install chromium && playwright test e2e/pages.spec.ts e2e/security.spec.ts --project=chromium"
+    "e2e:gate": "playwright install chromium && playwright test e2e/pages.spec.ts e2e/security.spec.ts e2e/personal-task-system.spec.ts --project=chromium"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.0",

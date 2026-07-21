@@ -10,6 +10,7 @@ import {
   loadKinds,
   query,
   queryEdges,
+  readBlob,
   readDoc,
   type KindConvention,
 } from "@agentstate-lite/core";
@@ -23,6 +24,18 @@ import { filesRecipeSource } from "../src/recipe-source.js";
 const PERSONAL_TASK_SYSTEM_RECIPE = path.resolve(
   import.meta.dirname,
   "../../../examples/recipes/personal-task-system",
+);
+const CANONICAL_VIEW_CONVENTION = path.resolve(
+  import.meta.dirname,
+  "../../../examples/recipes/review-workflow/conventions/view.md",
+);
+const CANONICAL_VIEW_REFERENCE = path.resolve(
+  import.meta.dirname,
+  "../../../examples/recipes/review-workflow/references/view-authoring-v0.md",
+);
+const REVIEW_WORKFLOW_RECIPE = path.resolve(
+  import.meta.dirname,
+  "../../../examples/recipes/review-workflow",
 );
 
 async function tempDir(): Promise<string> {
@@ -122,16 +135,29 @@ function expectedProjectKind(): KindConvention {
   };
 }
 
-test("Personal Task System definitions parse strictly and install exactly the Task + Project contract", async () => {
+test("Personal Task System parses strictly and installs its kinds plus interactive board without instances", async () => {
   const loaded = await filesRecipeSource().resolve(PERSONAL_TASK_SYSTEM_RECIPE);
   assert.ok(loaded);
   assert.equal(loaded!.ok, true, loaded && !loaded.ok ? loaded.error.message : "");
   if (!loaded || !loaded.ok) return;
   assert.equal(loaded.recipe.contentPolicy, "definitions-only");
-  assert.deepEqual(loaded.recipe.governs, ["Project", "Task"]);
+  assert.deepEqual(loaded.recipe.governs, ["Project", "Task", "View"]);
   assert.deepEqual(loaded.recipe.warnings, [], "definitions-only parsing rejects any convention warning");
-  assert.deepEqual(loaded.recipe.pages, []);
-  assert.deepEqual(loaded.recipe.references, []);
+  assert.equal(loaded.recipe.pages.length, 1);
+  assert.equal(loaded.recipe.pages[0]!.registry.id, "views-registry/personal-task-system-board");
+  assert.equal(loaded.recipe.pages[0]!.entry, "views/personal-task-system/board.html");
+  assert.equal(loaded.recipe.references.length, 1);
+  assert.equal(loaded.recipe.references[0]!.doc.id, "references/view-authoring-v0");
+  assert.equal(
+    await readFile(path.join(PERSONAL_TASK_SYSTEM_RECIPE, "conventions/view.md"), "utf8"),
+    await readFile(CANONICAL_VIEW_CONVENTION, "utf8"),
+    "View-bearing recipes must compose through one byte-identical View convention",
+  );
+  assert.equal(
+    await readFile(path.join(PERSONAL_TASK_SYSTEM_RECIPE, "references/view-authoring-v0.md"), "utf8"),
+    await readFile(CANONICAL_VIEW_REFERENCE, "utf8"),
+    "View-bearing recipes must carry the same authoring contract their convention links",
+  );
 
   const dir = await tempDir();
   try {
@@ -141,12 +167,22 @@ test("Personal Task System definitions parse strictly and install exactly the Ta
     assert.equal(receipt.changed, true);
     assert.deepEqual(
       (receipt.docs as Array<{ id: string }>).map(({ id }) => id),
-      ["conventions/project", "conventions/task"],
+      ["conventions/project", "conventions/task", "conventions/view"],
     );
+    assert.deepEqual(receipt.pages, [
+      {
+        registry_id: "views-registry/personal-task-system-board",
+        entry: "views/personal-task-system/board.html",
+        registry_changed: true,
+        entry_changed: true,
+        changed: true,
+      },
+    ]);
+    assert.deepEqual(receipt.references, [{ id: "references/view-authoring-v0", changed: true }]);
 
     const registry = await loadKinds({ root: dir });
     assert.deepEqual(registry.warnings, []);
-    assert.equal(registry.kinds.size, 2);
+    assert.equal(registry.kinds.size, 3);
     assert.deepEqual(registry.kinds.get("Task"), expectedTaskKind());
     assert.deepEqual(registry.kinds.get("Project"), expectedProjectKind());
     assert.equal(freshnessHorizonMs(registry.kinds.get("Task")!), 30 * 86_400_000);
@@ -173,6 +209,22 @@ test("Personal Task System definitions parse strictly and install exactly the Ta
 
     assert.equal((await query({ root: dir }, { type: "Task" })).length, 0);
     assert.equal((await query({ root: dir }, { type: "Project" })).length, 0);
+    const views = await query({ root: dir }, { type: "View" });
+    assert.equal(views.length, 1);
+    assert.equal(views[0]!.frontmatter.title, "Personal task board");
+    assert.equal(views[0]!.frontmatter.entry, "views/personal-task-system/board.html");
+    assert.equal(views[0]!.frontmatter.description, "Plan, filter, and safely update Tasks across Projects.");
+    assert.equal(views[0]!.frontmatter.bridge, "bundle-propose");
+    const html = await readBlob({ root: dir }, "views/personal-task-system/board.html");
+    assert.ok(html);
+    assert.match(Buffer.from(html.bytes).toString("utf8"), /Personal task board/);
+    assert.match(Buffer.from(html.bytes).toString("utf8"), /document\.set-field/);
+
+    const composed = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
+    assert.equal(composed.changed, true, "a second View-bearing recipe composes without convention/reference conflicts");
+    const reapplied = await runJson(recipe, ["add", PERSONAL_TASK_SYSTEM_RECIPE, "--dir", dir]);
+    assert.equal(reapplied.changed, false, "composition leaves the Personal Task System idempotent");
+    assert.equal((await query({ root: dir }, { type: "View" })).length, 2);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

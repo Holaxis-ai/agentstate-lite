@@ -4,7 +4,7 @@
  * Readiness/teardown ride the port-0 TOON/JSON receipt, exactly as the CLI's own `serve`
  * command's tests do (`packages/cli/test/serve.test.ts`).
  */
-import { spawn, type ChildProcessByStdio } from "node:child_process";
+import { execFileSync, spawn, type ChildProcessByStdio } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -263,6 +263,64 @@ export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
 /** Boot the real CLI's `ui --dir` over a freshly seeded pages bundle (see {@link seedPagesBundle}). */
 export async function bootUiOverPagesBundle(seedTasks: SeedTask[]): Promise<RunningUi & { dir: string; cleanup: () => Promise<void> }> {
   const dir = await seedPagesBundle(seedTasks);
+  const running = await bootUi(["--dir", dir, "--actor", "e2e/human"]);
+  return {
+    ...running,
+    dir,
+    cleanup: async () => {
+      await running.stop();
+      await rm(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+/** Install the shipped Personal Task System recipe, seed representative work, and boot its real board View. */
+export async function bootUiOverPersonalTaskSystemBundle(): Promise<RunningUi & { dir: string; cleanup: () => Promise<void> }> {
+  const { initBundle, writeDoc } = await import("@agentstate-lite/core");
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-personal-task-system-e2e-"));
+  const recipeDir = path.resolve(here, "../../../examples/recipes/personal-task-system");
+  await initBundle(dir);
+  execFileSync(process.execPath, [CLI_DIST, "recipe", "add", recipeDir, "--dir", dir, "--json"], { encoding: "utf8" });
+  await writeDoc(
+    { root: dir },
+    { id: "projects/launch", frontmatter: { type: "Project", title: "Product launch", status: "active" }, body: "" },
+  );
+  await writeDoc(
+    { root: dir },
+    {
+      id: "tasks/shape-message",
+      frontmatter: { type: "Task", title: "Shape launch message", status: "todo", priority: "high", assignee: "mike", due: "2026-08-01T00:00:00.000Z" },
+      body: "[part of](../projects/launch.md)",
+    },
+  );
+  await writeDoc(
+    { root: dir },
+    {
+      id: "tasks/build-demo",
+      frontmatter: { type: "Task", title: "Build product demo", status: "in_progress", priority: "medium", assignee: "brian" },
+      body: "[part of](../projects/launch.md)\n\n[depends on](shape-message.md)",
+    },
+  );
+  await writeDoc(
+    { root: dir },
+    { id: "tasks/review-copy", frontmatter: { type: "Task", title: "Review landing copy", status: "blocked", priority: "low" }, body: "" },
+  );
+  await writeDoc(
+    { root: dir },
+    { id: "tasks/archive-notes", frontmatter: { type: "Task", title: "Archive launch notes", status: "done" }, body: "" },
+  );
+  await writeDoc(
+    { root: dir },
+    { id: "tasks/canceled-idea", frontmatter: { type: "Task", title: "Canceled launch idea", status: "canceled" }, body: "" },
+  );
+  await writeDoc(
+    { root: dir },
+    {
+      id: "constructor",
+      frontmatter: { type: "Task", title: "Constructor-safe task", status: "todo" },
+      body: "[depends on](tasks/shape-message.md)",
+    },
+  );
   const running = await bootUi(["--dir", dir, "--actor", "e2e/human"]);
   return {
     ...running,
