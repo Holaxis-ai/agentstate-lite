@@ -8,7 +8,7 @@ description: >-
   naming, initial version/tag policy, ownership, and rename boundary before
   prerelease work begins.
 actor: anthropic/claude
-timestamp: '2026-07-21T02:16:55.395Z'
+timestamp: '2026-07-21T02:21:36.368Z'
 ---
 # Decision required
 
@@ -31,10 +31,11 @@ Choose the public product and npm package identity before publication. Confirm:
 
 # Resolution (2026-07-20)
 
-Decided: interim package name **`as-lite`** — full record, rationale, and rename/rollback
+Decided: interim package name **`aslite`** — full record, rationale, and rename/rollback
 path in [the decision doc](../decisions/npm-interim-package-name.md). Availability verified
 (npm 404) 2026-07-20; the `agentstate-lite` name was rejected because an unrelated
-`agentstate` package exists on npm. `aslite` stays the preferred short command. Ownership is
+`agentstate` package exists on npm. `aslite` stays the preferred short command, now
+identical to the package name (chosen over `as-lite` for that reason). Ownership is
 secured at first publish (the prerelease task's explicit publish step). The long-term
 product name — and any repo rename — remains a separate, open decision; expect a successor
 coordinate later.
