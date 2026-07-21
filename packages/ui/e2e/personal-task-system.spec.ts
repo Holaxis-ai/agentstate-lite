@@ -10,9 +10,22 @@ test("the Personal Task System board projects links live and commits a confirmed
     const frame = page.frameLocator("iframe.page-frame-iframe");
 
     await expect(frame.getByRole("heading", { name: "Personal task board" })).toBeVisible();
+    await expect(frame.locator("#summary")).toContainText("6 tasks");
+    await expect(frame.locator(".card")).toHaveCount(6);
     await expect(frame.getByRole("heading", { name: "Shape launch message" })).toBeVisible();
     await expect(frame.locator(".chip.project").first()).toHaveText("Product launch");
-    await expect(frame.getByText("Depends on 1 task")).toBeVisible();
+    await expect(frame.locator('[data-task="tasks/build-demo"] .dependency')).toHaveText("Depends on 1 task");
+    await expect(frame.locator('[data-task="constructor"] .dependency')).toHaveText("Depends on 1 task");
+    await expect(frame.locator(".column").nth(4).locator('[data-task="tasks/canceled-idea"]')).toBeVisible();
+
+    const canceledCard = frame.locator('[data-task="tasks/canceled-idea"]');
+    await canceledCard.getByRole("button", { name: "Reopen" }).click();
+    const canceledDialog = page.getByRole("dialog", { name: "Apply this bundle change?" });
+    const cancel = canceledDialog.getByRole("button", { name: "Cancel" });
+    await expect(cancel).toBeEnabled();
+    await cancel.click();
+    await expect(frame.locator("#toast")).toHaveText("Change cancelled.");
+    await expect(frame.locator("#toast")).toHaveClass("toast show");
 
     await frame.getByLabel("Filter by project").selectOption("projects/launch");
     await expect(frame.locator(".card")).toHaveCount(2);
@@ -20,6 +33,10 @@ test("the Personal Task System board projects links live and commits a confirmed
 
     const todoCard = frame.locator('[data-task="tasks/shape-message"]');
     await expect(todoCard.locator('[data-edit="due"]')).toHaveValue("2026-08-01");
+    await todoCard.getByText("Quick edit").click();
+    await todoCard.getByRole("button", { name: "Propose priority" }).click();
+    await expect(frame.locator("#toast")).toHaveText("Change unchanged.");
+    await expect(frame.locator("#toast")).toHaveClass("toast show");
     await todoCard.getByRole("button", { name: "Start" }).click();
     const dialog = page.getByRole("dialog", { name: "Apply this bundle change?" });
     await expect(dialog).toContainText("tasks/shape-message");

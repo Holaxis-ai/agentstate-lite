@@ -309,6 +309,18 @@ export async function bootUiOverPersonalTaskSystemBundle(): Promise<RunningUi & 
     { root: dir },
     { id: "tasks/archive-notes", frontmatter: { type: "Task", title: "Archive launch notes", status: "done" }, body: "" },
   );
+  await writeDoc(
+    { root: dir },
+    { id: "tasks/canceled-idea", frontmatter: { type: "Task", title: "Canceled launch idea", status: "canceled" }, body: "" },
+  );
+  await writeDoc(
+    { root: dir },
+    {
+      id: "constructor",
+      frontmatter: { type: "Task", title: "Constructor-safe task", status: "todo" },
+      body: "[depends on](tasks/shape-message.md)",
+    },
+  );
   const running = await bootUi(["--dir", dir, "--actor", "e2e/human"]);
   return {
     ...running,

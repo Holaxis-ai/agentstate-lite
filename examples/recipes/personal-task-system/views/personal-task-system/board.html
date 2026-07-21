@@ -33,7 +33,7 @@
   .toolbar input,.toolbar select { min-height:38px; border:1px solid var(--rule); border-radius:8px; background:var(--card); color:var(--ink); padding:8px 10px; outline:none; }
   .toolbar input:focus,.toolbar select:focus { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent); }
   main { padding:20px 24px 72px; overflow-x:auto; }
-  .board { display:grid; grid-template-columns:repeat(4,minmax(245px,1fr)); gap:14px; min-width:1030px; }
+  .board { display:grid; grid-template-columns:repeat(5,minmax(245px,1fr)); gap:14px; min-width:1290px; }
   .column { min-height:280px; border:1px solid var(--rule); border-radius:12px; background:color-mix(in srgb,var(--panel) 72%,transparent); overflow:hidden; }
   .column-head { display:flex; align-items:center; padding:13px 14px; border-bottom:1px solid var(--rule); }
   .column-head h2 { margin:0; font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
@@ -122,10 +122,11 @@
   "use strict";
   var board=document.getElementById("board"), summary=document.getElementById("summary"), toast=document.getElementById("toast");
   var search=document.getElementById("search"), projectFilter=document.getElementById("project"), priorityFilter=document.getElementById("priority");
-  var tasks=[], projects={}, projectsByTask={}, dependenciesByTask={}, busy=false, refreshRunning=false, refreshQueued=false, toastTimer;
+  var tasks=[], projects=Object.create(null), projectsByTask=Object.create(null), dependenciesByTask=Object.create(null), busy=false, refreshRunning=false, refreshQueued=false, toastTimer;
   var columns=[
     {status:"todo",label:"To do"},{status:"in_progress",label:"In progress"},
-    {status:"blocked",label:"Blocked"},{status:"done",label:"Done"}
+    {status:"blocked",label:"Blocked"},{status:"done",label:"Done"},
+    {status:"canceled",label:"Canceled"}
   ];
   var rank={high:0,medium:1,low:2};
   function fm(row){return row.frontmatter||{}}
@@ -142,7 +143,6 @@
   }
   function filtered(){var q=search.value.trim().toLowerCase(),p=projectFilter.value,pri=priorityFilter.value;return tasks.filter(function(task){
     var f=fm(task),projectId=projectsByTask[task.id];
-    if(f.status==="canceled")return false;
     if(q&&!(String(f.title||"")+" "+task.id+" "+String(f.assignee||"")).toLowerCase().includes(q))return false;
     if(p==="none"&&projectId)return false;if(p!=="all"&&p!=="none"&&projectId!==p)return false;
     if(pri==="none"&&f.priority)return false;if(pri!=="all"&&pri!=="none"&&f.priority!==pri)return false;
@@ -172,10 +172,10 @@
   }
   function change(docId,field,value){if(busy)return Promise.resolve();busy=true;render();return Bridge.readVersioned(docId).then(function(result){
     return Bridge.propose({kind:'document.set-field',docId:docId,field:field,value:value,expectedVersion:result.version});
-  }).then(function(result){busy=false;if(result.status==='committed'){showToast('Change committed.');return refresh()}showToast(result.message||('Change '+result.status+'.'),result.status!=='canceled');render();},function(error){busy=false;showToast(error.message,true);render();})}
+  }).then(function(result){busy=false;if(result.status==='committed'){showToast('Change committed.');return refresh()}var neutral=result.status==='cancelled'||result.status==='unchanged';showToast(result.message||('Change '+result.status+'.'),!neutral);render();},function(error){busy=false;showToast(error.message,true);render();})}
   function rebuildProjectFilter(){var selected=projectFilter.value,ids=Object.keys(projects).sort(function(a,b){return String(fm(projects[a]).title||a).localeCompare(String(fm(projects[b]).title||b))});var html='<option value="all">All projects</option><option value="none">No project</option>';ids.forEach(function(id){html+='<option value="'+esc(id)+'">'+esc(fm(projects[id]).title||id)+'</option>'});projectFilter.innerHTML=html;if(selected&&Array.from(projectFilter.options).some(function(o){return o.value===selected}))projectFilter.value=selected}
   function refresh(){if(refreshRunning){refreshQueued=true;return Promise.resolve()}refreshRunning=true;return Promise.all([Bridge.query({type:'Task'}),Bridge.query({type:'Project'}),Bridge.edges({text:'part of'}),Bridge.edges({text:'depends on'})]).then(function(results){
-    tasks=results[0].rows||[];projects={};(results[1].rows||[]).forEach(function(row){projects[row.id]=row});projectsByTask={};(results[2].edges||[]).forEach(function(edge){projectsByTask[edge.from]=edge.to});dependenciesByTask={};(results[3].edges||[]).forEach(function(edge){(dependenciesByTask[edge.from]=dependenciesByTask[edge.from]||[]).push(edge.to)});rebuildProjectFilter();render();
+    tasks=results[0].rows||[];projects=Object.create(null);(results[1].rows||[]).forEach(function(row){projects[row.id]=row});projectsByTask=Object.create(null);(results[2].edges||[]).forEach(function(edge){projectsByTask[edge.from]=edge.to});dependenciesByTask=Object.create(null);(results[3].edges||[]).forEach(function(edge){(dependenciesByTask[edge.from]=dependenciesByTask[edge.from]||[]).push(edge.to)});rebuildProjectFilter();render();
   }).catch(function(error){showToast('Could not read the bundle: '+error.message,true)}).finally(function(){refreshRunning=false;if(refreshQueued){refreshQueued=false;void refresh()}})}
   [search,projectFilter,priorityFilter].forEach(function(control){control.addEventListener(control===search?'input':'change',render)});
   Bridge.subscribe(function(){void refresh()}).then(refresh).catch(function(error){board.innerHTML='<div class="empty board-empty"><strong>Board unavailable</strong>'+esc(error.message)+'</div>'});
