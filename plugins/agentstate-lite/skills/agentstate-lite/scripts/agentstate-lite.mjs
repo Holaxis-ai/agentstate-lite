@@ -18951,6 +18951,10 @@ var COMMAND_GROUPS = [
       {
         usage: "hook install|status|uninstall [--scope project|global]",
         summary: "Install the SessionStart hook (runs session-start: pull the board, then render) for Claude Code, Codex, OpenCode"
+      },
+      {
+        usage: "skill install|status|uninstall [--scope project|global]",
+        summary: "Install this package's Agent Skill (SKILL.md + references/) into Claude Code and Codex skill folders (OpenCode has no skill surface \u2014 its integration is `hook install`); manifest-tracked, idempotent, refuses folders it does not manage"
       }
     ]
   }
@@ -19709,8 +19713,445 @@ async function home(argv, deps = {}) {
   );
 }
 
-// src/commands/session-start.ts
+// src/commands/skill.ts
+import { existsSync as existsSync8, lstatSync as lstatSync4, readFileSync as readFileSync6, readdirSync as readdirSync3, rmSync as rmSync4, rmdirSync as rmdirSync2 } from "node:fs";
+import { homedir as homedir9 } from "node:os";
+import { dirname as dirname4, join as join9 } from "node:path";
 import { parseArgs as parseArgs24 } from "node:util";
+var SKILL_USAGE = `agentstate-lite skill \u2014 install this package's Agent Skill into host skill folders
+
+Usage:
+  agentstate-lite skill install   [--scope project|global]
+  agentstate-lite skill status    [--scope project|global]
+  agentstate-lite skill uninstall [--scope project|global]
+
+Installs (or removes) the generated Agent Skill shipped with this npm package \u2014 SKILL.md plus its
+references/ folder \u2014 for Claude Code and Codex. OpenCode is deliberately not a target: it has no
+skill surface; its SessionStart integration is the plugin written by \`hook install\`.
+
+Install writes a manifest (${"`"}.aslite-skill.json${"`"}) inside the target folder and refuses a
+pre-existing folder it does not manage; uninstall removes exactly the manifested files and refuses
+a folder holding anything else. Reinstall is idempotent (exit 0, changed:false when current).
+\`status\` reports per host: absent | unmanaged | installed | stale (byte-compare against this
+executable's own shipped assets). Status reports install state at these paths; Codex host
+discovery is verified at GLOBAL scope (codex 0.144.x) \u2014 project-scope placement follows each
+host's documented convention.
+
+Options:
+  --scope project   Write to the CURRENT project (default): .claude/skills/aslite/, .codex/skills/aslite/
+  --scope global    Write to each host's configured USER home (environment override or default)
+  --json            Emit compact JSON instead of TOON
+  -h, --help        Show this help
+`;
+var SKILL_DIR_NAME = "aslite";
+var SKILL_MANIFEST_FILENAME = ".aslite-skill.json";
+function listFilesRelative(dir, prefix = "") {
+  if (!existsSync8(dir)) return [];
+  const out = [];
+  for (const entry of readdirSync3(dir, { withFileTypes: true })) {
+    const relativePath = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) out.push(...listFilesRelative(join9(dir, entry.name), relativePath));
+    else out.push(relativePath);
+  }
+  return out.sort();
+}
+function resolveSkillAssets(executable) {
+  const exe = executable ?? currentExecutableRealPath();
+  if (exe === void 0) {
+    throw new CliError("RUNTIME", "cannot resolve the running executable's own path", {
+      help: `${cliInvocation()} skill install --scope project|global`
+    });
+  }
+  if (isSkillBundlePath(exe)) {
+    throw new CliError(
+      "RUNTIME",
+      "this executable is the marketplace skill bundle \u2014 that channel is installed and updated via the marketplace, and carries no separately installable skill assets",
+      { help: "`skill install` ships with the npm package: npm install -g aslite, then `aslite skill install`" }
+    );
+  }
+  const root = dirname4(dirname4(exe));
+  const skillMd = join9(root, "SKILL.md");
+  const referencesDir = join9(root, "references");
+  if (!existsSync8(skillMd) || !existsSync8(referencesDir)) {
+    throw new CliError(
+      "RUNTIME",
+      `the running distribution carries no skill assets (expected SKILL.md + references/ at ${collapseHomeDirectory2(root)})`,
+      { help: "run the npm-installed (or repo-built) CLI, whose package root ships both" }
+    );
+  }
+  let version;
+  try {
+    const manifest = JSON.parse(readFileSync6(join9(root, "package.json"), "utf8"));
+    version = typeof manifest.version === "string" ? manifest.version : "unknown";
+  } catch {
+    version = "unknown";
+  }
+  const files = ["SKILL.md", ...listFilesRelative(referencesDir).map((f) => `references/${f}`)].sort();
+  return { root, version, files };
+}
+function skillTargets(scope, deps = {}) {
+  if (scope === "project") {
+    const cwd = deps.cwd ?? process.cwd();
+    return {
+      claude: join9(cwd, ".claude", "skills", SKILL_DIR_NAME),
+      codex: join9(cwd, ".codex", "skills", SKILL_DIR_NAME)
+    };
+  }
+  const home2 = deps.home ?? homedir9();
+  const env = deps.env ?? process.env;
+  return {
+    claude: join9(resolveHostConfigRoot(HOST_CONFIG_ROOTS.claude, home2, env), "skills", SKILL_DIR_NAME),
+    codex: join9(resolveHostConfigRoot(HOST_CONFIG_ROOTS.codex, home2, env), "skills", SKILL_DIR_NAME)
+  };
+}
+function nonDirectoryRefusal(dir) {
+  let stats;
+  try {
+    stats = lstatSync4(dir);
+  } catch {
+    return void 0;
+  }
+  if (stats.isSymbolicLink()) return "target is a symlink \u2014 refusing destructive operations through links";
+  if (!stats.isDirectory()) return "target exists and is not a directory";
+  return void 0;
+}
+function isSymlink(p) {
+  try {
+    return lstatSync4(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+var TEMP_DEBRIS_RE = /^(.+)\.tmp-\d+-[a-z0-9]+-[a-z0-9]+$/;
+function isManagedDebris(relativePath, owned) {
+  const match = TEMP_DEBRIS_RE.exec(relativePath);
+  return match !== null && owned.has(match[1]);
+}
+function sweepOwnership(manifest, assetFiles) {
+  if (manifest === void 0 || manifest === null) return /* @__PURE__ */ new Set([SKILL_MANIFEST_FILENAME]);
+  return /* @__PURE__ */ new Set([...manifest.files, ...assetFiles, SKILL_MANIFEST_FILENAME]);
+}
+function sweepManagedDebris(dir, owned) {
+  let removed = false;
+  for (const relativePath of listFilesRelative(dir)) {
+    if (isManagedDebris(relativePath, owned)) {
+      rmSync4(join9(dir, ...relativePath.split("/")), { force: true });
+      removed = true;
+    }
+  }
+  return removed;
+}
+function isSafeManifestEntry(entry) {
+  if (typeof entry !== "string" || entry.length === 0) return false;
+  if (entry.startsWith("/") || entry.includes("\\") || entry.includes("\0")) return false;
+  return entry.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+}
+function readManifest(dir) {
+  const manifestPath = join9(dir, SKILL_MANIFEST_FILENAME);
+  if (!existsSync8(manifestPath)) return void 0;
+  try {
+    const parsed = JSON.parse(readFileSync6(manifestPath, "utf8"));
+    if (typeof parsed !== "object" || parsed === null || !Array.isArray(parsed.files)) return null;
+    if (!parsed.files.every(isSafeManifestEntry)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+function manifestContent(assets, files = assets.files) {
+  const manifest = {
+    package: "aslite",
+    version: assets.version,
+    installed_by: "aslite skill install",
+    files: [...files]
+  };
+  return `${JSON.stringify(manifest, null, 2)}
+`;
+}
+function unmanagedExtras(dir, managed) {
+  return listFilesRelative(dir).filter((f) => f !== SKILL_MANIFEST_FILENAME && !managed.has(f));
+}
+function isDirectory(p) {
+  try {
+    return lstatSync4(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function directoryObstructions(dir, ownedFiles) {
+  const obstructed = [];
+  for (const relativePath of ownedFiles) {
+    const p = join9(dir, ...relativePath.split("/"));
+    if (isDirectory(p) && readdirSync3(p).length > 0) obstructed.push(relativePath);
+  }
+  return obstructed;
+}
+function directoryObstructionRefusal(obstructed) {
+  return {
+    ok: false,
+    reason: `manifested path(s) are directories with contents: ${obstructed.join(", ")} \u2014 remove them manually; nothing deleted`
+  };
+}
+function removeManagedPath(p) {
+  if (isDirectory(p)) rmdirSync2(p);
+  else rmSync4(p, { force: true });
+}
+function installIntoDir(dir, assets) {
+  const notDir = nonDirectoryRefusal(dir);
+  if (notDir !== void 0) return { ok: false, reason: notDir };
+  const manifest = readManifest(dir);
+  const debrisRemoved = sweepManagedDebris(dir, sweepOwnership(manifest, assets.files));
+  if (existsSync8(dir)) {
+    if (manifest === void 0 && listFilesRelative(dir).length > 0) {
+      return { ok: false, reason: `folder exists with no ${SKILL_MANIFEST_FILENAME} manifest \u2014 not managed by this tool` };
+    }
+    if (manifest === null) {
+      return { ok: false, reason: `${SKILL_MANIFEST_FILENAME} is malformed \u2014 refusing to write over a folder in an unknown state` };
+    }
+    if (manifest !== void 0) {
+      const managed = /* @__PURE__ */ new Set([...manifest.files, ...assets.files]);
+      const obstructed = directoryObstructions(dir, managed);
+      if (obstructed.length > 0) return directoryObstructionRefusal(obstructed);
+      const extras = unmanagedExtras(dir, managed);
+      if (extras.length > 0) {
+        return {
+          ok: false,
+          reason: `folder holds file(s) the manifest does not name: ${extras.join(", ")} \u2014 remove them or delete the folder, then re-run`
+        };
+      }
+    }
+  }
+  let changed = debrisRemoved;
+  const manifestPath = join9(dir, SKILL_MANIFEST_FILENAME);
+  const finalManifest = manifestContent(assets);
+  const unionFiles = [.../* @__PURE__ */ new Set([...manifest?.files ?? [], ...assets.files])].sort();
+  const transitionalManifest = manifestContent(assets, unionFiles);
+  const writeManifest = (content) => {
+    if (isSymlink(manifestPath)) rmSync4(manifestPath, { force: true });
+    atomicWriteFileSync(manifestPath, content);
+    changed = true;
+  };
+  const currentManifest = !isSymlink(manifestPath) && existsSync8(manifestPath) ? readFileSync6(manifestPath, "utf8") : void 0;
+  if (currentManifest !== transitionalManifest && currentManifest !== finalManifest) {
+    writeManifest(transitionalManifest);
+  }
+  const wanted = new Set(assets.files);
+  for (const relativePath of assets.files) {
+    const bytes = readFileSync6(join9(assets.root, relativePath));
+    const destPath = join9(dir, ...relativePath.split("/"));
+    const destIsLink = isSymlink(destPath);
+    const destIsDir = !destIsLink && isDirectory(destPath);
+    const current = !destIsLink && !destIsDir && existsSync8(destPath) ? readFileSync6(destPath) : void 0;
+    if (destIsLink || destIsDir || current === void 0 || !bytes.equals(current)) {
+      if (destIsLink) rmSync4(destPath, { force: true });
+      if (destIsDir) rmdirSync2(destPath);
+      atomicWriteFileSync(destPath, bytes);
+      changed = true;
+    }
+  }
+  for (const relativePath of manifest?.files ?? []) {
+    if (!wanted.has(relativePath)) {
+      removeManagedPath(join9(dir, ...relativePath.split("/")));
+      changed = true;
+    }
+  }
+  const manifestAfterConverge = existsSync8(manifestPath) ? readFileSync6(manifestPath, "utf8") : void 0;
+  if (manifestAfterConverge !== finalManifest) {
+    writeManifest(finalManifest);
+  }
+  removeEmptyDirectories(dir, false);
+  return { ok: true, changed };
+}
+function removeEmptyDirectories(dir, removeSelf) {
+  if (!existsSync8(dir)) return;
+  for (const entry of readdirSync3(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) removeEmptyDirectories(join9(dir, entry.name), true);
+  }
+  if (removeSelf && readdirSync3(dir).length === 0) rmdirSync2(dir);
+}
+function uninstallFromDir(dir) {
+  const notDir = nonDirectoryRefusal(dir);
+  if (notDir !== void 0) return { ok: false, reason: notDir };
+  if (!existsSync8(dir)) return { ok: true, changed: false };
+  const manifest = readManifest(dir);
+  const debrisRemoved = sweepManagedDebris(dir, sweepOwnership(manifest, []));
+  if (manifest === void 0) {
+    if (listFilesRelative(dir).length === 0) {
+      if (debrisRemoved) removeEmptyDirectories(dir, true);
+      return { ok: true, changed: debrisRemoved };
+    }
+    return { ok: false, reason: `folder exists with no ${SKILL_MANIFEST_FILENAME} manifest \u2014 not managed by this tool, nothing deleted` };
+  }
+  if (manifest === null) {
+    return { ok: false, reason: `${SKILL_MANIFEST_FILENAME} is malformed \u2014 refusing to delete anything from a folder in an unknown state` };
+  }
+  const managed = new Set(manifest.files);
+  const obstructed = directoryObstructions(dir, managed);
+  if (obstructed.length > 0) return directoryObstructionRefusal(obstructed);
+  const extras = unmanagedExtras(dir, managed);
+  if (extras.length > 0) {
+    return {
+      ok: false,
+      reason: `folder holds file(s) the manifest does not name: ${extras.join(", ")} \u2014 nothing deleted`
+    };
+  }
+  for (const relativePath of manifest.files) {
+    removeManagedPath(join9(dir, ...relativePath.split("/")));
+  }
+  rmSync4(join9(dir, SKILL_MANIFEST_FILENAME), { force: true });
+  removeEmptyDirectories(dir, true);
+  return { ok: true, changed: true };
+}
+function skillStatusForDir(dir, assets) {
+  if (nonDirectoryRefusal(dir) !== void 0) return { state: "unmanaged" };
+  if (!existsSync8(dir)) return { state: "absent" };
+  const manifest = readManifest(dir);
+  const owned = sweepOwnership(manifest, assets.files);
+  const files = listFilesRelative(dir).filter((f) => !isManagedDebris(f, owned));
+  if (files.length === 0) return { state: "absent" };
+  if (manifest === void 0 || manifest === null) return { state: "unmanaged" };
+  const version = typeof manifest.version === "string" ? manifest.version : void 0;
+  const onDisk = files.filter((f) => f !== SKILL_MANIFEST_FILENAME);
+  const sameSet = onDisk.length === assets.files.length && onDisk.every((f, i) => f === assets.files[i]);
+  if (!sameSet) return { state: "stale", version };
+  for (const relativePath of assets.files) {
+    const installedPath = join9(dir, ...relativePath.split("/"));
+    if (isSymlink(installedPath)) return { state: "stale", version };
+    const installed = readFileSync6(installedPath);
+    const shipped = readFileSync6(join9(assets.root, relativePath));
+    if (!installed.equals(shipped)) return { state: "stale", version };
+  }
+  if (readFileSync6(join9(dir, SKILL_MANIFEST_FILENAME), "utf8") !== manifestContent(assets)) {
+    return { state: "stale", version };
+  }
+  return { state: "installed", version };
+}
+async function skill(argv, deps = {}) {
+  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
+  const { values, positionals } = parseOrUsage(
+    () => parseArgs24({
+      args: argv,
+      options: {
+        scope: { type: "string" },
+        json: { type: "boolean" },
+        help: { type: "boolean", short: "h" }
+      },
+      allowPositionals: true
+    }),
+    "skill"
+  );
+  if (values.help) {
+    stdout(SKILL_USAGE);
+    return;
+  }
+  const sub = positionals[0];
+  if (sub !== "install" && sub !== "status" && sub !== "uninstall") {
+    throw new CliError(
+      "USAGE",
+      sub === void 0 ? "skill requires a subcommand (install|status|uninstall)" : `unknown skill subcommand: ${sub} (expected install|status|uninstall)`,
+      { help: `${cliInvocation()} skill install|status|uninstall [--scope project|global]` }
+    );
+  }
+  const scope = values.scope ?? "project";
+  if (scope !== "project" && scope !== "global") {
+    throw new CliError("USAGE", `unsupported skill scope: ${scope} (expected project|global)`, {
+      help: `${cliInvocation()} skill ${sub} --scope project|global`
+    });
+  }
+  const targets = skillTargets(scope, deps);
+  const mode = resolveMode(values);
+  const hostDirs = [
+    ["claude_code", targets.claude],
+    ["codex", targets.codex]
+  ];
+  if (sub === "status") {
+    const assets = resolveSkillAssets(deps.executable);
+    const hosts2 = {};
+    for (const [key, dir] of hostDirs) {
+      const s = skillStatusForDir(dir, assets);
+      hosts2[key] = { path: collapseHomeDirectory2(dir), state: s.state, ...s.version ? { version: s.version } : {} };
+    }
+    stdout(render({ skill: { action: "status", scope, version: assets.version, hosts: hosts2 } }, mode));
+    return;
+  }
+  if (sub === "install") {
+    const assets = resolveSkillAssets(deps.executable);
+    const refusals2 = [];
+    const hosts2 = {};
+    let changed2 = false;
+    for (const [key, dir] of hostDirs) {
+      let result;
+      try {
+        result = installIntoDir(dir, assets);
+      } catch (err) {
+        result = { ok: false, reason: `unexpected error: ${err instanceof Error ? err.message : String(err)}` };
+      }
+      if (!result.ok) {
+        refusals2.push(`${collapseHomeDirectory2(dir)}: ${result.reason}`);
+        continue;
+      }
+      changed2 = changed2 || result.changed;
+      hosts2[key] = { path: collapseHomeDirectory2(dir), changed: result.changed };
+    }
+    if (refusals2.length > 0) {
+      throw new CliError(
+        "RUNTIME",
+        `skill install refused ${refusals2.length} target folder(s); other targets were still processed`,
+        {
+          details: { refused: refusals2 },
+          help: "inspect the named folder(s) \u2014 nothing was written to them; remove what this tool does not manage, then re-run"
+        }
+      );
+    }
+    stdout(
+      render(
+        {
+          skill: {
+            action: "install",
+            scope,
+            version: assets.version,
+            source: collapseHomeDirectory2(assets.root),
+            changed: changed2,
+            hosts: hosts2
+          }
+        },
+        mode
+      )
+    );
+    return;
+  }
+  const refusals = [];
+  const hosts = {};
+  let changed = false;
+  for (const [key, dir] of hostDirs) {
+    let result;
+    try {
+      result = uninstallFromDir(dir);
+    } catch (err) {
+      result = { ok: false, reason: `unexpected error: ${err instanceof Error ? err.message : String(err)}` };
+    }
+    if (!result.ok) {
+      refusals.push(`${collapseHomeDirectory2(dir)}: ${result.reason}`);
+      continue;
+    }
+    changed = changed || result.changed;
+    hosts[key] = { path: collapseHomeDirectory2(dir), changed: result.changed };
+  }
+  if (refusals.length > 0) {
+    throw new CliError(
+      "RUNTIME",
+      `skill uninstall refused ${refusals.length} target folder(s); other targets were still processed`,
+      {
+        details: { refused: refusals },
+        help: "inspect the named folder(s) \u2014 nothing was deleted from them"
+      }
+    );
+  }
+  stdout(render({ skill: { action: "uninstall", scope, changed, hosts } }, mode));
+}
+
+// src/commands/session-start.ts
+import { parseArgs as parseArgs25 } from "node:util";
 import path22 from "node:path";
 var SESSION_START_PULL_BUDGET_MS = 7e3;
 var SESSION_START_CONNECT_TIMEOUT_SECONDS = 5;
@@ -19818,7 +20259,7 @@ async function sessionStartPull(dir, budgetMs = SESSION_START_PULL_BUDGET_MS, no
 async function sessionStart(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const { values } = parseOrUsage(
-    () => parseArgs24({
+    () => parseArgs25({
       args: argv,
       options: {
         dir: { type: "string" },
@@ -19871,7 +20312,7 @@ async function sessionStart(argv, deps = {}) {
 }
 
 // src/commands/bundle.ts
-import { parseArgs as parseArgs25 } from "node:util";
+import { parseArgs as parseArgs26 } from "node:util";
 var BUNDLE_USAGE = `agentstate-lite bundle \u2014 inspect local bundle targeting
 
 Usage:
@@ -19893,7 +20334,7 @@ async function bundleCommand(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const cwd = deps.cwd ?? (() => process.cwd());
   const parsed = parseOrUsage(
-    () => parseArgs25({
+    () => parseArgs26({
       args: argv,
       options: {
         dir: { type: "string" },
@@ -19930,8 +20371,8 @@ async function bundleCommand(argv, deps = {}) {
 }
 
 // src/commands/catalog.ts
-import { parseArgs as parseArgs26 } from "node:util";
-import { homedir as homedir9 } from "node:os";
+import { parseArgs as parseArgs27 } from "node:util";
+import { homedir as homedir10 } from "node:os";
 var CATALOG_USAGE = `agentstate-lite catalog \u2014 register and resolve this user's workspaces
 
 Usage:
@@ -19989,9 +20430,9 @@ function requestsPathField(argv) {
 async function catalogInner(argv, deps) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const cwd = deps.cwd ?? (() => process.cwd());
-  const home2 = deps.home ?? homedir9;
+  const home2 = deps.home ?? homedir10;
   const parsed = parseOrUsage(
-    () => parseArgs26({
+    () => parseArgs27({
       args: argv,
       options: {
         dir: { type: "string" },
@@ -20076,7 +20517,7 @@ async function catalogInner(argv, deps) {
 }
 
 // src/commands/index.ts
-import { parseArgs as parseArgs27 } from "node:util";
+import { parseArgs as parseArgs28 } from "node:util";
 var INDEX_USAGE = `agentstate-lite index \u2014 generate portable Markdown navigation
 
 Usage:
@@ -20160,7 +20601,7 @@ function refusalError(prepared, displayName, scanned, check, dir) {
 async function indexCommand(argv, deps = {}) {
   const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
   const { values, positionals } = parseOrUsage(
-    () => parseArgs27({
+    () => parseArgs28({
       args: argv,
       options: {
         dir: { type: "string" },
@@ -20252,7 +20693,7 @@ async function indexCommand(argv, deps = {}) {
 }
 
 // src/cli.ts
-import { parseArgs as parseArgs28 } from "node:util";
+import { parseArgs as parseArgs29 } from "node:util";
 var KNOWN_COMMANDS = [
   "init",
   "bundle",
@@ -20276,6 +20717,7 @@ var KNOWN_COMMANDS = [
   "ui",
   "sync",
   "hook",
+  "skill",
   "session-start"
 ];
 function helpReference() {
@@ -20292,7 +20734,7 @@ var wrap2 = (fn) => async (args) => {
 };
 function isGlobalOnlyHomeInvocation(argv) {
   try {
-    const { positionals } = parseArgs28({
+    const { positionals } = parseArgs29({
       args: argv,
       options: {
         remote: { type: "string" },
@@ -20310,7 +20752,7 @@ function isGlobalOnlyHomeInvocation(argv) {
 function hoistLeadingGlobalFlags(argv) {
   let tokens;
   try {
-    tokens = parseArgs28({
+    tokens = parseArgs29({
       args: argv,
       tokens: true,
       strict: false,
@@ -20395,6 +20837,8 @@ async function main(argv) {
       ui: wrap2(ui),
       sync: wrap2(sync),
       hook: wrap2(hook),
+      // Install/remove this package's generated Agent Skill in host skill folders.
+      skill: wrap2(skill),
       // The SessionStart hook payload: time-boxed board pull, then the home render — in-process.
       "session-start": wrap2(sessionStart),
       // Explicit `home` handler so a SessionStart hook (or an agent) can also call `<bin> home`, not

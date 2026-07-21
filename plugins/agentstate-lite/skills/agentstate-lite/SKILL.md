@@ -147,6 +147,8 @@ the rest of the line unchanged.
   — The SessionStart hook payload: a time-boxed best-effort board pull, then the home view — every pull failure falls through to the render (exit 0)
 - `"$ASLITE" hook install|status|uninstall [--scope project|global]`
   — Install the SessionStart hook (runs session-start: pull the board, then render) for Claude Code, Codex, OpenCode
+- `"$ASLITE" skill install|status|uninstall [--scope project|global]`
+  — Install this package's Agent Skill (SKILL.md + references/) into Claude Code and Codex skill folders (OpenCode has no skill surface — its integration is `hook install`); manifest-tracked, idempotent, refuses folders it does not manage
 
 ## Workspaces — the project's bundle lives at `.agentstate-lite/` in the project root
 
