@@ -1,0 +1,64 @@
+---
+type: Roadmap Item
+title: >-
+  Launcher becomes the human home: flat honest cards, orientation, live activity
+  (naming open)
+status: active
+description: >-
+  Reshape the ui landing surface from a capability-grouped View launcher into
+  the human visual home + first-run tutorial. Flat recency grid with capability
+  badges (drop the Dashboards/Interactive/Documents grouping — 'Documents'
+  collides with the doc noun), orientation block, live recent-activity strip
+  over existing SSE. Open question: rename 'launcher'
+  (home/workspace/overview/hub) before tutorial copy hardens the word. Boundary:
+  ui-rethink stays separate/post-window.
+actor: mike/claude
+timestamp: '2026-07-21T14:18:20.248Z'
+---
+# Intent
+
+Reshape the `ui` command's landing surface from a capability-grouped View launcher into the
+human's visual HOME for the bundle — the counterpart of the CLI `home` view every agent
+session opens with — and make it carry the lightweight first-run tutorial. This is the
+near-term focus after the built-in-recipe deferral (decisions/defer-builtin-recipes): test
+users meet THIS surface first.
+
+# Shape (direction, not yet a build spec)
+
+- **Flatten the card grid; demote bridge capability to a badge.** Grouping by the enforced
+  `bridge` field (Dashboards / Interactive / Documents) projects the security model into the
+  information architecture; users think in subjects, not API grants. A flat recency-sorted
+  grid with a small trust badge per card (`live data` / `can edit` / `self-contained`)
+  preserves the enforced-field honesty (same field, same derivation) without organizing by
+  it. The "Documents" label in particular collides with the product's core noun (docs) and
+  goes away regardless.
+- **Orientation block**: what this bundle is, the human-agent loop, where things live —
+  replacing the developer-facing empty-state paragraph.
+- **Live recent-activity strip**: recent docs by timestamp over the EXISTING SSE stream.
+  This is the tutorial's engine and the empty-state fix in one move: a fresh bundle shows
+  "ask your agent to create a note — watch it appear here" instead of a dead paragraph
+  about promoting HTML.
+- **No invented categorization.** If grouping is ever needed, it is a bundle-authored field
+  on the View convention justified by real test-user view populations — the same
+  learn-from-users logic as the recipe deferral, never a hardcoded SPA taxonomy.
+
+# Open question: is "launcher" even the right word?
+
+The surface is becoming a home/overview, not a launcher-of-apps. Candidates to weigh with
+test users: **home** (aligns with the CLI `home` verb — the agent gets home in the
+terminal, the human gets it in the browser), **workspace**, **overview**, **hub**. The
+command name (`aslite ui`) and the surface's internal name can diverge; rename is cheap
+before test users, expensive after. Decide before the tutorial copy hardens the word.
+
+# Boundary
+
+roadmap-items/ui-rethink (what replaces the kanban primitive) stays SEPARATE and
+post-window. This item is the existing surface made orienting and honest — not the
+fundamental rethink. tasks/launcher-first-run-onboarding is the first contained unit; the
+recent-activity strip is a deliberate scope line in that task, not silent growth.
+
+[the pivot that made this the focus](../decisions/defer-builtin-recipes.md)
+
+[boundary: the fundamental redesign stays separate](../roadmap-items/ui-rethink.md)
+
+[contains](../tasks/launcher-first-run-onboarding.md)
