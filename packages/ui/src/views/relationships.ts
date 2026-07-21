@@ -1,0 +1,75 @@
+/**
+ * Relationship grouping for the doc reader (plans/relationship-reader-build, Decision 2 of
+ * designs/document-discovery). A doc's OUTBOUND edges are grouped by whether their `text` is a
+ * DECLARED relationship type — the product's ratified carrier model
+ * (decisions/typed-links-carrier: "a link is a typed edge iff its display text exactly matches a
+ * declared relationship type; undeclared text-as-type is explicitly not the model").
+ *
+ * The vocabulary is the UNION of every kind's declared `links` and `expectsInbound` verbs, read
+ * from the kind registry the page already fetches — so it is bundle-sourced, never a hardcoded
+ * verb list in the shell. A conventions-free bundle has an empty vocabulary → one flat "Related"
+ * group (a plain link list; gate-3 posture). Everything not in the vocabulary — descriptive prose
+ * text, id/path-shaped text, empty — goes to Related, carrying its `text` so the human signal on
+ * ~40% of edges is not lost. Rows are DEDUPED within a group for display (core keeps per-literal
+ * link counts; the display collapses identical (to, text) pairs).
+ */
+import type { Edge } from "../api/types.js";
+import type { KindConvention } from "@agentstate-lite/core/kinds";
+
+/** The pseudo-verb the untyped/prose/id-shaped edges collect under. Not a declared verb, so it can never collide. */
+export const RELATED_GROUP = "Related";
+
+export interface RelationshipRow {
+  /** The target concept id — the navigation destination (bare id; titles aren't in the edge list, v1). */
+  to: string;
+  /** The edge's display text — shown beside the id in the Related group; carries the human signal. */
+  text: string;
+}
+
+export interface RelationshipGroup {
+  /** A declared verb (`contains`, `depends on`, …) or {@link RELATED_GROUP}. */
+  relation: string;
+  rows: RelationshipRow[];
+}
+
+/** The declared relationship vocabulary: the union of every kind's `links` + `expectsInbound` verbs. */
+export function declaredVocabulary(kinds: KindConvention[]): Set<string> {
+  const verbs = new Set<string>();
+  for (const kind of kinds) {
+    for (const verb of Object.keys(kind.links ?? {})) verbs.add(verb);
+    for (const verb of Object.keys(kind.expectsInbound ?? {})) verbs.add(verb);
+  }
+  return verbs;
+}
+
+/**
+ * Group a doc's outbound edges: one group per declared verb present (alpha order), then a single
+ * {@link RELATED_GROUP} for everything else. Identical (to, text) rows dedupe within a group.
+ * Pure — the unit-tested core.
+ */
+export function groupOutbound(edges: Edge[], vocabulary: Set<string>): RelationshipGroup[] {
+  const typed = new Map<string, RelationshipRow[]>();
+  const related: RelationshipRow[] = [];
+  const seen = new Set<string>();
+  for (const edge of edges) {
+    const text = edge.text ?? "";
+    const isTyped = text !== "" && vocabulary.has(text);
+    const bucketKey = isTyped ? text : RELATED_GROUP;
+    const dedupeKey = `${bucketKey}\u0000${edge.to}\u0000${text}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    const row: RelationshipRow = { to: edge.to, text };
+    if (isTyped) {
+      const rows = typed.get(text) ?? [];
+      rows.push(row);
+      typed.set(text, rows);
+    } else {
+      related.push(row);
+    }
+  }
+  const groups: RelationshipGroup[] = [...typed.keys()]
+    .sort((a, b) => a.localeCompare(b, "en")) // pin the collation so group order is user-locale-independent
+    .map((relation) => ({ relation, rows: typed.get(relation)! }));
+  if (related.length > 0) groups.push({ relation: RELATED_GROUP, rows: related });
+  return groups;
+}
