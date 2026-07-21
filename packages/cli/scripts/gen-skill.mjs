@@ -7,7 +7,7 @@
 // AXI §7 "single source of truth": every installable channel's command reference is DERIVED from
 // the same COMMAND_GROUPS the home view + `--help` render, so it can never drift. Two TARGETS:
 //
-//   --target npm   (default) → packages/cli/SKILL.md, examples prefixed `npx -y agentstate-lite`
+//   --target npm   (default) → packages/cli/SKILL.md, examples prefixed `npx -y aslite`
 //                    (the published-package channel; installed with no bin-on-PATH assumption).
 //                    Carries no references/ sync — the npm tarball doesn't ship them yet (a known
 //                    explicit empty projection; see src/distribution-resources.ts).

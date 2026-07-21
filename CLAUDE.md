@@ -11,7 +11,8 @@ its own import-direction test with no allowlist; command UX stays in the CLI),
 imports only Node + core + server, while CLI policy and generated assets stay in the CLI),
 `packages/ui` (the browser SPA — PRIVATE workspace; only its BUILT assets ship, gzip-embedded
 into the CLI bundle; it launches bundle-authored Views, see gate 4), and `packages/cli` —
-the **publishable npm package `agentstate-lite`** (bins `agentstate-lite` / `aslite`), an
+the **publishable npm package `aslite`** (interim coordinate per the board decision; bins
+`aslite` / `agentstate-lite`), an
 esbuild bundle that inlines core + board-git + server + the built UI assets + deps into one
 self-contained ESM file. The filesystem is the
 DEFAULT local backend; the storage seam is pluggable (gate 3). Hosted deployment code is outside

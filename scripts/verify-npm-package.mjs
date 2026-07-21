@@ -67,11 +67,11 @@ export function assertPackageContract(receipt, manifest) {
     expectedFiles,
     "the npm tarball must contain only the CLI, manifest, README, and license",
   );
-  assert.equal(manifest.name, "agentstate-lite");
+  assert.equal(manifest.name, "aslite");
   assert.deepEqual(manifest.files, ["dist"]);
   assert.deepEqual(manifest.bin, {
-    "agentstate-lite": "dist/agentstate-lite.mjs",
     aslite: "dist/agentstate-lite.mjs",
+    "agentstate-lite": "dist/agentstate-lite.mjs",
   });
   for (const field of runtimeDependencyFields) {
     assert.ok(
@@ -211,8 +211,8 @@ export async function verifyNpmPackage() {
 
     const installedRoot =
       process.platform === "win32"
-        ? path.join(prefix, "node_modules", "agentstate-lite")
-        : path.join(prefix, "lib", "node_modules", "agentstate-lite");
+        ? path.join(prefix, "node_modules", "aslite")
+        : path.join(prefix, "lib", "node_modules", "aslite");
     const manifest = parseJson(await readFile(path.join(installedRoot, "package.json"), "utf8"), "installed package.json");
     assertPackageContract(receipt, manifest);
 
@@ -225,8 +225,8 @@ export async function verifyNpmPackage() {
       XDG_CONFIG_HOME: path.join(home, ".config"),
       AGENTSTATE_LITE_NO_AUTOPULL: "1",
     };
-    await assertCommandInBin("agentstate-lite", commandEnv, binDir);
     await assertCommandInBin("aslite", commandEnv, binDir);
+    await assertCommandInBin("agentstate-lite", commandEnv, binDir);
 
     const installedEntrypoint = path.join(installedRoot, manifest.bin.aslite);
     const runCli = (command, args) =>

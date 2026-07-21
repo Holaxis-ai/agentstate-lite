@@ -68,7 +68,7 @@ jobs:
           TARGET: ${{ inputs.target }}
         run: |
           core='{"package":"core","workspace":"@agentstate-lite/core"}'
-          cli='{"package":"cli","workspace":"agentstate-lite"}'
+          cli='{"package":"cli","workspace":"aslite"}'
           boardgit='{"package":"board-git","workspace":"@agentstate-lite/board-git"}'
           case "${TARGET:-both}" in
             core) include="$core" ;;

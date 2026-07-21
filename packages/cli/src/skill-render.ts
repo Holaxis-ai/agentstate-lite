@@ -10,7 +10,6 @@
 // via esbuild's data-URL loader and calls `renderNpm()` / `renderSkill()` directly; it no longer
 // contains any rendering logic of its own, only the write/--check CLI shell.
 //
-// `renderNpm`'s output is BYTE-IDENTICAL to before this extraction (`check:skill` sees no churn).
 // The skill-target-only additions (Shipped references, Bundle views, the Remote section's
 // wire-protocol note, two extra Notes bullets) live entirely on `renderSkill`'s own path;
 // `renderNotesSection`'s shared body is unchanged — only its new `extraBullets` param is added,
@@ -21,8 +20,12 @@ import { HOST_CONFIG_ROOTS, renderShellHostConfigRoot } from "./host-config.js";
 
 export { SKILL_RESOURCES, commandName };
 
-const PKG = "agentstate-lite";
-const NPX = `npx -y ${PKG}`;
+// The two channels carry DIFFERENT identities on purpose: the npm package publishes under the
+// interim coordinate `aslite` (decision: bundle doc decisions/npm-interim-package-name), while the
+// plugin/skill channel keeps its `agentstate-lite` identity and `skills/agentstate-lite` paths.
+const NPM_PKG = "aslite";
+const SKILL_NAME = "agentstate-lite";
+const NPX = `npx -y ${NPM_PKG}`;
 const ASLITE = '"$ASLITE"';
 
 // ---------------------------------------------------------------------------------------------
@@ -545,13 +548,13 @@ function renderRemoteAccessSection(invocation: string): string[] {
 export function renderNpm(): string {
   const lines: string[] = [];
   lines.push("---");
-  lines.push(`name: ${PKG}`);
+  lines.push(`name: ${NPM_PKG}`);
   lines.push("description: >-");
   lines.push(
     "  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and live",
   );
   lines.push(
-    "  bundle Views) from the shell via the agentstate-lite CLI. Use when an agent",
+    "  bundle Views) from the shell via the aslite CLI. Use when an agent",
   );
   lines.push(
     "  needs to persist a context note across sessions, store a decision/spec as a doc, link concepts,",
@@ -562,7 +565,7 @@ export function renderNpm(): string {
   lines.push(`  Runs standalone via \`${NPX}\`.`);
   lines.push("---");
   lines.push("");
-  lines.push(`# ${PKG}`);
+  lines.push(`# ${NPM_PKG}`);
   lines.push("");
   lines.push(`${DESCRIPTION}.`);
   lines.push("");
@@ -570,9 +573,9 @@ export function renderNpm(): string {
     `It is a standalone npm package. Every example below runs with no install via \`${NPX} …\`; if the`,
   );
   lines.push(
-    "tool is installed globally you can drop the `npx -y ` prefix and call `agentstate-lite …` (or the",
+    "tool is installed globally you can drop the `npx -y ` prefix and call `aslite …` (or the",
   );
-  lines.push("short alias `aslite …`) directly.");
+  lines.push("long-form alias `agentstate-lite …`) directly.");
   lines.push("");
   lines.push("Output is TOON on stdout (a `--json` hatch exists). Errors are structured TOON on stdout with a");
   lines.push("capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found, 1 runtime).");
@@ -717,7 +720,7 @@ const SKILL_NOTES_ADDENDUM: string[] = [
 export function renderSkill(): string {
   const lines: string[] = [];
   lines.push("---");
-  lines.push(`name: ${PKG}`);
+  lines.push(`name: ${SKILL_NAME}`);
   lines.push("description: >-");
   lines.push(
     "  Read and write a local OKF knowledge bundle (agent context notes, docs, cross-links, and live",
@@ -740,7 +743,7 @@ export function renderSkill(): string {
   lines.push("  bundle's local View UI.");
   lines.push("---");
   lines.push("");
-  lines.push(`# ${PKG}`);
+  lines.push(`# ${SKILL_NAME}`);
   lines.push("");
   lines.push(`${DESCRIPTION}.`);
   lines.push("");
@@ -754,7 +757,7 @@ export function renderSkill(): string {
     "plain `node >= 20` — there is **no install step, no `npm install`, and no `node_modules`**. This",
   );
   lines.push(
-    "is a SEPARATE distribution channel from the published npm package (`npx -y agentstate-lite`);",
+    "is a SEPARATE distribution channel from the published npm package (`npx -y aslite`);",
   );
   lines.push("both wrap the identical CLI source, so behavior and output are identical.");
   lines.push("");
@@ -845,7 +848,7 @@ export function renderSkill(): string {
     "resolved absolute path there — directly runnable as printed, no substitution needed. If a bare",
   );
   lines.push(
-    "`agentstate-lite` or an `npx -y agentstate-lite …` prefix ever shows up instead (e.g. a",
+    "`aslite`/`agentstate-lite` or an `npx -y aslite …` prefix ever shows up instead (e.g. a",
   );
   lines.push(
     `different install answered the \`PATH\` probe), swap that leading token for \`${ASLITE}\` and run`,

@@ -7,9 +7,9 @@
  *
  * The emitted-command-chain discipline (CLAUDE.md: "a review claiming it 'executed' a documented
  * command chain means character-for-character with the emitted artifacts") is honored literally
- * here: this file puts a symlink named `agentstate-lite` -> the built dist on the CHILD's PATH, so
- * `cliInvocation()` (invocation.ts) resolves to the bare bin name instead of the off-PATH
- * `npx -y agentstate-lite` fallback — the emitted `help` string is then DIRECTLY executable (no
+ * here: this file puts a symlink named `aslite` (the PREFERRED bin) -> the built dist on the
+ * CHILD's PATH, so `cliInvocation()` (invocation.ts) resolves to the bare bin name instead of the
+ * off-PATH `npx -y aslite` fallback — the emitted `help` string is then DIRECTLY executable (no
  * network, no substitution) by splitting it on whitespace and spawning it verbatim after filling
  * each `<placeholder>` token with a real value. Red-proof for this test: reverting
  * `kind-write.ts`'s `buildCompletingUpdateCommand` (restoring the old fixed `kinds`-pointer help)
@@ -41,24 +41,26 @@ async function tempDir(prefix: string): Promise<string> {
 }
 
 /**
- * Puts a symlink named `agentstate-lite` -> the built dist on a fresh PATH-only directory, so a
- * child process launched with that directory FIRST on PATH resolves its own `cliInvocation()` to
- * the bare bin name (see invocation.ts's `binNameOnPath`) — making every emitted `help`/follow-up
- * command directly runnable via the SAME bin name, with no `npx`/network involved.
+ * Puts a symlink named `aslite` (the preferred bin — BIN_NAMES[0]) -> the built dist on a fresh
+ * PATH-only directory, so a child process launched with that directory FIRST on PATH resolves its
+ * own `cliInvocation()` to the bare bin name (see invocation.ts's `binNameOnPath`) — making every
+ * emitted `help`/follow-up command directly runnable via the SAME bin name, with no `npx`/network
+ * involved. Pinning the PREFERRED name keeps the resolution deterministic even when a workspace
+ * `node_modules/.bin/aslite` also sits on the inherited PATH.
  */
 async function makeBinOnPath(): Promise<{ binDir: string; env: NodeJS.ProcessEnv }> {
   const binDir = await tempDir("aslite-kind-complete-bin-");
-  await symlink(cliBin, path.join(binDir, "agentstate-lite"));
+  await symlink(cliBin, path.join(binDir, "aslite"));
   const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` };
   return { binDir, env };
 }
 
-/** Run the bare `agentstate-lite` bin (resolved via `env.PATH`) with stdin redirected from /dev/null. */
+/** Run the bare `aslite` bin (resolved via `env.PATH`) with stdin redirected from /dev/null. */
 function run(
   args: string[],
   opts: { cwd: string; env: NodeJS.ProcessEnv },
 ): { status: number | null; stdout: string; stderr: string } {
-  const result = spawnSync("agentstate-lite", args, {
+  const result = spawnSync("aslite", args, {
     cwd: opts.cwd,
     env: opts.env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -113,15 +115,15 @@ test("built CLI: a `doc update --strict` kind refusal's help is a literal comple
     assert.ok(help, `the refusal must carry a help fixing command; stdout=${refusal.stdout}`);
 
     // The help is a LITERAL, bare-bin-resolved completing command naming the violated field.
-    assert.equal(help, "agentstate-lite doc update tasks/x --status <todo|in_progress|blocked|done|canceled>");
+    assert.equal(help, "aslite doc update tasks/x --status <todo|in_progress|blocked|done|canceled>");
 
     // Fill the placeholder(s) and execute the string VERBATIM (split on whitespace, spawn as
     // argv[0]/argv[1..]) via the real CLI — no hand-picked replacement flags, no reasonable
     // substitutions beyond filling the printed placeholder tokens.
     const filled = fillPlaceholders(help);
-    assert.equal(filled, "agentstate-lite doc update tasks/x --status todo");
+    assert.equal(filled, "aslite doc update tasks/x --status todo");
     const [bin, ...argv] = filled.split(" ");
-    assert.equal(bin, "agentstate-lite");
+    assert.equal(bin, "aslite");
     const completing = run(argv, { cwd: dir, env });
     assert.equal(
       completing.status,
@@ -168,11 +170,11 @@ test("built CLI: a `doc write --strict` kind refusal OVERWRITING an EXISTING doc
     assert.equal(refusal.status, 2, `expected USAGE exit 2, got ${refusal.status}: ${refusal.stdout}${refusal.stderr}`);
     const help = extractHelpLine(refusal.stdout);
     assert.ok(help, `the refusal must carry a help fixing command; stdout=${refusal.stdout}`);
-    assert.equal(help, "agentstate-lite doc update tasks/z --status <todo|in_progress|blocked|done|canceled>");
+    assert.equal(help, "aslite doc update tasks/z --status <todo|in_progress|blocked|done|canceled>");
 
     const filled = fillPlaceholders(help);
     const [bin, ...argv] = filled.split(" ");
-    assert.equal(bin, "agentstate-lite");
+    assert.equal(bin, "aslite");
     const completing = run(argv, { cwd: dir, env });
     assert.equal(
       completing.status,
@@ -211,7 +213,7 @@ test("built CLI: a `doc write --strict` kind refusal on a BRAND-NEW doc (nothing
     const refusal = run(["doc", "write", "tasks/y", "--type", "Task", "--strict", "--json"], { cwd: dir, env });
     assert.equal(refusal.status, 2, `expected USAGE exit 2, got ${refusal.status}: ${refusal.stdout}${refusal.stderr}`);
     const help = extractHelpLine(refusal.stdout);
-    assert.equal(help, "agentstate-lite kinds", "a create-time refusal must not emit a doc-update command for an id that was never persisted");
+    assert.equal(help, "aslite kinds", "a create-time refusal must not emit a doc-update command for an id that was never persisted");
 
     // Confirm the premise: the doc genuinely does not exist (a 'doc update' would NOT_FOUND).
     const reread = run(["doc", "read", "tasks/y", "--json"], { cwd: dir, env });

@@ -13,22 +13,41 @@
 //
 // The portable COMMAND BASE (bare bin name when on PATH, else the absolute executable — never a
 // phantom) comes from invocation.ts's `hookCommand()`, which mirrors the axi-sdk-js
-// `resolvePortableHookCommand` semantics. The JSON/TOML edits reuse the SDK's exported pure
-// updaters (`computeSessionStartHookUpdate` / `computeCodexConfigUpdate`); the OpenCode plugin
-// source is OURS (the SDK's generated plugin spawns its command with NO argv, so it cannot express
-// `<bin> session-start`) but carries the SDK-compatible managed-marker line, so status/uninstall —
-// and any SDK-side tooling matching that marker — keep working unchanged.
+// `resolvePortableHookCommand` semantics. The TOML edit reuses the SDK's exported pure updater
+// (`computeCodexConfigUpdate`); the JSON SessionStart edit is OUR SDK-modeled pure updater
+// (`computeSessionStartHookInstall`) because the SDK's single-substring marker cannot recognize
+// both managed command forms (legacy `agentstate-lite`-marked and the preferred `aslite` bin) —
+// with the SDK's append-if-no-match behavior, a reinstall over an `aslite session-start` hook
+// would append a duplicate. The OpenCode plugin source is OURS (the SDK's generated plugin spawns
+// its command with NO argv, so it cannot express `<bin> session-start`) but carries the
+// SDK-compatible managed-marker line, so status/uninstall — and any SDK-side tooling matching
+// that marker — keep working unchanged.
+//
+// DESTRUCTIVE-WRITE DISCIPLINE: `install` REFUSES (structured RUNTIME failure, nothing written)
+// any settings file it cannot faithfully round-trip — unparseable JSON or a malformed hooks shape
+// — because "repairing" it would destroy the user's other settings. Every managed write goes
+// through same-directory temp + rename, so a concurrent reader never observes a torn file.
+// Read-only paths (status, probes) and uninstall stay lenient: a malformed file is never touched.
 //
 // SCOPE: `--scope project` (default) targets the current repo; `--scope global` targets each
 // host's configured user directory. Project-scope OpenCode stays under `<cwd>/.config/opencode/`.
-import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import { parseArgs } from "node:util";
 import {
   computeCodexConfigUpdate,
-  computeSessionStartHookUpdate,
   type HookSettings,
   type HookEntry,
 } from "axi-sdk-js";
@@ -38,7 +57,6 @@ import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { HOST_CONFIG_ROOTS, resolveHostConfigRoot } from "../host-config.js";
 
-/** The marker the SDK/CLI match managed SessionStart hooks by (substring of the hook command). */
 export const HOOK_USAGE = `agentstate-lite hook — manage the SessionStart board-aware hook
 
 Usage:
@@ -59,7 +77,30 @@ Options:
   -h, --help        Show this help
 `;
 
+/**
+ * The LEGACY managed-hook marker: every pre-rename hook command contains this substring (bare bin,
+ * absolute path, or npx form), and it stays the token in the SDK-compatible OpenCode managed-marker
+ * line. New-form commands run the preferred `aslite` bin and do NOT contain it — see
+ * {@link isManagedHookCommand} for the full recognition rule.
+ */
 export const HOOK_MARKER = "agentstate-lite";
+/**
+ * New-form recognition: the command's FIRST token invokes an `aslite` bin — bare, absolute path,
+ * or double-quoted path, with `aslite` as the exact basename. Deliberately word-boundary-strict so
+ * a foreign command merely containing the letters (`easlite`, `aslite2`, `foo --aslite`) is never
+ * claimed as ours.
+ */
+const NEW_BIN_COMMAND_RE = /^\s*(?:"(?:[^"]*\/)?aslite"|(?:[^\s"]*\/)?aslite)(?:\s|$)/;
+
+/**
+ * Managed-hook recognition over a hook COMMAND string: legacy marker substring, or new-form bin.
+ * Known asymmetry: a hand-authored `npx -y aslite session-start` is NOT recognized (first token
+ * is `npx`), while the legacy npx form is (substring) — acceptable because the installer never
+ * emits an npx form (`hookCommand()` resolves a bin name or an absolute executable path).
+ */
+export function isManagedHookCommand(command: string): boolean {
+  return command.includes(HOOK_MARKER) || NEW_BIN_COMMAND_RE.test(command);
+}
 /** SessionStart hook timeout, in seconds (matches the SDK default; session-start budgets under it). */
 export const HOOK_TIMEOUT_SECONDS = 10;
 /** The subcommand the installed hook runs (sync-verb §U4's pull-then-render command). */
@@ -73,21 +114,117 @@ const OPENCODE_MANAGED_MARKER = `axi-sdk-js managed opencode plugin: ${HOOK_MARK
  * absolute executable path with a space) is double-quoted for the shell-string targets — the
  * OpenCode plugin spawns the base UNQUOTED as an argv[0] with `["session-start"]` args, so it
  * never needs the quoting.
+ *
+ * Writer/recognizer contract, asserted HERE in the owning composer: the composed command must
+ * satisfy {@link isManagedHookCommand}, or install would write an ORPHAN hook — invisible to
+ * status, duplicated by reinstall, stranded by uninstall. Unreachable through every real channel
+ * (bare bins match by rule; npm-dist and skill-bundle absolute paths carry the legacy token in
+ * their filename); an exotic/future channel whose executable carries neither token fails CLOSED
+ * here instead of orphaning a hook.
  */
 export function sessionStartHookCommand(base: string = hookCommand()): string {
   const quoted = /\s/.test(base) ? JSON.stringify(base) : base;
-  return `${quoted} ${HOOK_SUBCOMMAND}`;
+  const command = `${quoted} ${HOOK_SUBCOMMAND}`;
+  if (!isManagedHookCommand(command)) {
+    throw new Error(
+      `composed hook command ${JSON.stringify(command)} would not be recognized as managed — refusing to install an orphan hook`,
+    );
+  }
+  return command;
 }
 
 function isManagedHook(hook: HookEntry | undefined): boolean {
-  return typeof hook?.command === "string" && hook.command.includes(HOOK_MARKER);
+  return typeof hook?.command === "string" && isManagedHookCommand(hook.command);
 }
 
 /**
- * Pure marker-scoped removal (the SDK exports none). Removes every SessionStart hook whose command
- * includes the marker, drops any group left with no hooks, and strips legacy hooks.session_start
- * marker matches. Returns [updatedSettings, changed]; unrelated hooks and groups survive untouched.
- * Shared by the Claude settings.json and the Codex hooks.json (identical HookSettings shape).
+ * Pure install updater for the Claude settings.json / Codex hooks.json SessionStart shape —
+ * modeled on the SDK's `computeSessionStartHookUpdate`, but recognizing managed hooks through
+ * {@link isManagedHookCommand} (both command forms) instead of one substring marker. Rewrites the
+ * FIRST managed hook in place (preserving its group position), removes any FURTHER managed hooks
+ * (a duplicate left by an older marker mismatch), strips legacy `hooks.session_start` managed
+ * entries, and appends a fresh group only when no managed hook exists. Returns
+ * [updatedSettings, changed]; an already-correct sole managed hook is a no-op. Foreign hooks and
+ * groups survive untouched.
+ */
+export function computeSessionStartHookInstall(
+  settings: HookSettings,
+  spec: { command: string; timeoutSeconds?: number },
+): [HookSettings, boolean] {
+  const updated = structuredClone(settings);
+  let changed = false;
+  if (!updated.hooks) {
+    updated.hooks = {};
+    changed = true;
+  }
+  const hooks = updated.hooks;
+
+  if (Array.isArray(hooks.session_start)) {
+    const kept = hooks.session_start.filter((h) => !isManagedHook(h));
+    if (kept.length !== hooks.session_start.length) {
+      changed = true;
+      if (kept.length === 0) delete hooks.session_start;
+      else hooks.session_start = kept;
+    }
+  }
+
+  if (!Array.isArray(hooks.SessionStart)) {
+    hooks.SessionStart = [];
+    changed = true;
+  }
+  const timeout = spec.timeoutSeconds ?? HOOK_TIMEOUT_SECONDS;
+  let rewritten = false;
+  const newGroups: typeof hooks.SessionStart = [];
+  for (const group of hooks.SessionStart) {
+    // `group?.`: a malformed member (null/primitive) passes through untouched, never throws —
+    // the CLI install path refuses such files up front (readSettingsForInstall), but this pure
+    // updater must stay total for any direct caller.
+    if (!Array.isArray(group?.hooks)) {
+      newGroups.push(group);
+      continue;
+    }
+    const keptHooks: HookEntry[] = [];
+    for (const h of group.hooks) {
+      if (!isManagedHook(h)) {
+        keptHooks.push(h);
+        continue;
+      }
+      if (rewritten) {
+        changed = true; // a second managed hook is a duplicate — drop it
+        continue;
+      }
+      rewritten = true;
+      if (h.command !== spec.command || h.type !== "command" || h.timeout !== timeout) {
+        changed = true;
+        h.command = spec.command;
+        h.type = "command";
+        h.timeout = timeout;
+      }
+      keptHooks.push(h);
+    }
+    if (keptHooks.length !== group.hooks.length) {
+      if (keptHooks.length === 0) continue; // drop the now-empty group
+      group.hooks = keptHooks;
+    }
+    newGroups.push(group);
+  }
+  hooks.SessionStart = newGroups;
+  if (!rewritten) {
+    hooks.SessionStart.push({
+      matcher: "",
+      hooks: [{ type: "command", command: spec.command, timeout }],
+    });
+    changed = true;
+  }
+  return changed ? [updated, true] : [settings, false];
+}
+
+/**
+ * Pure managed-hook removal (the SDK exports none). Removes every SessionStart hook recognized by
+ * {@link isManagedHookCommand} (either command form), drops any group left with no hooks, and
+ * strips legacy hooks.session_start matches. Returns [updatedSettings, changed]; unrelated hooks
+ * and groups survive untouched. Shared by the Claude settings.json and the Codex hooks.json
+ * (identical HookSettings shape).
  */
 export function computeHookUninstall(settings: HookSettings): [HookSettings, boolean] {
   const updated = structuredClone(settings);
@@ -107,7 +244,8 @@ export function computeHookUninstall(settings: HookSettings): [HookSettings, boo
   if (Array.isArray(hooks.SessionStart)) {
     const newGroups: typeof hooks.SessionStart = [];
     for (const group of hooks.SessionStart) {
-      if (!Array.isArray(group.hooks)) {
+      // Tolerate malformed members (skip untouched, never throw) — same reason as install's updater.
+      if (!Array.isArray(group?.hooks)) {
         newGroups.push(group);
         continue;
       }
@@ -126,13 +264,13 @@ export function computeHookUninstall(settings: HookSettings): [HookSettings, boo
   return changed ? [updated, true] : [settings, false];
 }
 
-/** Pure status scan: report whether a marker-matching SessionStart hook is installed (+ its command). */
+/** Pure status scan: report whether a managed SessionStart hook (either form) is installed (+ its command). */
 export function readHookStatus(settings: HookSettings): { installed: boolean; command?: string } {
   const hooks = settings.hooks;
   if (hooks) {
     if (Array.isArray(hooks.SessionStart)) {
       for (const group of hooks.SessionStart) {
-        if (!Array.isArray(group.hooks)) continue;
+        if (!Array.isArray(group?.hooks)) continue; // tolerate malformed members — report, never throw
         for (const h of group.hooks) {
           if (isManagedHook(h)) return { installed: true, command: h.command };
         }
@@ -196,6 +334,11 @@ function targetSets(bases: string[] | undefined, deps: HookLocationDeps): HookTa
   return [targetsForBase(cwd), globalHookTargets(home, env)];
 }
 
+/**
+ * Lenient read for the READ-ONLY paths (status, uninstall-scan, needs-update probes): a missing or
+ * unparseable file reads as empty settings and is never touched. `hook install` must NOT use this
+ * — see {@link readSettingsForInstall}.
+ */
 function readSettings(path: string): HookSettings {
   if (!existsSync(path)) return {};
   try {
@@ -205,10 +348,127 @@ function readSettings(path: string): HookSettings {
   }
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Fail-loud read for the INSTALL write path. A missing file is empty settings (we create it), but
+ * content we cannot faithfully round-trip — unreadable, unparseable JSON, a non-object root, a
+ * non-object `hooks`, a present-but-non-array `hooks.SessionStart`/`hooks.session_start`, or an
+ * ARRAY MEMBER that is not the object shape the updater consumes — is refused with a reason
+ * instead of being silently normalized: writing "repaired" settings would destroy the user's
+ * other keys (permissions, theme, a hand-authored value), and a member the updater cannot walk
+ * must refuse UP FRONT rather than throw mid-write.
+ */
+export function readSettingsForInstall(
+  path: string,
+): { ok: true; settings: HookSettings } | { ok: false; reason: string } {
+  if (!existsSync(path)) return { ok: true, settings: {} };
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch (err) {
+    return { ok: false, reason: `unreadable (${err instanceof Error ? err.message : String(err)})` };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return { ok: false, reason: `unparseable JSON (${err instanceof Error ? err.message : String(err)})` };
+  }
+  if (!isPlainObject(parsed)) {
+    return { ok: false, reason: "settings root is not a JSON object" };
+  }
+  const hooks = (parsed as HookSettings).hooks;
+  if (hooks !== undefined) {
+    if (!isPlainObject(hooks)) {
+      return { ok: false, reason: "`hooks` is not a JSON object" };
+    }
+    if (hooks.SessionStart !== undefined) {
+      if (!Array.isArray(hooks.SessionStart)) {
+        return { ok: false, reason: "`hooks.SessionStart` exists but is not an array" };
+      }
+      for (const [i, group] of hooks.SessionStart.entries()) {
+        if (!isPlainObject(group)) {
+          return { ok: false, reason: `\`hooks.SessionStart[${i}]\` is not an object` };
+        }
+        if (group.hooks !== undefined) {
+          if (!Array.isArray(group.hooks)) {
+            return { ok: false, reason: `\`hooks.SessionStart[${i}].hooks\` exists but is not an array` };
+          }
+          for (const [j, entry] of group.hooks.entries()) {
+            if (!isPlainObject(entry)) {
+              return { ok: false, reason: `\`hooks.SessionStart[${i}].hooks[${j}]\` is not an object` };
+            }
+          }
+        }
+      }
+    }
+    if (hooks.session_start !== undefined) {
+      if (!Array.isArray(hooks.session_start)) {
+        return { ok: false, reason: "`hooks.session_start` exists but is not an array" };
+      }
+      for (const [i, entry] of hooks.session_start.entries()) {
+        if (!isPlainObject(entry)) {
+          return { ok: false, reason: `\`hooks.session_start[${i}]\` is not an object` };
+        }
+      }
+    }
+  }
+  return { ok: true, settings: parsed as HookSettings };
+}
+
+/**
+ * A SYMLINKED destination (a stowed/dotfile-managed settings file) is written THROUGH, not
+ * replaced: renaming a temp over the link path would swap the link for a regular file and strand
+ * the real target. The link is resolved once and the whole atomic dance happens at the RESOLVED
+ * path, so the link stays a link and its target updates atomically. A dangling link is refused —
+ * writing "through" it would silently create a file somewhere the user's manager doesn't own.
+ * A non-link destination passes through verbatim (ancestor symlinks need no handling: the temp
+ * lives in the same — possibly linked — directory, so rename resolves them identically).
+ */
+function resolveWriteDestination(path: string): string {
+  let isLink = false;
+  try {
+    isLink = lstatSync(path).isSymbolicLink();
+  } catch {
+    return path; // absent → create at the literal path
+  }
+  if (!isLink) return path;
+  try {
+    return realpathSync(path);
+  } catch {
+    throw new Error(`dangling symlink at ${path} — refusing to write through it; fix or remove the link`);
+  }
+}
+
+/**
+ * Atomic file write: temp file in the SAME directory + rename, so a concurrent reader sees either
+ * the old bytes or the new bytes — never a torn/empty file (truncate-then-write's race window).
+ * A symlinked destination is written through at its resolved target (see
+ * {@link resolveWriteDestination}); when replacing an existing file its mode is preserved (a
+ * user's 0600 settings must not widen to the default umask); the temp is cleaned up on ANY
+ * failure (write or rename).
+ */
+export function atomicWriteFileSync(path: string, content: string): void {
+  const destination = resolveWriteDestination(path);
+  mkdirSync(dirname(destination), { recursive: true });
+  const mode = existsSync(destination) ? statSync(destination).mode & 0o7777 : undefined;
+  const tmp = `${destination}.tmp-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    writeFileSync(tmp, content, mode !== undefined ? { mode } : {});
+    if (mode !== undefined) chmodSync(tmp, mode); // umask masks writeFileSync's mode; enforce it
+    renameSync(tmp, destination);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
+}
+
 function writeSettings(path: string, settings: HookSettings): void {
-  mkdirSync(dirname(path), { recursive: true });
   // Match the SDK's on-disk format: 2-space JSON + trailing newline.
-  writeFileSync(path, `${JSON.stringify(settings, null, 2)}\n`);
+  atomicWriteFileSync(path, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
 function opencodePluginInstalled(path: string): boolean {
@@ -359,6 +619,8 @@ export function hookInstalled(bases?: string[], deps: HookLocationDeps = {}): bo
 export interface HookDeps extends HookLocationDeps {
   /** Override all scope targets with one legacy base directory (for focused tests). */
   base: string;
+  /** Override the resolved command base (default `hookCommand()`) — for orphan-guard tests. */
+  commandBase: string;
   stdout: (s: string) => void;
 }
 
@@ -416,6 +678,15 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
     const claude = readHookStatus(readSettings(targets.claudeSettings));
     const codex = readHookStatus(readSettings(targets.codexHooks));
     const opencode = opencodePluginInstalled(targets.opencodePlugin);
+    // Read-only paths stay serene: if composing the WOULD-BE command trips the orphan guard
+    // (exotic channel), status omits the field rather than failing.
+    let wouldInstall: string | undefined;
+    try {
+      wouldInstall = sessionStartHookCommand(deps.commandBase);
+    } catch {
+      wouldInstall = undefined;
+    }
+    const display = claude.command ? collapseHomeDirectory(claude.command) : wouldInstall;
     stdout(
       render(
         {
@@ -426,7 +697,7 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
             claude_code: claude.installed,
             codex: codex.installed,
             opencode,
-            command: claude.command ? collapseHomeDirectory(claude.command) : sessionStartHookCommand(),
+            ...(display !== undefined ? { command: display } : {}),
             targets: {
               claude_code: collapseHomeDirectory(targets.claudeSettings),
               codex: collapseHomeDirectory(targets.codexHooks),
@@ -441,22 +712,46 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
   }
 
   if (sub === "install") {
+    // `errors` is the exit-0 receipt field — ONLY the deliberate unmanaged-OpenCode-plugin
+    // refusal lives there. Everything that means "this host was NOT installed" — a malformed
+    // settings refusal OR an unexpected updater/write throw — is a `refusals` entry and fails
+    // the command (RUNTIME throw below): the receipt must never claim success for a host that
+    // was not written.
     const errors: string[] = [];
-    const commandBase = hookCommand();
-    const command = sessionStartHookCommand(commandBase);
-    // Claude Code settings.json + Codex hooks.json: the SDK's exported pure updater, with OUR
-    // `<bin> session-start` command (the SDK's own installer computes an argv-less command
-    // internally, which cannot express a subcommand — see the module header).
+    const refusals: string[] = [];
+    const failTarget = (target: string, err: unknown) =>
+      refusals.push(
+        `${collapseHomeDirectory(target)}: ${err instanceof Error ? err.message : String(err)} — this target was not installed`,
+      );
+    // Compose through the owning guard BEFORE touching any target: an orphan-composing channel
+    // (see sessionStartHookCommand) refuses the whole install — same command feeds every target,
+    // so nothing may be written.
+    const commandBase = deps.commandBase ?? hookCommand();
+    let command: string;
+    try {
+      command = sessionStartHookCommand(commandBase);
+    } catch (err) {
+      throw new CliError("RUNTIME", err instanceof Error ? err.message : String(err), {
+        details: { command_base: collapseHomeDirectory(commandBase) },
+        help: "install from a channel whose executable resolves as aslite/agentstate-lite (e.g. npm install -g aslite), then re-run hook install",
+      });
+    }
+    // Claude Code settings.json + Codex hooks.json: OUR SDK-modeled pure updater, recognizing
+    // both managed command forms (see the module header for why the SDK's marker cannot).
     for (const target of [targets.claudeSettings, targets.codexHooks]) {
       try {
-        const [updated, changed] = computeSessionStartHookUpdate(readSettings(target), {
-          marker: HOOK_MARKER,
+        const read = readSettingsForInstall(target);
+        if (!read.ok) {
+          refusals.push(`${collapseHomeDirectory(target)}: ${read.reason} — nothing was written to this file`);
+          continue;
+        }
+        const [updated, changed] = computeSessionStartHookInstall(read.settings, {
           command,
           timeoutSeconds: HOOK_TIMEOUT_SECONDS,
         });
         if (changed) writeSettings(target, updated);
       } catch (err) {
-        errors.push(`${target}: ${err instanceof Error ? err.message : String(err)}`);
+        failTarget(target, err);
       }
     }
     // Codex [features].hooks flag (config.toml) — same SDK updater the old installer used.
@@ -464,16 +759,12 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
     try {
       const current = existsSync(codexConfigPath) ? readFileSync(codexConfigPath, "utf8") : "";
       const [updated, changed] = computeCodexConfigUpdate(current);
-      if (changed) {
-        mkdirSync(dirname(codexConfigPath), { recursive: true });
-        writeFileSync(codexConfigPath, updated);
-      }
+      if (changed) atomicWriteFileSync(codexConfigPath, updated);
     } catch (err) {
-      errors.push(`${codexConfigPath}: ${err instanceof Error ? err.message : String(err)}`);
+      failTarget(codexConfigPath, err);
     }
     // OpenCode ambient-context plugin — our args-aware source, SDK-marker compatible.
     try {
-      mkdirSync(dirname(targets.opencodePlugin), { recursive: true });
       const next = buildOpenCodePluginSource(commandBase);
       const current = existsSync(targets.opencodePlugin)
         ? readFileSync(targets.opencodePlugin, "utf8")
@@ -481,10 +772,20 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
       if (current !== undefined && !current.includes(OPENCODE_MANAGED_MARKER)) {
         errors.push(`${targets.opencodePlugin}: refusing to overwrite unmanaged OpenCode plugin`);
       } else if (current !== next) {
-        writeFileSync(targets.opencodePlugin, next);
+        atomicWriteFileSync(targets.opencodePlugin, next);
       }
     } catch (err) {
-      errors.push(`${targets.opencodePlugin}: ${err instanceof Error ? err.message : String(err)}`);
+      failTarget(targets.opencodePlugin, err);
+    }
+    if (refusals.length > 0) {
+      throw new CliError(
+        "RUNTIME",
+        `hook install failed for ${refusals.length} target(s); other targets were still processed`,
+        {
+          details: { refused: refusals, ...(errors.length > 0 ? { errors } : {}) },
+          help: "fix or remove the named file(s), then re-run hook install",
+        },
+      );
     }
     const out: Record<string, unknown> = {
       action: "install",

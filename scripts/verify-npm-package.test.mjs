@@ -27,11 +27,11 @@ const receipt = {
   ],
 };
 const manifest = {
-  name: "agentstate-lite",
+  name: "aslite",
   files: ["dist"],
   bin: {
-    "agentstate-lite": "dist/agentstate-lite.mjs",
     aslite: "dist/agentstate-lite.mjs",
+    "agentstate-lite": "dist/agentstate-lite.mjs",
   },
   devDependencies: { local: "*" },
 };
@@ -62,7 +62,7 @@ test("npm subprocesses discard inherited lifecycle, workspace, prefix, and bin s
       npm_execpath: "/npm-cli.js",
       npm_config_dry_run: "true",
       NPM_CONFIG_WORKSPACES: "false",
-      npm_config_workspace: "agentstate-lite",
+      npm_config_workspace: "aslite",
       npm_config_prefix: "/wrong-prefix",
       npm_config_bin_links: "false",
     },
@@ -124,7 +124,7 @@ test("the complete proof survives poisoned npm lifecycle configuration", async (
       ...process.env,
       npm_config_dry_run: "true",
       npm_config_workspaces: "false",
-      npm_config_workspace: "agentstate-lite",
+      npm_config_workspace: "aslite",
       npm_config_prefix: path.join(tmpdir(), "wrong-agentstate-lite-prefix"),
       npm_config_bin_links: "false",
     },

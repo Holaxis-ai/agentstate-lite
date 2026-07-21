@@ -12,7 +12,7 @@
 // bundler) and the same fresh UI-embed step, so the bytes here are exactly what a dev build's
 // dist/ would contain. Callers:
 //   - scripts/ci-version-bundle.mjs (the CI bot, on push to main)
-//   - `npm run build:plugin-bundle` (manual regeneration, repo root or -w agentstate-lite)
+//   - `npm run build:plugin-bundle` (manual regeneration, repo root or -w aslite)
 import { chmod } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -37,7 +37,7 @@ import {
 } from "../src/commands/home.js";
 import { addCatalogEntry } from "../src/catalog.js";
 
-const INVOKE = "npx -y agentstate-lite";
+const INVOKE = "npx -y aslite";
 const BASE_DEPS = { binPath: () => "/bin/agentstate-lite", invocation: () => INVOKE };
 const BUILT_CLI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/agentstate-lite.mjs");
 

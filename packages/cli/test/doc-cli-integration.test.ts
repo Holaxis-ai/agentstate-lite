@@ -14,7 +14,7 @@
  * `test.before` builds the CLI once (`node build.mjs` in this package) so the test is self-contained
  * regardless of invocation order — no other test file in this package needs the built artifact, so
  * there is no existing "build once" convention to reuse (see CLAUDE.md's build/verify gate: `npm run
- * build` normally precedes `npm test` in `npm run check`, but a bare `npm test -w agentstate-lite`
+ * build` normally precedes `npm test` in `npm run check`, but a bare `npm test -w aslite`
  * does not build first).
  *
  * Platform note discovered while writing this file (see `hasRealStdinInput`'s comment in doc.ts):

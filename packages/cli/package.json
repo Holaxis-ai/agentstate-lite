@@ -1,5 +1,5 @@
 {
-  "name": "agentstate-lite",
+  "name": "aslite",
   "version": "0.1.0",
   "type": "module",
   "description": "Agent-facing CLI (AXI) for reading and writing local OKF knowledge bundles: context notes, docs, cross-links, and live bundle Views.",
@@ -22,8 +22,8 @@
     "url": "https://github.com/Holaxis-ai/agentstate-lite/issues"
   },
   "bin": {
-    "agentstate-lite": "dist/agentstate-lite.mjs",
-    "aslite": "dist/agentstate-lite.mjs"
+    "aslite": "dist/agentstate-lite.mjs",
+    "agentstate-lite": "dist/agentstate-lite.mjs"
   },
   "files": [
     "dist"
