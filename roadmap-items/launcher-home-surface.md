@@ -13,7 +13,7 @@ description: >-
   (home/workspace/overview/hub) before tutorial copy hardens the word. Boundary:
   ui-rethink stays separate/post-window.
 actor: mike/claude
-timestamp: '2026-07-21T15:11:10.495Z'
+timestamp: '2026-07-21T15:13:59.485Z'
 ---
 # Intent
 
@@ -130,3 +130,27 @@ chip needs (channel detection, awareness cache, unpushed backstop) — CLI injec
 same seam as the display name and catalog.
 
 [sharing chip advances this safeguard](../tasks/bundle-visibility-safeguard.md)
+
+# Styling architecture (added 2026-07-21, prototype round 3)
+
+Two commitments, both mostly enforced by existing constraints:
+
+1. **Tokens are the one theming contract.** styles.css is plain CSS (the CSP forbids
+   inline styles/CSS-in-JS) and all components style through the :root token block
+   (surfaces, text levels, the three semantic accents structure/process/signal, radius,
+   font roles) — light and dark both at token level. Rule to codify: hex values live ONLY
+   in the token block; components reference tokens. A rebrand is a one-block edit; a cheap
+   grep gate can pin it.
+2. **The shell is opinionated ONLY on the core product surface** — chrome, home (identity/
+   sharing/activity/workspaces/views grid), the doc reader's typography, the confirmation
+   dialog. The boundary is MACHINE-ENFORCED, not aspirational: Views and artifacts render
+   in opaque-origin sandboxed iframes — no shared DOM, no CSS leak, in either direction.
+   The doc reader's opinion is FORMAT-level (typography for markdown), never content-level
+   — the GitHub-renders-your-README sense of opinionated.
+
+Component vocabulary: ~8 primitives carry the whole surface (pill, chip, badge, card,
+note, section-title, feed row, dialog); new surfaces compose from them.
+
+Deliberate deferral: bundle-DECLARED theming (workspace accent/logo, like the display-name
+doc). Cheap later (token injection at one seam) but new scope — an explicit future
+decision, never backed into.
