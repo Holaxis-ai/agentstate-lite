@@ -902,14 +902,19 @@ body {
   align-items: flex-start;
 }
 
-.doc-backlinks {
+/* The relationship region: Links (outbound, grouped by declared verb) + Cited by (inbound). */
+.doc-relationships {
   margin-top: 1.6rem;
   border-top: 1px solid var(--rule);
   padding-top: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
 }
 
+.doc-links h2,
 .doc-backlinks h2 {
-  margin: 0 0 0.4rem;
+  margin: 0 0 0.5rem;
   font-family: var(--font-display);
   font-weight: 500;
   font-size: 0.8rem;
@@ -918,16 +923,47 @@ body {
   color: var(--text-tertiary);
 }
 
+/* The relationship verb (a declared type, or "Related") — the group label. */
+.doc-rel-group {
+  margin-bottom: 0.55rem;
+}
+
+.doc-rel-group:last-child {
+  margin-bottom: 0;
+}
+
+.doc-rel-verb {
+  margin: 0 0 0.2rem;
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 0.74rem;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-process);
+}
+
+/* "Related" isn't a declared relationship — mute it so the typed verbs read as the real structure. */
+.doc-rel-related {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.doc-links ul,
 .doc-backlinks ul {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.25rem;
   font-size: 0.83rem;
 }
 
+.doc-rel-group ul {
+  padding-left: 0.9rem;
+}
+
+.doc-links a,
 .doc-backlinks a {
   color: var(--color-structure);
 }

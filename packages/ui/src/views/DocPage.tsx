@@ -19,6 +19,7 @@ import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { navigate } from "../routing.js";
 import { formatWhen } from "./format.js";
 import { renderMarkdown } from "./markdown.js";
+import { declaredVocabulary, groupOutbound, RELATED_GROUP } from "./relationships.js";
 
 function stringField(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
@@ -39,11 +40,18 @@ export function DocPage({ docId }: { docId: string }) {
     queryKey: ["doc-backlinks", docId],
     queryFn: () => fetchEdges({ to: docId }),
   });
+  // Outbound edges — this doc's own links, grouped by declared relationship below.
+  const outboundQuery = useQuery({
+    queryKey: ["doc-outbound", docId],
+    queryFn: () => fetchEdges({ from: docId }),
+  });
 
   useEffect(() => {
     return subscribeToChanges((e) => {
       if (e.docs.changed.some((c) => c.id === docId) || e.docs.removed.includes(docId)) {
         void queryClient.invalidateQueries({ queryKey: ["doc", docId] });
+        // Outbound edges derive from THIS doc's body — only its own change matters.
+        void queryClient.invalidateQueries({ queryKey: ["doc-outbound", docId] });
       }
       if (e.docs.changed.length > 0 || e.docs.removed.length > 0) {
         void queryClient.invalidateQueries({ queryKey: ["doc-backlinks", docId] });
@@ -55,6 +63,7 @@ export function DocPage({ docId }: { docId: string }) {
     return subscribeToResync(() => {
       void queryClient.invalidateQueries({ queryKey: ["doc", docId] });
       void queryClient.invalidateQueries({ queryKey: ["doc-backlinks", docId] });
+      void queryClient.invalidateQueries({ queryKey: ["doc-outbound", docId] });
     });
   }, [queryClient, docId]);
 
@@ -121,6 +130,8 @@ export function DocPage({ docId }: { docId: string }) {
     onNavigateDoc: (id) => navigate({ view: "doc", id }),
   });
   const backlinks = backlinksQuery.data ?? [];
+  const vocabulary = declaredVocabulary(kindsQuery.data ?? []);
+  const outboundGroups = groupOutbound(outboundQuery.data ?? [], vocabulary);
 
   return (
     <div className="page-frame">
@@ -147,29 +158,65 @@ export function DocPage({ docId }: { docId: string }) {
             (read it with <code>aslite doc read {doc.id}</code>).
           </p>
         )}
-        <section className="doc-backlinks">
-          <h2>Cited by</h2>
-          {backlinks.length === 0 ? (
-            <p className="doc-backlinks-empty">Nothing cites this doc yet.</p>
-          ) : (
-            <ul>
-              {backlinks.map((edge, index) => (
-                // Index-suffixed key: one doc may cite a target twice with identical link text.
-                <li key={`${edge.from}:${edge.text}:${index}`}>
-                  <a
-                    href={`?view=doc&id=${encodeURIComponent(edge.from)}`}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      navigate({ view: "doc", id: edge.from });
-                    }}
-                  >
-                    {edge.from}
-                  </a>
-                  {edge.text && <span className="doc-bl-text"> — {edge.text}</span>}
-                </li>
+        <section className="doc-relationships">
+          {outboundGroups.length > 0 && (
+            <div className="doc-links">
+              <h2>Links</h2>
+              {outboundGroups.map((group) => (
+                <div key={group.relation} className="doc-rel-group">
+                  <h3 className={group.relation === RELATED_GROUP ? "doc-rel-verb doc-rel-related" : "doc-rel-verb"}>
+                    {group.relation}
+                  </h3>
+                  <ul>
+                    {group.rows.map((row, index) => (
+                      // Index-suffixed key: core keeps per-literal counts; display deduped, keys stay unique.
+                      <li key={`${group.relation}:${row.to}:${index}`}>
+                        <a
+                          href={`?view=doc&id=${encodeURIComponent(row.to)}`}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            navigate({ view: "doc", id: row.to });
+                          }}
+                        >
+                          {row.to}
+                        </a>
+                        {/* In the Related group the text carries the human signal; typed groups already name the relation. */}
+                        {group.relation === RELATED_GROUP && row.text && row.text !== row.to && (
+                          <span className="doc-bl-text"> — {row.text}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
+          <div className="doc-backlinks">
+            <h2>Cited by</h2>
+            {backlinks.length === 0 ? (
+              <p className="doc-backlinks-empty">
+                {outboundGroups.length === 0 ? "No links yet." : "Nothing cites this doc yet."}
+              </p>
+            ) : (
+              <ul>
+                {backlinks.map((edge, index) => (
+                  // Index-suffixed key: one doc may cite a target twice with identical link text.
+                  <li key={`${edge.from}:${edge.text}:${index}`}>
+                    <a
+                      href={`?view=doc&id=${encodeURIComponent(edge.from)}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        navigate({ view: "doc", id: edge.from });
+                      }}
+                    >
+                      {edge.from}
+                    </a>
+                    {edge.text && <span className="doc-bl-text"> — {edge.text}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </section>
       </article>
     </div>
