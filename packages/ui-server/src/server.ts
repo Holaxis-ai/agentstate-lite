@@ -47,6 +47,7 @@ export type SharingStateKind =
   | "private"
   | "private_local_branch"
   | "private_intree_no_remote"
+  | "private_intree_not_pushed"
   | "shared_branch"
   | "shared_intree"
   | "hosted"

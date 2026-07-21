@@ -27,6 +27,7 @@ import {
   hasWorktreeSignature,
   localBranchExists,
   repoTopLevel,
+  resolveInTreeUpstream,
   runGit,
   worktreeRootResolvesForOwner,
 } from "@agentstate-lite/board-git";
@@ -112,16 +113,34 @@ export function classifySharing(bundleRoot: string, now: () => Date = () => new 
           as_of: asOf,
         };
       }
-      if (evidence.originUrl) {
-        return { kind: "shared_intree", remote: humanizeRemote(evidence.originUrl), as_of: asOf };
+      if (!evidence.originUrl) return { kind: "private_intree_no_remote", as_of: asOf };
+      // shared_intree is EVIDENCE-GATED (review F-1, same rule as the branch arm): the committed
+      // folder must be PRESENT on the branch's fetched tracking upstream — resolved through
+      // intree.ts's decision table (never a guessed origin/<branch>), checked with a local
+      // cat-file. A commit that never provably reached the remote reads not-yet-pushed, and the
+      // remote NAMED is the tracking remote's, not origin's.
+      const upstream = resolveInTreeUpstream(top);
+      if (upstream.state === "ok" && upstream.config.remote !== null) {
+        const onUpstream = runGit(top, ["cat-file", "-e", `${upstream.config.ref}:${BUNDLE_DIR}`]).status === 0;
+        if (onUpstream) {
+          const tracking = runGit(top, ["remote", "get-url", upstream.config.remote]);
+          const url = tracking.status === 0 ? tracking.stdout.trim() : evidence.originUrl;
+          return { kind: "shared_intree", remote: humanizeRemote(url), as_of: asOf };
+        }
       }
-      return { kind: "private_intree_no_remote", as_of: asOf };
+      return { kind: "private_intree_not_pushed", as_of: asOf };
     }
 
-    // Untracked, no board machinery here — but a fetched origin/board means a shared board exists
-    // that this clone simply hasn't provisioned yet (the JOIN state).
-    if (evidence.fetchedBoardRef && evidence.originUrl) {
-      return { kind: "shared_branch", remote: humanizeRemote(evidence.originUrl), as_of: asOf };
+    // Untracked local folder + a fetched origin/board: a shared board EXISTS, but the SERVED
+    // folder is not connected to it (provisioning's foreign-dir refusal zone — the chip describes
+    // the served bundle, not the project's board location; review F-2). Never "shared" over
+    // content that never left this machine.
+    if (evidence.fetchedBoardRef) {
+      return {
+        kind: "unavailable",
+        reason: `a shared '${BOARD_BRANCH}' branch exists on ${BOARD_REMOTE}, but this folder is not connected to it — run sync for guidance`,
+        as_of: asOf,
+      };
     }
     return { kind: "private", as_of: asOf };
   } catch (err) {

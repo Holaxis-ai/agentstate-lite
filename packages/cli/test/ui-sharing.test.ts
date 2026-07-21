@@ -81,16 +81,13 @@ test("untracked conventional board, no board evidence → private", async () => 
   }
 });
 
-test("untracked + fetched origin/board → shared_branch (the JOIN state), remote humanized", async () => {
+test("every summary carries as_of (pinned on the private row)", async () => {
   const dir = await tempProject();
   try {
     initRepo(dir);
     const board = await conventionalBoard(dir);
-    git(dir, "remote", "add", "origin", "git@github.com:org/repo.git");
-    fakeFetchedBoardRef(dir);
     const summary = classifySharing(board);
-    assert.equal(summary.kind, "shared_branch");
-    assert.equal(summary.remote, "org/repo");
+    assert.equal(summary.kind, "private");
     assert.ok(summary.as_of, "every summary carries as_of");
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -129,7 +126,7 @@ test("FABRICATION GUARD: tracked in-tree bundle with NO remote is private_intree
   }
 });
 
-test("tracked in-tree bundle WITH a remote → shared_intree", async () => {
+test("FABRICATION GUARD (review F-1): in-tree commits that never reached the upstream are NOT shared", async () => {
   const dir = await tempProject();
   try {
     initRepo(dir);
@@ -137,9 +134,59 @@ test("tracked in-tree bundle WITH a remote → shared_intree", async () => {
     git(dir, "add", ".agentstate-lite");
     execFileSync("git", ["commit", "-m", "commit board with code"], { cwd: dir, stdio: "ignore" });
     git(dir, "remote", "add", "origin", "https://gitlab.example.com/team/project.git");
+    // A code remote with NO tracking upstream: no evidence anything was shared.
+    assert.equal(classifySharing(board).kind, "private_intree_not_pushed");
+    // Tracking config pointing at a fetched upstream that PREDATES the folder (the root commit):
+    // still not shared — the folder is not on the upstream tree.
+    git(dir, "update-ref", "refs/remotes/origin/main", "HEAD~1");
+    git(dir, "config", "branch.main.remote", "origin");
+    git(dir, "config", "branch.main.merge", "refs/heads/main");
+    assert.equal(classifySharing(board).kind, "private_intree_not_pushed");
+    // The upstream catching up (folder present on the fetched tracking ref) flips it to shared —
+    // named by the TRACKING remote, as of the last fetch.
+    git(dir, "update-ref", "refs/remotes/origin/main", "HEAD");
     const summary = classifySharing(board);
     assert.equal(summary.kind, "shared_intree");
     assert.equal(summary.remote, "team/project");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("untracked local folder + fetched origin/board (provisioning's foreign-dir zone) → unavailable, never shared (review F-2)", async () => {
+  const dir = await tempProject();
+  try {
+    initRepo(dir);
+    const board = await conventionalBoard(dir);
+    git(dir, "remote", "add", "origin", "https://github.com/org/repo.git");
+    fakeFetchedBoardRef(dir);
+    // The folder exists locally (it is being SERVED) but is not the provisioned board worktree —
+    // its docs never left this machine; the shared board is a different copy.
+    const summary = classifySharing(board);
+    assert.equal(summary.kind, "unavailable");
+    assert.match(String(summary.reason), /not connected/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a REAL provisioned board worktree (git worktree add) classifies through the branch arm (review F-7)", async () => {
+  const dir = await tempProject();
+  try {
+    initRepo(dir);
+    // Provision the way the product does: a board branch checked out as a linked worktree at the
+    // conventional path.
+    git(dir, "branch", "board");
+    git(dir, "worktree", "add", path.join(dir, ".agentstate-lite"), "board");
+    const board = path.join(dir, ".agentstate-lite");
+    // No remote: a real worktree that never left this machine.
+    assert.equal(classifySharing(board).kind, "private_local_branch");
+    // Remote + fetched board evidence: shared.
+    git(dir, "remote", "add", "origin", "git@github.com:org/repo.git");
+    fakeFetchedBoardRef(dir);
+    const summary = classifySharing(board);
+    assert.equal(summary.kind, "shared_branch");
+    assert.equal(summary.remote, "org/repo");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

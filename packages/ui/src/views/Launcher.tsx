@@ -52,6 +52,8 @@ export function sharingChip(sharing: SharingSummary | null): { text: string; cla
       return { text: "private — local board branch, not yet shared", className: "chip chip-private" };
     case "private_intree_no_remote":
       return { text: "private — committed with code, no remote", className: "chip chip-private" };
+    case "private_intree_not_pushed":
+      return { text: "private — committed with code, not yet pushed", className: "chip chip-private" };
     case "shared_branch":
       return { text: `shared · ${sharing.remote ?? "remote"}`, className: "chip chip-shared" };
     case "shared_intree":
@@ -78,16 +80,21 @@ function sharingDetail(sharing: SharingSummary | null): string {
       return "a local board branch exists but has never been pushed — aslite sync shares it";
     case "private_intree_no_remote":
       return "committed with the code, but this repo has no remote — pushing the repo shares it";
+    case "private_intree_not_pushed":
+      return "committed with the code, but no upstream evidence it has been shared — your next git push shares it";
     case "shared_branch":
       return `git — ${sharing.remote ?? "the repo's remote"}, on a dedicated board branch beside the code`;
     case "shared_intree":
-      return `git — committed with the code on ${sharing.remote ?? "the repo's remote"}; your normal push shares it`;
+      return `git — committed with the code and present on ${sharing.remote ?? "the tracking remote"} (as of the last fetch)`;
     case "hosted":
       return `served by ${sharing.remote ?? "a remote server"} — sharing is that server's policy`;
     case "unavailable":
       return `could not determine sharing state${sharing.reason ? ` — ${sharing.reason}` : ""}`;
+    case "unscoped":
+      return "no sharing claim — this folder is not the repo's conventional board";
     default:
-      return "no sharing claim for this bundle (it is not this repo's conventional board)";
+      // Unknown future kind: refuse honestly, mirroring the chip (review F-3).
+      return "sharing status unavailable";
   }
 }
 

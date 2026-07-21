@@ -263,6 +263,7 @@ describe("sharingChip truth table (the SPA owns the words; every state row pinne
     ["private", undefined, "private — this computer only", "chip chip-private"],
     ["private_local_branch", undefined, "private — local board branch, not yet shared", "chip chip-private"],
     ["private_intree_no_remote", undefined, "private — committed with code, no remote", "chip chip-private"],
+    ["private_intree_not_pushed", undefined, "private — committed with code, not yet pushed", "chip chip-private"],
     ["shared_branch", "org/repo", "shared · org/repo", "chip chip-shared"],
     ["shared_intree", "org/repo", "shared with the code · org/repo", "chip chip-shared"],
     ["hosted", "host:1", "hosted · host:1", "chip chip-shared"],
