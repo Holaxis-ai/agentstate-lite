@@ -15,8 +15,8 @@ description: >-
   prototyped+reviewed), Idea 3 (containment outline), plus doc-reader PR-3
   (open-doc handoff). Naming (home vs launcher) still open pending test users.
   Parked: tasks/edge-index-derive-on-read (edge-read scaling).
-actor: mike/claude
-timestamp: '2026-07-21T21:33:56.116Z'
+actor: codex-main-home-truth
+timestamp: '2026-07-21T21:50:23.503Z'
 ---
 # Intent
 
@@ -163,3 +163,9 @@ decision, never backed into.
 [second-act design](../designs/doc-reader.md)
 
 [discovery + relationship navigation](../designs/document-discovery.md)
+
+[contains](../tasks/home-remote-orientation-truth.md)
+
+[contains](../tasks/home-sharing-chip-refresh.md)
+
+[contains](../tasks/home-git-probe-failure-truth.md)
