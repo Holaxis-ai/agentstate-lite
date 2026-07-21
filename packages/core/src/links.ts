@@ -24,8 +24,8 @@
  * the BROWSER (the shell's doc reader routes links through it), where `node:path`
  * does not bundle. The posix join/relative/basename logic is implemented as pure
  * string helpers below, parity-pinned against `node:path.posix` by
- * `links-path-parity.test.ts` and against browser bundling by
- * `links-browser-bundle.test.ts`.
+ * `links-path-parity.test.ts` and against browser bundling by `browser-bundle.test.ts` (the
+ * isomorphic-boundary gate over every browser-consumed core subpath).
  */
 
 import { isReservedFile } from "./paths.js";
