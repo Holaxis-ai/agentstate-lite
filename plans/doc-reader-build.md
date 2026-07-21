@@ -2,7 +2,18 @@
 type: Plan
 title: Build plan — the doc reader (three PRs)
 actor: mike/claude
-timestamp: '2026-07-21T18:26:51.262Z'
+description: >-
+  Build plan for the doc reader (3 PRs). PR-1 MERGED to main 2026-07-21 (PR
+  #138, merge 5c47151, reviewed SHA 3f35d89): the reader core — 3-belt security
+  boundary, mdast→React, links.ts de-node:path'd + parity-pinned, DocPage with
+  kind-declared chips/Cited-by/live-refetch/terminal states, gfm, +24.5KB gz,
+  zero-dep CLI intact. High-risk review APPROVE, no bypass; QA de-escalated for
+  PR-1 with recorded reasoning (context-notes/pr-138-review), RESERVED for PR-2.
+  REMAINING: PR-2 figures (ordinary tier + the focused lifecycle-adversarial QA
+  — mint/nonce TTL, 256-launch cap, re-mint-on-mount, figure blob-key resolver +
+  client registration gate), PR-3 open-doc handoff + authoring-contract update.
+  See the body sections below for the full PR-2/PR-3 specs.
+timestamp: '2026-07-21T19:10:43.377Z'
 ---
 # Build plan — the doc reader (three PRs)
 
