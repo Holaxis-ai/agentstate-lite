@@ -4,14 +4,13 @@ title: 'npm prerelease: authoritative CLI plus explicitly installable Agent Skil
 status: in_progress
 priority: '1'
 description: >-
-  FINAL PRE-MERGE STATE: PR #134 (PR1) @ bd279ce — 3 external findings +
-  addendum invariant fixed, QA PASS + micro-audit APPROVE; awaiting external
-  re-review + Brian merge. PR2 feat/aslite-skill-channel @ dcbe9c0+8d241b3
-  stacked on bd279ce, gates green (1108/1108), pushed; opens as own PR after
-  #134 merges (rebase onto main + regen then). Only open caveat: R2 in
-  tasks/skill-installer-followups. npm publish human-gated.
+  PR #134 MERGED to main (c710ec6). PR2 feat/aslite-skill-channel rebased onto
+  main @ 1633c0b+1c76855, gates green, pushed — ready for Brian to open+merge.
+  Docs-convention branch docs/pr-fix-commit-convention @ e0b9e9a also awaiting
+  PR open. Then: Brian tests packed tarball locally (walkthrough delivered), npm
+  publish (human-gated), founder proof.
 actor: anthropic/claude
-timestamp: '2026-07-21T15:35:25.763Z'
+timestamp: '2026-07-21T16:06:19.652Z'
 ---
 # Behavioral claim
 
