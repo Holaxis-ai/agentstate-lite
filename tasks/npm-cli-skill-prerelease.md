@@ -1,14 +1,14 @@
 ---
 type: Task
 title: 'npm prerelease: authoritative CLI plus explicitly installable Agent Skill'
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   BLOCKED on package identity. Ship and founder-prove one npm artifact
   containing the authoritative CLI plus optional generated skill assets and
   explicit skill installation; hooks must use stable aslite on PATH.
 actor: anthropic/claude
-timestamp: '2026-07-21T02:21:06.050Z'
+timestamp: '2026-07-21T02:23:24.679Z'
 ---
 # Behavioral claim
 
