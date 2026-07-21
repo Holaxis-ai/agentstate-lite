@@ -13,7 +13,7 @@ description: >-
   (home/workspace/overview/hub) before tutorial copy hardens the word. Boundary:
   ui-rethink stays separate/post-window.
 actor: mike/claude
-timestamp: '2026-07-21T17:52:33.530Z'
+timestamp: '2026-07-21T20:35:13.180Z'
 ---
 # Intent
 
@@ -158,3 +158,5 @@ decision, never backed into.
 [distilled design](../designs/home-surface.md)
 
 [second-act design](../designs/doc-reader.md)
+
+[discovery + relationship navigation](../designs/document-discovery.md)
