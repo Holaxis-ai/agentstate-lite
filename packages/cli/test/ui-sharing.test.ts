@@ -13,7 +13,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { classifySharing, createWorkspacesLoader, humanizeRemote } from "../src/ui/sharing.js";
+import { classifySharing, createSharingLoader, createWorkspacesLoader, humanizeRemote } from "../src/ui/sharing.js";
 
 function git(cwd: string, ...args: string[]): void {
   execFileSync("git", args, { cwd, stdio: "ignore" });
@@ -50,6 +50,32 @@ test("no git repo at all → private (a plain folder shares nothing)", async () 
   try {
     const board = await conventionalBoard(dir);
     assert.equal(classifySharing(board).kind, "private");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("FABRICATION GUARD: a broken repository probe is unavailable, never private", async () => {
+  const dir = await tempProject();
+  try {
+    initRepo(dir);
+    const board = await conventionalBoard(dir);
+    await writeFile(path.join(dir, ".git", "config"), "[broken\n");
+    const summary = classifySharing(board);
+    assert.equal(summary.kind, "unavailable");
+    assert.match(String(summary.reason), /repository discovery failed/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("sharing loader publishes its positive cache lifetime for client re-evaluation", async () => {
+  const dir = await tempProject();
+  try {
+    const board = await conventionalBoard(dir);
+    const summary = await createSharingLoader(board, 1_234)();
+    assert.equal(summary.kind, "private");
+    assert.equal(summary.refresh_after_ms, 1_234);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

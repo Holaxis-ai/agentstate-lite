@@ -56,7 +56,12 @@ async function bootDir(extra: Partial<UiServerOptions>): Promise<UiServerHandle>
   });
 }
 
-const SHARED: SharingSummary = { kind: "shared_branch", remote: "org/repo", as_of: "2026-07-21T00:00:00.000Z" };
+const SHARED: SharingSummary = {
+  kind: "shared_branch",
+  remote: "org/repo",
+  as_of: "2026-07-21T00:00:00.000Z",
+  refresh_after_ms: 30_000,
+};
 
 test("config passes an injected sharing summary and workspaces through verbatim", async () => {
   const server = await bootDir({
@@ -117,6 +122,7 @@ test("remote mode derives hosted from remoteBase in the runtime — no injection
     const sharing = config.sharing as SharingSummary;
     assert.equal(sharing.kind, "hosted");
     assert.equal(sharing.remote, "127.0.0.1:1");
+    assert.equal(sharing.refresh_after_ms, undefined, "hosted state is stable for this run and does not poll config");
     assert.deepEqual(config.workspaces, [], "workspaces are a dir-mode block");
   } finally {
     await server.close();

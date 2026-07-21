@@ -62,6 +62,8 @@ export interface SharingSummary {
   /** Short human reason for `unavailable` (a determinate refusal state or a probe failure — never silently "private"). */
   reason?: string;
   as_of: string;
+  /** Dir-mode classifier cache lifetime. When present, the SPA schedules re-evaluation from `as_of`; hosted summaries omit it. */
+  refresh_after_ms?: number;
 }
 
 /** One registered-workspace row for the home's collapsed workspaces block (labels + paths only — no availability probes; CLI policy decides the projection). */

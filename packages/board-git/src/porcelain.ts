@@ -274,13 +274,54 @@ export function identityFlags(dir: string, actor?: string): string[] {
 
 // ── repo/worktree discovery ───────────────────────────────────────────────────
 
-/** The enclosing repository's top-level working directory, or null when `dir` is not in a repo. */
-export function repoTopLevel(dir: string): string | null {
-  if (!existsSync(dir)) return null;
+export type RepoTopLevelProbe =
+  | { kind: "repo"; top: string }
+  | { kind: "not_repo" }
+  | { kind: "unavailable"; reason: string };
+
+function hasEnclosingGitMarker(dir: string): boolean {
+  let current = path.resolve(dir);
+  for (;;) {
+    if (existsSync(path.join(current, ".git"))) return true;
+    const parent = path.dirname(current);
+    if (parent === current) return false;
+    current = parent;
+  }
+}
+
+/**
+ * Evidence-preserving repository discovery for callers that must distinguish a plain folder from
+ * broken Git plumbing. A marker plus a failed probe is indeterminate, never "not a repo".
+ */
+export function probeRepoTopLevel(dir: string): RepoTopLevelProbe {
+  if (!existsSync(dir)) {
+    return hasEnclosingGitMarker(dir)
+      ? { kind: "unavailable", reason: "git repository discovery path does not exist" }
+      : { kind: "not_repo" };
+  }
   const r = runGit(dir, ["rev-parse", "--show-toplevel"]);
-  if (r.status !== 0) return null;
+  if (r.status !== 0) {
+    if (!hasEnclosingGitMarker(dir)) return { kind: "not_repo" };
+    const detail = r.stderr.trim().split(/\r?\n/, 1)[0]?.slice(0, 240);
+    return {
+      kind: "unavailable",
+      reason: detail ? `git repository discovery failed: ${detail}` : `git repository discovery failed (exit ${r.status})`,
+    };
+  }
   const top = r.stdout.trim();
-  return top.length > 0 ? top : null;
+  return top.length > 0
+    ? { kind: "repo", top }
+    : { kind: "unavailable", reason: "git repository discovery returned an empty top level" };
+}
+
+/**
+ * The enclosing repository's top-level working directory, or null when discovery cannot produce
+ * one. This legacy fail-soft projection is intentionally preserved; truth-sensitive consumers use
+ * {@link probeRepoTopLevel}.
+ */
+export function repoTopLevel(dir: string): string | null {
+  const result = probeRepoTopLevel(dir);
+  return result.kind === "repo" ? result.top : null;
 }
 
 /** Resolve a worktree-internal git path (e.g. `rebase-merge`, `index.lock`) to an absolute path. */

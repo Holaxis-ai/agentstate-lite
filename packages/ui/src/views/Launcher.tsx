@@ -26,6 +26,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchConfig, listPages, invalidateKinds, type PageEntry, type SharingSummary, type WorkspaceSummaryEntry } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import type { BridgeCapability } from "../pages/registry.js";
+import { getInterceptorStatus, type InterceptorStatus } from "../query/interceptor.js";
 import { navigate } from "../routing.js";
 import { ActivityFeed } from "./ActivityFeed.js";
 import { DocumentBrowser } from "./DocumentBrowser.js";
@@ -37,6 +38,26 @@ export const BRIDGE_BADGES: Record<BridgeCapability, { label: string; className:
   "bundle-propose": { label: "can edit", className: "badge badge-propose" },
   none: { label: "artifact", className: "badge badge-artifact" },
 };
+
+export const MIN_SHARING_REFRESH_DELAY_MS = 250;
+export const MAX_SHARING_REFRESH_DELAY_MS = 5 * 60_000;
+
+/** Remaining lifetime of one sharing reading; false means this config must not poll. */
+export function sharingRefreshDelay(
+  sharing: SharingSummary | null | undefined,
+  nowMs: number = Date.now(),
+  interceptorStatus: InterceptorStatus = getInterceptorStatus(),
+): number | false {
+  if (interceptorStatus !== "ok") return false;
+  if (!sharing) return false;
+  const refreshMs = sharing.refresh_after_ms;
+  if (typeof refreshMs !== "number" || !Number.isFinite(refreshMs) || refreshMs <= 0) return false;
+  const boundedRefreshMs = Math.min(refreshMs, MAX_SHARING_REFRESH_DELAY_MS);
+  const asOfMs = Date.parse(sharing.as_of);
+  if (!Number.isFinite(asOfMs)) return boundedRefreshMs;
+  const ageMs = Math.max(0, nowMs - asOfMs);
+  return Math.max(MIN_SHARING_REFRESH_DELAY_MS, Math.min(boundedRefreshMs, refreshMs - ageMs));
+}
 
 /**
  * The trust chip's WORDS — the SPA owns wording over ui-server's state vocabulary
@@ -115,7 +136,11 @@ function readOrientationDismissed(root: string): boolean {
 
 export function Launcher() {
   const queryClient = useQueryClient();
-  const configQuery = useQuery({ queryKey: ["ui-config"], queryFn: fetchConfig, refetchInterval: false });
+  const configQuery = useQuery({
+    queryKey: ["ui-config"],
+    queryFn: fetchConfig,
+    refetchInterval: (query) => sharingRefreshDelay(query.state.data?.sharing),
+  });
   const pagesQuery = useQuery({ queryKey: ["pages"], queryFn: listPages });
   const [orientationDismissed, setOrientationDismissed] = useState<boolean | null>(null);
   const [whereOpen, setWhereOpen] = useState(false);
@@ -148,19 +173,21 @@ export function Launcher() {
 
   const config = configQuery.data;
 
-  // Orientation is keyed on `config.root` — DELIBERATELY absent in `--remote` mode (root is null
-  // there): the orientation's privacy promise describes a LOCAL bundle and would be wrong for a
-  // hosted origin (review follow-up #3 — a decision, not an accident).
+  // The privacy promise describes a LOCAL bundle. Runtime mode is the authority; root may carry a
+  // remote display value, so root presence alone must never enable orientation in hosted mode.
   useEffect(() => {
-    if (config?.root == null) return;
+    if (config?.mode !== "dir" || config.root == null) {
+      setOrientationDismissed(null);
+      return;
+    }
     setOrientationDismissed(readOrientationDismissed(config.root));
-  }, [config?.root]);
+  }, [config?.mode, config?.root]);
 
   const pages = pagesQuery.data ?? [];
-  const showOrientation = config !== undefined && orientationDismissed === false;
+  const showOrientation = config?.mode === "dir" && config.root != null && orientationDismissed === false;
 
   const dismissOrientation = () => {
-    if (config?.root != null) {
+    if (config?.mode === "dir" && config.root != null) {
       try {
         window.localStorage.setItem(orientationStorageKey(config.root), "dismissed");
       } catch {

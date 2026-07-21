@@ -26,7 +26,7 @@ import {
   folderTreeAtHead,
   hasWorktreeSignature,
   localBranchExists,
-  repoTopLevel,
+  probeRepoTopLevel,
   resolveInTreeUpstream,
   runGit,
   worktreeRootResolvesForOwner,
@@ -85,8 +85,10 @@ export function classifySharing(bundleRoot: string, now: () => Date = () => new 
     const root = realOr(bundleRoot);
     // The board lives at <project>/.agentstate-lite; probe the PROJECT (the parent), so a linked
     // board WORKTREE (whose own top-level is the board folder itself) still anchors on the repo.
-    const top = repoTopLevel(path.dirname(root));
-    if (!top) return { kind: "private", as_of: asOf }; // a plain folder shares nothing
+    const repo = probeRepoTopLevel(path.dirname(root));
+    if (repo.kind === "not_repo") return { kind: "private", as_of: asOf }; // a plain folder shares nothing
+    if (repo.kind === "unavailable") return { kind: "unavailable", reason: repo.reason, as_of: asOf };
+    const top = repo.top;
     if (realOr(path.join(top, BUNDLE_DIR)) !== root) return { kind: "unscoped", as_of: asOf };
 
     const evidence = localEvidence(top);
@@ -150,12 +152,13 @@ export function classifySharing(bundleRoot: string, now: () => Date = () => new 
 
 /** TTL-cached loader for the ui server's config endpoint (the injection seam's dir-mode callback). */
 export function createSharingLoader(bundleRoot: string, ttlMs: number = SHARING_TTL_MS): () => Promise<SharingSummary> {
+  const effectiveTtlMs = Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : SHARING_TTL_MS;
   let cached: SharingSummary | undefined;
   let cachedAt = 0;
   return async () => {
     const nowMs = Date.now();
-    if (!cached || nowMs - cachedAt >= ttlMs) {
-      cached = classifySharing(bundleRoot);
+    if (!cached || nowMs - cachedAt >= effectiveTtlMs) {
+      cached = { ...classifySharing(bundleRoot), refresh_after_ms: effectiveTtlMs };
       cachedAt = nowMs;
     }
     return cached;
