@@ -37,7 +37,9 @@
 // every verb before any walk: destructive operations never follow a link AT the target or in
 // manifested entries (ancestor symlinks, e.g. a stowed ~/.claude, are deliberately honored — the
 // guard is leaf-only), and manifested files that ARE links are replaced on install / unlinked
-// (never followed) on removal.
+// (never followed) on removal. A DIRECTORY squatting at a manifested path is handled type-aware:
+// an empty one converges/uninstalls (rmdir); a non-empty one is a structured refusal — this tool
+// never recursive-deletes content no manifest names.
 import { existsSync, lstatSync, readFileSync, readdirSync, rmSync, rmdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -284,6 +286,43 @@ function unmanagedExtras(dir: string, managed: Set<string>): string[] {
   return listFilesRelative(dir).filter((f) => f !== SKILL_MANIFEST_FILENAME && !managed.has(f));
 }
 
+/** True when the path is a directory (lstat — a symlink to a directory is NOT; false when absent). */
+function isDirectory(p: string): boolean {
+  try {
+    return lstatSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * NON-EMPTY directories squatting at owned paths. Refused up front by both mutating verbs —
+ * converging would require a recursive delete of content no manifest names, which this tool
+ * never performs. An EMPTY directory is not an obstruction: it is converged (rmdir + write) or
+ * uninstalled (rmdir) type-aware, crash-free.
+ */
+function directoryObstructions(dir: string, ownedFiles: Iterable<string>): string[] {
+  const obstructed: string[] = [];
+  for (const relativePath of ownedFiles) {
+    const p = join(dir, ...relativePath.split("/"));
+    if (isDirectory(p) && readdirSync(p).length > 0) obstructed.push(relativePath);
+  }
+  return obstructed;
+}
+
+function directoryObstructionRefusal(obstructed: string[]): { ok: false; reason: string } {
+  return {
+    ok: false,
+    reason: `manifested path(s) are directories with contents: ${obstructed.join(", ")} — remove them manually; nothing deleted`,
+  };
+}
+
+/** Remove one managed path: files/links unlink; a (pre-scanned EMPTY) directory rmdirs. Absent is fine. */
+function removeManagedPath(p: string): void {
+  if (isDirectory(p)) rmdirSync(p);
+  else rmSync(p, { force: true });
+}
+
 type InstallResult = { ok: true; changed: boolean } | { ok: false; reason: string };
 
 /** Convergent install into one target folder. Refuses (nothing written) a folder we don't manage. */
@@ -301,6 +340,8 @@ function installIntoDir(dir: string, assets: SkillAssets): InstallResult {
     }
     if (manifest !== undefined) {
       const managed = new Set([...manifest.files, ...assets.files]);
+      const obstructed = directoryObstructions(dir, managed);
+      if (obstructed.length > 0) return directoryObstructionRefusal(obstructed);
       const extras = unmanagedExtras(dir, managed);
       if (extras.length > 0) {
         return {
@@ -341,19 +382,22 @@ function installIntoDir(dir: string, assets: SkillAssets): InstallResult {
   for (const relativePath of assets.files) {
     const bytes = readFileSync(join(assets.root, relativePath));
     const destPath = join(dir, ...relativePath.split("/"));
-    // A dest that is a LINK is always replaced with a real file (same rationale as the manifest).
+    // A dest that is a LINK is always replaced with a real file (same rationale as the manifest);
+    // a dest that is a directory is EMPTY here (non-empty ones were refused above) and converges.
     const destIsLink = isSymlink(destPath);
-    const current = !destIsLink && existsSync(destPath) ? readFileSync(destPath) : undefined;
-    if (destIsLink || current === undefined || !bytes.equals(current)) {
+    const destIsDir = !destIsLink && isDirectory(destPath);
+    const current = !destIsLink && !destIsDir && existsSync(destPath) ? readFileSync(destPath) : undefined;
+    if (destIsLink || destIsDir || current === undefined || !bytes.equals(current)) {
       if (destIsLink) rmSync(destPath, { force: true });
+      if (destIsDir) rmdirSync(destPath);
       atomicWriteFileSync(destPath, bytes);
       changed = true;
     }
   }
-  // A previously manifested file no longer shipped converges away.
+  // A previously manifested file no longer shipped converges away (type-aware: an empty dir rmdirs).
   for (const relativePath of manifest?.files ?? []) {
     if (!wanted.has(relativePath)) {
-      rmSync(join(dir, ...relativePath.split("/")), { force: true });
+      removeManagedPath(join(dir, ...relativePath.split("/")));
       changed = true;
     }
   }
@@ -401,6 +445,8 @@ function uninstallFromDir(dir: string): UninstallResult {
     return { ok: false, reason: `${SKILL_MANIFEST_FILENAME} is malformed — refusing to delete anything from a folder in an unknown state` };
   }
   const managed = new Set(manifest.files);
+  const obstructed = directoryObstructions(dir, managed);
+  if (obstructed.length > 0) return directoryObstructionRefusal(obstructed);
   const extras = unmanagedExtras(dir, managed);
   if (extras.length > 0) {
     return {
@@ -409,8 +455,9 @@ function uninstallFromDir(dir: string): UninstallResult {
     };
   }
   for (const relativePath of manifest.files) {
-    // rmSync unlinks a symlinked entry itself, never its target; force skips absent files.
-    rmSync(join(dir, ...relativePath.split("/")), { force: true });
+    // Type-aware: a symlinked entry unlinks the link itself (never its target); an EMPTY
+    // directory (pre-scanned above) rmdirs; absent files skip without a throw.
+    removeManagedPath(join(dir, ...relativePath.split("/")));
   }
   rmSync(join(dir, SKILL_MANIFEST_FILENAME), { force: true });
   removeEmptyDirectories(dir, true);

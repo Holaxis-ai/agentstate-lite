@@ -651,6 +651,68 @@ test("install adopts a pre-existing EMPTY real directory as a fresh install", as
   assert.equal((await runSkill(["status"], { cwd, executable })).skill.hosts.claude_code.state, "installed");
 });
 
+test("an EMPTY directory at a manifested path: status stale (no crash), install converges, uninstall cleans", async () => {
+  const { base, executable } = scratch();
+  const cwd = path.join(base, "project");
+  mkdirSync(cwd, { recursive: true });
+  await runSkill(["install"], { cwd, executable });
+  const dir = path.join(cwd, ".claude", "skills", "aslite");
+  const squatted = path.join(dir, "SKILL.md");
+
+  rmSync(squatted);
+  mkdirSync(squatted);
+  assert.equal((await runSkill(["status"], { cwd, executable })).skill.hosts.claude_code.state, "stale");
+
+  const converge = await runSkill(["install"], { cwd, executable });
+  assert.equal(converge.skill.hosts.claude_code.changed, true);
+  assert.equal(lstatSync(squatted).isFile(), true, "the empty directory converges back to the real file");
+  assert.equal(readFileSync(squatted, "utf8"), ASSET_FILES["SKILL.md"]);
+
+  rmSync(squatted);
+  mkdirSync(squatted);
+  const removed = await runSkill(["uninstall"], { cwd, executable });
+  assert.equal(removed.skill.hosts.claude_code.changed, true);
+  assert.equal(existsSync(dir), false, "uninstall handles the empty-directory shape without a throw");
+});
+
+test("a NON-EMPTY directory at a manifested path: structured refusal, nested content intact, sibling processed, no crash", async () => {
+  const { base, executable } = scratch();
+  const cwd = path.join(base, "project");
+  mkdirSync(cwd, { recursive: true });
+  await runSkill(["install"], { cwd, executable });
+  const dir = path.join(cwd, ".claude", "skills", "aslite");
+  const squatted = path.join(dir, "SKILL.md");
+  rmSync(squatted);
+  mkdirSync(squatted);
+  writeFileSync(path.join(squatted, "nested-foreign.txt"), "do not delete\n");
+
+  assert.equal((await runSkill(["status"], { cwd, executable })).skill.hosts.claude_code.state, "stale");
+
+  await assert.rejects(
+    () => runSkill(["install"], { cwd, executable }),
+    (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.match(JSON.stringify(err.details), /directories with contents/);
+      assert.match(JSON.stringify(err.details), /SKILL\.md/);
+      return true;
+    },
+  );
+  assert.equal(readFileSync(path.join(squatted, "nested-foreign.txt"), "utf8"), "do not delete\n");
+
+  await assert.rejects(
+    () => runSkill(["uninstall"], { cwd, executable }),
+    (err: unknown) => {
+      assert.ok(err instanceof CliError);
+      assert.match(JSON.stringify(err.details), /directories with contents/);
+      return true;
+    },
+  );
+  assert.equal(readFileSync(path.join(squatted, "nested-foreign.txt"), "utf8"), "do not delete\n");
+  assert.ok(existsSync(path.join(dir, SKILL_MANIFEST_FILENAME)), "refusal deletes nothing else either");
+  // The sibling codex host was still processed on both verbs (install converged, uninstall removed).
+  assert.equal(existsSync(path.join(cwd, ".codex", "skills", "aslite")), false);
+});
+
 test("skill usage errors: missing/unknown subcommand and bad scope are USAGE, not runtime", async () => {
   const { base, executable } = scratch();
   const cwd = path.join(base, "project");
