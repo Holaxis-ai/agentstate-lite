@@ -4,11 +4,12 @@ title: 'npm prerelease: authoritative CLI plus explicitly installable Agent Skil
 status: in_progress
 priority: '1'
 description: >-
-  BLOCKED on package identity. Ship and founder-prove one npm artifact
-  containing the authoritative CLI plus optional generated skill assets and
-  explicit skill installation; hooks must use stable aslite on PATH.
+  IN PROGRESS (PR1 built): interim coordinate aslite applied on
+  feat/aslite-npm-coordinate (d91d9f2, gates green); independent review +
+  adversarial hook-mechanics QA running in parallel. PR2 (skill carry +
+  installer) queued per plans/npm-cli-skill-prerelease.
 actor: anthropic/claude
-timestamp: '2026-07-21T02:23:24.679Z'
+timestamp: '2026-07-21T02:52:51.486Z'
 ---
 # Behavioral claim
 
