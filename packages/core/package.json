@@ -17,6 +17,10 @@
       "types": "./dist/kinds.d.ts",
       "default": "./dist/kinds.js"
     },
+    "./links": {
+      "types": "./dist/links.d.ts",
+      "default": "./dist/links.js"
+    },
     "./page": {
       "types": "./dist/page.d.ts",
       "default": "./dist/page.js"

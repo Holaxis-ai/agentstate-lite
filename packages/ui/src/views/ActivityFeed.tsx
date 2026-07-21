@@ -24,6 +24,7 @@ import { listAllHeads } from "../api/client.js";
 import type { DocHead } from "../api/types.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { PAGE_TYPE_NAMES } from "../pages/registry.js";
+import { navigate } from "../routing.js";
 import { formatWhen } from "./format.js";
 
 /** How many rows the feed shows — recent pulse, not a history browser. */
@@ -130,12 +131,15 @@ export function ActivityFeed() {
   return (
     <ul className="feed-list">
       {rows.map((row) => (
-        <li key={row.id} className={fresh.has(row.id) ? "feed-row feed-row-fresh" : "feed-row"}>
-          {row.actor && <span className="feed-actor">{row.actor}</span>}
-          <span className="feed-line">
-            <span className="feed-kind">{row.kind}</span> <span className="feed-title">“{row.title}”</span>
-          </span>
-          {row.when && <span className="feed-when">{row.when}</span>}
+        <li key={row.id} className={fresh.has(row.id) ? "feed-item feed-row-fresh" : "feed-item"}>
+          {/* The reader is the row's destination (designs/doc-reader): the feed announces a doc, clicking reads it. */}
+          <button type="button" className="feed-row" onClick={() => navigate({ view: "doc", id: row.id })}>
+            {row.actor && <span className="feed-actor">{row.actor}</span>}
+            <span className="feed-line">
+              <span className="feed-kind">{row.kind}</span> <span className="feed-title">“{row.title}”</span>
+            </span>
+            {row.when && <span className="feed-when">{row.when}</span>}
+          </button>
         </li>
       ))}
     </ul>
