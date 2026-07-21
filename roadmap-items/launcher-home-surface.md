@@ -13,7 +13,7 @@ description: >-
   (home/workspace/overview/hub) before tutorial copy hardens the word. Boundary:
   ui-rethink stays separate/post-window.
 actor: mike/claude
-timestamp: '2026-07-21T14:18:20.248Z'
+timestamp: '2026-07-21T14:22:22.757Z'
 ---
 # Intent
 
@@ -62,3 +62,23 @@ recent-activity strip is a deliberate scope line in that task, not silent growth
 [boundary: the fundamental redesign stays separate](../roadmap-items/ui-rethink.md)
 
 [contains](../tasks/launcher-first-run-onboarding.md)
+
+# Workspaces at home (added 2026-07-21)
+
+Home means "my stuff", not "this one bundle" — the agent's home (session-start) already
+renders a workspaces block from the catalog, and the human home should mirror it. Tiered:
+
+- **Tier 1 (in scope here): SEE them.** Read-only catalog block — registered workspaces,
+  the open one marked, copy-paste open command for the others. No security change (same
+  info the CLI home prints). Layering: the catalog is CLI policy, so the CLI INJECTS it
+  through a consumer-owned ui-server option (the `resolveBundleDisplayName` precedent) —
+  ui-server never imports CLI code.
+- **Tier 2 (separate decision): SWITCH between them.** Preferred shape is
+  remount-in-place (one loopback server swaps the mounted bundle; same session, one bundle
+  at a time; watcher/SSE/launch registry reboot, open frames revoke). Multi-mount —
+  several bundles under one origin/session — brushes the FROZEN multi-bundle
+  partitioning/authz unit and is NOT to be built piecemeal from a home widget.
+- **Privacy flag (deliberate choice required):** the catalog is user-global, so home would
+  surface ALL workspace labels — including private ones — in a surface headed for
+  test-user demos and screenshots. Mitigate by design (collapsed by default, or a
+  catalog-side private flag home respects), not by accident.
