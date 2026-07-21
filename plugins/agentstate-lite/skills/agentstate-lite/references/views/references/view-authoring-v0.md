@@ -50,12 +50,14 @@ view's own iframe; the view drops any message whose `event.source` is not `windo
 
 | type        | payload                                                    | reply `result`                                             |
 | ----------- | ---------------------------------------------------------- | ---------------------------------------------------------- |
-| `hello`     | —                                                          | `{ bundle: { root, name }, mode, protocol: "v0", grant: "read" }` |
+| `hello`     | —                                                          | `{ bundle: { root, name }, mode, protocol: "v0", grant }` |
 | `query`     | `{ params: { type?, prefix?, field?, open?, limit? } }`    | `{ rows: DocHead[], count }`                               |
 | `read`      | `{ docId }`                                                | `{ id, frontmatter, body }`                                |
 | `edges`     | `{ params: { from?, to?, text? } }`                        | `{ edges: { from, to, text }[], count }`                   |
 | `subscribe` | —                                                          | `{ ok: true }`, then a stream of `change` events          |
 | `open-page` | `{ pageId: "views-registry/…" }`                           | none; fire-and-forget shell navigation                    |
+
+`hello.result.grant` is `"read"` for `bundle-read` and `"propose"` for `bundle-propose`.
 
 `open-page` is the sole capability-independent action: `bridge: none`, `bridge: bundle-read`, and
 `bridge: bundle-propose` Views may ask the shell to open another usable registered View. The shell
