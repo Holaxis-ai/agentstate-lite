@@ -396,7 +396,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
           className="page-back"
           onClick={() => navigate({ view: "launcher" })}
         >
-          ← Launcher
+          ← Home
         </button>
         <span className="page-frame-title">{title}</span>
       </div>

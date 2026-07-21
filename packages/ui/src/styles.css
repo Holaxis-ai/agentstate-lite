@@ -29,6 +29,7 @@
   --color-process: #0a8a7a; /* Ecosystem Teal */
   --color-signal: #b8832a; /* Signal Amber */
   --color-danger: #b00020;
+  --on-accent: #ffffff; /* text over a solid accent fill (both themes keep the accents dark enough) */
 
   --radius: 2px;
 
@@ -222,6 +223,11 @@ body {
   font-family: var(--font-display);
   font-weight: 500;
   font-size: 1.15rem;
+  /* Undo the `.launcher-section h3` section-heading treatment this h3 also matches — a card
+     title is content (Ink, sentence case), not a section label (found by visual smoke). */
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .launcher-card-desc {
@@ -231,13 +237,8 @@ body {
   line-height: 1.4;
 }
 
-.launcher-card-entry {
-  margin: 0;
-  font-size: 0.75rem;
-}
-
-.launcher-card-entry code,
-.launcher-empty code {
+.launcher-empty code,
+.orientation code {
   font-family: var(--font-mono);
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
   padding: 0.05rem 0.3rem;
@@ -259,9 +260,201 @@ body {
 }
 
 .launcher-empty {
-  margin-top: 1.5rem;
+  margin-top: 0.25rem;
   color: var(--text-secondary);
   line-height: 1.6;
+  max-width: 62ch;
+}
+
+/* ── Home layout: main column + activity aside (designs/home-surface) ── */
+.home-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 21rem;
+  gap: 1.6rem;
+  align-items: start;
+}
+
+@media (max-width: 56rem) {
+  .home-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.home-main,
+.home-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+}
+
+/* First-run orientation card (dismissable; Blue = identity/structure accent). */
+.orientation {
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--color-structure);
+  border-radius: var(--radius);
+  background: var(--surface-card);
+  padding: 1.1rem 1.25rem;
+}
+
+.orientation h2 {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.35rem;
+  text-wrap: balance;
+}
+
+.orientation p {
+  margin: 0 0 0.75rem;
+  max-width: 62ch;
+  color: var(--text-secondary);
+}
+
+.orientation-dismiss {
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--text-primary);
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.75rem;
+}
+
+.orientation-dismiss:hover,
+.orientation-dismiss:focus-visible {
+  border-color: var(--color-structure);
+  color: var(--color-structure);
+}
+
+.orientation-dismiss:focus-visible {
+  outline: 2px solid var(--color-structure);
+  outline-offset: 2px;
+}
+
+/* Capability badge — role-based wording over the SAME enforced bridge field (never the IA). */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.08rem 0.45rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--rule);
+  color: var(--text-tertiary);
+}
+
+.badge::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Teal — reads live data (the active/open accent). */
+.badge-read {
+  color: var(--color-process);
+  border-color: color-mix(in srgb, var(--color-process) 40%, transparent);
+}
+
+/* Blue — may propose confirmed writes (structure/identity: the trusted-shell loop). */
+.badge-propose {
+  color: var(--color-structure);
+  border-color: color-mix(in srgb, var(--color-structure) 40%, transparent);
+}
+
+/* Amber — a self-contained visual artifact (the revealed/freshness accent family). */
+.badge-artifact {
+  color: var(--color-signal);
+  border-color: color-mix(in srgb, var(--color-signal) 45%, transparent);
+}
+
+/* Activity feed (ActivityFeed.tsx). */
+.feed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.feed-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 0.6rem;
+  row-gap: 0.1rem;
+  padding: 0.55rem 0.15rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.83rem;
+}
+
+.feed-row:last-child {
+  border-bottom: none;
+}
+
+.feed-actor {
+  color: var(--color-structure);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.feed-line {
+  color: var(--text-secondary);
+  min-width: 0;
+  grid-column: 1 / -1;
+}
+
+.feed-actor + .feed-line {
+  grid-column: 2;
+}
+
+.feed-kind {
+  color: var(--text-tertiary);
+}
+
+.feed-title {
+  color: var(--text-primary);
+}
+
+.feed-when {
+  grid-column: 1 / -1;
+  font-size: 0.72rem;
+  color: var(--color-signal);
+}
+
+.feed-actor ~ .feed-when {
+  grid-column: 2;
+}
+
+.feed-empty {
+  color: var(--text-tertiary);
+  font-size: 0.83rem;
+  line-height: 1.5;
+  max-width: 36ch;
+  margin: 0;
+  padding: 0.4rem 0.15rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .feed-row-fresh {
+    animation: feed-land 0.6s ease;
+  }
+
+  @keyframes feed-land {
+    from {
+      background: color-mix(in srgb, var(--color-signal) 22%, transparent);
+      opacity: 0.3;
+    }
+
+    to {
+      background: transparent;
+      opacity: 1;
+    }
+  }
 }
 
 /* ── Page frame (sandboxed iframe host) ─────────────────────────────── */
@@ -402,7 +595,7 @@ body {
 }
 
 .action-confirmation-buttons .action-apply {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--color-structure);
   border-color: var(--color-structure);
 }
