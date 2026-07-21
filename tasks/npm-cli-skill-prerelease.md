@@ -4,16 +4,12 @@ title: 'npm prerelease: authoritative CLI plus explicitly installable Agent Skil
 status: in_progress
 priority: '1'
 description: >-
-  PR #136 (PR2) RE-REVIEW-READY @ 1c5f212: four external findings fixed as
-  APPENDED commits (transitional union-manifest for upgrade interruption,
-  ownership-scoped debris sweep, type-aware convergence, $REFS base-dir
-  reference resolution); internal QA PASS incl. 40-kill UPGRADE matrix 0 bricked
-  + ownership invariant held at every kill point. Awaiting external re-review +
-  Brian merge. Then: local tarball test (walkthrough delivered), npm publish
-  (human-gated), founder proof. Standing caveat: R2 concurrency
-  (tasks/skill-installer-followups).
+  PUBLISHED: @holaxis/aslite@0.1.0-pre.1 live on npmjs (tag next; latest forced
+  by first-publish). Registry cold-install smoke all green incl. skill+hook
+  round-trips and npx. Remaining: founder proof on a clean machine (human), then
+  npm-as-primary-channel doc step + marketplace retirement as separate units.
 actor: anthropic/claude
-timestamp: '2026-07-21T17:05:54.896Z'
+timestamp: '2026-07-21T23:53:18.059Z'
 ---
 # Behavioral claim
 
@@ -90,3 +86,20 @@ Shipped as TWO stacked PRs (Brian opens/merges; publish itself stays human-gated
 - Remaining acceptance items that are HUMAN post-publish validation: founder installs the
   packed prerelease on a clean machine, fresh agent session on an unfamiliar real bundle,
   attributed mutation + View open without founder explanation, upgrade without path expiry.
+
+# PUBLISHED (2026-07-21)
+
+`@holaxis/aslite@0.1.0-pre.1` is live on npmjs (public, org `holaxis` created and owner-verified;
+scoped coordinate per the amended decision — unscoped `aslite` was 403'd by npm's publish-time
+moniker rule, "too similar to sqlite, slate"). Registry fact vs policy wording: npm forces
+`latest` to exist on first publish, so latest == next == 0.1.0-pre.1 today; the policy's
+operative meaning is that latest never ADVANCES automatically. Cold-install smoke from the real
+registry, fully isolated (scratch prefix/HOME): install, help, init, new, list, skill
+install/status/uninstall (both hosts, files verified on disk), hook install writing exactly
+`aslite session-start`, clean uninstalls, and `npx -y @holaxis/aslite@next` — all green.
+
+Remaining acceptance items (HUMAN, post-publish): founder installs on a clean machine/home,
+fresh agent session against an unfamiliar real bundle, discovers Kinds/workflow and makes an
+attributed mutation + opens a View without founder explanation, upgrade/reinstall without path
+expiry. Then: make npm the documented primary channel, and marketplace retirement as separate
+deletion units (design transition steps 5-6).
