@@ -4,30 +4,25 @@ title: >-
   Launcher first-run: orient a new user (the UI teaches what they can do with
   AS)
 description: >-
-  CURRENT FOCUS (Mike, 2026-07-21; see decisions/defer-builtin-recipes — the
-  built-in recipe is deferred and this is what replaces it near-term): see what
-  a lightweight in-launcher tutorial can do for onboarding. The launcher (the ui
-  command shell) is the FIRST VISUAL surface a new user sees after install+init,
-  so its first-run quality is part of the onboarding journey — a bare list of
-  Views is not productive. Make the launcher ORIENT a newcomer: what AgentState
-  is, what they can do (their agent creates/manages content; they can mark tasks
-  done / edit right here — the human-agent collaboration loop), where their
-  board/Views are, and a gentle EMPTY STATE when a fresh bundle has no data yet.
-  Directly Mike point: the UI itself instructs the user about what they can do
-  with AS. TIGHT SCOPE (release-push): onboarding orientation + empty-state on
-  the EXISTING launcher — NOT a launcher redesign. The fundamental UI rethink
-  (what replaces the kanban primitive) is roadmap-items/ui-rethink — separate
-  and POST-window; do not fold that in. DoD: opening ui on a fresh bundle shows
-  an orientation/empty-state/tutorial that tells a new user what they can do and
-  where to start; the onboarding test productive assertion
-  (tasks/npm-quickstart-onboarding) includes the launcher orienting, not just a
-  bundle existing. Sequencing note: originally AFTER the task-board View
-  (tasks/task-system-board-ui, still in_progress) so it orients toward something
-  real; with the recipe deferral Mike is starting here directly.
+  IN PROGRESS — PR-A MERGED to main 2026-07-21 (PR #135, merge 80ba7e9, reviewed
+  SHA c62eb86; records: context-notes/pr-135-build + pr-135-review). Shipped:
+  flat badged view grid (capability grouping retired; live data / can edit /
+  artifact badges off the enforced bridge field), first-run orientation
+  (in-tree-safe privacy promise, no-agent fallback, per-root localStorage
+  dismissal), live activity feed (debounced invalidate-and-refetch over SSE,
+  conventions/registry filtered), token-contract gate (red-probed), plus 3
+  visual-smoke fixes (card-title cascade leak — pre-existing on main,
+  back-button label, compact timestamps). Verified: CI green on exact SHA, ui
+  99/99, e2e 17/17 over built CLI, independent review APPROVE with both
+  red-probes fired. REMAINING for this unit: PR-B per plans/home-surface-build
+  rev 2 (sharing chip + 9-row truth table, where-is-this disclosure, collapsed
+  workspaces block via CLI-injection seam) + the accepted review follow-ups
+  riding it (feed-poll doc sentence, remote-mode orientation comment, test
+  nits). Naming still provisional pending test users.
 actor: mike/claude
 status: in_progress
 priority: '1'
-timestamp: '2026-07-21T15:57:23.644Z'
+timestamp: '2026-07-21T16:33:32.119Z'
 ---
 [the launcher IS the visual endpoint of 'productive'](npm-quickstart-onboarding.md)
 
