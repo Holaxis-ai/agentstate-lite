@@ -2,10 +2,12 @@
 type: Context Note
 title: npm prerelease unit — orchestration state
 actor: anthropic/claude
-timestamp: '2026-07-21T02:34:56.314Z'
+timestamp: '2026-07-21T02:35:11.837Z'
 ---
-# State: npm prerelease unit in flight (2026-07-20 evening)
+# Summary
 
+
+State: npm prerelease unit in flight (2026-07-20 evening).
 Ultimate goal: npm-first distribution (designs/npm-bundle-bootstrap). Proximate goal: deliver
 tasks/npm-cli-skill-prerelease as TWO PRs — it serves the ultimate goal by making npm the
 authoritative channel carrying CLI + skill together.
