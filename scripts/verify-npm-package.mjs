@@ -78,12 +78,14 @@ export function assertPackageContract(receipt, manifest, referenceFiles) {
     ["dist/agentstate-lite.mjs"],
     "the tarball must carry exactly one .mjs executable (the dist bundle)",
   );
-  assert.equal(manifest.name, "aslite");
+  assert.equal(manifest.name, "@holaxis/aslite");
   assert.deepEqual(manifest.files, ["dist", "SKILL.md", "references"]);
   assert.deepEqual(manifest.bin, {
     aslite: "dist/agentstate-lite.mjs",
     "agentstate-lite": "dist/agentstate-lite.mjs",
   });
+  // Scoped packages default to restricted at publish time — the manifest must pin public.
+  assert.deepEqual(manifest.publishConfig, { access: "public" }, "publishConfig.access must be public");
   for (const field of runtimeDependencyFields) {
     assert.ok(
       manifest[field] === undefined || Object.keys(manifest[field]).length === 0,
@@ -222,8 +224,8 @@ export async function verifyNpmPackage() {
 
     const installedRoot =
       process.platform === "win32"
-        ? path.join(prefix, "node_modules", "aslite")
-        : path.join(prefix, "lib", "node_modules", "aslite");
+        ? path.join(prefix, "node_modules", "@holaxis", "aslite")
+        : path.join(prefix, "lib", "node_modules", "@holaxis", "aslite");
     const manifest = parseJson(await readFile(path.join(installedRoot, "package.json"), "utf8"), "installed package.json");
     const committedSkillRoot = path.join(repoRoot, "packages", "cli");
     const referenceFiles = (await listFiles(path.join(committedSkillRoot, "references"))).map((relative) =>
@@ -343,7 +345,7 @@ export async function verifyNpmPackage() {
         await readFile(path.join(dir, ".aslite-skill.json"), "utf8"),
         "skill manifest",
       );
-      assert.equal(skillManifest.package, "aslite");
+      assert.equal(skillManifest.package, "@holaxis/aslite");
       assert.equal(skillManifest.version, manifest.version);
     }
 

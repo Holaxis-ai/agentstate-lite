@@ -3,7 +3,7 @@
  * a backing contract/example under `references/` — the skill is one projection of the
  * distribution-neutral inventory in src/distribution-resources.ts.
  *
- * Runs in `npm test -w aslite`, hence `npm run check` — PR-side is the right layer here
+ * Runs in `npm test -w @holaxis/aslite`, hence `npm run check` — PR-side is the right layer here
  * because a gap is a SOURCE defect (a new command that never declares its shipped-contract
  * surface, or new prose that points at a file nobody added to the manifest): the bot that
  * regenerates plugins/ on merge to main would otherwise ship the gap FIRST, and only a human
@@ -295,11 +295,15 @@ test("no phantom pointers — every $REFS/… path in the rendered SKILL.md reso
 // ---------------------------------------------------------------------------------------------
 
 test("npm: bare-aslite channel identity — no npx examples, no retired coordinate, no marketplace-cache resolver", () => {
+  // Skill IDENTITY stays the bare `aslite` bin; only install/npx text carries the scoped coordinate.
   assert.match(renderedNpm, /^---\nname: aslite\n/);
-  // Examples run the bare bin; `npx -y aslite` survives only as the explicit no-install fallback.
+  // Examples run the bare bin; `npx -y @holaxis/aslite` survives only as the explicit no-install fallback.
   assert.match(renderedNpm, /## If `aslite` is not on PATH/);
-  assert.match(renderedNpm, /npm install -g aslite/);
+  assert.match(renderedNpm, /npm install -g @holaxis\/aslite/);
+  assert.match(renderedNpm, /npx -y @holaxis\/aslite/);
   assert.ok(!renderedNpm.includes("npx -y agentstate-lite"), "retired npm coordinate must not appear");
+  assert.ok(!renderedNpm.includes("npx -y aslite"), "retired unscoped npx coordinate must not appear");
+  assert.ok(!renderedNpm.includes("npm install -g aslite"), "retired unscoped install coordinate must not appear");
   assert.ok(!renderedNpm.includes("plugins/cache"), "npm channel must not teach marketplace-cache discovery");
   assert.ok(!renderedNpm.includes('ASLITE="$('), "npm channel must not carry the skill-channel resolver");
 });

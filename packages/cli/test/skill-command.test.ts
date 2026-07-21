@@ -39,7 +39,7 @@ const ASSET_FILES: Record<string, string> = {
 function makeDistribution(root: string, version = "9.9.9", files: Record<string, string> = ASSET_FILES): string {
   mkdirSync(path.join(root, "dist"), { recursive: true });
   writeFileSync(path.join(root, "dist", "agentstate-lite.mjs"), "// bundle\n");
-  writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "aslite", version }) + "\n");
+  writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "@holaxis/aslite", version }) + "\n");
   for (const [relative, content] of Object.entries(files)) {
     const target = path.join(root, ...relative.split("/"));
     mkdirSync(path.dirname(target), { recursive: true });
@@ -99,7 +99,7 @@ test("skill install (project scope): assets + manifest land in BOTH host folders
       assert.equal(readFileSync(path.join(dir, ...relative.split("/")), "utf8"), content);
     }
     const manifest = JSON.parse(readFileSync(path.join(dir, SKILL_MANIFEST_FILENAME), "utf8"));
-    assert.equal(manifest.package, "aslite");
+    assert.equal(manifest.package, "@holaxis/aslite");
     assert.equal(manifest.version, "9.9.9");
     assert.equal(manifest.installed_by, "aslite skill install");
     assert.deepEqual(manifest.files, Object.keys(ASSET_FILES).sort());

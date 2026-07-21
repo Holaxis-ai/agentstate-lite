@@ -44,7 +44,7 @@ for (const argv of [["--help"], ["-h"], ["help"]]) {
 
     // The new shape: a description header, a Usage line, and every group as its own plain heading
     // with each command on its own indented physical line. (The resolved invocation off-PATH is
-    // `npx -y aslite`, a multi-word prefix, so match loosely on the leading token.)
+    // `npx -y @holaxis/aslite`, a multi-word prefix, so match loosely on the leading token.)
     assert.match(out, /^.+ — read and write a local OKF knowledge bundle/);
     assert.match(out, /\nUsage: .+ <command> \[options\]\n/);
     assert.match(out, /\nBundle:\n {2}bundle locate \[--dir <path>\][^\n]* — Resolve the exact canonical local bundle path/);

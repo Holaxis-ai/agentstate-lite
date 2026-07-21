@@ -5,14 +5,14 @@ description: >-
   bundle Views) from the shell via the aslite CLI. Use when an agent
   needs to persist a context note across sessions, store a decision/spec as a doc, link concepts,
   query a bundle, share the project's board with teammates (`sync`), or open its local View UI.
-  Runs standalone via `npx -y aslite`.
+  Runs standalone via `npx -y @holaxis/aslite`.
 ---
 
 # aslite
 
 read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Views).
 
-It is a standalone npm package installing two bins for the identical CLI: `aslite` and the
+It is a standalone npm package (`@holaxis/aslite`) installing two bins for the identical CLI: `aslite` and the
 long-form alias `agentstate-lite`. Every example below uses the bare `aslite` bin.
 
 Output is TOON on stdout (a `--json` hatch exists). Errors are structured TOON on stdout with a
@@ -24,8 +24,8 @@ capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found,
 
 Every example below assumes the `aslite` bin is on PATH. If it is not:
 
-- `npm install -g aslite` puts it (and the long-form alias `agentstate-lite`) on PATH.
-- `npx -y aslite …` runs any command below with no install at all — swap the leading `aslite`
+- `npm install -g @holaxis/aslite` puts it (and the long-form alias `agentstate-lite`) on PATH.
+- `npx -y @holaxis/aslite …` runs any command below with no install at all — swap the leading `aslite`
   for that prefix and the rest of the line runs unchanged.
 
 ## Commands

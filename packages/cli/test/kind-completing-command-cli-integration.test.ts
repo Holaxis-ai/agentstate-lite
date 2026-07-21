@@ -9,7 +9,7 @@
  * command chain means character-for-character with the emitted artifacts") is honored literally
  * here: this file puts a symlink named `aslite` (the PREFERRED bin) -> the built dist on the
  * CHILD's PATH, so `cliInvocation()` (invocation.ts) resolves to the bare bin name instead of the
- * off-PATH `npx -y aslite` fallback — the emitted `help` string is then DIRECTLY executable (no
+ * off-PATH `npx -y @holaxis/aslite` fallback — the emitted `help` string is then DIRECTLY executable (no
  * network, no substitution) by splitting it on whitespace and spawning it verbatim after filling
  * each `<placeholder>` token with a real value. Red-proof for this test: reverting
  * `kind-write.ts`'s `buildCompletingUpdateCommand` (restoring the old fixed `kinds`-pointer help)
