@@ -4,16 +4,17 @@ title: >-
   Build the collaborative task-board View (read + human write-back) — the visual
   UX
 description: >-
-  FIX IN PROGRESS for PR #133 review findings, starting from
-  fc9474c7b7d1cfa64002f4b1ccc8c66f0dc38e1f (context-notes/pr-133-fixes).
-  Acceptance: render/reopen canceled Tasks with truthful counts; use
-  bundle-key-safe relationship indexes so valid ids such as 'constructor' cannot
-  crash refresh; treat shell statuses 'cancelled' and 'unchanged' neutrally
-  while preserving real error styling; add committed Chromium regressions; pass
-  npm run check; independent exact-SHA review before adversarial QA.
+  BUILDER COMPLETE at 9ac537be28bb627656f5328e06929f496ad80aac (parent fc9474c;
+  context-notes/pr-133-fixes). Repairs: five-column lifecycle including
+  reachable canceled/Reopen; null-prototype bundle-key indexes protect valid ids
+  such as constructor; cancelled/unchanged action results render neutrally;
+  committed Chromium regressions cover all three. Focused 26/26 + 12/12 + E2E
+  1/1 passed; solitary full npm run check exit 0 with 16/16 Chromium gate tests.
+  Awaiting independent exact-SHA review; adversarial QA is gated on reviewer
+  approval.
 actor: codex-builder
 status: in_progress
 priority: '2'
-timestamp: '2026-07-21T13:14:07.897Z'
+timestamp: '2026-07-21T13:38:16.861Z'
 ---
 [depends on the settled schema](task-system-kind-design.md)
