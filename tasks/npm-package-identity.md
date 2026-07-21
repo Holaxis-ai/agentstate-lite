@@ -1,14 +1,14 @@
 ---
 type: Task
 title: Choose the public npm package and product identity
-status: todo
+status: done
 priority: '1'
 description: >-
   Human-gated launch decision: choose the public npm coordinate, executable
   naming, initial version/tag policy, ownership, and rename boundary before
   prerelease work begins.
-actor: openai/codex
-timestamp: '2026-07-20T02:48:49.259Z'
+actor: anthropic/claude
+timestamp: '2026-07-21T02:16:55.395Z'
 ---
 # Decision required
 
@@ -28,3 +28,13 @@ Choose the public product and npm package identity before publication. Confirm:
 - The next npm prerelease task has an exact package coordinate and rollback path.
 
 [gates the npm-first distribution](../roadmap-items/distribution-neutral-resources.md)
+
+# Resolution (2026-07-20)
+
+Decided: interim package name **`as-lite`** — full record, rationale, and rename/rollback
+path in [the decision doc](../decisions/npm-interim-package-name.md). Availability verified
+(npm 404) 2026-07-20; the `agentstate-lite` name was rejected because an unrelated
+`agentstate` package exists on npm. `aslite` stays the preferred short command. Ownership is
+secured at first publish (the prerelease task's explicit publish step). The long-term
+product name — and any repo rename — remains a separate, open decision; expect a successor
+coordinate later.

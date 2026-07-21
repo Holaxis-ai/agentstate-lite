@@ -1,14 +1,14 @@
 ---
 type: Task
 title: 'npm prerelease: authoritative CLI plus explicitly installable Agent Skill'
-status: blocked
+status: todo
 priority: '1'
 description: >-
   BLOCKED on package identity. Ship and founder-prove one npm artifact
   containing the authoritative CLI plus optional generated skill assets and
   explicit skill installation; hooks must use stable aslite on PATH.
-actor: openai/codex
-timestamp: '2026-07-20T02:49:06.129Z'
+actor: anthropic/claude
+timestamp: '2026-07-21T02:17:06.409Z'
 ---
 # Behavioral claim
 
@@ -55,3 +55,12 @@ From the exact packed prerelease in an isolated home and without this source che
 [advances](../roadmap-items/distribution-neutral-resources.md)
 
 [depends on](npm-package-identity.md)
+
+# Package coordinate (unblocked 2026-07-20)
+
+The identity gate is resolved: publish as **`as-lite`** (interim — see
+[the decision doc](../decisions/npm-interim-package-name.md) for rationale, the working
+version/tag policy, and the rename/rollback path). Implementation notes from that decision:
+ensure `npx -y as-lite` resolves (npm needs a bin matching the package name — ship an
+`as-lite` bin alias alongside the preferred `aslite`), and prereleases go out as
+`0.x.y-pre.N` on dist-tag `next`, never `latest`.
