@@ -10,15 +10,15 @@
 // via esbuild's data-URL loader and calls `renderNpm()` / `renderSkill()` directly; it no longer
 // contains any rendering logic of its own, only the write/--check CLI shell.
 //
-// The skill-target-only additions (Shipped references, Bundle views, the Remote section's
-// wire-protocol note, two extra Notes bullets) live entirely on `renderSkill`'s own path;
-// `renderNotesSection`'s shared body is unchanged — only its new `extraBullets` param is added,
-// defaulting to none so the npm call site reproduces the exact prior output.
+// Both channels ship the same reference tree (see distribution-resources.ts) and render the same
+// reference-backed sections (Shipped references, Bundle views, the Notes addendum) — parameterized
+// by invocation prefix and by how each channel addresses its installed `references/` copy (the
+// `RefPointer` forms below).
 import { DESCRIPTION, COMMAND_GROUPS, commandName, type CommandGroup } from "./reference.js";
-import { SKILL_RESOURCES } from "./distribution-resources.js";
+import { NPM_RESOURCES, SKILL_RESOURCES } from "./distribution-resources.js";
 import { HOST_CONFIG_ROOTS, renderShellHostConfigRoot } from "./host-config.js";
 
-export { SKILL_RESOURCES, commandName };
+export { NPM_RESOURCES, SKILL_RESOURCES, commandName };
 
 // The two channels carry DIFFERENT identities on purpose: the npm package publishes under the
 // interim coordinate `aslite` (decision: bundle doc decisions/npm-interim-package-name), while the
@@ -468,10 +468,8 @@ function renderSyncSection(prefix: string): string[] {
 }
 
 /**
- * `extraBullets` is skill-target-only (default none, reproducing the npm-channel's exact prior
- * output): a handful of physical lines appended after the standard bullets, still under the same
- * `## Notes` heading, for capabilities the npm channel doesn't carry a shipped `references/` copy
- * of at all.
+ * `extraBullets`: physical lines appended after the standard bullets, still under the same
+ * `## Notes` heading — each channel passes its {@link referenceNotesAddendum} projection.
  */
 function renderNotesSection(extraBullets: string[] = []): string[] {
   const lines: string[] = [];
@@ -542,8 +540,79 @@ function renderRemoteAccessSection(invocation: string): string[] {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Shipped-reference pointer form — ONE `$REFS/<dest>` shape SHARED by both channels: shell
+// commands resolve against the process cwd, never the installed SKILL.md's folder, so a bare
+// relative `references/…` argument would fail from a project root after a host install. The
+// channels differ only in how `$REFS` gets DEFINED: the skill channel emits a cross-host
+// discovery resolver (renderShippedReferencesSection), while the npm channel instructs the
+// reader to set it from the skill base directory its host reports — trivially, no discovery
+// loop, no marketplace-cache search in that channel by design.
+// ---------------------------------------------------------------------------------------------
+
+interface RefPointer {
+  /** The pointer as a shell-command argument (quoted where the channel needs it). */
+  arg(dest: string): string;
+  /** The pointer as inline prose (inside backticks). */
+  path(dest: string): string;
+}
+
+const REFS_POINTER: RefPointer = {
+  arg: (dest) => `"$REFS/${dest}"`,
+  path: (dest) => `$REFS/${dest}`,
+};
+
+// ---------------------------------------------------------------------------------------------
 // npm target — packages/cli/SKILL.md, published-package channel.
 // ---------------------------------------------------------------------------------------------
+
+/** npm-channel `## Shipped references` — `$REFS` set once from the host-reported skill base dir. */
+function renderNpmShippedReferencesSection(): string[] {
+  const lines: string[] = [];
+  lines.push("## Shipped references — worked examples & contracts alongside this file");
+  lines.push("");
+  lines.push(
+    "A few capabilities below (bundle views, custom recipes) are backed by a full contract or a",
+  );
+  lines.push(
+    "worked example shipped in this package's `references/` folder rather than inlined here. The",
+  );
+  lines.push(
+    "folder sits NEXT TO this SKILL.md — in the npm package root, and in any host skill folder",
+  );
+  lines.push("this file is installed into (`aslite skill install`).");
+  lines.push("");
+  lines.push(
+    "Shell commands resolve paths against YOUR working directory, not this file's folder, so set",
+  );
+  lines.push("`$REFS` once per session: your host names this skill's base directory when it loads it");
+  lines.push('(e.g. "Base directory for this skill: <path>"). Use that:');
+  lines.push("");
+  lines.push("```bash");
+  lines.push('REFS="<skill-base-dir>/references"   # substitute the base directory your host reported');
+  lines.push("```");
+  lines.push("");
+  lines.push(
+    "Every `$REFS/…` path below then runs from any cwd. Each shipped file is a byte-for-byte copy",
+  );
+  lines.push("of the matching file in the CLI's own repo — one authority, regenerated on every release,");
+  lines.push("never hand-duplicated.");
+  lines.push("");
+  return lines;
+}
+
+/** npm-channel "not on PATH" guidance — install channels, no marketplace-cache discovery. */
+function renderNpmPathSection(): string[] {
+  const lines: string[] = [];
+  lines.push(`## If \`${NPM_PKG}\` is not on PATH`);
+  lines.push("");
+  lines.push(`Every example below assumes the \`${NPM_PKG}\` bin is on PATH. If it is not:`);
+  lines.push("");
+  lines.push(`- \`npm install -g ${NPM_PKG}\` puts it (and the long-form alias \`agentstate-lite\`) on PATH.`);
+  lines.push(`- \`${NPX} …\` runs any command below with no install at all — swap the leading \`${NPM_PKG}\``);
+  lines.push("  for that prefix and the rest of the line runs unchanged.");
+  lines.push("");
+  return lines;
+}
 
 export function renderNpm(): string {
   const lines: string[] = [];
@@ -570,24 +639,24 @@ export function renderNpm(): string {
   lines.push(`${DESCRIPTION}.`);
   lines.push("");
   lines.push(
-    `It is a standalone npm package. Every example below runs with no install via \`${NPX} …\`; if the`,
+    `It is a standalone npm package installing two bins for the identical CLI: \`${NPM_PKG}\` and the`,
   );
-  lines.push(
-    "tool is installed globally you can drop the `npx -y ` prefix and call `aslite …` (or the",
-  );
-  lines.push("long-form alias `agentstate-lite …`) directly.");
+  lines.push("long-form alias `agentstate-lite`. Every example below uses the bare `aslite` bin.");
   lines.push("");
   lines.push("Output is TOON on stdout (a `--json` hatch exists). Errors are structured TOON on stdout with a");
   lines.push("capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found, 1 runtime).");
   lines.push("");
   lines.push("<!-- GENERATED from src/reference.ts by scripts/gen-skill.mjs — do not edit by hand. -->");
   lines.push("");
-  lines.push(...renderCommandsSection(COMMAND_GROUPS, NPX));
-  lines.push(...renderWorkspaceLocation(NPX));
-  lines.push(...renderTypicalFlow(NPX));
-  lines.push(...renderSyncSection(NPX));
-  lines.push(...renderRemoteAccessSection(NPX));
-  lines.push(...renderNotesSection());
+  lines.push(...renderNpmPathSection());
+  lines.push(...renderCommandsSection(COMMAND_GROUPS, NPM_PKG));
+  lines.push(...renderWorkspaceLocation(NPM_PKG));
+  lines.push(...renderTypicalFlow(NPM_PKG));
+  lines.push(...renderSyncSection(NPM_PKG));
+  lines.push(...renderRemoteAccessSection(NPM_PKG));
+  lines.push(...renderNpmShippedReferencesSection());
+  lines.push(...renderBundleViewsSection(NPM_PKG, REFS_POINTER));
+  lines.push(...renderNotesSection(referenceNotesAddendum(NPM_PKG, REFS_POINTER)));
   return lines.join("\n");
 }
 
@@ -636,7 +705,7 @@ function renderShippedReferencesSection(): string[] {
 }
 
 /** `## Bundle views` — the concept + v0 request-type names + the 4 authoring steps + a pointer. */
-function renderBundleViewsSection(): string[] {
+function renderBundleViewsSection(invocation: string, ref: RefPointer): string[] {
   const lines: string[] = [];
   lines.push("## Bundle views — ship a live UI as bundle content");
   lines.push("");
@@ -647,7 +716,7 @@ function renderBundleViewsSection(): string[] {
     "`views/…`, declared by a `type: View` registry doc (`title`, `entry`), and rendered by",
   );
   lines.push(
-    `\`${ASLITE} ui\` inside a sandboxed, opaque-origin iframe (\`sandbox="allow-scripts"\`, no network`,
+    `\`${invocation} ui\` inside a sandboxed, opaque-origin iframe (\`sandbox="allow-scripts"\`, no network`,
   );
   lines.push("access) — its only channel out is a narrow postMessage bridge to the trusted shell.");
   lines.push("(`Page` is the accepted legacy name: existing `type: Page` docs under `pages-registry/`/`pages/`");
@@ -680,13 +749,13 @@ function renderBundleViewsSection(): string[] {
   lines.push("# 1. write a self-contained views/my-view.html (inline CSS/JS, no external hosts),");
   lines.push("#    embedding the bridge client copied from the shipped contract below");
   lines.push(
-    `${ASLITE} promote my-view.html --doc-key views/my-view.html                        # 2. promote the HTML blob`,
+    `${invocation} promote my-view.html --doc-key views/my-view.html                        # 2. promote the HTML blob`,
   );
   lines.push(
-    `${ASLITE} promote my-view-registry.md --doc-key views-registry/my-view.md           # 3. promote its type: View doc (title, entry)`,
+    `${invocation} promote my-view-registry.md --doc-key views-registry/my-view.md           # 3. promote its type: View doc (title, entry)`,
   );
   lines.push(
-    `${ASLITE} promote "$REFS/views/conventions/view.md" --doc-key conventions/view.md   # 4. declare the View convention (once per bundle, ready-made)`,
+    `${invocation} promote ${ref.arg("views/conventions/view.md")} --doc-key conventions/view.md   # 4. declare the View convention (once per bundle, ready-made)`,
   );
   lines.push("```");
   lines.push("");
@@ -696,26 +765,28 @@ function renderBundleViewsSection(): string[] {
   lines.push("examples (including a live graph view over Roadmap Items) are in the shipped contract:");
   lines.push("");
   lines.push("```bash");
-  lines.push('cat "$REFS/views/references/view-authoring-v0.md"');
+  lines.push(`cat ${ref.arg("views/references/view-authoring-v0.md")}`);
   lines.push("```");
   lines.push("");
   return lines;
 }
 
-/** Skill-target-only addendum to `## Notes` — see {@link renderNotesSection}'s `extraBullets`. */
-const SKILL_NOTES_ADDENDUM: string[] = [
-  "- Writing a custom recipe: a worked example (the `Claim` kind — event-lifecycle findings with",
-  "  provenance, composed from lite primitives) ships at `$REFS/recipes/claims/`; copy its shape,",
-  `  then \`${ASLITE} recipe add <folder>\` to apply it (built-in recipes are named directly, e.g.`,
-  `  \`${ASLITE} recipe add work-tracking\`).`,
-  "- Packaging a content-free cognitive ecosystem: `$REFS/recipes/review-workflow/` carries a",
-  "  self-describing Review Request kind plus a generic live View, but no review instances. A",
-  "  definitions-only recipe may contain only its manifest, convention docs, explicitly declared",
-  "  static Reference docs, and View registry/HTML pairs; install it with the same `recipe add <folder>` command.",
-  "- A full interop-shaped example bundle (externally-authored markdown: unquoted timestamps,",
-  "  relative links, wrapped bullets) ships at `$REFS/sample-bundle/` — copy it and point `--dir` at",
-  "  the copy to explore a populated bundle without writing one from scratch.",
-];
+/** Shipped-reference addendum to `## Notes` — see {@link renderNotesSection}'s `extraBullets`. */
+function referenceNotesAddendum(invocation: string, ref: RefPointer): string[] {
+  return [
+    "- Writing a custom recipe: a worked example (the `Claim` kind — event-lifecycle findings with",
+    `  provenance, composed from lite primitives) ships at \`${ref.path("recipes/claims/")}\`; copy its shape,`,
+    `  then \`${invocation} recipe add <folder>\` to apply it (built-in recipes are named directly, e.g.`,
+    `  \`${invocation} recipe add work-tracking\`).`,
+    `- Packaging a content-free cognitive ecosystem: \`${ref.path("recipes/review-workflow/")}\` carries a`,
+    "  self-describing Review Request kind plus a generic live View, but no review instances. A",
+    "  definitions-only recipe may contain only its manifest, convention docs, explicitly declared",
+    "  static Reference docs, and View registry/HTML pairs; install it with the same `recipe add <folder>` command.",
+    "- A full interop-shaped example bundle (externally-authored markdown: unquoted timestamps,",
+    `  relative links, wrapped bullets) ships at \`${ref.path("sample-bundle/")}\` — copy it and point \`--dir\` at`,
+    "  the copy to explore a populated bundle without writing one from scratch.",
+  ];
+}
 
 export function renderSkill(): string {
   const lines: string[] = [];
@@ -873,7 +944,7 @@ export function renderSkill(): string {
   lines.push("implementation in the meantime.");
   lines.push("");
   lines.push(...renderShippedReferencesSection());
-  lines.push(...renderBundleViewsSection());
-  lines.push(...renderNotesSection(SKILL_NOTES_ADDENDUM));
+  lines.push(...renderBundleViewsSection(ASLITE, REFS_POINTER));
+  lines.push(...renderNotesSection(referenceNotesAddendum(ASLITE, REFS_POINTER)));
   return lines.join("\n");
 }

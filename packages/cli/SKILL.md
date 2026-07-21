@@ -12,86 +12,95 @@ description: >-
 
 read and write a local OKF knowledge bundle (context notes, docs, cross-links, live bundle Views).
 
-It is a standalone npm package. Every example below runs with no install via `npx -y aslite …`; if the
-tool is installed globally you can drop the `npx -y ` prefix and call `aslite …` (or the
-long-form alias `agentstate-lite …`) directly.
+It is a standalone npm package installing two bins for the identical CLI: `aslite` and the
+long-form alias `agentstate-lite`. Every example below uses the bare `aslite` bin.
 
 Output is TOON on stdout (a `--json` hatch exists). Errors are structured TOON on stdout with a
 capped exit-code taxonomy (0 ok/no-op, 2 usage, 4 auth, 5 conflict, 6 not-found, 1 runtime).
 
 <!-- GENERATED from src/reference.ts by scripts/gen-skill.mjs — do not edit by hand. -->
 
+## If `aslite` is not on PATH
+
+Every example below assumes the `aslite` bin is on PATH. If it is not:
+
+- `npm install -g aslite` puts it (and the long-form alias `agentstate-lite`) on PATH.
+- `npx -y aslite …` runs any command below with no install at all — swap the leading `aslite`
+  for that prefix and the rest of the line runs unchanged.
+
 ## Commands
 
 ### Bundle
 
-- `npx -y aslite bundle locate [--dir <path>]`
+- `aslite bundle locate [--dir <path>]`
   — Resolve the exact canonical local bundle path and report why it won selection
-- `npx -y aslite catalog (add <label> [--dir <path>] | list | resolve <label-or-id> [--field path])`
+- `aslite catalog (add <label> [--dir <path>] | list | resolve <label-or-id> [--field path])`
   — Register and deterministically resolve this user's explicitly named local workspaces
-- `npx -y aslite init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]`
+- `aslite init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]`
   — Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init
-- `npx -y aslite index generate [--dir <path>] [--check] [--force] [--actor <name>]`
+- `aslite index generate [--dir <path>] [--check] [--force] [--actor <name>]`
   — Generate complete portable Markdown navigation explicitly; refuses curated indexes unless --force adopts them
-- `npx -y aslite status [--limit <n>] [--remote <url>]`
+- `aslite status [--limit <n>] [--remote <url>]`
   — Read-only bundle health report (kind lint, unresolved links, orphans, staleness, graph lints)
 
 ### Documents & links
 
-- `npx -y aslite doc write <id> --type <t> [--title <t>] [--body <s> | --body-file <p>] [--actor <n>] [--remote <url>]`
+- `aslite doc write <id> --type <t> [--title <t>] [--body <s> | --body-file <p>] [--actor <n>] [--remote <url>]`
   — Write a generic OKF concept document
-- `npx -y aslite doc update <id> [--<field> <value> ...] [--title <t>] [--tag <t>] [--type <t>] [--body <s> | --body-file <p>] [--expected-version <v>] [--actor <n>] [--remote <url>]`
+- `aslite doc update <id> [--<field> <value> ...] [--title <t>] [--tag <t>] [--type <t>] [--body <s> | --body-file <p>] [--expected-version <v>] [--actor <n>] [--remote <url>]`
   — Patch given fields (incl. kind-declared fields like --status) of an existing doc, preserving the rest; optimistic-CAS with --expected-version
-- `npx -y aslite doc read <id> [--out (<path> | -) | --body-out (<path> | -) | --field <name>] [--remote <url>]`
+- `aslite doc read <id> [--out (<path> | -) | --body-out (<path> | -) | --field <name>] [--remote <url>]`
   — Read a doc, export its raw markdown, export its body with a same-read CAS version, or print one raw field for scripting
-- `npx -y aslite doc history <id> [--limit <n>] [--remote <url>]`
+- `aslite doc history <id> [--limit <n>] [--remote <url>]`
   — Show a doc's version history (newest first, capped at 20 by default — --limit 0 for all; a history-keeping backend returns the full attributed chain, a local bundle just the current revision) — the tokens for --expected-version
-- `npx -y aslite doc delete <id> [--expected-version <v>] [--remote <url>]`
+- `aslite doc delete <id> [--expected-version <v>] [--remote <url>]`
   — Hard-delete a doc (idempotent: absent -> deleted:false, exit 0)
-- `npx -y aslite list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--open] [--limit <n>] [--remote <url>]`
+- `aslite list [--type <t>] [--tag <t>] [--field <k=v>] [--prefix <p>] [--open] [--limit <n>] [--remote <url>]`
   — Query concepts over their frontmatter (alias: query) — a comma in --field's value is set membership (OR); --open excludes terminal instances (declared kinds only)
-- `npx -y aslite link (add <from> <to> [--text <t>] [--actor <n>] | show <id> [--limit <n>] [--text <t>] | list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]) [--remote <url>]`
+- `aslite link (add <from> <to> [--text <t>] [--actor <n>] | show <id> [--limit <n>] [--text <t>] | list [--from <id|prefix/>] [--to <id|prefix/>] [--text <t>] [--limit <n>]) [--remote <url>]`
   — Add a cross-link, show a concept's links + backlinks, or query the whole bundle's derived edge list filtered by from/to (id or prefix/, repeatable/union) and exact-match text
 
 ### Artifacts
 
-- `npx -y aslite promote <file> --doc-key <key> [--content-type <mime>] [--expected-version <v>] [--remote <url>]`
+- `aslite promote <file> --doc-key <key> [--content-type <mime>] [--expected-version <v>] [--remote <url>]`
   — Move a local file's bytes into the store (a .md key routes through the engine; else a blob)
-- `npx -y aslite pull --doc-key <key> --out (<path> | -) [--remote <url>]`
+- `aslite pull --doc-key <key> --out (<path> | -) [--remote <url>]`
   — Pull a doc's canonical form or a blob's raw bytes out of the store (the reverse of promote)
-- `npx -y aslite blobs [--prefix <p>] [--limit <n>] [--remote <url>]`
+- `aslite blobs [--prefix <p>] [--limit <n>] [--remote <url>]`
   — List the store's blob (non-document) keys (documents are listed by 'list'/'query')
-- `npx -y aslite delete --doc-key <key> [--expected-version <v>] [--remote <url>]`
+- `aslite delete --doc-key <key> [--expected-version <v>] [--remote <url>]`
   — Hard-delete a doc or blob by key (idempotent: absent -> deleted:false, exit 0)
 
 ### Kinds
 
-- `npx -y aslite new "<Kind>" <id> --<field> <value> [...] [--body-file <path>] [--link "<type>=<target-id>" ...] [--no-prefix] [--actor <n>] [--remote <url>]`
+- `aslite new "<Kind>" <id> --<field> <value> [...] [--body-file <path>] [--link "<type>=<target-id>" ...] [--no-prefix] [--actor <n>] [--remote <url>]`
   — Create a new instance of a bundle-declared kind — initial Markdown may come from --body-file (otherwise declared sections are scaffolded); validates strictly, and repeatable --link wires typed cross-links in the same step
-- `npx -y aslite kinds [--remote <url>]`
+- `aslite kinds [--remote <url>]`
   — List the kind conventions this bundle declares (purpose, described fields, exact required body headings, typed-link vocabulary, horizon)
-- `npx -y aslite kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]`
+- `aslite kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]`
   — Edit a kind's schema — add/remove a declared field or enum value on its convention (idempotent)
-- `npx -y aslite recipes [--remote <url>]`
+- `aslite recipes [--remote <url>]`
   — List built-in recipes and whether each is already applied to this bundle
-- `npx -y aslite recipe add <name-or-path> [--remote <url>]`
+- `aslite recipe add <name-or-path> [--remote <url>]`
   — Apply a recipe's content-free definitions — Kinds plus optional declared References and Views — idempotently
 
 ### Remote
 
-- `npx -y aslite serve [--dir <path>] [--host <h>] [--port <p>]`
+- `aslite serve [--dir <path>] [--host <h>] [--port <p>]`
   — Boot the reference wire-protocol server over a local bundle (loopback, no auth)
-- `npx -y aslite ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
+- `aslite ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
   — Boot the local web UI: a launcher for the bundle's views (type: View docs rendered in sandboxed iframes, with live updates; legacy Page docs keep working) — same origin, loopback-only. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"
-- `npx -y aslite sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
+- `aslite sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
   — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A bundle folder already committed on the code branch is the same flag's hard case: preview first, --yes executes, and the folder's removal from the code branch rides a prepared side-branch commit you push and open as a PR. A bundle committed with code and NO board branch anywhere is the IN-TREE mode (read-side): full sync refuses (sharing rides your normal commit/push), --pull-only fetches the branch's tracking upstream and reports incoming board docs ('git pull' delivers them), and --establish converts to a dedicated board branch. A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it
 
 ### Session
 
-- `npx -y aslite session-start [--dir <path>]`
+- `aslite session-start [--dir <path>]`
   — The SessionStart hook payload: a time-boxed best-effort board pull, then the home view — every pull failure falls through to the render (exit 0)
-- `npx -y aslite hook install|status|uninstall [--scope project|global]`
+- `aslite hook install|status|uninstall [--scope project|global]`
   — Install the SessionStart hook (runs session-start: pull the board, then render) for Claude Code, Codex, OpenCode
+- `aslite skill install|status|uninstall [--scope project|global]`
+  — Install this package's Agent Skill (SKILL.md + references/) into Claude Code and Codex skill folders (OpenCode has no skill surface — its integration is `hook install`); manifest-tracked, idempotent, refuses folders it does not manage
 
 ## Workspaces — the project's bundle lives at `.agentstate-lite/` in the project root
 
@@ -121,9 +130,9 @@ becomes — or stays — shared memory across clones and teammates. Three modes:
   waits for a retry instead of recommending publication.
 
 ```sh
-npx -y aslite sync                            # existing shared project — provisions the board; a local-only bundle reports its state
-npx -y aslite init --dir .agentstate-lite     # greenfield — idempotent; creates a LOCAL bundle, or opens an existing one
-npx -y aslite sync --establish                # optional — start sharing a local bundle's board with teammates
+aslite sync                            # existing shared project — provisions the board; a local-only bundle reports its state
+aslite init --dir .agentstate-lite     # greenfield — idempotent; creates a LOCAL bundle, or opens an existing one
+aslite sync --establish                # optional — start sharing a local bundle's board with teammates
 ```
 
 That's the whole setup. The CLI discovers the conventional folder on its own (the way git
@@ -131,8 +140,8 @@ finds `.git`), so every command runs BARE from anywhere in the project tree — 
 config files:
 
 ```sh
-npx -y aslite list
-npx -y aslite doc read context-notes/cycle-1
+aslite list
+aslite doc read context-notes/cycle-1
 ```
 
 Surfaces that label the workspace (the `ui` header, home's bundle block) derive its DISPLAY
@@ -140,8 +149,8 @@ NAME from the project folder's name. To set it explicitly (it syncs to teammates
 board), write the well-known name doc — its title becomes the display name:
 
 ```sh
-npx -y aslite doc write docs/bundle --type "Bundle Name" --title "<display name>"
-npx -y aslite doc update docs/bundle --title "<new name>"   # rename later
+aslite doc write docs/bundle --type "Bundle Name" --title "<display name>"
+aslite doc update docs/bundle --title "<new name>"   # rename later
 ```
 
 The folder is LOCAL until you choose to share it: `aslite sync --establish` (once) publishes it
@@ -186,29 +195,29 @@ share this bundle? When the user's intent is ambiguous, ask rather than defaulti
 
 ```sh
 # One-time setup at the project root (see the Workspaces section) — run ONE of these:
-npx -y aslite sync                          # existing project that shares a board — sets up AND pulls the shared board
-npx -y aslite init --dir .agentstate-lite   # GREENFIELD — never on a project that already has a workspace; makes a LOCAL bundle
+aslite sync                          # existing project that shares a board — sets up AND pulls the shared board
+aslite init --dir .agentstate-lite   # GREENFIELD — never on a project that already has a workspace; makes a LOCAL bundle
 
 # Optional, after a greenfield init: start sharing this bundle's board with teammates
-npx -y aslite sync --establish
+aslite sync --establish
 
 # Everything after runs bare, from anywhere in the project tree
 # Create a context note (an OKF concept) for the next session
-npx -y aslite new "Context Note" cycle-1 --title "cycle-1" --actor <your-name>
-npx -y aslite doc update context-notes/cycle-1 --body "What this session did and what's next" --actor <your-name>
+aslite new "Context Note" cycle-1 --title "cycle-1" --actor <your-name>
+aslite doc update context-notes/cycle-1 --body "What this session did and what's next" --actor <your-name>
 
 # Read it back
-npx -y aslite doc read context-notes/cycle-1
+aslite doc read context-notes/cycle-1
 
 # Store a doc, cross-link it, and query the bundle
-npx -y aslite doc write specs/auth --type Spec --title "Auth" --body "…" --actor <your-name>
-npx -y aslite link add specs/auth context-notes/cycle-1
-npx -y aslite list --type Spec
+aslite doc write specs/auth --type Spec --title "Auth" --body "…" --actor <your-name>
+aslite link add specs/auth context-notes/cycle-1
+aslite list --type Spec
 
 # Share the board — recording work isn't done until it's shared
 # (safe everywhere: a local-only board just reports its state; outside any
 #  workspace it prints "sync: nothing to sync" — in both cases nothing is committed or pushed)
-npx -y aslite sync
+aslite sync
 ```
 
 ## Sharing the board — `sync`
@@ -252,9 +261,9 @@ is kept on the board, YOURS is saved to an export file named in the receipt, and
 exits 5 with one row per conflicted doc. Reconcile with the doc verbs, never git:
 
 ```sh
-npx -y aslite sync --show-incoming <id>                 # view the kept incoming version (as of the last fetch)
-npx -y aslite doc update <id> --body-file <export-file> # write your merged version on top
-npx -y aslite sync                                      # share it
+aslite sync --show-incoming <id>                 # view the kept incoming version (as of the last fetch)
+aslite doc update <id> --body-file <export-file> # write your merged version on top
+aslite sync                                      # share it
 ```
 
 `sync --pull-only` picks up teammates' changes without publishing local ones. If a push fails
@@ -282,8 +291,66 @@ stored per-origin credential is also consumed when present. Account and admin cr
 provisioning is outside the default CLI surface.
 
 ```bash
-npx -y aslite serve --dir ./my-bundle --port 4818 &
-npx -y aslite list --remote http://127.0.0.1:4818
+aslite serve --dir ./my-bundle --port 4818 &
+aslite list --remote http://127.0.0.1:4818
+```
+
+## Shipped references — worked examples & contracts alongside this file
+
+A few capabilities below (bundle views, custom recipes) are backed by a full contract or a
+worked example shipped in this package's `references/` folder rather than inlined here. The
+folder sits NEXT TO this SKILL.md — in the npm package root, and in any host skill folder
+this file is installed into (`aslite skill install`).
+
+Shell commands resolve paths against YOUR working directory, not this file's folder, so set
+`$REFS` once per session: your host names this skill's base directory when it loads it
+(e.g. "Base directory for this skill: <path>"). Use that:
+
+```bash
+REFS="<skill-base-dir>/references"   # substitute the base directory your host reported
+```
+
+Every `$REFS/…` path below then runs from any cwd. Each shipped file is a byte-for-byte copy
+of the matching file in the CLI's own repo — one authority, regenerated on every release,
+never hand-duplicated.
+
+## Bundle views — ship a live UI as bundle content
+
+A **bundle view** is a self-contained HTML file living IN the bundle: promoted as a blob under
+`views/…`, declared by a `type: View` registry doc (`title`, `entry`), and rendered by
+`aslite ui` inside a sandboxed, opaque-origin iframe (`sandbox="allow-scripts"`, no network
+access) — its only channel out is a narrow postMessage bridge to the trusted shell.
+(`Page` is the accepted legacy name: existing `type: Page` docs under `pages-registry/`/`pages/`
+keep working and never need migrating — author NEW views as `type: View`.)
+
+The bridge (protocol `v0`) has five read-only data request types: `hello` (bundle identity), `query`
+(frontmatter-filtered rows — the same head projection `list` uses), `read` (one doc), `edges`
+(the general from/to/text graph query — backlinks and containment both reduce to this), and
+`subscribe` (opt into a server-pushed `change` event whenever the watched bundle moves). There
+is no mutation message in v0 — read-only is enforced by construction. A View that declares
+`bundle-propose` may use the local-only v1 contract to propose ONE governed scalar-field
+change; the trusted shell revalidates it, shows canonical before/after values, and writes
+only after explicit human confirmation with hard CAS. The View never receives a write token.
+`open-page`
+(a wire verb, stable across the rename) is a separate fire-and-forget shell action available
+to every View capability; it opens only another valid registered View and returns none of
+that target's content or metadata.
+
+Author a view in four steps:
+
+```bash
+# 1. write a self-contained views/my-view.html (inline CSS/JS, no external hosts),
+#    embedding the bridge client copied from the shipped contract below
+aslite promote my-view.html --doc-key views/my-view.html                        # 2. promote the HTML blob
+aslite promote my-view-registry.md --doc-key views-registry/my-view.md           # 3. promote its type: View doc (title, entry)
+aslite promote "$REFS/views/conventions/view.md" --doc-key conventions/view.md   # 4. declare the View convention (once per bundle, ready-made)
+```
+
+Full message shapes, the trust model, the copy-paste bridge client with safe live-refresh
+examples (including a live graph view over Roadmap Items) are in the shipped contract:
+
+```bash
+cat "$REFS/views/references/view-authoring-v0.md"
 ```
 
 ## Notes
@@ -304,3 +371,14 @@ npx -y aslite list --remote http://127.0.0.1:4818
 - Edit a doc's body through `doc update --body-file` (or `--body`), never by pulling the raw file
   with `--out`, editing it with text tools, and re-promoting it — that risks corrupting the
   frontmatter (the engine rejects it, but the right tool avoids the dance entirely).
+- Writing a custom recipe: a worked example (the `Claim` kind — event-lifecycle findings with
+  provenance, composed from lite primitives) ships at `$REFS/recipes/claims/`; copy its shape,
+  then `aslite recipe add <folder>` to apply it (built-in recipes are named directly, e.g.
+  `aslite recipe add work-tracking`).
+- Packaging a content-free cognitive ecosystem: `$REFS/recipes/review-workflow/` carries a
+  self-describing Review Request kind plus a generic live View, but no review instances. A
+  definitions-only recipe may contain only its manifest, convention docs, explicitly declared
+  static Reference docs, and View registry/HTML pairs; install it with the same `recipe add <folder>` command.
+- A full interop-shaped example bundle (externally-authored markdown: unquoted timestamps,
+  relative links, wrapped bullets) ships at `$REFS/sample-bundle/` — copy it and point `--dir` at
+  the copy to explore a populated bundle without writing one from scratch.

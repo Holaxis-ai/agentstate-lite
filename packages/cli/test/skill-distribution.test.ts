@@ -32,6 +32,7 @@ import { COMMAND_GROUPS, commandName } from "../src/reference.js";
 import {
   DISTRIBUTION_CHANNELS,
   DISTRIBUTION_RESOURCES,
+  NPM_RESOURCES,
   RESOURCE_ROLES,
   SKILL_CAPABILITY_PATTERNS,
   SKILL_COMMAND_RESOURCES,
@@ -47,6 +48,7 @@ const ALL_COMMAND_NAMES = [
   ...new Set(COMMAND_GROUPS.flatMap(({ commands }) => commands.map((c) => commandName(c.usage)))),
 ];
 const SKILL_DESTS = new Set(SKILL_RESOURCES.map((r) => r.dest));
+const NPM_DESTS = new Set(NPM_RESOURCES.map((r) => r.dest));
 
 // ---------------------------------------------------------------------------------------------
 // Inventory ownership — resources are repo-owned and classified before any channel projects them.
@@ -77,10 +79,16 @@ test("each channel projection has unique destinations backed by real repo source
   }
 });
 
-test("npm auxiliary resources remain an explicit empty projection in this no-behavior-change unit", () => {
-  assert.deepEqual(projectResources("npm"), []);
+test("the npm projection mirrors the skill projection dest-for-dest, and the tarball ships it", () => {
+  // One dest namespace serves the command/capability tables for both channels — a resource added
+  // to one channel but not the other is a deliberate decision, not an accident, so make it loud.
+  assert.deepEqual(
+    [...NPM_DESTS].sort(),
+    [...SKILL_DESTS].sort(),
+    "npm and skill projections must ship the same reference dest set",
+  );
   const packageJson = JSON.parse(readFileSync(path.join(REPO_ROOT, "packages/cli/package.json"), "utf8"));
-  assert.deepEqual(packageJson.files, ["dist"]);
+  assert.deepEqual(packageJson.files, ["dist", "SKILL.md", "references"]);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -109,18 +117,24 @@ test("SKILL_COMMAND_RESOURCES has no stale key for a command that no longer exis
 // manifest entry's src must be a real file (from the repo root).
 // ---------------------------------------------------------------------------------------------
 
-test("every SKILL_COMMAND_RESOURCES dest names a real skill projection", () => {
-  for (const [name, dests] of Object.entries(SKILL_COMMAND_RESOURCES)) {
-    for (const dest of dests) {
-      assert.ok(SKILL_DESTS.has(dest), `command \`${name}\` requires \`${dest}\`, which is not skill-projected.`);
+const CHANNEL_DESTS: Record<string, Set<string>> = { skill: SKILL_DESTS, npm: NPM_DESTS };
+
+test("every SKILL_COMMAND_RESOURCES dest names a real projection in BOTH channels", () => {
+  for (const [channel, dests] of Object.entries(CHANNEL_DESTS)) {
+    for (const [name, required] of Object.entries(SKILL_COMMAND_RESOURCES)) {
+      for (const dest of required) {
+        assert.ok(dests.has(dest), `command \`${name}\` requires \`${dest}\`, which is not ${channel}-projected.`);
+      }
     }
   }
 });
 
-test("every SKILL_CAPABILITY_PATTERNS requirement names a real skill projection", () => {
-  for (const { pattern, requires } of SKILL_CAPABILITY_PATTERNS) {
-    for (const dest of requires) {
-      assert.ok(SKILL_DESTS.has(dest), `capability pattern ${pattern} requires \`${dest}\`, which is not skill-projected.`);
+test("every SKILL_CAPABILITY_PATTERNS requirement names a real projection in BOTH channels", () => {
+  for (const [channel, dests] of Object.entries(CHANNEL_DESTS)) {
+    for (const { pattern, requires } of SKILL_CAPABILITY_PATTERNS) {
+      for (const dest of requires) {
+        assert.ok(dests.has(dest), `capability pattern ${pattern} requires \`${dest}\`, which is not ${channel}-projected.`);
+      }
     }
   }
 });
@@ -219,14 +233,20 @@ test("actor guidance distinguishes advisory labels from backend-owned attributio
   assert.match(rendered, /local OS owner or an\s+authenticated remote user/);
 });
 
-test("no SKILL_CAPABILITY_PATTERNS entry is dead", () => {
-  for (const { pattern, requires } of SKILL_CAPABILITY_PATTERNS) {
-    assert.ok(
-      pattern.test(rendered),
-      `capability pattern ${pattern} matches nothing in the rendered skill-target SKILL.md — dead tripwire, fix or remove it.`,
-    );
-    for (const dest of requires) {
-      assert.ok(SKILL_DESTS.has(dest), `capability pattern ${pattern} requires \`${dest}\`, missing from skill projection.`);
+test("no SKILL_CAPABILITY_PATTERNS entry is dead — each fires and is backed in BOTH rendered channels", () => {
+  const renderedByChannel: Record<string, string> = { skill: rendered, npm: renderedNpm };
+  for (const [channel, text] of Object.entries(renderedByChannel)) {
+    for (const { pattern, requires } of SKILL_CAPABILITY_PATTERNS) {
+      assert.ok(
+        pattern.test(text),
+        `capability pattern ${pattern} matches nothing in the rendered ${channel}-target SKILL.md — dead tripwire, fix or remove it.`,
+      );
+      for (const dest of requires) {
+        assert.ok(
+          CHANNEL_DESTS[channel]!.has(dest),
+          `capability pattern ${pattern} requires \`${dest}\`, missing from ${channel} projection.`,
+        );
+      }
     }
   }
 });
@@ -269,6 +289,58 @@ test("no phantom pointers — every $REFS/… path in the rendered SKILL.md reso
 });
 
 // ---------------------------------------------------------------------------------------------
+// The npm channel under the SAME (4)+(5) discipline: its rendered SKILL.md addresses the shipped
+// tree by plain `references/…` paths relative to the installed file (no $REFS resolver — the npm
+// channel has none by design), so the orphan/phantom sweep runs over that pointer form.
+// ---------------------------------------------------------------------------------------------
+
+test("npm: bare-aslite channel identity — no npx examples, no retired coordinate, no marketplace-cache resolver", () => {
+  assert.match(renderedNpm, /^---\nname: aslite\n/);
+  // Examples run the bare bin; `npx -y aslite` survives only as the explicit no-install fallback.
+  assert.match(renderedNpm, /## If `aslite` is not on PATH/);
+  assert.match(renderedNpm, /npm install -g aslite/);
+  assert.ok(!renderedNpm.includes("npx -y agentstate-lite"), "retired npm coordinate must not appear");
+  assert.ok(!renderedNpm.includes("plugins/cache"), "npm channel must not teach marketplace-cache discovery");
+  assert.ok(!renderedNpm.includes('ASLITE="$('), "npm channel must not carry the skill-channel resolver");
+});
+
+test("npm: reference pointers ride $REFS set from the host-reported base dir — never bare cwd-relative paths", () => {
+  // The PR #136 review's reproduction: a bare `cat references/…` fails from the project root
+  // after a host install (shell paths resolve against the cwd, not SKILL.md's folder).
+  assert.ok(
+    renderedNpm.includes('REFS="<skill-base-dir>/references"'),
+    "the npm channel must instruct setting $REFS from the skill base directory the host reports",
+  );
+  assert.match(renderedNpm, /base directory/i);
+  assert.ok(!renderedNpm.includes('REFS="$('), "no discovery loop in the npm channel — the base dir is handed to the agent");
+  for (const banned of ["cat references/", "promote references/", "references/views", "references/recipes", "references/sample-bundle"]) {
+    assert.ok(!renderedNpm.includes(banned), `bare cwd-relative reference path in the npm render: ${banned}`);
+  }
+});
+
+test("npm: no orphans — every npm-shipped file (or an enclosing directory) is mentioned as $REFS/… in the rendered npm SKILL.md", () => {
+  for (const { src, dest } of NPM_RESOURCES) {
+    const mentioned = destMentionCandidates(dest).some((candidate) => renderedNpm.includes(`$REFS/${candidate}`));
+    assert.ok(
+      mentioned,
+      `\`${dest}\` (from ${src}) is npm-shipped but never mentioned in the rendered npm-target SKILL.md — an orphaned reference nobody points at.`,
+    );
+  }
+});
+
+test("npm: no phantom pointers — every $REFS/… path in the rendered npm SKILL.md resolves to a shipped dest or dir-prefix", () => {
+  const resolves = (refPath: string): boolean => {
+    const normalized = refPath.endsWith("/") ? refPath.slice(0, -1) : refPath;
+    for (const dest of NPM_DESTS) {
+      if (dest === normalized || dest.startsWith(`${normalized}/`)) return true;
+    }
+    return false;
+  };
+  const phantoms = [...new Set(extractRefsPaths(renderedNpm).filter((p) => !resolves(p)))];
+  assert.deepEqual(phantoms, [], `phantom $REFS/ path(s) — point nowhere in the npm projection: ${phantoms.join(", ")}`);
+});
+
+// ---------------------------------------------------------------------------------------------
 // Teaching-channel pins (plans/rename-page-kind-to-view, Unit 3): View is CANONICAL in every
 // regenerated teaching surface; Page appears only as the accepted legacy name. These pins are
 // red-on-old — each failed against the pre-rename render.
@@ -295,11 +367,19 @@ test("the rendered skill mentions legacy Page exactly once — the legacy note, 
   assert.doesNotMatch(rendered, /page-authoring-v0/);
 });
 
-test("the npm-target SKILL teaches Views, with zero stale Page vocabulary", () => {
+test("the npm-target SKILL teaches Views canonically — legacy Page appears exactly once, as the legacy note", () => {
   assert.match(renderedNpm, /live\s+bundle Views/);
-  assert.doesNotMatch(renderedNpm, /type: Page/);
+  assert.match(renderedNpm, /## Bundle views — ship a live UI as bundle content/);
+  // The npm channel now carries the same authoring section as the skill channel, so it inherits
+  // the same rule: one accepted-legacy sentence, no legacy authoring guidance.
+  const legacyMentions = renderedNpm.match(/type: Page/g) ?? [];
+  assert.equal(legacyMentions.length, 1, "exactly one `type: Page` mention (the legacy note) may remain");
+  assert.match(renderedNpm, /`Page` is the accepted legacy name/);
   assert.doesNotMatch(renderedNpm, /bundle Pages/);
-  assert.doesNotMatch(renderedNpm, /pages-registry\//);
+  assert.doesNotMatch(renderedNpm, /--doc-key pages\//);
+  assert.doesNotMatch(renderedNpm, /--doc-key pages-registry\//);
+  assert.doesNotMatch(renderedNpm, /conventions\/page\.md/);
+  assert.doesNotMatch(renderedNpm, /page-authoring-v0/);
 });
 
 test("no CLI teaching source (usage/help strings included) says Page except as a legacy note", () => {

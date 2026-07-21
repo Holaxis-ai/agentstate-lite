@@ -1,16 +1,15 @@
 // Generate a SKILL.md from the CLI's single source of truth (src/reference.ts COMMAND_GROUPS,
-// rendered by src/skill-render.ts), and — for --target skill — sync this skill's `references/`
-// folder from the skill projection of src/distribution-resources.ts: a byte-for-byte
-// copy of each source file, with any stray file under references/ NOT named in the manifest
-// deleted. Idempotent/convergent, same discipline as the SKILL.md write itself.
+// rendered by src/skill-render.ts), and sync the target's `references/` folder from its channel
+// projection of src/distribution-resources.ts: a byte-for-byte copy of each source file, with any
+// stray file under references/ NOT named in the manifest deleted. Idempotent/convergent, same
+// discipline as the SKILL.md write itself.
 //
 // AXI §7 "single source of truth": every installable channel's command reference is DERIVED from
 // the same COMMAND_GROUPS the home view + `--help` render, so it can never drift. Two TARGETS:
 //
-//   --target npm   (default) → packages/cli/SKILL.md, examples prefixed `npx -y aslite`
-//                    (the published-package channel; installed with no bin-on-PATH assumption).
-//                    Carries no references/ sync — the npm tarball doesn't ship them yet (a known
-//                    explicit empty projection; see src/distribution-resources.ts).
+//   --target npm   (default) → packages/cli/SKILL.md + packages/cli/references/ (both committed,
+//                    drift-gated by check:skill; the tarball ships them via package.json `files`),
+//                    examples using the bare `aslite` bin (the published-package channel).
 //   --target skill            → plugins/agentstate-lite/skills/agentstate-lite/SKILL.md +
 //                    .../references/, examples prefixed `"$ASLITE"` (the self-contained
 //                    committed-bundle channel; see the resolver section it generates — the bundle
@@ -22,7 +21,7 @@
 // different distribution channels but can never list different commands.
 //
 //   node scripts/gen-skill.mjs [--target npm|skill]           → (re)write the target's SKILL.md
-//                                                                (+ sync references/ for skill)
+//                                                                + sync its references/
 //   node scripts/gen-skill.mjs [--target npm|skill] --check   → exit 1 if stale (CI drift gate)
 //
 // src/skill-render.ts (which transitively pulls in reference.ts + src/distribution-resources.ts) is pure
@@ -50,8 +49,11 @@ const skillPath =
     ? resolve(here, "../SKILL.md")
     // packages/cli/scripts -> repo root -> plugins/agentstate-lite/skills/agentstate-lite/SKILL.md
     : resolve(here, "../../../plugins/agentstate-lite/skills/agentstate-lite/SKILL.md");
-// packages/cli/scripts -> repo root -> plugins/agentstate-lite/skills/agentstate-lite/references
-const referencesDir = resolve(here, "../../../plugins/agentstate-lite/skills/agentstate-lite/references");
+const referencesDir =
+  TARGET === "npm"
+    ? resolve(here, "../references")
+    // packages/cli/scripts -> repo root -> plugins/agentstate-lite/skills/agentstate-lite/references
+    : resolve(here, "../../../plugins/agentstate-lite/skills/agentstate-lite/references");
 
 async function loadSkillRender() {
   const out = await build({
@@ -66,8 +68,8 @@ async function loadSkillRender() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// references/ sync — skill target only. One projection (SKILL_RESOURCES), read via the same bundle
-// as the renderer, so a --check run and a real regen can never disagree about what "the manifest"
+// references/ sync — per target (SKILL_RESOURCES / NPM_RESOURCES), read via the same bundle as the
+// renderer, so a --check run and a real regen can never disagree about what "the manifest"
 // currently is.
 // ---------------------------------------------------------------------------------------------
 
@@ -132,8 +134,9 @@ async function checkReferences(resources) {
 
 // ---------------------------------------------------------------------------------------------
 
-const { renderNpm, renderSkill, SKILL_RESOURCES } = await loadSkillRender();
+const { renderNpm, renderSkill, NPM_RESOURCES, SKILL_RESOURCES } = await loadSkillRender();
 const content = TARGET === "npm" ? renderNpm() : renderSkill();
+const resources = TARGET === "npm" ? NPM_RESOURCES : SKILL_RESOURCES;
 
 if (process.argv.includes("--check")) {
   let ok = true;
@@ -147,20 +150,18 @@ if (process.argv.includes("--check")) {
     console.error(`${skillPath} is stale — run \`node scripts/gen-skill.mjs --target ${TARGET}\` to regenerate.`);
     ok = false;
   }
-  if (TARGET === "skill") {
-    for (const problem of await checkReferences(SKILL_RESOURCES)) {
-      console.error(problem);
-      ok = false;
-    }
-    if (!ok) console.error(`run \`node scripts/gen-skill.mjs --target skill\` to regenerate references/.`);
+  for (const problem of await checkReferences(resources)) {
+    console.error(problem);
+    ok = false;
   }
-  if (!ok) process.exit(1);
+  if (!ok) {
+    console.error(`run \`node scripts/gen-skill.mjs --target ${TARGET}\` to regenerate.`);
+    process.exit(1);
+  }
   console.log(`${skillPath} is up to date.`);
 } else {
   await writeFile(skillPath, content);
   console.log(`wrote ${skillPath}`);
-  if (TARGET === "skill") {
-    await syncReferences(SKILL_RESOURCES);
-    console.log(`synced ${referencesDir}`);
-  }
+  await syncReferences(resources);
+  console.log(`synced ${referencesDir}`);
 }

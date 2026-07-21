@@ -6,7 +6,9 @@ with an optional wire backend when a separate service hosts the bundle. `aslite`
 [agentstate-lite](https://github.com/Holaxis-ai/agentstate-lite) project's CLI, published under
 this interim npm coordinate.
 
-The npm artifact is one self-contained file with **zero runtime dependencies**. It is built and
+The npm artifact ships one self-contained executable file with **zero runtime dependencies**,
+plus the generated Agent Skill (`SKILL.md` and its `references/` folder — installable into host
+skill folders with `aslite skill install`). It is built and
 pack-tested today but not yet published to npm; the current supported install is the plugin
 marketplace described in the [repository README](https://github.com/Holaxis-ai/agentstate-lite#install).
 Maintainers can reproduce the complete package proof from the repository root with

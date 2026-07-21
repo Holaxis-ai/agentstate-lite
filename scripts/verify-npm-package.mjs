@@ -10,7 +10,12 @@ import { fileURLToPath } from "node:url";
 const execFileAsync = promisify(execFile);
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(scriptPath), "..");
-const expectedFiles = ["LICENSE", "README.md", "dist/agentstate-lite.mjs", "package.json"];
+const baseExpectedFiles = ["LICENSE", "README.md", "SKILL.md", "dist/agentstate-lite.mjs", "package.json"];
+
+/** The exact expected tarball file set: the fixed base plus the committed references/ tree. */
+export function expectedTarballFiles(referenceFiles) {
+  return [...baseExpectedFiles, ...referenceFiles.map((relative) => `references/${relative}`)].sort();
+}
 const runtimeDependencyFields = [
   "dependencies",
   "optionalDependencies",
@@ -61,14 +66,20 @@ function hasWorkspaceReference(value) {
   return false;
 }
 
-export function assertPackageContract(receipt, manifest) {
+export function assertPackageContract(receipt, manifest, referenceFiles) {
+  const tarballFiles = receipt.files.map((file) => file.path).sort();
   assert.deepEqual(
-    receipt.files.map((file) => file.path).sort(),
-    expectedFiles,
-    "the npm tarball must contain only the CLI, manifest, README, and license",
+    tarballFiles,
+    expectedTarballFiles(referenceFiles),
+    "the npm tarball must contain only the CLI, manifest, README, license, SKILL.md, and references/",
+  );
+  assert.deepEqual(
+    tarballFiles.filter((file) => file.endsWith(".mjs")),
+    ["dist/agentstate-lite.mjs"],
+    "the tarball must carry exactly one .mjs executable (the dist bundle)",
   );
   assert.equal(manifest.name, "aslite");
-  assert.deepEqual(manifest.files, ["dist"]);
+  assert.deepEqual(manifest.files, ["dist", "SKILL.md", "references"]);
   assert.deepEqual(manifest.bin, {
     aslite: "dist/agentstate-lite.mjs",
     "agentstate-lite": "dist/agentstate-lite.mjs",
@@ -214,7 +225,40 @@ export async function verifyNpmPackage() {
         ? path.join(prefix, "node_modules", "aslite")
         : path.join(prefix, "lib", "node_modules", "aslite");
     const manifest = parseJson(await readFile(path.join(installedRoot, "package.json"), "utf8"), "installed package.json");
-    assertPackageContract(receipt, manifest);
+    const committedSkillRoot = path.join(repoRoot, "packages", "cli");
+    const referenceFiles = (await listFiles(path.join(committedSkillRoot, "references"))).map((relative) =>
+      relative.split(path.sep).join("/"),
+    );
+    assertPackageContract(receipt, manifest, referenceFiles);
+
+    // The shipped skill assets are byte-identical to the repo-committed generated ones (which
+    // check:skill pins to the renderer + resource manifest).
+    for (const relative of ["SKILL.md", ...referenceFiles.map((file) => `references/${file}`)]) {
+      const installed = await readFile(path.join(installedRoot, relative));
+      const committed = await readFile(path.join(committedSkillRoot, relative));
+      assert.ok(installed.equals(committed), `${relative} in the installed package differs from the committed copy`);
+    }
+    const installedSkill = await readFile(path.join(installedRoot, "SKILL.md"), "utf8");
+    assert.ok(
+      !installedSkill.includes("npx -y agentstate-lite"),
+      "the installed SKILL.md must not use the retired npm coordinate",
+    );
+    for (const marker of ["plugins/cache", 'ASLITE="$(']) {
+      assert.ok(
+        !installedSkill.includes(marker),
+        `the installed SKILL.md must not carry the marketplace-cache resolver (found ${JSON.stringify(marker)})`,
+      );
+    }
+    assert.ok(
+      installedSkill.includes('REFS="<skill-base-dir>/references"'),
+      "the installed SKILL.md must instruct setting $REFS from the host-reported skill base directory",
+    );
+    for (const banned of ["cat references/", "promote references/"]) {
+      assert.ok(
+        !installedSkill.includes(banned),
+        `the installed SKILL.md must not emit cwd-relative reference commands (found ${JSON.stringify(banned)})`,
+      );
+    }
 
     const binDir = process.platform === "win32" ? prefix : path.join(prefix, "bin");
     const commandEnv = {
@@ -229,10 +273,13 @@ export async function verifyNpmPackage() {
     await assertCommandInBin("agentstate-lite", commandEnv, binDir);
 
     const installedEntrypoint = path.join(installedRoot, manifest.bin.aslite);
-    const runCli = (command, args) =>
-      process.platform === "win32"
-        ? run(process.execPath, [installedEntrypoint, ...args], { cwd: scratch, env: commandEnv })
-        : run(command, args, { cwd: scratch, env: commandEnv });
+    const runCli = (command, args, options = {}) => {
+      const cwd = options.cwd ?? scratch;
+      const env = { ...commandEnv, ...(options.env ?? {}) };
+      return process.platform === "win32"
+        ? run(process.execPath, [installedEntrypoint, ...args], { cwd, env })
+        : run(command, args, { cwd, env });
+    };
 
     await runCli("agentstate-lite", ["--help"]);
     await runCli("aslite", ["--help"]);
@@ -267,6 +314,157 @@ export async function verifyNpmPackage() {
       "the installed CLI must list the Task it created",
     );
 
+    // ── skill-channel proof: install → status → reinstall no-op → uninstall, project + global ──
+    const project = path.join(scratch, "skill-project");
+    const foreignSkill = path.join(project, ".claude", "skills", "foreign");
+    await mkdir(foreignSkill, { recursive: true });
+    await writeFile(path.join(foreignSkill, "SKILL.md"), "# foreign skill — must survive\n");
+
+    const skillInstall = parseJson(
+      (await runCli("aslite", ["skill", "install", "--scope", "project", "--json"], { cwd: project })).stdout,
+      "skill install",
+    );
+    assert.equal(skillInstall.skill.changed, true, "first skill install must report changed");
+    for (const host of [".claude", ".codex"]) {
+      const dir = path.join(project, host, "skills", "aslite");
+      const installedSkillMd = await readFile(path.join(dir, "SKILL.md"));
+      assert.ok(
+        installedSkillMd.equals(await readFile(path.join(committedSkillRoot, "SKILL.md"))),
+        `${host} installed skill SKILL.md must match the shipped copy`,
+      );
+      for (const relative of referenceFiles) {
+        const bytes = await readFile(path.join(dir, "references", ...relative.split("/")));
+        assert.ok(
+          bytes.equals(await readFile(path.join(committedSkillRoot, "references", relative))),
+          `${host} installed reference ${relative} must match the shipped copy`,
+        );
+      }
+      const skillManifest = parseJson(
+        await readFile(path.join(dir, ".aslite-skill.json"), "utf8"),
+        "skill manifest",
+      );
+      assert.equal(skillManifest.package, "aslite");
+      assert.equal(skillManifest.version, manifest.version);
+    }
+
+    const skillStatus = parseJson(
+      (await runCli("aslite", ["skill", "status", "--scope", "project", "--json"], { cwd: project })).stdout,
+      "skill status",
+    );
+    assert.equal(skillStatus.skill.hosts.claude_code.state, "installed");
+    assert.equal(skillStatus.skill.hosts.codex.state, "installed");
+
+    // Follow the installed SKILL.md's own $REFS instruction from the project ROOT: the host
+    // reports the skill base dir; REFS = <base>/references, and $REFS/<dest> resolves from any cwd.
+    const skillBaseDir = path.join(project, ".claude", "skills", "aslite");
+    const refsDir = path.join(skillBaseDir, "references");
+    const authoringViaRefs = await readFile(path.join(refsDir, "views", "references", "view-authoring-v0.md"));
+    assert.ok(
+      authoringViaRefs.equals(
+        await readFile(path.join(committedSkillRoot, "references", "views", "references", "view-authoring-v0.md")),
+      ),
+      "the $REFS composition instructed by the installed SKILL.md must resolve the shipped reference from the project root",
+    );
+
+    const skillReinstall = parseJson(
+      (await runCli("aslite", ["skill", "install", "--scope", "project", "--json"], { cwd: project })).stdout,
+      "skill reinstall",
+    );
+    assert.equal(skillReinstall.skill.changed, false, "reinstall over a current install must be a no-op");
+
+    parseJson(
+      (await runCli("aslite", ["skill", "uninstall", "--scope", "project", "--json"], { cwd: project })).stdout,
+      "skill uninstall",
+    );
+    for (const host of [".claude", ".codex"]) {
+      await assert.rejects(
+        stat(path.join(project, host, "skills", "aslite")),
+        /ENOENT/,
+        `${host}/skills/aslite must be gone after uninstall`,
+      );
+    }
+    assert.equal(
+      (await readFile(path.join(foreignSkill, "SKILL.md"), "utf8")).includes("must survive"),
+      true,
+      "a foreign sibling skill must survive uninstall",
+    );
+
+    // Global scope under relocated host homes (CLAUDE_CONFIG_DIR / CODEX_HOME).
+    const relocatedClaude = path.join(scratch, "relocated-claude");
+    const relocatedCodex = path.join(scratch, "relocated-codex");
+    const relocatedEnv = { CLAUDE_CONFIG_DIR: relocatedClaude, CODEX_HOME: relocatedCodex };
+    parseJson(
+      (
+        await runCli("aslite", ["skill", "install", "--scope", "global", "--json"], {
+          cwd: project,
+          env: relocatedEnv,
+        })
+      ).stdout,
+      "skill install global",
+    );
+    for (const dir of [relocatedClaude, relocatedCodex]) {
+      await stat(path.join(dir, "skills", "aslite", "SKILL.md"));
+    }
+    const globalStatus = parseJson(
+      (
+        await runCli("aslite", ["skill", "status", "--scope", "global", "--json"], {
+          cwd: project,
+          env: relocatedEnv,
+        })
+      ).stdout,
+      "skill status global",
+    );
+    assert.equal(globalStatus.skill.hosts.claude_code.state, "installed");
+    assert.equal(globalStatus.skill.hosts.codex.state, "installed");
+    parseJson(
+      (
+        await runCli("aslite", ["skill", "uninstall", "--scope", "global", "--json"], {
+          cwd: project,
+          env: relocatedEnv,
+        })
+      ).stdout,
+      "skill uninstall global",
+    );
+    for (const dir of [relocatedClaude, relocatedCodex]) {
+      await assert.rejects(stat(path.join(dir, "skills", "aslite")), /ENOENT/, `${dir} must be cleaned up`);
+    }
+
+    // ── hook-command stability: the written SessionStart hook runs the preferred `aslite` bin ──
+    parseJson(
+      (await runCli("aslite", ["hook", "install", "--scope", "project", "--json"], { cwd: project })).stdout,
+      "hook install",
+    );
+    const settings = parseJson(
+      await readFile(path.join(project, ".claude", "settings.json"), "utf8"),
+      "project .claude/settings.json",
+    );
+    const hookCommands = (settings.hooks?.SessionStart ?? []).flatMap((group) =>
+      (group.hooks ?? []).map((h) => h.command),
+    );
+    if (process.platform === "win32") {
+      // The win32 harness execs node directly, so the bare-bin PATH probe cannot match.
+      assert.equal(hookCommands.length, 1, "exactly one managed SessionStart hook");
+      assert.ok(hookCommands[0].endsWith(" session-start"), "hook must run session-start");
+    } else {
+      assert.deepEqual(
+        hookCommands,
+        ["aslite session-start"],
+        "the installed hook command must be exactly `aslite session-start`",
+      );
+    }
+    parseJson(
+      (await runCli("aslite", ["hook", "uninstall", "--scope", "project", "--json"], { cwd: project })).stdout,
+      "hook uninstall",
+    );
+    const settingsAfter = parseJson(
+      await readFile(path.join(project, ".claude", "settings.json"), "utf8"),
+      "project .claude/settings.json after uninstall",
+    );
+    const remaining = (settingsAfter.hooks?.SessionStart ?? []).flatMap((group) =>
+      (group.hooks ?? []).map((h) => h.command),
+    );
+    assert.deepEqual(remaining, [], "hook uninstall must remove the managed SessionStart hook");
+
     assertSnapshotUnchanged(pluginsBefore, await snapshotTree(pluginsDir), "plugins/");
     assertSnapshotUnchanged(marketplaceBefore, await snapshotTree(marketplaceDir), ".claude-plugin/");
 
@@ -274,7 +472,7 @@ export async function verifyNpmPackage() {
       package: `${manifest.name}@${manifest.version}`,
       files: receipt.files.length,
       bins: Object.keys(manifest.bin),
-      workflow: ["init", "recipe add", "new", "list"],
+      workflow: ["init", "recipe add", "new", "list", "skill install/status/uninstall", "hook install/uninstall"],
     };
   } finally {
     await rm(scratch, { recursive: true, force: true });
