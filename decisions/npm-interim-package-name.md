@@ -1,10 +1,10 @@
 ---
 type: Decision
 title: >-
-  Interim npm package name: aslite (Brian + Mike agreed 2026-07-20; long-term
-  name still open)
+  Interim npm coordinate: @holaxis/aslite (amended 2026-07-21; was unscoped
+  aslite, blocked by npm moniker rule)
 actor: anthropic/claude
-timestamp: '2026-07-21T02:20:43.399Z'
+timestamp: '2026-07-21T23:19:26.641Z'
 ---
 # Decision
 
@@ -56,3 +56,22 @@ distribution work.
 [resolves](../tasks/npm-package-identity.md)
 
 [unblocks](../tasks/npm-cli-skill-prerelease.md)
+
+# Amendment (2026-07-21): scoped coordinate @holaxis/aslite
+
+The first real publish of unscoped `aslite` was REJECTED by npm's publish-time moniker rule
+(403: "too similar to existing packages sqlite, slate"). This rule is enforced only at
+publish; a 404 on `npm view` proves unregistered, NOT publishable — the original
+availability verification checked the weaker claim.
+
+Revised decision (Brian, 2026-07-21): publish as **`@holaxis/aslite`** under a new `holaxis`
+npm org (free public tier; Brian creates it). Rationale: scopes bypass the moniker rule and
+global collisions entirely; the org owns the `@holaxis` namespace permanently (supply-chain
+protection — nobody else can publish under it, and the eventual long-term name is guaranteed
+available inside it); `npx -y @holaxis/aslite` still resolves the `aslite` bin (npx matches
+the unscoped part). Bins, skill identity (`aslite`, `skills/aslite`), and everyday UX are
+unchanged — the scope appears only at install/npx moments. Scoped publishes require
+`--access public` / `publishConfig.access: public` (pinned in the manifest).
+
+Rollback/rename path updated accordingly: the successor name will live in the same
+`@holaxis` scope; superseded versions get `npm deprecate` pointers as before.
