@@ -9199,7 +9199,7 @@ import { fileURLToPath } from "node:url";
 import { realpathSync as realpathSync6 } from "node:fs";
 import { delimiter, join as join3 } from "node:path";
 import { homedir as homedir3 } from "node:os";
-var PACKAGE_NAME = "aslite";
+var PACKAGE_NAME = "@holaxis/aslite";
 var BIN_NAMES = ["aslite", "agentstate-lite"];
 function collapseHomeDirectory2(p) {
   const home2 = homedir3();
@@ -17540,7 +17540,7 @@ async function hook(argv, deps = {}) {
     } catch (err) {
       throw new CliError("RUNTIME", err instanceof Error ? err.message : String(err), {
         details: { command_base: collapseHomeDirectory2(commandBase) },
-        help: "install from a channel whose executable resolves as aslite/agentstate-lite (e.g. npm install -g aslite), then re-run hook install"
+        help: "install from a channel whose executable resolves as aslite/agentstate-lite (e.g. npm install -g @holaxis/aslite), then re-run hook install"
       });
     }
     for (const target of [targets.claudeSettings, targets.codexHooks]) {
@@ -19939,7 +19939,7 @@ function resolveSkillAssets(executable) {
     throw new CliError(
       "RUNTIME",
       "this executable is the marketplace skill bundle \u2014 that channel is installed and updated via the marketplace, and carries no separately installable skill assets",
-      { help: "`skill install` ships with the npm package: npm install -g aslite, then `aslite skill install`" }
+      { help: "`skill install` ships with the npm package: npm install -g @holaxis/aslite, then `aslite skill install`" }
     );
   }
   const root = dirname4(dirname4(exe));
@@ -20033,7 +20033,7 @@ function readManifest(dir) {
 }
 function manifestContent(assets, files = assets.files) {
   const manifest = {
-    package: "aslite",
+    package: "@holaxis/aslite",
     version: assets.version,
     installed_by: "aslite skill install",
     files: [...files]
