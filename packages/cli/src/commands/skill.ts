@@ -26,10 +26,12 @@
 // manifested files exist. A kill inside atomicWriteFileSync's write→rename window strands a
 // `<file>.tmp-<pid>-…` orphan; one whose base name we own is MANAGED DEBRIS — ignored by the
 // extras scan and swept by the mutating verbs — while a temp-patterned name with a foreign base
-// stays foreign. (Honesty note: the sweep runs BEFORE the unmanaged/malformed refusals — its
-// position is load-bearing for interruption recovery — so a folder about to be refused can first
-// lose owned-base-shaped tmp files.) The one unmanaged shape (files, no manifest) can only be
-// foreign, and stays a refusal. A target that exists but is NOT a real directory — a symlink above all — is refused by
+// stays foreign — and ownership must be ESTABLISHED: without a valid manifest, the only swept
+// base is the reserved manifest filename itself, so a refusal over a foreign folder deletes
+// nothing of that folder's own content. (Honesty note: the sweep still runs BEFORE the
+// unmanaged/malformed refusals — load-bearing for interruption recovery — so a folder about to
+// be refused can first lose a reserved-manifest-name tmp.) The one unmanaged shape (files, no
+// manifest) can only be foreign, and stays a refusal. A target that exists but is NOT a real directory — a symlink above all — is refused by
 // every verb before any walk: destructive operations never follow a link AT the target or in
 // manifested entries (ancestor symlinks, e.g. a stowed ~/.claude, are deliberately honored — the
 // guard is leaf-only), and manifested files that ARE links are replaced on install / unlinked
@@ -203,18 +205,29 @@ const TEMP_DEBRIS_RE = /^(.+)\.tmp-\d+-[a-z0-9]+-[a-z0-9]+$/;
 
 /**
  * MANAGED DEBRIS: a relative path matching OUR atomic-write temp pattern whose stripped base is a
- * path we own (manifested/asset file or the manifest itself) — the stranding a kill inside the
- * write→rename window leaves. Scoped tightly on purpose: a temp-patterned name with a foreign
- * base stays foreign, so the extras refusal is not weakened.
+ * path we own — the stranding a kill inside the write→rename window leaves. Scoped tightly on
+ * purpose: a temp-patterned name with a foreign base stays foreign, so the extras refusal is not
+ * weakened.
  */
 function isManagedDebris(relativePath: string, owned: Set<string>): boolean {
   const match = TEMP_DEBRIS_RE.exec(relativePath);
   return match !== null && owned.has(match[1]!);
 }
 
-/** The owned-path set debris recognition checks bases against. A malformed manifest contributes nothing. */
-function ownedPaths(manifest: SkillManifest | undefined | null, assetFiles: readonly string[]): Set<string> {
-  return new Set([...(manifest?.files ?? []), ...assetFiles, SKILL_MANIFEST_FILENAME]);
+/**
+ * The owned-path set debris recognition checks bases against. OWNERSHIP MUST BE ESTABLISHED: only
+ * a VALID manifest extends ownership to manifested/asset file names. Without one (absent or
+ * malformed — a folder the verbs will refuse as unmanaged), the ONLY owned base is the reserved
+ * manifest filename itself: its tmp is unambiguously ours (needed for the first-install-kill
+ * recovery shape), while an asset-named tmp in a foreign folder could shadow foreign data and
+ * must survive the refusal untouched.
+ */
+function sweepOwnership(
+  manifest: SkillManifest | undefined | null,
+  assetFiles: readonly string[],
+): Set<string> {
+  if (manifest === undefined || manifest === null) return new Set([SKILL_MANIFEST_FILENAME]);
+  return new Set([...manifest.files, ...assetFiles, SKILL_MANIFEST_FILENAME]);
 }
 
 /** Delete managed debris from `dir` (mutating verbs only — status merely ignores it). */
@@ -276,7 +289,7 @@ function installIntoDir(dir: string, assets: SkillAssets): InstallResult {
   const notDir = nonDirectoryRefusal(dir);
   if (notDir !== undefined) return { ok: false, reason: notDir };
   const manifest = readManifest(dir);
-  const debrisRemoved = sweepManagedDebris(dir, ownedPaths(manifest, assets.files));
+  const debrisRemoved = sweepManagedDebris(dir, sweepOwnership(manifest, assets.files));
   if (existsSync(dir)) {
     if (manifest === undefined && listFilesRelative(dir).length > 0) {
       return { ok: false, reason: `folder exists with no ${SKILL_MANIFEST_FILENAME} manifest — not managed by this tool` };
@@ -356,7 +369,7 @@ function uninstallFromDir(dir: string): UninstallResult {
   if (notDir !== undefined) return { ok: false, reason: notDir };
   if (!existsSync(dir)) return { ok: true, changed: false };
   const manifest = readManifest(dir);
-  const debrisRemoved = sweepManagedDebris(dir, ownedPaths(manifest, []));
+  const debrisRemoved = sweepManagedDebris(dir, sweepOwnership(manifest, []));
   if (manifest === undefined) {
     // A folder left empty (a first-install kill stranded only OUR manifest tmp, or a pre-existing
     // empty dir) holds nothing foreign — a no-op, cleaned up only when we removed the debris.
@@ -399,7 +412,7 @@ export function skillStatusForDir(dir: string, assets: SkillAssets): { state: Sk
   if (nonDirectoryRefusal(dir) !== undefined) return { state: "unmanaged" };
   if (!existsSync(dir)) return { state: "absent" };
   const manifest = readManifest(dir);
-  const owned = ownedPaths(manifest, assets.files);
+  const owned = sweepOwnership(manifest, assets.files);
   const files = listFilesRelative(dir).filter((f) => !isManagedDebris(f, owned));
   if (files.length === 0) return { state: "absent" };
   if (manifest === undefined || manifest === null) return { state: "unmanaged" };

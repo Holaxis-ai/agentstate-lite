@@ -513,6 +513,25 @@ test("the manifest's own tmp orphan: state reads MANAGED (status ignores without
   assert.equal((await runSkill(["status"], { cwd, executable })).skill.hosts.codex.state, "installed");
 });
 
+test("UNMANAGED folder + asset-named tmp + foreign file: refusal deletes NEITHER (ownership not established)", async () => {
+  // The reviewer's fixture: without a valid manifest, an asset-name-based tmp could shadow
+  // foreign data — the sweep must not touch it; only the reserved manifest-name tmp is ours.
+  const { base, executable } = scratch();
+  const cwd = path.join(base, "project");
+  const claudeDir = path.join(cwd, ".claude", "skills", "aslite");
+  mkdirSync(claudeDir, { recursive: true });
+  writeFileSync(path.join(claudeDir, "SKILL.md.tmp-123-abc-def"), "could be foreign data\n");
+  writeFileSync(path.join(claudeDir, "foreign.md"), "definitely foreign\n");
+
+  await assert.rejects(() => runSkill(["install"], { cwd, executable }), CliError);
+  assert.equal(readFileSync(path.join(claudeDir, "SKILL.md.tmp-123-abc-def"), "utf8"), "could be foreign data\n");
+  assert.equal(readFileSync(path.join(claudeDir, "foreign.md"), "utf8"), "definitely foreign\n");
+
+  await assert.rejects(() => runSkill(["uninstall"], { cwd, executable }), CliError);
+  assert.equal(readFileSync(path.join(claudeDir, "SKILL.md.tmp-123-abc-def"), "utf8"), "could be foreign data\n");
+  assert.equal(readFileSync(path.join(claudeDir, "foreign.md"), "utf8"), "definitely foreign\n");
+});
+
 test("install adopts a pre-existing EMPTY real directory as a fresh install", async () => {
   const { base, executable } = scratch();
   const cwd = path.join(base, "project");
