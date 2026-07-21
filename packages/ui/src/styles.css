@@ -977,6 +977,46 @@ body {
   font-size: 0.8rem;
 }
 
+/* Inline outbound edges: bare concept-link blocks rendered as "verb → target-title" rows, aligned
+   in a column so the arrows line up. */
+.doc-edge-list {
+  margin: 1.15rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+}
+
+.doc-edge-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  text-decoration: none;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.doc-edge-verb {
+  flex: 0 0 auto;
+  min-width: 6.5rem;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--color-process);
+}
+
+.doc-edge-arrow {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+}
+
+.doc-edge-target {
+  color: var(--color-structure);
+}
+
+.doc-edge-row:hover .doc-edge-target {
+  text-decoration: underline;
+}
+
 /* ── Page frame (sandboxed iframe host) ─────────────────────────────── */
 .page-frame {
   display: flex;
