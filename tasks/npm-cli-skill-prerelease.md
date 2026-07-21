@@ -8,7 +8,7 @@ description: >-
   containing the authoritative CLI plus optional generated skill assets and
   explicit skill installation; hooks must use stable aslite on PATH.
 actor: anthropic/claude
-timestamp: '2026-07-21T02:17:06.409Z'
+timestamp: '2026-07-21T02:21:06.050Z'
 ---
 # Behavioral claim
 
@@ -58,9 +58,8 @@ From the exact packed prerelease in an isolated home and without this source che
 
 # Package coordinate (unblocked 2026-07-20)
 
-The identity gate is resolved: publish as **`as-lite`** (interim — see
+The identity gate is resolved: publish as **`aslite`** (interim — see
 [the decision doc](../decisions/npm-interim-package-name.md) for rationale, the working
-version/tag policy, and the rename/rollback path). Implementation notes from that decision:
-ensure `npx -y as-lite` resolves (npm needs a bin matching the package name — ship an
-`as-lite` bin alias alongside the preferred `aslite`), and prereleases go out as
-`0.x.y-pre.N` on dist-tag `next`, never `latest`.
+version/tag policy, and the rename/rollback path). The package name matches the preferred
+bin, so `npx -y aslite` resolves with no bin alias. Prereleases go out as `0.x.y-pre.N` on
+dist-tag `next`, never `latest`.
