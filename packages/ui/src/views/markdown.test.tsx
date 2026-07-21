@@ -168,6 +168,41 @@ describe("markdown renderer", () => {
     expect(container.querySelector("hr")).not.toBeNull();
   });
 
+  describe("bare link blocks (edge references lifted out of the prose body)", () => {
+    it("drops a paragraph that is only links — the grouped Links section carries them", async () => {
+      await render("Ships the resource inventory.\n\n[contains](../tasks/a.md)\n\n[contains](../tasks/b.md)", "roadmap-items/x");
+      // Prose survives; the bare-link dump does not appear in the body.
+      expect(container.textContent).toContain("Ships the resource inventory.");
+      expect(container.querySelectorAll("a")).toHaveLength(0);
+      expect(container.textContent).not.toContain("contains");
+    });
+
+    it("REGRESSION: a link EMBEDDED in a sentence is prose and stays untouched", async () => {
+      // The exact objection: "the archive contains the history" must not lose its verb.
+      await render("The archive [contains](../refs/history.md) the pre-public history.", "docs/x");
+      const anchor = container.querySelector("a")!;
+      expect(anchor.textContent).toBe("contains");
+      expect(anchor.getAttribute("href")).toBe("?view=doc&id=refs%2Fhistory");
+      expect(container.textContent).toBe("The archive contains the pre-public history.");
+    });
+
+    it("lifts an undeclared verb and a plain citation alike — no vocabulary is consulted", async () => {
+      await render("[guided by](../designs/d.md)\n\n[the full design](../designs/e.md)", "tasks/x");
+      expect(container.querySelectorAll("a")).toHaveLength(0);
+    });
+
+    it("keeps a link that ends a sentence (prose sibling → not a bare block)", async () => {
+      await render("See more in [the design](../designs/d.md)", "tasks/x");
+      expect(container.querySelector("a")!.textContent).toBe("the design");
+      expect(container.textContent).toContain("See more in");
+    });
+
+    it("collapses a multi-link block joined by soft breaks", async () => {
+      await render("[contains](../tasks/a.md)\n[depends on](../tasks/b.md)", "roadmap-items/x");
+      expect(container.querySelectorAll("a")).toHaveLength(0);
+    });
+  });
+
   it("bounds degrade honestly: oversized bodies and node floods report bounded", async () => {
     const oversized = "a".repeat(MAX_BODY_CHARS + 10);
     expect((await render(oversized)).bounded).toBe(true);

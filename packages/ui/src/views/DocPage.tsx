@@ -125,13 +125,13 @@ export function DocPage({ docId }: { docId: string }) {
     if (chips.length >= 6) break;
   }
 
+  const backlinks = backlinksQuery.data ?? [];
+  const vocabulary = declaredVocabulary(kindsQuery.data ?? []);
+  const outboundGroups = groupOutbound(outboundQuery.data ?? [], vocabulary);
   const rendered = renderMarkdown(doc.body ?? "", {
     fromId: doc.id,
     onNavigateDoc: (id) => navigate({ view: "doc", id }),
   });
-  const backlinks = backlinksQuery.data ?? [];
-  const vocabulary = declaredVocabulary(kindsQuery.data ?? []);
-  const outboundGroups = groupOutbound(outboundQuery.data ?? [], vocabulary);
 
   return (
     <div className="page-frame">

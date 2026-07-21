@@ -178,6 +178,39 @@ describe("DocPage", () => {
     expect(ghostLink.getAttribute("href")).toBe("?view=doc&id=tasks%2Fghost");
   });
 
+  it("a standalone declared-verb link dump is lifted from the body into the grouped Links section", async () => {
+    vi.mocked(getDoc).mockResolvedValue({
+      doc: {
+        id: "roadmap-items/x",
+        frontmatter: { type: "Roadmap Item", title: "X" },
+        body: "Ships the inventory.\n\n[contains](../tasks/a.md)\n\n[contains](../tasks/b.md)",
+      },
+      version: "v1",
+    });
+    vi.mocked(fetchKinds).mockResolvedValue([
+      { id: "conventions/roadmap-item", title: "Roadmap Item", governs: "Roadmap Item", fields: { required: [], optional: [], values: {} }, links: { contains: "Task" } },
+    ] as never);
+    vi.mocked(fetchEdges).mockImplementation(async (params: { from?: unknown }) =>
+      params.from
+        ? [
+            { from: "roadmap-items/x", to: "tasks/a", text: "contains" },
+            { from: "roadmap-items/x", to: "tasks/b", text: "contains" },
+          ]
+        : [],
+    );
+
+    await render("roadmap-items/x");
+
+    // Prose stays; the bare-verb dump is gone from the body (no body anchors).
+    expect(container.querySelector(".doc-body")!.textContent).toContain("Ships the inventory.");
+    expect(container.querySelectorAll(".doc-body a")).toHaveLength(0);
+    // The same edges show grouped-with-targets in the Links section.
+    const links = container.querySelector(".doc-links")!;
+    expect([...links.querySelectorAll(".doc-rel-verb")].map((h) => h.textContent)).toEqual(["contains"]);
+    expect(links.textContent).toContain("tasks/a");
+    expect(links.textContent).toContain("tasks/b");
+  });
+
   it("a doc with neither outbound nor inbound edges shows a single quiet empty state", async () => {
     vi.mocked(getDoc).mockResolvedValue({ doc: { id: "notes/lonely", frontmatter: { type: "Context Note", title: "Lonely" }, body: "" }, version: "v1" });
     vi.mocked(fetchEdges).mockResolvedValue([]);
