@@ -2,111 +2,135 @@
 type: Design
 title: The doc reader — the window's second act (v1)
 actor: mike/claude
-timestamp: '2026-07-21T18:13:58.376Z'
+timestamp: '2026-07-21T18:26:51.138Z'
 ---
 # The doc reader — the window's second act (v1)
 
-**Status:** Drafted 2026-07-21 after Unit 1 (home surface) shipped whole (PRs #135/#137).
-Distills the "second act" recorded on [the home-surface design](../designs/home-surface.md)
-plus the founder conversation that settled its open decisions. NEXT: independent design
-review, then Mike's build go — the doc reader has been decision-gated since the layer
-boundary was written, and this doc is the artifact that decision approves.
+**Status:** Drafted 2026-07-21 after Unit 1 shipped; **rev 2 same day** — independent
+pre-build review (APPROVE-WITH-CHANGES,
+[review record](../context-notes/doc-reader-design-review.md)) folded in: the render
+chain is now AST→React (no HTML-string intermediate), the load-bearing href invariant is
+stated, `links.ts` must shed `node:path` (an EMPIRICAL build-breaker as previously
+planned), gfm is in scope, and the figure lifecycle is specified for concurrency. Build
+plan: [plans/doc-reader-build](../plans/doc-reader-build.md). Mike's build go is the
+gating decision this doc carries.
 
 ## Why (the value case, pressure-tested)
 
-The home surface can now orient, pulse, and tell the truth about sharing — but the human
+The home surface orients, pulses, and tells the truth about sharing — but the human
 window still cannot show a DOCUMENT. Knowledge renders only through authored Views, so a
-bundle full of decisions and notes presents as cards-about-apps, and the tutorial loop
-dead-ends: agent writes → human sees an activity row → nothing to read.
+bundle full of decisions presents as cards-about-apps, and the loop dead-ends: agent
+writes → human sees an activity row → nothing to read.
 
-1. **The floor under the View ceiling.** Every bundle becomes readable day-zero, zero
-   authoring. Views stay the purpose-built layer; the reader is the universal one.
-2. **The loop completes.** Steering requires reading the decision itself, not knowing one
-   exists. Test-user tutorial gains its missing last beat: watch it land → READ it.
-3. **Links become navigation.** Cross-links are the product's core data model and are
-   currently invisible to humans (CLI-only). Reader links + derived backlinks make the
-   graph walkable. Evidence that this is missing: `examples/views/pulse.html:219` carries a
-   hand-rolled "tiny markdown" renderer whose rendered links GO NOWHERE — inside the
-   sandbox there is no destination to link to. The reader creates the destination.
-4. **Docs become URLs** — deep-linkable within the session, emittable by agents.
+1. **The floor under the View ceiling.** Every bundle readable day-zero, zero authoring.
+2. **The loop completes.** Steering means reading the decision itself; the test-user
+   tutorial gains its missing last beat: watch it land → READ it.
+3. **Links become navigation.** Cross-links are the core data model and are invisible to
+   humans today. Evidence of the gap: `examples/views/pulse.html:219` hand-rolls a "tiny
+   markdown" renderer whose rendered links GO NOWHERE — the sandbox has no destination.
+   The reader creates the destination, plus derived backlinks.
+4. **Docs become URLs** — deep-linkable, agent-emittable.
 
 ## Relationship to View authoring (a protocol, not a competition)
 
-The reader absorbs the READING half of Views and leaves them purely lenses:
+The reader absorbs the READING half of Views and leaves them purely lenses: `open-doc` is
+an offer, never a mandate (bridge `read` + own rendering remains available); generated
+Views get thinner and more reliable (strengthening tasks/ui-generative-chat); the layer
+boundary becomes mechanical (shell = format-universal reading; Views = domain
+interaction; the shell never grows a task board); figures give HTML artifacts a home
+inside narrative.
 
-- **`open-doc` is an offer, never a mandate.** A View shows its lens (board card, roadmap
-  row, chart) and MAY hand reading to the shell via the bridge; a View that wants custom
-  doc presentation keeps bridge `read` and its own renderer. Nothing is removed.
-- **Generated Views get thinner and more reliable** — today every content-showing View
-  inlines its own renderer (the pulse pattern); post-reader, an agent-generated View is a
-  lens that links into one shared reader. This directly strengthens the generative-view
-  story (tasks/ui-generative-chat).
-- **The layer boundary becomes mechanical**: shell = format-universal reading (markdown,
-  frontmatter, links, kind-DECLARED chips); Views = domain interaction. The standing
-  guard survives unchanged: the shell never grows a task board.
-- **Figures give HTML artifacts a home inside narrative** — a doc carrying its live
-  diagram, papers-with-figures style; a capability that exists nowhere today.
+## The security boundary (rev 2 — the load-bearing section)
 
-## Decision (the five settled items)
+Untrusted bundle content renders in the SHELL ORIGIN (unsandboxed). Three belts, each
+independently sufficient for its class:
 
-1. **Renderer + security boundary.** micromark with dangerous HTML OFF: raw HTML in doc
-   bodies is ESCAPED, never executed — the reader renders in the SHELL origin
-   (unsandboxed), so this is a genuine new trust boundary. The reader PR lands in the
-   HIGH-RISK review tier (builder → independent review → adversarial QA) with an
-   injection-corpus battery pinned red (script/style/event-handler/URL-scheme vectors,
-   frontmatter-sourced strings included — titles and field values render too).
-2. **Link semantics: core's ONE resolver.** `resolveConceptId` (core/src/links.ts) —
-   the browser resolves a doc link exactly as the CLI and reference-graph builder do
-   (gate 3; no second resolver). Resolved doc links → `?view=doc&id=…` routes
-   (deep-linkable; `parseRoute` gains a `doc` view). Unresolved links render as inert
-   text, honestly styled. Backlinks are DERIVED via the existing `/__ui/edges?to=` route —
-   no new endpoint.
-3. **Figures.** A markdown IMAGE whose resolved target is a `views/` (or legacy `pages/`)
-   blob renders as an inline SANDBOXED figure — the existing mint/nonce/CSP machinery,
-   embedded instead of full-frame, with caption chrome naming the blob key. A plain LINK
-   to a registered View opens it full-frame via the existing route. No new convention
-   field, no new privilege: a figure is a page launch with a smaller frame, and
-   revoke/hot-reload ride PageFrame's existing lifecycle semantics.
-4. **Bridge `open-doc`.** The versioned sibling of `open-page` (same validation posture,
-   navigation-consumption fencing included). Deferred to the unit's LAST PR — nothing
-   else depends on it.
-5. **Bundle-size budget.** The renderer adds to the embedded UI assets and therefore the
-   bot-committed plugin artifact. Budget: ≤ ~75 KB added; the reader PR MEASURES and
-   states the delta so artifact growth is a number, not a surprise.
+1. **Renderer escape:** micromark + micromark-extension-gfm with dangerous HTML OFF — raw
+   HTML in a body is escaped text, never markup.
+2. **Closed construction:** the renderer's AST/events (mdast) map DIRECTLY to React
+   elements — there is NO HTML-string intermediate, NO DOMParser step, NO innerHTML
+   anywhere (a grep gate bans `dangerouslySetInnerHTML` in the reader path). The
+   "allowlist" is a CLOSED SET of mdast node types, not an open tag/attr list over
+   browser-parsed HTML; unknown node types render as text. React auto-escapes children
+   and attributes.
+3. **The shell's own CSP** (`ui-server/src/assets.ts`): `script-src 'self'` — no inline
+   script, no event-handler attributes, no `javascript:` navigation executes even under a
+   hypothetical total bypass of belts 1–2.
 
-One mechanical prerequisite: core's `links.ts` needs a subpath export (the SPA already
-runtime-imports `core/query-filter`, `/kinds`, `/page` — established pattern; one
-exports-map line, rides the first PR).
+**THE invariant (pinned first, red):** anchor/image attributes are BUILT from the
+RESOLVER'S OUTPUT only — a raw markdown href/src never reaches any DOM attribute. A
+resolved doc link becomes the `?view=doc&id=…` route; anything the resolver rejects
+renders inert. The injection battery treats URL-SCHEME vectors as first-class alongside
+tag injection: `javascript:`/`data:`/`vbscript:` autolinks and link targets,
+entity-obfuscated (`&#106;avascript:`) and whitespace-split schemes, plus the raw-HTML
+set (`<img onerror>`, `<svg onload>`, `<math>`, `<iframe>`, `<style>`, comment/
+`<template>`/`<noscript>` mXSS shapes) and frontmatter-sourced strings — all inert.
 
-## Reader surface (what renders)
+**Resource bounds:** a body-size cap with an honest truncation notice (the AXI `read`
+truncation's human analog) and a bounded render walk (max nodes/depth) — pathological
+docs land on the trusted tab and must degrade, not hang.
 
-Frontmatter as a header card — kind pill, kind-declared status chips (mechanism in the
-shell, meaning from the bundle via `/__ui/kinds`), actor + freshness; the body typeset
-with the shell's format-level typography; figures inline; a derived "Cited by" section.
-Entry points: activity-feed rows, card provenance, doc links, deep links. Live: the doc
-page refetches on SSE change for its id (the established invalidate-and-refetch posture);
-a deleted doc lands in an honest terminal state, mirroring PageFrame's revoke.
+## Decision (the settled items, rev 2)
 
-## Build shape (plan doc to follow)
+1. **Renderer:** micromark + gfm (tables, strikethrough, task lists — the shipped
+   authoring contract alone carries 11 table rows), dangerous HTML off, AST→React per the
+   boundary above. Size budget: **≤ 40 KB gzipped** added to the embedded assets
+   (micromark ≈14 KB gz + gfm ≈10–15 KB gz); the PR measures and states the delta in
+   gzip terms.
+2. **Link semantics:** core's ONE resolver, `resolveConceptId` — **which first sheds its
+   `node:path` import** (pure posix string logic; today's import fails browser bundling
+   outright, and a browser-side reimplementation would fork the one resolver, violating
+   gate 3). A node↔browser PARITY test pins identical resolver output across runtimes.
+   This edit is part of the HIGH-RISK surface — the resolver is the scheme-smuggling
+   defense. Resolved links → `?view=doc&id=…`; unresolved → inert text; backlinks via the
+   existing `/__ui/edges?to=`.
+3. **Figures:** a markdown IMAGE whose target resolves to a REGISTERED View's entry blob
+   renders as an inline sandboxed figure (existing mint/nonce/CSP; caption chrome; no new
+   privilege). Rev 2 specifics: (a) figure targets need their OWN small blob-key
+   resolution (`resolveConceptId` is `.md`-only) + a CLIENT-SIDE registration check
+   against the launcher's registry list BEFORE minting — an unregistered target renders
+   inert text, never a minted-403 error frame; (b) **re-mint on every (re)mount** — a
+   nonce URL is never cached across a mount boundary (the 120 s nonce TTL otherwise 403s
+   a remounted figure); (c) lifecycle/cap tests: >120 s remount still renders;
+   figure-heavy browsing under the 256-launch registry cap never evicts a visible figure
+   without recovery. A plain LINK to a registered View opens full-frame.
+4. **Bridge `open-doc`:** versioned sibling of `open-page`, deferred to the unit's last
+   PR; the shipped authoring contract is updated with it.
+5. **Raster images: deliberately OUT in v1.** `![](x.png)` renders as inert text — a
+   conscious deferral, not an accident: session-authed same-origin `<img>` over blob
+   routes is a natural follow-up needing its own small look, not a silent rider.
 
-PR-1 reader core (routes + DocPage + injection battery — HIGH tier) → PR-2 figures
-(ordinary) → PR-3 `open-doc` + View handoff + deep-link e2e (ordinary). Roughly a week at
-the demonstrated cadence; PR-1 is the bulk.
+## Reader surface
+
+Frontmatter as a header card (kind pill, kind-declared chips via `/__ui/kinds`, actor,
+freshness); body typeset with the shell's format-level typography; figures inline;
+derived "Cited by". A back-to-home affordance (the doc page is a shell surface — Blue
+accent, like PageFrame's bar). Entry points: activity rows, card provenance, in-body
+links, deep links. Live: SSE invalidate-and-refetch per doc id; deleted → honest terminal
+state (PageFrame's revoke posture); unknown id → an honest not-found state.
+
+## Build shape
+
+PR-1 reader core (de-`node:path` + parity, routes, DocPage, AST→React renderer +
+battery — HIGH tier: builder → independent review → adversarial QA aimed at the belts) →
+PR-2 figures (ordinary tier WITH a focused lifecycle-adversarial check scoped into its
+review — no new privilege and identical sandbox/CSP, but a changed concurrency profile;
+rationale recorded here) → PR-3 `open-doc` + contract update + deep-link e2e (ordinary).
+About a week at the demonstrated cadence.
 
 ## Out of scope
 
-Editing anything (the reader is read-only; writes remain `bundle-propose` + trusted
-confirmation), doc search, rendering reserved files (`index.md`/`log.md`), a shell task
-board (standing verdict), remote-mode divergence (the reader works identically over
-`--remote` — it consumes the same `/v0` + `/__ui` surfaces), and any second markdown
-parser server-side (rendering is SPA-only; the engine never learns about HTML).
+Editing (reader is read-only; writes stay `bundle-propose` + trusted confirmation), doc
+search, reserved-file rendering, raster images (decision 5), server-side markdown of any
+kind (the engine never learns HTML exists), a shell task board (standing verdict), and
+remote-mode divergence (same `/v0` + `/__ui` surfaces by construction).
 
 [the second act as first recorded](../designs/home-surface.md)
 
 [direction and conversation record](../roadmap-items/launcher-home-surface.md)
 
+[build plan](../plans/doc-reader-build.md)
+
 [the deferred checklist this expands](../plans/home-surface-build.md)
 
 [strengthens generative view authoring](../tasks/ui-generative-chat.md)
-
-[build plan](../plans/doc-reader-build.md)
