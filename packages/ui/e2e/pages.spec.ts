@@ -341,3 +341,45 @@ test("a status change streams live into the open page (roadmap rollup updates, n
     await ui.cleanup();
   }
 });
+
+test("home surface: flat badged grid, live activity feed, first-run orientation that dismisses", async ({ page }) => {
+  const ui = await bootUiOverPagesBundle(TASKS);
+  try {
+    await page.goto(ui.url);
+
+    // First run: the orientation renders with the privacy promise; "Got it" dismisses and persists.
+    const orientation = page.locator(".orientation");
+    await expect(orientation).toBeVisible();
+    await expect(orientation).toContainText(/stays private until you choose to share it/i);
+    await orientation.getByRole("button", { name: "Got it" }).click();
+    await expect(orientation).not.toBeVisible();
+    await page.reload();
+    await expect(page.locator('[data-page-id="views-registry/pulse"]')).toBeVisible();
+    await expect(page.locator(".orientation")).not.toBeVisible();
+
+    // ONE flat grid with capability badges — the capability-grouped sections are retired.
+    await expect(page.locator(".launcher-grid")).toHaveCount(1);
+    for (const retired of ["Dashboards", "Interactive", "Documents"]) {
+      await expect(page.getByRole("heading", { name: retired, exact: true })).toHaveCount(0);
+    }
+    await expect(page.locator('[data-page-id="views-registry/roadmap"] .badge')).toHaveText("live data");
+    await expect(page.locator('[data-page-id="pages-registry/about"] .badge')).toHaveText("artifact");
+
+    // The activity feed lists the seeded Task docs (filtered: no registry docs, no conventions).
+    const feed = page.locator(".feed-list");
+    await expect(feed).toBeVisible();
+    await expect(feed).toContainText("Alpha task");
+    await expect(feed.locator(".feed-row")).not.toContainText(["Pulse — activity feed"]);
+
+    // Live: a NEW doc written behind the server lands in the feed without a reload.
+    execFileSync(process.execPath, [
+      CLI_DIST, "doc", "write", "notes/live-probe",
+      "--type", "Context Note", "--title", "Live probe note", "--actor", "e2e",
+      "--dir", ui.dir,
+    ]);
+    await expect(feed).toContainText("Live probe note", { timeout: 15_000 });
+    await expect(feed).toContainText("e2e");
+  } finally {
+    await ui.cleanup();
+  }
+});
