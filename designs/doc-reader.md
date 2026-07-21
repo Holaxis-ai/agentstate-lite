@@ -2,7 +2,7 @@
 type: Design
 title: The doc reader — the window's second act (v1)
 actor: mike/claude
-timestamp: '2026-07-21T17:52:33.411Z'
+timestamp: '2026-07-21T18:13:58.376Z'
 ---
 # The doc reader — the window's second act (v1)
 
@@ -108,3 +108,5 @@ parser server-side (rendering is SPA-only; the engine never learns about HTML).
 [the deferred checklist this expands](../plans/home-surface-build.md)
 
 [strengthens generative view authoring](../tasks/ui-generative-chat.md)
+
+[build plan](../plans/doc-reader-build.md)
