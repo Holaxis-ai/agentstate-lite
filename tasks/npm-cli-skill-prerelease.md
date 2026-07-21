@@ -4,12 +4,13 @@ title: 'npm prerelease: authoritative CLI plus explicitly installable Agent Skil
 status: in_progress
 priority: '1'
 description: >-
-  IN PROGRESS (PR1 built): interim coordinate aslite applied on
-  feat/aslite-npm-coordinate (d91d9f2, gates green); independent review +
-  adversarial hook-mechanics QA running in parallel. PR2 (skill carry +
-  installer) queued per plans/npm-cli-skill-prerelease.
+  PR1 SHIPPED to origin: feat/aslite-npm-coordinate @ 3bd40b9 (aslite coordinate
+  + two-form managed-hook recognition + fail-loud/atomic hook writes;
+  Builder->Review->adversarial QA all green; awaiting Brian's PR open + merge).
+  PR2 (skill carry + skill install|status|uninstall) building on stacked branch
+  feat/aslite-skill-channel. Plan: plans/npm-cli-skill-prerelease.
 actor: anthropic/claude
-timestamp: '2026-07-21T02:52:51.486Z'
+timestamp: '2026-07-21T03:28:56.865Z'
 ---
 # Behavioral claim
 
