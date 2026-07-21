@@ -451,7 +451,7 @@ function resolveWriteDestination(path: string): string {
  * user's 0600 settings must not widen to the default umask); the temp is cleaned up on ANY
  * failure (write or rename).
  */
-export function atomicWriteFileSync(path: string, content: string): void {
+export function atomicWriteFileSync(path: string, content: string | Uint8Array): void {
   const destination = resolveWriteDestination(path);
   mkdirSync(dirname(destination), { recursive: true });
   const mode = existsSync(destination) ? statSync(destination).mode & 0o7777 : undefined;

@@ -144,6 +144,8 @@ export const SKILL_COMMAND_RESOURCES: Record<string, string[]> = {
   sync: [],
   "session-start": [],
   "hook install|status|uninstall": [],
+  // Installs the shipped assets themselves; its own advertised capability needs no reference.
+  "skill install|status|uninstall": [],
 };
 
 /** One prose-level tripwire over BOTH rendered SKILL.md channels. */

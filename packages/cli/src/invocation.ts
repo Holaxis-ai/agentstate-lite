@@ -42,7 +42,7 @@ function realOrUndefined(p: string): string | undefined {
 }
 
 /** The absolute real path of the running executable (the bundled entry), or undefined. */
-function currentExecutableRealPath(): string | undefined {
+export function currentExecutableRealPath(): string | undefined {
   // import.meta.url is the running module; under the bundle that IS the executable file.
   const fromModule = realOrUndefined(fileURLToPath(import.meta.url));
   if (fromModule) return fromModule;
@@ -74,9 +74,10 @@ function binNameOnPath(): string | undefined {
  * to the npm dist/ bundle (dist/agentstate-lite.mjs) or an unbundled dev/test run (src/*.ts).
  * Distinguished by WHERE the running file lives on disk, not by an embedded build-time literal —
  * the npm dist/ and skill scripts/ bundles are produced by the identical esbuild config
- * (scripts/build-bundle.mjs) and stay byte-identical; only the runtime path differs.
+ * (scripts/build-bundle.mjs) and stay byte-identical; only the runtime path differs. Exported for
+ * `skill install`'s channel refusal (the marketplace bundle carries no npm-layout skill assets).
  */
-function isSkillBundlePath(exe: string): boolean {
+export function isSkillBundlePath(exe: string): boolean {
   const parts = exe.split("/");
   const base = parts[parts.length - 1];
   const parentDir = parts[parts.length - 2];

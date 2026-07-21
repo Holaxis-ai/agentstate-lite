@@ -35,6 +35,7 @@ import { ui } from "./commands/ui.js";
 import { sync } from "./commands/sync.js";
 import { home } from "./commands/home.js";
 import { hook } from "./commands/hook.js";
+import { skill } from "./commands/skill.js";
 import { sessionStart } from "./commands/session-start.js";
 import { bundleCommand } from "./commands/bundle.js";
 import { catalog } from "./commands/catalog.js";
@@ -68,6 +69,7 @@ export const KNOWN_COMMANDS = [
   "ui",
   "sync",
   "hook",
+  "skill",
   "session-start",
 ] as const;
 
@@ -262,6 +264,8 @@ export async function main(argv: string[]): Promise<void> {
       ui: wrap(ui),
       sync: wrap(sync),
       hook: wrap(hook),
+      // Install/remove this package's generated Agent Skill in host skill folders.
+      skill: wrap(skill),
       // The SessionStart hook payload: time-boxed board pull, then the home render — in-process.
       "session-start": wrap(sessionStart),
       // Explicit `home` handler so a SessionStart hook (or an agent) can also call `<bin> home`, not
