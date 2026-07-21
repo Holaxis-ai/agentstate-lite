@@ -4,15 +4,13 @@ title: 'npm prerelease: authoritative CLI plus explicitly installable Agent Skil
 status: in_progress
 priority: '1'
 description: >-
-  READY FOR MERGE GATE: PR #134 (PR1 feat/aslite-npm-coordinate @ 0e6506d) fixed
-  all 3 external-review findings, internally QA-verified PASS, awaiting external
-  re-review + Brian's merge. PR2 (feat/aslite-skill-channel @ 37b3b9b+959b502)
-  rebased onto new tip, gates green, QA spot-check PASS; opens as its own PR
-  after PR1 merges (rebase onto main + regen at that point). Only open caveat
-  across both: R2 concurrency limitation in tasks/skill-installer-followups. npm
-  publish remains human-gated.
+  PR #134 (PR1) now @ bd279ce: 3 external findings + reviewer-addendum invariant
+  (writer-recognizer guard in owning composer) all fixed; internal QA PASS on
+  the findings round, micro-audit of invariant delta in flight. PR2 @
+  37b3b9b+959b502 rebased on 0e6506d — will need ONE more rebase onto bd279ce
+  before opening. npm publish human-gated.
 actor: anthropic/claude
-timestamp: '2026-07-21T14:04:09.834Z'
+timestamp: '2026-07-21T15:25:33.241Z'
 ---
 # Behavioral claim
 
