@@ -13,7 +13,7 @@ description: >-
   (home/workspace/overview/hub) before tutorial copy hardens the word. Boundary:
   ui-rethink stays separate/post-window.
 actor: mike/claude
-timestamp: '2026-07-21T15:21:07.726Z'
+timestamp: '2026-07-21T17:52:33.530Z'
 ---
 # Intent
 
@@ -156,3 +156,5 @@ doc). Cheap later (token injection at one seam) but new scope — an explicit fu
 decision, never backed into.
 
 [distilled design](../designs/home-surface.md)
+
+[second-act design](../designs/doc-reader.md)
