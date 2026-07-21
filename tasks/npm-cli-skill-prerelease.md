@@ -4,13 +4,20 @@ title: 'npm prerelease: authoritative CLI plus explicitly installable Agent Skil
 status: in_progress
 priority: '1'
 description: >-
-  BOTH PRs DELIVERED & pushed (PR1 feat/aslite-npm-coordinate @3bd40b9; PR2
-  feat/aslite-skill-channel @3bbd57e stacked). Full
-  Builder->Review->adversarial-QA ladder run to convergence; QA verdict SHIP.
-  Awaiting Brian: open/merge PR1, then PR2 gets rebased+regen. npm publish
-  remains human-gated.
-actor: anthropic/claude
-timestamp: '2026-07-21T04:44:25.606Z'
+  CHANGES REQUIRED after independent review of PR #134 at
+  3bd40b94ac291d035ded542b18df0854614560a5 (context-notes/pr-134-review). Three
+  empirical defects: atomic hook writes replace file-level settings symlinks and
+  silently sever the dotfile target; valid JSON SessionStart:[null] bypasses
+  validation and hook install exits 0 with installed:true despite leaving that
+  host uninstalled; the new on-disk upgrade test fails in a marker-free isolated
+  worktree and is falsely green in CI because the checkout path contains the
+  legacy marker. PR title/body also describe stacked PR2 rather than this PR1
+  diff. Exact-SHA CI is green; fresh npm ci/root build, 34/34 script tests,
+  26/26 distribution tests, three completing-command integration tests, and
+  explicit rename inventory pass. Keep in_progress until fixes and exact-SHA
+  re-review; npm publication remains human-gated.
+actor: codex-reviewer
+timestamp: '2026-07-21T13:25:07.815Z'
 ---
 # Behavioral claim
 
