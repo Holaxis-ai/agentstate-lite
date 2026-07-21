@@ -2,12 +2,16 @@
 type: Design
 title: Home surface — the human window over a bundle (v1)
 actor: mike/claude
-timestamp: '2026-07-21T15:21:07.487Z'
+timestamp: '2026-07-21T15:31:35.658Z'
 ---
 # Home surface — the human window over a bundle (v1)
 
 **Status:** Direction settled 2026-07-21 with Mike across three prototype rounds
-(clickable prototype: claude.ai/code artifact `d164ddf6`, private). Unit-1 build planned in
+(clickable prototype: claude.ai/code artifact `d164ddf6`, private). Rev 2 same day:
+independent Fable review (APPROVE-WITH-CHANGES,
+[review record](../context-notes/home-surface-design-review.md)) folded in — sharing-chip
+truth table extended, catalog privacy flag replaced by collapsed-by-default, probe
+mechanism specified. Unit-1 build planned in
 [the build plan](../plans/home-surface-build.md). The doc-reader "window" second act is
 recorded here as direction but DECISION-GATED — not part of Unit 1.
 
@@ -28,10 +32,21 @@ those.
    user-meaningful STATE up front, implementation MECHANICS one click behind — and the
    path is never deleted (plain files you own is the product's soul; the path is the
    proof). The chip advances [the visibility safeguard](../tasks/bundle-visibility-safeguard.md).
+   **Truthfulness rules (review rev 2):** the chip must never fabricate in EITHER
+   direction — a wrong "shared" is as bad as a wrong "private". State comes from an
+   OFFLINE local-evidence probe (home's mechanism — never a network op, gate 5),
+   TTL-cached off the event loop, labeled `as_of`; the SPA refetches config on SSE
+   resync. The probe runs ONLY when the served bundle IS the conventional board (else no
+   sharing claim is made — the wrong-target guard). The full state truth table (incl.
+   in-tree-without-remote, local-only branch, refusal states, non-GitHub remotes) lives
+   in the build plan and is pinned by tests.
 2. **Orientation (first run only).** What a bundle is, the human–agent loop, the privacy
-   promise ("everything stays private to this computer until you choose to share it"),
-   and the try-it hook: ask your agent to remember something, watch it land. Replaces the
-   developer-facing "promote an HTML view under views/" empty state.
+   promise, and the try-it hook: ask your agent to remember something, watch it land.
+   Replaces the developer-facing "promote an HTML view under views/" empty state.
+   Rev 2: the promise is WORDED to cover in-tree mode (committing the bundle with code IS
+   choosing to share — chip and promise must never contradict); the try-it copy carries a
+   no-agent-yet fallback; first-run dismissal is localStorage keyed by bundle root (known
+   caveat: an ephemeral-port fallback changes origin and may resurface it — accepted).
 3. **Views: ONE flat recency-sorted grid.** The Dashboards/Interactive/Documents grouping
    is retired — it projected the security model into the IA, and "Documents" collided
    with the product's core noun. Capability becomes a **badge** — `live data` /
@@ -43,15 +58,21 @@ those.
    title + freshness, updating over the EXISTING SSE stream. This is the tutorial's
    engine and the empty state's fix in one mechanism.
 5. **Workspaces (tier 1: see, not switch).** Read-only catalog block — names only, the
-   open one marked; each row expands to its path + open command. Private workspaces
-   hidden by default. The catalog is CLI policy, so the CLI INJECTS it through a
-   consumer-owned ui-server option (the `resolveBundleDisplayName` precedent) — ui-server
-   never imports CLI code. In-browser SWITCHING is a separate future decision
+   open one marked; each row expands to its path + open command. The block is COLLAPSED
+   by default (the demo/screenshot mitigation, review rev 2); a per-entry catalog privacy
+   flag is DEFERRED to its own unit — the catalog is shared user-global state parsed
+   strictly by every installed CLI version, so a schema change is a MIGRATION (high-risk
+   tier), not a field add. Injection is labels+paths only, no availability probes
+   (home's budgeted discipline). The catalog is CLI policy, so the CLI INJECTS it through
+   a consumer-owned ui-server option (the `resolveBundleDisplayName` precedent) into
+   ui-server-OWNED plain data shapes — ui-server never imports CLI or board-git code
+   (machine-enforced, no allowlist). In-browser SWITCHING is a separate future decision
    (remount-in-place preferred; multi-mount brushes the frozen multi-bundle unit).
 6. **Naming: OPEN.** Candidates home / launcher / workspace / overview. "Home" is the
    working lean (symmetry with the CLI `home` verb; the workspaces block strengthens it).
    Decide with early test-user input, BEFORE tutorial copy hardens the word. The route
-   param stays compatible either way (`parseRoute` already falls back).
+   param stays compatible either way (`parseRoute` already falls back). The `artifact`
+   badge word joins the same test-user question set (it may read as developer jargon).
 
 ## Content model — three first-class media
 
