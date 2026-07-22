@@ -281,6 +281,23 @@ body {
   color: var(--text-secondary);
 }
 
+/* "learn more" — the same progressive disclosure as "where is this?": authoring mechanics stay
+   one click behind the plain-language explanation, never in front of a first-time reader. */
+.launcher-empty-details {
+  margin-top: 0.2rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-card);
+  padding: 0.6rem 0.9rem;
+}
+
+.launcher-empty-details code {
+  font-family: var(--font-mono);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  padding: 0.05rem 0.3rem;
+  border-radius: var(--radius);
+}
+
 /* ── Home layout: main column + activity aside (designs/home-surface) ── */
 .home-columns {
   display: grid;

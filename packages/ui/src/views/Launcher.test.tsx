@@ -23,6 +23,12 @@ import { fetchConfig, listPages, type SharingSummary, type UiConfig } from "../a
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const BUNDLE_ROOT = "/tmp/bundle";
+/**
+ * The canonical View-authoring vocabulary. ONE list, asserted in both directions: absent from the
+ * empty state's first read, present once "learn more" is expanded. Editing either surface without
+ * the other turns one of the two assertions red.
+ */
+const AUTHORING_JARGON = ["type: View", "type: Page", "views/", "examples/views/"] as const;
 const BASE_CONFIG: UiConfig = { mode: "dir", remoteUrl: null, root: BUNDLE_ROOT, name: "bundle", sharing: null, workspaces: [] };
 
 vi.mock("../api/pages.js", () => ({
@@ -127,11 +133,46 @@ describe("home surface", () => {
     expect(text).toContain("interactive HTML file");
     expect(text).toContain("asking your agent");
     expect(text).toMatch(/create a view showing every open task/);
-    // Authoring MECHANICS are deliberately absent from the first-run surface: a reader who has
-    // never seen a view should not have to parse kind names or blob prefixes to understand it.
-    for (const jargon of ["type: View", "type: Page", "views/", "examples/views/", "registry doc"]) {
-      expect(text, `first-run empty state must stay free of "${jargon}"`).not.toContain(jargon);
+    // Authoring MECHANICS are deliberately absent from the FIRST read: a reader who has never
+    // seen a view should not have to parse kind names or blob prefixes to understand it. They
+    // live one click behind "learn more" — asserted below, so this is disclosure, not deletion.
+    for (const jargon of AUTHORING_JARGON) {
+      expect(text, `first read must stay free of "${jargon}"`).not.toContain(jargon);
     }
+  });
+
+  it("'learn more' discloses the authoring mechanics the first read withholds", async () => {
+    storage.setItem(orientationStorageKey(BUNDLE_ROOT), "dismissed");
+    await render();
+    for (let i = 0; i < 50 && !container.querySelector(".launcher-empty"); i++) {
+      await act(async () => {
+        await flush();
+      });
+    }
+
+    const empty = container.querySelector(".launcher-empty");
+    const toggle = empty!.querySelector<HTMLButtonElement>("button.where-btn");
+    expect(toggle, "empty state must offer a 'learn more' disclosure").not.toBeNull();
+    // Collapsed by default — the whole point is that the mechanics are not the first thing read.
+    expect(toggle!.textContent).toContain("learn more");
+    expect(toggle!.getAttribute("aria-expanded")).toBe("false");
+    expect(empty!.querySelector(".launcher-empty-details")).toBeNull();
+
+    await act(async () => {
+      toggle!.click();
+      await flush();
+    });
+
+    const details = empty!.querySelector(".launcher-empty-details");
+    expect(details, "clicking 'learn more' must reveal the mechanics panel").not.toBeNull();
+    const disclosed = details!.textContent ?? "";
+    // Every term withheld from the first read is reachable here — the canonical authoring
+    // vocabulary, with Page named only as the legacy form that keeps working.
+    for (const jargon of AUTHORING_JARGON) {
+      expect(disclosed, `"${jargon}" must be reachable behind 'learn more'`).toContain(jargon);
+    }
+    expect(toggle!.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle!.textContent).toContain("hide details");
   });
 
   it("renders ONE flat grid with capability badges — no Dashboards/Interactive/Documents sections", async () => {

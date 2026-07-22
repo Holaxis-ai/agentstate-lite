@@ -119,6 +119,7 @@ export function Launcher() {
   const pagesQuery = useQuery({ queryKey: ["pages"], queryFn: listPages });
   const [orientationDismissed, setOrientationDismissed] = useState<boolean | null>(null);
   const [whereOpen, setWhereOpen] = useState(false);
+  const [viewsHelpOpen, setViewsHelpOpen] = useState(false);
 
   useEffect(() => {
     return subscribeToChanges((e) => {
@@ -272,6 +273,31 @@ export function Launcher() {
                   <em>“create a view showing every open task, grouped by who it’s assigned to.”</em> When it creates a
                   view, a card or tile summarizing the view will appear on this page, along with a link to it.
                 </p>
+                <p>
+                  <button
+                    type="button"
+                    className="where-btn"
+                    aria-expanded={viewsHelpOpen}
+                    onClick={() => setViewsHelpOpen((v) => !v)}
+                  >
+                    {viewsHelpOpen ? "hide details" : "learn more"}
+                  </button>
+                </p>
+                {viewsHelpOpen && (
+                  <div className="launcher-empty-details">
+                    <p>
+                      A view is an HTML file stored in this bundle under <code>views/</code>, registered by a{" "}
+                      <code>type: View</code> document that gives it a title and points at the file. The shell renders
+                      it in a sandboxed frame with no network access; it reads bundle data through a narrow, read-only
+                      bridge, which is what lets it redraw itself when documents change.
+                    </p>
+                    <p>
+                      Worked examples — including the bridge client to copy — ship with the CLI under{" "}
+                      <code>examples/views/</code>. (Views used to be called pages; existing{" "}
+                      <code>type: Page</code> documents keep working and never need migrating.)
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </section>
