@@ -9,7 +9,7 @@ The full wired/partial/deferred history through item 47 (2026-07-06) is preserve
 byte-for-byte as bundle doc **`archive/status`**:
 
 ```
-npx -y aslite pull --doc-key archive/status.md --out STATUS-archive.md --remote <url>
+npx -y @holaxis/aslite pull --doc-key archive/status.md --out STATUS-archive.md --remote <url>
 ```
 
 (It is also intact in this file's git history.)

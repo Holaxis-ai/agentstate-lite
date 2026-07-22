@@ -94,7 +94,7 @@ const NEW_BIN_COMMAND_RE = /^\s*(?:"(?:[^"]*\/)?aslite"|(?:[^\s"]*\/)?aslite)(?:
 
 /**
  * Managed-hook recognition over a hook COMMAND string: legacy marker substring, or new-form bin.
- * Known asymmetry: a hand-authored `npx -y aslite session-start` is NOT recognized (first token
+ * Known asymmetry: a hand-authored `npx -y @holaxis/aslite session-start` is NOT recognized (first token
  * is `npx`), while the legacy npx form is (substring) — acceptable because the installer never
  * emits an npx form (`hookCommand()` resolves a bin name or an absolute executable path).
  */
