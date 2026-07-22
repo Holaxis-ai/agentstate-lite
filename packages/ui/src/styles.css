@@ -679,6 +679,182 @@ body {
   }
 }
 
+/* ── Document browser (designs/document-discovery Decision 1): every doc, grouped by kind ── */
+.browse {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.browse-filter {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  background: var(--surface-card);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+
+.browse-filter:focus-visible {
+  outline: 2px solid var(--color-structure);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+.browse-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.browse-group {
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 0.4rem;
+}
+
+.browse-group:last-child {
+  border-bottom: none;
+}
+
+.browse-group h4 {
+  margin: 0;
+}
+
+/* The group header is a toggle; a browse_collapsed kind starts closed. */
+.browse-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.35rem 0.15rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.browse-group-head:focus-visible {
+  outline: 2px solid var(--color-structure);
+  outline-offset: -2px;
+}
+
+.browse-group-kind {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 0.92rem;
+  color: var(--text-primary);
+}
+
+.browse-count {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+
+.browse-caret {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+.browse-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.15rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.browse-item {
+  min-width: 0;
+}
+
+.browse-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.3rem 0.15rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.83rem;
+  color: inherit;
+  text-align: left;
+}
+
+.browse-row:focus-visible {
+  outline: 2px solid var(--color-structure);
+  outline-offset: -2px;
+}
+
+.browse-row-kind {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--color-process);
+}
+
+.browse-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.browse-row:hover .browse-title,
+.browse-row:focus-visible .browse-title {
+  color: var(--color-structure);
+  text-decoration: underline;
+}
+
+.browse-when {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+}
+
+.browse-show-all,
+.browse-results-count {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.browse-show-all {
+  margin: 0.1rem 0 0 0.15rem;
+  padding: 0.15rem 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.browse-show-all:hover {
+  color: var(--color-structure);
+  text-decoration: underline;
+}
+
+.browse-results-count {
+  margin: 0 0 0.3rem 0.15rem;
+  font-family: var(--font-mono);
+}
+
+.browse-empty {
+  color: var(--text-tertiary);
+  font-size: 0.83rem;
+  line-height: 1.5;
+  max-width: 40ch;
+  margin: 0;
+  padding: 0.4rem 0.15rem;
+}
+
 /* ── Doc reader (designs/doc-reader) — Blue bar = shell surface, teal = inside a View ── */
 .doc-bar {
   border-bottom: 2px solid var(--color-structure);

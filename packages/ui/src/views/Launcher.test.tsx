@@ -40,6 +40,11 @@ vi.mock("./ActivityFeed.js", () => ({
   ActivityFeed: () => null,
 }));
 
+// Likewise the document browser (DocumentBrowser.test.tsx) — stub it so the Launcher tests stay focused.
+vi.mock("./DocumentBrowser.js", () => ({
+  DocumentBrowser: () => null,
+}));
+
 async function flush() {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }

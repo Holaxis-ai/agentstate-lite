@@ -76,6 +76,10 @@ export const CONTEXT_NOTE_KIND: KindConvention = {
   },
   sections: ["Summary"],
   freshnessHorizon: "24h",
+  // Context Notes are transient cross-session scratch — collapse them by default in browse listings
+  // so they never swamp durable knowledge (designs/document-discovery Decision 1). Per-bundle
+  // overridable by dropping the key; every other kind stays expanded.
+  browseCollapsed: true,
 };
 
 /**
