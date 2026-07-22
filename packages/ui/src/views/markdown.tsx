@@ -50,6 +50,8 @@ export interface RenderOptions {
   fromId: string;
   /** Shell navigation for a RESOLVED doc link (the only thing a link can do). */
   onNavigateDoc: (id: string) => void;
+  /** Resolve a concept id to its title, for the inline "verb → title" edge rows (falls back to the id). */
+  titleFor?: (conceptId: string) => string | undefined;
 }
 
 /** Flatten a node's text content — the inert fallback for unknown/rejected constructs. */
@@ -60,6 +62,41 @@ function textOf(node: Node): string {
   const children = (node as Partial<Parent>).children;
   if (!Array.isArray(children)) return "";
   return children.map((child) => textOf(child)).join("");
+}
+
+/** A paragraph child with no visible content — inter-link whitespace or a soft/hard line break. */
+function isBlankInline(node: Node): boolean {
+  if (node.type === "break") return true;
+  if (node.type === "text") return ((node as { value?: string }).value ?? "").trim() === "";
+  return false;
+}
+
+/**
+ * A "bare link block": a top-level paragraph whose ONLY content is CONCEPT links (plus inter-link
+ * whitespace / breaks) — no prose. These are the doc's outbound edges authored as standalone
+ * references; the reader renders them as an inline "verb → target-title" list ({@link renderEdgeList})
+ * rather than as bare link words. Two guards keep the rendering faithful:
+ *   - a link EMBEDDED in a sentence (any prose sibling) → NOT a bare block, renders as normal prose;
+ *   - a link the resolver REJECTS (external URL, `#anchor`, non-`.md`) has no concept target to name,
+ *     so its paragraph is NOT an edge block and renders unchanged.
+ * Otherwise purely structural — it never reads the link text, so it needs no declared vocabulary
+ * and handles undeclared verbs and plain concept citations alike. Pure — the unit-tested
+ * discriminator.
+ */
+export function isBareLinkBlock(node: Node, fromId: string): boolean {
+  if (node.type !== "paragraph") return false;
+  let sawLink = false;
+  for (const child of (node as Parent).children) {
+    if (isBlankInline(child)) continue;
+    if (child.type === "link" && resolveConceptId(fromId, (child as { url?: string }).url ?? "") !== null) {
+      sawLink = true;
+      continue;
+    }
+    // Prose text, an image, or a NON-concept link (external/anchor/non-.md — its only home is the
+    // body) → not a bare concept-link block, leave the whole paragraph in place.
+    return false;
+  }
+  return sawLink;
 }
 
 /** A fenced block's language, admitted only in a strictly-shaped class name (never arbitrary). */
@@ -216,6 +253,52 @@ function renderNode(node: RootContent | Node, state: WalkState, depth: number, i
   }
 }
 
+/**
+ * Render a run of bare concept-link paragraphs as one inline "verb → target-title" edge list, IN
+ * PLACE — the doc reader's outbound relationships. `links` are the concept links collected from a
+ * consecutive run of {@link isBareLinkBlock} paragraphs (authors write one edge per line, so the
+ * run merges into a single aligned list). Each row shows the link's authored text (the relationship
+ * verb) → the target's title, and navigates to the target. The target's title comes from `titleFor`
+ * (the reader's head projection); a target with no title falls back to its id.
+ */
+function renderEdgeList(links: Node[], state: WalkState, index: number): ReactNode {
+  const { fromId, onNavigateDoc, titleFor } = state.options;
+  const rows: ReactNode[] = [];
+  for (let i = 0; i < links.length; i++) {
+    // Each row counts against the walk budget, like renderNode — a hostile all-edges body degrades
+    // (bounded) instead of rendering unboundedly past MAX_NODES.
+    if (state.count >= MAX_NODES) {
+      state.bounded = true;
+      break;
+    }
+    state.count++;
+    const to = resolveConceptId(fromId, (links[i] as { url?: string }).url ?? "");
+    if (to === null) continue; // isBareLinkBlock guarantees resolvability; defensive
+    const verb = textOf(links[i]!).trim();
+    const target = titleFor?.(to) ?? to;
+    rows.push(
+      <a
+        key={i}
+        className="doc-edge-row"
+        href={`?view=doc&id=${encodeURIComponent(to)}`}
+        onClick={(event) => {
+          event.preventDefault();
+          onNavigateDoc(to);
+        }}
+      >
+        <span className="doc-edge-verb">{verb}</span>
+        <span className="doc-edge-arrow" aria-hidden="true">→</span>
+        <span className="doc-edge-target">{target}</span>
+      </a>,
+    );
+  }
+  return (
+    <div key={index} className="doc-edge-list">
+      {rows}
+    </div>
+  );
+}
+
 /** Parse + render a doc body to React elements under the module's bounds. Pure aside from the callbacks. */
 export function renderMarkdown(body: string, options: RenderOptions): RenderedMarkdown {
   let bounded = false;
@@ -229,6 +312,27 @@ export function renderMarkdown(body: string, options: RenderOptions): RenderedMa
     mdastExtensions: [gfmFromMarkdown()],
   });
   const state: WalkState = { count: 0, bounded: false, options };
-  const element = <>{tree.children.map((child, index) => renderNode(child, state, 1, index))}</>;
+  // Render a run of bare concept-link paragraphs inline as one "verb → target" edge list (authors
+  // write one edge per line, so merge the consecutive run). Non-bare paragraphs and inline links
+  // render normally through renderNode.
+  const children = tree.children;
+  const nodes: ReactNode[] = [];
+  let i = 0;
+  while (i < children.length) {
+    if (isBareLinkBlock(children[i]!, options.fromId)) {
+      const links: Node[] = [];
+      let j = i;
+      while (j < children.length && isBareLinkBlock(children[j]!, options.fromId)) {
+        for (const c of (children[j] as Parent).children) if (c.type === "link") links.push(c);
+        j++;
+      }
+      nodes.push(renderEdgeList(links, state, i));
+      i = j;
+    } else {
+      nodes.push(renderNode(children[i]!, state, 1, i));
+      i++;
+    }
+  }
+  const element = <>{nodes}</>;
   return { element, bounded: bounded || state.bounded };
 }

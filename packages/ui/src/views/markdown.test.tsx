@@ -30,8 +30,8 @@ describe("markdown renderer", () => {
     container.remove();
   });
 
-  async function render(body: string, fromId = "tasks/alpha"): Promise<{ bounded: boolean }> {
-    const result = renderMarkdown(body, { fromId, onNavigateDoc });
+  async function render(body: string, fromId = "tasks/alpha", titleFor?: (id: string) => string | undefined): Promise<{ bounded: boolean }> {
+    const result = renderMarkdown(body, { fromId, onNavigateDoc, titleFor });
     await act(async () => {
       root.render(<div className="doc-body">{result.element}</div>);
     });
@@ -168,11 +168,95 @@ describe("markdown renderer", () => {
     expect(container.querySelector("hr")).not.toBeNull();
   });
 
+  describe("inline edge rows (bare concept-link blocks render as 'verb → target')", () => {
+    const titleFor = (id: string): string | undefined =>
+      id === "tasks/a" ? "Inventory the resources" : id === "tasks/b" ? "Verify the package" : undefined;
+
+    it("renders a bare concept-link block as an aligned edge list: verb → target-title, routed to the target", async () => {
+      await render("Ships it.\n\n[contains](../tasks/a.md)\n\n[depends on](../tasks/b.md)", "roadmap-items/x", titleFor);
+      expect(container.textContent).toContain("Ships it.");
+      const rows = [...container.querySelectorAll(".doc-edge-list .doc-edge-row")];
+      expect(rows).toHaveLength(2);
+      expect(rows[0]!.querySelector(".doc-edge-verb")!.textContent).toBe("contains");
+      expect(rows[0]!.querySelector(".doc-edge-target")!.textContent).toBe("Inventory the resources");
+      expect(rows[0]!.getAttribute("href")).toBe("?view=doc&id=tasks%2Fa");
+      expect(rows[1]!.querySelector(".doc-edge-verb")!.textContent).toBe("depends on");
+      expect(rows[1]!.querySelector(".doc-edge-target")!.textContent).toBe("Verify the package");
+    });
+
+    it("falls back to the target id when no title is known", async () => {
+      await render("[contains](../tasks/z.md)", "roadmap-items/x", titleFor);
+      expect(container.querySelector(".doc-edge-target")!.textContent).toBe("tasks/z");
+    });
+
+    it("merges a run of consecutive single-link paragraphs into ONE edge list", async () => {
+      await render("[contains](../tasks/a.md)\n\n[contains](../tasks/b.md)\n\n[contains](../tasks/c.md)", "roadmap-items/x");
+      expect(container.querySelectorAll(".doc-edge-list")).toHaveLength(1);
+      expect(container.querySelectorAll(".doc-edge-row")).toHaveLength(3);
+    });
+
+    it("also collapses a multi-link block joined by soft breaks into rows", async () => {
+      await render("[contains](../tasks/a.md)\n[depends on](../tasks/b.md)", "roadmap-items/x");
+      expect(container.querySelectorAll(".doc-edge-list")).toHaveLength(1);
+      expect(container.querySelectorAll(".doc-edge-row")).toHaveLength(2);
+    });
+
+    it("REGRESSION: a concept link EMBEDDED in a sentence is prose, not an edge row", async () => {
+      // The exact objection: "the archive contains the history" must not lose its verb.
+      await render("The archive [contains](../refs/history.md) the history.", "docs/x");
+      expect(container.querySelector(".doc-edge-list")).toBeNull();
+      const anchor = container.querySelector("a")!;
+      expect(anchor.textContent).toBe("contains");
+      expect(anchor.getAttribute("href")).toBe("?view=doc&id=refs%2Fhistory");
+      expect(container.textContent).toBe("The archive contains the history.");
+    });
+
+    it("a NON-concept bare link (external / #anchor / non-.md) is NOT an edge row and stays visible", async () => {
+      await render(
+        "[the upstream spec](https://example.com/spec)\n\n[see the appendix](#appendix)\n\n[the raw file](../data/table.csv)",
+        "docs/x",
+      );
+      expect(container.querySelector(".doc-edge-list")).toBeNull();
+      const text = container.textContent ?? "";
+      expect(text).toContain("the upstream spec");
+      expect(text).toContain("see the appendix");
+      expect(text).toContain("the raw file");
+    });
+
+    it("a paragraph mixing a concept and a non-concept link is left as prose (not an edge list)", async () => {
+      await render("[contains](../tasks/a.md) [the spec](https://example.com)", "roadmap-items/x");
+      expect(container.querySelector(".doc-edge-list")).toBeNull();
+      expect(container.textContent).toContain("contains");
+      expect(container.textContent).toContain("the spec");
+    });
+
+    it("an image-only paragraph is not an edge list (an image is not a link)", async () => {
+      await render("![a diagram](../views/chart.png)", "tasks/x");
+      expect(container.querySelector(".doc-edge-list")).toBeNull();
+      expect(container.textContent).toContain("[image: a diagram]");
+    });
+
+    it("a bare concept-link nested in a blockquote is NOT lifted — the edge list is TOP-LEVEL only", async () => {
+      await render("> [contains](../tasks/a.md)", "roadmap-items/x");
+      expect(container.querySelector(".doc-edge-list")).toBeNull();
+      expect(container.querySelector("blockquote a")!.getAttribute("href")).toBe("?view=doc&id=tasks%2Fa");
+    });
+  });
+
   it("bounds degrade honestly: oversized bodies and node floods report bounded", async () => {
     const oversized = "a".repeat(MAX_BODY_CHARS + 10);
     expect((await render(oversized)).bounded).toBe(true);
 
     const flood = Array.from({ length: MAX_NODES + 100 }, (_, i) => `p${i}`).join("\n\n");
     expect((await render(flood)).bounded).toBe(true);
+  });
+
+  it("bounds an all-EDGE flood too — inline edge rows count against the node budget", () => {
+    // A body of only bare concept-link paragraphs (all merge into one edge list) must degrade like
+    // any other path, not render every row unbounded past MAX_NODES. Assert on renderMarkdown's
+    // `bounded` flag directly — mounting ~20K anchor rows to jsdom is needlessly slow (CI timeout).
+    const flood = Array.from({ length: MAX_NODES + 50 }, () => "[a](b.md)").join("\n\n");
+    const result = renderMarkdown(flood, { fromId: "docs/x", onNavigateDoc });
+    expect(result.bounded).toBe(true);
   });
 });

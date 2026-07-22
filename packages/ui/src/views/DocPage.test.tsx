@@ -1,14 +1,15 @@
 /**
  * DocPage pins (designs/doc-reader rev 2): header card renders kind + KIND-DECLARED chips only
  * (mechanism in the shell, meaning from the bundle), body renders through the bounded pipeline,
- * backlinks list + navigate, unknown id lands in the honest not-found state with a way home.
+ * outbound edges render INLINE in the body as "verb → target-title" rows (no separate section),
+ * backlinks list + navigate under "Cited by", unknown id lands in the honest not-found state.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DocPage } from "./DocPage.js";
-import { ApiError, getDoc } from "../api/client.js";
+import { ApiError, getDoc, listAllHeads } from "../api/client.js";
 import { fetchEdges, fetchKinds } from "../api/pages.js";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -47,6 +48,8 @@ describe("DocPage", () => {
     vi.mocked(fetchEdges).mockResolvedValue([]);
     vi.mocked(fetchKinds).mockReset();
     vi.mocked(fetchKinds).mockResolvedValue([]);
+    vi.mocked(listAllHeads).mockReset();
+    vi.mocked(listAllHeads).mockResolvedValue([]);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -125,64 +128,69 @@ describe("DocPage", () => {
     expect(container.textContent).not.toContain("No doc");
   });
 
-  it("renders outbound edges grouped by declared relationship, with every row href a ?view=doc route", async () => {
+  it("renders a bare concept-link block as an INLINE 'verb → target-title' edge list in the body — no separate section", async () => {
     vi.mocked(getDoc).mockResolvedValue({
-      doc: { id: "roadmap-items/x", frontmatter: { type: "Roadmap Item", title: "X" }, body: "" },
+      doc: {
+        id: "roadmap-items/x",
+        frontmatter: { type: "Roadmap Item", title: "X" },
+        body: "Ships the inventory.\n\n[contains](../tasks/a.md)\n\n[contains](../tasks/b.md)",
+      },
       version: "v1",
     });
-    vi.mocked(fetchKinds).mockResolvedValue([
-      { id: "conventions/roadmap-item", title: "Roadmap Item", governs: "Roadmap Item", fields: { required: [], optional: [], values: {} }, links: { contains: "Task" } },
+    // Heads supply the target titles shown in the rows.
+    vi.mocked(listAllHeads).mockResolvedValue([
+      { id: "tasks/a", version: "v1", frontmatter: { type: "Task", title: "Inventory the resources" } },
+      { id: "tasks/b", version: "v1", frontmatter: { type: "Task", title: "Verify the npm package" } },
     ] as never);
-    vi.mocked(fetchEdges).mockImplementation(async (params: { from?: unknown; to?: unknown }) => {
-      if (params.from) {
-        return [
-          { from: "roadmap-items/x", to: "tasks/a", text: "contains" },
-          { from: "roadmap-items/x", to: "tasks/b", text: "contains" },
-          { from: "roadmap-items/x", to: "designs/d", text: "the design behind this" }, // prose → Related
-        ];
-      }
-      return [{ from: "plans/p", to: "roadmap-items/x", text: "implements" }]; // backlink
-    });
+    vi.mocked(fetchEdges).mockResolvedValue([]); // no backlinks
 
     await render("roadmap-items/x");
 
-    const verbs = [...container.querySelectorAll(".doc-rel-verb")].map((h) => h.textContent);
-    expect(verbs).toEqual(["contains", "Related"]);
-    const links = container.querySelector(".doc-links")!;
-    expect(links.textContent).toContain("tasks/a");
-    expect(links.textContent).toContain("tasks/b");
-    // Prose edge lands in Related, carrying its text.
-    expect(links.textContent).toContain("the design behind this");
-    // Every outbound + backlink anchor is a same-page reader route — never a raw target attribute.
-    for (const a of container.querySelectorAll(".doc-relationships a")) {
-      expect(a.getAttribute("href")).toMatch(/^\?view=doc&id=/);
-    }
-    // Backlink still renders under "Cited by".
-    expect(container.querySelector(".doc-backlinks")!.textContent).toContain("plans/p");
+    // Prose stays; the edges render inline in the body as an aligned edge list (NOT a separate section).
+    expect(container.querySelector(".doc-body")!.textContent).toContain("Ships the inventory.");
+    expect(container.querySelector(".doc-links")).toBeNull();
+    const rows = [...container.querySelectorAll(".doc-body .doc-edge-list .doc-edge-row")];
+    expect(rows).toHaveLength(2);
+    // Each row shows the authored verb → the TARGET's title, and routes to the target.
+    expect(rows[0]!.querySelector(".doc-edge-verb")!.textContent).toBe("contains");
+    expect(rows[0]!.querySelector(".doc-edge-target")!.textContent).toBe("Inventory the resources");
+    expect(rows[0]!.getAttribute("href")).toBe("?view=doc&id=tasks%2Fa");
+    expect(rows[1]!.querySelector(".doc-edge-target")!.textContent).toBe("Verify the npm package");
   });
 
-  it("a relationship row to a dangling target navigates to the reader (which shows its own not-found state)", async () => {
-    // First render: the source doc with one outbound edge to a target that does not exist.
+  it("an inline edge row falls back to the target id when no title is known, and still routes there (dangling target)", async () => {
     vi.mocked(getDoc).mockImplementation(async (id: string) => {
-      if (id === "tasks/src") return { doc: { id, frontmatter: { type: "Task", title: "Src" }, body: "" }, version: "v1" };
+      if (id === "tasks/src") {
+        return { doc: { id, frontmatter: { type: "Task", title: "Src" }, body: "[contains](../tasks/ghost.md)" }, version: "v1" };
+      }
       throw new ApiError(404, "NOT_FOUND", "no such doc");
     });
-    vi.mocked(fetchKinds).mockResolvedValue([]);
-    vi.mocked(fetchEdges).mockImplementation(async (params: { from?: unknown }) =>
-      params.from ? [{ from: "tasks/src", to: "tasks/ghost", text: "" }] : [],
-    );
+    vi.mocked(listAllHeads).mockResolvedValue([]); // ghost has no head → no title
 
     await render("tasks/src");
-    const ghostLink = [...container.querySelectorAll(".doc-links a")].find((a) => a.textContent === "tasks/ghost") as HTMLAnchorElement;
-    expect(ghostLink, "the dangling target still renders as a link").toBeTruthy();
-    expect(ghostLink.getAttribute("href")).toBe("?view=doc&id=tasks%2Fghost");
+    const row = container.querySelector(".doc-body .doc-edge-row") as HTMLAnchorElement;
+    expect(row, "the dangling target still renders as an edge row").toBeTruthy();
+    expect(row.querySelector(".doc-edge-target")!.textContent).toBe("tasks/ghost");
+    expect(row.getAttribute("href")).toBe("?view=doc&id=tasks%2Fghost");
   });
 
-  it("a doc with neither outbound nor inbound edges shows a single quiet empty state", async () => {
+  it("an inline concept link EMBEDDED in a sentence renders as prose, not an edge row", async () => {
+    vi.mocked(getDoc).mockResolvedValue({
+      doc: { id: "docs/x", frontmatter: { type: "Doc", title: "X" }, body: "The archive [contains](../refs/history.md) the history." },
+      version: "v1",
+    });
+    await render("docs/x");
+    expect(container.querySelector(".doc-edge-list")).toBeNull();
+    expect(container.querySelector(".doc-body")!.textContent).toBe("The archive contains the history.");
+    expect(container.querySelector(".doc-body a")!.getAttribute("href")).toBe("?view=doc&id=refs%2Fhistory");
+  });
+
+  it("a doc with no body edges and no backlinks shows the quiet Cited-by empty state", async () => {
     vi.mocked(getDoc).mockResolvedValue({ doc: { id: "notes/lonely", frontmatter: { type: "Context Note", title: "Lonely" }, body: "" }, version: "v1" });
     vi.mocked(fetchEdges).mockResolvedValue([]);
     await render("notes/lonely");
     expect(container.querySelector(".doc-links")).toBeNull();
-    expect(container.querySelector(".doc-backlinks-empty")!.textContent).toBe("No links yet.");
+    expect(container.querySelector(".doc-edge-list")).toBeNull();
+    expect(container.querySelector(".doc-backlinks-empty")!.textContent).toBe("Nothing cites this doc yet.");
   });
 });

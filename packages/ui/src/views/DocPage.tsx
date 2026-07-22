@@ -1,25 +1,26 @@
 /**
  * The doc reader page (designs/doc-reader rev 2): one concept doc rendered in the SHELL —
  * frontmatter as a header card (kind pill, kind-declared field chips, actor, freshness), the body
- * through the bounded AST→React pipeline (`markdown.tsx` — the security boundary lives there),
- * and the derived "Cited by" list off the existing edges endpoint. Blue bar = shell surface
- * (PageFrame's teal bar means "inside a sandboxed View"; this page is trusted chrome).
+ * through the bounded AST→React pipeline (`markdown.tsx` — the security boundary lives there), and
+ * the derived "Cited by" list off the edges endpoint. OUTBOUND edges are not a separate section:
+ * they are the doc's own body links, rendered IN PLACE — a bare concept-link block becomes an
+ * inline "verb → target-title" edge list (markdown.tsx). Blue bar = shell surface (PageFrame's
+ * teal bar means "inside a sandboxed View"; this page is trusted chrome).
  *
  * Live: SSE doc changes for THIS id invalidate-and-refetch (the stream carries no frontmatter);
  * resync refetches unconditionally. A doc REMOVED while open lands in an honest terminal state
  * (PageFrame's revoke posture); an id that never existed renders not-found with a way home.
- * Kind-declared chips are display-only projections of the bundle's own conventions — mechanism
- * in the shell, meaning from the bundle (gate 3).
+ * Kind-declared chips and the inline edge titles are display-only projections of the bundle's own
+ * docs — mechanism in the shell, meaning from the bundle (gate 3).
  */
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getDoc, ApiError } from "../api/client.js";
+import { getDoc, listAllHeads, ApiError } from "../api/client.js";
 import { fetchEdges, fetchKinds } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { navigate } from "../routing.js";
 import { formatWhen } from "./format.js";
 import { renderMarkdown } from "./markdown.js";
-import { declaredVocabulary, groupOutbound, RELATED_GROUP } from "./relationships.js";
 
 function stringField(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
@@ -40,21 +41,19 @@ export function DocPage({ docId }: { docId: string }) {
     queryKey: ["doc-backlinks", docId],
     queryFn: () => fetchEdges({ to: docId }),
   });
-  // Outbound edges — this doc's own links, grouped by declared relationship below.
-  const outboundQuery = useQuery({
-    queryKey: ["doc-outbound", docId],
-    queryFn: () => fetchEdges({ from: docId }),
-  });
+  // Head projections give id → title for the inline "verb → title" edge rows. Heads-only (cheap),
+  // and the browse surface shares this cache.
+  const headsQuery = useQuery({ queryKey: ["all-heads"], queryFn: () => listAllHeads({}) });
 
   useEffect(() => {
     return subscribeToChanges((e) => {
       if (e.docs.changed.some((c) => c.id === docId) || e.docs.removed.includes(docId)) {
         void queryClient.invalidateQueries({ queryKey: ["doc", docId] });
-        // Outbound edges derive from THIS doc's body — only its own change matters.
-        void queryClient.invalidateQueries({ queryKey: ["doc-outbound", docId] });
       }
       if (e.docs.changed.length > 0 || e.docs.removed.length > 0) {
         void queryClient.invalidateQueries({ queryKey: ["doc-backlinks", docId] });
+        // A target's title may have changed — refresh the id→title map behind the inline edges.
+        void queryClient.invalidateQueries({ queryKey: ["all-heads"] });
       }
     });
   }, [queryClient, docId]);
@@ -63,7 +62,7 @@ export function DocPage({ docId }: { docId: string }) {
     return subscribeToResync(() => {
       void queryClient.invalidateQueries({ queryKey: ["doc", docId] });
       void queryClient.invalidateQueries({ queryKey: ["doc-backlinks", docId] });
-      void queryClient.invalidateQueries({ queryKey: ["doc-outbound", docId] });
+      void queryClient.invalidateQueries({ queryKey: ["all-heads"] });
     });
   }, [queryClient, docId]);
 
@@ -125,13 +124,19 @@ export function DocPage({ docId }: { docId: string }) {
     if (chips.length >= 6) break;
   }
 
+  const backlinks = backlinksQuery.data ?? [];
+  // id → title for the inline edge rows; a target without a title (or not yet loaded) falls back to
+  // its id in markdown.tsx.
+  const titleById = new Map<string, string>();
+  for (const head of headsQuery.data ?? []) {
+    const t = head.frontmatter.title;
+    if (typeof t === "string" && t.trim()) titleById.set(head.id, t);
+  }
   const rendered = renderMarkdown(doc.body ?? "", {
     fromId: doc.id,
     onNavigateDoc: (id) => navigate({ view: "doc", id }),
+    titleFor: (id) => titleById.get(id),
   });
-  const backlinks = backlinksQuery.data ?? [];
-  const vocabulary = declaredVocabulary(kindsQuery.data ?? []);
-  const outboundGroups = groupOutbound(outboundQuery.data ?? [], vocabulary);
 
   return (
     <div className="page-frame">
@@ -158,45 +163,13 @@ export function DocPage({ docId }: { docId: string }) {
             (read it with <code>aslite doc read {doc.id}</code>).
           </p>
         )}
+        {/* Outbound edges render inline in the body above (markdown.tsx). Only "Cited by" —
+            backlinks from OTHER docs, which are not in this body — needs a section. */}
         <section className="doc-relationships">
-          {outboundGroups.length > 0 && (
-            <div className="doc-links">
-              <h2>Links</h2>
-              {outboundGroups.map((group) => (
-                <div key={group.relation} className="doc-rel-group">
-                  <h3 className={group.relation === RELATED_GROUP ? "doc-rel-verb doc-rel-related" : "doc-rel-verb"}>
-                    {group.relation}
-                  </h3>
-                  <ul>
-                    {group.rows.map((row, index) => (
-                      // Index-suffixed key: core keeps per-literal counts; display deduped, keys stay unique.
-                      <li key={`${group.relation}:${row.to}:${index}`}>
-                        <a
-                          href={`?view=doc&id=${encodeURIComponent(row.to)}`}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            navigate({ view: "doc", id: row.to });
-                          }}
-                        >
-                          {row.to}
-                        </a>
-                        {/* In the Related group the text carries the human signal; typed groups already name the relation. */}
-                        {group.relation === RELATED_GROUP && row.text && row.text !== row.to && (
-                          <span className="doc-bl-text"> — {row.text}</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
           <div className="doc-backlinks">
             <h2>Cited by</h2>
             {backlinks.length === 0 ? (
-              <p className="doc-backlinks-empty">
-                {outboundGroups.length === 0 ? "No links yet." : "Nothing cites this doc yet."}
-              </p>
+              <p className="doc-backlinks-empty">Nothing cites this doc yet.</p>
             ) : (
               <ul>
                 {backlinks.map((edge, index) => (
