@@ -110,6 +110,8 @@ the rest of the line unchanged.
 
 ### Artifacts
 
+- `"$ASLITE" artifact create <file> --title <title> [--description <text>] [--supersedes <id>] [--actor <n>] [--remote <url>]`
+  — Produce a shareable output (HTML) a human can view: one command promotes the bytes and writes the type:Artifact record
 - `"$ASLITE" promote <file> --doc-key <key> [--content-type <mime>] [--expected-version <v>] [--remote <url>]`
   — Move a local file's bytes into the store (a .md key routes through the engine; else a blob)
 - `"$ASLITE" pull --doc-key <key> --out (<path> | -) [--remote <url>]`

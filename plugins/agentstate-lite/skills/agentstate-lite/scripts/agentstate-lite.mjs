@@ -3409,7 +3409,7 @@ var require_parse = __commonJS({
 var require_gray_matter = __commonJS({
   "../../node_modules/gray-matter/index.js"(exports2, module2) {
     "use strict";
-    var fs12 = __require("fs");
+    var fs13 = __require("fs");
     var sections = require_section_matter();
     var defaults = require_defaults();
     var stringify = require_stringify();
@@ -3493,7 +3493,7 @@ var require_gray_matter = __commonJS({
       return stringify(file, data, options2);
     };
     matter2.read = function(filepath, options2) {
-      const str2 = fs12.readFileSync(filepath, "utf8");
+      const str2 = fs13.readFileSync(filepath, "utf8");
       const file = matter2(str2, options2);
       file.path = filepath;
       return file;
@@ -4050,14 +4050,14 @@ var nodeFs = {
   existsSync,
   readFileSync: (path23, encoding) => readFileSync(path23, encoding)
 };
-function readNearestPackageJson(startPath, fs12 = nodeFs) {
+function readNearestPackageJson(startPath, fs13 = nodeFs) {
   let dir = dirname(startPath);
   let previous = "";
   while (dir !== previous) {
     const packageJsonPath = join(dir, "package.json");
-    if (fs12.existsSync(packageJsonPath)) {
+    if (fs13.existsSync(packageJsonPath)) {
       try {
-        const parsed = JSON.parse(fs12.readFileSync(packageJsonPath, "utf-8"));
+        const parsed = JSON.parse(fs13.readFileSync(packageJsonPath, "utf-8"));
         if (typeof parsed.name === "string" && parsed.name.length > 0) {
           return {
             packageName: parsed.name,
@@ -4379,9 +4379,9 @@ function resolveEntry(invokedAs, realpath) {
     return invokedAs;
   }
 }
-function resolveInstalledVersion(invokedAs, realpath, fs12) {
+function resolveInstalledVersion(invokedAs, realpath, fs13) {
   const installedEntry = resolveEntry(invokedAs, realpath);
-  return installedEntry ? readNearestPackageJson(installedEntry, fs12).version : void 0;
+  return installedEntry ? readNearestPackageJson(installedEntry, fs13).version : void 0;
 }
 function homebrewUpgradeOutput(options2) {
   const update = {
@@ -4421,8 +4421,8 @@ async function runUpdate(options2) {
   const platform = options2.platform ?? process.platform;
   const realpath = options2.realpath ?? ((path23) => realpathSync(path23));
   const entry = resolveEntry(invokedAs, realpath);
-  const fs12 = options2.fs ?? nodeFs;
-  const fromPackageJson = entry ? readNearestPackageJson(entry, fs12) : {};
+  const fs13 = options2.fs ?? nodeFs;
+  const fromPackageJson = entry ? readNearestPackageJson(entry, fs13) : {};
   const packageName = options2.packageName ?? fromPackageJson.packageName;
   const current = options2.version ?? fromPackageJson.version;
   if (!packageName) {
@@ -4484,7 +4484,7 @@ async function runUpdate(options2) {
       packageName,
       current,
       latest,
-      installedVersion: resolveInstalledVersion(invokedAs, realpath, fs12),
+      installedVersion: resolveInstalledVersion(invokedAs, realpath, fs13),
       command: plan.command
     });
   }
@@ -19384,6 +19384,10 @@ var COMMAND_GROUPS = [
     group: "Artifacts",
     commands: [
       {
+        usage: "artifact create <file> --title <title> [--description <text>] [--supersedes <id>] [--actor <n>] [--remote <url>]",
+        summary: "Produce a shareable output (HTML) a human can view: one command promotes the bytes and writes the type:Artifact record"
+      },
+      {
         usage: "promote <file> --doc-key <key> [--content-type <mime>] [--expected-version <v>] [--remote <url>]",
         summary: "Move a local file's bytes into the store (a .md key routes through the engine; else a blob)"
       },
@@ -20872,8 +20876,215 @@ async function indexCommand(argv, deps = {}) {
   }
 }
 
-// src/cli.ts
+// src/commands/artifact.ts
+import { promises as fs12 } from "node:fs";
 import { parseArgs as parseArgs29 } from "node:util";
+var ARTIFACT_USAGE = `agentstate-lite artifact \u2014 produced outputs you share with a human (HTML today)
+
+Usage:
+  agentstate-lite artifact create <file> --title <title> [options]
+
+'create' owns the whole sequence: it promotes <file>'s bytes under artifacts/, captures the version,
+derives a collision-safe id from the title, and writes the type:Artifact record (entry, entry_version,
+status: active). One command \u2014 no version hash to copy, no two-object dance.
+
+Options:
+  --title <title>       REQUIRED \u2014 the artifact's human title (and the basis for its id)
+  --description <text>  Optional one-line description
+  --supersedes <id>     Mark a prior artifact superseded and link this one 'supersedes' it
+  --dir <path>          Operate on a local bundle at <path>
+  --remote <url>        Operate on a remote bundle
+  --actor <name>        Attribute the write to <name>
+  --json                TOON/JSON receipt
+  -h, --help            Show this help`;
+var ARTIFACT_CREATE_OPTIONS = {
+  title: { type: "string" },
+  description: { type: "string" },
+  supersedes: { type: "string" },
+  dir: { type: "string" },
+  remote: { type: "string" },
+  actor: { type: "string" },
+  json: { type: "boolean" },
+  help: { type: "boolean", short: "h" }
+};
+function slugifyTitle(title) {
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/g, "");
+  return slug || "artifact";
+}
+function firstFreeId(slug, taken) {
+  let id = `artifacts/${slug}`;
+  for (let n = 2; taken.has(id); n++) id = `artifacts/${slug}-${n}`;
+  return id;
+}
+async function artifact(argv, deps = {}) {
+  const stdout = deps.stdout ?? ((s) => void process.stdout.write(s));
+  const sub = argv[0];
+  if (sub === void 0 || sub === "--help" || sub === "-h" || sub === "help") {
+    stdout(ARTIFACT_USAGE);
+    return;
+  }
+  if (sub !== "create") {
+    throw new CliError("USAGE", `unknown artifact subcommand: '${sub}' (expected 'create')`, {
+      help: `${cliInvocation()} artifact --help`
+    });
+  }
+  const { values, positionals } = parseOrUsage(
+    () => parseArgs29({ args: argv.slice(1), strict: true, allowPositionals: true, options: ARTIFACT_CREATE_OPTIONS }),
+    "artifact create"
+  );
+  if (values.help) {
+    stdout(ARTIFACT_USAGE);
+    return;
+  }
+  const file = positionals[0];
+  if (!file) {
+    throw new CliError("USAGE", "artifact create requires a local <file> positional", {
+      help: `${cliInvocation()} artifact create <file> --title <title>`
+    });
+  }
+  const title = values.title?.trim();
+  if (!title) {
+    throw new CliError("USAGE", "artifact create requires --title <title>", {
+      help: `${cliInvocation()} artifact create ${file} --title <title>`
+    });
+  }
+  let bytes;
+  try {
+    bytes = await fs12.readFile(file);
+  } catch (err) {
+    if (err?.code === "ENOENT") {
+      throw new CliError("USAGE", `no such file: '${file}'`, {
+        help: `${cliInvocation()} artifact create <file> --title <title>`
+      });
+    }
+    throw new CliError("RUNTIME", `could not read '${file}': ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const mode = values.json ? "json" : "default";
+  const dir = values.dir;
+  const remoteUrl = values.remote;
+  const actor = resolveActor(values.actor, {
+    help: `${cliInvocation()} artifact create <file> --title <title> --actor <name>`
+  });
+  const bundle = await openBundle(dir, await resolveRemoteFlag(remoteUrl, dir));
+  const registry = await loadKinds(bundle);
+  const supersedes = values.supersedes?.trim();
+  if (supersedes) {
+    if (!supersedes.startsWith("artifacts/")) {
+      throw new CliError("USAGE", `--supersedes must be an artifacts/ id (got '${supersedes}')`, {
+        help: `${cliInvocation()} list --type Artifact`
+      });
+    }
+    let prior;
+    try {
+      prior = await readDoc(bundle, supersedes);
+    } catch {
+      prior = void 0;
+    }
+    if (!prior) {
+      throw new CliError("USAGE", `--supersedes target '${supersedes}' does not exist`, {
+        help: `${cliInvocation()} list --type Artifact`
+      });
+    }
+    if (String(prior.frontmatter.type) !== "Artifact") {
+      throw new CliError("USAGE", `--supersedes target '${supersedes}' is type '${prior.frontmatter.type}', not Artifact`, {
+        help: `${cliInvocation()} list --type Artifact`
+      });
+    }
+  }
+  const body = supersedes ? `[supersedes](${supersedes.slice("artifacts/".length)}.md)
+` : "";
+  const [recordHeads, blobKeys] = await Promise.all([
+    queryHeads(bundle, { prefix: "artifacts/" }),
+    listBlobs(bundle, "artifacts/")
+  ]);
+  const taken = /* @__PURE__ */ new Set([
+    ...recordHeads.map((h) => h.id),
+    ...blobKeys.map((k) => k.replace(/\.[^/.]+$/, ""))
+  ]);
+  const id = firstFreeId(slugifyTitle(title), taken);
+  const entryKey = `${id}.html`;
+  let entryVersion;
+  try {
+    entryVersion = await writeBlob(bundle, entryKey, bytes, "text/html", { expectedVersion: null });
+  } catch (err) {
+    throw new CliError("RUNTIME", `could not write the artifact blob '${entryKey}': ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const frontmatter = { type: "Artifact", title, status: "active", entry: entryKey, entry_version: entryVersion };
+  const description = values.description?.trim();
+  if (description) frontmatter.description = description;
+  let createdId;
+  try {
+    const result = await mutateDoc({
+      bundle,
+      id,
+      mode: "create-only",
+      registry,
+      remoteUrl,
+      strict: true,
+      helpOnKindReject: `${cliInvocation()} kinds`,
+      actor,
+      persistActor: true,
+      onPersisted: boardPostPersistHook(bundle, actor),
+      buildCandidate: () => ({ frontmatter, body }),
+      errors: {
+        // The id is free by construction (record + blob both checked), so this only fires on a race
+        // with a concurrent writer. The catch below owns the orphaned-blob note uniformly.
+        alreadyExists: () => new CliError("ALREADY_EXISTS", `'${id}' was created concurrently by another writer.`)
+      }
+    });
+    createdId = result.doc.id;
+  } catch (err) {
+    const code = err instanceof CliError ? err.code : "RUNTIME";
+    const why = err instanceof Error ? err.message : String(err);
+    throw new CliError(
+      code,
+      `${why}
+The blob '${entryKey}' was written but its record '${id}' was NOT \u2014 those bytes are orphaned. Re-run 'artifact create' (it picks a fresh id), or remove them with '${cliInvocation()} delete --doc-key ${entryKey}'.`,
+      { help: `${cliInvocation()} delete --doc-key ${entryKey}` }
+    );
+  }
+  let supersedeNote;
+  if (supersedes) {
+    try {
+      await mutateDoc({
+        bundle,
+        id: supersedes,
+        mode: "patch",
+        registry,
+        remoteUrl,
+        strict: false,
+        helpOnKindReject: `${cliInvocation()} kinds`,
+        actor,
+        persistActor: true,
+        onPersisted: boardPostPersistHook(bundle, actor),
+        buildCandidate: (existingDoc) => {
+          if (!existingDoc) throw new CliError("NOT_FOUND", `'${supersedes}' does not exist`);
+          return { frontmatter: { ...existingDoc.frontmatter, status: "superseded" }, body: existingDoc.body };
+        },
+        errors: {}
+      });
+    } catch (err) {
+      supersedeNote = `FAILED to mark '${supersedes}' superseded: ${err instanceof Error ? err.message : String(err)} \u2014 the new artifact and its 'supersedes' link are written; run '${cliInvocation()} doc update ${supersedes} --status superseded'.`;
+    }
+  }
+  const receipt = {
+    artifact: "created",
+    id: createdId,
+    entry: entryKey,
+    entry_version: entryVersion,
+    content_type: "text/html",
+    status: "active"
+  };
+  if (supersedes) receipt.supersedes = supersedeNote ?? supersedes;
+  receipt.help = [
+    `${cliInvocation()} doc read ${createdId}`,
+    `${cliInvocation()} pull --doc-key ${entryKey} --out ${id.split("/").pop()}.html   # then open it (in-shell viewer: Unit 2)`
+  ];
+  stdout(render(receipt, mode));
+}
+
+// src/cli.ts
+import { parseArgs as parseArgs30 } from "node:util";
 import { readFileSync as readFileSync7 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { dirname as dirname5, join as join10 } from "node:path";
@@ -20901,6 +21112,7 @@ var KNOWN_COMMANDS = [
   "list",
   "query",
   "new",
+  "artifact",
   "kinds",
   "kind",
   "recipes",
@@ -20927,7 +21139,7 @@ var wrap2 = (fn) => async (args) => {
 };
 function isGlobalOnlyHomeInvocation(argv) {
   try {
-    const { positionals } = parseArgs29({
+    const { positionals } = parseArgs30({
       args: argv,
       options: {
         remote: { type: "string" },
@@ -20945,7 +21157,7 @@ function isGlobalOnlyHomeInvocation(argv) {
 function hoistLeadingGlobalFlags(argv) {
   let tokens;
   try {
-    tokens = parseArgs29({
+    tokens = parseArgs30({
       args: argv,
       tokens: true,
       strict: false,
@@ -21026,6 +21238,7 @@ async function main(argv) {
       // `query` is an alias of `list` (the list/query API surface).
       query: wrap2(list),
       new: wrap2(newCommand),
+      artifact: wrap2(artifact),
       kinds: wrap2(kinds),
       kind: wrap2(kind),
       recipes: wrap2(recipes),
