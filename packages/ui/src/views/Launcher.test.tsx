@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Launcher, orientationStorageKey, sharingChip } from "./Launcher.js";
+import { BRIDGE_BADGES, Launcher, orientationStorageKey, sharingChip } from "./Launcher.js";
 import { fetchConfig, listPages, type SharingSummary, type UiConfig } from "../api/pages.js";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -170,6 +170,12 @@ describe("home surface", () => {
     // vocabulary, with Page named only as the legacy form that keeps working.
     for (const jargon of AUTHORING_JARGON) {
       expect(disclosed, `"${jargon}" must be reachable behind 'learn more'`).toContain(jargon);
+    }
+    // All THREE capability modes, worded as the card badges word them. The panel used to describe
+    // every view as live and read-only, which was false for `none` (denied all bundle data) and for
+    // `bundle-propose` (may propose an edit) -- and contradicted the badges on the same screen.
+    for (const badge of Object.values(BRIDGE_BADGES)) {
+      expect(disclosed, `capability mode "${badge.label}" must be explained behind 'learn more'`).toContain(badge.label);
     }
     expect(toggle!.getAttribute("aria-expanded")).toBe("true");
     expect(toggle!.textContent).toContain("hide details");

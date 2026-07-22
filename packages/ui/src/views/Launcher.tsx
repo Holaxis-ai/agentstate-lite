@@ -32,7 +32,7 @@ import { DocumentBrowser } from "./DocumentBrowser.js";
 import { formatWhen } from "./format.js";
 
 /** Capability badge per enforced `bridge` value — role-based wording (the design's content model). */
-const BRIDGE_BADGES: Record<BridgeCapability, { label: string; className: string }> = {
+export const BRIDGE_BADGES: Record<BridgeCapability, { label: string; className: string }> = {
   "bundle-read": { label: "live data", className: "badge badge-read" },
   "bundle-propose": { label: "can edit", className: "badge badge-propose" },
   none: { label: "artifact", className: "badge badge-artifact" },
@@ -241,8 +241,11 @@ export function Launcher() {
                 corner of this project works — and watch it land in the activity feed.
               </p>
               <p>
-                Agent doesn’t know about this bundle yet? <code>aslite skill install</code> teaches it the commands, and{" "}
-                <code>aslite hook install</code> starts each new session with this bundle’s state already in view.
+                Agent doesn’t know about this bundle yet? From your project’s root folder,{" "}
+                <code>aslite skill install</code> teaches it the commands, and <code>aslite hook install</code> starts
+                each new session with this bundle’s state already in view. (Both write into the folder you run them
+                from, so run them where your project lives — or add <code>--scope global</code> to set them up for
+                every project at once.)
               </p>
               <button type="button" className="orientation-dismiss" onClick={dismissOrientation}>
                 Got it
@@ -290,10 +293,23 @@ export function Launcher() {
                   <div className="launcher-empty-details">
                     <p>
                       A view is an HTML file stored in this bundle under <code>views/</code>, registered by a{" "}
-                      <code>type: View</code> document that gives it a title and points at the file. The shell renders
-                      it in a sandboxed frame with no network access; it reads bundle data through a narrow, read-only
-                      bridge, which is what lets it redraw itself when documents change.
+                      <code>type: View</code> document that gives it a title, points at the file, and declares how much
+                      of the bundle it may see. Every view runs in a sandboxed frame with no network access, and that
+                      declaration is what the badge on its card reports:
                     </p>
+                    <ul>
+                      <li>
+                        <strong>live data</strong> — reads documents through a narrow, read-only channel, so it redraws
+                        itself as they change.
+                      </li>
+                      <li>
+                        <strong>can edit</strong> — the same reads, plus it may propose one field change, which only
+                        takes effect when you confirm it.
+                      </li>
+                      <li>
+                        <strong>artifact</strong> — self-contained HTML; the shell refuses it bundle data entirely.
+                      </li>
+                    </ul>
                     <p>
                       Worked examples — including the bridge client to copy — ship with the CLI under{" "}
                       <code>examples/views/</code>. (Views used to be called pages; existing{" "}
