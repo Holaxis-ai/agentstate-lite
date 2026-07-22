@@ -2,8 +2,8 @@
 //
 // esbuild bundles src/index.ts together with its workspace source packages
 // (@agentstate-lite/core, @agentstate-lite/server, @agentstate-lite/ui-server) and every npm dependency into ONE ESM file with a
-// `#!/usr/bin/env node` shebang. The published `aslite` package therefore has NO runtime
-// dependencies and NO unresolved `workspace:*` links — `npx -y aslite …` runs with zero
+// `#!/usr/bin/env node` shebang. The published `@holaxis/aslite` package therefore has NO runtime
+// dependencies and NO unresolved `workspace:*` links — `npx -y @holaxis/aslite …` runs with zero
 // workspace resolution.
 //
 // The workspace deps are aliased to their SOURCE entry points so this build is self-contained:
