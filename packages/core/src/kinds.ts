@@ -88,6 +88,13 @@ export interface KindConvention {
   sections?: string[];
   /** Raw declared horizon string (`<n>(m|h|d)`), if present — parse via {@link freshnessHorizonMs}. */
   freshnessHorizon?: string;
+  /**
+   * Browse/listing display hint: when `true`, a browse UI collapses this kind's instances behind a
+   * toggle by default — for a transient/background kind (e.g. Context Note) whose volume would
+   * otherwise swamp durable knowledge. Absent → expanded. Bundle-DECLARED so the shell never
+   * privileges a kind by name (gate 3); display-only, no engine behavior. Set from `browse_collapsed: true`.
+   */
+  browseCollapsed?: boolean;
 }
 
 /** The result of {@link loadKinds}: the built registry plus any non-fatal warnings collected along the way. */
@@ -597,6 +604,8 @@ export function parseConventionDoc(
     typeof fm.freshness_horizon === "string" && fm.freshness_horizon.trim() !== ""
       ? fm.freshness_horizon.trim()
       : undefined;
+  // Strict boolean `true` only — an absent, false, or non-boolean value means "expanded" (the default).
+  const browseCollapsed = fm.browse_collapsed === true ? true : undefined;
 
   const kind: KindConvention = {
     id: doc.id,
@@ -611,6 +620,7 @@ export function parseConventionDoc(
   if (expectsInbound !== undefined) kind.expectsInbound = expectsInbound;
   if (sections && sections.length > 0) kind.sections = sections;
   if (freshnessHorizon !== undefined) kind.freshnessHorizon = freshnessHorizon;
+  if (browseCollapsed !== undefined) kind.browseCollapsed = browseCollapsed;
   return {
     ok: true,
     kind,
@@ -835,6 +845,7 @@ export function kindConventionDoc(kind: KindConvention, prose: string, timestamp
   frontmatter.fields = fields;
   if (kind.sections && kind.sections.length > 0) frontmatter.sections = kind.sections;
   if (kind.freshnessHorizon !== undefined) frontmatter.freshness_horizon = kind.freshnessHorizon;
+  if (kind.browseCollapsed) frontmatter.browse_collapsed = true;
 
   return { id: kind.id, frontmatter, body: prose };
 }

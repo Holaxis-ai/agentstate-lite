@@ -28,6 +28,7 @@ import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import type { BridgeCapability } from "../pages/registry.js";
 import { navigate } from "../routing.js";
 import { ActivityFeed } from "./ActivityFeed.js";
+import { DocumentBrowser } from "./DocumentBrowser.js";
 import { formatWhen } from "./format.js";
 
 /** Capability badge per enforced `bridge` value — role-based wording (the design's content model). */
@@ -265,6 +266,11 @@ export function Launcher() {
                 keep working.)
               </p>
             )}
+          </section>
+
+          <section className="launcher-section">
+            <h3>Browse</h3>
+            <DocumentBrowser />
           </section>
         </div>
 

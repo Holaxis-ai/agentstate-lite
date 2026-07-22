@@ -124,6 +124,29 @@ test("splitSections accepts multiple heading spaces and trims the captured name"
   });
 });
 
+test("browse_collapsed: strict boolean true sets browseCollapsed; anything else is absent (expanded default)", () => {
+  const on = parseConventionDoc(convention({ browse_collapsed: true, fields: { required: [], optional: [] } }));
+  assert.equal(on.ok, true);
+  if (on.ok) assert.equal(on.kind.browseCollapsed, true);
+
+  // Absent, false, and non-boolean all mean "expanded" — the field is simply not set (default off).
+  for (const value of [undefined, false, "true", 1, null]) {
+    const off = parseConventionDoc(convention({ browse_collapsed: value, fields: { required: [], optional: [] } }));
+    assert.equal(off.ok, true);
+    if (off.ok) assert.equal(off.kind.browseCollapsed, undefined, `browse_collapsed: ${JSON.stringify(value)} → absent`);
+  }
+});
+
+test("browse_collapsed round-trips through kindConventionDoc → parse, and is omitted when unset", () => {
+  const doc = kindConventionDoc(minimalKind({ browseCollapsed: true }), "", T);
+  assert.equal(doc.frontmatter.browse_collapsed, true);
+  const parsed = parseConventionDoc(doc);
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) assert.equal(parsed.kind.browseCollapsed, true);
+  // An unmarked kind emits no key at all (default expanded), so external bundles are byte-unchanged.
+  assert.equal("browse_collapsed" in kindConventionDoc(minimalKind(), "", T).frontmatter, false);
+});
+
 test("parser trims user-facing scalar carriers and rejects empty governs deterministically", () => {
   const parsed = parseConventionDoc(convention({
     governs: "  Review Request  ",

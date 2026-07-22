@@ -96,6 +96,7 @@ const EXPECTED_CONTEXT_NOTE_FRONTMATTER = {
   fields: { required: ["title", "timestamp"], optional: ["description", "tags"] },
   sections: ["Summary"],
   freshness_horizon: "24h",
+  browse_collapsed: true,
 };
 
 // ── Row 1: built-in re-hosted ──────────────────────────────────────────────────────────────────
