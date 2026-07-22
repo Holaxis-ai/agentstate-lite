@@ -117,6 +117,15 @@ describe("DocumentBrowser", () => {
     expect(container.querySelector(".browse-results-count")!.textContent).toContain("2 match");
   });
 
+  it("waits for the kinds registry before rendering groups — collapse state must be known first (F1)", async () => {
+    // Heads resolve but kinds is still pending: rendering groups now would open a browse_collapsed
+    // kind (empty collapsed set). The browser must show loading until kinds lands.
+    vi.mocked(fetchKinds).mockReturnValue(new Promise(() => {}) as never); // never resolves
+    await render();
+    expect(container.querySelector(".browse-groups")).toBeNull();
+    expect(container.textContent).toContain("Loading documents");
+  });
+
   it("clicking a row navigates to the doc reader", async () => {
     await render();
     const firstRow = groupByKind("Design").querySelector(".browse-row") as HTMLButtonElement;

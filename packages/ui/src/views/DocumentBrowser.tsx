@@ -43,7 +43,11 @@ export function DocumentBrowser() {
   const heads = headsQuery.data ?? [];
   const collapsedKinds = new Set((kindsQuery.data ?? []).filter((k) => k.browseCollapsed).map((k) => k.governs));
 
-  if (headsQuery.isPending) return <p className="view-status">Loading documents…</p>;
+  // Wait for BOTH heads AND kinds: collapsedKinds derives from kinds, and a group's collapsed-start
+  // is initial-state-only, so rendering groups before kinds lands would leave a browse_collapsed kind
+  // OPEN until remount (review #149 F1 — a real first-paint bug in --remote mode). fetchKinds
+  // best-efforts to [] and never rejects, so this can't hang.
+  if (headsQuery.isPending || kindsQuery.isPending) return <p className="view-status">Loading documents…</p>;
   if (headsQuery.isError) {
     return <p className="view-status view-status-error">Could not load documents: {(headsQuery.error as Error).message}</p>;
   }
