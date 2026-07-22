@@ -237,7 +237,6 @@ body {
   line-height: 1.4;
 }
 
-.launcher-empty code,
 .orientation code {
   font-family: var(--font-mono);
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
@@ -280,11 +279,6 @@ body {
 .launcher-empty em {
   font-style: normal;
   color: var(--text-secondary);
-}
-
-.launcher-empty-fineprint {
-  color: var(--text-tertiary);
-  opacity: 0.85;
 }
 
 /* ── Home layout: main column + activity aside (designs/home-surface) ── */

@@ -1,10 +1,11 @@
 /**
- * Home-surface pins (designs/home-surface + the pre-existing empty-state teaching pin from
- * plans/rename-page-kind-to-view Unit 3):
+ * Home-surface pins (designs/home-surface):
  *
- *  1. The empty state still teaches View authoring in CANONICAL vocabulary (`type: View`,
- *     `views/`, `examples/views/`; Page named only as the accepted legacy form). Red-on-old:
- *     the pre-rename empty state taught `type: Page` under `pages/`.
+ *  1. The empty Views state is written for a first-time reader: what a view IS, plus the plain-
+ *     language ask that produces one. Authoring mechanics (kind names, blob prefixes, registry
+ *     docs) are pinned ABSENT — this is the surface a user meets before they know any of it.
+ *     Supersedes the earlier canonical-vocabulary pin from plans/rename-page-kind-to-view
+ *     Unit 3, which taught `type: View` / `views/` / `examples/views/` here.
  *  2. The grid is FLAT — the capability-grouped sections (Dashboards / Interactive / Documents)
  *     are gone; capability renders as a per-card BADGE (`live data` / `can edit` / `artifact`)
  *     derived from the same enforced `bridge` field. Red-on-old: the grouped launcher rendered a
@@ -110,7 +111,7 @@ describe("home surface", () => {
     }
   }
 
-  it("empty state teaches View authoring canonically, naming Page only as the accepted legacy form", async () => {
+  it("empty state explains what a view is and how to ask for one, in a first-time reader's vocabulary", async () => {
     storage.setItem(orientationStorageKey(BUNDLE_ROOT), "dismissed");
     await render();
     for (let i = 0; i < 50 && !container.querySelector(".launcher-empty"); i++) {
@@ -122,15 +123,15 @@ describe("home surface", () => {
     const empty = container.querySelector(".launcher-empty");
     expect(empty, "empty state must render when no views are registered").not.toBeNull();
     const text = empty!.textContent ?? "";
-    // Canonical teaching: the View kind, the views/ blob prefix, the worked examples.
-    expect(text).toContain("type: View");
-    expect(text).toContain("views/");
-    expect(text).toContain("examples/views/");
-    // Legacy is a note, not guidance: mentioned as still working, never as the thing to author.
-    expect(text).toContain("Legacy");
-    expect(text).toContain("type: Page");
-    expect(text).not.toContain("examples/pages/");
-    expect(text).not.toMatch(/Promote an HTML page/);
+    // What it is, and the one route to getting one: ask the agent in plain language.
+    expect(text).toContain("interactive HTML file");
+    expect(text).toContain("asking your agent");
+    expect(text).toMatch(/create a view showing every open task/);
+    // Authoring MECHANICS are deliberately absent from the first-run surface: a reader who has
+    // never seen a view should not have to parse kind names or blob prefixes to understand it.
+    for (const jargon of ["type: View", "type: Page", "views/", "examples/views/", "registry doc"]) {
+      expect(text, `first-run empty state must stay free of "${jargon}"`).not.toContain(jargon);
+    }
   });
 
   it("renders ONE flat grid with capability badges — no Dashboards/Interactive/Documents sections", async () => {

@@ -262,18 +262,15 @@ export function Launcher() {
             {!pagesQuery.isPending && !pagesQuery.isError && pages.length === 0 && (
               <div className="launcher-empty">
                 <p>
-                  No views yet. A view is a small web page that lives in this bundle and draws itself from your
-                  documents — a board of open tasks, a map of how your notes link to each other, a list of the decisions
-                  made this week. It redraws itself as your agent writes.
+                  You don’t have any views yet. A view is an interactive HTML file that displays information captured in
+                  the bundle in whatever way is valuable to you. Examples include a board of open tasks, a map of how
+                  your notes link to each other, a navigable folder hierarchy, or a list of the decisions made this
+                  week. Views dynamically update as content changes.
                 </p>
                 <p>
-                  Ask your agent for one in plain language: <em>“create a view showing every open task, grouped by who
-                  it’s assigned to.”</em> When it creates a new view, a link to it will appear here.
-                </p>
-                <p className="launcher-empty-fineprint">
-                  Under the hood a view is an HTML file under <code>views/</code> plus a <code>type: View</code> registry
-                  doc — worked examples live in <code>examples/views/</code>. (Legacy <code>type: Page</code> docs keep
-                  working.)
+                  You can create views by asking your agent to create one, using plain language: Ex:{" "}
+                  <em>“create a view showing every open task, grouped by who it’s assigned to.”</em> When it creates a
+                  view, a card or tile summarizing the view will appear on this page, along with a link to it.
                 </p>
               </div>
             )}
