@@ -5,8 +5,12 @@
 // active`. `--supersedes <id>` additionally flips the prior artifact to `superseded` and links this
 // one `supersedes` it.
 //
-// Order is derive-id → promote → record: the blob key needs the id first. Partial failure NAMES what
-// completed (the `new --link` receipt discipline) so a re-run is idempotent, never a silent orphan.
+// Order is derive-id → promote → record (blob-FIRST is required: the blob's version is only known
+// after writing it, and a remote backend's version token is NOT locally computable). The failure
+// contract, then: the collision-safe id considers existing blob keys too, so a re-run after a failed
+// record-create picks a FRESH id and is never bricked; and a record-create failure NAMES the orphaned
+// blob and points at recovery — never a SILENT orphan. `--supersedes` is validated UPFRONT (an
+// existing artifacts/ Artifact), so a bad target rejects before any write.
 //
 // Admission (rendering) is product-level and convention-INDEPENDENT (designs/artifact-runtime,
 // "product kind + opt-in convention"): this command works whether or not a bundle declares the
@@ -14,7 +18,7 @@
 // the generic path (the reason `note` was deleted): it owns a fumble-prone multi-step sequence.
 import { promises as fs } from "node:fs";
 import { parseArgs } from "node:util";
-import { loadKinds, queryHeads, writeBlob, type Bundle, type Frontmatter } from "@agentstate-lite/core";
+import { loadKinds, queryHeads, listBlobs, readDoc, writeBlob, type Bundle, type Frontmatter } from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
 import { mutateDoc } from "../mutate.js";
 import { boardPostPersistHook } from "../board-attribution.js";
@@ -135,15 +139,50 @@ export async function artifact(argv: string[], deps: Partial<ArtifactCliDeps> = 
   const bundle: Bundle = await openBundle(dir, await resolveRemoteFlag(remoteUrl, dir));
   const registry = await loadKinds(bundle);
 
-  // Derive a collision-safe id (checked against existing artifacts/ RECORD ids) → the blob key beside it.
-  const existing = await queryHeads(bundle, { prefix: "artifacts/" });
-  const id = firstFreeId(slugifyTitle(title), new Set(existing.map((h) => h.id)));
-  const entryKey = `${id}.html`;
-
+  // Validate --supersedes UPFRONT, before any write: it must be an existing artifacts/ Artifact. This
+  // keeps the same-directory 'supersedes' link correct AND guarantees a real Artifact is the doc that
+  // gets flipped — a cross-dir or non-Artifact target is a caller error, rejected before we touch the
+  // store rather than silently writing a dangling edge (review #150 F3/F5).
   const supersedes = (values.supersedes as string | undefined)?.trim();
-  // The supersedes edge is a body cross-link carrying the declared verb (the carrier model); both docs
-  // live under artifacts/, so it's a same-directory relative link.
-  const body = supersedes ? `[supersedes](${supersedes.split("/").pop()}.md)\n` : "";
+  if (supersedes) {
+    if (!supersedes.startsWith("artifacts/")) {
+      throw new CliError("USAGE", `--supersedes must be an artifacts/ id (got '${supersedes}')`, {
+        help: `${cliInvocation()} list --type Artifact`,
+      });
+    }
+    let prior;
+    try {
+      prior = await readDoc(bundle, supersedes);
+    } catch {
+      prior = undefined;
+    }
+    if (!prior) {
+      throw new CliError("USAGE", `--supersedes target '${supersedes}' does not exist`, {
+        help: `${cliInvocation()} list --type Artifact`,
+      });
+    }
+    if (String(prior.frontmatter.type) !== "Artifact") {
+      throw new CliError("USAGE", `--supersedes target '${supersedes}' is type '${prior.frontmatter.type}', not Artifact`, {
+        help: `${cliInvocation()} list --type Artifact`,
+      });
+    }
+  }
+  // Both docs live under artifacts/, so the supersedes edge is a same-directory relative link.
+  const body = supersedes ? `[supersedes](${supersedes.slice("artifacts/".length)}.md)\n` : "";
+
+  // Derive a collision-safe id whose RECORD *and* BLOB key are both free. Considering existing blob
+  // keys (not just record ids) is what stops a re-run after an orphaned blob from bricking on the
+  // stray blob's expect-absent conflict: the re-run simply picks the next free slug (review #150 F2).
+  const [recordHeads, blobKeys] = await Promise.all([
+    queryHeads(bundle, { prefix: "artifacts/" }),
+    listBlobs(bundle, "artifacts/"),
+  ]);
+  const taken = new Set<string>([
+    ...recordHeads.map((h) => h.id),
+    ...blobKeys.map((k) => k.replace(/\.[^/.]+$/, "")),
+  ]);
+  const id = firstFreeId(slugifyTitle(title), taken);
+  const entryKey = `${id}.html`;
 
   // 1. Promote the bytes (expect-absent create — the blob key is fresh by construction of the id).
   let entryVersion: string;
@@ -172,20 +211,23 @@ export async function artifact(argv: string[], deps: Partial<ArtifactCliDeps> = 
       onPersisted: boardPostPersistHook(bundle, actor),
       buildCandidate: () => ({ frontmatter, body }),
       errors: {
-        alreadyExists: () =>
-          new CliError(
-            "ALREADY_EXISTS",
-            `'${id}' already exists — its blob '${entryKey}' was written; re-run to adopt it, or use a different --title.`,
-            { help: `${cliInvocation()} artifact create <file> --title <title>` },
-          ),
+        // The id is free by construction (record + blob both checked), so this only fires on a race
+        // with a concurrent writer. The catch below owns the orphaned-blob note uniformly.
+        alreadyExists: () => new CliError("ALREADY_EXISTS", `'${id}' was created concurrently by another writer.`),
       },
     });
     createdId = result.doc.id;
   } catch (err) {
-    if (err instanceof CliError) throw err;
+    // The blob is written but the record is not — NAME the orphan and point at recovery. mutateDoc
+    // always throws a CliError, so we preserve its code (exit taxonomy) and APPEND the orphan context
+    // rather than rethrowing it untouched (the old wrapper was dead code — review #150 F1). A re-run
+    // picks a fresh id (the orphan's blob key is now 'taken'); the stray bytes stay deletable.
+    const code = err instanceof CliError ? err.code : "RUNTIME";
+    const why = err instanceof Error ? err.message : String(err);
     throw new CliError(
-      "RUNTIME",
-      `wrote the blob '${entryKey}' but failed to write the record '${id}': ${err instanceof Error ? err.message : String(err)} (re-run to adopt the blob)`,
+      code,
+      `${why}\nThe blob '${entryKey}' was written but its record '${id}' was NOT — those bytes are orphaned. Re-run 'artifact create' (it picks a fresh id), or remove them with '${cliInvocation()} delete --doc-key ${entryKey}'.`,
+      { help: `${cliInvocation()} delete --doc-key ${entryKey}` },
     );
   }
 
@@ -224,9 +266,13 @@ export async function artifact(argv: string[], deps: Partial<ArtifactCliDeps> = 
     entry_version: entryVersion,
     content_type: "text/html",
     status: "active",
-    open: `?view=artifact&id=${encodeURIComponent(createdId)}`,
   };
   if (supersedes) receipt.supersedes = supersedeNote ?? supersedes;
-  receipt.help = [`${cliInvocation()} doc read ${createdId}`];
+  // The in-shell viewer (?view=artifact) ships in designs/artifact-runtime Unit 2 — don't advertise a
+  // route that doesn't resolve yet (AXI honesty). Until then, pull the bytes out to view them.
+  receipt.help = [
+    `${cliInvocation()} doc read ${createdId}`,
+    `${cliInvocation()} pull --doc-key ${entryKey} --out ${id.split("/").pop()}.html   # then open it (in-shell viewer: Unit 2)`,
+  ];
   stdout(render(receipt, mode));
 }
