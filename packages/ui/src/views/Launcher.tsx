@@ -225,10 +225,11 @@ export function Launcher() {
         <div className="home-main">
           {showOrientation && (
             <section className="orientation">
-              <h2>This is your bundle’s home</h2>
+              <h2>This is your ASLite bundle’s home</h2>
               <p>
-                A bundle is a folder of plain markdown you share with your agents — notes, decisions, tasks, and the
-                links between them. Agents write it from the terminal; you watch and steer from here.
+                A bundle is a folder of plain markdown documents shared with your agents: notes, decisions, tasks, and
+                the links between them. Each document conforms to the OKF standard, which, together with the ASLite CLI
+                and skill, lets agents write, track, and retrieve them as work happens.
               </p>
               <p>
                 It stays private until you choose to share it — by establishing a shared board (
