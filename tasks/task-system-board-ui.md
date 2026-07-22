@@ -4,19 +4,15 @@ title: >-
   Build the collaborative task-board View (read + human write-back) — the visual
   UX
 description: >-
-  REPAIR COMPLETE and pushed at 9ac537be28bb627656f5328e06929f496ad80aac. Fixes:
-  canceled tasks remain visible in a fifth lifecycle column with reachable
-  Reopen; null-prototype relationship indexes safely accept prototype-key
-  concept IDs; cancelled and unchanged action outcomes are neutral while
-  failures remain errors. Builder full npm run check passed; independent
-  exact-SHA review passed with parent-red proof; adversarial Chromium QA passed
-  2/2; GitHub Actions run 29837224825 is green on Node 20/22/26. PR #133 is
-  mergeable. Keep in_progress until the merge gate closes. Evidence:
-  context-notes/pr-133-fixes, context-notes/pr-133-review-9ac537b,
-  context-notes/pr-133-qa-9ac537b.
-actor: codex-builder
-status: in_progress
+  Shipped in PR #133 and merged as b46fee8c133179ead3111470e1c9bacc206b2a5f on
+  2026-07-21. The Personal Task System board View delivers live Task and Project
+  columns, lifecycle actions through trusted human confirmation,
+  dependency/project context, and the reviewed canceled-task and action-outcome
+  repairs. Full repository checks, independent exact-SHA review, and adversarial
+  Chromium QA passed before merge.
+actor: openai/codex
+status: done
 priority: '2'
-timestamp: '2026-07-21T14:13:16.573Z'
+timestamp: '2026-07-22T01:45:03.928Z'
 ---
 [depends on the settled schema](task-system-kind-design.md)

@@ -1,15 +1,16 @@
 ---
 type: Task
 title: 'Portable index projection: explicit local CLI consumer'
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  After the core planner ships, add local-only index generate with recursive
-  generation, --check, --force adoption, actor/CAS receipts, and an
-  installed-tarball portability journey.
-actor: openai/codex-portable-index-cli
+  Shipped in PR #131 and merged as 37abf71943b2586092491f21c9eee422540ee994 on
+  2026-07-20. The local index generate command now provides recursive
+  projection, check and force modes, ownership refusal, actor/CAS receipts,
+  shell-safe recovery commands, and installed-tarball acceptance proof.
+actor: openai/codex
 assignee: openai/codex-portable-index-cli
-timestamp: '2026-07-20T02:43:12.811Z'
+timestamp: '2026-07-22T01:45:04.044Z'
 ---
 # Approved direction
 
@@ -69,7 +70,7 @@ Depends on [Portable index core planner and ownership](prune-regenerate-index-ap
 
 # Implementation record — 2026-07-19
 
-Unit 2 is implemented at exact commit `d3674df2ae33a6985fc8078a8c6abf95bddf0572` in [PR #131](https://github.com/Holaxis-ai/agentstate-lite/pull/131), intentionally left unmerged for owner review.
+Unit 2 was implemented at exact reviewed commit `d3674df2ae33a6985fc8078a8c6abf95bddf0572` and shipped in [PR #131](https://github.com/Holaxis-ai/agentstate-lite/pull/131), merged as `37abf71943b2586092491f21c9eee422540ee994` on 2026-07-20.
 
 The exact-SHA local full repository gate passed (`npm run check`, exit 0), including installed-package verification, generated npm-target skill validation, and 15 Chromium UI/security E2E cases. The focused portable-index command suite passes 7/7. GitHub-hosted checks are all green on the same SHA: Node 20 built-CLI smoke plus the Node 22 and Node 26 gates.
 
