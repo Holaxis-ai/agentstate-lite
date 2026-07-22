@@ -281,6 +281,24 @@ body {
   color: var(--text-secondary);
 }
 
+/* The orientation's own "learn more": designs/home-surface requires the first read orient a
+   newcomer WITHOUT OKF jargon, so the standard's name lives one click behind it. */
+.orientation-details {
+  margin: 0.4rem 0 0.9rem;
+  border-left: 2px solid var(--rule);
+  padding: 0.1rem 0 0.1rem 0.9rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.orientation-details p {
+  margin: 0 0 0.5rem;
+}
+
+.orientation-details p:last-child {
+  margin-bottom: 0;
+}
+
 /* "learn more" — the same progressive disclosure as "where is this?": authoring mechanics stay
    one click behind the plain-language explanation, never in front of a first-time reader. */
 .launcher-empty-details {

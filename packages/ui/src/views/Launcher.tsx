@@ -120,6 +120,7 @@ export function Launcher() {
   const [orientationDismissed, setOrientationDismissed] = useState<boolean | null>(null);
   const [whereOpen, setWhereOpen] = useState(false);
   const [viewsHelpOpen, setViewsHelpOpen] = useState(false);
+  const [orientationHelpOpen, setOrientationHelpOpen] = useState(false);
 
   useEffect(() => {
     return subscribeToChanges((e) => {
@@ -229,9 +230,30 @@ export function Launcher() {
               <h2>This is your ASLite bundle’s home</h2>
               <p>
                 A bundle is a folder of plain markdown documents shared with your agents: notes, decisions, tasks, and
-                the links between them. Each document conforms to the OKF standard, which, together with the ASLite CLI
-                and skill, lets agents write, track, and retrieve them as work happens.
+                the links between them. Each document follows a shared structure which, together with the ASLite CLI
+                and skill, lets agents write, track, and retrieve them as work happens.{" "}
+                <button
+                  type="button"
+                  className="where-btn"
+                  aria-expanded={orientationHelpOpen}
+                  onClick={() => setOrientationHelpOpen((v) => !v)}
+                >
+                  {orientationHelpOpen ? "hide details" : "learn more"}
+                </button>
               </p>
+              {orientationHelpOpen && (
+                <div className="orientation-details">
+                  <p>
+                    That shared structure is an open standard called OKF — the Open Knowledge Format. In practice it
+                    means each file is ordinary markdown with a short header naming what the document is and what it is
+                    called, and ordinary markdown links between files.
+                  </p>
+                  <p>
+                    Nothing about it is proprietary or locked to this tool: any editor that opens markdown can read
+                    your bundle, and aslite can read a bundle some other program wrote.
+                  </p>
+                </div>
+              )}
               <p>
                 It stays private until you choose to share it — by establishing a shared board (
                 <code>aslite sync --establish</code>) or committing the folder with your code.

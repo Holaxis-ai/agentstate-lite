@@ -228,11 +228,27 @@ describe("home surface", () => {
     // rather than telling a human to hand-author a doc the framework exists to write for them.
     expect(text).toContain("ask your agent to write something down");
     expect(text).toContain("aslite skill install");
+    // designs/home-surface: the home "must (1) orient a newcomer without OKF jargon". The standard
+    // is real and worth naming, so it lives one click behind "learn more" (asserted below) rather
+    // than in the first read.
+    expect(text, "first read must orient without OKF jargon (designs/home-surface)").not.toContain("OKF");
     expect(text).not.toMatch(/works from any terminal/i);
     expect(text).not.toContain('new "Context Note"');
     // Never advertise the UNSCOPED npm coordinate: `aslite` is not ours (404 on the registry),
     // so a copy-pasted `npx -y aslite …` runs whatever lands on that name. Ours is @holaxis/aslite.
     expect(text).not.toMatch(/npx\s+-y\s+aslite\b/);
+
+    // ...and reachable one click behind the orientation's own "learn more" — disclosure, not denial.
+    const learnMore = orientation!.querySelector<HTMLButtonElement>("button.where-btn");
+    expect(learnMore, "orientation must offer a 'learn more' disclosure").not.toBeNull();
+    expect(orientation!.querySelector(".orientation-details"), "collapsed by default").toBeNull();
+    await act(async () => {
+      learnMore!.click();
+      await flush();
+    });
+    const okfPanel = orientation!.querySelector(".orientation-details");
+    expect(okfPanel, "clicking 'learn more' must reveal the standard").not.toBeNull();
+    expect(okfPanel!.textContent ?? "").toContain("OKF");
 
     await act(async () => {
       (container.querySelector(".orientation-dismiss") as HTMLButtonElement).click();
