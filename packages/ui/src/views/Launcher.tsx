@@ -237,9 +237,12 @@ export function Launcher() {
                 <code>aslite sync --establish</code>) or committing the folder with your code.
               </p>
               <p>
-                <strong>Try it:</strong> ask your agent to remember something, and watch it land in the activity feed.
-                (No agent set up yet? <code>npx -y aslite new "Context Note" hello --title hello</code> works from any
-                terminal.)
+                <strong>Try it:</strong> ask your agent to write something down — a decision you just made, or how some
+                corner of this project works — and watch it land in the activity feed.
+              </p>
+              <p>
+                Agent doesn’t know about this bundle yet? <code>aslite skill install</code> teaches it the commands, and{" "}
+                <code>aslite hook install</code> starts each new session with this bundle’s state already in view.
               </p>
               <button type="button" className="orientation-dismiss" onClick={dismissOrientation}>
                 Got it
@@ -269,9 +272,9 @@ export function Launcher() {
                   week. Views dynamically update as content changes.
                 </p>
                 <p>
-                  You can create views by asking your agent to create one, using plain language: Ex:{" "}
-                  <em>“create a view showing every open task, grouped by who it’s assigned to.”</em> When it creates a
-                  view, a card or tile summarizing the view will appear on this page, along with a link to it.
+                  With the aslite skill, you can create views by asking your agent to create one using plain language:
+                  Ex: <em>“create a view showing every open task, grouped by who it’s assigned to.”</em> When it creates
+                  a view, a card or tile summarizing the view will appear on this page, along with a link to it.
                 </p>
                 <p>
                   <button

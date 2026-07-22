@@ -204,7 +204,7 @@ describe("home surface", () => {
     expect(badges).toEqual(["can edit", "live data", "artifact"]);
   });
 
-  it("shows first-run orientation with the in-tree-safe promise and no-agent fallback; dismissal persists", async () => {
+  it("shows first-run orientation whose next step CONNECTS an agent, never hand-authoring; dismissal persists", async () => {
     await render();
     for (let i = 0; i < 50 && !container.querySelector(".orientation"); i++) {
       await act(async () => {
@@ -218,8 +218,15 @@ describe("home surface", () => {
     // The promise is worded to cover the in-tree mode (chip and promise must never contradict).
     expect(text).toMatch(/stays private until you choose to share it/i);
     expect(text).toContain("committing the folder with your code");
-    // The try-it hook carries a no-agent-yet fallback.
-    expect(text).toContain("No agent set up yet?");
+    // Agent-first: the try-it hook asks the AGENT to write, and the no-agent fallback connects one
+    // rather than telling a human to hand-author a doc the framework exists to write for them.
+    expect(text).toContain("ask your agent to write something down");
+    expect(text).toContain("aslite skill install");
+    expect(text).not.toMatch(/works from any terminal/i);
+    expect(text).not.toContain('new "Context Note"');
+    // Never advertise the UNSCOPED npm coordinate: `aslite` is not ours (404 on the registry),
+    // so a copy-pasted `npx -y aslite …` runs whatever lands on that name. Ours is @holaxis/aslite.
+    expect(text).not.toMatch(/npx\s+-y\s+aslite\b/);
 
     await act(async () => {
       (container.querySelector(".orientation-dismiss") as HTMLButtonElement).click();
