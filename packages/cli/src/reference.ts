@@ -117,6 +117,10 @@ export const COMMAND_GROUPS: CommandGroup[] = [
     group: "Artifacts",
     commands: [
       {
+        usage: "artifact create <file> --title <title> [--description <text>] [--supersedes <id>] [--actor <n>] [--remote <url>]",
+        summary: "Produce a shareable output (HTML) a human can view: one command promotes the bytes and writes the type:Artifact record",
+      },
+      {
         usage:
           "promote <file> --doc-key <key> [--content-type <mime>] [--expected-version <v>] [--remote <url>]",
         summary: "Move a local file's bytes into the store (a .md key routes through the engine; else a blob)",
