@@ -6,6 +6,7 @@
 // Keeping this in one place means the bundle-producing call sites can never drift from each
 // other.
 import { build } from "esbuild";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -13,6 +14,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 // packages/cli/scripts -> packages/cli
 const pkgRoot = resolve(here, "..");
 const r = (p) => resolve(pkgRoot, p);
+
+// The published package version, BAKED into the bundle as `__ASLITE_VERSION__`. This is the only
+// source that works in EVERY channel: the npm dist could read its adjacent package.json, but the
+// plugin bundle ships as a lone `scripts/agentstate-lite.mjs` with no package.json at `../`. Baking
+// it at build time makes `--version` report the same product version everywhere.
+const version = JSON.parse(readFileSync(r("package.json"), "utf8")).version;
 
 /**
  * Bundle src/index.ts (+ the workspace source packages + every npm dep) into ONE self-contained
@@ -35,6 +42,8 @@ export async function buildCliBundle(outfile) {
     platform: "node",
     format: "esm",
     target: "node20",
+    // Compile-time constant read by cli.ts's cliVersion() — channel-independent (see `version` above).
+    define: { __ASLITE_VERSION__: JSON.stringify(version) },
     // Resolve the workspace deps to their TypeScript source so no dist pre-build is needed.
     alias: {
       // List browser-safe core subpaths before the package root so esbuild does not append the

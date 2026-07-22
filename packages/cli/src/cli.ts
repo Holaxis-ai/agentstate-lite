@@ -49,15 +49,20 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
+/** Version baked in at build time (esbuild `define` in scripts/build-bundle.mjs); `undefined` when running the TS source directly (tests). */
+declare const __ASLITE_VERSION__: string | undefined;
+
 /**
- * The CLI's own version, read from its `package.json`. The path is computed AT RUNTIME from
- * `import.meta.url` (via `fileURLToPath` + `join`, NOT `new URL(…, import.meta.url)` which esbuild
- * would try to bundle as an asset), so it resolves to the SAME package root in all three contexts:
- * the bundled dist (`dist/agentstate-lite.mjs` → `../package.json`), the published npm package, and
- * tests running the TS source (`src/cli.ts` → `../package.json`). A missing/unreadable manifest
- * degrades to "unknown" rather than throwing on the version path.
+ * The CLI's own version. In every BUNDLED channel it is the build-time constant `__ASLITE_VERSION__`
+ * — the one source that works regardless of file layout, INCLUDING the plugin bundle (a lone
+ * `scripts/agentstate-lite.mjs` with NO adjacent package.json, where a runtime file read can't find
+ * one). When running the TS source (tests) the constant is undefined, so fall back to reading the
+ * package's own `package.json` — path computed AT RUNTIME from `import.meta.url` (via `fileURLToPath`
+ * + `join`, NOT `new URL(…, import.meta.url)` which esbuild would asset-bundle). A missing/unreadable
+ * manifest degrades to "unknown" rather than throwing on the version path.
  */
 export function cliVersion(): string {
+  if (typeof __ASLITE_VERSION__ === "string" && __ASLITE_VERSION__) return __ASLITE_VERSION__;
   try {
     const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
     const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: unknown };
