@@ -4,12 +4,11 @@ title: 'Bug: report Git discovery failures as unavailable, not private'
 status: in_progress
 priority: high
 description: >-
-  PR #137 follow-up: repoTopLevel collapses every nonzero rev-parse result to
-  null, allowing a broken Git probe inside a repository to fabricate a private
-  state.
+  Bug: Git discovery failures inside an apparent repository can be misreported
+  as private rather than unavailable. Observed after merge of PR #137.
 actor: codex-main-home-truth
 assignee: codex-main-home-truth
-timestamp: '2026-07-21T21:49:22.227Z'
+timestamp: '2026-07-22T23:03:59.432Z'
 ---
 # Problem
 

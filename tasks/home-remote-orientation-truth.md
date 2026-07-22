@@ -4,12 +4,11 @@ title: 'Bug: suppress local privacy onboarding in remote UI mode'
 status: in_progress
 priority: high
 description: >-
-  PR #137 follow-up: remote config currently supplies a non-null root, so the
-  Launcher can display local-only privacy onboarding next to a hosted sharing
-  chip.
+  Bug: remote UI mode can render local-only privacy onboarding alongside hosted
+  sharing state. Observed after merge of PR #137.
 actor: codex-main-home-truth
 assignee: codex-main-home-truth
-timestamp: '2026-07-21T21:49:21.547Z'
+timestamp: '2026-07-22T23:03:59.068Z'
 ---
 # Problem
 

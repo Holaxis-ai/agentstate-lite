@@ -4,12 +4,11 @@ title: 'Bug: bound sharing-chip staleness after git-only state changes'
 status: in_progress
 priority: high
 description: >-
-  PR #137 follow-up: config refresh is SSE/resync-driven while sharing
-  classification is TTL-cached, so git-only changes can leave the chip stale
-  indefinitely.
+  Bug: Git-only sharing-state changes can leave the Home sharing chip stale
+  indefinitely. Observed after merge of PR #137.
 actor: codex-main-home-truth
 assignee: codex-main-home-truth
-timestamp: '2026-07-21T21:49:21.886Z'
+timestamp: '2026-07-22T23:03:59.251Z'
 ---
 # Problem
 
