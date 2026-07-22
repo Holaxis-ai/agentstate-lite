@@ -13,6 +13,7 @@ fields:
 sections:
   - Summary
 freshness_horizon: 24h
+browse_collapsed: true
 timestamp: '2026-07-03T19:07:30.037Z'
 ---
 # Context Note
