@@ -20867,6 +20867,19 @@ async function indexCommand(argv, deps = {}) {
 
 // src/cli.ts
 import { parseArgs as parseArgs29 } from "node:util";
+import { readFileSync as readFileSync7 } from "node:fs";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+import { dirname as dirname5, join as join10 } from "node:path";
+function cliVersion() {
+  if ("0.1.0-pre.1") return "0.1.0-pre.1";
+  try {
+    const pkgPath = join10(dirname5(fileURLToPath2(import.meta.url)), "..", "package.json");
+    const pkg = JSON.parse(readFileSync7(pkgPath, "utf8"));
+    return typeof pkg.version === "string" && pkg.version ? pkg.version : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 var KNOWN_COMMANDS = [
   "init",
   "bundle",
@@ -20954,6 +20967,11 @@ async function main(argv) {
   }
   if (command === "--help" || command === "-h" || command === "help") {
     process.stdout.write(helpReference());
+    return;
+  }
+  if (command === "--version" || command === "-v") {
+    process.stdout.write(`${cliVersion()}
+`);
     return;
   }
   if (command.startsWith("-")) {
