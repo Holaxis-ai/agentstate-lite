@@ -130,6 +130,7 @@ export const SKILL_COMMAND_RESOURCES: Record<string, string[]> = {
   "doc delete": [],
   list: [],
   link: [],
+  "artifact create": [],
   promote: [],
   pull: [],
   blobs: [],

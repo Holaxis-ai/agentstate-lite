@@ -40,6 +40,7 @@ import { sessionStart } from "./commands/session-start.js";
 import { bundleCommand } from "./commands/bundle.js";
 import { catalog } from "./commands/catalog.js";
 import { indexCommand } from "./commands/index.js";
+import { artifact } from "./commands/artifact.js";
 import { CliError, toEnvelope, toExit } from "./errors.js";
 import { renderErrorEnvelope } from "./output.js";
 import { DESCRIPTION, helpIndexText } from "./reference.js";
@@ -86,6 +87,7 @@ export const KNOWN_COMMANDS = [
   "list",
   "query",
   "new",
+  "artifact",
   "kinds",
   "kind",
   "recipes",
@@ -288,6 +290,7 @@ export async function main(argv: string[]): Promise<void> {
       // `query` is an alias of `list` (the list/query API surface).
       query: wrap(list),
       new: wrap(newCommand),
+      artifact: wrap(artifact),
       kinds: wrap(kinds),
       kind: wrap(kind),
       recipes: wrap(recipes),
