@@ -259,11 +259,32 @@ body {
   color: var(--color-signal);
 }
 
+/* Quiet empty-state voice, shared with .feed-empty: an empty section should read as a
+   calm invitation, not as body copy competing with real content. */
 .launcher-empty {
   margin-top: 0.25rem;
+  color: var(--text-tertiary);
+  font-size: 0.83rem;
+  line-height: 1.5;
+  max-width: 58ch;
+}
+
+.launcher-empty p {
+  margin: 0 0 0.6rem;
+}
+
+.launcher-empty p:last-child {
+  margin-bottom: 0;
+}
+
+.launcher-empty em {
+  font-style: normal;
   color: var(--text-secondary);
-  line-height: 1.6;
-  max-width: 62ch;
+}
+
+.launcher-empty-fineprint {
+  color: var(--text-tertiary);
+  opacity: 0.85;
 }
 
 /* ── Home layout: main column + activity aside (designs/home-surface) ── */
