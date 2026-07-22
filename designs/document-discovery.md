@@ -6,11 +6,10 @@ timestamp: '2026-07-21T20:38:35.934Z'
 ---
 # Document discovery and relationship navigation
 
-**Status:** Drafted 2026-07-21, exploring the increment AFTER the doc reader shipped (PR #138).
-Prototyped (claude.ai artifact, private) and design-reviewed by an independent Fable agent
-(grouped+horizon recommendation, folded below). Not yet build-committed; recommended to
-REPLACE the deferred "figures" PR as the reader's next increment. Grounded in the live bundle:
-372 docs, 516 typed edges.
+**Status:** Drafted 2026-07-21; **Decision 1 SHIPPED (PR #149, 2026-07-22)** — Decision 2 shipped as
+the inline-edge reader (PR #145). Decision 1's tiering was REVISED during build: the freshness-horizon
+split below was replaced by a bundle-declared `browse_collapsed` marker (see the Decision 1 rewrite).
+Idea 3 + the deferred/rejected list still stand. Grounded in the live bundle: ~383 docs.
 
 ## The gap
 
@@ -41,32 +40,36 @@ So discovery has THREE distinct jobs, and one widget cannot serve all three:
 | Understand structure | "what's the shape of the work?" | the containment outline |
 | Explore neighborhood | "what connects to this?" | per-doc typed links + backlinks |
 
-## Decision 1 — the browse index (reviewer-validated)
+## Decision 1 — the browse index (SHIPPED PR #149; tiering revised)
 
-A "Documents" section on the home, grouped by kind, TIERED by the bundle's OWN declarations:
+A **"Browse"** section on the home lists EVERY doc grouped by kind — find any doc, not just the
+recent pulse the feed shows.
 
-- **Durable kinds** (Design/Decision/Plan/Roadmap Item — declare NO freshness horizon,
-  because they don't go stale) sit at top, expanded.
-- **Horizon-declaring kinds** (Context Note 24h, Task 30d — the bundle's own statement that
-  instances are recent-relevant) sit below, COLLAPSED with a horizon tag. One click to open;
-  nothing hidden. Kind-LEVEL, never instance-level (stable, inspectable).
-- **Conventions-free bundles degrade to a plain list** — nothing declared, nothing tiered
-  (gate 3's posture; matches home-surface's "grouping is a bundle-authored decision").
-- **Tasks fold their terminal instances** ("145 closed — show") via the existing
-  `applyRowFilters` open-filter; recency-sort otherwise buries the 44 open under the closed.
-- **No mode toggle**: grouped is the resting state; typing in search (title+id only — bodies
-  never cross for lists) or tapping a kind chip flattens into a filtered list; clearing
-  returns to groups.
-- **Free of new server surface**: `ActivityFeed` already fetches EVERY head via
-  `listAllHeads({})` and shows 8; browse is a pure client re-projection of data already in
-  the query cache. Reject: a hardcoded durable-kind list (shell growing domain opinion), and
-  a new `browsable` convention field (front-loads a field every existing bundle lacks — earn
-  it with usage). The ephemeral/durable split rides the ALREADY-SHIPPED
-  `freshnessHorizonMs` over `/__ui/kinds`.
-
-Story: notes and open tasks LIVE IN THE FEED (recent-relevant, by their own horizons); browse
-leans durable. Not "hide the notes" — the two surfaces have different jobs, and the bundle's
-declarations already say which docs belong to which.
+- **Grouped by kind, size-ordered, capped**: each kind group shows its 6 newest with a "show all N"
+  expander; a filter (title+id only — bodies never cross for lists) flattens to a recency-sorted
+  match list across every kind. No mode toggle; grouped is the resting state.
+- **Collapse is a BUNDLE-DECLARED marker, not a time axis.** A kind renders collapsed-by-default iff
+  its convention declares `browse_collapsed: true` (core `KindConvention.browseCollapsed`, parse +
+  serialize round-trip); collapsed kinds sort to the bottom, everything else expanded on top. The
+  built-in `context-notes` recipe declares it, so context notes collapse out of the box (per-bundle
+  overridable); every other kind — including Task — stays expanded.
+- **REVISED from the original freshness-horizon tiering** (durable=no-horizon expanded /
+  horizon-declaring collapsed). That collapsed **Task** (30d horizon) alongside transient Context
+  Notes — wrong: a stale task is still a task you browse. Freshness-horizon is a *staleness* signal,
+  not a *browse-prominence* signal; conflating them over-collapsed. So this design's own rejection of
+  "a new `browsable` convention field (earn it with usage)" was **overridden** — the declared marker
+  IS the honest, kind-agnostic signal, and the founder's call ("don't go based on time") settled it.
+- **Conventions-free / unmarked bundles degrade to a plain grouped list** — nothing collapsed
+  (gate-3 posture; the shell never names a kind).
+- **Free of new server surface**: reuses `ActivityFeed`'s `listAllHeads({})` head fetch + `isFeedHead`
+  (the one plumbing filter — conventions + View/Page out); `/__ui/kinds` already serializes the full
+  convention, so `browseCollapsed` flows for free.
+- **Named "Browse", not "Documents"** — "Documents" collided with the retired capability-section name
+  the launcher tests guard against.
+- **DEFERRED**: terminal-instance folding (the original "145 closed — show" for Tasks). The cap-at-6
+  handles volume for now; a stronger second consumer is the Artifact `active/superseded/archived`
+  lifecycle (see [artifacts-as-temporal-outputs](artifacts-as-temporal-outputs.md)) — worth building
+  once that lands.
 
 ## Decision 2 — the relationship-rich reader (NO-BRAINER; can ship independently)
 
