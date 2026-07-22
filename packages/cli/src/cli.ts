@@ -45,6 +45,27 @@ import { renderErrorEnvelope } from "./output.js";
 import { DESCRIPTION, helpIndexText } from "./reference.js";
 import { cliInvocation } from "./invocation.js";
 import { parseArgs } from "node:util";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+/**
+ * The CLI's own version, read from its `package.json`. The path is computed AT RUNTIME from
+ * `import.meta.url` (via `fileURLToPath` + `join`, NOT `new URL(…, import.meta.url)` which esbuild
+ * would try to bundle as an asset), so it resolves to the SAME package root in all three contexts:
+ * the bundled dist (`dist/agentstate-lite.mjs` → `../package.json`), the published npm package, and
+ * tests running the TS source (`src/cli.ts` → `../package.json`). A missing/unreadable manifest
+ * degrades to "unknown" rather than throwing on the version path.
+ */
+export function cliVersion(): string {
+  try {
+    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: unknown };
+    return typeof pkg.version === "string" && pkg.version ? pkg.version : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 export const KNOWN_COMMANDS = [
   "init",
@@ -123,7 +144,7 @@ const wrap =
  * `--json`) with NO positional subcommand — the canonical `agentstate-lite --remote <url>` an agent
  * runs to orient against a bundle. Such an invocation routes to the home view rather than the
  * "options must follow the command" USAGE error (which is for a real flag-before-command like
- * `--dir x list`, or an unknown flag like `--version`). Any parse failure returns false.
+ * `--dir x list`, or an unknown flag like `--bogus`). Any parse failure returns false.
  */
 function isGlobalOnlyHomeInvocation(argv: string[]): boolean {
   try {
@@ -198,14 +219,21 @@ export async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  // `--version` / `-v`: the CLI's own version string, offline, exit 0. Handled BEFORE the
+  // leading-flag USAGE path below, which would otherwise reject `--version` as a misplaced option.
+  if (command === "--version" || command === "-v") {
+    process.stdout.write(`${cliVersion()}\n`);
+    return;
+  }
+
   // A leading flag (e.g. `axi --dir <path> list`) is a common mistake: options are per-command and
   // must FOLLOW the subcommand. Give an actionable hint rather than the opaque "unknown command:
-  // --dir". This also covers `--version`/`-v`. Exit 2.
+  // --dir". (`--version`/`-v` and `--help`/`-h` are handled above; this is for the rest.) Exit 2.
   if (command.startsWith("-")) {
     // `agentstate-lite --remote <url>` (or `--dir <path>`) with NO subcommand is the canonical
     // "orient me against this bundle" invocation, not a flags-before-command mistake — route it to
     // the home view (scoped to that remote/dir) instead of erroring. A real leading flag before a
-    // command (`--dir x list`) or an unknown flag (`--version`) still gets the actionable USAGE hint.
+    // command (`--dir x list`) or an unknown flag (`--bogus`) still gets the actionable USAGE hint.
     if (isGlobalOnlyHomeInvocation(argv)) {
       await home(argv);
       return;
