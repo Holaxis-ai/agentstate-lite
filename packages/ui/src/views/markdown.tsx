@@ -43,6 +43,13 @@ export interface RenderedMarkdown {
   element: ReactNode;
   /** True when the body was cut at {@link MAX_BODY_CHARS} or the walk hit {@link MAX_NODES}. */
   bounded: boolean;
+  /**
+   * The bounds this render actually applied, after defaulting and clamping. Reported so the
+   * OMITTED-option path is pinnable without building a fixture at the production size: a test
+   * asserts an unlimited call resolves to the constants. Without it, the production fallback could
+   * be changed to `Infinity` with every bounds test still green (found in review).
+   */
+  limits: { maxBodyChars: number; maxNodes: number };
 }
 
 export interface RenderOptions {
@@ -52,6 +59,30 @@ export interface RenderOptions {
   onNavigateDoc: (id: string) => void;
   /** Resolve a concept id to its title, for the inline "verb → title" edge rows (falls back to the id). */
   titleFor?: (conceptId: string) => string | undefined;
+  /**
+   * Resource bounds, defaulting to {@link MAX_BODY_CHARS}/{@link MAX_NODES}. A TEST SEAM: degrading
+   * at a budget is behavior independent of how big the budget is, so a test asserts it at a small
+   * one instead of building a fixture sized off the production constant (20K nodes parsed + walked
+   * ran ~1s locally and timed out against vitest's 5s default on a loaded runner). Production
+   * callers omit these; that the omitted case really uses the constants is itself pinned.
+   *
+   * ONLY EVER TIGHTENS. This module is a resource-security boundary, so the seam cannot be used to
+   * relax it: an override above the production maximum is clamped down to it, and a non-finite or
+   * non-positive value ({@link resolveBound}) falls back to the maximum rather than disabling the
+   * guard. NaN is the one that matters — `count >= NaN` is always false, so an unclamped NaN would
+   * silently remove the walk bound entirely.
+   */
+  limits?: { maxBodyChars?: number; maxNodes?: number };
+}
+
+/**
+ * Resolve one requested bound against its production maximum. FAIL CLOSED in every direction the
+ * seam could weaken the boundary: absent, non-finite (NaN/Infinity), or non-positive all yield the
+ * maximum, and a finite request is clamped down to it. So an override can only ever tighten.
+ */
+function resolveBound(requested: number | undefined, max: number): number {
+  if (requested === undefined || !Number.isFinite(requested) || requested < 1) return max;
+  return Math.min(Math.floor(requested), max);
 }
 
 /** Flatten a node's text content — the inert fallback for unknown/rejected constructs. */
@@ -108,6 +139,7 @@ interface WalkState {
   count: number;
   bounded: boolean;
   options: RenderOptions;
+  maxNodes: number;
 }
 
 function renderChildren(node: Parent, state: WalkState, depth: number): ReactNode[] {
@@ -132,7 +164,7 @@ function renderTableRow(row: Parent, state: WalkState, depth: number, index: num
 }
 
 function renderNode(node: RootContent | Node, state: WalkState, depth: number, index: number): ReactNode {
-  if (state.count >= MAX_NODES) {
+  if (state.count >= state.maxNodes) {
     state.bounded = true;
     return null;
   }
@@ -267,7 +299,7 @@ function renderEdgeList(links: Node[], state: WalkState, index: number): ReactNo
   for (let i = 0; i < links.length; i++) {
     // Each row counts against the walk budget, like renderNode — a hostile all-edges body degrades
     // (bounded) instead of rendering unboundedly past MAX_NODES.
-    if (state.count >= MAX_NODES) {
+    if (state.count >= state.maxNodes) {
       state.bounded = true;
       break;
     }
@@ -301,17 +333,19 @@ function renderEdgeList(links: Node[], state: WalkState, index: number): ReactNo
 
 /** Parse + render a doc body to React elements under the module's bounds. Pure aside from the callbacks. */
 export function renderMarkdown(body: string, options: RenderOptions): RenderedMarkdown {
+  const maxBodyChars = resolveBound(options.limits?.maxBodyChars, MAX_BODY_CHARS);
+  const maxNodes = resolveBound(options.limits?.maxNodes, MAX_NODES);
   let bounded = false;
   let source = body;
-  if (source.length > MAX_BODY_CHARS) {
-    source = source.slice(0, MAX_BODY_CHARS);
+  if (source.length > maxBodyChars) {
+    source = source.slice(0, maxBodyChars);
     bounded = true;
   }
   const tree = fromMarkdown(source, {
     extensions: [gfm()],
     mdastExtensions: [gfmFromMarkdown()],
   });
-  const state: WalkState = { count: 0, bounded: false, options };
+  const state: WalkState = { count: 0, bounded: false, options, maxNodes };
   // Render a run of bare concept-link paragraphs inline as one "verb → target" edge list (authors
   // write one edge per line, so merge the consecutive run). Non-bare paragraphs and inline links
   // render normally through renderNode.
@@ -334,5 +368,7 @@ export function renderMarkdown(body: string, options: RenderOptions): RenderedMa
     }
   }
   const element = <>{nodes}</>;
-  return { element, bounded: bounded || state.bounded };
+  // `maxNodes` is reported from the SAME binding the walk consumed (state.maxNodes), so the
+  // reported bound cannot drift from the enforced one.
+  return { element, bounded: bounded || state.bounded, limits: { maxBodyChars, maxNodes: state.maxNodes } };
 }

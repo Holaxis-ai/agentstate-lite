@@ -243,20 +243,81 @@ describe("markdown renderer", () => {
     });
   });
 
-  it("bounds degrade honestly: oversized bodies and node floods report bounded", async () => {
-    const oversized = "a".repeat(MAX_BODY_CHARS + 10);
-    expect((await render(oversized)).bounded).toBe(true);
+  /**
+   * Bounds. Degrading AT a budget is behavior independent of how big the budget is, so the two
+   * node-flood cases run at an injected small budget: sizing a fixture off the real MAX_NODES
+   * (20K nodes parsed and walked) cost ~1s locally and TIMED OUT against vitest's 5s default on a
+   * loaded CI runner — tasks/ui-markdown-bounds-test-timeout. The production constants are pinned
+   * separately below, and the body cap still runs on the real default, so nothing is only ever
+   * exercised at a test-only number.
+   */
+  describe("resource bounds", () => {
+    // The two bounds are isolated ON PURPOSE. Shrinking BOTH at once made the node-flood cases pass
+    // for the wrong reason: a ~120-char fixture tripped a 64-char body cap before the walk was ever
+    // consulted, so breaking the node budget outright kept them green (caught by probing red).
+    // Each budget is therefore shrunk alone, leaving the other at its production default.
+    const NODE_BUDGET = { maxNodes: 20 };
+    const BODY_BUDGET = { maxBodyChars: 64 };
 
-    const flood = Array.from({ length: MAX_NODES + 100 }, (_, i) => `p${i}`).join("\n\n");
-    expect((await render(flood)).bounded).toBe(true);
-  });
+    it("pins the production budgets — the constants the default path applies", () => {
+      expect(MAX_BODY_CHARS).toBe(262_144);
+      expect(MAX_NODES).toBe(20_000);
+    });
 
-  it("bounds an all-EDGE flood too — inline edge rows count against the node budget", () => {
-    // A body of only bare concept-link paragraphs (all merge into one edge list) must degrade like
-    // any other path, not render every row unbounded past MAX_NODES. Assert on renderMarkdown's
-    // `bounded` flag directly — mounting ~20K anchor rows to jsdom is needlessly slow (CI timeout).
-    const flood = Array.from({ length: MAX_NODES + 50 }, () => "[a](b.md)").join("\n\n");
-    const result = renderMarkdown(flood, { fromId: "docs/x", onNavigateDoc });
-    expect(result.bounded).toBe(true);
+    it("an OMITTED limit resolves to the production constant — the default WIRING, not just its value", () => {
+      // Review P1: asserting MAX_NODES === 20_000 does not prove the renderer still USES it. Every
+      // flood case injects a budget, so the production fallback could be changed to Infinity with
+      // all of them green. Reporting the resolved bounds makes the omitted path assertable cheaply.
+      const { limits } = renderMarkdown("hello", { fromId: "docs/x", onNavigateDoc });
+      expect(limits).toEqual({ maxBodyChars: MAX_BODY_CHARS, maxNodes: MAX_NODES });
+    });
+
+    it("the seam only ever TIGHTENS — over-max, non-finite, and non-positive overrides fail closed", () => {
+      // Review P2: this renderer is a resource-security boundary, so the test seam must not be able
+      // to relax it. NaN is the dangerous one: `count >= NaN` is always false, which would remove
+      // the walk bound entirely rather than merely widening it.
+      const render = (limits: { maxBodyChars?: number; maxNodes?: number }) =>
+        renderMarkdown("hello", { fromId: "docs/x", onNavigateDoc, limits }).limits;
+
+      for (const bad of [Number.POSITIVE_INFINITY, Number.NaN, 0, -5]) {
+        expect(render({ maxNodes: bad }).maxNodes, `maxNodes override ${bad} must fail closed`).toBe(MAX_NODES);
+        expect(render({ maxBodyChars: bad }).maxBodyChars, `maxBodyChars override ${bad} must fail closed`).toBe(
+          MAX_BODY_CHARS,
+        );
+      }
+      // A request ABOVE the maximum clamps down to it, never up.
+      expect(render({ maxNodes: MAX_NODES * 10 }).maxNodes).toBe(MAX_NODES);
+      expect(render({ maxBodyChars: MAX_BODY_CHARS * 10 }).maxBodyChars).toBe(MAX_BODY_CHARS);
+      // A SMALLER request — the only thing the seam exists for — is honored.
+      expect(render({ maxNodes: 20 }).maxNodes).toBe(20);
+      expect(render({ maxBodyChars: 64 }).maxBodyChars).toBe(64);
+    });
+
+    it("an oversized body degrades on the REAL default cap, with no injected limit", async () => {
+      expect((await render("a".repeat(MAX_BODY_CHARS + 10))).bounded).toBe(true);
+    });
+
+    it("ordinary content under the budgets is NOT reported bounded", async () => {
+      expect((await render("# title\n\nsome prose\n")).bounded).toBe(false);
+    });
+
+    it("a node flood degrades — on the NODE budget, with the body cap left at its default", () => {
+      const flood = Array.from({ length: NODE_BUDGET.maxNodes + 10 }, (_, i) => `p${i}`).join("\n\n");
+      expect(flood.length).toBeLessThan(MAX_BODY_CHARS); // the body cap must NOT be what trips
+      expect(renderMarkdown(flood, { fromId: "docs/x", onNavigateDoc, limits: NODE_BUDGET }).bounded).toBe(true);
+    });
+
+    it("an all-EDGE flood degrades too — inline edge rows count against the node budget", () => {
+      // Bare concept-link paragraphs all merge into ONE edge list; that path must still charge the
+      // node budget rather than render every row unbounded.
+      const flood = Array.from({ length: NODE_BUDGET.maxNodes + 10 }, () => "[a](b.md)").join("\n\n");
+      expect(flood.length).toBeLessThan(MAX_BODY_CHARS);
+      expect(renderMarkdown(flood, { fromId: "docs/x", onNavigateDoc, limits: NODE_BUDGET }).bounded).toBe(true);
+    });
+
+    it("an oversized body degrades on the BODY cap, with the node budget left at its default", () => {
+      const body = "a".repeat(BODY_BUDGET.maxBodyChars + 1); // one paragraph — far under MAX_NODES
+      expect(renderMarkdown(body, { fromId: "docs/x", onNavigateDoc, limits: BODY_BUDGET }).bounded).toBe(true);
+    });
   });
 });
