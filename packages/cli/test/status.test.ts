@@ -17,6 +17,7 @@ import { initBundle, writeBlob, writeDoc, type Bundle } from "@agentstate-lite/c
 import { serve, type ServerHandle } from "@agentstate-lite/server";
 
 import { status } from "../src/commands/status.js";
+import { newCommand } from "../src/commands/new.js";
 import { CliError } from "../src/errors.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -811,18 +812,19 @@ test("status: the terminal exclusion keys off the DECLARED value set, not a hard
   }
 });
 
-// ── tasks/view-entry-dangling-lint: dangling_view_entries ──────────────────────────────────────
+// ── tasks/view-entry-dangling-lint: dangling_view_entries + invalid_view_registrations ─────────
 //
 // A deliberately CONVENTIONS-FREE fixture (zero Convention docs): recognition rides core's
-// `parseRegistration` (the same predicate the ui launcher/server consume), so an
-// externally-authored bundle with no declared kinds must get the exact same signal.
+// `isPageTypeName`/`parseRegistration` (the same predicates the ui launcher/server consume), so
+// an externally-authored bundle with no declared kinds must get the exact same signals.
 //   - `views-registry/dashboard`    — type View, entry blob WRITTEN -> resolvable, never a row.
 //   - `views-registry/ghost`        — type View, entry names a never-promoted blob -> dangling.
 //   - `pages-registry/legacy-ghost` — legacy type Page under the legacy prefixes, entry blob
 //                                     missing -> dangling (legacy registrations are covered too).
-//   - `notes/view-shaped`           — type View but NOT under a registry prefix: not a recognized
-//                                     registration (parseRegistration returns null), so it is
-//                                     ignored entirely — a different gap than a dangling entry.
+//   - `views-registry/bad-entry`    — type View, entry under a non-entry prefix: fails the entry
+//                                     grammar -> invalid registration (leg 'entry').
+//   - `notes/view-shaped`           — type View but NOT under a registry prefix: fails the id
+//                                     grammar -> invalid registration (leg 'id'), never dangling.
 async function makeViewEntryFixtureBundle(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   const dir = await tempDir();
   const bundle = await initBundle(dir);
@@ -845,9 +847,14 @@ async function makeViewEntryFixtureBundle(): Promise<{ dir: string; cleanup: () 
     body: "A legacy-typed registration under the legacy prefixes, also dangling.",
   });
   await writeDoc(bundle, {
+    id: "views-registry/bad-entry",
+    frontmatter: { type: "View", title: "Bad Entry", entry: "other/nope.html", timestamp: now },
+    body: "Registry id is valid but the entry key fails the entry grammar.",
+  });
+  await writeDoc(bundle, {
     id: "notes/view-shaped",
     frontmatter: { type: "View", title: "View Shaped", entry: "views/whatever.html", timestamp: now },
-    body: "type View but not a recognized registration — ignored by this lint.",
+    body: "type View but the id fails the registry-id grammar.",
   });
 
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
@@ -868,10 +875,21 @@ test("status: dangling_view_entries reports recognized View/Page registrations w
     assert.equal(dangling.shown, 2);
     assert.equal(dangling.total, 2);
     // Exactly the two dangling registrations (current AND legacy), each naming id -> entry key;
-    // the resolvable registration and the non-registration View-typed doc never appear.
+    // the resolvable registration and the two INVALID View-typed docs never appear here.
     assert.deepEqual(dangling.rows, [
       { id: "pages-registry/legacy-ghost", entry: "pages/legacy-ghost.html" },
       { id: "views-registry/ghost", entry: "views/ghost.html" },
+    ]);
+    // The invalid docs land in their OWN category, each naming the failing grammar leg.
+    assert.equal(result.invalid_view_registrations, 2);
+    const invalid = result.invalid_view_registrations_rows as {
+      shown: number;
+      total: number;
+      rows: Record<string, unknown>[];
+    };
+    assert.deepEqual(invalid.rows, [
+      { id: "notes/view-shaped", problem: "id" },
+      { id: "views-registry/bad-entry", problem: "entry" },
     ]);
   } finally {
     await cleanup();
@@ -891,12 +909,14 @@ test("status: dangling_view_entries is PRESENT at 0 (row block omitted) when eve
     const result = await runJson(["--dir", dir]);
     assert.equal(result.dangling_view_entries, 0);
     assert.equal("dangling_view_entries_rows" in result, false, "the row block is still omitted when empty");
+    assert.equal(result.invalid_view_registrations, 0);
+    assert.equal("invalid_view_registrations_rows" in result, false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("status: dangling_view_entries is ABSENT on a bundle with no recognized registrations (byte-identity for registration-free bundles)", async () => {
+test("status: both View-surface counters are ABSENT on a bundle with no View-typed docs (byte-identity for view-free bundles)", async () => {
   const dir = await tempDir();
   try {
     const bundle = await initBundle(dir);
@@ -908,8 +928,92 @@ test("status: dangling_view_entries is ABSENT on a bundle with no recognized reg
     const result = await runJson(["--dir", dir]);
     assert.equal("dangling_view_entries" in result, false);
     assert.equal("dangling_view_entries_rows" in result, false);
+    assert.equal("invalid_view_registrations" in result, false);
+    assert.equal("invalid_view_registrations_rows" in result, false);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("status: invalid_view_registrations catches docs the STRICT authoring path ('new \"View\"' with the canonical convention) accepts silently — both an off-grammar entry and an off-prefix id", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle = await initBundle(dir);
+    // The canonical View convention (references/views/conventions/view.md): required
+    // title/entry/bridge, bridge enum, auto-prefix path views-registry/. Kind validation checks
+    // field PRESENCE and enums — not the registration grammar — which is exactly the gap.
+    await writeDoc(bundle, {
+      id: "conventions/view",
+      frontmatter: {
+        type: "Convention",
+        title: "View",
+        governs: "View",
+        path: "views-registry/",
+        fields: {
+          required: ["title", "entry", "bridge"],
+          optional: ["description"],
+          values: { bridge: ["none", "bundle-read", "bundle-propose"] },
+          terminal: {},
+        },
+        timestamp: new Date().toISOString(),
+      },
+      body: "The View kind.",
+    });
+    const silent = { stdout: () => {} };
+    // Reproduction (a): a wrong-prefix entry key — strict `new` accepts it without a warning.
+    await newCommand(
+      ["View", "wrong-entry", "--title", "Wrong Entry", "--entry", "other/missing.html", "--bridge", "none", "--dir", dir],
+      silent,
+    );
+    // Reproduction (b): --no-prefix puts the id OUTSIDE the registry prefix while the entry blob
+    // genuinely exists — unservable despite a perfectly real blob.
+    await newCommand(
+      ["View", "notes/offpath", "--no-prefix", "--title", "Offpath", "--entry", "views/offpath.html", "--bridge", "none", "--dir", dir],
+      silent,
+    );
+    await writeBlob(bundle, "views/offpath.html", new TextEncoder().encode("<!doctype html>"), "text/html");
+
+    const result = await runJson(["--dir", dir]);
+    // The reviewer-reproduced silence: kind validation is clean on BOTH docs...
+    assert.equal(result.kind_warnings, 0);
+    assert.equal(result.conformance_debt, 0);
+    // ...and THIS lint is now the diagnostic, naming each failing grammar leg.
+    assert.equal(result.invalid_view_registrations, 2);
+    const invalid = result.invalid_view_registrations_rows as { rows: Record<string, unknown>[] };
+    assert.deepEqual(invalid.rows, [
+      { id: "notes/offpath", problem: "id" },
+      { id: "views-registry/wrong-entry", problem: "entry" },
+    ]);
+    // Neither doc is a valid registration, so neither can be a dangling row (present at 0).
+    assert.equal(result.dangling_view_entries, 0);
+    assert.equal("dangling_view_entries_rows" in result, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("status: --limit caps the View-surface row blocks (dangling_view_entries_rows + invalid_view_registrations_rows); counters keep the TOTAL; --limit 0 is unlimited", async () => {
+  const { dir, cleanup } = await makeViewEntryFixtureBundle(); // 2 dangling rows + 2 invalid rows
+  try {
+    const capped = await runJson(["--dir", dir, "--limit", "1"]);
+    assert.equal(capped.dangling_view_entries, 2, "the counter reports the total, not the cap");
+    assert.equal(capped.invalid_view_registrations, 2);
+    for (const key of ["dangling_view_entries_rows", "invalid_view_registrations_rows"]) {
+      const block = capped[key] as { shown: number; total: number; rows: unknown[] };
+      assert.equal(block.shown, 1, `${key}: shown respects --limit 1`);
+      assert.equal(block.total, 2, `${key}: total stays honest under the cap`);
+      assert.equal(block.rows.length, 1);
+    }
+
+    const unlimited = await runJson(["--dir", dir, "--limit", "0"]);
+    for (const key of ["dangling_view_entries_rows", "invalid_view_registrations_rows"]) {
+      const block = unlimited[key] as { shown: number; total: number; rows: unknown[] };
+      assert.equal(block.shown, 2, `${key}: --limit 0 shows every row`);
+      assert.equal(block.total, 2);
+      assert.equal(block.rows.length, 2);
+    }
+  } finally {
+    await cleanup();
   }
 });
 
