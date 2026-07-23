@@ -57,6 +57,8 @@ import {
 
 import {
   isProvisioned,
+  probeRepoTopLevel,
+  repoTopLevel,
   provisionBoardWorktree,
   runGit,
   clearGitDirMarkerVerified,
@@ -225,6 +227,25 @@ test("env leak: inherited GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE are scrubbed — 
 });
 
 // ── ff-only swallow matrix ────────────────────────────────────────────────────
+
+test("repository discovery distinguishes no repo from broken Git plumbing without changing the legacy projection", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-repo-probe-"));
+  try {
+    assert.deepEqual(probeRepoTopLevel(dir), { kind: "not_repo" });
+    execFileSync("git", ["init", "--initial-branch=main"], { cwd: dir, stdio: "ignore" });
+    assert.deepEqual(probeRepoTopLevel(path.join(dir, "missing")), {
+      kind: "unavailable",
+      reason: "git repository discovery path does not exist",
+    });
+    await writeFile(path.join(dir, ".git", "config"), "[broken\n");
+    const detailed = probeRepoTopLevel(dir);
+    assert.equal(detailed.kind, "unavailable");
+    if (detailed.kind === "unavailable") assert.match(detailed.reason, /repository discovery failed/);
+    assert.equal(repoTopLevel(dir), null, "legacy fail-soft callers retain their existing projection");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("ffPull swallow matrix: not-a-repo (bare mkdtemp)", async () => {
   const bare = await mkdtemp(path.join(tmpdir(), "aslite-not-a-repo-"));

@@ -17,7 +17,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BRIDGE_BADGES, Launcher, orientationStorageKey, sharingChip } from "./Launcher.js";
+import {
+  BRIDGE_BADGES,
+  Launcher,
+  MAX_SHARING_REFRESH_DELAY_MS,
+  MIN_SHARING_REFRESH_DELAY_MS,
+  orientationStorageKey,
+  sharingChip,
+  sharingRefreshDelay,
+} from "./Launcher.js";
 import { fetchConfig, listPages, type SharingSummary, type UiConfig } from "../api/pages.js";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -98,6 +106,7 @@ describe("home surface", () => {
       root.unmount();
     });
     container.remove();
+    vi.useRealTimers();
   });
 
   async function render(): Promise<void> {
@@ -267,6 +276,77 @@ describe("home surface", () => {
     expect(container.querySelector(".orientation")).toBeNull();
   });
 
+  it("never shows local privacy onboarding in remote mode, even when config.root carries the remote URL", async () => {
+    vi.mocked(fetchConfig).mockResolvedValue({
+      ...BASE_CONFIG,
+      mode: "remote",
+      remoteUrl: "https://host.example",
+      root: "https://host.example",
+      sharing: { kind: "hosted", remote: "host.example", as_of: "2026-07-21T12:00:00.000Z" },
+    });
+    await render();
+    expect(container.querySelector(".orientation")).toBeNull();
+
+    await act(async () => {
+      (container.querySelector(".where-btn") as HTMLButtonElement).click();
+      await flush();
+    });
+    expect(container.querySelector(".where-panel")?.textContent).toContain("https://host.example");
+  });
+
+  it("refetches sharing config at evidence expiry without an SSE document event", async () => {
+    vi.useFakeTimers();
+    const startedAt = Date.parse("2026-07-21T12:00:00.000Z");
+    vi.setSystemTime(startedAt);
+    let calls = 0;
+    vi.mocked(fetchConfig).mockImplementation(async () => {
+      calls += 1;
+      return {
+        ...BASE_CONFIG,
+        sharing: {
+          kind: calls === 1 ? "private" : "shared_branch",
+          remote: calls === 1 ? undefined : "org/repo",
+          as_of: new Date(Date.now()).toISOString(),
+          refresh_after_ms: 1_000,
+        },
+      };
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } });
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <Launcher />
+        </QueryClientProvider>,
+      );
+    });
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await Promise.resolve();
+      });
+    }
+    expect(calls).toBe(1);
+    expect(container.querySelector(".chip")?.textContent).toBe("private — this computer only");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(999);
+    });
+    expect(calls).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+      await Promise.resolve();
+    });
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await Promise.resolve();
+      });
+    }
+    expect(calls).toBe(2);
+    expect(client.getQueryData<UiConfig>(["ui-config"])?.sharing?.kind).toBe("shared_branch");
+  });
+
   it("renders the sharing chip and the where-panel behind the disclosure (path no longer up front)", async () => {
     storage.setItem(orientationStorageKey(BUNDLE_ROOT), "dismissed");
     vi.mocked(fetchConfig).mockResolvedValue({
@@ -363,5 +443,33 @@ describe("sharingChip truth table (the SPA owns the words; every state row pinne
   it("an unknown future kind refuses honestly instead of fabricating", () => {
     const chip = sharingChip({ kind: "surprise" as SharingSummary["kind"], as_of: asOf });
     expect(chip!.text).toBe("sharing status unavailable");
+  });
+});
+
+describe("sharing config refresh scheduling", () => {
+  const asOf = "2026-07-21T12:00:00.000Z";
+  const now = Date.parse(asOf);
+  const summary: SharingSummary = { kind: "private", as_of: asOf, refresh_after_ms: 30_000 };
+
+  it("uses remaining evidence lifetime with a positive expired floor", () => {
+    expect(sharingRefreshDelay(summary, now)).toBe(30_000);
+    expect(sharingRefreshDelay(summary, now + 12_000)).toBe(18_000);
+    expect(sharingRefreshDelay(summary, now + 30_000)).toBe(MIN_SHARING_REFRESH_DELAY_MS);
+  });
+
+  it("bounds malformed, future, and oversized timing inputs", () => {
+    expect(sharingRefreshDelay({ ...summary, as_of: "not-a-date" }, now)).toBe(30_000);
+    expect(sharingRefreshDelay({ ...summary, as_of: new Date(now + 60_000).toISOString() }, now)).toBe(30_000);
+    expect(sharingRefreshDelay({ ...summary, refresh_after_ms: Number.POSITIVE_INFINITY }, now)).toBe(false);
+    expect(sharingRefreshDelay({ ...summary, refresh_after_ms: 0 }, now)).toBe(false);
+    expect(sharingRefreshDelay({ ...summary, refresh_after_ms: 60 * 60_000 }, now)).toBe(MAX_SHARING_REFRESH_DELAY_MS);
+    expect(sharingRefreshDelay({ ...summary, refresh_after_ms: undefined }, now)).toBe(false);
+  });
+
+  it("honors every terminal interceptor state before scheduling", () => {
+    expect(sharingRefreshDelay(summary, now, "ok")).toBe(30_000);
+    for (const status of ["unauthorized", "rate_limited", "session_expired"] as const) {
+      expect(sharingRefreshDelay(summary, now, status)).toBe(false);
+    }
   });
 });
