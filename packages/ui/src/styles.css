@@ -237,7 +237,6 @@ body {
   line-height: 1.4;
 }
 
-.launcher-empty code,
 .orientation code {
   font-family: var(--font-mono);
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
@@ -259,11 +258,62 @@ body {
   color: var(--color-signal);
 }
 
+/* Quiet empty-state voice, shared with .feed-empty: an empty section should read as a
+   calm invitation, not as body copy competing with real content. */
 .launcher-empty {
   margin-top: 0.25rem;
+  color: var(--text-tertiary);
+  font-size: 0.83rem;
+  line-height: 1.5;
+  max-width: 58ch;
+}
+
+.launcher-empty p {
+  margin: 0 0 0.6rem;
+}
+
+.launcher-empty p:last-child {
+  margin-bottom: 0;
+}
+
+.launcher-empty em {
+  font-style: normal;
   color: var(--text-secondary);
-  line-height: 1.6;
-  max-width: 62ch;
+}
+
+/* The orientation's own "learn more": designs/home-surface requires the first read orient a
+   newcomer WITHOUT OKF jargon, so the standard's name lives one click behind it. */
+.orientation-details {
+  margin: 0.4rem 0 0.9rem;
+  border-left: 2px solid var(--rule);
+  padding: 0.1rem 0 0.1rem 0.9rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.orientation-details p {
+  margin: 0 0 0.5rem;
+}
+
+.orientation-details p:last-child {
+  margin-bottom: 0;
+}
+
+/* "learn more" — the same progressive disclosure as "where is this?": authoring mechanics stay
+   one click behind the plain-language explanation, never in front of a first-time reader. */
+.launcher-empty-details {
+  margin-top: 0.2rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-card);
+  padding: 0.6rem 0.9rem;
+}
+
+.launcher-empty-details code {
+  font-family: var(--font-mono);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  padding: 0.05rem 0.3rem;
+  border-radius: var(--radius);
 }
 
 /* ── Home layout: main column + activity aside (designs/home-surface) ── */

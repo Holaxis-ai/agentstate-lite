@@ -1,10 +1,11 @@
 /**
- * Home-surface pins (designs/home-surface + the pre-existing empty-state teaching pin from
- * plans/rename-page-kind-to-view Unit 3):
+ * Home-surface pins (designs/home-surface):
  *
- *  1. The empty state still teaches View authoring in CANONICAL vocabulary (`type: View`,
- *     `views/`, `examples/views/`; Page named only as the accepted legacy form). Red-on-old:
- *     the pre-rename empty state taught `type: Page` under `pages/`.
+ *  1. The empty Views state is written for a first-time reader: what a view IS, plus the plain-
+ *     language ask that produces one. Authoring mechanics (kind names, blob prefixes, registry
+ *     docs) are pinned ABSENT — this is the surface a user meets before they know any of it.
+ *     Supersedes the earlier canonical-vocabulary pin from plans/rename-page-kind-to-view
+ *     Unit 3, which taught `type: View` / `views/` / `examples/views/` here.
  *  2. The grid is FLAT — the capability-grouped sections (Dashboards / Interactive / Documents)
  *     are gone; capability renders as a per-card BADGE (`live data` / `can edit` / `artifact`)
  *     derived from the same enforced `bridge` field. Red-on-old: the grouped launcher rendered a
@@ -16,12 +17,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Launcher, orientationStorageKey, sharingChip } from "./Launcher.js";
+import { BRIDGE_BADGES, Launcher, orientationStorageKey, sharingChip } from "./Launcher.js";
 import { fetchConfig, listPages, type SharingSummary, type UiConfig } from "../api/pages.js";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const BUNDLE_ROOT = "/tmp/bundle";
+/**
+ * The canonical View-authoring vocabulary. ONE list, asserted in both directions: absent from the
+ * empty state's first read, present once "learn more" is expanded. Editing either surface without
+ * the other turns one of the two assertions red.
+ */
+const AUTHORING_JARGON = ["type: View", "type: Page", "views/", "examples/views/"] as const;
 const BASE_CONFIG: UiConfig = { mode: "dir", remoteUrl: null, root: BUNDLE_ROOT, name: "bundle", sharing: null, workspaces: [] };
 
 vi.mock("../api/pages.js", () => ({
@@ -110,7 +117,7 @@ describe("home surface", () => {
     }
   }
 
-  it("empty state teaches View authoring canonically, naming Page only as the accepted legacy form", async () => {
+  it("empty state explains what a view is and how to ask for one, in a first-time reader's vocabulary", async () => {
     storage.setItem(orientationStorageKey(BUNDLE_ROOT), "dismissed");
     await render();
     for (let i = 0; i < 50 && !container.querySelector(".launcher-empty"); i++) {
@@ -122,15 +129,56 @@ describe("home surface", () => {
     const empty = container.querySelector(".launcher-empty");
     expect(empty, "empty state must render when no views are registered").not.toBeNull();
     const text = empty!.textContent ?? "";
-    // Canonical teaching: the View kind, the views/ blob prefix, the worked examples.
-    expect(text).toContain("type: View");
-    expect(text).toContain("views/");
-    expect(text).toContain("examples/views/");
-    // Legacy is a note, not guidance: mentioned as still working, never as the thing to author.
-    expect(text).toContain("Legacy");
-    expect(text).toContain("type: Page");
-    expect(text).not.toContain("examples/pages/");
-    expect(text).not.toMatch(/Promote an HTML page/);
+    // What it is, and the one route to getting one: ask the agent in plain language.
+    expect(text).toContain("interactive HTML file");
+    expect(text).toContain("asking your agent");
+    expect(text).toMatch(/create a view showing every open task/);
+    // Authoring MECHANICS are deliberately absent from the FIRST read: a reader who has never
+    // seen a view should not have to parse kind names or blob prefixes to understand it. They
+    // live one click behind "learn more" — asserted below, so this is disclosure, not deletion.
+    for (const jargon of AUTHORING_JARGON) {
+      expect(text, `first read must stay free of "${jargon}"`).not.toContain(jargon);
+    }
+  });
+
+  it("'learn more' discloses the authoring mechanics the first read withholds", async () => {
+    storage.setItem(orientationStorageKey(BUNDLE_ROOT), "dismissed");
+    await render();
+    for (let i = 0; i < 50 && !container.querySelector(".launcher-empty"); i++) {
+      await act(async () => {
+        await flush();
+      });
+    }
+
+    const empty = container.querySelector(".launcher-empty");
+    const toggle = empty!.querySelector<HTMLButtonElement>("button.where-btn");
+    expect(toggle, "empty state must offer a 'learn more' disclosure").not.toBeNull();
+    // Collapsed by default — the whole point is that the mechanics are not the first thing read.
+    expect(toggle!.textContent).toContain("learn more");
+    expect(toggle!.getAttribute("aria-expanded")).toBe("false");
+    expect(empty!.querySelector(".launcher-empty-details")).toBeNull();
+
+    await act(async () => {
+      toggle!.click();
+      await flush();
+    });
+
+    const details = empty!.querySelector(".launcher-empty-details");
+    expect(details, "clicking 'learn more' must reveal the mechanics panel").not.toBeNull();
+    const disclosed = details!.textContent ?? "";
+    // Every term withheld from the first read is reachable here — the canonical authoring
+    // vocabulary, with Page named only as the legacy form that keeps working.
+    for (const jargon of AUTHORING_JARGON) {
+      expect(disclosed, `"${jargon}" must be reachable behind 'learn more'`).toContain(jargon);
+    }
+    // All THREE capability modes, worded as the card badges word them. The panel used to describe
+    // every view as live and read-only, which was false for `none` (denied all bundle data) and for
+    // `bundle-propose` (may propose an edit) -- and contradicted the badges on the same screen.
+    for (const badge of Object.values(BRIDGE_BADGES)) {
+      expect(disclosed, `capability mode "${badge.label}" must be explained behind 'learn more'`).toContain(badge.label);
+    }
+    expect(toggle!.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle!.textContent).toContain("hide details");
   });
 
   it("renders ONE flat grid with capability badges — no Dashboards/Interactive/Documents sections", async () => {
@@ -162,7 +210,7 @@ describe("home surface", () => {
     expect(badges).toEqual(["can edit", "live data", "artifact"]);
   });
 
-  it("shows first-run orientation with the in-tree-safe promise and no-agent fallback; dismissal persists", async () => {
+  it("shows first-run orientation whose next step CONNECTS an agent, never hand-authoring; dismissal persists", async () => {
     await render();
     for (let i = 0; i < 50 && !container.querySelector(".orientation"); i++) {
       await act(async () => {
@@ -176,8 +224,31 @@ describe("home surface", () => {
     // The promise is worded to cover the in-tree mode (chip and promise must never contradict).
     expect(text).toMatch(/stays private until you choose to share it/i);
     expect(text).toContain("committing the folder with your code");
-    // The try-it hook carries a no-agent-yet fallback.
-    expect(text).toContain("No agent set up yet?");
+    // Agent-first: the try-it hook asks the AGENT to write, and the no-agent fallback connects one
+    // rather than telling a human to hand-author a doc the framework exists to write for them.
+    expect(text).toContain("ask your agent to write something down");
+    expect(text).toContain("aslite skill install");
+    // designs/home-surface: the home "must (1) orient a newcomer without OKF jargon". The standard
+    // is real and worth naming, so it lives one click behind "learn more" (asserted below) rather
+    // than in the first read.
+    expect(text, "first read must orient without OKF jargon (designs/home-surface)").not.toContain("OKF");
+    expect(text).not.toMatch(/works from any terminal/i);
+    expect(text).not.toContain('new "Context Note"');
+    // Never advertise the UNSCOPED npm coordinate: `aslite` is not ours (404 on the registry),
+    // so a copy-pasted `npx -y aslite …` runs whatever lands on that name. Ours is @holaxis/aslite.
+    expect(text).not.toMatch(/npx\s+-y\s+aslite\b/);
+
+    // ...and reachable one click behind the orientation's own "learn more" — disclosure, not denial.
+    const learnMore = orientation!.querySelector<HTMLButtonElement>("button.where-btn");
+    expect(learnMore, "orientation must offer a 'learn more' disclosure").not.toBeNull();
+    expect(orientation!.querySelector(".orientation-details"), "collapsed by default").toBeNull();
+    await act(async () => {
+      learnMore!.click();
+      await flush();
+    });
+    const okfPanel = orientation!.querySelector(".orientation-details");
+    expect(okfPanel, "clicking 'learn more' must reveal the standard").not.toBeNull();
+    expect(okfPanel!.textContent ?? "").toContain("OKF");
 
     await act(async () => {
       (container.querySelector(".orientation-dismiss") as HTMLButtonElement).click();

@@ -32,7 +32,7 @@ import { DocumentBrowser } from "./DocumentBrowser.js";
 import { formatWhen } from "./format.js";
 
 /** Capability badge per enforced `bridge` value — role-based wording (the design's content model). */
-const BRIDGE_BADGES: Record<BridgeCapability, { label: string; className: string }> = {
+export const BRIDGE_BADGES: Record<BridgeCapability, { label: string; className: string }> = {
   "bundle-read": { label: "live data", className: "badge badge-read" },
   "bundle-propose": { label: "can edit", className: "badge badge-propose" },
   none: { label: "artifact", className: "badge badge-artifact" },
@@ -119,6 +119,8 @@ export function Launcher() {
   const pagesQuery = useQuery({ queryKey: ["pages"], queryFn: listPages });
   const [orientationDismissed, setOrientationDismissed] = useState<boolean | null>(null);
   const [whereOpen, setWhereOpen] = useState(false);
+  const [viewsHelpOpen, setViewsHelpOpen] = useState(false);
+  const [orientationHelpOpen, setOrientationHelpOpen] = useState(false);
 
   useEffect(() => {
     return subscribeToChanges((e) => {
@@ -225,19 +227,47 @@ export function Launcher() {
         <div className="home-main">
           {showOrientation && (
             <section className="orientation">
-              <h2>This is your bundle’s home</h2>
+              <h2>This is your ASLite bundle’s home</h2>
               <p>
-                A bundle is a folder of plain markdown you share with your agents — notes, decisions, tasks, and the
-                links between them. Agents write it from the terminal; you watch and steer from here.
+                A bundle is a folder of plain markdown documents shared with your agents: notes, decisions, tasks, and
+                the links between them. Each document follows a shared structure which, together with the ASLite CLI
+                and skill, lets agents write, track, and retrieve them as work happens.{" "}
+                <button
+                  type="button"
+                  className="where-btn"
+                  aria-expanded={orientationHelpOpen}
+                  onClick={() => setOrientationHelpOpen((v) => !v)}
+                >
+                  {orientationHelpOpen ? "hide details" : "learn more"}
+                </button>
               </p>
+              {orientationHelpOpen && (
+                <div className="orientation-details">
+                  <p>
+                    That shared structure is an open standard called OKF — the Open Knowledge Format. In practice it
+                    means each file is ordinary markdown with a short header naming what the document is and what it is
+                    called, and ordinary markdown links between files.
+                  </p>
+                  <p>
+                    Nothing about it is proprietary or locked to this tool: any editor that opens markdown can read
+                    your bundle, and aslite can read a bundle some other program wrote.
+                  </p>
+                </div>
+              )}
               <p>
                 It stays private until you choose to share it — by establishing a shared board (
                 <code>aslite sync --establish</code>) or committing the folder with your code.
               </p>
               <p>
-                <strong>Try it:</strong> ask your agent to remember something, and watch it land in the activity feed.
-                (No agent set up yet? <code>npx -y aslite new "Context Note" hello --title hello</code> works from any
-                terminal.)
+                <strong>Try it:</strong> ask your agent to write something down — a decision you just made, or how some
+                corner of this project works — and watch it land in the activity feed.
+              </p>
+              <p>
+                Agent doesn’t know about this bundle yet? From your project’s root folder,{" "}
+                <code>aslite skill install</code> teaches it the commands, and <code>aslite hook install</code> starts
+                each new session with this bundle’s state already in view. (Both write into the folder you run them
+                from, so run them where your project lives — or add <code>--scope global</code> to set them up for
+                every project at once.)
               </p>
               <button type="button" className="orientation-dismiss" onClick={dismissOrientation}>
                 Got it
@@ -259,12 +289,57 @@ export function Launcher() {
               <p className="view-status view-status-error">Could not load views: {(pagesQuery.error as Error).message}</p>
             )}
             {!pagesQuery.isPending && !pagesQuery.isError && pages.length === 0 && (
-              <p className="launcher-empty">
-                No <code>type: View</code> docs in this bundle yet — when your agent (or a teammate) registers one, its
-                card appears here, live. To author one: promote an HTML view under <code>views/</code> and declare a{" "}
-                <code>View</code> registry doc — see <code>examples/views/</code>. (Legacy <code>type: Page</code> docs
-                keep working.)
-              </p>
+              <div className="launcher-empty">
+                <p>
+                  You don’t have any views yet. A view is an interactive HTML file that displays information captured in
+                  the bundle in whatever way is valuable to you. Examples include a board of open tasks, a map of how
+                  your notes link to each other, a navigable folder hierarchy, or a list of the decisions made this
+                  week. Views dynamically update as content changes.
+                </p>
+                <p>
+                  With the aslite skill, you can create views by asking your agent to create one using plain language:
+                  Ex: <em>“create a view showing every open task, grouped by who it’s assigned to.”</em> When it creates
+                  a view, a card or tile summarizing the view will appear on this page, along with a link to it.
+                </p>
+                <p>
+                  <button
+                    type="button"
+                    className="where-btn"
+                    aria-expanded={viewsHelpOpen}
+                    onClick={() => setViewsHelpOpen((v) => !v)}
+                  >
+                    {viewsHelpOpen ? "hide details" : "learn more"}
+                  </button>
+                </p>
+                {viewsHelpOpen && (
+                  <div className="launcher-empty-details">
+                    <p>
+                      A view is an HTML file stored in this bundle under <code>views/</code>, registered by a{" "}
+                      <code>type: View</code> document that gives it a title, points at the file, and declares how much
+                      of the bundle it may see. Every view runs in a sandboxed frame with no network access, and that
+                      declaration is what the badge on its card reports:
+                    </p>
+                    <ul>
+                      <li>
+                        <strong>live data</strong> — reads documents through a narrow, read-only channel, so it redraws
+                        itself as they change.
+                      </li>
+                      <li>
+                        <strong>can edit</strong> — the same reads, plus it may propose one field change, which only
+                        takes effect when you confirm it.
+                      </li>
+                      <li>
+                        <strong>artifact</strong> — self-contained HTML; the shell refuses it bundle data entirely.
+                      </li>
+                    </ul>
+                    <p>
+                      Worked examples — including the bridge client to copy — ship with the CLI under{" "}
+                      <code>examples/views/</code>. (Views used to be called pages; existing{" "}
+                      <code>type: Page</code> documents keep working and never need migrating.)
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
           </section>
 
