@@ -53,7 +53,7 @@ echo
 echo "   node $CLI ui --dir $BUNDLE --open"
 echo
 echo "   The landing is the LAUNCHER (the ui command's one surface), grouped into 'Dashboards'"
-echo "   (bridge: bundle-read) and 'Documents' (bridge: none): click 'Pulse — activity feed' or"
+echo "   (access: bundle-read) and 'Documents' (access: none): click 'Pulse — activity feed' or"
 echo "   'Roadmap' to open a data view in a sandboxed iframe — Roadmap is the one that exercises"
 echo "   the bridge's \`edges\` request, expanding an item to see its contained tasks and rollup"
 echo "   bar. 'About this bundle' is a content view: same iframe, zero bridge access."

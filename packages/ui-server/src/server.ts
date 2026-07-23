@@ -15,7 +15,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { requestFromIncomingMessage, writeResponseToServerResponse } from "@agentstate-lite/server";
 import { assertSafeBlobKey, blobVersion, readBlob, readDocVersioned, loadKinds, queryEdges, queryHeads, type Bundle, type EdgeFilter, type Frontmatter } from "@agentstate-lite/core";
-import { PAGE_TYPE_NAMES, parseRegistration, resolveBridgeCapability } from "@agentstate-lite/core/page";
+import { PAGE_TYPE_NAMES, parseRegistration, resolveDeclaredAccess } from "@agentstate-lite/core/page";
 import { isAllowedHost } from "./host.js";
 import { checkAuth, mintSessionSecret, sessionCookieHeader } from "./session.js";
 import type { UiAssetHandler } from "./assets.js";
@@ -223,7 +223,7 @@ async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonc
         head.version === launch.registryVersion &&
         registration.type === launch.registryType &&
         registration.entry === launch.entryKey &&
-        resolveBridgeCapability(head.frontmatter.bridge) === launch.capability &&
+        resolveDeclaredAccess(head.frontmatter) === launch.capability &&
         blob &&
         blob.version === launch.contentVersion &&
         blob.contentType === launch.contentType,
@@ -320,7 +320,7 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
     contentType: blob.contentType,
     contentVersion: blob.version,
     bytes: blob.bytes,
-    capability: resolveBridgeCapability(registryRead.doc.frontmatter.bridge),
+    capability: resolveDeclaredAccess(registryRead.doc.frontmatter),
   });
   return new Response(JSON.stringify({ nonce: launch.nonce, url: `/__page/${launch.nonce}`, launchId: launch.launchId }), {
     status: 200,

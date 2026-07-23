@@ -718,8 +718,9 @@ function renderBundleViewsSection(invocation: string, ref: RefPointer): string[]
     "A **bundle view** is a self-contained HTML file living IN the bundle: promoted as a blob under",
   );
   lines.push(
-    "`views/…`, declared by a `type: View` registry doc (`title`, `entry`), and rendered by",
+    "`views/…`, declared by a `type: View` registry doc (`title`, `entry`, `access` — legacy",
   );
+  lines.push("`bridge` stays accepted), and rendered by");
   lines.push(
     `\`${invocation} ui\` inside a sandboxed, opaque-origin iframe (\`sandbox="allow-scripts"\`, no network`,
   );
@@ -757,7 +758,7 @@ function renderBundleViewsSection(invocation: string, ref: RefPointer): string[]
     `${invocation} promote my-view.html --doc-key views/my-view.html                        # 2. promote the HTML blob`,
   );
   lines.push(
-    `${invocation} promote my-view-registry.md --doc-key views-registry/my-view.md           # 3. promote its type: View doc (title, entry)`,
+    `${invocation} promote my-view-registry.md --doc-key views-registry/my-view.md           # 3. promote its type: View doc (title, entry, access)`,
   );
   lines.push(
     `${invocation} promote ${ref.arg("views/conventions/view.md")} --doc-key conventions/view.md   # 4. declare the View convention (once per bundle, ready-made)`,

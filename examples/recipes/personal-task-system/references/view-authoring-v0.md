@@ -2,7 +2,7 @@
 type: Reference
 title: Bundle View authoring — read bridge v0 and trusted actions v1
 protocol: v0+v1
-timestamp: "2026-07-17T00:00:00.000Z"
+timestamp: "2026-07-22T00:00:00.000Z"
 ---
 
 # Bundle View authoring — read bridge v0 and trusted actions v1
@@ -59,8 +59,8 @@ view's own iframe; the view drops any message whose `event.source` is not `windo
 
 `hello.result.grant` is `"read"` for `bundle-read` and `"propose"` for `bundle-propose`.
 
-`open-page` is the sole capability-independent action: `bridge: none`, `bridge: bundle-read`, and
-`bridge: bundle-propose` Views may ask the shell to open another usable registered View. The shell
+`open-page` is the sole capability-independent action: `access: none`, `access: bundle-read`, and
+`access: bundle-propose` Views may ask the shell to open another usable registered View. The shell
 accepts only a conservative `views-registry/…` (or legacy `pages-registry/…`) concept id,
 validates that it resolves to a `type: View` (or legacy `type: Page`) doc with a safe `views/…`
 (or legacy `pages/…`) entry, and mounts the target normally with its own sandbox, nonce, and
@@ -118,7 +118,7 @@ defines no write/delete/update handler, so any such request returns an `error` r
 
 ### Trusted action bridge v1
 
-`bridge: bundle-propose` includes the v0 read surface and adds two exact v1 requests:
+`access: bundle-propose` includes the v0 read surface and adds two exact v1 requests:
 
 - `{ bridge: "v1", type: "read-versioned", id, docId }` returns one canonical document and the
   version from the same read.
@@ -141,21 +141,24 @@ a change delta. The shell fans doc changes into subscribed views as `change` eve
 **hot-reloads** a view's iframe (with a fresh nonce) when the view's own HTML blob changes. (Remote
 view-blob hot-reload is a labeled follow-up; live doc updates work in both modes.)
 
-## `bridge` — the enforced data/content split
+## `access` — the enforced data/content split
 
-The registry doc's `bridge` field decides whether the shell will answer THIS view's bridge
+The registry doc's `access` field decides whether the shell will answer THIS view's bridge
 requests at all — and the shell, not the view, is what enforces it:
 
-- `bridge: bundle-read` — a **data view**. The shell answers `hello`/`query`/`read`/`edges`/
+- `access: bundle-read` — a **data view**. The shell answers `hello`/`query`/`read`/`edges`/
   `subscribe` as described above.
-- `bridge: bundle-propose` — an **interactive view**. It receives the same read surface and may
+- `access: bundle-propose` — an **interactive view**. It receives the same read surface and may
   submit the narrow v1 proposal above. Each proposal still requires trusted-shell confirmation.
-- `bridge: none` — a **content view**. The shell replies to every bundle-data request with a
+- `access: none` — a **content view**. The shell replies to every bundle-data request with a
   `FORBIDDEN` error, before touching any bundle data. It may still use `open-page` navigation.
-- The `View` convention declares `bridge` REQUIRED — every view is an intentional
+- `bridge` is the accepted legacy spelling of this field, honored forever: a doc declaring only
+  `bridge` keeps working unchanged and never needs migrating. When both are present, `access`
+  alone decides. Author new views with `access`.
+- The `View` convention declares `access` REQUIRED — every view is an intentional
   classification, not a silent default. At runtime the shell still fails closed for a doc this
   convention didn't govern (an external bundle, a hand-edited file that skipped the lint): absent,
-  malformed, or any other value is treated as `bridge: none`. A view only gets bundle access by
+  malformed, or any other value is treated as `access: none`. A view only gets bundle access by
   declaring exactly `bundle-read` or `bundle-propose`.
 
 The launcher groups views by this same field: "Dashboards" for `bundle-read`, "Interactive" for
@@ -172,7 +175,7 @@ aslite pull --doc-key views/review-workflow/reviews.html --out my-view.html
 ```
 
 Adapt the HTML as a self-contained file with inline CSS and JavaScript and no external hosts. A
-data View embeds the bridge client below. A content View (`bridge: none`) may use only its
+data View embeds the bridge client below. A content View (`access: none`) may use only its
 fire-and-forget `openPage` helper; its bundle-data calls return `FORBIDDEN`.
 
 Install the HTML blob and its registry entry:
@@ -182,19 +185,19 @@ aslite promote my-view.html --doc-key views/my-view.html
 aslite new "View" my-view \
   --title "My view" \
   --entry views/my-view.html \
-  --bridge bundle-read \
+  --access bundle-read \
   --description "A live view of this bundle."
 aslite ui --open
 ```
 
-`new "View" my-view` applies the View Kind's declared `views-registry/` path. Use `bridge: none`
+`new "View" my-view` applies the View Kind's declared `views-registry/` path. Use `access: none`
 for a static report or diagram. Re-promoting the HTML updates the open View; the shell reloads it
 with a fresh nonce. If the bundle does not yet declare the View Kind, install its View-bearing
 recipe or promote the supplied `conventions/view.md` once before creating the registry entry.
 
-The seed views here are working examples: `pulse.html`/`roadmap.html` are `bridge: bundle-read`
+The seed views here are working examples: `pulse.html`/`roadmap.html` are `access: bundle-read`
 data views — `roadmap.html` is the one that exercises the `edges` request end-to-end (a live graph
-view of Roadmap Items and the tasks each one `contains`) — and `about.html` is a `bridge: none`
+view of Roadmap Items and the tasks each one `contains`) — and `about.html` is an `access: none`
 content view (no bridge calls at all). `demo.sh` (repo only) wires all of this over a scratch copy
 of this repo's own board.
 

@@ -7,16 +7,21 @@ fields:
   required:
     - title
     - entry
-    - bridge
+    - access
   optional:
     - description
+    - bridge
   values:
+    access:
+      - none
+      - bundle-read
+      - bundle-propose
     bridge:
       - none
       - bundle-read
       - bundle-propose
   terminal: {}
-timestamp: "2026-07-17T00:00:00.000Z"
+timestamp: "2026-07-22T00:00:00.000Z"
 ---
 # View
 
@@ -34,7 +39,7 @@ V0 is read-only; `bundle-propose` adds only a trusted-shell-confirmed v1 scalar 
 - `title` (required) — the launcher card's heading.
 - `entry` (required) — the HTML blob key, e.g. `views/roadmap.html`.
 - `description` (optional) — one line shown on the launcher card.
-- `bridge` (required) — `none | bundle-read | bundle-propose`. Required so every View is an INTENTIONAL
+- `access` (required) — `none | bundle-read | bundle-propose`. Required so every View is an INTENTIONAL
   classification, not a silent default — an author who forgets to declare it gets a clear
   authoring-time lint, not a view that quietly renders empty against a full bundle. ENFORCED by
   the shell too, not just linted: absent, malformed, or any value other than exactly
@@ -48,6 +53,10 @@ V0 is read-only; `bundle-propose` adds only a trusted-shell-confirmed v1 scalar 
   - `none` — a **content view**: the shell DENIES every bundle-data request. Arbitrary
     self-contained HTML with zero bundle-data access — a report, a rendered design doc, a diagram.
     It may still ask the shell to open another registered View. Groups under "Documents".
+- `bridge` (optional) — the accepted legacy spelling of `access`, honored forever: existing docs
+  that declare only `bridge` keep working unchanged and never need migrating. When a doc carries
+  BOTH fields, `access` alone decides — a leftover `bridge` value can never widen what `access`
+  grants. Author new views with `access`.
 
 Both capabilities may use `open-page` (the bridge's wire verb, kept stable across the rename) to
 navigate to another valid registered View. This shell action returns no target content or

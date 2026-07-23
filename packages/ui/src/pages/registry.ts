@@ -2,12 +2,13 @@
 
 import {
   parseRegistration,
-  resolveBridgeCapability,
+  resolveDeclaredAccess,
   type BridgeCapability,
   type PageTypeName,
 } from "@agentstate-lite/core/page";
 
 export {
+  declaredAccessValue,
   isAnyEntryKey,
   isAnyRegistryId,
   isPageEntryKey,
@@ -18,6 +19,7 @@ export {
   PAGE_TYPE_NAMES,
   parseRegistration,
   resolveBridgeCapability,
+  resolveDeclaredAccess,
   type BridgeCapability,
   type PageRegistration,
   type PageTypeName,
@@ -49,7 +51,7 @@ export function parseRegisteredPage(
   return {
     id: registration.id,
     entry: registration.entry,
-    bridge: resolveBridgeCapability(frontmatter.bridge),
+    bridge: resolveDeclaredAccess(frontmatter),
     type: registration.type,
     title: stringValue(frontmatter.title) ?? registration.id,
     description: stringValue(frontmatter.description),

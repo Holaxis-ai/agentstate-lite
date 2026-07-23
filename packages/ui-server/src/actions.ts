@@ -18,7 +18,7 @@ import {
 } from "@agentstate-lite/core";
 import {
   parseRegistration,
-  resolveBridgeCapability,
+  resolveDeclaredAccess,
   type BridgeCapability,
   type PageTypeName,
 } from "@agentstate-lite/core/page";
@@ -217,7 +217,7 @@ export async function launchIsCurrent(bundle: Bundle, launch: PageLaunch): Promi
       !registration ||
       registration.type !== launch.registryType ||
       registration.entry !== launch.entryKey ||
-      resolveBridgeCapability(registryRead.doc.frontmatter.bridge) !== launch.capability
+      resolveDeclaredAccess(registryRead.doc.frontmatter) !== launch.capability
     ) {
       return false;
     }

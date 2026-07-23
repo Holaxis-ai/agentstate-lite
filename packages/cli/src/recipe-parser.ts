@@ -13,6 +13,7 @@ import {
   type ValidationWarning,
 } from "@agentstate-lite/core";
 import {
+  declaredAccessValue,
   isAnyEntryKey,
   isAnyRegistryId,
   isPageTypeName,
@@ -499,12 +500,13 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
         error: { code: "RECIPE_MALFORMED", message: `recipe '${id}': '${declaration.registry}' needs a title` },
       };
     }
-    if (frontmatter.bridge !== "none" && frontmatter.bridge !== "bundle-read" && frontmatter.bridge !== "bundle-propose") {
+    const access = declaredAccessValue(frontmatter);
+    if (access !== "none" && access !== "bundle-read" && access !== "bundle-propose") {
       return {
         ok: false,
         error: {
           code: "RECIPE_MALFORMED",
-          message: `recipe '${id}': '${declaration.registry}' needs bridge: none, bridge: bundle-read, or bridge: bundle-propose`,
+          message: `recipe '${id}': '${declaration.registry}' needs access: none, access: bundle-read, or access: bundle-propose (legacy 'bridge:' is accepted)`,
         },
       };
     }

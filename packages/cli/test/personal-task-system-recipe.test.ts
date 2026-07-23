@@ -214,7 +214,7 @@ test("Personal Task System parses strictly and installs its kinds plus interacti
     assert.equal(views[0]!.frontmatter.title, "Personal task board");
     assert.equal(views[0]!.frontmatter.entry, "views/personal-task-system/board.html");
     assert.equal(views[0]!.frontmatter.description, "Plan, filter, and safely update Tasks across Projects.");
-    assert.equal(views[0]!.frontmatter.bridge, "bundle-propose");
+    assert.equal(views[0]!.frontmatter.access, "bundle-propose");
     const html = await readBlob({ root: dir }, "views/personal-task-system/board.html");
     assert.ok(html);
     assert.match(Buffer.from(html.bytes).toString("utf8"), /Personal task board/);

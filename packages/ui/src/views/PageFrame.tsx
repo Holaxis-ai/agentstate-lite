@@ -4,7 +4,7 @@
  * opaque origin — it cannot fetch the data API even if a token leaked, and its scripts talk to the
  * shell ONLY via postMessage. This component:
  *   1. Resolves the page's registry doc -> its `entry` blob key -> a minted nonce URL (the `src`),
- *      and its declared `bridge` capability (fail-closed via {@link resolveBridgeCapability}).
+ *      and its declared `access` capability (legacy `bridge`; fail-closed via core's `resolveDeclaredAccess`).
  *   2. Listens for the page's postMessage requests, VALIDATING `event.source` is this iframe, and
  *      brokers v0 reads through {@link handleBridgeRequest}; `bundle-propose` may additionally
  *      prepare one v1 action for explicit confirmation in trusted shell chrome.
@@ -250,10 +250,10 @@ export function PageFrame({ pageId }: { pageId: string }) {
             post(actionReply(actionMessage.message.requestId, {
               status: "rejected",
               action: "document.set-field",
-              message: "this View does not declare bridge: bundle-propose",
+              message: "this View does not declare access: bundle-propose",
             }));
           } else {
-            post(actionError(actionMessage.message.id, "this View does not declare bridge: bundle-propose"));
+            post(actionError(actionMessage.message.id, "this View does not declare access: bundle-propose"));
           }
           return;
         }
