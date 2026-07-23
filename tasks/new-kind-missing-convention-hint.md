@@ -32,6 +32,8 @@ description: >-
   command that installs it, and 'new "Nonsense"' still gets the generic
   unknown-kind error.
 actor: claude-main-viewauthoring
-timestamp: '2026-07-23T17:43:52.817Z'
+timestamp: '2026-07-23T18:00:55.394Z'
 ---
 [tasks/ui-view-headless-verify](ui-view-headless-verify.md)
+
+[tasks/view-recipe-missing](view-recipe-missing.md)
