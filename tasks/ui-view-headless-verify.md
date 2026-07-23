@@ -3,9 +3,9 @@ type: Task
 title: >-
   Agents cannot verify a bundle View renders without a browser (blocks
   generate-views-on-demand)
-status: todo
+status: in_progress
 priority: '1'
-assignee: ''
+assignee: claude-main-viewauthoring
 description: >-
   FOUND 2026-07-23 via a live end-to-end test: a fresh agent, given only the
   aslite skill + shipped references and the prompt 'create a view showing every
@@ -45,6 +45,6 @@ description: >-
   DONE WHEN: an agent can run one command that fails loudly on a view that
   throws, hangs on the bridge, or renders nothing — with no browser.
 actor: claude-main-viewauthoring
-timestamp: '2026-07-23T17:43:20.435Z'
+timestamp: '2026-07-23T17:51:12.670Z'
 ---
 
