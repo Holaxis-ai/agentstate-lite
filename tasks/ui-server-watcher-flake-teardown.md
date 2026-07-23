@@ -1,34 +1,35 @@
 ---
 type: Task
 title: 'Flaky gate: ui-server watcher fetch rejects after tests pass, exits non-zero'
-status: in_progress
+status: todo
 actor: claude-main-watcher-flake
 description: >-
-  CLAIMED 2026-07-23 by claude-main-watcher-flake.
+  UNCLAIMED 2026-07-23 — my earlier claim on this task was a MISDIAGNOSIS,
+  corrected here so the next reader is not misled.
 
 
-  SYMPTOM (observed on PR #151, run 29967569606, head c1fa959): the ui-server
-  suite reports '# tests 32 / # pass 32 / # fail 0' and the process still exits
-  1. The log line immediately before the failure is '# [ui watcher] fetch
-  failed'. Node 20 and 26 passed on the SAME sha; only node 22 tripped. A bare
-  re-run of the identical sha went green with no code change, confirming
-  nondeterminism rather than a real failure.
+  WHAT HAPPENED: PR #151's red gate (run 29967569606, node 22, head c1fa959) was
+  attributed to this task because the log shows '# [ui watcher] fetch failed'
+  shortly before the failure, and the ui-server suite reported 32/32 pass.
+  Reading the FULL attempt-1 log disproves that: the failing step is the
+  packages/ui vitest run (npm error workspace @agentstate-lite/ui, command
+  'vitest run'), specifically src/views/markdown.test.tsx timing out at 5000ms.
+  The ui-server suite passed and did NOT set the exit code.
 
 
-  READING: a watcher's in-flight fetch rejects during/after teardown (server
-  already closed), and the unhandled rejection sets a non-zero exit code even
-  though every assertion passed.
+  USEFUL RESIDUE FOR THIS TASK: '[ui watcher] fetch failed' on stderr is real
+  but is NOT by itself a gate failure — it is bootWatcher's onError logging a
+  best-effort watcher error, and the process exits 0 on it. So whoever picks
+  this task up should FIRST establish that a failing exit code has ever actually
+  been caused by the watcher, rather than assuming this line means what the
+  title claims. The title's premise ('exits non-zero') is currently UNEVIDENCED;
+  the one run cited for it was a different defect. Possible outcomes: reproduce
+  it properly, or close this as a misfiled observation.
 
 
-  COST: a green branch reads as red at random, which trains readers to re-run
-  instead of read the log. That is how a genuine failure eventually gets waved
-  through.
-
-
-  DONE WHEN: the teardown race cannot set the exit code, proven by a
-  deterministic test that fails on the pre-fix code (not by observing green
-  runs).
-timestamp: '2026-07-23T00:38:15.979Z'
+  The real PR #151 flake is tracked separately (markdown render-bounds tests
+  against vitest's 5s default).
+timestamp: '2026-07-23T00:41:04.759Z'
 ---
 # Flaky gate: ui-server watcher rejects after tests pass
 
