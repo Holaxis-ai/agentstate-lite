@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { initBundle, writeDoc, type Bundle } from "@agentstate-lite/core";
+import { initBundle, writeBlob, writeDoc, type Bundle } from "@agentstate-lite/core";
 import { serve, type ServerHandle } from "@agentstate-lite/server";
 
 import { status } from "../src/commands/status.js";
@@ -806,6 +806,108 @@ test("status: the terminal exclusion keys off the DECLARED value set, not a hard
     assert.equal(result.terminal_skipped, 1);
     const missing = result.missing_expected_links_rows as { rows: Record<string, unknown>[] };
     assert.deepEqual(missing.rows.map((r) => r.id), ["items/open-ticket"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── tasks/view-entry-dangling-lint: dangling_view_entries ──────────────────────────────────────
+//
+// A deliberately CONVENTIONS-FREE fixture (zero Convention docs): recognition rides core's
+// `parseRegistration` (the same predicate the ui launcher/server consume), so an
+// externally-authored bundle with no declared kinds must get the exact same signal.
+//   - `views-registry/dashboard`    — type View, entry blob WRITTEN -> resolvable, never a row.
+//   - `views-registry/ghost`        — type View, entry names a never-promoted blob -> dangling.
+//   - `pages-registry/legacy-ghost` — legacy type Page under the legacy prefixes, entry blob
+//                                     missing -> dangling (legacy registrations are covered too).
+//   - `notes/view-shaped`           — type View but NOT under a registry prefix: not a recognized
+//                                     registration (parseRegistration returns null), so it is
+//                                     ignored entirely — a different gap than a dangling entry.
+async function makeViewEntryFixtureBundle(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  const dir = await tempDir();
+  const bundle = await initBundle(dir);
+  const now = new Date().toISOString();
+
+  await writeDoc(bundle, {
+    id: "views-registry/dashboard",
+    frontmatter: { type: "View", title: "Dashboard", entry: "views/dashboard.html", timestamp: now },
+    body: "A registered View whose entry blob exists.",
+  });
+  await writeBlob(bundle, "views/dashboard.html", new TextEncoder().encode("<!doctype html>"), "text/html");
+  await writeDoc(bundle, {
+    id: "views-registry/ghost",
+    frontmatter: { type: "View", title: "Ghost", entry: "views/ghost.html", timestamp: now },
+    body: "A registered View whose entry blob was never promoted.",
+  });
+  await writeDoc(bundle, {
+    id: "pages-registry/legacy-ghost",
+    frontmatter: { type: "Page", title: "Legacy Ghost", entry: "pages/legacy-ghost.html", timestamp: now },
+    body: "A legacy-typed registration under the legacy prefixes, also dangling.",
+  });
+  await writeDoc(bundle, {
+    id: "notes/view-shaped",
+    frontmatter: { type: "View", title: "View Shaped", entry: "views/whatever.html", timestamp: now },
+    body: "type View but not a recognized registration — ignored by this lint.",
+  });
+
+  return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
+}
+
+test("status: dangling_view_entries reports recognized View/Page registrations whose entry blob does not exist — by registry id + entry key, conventions-free", async () => {
+  const { dir, cleanup } = await makeViewEntryFixtureBundle();
+  try {
+    const result = await runJson(["--dir", dir]);
+    // ZERO declared kinds — the signal needs no convention (core-predicate recognition only).
+    assert.equal(result.kinds, 0);
+    assert.equal(result.dangling_view_entries, 2);
+    const dangling = result.dangling_view_entries_rows as {
+      shown: number;
+      total: number;
+      rows: Record<string, unknown>[];
+    };
+    assert.equal(dangling.shown, 2);
+    assert.equal(dangling.total, 2);
+    // Exactly the two dangling registrations (current AND legacy), each naming id -> entry key;
+    // the resolvable registration and the non-registration View-typed doc never appear.
+    assert.deepEqual(dangling.rows, [
+      { id: "pages-registry/legacy-ghost", entry: "pages/legacy-ghost.html" },
+      { id: "views-registry/ghost", entry: "views/ghost.html" },
+    ]);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("status: dangling_view_entries is PRESENT at 0 (row block omitted) when every registration's entry resolves", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "views-registry/dashboard",
+      frontmatter: { type: "View", title: "Dashboard", entry: "views/dashboard.html" },
+      body: "",
+    });
+    await writeBlob(bundle, "views/dashboard.html", new TextEncoder().encode("<!doctype html>"), "text/html");
+    const result = await runJson(["--dir", dir]);
+    assert.equal(result.dangling_view_entries, 0);
+    assert.equal("dangling_view_entries_rows" in result, false, "the row block is still omitted when empty");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("status: dangling_view_entries is ABSENT on a bundle with no recognized registrations (byte-identity for registration-free bundles)", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "notes/plain",
+      frontmatter: { type: "Concept", title: "Plain" },
+      body: "No View/Page registrations anywhere.",
+    });
+    const result = await runJson(["--dir", dir]);
+    assert.equal("dangling_view_entries" in result, false);
+    assert.equal("dangling_view_entries_rows" in result, false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
