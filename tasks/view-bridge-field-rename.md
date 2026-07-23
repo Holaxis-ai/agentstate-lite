@@ -3,9 +3,9 @@ type: Task
 title: >-
   Rename the View registry 'bridge' field: it names the mechanism, not the
   permission it grants
-status: todo
+status: in_progress
 priority: '2'
-assignee: ''
+assignee: claude-builder-rename
 description: >-
   FILED 2026-07-23 (Brian's naming critique, adjudicated in session).
 
@@ -60,7 +60,7 @@ description: >-
   DONE WHEN: the new field name is read everywhere the old one was, the old name
   still works on every existing doc, all shipped writers emit the new name, and
   the three adversarial pins above are in the same reviewed unit.
-actor: claude-main-viewauthoring
-timestamp: '2026-07-23T20:24:41.825Z'
+actor: claude-builder-rename
+timestamp: '2026-07-23T20:37:46.217Z'
 ---
 

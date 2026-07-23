@@ -3,9 +3,9 @@ type: Task
 title: >-
   Lint: a View/Page registry doc whose 'entry' points at a never-promoted blob
   is written and rendered silently
-status: todo
+status: in_progress
 priority: '2'
-assignee: ''
+assignee: claude-builder-lint
 description: >-
   FOUND 2026-07-23 during the view-authoring investigation; independently
   confirmed by TWO adversarial design reviews (architecture + OKF/interop) as
@@ -39,7 +39,7 @@ description: >-
   nonexistent blob reports it by id and key; a bundle with all entries
   resolvable reports zero; externally-authored (conventions-free) bundles get
   the same signal.
-actor: claude-main-viewauthoring
-timestamp: '2026-07-23T18:42:08.056Z'
+actor: claude-builder-lint
+timestamp: '2026-07-23T20:37:46.348Z'
 ---
 
