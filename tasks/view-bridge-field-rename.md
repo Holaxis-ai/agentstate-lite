@@ -69,6 +69,6 @@ description: >-
   (tasks/migrate-legacy-page-bridge-stock), then remove legacy paths
   (tasks/remove-legacy-page-bridge-support).
 actor: claude-main-viewauthoring
-timestamp: '2026-07-23T21:00:59.681Z'
+timestamp: '2026-07-23T23:09:49.851Z'
 ---
-
+[context-notes/review-access-rename-rounds](../context-notes/review-access-rename-rounds.md)

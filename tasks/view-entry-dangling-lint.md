@@ -39,7 +39,7 @@ description: >-
   nonexistent blob reports it by id and key; a bundle with all entries
   resolvable reports zero; externally-authored (conventions-free) bundles get
   the same signal.
-actor: claude-builder-lint
-timestamp: '2026-07-23T20:37:46.348Z'
+actor: claude-main-viewauthoring
+timestamp: '2026-07-23T23:09:49.729Z'
 ---
-
+[context-notes/review-view-lint-rounds](../context-notes/review-view-lint-rounds.md)
