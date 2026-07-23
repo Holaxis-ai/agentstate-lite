@@ -23,7 +23,20 @@ description: >-
   contradicted by decisions/legacy-deprecation-path. Per Brian: NOT to be folded
   into the rename PR; it rides this migration unit (or a direct edit by Brian),
   keeping each PR one claim.
+
+
+  SCOPE ADDITION (Brian's two-names concern, 2026-07-23): also DROP `bridge`
+  from the SHIPPED View convention (currently access required + bridge
+  optional-with-enum), so fresh installs declare and teach ONE name — today
+  every new bundle's `kinds` output shows both fields, delivering the legacy
+  name to greenfield users who have no legacy docs. Cost: a bundle that upgrades
+  its convention while still holding unmigrated bridge-only docs loses
+  enum-linting for the transient mid-migration state (runtime fail-close still
+  guards; migrate first, then upgrade). SEQUENCING GOAL: phases 2+3 complete
+  BEFORE the next real npm release, so the dual-name window closes before
+  meaningful adoption begins — the window's cost is users-who-arrive-during-it,
+  currently ~0.
 actor: claude-main-viewauthoring
-timestamp: '2026-07-23T21:08:07.818Z'
+timestamp: '2026-07-23T23:25:08.588Z'
 ---
 
