@@ -15,7 +15,15 @@ description: >-
   decide), leaving the status legacy-stock audit at ZERO for each migrated
   bundle. The audit IS the completion meter. Do not remove any code path in this
   unit.
+
+
+  ALSO IN SCOPE (2026-07-23): correct the repo CLAUDE.md gate-4 line
+  ('legacy-typed docs under the legacy prefixes keep working and never migrate')
+  and the matching prose in legacy-page.ts / the Page-kind references — all now
+  contradicted by decisions/legacy-deprecation-path. Per Brian: NOT to be folded
+  into the rename PR; it rides this migration unit (or a direct edit by Brian),
+  keeping each PR one claim.
 actor: claude-main-viewauthoring
-timestamp: '2026-07-23T21:00:57.040Z'
+timestamp: '2026-07-23T21:08:07.818Z'
 ---
 
