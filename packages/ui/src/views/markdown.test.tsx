@@ -264,6 +264,35 @@ describe("markdown renderer", () => {
       expect(MAX_NODES).toBe(20_000);
     });
 
+    it("an OMITTED limit resolves to the production constant — the default WIRING, not just its value", () => {
+      // Review P1: asserting MAX_NODES === 20_000 does not prove the renderer still USES it. Every
+      // flood case injects a budget, so the production fallback could be changed to Infinity with
+      // all of them green. Reporting the resolved bounds makes the omitted path assertable cheaply.
+      const { limits } = renderMarkdown("hello", { fromId: "docs/x", onNavigateDoc });
+      expect(limits).toEqual({ maxBodyChars: MAX_BODY_CHARS, maxNodes: MAX_NODES });
+    });
+
+    it("the seam only ever TIGHTENS — over-max, non-finite, and non-positive overrides fail closed", () => {
+      // Review P2: this renderer is a resource-security boundary, so the test seam must not be able
+      // to relax it. NaN is the dangerous one: `count >= NaN` is always false, which would remove
+      // the walk bound entirely rather than merely widening it.
+      const render = (limits: { maxBodyChars?: number; maxNodes?: number }) =>
+        renderMarkdown("hello", { fromId: "docs/x", onNavigateDoc, limits }).limits;
+
+      for (const bad of [Number.POSITIVE_INFINITY, Number.NaN, 0, -5]) {
+        expect(render({ maxNodes: bad }).maxNodes, `maxNodes override ${bad} must fail closed`).toBe(MAX_NODES);
+        expect(render({ maxBodyChars: bad }).maxBodyChars, `maxBodyChars override ${bad} must fail closed`).toBe(
+          MAX_BODY_CHARS,
+        );
+      }
+      // A request ABOVE the maximum clamps down to it, never up.
+      expect(render({ maxNodes: MAX_NODES * 10 }).maxNodes).toBe(MAX_NODES);
+      expect(render({ maxBodyChars: MAX_BODY_CHARS * 10 }).maxBodyChars).toBe(MAX_BODY_CHARS);
+      // A SMALLER request — the only thing the seam exists for — is honored.
+      expect(render({ maxNodes: 20 }).maxNodes).toBe(20);
+      expect(render({ maxBodyChars: 64 }).maxBodyChars).toBe(64);
+    });
+
     it("an oversized body degrades on the REAL default cap, with no injected limit", async () => {
       expect((await render("a".repeat(MAX_BODY_CHARS + 10))).bounded).toBe(true);
     });
