@@ -43,22 +43,41 @@ describe("feedRows (pure projection)", () => {
     expect(rows[0]).toMatchObject({ kind: "Task", title: "Newer" });
   });
 
-  it("projects the ownership fields a kind declares, and omits them when absent", () => {
-    // Generic off frontmatter — a bundle whose kinds declare neither is unchanged.
-    const [task, note] = feedRows([
-      head("tasks/x", {
-        type: "Task",
-        title: "Write the onboarding docs",
+  it("projects ownership for ANY kind that carries it — Task is not special-cased", () => {
+    // The contract is kind-GENERIC: the shell never privileges a kind by name (gate 3), so a
+    // bundle-declared kind nobody shipped must behave exactly like the built-in Task. Reviewed
+    // finding: an all-Task fixture let `type === "Task" ? … : undefined` pass the whole suite, so
+    // the non-Task rows below are what actually enforce the claim.
+    const KINDS_CARRYING_OWNERSHIP = ["Task", "Errand", "Review Request"] as const;
+    const rows = feedRows(
+      KINDS_CARRYING_OWNERSHIP.map((type, i) =>
+        head(`things/${i}`, {
+          type,
+          title: `A ${type}`,
+          actor: "codex",
+          assignee: "brian",
+          status: "todo",
+          timestamp: `2026-07-23T1${i}:00:00Z`,
+        }),
+      ),
+    );
+    expect(rows).toHaveLength(KINDS_CARRYING_OWNERSHIP.length);
+    for (const row of rows) {
+      expect(row, `${row.kind} must project ownership like any other kind`).toMatchObject({
         actor: "codex",
         assignee: "brian",
         status: "todo",
-        timestamp: "2026-07-23T10:00:00Z",
-      }),
+      });
+    }
+  });
+
+  it("omits the ownership fields a doc does not carry", () => {
+    const [note] = feedRows([
       head("notes/y", { type: "Context Note", title: "A note", actor: "codex", timestamp: "2026-07-23T09:00:00Z" }),
     ]);
-    expect(task).toMatchObject({ actor: "codex", assignee: "brian", status: "todo" });
     expect(note!.assignee).toBeUndefined();
     expect(note!.status).toBeUndefined();
+    expect(note!.actor).toBe("codex");
   });
 
   it("falls back to the id for an untitled doc and caps at FEED_LIMIT", () => {
@@ -146,9 +165,11 @@ describe("ActivityFeed live contract", () => {
     // The defect this pins: the row used to lead with the actor, so "codex Task 'Write the
     // onboarding docs'" read as codex being on it — when codex merely wrote the doc and brian owns
     // it. Ownership must be visible, and the actor must not sit in the subject position.
+    // Deliberately a CUSTOM kind, not Task: the rendered row must be kind-agnostic too, so a
+    // Task-only projection cannot satisfy this assertion either.
     vi.mocked(listAllHeads).mockResolvedValueOnce([
-      head("tasks/x", {
-        type: "Task",
+      head("errands/x", {
+        type: "Errand",
         title: "Write the onboarding docs",
         actor: "codex",
         assignee: "brian",
@@ -158,6 +179,7 @@ describe("ActivityFeed live contract", () => {
     ]);
     await renderFeed();
 
+    expect(container.querySelector(".feed-kind")?.textContent).toBe("Errand");
     expect(container.querySelector(".feed-assignee")?.textContent).toBe("for brian");
     expect(container.querySelector(".feed-status")?.textContent).toBe("todo");
     // The actor is inside the provenance line, labeled — never a bare leading name.
