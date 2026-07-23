@@ -3,39 +3,45 @@ type: Task
 title: >-
   Flaky gate: markdown render-bounds tests run against vitest's 5s default and
   time out on loaded CI
-status: in_progress
+status: done
 priority: '2'
 assignee: claude-main-markdown-flake
 description: >-
-  CLAIMED 2026-07-23 by claude-main-markdown-flake.
+  DONE 2026-07-23 — fix on branch fix/markdown-bounds-test-timeout (b5c686e), PR
+  not yet opened.
 
 
-  EVIDENCE: PR #151 run 29967569606 attempt 1, node 22, head c1fa959. FAIL
-  src/views/markdown.test.tsx > 'bounds an all-EDGE flood too — inline edge rows
-  count against the node budget' — 'Test timed out in 5000ms' at 5017ms. Its
-  sibling, 'bounds degrade honestly: oversized bodies and node floods report
-  bounded', took 3828ms on the same run. Node 20 and 26 passed on the identical
-  sha; a bare re-run went green with no code change.
+  CAUSE CONFIRMED: both bounds tests built a fixture sized off the production
+  MAX_NODES (20,000) and parsed+walked it. ~1002ms/~1011ms locally, 4-5x on a
+  contended runner, against vitest's 5000ms default. No headroom by
+  construction.
 
 
-  CAUSE: both tests build a body sized off MAX_NODES (20,000) and parse+walk it,
-  so their cost is proportional to the production constant. Locally they take
-  ~1002ms and ~1011ms; on a contended shared runner that is 4-5x, which crosses
-  vitest's 5000ms default at random. There is no headroom by construction.
+  FIX: RenderOptions.limits makes maxBodyChars/maxNodes injectable, defaulting
+  to the module constants. Degradation is asserted at a small budget; degrading
+  AT a budget is independent of the budget's size, so sizing a fixture off
+  20,000 was testing the constant's value rather than the behavior.
 
 
-  THE DESIGN POINT: the property under test is 'a flood exceeding the budget
-  degrades to bounded', which is INDEPENDENT of how big the budget is. Sizing
-  the fixture off the real 20,000 tests the constant's value, not the behavior,
-  and is exactly what makes it slow. Splitting those apart (behavior at an
-  injectable small budget; the constant's value asserted directly) should be
-  both faster and strictly more coverage than raising a timeout.
+  COVERAGE UP: 2 slow tests -> 6 fast ones (constants pinned directly; body cap
+  still degrades on its REAL default so no path is exercised only at a test-only
+  number; a flood case per budget; a negative case pinning that ordinary content
+  is not bounded). markdown.test.tsx 2.71s -> 264ms; slowest survivor 156ms (32x
+  margin at CI's observed slowdown).
 
 
-  DONE WHEN: the bounds behavior is asserted without a fixture sized off the
-  production constant, both tests run in low tens of milliseconds, and the real
-  MAX_NODES/MAX_BODY_CHARS values are still pinned somewhere.
+  PROCESS NOTE WORTH KEEPING: the FIRST version of these tests passed the suite
+  but FAILED the red-probe — shrinking both budgets together let a ~120-char
+  fixture trip a 64-char body cap before the walk ran, so deleting the
+  node-budget check outright kept them green. Each budget is now shrunk alone
+  with the other at its default, and the flood fixtures assert they are under
+  MAX_BODY_CHARS. Without the probe this would have shipped as a test that
+  proves nothing.
+
+
+  RELATED: tasks/ui-server-watcher-flake-teardown was originally blamed for this
+  run and has been corrected + unclaimed; its own premise is still unevidenced.
 actor: claude-main-markdown-flake
-timestamp: '2026-07-23T00:41:21.554Z'
+timestamp: '2026-07-23T00:47:23.493Z'
 ---
 [tasks/ui-server-watcher-flake-teardown](ui-server-watcher-flake-teardown.md)
