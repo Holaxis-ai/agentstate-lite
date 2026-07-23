@@ -256,6 +256,34 @@ test("resolveDeclaredAccess: a doc carrying BOTH fields is decided by access ALO
   assert.equal(resolveDeclaredAccess({ access: undefined, bridge: "bundle-read" }), "none");
 });
 
+test("resolveDeclaredAccess: an INHERITED field never grants capability — only own properties count", () => {
+  assert.equal(resolveDeclaredAccess(Object.create({ bridge: "bundle-propose" }) as Record<string, unknown>), "none");
+  assert.equal(resolveDeclaredAccess(Object.create({ access: "bundle-propose" }) as Record<string, unknown>), "none");
+  assert.equal(resolveDeclaredAccess(Object.create({ access: "bundle-read", bridge: "bundle-read" }) as Record<string, unknown>), "none");
+  // An own field on a crafted-prototype object still resolves normally.
+  const withOwn = Object.create({ bridge: "bundle-propose" }) as Record<string, unknown>;
+  withOwn.access = "bundle-read";
+  assert.equal(resolveDeclaredAccess(withOwn), "bundle-read");
+});
+
+test("resolveDeclaredAccess: a polluted Object.prototype grants nothing to a plain empty doc", () => {
+  const proto = Object.prototype as Record<string, unknown>;
+  try {
+    proto.bridge = "bundle-read";
+    assert.equal(resolveDeclaredAccess({}), "none");
+    assert.equal(declaredAccessValue({}), undefined);
+  } finally {
+    delete proto.bridge;
+  }
+  try {
+    proto.access = "bundle-propose";
+    assert.equal(resolveDeclaredAccess({}), "none");
+    assert.equal(declaredAccessValue({}), undefined);
+  } finally {
+    delete proto.access;
+  }
+});
+
 test("resolveDeclaredAccess: unrecognized values in EITHER field fail closed to none", () => {
   const invalid = [undefined, null, "", "BUNDLE-READ", "bundle_read", "read", "propose", " bundle-read", "bundle-read ", 1, true, ["bundle-read"], {}];
   for (const bad of invalid) {

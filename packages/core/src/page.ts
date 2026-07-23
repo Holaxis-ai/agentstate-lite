@@ -47,7 +47,10 @@ export function resolveBridgeCapability(value: unknown): BridgeCapability {
  * extra `bridge` value can never widen what `access` grants.
  */
 export function declaredAccessValue(frontmatter: Record<string, unknown>): unknown {
-  return Object.hasOwn(frontmatter, "access") ? frontmatter.access : frontmatter.bridge;
+  // Both reads are own-property-gated: an INHERITED field (a crafted prototype, or a polluted
+  // Object.prototype) must never grant capability — only a field the doc itself declares counts.
+  if (Object.hasOwn(frontmatter, "access")) return frontmatter.access;
+  return Object.hasOwn(frontmatter, "bridge") ? frontmatter.bridge : undefined;
 }
 
 /** Resolve a registry doc's declared capability: {@link declaredAccessValue} through the fail-closed {@link resolveBridgeCapability} — unrecognized values in EITHER field yield `none`. */
