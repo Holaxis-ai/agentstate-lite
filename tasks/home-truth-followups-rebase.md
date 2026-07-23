@@ -1,11 +1,11 @@
 ---
 type: Task
 title: Deliver Home truth fixes on current main
-status: in_progress
+status: done
 priority: high
 assignee: codex-main-home-truth-rebase
 actor: codex-main-home-truth-rebase
-timestamp: '2026-07-23T13:25:45.414Z'
+timestamp: '2026-07-23T15:26:31.479Z'
 ---
 # Goal
 
@@ -21,9 +21,17 @@ This serves the product goal by moving three correctness fixes into an integrati
 - Existing current-main behavior is preserved through conflict resolution.
 - Update the existing branch with force-with-lease; do not create or merge a PR.
 
-# Done when
+# Outcome
 
-- The branch is based on current origin/main and contains one coherent fix commit.
-- Build, typecheck, focused regressions, and the unpiped repository gate pass.
-- Independent review approves the exact pushed SHA.
-- The shared bundle records the final SHA and evidence, and this task is done.
+Completed. Branch fix/home-truth-followups was rebased onto origin/main f15bfac1d1f5915813287b4b3738a077f7cbc4ac and safely force-updated from 6418972c1f4225dae7034708496090f51e5e359d to e9257f8e69a94d013159478809fa56244654c003 with an explicit force-with-lease.
+
+The only textual conflict was packages/ui/src/views/Launcher.test.tsx. Its resolution retained current-main BRIDGE_BADGES coverage alongside the feature's sharing refresh exports. Range-diff showed no other adaptation, and the final diff remains the intended eight files.
+
+# Verification
+
+- Fresh npm ci, root build, and typecheck passed.
+- Focused UI integration 35 of 35, CLI sharing 15 of 15, ui-server config 4 of 4, and board-git porcelain 67 of 67 passed.
+- Elevated unpiped npm run check exited 0, including 18 of 18 Playwright tests.
+- Independent exact-SHA Review: PASS, high confidence, no issues.
+- Final main freshness check confirmed origin/main was still f15bfac and the rebased branch was exactly one commit ahead.
+- No PR was created or merged.

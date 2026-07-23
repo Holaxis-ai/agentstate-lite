@@ -1,17 +1,20 @@
 ---
 type: Context Note
-title: Home truth branch rebase — session orientation
+title: Home truth branch rebase — completed
 actor: codex-main-home-truth-rebase
-timestamp: '2026-07-23T14:26:43.375Z'
+timestamp: '2026-07-23T15:26:38.800Z'
 ---
 # Summary
 
+Status: completed
+Branch: fix/home-truth-followups
+Base: origin/main f15bfac1d1f5915813287b4b3738a077f7cbc4ac
+Final SHA: e9257f8e69a94d013159478809fa56244654c003
+
 Ultimate goal: agentstate-lite is a markdown knowledge bundle plus an agent-oriented CLI that gives agents and humans shared, local-first, conflict-safe memory.
 
-Proximate goal: deliver the previously completed Home truth fixes by rebasing fix/home-truth-followups onto current main, resolving conflicts without changing the three repaired behaviors, verifying the exact result, and safely updating the remote branch.
+The proximate goal is complete: the previously finished Home truth fixes were rebased onto current main, the only conflict was resolved without behavioral drift, the exact result passed the full gate and independent Review, and the existing remote branch was safely updated with force-with-lease. The three original product bug tasks remain done; tasks/home-truth-followups-rebase records this delivery repair.
 
-Progress: current origin/main is f15bfac1d1f5915813287b4b3738a077f7cbc4ac. The prior feature SHA 6418972c1f4225dae7034708496090f51e5e359d was 15 mainline commits behind. Rebase completed at e9257f8e69a94d013159478809fa56244654c003 with one textual conflict in packages/ui/src/views/Launcher.test.tsx. The resolution preserved main's BRIDGE_BADGES import alongside the feature's sharing-refresh exports; range-diff shows this is the only upstream adaptation.
+Conflict resolution retained current-main BRIDGE_BADGES test coverage alongside the feature's sharing-refresh helpers. Range-diff showed no other upstream adaptation. Verification passed: root build, typecheck, focused UI 35 of 35, CLI sharing 15 of 15, ui-server 4 of 4, board-git 67 of 67, and elevated unpiped npm run check including Playwright 18 of 18. Independent exact-SHA Review returned PASS with high confidence and no issues.
 
-Verification is green in the isolated builder worktree: fresh npm ci, root build, typecheck, focused UI 35 of 35, CLI sharing 15 of 15, ui-server config 4 of 4, board-git porcelain 67 of 67, and the elevated unpiped npm run check exited 0 including 18 of 18 Playwright tests. The worktree is clean and the exact-SHA independent Review gate is in progress.
-
-The three product bug tasks remain done because their implementation is still intact; tasks/home-truth-followups-rebase tracks this delivery repair. Remaining actions are Review approval, a final remote-main/lease check, force-with-lease push, task completion, board sync, and worktree cleanup.
+No PR was created or merged. The user retains the merge gate.
