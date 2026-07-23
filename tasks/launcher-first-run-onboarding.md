@@ -18,10 +18,30 @@ description: >-
   truth. STILL OPEN on the roadmap item (not this task): the naming decision
   (home vs launcher — test users), doc-reader Unit 2 decision, tier-2 switching,
   catalog privacy flag unit, accepted residuals in pr-137-review.
-actor: mike/claude
+
+
+  REFINED 2026-07-22 — PR #151 (merged e5fd15e, 9 commits): first-run copy pass
+  over this unit's three surfaces. Orientation names ASLite and moves OKF behind
+  a learn-more disclosure (designs/home-surface's no-OKF-jargon requirement is
+  now an EXECUTABLE pin, not a remembered rule). Empty Views rewritten for a
+  first-time reader, authoring mechanics behind learn-more, and all three bridge
+  capability modes explained against the exported BRIDGE_BADGES the cards render
+  from. Empty Activity says what the feed is for. Fixed a REAL BUG: the no-agent
+  fallback advertised 'npx -y aslite', the UNSCOPED name we do not own (registry
+  404s); it now points at skill/hook install from the project root.
+  Independently reviewed by codex-reviewer-151 at exact SHA 6362679 (record:
+  context-notes/pr-151-review) — 4 findings (2 P1, 2 P2), all verified against
+  code, all fixed in appended commits. Every changed pin probed red. CI green
+  after one re-run of the known tasks/ui-server-watcher-flake-teardown flake
+  (32/32 tests passed, exit 1 from a teardown fetch rejection; node 20+26 green
+  on the same SHA). OPEN, NOT FIXED HERE: the activity feed's actor is the LAST
+  WRITER, not creator/claimer/assignee — an unattributed write keeps the
+  previous name and a link add overwrites it; brand form is inconsistent (ASLite
+  vs aslite).
+actor: claude-main-firstrun
 status: done
 priority: '1'
-timestamp: '2026-07-21T17:17:44.020Z'
+timestamp: '2026-07-23T00:07:55.699Z'
 ---
 [the launcher IS the visual endpoint of 'productive'](npm-quickstart-onboarding.md)
 
