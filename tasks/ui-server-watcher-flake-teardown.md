@@ -1,9 +1,34 @@
 ---
 type: Task
 title: 'Flaky gate: ui-server watcher fetch rejects after tests pass, exits non-zero'
-status: todo
-actor: mike/claude
-timestamp: '2026-07-22T02:22:56.654Z'
+status: in_progress
+actor: claude-main-watcher-flake
+description: >-
+  CLAIMED 2026-07-23 by claude-main-watcher-flake.
+
+
+  SYMPTOM (observed on PR #151, run 29967569606, head c1fa959): the ui-server
+  suite reports '# tests 32 / # pass 32 / # fail 0' and the process still exits
+  1. The log line immediately before the failure is '# [ui watcher] fetch
+  failed'. Node 20 and 26 passed on the SAME sha; only node 22 tripped. A bare
+  re-run of the identical sha went green with no code change, confirming
+  nondeterminism rather than a real failure.
+
+
+  READING: a watcher's in-flight fetch rejects during/after teardown (server
+  already closed), and the unhandled rejection sets a non-zero exit code even
+  though every assertion passed.
+
+
+  COST: a green branch reads as red at random, which trains readers to re-run
+  instead of read the log. That is how a genuine failure eventually gets waved
+  through.
+
+
+  DONE WHEN: the teardown race cannot set the exit code, proven by a
+  deterministic test that fails on the pre-fix code (not by observing green
+  runs).
+timestamp: '2026-07-23T00:38:15.979Z'
 ---
 # Flaky gate: ui-server watcher rejects after tests pass
 
