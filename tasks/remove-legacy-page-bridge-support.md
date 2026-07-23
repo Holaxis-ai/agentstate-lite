@@ -1,19 +1,27 @@
 ---
 type: Task
-title: 'Phase 3: remove legacy Page/pages-*/bridge read paths from code'
+title: >-
+  Phase 3: remove the legacy NAMES from code (Page type, bridge fallback) — old
+  folders stay recognized
 status: blocked
 priority: '3'
 assignee: ''
 description: >-
-  Per decisions/legacy-deprecation-path. BLOCKED on phase 2: the status
-  legacy-stock audit must read zero across ALL known bundles first. Scope: drop
-  Page from PAGE_TYPE_NAMES, drop the pages-registry//pages/ prefixes from the
-  grammars, drop the bridge-field fallback from declaredAccessValue, remove the
-  dual-read tests and replace them with rejection pins (a legacy doc should get
-  a CLEAR error pointing at the migration, not silence). Keep: bridge-named
-  internals and the wire-protocol identifier (see the decision doc). HIGH-RISK
-  tier: this deletes accepting paths on a security boundary.
+  RESTRUCTURED 2026-07-23 (three-dials model): this removes the legacy NAMES
+  once no file uses them — it does NOT touch folder-prefix recognition, which
+  stays (two grammar constants, near-zero carrying cost) unless/until the
+  separate address decision (tasks/migrate-legacy-prefix-locations) says
+  otherwise.
+
+  BLOCKED on Phase 2a reading zero legacy stock across all known bundles. SCOPE:
+  drop 'Page' from PAGE_TYPE_NAMES; drop the bridge-field fallback from
+  declaredAccessValue; replace dual-read tests with rejection pins (a legacy doc
+  gets a CLEAR error naming the migration, not silence); update the one
+  lint-fixture in status.test.ts that authors with --bridge (recorded on PR
+  #156). KEEP: pages-registry//pages/ prefix recognition; bridge-named
+  internals; the bridge:"v0" wire identifier. HIGH-RISK tier: deletes accepting
+  paths on a security boundary.
 actor: claude-main-viewauthoring
-timestamp: '2026-07-23T21:00:59.928Z'
+timestamp: '2026-07-23T23:48:25.707Z'
 ---
 [depends on](migrate-legacy-page-bridge-stock.md)

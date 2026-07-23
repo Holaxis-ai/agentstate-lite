@@ -2,7 +2,7 @@
 type: Decision
 title: 'Legacy Page/bridge support is transitional: migrate, then remove'
 actor: claude-main-viewauthoring
-timestamp: '2026-07-23T21:00:59.808Z'
+timestamp: '2026-07-23T23:48:28.527Z'
 ---
 # Legacy Page/bridge support is TRANSITIONAL — migrate, then remove
 
@@ -39,3 +39,18 @@ the channel).
 [the rename unit this governs](../tasks/view-bridge-field-rename.md)
 
 [tasks/migrate-legacy-page-bridge-stock](../tasks/migrate-legacy-page-bridge-stock.md)
+
+[tasks/migrate-legacy-prefix-locations](../tasks/migrate-legacy-prefix-locations.md)
+
+## REVISED 2026-07-23: three independent dials, not two phases of moves
+
+The migration decomposes into three independently-schedulable dials: (1) the permission
+FIELD name (`bridge` -> `access`), (2) the TYPE name (`Page` -> `View`), (3) the folder
+LOCATION (`pages-*/` -> `views-*/`). Dials 1+2 are in-file, one-word edits — semantic
+vocabulary, the actual source of two-names confusion — and proceed promptly (Phase 2a).
+Dial 3 changes document IDENTITY (addresses), is categorically harder (link rewriting),
+and is a genuinely open decision recorded on tasks/migrate-legacy-prefix-locations —
+"possible, not preferred". Phase 3 removes the legacy NAMES only; old-folder recognition
+stays (near-zero cost) unless the address decision closes.
+
+[dial 3, the open address decision](../tasks/migrate-legacy-prefix-locations.md)
