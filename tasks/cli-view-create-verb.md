@@ -41,8 +41,10 @@ description: >-
   test-agent authoring flow (which today takes 3 hand-coordinated commands) is
   one command.
 actor: claude-main-viewauthoring
-timestamp: '2026-07-23T19:50:01.096Z'
+timestamp: '2026-07-23T20:24:41.955Z'
 ---
 [designs/view-create](../designs/view-create.md)
 
 [tasks/view-entry-dangling-lint](view-entry-dangling-lint.md)
+
+[depends on](view-bridge-field-rename.md)
