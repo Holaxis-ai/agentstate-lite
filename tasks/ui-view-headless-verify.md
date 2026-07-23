@@ -45,6 +45,6 @@ description: >-
   DONE WHEN: an agent can run one command that fails loudly on a view that
   throws, hangs on the bridge, or renders nothing — with no browser.
 actor: claude-main-viewauthoring
-timestamp: '2026-07-23T17:51:12.670Z'
+timestamp: '2026-07-23T17:54:41.405Z'
 ---
-
+[designs/view-headless-verify](../designs/view-headless-verify.md)
