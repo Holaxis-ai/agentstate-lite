@@ -39,7 +39,23 @@ export interface FeedRow {
   version: string;
   kind: string;
   title: string;
+  /**
+   * The doc's `actor` label: WHOEVER WROTE LAST. Not the creator, not the claimer, and not the
+   * owner — a later write by anyone replaces it, and an unattributed write keeps the previous name
+   * while bumping the timestamp. Rendered as provenance ("attributed to …"), never as the subject
+   * of the row, because the row cannot honestly say this actor did any particular thing.
+   *
+   * The wording is load-bearing. "signed by" was rejected: in software that reads as
+   * CRYPTOGRAPHICALLY signed, and this label is self-declared, unverified, and explicitly not an
+   * authentication or authorization credential — the one field where implying verification is the
+   * specific failure mode. "attributed to" claims neither verification nor a particular action,
+   * and matches the vocabulary the rest of the codebase already uses for this field.
+   */
   actor?: string;
+  /** Lifecycle state, when the doc's kind declares one (e.g. a Task's `status`). */
+  status?: string;
+  /** Who the work belongs to, when declared — the field a reader means by "who is on this". */
+  assignee?: string;
   when: string | null;
 }
 
@@ -65,6 +81,10 @@ export function feedRows(heads: DocHead[]): FeedRow[] {
       kind: String(h.frontmatter.type ?? "Doc"),
       title: stringField(h.frontmatter.title) ?? h.id,
       actor: stringField(h.frontmatter.actor),
+      // Read GENERICALLY off frontmatter — any kind that declares these gets them; no Task
+      // special-casing, and a bundle whose kinds declare neither renders exactly as before.
+      status: stringField(h.frontmatter.status),
+      assignee: stringField(h.frontmatter.assignee),
       when: formatWhen(stringField(h.frontmatter.timestamp)),
       timestamp: stringField(h.frontmatter.timestamp) ?? "",
     }))
@@ -140,11 +160,33 @@ export function ActivityFeed() {
         <li key={row.id} className={fresh.has(row.id) ? "feed-item feed-row-fresh" : "feed-item"}>
           {/* The reader is the row's destination (designs/doc-reader): the feed announces a doc, clicking reads it. */}
           <button type="button" className="feed-row" onClick={() => navigate({ view: "doc", id: row.id })}>
-            {row.actor && <span className="feed-actor">{row.actor}</span>}
-            <span className="feed-line">
-              <span className="feed-kind">{row.kind}</span> <span className="feed-title">“{row.title}”</span>
+            <span className="feed-meta">
+              <span className="feed-kind">{row.kind}</span>
+              {row.status && (
+                <>
+                  <span className="feed-sep"> · </span>
+                  <span className="feed-status">{row.status}</span>
+                </>
+              )}
+              {row.assignee && (
+                <>
+                  <span className="feed-sep"> · </span>
+                  <span className="feed-assignee">for {row.assignee}</span>
+                </>
+              )}
             </span>
-            {row.when && <span className="feed-when">{row.when}</span>}
+            <span className="feed-title">“{row.title}”</span>
+            {(row.actor || row.when) && (
+              <span className="feed-provenance">
+                {row.actor && (
+                  <>
+                    attributed to <span className="feed-actor">{row.actor}</span>
+                  </>
+                )}
+                {row.actor && row.when && <span className="feed-sep"> · </span>}
+                {row.when && <span className="feed-when">{row.when}</span>}
+              </span>
+            )}
           </button>
         </li>
       ))}

@@ -43,6 +43,24 @@ describe("feedRows (pure projection)", () => {
     expect(rows[0]).toMatchObject({ kind: "Task", title: "Newer" });
   });
 
+  it("projects the ownership fields a kind declares, and omits them when absent", () => {
+    // Generic off frontmatter — a bundle whose kinds declare neither is unchanged.
+    const [task, note] = feedRows([
+      head("tasks/x", {
+        type: "Task",
+        title: "Write the onboarding docs",
+        actor: "codex",
+        assignee: "brian",
+        status: "todo",
+        timestamp: "2026-07-23T10:00:00Z",
+      }),
+      head("notes/y", { type: "Context Note", title: "A note", actor: "codex", timestamp: "2026-07-23T09:00:00Z" }),
+    ]);
+    expect(task).toMatchObject({ actor: "codex", assignee: "brian", status: "todo" });
+    expect(note!.assignee).toBeUndefined();
+    expect(note!.status).toBeUndefined();
+  });
+
   it("falls back to the id for an untitled doc and caps at FEED_LIMIT", () => {
     const heads = Array.from({ length: FEED_LIMIT + 3 }, (_, i) =>
       head(`docs/d${i}`, { type: "Doc", timestamp: `2026-07-0${(i % 9) + 1}T00:00:00Z` }),
@@ -122,6 +140,48 @@ describe("ActivityFeed live contract", () => {
     expect(container.textContent).toContain("Ship it");
     expect(container.textContent).toContain("mike");
     expect(container.querySelector(".feed-empty")).toBeNull();
+  });
+
+  it("a row shows WHO OWNS the work, and demotes the last writer to provenance", async () => {
+    // The defect this pins: the row used to lead with the actor, so "codex Task 'Write the
+    // onboarding docs'" read as codex being on it — when codex merely wrote the doc and brian owns
+    // it. Ownership must be visible, and the actor must not sit in the subject position.
+    vi.mocked(listAllHeads).mockResolvedValueOnce([
+      head("tasks/x", {
+        type: "Task",
+        title: "Write the onboarding docs",
+        actor: "codex",
+        assignee: "brian",
+        status: "todo",
+        timestamp: "2026-07-23T10:00:00Z",
+      }),
+    ]);
+    await renderFeed();
+
+    expect(container.querySelector(".feed-assignee")?.textContent).toBe("for brian");
+    expect(container.querySelector(".feed-status")?.textContent).toBe("todo");
+    // The actor is inside the provenance line, labeled — never a bare leading name.
+    const provenance = container.querySelector(".feed-provenance");
+    expect(provenance, "the actor must render as provenance").not.toBeNull();
+    expect(provenance!.textContent).toContain("attributed to");
+    expect(provenance!.querySelector(".feed-actor")?.textContent).toBe("codex");
+    // Structural, not cosmetic: the row must not OPEN with the actor.
+    const first = container.querySelector(".feed-row")!.firstElementChild!;
+    expect(first.className, "the row must lead with the doc, not the writer").toBe("feed-meta");
+    expect(first.textContent).not.toContain("codex");
+  });
+
+  it("omits ownership and provenance a doc does not carry — no empty labels", async () => {
+    vi.mocked(listAllHeads).mockResolvedValueOnce([
+      head("notes/y", { type: "Context Note", title: "Just a note", timestamp: "2026-07-23T10:00:00Z" }),
+    ]);
+    await renderFeed();
+    expect(container.querySelector(".feed-assignee")).toBeNull();
+    expect(container.querySelector(".feed-status")).toBeNull();
+    expect(container.querySelector(".feed-actor")).toBeNull();
+    expect(container.textContent).not.toContain("attributed to");
+    expect(container.textContent).not.toContain("for ");
+    expect(container.textContent).toContain("Just a note");
   });
 
   it("debounces a burst of SSE changes into ONE refetch; resync refetches immediately", async () => {
