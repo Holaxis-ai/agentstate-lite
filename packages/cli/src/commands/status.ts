@@ -3,9 +3,9 @@
 // COMPOSITION only: this command adds NO new core validation/link/freshness logic. It composes
 // existing core machinery — `loadKinds`/`validateAgainstKind` (kind conformance), `parseLinksFromDoc`
 // (cross-links, reversed in-memory for orphan derivation), and `freshness()` fed a kind's declared
-// horizon (staleness) — into one report. ONE registry load (`loadKinds`) + ONE `query(bundle)` + ONE
-// prefix-scoped `listBlobs` (the legacy_naming audit) per invocation; everything else derives in
-// memory. Orphans come from reversing the SAME edge set built
+// horizon (staleness) — into one report. ONE registry load (`loadKinds`) + ONE `query(bundle)` + TWO
+// prefix-scoped `listBlobs` (the legacy_naming audit + the dangling-view-entry lint) per invocation;
+// everything else derives in memory. Orphans come from reversing the SAME edge set built
 // while scanning for unresolved links — never a per-doc `backlinks()` call (that would be N
 // whole-bundle traversals over data this command already has in hand).
 //
@@ -31,6 +31,13 @@ import {
   query,
   validateAgainstKind,
 } from "@agentstate-lite/core";
+import {
+  isAnyEntryKey,
+  isAnyRegistryId,
+  isPageTypeName,
+  parseRegistration,
+  VIEW_ENTRY_PREFIX,
+} from "@agentstate-lite/core/page";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
 import { maybeAutoPull } from "../autopull.js";
 import { CliError } from "../errors.js";
@@ -53,8 +60,11 @@ concept docs), a freshness sweep over kinds that declare a horizon (a governed d
 'stale'; a governed doc with no usable timestamp — missing OR malformed — is counted
 'no_timestamp'), and two graph lints over any declared 'links'/'expects_inbound' vocabulary (see
 'kinds --help'): edges violating a declared typed-edge type ('link_type_violations') and kind
-instances missing a declared inbound expectation ('missing_expected_links'). Duplicate-id detection
-is not offered: an id IS its storage path, so ids are structurally unique.
+instances missing a declared inbound expectation ('missing_expected_links'), plus two lints over
+the bundle's View surface, legacy Page included: registered View docs whose entry blob is missing
+('dangling_view_entries') and View-typed docs failing the registration grammar
+('invalid_view_registrations'). Duplicate-id detection is not offered: an id IS its storage path,
+so ids are structurally unique.
 
 Category semantics (one line each):
   malformed          A document whose YAML frontmatter cannot be parsed at all — it is skipped by
@@ -102,12 +112,26 @@ Category semantics (one line each):
                       terminal declarations existed). Non-terminal instances sort first: by the
                       declared terminal set when the kind has one, else by the legacy hardcoded
                       status === "done" fallback.
+  dangling_view_entries  A registered View doc — legacy Page included, via the same recognition
+                      the 'ui' launcher uses, no convention needed — whose 'entry' names a blob
+                      that does not exist: a never-promoted, typo'd, or since-deleted key mints a
+                      view that serves nothing. Rows name registry id -> missing entry key.
+                      Present (even at 0) whenever the bundle carries any View-typed doc; absent
+                      otherwise.
+  invalid_view_registrations  A doc declaring the View kind name (or its legacy spelling) that
+                      FAILS the registration grammar, so the 'ui' launcher cannot mint or serve
+                      it at all: its id is outside a registry prefix ('views-registry/', or the
+                      legacy one) and/or its 'entry' is not a valid entry key ('views/…', or the
+                      legacy prefix). Rows name the doc id and the failing leg(s) — 'id',
+                      'entry', or 'id+entry'. Fix by moving the doc under a registry prefix /
+                      pointing 'entry' at a real 'views/…' key. Same presence rule as
+                      'dangling_view_entries'.
   legacy_naming      Informational, never a warning: docs typed 'Page' (the legacy name for the
                       'View' kind) plus items still under the legacy pages-registry//pages/ id
                       prefixes — all fully supported, nothing migrates. Omitted when the bundle
                       carries none.
 
-This is a whole-bundle read (one registry load + one query + one prefix-scoped blob listing,
+This is a whole-bundle read (one registry load + one query + two prefix-scoped blob listings,
 batched) — acceptable for an explicitly batch-analysis command; over --remote it is one
 whole-bundle fetch, not a per-doc round trip.
 
@@ -198,12 +222,15 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   // crashing the health report — a health report that can't run because one doc is broken is the
   // opposite of useful; the broken doc IS the headline finding.
   const malformedRows: Record<string, unknown>[] = [];
-  const [registry, docs, legacyBlobKeys] = await Promise.all([
+  const [registry, docs, legacyBlobKeys, viewBlobKeys] = await Promise.all([
     loadKinds(bundle),
     query(bundle, {}, { onSkip: (s) => malformedRows.push({ id: s.id, reason: s.reason }) }),
     // legacy_naming audit (below): blob keys still under the legacy pages/ prefix — one extra
     // prefix-scoped listing on a command that is already an explicit whole-bundle read.
     listBlobs(bundle, LEGACY_PAGE_BLOB_PREFIX),
+    // dangling_view_entries (below): the views/ half of the entry-key existence set (the pages/
+    // half is the legacy listing above — the only two prefixes a valid entry key can name).
+    listBlobs(bundle, VIEW_ENTRY_PREFIX),
   ]);
   const byId = new Set(docs.map((d) => d.id));
   // `id -> doc`, for the link-type-violation check's target-doc-type lookup below (never a second
@@ -380,6 +407,39 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
       .map((key) => ({ id: key, store: "blob" })),
   ];
 
+  // The View-surface lints (tasks/view-entry-dangling-lint), over every View-typed doc
+  // (legacy Page included) — recognized via core's `isPageTypeName`/`parseRegistration`, the
+  // SAME predicates the ui launcher/loopback server consume, so recognition is convention-independent
+  // by construction. dangling_view_entries: a VALID registration whose declared `entry` names a
+  // blob that does not exist (a never-promoted, typo'd, or since-deleted key mints a view that
+  // serves nothing); existence derives from the two prefix-scoped listings batched above, never a
+  // per-registration existence probe. Nothing on the write path checks either lint (deliberately
+  // — read-side also catches hand-written docs, external bundles, and post-hoc blob deletions).
+  const entryBlobKeys = new Set<string>([...viewBlobKeys, ...legacyBlobKeys]);
+  let viewTypedCount = 0;
+  const danglingViewEntryRows: Record<string, unknown>[] = [];
+  const invalidRegistrationRows: Record<string, unknown>[] = [];
+  for (const doc of docs) {
+    if (!isPageTypeName(doc.frontmatter.type)) continue;
+    viewTypedCount++;
+    const registration = parseRegistration(doc.id, doc.frontmatter);
+    if (registration) {
+      if (!entryBlobKeys.has(registration.entry)) {
+        danglingViewEntryRows.push({ id: registration.id, entry: registration.entry });
+      }
+      continue;
+    }
+    // invalid_view_registrations: the doc DECLARES an accepted registration kind name but fails
+    // the registration predicate itself — the launcher cannot mint or serve it, and nothing else
+    // diagnoses it (kind validation checks field presence/enums, not this grammar; strict `new`
+    // accepts an off-prefix id or a wrong-prefix entry key silently). The failing leg(s) are
+    // named by the same core grammar helpers `parseRegistration` composes — no second grammar.
+    const legs: string[] = [];
+    if (!isAnyRegistryId(doc.id)) legs.push("id");
+    if (!isAnyEntryKey(doc.frontmatter.entry)) legs.push("entry");
+    invalidRegistrationRows.push({ id: doc.id, problem: legs.join("+") });
+  }
+
   const malformed = cap(malformedRows, limit);
   const lint = cap(lintRows, limit);
   const unresolved = cap(unresolvedRows, limit);
@@ -396,6 +456,8 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
     [...conformanceDebtDocs].map(([id, type]) => ({ id, type })),
     limit,
   );
+  const danglingViewEntries = cap(danglingViewEntryRows, limit);
+  const invalidViewRegistrations = cap(invalidRegistrationRows, limit);
 
   const out: Record<string, unknown> = {
     docs: docs.length,
@@ -424,6 +486,14 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   // status.test.ts's byte-identity pin). The row block + its fixing-command help hatch follow the
   // SAME omitted-when-empty convention as every other finding category below.
   if (registry.kinds.size > 0) out.conformance_debt = conformanceDebt.total;
+  // Present — even at 0 — whenever the bundle carries at least one View-typed doc (the
+  // conformance_debt gating idiom): "all entries resolvable" / "all registrations valid" are
+  // reports worth seeing, while a bundle with no View surface at all keeps output byte-identical
+  // to before these lints existed (the byte-identity pins in status.test.ts).
+  if (viewTypedCount > 0) {
+    out.dangling_view_entries = danglingViewEntries.total;
+    out.invalid_view_registrations = invalidViewRegistrations.total;
+  }
   // Row-list blocks are omitted when empty (matching `kinds`/`doc write`'s existing omit-if-empty
   // convention) so a clean bundle's report stays a short summary, not nine empty categories.
   if (malformed.total > 0) out.malformed_docs = malformed;
@@ -442,6 +512,8 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   if (noTimestamp.total > 0) out.no_timestamp_docs = noTimestamp;
   if (linkTypeViolations.total > 0) out.link_type_violations_rows = linkTypeViolations;
   if (missingExpectedLinks.total > 0) out.missing_expected_links_rows = missingExpectedLinks;
+  if (danglingViewEntries.total > 0) out.dangling_view_entries_rows = danglingViewEntries;
+  if (invalidViewRegistrations.total > 0) out.invalid_view_registrations_rows = invalidViewRegistrations;
   if (registryLint.total > 0) out.registry_lint = registryLint;
   // Omitted entirely on a legacy-free bundle (the `terminal_skipped` present-only-when-relevant
   // idiom) — a clean report gains nothing.
