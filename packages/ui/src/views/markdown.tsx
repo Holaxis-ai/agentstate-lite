@@ -52,6 +52,14 @@ export interface RenderOptions {
   onNavigateDoc: (id: string) => void;
   /** Resolve a concept id to its title, for the inline "verb → title" edge rows (falls back to the id). */
   titleFor?: (conceptId: string) => string | undefined;
+  /**
+   * Resource bounds, defaulting to {@link MAX_BODY_CHARS}/{@link MAX_NODES}. A TEST SEAM: degrading
+   * at a budget is behavior independent of how big the budget is, so a test asserts it at a small
+   * one instead of building a fixture sized off the production constant (20K nodes parsed + walked
+   * ran ~1s locally and timed out against vitest's 5s default on a loaded runner). Production
+   * callers omit these; that the omitted case really uses the constants is itself pinned.
+   */
+  limits?: { maxBodyChars?: number; maxNodes?: number };
 }
 
 /** Flatten a node's text content — the inert fallback for unknown/rejected constructs. */
@@ -108,6 +116,7 @@ interface WalkState {
   count: number;
   bounded: boolean;
   options: RenderOptions;
+  maxNodes: number;
 }
 
 function renderChildren(node: Parent, state: WalkState, depth: number): ReactNode[] {
@@ -132,7 +141,7 @@ function renderTableRow(row: Parent, state: WalkState, depth: number, index: num
 }
 
 function renderNode(node: RootContent | Node, state: WalkState, depth: number, index: number): ReactNode {
-  if (state.count >= MAX_NODES) {
+  if (state.count >= state.maxNodes) {
     state.bounded = true;
     return null;
   }
@@ -267,7 +276,7 @@ function renderEdgeList(links: Node[], state: WalkState, index: number): ReactNo
   for (let i = 0; i < links.length; i++) {
     // Each row counts against the walk budget, like renderNode — a hostile all-edges body degrades
     // (bounded) instead of rendering unboundedly past MAX_NODES.
-    if (state.count >= MAX_NODES) {
+    if (state.count >= state.maxNodes) {
       state.bounded = true;
       break;
     }
@@ -301,17 +310,19 @@ function renderEdgeList(links: Node[], state: WalkState, index: number): ReactNo
 
 /** Parse + render a doc body to React elements under the module's bounds. Pure aside from the callbacks. */
 export function renderMarkdown(body: string, options: RenderOptions): RenderedMarkdown {
+  const maxBodyChars = options.limits?.maxBodyChars ?? MAX_BODY_CHARS;
+  const maxNodes = options.limits?.maxNodes ?? MAX_NODES;
   let bounded = false;
   let source = body;
-  if (source.length > MAX_BODY_CHARS) {
-    source = source.slice(0, MAX_BODY_CHARS);
+  if (source.length > maxBodyChars) {
+    source = source.slice(0, maxBodyChars);
     bounded = true;
   }
   const tree = fromMarkdown(source, {
     extensions: [gfm()],
     mdastExtensions: [gfmFromMarkdown()],
   });
-  const state: WalkState = { count: 0, bounded: false, options };
+  const state: WalkState = { count: 0, bounded: false, options, maxNodes };
   // Render a run of bare concept-link paragraphs inline as one "verb → target" edge list (authors
   // write one edge per line, so merge the consecutive run). Non-bare paragraphs and inline links
   // render normally through renderNode.
