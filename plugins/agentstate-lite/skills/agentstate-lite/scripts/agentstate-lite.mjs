@@ -14382,8 +14382,11 @@ concept docs), a freshness sweep over kinds that declare a horizon (a governed d
 'stale'; a governed doc with no usable timestamp \u2014 missing OR malformed \u2014 is counted
 'no_timestamp'), and two graph lints over any declared 'links'/'expects_inbound' vocabulary (see
 'kinds --help'): edges violating a declared typed-edge type ('link_type_violations') and kind
-instances missing a declared inbound expectation ('missing_expected_links'). Duplicate-id detection
-is not offered: an id IS its storage path, so ids are structurally unique.
+instances missing a declared inbound expectation ('missing_expected_links'), plus two lints over
+the bundle's View surface, legacy Page included: registered View docs whose entry blob is missing
+('dangling_view_entries') and View-typed docs failing the registration grammar
+('invalid_view_registrations'). Duplicate-id detection is not offered: an id IS its storage path,
+so ids are structurally unique.
 
 Category semantics (one line each):
   malformed          A document whose YAML frontmatter cannot be parsed at all \u2014 it is skipped by
@@ -14431,12 +14434,26 @@ Category semantics (one line each):
                       terminal declarations existed). Non-terminal instances sort first: by the
                       declared terminal set when the kind has one, else by the legacy hardcoded
                       status === "done" fallback.
+  dangling_view_entries  A registered View doc \u2014 legacy Page included, via the same recognition
+                      the 'ui' launcher uses, no convention needed \u2014 whose 'entry' names a blob
+                      that does not exist: a never-promoted, typo'd, or since-deleted key mints a
+                      view that serves nothing. Rows name registry id -> missing entry key.
+                      Present (even at 0) whenever the bundle carries any View-typed doc; absent
+                      otherwise.
+  invalid_view_registrations  A doc declaring the View kind name (or its legacy spelling) that
+                      FAILS the registration grammar, so the 'ui' launcher cannot mint or serve
+                      it at all: its id is outside a registry prefix ('views-registry/', or the
+                      legacy one) and/or its 'entry' is not a valid entry key ('views/\u2026', or the
+                      legacy prefix). Rows name the doc id and the failing leg(s) \u2014 'id',
+                      'entry', or 'id+entry'. Fix by moving the doc under a registry prefix /
+                      pointing 'entry' at a real 'views/\u2026' key. Same presence rule as
+                      'dangling_view_entries'.
   legacy_naming      Informational, never a warning: docs typed 'Page' (the legacy name for the
                       'View' kind) plus items still under the legacy pages-registry//pages/ id
                       prefixes \u2014 all fully supported, nothing migrates. Omitted when the bundle
                       carries none.
 
-This is a whole-bundle read (one registry load + one query + one prefix-scoped blob listing,
+This is a whole-bundle read (one registry load + one query + two prefix-scoped blob listings,
 batched) \u2014 acceptable for an explicitly batch-analysis command; over --remote it is one
 whole-bundle fetch, not a per-doc round trip.
 
@@ -14492,12 +14509,15 @@ async function status(argv, deps = {}) {
   if (!remote) await (deps.autoPull ?? maybeAutoPull2)(values.dir);
   const bundle = await openBundle(values.dir, remote);
   const malformedRows = [];
-  const [registry, docs, legacyBlobKeys] = await Promise.all([
+  const [registry, docs, legacyBlobKeys, viewBlobKeys] = await Promise.all([
     loadKinds(bundle),
     query(bundle, {}, { onSkip: (s) => malformedRows.push({ id: s.id, reason: s.reason }) }),
     // legacy_naming audit (below): blob keys still under the legacy pages/ prefix — one extra
     // prefix-scoped listing on a command that is already an explicit whole-bundle read.
-    listBlobs(bundle, LEGACY_PAGE_BLOB_PREFIX)
+    listBlobs(bundle, LEGACY_PAGE_BLOB_PREFIX),
+    // dangling_view_entries (below): the views/ half of the entry-key existence set (the pages/
+    // half is the legacy listing above — the only two prefixes a valid entry key can name).
+    listBlobs(bundle, VIEW_ENTRY_PREFIX)
   ]);
   const byId = new Set(docs.map((d) => d.id));
   const docsById = new Map(docs.map((d) => [d.id, d]));
@@ -14597,6 +14617,25 @@ async function status(argv, deps = {}) {
     ...docs.filter((doc2) => isLegacyRegistryDocId(doc2.id)).map((doc2) => ({ id: doc2.id, store: "doc" })),
     ...legacyBlobKeys.slice().sort().map((key) => ({ id: key, store: "blob" }))
   ];
+  const entryBlobKeys = /* @__PURE__ */ new Set([...viewBlobKeys, ...legacyBlobKeys]);
+  let viewTypedCount = 0;
+  const danglingViewEntryRows = [];
+  const invalidRegistrationRows = [];
+  for (const doc2 of docs) {
+    if (!isPageTypeName(doc2.frontmatter.type)) continue;
+    viewTypedCount++;
+    const registration = parseRegistration(doc2.id, doc2.frontmatter);
+    if (registration) {
+      if (!entryBlobKeys.has(registration.entry)) {
+        danglingViewEntryRows.push({ id: registration.id, entry: registration.entry });
+      }
+      continue;
+    }
+    const legs = [];
+    if (!isAnyRegistryId(doc2.id)) legs.push("id");
+    if (!isAnyEntryKey(doc2.frontmatter.entry)) legs.push("entry");
+    invalidRegistrationRows.push({ id: doc2.id, problem: legs.join("+") });
+  }
   const malformed = cap(malformedRows, limit);
   const lint = cap(lintRows, limit);
   const unresolved = cap(unresolvedRows, limit);
@@ -14613,6 +14652,8 @@ async function status(argv, deps = {}) {
     [...conformanceDebtDocs].map(([id, type]) => ({ id, type })),
     limit
   );
+  const danglingViewEntries = cap(danglingViewEntryRows, limit);
+  const invalidViewRegistrations = cap(invalidRegistrationRows, limit);
   const out = {
     docs: docs.length,
     kinds: registry.kinds.size,
@@ -14628,6 +14669,10 @@ async function status(argv, deps = {}) {
   };
   if (terminalSkipped > 0) out.terminal_skipped = terminalSkipped;
   if (registry.kinds.size > 0) out.conformance_debt = conformanceDebt.total;
+  if (viewTypedCount > 0) {
+    out.dangling_view_entries = danglingViewEntries.total;
+    out.invalid_view_registrations = invalidViewRegistrations.total;
+  }
   if (malformed.total > 0) out.malformed_docs = malformed;
   if (lint.total > 0) out.kind_lint = lint;
   if (conformanceDebt.total > 0) {
@@ -14642,6 +14687,8 @@ async function status(argv, deps = {}) {
   if (noTimestamp.total > 0) out.no_timestamp_docs = noTimestamp;
   if (linkTypeViolations.total > 0) out.link_type_violations_rows = linkTypeViolations;
   if (missingExpectedLinks.total > 0) out.missing_expected_links_rows = missingExpectedLinks;
+  if (danglingViewEntries.total > 0) out.dangling_view_entries_rows = danglingViewEntries;
+  if (invalidViewRegistrations.total > 0) out.invalid_view_registrations_rows = invalidViewRegistrations;
   if (registryLint.total > 0) out.registry_lint = registryLint;
   const pageTyped = cap(pageTypedRows, limit);
   const legacyPrefix = cap(legacyPrefixRows, limit);
