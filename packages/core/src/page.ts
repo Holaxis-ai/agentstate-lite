@@ -42,8 +42,9 @@ export function resolveBridgeCapability(value: unknown): BridgeCapability {
 
 /**
  * THE one reader of the registry-doc capability FIELD: `access` (current name), `bridge` (legacy
- * spelling, accepted forever — existing docs never migrate). A doc that carries `access` at all is
- * judged by it ALONE — a stale or extra `bridge` value can never widen what `access` grants.
+ * spelling, accepted during the migration window — removal is a planned follow-up gated on the
+ * legacy-stock audit). A doc that carries `access` at all is judged by it ALONE — a stale or
+ * extra `bridge` value can never widen what `access` grants.
  */
 export function declaredAccessValue(frontmatter: Record<string, unknown>): unknown {
   return Object.hasOwn(frontmatter, "access") ? frontmatter.access : frontmatter.bridge;

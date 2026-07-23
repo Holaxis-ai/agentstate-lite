@@ -720,7 +720,7 @@ function renderBundleViewsSection(invocation: string, ref: RefPointer): string[]
   lines.push(
     "`views/…`, declared by a `type: View` registry doc (`title`, `entry`, `access` — legacy",
   );
-  lines.push("`bridge` stays accepted), and rendered by");
+  lines.push("`bridge` accepted during the migration window), and rendered by");
   lines.push(
     `\`${invocation} ui\` inside a sandboxed, opaque-origin iframe (\`sandbox="allow-scripts"\`, no network`,
   );

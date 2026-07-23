@@ -320,7 +320,7 @@ never hand-duplicated.
 
 A **bundle view** is a self-contained HTML file living IN the bundle: promoted as a blob under
 `views/…`, declared by a `type: View` registry doc (`title`, `entry`, `access` — legacy
-`bridge` stays accepted), and rendered by
+`bridge` accepted during the migration window), and rendered by
 `aslite ui` inside a sandboxed, opaque-origin iframe (`sandbox="allow-scripts"`, no network
 access) — its only channel out is a narrow postMessage bridge to the trusted shell.
 (`Page` is the accepted legacy name: existing `type: Page` docs under `pages-registry/`/`pages/`

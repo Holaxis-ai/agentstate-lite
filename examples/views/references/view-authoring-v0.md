@@ -152,9 +152,10 @@ requests at all — and the shell, not the view, is what enforces it:
   submit the narrow v1 proposal above. Each proposal still requires trusted-shell confirmation.
 - `access: none` — a **content view**. The shell replies to every bundle-data request with a
   `FORBIDDEN` error, before touching any bundle data. It may still use `open-page` navigation.
-- `bridge` is the accepted legacy spelling of this field, honored forever: a doc declaring only
-  `bridge` keeps working unchanged and never needs migrating. When both are present, `access`
-  alone decides. Author new views with `access`.
+- `bridge` is the accepted legacy spelling of this field, honored during the migration window: a
+  doc declaring only `bridge` keeps working unchanged today; removal of legacy support is a
+  planned follow-up gated on the legacy-stock audit. When both are present, `access` alone
+  decides. Author new views with `access`.
 - The `View` convention declares `access` REQUIRED — every view is an intentional
   classification, not a silent default. At runtime the shell still fails closed for a doc this
   convention didn't govern (an external bundle, a hand-edited file that skipped the lint): absent,
