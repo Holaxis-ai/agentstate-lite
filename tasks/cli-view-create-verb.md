@@ -40,8 +40,21 @@ description: >-
   adversarial fail-close pin is in the same reviewed unit as the verb, and the
   test-agent authoring flow (which today takes 3 hand-coordinated commands) is
   one command.
+
+
+  FRAMING FOR THE GATE DECISION (Brian, 2026-07-23 — the lumper/splitter
+  principle): the framework should be lumper-minimalist; bundles/recipes are the
+  splitter channel. Extension supports splitting cheaply and reversibly (a
+  recipe declares a kind); lumping BACK requires phase-2-style surgery (the live
+  Page->View program is the proof: 3 phases to un-split one name with 2 users).
+  Therefore the bar for adding a CODE-privileged kind/verb is 'only when a
+  mechanism forces it' — View clears it (the renderer must know what it may
+  execute: a security boundary, not taxonomy). Weigh whether this verb continues
+  the Artifact precedent or whether the ergonomics should ride the
+  convention-gated path instead. The framework ships mechanisms; bundles ship
+  taxonomies.
 actor: claude-main-viewauthoring
-timestamp: '2026-07-23T20:24:41.955Z'
+timestamp: '2026-07-23T22:29:21.392Z'
 ---
 [designs/view-create](../designs/view-create.md)
 
