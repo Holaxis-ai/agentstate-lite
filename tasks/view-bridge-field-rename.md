@@ -29,9 +29,10 @@ description: >-
 
 
   MIGRATION PATTERN (proven in-repo by the Page->View kind rename): accept the
-  legacy form FOREVER, emit the new one, never migrate existing docs.
-  Concretely: parseRegistration/resolveBridgeCapability read the new field first
-  and fall back to 'bridge'; everything that WRITES (the shipped convention,
+  legacy form during the MIGRATION WINDOW, emit the new one, migrate existing
+  docs in phase 2 (see decisions/legacy-deprecation-path). Concretely:
+  parseRegistration/resolveBridgeCapability read the new field first and fall
+  back to 'bridge'; everything that WRITES (the shipped convention,
   view-authoring-v0.md, the skill, the review-workflow recipe, new/view-create)
   emits the new name; the 8 live registry docs in this bundle and all external
   bundles keep working untouched.
@@ -60,7 +61,14 @@ description: >-
   DONE WHEN: the new field name is read everywhere the old one was, the old name
   still works on every existing doc, all shipped writers emit the new name, and
   the three adversarial pins above are in the same reviewed unit.
-actor: claude-builder-rename
-timestamp: '2026-07-23T20:37:46.217Z'
+
+
+  CORRECTION 2026-07-23: the earlier 'forever/never migrate' phrasing overstated
+  the design. Legacy acceptance is TRANSITIONAL per
+  decisions/legacy-deprecation-path — dual-read now, migrate the known bundles
+  (tasks/migrate-legacy-page-bridge-stock), then remove legacy paths
+  (tasks/remove-legacy-page-bridge-support).
+actor: claude-main-viewauthoring
+timestamp: '2026-07-23T21:00:59.681Z'
 ---
 
