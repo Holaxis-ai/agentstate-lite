@@ -640,12 +640,14 @@ body {
   border-bottom: none;
 }
 
-/* Each row is a BUTTON into the doc reader — the feed announces a doc, clicking reads it. */
+/* Each row is a BUTTON into the doc reader — the feed announces a doc, clicking reads it.
+   Three stacked lines, in the order a reader needs them: what it IS and who owns it, the title,
+   then provenance. The actor deliberately does NOT lead: in the subject position it read as "this
+   person did this", which the data cannot support (it is only whoever wrote last). */
 .feed-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  column-gap: 0.6rem;
-  row-gap: 0.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
   padding: 0.55rem 0.15rem;
   font-size: 0.83rem;
   width: 100%;
@@ -668,38 +670,51 @@ body {
   outline-offset: -2px;
 }
 
-.feed-actor {
-  color: var(--color-structure);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.feed-line {
-  color: var(--text-secondary);
+/* Line 1 — what this is, and who owns it. */
+.feed-meta {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
   min-width: 0;
-  grid-column: 1 / -1;
-}
-
-.feed-actor + .feed-line {
-  grid-column: 2;
 }
 
 .feed-kind {
   color: var(--text-tertiary);
 }
 
+.feed-status {
+  color: var(--color-process);
+}
+
+/* Ownership is the answer to "who is on this" — the question the actor was being misread as. */
+.feed-assignee {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.feed-sep {
+  color: var(--text-tertiary);
+}
+
+/* Line 2 — the doc itself, the row's primary content. */
 .feed-title {
   color: var(--text-primary);
+  min-width: 0;
+}
+
+/* Line 3 — provenance. Quiet by construction: a signature under the content, not a subject
+   before it. */
+.feed-provenance {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+
+.feed-actor {
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .feed-when {
-  grid-column: 1 / -1;
-  font-size: 0.72rem;
   color: var(--color-signal);
-}
-
-.feed-actor ~ .feed-when {
-  grid-column: 2;
 }
 
 .feed-empty {
