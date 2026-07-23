@@ -18,20 +18,20 @@ description: >-
   engine-level script (core API, CAS writes, idempotent) that, per known bundle
   (this repo's board; Mike's — enumerate with him):
 
-  - renames own-property  ->  on every View/Page registration doc (same value
-  verbatim; invalid values copied with a warning — fail-close semantics
-  identical under either name; docs already carrying access skipped);
+  - renames own-property 'bridge' -> 'access' on every View/Page registration
+  doc (same value verbatim; invalid values copied with a warning — fail-close
+  semantics identical under either name; docs already carrying access skipped);
 
-  - flips  ->  (verified safe: the registration predicate checks type and folder
-  prefix independently — a type:View doc under pages-registry/ is fully valid
-  and servable);
+  - flips type Page -> type View (verified safe: the registration predicate
+  checks type and folder prefix independently — a View-typed doc under
+  pages-registry/ is fully valid and servable);
 
   - migrates the bundle's View convention IN THE SAME PASS (old conventions
   declare bridge required — migrating docs without the convention breaks kind
   lint; swap to the current shipped convention or edit fields);
 
-  - DROPS  from the SHIPPED convention so fresh installs declare and teach one
-  name (today every new bundle's kinds output shows both fields);
+  - DROPS bridge from the SHIPPED convention so fresh installs declare and teach
+  one name (today every new bundle's kinds output shows both fields);
 
   - corrects the repo CLAUDE.md gate-4 'never migrate' line and the
   legacy-page.ts / Page-kind prose (per Brian: not in the rename PR — rides this
@@ -52,10 +52,10 @@ description: >-
   the dual-NAME window closes before meaningful adoption; the window's cost is
   users-who-arrive-during-it, currently ~0.
 
-  DONE WHEN: zero own-bridge fields and zero type:Page docs across all known
+  DONE WHEN: zero own-bridge fields and zero Page-typed docs across all known
   bundles (the status audit is the meter), fresh installs teach access only, and
   the stale prose is corrected.
 actor: claude-main-viewauthoring
-timestamp: '2026-07-23T23:48:25.560Z'
+timestamp: '2026-07-23T23:49:26.960Z'
 ---
 
