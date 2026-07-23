@@ -2,7 +2,7 @@
 type: Context Note
 title: Home truth branch rebase — session orientation
 actor: codex-main-home-truth-rebase
-timestamp: '2026-07-23T13:25:50.011Z'
+timestamp: '2026-07-23T14:26:43.375Z'
 ---
 # Summary
 
@@ -10,6 +10,8 @@ Ultimate goal: agentstate-lite is a markdown knowledge bundle plus an agent-orie
 
 Proximate goal: deliver the previously completed Home truth fixes by rebasing fix/home-truth-followups onto current main, resolving conflicts without changing the three repaired behaviors, verifying the exact result, and safely updating the remote branch.
 
-Current system model: the prior handoff records commit 6418972c1f4225dae7034708496090f51e5e359d on fix/home-truth-followups, based on origin/main 59608beda143d1f69c7b8f5ea2f8745ce5b39db0. The three product bug tasks are already done because their implementation was complete and verified; this session tracks delivery repair as a separate task rather than reopening them. The user reports that main has advanced and the unmerged branch now conflicts. The exact conflict set and current main SHA remain to be measured.
+Progress: current origin/main is f15bfac1d1f5915813287b4b3738a077f7cbc4ac. The prior feature SHA 6418972c1f4225dae7034708496090f51e5e359d was 15 mainline commits behind. Rebase completed at e9257f8e69a94d013159478809fa56244654c003 with one textual conflict in packages/ui/src/views/Launcher.test.tsx. The resolution preserved main's BRIDGE_BADGES import alongside the feature's sharing-refresh exports; range-diff shows this is the only upstream adaptation.
 
-Constraints: work in an isolated worktree; preserve the user's current checkout; do not create or merge a PR; use force-with-lease rather than an unguarded force push; run independent exact-SHA review after resolution.
+Verification is green in the isolated builder worktree: fresh npm ci, root build, typecheck, focused UI 35 of 35, CLI sharing 15 of 15, ui-server config 4 of 4, board-git porcelain 67 of 67, and the elevated unpiped npm run check exited 0 including 18 of 18 Playwright tests. The worktree is clean and the exact-SHA independent Review gate is in progress.
+
+The three product bug tasks remain done because their implementation is still intact; tasks/home-truth-followups-rebase tracks this delivery repair. Remaining actions are Review approval, a final remote-main/lease check, force-with-lease push, task completion, board sync, and worktree cleanup.
