@@ -3,9 +3,9 @@ type: Task
 title: >-
   Phase 3: remove the legacy NAMES from code (Page type, bridge fallback) — old
   folders stay recognized
-status: blocked
+status: in_progress
 priority: '3'
-assignee: ''
+assignee: claude-builder-phase3
 description: >-
   RESTRUCTURED 2026-07-23 (three-dials model): this removes the legacy NAMES
   once no file uses them — it does NOT touch folder-prefix recognition, which
@@ -35,7 +35,7 @@ description: >-
   post-phase-3 breakage is loud-error-plus-one-command recovery, never stranding
   — but merge timing still coordinates with Mike (his plugin updates on merge;
   migrate-first remains the courteous default).
-actor: claude-main
-timestamp: '2026-07-24T16:06:03.741Z'
+actor: claude-builder-phase3
+timestamp: '2026-07-24T17:03:57.812Z'
 ---
 [depends on](migrate-legacy-page-bridge-stock.md)
