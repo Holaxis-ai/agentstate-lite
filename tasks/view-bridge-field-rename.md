@@ -3,7 +3,7 @@ type: Task
 title: >-
   Rename the View registry 'bridge' field: it names the mechanism, not the
   permission it grants
-status: in_progress
+status: done
 priority: '2'
 assignee: claude-builder-rename
 description: >-
@@ -68,7 +68,20 @@ description: >-
   decisions/legacy-deprecation-path — dual-read now, migrate the known bundles
   (tasks/migrate-legacy-page-bridge-stock), then remove legacy paths
   (tasks/remove-legacy-page-bridge-support).
+
+
+  DONE 2026-07-23 — merged to main via PR #155 (merge 5f5b4f1; branch commits
+  850a5dc mechanics, 5d04732 wording, fb848c5 review fixes). Field renamed
+  bridge->access with dual-read (access-first, own-property-gated both fields);
+  all writers emit access. Review: high-risk tier, 2 Codex rounds at exact SHAs
+  — round 1 found a REAL P1 (inherited/prototype-polluted bridge granted
+  capability; executed, fixed, pinned) + server-fixture gap + wording; round 2
+  APPROVE, zero findings. Records: context-notes/review-access-rename-rounds.
+  HONEST CAVEATS: legacy acceptance is TRANSITIONAL
+  (decisions/legacy-deprecation-path); the shipped convention still declares
+  bridge optional (dropped in Phase 2a); the 850a5dc subject line said 'forever'
+  — corrected in the squash title.
 actor: claude-main-viewauthoring
-timestamp: '2026-07-23T23:09:49.851Z'
+timestamp: '2026-07-24T00:12:57.925Z'
 ---
 [context-notes/review-access-rename-rounds](../context-notes/review-access-rename-rounds.md)
