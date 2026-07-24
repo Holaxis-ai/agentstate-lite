@@ -22,11 +22,17 @@ import path from "node:path";
 
 import { initBundle, writeBlob, writeDoc } from "@agentstate-lite/core";
 
+import { readFile } from "node:fs/promises";
+import { parseMarkdown } from "@agentstate-lite/core";
+
 import {
   hasLegacyBridgeField,
+  isLegacyPageConvention,
   isLegacyPageDoc,
   isLegacyEntryBlobKey,
   isLegacyRegistryDocId,
+  isKnownShippedLegacyPageConvention,
+  KNOWN_SHIPPED_LEGACY_PAGE_CONVENTION_FORMS,
   LEGACY_PAGE_TYPE_HINT,
 } from "../src/legacy-page.js";
 import { doc } from "../src/commands/doc.js";
@@ -100,6 +106,48 @@ test("hasLegacyBridgeField: own `bridge` on a View-kind doc (View or legacy Page
   assert.equal(hasLegacyBridgeField({ type: "View", access: "bundle-read" }), false);
   // Own-property-gated, like core's declaredAccessValue.
   assert.equal(hasLegacyBridgeField(Object.assign(Object.create({ bridge: "bundle-read" }), { type: "View" }) as Record<string, unknown>), false);
+});
+
+test("isLegacyPageConvention: exactly type Convention governing 'Page' — other kinds, other governs, and instances never match", () => {
+  assert.equal(isLegacyPageConvention({ type: "Convention", governs: "Page" }), true);
+  assert.equal(isLegacyPageConvention({ type: "Convention", governs: "View" }), false);
+  assert.equal(isLegacyPageConvention({ type: "Convention", governs: "page" }), false, "exact match, like the migration script");
+  assert.equal(isLegacyPageConvention({ type: "Convention" }), false);
+  assert.equal(isLegacyPageConvention({ type: "Page" }), false, "an instance is not a convention");
+  assert.equal(isLegacyPageConvention({ governs: "Page" }), false);
+});
+
+test("TRIPWIRE: the frozen KNOWN shipped legacy Page-convention form equals the vendored pre-rename fixture's declared shape", async () => {
+  // The frozen literals in legacy-page.ts and the vendored fixture are deliberately UNCOUPLED
+  // (a legacy constant imports nothing); this equality assertion is what stops silent drift —
+  // the legacy-constants-tripwire pattern, applied to the convention form.
+  const fixture = await readFile(
+    path.join(import.meta.dirname, "fixtures/review-workflow-legacy-v1/conventions/page.md"),
+    "utf8",
+  );
+  const { frontmatter } = parseMarkdown(fixture);
+  const fields = frontmatter.fields as { required: string[]; optional: string[]; values: Record<string, string[]> };
+  const [form] = KNOWN_SHIPPED_LEGACY_PAGE_CONVENTION_FORMS;
+  assert.equal(frontmatter.governs, "Page");
+  assert.equal(frontmatter.path, form.path);
+  assert.deepEqual(fields.required, [...form.required]);
+  assert.deepEqual(fields.optional, [...form.optional]);
+  assert.deepEqual(fields.values.bridge, [...form.bridgeValues]);
+
+  // The matcher accepts exactly this shape — and any single perturbation stops matching (the
+  // do-not-break-custom-kinds boundary).
+  const shipped = { governs: "Page", path: form.path, fields };
+  assert.equal(isKnownShippedLegacyPageConvention(shipped), true);
+  assert.equal(isKnownShippedLegacyPageConvention({ ...shipped, governs: "View" }), false);
+  assert.equal(isKnownShippedLegacyPageConvention({ ...shipped, path: "book-pages/" }), false);
+  assert.equal(
+    isKnownShippedLegacyPageConvention({ ...shipped, fields: { ...fields, required: ["title", "chapter"] } }),
+    false,
+  );
+  assert.equal(
+    isKnownShippedLegacyPageConvention({ ...shipped, fields: { ...fields, values: {} } }),
+    false,
+  );
 });
 
 test("store-aware classifiers: doc ids classify only against pages-registry/, blob keys only against pages/", () => {
@@ -421,6 +469,12 @@ test("status: legacy_naming appears when the ONLY legacy signal is an own-bridge
     const bridgeRows = legacy.bridge_field_rows as { rows: { id: string }[] };
     assert.deepEqual(bridgeRows.rows, [{ id: "views-registry/quiet" }]);
     assert.equal("page_typed_rows" in legacy, false, "empty row blocks stay omitted");
+    // The LOUD branch must fire on the bridge signal ALONE (review F4: a `namesPresent` that
+    // consults only page_typed would downgrade this to the informational note and drop the
+    // call-to-action — this pin makes that exact mutation fail).
+    assert.match(String(legacy.note), /FINDING/);
+    assert.match(String(legacy.note), /no longer accepted/);
+    assert.match(String(legacy.help), /migrate-legacy-view-names/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -447,6 +501,100 @@ test("status: a migrated bundle keeping only legacy LOCATIONS gets the informati
     assert.match(String(legacy.note), /informational/);
     assert.doesNotMatch(String(legacy.note), /FINDING/);
     assert.equal("help" in legacy, false, "no migration call-to-action when only supported locations remain");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("status: a stale governs:Page CONVENTION alone triggers the FINDING — silent scaffolding cannot go undiagnosed (review F3a)", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle = await initBundle(dir);
+    const now = new Date().toISOString();
+    // ONLY a convention declaring the dead kind name — zero Page-typed instances, zero bridge
+    // fields, zero legacy-prefix items. Pre-fix this bundle's status was completely silent.
+    await writeDoc(bundle, {
+      id: "conventions/page",
+      frontmatter: {
+        type: "Convention",
+        title: "Page",
+        governs: "Page",
+        path: "pages-registry/",
+        fields: { required: ["title", "entry", "bridge"], optional: ["description"], values: { bridge: ["none", "bundle-read"] }, terminal: {} },
+        timestamp: now,
+      },
+      body: "# Page\n\nThe dead legacy kind, still advertised by kinds.",
+    });
+    const result = await runStatusJson(["--dir", dir]);
+    const legacy = result.legacy_naming as Record<string, unknown>;
+    assert.ok(legacy, "a governs:Page convention must surface the section");
+    assert.equal(legacy.page_typed_docs, 0);
+    assert.equal(legacy.bridge_field_docs, 0);
+    assert.equal(legacy.page_convention_docs, 1);
+    const rows = legacy.page_convention_rows as { rows: { id: string }[] };
+    assert.deepEqual(rows.rows, [{ id: "conventions/page" }]);
+    assert.match(String(legacy.note), /FINDING/);
+    assert.match(String(legacy.note), /governing the legacy 'Page' name/);
+    assert.match(String(legacy.help), /migrate-legacy-view-names/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── 4. `new` refuses scaffolding from the KNOWN SHIPPED legacy Page convention (review F3b) ─────
+
+test("new: REFUSES scaffolding from the KNOWN SHIPPED legacy Page convention — error names the migration script; nothing is written", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle = await initBundle(dir);
+    const now = new Date().toISOString();
+    // The exact shipped legacy form (the tripwire above pins it equal to the vendored fixture).
+    await writeDoc(bundle, {
+      id: "conventions/page",
+      frontmatter: {
+        type: "Convention",
+        title: "Page",
+        governs: "Page",
+        path: "pages-registry/",
+        fields: { required: ["title", "entry", "bridge"], optional: ["description"], values: { bridge: ["none", "bundle-read"] }, terminal: {} },
+        timestamp: now,
+      },
+      body: "# Page\n\nThe shipped legacy form.",
+    });
+    await assert.rejects(
+      () => runNewJson(["Page", "pages-registry/dash", "--title", "Dash", "--entry", "pages/dash.html", "--bridge", "none", "--dir", dir]),
+      (err: Error) => /migrate-legacy-view-names/.test(String((err as { help?: string }).help ?? "")) && /retired legacy form/.test(err.message),
+    );
+    // Nothing was scaffolded — the refusal is BEFORE any write.
+    let out = "";
+    await status(["--dir", dir, "--json"], { stdout: (s) => (out += s) });
+    const report = JSON.parse(out) as Record<string, unknown>;
+    assert.equal((report.legacy_naming as Record<string, unknown>).page_typed_docs, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("new: a genuinely-CUSTOM kind named Page (different declared shape) still scaffolds, with the write-time hint — the refusal never overreaches", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle = await initBundle(dir);
+    const now = new Date().toISOString();
+    await writeDoc(bundle, {
+      id: "conventions/page",
+      frontmatter: {
+        type: "Convention",
+        title: "Page",
+        governs: "Page",
+        path: "book-pages/",
+        fields: { required: ["title", "chapter"], optional: [] },
+        timestamp: now,
+      },
+      body: "Someone's own 'Page' kind — book pages, nothing to do with Views.",
+    });
+    const created = await runNewJson(["Page", "book-pages/one", "--title", "One", "--chapter", "1", "--dir", dir]);
+    assert.equal(created.new, "written", "a custom kind named Page keeps working");
+    assert.equal(created.hint, LEGACY_PAGE_TYPE_HINT, "the write-time hint still fires on the produced doc");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

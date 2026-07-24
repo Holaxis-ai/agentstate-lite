@@ -25,11 +25,12 @@ import { mkdtemp, rm, readFile, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   initBundle,
   query,
   readBlob,
-  readDoc,
   writeBlob,
   writeDoc,
   parseMarkdown,
@@ -1455,14 +1456,36 @@ test("SHIPPED example recipe (examples/recipes/claims): applies cleanly, declare
 
 // ── North star: one vocabulary in fresh bundles (decisions/single-vocabulary-north-star) ───────
 
+/**
+ * THE north-star teaching scan (decisions/single-vocabulary-north-star): no doc in `docs` may
+ * carry the transitional acceptance story, an unlabeled `Page` kind word, or the bare `bridge`
+ * FIELD taught as current. Mechanism names are non-competing and pass (the postMessage bridge
+ * channel, `bridge: "v0"` wire frames, open-page/pageId, prefix grammars). Shared by the fresh-
+ * bundle pin below and the migrated-historical-install pin (review F2).
+ */
+function assertTeachesNoLegacyVocabulary(docs: Array<{ id: string; frontmatter: Record<string, unknown>; body: string }>): void {
+  const transitional = [/migration window/i, /still resolve/i, /keep working/i, /planned later phase/i, /still honored/i];
+  for (const doc of docs) {
+    const text = `${JSON.stringify(doc.frontmatter)}\n${doc.body}`;
+    for (const phrase of transitional) {
+      assert.doesNotMatch(text, phrase, `${doc.id} carries transitional legacy-acceptance wording`);
+    }
+    doc.body.split("\n").forEach((line, i) => {
+      if (/\bPages?\b/.test(line) && !/legacy/i.test(line)) {
+        assert.fail(`${doc.id}:${i + 1} teaches 'Page' as current (no "legacy" on the line): ${line.trim()}`);
+      }
+      if (/`bridge`/.test(line) && !/legacy/i.test(line)) {
+        assert.fail(`${doc.id}:${i + 1} teaches the 'bridge' field as current: ${line.trim()}`);
+      }
+    });
+  }
+}
+
 test("NORTH STAR: a FRESH bundle built from the shipped recipes (review-workflow included) teaches no legacy vocabulary as current", async () => {
   // Acceptance pin for decisions/single-vocabulary-north-star (Brian, 2026-07-24): a newly
-  // installed bundle never introduces Page/bridge as current vocabulary. Mechanism names are
-  // non-competing and stay (the postMessage bridge channel, `bridge: "v0"` wire frames,
-  // open-page/pageId, prefix grammars) — the rules below target the TEACHING shapes: the
-  // transitional acceptance story, an unlabeled `Page` kind word, and the bare `bridge` FIELD.
-  // This pin is red on the pre-phase-3 reference text ("type: Page docs still resolve during
-  // the migration window…") and green on the post-removal wording.
+  // installed bundle never introduces Page/bridge as current vocabulary. This pin is red on the
+  // pre-phase-3 reference text ("type: Page docs still resolve during the migration window…")
+  // and green on the post-removal wording.
   const dir = await tempDir();
   try {
     await runJson(init, ["--dir", dir]); // the default context-notes recipe
@@ -1474,26 +1497,7 @@ test("NORTH STAR: a FRESH bundle built from the shipped recipes (review-workflow
     // The surfaces this pin exists for really installed (a silent skip must not fake a pass).
     assert.ok(docs.some((d) => d.id === "conventions/view"), "the View convention installed");
     assert.ok(docs.some((d) => d.id === "references/view-authoring-v0"), "the authoring reference installed");
-
-    // The transitional-acceptance story may appear NOWHERE in a fresh bundle.
-    const transitional = [/migration window/i, /still resolve/i, /keep working/i, /planned later phase/i, /still honored/i];
-    for (const doc of docs) {
-      const text = `${JSON.stringify(doc.frontmatter)}\n${doc.body}`;
-      for (const phrase of transitional) {
-        assert.doesNotMatch(text, phrase, `${doc.id} carries transitional legacy-acceptance wording`);
-      }
-      // Any line naming the legacy kind word or the bare legacy FIELD must label it legacy on
-      // that same line (the skill-distribution examples pin's convention, applied to INSTALLED
-      // bundle content). `bridge: "v0"` (wire) and "postMessage bridge" (mechanism) don't match.
-      doc.body.split("\n").forEach((line, i) => {
-        if (/\bPages?\b/.test(line) && !/legacy/i.test(line)) {
-          assert.fail(`${doc.id}:${i + 1} teaches 'Page' as current (no "legacy" on the line): ${line.trim()}`);
-        }
-        if (/`bridge`/.test(line) && !/legacy/i.test(line)) {
-          assert.fail(`${doc.id}:${i + 1} teaches the 'bridge' field as current: ${line.trim()}`);
-        }
-      });
-    }
+    assertTeachesNoLegacyVocabulary(docs);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -1510,6 +1514,9 @@ test("NORTH STAR: a FRESH bundle built from the shipped recipes (review-workflow
 // pinned below), so the legacy install state is seeded directly.
 
 const LEGACY_REVIEW_WORKFLOW_V1 = path.resolve(import.meta.dirname, "fixtures/review-workflow-legacy-v1");
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
+const MIGRATION_SCRIPT = path.join(REPO_ROOT, "scripts", "migrate-legacy-view-names.mjs");
+const execFileAsync = promisify(execFile);
 
 /** Emulate the launcher's listing with THE one registration predicate (core `parseRegistration`)
  * over both accepted registry prefixes — the same authority `listPages`/the nonce mint consume. */
@@ -1523,22 +1530,19 @@ async function usableRegistrations(bundle: Bundle) {
 
 /** Seed the exact artifact state the legacy v1 `recipe add` used to leave behind (vendored
  * fixture content: Page-typed registration under the legacy locations + conventions/page +
- * conventions/review-request). */
+ * conventions/review-request + the historical Page-authoring reference — the COMPLETE install,
+ * review F2). */
 async function seedLegacyV1Install(bundle: Bundle): Promise<void> {
   const T = "2026-07-01T00:00:00.000Z";
-  const legacyConvention = await readFile(path.join(LEGACY_REVIEW_WORKFLOW_V1, "conventions/page.md"), "utf8");
-  const { frontmatter: pageConvFm, body: pageConvBody } = parseMarkdown(legacyConvention);
-  await writeDoc(bundle, { id: "conventions/page", frontmatter: { ...pageConvFm, timestamp: T }, body: pageConvBody });
-  const reviewConvention = await readFile(path.join(LEGACY_REVIEW_WORKFLOW_V1, "conventions/review-request.md"), "utf8");
-  const { frontmatter: reviewFm, body: reviewBody } = parseMarkdown(reviewConvention);
-  await writeDoc(bundle, { id: "conventions/review-request", frontmatter: { ...reviewFm, timestamp: T }, body: reviewBody });
-  const registry = await readFile(path.join(LEGACY_REVIEW_WORKFLOW_V1, "pages-registry/review-workflow-reviews.md"), "utf8");
-  const { frontmatter: registryFm, body: registryBody } = parseMarkdown(registry);
-  await writeDoc(bundle, {
-    id: "pages-registry/review-workflow-reviews",
-    frontmatter: { ...registryFm, timestamp: T },
-    body: registryBody,
-  });
+  const seedDoc = async (relative: string, id: string): Promise<void> => {
+    const bytes = await readFile(path.join(LEGACY_REVIEW_WORKFLOW_V1, relative), "utf8");
+    const { frontmatter, body } = parseMarkdown(bytes);
+    await writeDoc(bundle, { id, frontmatter: { ...frontmatter, timestamp: T }, body });
+  };
+  await seedDoc("conventions/page.md", "conventions/page");
+  await seedDoc("conventions/review-request.md", "conventions/review-request");
+  await seedDoc("pages-registry/review-workflow-reviews.md", "pages-registry/review-workflow-reviews");
+  await seedDoc("references/page-authoring-v0.md", "references/page-authoring-v0");
   const html = await readFile(path.join(LEGACY_REVIEW_WORKFLOW_V1, "pages/review-workflow/reviews.html"), "utf8");
   await writeBlob(bundle, "pages/review-workflow/reviews.html", new TextEncoder().encode(html), "text/html; charset=utf-8");
 }
@@ -1556,27 +1560,32 @@ test("REJECTION PIN: the legacy v1 recipe folder no longer installs — its Page
   }
 });
 
-test("legacy-alias awareness: reapplying the renamed Review Workflow onto a legacy v1 install creates NO duplicate set", async () => {
+test("legacy-alias awareness: reapplying the renamed Review Workflow onto a legacy v1 install creates NO duplicate set — and reports MIGRATION_REQUIRED, not success", async () => {
   const dir = await tempDir();
   try {
     await initBundle(dir);
     const bundle: Bundle = { root: dir };
 
-    // 1. The legacy v1 install state (what the OLD edition's `recipe add` left behind):
-    //    type Page under pages-registry//pages/, conventions/page.
+    // 1. The COMPLETE legacy v1 install state (what the OLD edition's `recipe add` left behind):
+    //    type Page under pages-registry//pages/, conventions/page, conventions/review-request,
+    //    references/page-authoring-v0.
     await seedLegacyV1Install(bundle);
 
-    // 2. The NEW renamed edition applies: the legacy install satisfies the View-shaped
-    //    artifacts — nothing is duplicated, and the receipt says so.
+    // 2. The NEW renamed edition applies: the legacy install still holds the artifact slots so
+    //    nothing is duplicated — but the RETIRED-name occupants no longer work, so the receipt
+    //    reports an explicit non-success `migration_required` naming the remedy (review F3c),
+    //    never a satisfied-looking skip.
     const reapply = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
     const counts = reapply.counts as Record<string, number>;
-    assert.equal(counts.legacy_present, 2, "the View convention + the page pair are legacy-satisfied");
+    assert.equal(counts.migration_required, 2, "the View convention + the page pair await migration");
+    assert.equal(counts.legacy_present, 0, "an unmigrated occupant is never reported as satisfying");
 
     const pages = reapply.pages as Array<Record<string, unknown>>;
     assert.equal(pages.length, 1);
     assert.equal(pages[0]!.registry_id, "views-registry/review-workflow-reviews");
     assert.equal(pages[0]!.changed, false);
-    assert.deepEqual(pages[0]!.legacy_present, {
+    assert.equal(pages[0]!.legacy_present, undefined);
+    assert.deepEqual(pages[0]!.migration_required, {
       registry: "pages-registry/review-workflow-reviews",
       entry: "pages/review-workflow/reviews.html",
     });
@@ -1585,9 +1594,15 @@ test("legacy-alias awareness: reapplying the renamed Review Workflow onto a lega
     const viewConvention = docs.find((d) => d.id === "conventions/view");
     assert.ok(viewConvention);
     assert.equal(viewConvention!.changed, false);
-    assert.equal(viewConvention!.legacy_present, "conventions/page");
+    assert.equal(viewConvention!.migration_required, "conventions/page");
     const reviewRequest = docs.find((d) => d.id === "conventions/review-request");
     assert.equal(reviewRequest!.changed, false, "same-id convention is the ordinary existing no-op");
+
+    // The receipt-level warnings carry the remedy by name.
+    const warnings = reapply.warnings as Array<Record<string, unknown>>;
+    const migrationWarnings = warnings.filter((w) => w.code === "MIGRATION_REQUIRED");
+    assert.equal(migrationWarnings.length, 2);
+    for (const w of migrationWarnings) assert.match(String(w.message), /migrate-legacy-view-names/);
 
     // The re-taught authoring reference is genuinely NEW content at a NEW id — it installs (there
     // is no principled alias for reference docs, and updated teaching should reach legacy bundles).
@@ -1601,28 +1616,34 @@ test("legacy-alias awareness: reapplying the renamed Review Workflow onto a lega
     assert.ok(!conventionIds.includes("conventions/view"), "no duplicate View convention");
 
     // 4. Launcher-level: the UNMIGRATED Page-typed doc no longer registers — zero usable cards
-    //    here BY DESIGN. The loud diagnostic is status's legacy_naming finding, and the remedy is
-    //    the migration script (scripts/migrate-legacy-view-names.test.mjs pins that it still
-    //    works post-removal), never a duplicate install.
+    //    here BY DESIGN; the receipt above and status's legacy_naming finding carry the remedy.
     assert.equal((await usableRegistrations(bundle)).length, 0);
 
-    // 5. A SECOND renamed apply is a complete no-op with the same legacy skips — stable,
-    //    re-runnable.
+    // 5. A SECOND renamed apply is stable and still non-success in the same way.
     const third = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
     assert.equal(third.changed, false);
-    assert.equal((third.counts as Record<string, number>).legacy_present, 2);
+    assert.equal((third.counts as Record<string, number>).migration_required, 2);
     assert.deepEqual(third.references, [{ id: "references/view-authoring-v0", changed: false }]);
 
-    // 6. The MIGRATED shape of the same install (type flipped in place, location kept — what the
-    //    migration script produces): the alias probe still satisfies the page pair, no duplicate
-    //    lands, and the launcher sees exactly ONE usable card at the legacy location.
-    const migrated = await readDoc(bundle, "pages-registry/review-workflow-reviews");
-    await writeDoc(bundle, {
-      id: migrated.id,
-      frontmatter: { ...migrated.frontmatter, type: "View" },
-      body: migrated.body,
+    // 6. Run the REAL migration script on the full historical install (review F2): types flip in
+    //    place, the Page convention and the superseded Page-authoring reference are retired with
+    //    their replacements present, the historical review-request wording refreshes — and the
+    //    remaining bundle is north-star clean: NO doc teaches legacy names as current.
+    await execFileAsync(process.execPath, [MIGRATION_SCRIPT, "--dir", dir], {
+      cwd: REPO_ROOT,
+      maxBuffer: 10 * 1024 * 1024,
     });
+    const remaining = await query(bundle, {});
+    assert.ok(remaining.some((d) => d.id === "conventions/view"), "the script installed the View convention replacement");
+    assert.ok(!remaining.some((d) => d.id === "conventions/page"), "the Page convention was retired");
+    assert.ok(remaining.some((d) => d.id === "references/view-authoring-v0"), "the replacement reference is present");
+    assert.ok(!remaining.some((d) => d.id === "references/page-authoring-v0"), "the superseded legacy reference was retired");
+    assertTeachesNoLegacyVocabulary(remaining);
+
+    //    Post-migration, the alias probe reports the pair as GENUINELY satisfied again, and the
+    //    launcher sees exactly ONE usable card at the legacy location.
     const postMigration = await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
+    assert.equal((postMigration.counts as Record<string, number>).migration_required, 0);
     const pmPages = postMigration.pages as Array<Record<string, unknown>>;
     assert.equal(pmPages[0]!.changed, false);
     assert.deepEqual(pmPages[0]!.legacy_present, {
@@ -1684,8 +1705,9 @@ test("legacy-alias awareness: an INCOMPLETE legacy pair (registry doc without it
     assert.ok(await readBlob(bundle, "views/review-workflow/reviews.html"));
 
     // Tally: page pair + reference created; review-request convention existing; view convention
-    // still legacy-satisfied by conventions/page (the convention probe is independent of the pair).
-    assert.deepEqual(reapply.counts, { created: 2, existing: 1, legacy_present: 1 });
+    // still blocked by the unmigrated conventions/page (the convention probe is independent of
+    // the pair, and an unmigrated occupant reports migration_required, never legacy_present).
+    assert.deepEqual(reapply.counts, { created: 2, existing: 1, legacy_present: 0, migration_required: 1 });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -1707,7 +1729,7 @@ test("legacy-alias awareness: the mirror partial pair (blob without its registry
     const viewIds = (await query(bundle, { prefix: VIEW_REGISTRY_PREFIX })).map((d) => d.id);
     assert.deepEqual(viewIds, ["views-registry/review-workflow-reviews"]);
     assert.ok(await readBlob(bundle, "views/review-workflow/reviews.html"));
-    assert.deepEqual(reapply.counts, { created: 2, existing: 1, legacy_present: 1 });
+    assert.deepEqual(reapply.counts, { created: 2, existing: 1, legacy_present: 0, migration_required: 1 });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

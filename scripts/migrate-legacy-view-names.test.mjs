@@ -546,6 +546,123 @@ test("POST-REMOVAL PIN: the CLI-invoked migration script fully migrates a legacy
   }
 });
 
+// ── Review F2: shipped-teaching refresh + superseded legacy reference retirement ──────────────
+test("F2: a full historical install's teaching artifacts migrate too — page-authoring reference retired (replacement created), historical review-request refreshed; second run is a no-op", async () => {
+  const { migrateBundle, loadCanonicalViewReference, loadCanonicalReviewRequestConvention, loadPriorShippedReviewRequestConventions } =
+    await script();
+  const { initBundle, writeDoc, readDoc } = await core();
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-teaching-"));
+  try {
+    const bundle = await initBundle(dir);
+    const T = "2026-07-01T00:00:00.000Z";
+    await writeDoc(bundle, {
+      id: "pages-registry/dash",
+      frontmatter: { type: "Page", title: "Dash", entry: "pages/dash.html", bridge: "bundle-read", timestamp: T },
+      body: "Legacy stock.\n",
+    });
+    // The HISTORICAL shipped teaching artifacts (frozen snapshots — Page taught as current).
+    const priorRR = loadPriorShippedReviewRequestConventions()[0];
+    await writeDoc(bundle, { id: "conventions/review-request", frontmatter: priorRR.frontmatter, body: priorRR.body });
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: T },
+      body: "# Bundle Page authoring — bridge v0\n\nTeaches type: Page and bridge: as the live contract.\n",
+    });
+
+    const receipt = await migrateBundle(bundle);
+    assert.equal(receipt.review_request_swapped, "swapped", "the known historical form refreshes");
+    assert.equal(receipt.reference_created, true, "the replacement reference is created from the canonical file");
+    assert.deepEqual(receipt.legacy_references_deleted, ["references/page-authoring-v0"]);
+
+    // Engine writes stamp a timestamp when the canonical file omits one — content equality
+    // ignores it (the same rule the script's own classification applies).
+    const minusTimestamp = ({ timestamp: _t, ...rest }) => rest;
+    await assert.rejects(() => readDoc(bundle, "references/page-authoring-v0"), /ENOENT/);
+    const replacement = await readDoc(bundle, "references/view-authoring-v0");
+    const canonicalRef = loadCanonicalViewReference();
+    assert.deepEqual(minusTimestamp(replacement.frontmatter), minusTimestamp(canonicalRef.frontmatter));
+    assert.equal(replacement.body, canonicalRef.body);
+    const rr = await readDoc(bundle, "conventions/review-request");
+    const canonicalRR = loadCanonicalReviewRequestConvention();
+    assert.deepEqual(minusTimestamp(rr.frontmatter), minusTimestamp(canonicalRR.frontmatter));
+    assert.equal(rr.body, canonicalRR.body);
+
+    // Idempotence: run 2 reports nothing for the teaching artifacts.
+    const second = await migrateBundle(bundle);
+    assert.equal(second.review_request_swapped, false);
+    assert.equal(second.reference_created, false);
+    assert.deepEqual(second.legacy_references_deleted, []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("F2 guards: a customized review-request is never touched; an unreadable doc blocks retirement; a non-Reference occupant on the replacement id refuses it", async () => {
+  const { migrateBundle } = await script();
+  const { initBundle, writeDoc, readDoc } = await core();
+  const T = "2026-07-01T00:00:00.000Z";
+
+  // Guard 1: customized review-request — left untouched, warned.
+  const dirA = await mkdtemp(path.join(tmpdir(), "aslite-migrate-teach-custom-"));
+  try {
+    const bundle = await initBundle(dirA);
+    await writeDoc(bundle, {
+      id: "conventions/review-request",
+      frontmatter: { type: "Convention", title: "Review Request", governs: "Review Request", fields: { required: ["title"], optional: [] }, timestamp: T },
+      body: "My own review workflow — customized.\n",
+    });
+    const receipt = await migrateBundle(bundle);
+    assert.equal(receipt.review_request_swapped, "skipped_customized");
+    assert.ok(receipt.warnings.some((w) => w.id === "conventions/review-request" && /customized/.test(w.warning)));
+    assert.equal((await readDoc(bundle, "conventions/review-request")).body, "My own review workflow — customized.\n");
+  } finally {
+    await rm(dirA, { recursive: true, force: true });
+  }
+
+  // Guard 2: an unreadable doc in the bundle blocks the retirement (it could hide stock).
+  const dirB = await mkdtemp(path.join(tmpdir(), "aslite-migrate-teach-skip-"));
+  try {
+    const bundle = await initBundle(dirB);
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: T },
+      body: "Legacy teaching.\n",
+    });
+    writeRawDoc(dirB, "notes/broken.md", "---\ntype: Note\ntitle: Broken\nentry: [unterminated\n---\nnever parses\n");
+    const receipt = await migrateBundle(bundle);
+    assert.ok(receipt.skipped_docs.length > 0, "the malformed doc was skipped");
+    assert.deepEqual(receipt.legacy_references_deleted, [], "retirement is blocked by skipped docs");
+    assert.ok(await readDoc(bundle, "references/page-authoring-v0"), "the legacy reference is kept");
+    assert.ok(receipt.warnings.some((w) => w.id === "references/page-authoring-v0" && /kept/.test(w.warning)));
+  } finally {
+    await rm(dirB, { recursive: true, force: true });
+  }
+
+  // Guard 3: a non-Reference occupant on the replacement id refuses retirement — never delete
+  // the teaching without its replacement in place.
+  const dirC = await mkdtemp(path.join(tmpdir(), "aslite-migrate-teach-occupied-"));
+  try {
+    const bundle = await initBundle(dirC);
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: T },
+      body: "Legacy teaching.\n",
+    });
+    await writeDoc(bundle, {
+      id: "references/view-authoring-v0",
+      frontmatter: { type: "Note", title: "Squatter", timestamp: T },
+      body: "Not a Reference.\n",
+    });
+    const receipt = await migrateBundle(bundle);
+    assert.deepEqual(receipt.legacy_references_deleted, []);
+    assert.ok(await readDoc(bundle, "references/page-authoring-v0"), "the legacy reference is kept");
+    assert.equal((await readDoc(bundle, "references/view-authoring-v0")).frontmatter.type, "Note", "the occupant is untouched");
+    assert.ok(receipt.warnings.some((w) => w.id === "references/view-authoring-v0" && /refused/.test(w.warning)));
+  } finally {
+    await rm(dirC, { recursive: true, force: true });
+  }
+});
+
 test("CLI surface: --dry-run over --dir emits the receipt with the normalization note; no --dir exits 2", async () => {
   const { NORMALIZATION_NOTE } = await script();
   const { dir } = await makeFixtureBundle();

@@ -44,7 +44,13 @@ import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { collectLinkDeclarations } from "../link-types.js";
-import { hasLegacyBridgeField, isLegacyPageDoc, isLegacyRegistryDocId, LEGACY_PAGE_BLOB_PREFIX } from "../legacy-page.js";
+import {
+  hasLegacyBridgeField,
+  isLegacyPageConvention,
+  isLegacyPageDoc,
+  isLegacyRegistryDocId,
+  LEGACY_PAGE_BLOB_PREFIX,
+} from "../legacy-page.js";
 import { cliInvocation } from "../invocation.js";
 
 export const STATUS_USAGE = `agentstate-lite status — read-only whole-bundle health report (bundle lint)
@@ -130,9 +136,10 @@ Category semantics (one line each):
   legacy_naming      FINDING: the legacy View names are no longer accepted by the runtime — a
                       doc typed 'Page' (the legacy name for the 'View' kind) does not register
                       at all, and a legacy 'bridge:' capability field grants nothing (the doc
-                      resolves to access: none). Counts + rows name every legacy Page-typed doc
-                      and every View-kind doc carrying an own legacy 'bridge' field; run the
-                      repo's scripts/migrate-legacy-view-names.mjs to rename them in place. Also
+                      resolves to access: none). Counts + rows name every legacy Page-typed doc,
+                      every View-kind doc carrying an own legacy 'bridge' field, and every
+                      Convention still governing the legacy 'Page' name (silent scaffolding);
+                      run the repo's scripts/migrate-legacy-view-names.mjs to rename them in place. Also
                       reports (informational) items under the legacy pages-registry//pages/ id
                       prefixes — those LOCATIONS remain recognized; relocation is a separate
                       open decision. Omitted when the bundle carries none of the above.
@@ -407,6 +414,12 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   const bridgeFieldRows: Record<string, unknown>[] = docs
     .filter((doc) => hasLegacyBridgeField(doc.frontmatter))
     .map((doc) => ({ id: doc.id }));
+  // A stale convention governing the legacy 'Page' name is silent scaffolding (review F3a):
+  // `kinds` advertises the dead name and kind-aware authoring would produce runtime-ignored
+  // docs, yet no doc-level scan above sees it (it scans instances, not governs declarations).
+  const pageConventionRows: Record<string, unknown>[] = docs
+    .filter((doc) => isLegacyPageConvention(doc.frontmatter))
+    .map((doc) => ({ id: doc.id }));
   // STORE-AWARE: docs count only under the legacy registry prefix; blob keys only under the
   // legacy entry prefix (already prefix-scoped at the `listBlobs` call above) — a concept doc
   // that merely lives at e.g. `pages/manual` is not a legacy item.
@@ -531,21 +544,25 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   // idiom) — a clean report stays byte-identical to before this finding existed.
   const pageTyped = cap(pageTypedRows, limit);
   const bridgeField = cap(bridgeFieldRows, limit);
+  const pageConvention = cap(pageConventionRows, limit);
   const legacyPrefix = cap(legacyPrefixRows, limit);
-  if (pageTyped.total > 0 || bridgeField.total > 0 || legacyPrefix.total > 0) {
-    // The loud FINDING note (+ the migration-script help) fires only for retired NAMES; a
-    // migrated bundle that simply kept its legacy LOCATIONS (fully supported) gets the milder
+  if (pageTyped.total > 0 || bridgeField.total > 0 || pageConvention.total > 0 || legacyPrefix.total > 0) {
+    // The loud FINDING note (+ the migration-script help) fires only for retired NAMES —
+    // instances, legacy fields, OR a convention still declaring the dead kind name; a migrated
+    // bundle that simply kept its legacy LOCATIONS (fully supported) gets the milder
     // informational note instead of a call to action it cannot act on.
-    const namesPresent = pageTyped.total > 0 || bridgeField.total > 0;
+    const namesPresent = pageTyped.total > 0 || bridgeField.total > 0 || pageConvention.total > 0;
     const legacy: Record<string, unknown> = {
       note: namesPresent
         ? "FINDING — the legacy View names are no longer accepted: a 'type: Page' doc does not " +
-          "register (the ui launcher ignores it) and a legacy 'bridge:' field grants nothing " +
-          "(access resolves to none). Legacy pages-registry//pages/ LOCATIONS remain recognized."
+          "register (the ui launcher ignores it), a legacy 'bridge:' field grants nothing " +
+          "(access resolves to none), and a Convention still governing the legacy 'Page' name " +
+          "scaffolds docs the runtime ignores. Legacy pages-registry//pages/ LOCATIONS remain recognized."
         : "informational — items under the legacy pages-registry//pages/ id prefixes; these " +
           "LOCATIONS remain fully recognized (relocation is a separate open decision).",
       page_typed_docs: pageTyped.total,
       bridge_field_docs: bridgeField.total,
+      page_convention_docs: pageConvention.total,
       legacy_prefix_items: legacyPrefix.total,
     };
     if (namesPresent) {
@@ -556,6 +573,7 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
     }
     if (pageTyped.total > 0) legacy.page_typed_rows = pageTyped;
     if (bridgeField.total > 0) legacy.bridge_field_rows = bridgeField;
+    if (pageConvention.total > 0) legacy.page_convention_rows = pageConvention;
     if (legacyPrefix.total > 0) legacy.legacy_prefix_rows = legacyPrefix;
     out.legacy_naming = legacy;
   }

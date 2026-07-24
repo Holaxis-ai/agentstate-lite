@@ -36,6 +36,7 @@ import {
   PAGE_ENTRY_PREFIX,
   PAGE_REGISTRY_PREFIX,
   PAGE_TYPE_NAMES,
+  parseRegistration,
   VIEW_ENTRY_PREFIX,
   VIEW_REGISTRY_PREFIX,
 } from "@agentstate-lite/core/page";
@@ -345,12 +346,17 @@ export const ROADMAP_DESC_BODY =
   "stays off.\n";
 
 /** Per-doc apply outcome: `changed: false` means the doc already existed (idempotent no-op), or —
- * when `legacy_present` names a doc — that a legacy-named counterpart already satisfies it. */
+ * when `legacy_present`/`migration_required` names a doc — that a legacy-LOCATED counterpart
+ * already occupies the artifact's slot (working, or awaiting migration, respectively). */
 export interface RecipeDocResult {
   id: ConceptId;
   changed: boolean;
-  /** Set when creation was skipped because this existing legacy-named doc satisfies the artifact. */
+  /** Set when creation was skipped because this existing legacy-located doc satisfies the artifact. */
   legacy_present?: ConceptId;
+  /** NON-SUCCESS skip (review F3c): the counterpart still carries the RETIRED legacy names, so it
+   * no longer works at runtime — the bundle needs the migration script before this artifact is
+   * genuinely satisfied. Named alongside a receipt-level warning carrying the remedy. */
+  migration_required?: ConceptId;
 }
 
 export interface RecipePageResult {
@@ -359,8 +365,10 @@ export interface RecipePageResult {
   registry_changed: boolean;
   entry_changed: boolean;
   changed: boolean;
-  /** Set when creation was skipped because a COMPLETE legacy-named pair satisfies the artifact. */
+  /** Set when creation was skipped because a COMPLETE, still-REGISTERING legacy-located pair satisfies the artifact. */
   legacy_present?: { registry: ConceptId; entry: string };
+  /** See {@link RecipeDocResult.migration_required} — the page-pair variant. */
+  migration_required?: { registry: ConceptId; entry: string };
 }
 
 export interface RecipeReferenceResult {
@@ -377,6 +385,8 @@ export interface ApplyRecipeCounts {
   created: number;
   existing: number;
   legacy_present: number;
+  /** Artifacts whose slot is held by RETIRED-name content (see `migration_required` fields). */
+  migration_required: number;
 }
 
 export interface ApplyRecipeResult {
@@ -468,16 +478,31 @@ export async function applyRecipe(
   const legacyConventionId = recipe.docs.some((d) => governsKind(d, VIEW_KIND_NAME))
     ? await findLegacyViewConvention(bundle)
     : null;
-  let legacyRegistryIds: Set<ConceptId> | null = null;
-  const legacyRegistryExists = async (id: ConceptId): Promise<boolean> => {
-    legacyRegistryIds ??= new Set((await query(bundle, { prefix: PAGE_REGISTRY_PREFIX })).map((doc) => doc.id));
-    return legacyRegistryIds.has(id);
+  let legacyRegistryDocs: Map<ConceptId, OkfDocument> | null = null;
+  const legacyRegistryDoc = async (id: ConceptId): Promise<OkfDocument | undefined> => {
+    legacyRegistryDocs ??= new Map(
+      (await query(bundle, { prefix: PAGE_REGISTRY_PREFIX })).map((doc) => [doc.id, doc]),
+    );
+    return legacyRegistryDocs.get(id);
   };
+  const migrationWarnings: ValidationWarning[] = [];
+  const migrationHelp =
+    "run `node scripts/migrate-legacy-view-names.mjs --dir <bundle-root>` (in the agentstate-lite repo) to migrate it in place";
 
   const docs: RecipeDocResult[] = [];
   for (const d of recipe.docs) {
     if (legacyConventionId !== null && governsKind(d, VIEW_KIND_NAME)) {
-      docs.push({ id: d.id, changed: false, legacy_present: legacyConventionId });
+      // A convention still governing the RETIRED legacy name is unmigrated state: skip creating
+      // the current-name convention (never two conventions for one kind), but as an explicit
+      // NON-SUCCESS (review F3c) — not a satisfied-looking skip.
+      docs.push({ id: d.id, changed: false, migration_required: legacyConventionId });
+      migrationWarnings.push({
+        code: "MIGRATION_REQUIRED",
+        message:
+          `'${legacyConventionId}' still governs the retired legacy 'Page' kind name — ` +
+          `'${d.id}' was not installed; ${migrationHelp}`,
+        severity: "warning",
+      });
       continue;
     }
     const doc: OkfDocument = { ...d, frontmatter: { ...d.frontmatter, timestamp: now } };
@@ -498,21 +523,45 @@ export async function applyRecipe(
   for (const page of recipe.pages) {
     const registryAlias = legacyRegistryAlias(page.registry.id);
     const entryAlias = legacyEntryAlias(page.entry);
-    if (registryAlias !== null && entryAlias !== null && (await legacyRegistryExists(registryAlias))) {
+    const aliasDoc = registryAlias !== null && entryAlias !== null ? await legacyRegistryDoc(registryAlias) : undefined;
+    if (registryAlias !== null && entryAlias !== null && aliasDoc !== undefined) {
       // Skip ONLY on a COMPLETE legacy pair: a partial legacy leftover (registry doc without its
       // blob) must not suppress the new install — that would leave no working card at all.
       // Creating under the new ids is always safe (expect-absent CAS; ids never collide across
       // prefixes), and the leftover is the audit's business, not the installer's.
       const legacyBlob = await readBlob(bundle, entryAlias);
       if (legacyBlob !== null) {
-        pages.push({
-          registry_id: page.registry.id,
-          entry: page.entry,
-          registry_changed: false,
-          entry_changed: false,
-          changed: false,
-          legacy_present: { registry: registryAlias, entry: entryAlias },
-        });
+        // The counterpart's KIND decides the outcome (review F3c): a registering View at the
+        // legacy location genuinely satisfies the artifact; a RETIRED-name (Page-typed or
+        // otherwise non-registering) counterpart holds the slot but no longer works — an
+        // explicit non-success naming the remedy, never a satisfied-looking skip.
+        const registers = parseRegistration(aliasDoc.id, aliasDoc.frontmatter) !== null;
+        if (registers) {
+          pages.push({
+            registry_id: page.registry.id,
+            entry: page.entry,
+            registry_changed: false,
+            entry_changed: false,
+            changed: false,
+            legacy_present: { registry: registryAlias, entry: entryAlias },
+          });
+        } else {
+          pages.push({
+            registry_id: page.registry.id,
+            entry: page.entry,
+            registry_changed: false,
+            entry_changed: false,
+            changed: false,
+            migration_required: { registry: registryAlias, entry: entryAlias },
+          });
+          migrationWarnings.push({
+            code: "MIGRATION_REQUIRED",
+            message:
+              `'${registryAlias}' holds this artifact's slot but still carries the retired legacy names ` +
+              `and does not register — '${page.registry.id}' was not installed; ${migrationHelp}`,
+            severity: "warning",
+          });
+        }
         continue;
       }
     }
@@ -570,11 +619,17 @@ export async function applyRecipe(
     references.push({ id: desired.id, changed });
   }
 
-  const artifacts: Array<{ changed: boolean; legacy_present?: unknown }> = [...docs, ...pages, ...references];
+  const artifacts: Array<{ changed: boolean; legacy_present?: unknown; migration_required?: unknown }> = [
+    ...docs,
+    ...pages,
+    ...references,
+  ];
   const counts: ApplyRecipeCounts = {
     created: artifacts.filter((a) => a.changed).length,
-    existing: artifacts.filter((a) => !a.changed && a.legacy_present === undefined).length,
+    existing: artifacts.filter((a) => !a.changed && a.legacy_present === undefined && a.migration_required === undefined)
+      .length,
     legacy_present: artifacts.filter((a) => a.legacy_present !== undefined).length,
+    migration_required: artifacts.filter((a) => a.migration_required !== undefined).length,
   };
 
   return {
@@ -589,7 +644,7 @@ export async function applyRecipe(
       docs.some((d) => d.changed) ||
       pages.some((page) => page.changed) ||
       references.some((reference) => reference.changed),
-    warnings: recipe.warnings,
+    warnings: [...recipe.warnings, ...migrationWarnings],
   };
 }
 
