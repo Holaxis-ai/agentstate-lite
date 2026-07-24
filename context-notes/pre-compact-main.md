@@ -1,19 +1,47 @@
 ---
 type: Context Note
-title: 'pre-compact-main: current session checkpoint'
-actor: codex-main
-timestamp: '2026-07-15T18:24:00.992Z'
+title: 'Session state: view-authoring and migration arc (2026-07-24)'
+actor: claude-main
+timestamp: '2026-07-24T15:35:39.673Z'
 ---
 # Summary
 
-Ultimate project goal: make agentstate-lite the plain-text, local-first, conflict-safe memory through which agents retain and share knowledge. Proximate goal completed: align Codex global instructions with Claude global instructions so both harnesses consistently use the same agentstate-lite-centered scaffolding.
+Session state snapshot (2026-07-24 morning, main agent) — written proactively so any context
+reset restores cleanly. Skills to reload: holaxis-self-awareness, holaxis-cognitive-ecosystem,
+aslite, holaxis-orchestrator (when dispatching).
 
-Codex global instructions at `/Users/brian/.codex/AGENTS.md` now match Claude global instructions at `/Users/brian/.claude/CLAUDE.md` byte for byte. Verification on 2026-07-15 produced SHA-256 `fed6cdaa94d8730d842811271d5eeecd1e9a9ea2be5028e80f10e0358a4c5adf` for both files and `cmp` exited 0. No repository code was changed.
+## Shipped this arc (all merged, all on the board)
 
-The user performed the global write outside the restricted sandbox after the sandbox rejected the agent write. The earlier required board sync also failed with `EPERM` while chmodding `/Users/brian/.agentstate`, another path outside the writable sandbox. This context note is current on the local bundle but has not been shared to the board remote.
+- PR #151 first-run copy; #152 markdown-bounds flake fix; #154 activity-feed ownership rows
+  ("attributed to"); #155 bridge->access field rename (P1 prototype-inheritance catch);
+  #156 dangling/invalid view lints; #157 Phase 2a migration script (5 commits, 6 review rounds,
+  2 independent Codex teams, findings 6->1->1->0->1->0).
+- LIVE BOARD MIGRATED 2026-07-24 08:32 (13 board commits): 0 Page-typed docs, 0 bridge fields;
+  receipts + audit on tasks/migrate-legacy-page-bridge-stock (done).
 
-Loaded `holaxis-self-awareness`, `holaxis-cognitive-ecosystem`, `holaxis-agentstate`, and `agentstate-lite`; read repository `CLAUDE.md`, the supplied project `AGENTS.md` entrypoint, and bundle doc `docs/core`. AgentState MCP tools were not exposed, so the repository-local AgentState-lite bundle remained the sole project record; no Holaxis CE vault or tsk workspace was used.
+## Open gates (all Brian's/Mike's, none mine)
 
-## Prior-session continuity (not current work)
+- Mike migrates his bundles: node scripts/migrate-legacy-view-names.mjs --dir <bundle> --dry-run
+  first. Audit meter: status reads zero legacy.
+- Phase 3 (tasks/remove-legacy-page-bridge-support): BUILD may start anytime on a branch;
+  MERGE gated on Mike's zero + explicit coordinated go (plugin channel tracks main — early merge
+  breaks unmigrated bundles' dashboards).
+- Dry-run receipt polish (Brian 2026-07-24: receipt lacks a verdict line, past-tense keys in a
+  hypothetical mode) — small unit, should land BEFORE Mike's migration. Not yet filed as a task.
+- Parked decisions: tasks/cli-view-create-verb (lumper/splitter framing pinned on it);
+  tasks/migrate-legacy-prefix-locations (address dial, "possible not preferred");
+  tasks/ui-view-headless-verify claimed by main agent, design at designs/view-headless-verify,
+  awaiting Brian's packaging pick (A sibling npx tool / B escalation / C bundle jsdom).
 
-The previous checkpoint concerned [PR #54 independent review](./pr-54-review.md), the [portable recipe task](../tasks/portable-recipe-packages-v1.md), the [portable recipe design](../designs/portable-recipe-packages.md), the [sync implementation plan](../plans/sync-verb-implementation.md), and [sync review research](../research/sync-verb-review.md). These links are retained for historical continuity; none defines the completed task.
+## Norms established (also in the harness memory files)
+
+- "After merge" sections are PLANS, never pre-authorization: live/shared-data actions get an
+  explicit yes at action time (post-merge-execution-gate memory; born from the 07-24 board
+  migration surprise).
+- PR descriptions: problem->solution, "In plain terms:" per section, process history to the
+  board record not the PR.
+- Codex reviewer mechanics: exec needs </dev/null; verify launches by log growth; resume --last
+  works; QA vocabulary not red-team vocabulary (provider filter); sandboxed worktree shape;
+  orchestrator writes board records for sandboxed reviewers.
+- Builder self-flagged weaknesses are the highest-yield review targets; per-round finding
+  convergence is the health signal.
