@@ -18,9 +18,9 @@ description: >-
   warnings: <reason + remedy>'). REVIEW: 2 Codex rounds — r1 REQUEST CHANGES
   with a 32-row truth table finding the false-clean P1; r2 APPROVE zero
   findings, both reproductions re-run through the real CLI. Record:
-  context-notes/review-receipt-verdict-rounds. PENDING: PR + merge (before
-  Mike's migration).
+  context-notes/review-receipt-verdict-rounds. MERGED 2026-07-24 via PR #158 —
+  landed before Mike's migration, as sequenced.
 actor: claude-main
-timestamp: '2026-07-24T18:58:18.814Z'
+timestamp: '2026-07-24T19:11:18.220Z'
 ---
 [context-notes/review-receipt-verdict-rounds](../context-notes/review-receipt-verdict-rounds.md)
