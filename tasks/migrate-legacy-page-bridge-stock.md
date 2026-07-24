@@ -55,7 +55,7 @@ description: >-
   DONE WHEN: zero own-bridge fields and zero Page-typed docs across all known
   bundles (the status audit is the meter), fresh installs teach access only, and
   the stale prose is corrected.
-actor: claude-builder-migrate
-timestamp: '2026-07-24T00:18:27.600Z'
+actor: claude-main-viewauthoring
+timestamp: '2026-07-24T02:30:40.758Z'
 ---
-
+[context-notes/review-phase2a-migration-rounds](../context-notes/review-phase2a-migration-rounds.md)
