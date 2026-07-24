@@ -140,6 +140,49 @@ test("access-only registry docs (dir mode): mint derives the capability from `ac
   }
 });
 
+test("REJECTION PIN (dir mode): a legacy bridge-only registry doc resolves access NONE end to end — it mints and serves as a content view, but the action gate never opens", async () => {
+  // tasks/remove-legacy-page-bridge-support: the legacy `bridge:` spelling is no longer read.
+  // The doc still REGISTERS (registration never depended on the capability field), so the pin is
+  // the DOWNGRADE: mint derives `none`, and a propose attempt is refused. Restoring the bridge
+  // fallback in core's declaredAccessValue turns this red.
+  const bundle: Bundle = { root: "mem://bridge-only-denial", backend: new MemoryBackend() };
+  await writeDoc(bundle, {
+    id: "tasks/alpha",
+    frontmatter: { type: "Task", title: "Alpha", status: "todo", timestamp: T },
+    body: "",
+  });
+  await writeDoc(bundle, {
+    id: "views-registry/legacy-propose",
+    frontmatter: { type: "View", title: "Legacy propose", entry: "views/legacy-propose.html", bridge: "bundle-propose", timestamp: T },
+    body: "",
+  });
+  await writeBlob(bundle, "views/legacy-propose.html", new TextEncoder().encode(HTML), "text/html; charset=utf-8");
+
+  const server = await bootUiServer({
+    mode: "dir",
+    bundle,
+    router: createRouter(bundle),
+    sessionSecret: SECRET,
+    actor: "mike/test",
+    serveAsset: () => ({ status: 404, headers: { "content-type": "text/plain; charset=utf-8" }, body: new Uint8Array() }),
+  });
+  try {
+    const launch = await mintLaunch(server, "views-registry/legacy-propose");
+    const served = await fetchPage(server, launch.url);
+    assert.equal(served.status, 200, "the doc still registers — only its capability is downgraded");
+    assert.equal(served.text, HTML);
+
+    const target = await readDocVersioned(bundle, "tasks/alpha");
+    const action = { kind: "document.set-field", docId: "tasks/alpha", field: "status", value: "done", expectedVersion: target.version };
+    const refused = await post(server, "/__ui/actions/prepare", { launchId: launch.launchId, action });
+    assert.equal(refused.status, 200);
+    assert.equal(refused.body.status, "revoked", "bridge: bundle-propose must not open the action gate");
+    assert.equal((await readDocVersioned(bundle, "tasks/alpha")).doc.frontmatter.status, "todo", "no write happened");
+  } finally {
+    await server.close();
+  }
+});
+
 test("access-only registry doc (remote mode): the inline serve-time revalidation resolves `access` — the nonce keeps serving", async () => {
   const bytes = Buffer.from(HTML, "utf8");
   const remote = createServer((req, res) => {

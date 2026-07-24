@@ -16,7 +16,7 @@ fields:
       - bundle-read
       - bundle-propose
   terminal: {}
-timestamp: "2026-07-23T00:00:00.000Z"
+timestamp: "2026-07-24T00:00:00.000Z"
 ---
 # View
 
@@ -27,11 +27,12 @@ the narrow postMessage bridge documented in the bundle's
 [View authoring reference](../references/view-authoring-v0.md) — it never holds a credential.
 V0 is read-only; `bundle-propose` adds only a trusted-shell-confirmed v1 scalar action.
 
-`Page` is the legacy name for this kind, and `bridge` the legacy spelling of `access`. Both are
-transitional: existing docs still resolve during the migration window (docs under the legacy
-`pages-registry/`/`pages/` prefixes stay recognized where they are), the repo's
-`migrate-legacy-view-names` script renames them in place, and removal of legacy support is a
-planned later phase. Author new views as `type: View` with `access`.
+`Page` is the legacy name for this kind, and `bridge` the legacy spelling of `access` — and
+neither is read any longer: a legacy `type: Page` doc does not register, and a doc declaring
+only the legacy `bridge` field resolves to `access: none`. Docs under the legacy
+`pages-registry/`/`pages/` prefixes stay recognized where they are once typed `View`; the
+repo's `migrate-legacy-view-names` script renames leftover legacy names in place
+(`aslite status` lists them under `legacy_naming`). Author views as `type: View` with `access`.
 
 - `title` (required) — the launcher card's heading.
 - `entry` (required) — the HTML blob key, e.g. `views/roadmap.html`.

@@ -41,9 +41,11 @@ const PORTABLE_MANIFEST: RecipeFile = {
     "  - registry: pages-registry/reviews.md\n    entry: pages/reviews.html\n---\n",
 };
 
+// A View pair at the LEGACY locations (pages-registry//pages/) — locations stay accepted; the
+// legacy `type: Page`/`bridge:` NAMES do not (rejection pinned in recipes.test.ts).
 const PAGE_REGISTRY: RecipeFile = {
   path: "pages-registry/reviews.md",
-  bytes: "---\ntype: Page\ntitle: Reviews\nentry: pages/reviews.html\nbridge: bundle-read\n---\nLive reviews.\n",
+  bytes: "---\ntype: View\ntitle: Reviews\nentry: pages/reviews.html\naccess: bundle-read\n---\nLive reviews.\n",
 };
 
 const PAGE_HTML: RecipeFile = {
@@ -109,7 +111,7 @@ const VIEW_MANIFEST: RecipeFile = {
 
 const VIEW_REGISTRY_FILE: RecipeFile = {
   path: "views-registry/board.md",
-  bytes: "---\ntype: View\ntitle: Board\nentry: views/board.html\nbridge: bundle-read\n---\nA board view.\n",
+  bytes: "---\ntype: View\ntitle: Board\nentry: views/board.html\naccess: bundle-read\n---\nA board view.\n",
 };
 
 const VIEW_HTML: RecipeFile = {

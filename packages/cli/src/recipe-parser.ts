@@ -31,7 +31,7 @@ export interface RecipeFile {
 
 /** One portable, content-free View carried by a recipe package. */
 export interface RecipePage {
-  /** The `type: View` (or legacy `type: Page`) registry document installed under `views-registry/` (or legacy `pages-registry/`). */
+  /** The `type: View` registry document installed under `views-registry/` (or the legacy `pages-registry/` location). */
   registry: OkfDocument;
   /** The self-contained HTML blob key declared by the registry document. */
   entry: string;
@@ -490,7 +490,7 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
         ok: false,
         error: {
           code: "RECIPE_MALFORMED",
-          message: `recipe '${id}': '${declaration.registry}' must declare 'type: View' (or legacy 'type: Page')`,
+          message: `recipe '${id}': '${declaration.registry}' must declare 'type: View' (the legacy 'type: Page' no longer registers)`,
         },
       };
     }
@@ -506,7 +506,7 @@ export function parseRecipeFiles(files: RecipeFile[], source: string): LoadResul
         ok: false,
         error: {
           code: "RECIPE_MALFORMED",
-          message: `recipe '${id}': '${declaration.registry}' needs access: none, access: bundle-read, or access: bundle-propose (legacy 'bridge:' is accepted)`,
+          message: `recipe '${id}': '${declaration.registry}' needs access: none, access: bundle-read, or access: bundle-propose (the legacy 'bridge:' spelling is no longer read)`,
         },
       };
     }

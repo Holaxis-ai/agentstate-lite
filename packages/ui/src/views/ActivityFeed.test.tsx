@@ -33,7 +33,9 @@ describe("feedRows (pure projection)", () => {
     const heads: DocHead[] = [
       head("conventions/task", { type: "Convention", title: "Task", timestamp: "2026-07-21T10:00:00Z" }),
       head("views-registry/board", { type: "View", title: "Board", entry: "views/b.html", timestamp: "2026-07-21T09:00:00Z" }),
-      head("pages-registry/about", { type: "Page", title: "About", entry: "pages/a.html", timestamp: "2026-07-21T08:00:00Z" }),
+      // A View registration at the LEGACY location — filtered like any registry doc. (A legacy
+      // Page-TYPED doc is no longer a registered kind name and would show as ordinary content.)
+      head("pages-registry/about", { type: "View", title: "About", entry: "pages/a.html", timestamp: "2026-07-21T08:00:00Z" }),
       head("tasks/older", { type: "Task", title: "Older", timestamp: "2026-07-20T10:00:00Z" }),
       head("tasks/newer", { type: "Task", title: "Newer", timestamp: "2026-07-21T10:00:00Z" }),
       head("notes/undated", { type: "Context Note", title: "Undated" }),

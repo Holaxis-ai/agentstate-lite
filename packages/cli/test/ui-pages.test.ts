@@ -32,7 +32,7 @@ import { writeUiUrlFile, clearUiUrlFile, uiUrlFilePath } from "../src/ui/url-fil
 function launchInput(key: string) {
   return {
     registryId: `pages-registry/${key.split("/").pop()!.replace(/\.html$/, "")}`,
-    registryType: "Page" as const,
+    registryType: "View" as const,
     registryVersion: `registry-${key}`,
     registryTitle: key,
     entryKey: key,
@@ -311,20 +311,25 @@ async function bootPagesServer(): Promise<{ handle: UiServerHandle; origin: stri
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-pages-"));
   await initBundle(dir);
   const bundle: Bundle = { root: dir };
-  // A registered page (blob + its type:Page registry doc), plus an OFF-LIMITS blob that is NOT a
-  // page — the A1 confinement must refuse to mint a nonce for the latter.
+  // A registered page at the LEGACY locations (blob + its type:View registry doc — old folders
+  // stay recognized), plus an OFF-LIMITS blob that is NOT a page — the A1 confinement must
+  // refuse to mint a nonce for the latter.
   await writeBlob(bundle, "pages/test.html", Buffer.from("<!doctype html><title>t</title><p>hi</p>"), "text/html; charset=utf-8");
   await writeBlob(bundle, "secrets/creds.bin", Buffer.from("TOP-SECRET"), "application/octet-stream");
-  await writeDoc(bundle, { id: "pages-registry/test", frontmatter: { type: "Page", title: "Test", entry: "pages/test.html" }, body: "" });
-  // A CURRENT-name View alongside the legacy Page — the dual-read window's mixed board.
+  await writeDoc(bundle, { id: "pages-registry/test", frontmatter: { type: "View", title: "Test", entry: "pages/test.html" }, body: "" });
+  // A current-location View alongside the legacy-located one — the mixed board.
   await writeBlob(bundle, "views/board.html", Buffer.from("<!doctype html><title>board</title><p>view</p>"), "text/html; charset=utf-8");
   await writeDoc(bundle, { id: "views-registry/board", frontmatter: { type: "View", title: "Board", entry: "views/board.html" }, body: "" });
+  // A RETIRED legacy Page-TYPED doc: its entry bytes exist, but the doc is no longer a
+  // registration anywhere — mint must refuse (tasks/remove-legacy-page-bridge-support).
+  await writeBlob(bundle, "pages/retired.html", Buffer.from("<!doctype html><title>retired</title>"), "text/html; charset=utf-8");
+  await writeDoc(bundle, { id: "pages-registry/retired", frontmatter: { type: "Page", title: "Retired", entry: "pages/retired.html" }, body: "" });
   // INVALID registrations (the one-predicate review fold-in): docs the launcher rejects must not
   // mint or serve either, even when their declared entry's bytes exist under an accepted prefix.
   await writeBlob(bundle, "pages/loose.html", Buffer.from("<!doctype html><title>loose</title>"), "text/html; charset=utf-8");
-  await writeDoc(bundle, { id: "notes/loose", frontmatter: { type: "Page", title: "Loose", entry: "pages/loose.html" }, body: "" });
+  await writeDoc(bundle, { id: "notes/loose", frontmatter: { type: "View", title: "Loose", entry: "pages/loose.html" }, body: "" });
   await writeBlob(bundle, "pages/has space.html", Buffer.from("<!doctype html><title>spacey</title>"), "text/html; charset=utf-8");
-  await writeDoc(bundle, { id: "pages-registry/spacey", frontmatter: { type: "Page", title: "Spacey", entry: "pages/has space.html" }, body: "" });
+  await writeDoc(bundle, { id: "pages-registry/spacey", frontmatter: { type: "View", title: "Spacey", entry: "pages/has space.html" }, body: "" });
   await writeDoc(bundle, { id: "views-registry/offprefix", frontmatter: { type: "View", title: "Off prefix", entry: "secrets/creds.bin" }, body: "" });
   // A kind convention with a terminal declaration — the /__ui/kinds endpoint's fixture.
   await writeDoc(bundle, {
@@ -485,7 +490,7 @@ test("A1: mint is confined to REGISTERED page entries — an off-limits blob can
   }
 });
 
-test("DUAL-READ: a type View doc under views-registry/ with a views/ blob mints and serves end-to-end, alongside the legacy Page", async () => {
+test("LOCATION-SURVIVAL + REJECTION PIN: a View mints from either folder generation, but a legacy Page-TYPED doc no longer mints", async () => {
   const { origin, cleanup } = await bootPagesServer();
   const mintKey = (key: string) =>
     fetch(`${origin}/__page/mint`, {
@@ -493,8 +498,14 @@ test("DUAL-READ: a type View doc under views-registry/ with a views/ blob mints 
       headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
       body: JSON.stringify({ key }),
     });
+  const mintRegistryId = (registryId: string) =>
+    fetch(`${origin}/__page/mint`, {
+      method: "POST",
+      headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
+      body: JSON.stringify({ registryId }),
+    });
   try {
-    // The View's entry mints — the nonce allowlist merges type=View with legacy type=Page.
+    // A current-location View mints and serves.
     const mint = await mintKey("views/board.html");
     assert.equal(mint.status, 200, "a registered View entry must mint");
     const { url } = (await mint.json()) as { url: string };
@@ -506,8 +517,17 @@ test("DUAL-READ: a type View doc under views-registry/ with a views/ blob mints 
     assert.match(page.headers.get("content-security-policy") ?? "", /connect-src 'none'/);
     assert.match(Buffer.from(await page.arrayBuffer()).toString("utf8"), /<title>board<\/title>/);
 
-    // The legacy Page on the SAME board still mints (mixed board: both kinds live).
-    assert.equal((await mintKey("pages/test.html")).status, 200, "the legacy Page must keep minting");
+    // Legacy LOCATIONS survive: the View-typed doc under pages-registry//pages/ still mints.
+    assert.equal((await mintKey("pages/test.html")).status, 200, "a View at the legacy locations must keep minting");
+
+    // REJECTION PIN (tasks/remove-legacy-page-bridge-support): the legacy Page-TYPED doc is no
+    // longer a registration — neither its entry key nor its registry id mints, even though the
+    // blob bytes exist. Restoring 'Page' to the accepted names turns this red.
+    assert.equal((await mintKey("pages/retired.html")).status, 403, "a Page-typed doc's entry must not mint");
+    const retired = await mintRegistryId("pages-registry/retired");
+    assert.equal(retired.status, 403, "a Page-typed registry id must not mint");
+    const envelope = (await retired.json()) as { error?: { message?: string } };
+    assert.match(String(envelope.error?.message), /migrate-legacy-view-names/, "the refusal points at the remedy");
 
     // Confinement is intact under the new prefix: views/ alone is not registration.
     assert.equal((await mintKey("views/not-registered.html")).status, 403);
@@ -525,7 +545,7 @@ test("ONE-PREDICATE: an entry declared ONLY by an invalid registration cannot mi
       body: JSON.stringify({ key }),
     });
   try {
-    // notes/loose (type Page, valid entry, INVALID registry id) declares pages/loose.html and its
+    // notes/loose (type View, valid entry, INVALID registry id) declares pages/loose.html and its
     // bytes exist — the launcher rejects that doc, so mint must too.
     assert.equal((await mintKey("pages/loose.html")).status, 403, "an invalid registry id must not put its entry on the allowlist");
     // pages-registry/spacey declares a NONEMPTY entry that fails the entry grammar; the key itself
@@ -554,37 +574,36 @@ test("ONE-PREDICATE: serve-time re-verification rides the same predicate — an 
     assert.equal((await fetch(`${origin}${url}`)).status, 200);
 
     // Remove the VALID registration and re-declare the same entry from an INVALID one (a type
-    // Page doc outside the registry namespace). The launcher rejects that doc; serve-time
+    // View doc outside the registry namespace). The launcher rejects that doc; serve-time
     // re-verification must too — the invalid registration cannot keep the entry alive.
     const bundle: Bundle = { root: dir };
     await deleteDoc(bundle, "pages-registry/test");
-    await writeDoc(bundle, { id: "notes/test-slot", frontmatter: { type: "Page", title: "Squatter", entry: "pages/test.html" }, body: "" });
+    await writeDoc(bundle, { id: "notes/test-slot", frontmatter: { type: "View", title: "Squatter", entry: "pages/test.html" }, body: "" });
     assert.equal((await fetch(`${origin}${url}`)).status, 403, "an invalid registration must not resurrect a revoked entry");
   } finally {
     await cleanup();
   }
 });
 
-test("ONE-PREDICATE: remote-mode mint filters rows through the registration predicate — invalid ids, malformed entries, and WRONG-TYPED rows from the wire cannot mint", async () => {
-  // A (misbehaving) remote returns poisoned rows inside its per-type listings: an invalid registry
-  // id, a row whose returned type does not match an accepted name, and a malformed entry. The
-  // allowlist must trust the PREDICATE, not the query params it sent.
+test("ONE-PREDICATE: remote-mode mint filters rows through the registration predicate — invalid ids, malformed entries, and WRONG-TYPED rows (legacy Page included) from the wire cannot mint", async () => {
+  // A (misbehaving) remote returns poisoned rows inside its type=View listing: an invalid
+  // registry id, rows whose returned type does not match the accepted name (including the
+  // RETIRED legacy 'Page' spelling), and a malformed entry. The allowlist must trust the
+  // PREDICATE, not the query params it sent.
   const server = createHttpServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const type = url.searchParams.get("type");
     const docs =
-      type === "Page"
+      type === "View"
         ? [
-            { id: "pages-registry/legacy", version: "v1", frontmatter: { type: "Page", entry: "pages/legacy.html" } },
-            { id: "notes/loose", version: "v1", frontmatter: { type: "Page", entry: "pages/loose2.html" } },
+            { id: "pages-registry/legacy", version: "v1", frontmatter: { type: "View", entry: "pages/legacy.html" } },
+            { id: "notes/loose", version: "v1", frontmatter: { type: "View", entry: "pages/loose2.html" } },
             { id: "pages-registry/wrongtype", version: "v1", frontmatter: { type: "Design", entry: "pages/wt.html" } },
+            { id: "pages-registry/retired", version: "v1", frontmatter: { type: "Page", entry: "pages/retired.html" } },
+            { id: "views-registry/board", version: "v1", frontmatter: { type: "View", entry: "views/board.html" } },
+            { id: "views-registry/spacey", version: "v1", frontmatter: { type: "View", entry: "views/has space.html" } },
           ]
-        : type === "View"
-          ? [
-              { id: "views-registry/board", version: "v1", frontmatter: { type: "View", entry: "views/board.html" } },
-              { id: "views-registry/spacey", version: "v1", frontmatter: { type: "View", entry: "views/has space.html" } },
-            ]
-          : [];
+        : [];
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ docs, next_cursor: null }));
   });
@@ -598,10 +617,11 @@ test("ONE-PREDICATE: remote-mode mint filters rows through the registration pred
           headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
           body: JSON.stringify({ key }),
         });
-      assert.equal((await mint("pages/legacy.html")).status, 200);
+      assert.equal((await mint("pages/legacy.html")).status, 200, "a View at the legacy locations must mint");
       assert.equal((await mint("views/board.html")).status, 200);
       assert.equal((await mint("pages/loose2.html")).status, 403, "an invalid registry id from the wire must not mint");
       assert.equal((await mint("pages/wt.html")).status, 403, "a wrong-typed row from the wire must not mint");
+      assert.equal((await mint("pages/retired.html")).status, 403, "a legacy Page-typed row from the wire must not mint");
       assert.equal((await mint("views/has space.html")).status, 403, "a malformed declared entry from the wire must not mint");
     } finally {
       await handle.close();
@@ -611,22 +631,19 @@ test("ONE-PREDICATE: remote-mode mint filters rows through the registration pred
   }
 });
 
-test("ONE-PREDICATE: a FAILED per-type registry query fails the WHOLE mint enumeration (strict consistency) — never a partial allowlist", async () => {
-  // type=Page succeeds, type=View 500s. Policy: the enumeration is all-or-nothing — mint must NOT
-  // proceed on the surviving type (it would act on a half-read registry while launcher discovery,
-  // whose Promise.all merge fails whole, reports an error). Expect an explicit 5xx envelope, not
-  // a 403 pretending to know the key is unregistered, and not a 200.
+test("ONE-PREDICATE: a FAILED registry query fails the WHOLE mint enumeration (strict consistency) — an explicit 5xx, never a 403 pretending to know", async () => {
+  // The type=View listing 500s. Policy: mint must NOT answer 403 as if it had read the registry
+  // and knew the key was unregistered, and must not answer 200. Expect an explicit 5xx envelope
+  // (launcher discovery reports the same failure whole).
   const server = createHttpServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    const type = url.searchParams.get("type");
-    if (type === "View") {
+    if (url.searchParams.get("type") === "View") {
       res.writeHead(500, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: { code: "RUNTIME", message: "boom" } }));
       return;
     }
-    const docs = type === "Page" ? [{ id: "pages-registry/legacy", version: "v1", frontmatter: { type: "Page", entry: "pages/legacy.html" } }] : [];
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ docs, next_cursor: null }));
+    res.end(JSON.stringify({ docs: [], next_cursor: null }));
   });
   const remoteOrigin = await listenOn(server);
   try {
@@ -637,7 +654,7 @@ test("ONE-PREDICATE: a FAILED per-type registry query fails the WHOLE mint enume
         headers: { cookie: `aslite_ui_session=${SECRET}`, "content-type": "application/json", "x-requested-with": "test" },
         body: JSON.stringify({ key: "pages/legacy.html" }),
       });
-      assert.equal(res.status, 502, "a half-read registry must fail the mint, not serve a partial allowlist");
+      assert.equal(res.status, 502, "a failed registry read must fail the mint, not serve a guess");
       const body = (await res.json()) as { error?: { code?: string } };
       assert.equal(body.error?.code, "RUNTIME");
     } finally {
@@ -722,7 +739,7 @@ test("XSS pin (route-level): the serve-time 502 error page is served as escaped 
       res.end(JSON.stringify({ error: { code: "RUNTIME", message: "boom" } }));
       return;
     }
-    const docs = type === "Page" ? [{ id: "pages-registry/legacy", version: "v1", frontmatter: { type: "Page", entry: "pages/legacy.html" } }] : [];
+    const docs = type === "View" ? [{ id: "pages-registry/legacy", version: "v1", frontmatter: { type: "View", entry: "pages/legacy.html" } }] : [];
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ docs, next_cursor: null }));
   });
@@ -754,7 +771,7 @@ test("XSS pin (route-level): the serve-time 502 error page is served as escaped 
   }
 });
 
-test("DUAL-READ: the watcher's snapshot covers views/ blobs — a views/ hot-reload is observable, pages/ unchanged", async () => {
+test("LOCATION-SURVIVAL: the watcher's snapshot covers views/ blobs — a views/ hot-reload is observable, legacy-located pages/ unchanged", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-views-watch-"));
   try {
     await initBundle(dir);
@@ -777,7 +794,7 @@ test("DUAL-READ: the watcher's snapshot covers views/ blobs — a views/ hot-rel
   }
 });
 
-test("DUAL-READ: the dir-mode watcher EMITS a hot-reload change for a rewritten views/ blob", async () => {
+test("LOCATION-SURVIVAL: the dir-mode watcher EMITS a hot-reload change for a rewritten views/ blob", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-ui-views-emit-"));
   try {
     await initBundle(dir);
@@ -939,8 +956,8 @@ test("edges endpoint: a remote-upstream OUTAGE surfaces as a non-2xx error, neve
   }
 });
 
-test("P2: remote mint paginates the Page registry to exhaustion — a page past the first wire page still opens", async () => {
-  // A fake remote whose type=Page listing spans TWO cursor pages; the target entry exists ONLY on
+test("P2: remote mint paginates the View registry to exhaustion — a page past the first wire page still opens", async () => {
+  // A fake remote whose type=View listing spans TWO cursor pages; the target entry exists ONLY on
   // the second. A first-page-only mint lookup (the old 500-doc ceiling) can never see it.
   const server = createHttpServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -948,11 +965,11 @@ test("P2: remote mint paginates the Page registry to exhaustion — a page past 
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(body));
     };
-    if (url.searchParams.get("type") === "Page") {
+    if (url.searchParams.get("type") === "View") {
       if (url.searchParams.get("cursor") === "page-2") {
-        json({ docs: [{ id: "pages-registry/deep", version: "v1", frontmatter: { type: "Page", entry: "pages/deep.html" } }], next_cursor: null });
+        json({ docs: [{ id: "pages-registry/deep", version: "v1", frontmatter: { type: "View", entry: "pages/deep.html" } }], next_cursor: null });
       } else {
-        json({ docs: [{ id: "pages-registry/first", version: "v1", frontmatter: { type: "Page", entry: "pages/first.html" } }], next_cursor: "page-2" });
+        json({ docs: [{ id: "pages-registry/first", version: "v1", frontmatter: { type: "View", entry: "pages/first.html" } }], next_cursor: "page-2" });
       }
       return;
     }
@@ -979,9 +996,10 @@ test("P2: remote mint paginates the Page registry to exhaustion — a page past 
   }
 });
 
-test("DUAL-READ: remote-mode mint queries type=View as well as legacy type=Page — a remote View entry mints", async () => {
-  // A fake remote with ONE doc per kind name: the mint allowlist must merge the two
-  // single-type wire queries (the wire's docs listing takes ONE type per request).
+test("REJECTION PIN: remote-mode mint queries ONLY type=View — the legacy type=Page listing is never requested, and its rows cannot mint", async () => {
+  // A fake remote that WOULD serve a legacy type=Page listing if asked. Post-removal the
+  // allowlist must never ask for it (PAGE_TYPE_NAMES is exactly ["View"]), so the legacy row is
+  // invisible and its entry unmintable.
   const queriedTypes = new Set<string>();
   const server = createHttpServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -1007,9 +1025,10 @@ test("DUAL-READ: remote-mode mint queries type=View as well as legacy type=Page 
           body: JSON.stringify({ key }),
         });
       assert.equal((await mint("views/board.html")).status, 200, "a remote View entry must mint");
-      assert.equal((await mint("pages/legacy.html")).status, 200, "a remote legacy Page entry must keep minting");
+      assert.equal((await mint("pages/legacy.html")).status, 403, "a legacy Page-typed row's entry must not mint");
       assert.equal((await mint("views/not-registered.html")).status, 403, "confinement is intact under the new prefix");
-      assert.ok(queriedTypes.has("Page") && queriedTypes.has("View"), `both kind names queried (got: ${[...queriedTypes].join(",")})`);
+      assert.ok(queriedTypes.has("View"), "the View listing was queried");
+      assert.ok(!queriedTypes.has("Page"), `the legacy Page listing must never be requested (got: ${[...queriedTypes].join(",")})`);
     } finally {
       await handle.close();
     }
@@ -1074,7 +1093,7 @@ test("P1: retargeting a page's registry doc revokes its OLD nonce — the old ke
     // coverage gap between "doc removed" and "doc's entry moved out from under a live nonce".
     const bundle: Bundle = { root: dir };
     await writeBlob(bundle, "pages/test2.html", Buffer.from("<!doctype html><title>t2</title><p>hi again</p>"), "text/html; charset=utf-8");
-    await writeDoc(bundle, { id: "pages-registry/test", frontmatter: { type: "Page", title: "Test", entry: "pages/test2.html" }, body: "" });
+    await writeDoc(bundle, { id: "pages-registry/test", frontmatter: { type: "View", title: "Test", entry: "pages/test2.html" }, body: "" });
 
     // The OLD nonce now 403s — its key is no longer any Page's entry — even though it's still
     // inside its TTL and the registry doc it was minted from still exists (just retargeted, not

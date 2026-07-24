@@ -307,7 +307,7 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
   }
   const registration = parseRegistration(registryRead.doc.id, registryRead.doc.frontmatter);
   if (!registration) {
-    return jsonError(403, "FORBIDDEN", `'${registryId}' is not a valid type:View (or legacy type:Page) registration`);
+    return jsonError(403, "FORBIDDEN", `'${registryId}' is not a valid type:View registration (the legacy type:Page name no longer registers — migrate legacy content with the repo's migrate-legacy-view-names script)`);
   }
   const blob = await readPageBlob(options, registration.entry);
   if (!blob) return jsonError(404, "NOT_FOUND", `no View bytes found for '${registration.entry}'`);

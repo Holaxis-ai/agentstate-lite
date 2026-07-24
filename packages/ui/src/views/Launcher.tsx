@@ -2,15 +2,15 @@
  * The home surface (designs/home-surface; historically "the launcher", tasks/ui-pages-spike —
  * the working name is provisional pending test users, see the design's Naming section). The `ui`
  * command's SOLE landing surface: bundle identity, a first-run orientation, ONE flat
- * recency-sorted grid of every `type: View` (or legacy `type: Page`) registry doc, and the live
+ * recency-sorted grid of every `type: View` registry doc, and the live
  * activity feed ({@link ActivityFeed}).
  *
  * The grid is FLAT by design: the former Dashboards/Interactive/Documents sections grouped by the
  * enforced `access` capability, which projected the security model into the information
  * architecture (and "Documents" collided with the product's core doc noun). Capability is now a
  * BADGE on each card — `live data` / `can edit` / `artifact` — still derived from the SAME
- * enforced field the bridge broker reads (core's `resolveDeclaredAccess`: `access`, legacy
- * `bridge`), so the card can never claim a page is one thing while the bridge treats it as
+ * enforced field the bridge broker reads (core's `resolveDeclaredAccess` over `access`; the
+ * legacy `bridge` spelling is no longer read), so the card can never claim a page is one thing while the bridge treats it as
  * another; it is just no longer the organizing principle.
  *
  * First-run orientation: shown until dismissed, tracked in localStorage keyed by the bundle root
@@ -329,6 +329,10 @@ export function Launcher() {
                   a view, a card or tile summarizing the view will appear on this page, along with a link to it.
                 </p>
                 <p>
+                  Expected views here that have disappeared? They may still use retired legacy naming, which is no
+                  longer read — see “learn more” below for how to restore them.
+                </p>
+                <p>
                   <button
                     type="button"
                     className="where-btn"
@@ -361,9 +365,9 @@ export function Launcher() {
                     </ul>
                     <p>
                       Worked examples — including the bridge client to copy — ship with the CLI under{" "}
-                      <code>examples/views/</code>. (Views used to be called pages; existing{" "}
-                      <code>type: Page</code> documents keep working during the migration window and
-                      can be renamed in place by the repo&apos;s migration script.)
+                      <code>examples/views/</code>. (Views used to be called pages; the legacy{" "}
+                      <code>type: Page</code> name is no longer read — <code>aslite status</code> lists
+                      leftover legacy-named documents, and the repo&apos;s migration script renames them in place.)
                     </p>
                   </div>
                 )}

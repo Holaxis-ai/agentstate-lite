@@ -91,7 +91,7 @@ Every example below assumes the `aslite` bin is on PATH. If it is not:
 - `aslite serve [--dir <path>] [--host <h>] [--port <p>]`
   — Boot the reference wire-protocol server over a local bundle (loopback, no auth)
 - `aslite ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
-  — Boot the local web UI over the bundle (same origin, loopback-only): READ the bundle's docs as rendered pages (frontmatter, cross-links you can follow, derived backlinks), LAUNCH its registered Views (type: View docs framed in sandboxed iframes with live updates; legacy Page docs keep working), and see a live activity feed, the bundle's sharing status, and your registered workspaces. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"
+  — Boot the local web UI over the bundle (same origin, loopback-only): READ the bundle's docs as rendered pages (frontmatter, cross-links you can follow, derived backlinks), LAUNCH its registered Views (type: View docs framed in sandboxed iframes with live updates; legacy Page-typed docs no longer register — see status's legacy_naming finding), and see a live activity feed, the bundle's sharing status, and your registered workspaces. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"
 - `aslite sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
   — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A bundle folder already committed on the code branch is the same flag's hard case: preview first, --yes executes, and the folder's removal from the code branch rides a prepared side-branch commit you push and open as a PR. A bundle committed with code and NO board branch anywhere is the IN-TREE mode (read-side): full sync refuses (sharing rides your normal commit/push), --pull-only fetches the branch's tracking upstream and reports incoming board docs ('git pull' delivers them), and --establish converts to a dedicated board branch. A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it
 
@@ -319,15 +319,15 @@ never hand-duplicated.
 ## Bundle views — ship a live UI as bundle content
 
 A **bundle view** is a self-contained HTML file living IN the bundle: promoted as a blob under
-`views/…`, declared by a `type: View` registry doc (`title`, `entry`, `access` — legacy
-`bridge` on existing docs is still honored at runtime during the migration window, but the
-shipped convention no longer declares it, so author with `access`), and rendered by
+`views/…`, declared by a `type: View` registry doc (`title`, `entry`, `access` — the legacy
+`bridge` spelling is no longer read: a doc declaring only `bridge` resolves to `access: none`,
+so author with `access`), and rendered by
 `aslite ui` inside a sandboxed, opaque-origin iframe (`sandbox="allow-scripts"`, no network
 access) — its only channel out is a narrow postMessage bridge to the trusted shell.
-(`Page` is the legacy name: existing `type: Page` docs under `pages-registry/`/`pages/`
-keep working during the migration window — legacy names are renamed in place by the repo's
-migration script, and removal of legacy support is a planned later phase. Author NEW views
-as `type: View`.)
+(`Page` is the legacy name and no longer registers: the launcher ignores `type: Page` docs.
+`aslite status` lists legacy-named docs under its legacy_naming finding, and the
+repo's migrate-legacy-view-names script renames legacy content in place; docs under the
+legacy `pages-registry/`/`pages/` folders stay recognized once typed `View`.)
 
 The bridge (protocol `v0`) has five read-only data request types: `hello` (bundle identity), `query`
 (frontmatter-filtered rows — the same head projection `list` uses), `read` (one doc), `edges`

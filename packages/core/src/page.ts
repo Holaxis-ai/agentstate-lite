@@ -1,11 +1,10 @@
 /**
- * Pure Page/View registry/entry path grammar shared by every producer and consumer.
+ * Pure View registry/entry path grammar shared by every producer and consumer.
  *
- * `View` is the current kind name; `Page` is its legacy spelling — both stay readable during
- * the migration window (the repo's `migrate-legacy-view-names` script renames legacy content in
- * place; removal of legacy support is a planned later phase). Registry ids are concept ids under
- * `views-registry/` (legacy `pages-registry/` — old locations stay recognized; relocation is a
- * separate open decision); entries are opaque blob keys under
+ * `View` is the ONLY accepted kind name: the legacy `Page` spelling is no longer read
+ * (the repo's `migrate-legacy-view-names` script renames legacy content in place). Registry ids
+ * are concept ids under `views-registry/` (legacy `pages-registry/` LOCATIONS stay recognized;
+ * relocation is a separate open decision); entries are opaque blob keys under
  * `views/` (legacy `pages/`). Both retain exact, case-preserving nested paths while
  * rejecting spellings that discovery or storage cannot safely round-trip. ONE segment
  * grammar, parameterized by prefix — never a parallel module per name.
@@ -13,9 +12,9 @@
 
 import { assertSafeBlobKey, assertSafeConceptId } from "./paths.js";
 
-/** Legacy registry-id prefix for `type: Page` docs. */
+/** Legacy registry-id prefix — the LOCATION stays recognized (only the legacy kind NAME is retired). */
 export const PAGE_REGISTRY_PREFIX = "pages-registry/";
-/** Legacy blob-key prefix for Page entries. */
+/** Legacy blob-key prefix for View entries — the LOCATION stays recognized. */
 export const PAGE_ENTRY_PREFIX = "pages/";
 /** Current registry-id prefix for `type: View` docs. */
 export const VIEW_REGISTRY_PREFIX = "views-registry/";
@@ -23,11 +22,12 @@ export const VIEW_REGISTRY_PREFIX = "views-registry/";
 export const VIEW_ENTRY_PREFIX = "views/";
 
 /**
- * The kind names the launcher/registry surfaces accept: `View` (current) and `Page`
- * (legacy). Exact, case-sensitive match — the same strictness the original
- * `type === "Page"` check applied.
+ * The kind names the launcher/registry surfaces accept: exactly `View`. Exact, case-sensitive
+ * match. The legacy `Page` name is deliberately NOT here — a Page-typed doc no longer registers
+ * anywhere (the CLI's `status` legacy_naming finding is the loud diagnostic for leftover stock,
+ * and `migrate-legacy-view-names` is the remedy).
  */
-export const PAGE_TYPE_NAMES = ["Page", "View"] as const;
+export const PAGE_TYPE_NAMES = ["View"] as const;
 export type PageTypeName = (typeof PAGE_TYPE_NAMES)[number];
 
 /**
@@ -43,27 +43,26 @@ export function resolveBridgeCapability(value: unknown): BridgeCapability {
 }
 
 /**
- * THE one reader of the registry-doc capability FIELD: `access` (current name), `bridge` (legacy
- * spelling, accepted during the migration window — the repo's `migrate-legacy-view-names` script
- * renames existing stock in place, and removal of legacy support is a planned later phase). A doc
- * that carries `access` at all is judged by it ALONE — a stale or
- * extra `bridge` value can never widen what `access` grants.
+ * THE one reader of the registry-doc capability FIELD: `access`, and ONLY `access`. The legacy
+ * `bridge` spelling is no longer read — a doc declaring only `bridge` resolves to `undefined`
+ * here and fails closed to `none` downstream (the `migrate-legacy-view-names` script renames
+ * existing stock in place; the CLI's `status` legacy_naming finding flags leftover `bridge`
+ * fields loudly).
  */
 export function declaredAccessValue(frontmatter: Record<string, unknown>): unknown {
-  // Both reads are own-property-gated: an INHERITED field (a crafted prototype, or a polluted
+  // Own-property-gated: an INHERITED field (a crafted prototype, or a polluted
   // Object.prototype) must never grant capability — only a field the doc itself declares counts.
-  if (Object.hasOwn(frontmatter, "access")) return frontmatter.access;
-  return Object.hasOwn(frontmatter, "bridge") ? frontmatter.bridge : undefined;
+  return Object.hasOwn(frontmatter, "access") ? frontmatter.access : undefined;
 }
 
-/** Resolve a registry doc's declared capability: {@link declaredAccessValue} through the fail-closed {@link resolveBridgeCapability} — unrecognized values in EITHER field yield `none`. */
+/** Resolve a registry doc's declared capability: {@link declaredAccessValue} through the fail-closed {@link resolveBridgeCapability} — an absent or unrecognized `access` yields `none`. */
 export function resolveDeclaredAccess(frontmatter: Record<string, unknown>): BridgeCapability {
   return resolveBridgeCapability(declaredAccessValue(frontmatter));
 }
 
-/** True iff `value` is exactly one of the accepted kind names (`Page` | `View`). */
+/** True iff `value` is exactly the accepted kind name (`View`). The legacy `Page` name is rejected. */
 export function isPageTypeName(value: unknown): value is PageTypeName {
-  return value === "Page" || value === "View";
+  return value === "View";
 }
 
 const PAGE_SEGMENT = /^[A-Za-z0-9._-]+$/;
@@ -108,7 +107,7 @@ function isEntryKeyUnder(entry: unknown, prefix: string): entry is string {
   }
 }
 
-/** Strict concept-id grammar for legacy Page registry documents (`pages-registry/…`). Nested ids and ordinary dots are valid. */
+/** Strict concept-id grammar for registry documents at the legacy LOCATION (`pages-registry/…`). Nested ids and ordinary dots are valid. */
 export function isPageRegistryId(id: unknown): id is string {
   return isRegistryIdUnder(id, PAGE_REGISTRY_PREFIX);
 }
@@ -123,7 +122,7 @@ export function isAnyRegistryId(id: unknown): id is string {
   return isPageRegistryId(id) || isViewRegistryId(id);
 }
 
-/** Strict blob-key grammar for legacy executable Page entries (`pages/…`). */
+/** Strict blob-key grammar for executable View entries at the legacy LOCATION (`pages/…`). */
 export function isPageEntryKey(entry: unknown): entry is string {
   return isEntryKeyUnder(entry, PAGE_ENTRY_PREFIX);
 }
@@ -138,18 +137,18 @@ export function isAnyEntryKey(entry: unknown): entry is string {
   return isPageEntryKey(entry) || isViewEntryKey(entry);
 }
 
-/** A COMPLETE, valid Page/View registration — the narrow triple every consumer needs. */
+/** A COMPLETE, valid View registration — the narrow triple every consumer needs. */
 export interface PageRegistration {
   /** The registry doc's concept id (under an accepted registry prefix). */
   id: string;
-  /** Which accepted kind name the doc declares — `View` (current) or `Page` (legacy). */
+  /** The accepted kind name the doc declares — exactly `View`. */
   type: PageTypeName;
   /** The declared executable entry blob key (under an accepted entry prefix). */
   entry: string;
 }
 
 /**
- * THE one registration predicate: a doc is a usable Page/View registration iff its id satisfies
+ * THE one registration predicate: a doc is a usable View registration iff its id satisfies
  * an accepted registry-id grammar ({@link isAnyRegistryId}), its `type` is exactly an accepted
  * kind name ({@link isPageTypeName}), AND its `entry` satisfies an accepted entry-key grammar
  * ({@link isAnyEntryKey}). Returns the validated triple, or `null`.

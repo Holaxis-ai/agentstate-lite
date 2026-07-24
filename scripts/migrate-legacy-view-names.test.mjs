@@ -478,6 +478,74 @@ test("an occupant on conventions/view blocks creation AND preserves the Page con
   }
 });
 
+// ── REQUIRED POST-REMOVAL PIN (tasks/remove-legacy-page-bridge-support, recorded by Brian) ─────
+// Phase 3 removed the runtime's acceptance of the legacy names; the migration script is now the
+// ONLY road from legacy stock to a working bundle, so it MUST keep working against the removed
+// world. This test runs the real CLI entrypoint (a subprocess, not an in-process import) against
+// a full legacy fixture — Page-typed registration doc + own-bridge field + the OLD
+// bridge-required shipped convention — and proves the migrated output is what the CURRENT
+// runtime accepts (core's own post-removal predicates). The script imports only generic engine
+// primitives and its own literals; this pin keeps it that way.
+test("POST-REMOVAL PIN: the CLI-invoked migration script fully migrates a legacy fixture, and the migrated docs satisfy the current runtime's predicates", async () => {
+  const { initBundle, writeDoc, readDoc, query } = await core();
+  const { loadPriorShippedViewConventions, loadCanonicalViewConvention } = await script();
+  // Core's CURRENT (post-removal) recognition — the same predicates the ui launcher consumes.
+  const { parseRegistration, resolveDeclaredAccess } = await import(
+    path.join(repoRoot, "packages", "core", "dist", "page.js")
+  );
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-post-removal-"));
+  try {
+    const bundle = await initBundle(dir);
+    const T = "2026-07-01T00:00:00.000Z";
+    await writeDoc(bundle, {
+      id: "pages-registry/dash",
+      frontmatter: { type: "Page", title: "Dash", entry: "pages/dash.html", bridge: "bundle-read", timestamp: T },
+      body: "A Page-typed registration with the legacy capability spelling.\n",
+    });
+    // The OLD bridge-required shipped convention (prior form #1) — swaps to the canonical one.
+    const bridgeRequired = loadPriorShippedViewConventions()[0];
+    assert.deepEqual(
+      bridgeRequired.frontmatter.fields.required,
+      ["title", "entry", "bridge"],
+      "prior form #1 is the bridge-required convention this pin needs",
+    );
+    await writeDoc(bundle, { id: "conventions/view", frontmatter: bridgeRequired.frontmatter, body: bridgeRequired.body });
+
+    // Pre-migration, the CURRENT runtime rejects/downgrades the stock (this is the removal).
+    const before = await readDoc(bundle, "pages-registry/dash");
+    assert.equal(parseRegistration(before.id, before.frontmatter), null, "a Page-typed doc no longer registers");
+    assert.equal(resolveDeclaredAccess(before.frontmatter), "none", "a bridge-only doc resolves none");
+
+    // Run the REAL CLI entrypoint, exactly as the status finding tells the user to.
+    const { stdout } = await execFileAsync(process.execPath, [SCRIPT, "--dir", dir], {
+      cwd: repoRoot,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    const receipt = JSON.parse(stdout).bundles[0];
+    assert.equal(receipt.types_flipped, 1);
+    assert.equal(receipt.bridge_renamed, 1);
+    assert.equal(receipt.convention_swapped, "swapped", "the old bridge-required convention swapped");
+
+    // Post-migration, the SAME docs satisfy the current runtime: type flipped, field renamed,
+    // convention swapped to the canonical (access-required) form — in place, ids unmoved.
+    const after = await readDoc(bundle, "pages-registry/dash");
+    assert.equal(after.frontmatter.type, "View");
+    assert.equal(after.frontmatter.access, "bundle-read");
+    assert.equal(Object.hasOwn(after.frontmatter, "bridge"), false);
+    const registration = parseRegistration(after.id, after.frontmatter);
+    assert.ok(registration, "the migrated doc registers under the post-removal grammar");
+    assert.equal(registration.entry, "pages/dash.html", "the legacy LOCATION is kept and accepted");
+    assert.equal(resolveDeclaredAccess(after.frontmatter), "bundle-read", "the renamed field grants what bridge no longer can");
+    const canonical = loadCanonicalViewConvention();
+    const swapped = await readDoc(bundle, "conventions/view");
+    assert.deepEqual(swapped.frontmatter, canonical.frontmatter);
+    assert.deepEqual(canonical.frontmatter.fields.required, ["title", "entry", "access"]);
+    assert.equal((await query(bundle, { type: "Page" })).length, 0, "zero Page-typed stock remains");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("CLI surface: --dry-run over --dir emits the receipt with the normalization note; no --dir exits 2", async () => {
   const { NORMALIZATION_NOTE } = await script();
   const { dir } = await makeFixtureBundle();

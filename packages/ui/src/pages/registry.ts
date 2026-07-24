@@ -1,4 +1,4 @@
-/** Browser-side parsing for a usable registered bundle Page/View. */
+/** Browser-side parsing for a usable registered bundle View. */
 
 import {
   parseRegistration,
@@ -29,7 +29,7 @@ export interface RegisteredPage {
   id: string;
   entry: string;
   bridge: BridgeCapability;
-  /** Which accepted kind name matched — `View` (current) or `Page` (legacy). */
+  /** The accepted kind name that matched — exactly `View` (the legacy `Page` name no longer registers). */
   type: PageTypeName;
   title: string;
   description?: string;
@@ -41,7 +41,7 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
-/** Parse a usable registered Page/View without exposing document contents or executable bytes. Validity is decided ENTIRELY by core's {@link parseRegistration} — the one predicate the server's mint/serve allowlist shares — so this surface can never accept a doc the server rejects (or vice versa). */
+/** Parse a usable registered View without exposing document contents or executable bytes. Validity is decided ENTIRELY by core's {@link parseRegistration} — the one predicate the server's mint/serve allowlist shares — so this surface can never accept a doc the server rejects (or vice versa). */
 export function parseRegisteredPage(
   id: unknown,
   frontmatter: Record<string, unknown>,

@@ -819,8 +819,11 @@ test("status: the terminal exclusion keys off the DECLARED value set, not a hard
 // an externally-authored bundle with no declared kinds must get the exact same signals.
 //   - `views-registry/dashboard`    — type View, entry blob WRITTEN -> resolvable, never a row.
 //   - `views-registry/ghost`        — type View, entry names a never-promoted blob -> dangling.
-//   - `pages-registry/legacy-ghost` — legacy type Page under the legacy prefixes, entry blob
-//                                     missing -> dangling (legacy registrations are covered too).
+//   - `pages-registry/legacy-ghost` — type View at the LEGACY locations, entry blob missing ->
+//                                     dangling (legacy-location registrations are covered too).
+//   - `pages-registry/retired`      — legacy TYPE Page: no longer a registration at all — it
+//                                     must appear in NEITHER View lint (legacy_naming is its
+//                                     designated finding, pinned below).
 //   - `views-registry/bad-entry`    — type View, entry under a non-entry prefix: fails the entry
 //                                     grammar -> invalid registration (leg 'entry').
 //   - `notes/view-shaped`           — type View but NOT under a registry prefix: fails the id
@@ -843,8 +846,13 @@ async function makeViewEntryFixtureBundle(): Promise<{ dir: string; cleanup: () 
   });
   await writeDoc(bundle, {
     id: "pages-registry/legacy-ghost",
-    frontmatter: { type: "Page", title: "Legacy Ghost", entry: "pages/legacy-ghost.html", timestamp: now },
-    body: "A legacy-typed registration under the legacy prefixes, also dangling.",
+    frontmatter: { type: "View", title: "Legacy Ghost", entry: "pages/legacy-ghost.html", timestamp: now },
+    body: "A View registration at the legacy locations, also dangling.",
+  });
+  await writeDoc(bundle, {
+    id: "pages-registry/retired",
+    frontmatter: { type: "Page", title: "Retired", entry: "pages/retired.html", timestamp: now },
+    body: "A legacy Page-TYPED doc — no longer recognized as a registration at all.",
   });
   await writeDoc(bundle, {
     id: "views-registry/bad-entry",
@@ -860,7 +868,7 @@ async function makeViewEntryFixtureBundle(): Promise<{ dir: string; cleanup: () 
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
-test("status: dangling_view_entries reports recognized View/Page registrations whose entry blob does not exist — by registry id + entry key, conventions-free", async () => {
+test("status: dangling_view_entries reports recognized View registrations (legacy LOCATIONS included) whose entry blob does not exist; a Page-TYPED doc lands in legacy_naming instead", async () => {
   const { dir, cleanup } = await makeViewEntryFixtureBundle();
   try {
     const result = await runJson(["--dir", dir]);
@@ -874,8 +882,9 @@ test("status: dangling_view_entries reports recognized View/Page registrations w
     };
     assert.equal(dangling.shown, 2);
     assert.equal(dangling.total, 2);
-    // Exactly the two dangling registrations (current AND legacy), each naming id -> entry key;
-    // the resolvable registration and the two INVALID View-typed docs never appear here.
+    // Exactly the two dangling registrations (current AND legacy-located), each naming
+    // id -> entry key; the resolvable registration, the two INVALID View-typed docs, and the
+    // retired Page-typed doc never appear here.
     assert.deepEqual(dangling.rows, [
       { id: "pages-registry/legacy-ghost", entry: "pages/legacy-ghost.html" },
       { id: "views-registry/ghost", entry: "views/ghost.html" },
@@ -891,6 +900,14 @@ test("status: dangling_view_entries reports recognized View/Page registrations w
       { id: "notes/view-shaped", problem: "id" },
       { id: "views-registry/bad-entry", problem: "entry" },
     ]);
+    // RED-PROBE ANCHOR (tasks/remove-legacy-page-bridge-support): the Page-typed doc fell OUT of
+    // View-surface recognition — its loud diagnostic is the legacy_naming FINDING, which names
+    // it and points at the migration script. Removal must never equal silence.
+    const legacy = result.legacy_naming as Record<string, unknown>;
+    assert.ok(legacy, "a bundle with Page-typed stock must carry the legacy_naming finding");
+    assert.equal(legacy.page_typed_docs, 1);
+    assert.deepEqual((legacy.page_typed_rows as { rows: { id: string }[] }).rows, [{ id: "pages-registry/retired" }]);
+    assert.match(String(legacy.help), /migrate-legacy-view-names/);
   } finally {
     await cleanup();
   }
@@ -939,8 +956,8 @@ test("status: invalid_view_registrations catches docs the STRICT authoring path 
   const dir = await tempDir();
   try {
     const bundle = await initBundle(dir);
-    // The canonical View convention (references/views/conventions/view.md): required
-    // title/entry/bridge, bridge enum, auto-prefix path views-registry/. Kind validation checks
+    // The canonical View convention (examples/views/conventions/view.md): required
+    // title/entry/access, access enum, auto-prefix path views-registry/. Kind validation checks
     // field PRESENCE and enums — not the registration grammar — which is exactly the gap.
     await writeDoc(bundle, {
       id: "conventions/view",
@@ -950,9 +967,9 @@ test("status: invalid_view_registrations catches docs the STRICT authoring path 
         governs: "View",
         path: "views-registry/",
         fields: {
-          required: ["title", "entry", "bridge"],
+          required: ["title", "entry", "access"],
           optional: ["description"],
-          values: { bridge: ["none", "bundle-read", "bundle-propose"] },
+          values: { access: ["none", "bundle-read", "bundle-propose"] },
           terminal: {},
         },
         timestamp: new Date().toISOString(),
@@ -962,13 +979,13 @@ test("status: invalid_view_registrations catches docs the STRICT authoring path 
     const silent = { stdout: () => {} };
     // Reproduction (a): a wrong-prefix entry key — strict `new` accepts it without a warning.
     await newCommand(
-      ["View", "wrong-entry", "--title", "Wrong Entry", "--entry", "other/missing.html", "--bridge", "none", "--dir", dir],
+      ["View", "wrong-entry", "--title", "Wrong Entry", "--entry", "other/missing.html", "--access", "none", "--dir", dir],
       silent,
     );
     // Reproduction (b): --no-prefix puts the id OUTSIDE the registry prefix while the entry blob
     // genuinely exists — unservable despite a perfectly real blob.
     await newCommand(
-      ["View", "notes/offpath", "--no-prefix", "--title", "Offpath", "--entry", "views/offpath.html", "--bridge", "none", "--dir", dir],
+      ["View", "notes/offpath", "--no-prefix", "--title", "Offpath", "--entry", "views/offpath.html", "--access", "none", "--dir", dir],
       silent,
     );
     await writeBlob(bundle, "views/offpath.html", new TextEncoder().encode("<!doctype html>"), "text/html");

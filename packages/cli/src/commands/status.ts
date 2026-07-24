@@ -44,7 +44,7 @@ import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { collectLinkDeclarations } from "../link-types.js";
-import { isLegacyPageDoc, isLegacyRegistryDocId, LEGACY_PAGE_BLOB_PREFIX } from "../legacy-page.js";
+import { hasLegacyBridgeField, isLegacyPageDoc, isLegacyRegistryDocId, LEGACY_PAGE_BLOB_PREFIX } from "../legacy-page.js";
 import { cliInvocation } from "../invocation.js";
 
 export const STATUS_USAGE = `agentstate-lite status — read-only whole-bundle health report (bundle lint)
@@ -61,7 +61,8 @@ concept docs), a freshness sweep over kinds that declare a horizon (a governed d
 'no_timestamp'), and two graph lints over any declared 'links'/'expects_inbound' vocabulary (see
 'kinds --help'): edges violating a declared typed-edge type ('link_type_violations') and kind
 instances missing a declared inbound expectation ('missing_expected_links'), plus two lints over
-the bundle's View surface, legacy Page included: registered View docs whose entry blob is missing
+the bundle's View surface (legacy locations included; the legacy 'Page' kind name no longer
+registers — see 'legacy_naming'): registered View docs whose entry blob is missing
 ('dangling_view_entries') and View-typed docs failing the registration grammar
 ('invalid_view_registrations'). Duplicate-id detection is not offered: an id IS its storage path,
 so ids are structurally unique.
@@ -112,26 +113,29 @@ Category semantics (one line each):
                       terminal declarations existed). Non-terminal instances sort first: by the
                       declared terminal set when the kind has one, else by the legacy hardcoded
                       status === "done" fallback.
-  dangling_view_entries  A registered View doc — legacy Page included, via the same recognition
-                      the 'ui' launcher uses, no convention needed — whose 'entry' names a blob
-                      that does not exist: a never-promoted, typo'd, or since-deleted key mints a
-                      view that serves nothing. Rows name registry id -> missing entry key.
-                      Present (even at 0) whenever the bundle carries any View-typed doc; absent
-                      otherwise.
-  invalid_view_registrations  A doc declaring the View kind name (or its legacy spelling) that
-                      FAILS the registration grammar, so the 'ui' launcher cannot mint or serve
-                      it at all: its id is outside a registry prefix ('views-registry/', or the
-                      legacy one) and/or its 'entry' is not a valid entry key ('views/…', or the
-                      legacy prefix). Rows name the doc id and the failing leg(s) — 'id',
+  dangling_view_entries  A registered View doc — legacy LOCATIONS included, via the same
+                      recognition the 'ui' launcher uses, no convention needed — whose 'entry'
+                      names a blob that does not exist: a never-promoted, typo'd, or
+                      since-deleted key mints a view that serves nothing. Rows name registry
+                      id -> missing entry key. Present (even at 0) whenever the bundle carries
+                      any View-typed doc; absent otherwise.
+  invalid_view_registrations  A doc declaring the View kind name that FAILS the registration
+                      grammar, so the 'ui' launcher cannot mint or serve it at all: its id is
+                      outside a registry prefix ('views-registry/', or the legacy location)
+                      and/or its 'entry' is not a valid entry key ('views/…', or the legacy
+                      prefix). Rows name the doc id and the failing leg(s) — 'id',
                       'entry', or 'id+entry'. Fix by moving the doc under a registry prefix /
                       pointing 'entry' at a real 'views/…' key. Same presence rule as
                       'dangling_view_entries'.
-  legacy_naming      Informational, never a warning: docs typed 'Page' (the legacy name for the
-                      'View' kind) plus items still under the legacy pages-registry//pages/ id
-                      prefixes — supported during the migration window (the repo's
-                      migrate-legacy-view-names script renames legacy content in place; old
-                      locations stay recognized; removal of legacy support is a planned later
-                      phase). Omitted when the bundle carries none.
+  legacy_naming      FINDING: the legacy View names are no longer accepted by the runtime — a
+                      doc typed 'Page' (the legacy name for the 'View' kind) does not register
+                      at all, and a legacy 'bridge:' capability field grants nothing (the doc
+                      resolves to access: none). Counts + rows name every legacy Page-typed doc
+                      and every View-kind doc carrying an own legacy 'bridge' field; run the
+                      repo's scripts/migrate-legacy-view-names.mjs to rename them in place. Also
+                      reports (informational) items under the legacy pages-registry//pages/ id
+                      prefixes — those LOCATIONS remain recognized; relocation is a separate
+                      open decision. Omitted when the bundle carries none of the above.
 
 This is a whole-bundle read (one registry load + one query + two prefix-scoped blob listings,
 batched) — acceptable for an explicitly batch-analysis command; over --remote it is one
@@ -390,13 +394,18 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   });
   const missingExpectedRows = missingExpectedRanked.map((e) => e.row);
 
-  // legacy_naming (legacy-page.ts, plans/rename-page-kind-to-view Option C+): docs still typed
-  // with the LEGACY 'Page' kind name, plus (informational, separately labeled) items still under
-  // the legacy pages-registry//pages/ id prefixes. Old names/prefixes are fully legal and nothing
-  // ever migrates — these are reports, not findings. This section is ALSO the sizing meter for a
-  // future full deprecation of the legacy Page name: its counts ARE that decision's cost estimate.
+  // legacy_naming (legacy-page.ts; removal phase tasks/remove-legacy-page-bridge-support): the
+  // legacy names are NO LONGER accepted, so this is a real FINDING now, not a report — a
+  // Page-typed doc silently fails to register and a legacy own-`bridge` field silently grants
+  // nothing, and NOTHING else diagnoses either (post-removal they fall out of the
+  // isPageTypeName-based View-surface lints above by design; legacy-page.ts's frozen literals
+  // exist precisely to detect what the runtime no longer accepts). The legacy-prefix rows stay
+  // informational: LOCATIONS remain recognized.
   const pageTypedRows: Record<string, unknown>[] = docs
     .filter((doc) => isLegacyPageDoc(doc.frontmatter))
+    .map((doc) => ({ id: doc.id }));
+  const bridgeFieldRows: Record<string, unknown>[] = docs
+    .filter((doc) => hasLegacyBridgeField(doc.frontmatter))
     .map((doc) => ({ id: doc.id }));
   // STORE-AWARE: docs count only under the legacy registry prefix; blob keys only under the
   // legacy entry prefix (already prefix-scoped at the `listBlobs` call above) — a concept doc
@@ -410,9 +419,10 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   ];
 
   // The View-surface lints (tasks/view-entry-dangling-lint), over every View-typed doc
-  // (legacy Page included) — recognized via core's `isPageTypeName`/`parseRegistration`, the
-  // SAME predicates the ui launcher/loopback server consume, so recognition is convention-independent
-  // by construction. dangling_view_entries: a VALID registration whose declared `entry` names a
+  // (legacy LOCATIONS included; a legacy Page-TYPED doc is no longer recognized here — it lands
+  // in legacy_naming below instead) — recognized via core's `isPageTypeName`/`parseRegistration`,
+  // the SAME predicates the ui launcher/loopback server consume, so recognition is
+  // convention-independent by construction. dangling_view_entries: a VALID registration whose declared `entry` names a
   // blob that does not exist (a never-promoted, typo'd, or since-deleted key mints a view that
   // serves nothing); existence derives from the two prefix-scoped listings batched above, never a
   // per-registration existence probe. Nothing on the write path checks either lint (deliberately
@@ -518,20 +528,34 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
   if (invalidViewRegistrations.total > 0) out.invalid_view_registrations_rows = invalidViewRegistrations;
   if (registryLint.total > 0) out.registry_lint = registryLint;
   // Omitted entirely on a legacy-free bundle (the `terminal_skipped` present-only-when-relevant
-  // idiom) — a clean report gains nothing.
+  // idiom) — a clean report stays byte-identical to before this finding existed.
   const pageTyped = cap(pageTypedRows, limit);
+  const bridgeField = cap(bridgeFieldRows, limit);
   const legacyPrefix = cap(legacyPrefixRows, limit);
-  if (pageTyped.total > 0 || legacyPrefix.total > 0) {
+  if (pageTyped.total > 0 || bridgeField.total > 0 || legacyPrefix.total > 0) {
+    // The loud FINDING note (+ the migration-script help) fires only for retired NAMES; a
+    // migrated bundle that simply kept its legacy LOCATIONS (fully supported) gets the milder
+    // informational note instead of a call to action it cannot act on.
+    const namesPresent = pageTyped.total > 0 || bridgeField.total > 0;
     const legacy: Record<string, unknown> = {
-      note:
-        "informational — 'Page' is the legacy name for the 'View' kind; legacy-typed docs and " +
-        "old-prefix ids stay supported during the migration window (the migrate-legacy-view-names " +
-        "script renames legacy content in place; old locations stay recognized). These counts size " +
-        "the planned removal of legacy support.",
+      note: namesPresent
+        ? "FINDING — the legacy View names are no longer accepted: a 'type: Page' doc does not " +
+          "register (the ui launcher ignores it) and a legacy 'bridge:' field grants nothing " +
+          "(access resolves to none). Legacy pages-registry//pages/ LOCATIONS remain recognized."
+        : "informational — items under the legacy pages-registry//pages/ id prefixes; these " +
+          "LOCATIONS remain fully recognized (relocation is a separate open decision).",
       page_typed_docs: pageTyped.total,
+      bridge_field_docs: bridgeField.total,
       legacy_prefix_items: legacyPrefix.total,
     };
+    if (namesPresent) {
+      legacy.help =
+        "run `node scripts/migrate-legacy-view-names.mjs --dir <bundle-root>` (in the " +
+        "agentstate-lite repo) to rename the listed docs in place — types flip to View, " +
+        "bridge renames to access, and the shipped View convention is refreshed";
+    }
     if (pageTyped.total > 0) legacy.page_typed_rows = pageTyped;
+    if (bridgeField.total > 0) legacy.bridge_field_rows = bridgeField;
     if (legacyPrefix.total > 0) legacy.legacy_prefix_rows = legacyPrefix;
     out.legacy_naming = legacy;
   }
