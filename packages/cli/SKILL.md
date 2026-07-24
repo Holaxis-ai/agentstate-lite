@@ -319,7 +319,8 @@ never hand-duplicated.
 ## Bundle views — ship a live UI as bundle content
 
 A **bundle view** is a self-contained HTML file living IN the bundle: promoted as a blob under
-`views/…`, declared by a `type: View` registry doc (`title`, `entry`), and rendered by
+`views/…`, declared by a `type: View` registry doc (`title`, `entry`, `access` — legacy
+`bridge` accepted during the migration window), and rendered by
 `aslite ui` inside a sandboxed, opaque-origin iframe (`sandbox="allow-scripts"`, no network
 access) — its only channel out is a narrow postMessage bridge to the trusted shell.
 (`Page` is the accepted legacy name: existing `type: Page` docs under `pages-registry/`/`pages/`
@@ -344,7 +345,7 @@ Author a view in four steps:
 # 1. write a self-contained views/my-view.html (inline CSS/JS, no external hosts),
 #    embedding the bridge client copied from the shipped contract below
 aslite promote my-view.html --doc-key views/my-view.html                        # 2. promote the HTML blob
-aslite promote my-view-registry.md --doc-key views-registry/my-view.md           # 3. promote its type: View doc (title, entry)
+aslite promote my-view-registry.md --doc-key views-registry/my-view.md           # 3. promote its type: View doc (title, entry, access)
 aslite promote "$REFS/views/conventions/view.md" --doc-key conventions/view.md   # 4. declare the View convention (once per bundle, ready-made)
 ```
 

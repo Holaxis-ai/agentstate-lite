@@ -27,6 +27,14 @@ describe("pageFromFrontmatter", () => {
     }
   });
 
+  it("reads the current 'access' field, which WINS over a coexisting legacy 'bridge'", () => {
+    const fm: Frontmatter = { type: "View", title: "X", entry: "views/x.html", access: "bundle-read" };
+    expect(pageFromFrontmatter("views-registry/x", "v1", fm)?.bridge).toBe("bundle-read");
+    expect(pageFromFrontmatter("views-registry/x", "v1", { ...fm, access: "none", bridge: "bundle-propose" })?.bridge).toBe("none");
+    // A present-but-unrecognized access fail-closes even when the legacy field is permissive.
+    expect(pageFromFrontmatter("views-registry/x", "v1", { ...fm, access: "bundle-write", bridge: "bundle-read" })?.bridge).toBe("none");
+  });
+
   it("still returns null when 'entry' is missing, regardless of 'bridge'", () => {
     const fm: Frontmatter = { type: "Page", title: "No entry", bridge: "bundle-read" };
     expect(pageFromFrontmatter("pages-registry/bad", "v1", fm)).toBeNull();

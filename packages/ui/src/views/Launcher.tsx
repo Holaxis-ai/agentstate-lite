@@ -6,12 +6,12 @@
  * activity feed ({@link ActivityFeed}).
  *
  * The grid is FLAT by design: the former Dashboards/Interactive/Documents sections grouped by the
- * enforced `bridge` capability, which projected the security model into the information
+ * enforced `access` capability, which projected the security model into the information
  * architecture (and "Documents" collided with the product's core doc noun). Capability is now a
  * BADGE on each card — `live data` / `can edit` / `artifact` — still derived from the SAME
- * enforced field the bridge broker reads (`../pages/bridge.js`'s `resolveBridgeCapability`), so
- * the card can never claim a page is one thing while the bridge treats it as another; it is just
- * no longer the organizing principle.
+ * enforced field the bridge broker reads (core's `resolveDeclaredAccess`: `access`, legacy
+ * `bridge`), so the card can never claim a page is one thing while the bridge treats it as
+ * another; it is just no longer the organizing principle.
  *
  * First-run orientation: shown until dismissed, tracked in localStorage keyed by the bundle root
  * (accepted caveat: a stable-port fallback to an ephemeral port changes the origin, which may
@@ -32,7 +32,7 @@ import { ActivityFeed } from "./ActivityFeed.js";
 import { DocumentBrowser } from "./DocumentBrowser.js";
 import { formatWhen } from "./format.js";
 
-/** Capability badge per enforced `bridge` value — role-based wording (the design's content model). */
+/** Capability badge per enforced `access` value — role-based wording (the design's content model). */
 export const BRIDGE_BADGES: Record<BridgeCapability, { label: string; className: string }> = {
   "bundle-read": { label: "live data", className: "badge badge-read" },
   "bundle-propose": { label: "can edit", className: "badge badge-propose" },

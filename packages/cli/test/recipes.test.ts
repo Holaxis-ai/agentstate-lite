@@ -820,6 +820,30 @@ test("DUAL-READ: a recipe carrying a type View pair under views-registry//views/
   }
 });
 
+test("View registry access field: 'access:' is read under its own name, and a present-but-invalid access REJECTS even when a legacy 'bridge:' is valid — access wins, bridge never widens", () => {
+  const recipeFiles = (registryFrontmatter: string): RecipeFile[] => [
+    {
+      path: "recipe.md",
+      bytes:
+        '---\ntype: Recipe\nid: view-recipe\ntitle: View recipe\nversion: "1"\nsummary: A View-kind package.\n' +
+        "content_policy: definitions-only\npages:\n  - registry: views-registry/board.md\n    entry: views/board.html\n---\n",
+    },
+    { path: "conventions/term.md", bytes: "---\ntype: Convention\ngoverns: Term\n---\n# Term\n" },
+    { path: "views-registry/board.md", bytes: `---\ntype: View\ntitle: Board\nentry: views/board.html\n${registryFrontmatter}---\nA board view.\n` },
+    { path: "views/board.html", bytes: "<!doctype html><title>Board</title>" },
+  ];
+
+  const current = parseRecipeFiles(recipeFiles("access: bundle-read\n"), "test:view-access");
+  assert.equal(current.ok, true, current.ok ? "" : current.error.message);
+
+  const invalidAccess = parseRecipeFiles(recipeFiles("access: bundle-write\nbridge: bundle-read\n"), "test:view-access-invalid");
+  assert.equal(invalidAccess.ok, false);
+  if (!invalidAccess.ok) {
+    assert.equal(invalidAccess.error.code, "RECIPE_MALFORMED");
+    assert.match(invalidAccess.error.message, /needs access:/);
+  }
+});
+
 // ── Row 3: idempotency (external arm) ──────────────────────────────────────────────────────────
 
 test("recipe add <path>: idempotent — second add of the SAME external recipe is changed:false, bytes unchanged", async () => {
@@ -868,7 +892,9 @@ test("portable Review Workflow: clean-room install carries Kinds, a View, and it
     const pageKind = registry.kinds.get("View");
     assert.ok(pageKind);
     assert.equal(pageKind!.path, "views-registry/");
-    assert.deepEqual(pageKind!.fields.required, ["title", "entry", "bridge"]);
+    assert.deepEqual(pageKind!.fields.required, ["title", "entry", "access"]);
+    assert.deepEqual(pageKind!.fields.optional, ["description", "bridge"]);
+    assert.deepEqual(pageKind!.fields.values.access, ["none", "bundle-read", "bundle-propose"]);
     assert.deepEqual(pageKind!.fields.values.bridge, ["none", "bundle-read", "bundle-propose"]);
 
     const pageDefinitions = await runJson(list, ["--type", "View", "--dir", dir]);

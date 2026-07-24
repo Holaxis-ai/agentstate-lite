@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  declaredAccessValue,
   isAnyEntryKey,
   isAnyRegistryId,
   isPageEntryKey,
@@ -13,6 +14,8 @@ import {
   PAGE_REGISTRY_PREFIX,
   PAGE_TYPE_NAMES,
   parseRegistration,
+  resolveBridgeCapability,
+  resolveDeclaredAccess,
   VIEW_ENTRY_PREFIX,
   VIEW_REGISTRY_PREFIX,
 } from "../src/page.js";
@@ -226,4 +229,66 @@ test("parseRegistration: rejects any type outside the exact accepted names, even
   for (const type of ["Design", "page", "View ", " Page", "", undefined, null, 1]) {
     assert.equal(parseRegistration("pages-registry/about", { type, entry: "pages/about.html" }), null, JSON.stringify(type));
   }
+});
+
+test("resolveDeclaredAccess: a legacy bridge-only doc resolves IDENTICALLY to the enum resolver — byte-for-byte the pre-rename behavior", () => {
+  for (const value of ["none", "bundle-read", "bundle-propose"]) {
+    assert.equal(resolveDeclaredAccess({ bridge: value }), resolveBridgeCapability(value));
+    assert.equal(resolveDeclaredAccess({ bridge: value }), value);
+    assert.equal(declaredAccessValue({ bridge: value }), value);
+  }
+});
+
+test("resolveDeclaredAccess: the current field is read under its own name", () => {
+  for (const value of ["none", "bundle-read", "bundle-propose"]) {
+    assert.equal(resolveDeclaredAccess({ access: value }), value);
+    assert.equal(declaredAccessValue({ access: value }), value);
+  }
+});
+
+test("resolveDeclaredAccess: a doc carrying BOTH fields is decided by access ALONE — bridge can never widen the grant", () => {
+  assert.equal(resolveDeclaredAccess({ access: "bundle-read", bridge: "bundle-propose" }), "bundle-read");
+  assert.equal(resolveDeclaredAccess({ access: "bundle-propose", bridge: "none" }), "bundle-propose");
+  assert.equal(resolveDeclaredAccess({ access: "none", bridge: "bundle-read" }), "none");
+  // A PRESENT-but-unrecognized access never falls through to a permissive bridge value.
+  assert.equal(resolveDeclaredAccess({ access: "bundle-write", bridge: "bundle-read" }), "none");
+  assert.equal(resolveDeclaredAccess({ access: null, bridge: "bundle-propose" }), "none");
+  assert.equal(resolveDeclaredAccess({ access: undefined, bridge: "bundle-read" }), "none");
+});
+
+test("resolveDeclaredAccess: an INHERITED field never grants capability — only own properties count", () => {
+  assert.equal(resolveDeclaredAccess(Object.create({ bridge: "bundle-propose" }) as Record<string, unknown>), "none");
+  assert.equal(resolveDeclaredAccess(Object.create({ access: "bundle-propose" }) as Record<string, unknown>), "none");
+  assert.equal(resolveDeclaredAccess(Object.create({ access: "bundle-read", bridge: "bundle-read" }) as Record<string, unknown>), "none");
+  // An own field on a crafted-prototype object still resolves normally.
+  const withOwn = Object.create({ bridge: "bundle-propose" }) as Record<string, unknown>;
+  withOwn.access = "bundle-read";
+  assert.equal(resolveDeclaredAccess(withOwn), "bundle-read");
+});
+
+test("resolveDeclaredAccess: a polluted Object.prototype grants nothing to a plain empty doc", () => {
+  const proto = Object.prototype as Record<string, unknown>;
+  try {
+    proto.bridge = "bundle-read";
+    assert.equal(resolveDeclaredAccess({}), "none");
+    assert.equal(declaredAccessValue({}), undefined);
+  } finally {
+    delete proto.bridge;
+  }
+  try {
+    proto.access = "bundle-propose";
+    assert.equal(resolveDeclaredAccess({}), "none");
+    assert.equal(declaredAccessValue({}), undefined);
+  } finally {
+    delete proto.access;
+  }
+});
+
+test("resolveDeclaredAccess: unrecognized values in EITHER field fail closed to none", () => {
+  const invalid = [undefined, null, "", "BUNDLE-READ", "bundle_read", "read", "propose", " bundle-read", "bundle-read ", 1, true, ["bundle-read"], {}];
+  for (const bad of invalid) {
+    assert.equal(resolveDeclaredAccess({ access: bad }), "none", `access=${JSON.stringify(bad)}`);
+    assert.equal(resolveDeclaredAccess({ bridge: bad }), "none", `bridge=${JSON.stringify(bad)}`);
+  }
+  assert.equal(resolveDeclaredAccess({}), "none");
 });

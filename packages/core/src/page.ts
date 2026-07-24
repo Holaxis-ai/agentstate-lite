@@ -40,6 +40,24 @@ export function resolveBridgeCapability(value: unknown): BridgeCapability {
   return value === "bundle-read" || value === "bundle-propose" ? value : "none";
 }
 
+/**
+ * THE one reader of the registry-doc capability FIELD: `access` (current name), `bridge` (legacy
+ * spelling, accepted during the migration window — removal is a planned follow-up gated on the
+ * legacy-stock audit). A doc that carries `access` at all is judged by it ALONE — a stale or
+ * extra `bridge` value can never widen what `access` grants.
+ */
+export function declaredAccessValue(frontmatter: Record<string, unknown>): unknown {
+  // Both reads are own-property-gated: an INHERITED field (a crafted prototype, or a polluted
+  // Object.prototype) must never grant capability — only a field the doc itself declares counts.
+  if (Object.hasOwn(frontmatter, "access")) return frontmatter.access;
+  return Object.hasOwn(frontmatter, "bridge") ? frontmatter.bridge : undefined;
+}
+
+/** Resolve a registry doc's declared capability: {@link declaredAccessValue} through the fail-closed {@link resolveBridgeCapability} — unrecognized values in EITHER field yield `none`. */
+export function resolveDeclaredAccess(frontmatter: Record<string, unknown>): BridgeCapability {
+  return resolveBridgeCapability(declaredAccessValue(frontmatter));
+}
+
 /** True iff `value` is exactly one of the accepted kind names (`Page` | `View`). */
 export function isPageTypeName(value: unknown): value is PageTypeName {
   return value === "Page" || value === "View";

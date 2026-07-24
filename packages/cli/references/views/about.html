@@ -57,16 +57,16 @@
     This view is a <strong>content view</strong>: a self-contained HTML file that carries no
     bundle data of its own and asks the shell for none. It is promoted and served exactly like
     any other bundle view — versioned, attributed, and portable as a plain HTML file — but it
-    declares <code>bridge: none</code> in its registry doc, so the shell refuses every bundle-data
+    declares <code>access: none</code> in its registry doc, so the shell refuses every bundle-data
     request on its behalf. It may still ask the trusted shell to open another registered View.
   </p>
 
   <div class="card">
     <h2>Two kinds of view, one mechanism</h2>
     <ul>
-      <li><strong>Data views</strong> (<code>bridge: bundle-read</code>) — read live bundle
+      <li><strong>Data views</strong> (<code>access: bundle-read</code>) — read live bundle
         data through the shell's read-only postMessage bridge. Pulse and Roadmap are data views.</li>
-      <li><strong>Content views</strong> (<code>bridge: none</code>, this view) — arbitrary
+      <li><strong>Content views</strong> (<code>access: none</code>, this view) — arbitrary
         self-contained HTML: a report, a rendered design doc, a diagram, a note. No bridge calls,
         no bundle access, enforced by the shell rather than left to convention.</li>
     </ul>
@@ -79,7 +79,7 @@
       Nothing below was fetched from anywhere — it is inert markup toggled by a few lines of
       inline JS. A content view may still use scripts for local interaction (this button, for
       instance); what it cannot do is reach the bundle's data API, because the shell denies every
-      bundle-data request a <code>bridge: none</code> view sends, regardless of what the view's own
+      bundle-data request an <code>access: none</code> view sends, regardless of what the view's own
       script asks for. View navigation reveals only whether the requested registered View exists;
       it does not expose that View's data or HTML.
     </p>
