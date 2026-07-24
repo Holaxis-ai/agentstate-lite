@@ -704,20 +704,75 @@ test("round-2 P1: a KNOWN shipped transitional references/view-authoring-v0 refr
     await rm(dirB, { recursive: true, force: true });
   }
 
-  // Interplay: the unreadable-stock guard blocks the refresh the same way it blocks
-  // retirement/deletion — the transitional form is KEPT, with the block warned.
-  const dirC = await mkdtemp(path.join(tmpdir(), "aslite-migrate-midvintage-blocked-"));
+});
+
+test("round-3 P2 GUARD SPLIT: an unrelated malformed doc leaves the classify-and-CAS refreshes RUNNING while retirement and deletion stay blocked — in both modes", async () => {
+  // The reviewer's combined fixture: unrelated malformed doc + known-shipped review-request
+  // convention + legacy page-authoring reference (+ the transitional view-authoring reference
+  // and a Page convention, so every guarded/unguarded operation is present at once). Refresh
+  // safety comes from exact known-shipped classification + CAS at the target id; hidden stock
+  // is material only to REMOVALS.
+  const {
+    migrateBundle,
+    loadCanonicalViewReference,
+    loadCanonicalReviewRequestConvention,
+    loadPriorShippedReviewRequestConventions,
+    loadPriorShippedViewAuthoringReferences,
+  } = await script();
+  const { initBundle, writeDoc, readDoc } = await core();
+  const T = "2026-07-01T00:00:00.000Z";
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-guard-split-"));
   try {
-    const bundle = await initBundle(dirC);
+    const bundle = await initBundle(dir);
+    const priorRR = loadPriorShippedReviewRequestConventions()[0];
+    await writeDoc(bundle, { id: "conventions/review-request", frontmatter: priorRR.frontmatter, body: priorRR.body });
+    const priorRefs = loadPriorShippedViewAuthoringReferences();
+    const transitional = priorRefs[priorRefs.length - 1];
     await writeDoc(bundle, { id: "references/view-authoring-v0", frontmatter: transitional.frontmatter, body: transitional.body });
-    writeRawDoc(dirC, "notes/broken.md", "---\ntype: Note\ntitle: Broken\nentry: [unterminated\n---\nnever parses\n");
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: T },
+      body: "Legacy teaching.\n",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/page",
+      frontmatter: {
+        type: "Convention",
+        title: "Page",
+        governs: "Page",
+        path: "pages-registry/",
+        fields: { required: ["title", "entry", "bridge"], optional: ["description"], values: { bridge: ["none", "bundle-read"] }, terminal: {} },
+        timestamp: T,
+      },
+      body: "# Page\n\nThe dead legacy kind.\n",
+    });
+    writeRawDoc(dir, "notes/broken.md", "---\ntype: Note\ntitle: Broken\nentry: [unterminated\n---\nnever parses\n");
+
+    // Dry-run first: the same split is PROJECTED.
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.ok(dry.skipped_docs.length > 0);
+    assert.equal(dry.review_request_swapped, "would_swap", "dry-run: the refresh proceeds despite the unrelated skip");
+    assert.equal(dry.reference_refreshed, "would_swap");
+    assert.deepEqual(dry.legacy_references_deleted, [], "dry-run: retirement stays blocked");
+    assert.deepEqual(dry.page_conventions_deleted, [], "dry-run: deletion stays blocked");
+
+    // Real run: refreshes SWAP with receipts saying so; removals stay blocked with warnings.
     const receipt = await migrateBundle(bundle);
     assert.ok(receipt.skipped_docs.length > 0);
-    assert.equal(receipt.reference_refreshed, false, "the refresh is blocked by skipped docs");
-    assert.equal((await readDoc(bundle, "references/view-authoring-v0")).body, transitional.body, "the doc is untouched");
-    assert.ok(receipt.warnings.some((w) => w.id === "references/view-authoring-v0" && /refresh skipped/.test(w.warning)));
+    assert.equal(receipt.review_request_swapped, "swapped");
+    assert.equal(receipt.reference_refreshed, "swapped");
+    const canonicalRR = loadCanonicalReviewRequestConvention();
+    assert.equal((await readDoc(bundle, "conventions/review-request")).body, canonicalRR.body, "the convention no longer teaches Page");
+    const canonicalRef = loadCanonicalViewReference();
+    assert.equal((await readDoc(bundle, "references/view-authoring-v0")).body, canonicalRef.body);
+    assert.deepEqual(receipt.legacy_references_deleted, []);
+    assert.ok(await readDoc(bundle, "references/page-authoring-v0"), "retirement blocked — the legacy reference is kept");
+    assert.ok(receipt.warnings.some((w) => w.id === "references/page-authoring-v0" && /unreadable docs were skipped/.test(w.warning)));
+    assert.deepEqual(receipt.page_conventions_deleted, []);
+    assert.ok(await readDoc(bundle, "conventions/page"), "deletion blocked — the Page convention is kept");
+    assert.ok(receipt.warnings.some((w) => w.id === "conventions/page" && /kept/.test(w.warning)));
   } finally {
-    await rm(dirC, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true });
   }
 });
 

@@ -529,20 +529,18 @@ export async function migrateBundle(bundle, options = {}) {
     }
   };
 
-  // ONE readability guard for every teaching-artifact mutation below (refreshes AND the
-  // retirement): unreadable docs could be hiding related stock, so a run that skipped anything
-  // reports and leaves the teaching artifacts alone — same policy as the Page-convention gate.
-  const teachingBlocked = receipt.skipped_docs.length > 0;
-  const warnTeachingBlocked = (id, what) =>
-    warn(id, `${what} skipped: unreadable docs were skipped (${receipt.skipped_docs.map((s) => s.id).join(", ")})`);
+  // Readability-guard split (round-3 review ruling): the unreadable-stock guard applies ONLY to
+  // DESTRUCTIVE operations — the Page-convention deletion and the page-authoring-reference
+  // retirement below — because hidden stock is material to whether a REMOVAL is safe. The two
+  // classify-and-CAS REFRESHES (review-request convention, view-authoring reference) are NOT
+  // guarded: their safety comes from exact known-shipped classification at the target id plus
+  // CAS, which an unrelated unreadable doc cannot change. Do not re-unify.
 
   // 3a. `conventions/review-request`: a KNOWN shipped form still teaching the legacy names is
   // refreshed to the current canonical; customized content is never touched. Absent is fine —
   // installing it is the recipe's job, not this script's.
   const rrState = await readDocState(REVIEW_REQUEST_CONVENTION_ID);
-  if (rrState.kind === "present" && teachingBlocked) {
-    warnTeachingBlocked(REVIEW_REQUEST_CONVENTION_ID, "shipped-teaching refresh");
-  } else if (rrState.kind === "unreadable") {
+  if (rrState.kind === "unreadable") {
     warn(REVIEW_REQUEST_CONVENTION_ID, "unreadable — shipped-teaching refresh skipped");
   } else if (rrState.kind === "present") {
     const fm = rrState.doc.frontmatter;
@@ -587,45 +585,41 @@ export async function migrateBundle(bundle, options = {}) {
   // 3b. `references/view-authoring-v0` at its already-renamed id (round-2 review P1): a
   // MID-VINTAGE bundle carries a KNOWN shipped transitional form still teaching bridge/Page
   // acceptance. A known-shipped match refreshes to the canonical; customized content is never
-  // touched; the readability guard blocks exactly like every other teaching mutation. Runs
+  // touched (unguarded refresh — see the guard-split comment above). Runs
   // BEFORE the retirement below, so the retirement's replacement check sees the refreshed doc.
   const viewRefState = await readDocState(VIEW_REFERENCE_ID);
   if (viewRefState.kind === "present" && viewRefState.doc.frontmatter.type === "Reference") {
-    if (teachingBlocked) {
-      warnTeachingBlocked(VIEW_REFERENCE_ID, "shipped-teaching refresh");
-    } else {
-      const canonicalRef = loadCanonicalViewReference();
-      const priorRefs = loadPriorShippedViewAuthoringReferences();
-      const shape = classifyShippedConvention(viewRefState.doc, canonicalRef, priorRefs);
-      if (shape === "prior_shipped") {
-        if (dryRun) {
-          receipt.reference_refreshed = "would_swap";
-        } else {
-          const outcome = await versionedMutation({
-            read: () => readOrAbsent(bundle, VIEW_REFERENCE_ID),
-            decide: (state) => {
-              if (state === undefined) return { action: "done", result: false };
-              if (classifyShippedConvention(state, canonicalRef, priorRefs) !== "prior_shipped") {
-                return { action: "done", result: false }; // raced into current/customized content — leave it.
-              }
-              return {
-                action: "write",
-                next: { id: VIEW_REFERENCE_ID, frontmatter: canonicalRef.frontmatter, body: canonicalRef.body },
-                result: "swapped",
-              };
-            },
-            write: async (next, expectedVersion) =>
-              (await writeDocVersioned(bundle, next, { expectedVersion, actor })).version,
-          });
-          receipt.reference_refreshed = outcome.result;
-        }
-      } else if (shape === "customized") {
-        receipt.reference_refreshed = "skipped_customized";
-        warn(
-          VIEW_REFERENCE_ID,
-          "customized (matches neither the current shipped reference nor any prior shipped form) — left untouched",
-        );
+    const canonicalRef = loadCanonicalViewReference();
+    const priorRefs = loadPriorShippedViewAuthoringReferences();
+    const shape = classifyShippedConvention(viewRefState.doc, canonicalRef, priorRefs);
+    if (shape === "prior_shipped") {
+      if (dryRun) {
+        receipt.reference_refreshed = "would_swap";
+      } else {
+        const outcome = await versionedMutation({
+          read: () => readOrAbsent(bundle, VIEW_REFERENCE_ID),
+          decide: (state) => {
+            if (state === undefined) return { action: "done", result: false };
+            if (classifyShippedConvention(state, canonicalRef, priorRefs) !== "prior_shipped") {
+              return { action: "done", result: false }; // raced into current/customized content — leave it.
+            }
+            return {
+              action: "write",
+              next: { id: VIEW_REFERENCE_ID, frontmatter: canonicalRef.frontmatter, body: canonicalRef.body },
+              result: "swapped",
+            };
+          },
+          write: async (next, expectedVersion) =>
+            (await writeDocVersioned(bundle, next, { expectedVersion, actor })).version,
+        });
+        receipt.reference_refreshed = outcome.result;
       }
+    } else if (shape === "customized") {
+      receipt.reference_refreshed = "skipped_customized";
+      warn(
+        VIEW_REFERENCE_ID,
+        "customized (matches neither the current shipped reference nor any prior shipped form) — left untouched",
+      );
     }
   } else if (viewRefState.kind === "unreadable") {
     warn(VIEW_REFERENCE_ID, "unreadable — shipped-teaching refresh skipped");
@@ -645,6 +639,8 @@ export async function migrateBundle(bundle, options = {}) {
     if (legacyRefState.doc.frontmatter.type !== "Reference") {
       warn(LEGACY_REFERENCE_ID, "exists but is not a Reference — left untouched");
     } else if (receipt.skipped_docs.length > 0) {
+      // DESTRUCTIVE-op guard (see the guard-split comment above): retirement is a deletion, so
+      // hidden stock behind unreadable docs is material — refuse, like the Page-convention gate.
       warn(
         LEGACY_REFERENCE_ID,
         `legacy reference kept: unreadable docs were skipped (${receipt.skipped_docs.map((s) => s.id).join(", ")})`,
