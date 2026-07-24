@@ -35,7 +35,21 @@ description: >-
   post-phase-3 breakage is loud-error-plus-one-command recovery, never stranding
   — but merge timing still coordinates with Mike (his plugin updates on merge;
   migrate-first remains the courteous default).
+
+
+  BUILD COMPLETE 2026-07-24 — branch feat/phase3-remove-legacy-names at e271d20
+  (4 commits: 8192269 removal + loudness; 132ad95 review round: teaching pin,
+  reference retirement, stale-convention diagnostics+refusal, migration_required
+  recipe outcome; 74a7610 mid-vintage reference refresh, 7 provenance-frozen
+  forms; e271d20 guard split destructive-vs-refresh). 4 review rounds, findings
+  4->1->1->0; record context-notes/review-phase3-removal-rounds; final gates
+  re-verified on host at exact SHA. MERGE REMAINS GATED: Mike's bundles at zero
+  + Brian's explicit coordinated go (plugin channel tracks main). Policy adopted
+  pending Brian's overrule window: recipe reapply on unmigrated legacy reports
+  migration_required, never a satisfied-looking skip.
 actor: claude-builder-phase3
-timestamp: '2026-07-24T17:03:57.812Z'
+timestamp: '2026-07-24T20:15:05.114Z'
 ---
 [depends on](migrate-legacy-page-bridge-stock.md)
+
+[context-notes/review-phase3-removal-rounds](../context-notes/review-phase3-removal-rounds.md)
