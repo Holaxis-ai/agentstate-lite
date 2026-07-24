@@ -21,7 +21,21 @@ description: >-
   #156). KEEP: pages-registry//pages/ prefix recognition; bridge-named
   internals; the bridge:"v0" wire identifier. HIGH-RISK tier: deletes accepting
   paths on a security boundary.
-actor: claude-main-viewauthoring
-timestamp: '2026-07-23T23:48:25.707Z'
+
+
+  REQUIRED PIN (2026-07-24, from Brian's merge-first question): the migration
+  script IS the recovery path for any bundle that meets phase 3 unmigrated, so
+  phase 3 MUST NOT break it. Verified today: the script imports only generic
+  engine primitives
+  (query/read/write/delete/versionedMutation/parseMarkdown/stringifyDoc/isUsableTimestamp)
+  and matches legacy names via its own literals — none of the removed acceptance
+  surface. Pin it: a phase-3 test runs the script against a legacy fixture
+  (Page-typed doc + bridge field + old convention) AFTER the removals and
+  asserts full migration succeeds. Also confirms the ordering story:
+  post-phase-3 breakage is loud-error-plus-one-command recovery, never stranding
+  — but merge timing still coordinates with Mike (his plugin updates on merge;
+  migrate-first remains the courteous default).
+actor: claude-main
+timestamp: '2026-07-24T16:06:03.741Z'
 ---
 [depends on](migrate-legacy-page-bridge-stock.md)
