@@ -621,7 +621,7 @@ test("receipt result: dry-run speaks in conditionals, the real run in past tense
   }
 });
 
-test("receipt result: unreadable docs surface in the nothing-to-migrate caveat", async () => {
+test("receipt result: unreadable docs surface in the zero-action verdict, not a clean-scan claim", async () => {
   const { migrateBundle } = await script();
   const { initBundle, writeDoc } = await core();
   const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-skipcaveat-"));
@@ -633,10 +633,12 @@ test("receipt result: unreadable docs surface in the nothing-to-migrate caveat",
       body: "clean\n",
     });
     writeRawDoc(dir, "notes/broken.md", "---\ntype: Note\ntitle: Broken\nbad: [unterminated\n---\nnever parses\n");
+    // A skipped doc is a warning, so this is NOT a clean scan — no "no legacy names found"
+    // claim (review P1); the sentence leads with the attention state instead.
     const dry = await migrateBundle(bundle, { dryRun: true });
-    assert.equal(dry.result, "nothing to migrate — no legacy names found in 1 doc (1 doc unreadable — see skipped_docs)");
+    assert.equal(dry.result, "no changes made, but attention needed — 1 warning: 1 doc unreadable — see skipped_docs");
     const real = await migrateBundle(bundle);
-    assert.equal(real.result, "nothing to migrate — no legacy names found in 1 doc (1 doc unreadable — see skipped_docs)");
+    assert.equal(real.result, "no changes made, but attention needed — 1 warning: 1 doc unreadable — see skipped_docs");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -661,5 +663,65 @@ test("receipt result: the sentence is derived from the counters and leads the re
     assert.notEqual(describeReceipt({ ...real, dry_run: true }), real.result);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// Review P1 (empirical, two CLI reproductions): a zero-action receipt that carries warnings —
+// legacy content skipped or deliberately retained — must never claim "no legacy names found".
+// The clean-scan sentence is reserved for warnings === 0; otherwise the verdict leads with the
+// dominant reason and its remedy.
+test("receipt result: warned zero-action states never claim a clean scan (review P1)", async () => {
+  const { migrateBundle, loadCanonicalViewConvention } = await script();
+  const { initBundle, writeDoc } = await core();
+
+  // (a) A customized legacy View convention is skipped: legacy content remains, warnings: 1.
+  const customDir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-p1a-"));
+  try {
+    const bundle = await initBundle(customDir);
+    await writeDoc(bundle, {
+      id: "conventions/view",
+      frontmatter: {
+        type: "Convention",
+        title: "View",
+        governs: "View",
+        path: "views-registry/",
+        fields: { required: ["title", "entry", "access", "owner"], optional: [], values: {}, terminal: {} },
+        timestamp: "2026-07-01T00:00:00.000Z",
+      },
+      body: "# View\n\nLocal customization the migration must not destroy.\n",
+    });
+    const expected =
+      "no changes made, but attention needed — 1 warning: " +
+      "customized View convention skipped (re-run with --overwrite-custom-conventions)";
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(dry.result, expected);
+    const real = await migrateBundle(bundle);
+    assert.equal(real.result, expected);
+  } finally {
+    await rm(customDir, { recursive: true, force: true });
+  }
+
+  // (b) A readable Page convention is deliberately retained because an unreadable doc blocks
+  // its deletion: warnings: 2 (the skip + the retention), zero actions.
+  const keptDir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-p1b-"));
+  try {
+    const bundle = await initBundle(keptDir);
+    const canonical = loadCanonicalViewConvention();
+    await writeDoc(bundle, { id: "conventions/view", frontmatter: canonical.frontmatter, body: canonical.body });
+    await writeDoc(bundle, {
+      id: "conventions/page",
+      frontmatter: { type: "Convention", title: "Page", governs: "Page", path: "pages-registry/" },
+      body: "# Page\n",
+    });
+    writeRawDoc(keptDir, "notes/broken.md", "---\ntype: Note\ntitle: Broken\nbad: [unterminated\n---\nnever parses\n");
+    const expected =
+      "no changes made, but attention needed — 2 warnings: " +
+      "1 Page convention retained (1 doc unreadable — see skipped_docs)";
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(dry.result, expected);
+    const real = await migrateBundle(bundle);
+    assert.equal(real.result, expected);
+  } finally {
+    await rm(keptDir, { recursive: true, force: true });
   }
 });

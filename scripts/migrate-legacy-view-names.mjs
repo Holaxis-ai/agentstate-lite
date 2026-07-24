@@ -83,9 +83,27 @@ export function describeReceipt(receipt) {
   if (deleted > 0) clauses.push(`${receipt.dry_run ? "delete" : "deleted"} ${count(deleted, "Page convention")}`);
 
   if (clauses.length === 0) {
+    // "No legacy names found" is a clean-scan claim — it may ONLY appear when the scan really
+    // was clean (review P1). Any warning means legacy or unreadable state remains: skipped
+    // docs, a skipped/refused View-convention swap, or a deliberately retained Page convention.
+    if (receipt.warnings.length === 0) {
+      return `nothing to migrate — no legacy names found in ${count(receipt.docs_scanned, "doc")} (all readable)`;
+    }
     const skips = receipt.skipped_docs.length;
-    const caveat = skips === 0 ? "all readable" : `${count(skips, "doc")} unreadable — see skipped_docs`;
-    return `nothing to migrate — no legacy names found in ${count(receipt.docs_scanned, "doc")} (${caveat})`;
+    const skipNote = `${count(skips, "doc")} unreadable — see skipped_docs`;
+    // Retained Page conventions are counted from the receipt's own warning records (the one
+    // place the run states them), never from a second tally.
+    const kept = receipt.warnings.filter((w) => w.warning.startsWith("Page convention kept")).length;
+    const reasons = [];
+    if (kept > 0) reasons.push(`${count(kept, "Page convention")} retained (${skips > 0 ? skipNote : "see warnings"})`);
+    else if (skips > 0) reasons.push(skipNote);
+    if (receipt.convention_swapped === "skipped_customized") {
+      reasons.push("customized View convention skipped (re-run with --overwrite-custom-conventions)");
+    } else if (receipt.convention_swapped === "skipped_occupied" || receipt.convention_swapped === "refused_occupied") {
+      reasons.push("conventions/view occupied by a non-View-governing doc — left untouched");
+    }
+    if (reasons.length === 0) reasons.push("see warnings");
+    return `no changes made, but attention needed — ${count(receipt.warnings.length, "warning")}: ${reasons.join("; ")}`;
   }
   let sentence = (receipt.dry_run ? "would " : "") + clauses.join(", ");
   if (receipt.warnings.length > 0) sentence += `; ${count(receipt.warnings.length, "warning")}`;
