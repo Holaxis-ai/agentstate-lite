@@ -523,7 +523,9 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
     const legacy: Record<string, unknown> = {
       note:
         "informational — 'Page' is the legacy name for the 'View' kind; legacy-typed docs and " +
-        "old-prefix ids stay fully supported and never migrate. These counts size a future full deprecation.",
+        "old-prefix ids stay supported during the migration window (the migrate-legacy-view-names " +
+        "script renames legacy content in place; old locations stay recognized). These counts size " +
+        "the planned removal of legacy support.",
       page_typed_docs: pageTyped.total,
       legacy_prefix_items: legacyPrefix.total,
     };

@@ -1,7 +1,10 @@
 // The ONE legacy-naming primitive for the Page→View kind rename (Option C+,
-// plans/rename-page-kind-to-view — Unit 2). 'Page' is the LEGACY name of the 'View' kind;
-// legacy-typed docs and old-prefix ids stay fully legal forever (nothing migrates, nothing is
-// warned-as-wrong). This module is the single owner of that classification, consumed by exactly
+// plans/rename-page-kind-to-view — Unit 2). 'Page' is the LEGACY name of the 'View' kind —
+// transitional, not permanent: legacy-typed docs and old-prefix ids stay legal during the
+// migration window (nothing is warned-as-wrong), the repo's `migrate-legacy-view-names` script
+// renames legacy content in place (old-prefix LOCATIONS stay recognized; relocation is a
+// separate open decision), and removal of legacy support is a planned later phase. This module
+// is the single owner of that classification, consumed by exactly
 // two read-only surfaces:
 //
 //   1. The WRITE-TIME NUDGE: the doc-authoring verbs (`new`/`doc write`/`doc update`, and
@@ -58,4 +61,4 @@ export function isLegacyEntryBlobKey(key: string): boolean {
  * Fired only by doc-authoring verbs on a SUCCESS receipt whose produced doc is legacy-typed.
  */
 export const LEGACY_PAGE_TYPE_HINT =
-  "type 'Page' is the legacy name for the 'View' kind — existing Page docs keep working and never need migrating; author new dashboards with --type View.";
+  "type 'Page' is the legacy name for the 'View' kind — existing Page docs keep working during the migration window (the migrate-legacy-view-names script renames them in place; removal of legacy support is a planned later phase); author new dashboards with --type View.";

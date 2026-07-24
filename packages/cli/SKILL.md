@@ -320,11 +320,14 @@ never hand-duplicated.
 
 A **bundle view** is a self-contained HTML file living IN the bundle: promoted as a blob under
 `views/…`, declared by a `type: View` registry doc (`title`, `entry`, `access` — legacy
-`bridge` accepted during the migration window), and rendered by
+`bridge` on existing docs is still honored at runtime during the migration window, but the
+shipped convention no longer declares it, so author with `access`), and rendered by
 `aslite ui` inside a sandboxed, opaque-origin iframe (`sandbox="allow-scripts"`, no network
 access) — its only channel out is a narrow postMessage bridge to the trusted shell.
-(`Page` is the accepted legacy name: existing `type: Page` docs under `pages-registry/`/`pages/`
-keep working and never need migrating — author NEW views as `type: View`.)
+(`Page` is the legacy name: existing `type: Page` docs under `pages-registry/`/`pages/`
+keep working during the migration window — legacy names are renamed in place by the repo's
+migration script, and removal of legacy support is a planned later phase. Author NEW views
+as `type: View`.)
 
 The bridge (protocol `v0`) has five read-only data request types: `hello` (bundle identity), `query`
 (frontmatter-filtered rows — the same head projection `list` uses), `read` (one doc), `edges`

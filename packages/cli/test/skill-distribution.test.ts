@@ -363,7 +363,7 @@ test("the rendered skill mentions legacy Page exactly once — the legacy note, 
   // The single accepted-legacy sentence. Any other `type: Page` occurrence is stale teaching.
   const legacyMentions = rendered.match(/type: Page/g) ?? [];
   assert.equal(legacyMentions.length, 1, "exactly one `type: Page` mention (the legacy note) may remain");
-  assert.match(rendered, /`Page` is the accepted legacy name/);
+  assert.match(rendered, /`Page` is the legacy name/);
   // No authoring guidance may target the legacy prefixes.
   assert.doesNotMatch(rendered, /--doc-key pages\//);
   assert.doesNotMatch(rendered, /--doc-key pages-registry\//);
@@ -378,7 +378,7 @@ test("the npm-target SKILL teaches Views canonically — legacy Page appears exa
   // the same rule: one accepted-legacy sentence, no legacy authoring guidance.
   const legacyMentions = renderedNpm.match(/type: Page/g) ?? [];
   assert.equal(legacyMentions.length, 1, "exactly one `type: Page` mention (the legacy note) may remain");
-  assert.match(renderedNpm, /`Page` is the accepted legacy name/);
+  assert.match(renderedNpm, /`Page` is the legacy name/);
   assert.doesNotMatch(renderedNpm, /bundle Pages/);
   assert.doesNotMatch(renderedNpm, /--doc-key pages\//);
   assert.doesNotMatch(renderedNpm, /--doc-key pages-registry\//);

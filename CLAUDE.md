@@ -176,8 +176,11 @@ The human-visibility surface is the **local `agentstate-lite ui` command**: one 
 server serving the embedded SPA over a bundle (`--dir` mounts the reference router
 in-process; `--remote` reverse-proxies with the stored key; per-run token + Host allowlist
 + CSP). The shell is a launcher for registered `type: View` docs rendered in sandboxed
-iframes (`Page` is the accepted legacy kind name — legacy-typed docs under the legacy
-prefixes keep working and never migrate); Views are bundle content, and their live data
+iframes (`Page` is the legacy kind name and `bridge` the legacy access-field spelling — both are
+TRANSITIONAL: legacy-typed docs keep working during the migration window,
+`scripts/migrate-legacy-view-names.mjs` renames legacy content in place, old folder LOCATIONS
+stay recognized — relocation is a separate open decision — and removal of legacy support is a
+planned later phase); Views are bundle content, and their live data
 access goes through the narrow bridge. V0 data access remains read-only; a local `--dir` View may
 opt into `bundle-propose` for one human-confirmed, version-guarded scalar-field action. The former
 `packages/viewer` / `view` → `viz.html` surface is removed — author human
