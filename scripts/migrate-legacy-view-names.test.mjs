@@ -4,8 +4,8 @@
 
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { before } from "node:test";
@@ -31,15 +31,22 @@ before(async () => {
 const core = () => import(CORE_DIST);
 const script = () => import(SCRIPT);
 
-const OLD_BRIDGE_CONVENTION_BODY = "# View\n\nThe OLD shipped convention: bridge required.\n";
+function writeRawDoc(dir, relative, content) {
+  const target = path.join(dir, relative);
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(target, content);
+}
 
 /**
- * The full fixture matrix from the task spec: a Page-typed valid registration, a Page-typed
- * non-registration doc, a bridge-only View, a both-fields View, an access-only View, an invalid
- * bridge value, an OLD bridge-required View convention, and a Page-kind convention.
+ * The full fixture matrix from the task spec plus the fix-round additions: a Page-typed valid
+ * registration, a Page-typed non-registration doc WITHOUT a timestamp (raw-authored, F4), a
+ * bridge-only View, a both-fields View, an access-only View, an invalid bridge value, a
+ * NON-View doc with an own `bridge` field (F6 negative scope), a KNOWN PRIOR SHIPPED View
+ * convention (the bridge-required form), and a Page-kind convention.
  */
 async function makeFixtureBundle() {
   const { initBundle, writeDoc } = await core();
+  const { loadPriorShippedViewConventions } = await script();
   const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-fixture-"));
   const bundle = await initBundle(dir);
   const T = "2026-07-01T00:00:00.000Z";
@@ -48,11 +55,13 @@ async function makeFixtureBundle() {
     frontmatter: { type: "Page", title: "Dash", entry: "pages/dash.html", bridge: "bundle-read", timestamp: T },
     body: "A Page-typed VALID registration at a legacy location.\n",
   });
-  await writeDoc(bundle, {
-    id: "notes/scratch-page",
-    frontmatter: { type: "Page", title: "Scratch", timestamp: T },
-    body: "A Page-typed NON-registration doc (no entry, off-prefix).\n",
-  });
+  // Raw-authored (external shape): a Page-typed NON-registration doc with NO timestamp — the
+  // engine write will stamp one, and the receipt must report that (F4).
+  writeRawDoc(
+    dir,
+    "notes/scratch-page.md",
+    "---\ntype: Page\ntitle: Scratch\n---\nA Page-typed NON-registration doc (no entry, off-prefix, no timestamp).\n",
+  );
   await writeDoc(bundle, {
     id: "views-registry/pulse",
     frontmatter: { type: "View", title: "Pulse", entry: "views/pulse.html", bridge: "none", timestamp: T },
@@ -80,22 +89,19 @@ async function makeFixtureBundle() {
     frontmatter: { type: "View", title: "Weird", entry: "views/weird.html", bridge: "write-everything", timestamp: T },
     body: "An invalid capability value — copied verbatim, warned, never fixed.\n",
   });
+  // F6 negative scope: `bridge` is only the View kind's legacy spelling — a doc of any OTHER
+  // type carrying an own `bridge` field is out of scope and must never be touched.
+  await writeDoc(bundle, {
+    id: "notes/bridge-note",
+    frontmatter: { type: "Note", title: "Bridge note", bridge: "bundle-read", timestamp: T },
+    body: "A Note about a bridge — not a View; the field is ordinary user data here.\n",
+  });
+  // The View convention as a KNOWN PRIOR SHIPPED form (the bridge-required one) — swaps silently.
+  const priorForm = loadPriorShippedViewConventions()[0];
   await writeDoc(bundle, {
     id: "conventions/view",
-    frontmatter: {
-      type: "Convention",
-      title: "View",
-      governs: "View",
-      path: "views-registry/",
-      fields: {
-        required: ["title", "entry", "bridge"],
-        optional: ["description"],
-        values: { bridge: ["none", "bundle-read", "bundle-propose"] },
-        terminal: {},
-      },
-      timestamp: T,
-    },
-    body: OLD_BRIDGE_CONVENTION_BODY,
+    frontmatter: priorForm.frontmatter,
+    body: priorForm.body,
   });
   await writeDoc(bundle, {
     id: "conventions/page",
@@ -122,27 +128,30 @@ async function versionMap(bundle) {
 
 test("one run migrates the full fixture matrix in place; a second run reports zero changes", async () => {
   const { migrateBundle, loadCanonicalViewConvention } = await script();
-  const { query, readDoc } = await core();
+  const { query, readDoc, readDocVersioned } = await core();
   const { dir, bundle } = await makeFixtureBundle();
   try {
     const untouchedBefore = (await versionMap(bundle)).get("views-registry/roadmap");
+    const bridgeNoteBefore = (await readDocVersioned(bundle, "notes/bridge-note")).version;
 
     const receipt = await migrateBundle(bundle);
     assert.equal(receipt.dry_run, false);
     assert.equal(receipt.types_flipped, 2, "both Page-typed docs flip, registration-valid or not");
     assert.equal(receipt.bridge_renamed, 3, "dash + pulse + weird");
     assert.equal(receipt.bridge_removed, 1, "board's shadowed bridge is dropped");
-    assert.equal(receipt.convention_swapped, "swapped");
+    assert.equal(receipt.timestamp_added, 1, "the timestamp-less doc's stamping is REPORTED (F4)");
+    assert.deepEqual(receipt.timestamp_added_docs, ["notes/scratch-page"]);
+    assert.equal(receipt.convention_swapped, "swapped", "a known prior shipped form swaps silently");
     assert.deepEqual(receipt.page_conventions_deleted, ["conventions/page"]);
     assert.deepEqual(receipt.skipped_docs, []);
     assert.equal(receipt.warnings.length, 1);
     assert.equal(receipt.warnings[0].id, "views-registry/weird");
     assert.match(receipt.warnings[0].warning, /copied verbatim/);
 
-    // Zero Page types, zero own-bridge fields — and NO file moves: ids stay put.
+    // Zero Page types, zero own-bridge fields on View-typed docs — and NO file moves: ids stay put.
     assert.equal((await query(bundle, { type: "Page" })).length, 0);
-    const all = await query(bundle);
-    for (const doc of all) {
+    for (const doc of await query(bundle)) {
+      if (doc.id === "notes/bridge-note") continue; // out of scope by design (F6)
       assert.ok(!Object.hasOwn(doc.frontmatter, "bridge"), `${doc.id} still carries own bridge`);
     }
     const dash = await readDoc(bundle, "pages-registry/dash");
@@ -151,17 +160,23 @@ test("one run migrates the full fixture matrix in place; a second run reports ze
     assert.equal(dash.frontmatter.entry, "pages/dash.html", "blob keys stay exactly where they are");
     const scratch = await readDoc(bundle, "notes/scratch-page");
     assert.equal(scratch.frontmatter.type, "View");
+    assert.equal(typeof scratch.frontmatter.timestamp, "string", "the engine stamped it — and the receipt said so");
     const board = await readDoc(bundle, "views-registry/board");
     assert.equal(board.frontmatter.access, "bundle-read", "a leftover bridge can never widen access");
     const weird = await readDoc(bundle, "views-registry/weird");
     assert.equal(weird.frontmatter.access, "write-everything", "invalid values copy verbatim, never 'fixed'");
+
+    // F6: the non-View doc with an own bridge field is byte/version-stable and keeps its field.
+    const bridgeNote = await readDocVersioned(bundle, "notes/bridge-note");
+    assert.equal(bridgeNote.version, bridgeNoteBefore, "a non-View doc with own bridge is never written");
+    assert.equal(bridgeNote.doc.frontmatter.bridge, "bundle-read");
+    assert.equal(bridgeNote.doc.frontmatter.type, "Note");
 
     // Convention swapped to THE canonical shipped content (single-sourced from the repo file).
     const canonical = loadCanonicalViewConvention();
     const swapped = await readDoc(bundle, "conventions/view");
     assert.deepEqual(swapped.frontmatter, canonical.frontmatter);
     assert.equal(swapped.body, canonical.body);
-    assert.ok(!swapped.body.includes(OLD_BRIDGE_CONVENTION_BODY.slice(2)));
     await assert.rejects(() => readDoc(bundle, "conventions/page"), /ENOENT/);
 
     // The access-only View was never written (same version token).
@@ -173,6 +188,7 @@ test("one run migrates the full fixture matrix in place; a second run reports ze
     assert.equal(second.types_flipped, 0);
     assert.equal(second.bridge_renamed, 0);
     assert.equal(second.bridge_removed, 0);
+    assert.equal(second.timestamp_added, 0);
     assert.equal(second.convention_swapped, false);
     assert.deepEqual(second.page_conventions_deleted, []);
     assert.deepEqual(second.changed_docs, []);
@@ -229,6 +245,8 @@ test("dry-run writes nothing and reports exactly what a real run would do", asyn
     assert.equal(receipt.types_flipped, 2);
     assert.equal(receipt.bridge_renamed, 3);
     assert.equal(receipt.bridge_removed, 1);
+    assert.equal(receipt.timestamp_added, 1, "dry-run projects the stamping too (F4)");
+    assert.deepEqual(receipt.timestamp_added_docs, ["notes/scratch-page"]);
     assert.equal(receipt.convention_swapped, "would_swap");
     assert.deepEqual(receipt.page_conventions_deleted, ["conventions/page"]);
     assert.equal(receipt.warnings.length, 1);
@@ -238,6 +256,137 @@ test("dry-run writes nothing and reports exactly what a real run would do", asyn
     assert.equal((await readDoc(bundle, "conventions/page")).frontmatter.governs, "Page");
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("F1: a malformed Page-shaped doc never crashes a run — receipt always lands, deletion stays blocked", async () => {
+  const { migrateBundle, loadPriorShippedViewConventions } = await script();
+  const { initBundle, writeDoc, readDoc } = await core();
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-broken-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "pages-registry/ok",
+      frontmatter: { type: "Page", title: "OK", entry: "pages/ok.html", bridge: "none", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "the readable sibling\n",
+    });
+    const priorForm = loadPriorShippedViewConventions()[0];
+    await writeDoc(bundle, { id: "conventions/view", frontmatter: priorForm.frontmatter, body: priorForm.body });
+    await writeDoc(bundle, {
+      id: "conventions/page",
+      frontmatter: { type: "Convention", title: "Page", governs: "Page", path: "pages-registry/" },
+      body: "# Page\n",
+    });
+    // The reviewer's fixture shape: raw Page-shaped doc with an unterminated YAML flow sequence.
+    const brokenRaw = "---\ntype: Page\ntitle: Broken\nentry: [unterminated\n---\nnever parses\n";
+    writeRawDoc(dir, "pages-registry/broken.md", brokenRaw);
+
+    // Dry-run: honest — reports the skip, plans NO Page-convention deletion.
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(dry.skipped_docs.length, 1);
+    assert.equal(dry.skipped_docs[0].id, "pages-registry/broken");
+    assert.deepEqual(dry.page_conventions_deleted, [], "an unreadable doc blocks the deletion plan");
+    assert.ok(dry.warnings.some((w) => w.id === "pages-registry/broken" && /unreadable/.test(w.warning)));
+    assert.ok(dry.warnings.some((w) => w.id === "conventions/page" && /kept/.test(w.warning)));
+
+    // REAL run: completes with a receipt (the pre-fix crash was the post-write re-query), the
+    // readable sibling migrates, the broken doc's bytes are untouched, the Page convention stays.
+    const receipt = await migrateBundle(bundle);
+    assert.equal(receipt.types_flipped, 1);
+    assert.equal(receipt.skipped_docs.length, 1, "skips are DEDUPED across every scan");
+    assert.equal(receipt.convention_swapped, "swapped");
+    assert.deepEqual(receipt.page_conventions_deleted, []);
+    assert.ok(receipt.warnings.some((w) => w.id === "conventions/page" && /kept/.test(w.warning)));
+    assert.equal((await readDoc(bundle, "pages-registry/ok")).frontmatter.type, "View");
+    assert.equal((await readDoc(bundle, "conventions/page")).frontmatter.governs, "Page");
+    assert.equal(await readFile(path.join(dir, "pages-registry", "broken.md"), "utf8"), brokenRaw);
+
+    // And a second run still converges without a crash.
+    const second = await migrateBundle(bundle);
+    assert.equal(second.types_flipped, 0);
+    assert.deepEqual(second.page_conventions_deleted, []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("F2: a non-bundle directory is refused before any write", async () => {
+  const { migrateBundle } = await script();
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-nonbundle-"));
+  try {
+    const raw = "---\ntype: Page\ntitle: Loose\n---\nA Page-typed file in a plain directory.\n";
+    writeRawDoc(dir, "loose-page.md", raw);
+
+    await assert.rejects(() => migrateBundle({ root: dir }), /not a bundle root/);
+
+    await assert.rejects(
+      () => execFileAsync(process.execPath, [SCRIPT, "--dir", dir], { cwd: repoRoot }),
+      (err) => err.code === 2 && /not a bundle root/.test(err.stderr),
+    );
+    assert.equal(await readFile(path.join(dir, "loose-page.md"), "utf8"), raw, "nothing was written");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("F3: a customized View convention is never silently destroyed", async () => {
+  const { migrateBundle, loadCanonicalViewConvention } = await script();
+  const { initBundle, writeDoc, readDoc, readDocVersioned } = await core();
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-custom-"));
+  const exportLeftover = `${dir.replace(/[\\/]+$/, "")}.pre-swap.conventions-view.md`;
+  try {
+    const bundle = await initBundle(dir);
+    const customBody = "# View\n\nRECOVERY-CRITICAL local operating notes that exist nowhere else.\n";
+    await writeDoc(bundle, {
+      id: "conventions/view",
+      frontmatter: {
+        type: "Convention",
+        title: "View",
+        governs: "View",
+        path: "views-registry/",
+        fields: { required: ["title", "entry", "access", "owner"], optional: [], values: {}, terminal: {} },
+        timestamp: "2026-07-01T00:00:00.000Z",
+      },
+      body: customBody,
+    });
+    const before = (await readDocVersioned(bundle, "conventions/view")).version;
+
+    // Dry-run, default: reports the skip decision.
+    const dryDefault = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(dryDefault.convention_swapped, "skipped_customized");
+    // Dry-run, with the flag: reports the swap AND the export path it would use.
+    const dryFlag = await migrateBundle(bundle, { dryRun: true, overwriteCustomConventions: true });
+    assert.equal(dryFlag.convention_swapped, "would_swap_customized");
+    assert.equal(typeof dryFlag.convention_export, "string");
+    assert.ok(!existsSync(dryFlag.convention_export), "dry-run writes no export file");
+
+    // Real run, default: skip + warning, content untouched.
+    const skipped = await migrateBundle(bundle);
+    assert.equal(skipped.convention_swapped, "skipped_customized");
+    assert.ok(skipped.warnings.some((w) => w.id === "conventions/view" && /customized/.test(w.warning)));
+    assert.equal((await readDocVersioned(bundle, "conventions/view")).version, before, "never written by default");
+
+    // Real run, explicit flag: export first, then swap; receipt names the export path.
+    const swapped = await migrateBundle(bundle, { overwriteCustomConventions: true });
+    assert.equal(swapped.convention_swapped, "swapped_customized");
+    assert.equal(typeof swapped.convention_export, "string");
+    const exported = await readFile(swapped.convention_export, "utf8");
+    // The export must be a REAL OKF markdown doc (frontmatter + body), re-promotable as-is —
+    // not a serialized object wrapper. Round-trip it through THE one parser to prove it.
+    const { parseMarkdown } = await core();
+    const reparsed = parseMarkdown(exported, "export.md");
+    assert.equal(reparsed.frontmatter.governs, "View");
+    assert.deepEqual(reparsed.frontmatter.fields.required, ["title", "entry", "access", "owner"]);
+    assert.equal(reparsed.body, customBody, "the destroyed body survives byte-for-byte in the export");
+    const now = await readDoc(bundle, "conventions/view");
+    assert.deepEqual(now.frontmatter, loadCanonicalViewConvention().frontmatter);
+
+    // Idempotence: a further run is a no-op.
+    const third = await migrateBundle(bundle, { overwriteCustomConventions: true });
+    assert.equal(third.convention_swapped, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(exportLeftover, { force: true });
   }
 });
 
@@ -255,6 +404,7 @@ test("CLI surface: --dry-run over --dir emits the receipt with the normalization
     assert.equal(parsed.bundles.length, 1);
     assert.equal(parsed.bundles[0].bundle, dir);
     assert.equal(parsed.bundles[0].types_flipped, 2);
+    assert.equal(parsed.bundles[0].timestamp_added, 1);
 
     await assert.rejects(
       () => execFileAsync(process.execPath, [SCRIPT], { cwd: repoRoot }),

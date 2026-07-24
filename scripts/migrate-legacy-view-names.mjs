@@ -10,12 +10,14 @@
 // Repo script, not a CLI verb (that pattern decision is deliberately open on the board). All
 // bundle access goes through the core engine API (packages/core/dist — build from the repo root
 // first); every write is CAS-guarded through core's `versionedMutation`, so the script is safe
-// to re-run: a second run reports zero changes.
+// to re-run: a second run reports zero changes. Every scan tolerates malformed docs (reported,
+// deduped, and BLOCKING for the Page-convention deletion), so a run always ends in a receipt —
+// never a mid-migration crash that leaves a bundle partially renamed with no report.
 //
 // Usage: node scripts/migrate-legacy-view-names.mjs --dir <bundle-root> [--dir <bundle-root> ...]
-//        [--dry-run] [--actor <name>]
+//        [--dry-run] [--actor <name>] [--overwrite-custom-conventions]
 
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual, parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -25,6 +27,7 @@ import {
   parseMarkdown,
   query,
   readDocVersioned,
+  stringifyDoc,
   versionedMutation,
   writeDocVersioned,
 } from "../packages/core/dist/index.js";
@@ -36,11 +39,11 @@ export const NORMALIZATION_NOTE =
   "engine writes re-serialize whole documents to canonical form (key order, quoting, trailing " +
   "newline), so externally-authored docs may normalize formatting beyond the renamed keys.";
 
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const VIEW_CONVENTION_ID = "conventions/view";
-const CANONICAL_VIEW_CONVENTION = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../examples/views/conventions/view.md",
-);
+const CANONICAL_VIEW_CONVENTION = path.resolve(SCRIPT_DIR, "../examples/views/conventions/view.md");
+/** Frozen snapshots of every form this repo ever SHIPPED for `conventions/view` (historical artifacts — see the folder). */
+const PRIOR_SHIPPED_DIR = path.resolve(SCRIPT_DIR, "prior-shipped-view-conventions");
 
 const ACCESS_VALUES = new Set(["none", "bundle-read", "bundle-propose"]);
 
@@ -49,7 +52,9 @@ const isViewTyped = (frontmatter) => frontmatter.type === "Page" || frontmatter.
 /**
  * Plan the in-place rename for ONE doc's frontmatter, or `null` when nothing applies. Pure —
  * re-run against every CAS attempt's fresh read. Key order is preserved (`access` takes the
- * `bridge` slot when renamed); values are copied verbatim.
+ * `bridge` slot when renamed); values are copied verbatim. Docs of any OTHER type are out of
+ * scope even when they carry an own `bridge` field — `bridge` is only the View kind's legacy
+ * spelling, not a reserved word.
  */
 export function planDocChange(frontmatter) {
   const flipType = frontmatter.type === "Page";
@@ -80,6 +85,9 @@ export function planDocChange(frontmatter) {
   }
   if (flipType) changes.push("type_flipped");
   if (hasOwnBridge) changes.push(hasOwnAccess ? "bridge_removed" : "bridge_renamed");
+  // The engine write path guarantees a timestamp, so migrating a doc that never declared one
+  // STAMPS it (a freshness-semantics change) — the receipt must say so, not hide it.
+  if (!Object.hasOwn(frontmatter, "timestamp")) changes.push("timestamp_added");
   // Object.fromEntries defines properties (never invokes a setter), so a hostile key such as
   // `__proto__` cannot poison the accumulator.
   return { next: Object.fromEntries(entries), changes, warnings };
@@ -97,28 +105,77 @@ async function readOrAbsent(bundle, id) {
   }
 }
 
+function parseConventionFile(filePath) {
+  const { frontmatter, body } = parseMarkdown(readFileSync(filePath, "utf8"), path.basename(filePath));
+  return { frontmatter, body };
+}
+
 /** Load THE canonical shipped View convention (single-sourced from this repo's file). */
 export function loadCanonicalViewConvention() {
-  const raw = readFileSync(CANONICAL_VIEW_CONVENTION, "utf8");
-  const { frontmatter, body } = parseMarkdown(raw, "conventions/view.md");
-  return { frontmatter, body };
+  return parseConventionFile(CANONICAL_VIEW_CONVENTION);
+}
+
+/** Load every prior shipped form of the View convention (frozen snapshots, one file each). */
+export function loadPriorShippedViewConventions() {
+  return readdirSync(PRIOR_SHIPPED_DIR)
+    .filter((name) => name.endsWith(".md"))
+    .sort()
+    .map((name) => parseConventionFile(path.join(PRIOR_SHIPPED_DIR, name)));
 }
 
 const isViewConvention = (fm) => fm.type === "Convention" && fm.governs === "View";
 const isPageConvention = (fm) => fm.type === "Convention" && fm.governs === "Page";
 
-/** Both sides arrive through THE one frontmatter parser, so deep value equality (key order ignored — the engine reorders on write) plus body equality is the idempotence basis. */
-function sameDocContent(a, b) {
-  return isDeepStrictEqual(a.frontmatter, b.frontmatter) && a.body === b.body;
+/**
+ * Convention-content equality, ignoring `timestamp`: both sides arrive through THE one
+ * frontmatter parser, the engine reorders keys on write (deep equality ignores order), and a
+ * timestamp-only difference (a `doc update` touch) is not a customization.
+ */
+function sameConventionContent(a, b) {
+  const { timestamp: _ta, ...fa } = a.frontmatter;
+  const { timestamp: _tb, ...fb } = b.frontmatter;
+  return isDeepStrictEqual(fa, fb) && a.body === b.body;
+}
+
+/** Classify an existing `conventions/view` doc: `current` | `prior_shipped` | `customized`. */
+function classifyViewConvention(doc, canonical, priorForms) {
+  if (sameConventionContent(doc, canonical)) return "current";
+  if (priorForms.some((form) => sameConventionContent(doc, form))) return "prior_shipped";
+  return "customized";
+}
+
+/** F2: refuse anything that is not a bundle root — the same `index.md` requirement the CLI's resolver enforces. */
+export function assertBundleRoot(root) {
+  const indexPath = path.join(root, "index.md");
+  if (!existsSync(indexPath) || !statSync(indexPath).isFile()) {
+    throw new Error(`not a bundle root (no index.md): ${root} — refusing to migrate a non-bundle directory`);
+  }
+}
+
+/** First free path of `<base>` / `<base>.1` / `<base>.2` … — an export never clobbers an earlier one. */
+function unusedExportPath(base) {
+  if (!existsSync(base)) return base;
+  for (let n = 1; ; n++) {
+    const candidate = `${base}.${n}`;
+    if (!existsSync(candidate)) return candidate;
+  }
 }
 
 /**
  * Migrate one bundle in one pass. Options: `dryRun` (plan + report, zero writes), `actor`
- * (attribution for every write), and test-only `hooks.beforeDocWrite(id, attempt)` — invoked
- * inside the CAS window so a test can inject a deterministic competing write.
+ * (attribution for every write), `overwriteCustomConventions` (see below), and test-only
+ * `hooks.beforeDocWrite(id, attempt)` — invoked inside the CAS window so a test can inject a
+ * deterministic competing write.
+ *
+ * Convention-swap policy (review F3): an existing `conventions/view` matching the CURRENT
+ * shipped content is a no-op; matching a KNOWN PRIOR shipped form swaps silently; anything else
+ * is CUSTOMIZED and is skipped with a warning by default — `overwriteCustomConventions: true`
+ * first exports the old doc (canonical serialization) to a sibling file next to the bundle,
+ * then swaps, and the receipt names the export path.
  */
 export async function migrateBundle(bundle, options = {}) {
-  const { dryRun = false, actor = DEFAULT_ACTOR, hooks = {} } = options;
+  const { dryRun = false, actor = DEFAULT_ACTOR, overwriteCustomConventions = false, hooks = {} } = options;
+  assertBundleRoot(bundle.root);
   const receipt = {
     bundle: bundle.root,
     dry_run: dryRun,
@@ -126,6 +183,8 @@ export async function migrateBundle(bundle, options = {}) {
     types_flipped: 0,
     bridge_renamed: 0,
     bridge_removed: 0,
+    timestamp_added: 0,
+    timestamp_added_docs: [],
     convention_swapped: false,
     page_conventions_deleted: [],
     changed_docs: [],
@@ -133,12 +192,18 @@ export async function migrateBundle(bundle, options = {}) {
     skipped_docs: [],
   };
   const warn = (id, warning) => receipt.warnings.push({ id, warning });
-
-  const docs = await query(bundle, {}, { onSkip: ({ id, reason }) => receipt.skipped_docs.push({ id, reason }) });
-  receipt.docs_scanned = docs.length;
-  for (const { id, reason } of receipt.skipped_docs) {
+  // ONE deduped skip set shared by EVERY scan (review F1): the post-write re-queries must
+  // tolerate exactly the malformed docs the first scan did — a run always ends in a receipt.
+  const skippedIds = new Set();
+  const onSkip = ({ id, reason }) => {
+    if (skippedIds.has(id)) return;
+    skippedIds.add(id);
+    receipt.skipped_docs.push({ id, reason });
     warn(id, `unreadable doc skipped (${reason}) — if it is Page/bridge-typed it was NOT migrated`);
-  }
+  };
+
+  const docs = await query(bundle, {}, { onSkip });
+  receipt.docs_scanned = docs.length;
 
   // ── 1. Per-doc renames (type flip + bridge -> access), CAS-guarded, retried per doc. ─────────
   const candidates = docs.filter((doc) => planDocChange(doc.frontmatter) !== null);
@@ -168,54 +233,99 @@ export async function migrateBundle(bundle, options = {}) {
 
   // ── 2. Shipped-convention refresh + dead Page-convention removal. ─────────────────────────────
   const canonical = loadCanonicalViewConvention();
-  const conventionDocs = await query(bundle, { prefix: "conventions/", type: "Convention" });
+  const priorForms = loadPriorShippedViewConventions();
+  const conventionDocs = await query(bundle, { prefix: "conventions/", type: "Convention" }, { onSkip });
   const pageConventionIds = conventionDocs.filter((doc) => isPageConvention(doc.frontmatter)).map((doc) => doc.id);
-  const hadViewConvention = conventionDocs.some(
-    (doc) => doc.id === VIEW_CONVENTION_ID && isViewConvention(doc.frontmatter),
-  );
-  const viewConventionOccupied = conventionDocs.some(
-    (doc) => doc.id === VIEW_CONVENTION_ID && !isViewConvention(doc.frontmatter),
-  );
+  const existingViewConvention = conventionDocs.find((doc) => doc.id === VIEW_CONVENTION_ID);
+  const hadViewConvention = existingViewConvention !== undefined && isViewConvention(existingViewConvention.frontmatter);
+  const viewConventionOccupied = existingViewConvention !== undefined && !isViewConvention(existingViewConvention.frontmatter);
   if (viewConventionOccupied) {
     warn(VIEW_CONVENTION_ID, "exists but is not a Convention governing View — left untouched");
   }
 
-  // Page-typed docs remaining AFTER the doc pass (fresh query — dry-run projects the flips).
-  const remainingPage = dryRun ? [] : (await query(bundle, { type: "Page" })).map((doc) => doc.id);
-  const pageStockGone = dryRun
-    ? receipt.skipped_docs.length === 0
-    : remainingPage.length === 0 && receipt.skipped_docs.length === 0;
+  // Page-typed docs remaining AFTER the doc pass (fresh tolerant query — dry-run projects the
+  // flips). Skipped (unreadable) docs BLOCK the deletion: they could hide Page stock.
+  const remainingPage = dryRun ? [] : (await query(bundle, { type: "Page" }, { onSkip })).map((doc) => doc.id);
+  const pageStockGone = remainingPage.length === 0 && receipt.skipped_docs.length === 0;
 
   // Swap an existing View convention to the current shipped content; create it only as the
   // replacement for a Page convention this run deletes (a conventions-free bundle stays
   // conventions-free — kind usage is opt-in per bundle).
+  const exportBase = `${bundle.root.replace(/[\\/]+$/, "")}.pre-swap.conventions-view.md`;
   const shouldCreate = !hadViewConvention && !viewConventionOccupied && pageConventionIds.length > 0 && pageStockGone;
   if (hadViewConvention || shouldCreate) {
     if (dryRun) {
-      const existing = hadViewConvention ? conventionDocs.find((doc) => doc.id === VIEW_CONVENTION_ID) : undefined;
-      if (!existing || !sameDocContent(existing, canonical)) {
-        receipt.convention_swapped = existing ? "would_swap" : "would_create";
+      const existing = hadViewConvention ? existingViewConvention : undefined;
+      if (existing === undefined) {
+        receipt.convention_swapped = "would_create";
+      } else {
+        const shape = classifyViewConvention(existing, canonical, priorForms);
+        if (shape === "prior_shipped") receipt.convention_swapped = "would_swap";
+        else if (shape === "customized") {
+          if (overwriteCustomConventions) {
+            receipt.convention_swapped = "would_swap_customized";
+            receipt.convention_export = unusedExportPath(exportBase);
+          } else {
+            receipt.convention_swapped = "skipped_customized";
+            warn(
+              VIEW_CONVENTION_ID,
+              "customized (matches neither the current shipped convention nor any prior shipped form) — " +
+                "left untouched; re-run with --overwrite-custom-conventions to export it and swap",
+            );
+          }
+        }
       }
     } else {
+      // Export state is per-run: decide (per attempt, from THAT attempt's fresh read) stages the
+      // doc to preserve; write exports it to disk BEFORE the CAS write, so a customized doc's
+      // content exists on disk before anything can destroy it (FilesystemBackend keeps no
+      // history). A conflict retry re-stages and re-exports to the SAME path.
+      let exportPath = null;
+      let exportDoc = null;
       const outcome = await versionedMutation({
         read: () => readOrAbsent(bundle, VIEW_CONVENTION_ID),
         decide: (state) => {
+          exportDoc = null;
           if (state !== undefined && !isViewConvention(state.frontmatter)) {
             return { action: "done", result: false }; // raced into an unrelated doc — leave it.
           }
-          if (state !== undefined && sameDocContent(state, canonical)) {
-            return { action: "done", result: false }; // already current — idempotent no-op.
+          if (state !== undefined) {
+            const shape = classifyViewConvention(state, canonical, priorForms);
+            if (shape === "current") return { action: "done", result: false }; // idempotent no-op.
+            if (shape === "customized" && !overwriteCustomConventions) {
+              warn(
+                VIEW_CONVENTION_ID,
+                "customized (matches neither the current shipped convention nor any prior shipped form) — " +
+                  "left untouched; re-run with --overwrite-custom-conventions to export it and swap",
+              );
+              return { action: "done", result: "skipped_customized" };
+            }
+            if (shape === "customized") exportDoc = state;
+            return {
+              action: "write",
+              next: { id: VIEW_CONVENTION_ID, frontmatter: canonical.frontmatter, body: canonical.body },
+              result: shape === "customized" ? "swapped_customized" : "swapped",
+            };
           }
           return {
             action: "write",
             next: { id: VIEW_CONVENTION_ID, frontmatter: canonical.frontmatter, body: canonical.body },
-            result: state === undefined ? "created" : "swapped",
+            result: "created",
           };
         },
-        write: async (next, expectedVersion) =>
-          (await writeDocVersioned(bundle, next, { expectedVersion, actor })).version,
+        write: async (next, expectedVersion) => {
+          if (exportDoc !== null) {
+            exportPath ??= unusedExportPath(exportBase);
+            writeFileSync(exportPath, stringifyDoc(exportDoc.frontmatter, exportDoc.body));
+          }
+          return (await writeDocVersioned(bundle, next, { expectedVersion, actor })).version;
+        },
       });
       receipt.convention_swapped = outcome.result;
+      if (outcome.result === "swapped_customized" && exportPath !== null) {
+        receipt.convention_export = exportPath;
+        warn(VIEW_CONVENTION_ID, `customized convention overwritten; previous content exported to ${exportPath}`);
+      }
     }
   }
 
@@ -224,7 +334,7 @@ export async function migrateBundle(bundle, options = {}) {
   // uncounted) Page stock keeps it, with a warning.
   for (const id of pageConventionIds) {
     if (!pageStockGone) {
-      const blockers = dryRun ? receipt.skipped_docs.map((s) => s.id) : [...remainingPage, ...receipt.skipped_docs.map((s) => s.id)];
+      const blockers = [...remainingPage, ...receipt.skipped_docs.map((s) => s.id)];
       warn(id, `Page convention kept: Page-typed stock may remain (${blockers.join(", ")})`);
       continue;
     }
@@ -257,6 +367,10 @@ function recordPlan(receipt, id, plan, warn) {
   if (plan.changes.includes("type_flipped")) receipt.types_flipped++;
   if (plan.changes.includes("bridge_renamed")) receipt.bridge_renamed++;
   if (plan.changes.includes("bridge_removed")) receipt.bridge_removed++;
+  if (plan.changes.includes("timestamp_added")) {
+    receipt.timestamp_added++;
+    receipt.timestamp_added_docs.push(id);
+  }
   for (const warning of plan.warnings) warn(id, warning);
 }
 
@@ -266,19 +380,38 @@ async function main() {
       dir: { type: "string", multiple: true },
       "dry-run": { type: "boolean", default: false },
       actor: { type: "string", default: DEFAULT_ACTOR },
+      "overwrite-custom-conventions": { type: "boolean", default: false },
     },
   });
-  const dirs = values.dir ?? [];
+  const dirs = (values.dir ?? []).map((dir) => path.resolve(dir));
   if (dirs.length === 0) {
     console.error(
-      "usage: node scripts/migrate-legacy-view-names.mjs --dir <bundle-root> [--dir <bundle-root> ...] [--dry-run] [--actor <name>]",
+      "usage: node scripts/migrate-legacy-view-names.mjs --dir <bundle-root> [--dir <bundle-root> ...] " +
+        "[--dry-run] [--actor <name>] [--overwrite-custom-conventions]",
     );
     process.exit(2);
+  }
+  // Preflight EVERY dir before migrating ANY (review F2): a bad target refuses the whole run
+  // up front instead of leaving earlier bundles migrated and later ones untouched.
+  for (const dir of dirs) {
+    try {
+      assertBundleRoot(dir);
+    } catch (err) {
+      console.error(err.message);
+      process.exit(2);
+    }
   }
   const receipts = [];
   for (const dir of dirs) {
     receipts.push(
-      await migrateBundle({ root: path.resolve(dir) }, { dryRun: values["dry-run"], actor: values.actor }),
+      await migrateBundle(
+        { root: dir },
+        {
+          dryRun: values["dry-run"],
+          actor: values.actor,
+          overwriteCustomConventions: values["overwrite-custom-conventions"],
+        },
+      ),
     );
   }
   console.log(JSON.stringify({ note: NORMALIZATION_NOTE, bundles: receipts }, null, 2));
