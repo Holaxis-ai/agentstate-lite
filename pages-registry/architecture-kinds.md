@@ -1,12 +1,12 @@
 ---
-type: Page
+type: View
 title: 'Kinds, relationships, and self-description'
 entry: pages/architecture-kinds.html
 description: >-
   Post-implementation architecture brief for Brian: diagrams of stable domain
   vocabulary versus changing state, the one-parser/one-registry authority path,
   what PR #42 shipped and why, remaining description work, and honest non-goals.
-bridge: none
+access: none
 actor: codex
 timestamp: '2026-07-13T02:53:17.445Z'
 ---

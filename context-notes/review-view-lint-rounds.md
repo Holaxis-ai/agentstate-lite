@@ -1,10 +1,12 @@
 ---
 type: Context Note
 title: 'Review record: View-surface status lints (2 rounds, exact SHAs)'
-actor: codex-reviewer-lint
-timestamp: '2026-07-23T23:09:49.453Z'
+actor: claude-main-migrate
+timestamp: '2026-07-24T14:32:43.244Z'
 ---
-# Review record: dangling/invalid View lint (rounds 1+2, Codex, exact SHAs c4328e0 / 7a92837)
+# Summary
+
+Review record: dangling/invalid View lint (rounds 1+2, Codex, exact SHAs c4328e0 / 7a92837)
 
 Recorded by the orchestrator on the reviewers' behalf (sandbox EPERM blocked their own board writes).
 

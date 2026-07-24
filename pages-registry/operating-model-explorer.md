@@ -1,8 +1,8 @@
 ---
-type: Page
+type: View
 title: Operating model — recipes & their relationships
 entry: pages/operating-model-explorer.html
-bridge: bundle-read
+access: bundle-read
 description: >-
   Prototype (3 solutions) for visualizing this bundle's recipes and their
   typed-link relationships — Atlas graph, launcher strip, and outline. Renders

@@ -1,12 +1,12 @@
 ---
-type: Page
+type: View
 title: Roadmap
 entry: pages/roadmap.html
 description: >-
   Live graph view — Roadmap Items grouped by status, each expandable to its
   contained tasks with a derived rollup bar.
 actor: mike/claude
-bridge: bundle-read
+access: bundle-read
 timestamp: '2026-07-10T19:58:57.858Z'
 ---
 Roadmap Items grouped into In motion / Committed / Candidate / Done, each expandable to the tasks

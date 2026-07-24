@@ -1,5 +1,5 @@
 ---
-type: Page
+type: View
 title: Status
 description: >-
   Where-are-we dashboard over the board: task KPIs, per-roadmap-item progress
@@ -7,7 +7,7 @@ description: >-
   bridge.
 entry: pages/status.html
 actor: claude-fable
-bridge: bundle-read
+access: bundle-read
 timestamp: '2026-07-12T13:34:31.836Z'
 ---
 

@@ -1,10 +1,12 @@
 ---
 type: Context Note
 title: 'Review record: Phase 2a name migration, high-risk tier (4 rounds, exact SHAs)'
-actor: claude-main-viewauthoring
-timestamp: '2026-07-24T14:18:27.601Z'
+actor: claude-main-migrate
+timestamp: '2026-07-24T14:32:43.503Z'
 ---
-# Review record: Phase 2a name-migration (4 rounds, Codex, exact SHAs)
+# Summary
+
+Review record: Phase 2a name-migration (4 rounds, Codex, exact SHAs)
 
 Recorded by the orchestrator on the reviewers' behalf (reviewer sandboxes cannot write the board). Finding counts converged 6 -> 1 -> 1 -> 0.
 

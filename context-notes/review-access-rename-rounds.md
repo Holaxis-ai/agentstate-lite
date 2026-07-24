@@ -1,10 +1,12 @@
 ---
 type: Context Note
 title: 'Review record: access field rename, high-risk tier (2 rounds, exact SHAs)'
-actor: codex-reviewer-rename
-timestamp: '2026-07-23T23:09:49.603Z'
+actor: claude-main-migrate
+timestamp: '2026-07-24T14:32:42.977Z'
 ---
-# Review record: bridge->access field rename (rounds 1+2, Codex, exact SHAs 850a5dc / fb848c5)
+# Summary
+
+Review record: bridge->access field rename (rounds 1+2, Codex, exact SHAs 850a5dc / fb848c5)
 
 Recorded by the orchestrator on the reviewers' behalf (sandbox EPERM blocked their own board writes).
 

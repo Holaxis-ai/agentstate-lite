@@ -1,5 +1,5 @@
 ---
-type: Page
+type: View
 title: Memory & Trust
 entry: pages/memory.html
 description: >-
@@ -7,7 +7,7 @@ description: >-
   supersession chains, a freshness sweep driven by the kinds' own declared
   horizons, containment wiring lints, and the latest session handoffs.
 actor: mike/claude
-bridge: bundle-read
+access: bundle-read
 timestamp: '2026-07-10T19:58:57.755Z'
 ---
 

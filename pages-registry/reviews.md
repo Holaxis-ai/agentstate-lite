@@ -1,11 +1,11 @@
 ---
-type: Page
+type: View
 title: Review requests
 entry: pages/reviews.html
 description: >-
   Live, generic review handoffs with dynamically discovered evidence and visual
   explainers.
-bridge: bundle-read
+access: bundle-read
 actor: openai/codex
 timestamp: '2026-07-12T00:00:00.000Z'
 ---
