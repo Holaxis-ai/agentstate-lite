@@ -3,7 +3,7 @@ type: Task
 title: >-
   Phase 2a: in-file migration — bridge->access and Page->View, locations
   untouched
-status: in_progress
+status: done
 priority: '2'
 assignee: claude-builder-migrate
 description: >-
@@ -55,7 +55,23 @@ description: >-
   DONE WHEN: zero own-bridge fields and zero Page-typed docs across all known
   bundles (the status audit is the meter), fresh installs teach access only, and
   the stale prose is corrected.
-actor: claude-main-viewauthoring
-timestamp: '2026-07-24T02:30:40.758Z'
+
+
+  DONE 2026-07-24 — merged via PR #157 (merge b884bae; 5 commits
+  2901497/6334830/2c2094b/bf4d0f7/4400ec3). Review: 6 rounds across TWO
+  independent Codex teams, findings 6->1->1->0->1(external)->0; record
+  context-notes/review-phase2a-migration-rounds. LIVE BOARD MIGRATED same day:
+  dry-run first (correctly stopped on the customized-classified convention — an
+  old shipped shape + one hand-edited link line), then real run with
+  --overwrite-custom-conventions: 8 types flipped, 8 bridge fields renamed,
+  convention swapped (old bytes exported + preserved in board git history),
+  conventions/page deleted, second run all zeros, synced (13 board commits).
+  AFTER-AUDIT: 0 Page-typed docs, 0 own-bridge fields, dangling/invalid view
+  counters 0; the 2 residual grep hits are PROSE in historical docs (correct
+  negative scope). REMAINING for Mike: run the script on his bundles (dry-run
+  first). Phase 3 (remove legacy names from code) is now unblocked pending
+  Mike's bundles reading zero.
+actor: claude-main-migrate
+timestamp: '2026-07-24T14:33:04.739Z'
 ---
 [context-notes/review-phase2a-migration-rounds](../context-notes/review-phase2a-migration-rounds.md)
