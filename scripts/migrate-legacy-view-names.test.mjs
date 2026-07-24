@@ -406,6 +406,78 @@ test("F3: a customized View convention is never silently destroyed", async () =>
   }
 });
 
+// Round-4 finding: a non-Convention doc parked on conventions/view was invisible to the
+// type-filtered planning scan — dry-run said would_create, the CAS create was refused SILENTLY,
+// and the Page convention was still deleted, leaving migrated View docs ungoverned. Both
+// occupant shapes (wrong type, wrong governs) must share one rule: visible at plan time, the
+// occupied outcome in the receipt, and the Page convention KEPT with the reason.
+test("an occupant on conventions/view blocks creation AND preserves the Page convention — both occupant shapes", async () => {
+  const { migrateBundle } = await script();
+  const { initBundle, writeDoc, readDoc, readDocVersioned } = await core();
+  const occupants = [
+    {
+      label: "non-Convention occupant (type: Note)",
+      frontmatter: { type: "Note", title: "Parked", timestamp: "2026-07-01T00:00:00.000Z" },
+    },
+    {
+      label: "Convention governing something else (governs: Term)",
+      frontmatter: { type: "Convention", title: "Term", governs: "Term", timestamp: "2026-07-01T00:00:00.000Z" },
+    },
+  ];
+  for (const occupant of occupants) {
+    const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-occupied-"));
+    try {
+      const bundle = await initBundle(dir);
+      await writeDoc(bundle, { id: "conventions/view", frontmatter: occupant.frontmatter, body: "parked content\n" });
+      await writeDoc(bundle, {
+        id: "conventions/page",
+        frontmatter: { type: "Convention", title: "Page", governs: "Page", path: "pages-registry/" },
+        body: "# Page\n",
+      });
+      await writeDoc(bundle, {
+        id: "pages-registry/dash",
+        frontmatter: { type: "Page", title: "Dash", entry: "pages/dash.html", timestamp: "2026-07-01T00:00:00.000Z" },
+        body: "a legacy registration\n",
+      });
+      const occupantBefore = (await readDocVersioned(bundle, "conventions/view")).version;
+
+      // Dry-run projects the SAME decision as the real run — occupied, never would_create.
+      const dry = await migrateBundle(bundle, { dryRun: true });
+      assert.equal(dry.convention_swapped, "skipped_occupied", occupant.label);
+      assert.deepEqual(dry.page_conventions_deleted, [], occupant.label);
+      assert.ok(
+        dry.warnings.some((w) => w.id === "conventions/view" && /left untouched/.test(w.warning)),
+        occupant.label,
+      );
+      assert.ok(
+        dry.warnings.some((w) => w.id === "conventions/page" && /ungoverned/.test(w.warning)),
+        `${occupant.label}: dry-run must state WHY the Page convention is kept`,
+      );
+
+      // Real run: types still flip; occupant untouched; Page convention KEPT with the reason.
+      const receipt = await migrateBundle(bundle);
+      assert.equal(receipt.types_flipped, 1, occupant.label);
+      assert.equal(receipt.convention_swapped, "skipped_occupied", occupant.label);
+      assert.deepEqual(receipt.page_conventions_deleted, [], occupant.label);
+      assert.ok(
+        receipt.warnings.some((w) => w.id === "conventions/view" && /left untouched/.test(w.warning)),
+        occupant.label,
+      );
+      assert.ok(
+        receipt.warnings.some((w) => w.id === "conventions/page" && /ungoverned/.test(w.warning)),
+        `${occupant.label}: the receipt must state WHY the Page convention is kept`,
+      );
+      assert.equal((await readDoc(bundle, "pages-registry/dash")).frontmatter.type, "View", occupant.label);
+      assert.equal((await readDoc(bundle, "conventions/page")).frontmatter.governs, "Page", occupant.label);
+      const after = await readDocVersioned(bundle, "conventions/view");
+      assert.equal(after.version, occupantBefore, `${occupant.label}: the occupant is never written`);
+      assert.equal(after.doc.frontmatter.type, occupant.frontmatter.type, occupant.label);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
 test("CLI surface: --dry-run over --dir emits the receipt with the normalization note; no --dir exits 2", async () => {
   const { NORMALIZATION_NOTE } = await script();
   const { dir } = await makeFixtureBundle();

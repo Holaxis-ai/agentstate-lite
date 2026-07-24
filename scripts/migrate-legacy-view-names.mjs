@@ -25,6 +25,7 @@ import { fileURLToPath } from "node:url";
 import {
   deleteDoc,
   isUsableTimestamp,
+  MalformedDocumentError,
   parseMarkdown,
   query,
   readDocVersioned,
@@ -147,6 +148,23 @@ function classifyViewConvention(doc, canonical, priorForms) {
   return "customized";
 }
 
+/**
+ * Plan-time state of the `conventions/view` id, read DIRECTLY — a type-filtered query cannot
+ * see a non-Convention occupant (a `type: Note` doc parked on the id), which is exactly how a
+ * refused create could go invisible. `view` = a View-governing Convention; `occupied` = ANY
+ * other occupant (wrong type, wrong governs, or unreadable); `absent` = free.
+ */
+async function readViewConventionState(bundle) {
+  try {
+    const { doc } = await readDocVersioned(bundle, VIEW_CONVENTION_ID);
+    return isViewConvention(doc.frontmatter) ? { kind: "view", doc } : { kind: "occupied", doc };
+  } catch (err) {
+    if (isAbsence(err)) return { kind: "absent" };
+    if (err instanceof MalformedDocumentError) return { kind: "occupied" };
+    throw err;
+  }
+}
+
 /** F2: refuse anything that is not a bundle root — the same `index.md` requirement the CLI's resolver enforces. */
 export function assertBundleRoot(root) {
   const indexPath = path.join(root, "index.md");
@@ -239,11 +257,11 @@ export async function migrateBundle(bundle, options = {}) {
   const priorForms = loadPriorShippedViewConventions();
   const conventionDocs = await query(bundle, { prefix: "conventions/", type: "Convention" }, { onSkip });
   const pageConventionIds = conventionDocs.filter((doc) => isPageConvention(doc.frontmatter)).map((doc) => doc.id);
-  const existingViewConvention = conventionDocs.find((doc) => doc.id === VIEW_CONVENTION_ID);
-  const hadViewConvention = existingViewConvention !== undefined && isViewConvention(existingViewConvention.frontmatter);
-  const viewConventionOccupied = existingViewConvention !== undefined && !isViewConvention(existingViewConvention.frontmatter);
-  if (viewConventionOccupied) {
+  const viewConventionState = await readViewConventionState(bundle);
+  const hadViewConvention = viewConventionState.kind === "view";
+  if (viewConventionState.kind === "occupied") {
     warn(VIEW_CONVENTION_ID, "exists but is not a Convention governing View — left untouched");
+    receipt.convention_swapped = "skipped_occupied";
   }
 
   // Page-typed docs remaining AFTER the doc pass (fresh tolerant query — dry-run projects the
@@ -253,16 +271,21 @@ export async function migrateBundle(bundle, options = {}) {
 
   // Swap an existing View convention to the current shipped content; create it only as the
   // replacement for a Page convention this run deletes (a conventions-free bundle stays
-  // conventions-free — kind usage is opt-in per bundle).
+  // conventions-free — kind usage is opt-in per bundle). `viewConventionEndsGoverning` tracks
+  // the ORDERING INVARIANT for the deletion below: a Page convention may be deleted only when
+  // this run's END STATE has a View-governing `conventions/view` — pre-existing (shipped, prior,
+  // or customized all govern View) or successfully created/swapped here. An occupant or a
+  // refused create keeps the Page convention.
   const exportBase = `${bundle.root.replace(/[\\/]+$/, "")}.pre-swap.conventions-view.md`;
-  const shouldCreate = !hadViewConvention && !viewConventionOccupied && pageConventionIds.length > 0 && pageStockGone;
+  const shouldCreate = viewConventionState.kind === "absent" && pageConventionIds.length > 0 && pageStockGone;
+  let viewConventionEndsGoverning = hadViewConvention;
   if (hadViewConvention || shouldCreate) {
     if (dryRun) {
-      const existing = hadViewConvention ? existingViewConvention : undefined;
-      if (existing === undefined) {
+      if (viewConventionState.kind === "absent") {
         receipt.convention_swapped = "would_create";
+        viewConventionEndsGoverning = true;
       } else {
-        const shape = classifyViewConvention(existing, canonical, priorForms);
+        const shape = classifyViewConvention(viewConventionState.doc, canonical, priorForms);
         if (shape === "prior_shipped") receipt.convention_swapped = "would_swap";
         else if (shape === "customized") {
           if (overwriteCustomConventions) {
@@ -290,7 +313,10 @@ export async function migrateBundle(bundle, options = {}) {
         decide: (state) => {
           exportDoc = null;
           if (state !== undefined && !isViewConvention(state.frontmatter)) {
-            return { action: "done", result: false }; // raced into an unrelated doc — leave it.
+            // Raced into an unrelated occupant — leave it, but NEVER silently: the refusal must
+            // reach the receipt, and the Page-convention deletion below must see it.
+            warn(VIEW_CONVENTION_ID, "occupied by a non-View-governing doc at write time — swap/create refused");
+            return { action: "done", result: "refused_occupied" };
           }
           if (state !== undefined) {
             const shape = classifyViewConvention(state, canonical, priorForms);
@@ -329,16 +355,31 @@ export async function migrateBundle(bundle, options = {}) {
         receipt.convention_export = exportPath;
         warn(VIEW_CONVENTION_ID, `customized convention overwritten; previous content exported to ${exportPath}`);
       }
+      // Every non-refused outcome leaves a View-governing doc on the id: `false` (already
+      // current), skipped_customized (customized still governs View), swapped/swapped_customized,
+      // and created all qualify; only a refusal does not.
+      viewConventionEndsGoverning = outcome.result !== "refused_occupied";
     }
   }
 
   // A convention teaching a dead kind name is exactly the two-names confusion this migration
-  // ends — delete it once zero Page-typed docs remain. Any remaining (or unreadable, hence
-  // uncounted) Page stock keeps it, with a warning.
+  // ends — delete it ONLY when zero Page-typed docs remain AND the end state has a
+  // View-governing `conventions/view` (the ordering invariant above): deleting the Page
+  // convention while the View id is occupied or the create was refused would leave the
+  // just-migrated View docs with no governing convention at all. Dry-run projects the SAME rule.
   for (const id of pageConventionIds) {
+    const keepReasons = [];
     if (!pageStockGone) {
       const blockers = [...remainingPage, ...receipt.skipped_docs.map((s) => s.id)];
-      warn(id, `Page convention kept: Page-typed stock may remain (${blockers.join(", ")})`);
+      keepReasons.push(`Page-typed stock may remain (${blockers.join(", ")})`);
+    }
+    if (!viewConventionEndsGoverning) {
+      keepReasons.push(
+        "conventions/view does not end this run as a View-governing Convention — deleting would leave View docs ungoverned",
+      );
+    }
+    if (keepReasons.length > 0) {
+      warn(id, `Page convention kept: ${keepReasons.join("; ")}`);
       continue;
     }
     if (dryRun) {
