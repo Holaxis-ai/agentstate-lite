@@ -1,9 +1,11 @@
 /**
  * Pure Page/View registry/entry path grammar shared by every producer and consumer.
  *
- * `View` is the current kind name; `Page` is its legacy spelling — both stay readable
- * (existing content never migrates). Registry ids are concept ids under
- * `views-registry/` (legacy `pages-registry/`); entries are opaque blob keys under
+ * `View` is the current kind name; `Page` is its legacy spelling — both stay readable during
+ * the migration window (the repo's `migrate-legacy-view-names` script renames legacy content in
+ * place; removal of legacy support is a planned later phase). Registry ids are concept ids under
+ * `views-registry/` (legacy `pages-registry/` — old locations stay recognized; relocation is a
+ * separate open decision); entries are opaque blob keys under
  * `views/` (legacy `pages/`). Both retain exact, case-preserving nested paths while
  * rejecting spellings that discovery or storage cannot safely round-trip. ONE segment
  * grammar, parameterized by prefix — never a parallel module per name.
@@ -42,8 +44,9 @@ export function resolveBridgeCapability(value: unknown): BridgeCapability {
 
 /**
  * THE one reader of the registry-doc capability FIELD: `access` (current name), `bridge` (legacy
- * spelling, accepted during the migration window — removal is a planned follow-up gated on the
- * legacy-stock audit). A doc that carries `access` at all is judged by it ALONE — a stale or
+ * spelling, accepted during the migration window — the repo's `migrate-legacy-view-names` script
+ * renames existing stock in place, and removal of legacy support is a planned later phase). A doc
+ * that carries `access` at all is judged by it ALONE — a stale or
  * extra `bridge` value can never widen what `access` grants.
  */
 export function declaredAccessValue(frontmatter: Record<string, unknown>): unknown {

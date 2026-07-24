@@ -128,8 +128,10 @@ Category semantics (one line each):
                       'dangling_view_entries'.
   legacy_naming      Informational, never a warning: docs typed 'Page' (the legacy name for the
                       'View' kind) plus items still under the legacy pages-registry//pages/ id
-                      prefixes — all fully supported, nothing migrates. Omitted when the bundle
-                      carries none.
+                      prefixes — supported during the migration window (the repo's
+                      migrate-legacy-view-names script renames legacy content in place; old
+                      locations stay recognized; removal of legacy support is a planned later
+                      phase). Omitted when the bundle carries none.
 
 This is a whole-bundle read (one registry load + one query + two prefix-scoped blob listings,
 batched) — acceptable for an explicitly batch-analysis command; over --remote it is one
@@ -523,7 +525,9 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
     const legacy: Record<string, unknown> = {
       note:
         "informational — 'Page' is the legacy name for the 'View' kind; legacy-typed docs and " +
-        "old-prefix ids stay fully supported and never migrate. These counts size a future full deprecation.",
+        "old-prefix ids stay supported during the migration window (the migrate-legacy-view-names " +
+        "script renames legacy content in place; old locations stay recognized). These counts size " +
+        "the planned removal of legacy support.",
       page_typed_docs: pageTyped.total,
       legacy_prefix_items: legacyPrefix.total,
     };

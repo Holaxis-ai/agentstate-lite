@@ -17,10 +17,13 @@ under `views/…`, declared by a `type: View` registry doc, and rendered by `age
 inside a **sandboxed iframe**. Views are bundle content — authored, versioned, attributed, and
 synced like any other doc — while the shell is the launcher and trusted data broker.
 
-`Page` is the accepted legacy name for this kind: existing `type: Page` docs under the legacy
-`pages-registry/`/`pages/` prefixes keep working and never need migrating — author new views as
-`type: View` under `views-registry/`/`views/`. Bridge wire names (the `open-page` verb, its
-`pageId` payload field) are stable ABI and did not change with the rename.
+`Page` is the legacy name for this kind, transitional rather than permanent: legacy
+`type: Page` docs still resolve during the migration window (the legacy stock is renamed to
+`type: View` in place by the repo's `migrate-legacy-view-names` script; docs under the legacy
+`pages-registry/`/`pages/` prefixes stay recognized where they are), and removal of legacy
+support is a planned later phase — author new views as `type: View` under
+`views-registry/`/`views/`. Bridge wire names (the `open-page` verb, its `pageId` payload field)
+are stable ABI and did not change with the rename.
 
 ## Trust model (why a view can never touch a credential)
 
@@ -152,10 +155,11 @@ requests at all — and the shell, not the view, is what enforces it:
   submit the narrow v1 proposal above. Each proposal still requires trusted-shell confirmation.
 - `access: none` — a **content view**. The shell replies to every bundle-data request with a
   `FORBIDDEN` error, before touching any bundle data. It may still use `open-page` navigation.
-- `bridge` is the accepted legacy spelling of this field, honored during the migration window: a
-  doc declaring only `bridge` keeps working unchanged today; removal of legacy support is a
-  planned follow-up gated on the legacy-stock audit. When both are present, `access` alone
-  decides. Author new views with `access`.
+- `bridge` is the legacy spelling of this field, honored at runtime during the migration window:
+  a doc declaring only `bridge` still resolves today, the repo's `migrate-legacy-view-names`
+  script renames it to `access` in place, and removal of legacy support is a planned later phase.
+  The shipped View convention no longer declares `bridge`, so new authoring uses `access`. When
+  both are present, `access` alone decides.
 - The `View` convention declares `access` REQUIRED — every view is an intentional
   classification, not a silent default. At runtime the shell still fails closed for a doc this
   convention didn't govern (an external bundle, a hand-edited file that skipped the lint): absent,

@@ -363,7 +363,7 @@ test("the rendered skill mentions legacy Page exactly once — the legacy note, 
   // The single accepted-legacy sentence. Any other `type: Page` occurrence is stale teaching.
   const legacyMentions = rendered.match(/type: Page/g) ?? [];
   assert.equal(legacyMentions.length, 1, "exactly one `type: Page` mention (the legacy note) may remain");
-  assert.match(rendered, /`Page` is the accepted legacy name/);
+  assert.match(rendered, /`Page` is the legacy name/);
   // No authoring guidance may target the legacy prefixes.
   assert.doesNotMatch(rendered, /--doc-key pages\//);
   assert.doesNotMatch(rendered, /--doc-key pages-registry\//);
@@ -378,7 +378,7 @@ test("the npm-target SKILL teaches Views canonically — legacy Page appears exa
   // the same rule: one accepted-legacy sentence, no legacy authoring guidance.
   const legacyMentions = renderedNpm.match(/type: Page/g) ?? [];
   assert.equal(legacyMentions.length, 1, "exactly one `type: Page` mention (the legacy note) may remain");
-  assert.match(renderedNpm, /`Page` is the accepted legacy name/);
+  assert.match(renderedNpm, /`Page` is the legacy name/);
   assert.doesNotMatch(renderedNpm, /bundle Pages/);
   assert.doesNotMatch(renderedNpm, /--doc-key pages\//);
   assert.doesNotMatch(renderedNpm, /--doc-key pages-registry\//);
@@ -404,6 +404,48 @@ test("no CLI teaching source (usage/help strings included) says Page except as a
     lines.forEach((line, i) => {
       if (/\bPages?\b/.test(line) && !/legacy/i.test(line)) {
         assert.fail(`${relative}:${i + 1} teaches canonical Page (no "legacy" on the line): ${line.trim()}`);
+      }
+    });
+  }
+});
+
+test("no teaching surface makes a PERMANENCE claim about legacy naming (fix-round F5: 'nothing migrates'-style wording)", () => {
+  // Legacy Page/bridge support is TRANSITIONAL (board doc decisions/legacy-deprecation-path):
+  // content migrates via scripts/migrate-legacy-view-names.mjs and removal is a later phase. A
+  // sentence claiming permanence ("nothing migrates", "never migrate(s)", "never need(s)
+  // migrating", legacy naming "forever") is a factual error wherever agents or humans read it —
+  // this pin fails on the CLAIM SHAPE, not on Page-word counting.
+  const permanence = /(nothing|never)(\s+\w+){0,2}\s+migrat/i;
+  const legacyNaming = /\bPages?\b|\bbridge\b|legacy/i;
+  const foreverClaim = /\bforever\b/i;
+  const sources: Array<[string, string]> = [
+    ["rendered skill SKILL.md", rendered],
+    ["rendered npm SKILL.md", renderedNpm],
+  ];
+  const sourceFiles = [
+    "src/reference.ts",
+    "src/skill-render.ts",
+    "src/legacy-page.ts",
+    ...readdirSync(path.join(here, "../src/commands"))
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => `src/commands/${f}`),
+  ];
+  for (const relative of sourceFiles) sources.push([relative, readFileSync(path.join(here, "..", relative), "utf8")]);
+  for (const relative of ["CLAUDE.md", "README.md", "packages/cli/README.md"]) {
+    const filePath = path.join(REPO_ROOT, relative);
+    if (existsSync(filePath)) sources.push([relative, readFileSync(filePath, "utf8")]);
+  }
+  const examplesRoot = path.join(REPO_ROOT, "examples");
+  for (const relative of relativeFileInventory(examplesRoot).filter((f) => f.endsWith(".md"))) {
+    sources.push([`examples/${relative}`, readFileSync(path.join(examplesRoot, relative), "utf8")]);
+  }
+  for (const [name, text] of sources) {
+    text.split("\n").forEach((line, i) => {
+      if (permanence.test(line)) {
+        assert.fail(`${name}:${i + 1} makes a permanence claim about migration: ${line.trim()}`);
+      }
+      if (legacyNaming.test(line) && foreverClaim.test(line)) {
+        assert.fail(`${name}:${i + 1} claims legacy naming lasts forever: ${line.trim()}`);
       }
     });
   }

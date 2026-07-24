@@ -184,7 +184,13 @@ export type { RawLink } from "./links.js";
 
 export { parseTimestamp } from "./freshness.js";
 
-export { parseMarkdown, stringifyDoc, stringifyWithData, MalformedDocumentError } from "./frontmatter.js";
+export {
+  parseMarkdown,
+  stringifyDoc,
+  stringifyWithData,
+  isUsableTimestamp,
+  MalformedDocumentError,
+} from "./frontmatter.js";
 
 // Typed input-validation rejection (engine refuses caller input before touching storage) —
 // consumer boundaries branch on the TYPE (CLI: USAGE/exit 2), never on message prose.

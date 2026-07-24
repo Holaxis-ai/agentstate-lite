@@ -362,7 +362,8 @@ export function Launcher() {
                     <p>
                       Worked examples — including the bridge client to copy — ship with the CLI under{" "}
                       <code>examples/views/</code>. (Views used to be called pages; existing{" "}
-                      <code>type: Page</code> documents keep working and never need migrating.)
+                      <code>type: Page</code> documents keep working during the migration window and
+                      can be renamed in place by the repo&apos;s migration script.)
                     </p>
                   </div>
                 )}

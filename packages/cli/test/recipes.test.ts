@@ -893,9 +893,9 @@ test("portable Review Workflow: clean-room install carries Kinds, a View, and it
     assert.ok(pageKind);
     assert.equal(pageKind!.path, "views-registry/");
     assert.deepEqual(pageKind!.fields.required, ["title", "entry", "access"]);
-    assert.deepEqual(pageKind!.fields.optional, ["description", "bridge"]);
+    assert.deepEqual(pageKind!.fields.optional, ["description"], "the shipped convention no longer declares legacy `bridge`");
     assert.deepEqual(pageKind!.fields.values.access, ["none", "bundle-read", "bundle-propose"]);
-    assert.deepEqual(pageKind!.fields.values.bridge, ["none", "bundle-read", "bundle-propose"]);
+    assert.equal(pageKind!.fields.values.bridge, undefined);
 
     const pageDefinitions = await runJson(list, ["--type", "View", "--dir", dir]);
     assert.equal(pageDefinitions.count, 1, "the package carries exactly its declared View definition");
@@ -967,6 +967,57 @@ test("portable Review Workflow: clean-room install carries Kinds, a View, and it
       registryBefore,
     );
     assert.equal(await readFile(path.join(dir, "references", "view-authoring-v0.md"), "utf8"), installedReference);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// Phase 2a consequence pin (tasks/migrate-legacy-page-bridge-stock): the shipped View convention
+// no longer declares legacy `bridge`, so on a FRESH bundle `new "View" --access …` authors
+// cleanly while `--bridge` is an unknown-field USAGE error — the authoring surface teaches only
+// the current name.
+test("fresh bundle with the shipped View convention: new --access works, legacy --bridge is an unknown field", async () => {
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    await runJson(recipe, ["add", REVIEW_WORKFLOW_RECIPE, "--dir", dir]);
+
+    const created = await runJson(newCommand, [
+      "View",
+      "fresh-dash",
+      "--title",
+      "Fresh dash",
+      "--entry",
+      "views/fresh-dash.html",
+      "--access",
+      "none",
+      "--dir",
+      dir,
+    ]);
+    assert.equal(created.id, "views-registry/fresh-dash");
+    assert.equal(created.hint, undefined, "authoring the CURRENT kind name must not trip the legacy hint");
+
+    await assert.rejects(
+      () =>
+        runJson(newCommand, [
+          "View",
+          "legacy-dash",
+          "--title",
+          "Legacy dash",
+          "--entry",
+          "views/legacy-dash.html",
+          "--bridge",
+          "none",
+          "--dir",
+          dir,
+        ]),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "USAGE");
+        assert.match(err.message, /unknown field\(s\) for kind 'View'.*bridge/);
+        return true;
+      },
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

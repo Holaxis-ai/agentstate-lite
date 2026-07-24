@@ -23,6 +23,7 @@
  * engine's node built-ins for a pure predicate). The one backend-touching entry point,
  * `loadKinds`, lives in `kinds-load.ts` — same ONE registry, split only by dependency weight.
  */
+import { isUsableTimestamp } from "./frontmatter.js";
 import type { ValidationWarning } from "./validation.js";
 import type { ConceptId, Frontmatter, OkfDocument } from "./types.js";
 
@@ -753,7 +754,7 @@ export function defaultTimestampAndValidateAgainstRegistry(
   doc: OkfDocument,
   registry: KindRegistry,
 ): RegistryValidationResult {
-  if (typeof doc.frontmatter.timestamp !== "string" || doc.frontmatter.timestamp.trim() === "") {
+  if (!isUsableTimestamp(doc.frontmatter.timestamp)) {
     doc.frontmatter.timestamp = new Date().toISOString();
   }
   const kind = registry.kinds.get(String(doc.frontmatter.type));

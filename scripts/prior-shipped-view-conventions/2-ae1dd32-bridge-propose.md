@@ -7,16 +7,16 @@ fields:
   required:
     - title
     - entry
-    - access
+    - bridge
   optional:
     - description
   values:
-    access:
+    bridge:
       - none
       - bundle-read
       - bundle-propose
   terminal: {}
-timestamp: "2026-07-23T00:00:00.000Z"
+timestamp: "2026-07-17T00:00:00.000Z"
 ---
 # View
 
@@ -27,16 +27,14 @@ the narrow postMessage bridge documented in the bundle's
 [View authoring reference](../references/view-authoring-v0.md) — it never holds a credential.
 V0 is read-only; `bundle-propose` adds only a trusted-shell-confirmed v1 scalar action.
 
-`Page` is the legacy name for this kind, and `bridge` the legacy spelling of `access`. Both are
-transitional: existing docs still resolve during the migration window (docs under the legacy
-`pages-registry/`/`pages/` prefixes stay recognized where they are), the repo's
-`migrate-legacy-view-names` script renames them in place, and removal of legacy support is a
-planned later phase. Author new views as `type: View` with `access`.
+`Page` is the accepted legacy name for this kind: existing `type: Page` docs under the legacy
+`pages-registry/`/`pages/` prefixes keep working and never need migrating — author new views as
+`type: View`.
 
 - `title` (required) — the launcher card's heading.
 - `entry` (required) — the HTML blob key, e.g. `views/roadmap.html`.
 - `description` (optional) — one line shown on the launcher card.
-- `access` (required) — `none | bundle-read | bundle-propose`. Required so every View is an INTENTIONAL
+- `bridge` (required) — `none | bundle-read | bundle-propose`. Required so every View is an INTENTIONAL
   classification, not a silent default — an author who forgets to declare it gets a clear
   authoring-time lint, not a view that quietly renders empty against a full bundle. ENFORCED by
   the shell too, not just linted: absent, malformed, or any value other than exactly
