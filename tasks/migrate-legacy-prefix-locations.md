@@ -28,7 +28,15 @@ description: >-
 
   Depends on Phase 2a (content first, so a move — if ever — moves already-clean
   files).
-actor: claude-main-viewauthoring
-timestamp: '2026-07-23T23:48:25.987Z'
+
+
+  SCOPE CLARIFICATION (Brian, 2026-07-24): the single-vocabulary north star
+  (decisions/single-vocabulary-north-star) applies to NEWLY INSTALLED bundles —
+  existing boards' legacy ids are ACCEPTED LUGGAGE, explicitly tolerated. This
+  further lowers this task's urgency: fresh bundles never have legacy prefixes,
+  so the address dial only matters for joiners of pre-existing shared boards.
+  Revisit only if that confusion is actually observed.
+actor: claude-main
+timestamp: '2026-07-24T17:32:21.608Z'
 ---
 [depends on](migrate-legacy-page-bridge-stock.md)
