@@ -1,8 +1,8 @@
 ---
 type: Context Note
 title: 'Review record: Phase 2a name migration, high-risk tier (4 rounds, exact SHAs)'
-actor: codex-reviewer-migrate
-timestamp: '2026-07-24T02:30:40.620Z'
+actor: claude-main-viewauthoring
+timestamp: '2026-07-24T14:18:27.601Z'
 ---
 # Review record: Phase 2a name-migration (4 rounds, Codex, exact SHAs)
 
@@ -188,3 +188,23 @@ gates:
   npm run typecheck: 0
   npm test: 0
   npm run test:scripts: 0
+
+## External round (bf4d0f7, second independent Codex team) — REQUEST CHANGES, 1 finding
+
+[P2, EMPIRICAL] Page convention deletable while its View replacement could not be created: a
+NON-Convention doc occupying conventions/view was invisible to the type-filtered planning query,
+so dry-run reported would_create, the write-time refusal was silent, and conventions/page was
+still deleted — migrated View docs left ungoverned, no warning. Reproduced with a type: Note
+occupant + one Page convention + one Page registration. NOTE: the internal round-1 probe covered
+the occupied case only with a Convention-TYPED occupant (visible to the filter) — a disjoint
+fixture shape from a differently-configured team, the exact value dual review teams exist for.
+
+## Round 5 (4400ec3, closure) — APPROVE, zero findings
+
+Fix verified with the external reviewer's exact fixture in both modes (skipped_occupied, Page
+convention kept with stated reason, occupant version-stable, no would_create reachable). The
+mid-write race branch (refused_occupied) was made EMPIRICAL: a FilesystemBackend proxy injected a
+competing occupant between plan and write, forcing VersionConflict; the retry took the
+refused_occupied decision, kept the Page convention, and left the racer untouched. Suite
+sensitivity re-probed red. Final tally: 5 commits, 6 review rounds across two independent teams,
+findings 6 -> 1 -> 1 -> 0 -> 1 (external) -> 0.
