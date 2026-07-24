@@ -104,3 +104,14 @@ export function stringifyWithData(data: Record<string, unknown>, body: string): 
 export function stringifyDoc(frontmatter: Frontmatter, body: string): string {
   return stringifyWithData(frontmatter as Record<string, unknown>, body);
 }
+
+/**
+ * THE engine's usable-document-timestamp predicate: a non-empty (post-trim) string. Anything
+ * else — absent, empty string, null, or any non-string — is unusable, and the engine write path
+ * (`writeDocVersioned`) replaces it with the current time. A consumer that must DISCLOSE that
+ * stamping (e.g. the legacy-name migration's `timestamp_added` receipt) reuses this predicate
+ * rather than inventing a second definition of "has a timestamp".
+ */
+export function isUsableTimestamp(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "";
+}

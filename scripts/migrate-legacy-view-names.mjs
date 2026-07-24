@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   deleteDoc,
+  isUsableTimestamp,
   parseMarkdown,
   query,
   readDocVersioned,
@@ -85,9 +86,11 @@ export function planDocChange(frontmatter) {
   }
   if (flipType) changes.push("type_flipped");
   if (hasOwnBridge) changes.push(hasOwnAccess ? "bridge_removed" : "bridge_renamed");
-  // The engine write path guarantees a timestamp, so migrating a doc that never declared one
-  // STAMPS it (a freshness-semantics change) — the receipt must say so, not hide it.
-  if (!Object.hasOwn(frontmatter, "timestamp")) changes.push("timestamp_added");
+  // The engine write path guarantees a USABLE timestamp, so migrating a doc without one — the
+  // field absent, empty, null, or any non-string — STAMPS it with the current time (a
+  // freshness-semantics change). The receipt must say so, not hide it, and the disclosure
+  // predicate is THE engine's own `isUsableTimestamp`, never a second local definition.
+  if (!isUsableTimestamp(frontmatter.timestamp)) changes.push("timestamp_added");
   // Object.fromEntries defines properties (never invokes a setter), so a hostile key such as
   // `__proto__` cannot poison the accumulator.
   return { next: Object.fromEntries(entries), changes, warnings };

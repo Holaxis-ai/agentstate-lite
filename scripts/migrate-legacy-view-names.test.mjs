@@ -55,12 +55,23 @@ async function makeFixtureBundle() {
     frontmatter: { type: "Page", title: "Dash", entry: "pages/dash.html", bridge: "bundle-read", timestamp: T },
     body: "A Page-typed VALID registration at a legacy location.\n",
   });
-  // Raw-authored (external shape): a Page-typed NON-registration doc with NO timestamp — the
-  // engine write will stamp one, and the receipt must report that (F4).
+  // Raw-authored (external shape): Page-typed docs WITHOUT a usable timestamp in all three
+  // spellings — absent, empty string, and bare YAML null. The engine write stamps each with the
+  // current time, and the receipt must report every one (F4 + round-2 variant).
   writeRawDoc(
     dir,
     "notes/scratch-page.md",
     "---\ntype: Page\ntitle: Scratch\n---\nA Page-typed NON-registration doc (no entry, off-prefix, no timestamp).\n",
+  );
+  writeRawDoc(
+    dir,
+    "notes/empty-ts.md",
+    '---\ntype: Page\ntitle: Empty timestamp\ntimestamp: ""\n---\nAn empty-string timestamp is unusable — stamping must be disclosed.\n',
+  );
+  writeRawDoc(
+    dir,
+    "notes/null-ts.md",
+    "---\ntype: Page\ntitle: Null timestamp\ntimestamp:\n---\nA bare YAML null timestamp is unusable — stamping must be disclosed.\n",
   );
   await writeDoc(bundle, {
     id: "views-registry/pulse",
@@ -136,11 +147,11 @@ test("one run migrates the full fixture matrix in place; a second run reports ze
 
     const receipt = await migrateBundle(bundle);
     assert.equal(receipt.dry_run, false);
-    assert.equal(receipt.types_flipped, 2, "both Page-typed docs flip, registration-valid or not");
+    assert.equal(receipt.types_flipped, 4, "every Page-typed doc flips, registration-valid or not");
     assert.equal(receipt.bridge_renamed, 3, "dash + pulse + weird");
     assert.equal(receipt.bridge_removed, 1, "board's shadowed bridge is dropped");
-    assert.equal(receipt.timestamp_added, 1, "the timestamp-less doc's stamping is REPORTED (F4)");
-    assert.deepEqual(receipt.timestamp_added_docs, ["notes/scratch-page"]);
+    assert.equal(receipt.timestamp_added, 3, "absent, empty-string, AND null timestamps are all REPORTED (F4)");
+    assert.deepEqual(receipt.timestamp_added_docs, ["notes/empty-ts", "notes/null-ts", "notes/scratch-page"]);
     assert.equal(receipt.convention_swapped, "swapped", "a known prior shipped form swaps silently");
     assert.deepEqual(receipt.page_conventions_deleted, ["conventions/page"]);
     assert.deepEqual(receipt.skipped_docs, []);
@@ -158,9 +169,14 @@ test("one run migrates the full fixture matrix in place; a second run reports ze
     assert.equal(dash.frontmatter.type, "View");
     assert.equal(dash.frontmatter.access, "bundle-read");
     assert.equal(dash.frontmatter.entry, "pages/dash.html", "blob keys stay exactly where they are");
-    const scratch = await readDoc(bundle, "notes/scratch-page");
-    assert.equal(scratch.frontmatter.type, "View");
-    assert.equal(typeof scratch.frontmatter.timestamp, "string", "the engine stamped it — and the receipt said so");
+    for (const id of ["notes/scratch-page", "notes/empty-ts", "notes/null-ts"]) {
+      const stamped = await readDoc(bundle, id);
+      assert.equal(stamped.frontmatter.type, "View");
+      assert.ok(
+        typeof stamped.frontmatter.timestamp === "string" && stamped.frontmatter.timestamp.trim() !== "",
+        `${id}: the engine stamped a usable timestamp — and the receipt said so`,
+      );
+    }
     const board = await readDoc(bundle, "views-registry/board");
     assert.equal(board.frontmatter.access, "bundle-read", "a leftover bridge can never widen access");
     const weird = await readDoc(bundle, "views-registry/weird");
@@ -228,7 +244,7 @@ test("a competing write inside the CAS window is retried from a fresh read and c
     assert.equal(dash.frontmatter.type, "View", "the rename still lands");
     assert.equal(dash.frontmatter.access, "bundle-read");
     assert.equal(dash.body, "competing edit\n", "the competing writer's change is preserved, not clobbered");
-    assert.equal(receipt.types_flipped, 2);
+    assert.equal(receipt.types_flipped, 4);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -242,17 +258,17 @@ test("dry-run writes nothing and reports exactly what a real run would do", asyn
     const before = await versionMap(bundle);
     const receipt = await migrateBundle(bundle, { dryRun: true });
     assert.equal(receipt.dry_run, true);
-    assert.equal(receipt.types_flipped, 2);
+    assert.equal(receipt.types_flipped, 4);
     assert.equal(receipt.bridge_renamed, 3);
     assert.equal(receipt.bridge_removed, 1);
-    assert.equal(receipt.timestamp_added, 1, "dry-run projects the stamping too (F4)");
-    assert.deepEqual(receipt.timestamp_added_docs, ["notes/scratch-page"]);
+    assert.equal(receipt.timestamp_added, 3, "dry-run projects absent, empty, AND null stampings too (F4)");
+    assert.deepEqual(receipt.timestamp_added_docs, ["notes/empty-ts", "notes/null-ts", "notes/scratch-page"]);
     assert.equal(receipt.convention_swapped, "would_swap");
     assert.deepEqual(receipt.page_conventions_deleted, ["conventions/page"]);
     assert.equal(receipt.warnings.length, 1);
 
     assert.deepEqual(await versionMap(bundle), before, "dry-run must not write a byte");
-    assert.equal((await query(bundle, { type: "Page" })).length, 2);
+    assert.equal((await query(bundle, { type: "Page" })).length, 4);
     assert.equal((await readDoc(bundle, "conventions/page")).frontmatter.governs, "Page");
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -403,8 +419,8 @@ test("CLI surface: --dry-run over --dir emits the receipt with the normalization
     assert.match(parsed.note, /re-serialize whole documents to canonical form/);
     assert.equal(parsed.bundles.length, 1);
     assert.equal(parsed.bundles[0].bundle, dir);
-    assert.equal(parsed.bundles[0].types_flipped, 2);
-    assert.equal(parsed.bundles[0].timestamp_added, 1);
+    assert.equal(parsed.bundles[0].types_flipped, 4);
+    assert.equal(parsed.bundles[0].timestamp_added, 3);
 
     await assert.rejects(
       () => execFileAsync(process.execPath, [SCRIPT], { cwd: repoRoot }),

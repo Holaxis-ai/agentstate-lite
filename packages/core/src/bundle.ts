@@ -12,7 +12,7 @@
 import path from "node:path";
 
 import { FilesystemBackend } from "./backend.js";
-import { MalformedDocumentError, stringifyWithData } from "./frontmatter.js";
+import { isUsableTimestamp, MalformedDocumentError, stringifyWithData } from "./frontmatter.js";
 import { GENERATED_INDEX_MARKER } from "./index-marker.js";
 import { parseLinksFromDoc } from "./links.js";
 import {
@@ -129,10 +129,7 @@ export async function writeDocVersioned(
   }
 
   const existingTs = doc.frontmatter.timestamp;
-  const timestamp =
-    typeof existingTs === "string" && existingTs.trim() !== ""
-      ? existingTs
-      : new Date().toISOString();
+  const timestamp = isUsableTimestamp(existingTs) ? existingTs : new Date().toISOString();
 
   // Reorder so `type` leads and `timestamp` trails, matching OKF sample docs.
   const { type: _t, timestamp: _ts, ...rest } = doc.frontmatter;
