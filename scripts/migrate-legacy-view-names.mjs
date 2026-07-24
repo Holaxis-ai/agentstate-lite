@@ -51,6 +51,65 @@ const ACCESS_VALUES = new Set(["none", "bundle-read", "bundle-propose"]);
 
 const isViewTyped = (frontmatter) => frontmatter.type === "Page" || frontmatter.type === "View";
 
+const count = (n, noun) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+
+/**
+ * The receipt's one plain-language verdict, derived ONLY from the counters the run already
+ * computed — no second bookkeeping that could drift. Mode-aware grammar: a dry run states
+ * hypotheticals as conditionals ("would migrate …"), a real run reports completed actions in
+ * the past tense ("migrated …"). An all-quiet receipt says the scan really looked: how many
+ * docs were read, and whether any could not be.
+ */
+export function describeReceipt(receipt) {
+  const clauses = [];
+  const docsChanged = receipt.changed_docs.length;
+  if (docsChanged > 0) {
+    const parts = [];
+    if (receipt.types_flipped > 0) parts.push(count(receipt.types_flipped, "type rename"));
+    if (receipt.bridge_renamed > 0) parts.push(count(receipt.bridge_renamed, "field rename"));
+    if (receipt.bridge_removed > 0) parts.push(count(receipt.bridge_removed, "shadowed field drop"));
+    clauses.push(`${receipt.dry_run ? "migrate" : "migrated"} ${count(docsChanged, "doc")} (${parts.join(", ")})`);
+  }
+  const conventionClause = {
+    would_swap: "swap the View convention",
+    would_swap_customized: "swap the View convention",
+    swapped: "swapped the View convention",
+    swapped_customized: "swapped the View convention",
+    would_create: "create the View convention",
+    created: "created the View convention",
+  }[receipt.convention_swapped];
+  if (conventionClause) clauses.push(conventionClause);
+  const deleted = receipt.page_conventions_deleted.length;
+  if (deleted > 0) clauses.push(`${receipt.dry_run ? "delete" : "deleted"} ${count(deleted, "Page convention")}`);
+
+  if (clauses.length === 0) {
+    // "No legacy names found" is a clean-scan claim — it may ONLY appear when the scan really
+    // was clean (review P1). Any warning means legacy or unreadable state remains: skipped
+    // docs, a skipped/refused View-convention swap, or a deliberately retained Page convention.
+    if (receipt.warnings.length === 0) {
+      return `nothing to migrate — no legacy names found in ${count(receipt.docs_scanned, "doc")} (all readable)`;
+    }
+    const skips = receipt.skipped_docs.length;
+    const skipNote = `${count(skips, "doc")} unreadable — see skipped_docs`;
+    // Retained Page conventions are counted from the receipt's own warning records (the one
+    // place the run states them), never from a second tally.
+    const kept = receipt.warnings.filter((w) => w.warning.startsWith("Page convention kept")).length;
+    const reasons = [];
+    if (kept > 0) reasons.push(`${count(kept, "Page convention")} retained (${skips > 0 ? skipNote : "see warnings"})`);
+    else if (skips > 0) reasons.push(skipNote);
+    if (receipt.convention_swapped === "skipped_customized") {
+      reasons.push("customized View convention skipped (re-run with --overwrite-custom-conventions)");
+    } else if (receipt.convention_swapped === "skipped_occupied" || receipt.convention_swapped === "refused_occupied") {
+      reasons.push("conventions/view occupied by a non-View-governing doc — left untouched");
+    }
+    if (reasons.length === 0) reasons.push("see warnings");
+    return `no changes made, but attention needed — ${count(receipt.warnings.length, "warning")}: ${reasons.join("; ")}`;
+  }
+  let sentence = (receipt.dry_run ? "would " : "") + clauses.join(", ");
+  if (receipt.warnings.length > 0) sentence += `; ${count(receipt.warnings.length, "warning")}`;
+  return sentence;
+}
+
 /**
  * Plan the in-place rename for ONE doc's frontmatter, or `null` when nothing applies. Pure —
  * re-run against every CAS attempt's fresh read. Key order is preserved (`access` takes the
@@ -403,7 +462,9 @@ export async function migrateBundle(bundle, options = {}) {
     if (outcome.result === true) receipt.page_conventions_deleted.push(id);
   }
 
-  return receipt;
+  // `result` leads the receipt: the human verdict first, the machine counters (unchanged keys)
+  // after it. Derived at the end so it can only restate what the counters already say.
+  return { result: describeReceipt(receipt), ...receipt };
 }
 
 function recordPlan(receipt, id, plan, warn) {
