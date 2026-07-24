@@ -558,3 +558,108 @@ test("a bundle whose only View convention was the Page one gets the shipped View
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ── Receipt `result` verdict (product-owner finding, 2026-07-24): an all-zeros receipt must ────
+// distinguish "already clean / never needed migration" from "the script didn't really look",
+// and a dry run must state hypotheticals as conditionals, not completed-action grammar.
+
+test("receipt result: an all-clean bundle says nothing to migrate AND that the scan really looked", async () => {
+  const { migrateBundle } = await script();
+  const { initBundle, writeDoc } = await core();
+
+  // Case 1 — never needed migration: a bundle with no legacy names at all.
+  const cleanDir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-clean-"));
+  try {
+    const cleanBundle = await initBundle(cleanDir);
+    await writeDoc(cleanBundle, {
+      id: "notes/plain",
+      frontmatter: { type: "Note", title: "Plain", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "no legacy names anywhere\n",
+    });
+    await writeDoc(cleanBundle, {
+      id: "views-registry/modern",
+      frontmatter: { type: "View", title: "Modern", entry: "views/modern.html", access: "none", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "already the current spelling\n",
+    });
+    const dry = await migrateBundle(cleanBundle, { dryRun: true });
+    assert.equal(dry.result, "nothing to migrate — no legacy names found in 2 docs (all readable)");
+    const real = await migrateBundle(cleanBundle);
+    assert.equal(real.result, "nothing to migrate — no legacy names found in 2 docs (all readable)");
+  } finally {
+    await rm(cleanDir, { recursive: true, force: true });
+  }
+
+  // Case 2 — already migrated: the full fixture after a real run reports the same verdict.
+  const { dir, bundle } = await makeFixtureBundle();
+  try {
+    await migrateBundle(bundle);
+    const after = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(after.result, "nothing to migrate — no legacy names found in 10 docs (all readable)");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("receipt result: dry-run speaks in conditionals, the real run in past tense — same fixture", async () => {
+  const { migrateBundle } = await script();
+  const { dir, bundle } = await makeFixtureBundle();
+  try {
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(
+      dry.result,
+      "would migrate 7 docs (4 type renames, 3 field renames, 1 shadowed field drop), " +
+        "swap the View convention, delete 1 Page convention; 1 warning",
+    );
+    const real = await migrateBundle(bundle);
+    assert.equal(
+      real.result,
+      "migrated 7 docs (4 type renames, 3 field renames, 1 shadowed field drop), " +
+        "swapped the View convention, deleted 1 Page convention; 1 warning",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("receipt result: unreadable docs surface in the nothing-to-migrate caveat", async () => {
+  const { migrateBundle } = await script();
+  const { initBundle, writeDoc } = await core();
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-skipcaveat-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "notes/plain",
+      frontmatter: { type: "Note", title: "Plain", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "clean\n",
+    });
+    writeRawDoc(dir, "notes/broken.md", "---\ntype: Note\ntitle: Broken\nbad: [unterminated\n---\nnever parses\n");
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(dry.result, "nothing to migrate — no legacy names found in 1 doc (1 doc unreadable — see skipped_docs)");
+    const real = await migrateBundle(bundle);
+    assert.equal(real.result, "nothing to migrate — no legacy names found in 1 doc (1 doc unreadable — see skipped_docs)");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("receipt result: the sentence is derived from the counters and leads the receipt", async () => {
+  const { migrateBundle, describeReceipt } = await script();
+  const { dir, bundle } = await makeFixtureBundle();
+  try {
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    const real = await migrateBundle(bundle);
+    for (const receipt of [dry, real]) {
+      assert.equal(Object.keys(receipt)[0], "result", "the verdict is the receipt's leading field");
+      assert.equal(describeReceipt(receipt), receipt.result, "sentence and counters agree — no second bookkeeping");
+    }
+    // Mutating any counter the sentence claims must change the sentence — the builder READS the
+    // counters, it does not carry its own tallies.
+    assert.notEqual(describeReceipt({ ...real, types_flipped: real.types_flipped + 1 }), real.result);
+    assert.notEqual(describeReceipt({ ...real, changed_docs: [...real.changed_docs, "extra/doc"] }), real.result);
+    assert.notEqual(describeReceipt({ ...real, warnings: [] }), real.result);
+    // Mode-awareness: the SAME counters under the other mode flag read as a different grammar.
+    assert.notEqual(describeReceipt({ ...real, dry_run: true }), real.result);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
