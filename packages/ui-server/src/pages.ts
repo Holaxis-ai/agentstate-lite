@@ -21,7 +21,7 @@ export const PAGE_BLOB_PREFIX: string = PAGE_ENTRY_PREFIX;
 /** Current bundle-relative key prefix View HTML blobs live under (`views/<name>.html`). */
 export const VIEW_BLOB_PREFIX: string = VIEW_ENTRY_PREFIX;
 
-/** Every accepted page-blob prefix (current `views/` + legacy `pages/`) — the mint guard and the watcher's hot-reload snapshot (`watch.ts`) honor BOTH during the migration window: legacy locations stay recognized (relocation is a separate open decision) while removal of legacy support is a planned later phase. */
+/** Every accepted page-blob prefix (current `views/` + the legacy `pages/` LOCATION) — the mint guard and the watcher's hot-reload snapshot (`watch.ts`) honor BOTH: legacy locations stay recognized (relocation is a separate open decision) even though the legacy kind/field NAMES are retired. */
 export const PAGE_BLOB_PREFIXES: readonly string[] = [PAGE_BLOB_PREFIX, VIEW_BLOB_PREFIX];
 
 /**

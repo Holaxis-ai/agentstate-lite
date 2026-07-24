@@ -1,13 +1,14 @@
 /**
- * The legacy-naming primitive (src/legacy-page.ts, plans/rename-page-kind-to-view Option C+ Unit 2):
- * ONE predicate feeding two read-only surfaces —
+ * The legacy-naming primitive (src/legacy-page.ts; removal phase
+ * tasks/remove-legacy-page-bridge-support): ONE predicate family feeding two read-only surfaces —
  *
- *   1. the write-time nudge: `new`/`doc write`/`doc update`/`promote` (.md route) SUCCESS receipts
+ *   1. the write-time hint: `new`/`doc write`/`doc update`/`promote` (.md route) SUCCESS receipts
  *      carry the ONE hint line when (and only when) the produced doc is typed 'Page'; never on
  *      reads, never a block;
- *   2. `status`'s `legacy_naming` audit section: count + ids of Page-typed docs plus an
+ *   2. `status`'s `legacy_naming` FINDING: counts + ids of Page-typed docs and of View-kind docs
+ *      carrying an own legacy `bridge` field (stock the runtime no longer accepts), plus an
  *      informational, STORE-AWARE count of items under the legacy pages-registry//pages/
- *      prefixes, omitted entirely on a legacy-free bundle.
+ *      prefixes (locations — still recognized), omitted entirely on a legacy-free bundle.
  *
  * Runs the command functions in-process against real temp filesystem bundles (the
  * `doc.test.ts`/`status.test.ts` pattern, including the explicit `readStdin` override — see
@@ -22,6 +23,7 @@ import path from "node:path";
 import { initBundle, writeBlob, writeDoc } from "@agentstate-lite/core";
 
 import {
+  hasLegacyBridgeField,
   isLegacyPageDoc,
   isLegacyEntryBlobKey,
   isLegacyRegistryDocId,
@@ -68,12 +70,12 @@ async function runPromoteJson(argv: string[]): Promise<Record<string, unknown>> 
 
 test("isLegacyPageDoc: EXACT 'Page' only, matching core's exact grammar; 'View'/whitespace/case-variants/non-strings never do", () => {
   assert.equal(isLegacyPageDoc({ type: "Page" }), true);
-  // EXACT, no trimming — the same strictness as core's `isPageTypeName`. A whitespace-padded
+  // EXACT, no trimming — the same strictness core's grammar always applied. A whitespace-padded
   // value can only reach consumers via a deliberately QUOTED YAML scalar (`type: " Page "`):
   // plain scalars are whitespace-trimmed by the YAML parser itself, and the one frontmatter
-  // parse layer (core/src/frontmatter.ts) does no further `type` normalization. Core rejects
-  // the quoted form as a registration, so counting it legacy here would nudge/audit a doc
-  // dual-read does not accept.
+  // parse layer (core/src/frontmatter.ts) does no further `type` normalization. That spelling
+  // was never a registration under any phase, so counting it legacy would flag a doc the
+  // pre-removal reader did not accept either.
   assert.equal(isLegacyPageDoc({ type: " Page " }), false, "quoted whitespace-padded type is not legacy (core's grammar is exact)");
   assert.equal(isLegacyPageDoc({ type: "\tPage\n" }), false);
   assert.equal(isLegacyPageDoc({ type: "View" }), false);
@@ -84,6 +86,20 @@ test("isLegacyPageDoc: EXACT 'Page' only, matching core's exact grammar; 'View'/
   assert.equal(isLegacyPageDoc({}), false, "a missing type is not legacy");
   assert.equal(isLegacyPageDoc({ type: 5 }), false, "a non-string type is not legacy");
   assert.equal(isLegacyPageDoc({ type: ["Page"] }), false);
+});
+
+test("hasLegacyBridgeField: own `bridge` on a View-kind doc (View or legacy Page spelling) only — other types and inherited fields never count", () => {
+  assert.equal(hasLegacyBridgeField({ type: "View", bridge: "bundle-read" }), true);
+  assert.equal(hasLegacyBridgeField({ type: "Page", bridge: "none" }), true);
+  // Both fields present still counts — the stale bridge is exactly what migration removes.
+  assert.equal(hasLegacyBridgeField({ type: "View", access: "bundle-read", bridge: "bundle-propose" }), true);
+  // `bridge` is only the View kind's legacy spelling — ordinary user data elsewhere.
+  assert.equal(hasLegacyBridgeField({ type: "Note", bridge: "bundle-read" }), false);
+  assert.equal(hasLegacyBridgeField({ bridge: "bundle-read" }), false, "a doc with no type is not a View-kind doc");
+  assert.equal(hasLegacyBridgeField({ type: "View" }), false, "no own bridge field, nothing to flag");
+  assert.equal(hasLegacyBridgeField({ type: "View", access: "bundle-read" }), false);
+  // Own-property-gated, like core's declaredAccessValue.
+  assert.equal(hasLegacyBridgeField(Object.assign(Object.create({ bridge: "bundle-read" }), { type: "View" }) as Record<string, unknown>), false);
 });
 
 test("store-aware classifiers: doc ids classify only against pages-registry/, blob keys only against pages/", () => {
@@ -231,10 +247,12 @@ test("nudge: NEVER fires on reads — 'doc read' of a Page-typed doc carries no 
 // ── 3. The `status` legacy_naming audit section ──────────────────────────────────────────────────
 
 /**
- * A mixed bundle: two Page-typed docs (one under the legacy registry prefix, one elsewhere), one
- * View-typed doc under a forward prefix, one unrelated doc, and one blob under the legacy
- * `pages/` prefix. Expected: page_typed_docs = 2; legacy_prefix_items = 2 (the pages-registry doc
- * + the pages/ blob — a Page-typed doc under the old prefix legitimately counts in BOTH labels).
+ * A mixed bundle: two Page-typed docs (one under the legacy registry prefix, one elsewhere), a
+ * bridge-only View doc, a View doc carrying BOTH access and a stale bridge, one clean View doc,
+ * a NON-View doc with an own `bridge` field (never flagged), one unrelated doc, and one blob
+ * under the legacy `pages/` prefix. Expected: page_typed_docs = 2; bridge_field_docs = 2;
+ * legacy_prefix_items = 2 (the pages-registry doc + the pages/ blob — a Page-typed doc under
+ * the old prefix legitimately counts in BOTH labels).
  */
 async function makeMixedLegacyBundle(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   const dir = await tempDir();
@@ -251,8 +269,23 @@ async function makeMixedLegacyBundle(): Promise<{ dir: string; cleanup: () => Pr
     body: "",
   });
   await writeDoc(bundle, {
+    id: "views-registry/bridge-only",
+    frontmatter: { type: "View", title: "Bridge only", entry: "views/bridge-only.html", bridge: "bundle-read", timestamp: now },
+    body: "",
+  });
+  await writeDoc(bundle, {
+    id: "views-registry/both-fields",
+    frontmatter: { type: "View", title: "Both", entry: "views/both.html", access: "bundle-read", bridge: "bundle-propose", timestamp: now },
+    body: "",
+  });
+  await writeDoc(bundle, {
     id: "views-registry/fresh",
     frontmatter: { type: "View", title: "Fresh", entry: "views/fresh.html", timestamp: now },
+    body: "",
+  });
+  await writeDoc(bundle, {
+    id: "notes/bridge-note",
+    frontmatter: { type: "Note", title: "A note about a bridge", bridge: "bundle-read", timestamp: now },
     body: "",
   });
   await writeDoc(bundle, {
@@ -264,7 +297,7 @@ async function makeMixedLegacyBundle(): Promise<{ dir: string; cleanup: () => Pr
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
-test("status: legacy_naming counts a seeded mixed bundle correctly — Page-typed docs and old-prefix items, separately labeled", async () => {
+test("status: legacy_naming counts a seeded mixed bundle correctly — Page-typed docs, own-bridge View docs, and old-prefix items, separately labeled", async () => {
   const { dir, cleanup } = await makeMixedLegacyBundle();
   try {
     const result = await runStatusJson(["--dir", dir]);
@@ -279,6 +312,16 @@ test("status: legacy_naming counts a seeded mixed bundle correctly — Page-type
       ["notes/legacy-typed", "pages-registry/dash"],
     );
 
+    // The bridge FIELD finding: the bridge-only View AND the both-fields View (the stale bridge
+    // is exactly what migration removes); the Note with an own bridge field is out of scope.
+    assert.equal(legacy.bridge_field_docs, 2);
+    const bridgeRows = legacy.bridge_field_rows as { shown: number; total: number; rows: { id: string }[] };
+    assert.deepEqual(
+      bridgeRows.rows.map((r) => r.id).sort(),
+      ["views-registry/both-fields", "views-registry/bridge-only"],
+    );
+    assert.ok(!bridgeRows.rows.some((r) => r.id === "notes/bridge-note"), "a non-View doc's bridge field is user data");
+
     assert.equal(legacy.legacy_prefix_items, 2);
     const prefixRows = legacy.legacy_prefix_rows as { shown: number; total: number; rows: { id: string; store: string }[] };
     assert.equal(prefixRows.total, 2);
@@ -288,10 +331,11 @@ test("status: legacy_naming counts a seeded mixed bundle correctly — Page-type
     assert.ok(!prefixRows.rows.some((r) => r.id.startsWith("views")));
     assert.ok(!typedRows.rows.some((r) => r.id === "views-registry/fresh" || r.id === "notes/plain"));
 
-    // Informational, never a warning: the section is labeled, and the report's finding counts are
-    // untouched by legacy items (they are legal, not findings).
+    // The FINDING is loud and actionable: it says the names are no longer accepted and its help
+    // names the migration script.
     assert.equal(typeof legacy.note, "string");
-    assert.ok((legacy.note as string).includes("informational"));
+    assert.match(legacy.note as string, /no longer accepted/);
+    assert.match(String(legacy.help), /migrate-legacy-view-names/);
   } finally {
     await cleanup();
   }
@@ -353,6 +397,56 @@ test("status: legacy_naming is OMITTED entirely on a legacy-free bundle (clean e
     await writeBlob(bundle, "views/fresh.html", new TextEncoder().encode("<html></html>"), "text/html");
     const result = await runStatusJson(["--dir", dir]);
     assert.equal("legacy_naming" in result, false, "a legacy-free bundle's report gains nothing");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("status: legacy_naming appears when the ONLY legacy signal is an own-bridge field — the silent-downgrade case cannot go unreported", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle = await initBundle(dir);
+    const now = new Date().toISOString();
+    await writeDoc(bundle, {
+      id: "views-registry/quiet",
+      frontmatter: { type: "View", title: "Quiet", entry: "views/quiet.html", bridge: "bundle-read", timestamp: now },
+      body: "",
+    });
+    await writeBlob(bundle, "views/quiet.html", new TextEncoder().encode("<html></html>"), "text/html");
+    const result = await runStatusJson(["--dir", dir]);
+    const legacy = result.legacy_naming as Record<string, unknown>;
+    assert.ok(legacy, "a bridge-only doc registers with access none — status must say why");
+    assert.equal(legacy.page_typed_docs, 0);
+    assert.equal(legacy.bridge_field_docs, 1);
+    const bridgeRows = legacy.bridge_field_rows as { rows: { id: string }[] };
+    assert.deepEqual(bridgeRows.rows, [{ id: "views-registry/quiet" }]);
+    assert.equal("page_typed_rows" in legacy, false, "empty row blocks stay omitted");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("status: a migrated bundle keeping only legacy LOCATIONS gets the informational note — no FINDING, no migration help (nothing left to act on)", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle = await initBundle(dir);
+    const now = new Date().toISOString();
+    // The exact post-migration shape: type View + access at the legacy locations.
+    await writeDoc(bundle, {
+      id: "pages-registry/dash",
+      frontmatter: { type: "View", title: "Dash", entry: "pages/dash.html", access: "bundle-read", timestamp: now },
+      body: "",
+    });
+    await writeBlob(bundle, "pages/dash.html", new TextEncoder().encode("<html></html>"), "text/html");
+    const result = await runStatusJson(["--dir", dir]);
+    const legacy = result.legacy_naming as Record<string, unknown>;
+    assert.ok(legacy, "the location report remains");
+    assert.equal(legacy.page_typed_docs, 0);
+    assert.equal(legacy.bridge_field_docs, 0);
+    assert.equal(legacy.legacy_prefix_items, 2);
+    assert.match(String(legacy.note), /informational/);
+    assert.doesNotMatch(String(legacy.note), /FINDING/);
+    assert.equal("help" in legacy, false, "no migration call-to-action when only supported locations remain");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -40,11 +40,14 @@ describe("Page registry authority", () => {
     }
   });
 
-  it("requires the registry namespace, type Page, and safe entry", () => {
-    const fm = { type: "Page", title: "About", entry: "pages/about.html", bridge: "bundle-read" };
-    expect(parseRegisteredPage("pages-registry/about", fm)).toMatchObject({ title: "About", entry: "pages/about.html", bridge: "bundle-read", type: "Page" });
+  it("requires the registry namespace, type View, and safe entry — a legacy Page-typed doc is NOT a registration", () => {
+    const fm = { type: "View", title: "About", entry: "pages/about.html", access: "bundle-read" };
+    // Legacy LOCATIONS survive: a View doc under pages-registry//pages/ still registers.
+    expect(parseRegisteredPage("pages-registry/about", fm)).toMatchObject({ title: "About", entry: "pages/about.html", bridge: "bundle-read", type: "View" });
     expect(parseRegisteredPage("docs/about", fm)).toBeNull();
     expect(parseRegisteredPage("pages-registry/about", { ...fm, type: "Design" })).toBeNull();
+    // REJECTION PIN (tasks/remove-legacy-page-bridge-support): the legacy kind NAME is retired.
+    expect(parseRegisteredPage("pages-registry/about", { ...fm, type: "Page" })).toBeNull();
     expect(parseRegisteredPage("pages-registry/about", { ...fm, entry: "other/about.html" })).toBeNull();
     // In-prefix but malformed entries fail the SAME core predicate the server allowlist uses.
     expect(parseRegisteredPage("pages-registry/about", { ...fm, entry: "pages/has space.html" })).toBeNull();
@@ -52,7 +55,7 @@ describe("Page registry authority", () => {
   });
 
   it("accepts type View over the views-registry//views/ namespaces with the same strictness", () => {
-    const fm = { type: "View", title: "Board", entry: "views/board.html", bridge: "bundle-read" };
+    const fm = { type: "View", title: "Board", entry: "views/board.html", access: "bundle-read" };
     expect(parseRegisteredPage("views-registry/board", fm)).toMatchObject({
       id: "views-registry/board",
       title: "Board",
@@ -60,15 +63,23 @@ describe("Page registry authority", () => {
       bridge: "bundle-read",
       type: "View",
     });
-    // The kind name and the prefixes are accepted independently — ids never move under the
-    // dual-read window, so a legacy-prefixed doc may adopt the new name (and vice versa).
+    // The kind name and the prefixes are accepted independently — ids never moved during the
+    // rename, so a legacy-located doc registers under the current name.
     expect(parseRegisteredPage("pages-registry/board", { ...fm, entry: "pages/board.html" })).toMatchObject({ type: "View" });
-    expect(parseRegisteredPage("views-registry/board", { ...fm, type: "Page" })).toMatchObject({ type: "Page" });
+    // REJECTION PIN: the legacy name registers nowhere, current location included.
+    expect(parseRegisteredPage("views-registry/board", { ...fm, type: "Page" })).toBeNull();
     // Same strictness: no trimming, no case-folding, no other kind names.
     expect(parseRegisteredPage("views-registry/board", { ...fm, type: "view" })).toBeNull();
     expect(parseRegisteredPage("views-registry/board", { ...fm, type: "View " })).toBeNull();
     expect(parseRegisteredPage("views-registry/../x", fm)).toBeNull();
     expect(parseRegisteredPage("views-registry/board", { ...fm, entry: "views/../x.html" })).toBeNull();
+  });
+
+  it("REJECTION PIN: a bridge-only doc registers with bridge (capability) NONE — the legacy field grants nothing", () => {
+    const fm = { type: "View", title: "Board", entry: "views/board.html", bridge: "bundle-propose" };
+    expect(parseRegisteredPage("views-registry/board", fm)).toMatchObject({ bridge: "none", type: "View" });
+    // access alone decides when both are present.
+    expect(parseRegisteredPage("views-registry/board", { ...fm, access: "bundle-read" })).toMatchObject({ bridge: "bundle-read" });
   });
 
   it("exposes the view-prefix grammar wrappers alongside the legacy ones (one helper, two prefixes)", () => {

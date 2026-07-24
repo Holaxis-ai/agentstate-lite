@@ -48,7 +48,8 @@ Views.
   docs as rendered pages (cross-links you can follow, derived backlinks), see a live activity
   feed and the bundle's sharing status, and launch its registered Views — which present live data
   through the read-only v0 bridge or propose one human-confirmed local scalar action through v1.
-  (`Page` is the accepted legacy name for the View kind — existing legacy content keeps working.)
+  (`Page` is the retired legacy name for the View kind — legacy-named content no longer
+  registers; `aslite status` flags it and the repo's migration script renames it in place.)
 
 ## Optional: a shared remote bundle
 

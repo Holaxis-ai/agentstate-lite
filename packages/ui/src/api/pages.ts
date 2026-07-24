@@ -25,7 +25,7 @@ export interface UiConfig {
   workspaces: WorkspaceSummaryEntry[];
 }
 
-/** A `type: View` (or legacy `type: Page`) registry doc, projected to the launcher's card fields (provenance included). */
+/** A `type: View` registry doc, projected to the launcher's card fields (provenance included). */
 export interface PageEntry {
   id: string;
   version: string;
@@ -45,13 +45,13 @@ export async function fetchConfig(): Promise<UiConfig> {
 }
 
 /**
- * Every valid `type: View` (or legacy `type: Page`) registration, newest-first, projected for the
- * launcher. Validity is core's `parseRegistration` (via {@link pageFromFrontmatter} ->
- * `parseRegisteredPage`) — the SAME predicate the server's mint/serve allowlist consumes. The wire
- * query takes ONE type, so the accepted names are fetched separately and merged (stable order:
- * legacy first, then current — the sort below decides display order anyway).
+ * Every valid `type: View` registration, newest-first, projected for the launcher. Validity is
+ * core's `parseRegistration` (via {@link pageFromFrontmatter} -> `parseRegisteredPage`) — the
+ * SAME predicate the server's mint/serve allowlist consumes. The wire query takes ONE type, so
+ * the accepted names ride `PAGE_TYPE_NAMES` (exactly `View` post-removal — a legacy `type: Page`
+ * doc is never listed; the CLI's `status` legacy_naming finding is its diagnostic).
  *
- * Failure policy (matches the server's allowlist enumeration): if EITHER per-type query fails, the
+ * Failure policy (matches the server's allowlist enumeration): if ANY per-type query fails, the
  * WHOLE listing fails (`Promise.all` rejects) — never a partial launcher that hides one kind while
  * the mint route still errors, or vice versa.
  */

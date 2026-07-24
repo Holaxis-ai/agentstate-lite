@@ -40,7 +40,7 @@ async function fixture(actor: string | undefined = "mike/test") {
   });
   await writeDoc(bundle, {
     id: "views-registry/actions",
-    frontmatter: { type: "View", title: "Actions", entry: "views/actions.html", bridge: "bundle-propose", timestamp: T },
+    frontmatter: { type: "View", title: "Actions", entry: "views/actions.html", access: "bundle-propose", timestamp: T },
     body: "",
   });
   await writeBlob(bundle, "views/actions.html", HTML, "text/html; charset=utf-8");

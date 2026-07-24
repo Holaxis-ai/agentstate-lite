@@ -718,18 +718,18 @@ function renderBundleViewsSection(invocation: string, ref: RefPointer): string[]
     "A **bundle view** is a self-contained HTML file living IN the bundle: promoted as a blob under",
   );
   lines.push(
-    "`views/…`, declared by a `type: View` registry doc (`title`, `entry`, `access` — legacy",
+    "`views/…`, declared by a `type: View` registry doc (`title`, `entry`, `access` — the legacy",
   );
-  lines.push("`bridge` on existing docs is still honored at runtime during the migration window, but the");
-  lines.push("shipped convention no longer declares it, so author with `access`), and rendered by");
+  lines.push("`bridge` spelling is no longer read: a doc declaring only `bridge` resolves to `access: none`,");
+  lines.push("so author with `access`), and rendered by");
   lines.push(
     `\`${invocation} ui\` inside a sandboxed, opaque-origin iframe (\`sandbox="allow-scripts"\`, no network`,
   );
   lines.push("access) — its only channel out is a narrow postMessage bridge to the trusted shell.");
-  lines.push("(`Page` is the legacy name: existing `type: Page` docs under `pages-registry/`/`pages/`");
-  lines.push("keep working during the migration window — legacy names are renamed in place by the repo's");
-  lines.push("migration script, and removal of legacy support is a planned later phase. Author NEW views");
-  lines.push("as `type: View`.)");
+  lines.push("(`Page` is the legacy name and no longer registers: the launcher ignores `type: Page` docs.");
+  lines.push(`\`${invocation} status\` lists legacy-named docs under its legacy_naming finding, and the`);
+  lines.push("repo's migrate-legacy-view-names script renames legacy content in place; docs under the");
+  lines.push("legacy `pages-registry/`/`pages/` folders stay recognized once typed `View`.)");
   lines.push("");
   lines.push(
     "The bridge (protocol `v0`) has five read-only data request types: `hello` (bundle identity), `query`",
