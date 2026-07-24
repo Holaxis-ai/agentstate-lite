@@ -1547,6 +1547,39 @@ async function seedLegacyV1Install(bundle: Bundle): Promise<void> {
   await writeBlob(bundle, "pages/review-workflow/reviews.html", new TextEncoder().encode(html), "text/html; charset=utf-8");
 }
 
+test("MID-VINTAGE (round-2 P1): a bundle carrying the known transitional view-authoring reference at its renamed id migrates CLEAN — the real script refreshes it, and no remaining doc teaches legacy names as current", async () => {
+  // The reviewer's exact fixture: the known shipped TRANSITIONAL references/view-authoring-v0
+  // (extracted from 8192269^, frozen with provenance under
+  // scripts/prior-shipped-view-authoring-references/) installed at its already-renamed id.
+  // Pre-fix the script exited 0 with NO warnings and left it teaching "still resolve during the
+  // migration window" — an official migration's known-input postcondition is not optional.
+  const dir = await tempDir();
+  try {
+    await initBundle(dir);
+    const bundle: Bundle = { root: dir };
+    const frozen = await readFile(
+      path.join(REPO_ROOT, "scripts/prior-shipped-view-authoring-references/7-2901497-phase2a-transitional.md"),
+      "utf8",
+    );
+    const { frontmatter, body } = parseMarkdown(frozen);
+    assert.match(body, /migration window/, "the frozen form really is the transitional teaching");
+    await writeDoc(bundle, { id: "references/view-authoring-v0", frontmatter, body });
+
+    const { stdout } = await execFileAsync(process.execPath, [MIGRATION_SCRIPT, "--dir", dir], {
+      cwd: REPO_ROOT,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    const receipt = (JSON.parse(stdout) as { bundles: Array<Record<string, unknown>> }).bundles[0]!;
+    assert.equal(receipt.reference_refreshed, "swapped", "the known transitional form must refresh to the canonical");
+
+    const remaining = await query(bundle, {});
+    assert.ok(remaining.some((d) => d.id === "references/view-authoring-v0"), "the reference is still present");
+    assertTeachesNoLegacyVocabulary(remaining);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("REJECTION PIN: the legacy v1 recipe folder no longer installs — its Page-typed registry doc is RECIPE_MALFORMED with the actionable message", async () => {
   const dir = await tempDir();
   try {

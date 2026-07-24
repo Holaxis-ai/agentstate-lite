@@ -663,6 +663,95 @@ test("F2 guards: a customized review-request is never touched; an unreadable doc
   }
 });
 
+// ── Round-2 P1: the known transitional view-authoring reference refreshes at its renamed id ────
+test("round-2 P1: a KNOWN shipped transitional references/view-authoring-v0 refreshes to the canonical; customized is untouched; unreadable stock blocks the refresh", async () => {
+  const { migrateBundle, loadCanonicalViewReference, loadPriorShippedViewAuthoringReferences } = await script();
+  const { initBundle, writeDoc, readDoc } = await core();
+  const priorForms = loadPriorShippedViewAuthoringReferences();
+  const transitional = priorForms[priorForms.length - 1];
+
+  // Refresh: the mid-vintage form swaps to the canonical under CAS; a second run is a no-op.
+  const dirA = await mkdtemp(path.join(tmpdir(), "aslite-migrate-midvintage-"));
+  try {
+    const bundle = await initBundle(dirA);
+    await writeDoc(bundle, { id: "references/view-authoring-v0", frontmatter: transitional.frontmatter, body: transitional.body });
+    const receipt = await migrateBundle(bundle);
+    assert.equal(receipt.reference_refreshed, "swapped");
+    const canonical = loadCanonicalViewReference();
+    const after = await readDoc(bundle, "references/view-authoring-v0");
+    assert.equal(after.body, canonical.body);
+    assert.ok(!/migration window/.test(after.body), "the transitional teaching is gone");
+    const second = await migrateBundle(bundle);
+    assert.equal(second.reference_refreshed, false, "idempotent — the canonical form classifies current");
+  } finally {
+    await rm(dirA, { recursive: true, force: true });
+  }
+
+  // Customized: never touched, warned — consistent with every other customized surface.
+  const dirB = await mkdtemp(path.join(tmpdir(), "aslite-migrate-midvintage-custom-"));
+  try {
+    const bundle = await initBundle(dirB);
+    await writeDoc(bundle, {
+      id: "references/view-authoring-v0",
+      frontmatter: { type: "Reference", title: "My own view guide", protocol: "v0", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "My customized authoring guide.\n",
+    });
+    const receipt = await migrateBundle(bundle);
+    assert.equal(receipt.reference_refreshed, "skipped_customized");
+    assert.ok(receipt.warnings.some((w) => w.id === "references/view-authoring-v0" && /customized/.test(w.warning)));
+    assert.equal((await readDoc(bundle, "references/view-authoring-v0")).body, "My customized authoring guide.\n");
+  } finally {
+    await rm(dirB, { recursive: true, force: true });
+  }
+
+  // Interplay: the unreadable-stock guard blocks the refresh the same way it blocks
+  // retirement/deletion — the transitional form is KEPT, with the block warned.
+  const dirC = await mkdtemp(path.join(tmpdir(), "aslite-migrate-midvintage-blocked-"));
+  try {
+    const bundle = await initBundle(dirC);
+    await writeDoc(bundle, { id: "references/view-authoring-v0", frontmatter: transitional.frontmatter, body: transitional.body });
+    writeRawDoc(dirC, "notes/broken.md", "---\ntype: Note\ntitle: Broken\nentry: [unterminated\n---\nnever parses\n");
+    const receipt = await migrateBundle(bundle);
+    assert.ok(receipt.skipped_docs.length > 0);
+    assert.equal(receipt.reference_refreshed, false, "the refresh is blocked by skipped docs");
+    assert.equal((await readDoc(bundle, "references/view-authoring-v0")).body, transitional.body, "the doc is untouched");
+    assert.ok(receipt.warnings.some((w) => w.id === "references/view-authoring-v0" && /refresh skipped/.test(w.warning)));
+  } finally {
+    await rm(dirC, { recursive: true, force: true });
+  }
+});
+
+test("round-2 P1 PROVENANCE TRIPWIRE: the frozen prior-shipped view-authoring reference forms are byte-pinned to their source commits", async () => {
+  // Each frozen file was extracted with `git show <commit>:examples/views/references/
+  // view-authoring-v0.md`; these sha256 literals pin the BYTES so the frozen forms can never
+  // drift silently (the legacy-constants-tripwire discipline, applied to whole files). If a
+  // form legitimately needs re-extraction, re-record its hash here in the same change.
+  const { createHash } = await import("node:crypto");
+  const { loadPriorShippedViewAuthoringReferences } = await script();
+  const dir = path.join(repoRoot, "scripts", "prior-shipped-view-authoring-references");
+  const pinned = {
+    "1-cf4f0d3-initial-view-teaching.md": "d8ede4bc61103713515597b1f7892f7c89b5602da2bfa7e12b2761e98a90a68b",
+    "2-ae1dd32-bundle-propose.md": "f96cf46a73d771f6ec7c3c49c123e15724c25983e1daaea36dd08eccf630a25a",
+    "3-c6bcd0d-query-alignment.md": "2f4e586349391fcb9d117f4c23f3023c8c30f54ec137d4440eb1b6894a60733a",
+    "4-fc9474c-personal-task-system.md": "f66a0f1230cb777bfc86df9ba3a8d6ffc6153641d61551d4372343d538fe3509",
+    "5-850a5dc-access-rename.md": "d8b590f991ac81b5a1ec1f3b87d7ed3250f6d1f03fd5e4fa84702e55cae2adc0",
+    "6-5d04732-transitional-wording.md": "4605140c2a296f988bcd03a8e6332c9d50ba026f7f3e9d4e2f61fd9b8bba4680",
+    "7-2901497-phase2a-transitional.md": "7ef06885357e4627f8bb0a695db0354316a4dd65c08fbf9e95f5544281d92b41",
+  };
+  const names = (await import("node:fs")).readdirSync(dir).filter((n) => n.endsWith(".md")).sort();
+  assert.deepEqual(names, Object.keys(pinned), "exactly the recorded frozen forms, no drift in the set");
+  for (const [name, expected] of Object.entries(pinned)) {
+    const bytes = await readFile(path.join(dir, name));
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), expected, `${name}: bytes drifted from the source commit`);
+  }
+  // And the newest frozen forms really are the transitional teaching this fix exists for —
+  // wrong bytes (e.g. accidentally the canonical content) fail here too.
+  const forms = loadPriorShippedViewAuthoringReferences();
+  assert.equal(forms.length, 7);
+  assert.match(forms[6].body, /migration window/);
+  assert.match(forms[5].body, /migration window/);
+});
+
 test("CLI surface: --dry-run over --dir emits the receipt with the normalization note; no --dir exits 2", async () => {
   const { NORMALIZATION_NOTE } = await script();
   const { dir } = await makeFixtureBundle();

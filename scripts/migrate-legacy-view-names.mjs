@@ -60,6 +60,11 @@ const PRIOR_SHIPPED_DIR = path.resolve(SCRIPT_DIR, "prior-shipped-view-conventio
 const LEGACY_REFERENCE_ID = "references/page-authoring-v0";
 const VIEW_REFERENCE_ID = "references/view-authoring-v0";
 const CANONICAL_VIEW_REFERENCE = path.resolve(SCRIPT_DIR, "../examples/views/references/view-authoring-v0.md");
+/** Frozen snapshots of every form this repo ever SHIPPED for `references/view-authoring-v0` —
+ * a MID-VINTAGE bundle (round-2 review P1) carries one of these at the already-renamed id,
+ * still teaching the transitional acceptance story; a known-shipped match refreshes to the
+ * canonical, exactly like the shipped-convention swaps. */
+const PRIOR_SHIPPED_VIEW_REFERENCE_DIR = path.resolve(SCRIPT_DIR, "prior-shipped-view-authoring-references");
 const REVIEW_REQUEST_CONVENTION_ID = "conventions/review-request";
 const CANONICAL_REVIEW_REQUEST = path.resolve(
   SCRIPT_DIR,
@@ -224,6 +229,14 @@ export function loadPriorShippedReviewRequestConventions() {
     .map((name) => parseConventionFile(path.join(PRIOR_SHIPPED_REVIEW_REQUEST_DIR, name)));
 }
 
+/** Load every prior shipped form of the View-authoring reference (frozen snapshots). */
+export function loadPriorShippedViewAuthoringReferences() {
+  return readdirSync(PRIOR_SHIPPED_VIEW_REFERENCE_DIR)
+    .filter((name) => name.endsWith(".md"))
+    .sort()
+    .map((name) => parseConventionFile(path.join(PRIOR_SHIPPED_VIEW_REFERENCE_DIR, name)));
+}
+
 const isViewConvention = (fm) => fm.type === "Convention" && fm.governs === "View";
 const isPageConvention = (fm) => fm.type === "Convention" && fm.governs === "Page";
 
@@ -306,6 +319,7 @@ export async function migrateBundle(bundle, options = {}) {
     convention_swapped: false,
     page_conventions_deleted: [],
     review_request_swapped: false,
+    reference_refreshed: false,
     reference_created: false,
     legacy_references_deleted: [],
     changed_docs: [],
@@ -515,11 +529,20 @@ export async function migrateBundle(bundle, options = {}) {
     }
   };
 
+  // ONE readability guard for every teaching-artifact mutation below (refreshes AND the
+  // retirement): unreadable docs could be hiding related stock, so a run that skipped anything
+  // reports and leaves the teaching artifacts alone — same policy as the Page-convention gate.
+  const teachingBlocked = receipt.skipped_docs.length > 0;
+  const warnTeachingBlocked = (id, what) =>
+    warn(id, `${what} skipped: unreadable docs were skipped (${receipt.skipped_docs.map((s) => s.id).join(", ")})`);
+
   // 3a. `conventions/review-request`: a KNOWN shipped form still teaching the legacy names is
   // refreshed to the current canonical; customized content is never touched. Absent is fine —
   // installing it is the recipe's job, not this script's.
   const rrState = await readDocState(REVIEW_REQUEST_CONVENTION_ID);
-  if (rrState.kind === "unreadable") {
+  if (rrState.kind === "present" && teachingBlocked) {
+    warnTeachingBlocked(REVIEW_REQUEST_CONVENTION_ID, "shipped-teaching refresh");
+  } else if (rrState.kind === "unreadable") {
     warn(REVIEW_REQUEST_CONVENTION_ID, "unreadable — shipped-teaching refresh skipped");
   } else if (rrState.kind === "present") {
     const fm = rrState.doc.frontmatter;
@@ -561,7 +584,56 @@ export async function migrateBundle(bundle, options = {}) {
     }
   }
 
-  // 3b. Retire the superseded `references/page-authoring-v0` — it teaches the retired names as
+  // 3b. `references/view-authoring-v0` at its already-renamed id (round-2 review P1): a
+  // MID-VINTAGE bundle carries a KNOWN shipped transitional form still teaching bridge/Page
+  // acceptance. A known-shipped match refreshes to the canonical; customized content is never
+  // touched; the readability guard blocks exactly like every other teaching mutation. Runs
+  // BEFORE the retirement below, so the retirement's replacement check sees the refreshed doc.
+  const viewRefState = await readDocState(VIEW_REFERENCE_ID);
+  if (viewRefState.kind === "present" && viewRefState.doc.frontmatter.type === "Reference") {
+    if (teachingBlocked) {
+      warnTeachingBlocked(VIEW_REFERENCE_ID, "shipped-teaching refresh");
+    } else {
+      const canonicalRef = loadCanonicalViewReference();
+      const priorRefs = loadPriorShippedViewAuthoringReferences();
+      const shape = classifyShippedConvention(viewRefState.doc, canonicalRef, priorRefs);
+      if (shape === "prior_shipped") {
+        if (dryRun) {
+          receipt.reference_refreshed = "would_swap";
+        } else {
+          const outcome = await versionedMutation({
+            read: () => readOrAbsent(bundle, VIEW_REFERENCE_ID),
+            decide: (state) => {
+              if (state === undefined) return { action: "done", result: false };
+              if (classifyShippedConvention(state, canonicalRef, priorRefs) !== "prior_shipped") {
+                return { action: "done", result: false }; // raced into current/customized content — leave it.
+              }
+              return {
+                action: "write",
+                next: { id: VIEW_REFERENCE_ID, frontmatter: canonicalRef.frontmatter, body: canonicalRef.body },
+                result: "swapped",
+              };
+            },
+            write: async (next, expectedVersion) =>
+              (await writeDocVersioned(bundle, next, { expectedVersion, actor })).version,
+          });
+          receipt.reference_refreshed = outcome.result;
+        }
+      } else if (shape === "customized") {
+        receipt.reference_refreshed = "skipped_customized";
+        warn(
+          VIEW_REFERENCE_ID,
+          "customized (matches neither the current shipped reference nor any prior shipped form) — left untouched",
+        );
+      }
+    }
+  } else if (viewRefState.kind === "unreadable") {
+    warn(VIEW_REFERENCE_ID, "unreadable — shipped-teaching refresh skipped");
+  } else if (viewRefState.kind === "present") {
+    warn(VIEW_REFERENCE_ID, "exists but is not a Reference — left untouched");
+  }
+
+  // 3c. Retire the superseded `references/page-authoring-v0` — it teaches the retired names as
   // the live contract. Same governance-continuity discipline as the Page-convention deletion:
   // delete only when the REPLACEMENT (`references/view-authoring-v0`, created from the canonical
   // repo file when absent) is present at end state, and only when no unreadable docs could be
