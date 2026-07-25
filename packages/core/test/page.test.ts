@@ -176,33 +176,37 @@ test("the per-prefix wrappers never cross-accept — a views id is not a pages i
   assert.equal(isAnyEntryKey("views/x.html"), true);
 });
 
-test("isPageTypeName accepts exactly the registered kind names — same strictness as a literal equality", () => {
-  assert.deepEqual([...PAGE_TYPE_NAMES], ["Page", "View"]);
-  assert.equal(isPageTypeName("Page"), true);
+test("isPageTypeName accepts exactly the one registered kind name — REJECTION PIN: the legacy 'Page' no longer registers", () => {
+  assert.deepEqual([...PAGE_TYPE_NAMES], ["View"]);
   assert.equal(isPageTypeName("View"), true);
-  for (const invalid of ["page", "view", "VIEW", " View", "View ", "Views", "Pages", "", undefined, null, 1, ["View"]]) {
+  // 'Page' sits FIRST in the invalid list on purpose: restoring it to the accepted names must
+  // turn this pin red (tasks/remove-legacy-page-bridge-support).
+  for (const invalid of ["Page", "page", "view", "VIEW", " View", "View ", "Views", "Pages", "", undefined, null, 1, ["View"]]) {
     assert.equal(isPageTypeName(invalid), false, JSON.stringify(invalid));
   }
 });
 
-test("parseRegistration: THE one registration predicate — valid triples parse, in both namespaces", () => {
-  assert.deepEqual(parseRegistration("pages-registry/about", { type: "Page", entry: "pages/about.html" }), {
-    id: "pages-registry/about",
-    type: "Page",
-    entry: "pages/about.html",
-  });
+test("parseRegistration: THE one registration predicate — View triples parse in both LOCATIONS; a Page-typed doc is NOT a registration", () => {
   assert.deepEqual(parseRegistration("views-registry/board", { type: "View", entry: "views/board.html" }), {
     id: "views-registry/board",
     type: "View",
     entry: "views/board.html",
   });
-  // Names and prefixes are accepted independently (ids never move under the dual-read window).
+  // Legacy LOCATIONS survive the name removal: a View-typed doc at the old prefixes registers.
+  assert.deepEqual(parseRegistration("pages-registry/about", { type: "View", entry: "pages/about.html" }), {
+    id: "pages-registry/about",
+    type: "View",
+    entry: "pages/about.html",
+  });
   assert.deepEqual(parseRegistration("pages-registry/board", { type: "View", entry: "pages/board.html" })?.type, "View");
+  // REJECTION PIN: the legacy kind NAME does not register anywhere — even with valid id + entry.
+  assert.equal(parseRegistration("pages-registry/about", { type: "Page", entry: "pages/about.html" }), null);
+  assert.equal(parseRegistration("views-registry/board", { type: "Page", entry: "views/board.html" }), null);
 });
 
 test("parseRegistration: rejects an invalid registry id even when the entry is valid (the mint/serve drift hole)", () => {
   for (const id of ["notes/foo", "docs/x", "pages-registryevil/x", "pages-registry/x.md", "pages-registry/x.md/y", "pages-registry/../x", "", undefined]) {
-    assert.equal(parseRegistration(id, { type: "Page", entry: "pages/about.html" }), null, String(id));
+    assert.equal(parseRegistration(id, { type: "View", entry: "pages/about.html" }), null, String(id));
     assert.equal(parseRegistration(id, { type: "View", entry: "views/board.html" }), null, String(id));
   }
 });
@@ -220,23 +224,28 @@ test("parseRegistration: rejects a nonempty malformed or off-prefix entry even w
     undefined,
     1,
   ]) {
-    assert.equal(parseRegistration("pages-registry/about", { type: "Page", entry }), null, JSON.stringify(entry));
+    assert.equal(parseRegistration("pages-registry/about", { type: "View", entry }), null, JSON.stringify(entry));
     assert.equal(parseRegistration("views-registry/board", { type: "View", entry }), null, JSON.stringify(entry));
   }
 });
 
-test("parseRegistration: rejects any type outside the exact accepted names, even with valid id + entry", () => {
-  for (const type of ["Design", "page", "View ", " Page", "", undefined, null, 1]) {
+test("parseRegistration: rejects any type outside the exact accepted name, even with valid id + entry", () => {
+  for (const type of ["Page", "Design", "page", "View ", " Page", " View", "", undefined, null, 1]) {
     assert.equal(parseRegistration("pages-registry/about", { type, entry: "pages/about.html" }), null, JSON.stringify(type));
+    assert.equal(parseRegistration("views-registry/board", { type, entry: "views/board.html" }), null, JSON.stringify(type));
   }
 });
 
-test("resolveDeclaredAccess: a legacy bridge-only doc resolves IDENTICALLY to the enum resolver — byte-for-byte the pre-rename behavior", () => {
+test("REJECTION PIN: a legacy bridge-only doc resolves `none` — the DOWNGRADE is asserted, even for previously-permissive values", () => {
+  // Restoring the `bridge` fallback in `declaredAccessValue` must turn this red
+  // (tasks/remove-legacy-page-bridge-support): the legacy spelling grants NOTHING now.
   for (const value of ["none", "bundle-read", "bundle-propose"]) {
-    assert.equal(resolveDeclaredAccess({ bridge: value }), resolveBridgeCapability(value));
-    assert.equal(resolveDeclaredAccess({ bridge: value }), value);
-    assert.equal(declaredAccessValue({ bridge: value }), value);
+    assert.equal(declaredAccessValue({ bridge: value }), undefined, `bridge=${value} must not be read`);
+    assert.equal(resolveDeclaredAccess({ bridge: value }), "none", `bridge=${value} must downgrade to none`);
   }
+  // The enum resolver itself is untouched — the removal is in the FIELD read, not the enum.
+  assert.equal(resolveBridgeCapability("bundle-read"), "bundle-read");
+  assert.equal(resolveBridgeCapability("bundle-propose"), "bundle-propose");
 });
 
 test("resolveDeclaredAccess: the current field is read under its own name", () => {
@@ -246,7 +255,7 @@ test("resolveDeclaredAccess: the current field is read under its own name", () =
   }
 });
 
-test("resolveDeclaredAccess: a doc carrying BOTH fields is decided by access ALONE — bridge can never widen the grant", () => {
+test("resolveDeclaredAccess: a doc carrying BOTH fields is decided by access ALONE — a stale bridge can never widen the grant", () => {
   assert.equal(resolveDeclaredAccess({ access: "bundle-read", bridge: "bundle-propose" }), "bundle-read");
   assert.equal(resolveDeclaredAccess({ access: "bundle-propose", bridge: "none" }), "bundle-propose");
   assert.equal(resolveDeclaredAccess({ access: "none", bridge: "bundle-read" }), "none");
@@ -257,10 +266,10 @@ test("resolveDeclaredAccess: a doc carrying BOTH fields is decided by access ALO
 });
 
 test("resolveDeclaredAccess: an INHERITED field never grants capability — only own properties count", () => {
-  assert.equal(resolveDeclaredAccess(Object.create({ bridge: "bundle-propose" }) as Record<string, unknown>), "none");
   assert.equal(resolveDeclaredAccess(Object.create({ access: "bundle-propose" }) as Record<string, unknown>), "none");
   assert.equal(resolveDeclaredAccess(Object.create({ access: "bundle-read", bridge: "bundle-read" }) as Record<string, unknown>), "none");
-  // An own field on a crafted-prototype object still resolves normally.
+  // An own field on a crafted-prototype object still resolves normally (the inert legacy
+  // prototype field changes nothing).
   const withOwn = Object.create({ bridge: "bundle-propose" }) as Record<string, unknown>;
   withOwn.access = "bundle-read";
   assert.equal(resolveDeclaredAccess(withOwn), "bundle-read");
@@ -284,7 +293,7 @@ test("resolveDeclaredAccess: a polluted Object.prototype grants nothing to a pla
   }
 });
 
-test("resolveDeclaredAccess: unrecognized values in EITHER field fail closed to none", () => {
+test("resolveDeclaredAccess: unrecognized access values fail closed to none (and the unread bridge field always does)", () => {
   const invalid = [undefined, null, "", "BUNDLE-READ", "bundle_read", "read", "propose", " bundle-read", "bundle-read ", 1, true, ["bundle-read"], {}];
   for (const bad of invalid) {
     assert.equal(resolveDeclaredAccess({ access: bad }), "none", `access=${JSON.stringify(bad)}`);

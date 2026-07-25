@@ -451,6 +451,45 @@ test("no teaching surface makes a PERMANENCE claim about legacy naming (fix-roun
   }
 });
 
+test("no teaching surface makes an ACCEPTANCE claim about legacy naming (post-removal truthfulness — review F1 of the removal unit)", () => {
+  // The word-level pins above only require the word "legacy" on a Page/bridge line — they cannot
+  // see whether the CLAIM on that line is still true. Post-removal, any sentence saying legacy
+  // NAMES "keep working"/"still resolve"/etc. is a factual error wherever agents or humans read
+  // it (a `ui --help` line shipped exactly that claim and passed the word pins). Location
+  // statements deliberately survive: "stay recognized"/"remain recognized" describe the
+  // pages-registry//pages/ FOLDERS, which really are still accepted.
+  const acceptanceClaim = /(keeps?|kept)\s+working|still\s+(works?|honored|resolves?|accepted|registered)|stays?\s+(supported|honored|accepted)/i;
+  const legacyNaming = /\bPages?\b|\bbridge\b|legacy/i;
+  const sources: Array<[string, string]> = [
+    ["rendered skill SKILL.md", rendered],
+    ["rendered npm SKILL.md", renderedNpm],
+  ];
+  const sourceFiles = [
+    "src/reference.ts",
+    "src/skill-render.ts",
+    "src/legacy-page.ts",
+    ...readdirSync(path.join(here, "../src/commands"))
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => `src/commands/${f}`),
+  ];
+  for (const relative of sourceFiles) sources.push([relative, readFileSync(path.join(here, "..", relative), "utf8")]);
+  for (const relative of ["CLAUDE.md", "README.md", "packages/cli/README.md"]) {
+    const filePath = path.join(REPO_ROOT, relative);
+    if (existsSync(filePath)) sources.push([relative, readFileSync(filePath, "utf8")]);
+  }
+  const examplesRoot = path.join(REPO_ROOT, "examples");
+  for (const relative of relativeFileInventory(examplesRoot).filter((f) => f.endsWith(".md"))) {
+    sources.push([`examples/${relative}`, readFileSync(path.join(examplesRoot, relative), "utf8")]);
+  }
+  for (const [name, text] of sources) {
+    text.split("\n").forEach((line, i) => {
+      if (legacyNaming.test(line) && acceptanceClaim.test(line)) {
+        assert.fail(`${name}:${i + 1} claims legacy naming is still accepted: ${line.trim()}`);
+      }
+    });
+  }
+});
+
 test("examples markdown teaches only View — the word Page appears solely in legacy notes", () => {
   const examplesRoot = path.join(REPO_ROOT, "examples");
   const mdFiles = relativeFileInventory(examplesRoot).filter((f) => f.endsWith(".md"));

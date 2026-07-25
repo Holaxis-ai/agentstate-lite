@@ -62,7 +62,7 @@ import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 import { mutateDoc } from "../mutate.js";
-import { isLegacyPageDoc, LEGACY_PAGE_TYPE_HINT } from "../legacy-page.js";
+import { isKnownShippedLegacyPageConvention, isLegacyPageDoc, LEGACY_PAGE_TYPE_HINT } from "../legacy-page.js";
 import { boardPostPersistHook } from "../board-attribution.js";
 import { resolveActor } from "../actor.js";
 import { addLink } from "./link.js";
@@ -403,6 +403,21 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
   if (pre.values.help) {
     stdout(renderKindHelp(kind, registry, cliInvocation()));
     return;
+  }
+  // Review F3b (tasks/remove-legacy-page-bridge-support): scaffolding from the KNOWN SHIPPED
+  // legacy Page convention would produce a doc the runtime ignores — refuse with the remedy. A
+  // genuinely-custom kind that merely reuses the legacy 'Page' name (a different declared
+  // shape) is not matched and scaffolds normally (the write-time hint still fires).
+  if (isKnownShippedLegacyPageConvention(kind)) {
+    throw new CliError(
+      "USAGE",
+      "this bundle's 'Page' convention is the retired legacy form of the 'View' kind — a scaffolded type: Page doc would not register anywhere",
+      {
+        help:
+          "run `node scripts/migrate-legacy-view-names.mjs --dir <bundle-root>` (in the agentstate-lite repo) " +
+          `to migrate the bundle in place, then author with: ${cliInvocation()} new "View" <id> --access <none|bundle-read|bundle-propose>`,
+      },
+    );
   }
 
   // Phase 2 — strict, kind-aware, AUTHORITATIVE parse. Core strips every centrally-reserved kind
