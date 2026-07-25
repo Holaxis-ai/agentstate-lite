@@ -6,17 +6,19 @@ title: >-
 status: in_progress
 priority: '3'
 description: >-
-  Implemented in PR #162 (commit 2592972): the OSS reference router now maps
-  only InvalidInputError to 400 USAGE and maps unknown backend/server failures
-  to retryable 500 RUNTIME. Router-owned reserved-id, reserved-dir, and
-  malformed percent-encoding checks remain typed caller errors. Agreement
-  coverage proves the exact RUNTIME envelope and a real RemoteBackend
-  retry-to-success path. Validation: focused server/wire suites passed; a red
-  probe restoring blanket Error->400 failed both classification tests; full npm
-  run check passed, including all 18 browser E2E tests. Awaiting independent
-  exact-SHA review and CI before merge; the extracted/frozen hosted
-  implementation remains outside this OSS task.
+  Implemented in PR #162 at exact head 76df3eadace858c1dc0950a66ab2e96d70c67264.
+  The OSS reference router maps only InvalidInputError to 400 USAGE and unknown
+  backend/server failures to retryable 500 RUNTIME; router-owned reserved-id,
+  reserved-dir, and malformed doc/blob percent-encoding checks remain typed
+  caller errors. Independent review at the prior SHA found that a non-string
+  JSON document body could fall into an internal TypeError/500 and that the
+  separate blob decoder lacked a pin. Follow-up commit 76df3ea explicitly
+  rejects any present non-string body as 400 and tests both decoders. Follow-up
+  review 4779354111 reports both findings resolved with no new findings.
+  Validation: server 9/9, focused wire/retry suites green, red probe killed the
+  old blanket mapping, and full npm run check passed including 18 browser E2E
+  tests. Fresh exact-SHA CI is running; task remains in progress until merge.
 actor: mike/codex
-timestamp: '2026-07-25T13:39:14.904Z'
+timestamp: '2026-07-25T13:50:59.966Z'
 ---
 
