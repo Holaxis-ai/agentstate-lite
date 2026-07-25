@@ -43,6 +43,7 @@ test("router-owned invalid input remains 400 USAGE", async () => {
   const cases = [
     "http://wire.local/v0/bundles/default/docs/index.md",
     "http://wire.local/v0/bundles/default/docs/%E0%A4%A",
+    "http://wire.local/v0/bundles/default/blobs/%E0%A4%A",
     `http://wire.local/v0/bundles/default/reserved/log.md?dir=${encodeURIComponent("../outside")}`,
   ];
 
@@ -53,6 +54,22 @@ test("router-owned invalid input remains 400 USAGE", async () => {
     assert.equal(body.error.code, "USAGE", url);
     assert.ok(body.error.message.length > 0, url);
   }
+});
+
+test("a non-string document body is 400 USAGE, not an internal retryable failure", async () => {
+  const router = createRouterForBackend(new MemoryBackend());
+  const res = await router(
+    new Request("http://wire.local/v0/bundles/default/docs/concepts/a", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ frontmatter: { type: "Concept" }, body: 42 }),
+    }),
+  );
+
+  assert.equal(res.status, 400);
+  assert.deepEqual((await res.json()) as ErrorEnvelope, {
+    error: { code: "USAGE", message: "request body field body must be a string when present" },
+  });
 });
 
 test("RemoteBackend retries a router-classified runtime failure and succeeds", async () => {

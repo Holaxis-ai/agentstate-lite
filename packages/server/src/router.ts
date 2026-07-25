@@ -257,6 +257,9 @@ function buildRouter(backend: StorageBackend): (req: Request) => Promise<Respons
     if (payload === null || typeof payload !== "object" || payload.frontmatter === undefined) {
       return errorResponse(400, "USAGE", "request body must include a frontmatter object");
     }
+    if (payload.body !== undefined && typeof payload.body !== "string") {
+      return errorResponse(400, "USAGE", "request body field body must be a string when present");
+    }
     const options = writeOptionsFromHeaders(req);
     const result = await writeDocVersioned(
       bundle,
