@@ -106,6 +106,24 @@ export function describeReceipt(receipt) {
   if (conventionClause) clauses.push(conventionClause);
   const deleted = receipt.page_conventions_deleted.length;
   if (deleted > 0) clauses.push(`${receipt.dry_run ? "delete" : "deleted"} ${count(deleted, "Page convention")}`);
+  // Phase-3 teaching actions (rebase reconciliation): the refresh/retirement/creation actions
+  // are actions like any other — a run that ONLY refreshed must never read as a clean scan.
+  const reviewRequestClause = {
+    would_swap: "refresh the Review Request convention",
+    swapped: "refreshed the Review Request convention",
+  }[receipt.review_request_swapped];
+  if (reviewRequestClause) clauses.push(reviewRequestClause);
+  const referenceClause = {
+    would_swap: "refresh the View authoring reference",
+    swapped: "refreshed the View authoring reference",
+  }[receipt.reference_refreshed];
+  if (referenceClause) clauses.push(referenceClause);
+  if (receipt.reference_created === true) clauses.push("created the View authoring reference");
+  else if (receipt.reference_created === "would_create") clauses.push("create the View authoring reference");
+  const retiredRefs = receipt.legacy_references_deleted.length;
+  if (retiredRefs > 0) {
+    clauses.push(`${receipt.dry_run ? "retire" : "retired"} ${count(retiredRefs, "legacy Page-authoring reference")}`);
+  }
 
   if (clauses.length === 0) {
     // "No legacy names found" is a clean-scan claim — it may ONLY appear when the scan really
@@ -127,6 +145,15 @@ export function describeReceipt(receipt) {
     } else if (receipt.convention_swapped === "skipped_occupied" || receipt.convention_swapped === "refused_occupied") {
       reasons.push("conventions/view occupied by a non-View-governing doc — left untouched");
     }
+    // Phase-3 teaching states, same warning-record derivation as the retained-Page count.
+    if (receipt.review_request_swapped === "skipped_customized") {
+      reasons.push("customized Review Request convention skipped");
+    }
+    if (receipt.reference_refreshed === "skipped_customized") {
+      reasons.push("customized View authoring reference skipped");
+    }
+    const keptRefs = receipt.warnings.filter((w) => w.warning.startsWith("legacy reference kept")).length;
+    if (keptRefs > 0) reasons.push(`${count(keptRefs, "legacy Page-authoring reference")} retained (see warnings)`);
     if (reasons.length === 0) reasons.push("see warnings");
     return `no changes made, but attention needed — ${count(receipt.warnings.length, "warning")}: ${reasons.join("; ")}`;
   }

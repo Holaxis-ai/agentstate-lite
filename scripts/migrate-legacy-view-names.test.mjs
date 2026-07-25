@@ -1054,3 +1054,110 @@ test("receipt result: warned zero-action states never claim a clean scan (review
     await rm(keptDir, { recursive: true, force: true });
   }
 });
+
+// ── Rebase reconciliation (PR #158 x phase-3): refresh actions are visible to the verdict ──────
+// A run that ONLY refreshed a teaching artifact (counters 0, warnings 0) must never claim
+// "nothing to migrate — no legacy names found": that is exactly the false-clean class the
+// receipt-verdict review outlawed.
+
+test("receipt result: a refresh-ONLY run states the refresh in mode-aware grammar — never the clean-scan claim", async () => {
+  const { migrateBundle, loadPriorShippedViewAuthoringReferences } = await script();
+  const { initBundle, writeDoc } = await core();
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-verdict-refresh-"));
+  try {
+    const bundle = await initBundle(dir);
+    const priorRefs = loadPriorShippedViewAuthoringReferences();
+    const transitional = priorRefs[priorRefs.length - 1];
+    await writeDoc(bundle, { id: "references/view-authoring-v0", frontmatter: transitional.frontmatter, body: transitional.body });
+
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(dry.result, "would refresh the View authoring reference");
+    const real = await migrateBundle(bundle);
+    assert.equal(real.result, "refreshed the View authoring reference");
+    // Once refreshed, the NEXT run really is clean — and only then may it say so.
+    const after = await migrateBundle(bundle);
+    assert.equal(after.result, "nothing to migrate — no legacy names found in 1 doc (all readable)");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("receipt result: refresh + doc work compose into ONE mode-aware sentence", async () => {
+  const { migrateBundle, loadPriorShippedViewAuthoringReferences, loadPriorShippedReviewRequestConventions } =
+    await script();
+  const { initBundle, writeDoc } = await core();
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-verdict-combined-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "pages-registry/dash",
+      frontmatter: { type: "Page", title: "Dash", entry: "pages/dash.html", bridge: "bundle-read", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "legacy stock\n",
+    });
+    const priorRefs = loadPriorShippedViewAuthoringReferences();
+    const transitional = priorRefs[priorRefs.length - 1];
+    await writeDoc(bundle, { id: "references/view-authoring-v0", frontmatter: transitional.frontmatter, body: transitional.body });
+    const priorRR = loadPriorShippedReviewRequestConventions()[0];
+    await writeDoc(bundle, { id: "conventions/review-request", frontmatter: priorRR.frontmatter, body: priorRR.body });
+
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(
+      dry.result,
+      "would migrate 1 doc (1 type rename, 1 field rename), refresh the Review Request convention, " +
+        "refresh the View authoring reference",
+    );
+    const real = await migrateBundle(bundle);
+    assert.equal(
+      real.result,
+      "migrated 1 doc (1 type rename, 1 field rename), refreshed the Review Request convention, " +
+        "refreshed the View authoring reference",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("receipt result: blocked/skipped refresh states surface through the attention verdict, never a clean scan", async () => {
+  const { migrateBundle } = await script();
+  const { initBundle, writeDoc } = await core();
+
+  // (a) A CUSTOMIZED view-authoring reference: zero actions, one warning — named reason.
+  const customDir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-verdict-custom-"));
+  try {
+    const bundle = await initBundle(customDir);
+    await writeDoc(bundle, {
+      id: "references/view-authoring-v0",
+      frontmatter: { type: "Reference", title: "My own guide", protocol: "v0", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "customized\n",
+    });
+    const expected = "no changes made, but attention needed — 1 warning: customized View authoring reference skipped";
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(dry.result, expected);
+    const real = await migrateBundle(bundle);
+    assert.equal(real.result, expected);
+  } finally {
+    await rm(customDir, { recursive: true, force: true });
+  }
+
+  // (b) Retirement blocked by unreadable stock: the retained legacy reference is a named reason
+  // beside the skip note.
+  const blockedDir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-verdict-blocked-"));
+  try {
+    const bundle = await initBundle(blockedDir);
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "legacy teaching\n",
+    });
+    writeRawDoc(blockedDir, "notes/broken.md", "---\ntype: Note\ntitle: Broken\nbad: [unterminated\n---\nnever parses\n");
+    const expected =
+      "no changes made, but attention needed — 2 warnings: 1 doc unreadable — see skipped_docs; " +
+      "1 legacy Page-authoring reference retained (see warnings)";
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(dry.result, expected);
+    const real = await migrateBundle(bundle);
+    assert.equal(real.result, expected);
+  } finally {
+    await rm(blockedDir, { recursive: true, force: true });
+  }
+});
