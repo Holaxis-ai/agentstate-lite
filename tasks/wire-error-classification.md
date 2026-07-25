@@ -6,23 +6,17 @@ title: >-
 status: in_progress
 priority: '3'
 description: >-
-  [VERIFIED 2026-07-19, KEEP — still accurate] packages/server/src/router.ts's
-  errorFromCaught (lines 126-137) still does the blanket mapping: any err
-  instanceof Error (that isn't VersionConflict or ENOENT-shaped) -> 400 USAGE,
-  with the function's own doc comment (lines 119-124) still describing that as
-  the design. core/src/index.ts:174 exports InvalidInputError but router.ts
-  never imports or checks it. worker/envelope.ts does not exist anywhere in this
-  OSS repo (the former Cloudflare worker was extracted to the private frozen
-  reference per CLAUDE.md) — the worker half of this task is now entirely moot
-  for this repo, exactly as the task's own NOTE anticipated; only the server
-  half remains live and unfrozen. Surfaced by the error-classification-boundary
-  unit (2026-07-14): server/router.ts errorFromCaught and worker/envelope.ts map
-  arbitrary plain errors to 400 USAGE. Same class the CLI boundary just killed.
-  Now that core exports typed InvalidInputError, the precise fix is small: wire
-  boundary maps InvalidInputError->400, everything else->500. NOTE: worker is
-  FROZEN per docs/core; this ships only with an otherwise-sanctioned worker
-  change or an explicit decision; the server half is unfrozen and cheap.
+  Implemented in PR #162 (commit 2592972): the OSS reference router now maps
+  only InvalidInputError to 400 USAGE and maps unknown backend/server failures
+  to retryable 500 RUNTIME. Router-owned reserved-id, reserved-dir, and
+  malformed percent-encoding checks remain typed caller errors. Agreement
+  coverage proves the exact RUNTIME envelope and a real RemoteBackend
+  retry-to-success path. Validation: focused server/wire suites passed; a red
+  probe restoring blanket Error->400 failed both classification tests; full npm
+  run check passed, including all 18 browser E2E tests. Awaiting independent
+  exact-SHA review and CI before merge; the extracted/frozen hosted
+  implementation remains outside this OSS task.
 actor: mike/codex
-timestamp: '2026-07-25T13:33:08.627Z'
+timestamp: '2026-07-25T13:39:14.904Z'
 ---
 
