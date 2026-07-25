@@ -15,8 +15,9 @@
  *     it (the 2026-07-24 landing rethink — the overview and the example view prompts must not
  *     vanish after one reading).
  *  4. Landing copy is agent-first (the 2026-07-24 rethink): it says what ASLite IS (a cognitive
- *     ecosystem for agents), that it is used THROUGH agents with this window as the human's
- *     insight surface, and it hands the reader example view-building prompts.
+ *     ecosystem for agents), WHY it is valuable (the problems it solves; long-horizon work),
+ *     that it is used THROUGH agents with this window as the human's insight surface, and it
+ *     hands the reader example view-building prompts.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
@@ -235,9 +236,12 @@ describe("home surface", () => {
     const orientation = container.querySelector(".orientation");
     expect(orientation, "first run must render the orientation").not.toBeNull();
     const text = orientation!.textContent ?? "";
-    // The landing rethink's three content pillars (2026-07-24): what ASLite IS…
+    // The landing rethink's content pillars (2026-07-24): what ASLite IS…
     expect(text).toContain("cognitive ecosystem");
     expect(text).toContain("folder of plain markdown");
+    // …WHY it is valuable — the problems it solves and the long-horizon consequence…
+    expect(text).toContain("forget everything between sessions");
+    expect(text).toMatch(/span days, sessions, and many agents/);
     // …that it is used THROUGH agents, with this window as the human's insight surface…
     expect(text).toContain("through your agents");
     expect(text).toContain("see what your agents are working on");

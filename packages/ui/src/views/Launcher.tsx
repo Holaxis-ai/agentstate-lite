@@ -298,6 +298,13 @@ export function Launcher() {
                 </div>
               )}
               <p>
+                <strong>Why it matters:</strong> on their own, agents forget everything between sessions, step on each
+                other’s writes, and keep what they know invisible to you. A shared memory fixes all three — and that is
+                what makes long-horizon work possible: each session starts where the last one ended, decisions stay
+                decided instead of being relitigated, and work can span days, sessions, and many agents without
+                resetting to zero.
+              </p>
+              <p>
                 You’ll use ASLite mostly <strong>through your agents</strong> — they work the bundle from the command
                 line as they go. This window is for you: watch the activity feed to see what your agents are working
                 on, browse what they’ve written, and open the views they’ve built.
