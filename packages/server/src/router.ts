@@ -19,15 +19,16 @@
 
 import {
   FilesystemBackend,
+  InvalidInputError,
   MemoryBackend,
   VersionConflict,
   assertSafeBlobKey,
   assertSafeConceptId,
+  assertSafeReservedDir,
   isReservedFile,
   queryHeads,
   pathFromConceptId,
   stripETagWrapper,
-  toPosix,
   writeDocVersioned,
   type BlobKey,
   type Bundle,
@@ -50,23 +51,31 @@ function isEnoent(err: unknown): boolean {
 
 /** A bundle-relative concept id from a `docs/{id...}` path tail: decode each `/`-separated segment. */
 function decodeId(rawPathTail: string): ConceptId {
-  return rawPathTail
-    .split("/")
-    .map((seg) => decodeURIComponent(seg))
-    .join("/");
+  try {
+    return rawPathTail
+      .split("/")
+      .map((seg) => decodeURIComponent(seg))
+      .join("/");
+  } catch {
+    throw new InvalidInputError(`invalid percent-encoding in document id '${rawPathTail}'`);
+  }
 }
 
 /** A bundle-relative blob key from a `blobs/{key...}` path tail — same per-segment decode as {@link decodeId}. */
 function decodeBlobKey(rawPathTail: string): BlobKey {
-  return rawPathTail
-    .split("/")
-    .map((seg) => decodeURIComponent(seg))
-    .join("/");
+  try {
+    return rawPathTail
+      .split("/")
+      .map((seg) => decodeURIComponent(seg))
+      .join("/");
+  } catch {
+    throw new InvalidInputError(`invalid percent-encoding in blob key '${rawPathTail}'`);
+  }
 }
 
 /**
  * Validate a doc-route id is safe (no path traversal / absolute escape) and is not a
- * reserved filename, THROWING (a plain `Error`, mapped to `400 USAGE` by the router's
+ * reserved filename, THROWING an `InvalidInputError` (mapped to `400 USAGE` by the router's
  * catch-all) before any backend call. `read`/`exists` (HEAD)/`versions`/`readMany` are
  * called directly against the `StorageBackend` (protocol principle 2 — "the seam is
  * the schema"), bypassing the engine's `assertSafeConceptId` guard that only fires on
@@ -78,26 +87,7 @@ function decodeBlobKey(rawPathTail: string): BlobKey {
 function assertValidDocId(id: ConceptId): void {
   assertSafeConceptId(id);
   if (isReservedFile(pathFromConceptId(id))) {
-    throw new Error(`'${id}' is a reserved file, not a concept document`);
-  }
-}
-
-/**
- * Validate a reserved-file `dir` query param is bundle-relative: no absolute path, no
- * `..` segment. `""` (bundle root) is valid. Unlike concept ids, the reserved-path
- * helpers (`backend.ts` `reservedPath` / `memory-backend.ts` `reservedKey`) do NOT
- * guard `dir` themselves — the wire endpoint is the only place an attacker-controlled
- * `dir` value enters the seam, so the router must reject it before calling
- * `readReserved`/`writeReserved`.
- */
-function assertSafeDir(dir: string): void {
-  if (dir === "") return;
-  const norm = toPosix(dir);
-  if (norm.startsWith("/")) {
-    throw new Error(`dir must be bundle-relative, got absolute '${dir}'`);
-  }
-  if (norm.split("/").some((seg) => seg === "..")) {
-    throw new Error(`dir must not contain '..' segments: '${dir}'`);
+    throw new InvalidInputError(`'${id}' is a reserved file, not a concept document`);
   }
 }
 
@@ -117,11 +107,10 @@ function errorResponse(status: number, code: string, message: string, details?: 
 }
 
 /**
- * Map a thrown error to its wire status + envelope. `VersionConflict` -> `412`;
- * an ENOENT-shaped rejection -> `404`; any other `Error` is treated as a client-input
- * problem (the engine's own validation — §9.2 type, id safety, reserved-file rejection,
- * malformed request bodies — throws plain `Error`s) -> `400 USAGE`; a non-`Error` throw
- * (a genuine bug) -> `500 RUNTIME`.
+ * Map a thrown error to its wire status + envelope. Only the engine's typed
+ * `InvalidInputError` is a `400 USAGE`; unknown failures are server/runtime defects and
+ * remain retryable `500 RUNTIME` responses. `VersionConflict` and ENOENT retain their
+ * narrower protocol meanings.
  */
 function errorFromCaught(err: unknown): Response {
   if (err instanceof VersionConflict) {
@@ -130,10 +119,10 @@ function errorFromCaught(err: unknown): Response {
   if (isEnoent(err)) {
     return errorResponse(404, "NOT_FOUND", err instanceof Error ? err.message : "not found");
   }
-  if (err instanceof Error) {
+  if (err instanceof InvalidInputError) {
     return errorResponse(400, "USAGE", err.message);
   }
-  return errorResponse(500, "RUNTIME", String(err));
+  return errorResponse(500, "RUNTIME", err instanceof Error ? err.message : String(err));
 }
 
 /**
@@ -268,6 +257,9 @@ function buildRouter(backend: StorageBackend): (req: Request) => Promise<Respons
     if (payload === null || typeof payload !== "object" || payload.frontmatter === undefined) {
       return errorResponse(400, "USAGE", "request body must include a frontmatter object");
     }
+    if (payload.body !== undefined && typeof payload.body !== "string") {
+      return errorResponse(400, "USAGE", "request body field body must be a string when present");
+    }
     const options = writeOptionsFromHeaders(req);
     const result = await writeDocVersioned(
       bundle,
@@ -386,14 +378,14 @@ function buildRouter(backend: StorageBackend): (req: Request) => Promise<Respons
   }
 
   async function handleReadReserved(dir: string, name: ReservedFilename): Promise<Response> {
-    assertSafeDir(dir);
+    assertSafeReservedDir(dir);
     const result = await backend.readReserved(dir, name);
     if (result === null) return errorResponse(404, "NOT_FOUND", `no reserved file '${name}' at dir '${dir}'`);
     return jsonResponse(200, { content: result.content }, versionHeaders(result.version));
   }
 
   async function handleWriteReserved(dir: string, name: ReservedFilename, req: Request): Promise<Response> {
-    assertSafeDir(dir);
+    assertSafeReservedDir(dir);
     let payload: { content?: unknown };
     try {
       payload = (await req.json()) as { content?: unknown };
