@@ -3,7 +3,7 @@ type: Task
 title: >-
   Wire boundary: stop mapping plain server/worker errors to 400 USAGE (same
   class as the CLI boundary fix)
-status: todo
+status: in_progress
 priority: '3'
 description: >-
   [VERIFIED 2026-07-19, KEEP — still accurate] packages/server/src/router.ts's
@@ -22,7 +22,7 @@ description: >-
   boundary maps InvalidInputError->400, everything else->500. NOTE: worker is
   FROZEN per docs/core; this ships only with an otherwise-sanctioned worker
   change or an explicit decision; the server half is unfrozen and cheap.
-actor: mike/claude
-timestamp: '2026-07-19T13:11:57.839Z'
+actor: mike/codex
+timestamp: '2026-07-25T13:33:08.627Z'
 ---
 
