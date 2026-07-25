@@ -181,6 +181,7 @@ export function Launcher() {
   // The privacy promise describes a LOCAL bundle. Runtime mode is the authority; root may carry a
   // remote display value, so root presence alone must never enable orientation in hosted mode.
   useEffect(() => {
+    setOrientationReopened(false);
     if (config?.mode !== "dir" || config.root == null) {
       setOrientationDismissed(null);
       return;
@@ -224,7 +225,7 @@ export function Launcher() {
               <button type="button" className="where-btn" aria-expanded={whereOpen} onClick={() => setWhereOpen((v) => !v)}>
                 {whereOpen ? "hide details" : "where is this?"}
               </button>
-              {orientationAvailable && !showOrientation && (
+              {orientationAvailable && orientationDismissed === true && !showOrientation && (
                 <button type="button" className="where-btn about-btn" onClick={() => setOrientationReopened(true)}>
                   what is this?
                 </button>
@@ -272,8 +273,8 @@ export function Launcher() {
               <p>
                 ASLite is a cognitive ecosystem for AI agents: a shared, versioned memory that lives in this project as
                 a folder of plain markdown — notes, decisions, tasks, and the links between them. Agents read and write
-                it as they work; versioned writes keep concurrent agents from stepping on each other; and everything
-                they know stays in files you own and can read.{" "}
+                it as they work; conflict-safe writes keep concurrent agents from stepping on each other; and
+                everything they know stays in files you own and can read.{" "}
                 <button
                   type="button"
                   className="where-btn"
@@ -301,7 +302,7 @@ export function Launcher() {
                 line as they go. This window is for you: watch the activity feed to see what your agents are working
                 on, browse what they’ve written, and open the views they’ve built.
               </p>
-              <p>Views are live pages an agent builds over the bundle’s data — ask for one in plain language:</p>
+              <p>Views are pages an agent builds over the bundle’s data — ask for one in plain language:</p>
               <ul className="orientation-examples">
                 <li>“Build a view of what every agent is working on right now.”</li>
                 <li>“Show the decisions made this month, each linking to its full write-up.”</li>
