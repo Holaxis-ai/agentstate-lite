@@ -8,20 +8,20 @@ priority: '2'
 assignee: claude-main
 actor: claude-main
 description: >-
-  BUILT + REVIEWED, awaiting Brian's PR. Branch feat/home-landing-rethink pushed
-  (0ae63d6 rethink + 4e713c6 review fixes + cb3da83 why-it-matters pillar +
-  195d9c1 ratchet-in-plain-words). Orientation now leads agent-first: what
-  ASLite is (cognitive ecosystem, plain-markdown shared memory); WHY it matters
-  — the three problems (forget/collide/opaque, docs/core framing) and the
-  long-horizon consequence stated as the ratchet in household language
-  ('progress ratchets forward instead of slipping back... the floor the next one
-  builds on', per the Derfer & Collier 2026 paper, no theory vocabulary on the
-  surface); used THROUGH agents with the window as the human insight surface;
-  three example view prompts; 'what is this?' reopen affordance. Gates green
-  each commit; cb3da83/195d9c1 copy+pin only (trivial tier, author-validated).
-  Review round 1: APPROVE 4x P3, 3 taken
-  (context-notes/review-home-landing-rethink). Merge + copy taste are Brian's.
-timestamp: '2026-07-25T15:32:31.366Z'
+  BUILT + REVIEWED, awaiting Brian's PR. Branch feat/home-landing-rethink
+  (0ae63d6 rethink, 4e713c6 review fixes, cb3da83 why-it-matters, 195d9c1
+  ratchet wording, d423c42 sectioned restructure with Brian's copy). Orientation
+  is now four titled sections: What is agentstate-lite? / What problems does it
+  solve? (ratchet in plain words) / How do I use it? (agents are the main users;
+  skill+hook install commands inline) / Views (example prompts). Privacy promise
+  retained (chip/promise consistency rule + e2e pin); redundant closing install
+  paragraph dropped. OPEN COPY FLAGS for Brian: (1) 'should have been installed
+  when you installed ASLite' is true for the plugin channel, not npm (no
+  lifecycle scripts by design); (2) the window-as-insight-surface sentence was
+  removed with the replaced range. Gates green each commit (unit+typecheck+pages
+  e2e; d423c42 copy/style tier). Review round 1 record:
+  context-notes/review-home-landing-rethink. Merge is Brian's.
+timestamp: '2026-07-25T20:07:34.477Z'
 ---
 # Goal
 
