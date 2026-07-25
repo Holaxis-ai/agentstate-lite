@@ -236,23 +236,27 @@ describe("home surface", () => {
     const orientation = container.querySelector(".orientation");
     expect(orientation, "first run must render the orientation").not.toBeNull();
     const text = orientation!.textContent ?? "";
-    // The landing rethink's content pillars (2026-07-24): what ASLite IS…
+    // The landing rethink's content pillars (2026-07-24, sectioned 2026-07-25): what ASLite IS…
+    expect(text).toContain("What is agentstate-lite?");
     expect(text).toContain("cognitive ecosystem");
     expect(text).toContain("folder of plain markdown");
     // …WHY it is valuable — the problems it solves and the long-horizon consequence (the ratchet,
     // in plain words: settled work is a floor, not something re-derived — Derfer & Collier 2026)…
+    expect(text).toContain("What problems does it solve?");
     expect(text).toContain("forget everything between sessions");
     expect(text).toMatch(/ratchets forward instead of slipping back/);
     expect(text).toMatch(/becomes the floor the next one builds on/);
     expect(text).toMatch(/span days, sessions, and many agents/);
-    // …that it is used THROUGH agents, with this window as the human's insight surface…
-    expect(text).toContain("through your agents");
-    expect(text).toContain("see what your agents are working on");
+    // …HOW it is used — agents are the primary users; the human connects them…
+    expect(text).toContain("How do I use it?");
+    expect(text).toContain("agents are the main users");
+    expect(text).toContain("built by agents, for agents");
     // …and example view-building prompts the reader can hand straight to an agent.
+    expect(text).toContain("Views");
     const examples = orientation!.querySelector(".orientation-examples");
     expect(examples, "orientation must list example view prompts").not.toBeNull();
     expect(examples!.querySelectorAll("li").length).toBeGreaterThanOrEqual(3);
-    expect(examples!.textContent).toMatch(/build a view of what every agent is working on/i);
+    expect(examples!.textContent).toMatch(/all tasks that have not been completed/i);
     // The promise is worded to cover the in-tree mode (chip and promise must never contradict).
     expect(text).toMatch(/stays private until you choose to share it/i);
     expect(text).toContain("committing the folder with your code");

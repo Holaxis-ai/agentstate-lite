@@ -269,7 +269,7 @@ export function Launcher() {
         <div className="home-main">
           {showOrientation && (
             <section className="orientation">
-              <h2>Your agents’ shared memory</h2>
+              <h2>What is agentstate-lite?</h2>
               <p>
                 ASLite is a cognitive ecosystem for AI agents: a shared, versioned memory that lives in this project as
                 a folder of plain markdown — notes, decisions, tasks, and the links between them. Agents read and write
@@ -297,38 +297,59 @@ export function Launcher() {
                   </p>
                 </div>
               )}
+              <h3>What problems does it solve?</h3>
               <p>
-                <strong>Why it matters:</strong> on their own, agents forget everything between sessions, step on each
-                other’s writes, and keep what they know invisible to you. A shared memory fixes all three — and it is
-                what makes long-horizon work possible: progress ratchets forward instead of slipping back, because
-                what one session settles becomes the floor the next one builds on. Decisions stay decided, and work
-                can span days, sessions, and many agents without resetting to zero.
+                On their own, agents forget everything between sessions, step on each other’s writes, and keep what
+                they know invisible to you. A shared memory fixes all three — and it is what makes long-horizon work
+                possible: progress ratchets forward instead of slipping back, because what one session settles becomes
+                the floor the next one builds on. Decisions stay decided, and work can span days, sessions, and many
+                agents without resetting to zero.
               </p>
+              <h3>How do I use it?</h3>
               <p>
-                You’ll use ASLite mostly <strong>through your agents</strong> — they work the bundle from the command
-                line as they go. This window is for you: watch the activity feed to see what your agents are working
-                on, browse what they’ve written, and open the views they’ve built.
+                Actually, agents are the main users of ASLite. In fact it was built by agents, for agents, with
+                features that make it easy for them to work together on long-horizon problems. The ASLite skill
+                provides agents with some basic instructions on how it all works, and ASLite hooks help to ensure that
+                agents are reminded to update the bundle at appropriate times. The skill and hooks should have been
+                installed when you installed ASLite. If not, you can always install them into a given project by
+                running the following from a command line:
               </p>
-              <p>Views are pages an agent builds over the bundle’s data — ask for one in plain language:</p>
+              <pre className="orientation-cmds">
+                <code>{"aslite skill install\naslite hook install"}</code>
+              </pre>
+              <p>
+                Or you can install them globally by adding the <code>--scope global</code> flag:
+              </p>
+              <pre className="orientation-cmds">
+                <code>{"aslite skill install --scope global\naslite hook install --scope global"}</code>
+              </pre>
+              <p>
+                You may also want to add files into the bundle — for example, if you have context that will help
+                agents understand what you are building. Again, you’ll want to add these files through agents, who
+                will know how to add them so that they can find them when they need them. For example, you can just
+                say <em>“Add this Vision doc to the bundle”</em> and the agents will take care of it. Beyond that,
+                just work as you normally would. With the skill installed, your agents will write their own notes and
+                files into the bundle, and retrieve them as they are needed.
+              </p>
+              <h3>Views</h3>
+              <p>
+                ASLite also makes it extremely easy to create views so that you can see and interact with the project
+                and its bundle. Just tell the agents what you want to see, and they will create it. And they are very
+                good at anticipating what display formats are most useful. Here are a few examples of views that might
+                be helpful:
+              </p>
               <ul className="orientation-examples">
-                <li>“Build a view of what every agent is working on right now.”</li>
+                <li>“Create me a view that shows all tasks that have not been completed, grouped by priority.”</li>
                 <li>“Show the decisions made this month, each linking to its full write-up.”</li>
                 <li>“Make a live map of how the documents in this bundle link together.”</li>
               </ul>
               <p>
-                It stays private until you choose to share it — by establishing a shared board (
+                The bundle stays private until you choose to share it — by establishing a shared board (
                 <code>aslite sync --establish</code>) or committing the folder with your code.
               </p>
               <p>
                 <strong>Try it:</strong> ask your agent to write something down — a decision you just made, or how some
                 corner of this project works — and watch it land in the activity feed.
-              </p>
-              <p>
-                Agent doesn’t know about this bundle yet? From your project’s root folder,{" "}
-                <code>aslite skill install</code> teaches it the commands, and <code>aslite hook install</code> starts
-                each new session with this bundle’s state already in view. (Both write into the folder you run them
-                from, so run them where your project lives — or add <code>--scope global</code> to set them up for
-                every project at once.)
               </p>
               <button type="button" className="orientation-dismiss" onClick={dismissOrientation}>
                 Got it

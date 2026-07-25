@@ -361,6 +361,33 @@ body {
   color: var(--text-secondary);
 }
 
+/* Orientation section titles — smaller siblings of the card's h2, same display voice. */
+.orientation h3 {
+  margin: 1.1rem 0 0.4rem;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.1rem;
+  text-wrap: balance;
+}
+
+/* Copy-paste command blocks inside the orientation (install instructions). */
+.orientation-cmds {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  max-width: 62ch;
+  overflow-x: auto;
+}
+
+.orientation-cmds code {
+  background: none;
+  padding: 0;
+}
+
 /* Example view prompts — quoted asks a user can hand straight to an agent. */
 .orientation-examples {
   margin: 0 0 0.75rem;
