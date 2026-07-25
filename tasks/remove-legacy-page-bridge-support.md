@@ -3,7 +3,7 @@ type: Task
 title: >-
   Phase 3: remove the legacy NAMES from code (Page type, bridge fallback) — old
   folders stay recognized
-status: in_progress
+status: done
 priority: '3'
 assignee: claude-builder-phase3
 description: >-
@@ -54,8 +54,22 @@ description: >-
   gap), delta rounds 5-6 closed with APPROVE/zero findings. Branch head 4d77e31,
   CI green including the Playwright gate. Build FULLY complete; merge gate
   unchanged (Mike zeros + Brian's go).
+
+
+  DONE 2026-07-25 — merged to main via PR #159. GATE RESOLUTION: Brian merged
+  with Mike's informed acceptance — Mike knows these are breaking changes and is
+  not migrating his remaining bundles first. His experience on next plugin
+  update: dashboards from unmigrated bundles stop rendering LOUDLY (status
+  legacy_naming FINDING naming scripts/migrate-legacy-view-names.mjs; launcher
+  pointer; migration_required on recipe reapply); recovery is one script run,
+  pinned by test to work post-removal. The migration_required refusal policy is
+  now FINAL (overrule window closed at merge). The single-vocabulary north star
+  holds for all newly installed bundles, enforced by CI. Remaining program
+  residue: tasks/migrate-legacy-prefix-locations (address dial, open by choice)
+  and tasks/retire-migration-era (blocked until all known bundles migrate +
+  straggler window lapses — Mike's at-leisure migrations extend that window).
 actor: claude-main
-timestamp: '2026-07-25T17:53:49.355Z'
+timestamp: '2026-07-25T17:57:17.576Z'
 ---
 [depends on](migrate-legacy-page-bridge-stock.md)
 
