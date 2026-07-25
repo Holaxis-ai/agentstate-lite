@@ -9,18 +9,21 @@ assignee: claude-main
 actor: claude-main
 description: >-
   BUILT + REVIEWED 2026-07-24, awaiting Brian's PR. Branch
-  feat/home-landing-rethink pushed (0ae63d6 rethink + 4e713c6 review fixes).
-  Orientation now leads agent-first: what ASLite is (cognitive ecosystem,
-  plain-markdown shared memory), used THROUGH agents with the window as the
-  human insight surface, three example view prompts; dismissed orientation stays
-  reachable via a 'what is this?' reopen affordance (dir-mode gated). Standing
-  pins preserved (no OKF in first read, in-tree privacy promise,
-  agent-connecting fallback, no unscoped npx). Gates: build/typecheck/npm
-  test/e2e:gate all green; visually smoked over the built CLI. Review: 1 round,
-  APPROVE, 4x P3 — 3 taken in 4e713c6, focus-loss-on-reopen declined as
-  preexisting-symmetric (record: context-notes/review-home-landing-rethink).
-  Merge + any copy iteration are Brian's.
-timestamp: '2026-07-25T00:18:48.931Z'
+  feat/home-landing-rethink pushed (0ae63d6 rethink + 4e713c6 review fixes +
+  cb3da83 why-it-matters pillar). Orientation now leads agent-first: what ASLite
+  is (cognitive ecosystem, plain-markdown shared memory); WHY it matters (agents
+  forget between sessions / collide on writes / stay opaque to humans —
+  docs/core framing — and the long-horizon consequence: sessions resume,
+  decisions stay decided, work spans days and agents); used THROUGH agents with
+  the window as the human insight surface; three example view prompts; dismissed
+  orientation reopenable via 'what is this?' (dir-mode gated). Standing pins
+  preserved. Gates green at each commit; cb3da83 is copy+pin only (trivial tier
+  — author-validated, no second review round; earlier e2e/screenshot lesson
+  recorded: e2e boots the BUILT CLI, rebuild from repo root before trusting it).
+  Review round 1: APPROVE, 4x P3, 3 taken (record:
+  context-notes/review-home-landing-rethink). Merge + copy iteration are
+  Brian's.
+timestamp: '2026-07-25T00:24:50.693Z'
 ---
 # Goal
 
