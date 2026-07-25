@@ -13,10 +13,14 @@
  * `bridge`), so the card can never claim a page is one thing while the bridge treats it as
  * another; it is just no longer the organizing principle.
  *
- * First-run orientation: shown until dismissed, tracked in localStorage keyed by the bundle root
+ * Orientation: shown until dismissed, tracked in localStorage keyed by the bundle root
  * (accepted caveat: a stable-port fallback to an ephemeral port changes the origin, which may
- * resurface it once). Copy rules (designs/home-surface): the privacy promise is worded to cover
- * the in-tree mode, and the try-it hook carries a no-agent-yet fallback.
+ * resurface it once), and REOPENABLE afterwards via the "what is this?" affordance — the
+ * overview and the example view prompts must stay reachable, not vanish after one reading.
+ * Copy rules (designs/home-surface + the 2026-07-24 landing rethink): agent-first framing —
+ * ASLite is a cognitive ecosystem used THROUGH agents, and this window exists for the human to
+ * see what agents are doing; the privacy promise is worded to cover the in-tree mode; the
+ * try-it hook carries a no-agent-yet fallback.
  *
  * Live: a doc change over SSE may add/remove/retitle a View doc, so the grid refetches on any
  * doc change — a freshly-promoted view shows up without a manual reload.
@@ -143,6 +147,7 @@ export function Launcher() {
   });
   const pagesQuery = useQuery({ queryKey: ["pages"], queryFn: listPages });
   const [orientationDismissed, setOrientationDismissed] = useState<boolean | null>(null);
+  const [orientationReopened, setOrientationReopened] = useState(false);
   const [whereOpen, setWhereOpen] = useState(false);
   const [viewsHelpOpen, setViewsHelpOpen] = useState(false);
   const [orientationHelpOpen, setOrientationHelpOpen] = useState(false);
@@ -184,7 +189,10 @@ export function Launcher() {
   }, [config?.mode, config?.root]);
 
   const pages = pagesQuery.data ?? [];
-  const showOrientation = config?.mode === "dir" && config.root != null && orientationDismissed === false;
+  // The orientation is gated to local dir mode (its privacy promise describes a local bundle);
+  // within that mode it shows on first run OR when explicitly reopened via "what is this?".
+  const orientationAvailable = config?.mode === "dir" && config.root != null;
+  const showOrientation = orientationAvailable && (orientationDismissed === false || orientationReopened);
 
   const dismissOrientation = () => {
     if (config?.mode === "dir" && config.root != null) {
@@ -195,6 +203,7 @@ export function Launcher() {
       }
     }
     setOrientationDismissed(true);
+    setOrientationReopened(false);
   };
 
   const chip = config ? sharingChip(config.sharing ?? null) : null;
@@ -215,6 +224,11 @@ export function Launcher() {
               <button type="button" className="where-btn" aria-expanded={whereOpen} onClick={() => setWhereOpen((v) => !v)}>
                 {whereOpen ? "hide details" : "where is this?"}
               </button>
+              {orientationAvailable && !showOrientation && (
+                <button type="button" className="where-btn about-btn" onClick={() => setOrientationReopened(true)}>
+                  what is this?
+                </button>
+              )}
             </>
           ) : (
             "Loading bundle…"
@@ -254,11 +268,12 @@ export function Launcher() {
         <div className="home-main">
           {showOrientation && (
             <section className="orientation">
-              <h2>This is your ASLite bundle’s home</h2>
+              <h2>Your agents’ shared memory</h2>
               <p>
-                A bundle is a folder of plain markdown documents shared with your agents: notes, decisions, tasks, and
-                the links between them. Each document follows a shared structure which, together with the ASLite CLI
-                and skill, lets agents write, track, and retrieve them as work happens.{" "}
+                ASLite is a cognitive ecosystem for AI agents: a shared, versioned memory that lives in this project as
+                a folder of plain markdown — notes, decisions, tasks, and the links between them. Agents read and write
+                it as they work; versioned writes keep concurrent agents from stepping on each other; and everything
+                they know stays in files you own and can read.{" "}
                 <button
                   type="button"
                   className="where-btn"
@@ -271,8 +286,8 @@ export function Launcher() {
               {orientationHelpOpen && (
                 <div className="orientation-details">
                   <p>
-                    That shared structure is an open standard called OKF — the Open Knowledge Format. In practice it
-                    means each file is ordinary markdown with a short header naming what the document is and what it is
+                    The documents follow an open standard called OKF — the Open Knowledge Format. In practice it means
+                    each file is ordinary markdown with a short header naming what the document is and what it is
                     called, and ordinary markdown links between files.
                   </p>
                   <p>
@@ -281,6 +296,17 @@ export function Launcher() {
                   </p>
                 </div>
               )}
+              <p>
+                You’ll use ASLite mostly <strong>through your agents</strong> — they work the bundle from the command
+                line as they go. This window is for you: watch the activity feed to see what your agents are working
+                on, browse what they’ve written, and open the views they’ve built.
+              </p>
+              <p>Views are live pages an agent builds over the bundle’s data — ask for one in plain language:</p>
+              <ul className="orientation-examples">
+                <li>“Build a view of what every agent is working on right now.”</li>
+                <li>“Show the decisions made this month, each linking to its full write-up.”</li>
+                <li>“Make a live map of how the documents in this bundle link together.”</li>
+              </ul>
               <p>
                 It stays private until you choose to share it — by establishing a shared board (
                 <code>aslite sync --establish</code>) or committing the folder with your code.

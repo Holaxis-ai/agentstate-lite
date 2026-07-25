@@ -357,17 +357,23 @@ test("home surface: flat badged grid, live activity feed, first-run orientation 
     await expect(page.locator('[data-page-id="views-registry/pulse"]')).toBeVisible();
     await expect(page.locator(".orientation")).not.toBeVisible();
 
+    // …but the overview stays reachable: "what is this?" reopens it, "Got it" closes it again.
+    await page.locator(".about-btn").click();
+    await expect(page.locator(".orientation")).toContainText(/cognitive ecosystem/i);
+    await page.locator(".orientation").getByRole("button", { name: "Got it" }).click();
+    await expect(page.locator(".orientation")).not.toBeVisible();
+
     // Identity truth (PR-B): a git-less temp bundle is PRIVATE — chip up front, path only behind
     // the disclosure, sharing detail inside the panel. The isolated HOME has no catalog, so no
     // workspaces block renders.
     const chip = page.locator(".chip");
     await expect(chip).toHaveText("private — this computer only");
     await expect(page.locator(".launcher-meta")).not.toContainText(ui.dir);
-    await page.locator(".where-btn").click();
+    await page.getByRole("button", { name: "where is this?" }).click();
     const panel = page.locator(".where-panel");
     await expect(panel).toContainText(ui.dir);
     await expect(panel).toContainText("not shared");
-    await page.locator(".where-btn").click();
+    await page.getByRole("button", { name: "hide details" }).click();
     await expect(panel).toHaveCount(0);
     await expect(page.locator(".workspaces-toggle")).toHaveCount(0);
 

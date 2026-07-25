@@ -10,8 +10,13 @@
  *     are gone; capability renders as a per-card BADGE (`live data` / `can edit` / `artifact`)
  *     derived from the same enforced `bridge` field. Red-on-old: the grouped launcher rendered a
  *     "Documents" heading.
- *  3. First-run orientation shows until dismissed; dismissal persists per bundle root in
- *     localStorage, and a stored dismissal suppresses it.
+ *  3. Orientation shows until dismissed; dismissal persists per bundle root in localStorage, and
+ *     a stored dismissal suppresses it. It stays REACHABLE afterwards: "what is this?" reopens
+ *     it (the 2026-07-24 landing rethink — the overview and the example view prompts must not
+ *     vanish after one reading).
+ *  4. Landing copy is agent-first (the 2026-07-24 rethink): it says what ASLite IS (a cognitive
+ *     ecosystem for agents), that it is used THROUGH agents with this window as the human's
+ *     insight surface, and it hands the reader example view-building prompts.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
@@ -230,6 +235,17 @@ describe("home surface", () => {
     const orientation = container.querySelector(".orientation");
     expect(orientation, "first run must render the orientation").not.toBeNull();
     const text = orientation!.textContent ?? "";
+    // The landing rethink's three content pillars (2026-07-24): what ASLite IS…
+    expect(text).toContain("cognitive ecosystem");
+    expect(text).toContain("folder of plain markdown");
+    // …that it is used THROUGH agents, with this window as the human's insight surface…
+    expect(text).toContain("through your agents");
+    expect(text).toContain("see what your agents are working on");
+    // …and example view-building prompts the reader can hand straight to an agent.
+    const examples = orientation!.querySelector(".orientation-examples");
+    expect(examples, "orientation must list example view prompts").not.toBeNull();
+    expect(examples!.querySelectorAll("li").length).toBeGreaterThanOrEqual(3);
+    expect(examples!.textContent).toMatch(/build a view of what every agent is working on/i);
     // The promise is worded to cover the in-tree mode (chip and promise must never contradict).
     expect(text).toMatch(/stays private until you choose to share it/i);
     expect(text).toContain("committing the folder with your code");
@@ -276,6 +292,38 @@ describe("home surface", () => {
     expect(container.querySelector(".orientation")).toBeNull();
   });
 
+  it("'what is this?' reopens the dismissed orientation — the overview stays reachable", async () => {
+    storage.setItem(orientationStorageKey(BUNDLE_ROOT), "dismissed");
+    await render();
+    for (let i = 0; i < 50 && !container.querySelector(".about-btn"); i++) {
+      await act(async () => {
+        await flush();
+      });
+    }
+
+    const about = container.querySelector<HTMLButtonElement>(".about-btn");
+    expect(about, "a dismissed orientation must leave a 'what is this?' way back").not.toBeNull();
+    expect(about!.textContent).toContain("what is this?");
+    expect(container.querySelector(".orientation")).toBeNull();
+
+    await act(async () => {
+      about!.click();
+      await flush();
+    });
+    const orientation = container.querySelector(".orientation");
+    expect(orientation, "'what is this?' must reopen the orientation").not.toBeNull();
+    // The affordance yields to the open card (one copy of the overview on screen at a time).
+    expect(container.querySelector(".about-btn")).toBeNull();
+
+    await act(async () => {
+      (container.querySelector(".orientation-dismiss") as HTMLButtonElement).click();
+      await flush();
+    });
+    expect(container.querySelector(".orientation"), "Got it closes the reopened card").toBeNull();
+    expect(container.querySelector(".about-btn"), "…and the way back returns").not.toBeNull();
+    expect(storage.getItem(orientationStorageKey(BUNDLE_ROOT))).toBe("dismissed");
+  });
+
   it("never shows local privacy onboarding in remote mode, even when config.root carries the remote URL", async () => {
     vi.mocked(fetchConfig).mockResolvedValue({
       ...BASE_CONFIG,
@@ -286,6 +334,9 @@ describe("home surface", () => {
     });
     await render();
     expect(container.querySelector(".orientation")).toBeNull();
+    // The reopen affordance is gated with the orientation itself — its copy makes the same
+    // local-bundle privacy promise, so remote mode gets neither.
+    expect(container.querySelector(".about-btn")).toBeNull();
 
     await act(async () => {
       (container.querySelector(".where-btn") as HTMLButtonElement).click();

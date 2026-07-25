@@ -361,6 +361,18 @@ body {
   color: var(--text-secondary);
 }
 
+/* Example view prompts — quoted asks a user can hand straight to an agent. */
+.orientation-examples {
+  margin: 0 0 0.75rem;
+  padding-left: 1.2rem;
+  max-width: 62ch;
+  color: var(--text-secondary);
+}
+
+.orientation-examples li {
+  margin: 0 0 0.35rem;
+}
+
 .orientation-dismiss {
   font: inherit;
   font-size: 0.85rem;
