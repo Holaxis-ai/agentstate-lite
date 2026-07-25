@@ -4,7 +4,9 @@
  * round-trip delivering data INTO the page, the structural network lock (a page's own fetch is
  * CSP-blocked), and a live update moving a card without a reload. Drives the REAL built CLI over a
  * fresh bundle seeded with the actual `examples/views` seed views (`harness.ts`) — Pulse/Roadmap
- * canonical `type: View`, About deliberately legacy `type: Page` (dual-read pinned end-to-end).
+ * canonical `type: View`, About deliberately at the LEGACY LOCATIONS with the current name
+ * (location-survival pinned end-to-end), plus one RETIRED `type: Page` doc the launcher must
+ * never list (the removal pin, tasks/remove-legacy-page-bridge-support).
  */
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
@@ -17,15 +19,32 @@ const TASKS = [
   { id: "tasks/beta", frontmatter: { type: "Task", title: "Beta task", status: "blocked" }, body: "" },
 ];
 
-test("launcher lists the bundle's View docs (including a legacy Page doc)", async ({ page }) => {
+test("REMOVAL PIN: the launcher lists View docs from BOTH folder generations, and a retired legacy Page doc never appears — with the loud diagnostic asserted", async ({ page }) => {
   const ui = await bootUiOverPagesBundle([]);
   try {
     await page.goto(ui.url); // token -> cookie + SPA boot
     await expect(page.locator('[data-page-id="views-registry/pulse"]')).toBeVisible();
     await expect(page.locator('[data-page-id="views-registry/roadmap"]')).toBeVisible();
-    // The legacy-typed About doc must list alongside the canonical Views (dual-read).
+    // Legacy LOCATIONS survive: the View-typed About doc under pages-registry//pages/ lists.
     await expect(page.locator('[data-page-id="pages-registry/about"]')).toBeVisible();
     await expect(page.getByRole("heading", { name: "Pulse — activity feed" })).toBeVisible();
+    // The retired legacy NAME does not: the seeded type: Page doc (real entry bytes and all)
+    // never reaches the launcher grid (tasks/remove-legacy-page-bridge-support). It remains an
+    // ordinary DOC — visible in the activity feed like any content — so the never-appears check
+    // is scoped to the Views grid, not the whole page.
+    await expect(page.locator('[data-page-id="pages-registry/retired"]')).toHaveCount(0);
+    await expect(page.locator(".launcher-grid").getByText("Retired legacy page")).toHaveCount(0);
+
+    // Removal must not equal silence: the designated loud surface names the doc and the remedy.
+    // (This fixture bundle SHOWS views, so the launcher's empty-state pointer never renders —
+    // status's legacy_naming FINDING is the diagnostic for this shape.)
+    const status = JSON.parse(
+      execFileSync(process.execPath, [CLI_DIST, "status", "--dir", ui.dir, "--json"], { encoding: "utf8" }),
+    ) as { legacy_naming?: { note?: string; help?: string; page_typed_docs?: number; page_typed_rows?: { rows: Array<{ id: string }> } } };
+    expect(status.legacy_naming?.page_typed_docs).toBe(1);
+    expect(status.legacy_naming?.page_typed_rows?.rows).toEqual([{ id: "pages-registry/retired" }]);
+    expect(status.legacy_naming?.note).toContain("FINDING");
+    expect(status.legacy_naming?.help).toContain("migrate-legacy-view-names");
   } finally {
     await ui.cleanup();
   }
@@ -119,7 +138,7 @@ test("About navigation opens Roadmap and its startup bridge queries under the ta
     await expect(page).toHaveURL(/view=page&id=views-registry%2Froadmap/);
     const roadmap = page.frameLocator("iframe.page-frame-iframe");
     // Target capability is resolved independently: Roadmap receives bundle data although About
-    // was bridge:none.
+    // was access: none.
     await expect(roadmap.locator(".item .title", { hasText: "Spike work" })).toBeVisible();
 
     await page.goBack();

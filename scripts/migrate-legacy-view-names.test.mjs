@@ -1117,6 +1117,85 @@ test("receipt result: refresh + doc work compose into ONE mode-aware sentence", 
   }
 });
 
+test("receipt result: the absent-replacement retirement pins BOTH the create and retire clauses, dry and real (delta-review P2)", async () => {
+  // Reviewer's finding: forcing the retire clause silent left all focused tests green — a real
+  // migration could delete the legacy reference while the verdict omitted it. Exact sentences.
+  const { migrateBundle } = await script();
+  const { initBundle, writeDoc } = await core();
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-verdict-retire-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "legacy teaching\n",
+    });
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(dry.result, "would create the View authoring reference, retire 1 legacy Page-authoring reference");
+    const real = await migrateBundle(bundle);
+    assert.equal(real.result, "created the View authoring reference, retired 1 legacy Page-authoring reference");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("receipt result: the ALL-ACTION fixture pins the fully-composed sentence INCLUDING clause order, dry and real (delta-review P2)", async () => {
+  const { migrateBundle, loadPriorShippedViewConventions, loadPriorShippedReviewRequestConventions, loadPriorShippedViewAuthoringReferences } =
+    await script();
+  const { initBundle, writeDoc } = await core();
+  const T = "2026-07-01T00:00:00.000Z";
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-verdict-composed-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "pages-registry/dash",
+      frontmatter: { type: "Page", title: "Dash", entry: "pages/dash.html", bridge: "bundle-read", timestamp: T },
+      body: "legacy stock\n",
+    });
+    const priorView = loadPriorShippedViewConventions()[0];
+    await writeDoc(bundle, { id: "conventions/view", frontmatter: priorView.frontmatter, body: priorView.body });
+    await writeDoc(bundle, {
+      id: "conventions/page",
+      frontmatter: {
+        type: "Convention",
+        title: "Page",
+        governs: "Page",
+        path: "pages-registry/",
+        fields: { required: ["title", "entry", "bridge"], optional: ["description"], values: { bridge: ["none", "bundle-read"] }, terminal: {} },
+        timestamp: T,
+      },
+      body: "# Page\n",
+    });
+    const priorRR = loadPriorShippedReviewRequestConventions()[0];
+    await writeDoc(bundle, { id: "conventions/review-request", frontmatter: priorRR.frontmatter, body: priorRR.body });
+    const priorRefs = loadPriorShippedViewAuthoringReferences();
+    const transitional = priorRefs[priorRefs.length - 1];
+    await writeDoc(bundle, { id: "references/view-authoring-v0", frontmatter: transitional.frontmatter, body: transitional.body });
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: T },
+      body: "legacy teaching\n",
+    });
+
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(
+      dry.result,
+      "would migrate 1 doc (1 type rename, 1 field rename), swap the View convention, " +
+        "delete 1 Page convention, refresh the Review Request convention, " +
+        "refresh the View authoring reference, retire 1 legacy Page-authoring reference",
+    );
+    const real = await migrateBundle(bundle);
+    assert.equal(
+      real.result,
+      "migrated 1 doc (1 type rename, 1 field rename), swapped the View convention, " +
+        "deleted 1 Page convention, refreshed the Review Request convention, " +
+        "refreshed the View authoring reference, retired 1 legacy Page-authoring reference",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("receipt result: blocked/skipped refresh states surface through the attention verdict, never a clean scan", async () => {
   const { migrateBundle } = await script();
   const { initBundle, writeDoc } = await core();
