@@ -1,8 +1,8 @@
 ---
 type: Context Note
 title: 'Review record: phase-3 legacy removal, high-risk tier (4 rounds, exact SHAs)'
-actor: codex-reviewer-phase3
-timestamp: '2026-07-24T20:15:02.590Z'
+actor: claude-main
+timestamp: '2026-07-25T17:53:49.060Z'
 ---
 # Summary
 
@@ -230,3 +230,30 @@ No source change is requested. Approval is withheld only until the mandatory fai
 
 ## Gate completion (orchestrator, per round-4's condition)
 The three environmentally-failed gates were rerun at exact SHA e271d20 on the host (loopback + writable npm cache available): npm test exit 0 (board-git 120, cli 1164, core 404, server 5, ui-server 35, ui vitest all green), npm run test:scripts exit 0, npm run verify:npm-package exit 0. The reviewer's withholding condition is satisfied; no source change was requested.
+
+## Rebase + rounds 5-6 (2026-07-25)
+
+PR #159 conflicted with the merged receipt unit (#158) — both rework the migration script. Rebase
+e271d20 -> c37a8c3 (PR comment names old/new SHAs) with ONE new commit: the semantic reconciliation
+(phase-3 receipt actions visible to the verdict sentence; clean-scan requires no actions of any
+kind; all #158 pinned sentences byte-identical). The rebase surfaced a SECOND latent defect: main
+had gained a Playwright e2e gate inside `npm run check` that our standing gate list omitted — CI
+red on both nodes because the e2e fixtures encoded the pre-removal contract ("launcher lists a
+legacy Page doc").
+
+Round 5 (delta, c37a8c3): reconciliation substance PASSED (8 truth-table rows byte-identical,
+rebase integrity by patch-id, frozen forms bit-stable); one P2 — create/retire clauses and
+composed order unpinned (retiredRefs=0 mutation survived).
+
+Fix 4d77e31: e2e suite converted to the post-removal contract — the legacy-Page spec INVERTED into
+a removal pin (legacy doc absent from the grid; legacy-LOCATED View still renders; loud path
+asserted through the real CLI) — plus the two verdict pins. e2e gate run locally (18/18) AND green
+on CI at the exact head (18 passed, 23.8s; failing runs were ~7m of retries).
+
+Round 6 (4d77e31): APPROVE, zero findings. Both mutations red-verified incl. a clause-order swap;
+diff exactly the three claimed files; e2e judged REASONED-faithful (execution proven by CI).
+
+FINAL LEDGER: 6 rounds + 1 CI-caught contract gap; findings 4 -> 1 -> 1 -> 0 -> 1 -> (e2e) -> 0.
+Branch head 4d77e31, CI green. MERGE remains gated: Mike's bundles at zero + Brian's coordinated go.
+Process rules banked: the gate list is CI's `check` composition, enumerated not remembered;
+long-lived high-risk branches re-rebase and re-gate every round.

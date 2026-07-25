@@ -47,8 +47,15 @@ description: >-
   + Brian's explicit coordinated go (plugin channel tracks main). Policy adopted
   pending Brian's overrule window: recipe reapply on unmigrated legacy reports
   migration_required, never a satisfied-looking skip.
-actor: claude-builder-phase3
-timestamp: '2026-07-24T20:15:05.114Z'
+
+
+  UPDATE 2026-07-25: rebased onto main (receipt-unit conflict; reconciliation
+  commit c37a8c3), e2e suite converted to the post-removal contract (CI-caught
+  gap), delta rounds 5-6 closed with APPROVE/zero findings. Branch head 4d77e31,
+  CI green including the Playwright gate. Build FULLY complete; merge gate
+  unchanged (Mike zeros + Brian's go).
+actor: claude-main
+timestamp: '2026-07-25T17:53:49.355Z'
 ---
 [depends on](migrate-legacy-page-bridge-stock.md)
 
