@@ -38,7 +38,9 @@ description: >-
   - Local CLI/UI and Worker tests continue consuming the same package authority.
 
   - Builder -> independent reviewer -> QA before publication.
-actor: codex
-timestamp: '2026-07-12T22:57:38.817Z'
+actor: mike/codex
+timestamp: '2026-07-25T03:56:55.013Z'
 ---
 [depends on](publish-core-package.md)
+
+[depends on](package-server-external-proof.md)
