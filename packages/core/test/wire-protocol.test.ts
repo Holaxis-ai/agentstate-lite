@@ -7,12 +7,9 @@
  * to end. One dedicated test at the bottom boots a REAL `node:http` listener via
  * `serve()` for a socket-level smoke check.
  *
- * `dual-backend.test.ts` already proves `FilesystemBackend` and `MemoryBackend`
- * return identical results for the SAME `scenario()`; this file proves `RemoteBackend`
- * closes the loop — the same scenario, engine CAS, reserved-file CAS, and `readMany`
- * behavior must hold identically over the wire, and every version token must be
- * byte-identical to a local backend's (the content-addressed invariant crossing the
- * wire unchanged — `docs/WIRE-PROTOCOL.md` principle 3).
+ * `storage-backend-contract.test.ts` owns direct-seam parity across FilesystemBackend,
+ * MemoryBackend, and RemoteBackend. This file owns engine agreement over RemoteBackend
+ * plus HTTP mechanics, envelopes, security gates, and socket-level smoke coverage.
  *
  * Note on module identity: the router's capabilities endpoint does
  * `backend instanceof MemoryBackend` against the COMPILED `@agentstate-lite/core`
@@ -32,12 +29,9 @@ import { MemoryBackend } from "../src/memory-backend.js";
 import {
   writeDocVersioned,
   readDocVersioned,
-  readBlob,
   writeBlob,
-  existsBlob,
-  listBlobs,
 } from "../src/bundle.js";
-import { VersionConflict, blobVersion } from "../src/versioning.js";
+import { VersionConflict } from "../src/versioning.js";
 import { scenario, T_DOC } from "./scenario.js";
 import type {
   Bundle,
@@ -296,41 +290,6 @@ test("wire: core operations return identical results over RemoteBackend as over 
   assert.equal(r.freshness, "fresh");
 });
 
-test("wire: content-addressed version token crosses the wire unchanged", async () => {
-  const doc: OkfDocument = {
-    id: "concepts/alpha",
-    frontmatter: { type: "Concept", title: "Alpha", timestamp: T_DOC },
-    body: "Alpha body.",
-  };
-  const local = await writeDocVersioned({ root: "mem://local", backend: new MemoryBackend() }, doc);
-  const wire = await writeDocVersioned(freshWireBundle(), doc);
-  assert.match(wire.version, /^sha256:[0-9a-f]{64}$/);
-  assert.equal(wire.version, local.version);
-});
-
-test("wire: backend-level compare-and-swap rejects a stale expectedVersion (412 -> reconstructed VersionConflict)", async () => {
-  const backend = freshWireBundle().backend!;
-  const base: OkfDocument = { id: "d", frontmatter: { type: "T", timestamp: T_DOC }, body: "one" };
-
-  const v1 = await backend.write("d", base);
-  const v2 = await backend.write("d", { ...base, body: "two" });
-  assert.notEqual(v2, v1);
-
-  await assert.rejects(
-    () => backend.write("d", { ...base, body: "three" }, { expectedVersion: v1 }),
-    (err: unknown) => {
-      assert.ok(err instanceof VersionConflict);
-      assert.equal(err.expected, v1);
-      assert.equal(err.actual, v2);
-      return true;
-    },
-  );
-  assert.equal((await backend.read("d")).version, v2);
-
-  const v3 = await backend.write("d", { ...base, body: "three" }, { expectedVersion: v2 });
-  assert.notEqual(v3, v2);
-});
-
 test("wire: engine compare-and-swap (writeDocVersioned + expectedVersion) rejects a stale version, over the wire", async () => {
   const bundle = freshWireBundle();
   const doc: OkfDocument = { id: "concepts/cas", frontmatter: { type: "Concept", title: "Cas", timestamp: T_DOC }, body: "v1" };
@@ -353,62 +312,6 @@ test("wire: engine compare-and-swap (writeDocVersioned + expectedVersion) reject
   assert.notEqual(third.version, second.version);
 });
 
-test("wire: write honors expectedVersion: null as expect-absent create", async () => {
-  const backend = freshWireBundle().backend!;
-  const doc: OkfDocument = { id: "created-if-absent", frontmatter: { type: "T", timestamp: T_DOC }, body: "one" };
-
-  const v1 = await backend.write("created-if-absent", doc, { expectedVersion: null });
-  assert.match(v1, /^sha256:[0-9a-f]{64}$/);
-
-  await assert.rejects(
-    () => backend.write("created-if-absent", { ...doc, body: "two" }, { expectedVersion: null }),
-    (err: unknown) => {
-      assert.ok(err instanceof VersionConflict);
-      assert.equal(err.expected, null);
-      assert.equal(err.actual, v1);
-      return true;
-    },
-  );
-});
-
-test("wire: DELETE /docs/{id} — present -> 200 {deleted:true}, absent -> 200 {deleted:false} (never 404, per the wire's absence-is-success contract)", async () => {
-  const backend = freshWireBundle().backend!;
-  await backend.write("concepts/to-delete", { id: "concepts/to-delete", frontmatter: { type: "T", timestamp: T_DOC }, body: "x" });
-
-  assert.equal(await backend.delete("concepts/to-delete"), true);
-  await assert.rejects(() => backend.read("concepts/to-delete"), (err: unknown) => {
-    assert.equal((err as NodeJS.ErrnoException).code, "ENOENT");
-    return true;
-  });
-  assert.equal(await backend.delete("concepts/to-delete"), false); // idempotent re-delete
-  assert.equal(await backend.delete("concepts/never-existed"), false); // never-written id
-});
-
-test("wire: DELETE /docs/{id} with a stale If-Match -> 412 -> RemoteBackend reconstructs a typed VersionConflict; a match succeeds", async () => {
-  const backend = freshWireBundle().backend!;
-  const doc: OkfDocument = { id: "concepts/cas-delete", frontmatter: { type: "T", timestamp: T_DOC }, body: "v1" };
-  const v1 = await backend.write("concepts/cas-delete", doc);
-  const v2 = await backend.write("concepts/cas-delete", { ...doc, body: "v2" });
-  assert.notEqual(v1, v2);
-
-  await assert.rejects(
-    () => backend.delete("concepts/cas-delete", { expectedVersion: v1 }),
-    (err: unknown) => {
-      assert.ok(err instanceof VersionConflict);
-      assert.equal(err.expected, v1);
-      assert.equal(err.actual, v2);
-      return true;
-    },
-  );
-  assert.equal(await backend.exists("concepts/cas-delete"), true); // rejected delete did not mutate
-
-  assert.equal(await backend.delete("concepts/cas-delete", { expectedVersion: v2 }), true);
-  assert.equal(await backend.exists("concepts/cas-delete"), false);
-
-  // Now absent: a CAS delete against any expectedVersion still returns false, never a conflict.
-  assert.equal(await backend.delete("concepts/cas-delete", { expectedVersion: v1 }), false);
-});
-
 test("wire: raw DELETE /docs/{id} response shape is exactly { deleted } with a 200 status, no version headers", async () => {
   const serverBackend = new ServerMemoryBackend();
   const bundle: Bundle = { root: "mem://wire-delete-shape", backend: serverBackend };
@@ -423,50 +326,6 @@ test("wire: raw DELETE /docs/{id} response shape is exactly { deleted } with a 2
   const absentRes = await router(new Request("http://wire.local/v0/bundles/test/docs/never-here", { method: "DELETE" }));
   assert.equal(absentRes.status, 200);
   assert.deepEqual((await absentRes.json()) as { deleted: boolean }, { deleted: false });
-});
-
-test("wire: readMany batch-reads in input order and rejects (ENOENT-shaped) on a missing id", async () => {
-  const bundle = freshWireBundle();
-  const backend = bundle.backend!;
-  for (const id of ["z/last", "a/first", "m/mid"]) {
-    await writeDocVersioned(bundle, { id, frontmatter: { type: "T", timestamp: T_DOC }, body: id });
-  }
-  const ids = ["m/mid", "a/first", "z/last"];
-  const results = await backend.readMany(ids);
-  assert.deepEqual(results.map((r) => r.doc.id), ids); // input order preserved
-  for (const r of results) assert.match(r.version, /^sha256:/);
-
-  assert.deepEqual(await backend.readMany([]), []);
-  await assert.rejects(
-    () => backend.readMany(["a/first", "does/not-exist"]),
-    (err: unknown) => {
-      assert.ok(err && typeof err === "object" && (err as NodeJS.ErrnoException).code === "ENOENT");
-      return true;
-    },
-  );
-});
-
-test("wire: reserved-file writeReserved honors compare-and-swap and expect-absent, over the wire", async () => {
-  const backend = freshWireBundle().backend!;
-  const c1 = "# Log\n\n- one\n";
-
-  const v1 = await backend.writeReserved("", "log.md", c1, { expectedVersion: null });
-  assert.match(v1, /^sha256:[0-9a-f]{64}$/);
-  const read1 = await backend.readReserved("", "log.md");
-  assert.ok(read1);
-  assert.equal(read1!.content, c1);
-  assert.equal(read1!.version, v1);
-
-  await assert.rejects(
-    () => backend.writeReserved("", "log.md", "# Log\n\n- two\n", { expectedVersion: "sha256:" + "0".repeat(64) }),
-    (err: unknown) => err instanceof VersionConflict && err.actual === v1,
-  );
-
-  const v2 = await backend.writeReserved("", "log.md", "# Log\n\n- two\n", { expectedVersion: v1 });
-  assert.notEqual(v2, v1);
-  assert.equal((await backend.readReserved("", "log.md"))!.version, v2);
-
-  assert.equal(await backend.readReserved("nope", "index.md"), null);
 });
 
 test("wire: GET /docs list endpoint carries count + type/tag filters + fields=frontmatter projection", async () => {
@@ -649,101 +508,7 @@ test("wire: serve() boots a real node:http listener; one GET round-trips, then c
 
 // ── blobs: opaque bytes served by content-type (wire-protocol v0.1) ──────────
 
-/** Bytes 0x00-0xFF, including invalid-UTF-8 sequences — the B1 binary-fidelity fixture, over the wire. */
-const WIRE_BINARY_FIXTURE = new Uint8Array(256);
-for (let i = 0; i < 256; i++) WIRE_BINARY_FIXTURE[i] = i;
-
 const enc = (s: string) => new TextEncoder().encode(s);
-
-test("wire: blob write/read/exists/list over RemoteBackend matches a local MemoryBackend, incl. the BINARY FIXTURE crossing the wire byte-identical with the identical version token (B1, over HTTP)", async () => {
-  const wire = freshWireBundle();
-  const local: Bundle = { root: "mem://local-blob", backend: new MemoryBackend() };
-
-  assert.equal(await existsBlob(wire, "artifacts/report.html"), false);
-  assert.equal(await readBlob(wire, "artifacts/report.html"), null);
-
-  const htmlBytes = enc("<html><body>hi</body></html>");
-  const wireVersion = await writeBlob(wire, "artifacts/report.html", htmlBytes, "text/html; charset=utf-8");
-  const localVersion = await writeBlob(local, "artifacts/report.html", htmlBytes, "text/html; charset=utf-8");
-  assert.equal(wireVersion, localVersion);
-
-  const wireRead = await readBlob(wire, "artifacts/report.html");
-  assert.ok(wireRead);
-  assert.deepEqual([...wireRead!.bytes], [...htmlBytes]);
-  assert.equal(wireRead!.version, wireVersion);
-  assert.equal(wireRead!.contentType, "text/html; charset=utf-8");
-  assert.equal(await existsBlob(wire, "artifacts/report.html"), true);
-  assert.deepEqual(await listBlobs(wire, "artifacts/"), ["artifacts/report.html"]);
-
-  // The B1 regression, crossing the wire: a real binary fixture (incl. invalid-UTF-8
-  // byte sequences) must round-trip byte-identical and hash identically over HTTP.
-  const binVersion = await writeBlob(wire, "artifacts/binary.dat", WIRE_BINARY_FIXTURE);
-  assert.equal(binVersion, blobVersion(WIRE_BINARY_FIXTURE));
-  const binRead = await readBlob(wire, "artifacts/binary.dat");
-  assert.ok(binRead);
-  assert.deepEqual([...binRead!.bytes], [...WIRE_BINARY_FIXTURE]);
-  assert.equal(binRead!.version, blobVersion(WIRE_BINARY_FIXTURE));
-});
-
-test("wire: RemoteBackend.readBlob returns null (not a rejection) for an absent blob; existsBlob returns false", async () => {
-  const backend = freshWireBundle().backend!;
-  assert.equal(await backend.readBlob("nope/absent.bin"), null);
-  assert.equal(await backend.existsBlob("nope/absent.bin"), false);
-});
-
-test("wire: blob CAS rejects a stale expectedVersion (412 -> reconstructed VersionConflict); CAS against the current version succeeds", async () => {
-  const backend = freshWireBundle().backend!;
-
-  const v1 = await backend.writeBlob("artifacts/x.bin", enc("v1"));
-  const v2 = await backend.writeBlob("artifacts/x.bin", enc("v2"));
-  assert.notEqual(v1, v2);
-
-  await assert.rejects(
-    () => backend.writeBlob("artifacts/x.bin", enc("v3"), undefined, { expectedVersion: v1 }),
-    (err: unknown) => {
-      assert.ok(err instanceof VersionConflict);
-      assert.equal(err.expected, v1);
-      assert.equal(err.actual, v2);
-      return true;
-    },
-  );
-
-  const v3 = await backend.writeBlob("artifacts/x.bin", enc("v3"), undefined, { expectedVersion: v2 });
-  assert.notEqual(v3, v2);
-  assert.equal((await backend.readBlob("artifacts/x.bin"))!.version, v3);
-});
-
-test("wire: DELETE /blobs/{key} — present -> 200 {deleted:true}, absent -> 200 {deleted:false} (never 404)", async () => {
-  const backend = freshWireBundle().backend!;
-  await backend.writeBlob("artifacts/to-delete.bin", enc("bye"));
-
-  assert.equal(await backend.deleteBlob("artifacts/to-delete.bin"), true);
-  assert.equal(await backend.readBlob("artifacts/to-delete.bin"), null);
-  assert.equal(await backend.existsBlob("artifacts/to-delete.bin"), false);
-  assert.equal(await backend.deleteBlob("artifacts/to-delete.bin"), false); // idempotent
-  assert.equal(await backend.deleteBlob("artifacts/never-existed.bin"), false);
-});
-
-test("wire: DELETE /blobs/{key} with a stale If-Match -> 412 -> reconstructed VersionConflict; a match succeeds", async () => {
-  const backend = freshWireBundle().backend!;
-  const v1 = await backend.writeBlob("artifacts/cas-delete.bin", enc("v1"));
-  const v2 = await backend.writeBlob("artifacts/cas-delete.bin", enc("v2"));
-  assert.notEqual(v1, v2);
-
-  await assert.rejects(
-    () => backend.deleteBlob("artifacts/cas-delete.bin", { expectedVersion: v1 }),
-    (err: unknown) => {
-      assert.ok(err instanceof VersionConflict);
-      assert.equal(err.expected, v1);
-      assert.equal(err.actual, v2);
-      return true;
-    },
-  );
-  assert.equal(await backend.existsBlob("artifacts/cas-delete.bin"), true);
-
-  assert.equal(await backend.deleteBlob("artifacts/cas-delete.bin", { expectedVersion: v2 }), true);
-  assert.equal(await backend.existsBlob("artifacts/cas-delete.bin"), false);
-});
 
 test("wire: PUT /blobs/{key} returns 201 + {version} + ETag on expect-absent create, 200 on an ordinary write (I4)", async () => {
   const serverBackend = new ServerMemoryBackend();

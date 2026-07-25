@@ -1,0 +1,378 @@
+/**
+ * Internal adapter contract kit. Base persistence guarantees are mandatory; stronger
+ * guarantees are registered explicitly so a new backend cannot pass through hidden
+ * capability skips. Engine validation, wire mechanics, and adapter internals stay in
+ * their dedicated suites.
+ */
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import type {
+  HeadResult,
+  OkfDocument,
+  QueryFilter,
+  StorageBackend,
+  Version,
+} from "../src/types.js";
+import { blobVersion, contentVersion, VersionConflict } from "../src/versioning.js";
+
+export interface BackendFixture {
+  backend: StorageBackend;
+  cleanup(): Promise<void>;
+}
+
+export interface BackendContractOptions {
+  name: string;
+  create(): Promise<BackendFixture> | BackendFixture;
+}
+
+export interface AtomicBackendContractOptions {
+  name: string;
+  createPeers(): Promise<BackendFixture & { peers: StorageBackend[] }> | BackendFixture & {
+    peers: StorageBackend[];
+  };
+}
+
+const TIMESTAMP = "2026-07-01T00:00:00.000Z";
+const enc = (value: string) => new TextEncoder().encode(value);
+
+async function withFixture(
+  create: BackendContractOptions["create"],
+  run: (backend: StorageBackend) => Promise<void>,
+): Promise<void> {
+  const fixture = await create();
+  try {
+    await run(fixture.backend);
+  } finally {
+    await fixture.cleanup();
+  }
+}
+
+function doc(id: string, body: string): OkfDocument {
+  return { id, frontmatter: { type: "ContractFixture", timestamp: TIMESTAMP }, body };
+}
+
+function assertConflict(
+  error: unknown,
+  expected: Version | null,
+  actual: Version | null,
+): boolean {
+  assert.ok(error instanceof VersionConflict);
+  assert.equal(error.expected, expected);
+  assert.equal(error.actual, actual);
+  return true;
+}
+
+export function registerStorageBackendBaseContract(options: BackendContractOptions): void {
+  const { name, create } = options;
+
+  test(`${name} contract: document reads expose stable content versions`, async () => {
+    await withFixture(create, async (backend) => {
+      const value = doc("concepts/versioned", "one");
+      const written = await backend.write(value.id, value);
+      const first = await backend.read(value.id);
+      const second = await backend.read(value.id);
+
+      assert.match(written, /^sha256:[0-9a-f]{64}$/);
+      assert.equal(written, contentVersion(value));
+      assert.equal(first.version, written);
+      assert.deepEqual(first, second);
+      assert.equal(first.doc.id, value.id);
+      assert.deepEqual(first.doc.frontmatter, value.frontmatter);
+      assert.equal(first.doc.body.trimEnd(), value.body);
+    });
+  });
+
+  test(`${name} contract: document CAS and expect-absent are fail-closed`, async () => {
+    await withFixture(create, async (backend) => {
+      const id = "concepts/cas";
+      const first = await backend.write(id, doc(id, "one"), { expectedVersion: null });
+      await assert.rejects(
+        () => backend.write(id, doc(id, "duplicate-create"), { expectedVersion: null }),
+        (error) => assertConflict(error, null, first),
+      );
+
+      const second = await backend.write(id, doc(id, "two"));
+      await assert.rejects(
+        () => backend.write(id, doc(id, "stale"), { expectedVersion: first }),
+        (error) => assertConflict(error, first, second),
+      );
+      assert.equal((await backend.read(id)).version, second);
+
+      const third = await backend.write(id, doc(id, "three"), { expectedVersion: second });
+      assert.equal((await backend.read(id)).version, third);
+      await assert.rejects(
+        () => backend.write("concepts/missing", doc("concepts/missing", "x"), { expectedVersion: first }),
+        (error) => assertConflict(error, first, null),
+      );
+    });
+  });
+
+  test(`${name} contract: readMany preserves order and reports a missing member`, async () => {
+    await withFixture(create, async (backend) => {
+      for (const id of ["z/last", "a/first", "m/mid"]) {
+        await backend.write(id, doc(id, id));
+      }
+
+      const ids = ["m/mid", "a/first", "z/last"];
+      assert.deepEqual((await backend.readMany(ids)).map((result) => result.doc.id), ids);
+      assert.deepEqual(await backend.readMany([]), []);
+      await assert.rejects(
+        () => backend.readMany(["a/first", "does/not-exist"]),
+        (error: unknown) =>
+          Boolean(error && typeof error === "object" && (error as NodeJS.ErrnoException).code === "ENOENT"),
+      );
+    });
+  });
+
+  test(`${name} contract: list, prefix, and exists describe the same sorted namespace`, async () => {
+    await withFixture(create, async (backend) => {
+      for (const id of ["tasks/z", "notes/a", "tasks/a"]) {
+        await backend.write(id, doc(id, id));
+      }
+
+      assert.deepEqual(await backend.list(), ["notes/a", "tasks/a", "tasks/z"]);
+      assert.deepEqual(await backend.list("tasks/"), ["tasks/a", "tasks/z"]);
+      assert.equal(await backend.exists("tasks/a"), true);
+      assert.equal(await backend.exists("tasks/missing"), false);
+    });
+  });
+
+  test(`${name} contract: delete is idempotent, CAS-guarded, and purges history`, async () => {
+    await withFixture(create, async (backend) => {
+      const id = "concepts/delete";
+      const first = await backend.write(id, doc(id, "one"));
+      const second = await backend.write(id, doc(id, "two"));
+
+      await assert.rejects(
+        () => backend.delete(id, { expectedVersion: first }),
+        (error) => assertConflict(error, first, second),
+      );
+      assert.equal(await backend.exists(id), true);
+      assert.equal(await backend.delete(id, { expectedVersion: second }), true);
+      assert.equal(await backend.exists(id), false);
+      assert.deepEqual(await backend.versions(id), []);
+      assert.equal(await backend.delete(id, { expectedVersion: first }), false);
+      assert.equal(await backend.delete("concepts/never-written"), false);
+    });
+  });
+
+  test(`${name} contract: reserved reads and writes obey the same version discipline`, async () => {
+    await withFixture(create, async (backend) => {
+      assert.equal(await backend.readReserved("missing", "index.md"), null);
+      const first = await backend.writeReserved("nested", "index.md", "# One\n", {
+        expectedVersion: null,
+      });
+      assert.equal((await backend.readReserved("nested", "index.md"))?.version, first);
+
+      await assert.rejects(
+        () => backend.writeReserved("nested", "index.md", "# Duplicate\n", { expectedVersion: null }),
+        (error) => assertConflict(error, null, first),
+      );
+      await assert.rejects(
+        () =>
+          backend.writeReserved("nested", "index.md", "# Stale\n", {
+            expectedVersion: `sha256:${"0".repeat(64)}`,
+          }),
+        (error) => assertConflict(error, `sha256:${"0".repeat(64)}`, first),
+      );
+
+      const second = await backend.writeReserved("nested", "index.md", "# Two\n", {
+        expectedVersion: first,
+      });
+      assert.notEqual(second, first);
+      assert.equal((await backend.readReserved("nested", "index.md"))?.content, "# Two\n");
+    });
+  });
+}
+
+export function registerStorageBackendBlobContract(options: BackendContractOptions): void {
+  const { name, create } = options;
+
+  test(`${name} blob contract: bytes, versions, absence, and sorted listing round-trip`, async () => {
+    await withFixture(create, async (backend) => {
+      assert.equal(await backend.readBlob("artifacts/missing.bin"), null);
+      assert.equal(await backend.existsBlob("artifacts/missing.bin"), false);
+
+      const binary = Uint8Array.from({ length: 256 }, (_, index) => index);
+      const version = await backend.writeBlob("artifacts/binary.dat", binary);
+      const read = await backend.readBlob("artifacts/binary.dat");
+      assert.ok(read);
+      assert.deepEqual([...read.bytes], [...binary]);
+      assert.equal(read.version, version);
+      assert.equal(version, blobVersion(binary));
+
+      await backend.writeBlob("other/z.bin", enc("z"));
+      await backend.writeBlob("artifacts/a.bin", enc("a"));
+      await backend.writeBlob("artifacts/page.html", enc("<p>page</p>"));
+      assert.equal(
+        (await backend.readBlob("artifacts/page.html"))?.contentType,
+        "text/html; charset=utf-8",
+      );
+      assert.deepEqual(await backend.listBlobs(), [
+        "artifacts/a.bin",
+        "artifacts/binary.dat",
+        "artifacts/page.html",
+        "other/z.bin",
+      ]);
+      assert.deepEqual(await backend.listBlobs("artifacts/"), [
+        "artifacts/a.bin",
+        "artifacts/binary.dat",
+        "artifacts/page.html",
+      ]);
+    });
+  });
+
+  test(`${name} blob contract: CAS, expect-absent, and byte-identical no-op`, async () => {
+    await withFixture(create, async (backend) => {
+      const key = "artifacts/cas.bin";
+      const firstBytes = enc("one");
+      const first = await backend.writeBlob(key, firstBytes, undefined, { expectedVersion: null });
+      await assert.rejects(
+        () => backend.writeBlob(key, enc("duplicate-create"), undefined, { expectedVersion: null }),
+        (error) => assertConflict(error, null, first),
+      );
+
+      const noOp = await backend.writeBlob(key, firstBytes, undefined, { expectedVersion: first });
+      assert.equal(noOp, first);
+      const second = await backend.writeBlob(key, enc("two"));
+      await assert.rejects(
+        () => backend.writeBlob(key, enc("stale"), undefined, { expectedVersion: first }),
+        (error) => assertConflict(error, first, second),
+      );
+      assert.equal((await backend.readBlob(key))?.version, second);
+
+      const third = await backend.writeBlob(key, enc("three"), undefined, { expectedVersion: second });
+      assert.equal((await backend.readBlob(key))?.version, third);
+      await assert.rejects(
+        () => backend.writeBlob("artifacts/missing.bin", enc("x"), undefined, { expectedVersion: first }),
+        (error) => assertConflict(error, first, null),
+      );
+    });
+  });
+
+  test(`${name} blob contract: delete is idempotent and CAS-guarded`, async () => {
+    await withFixture(create, async (backend) => {
+      const key = "artifacts/delete.bin";
+      const first = await backend.writeBlob(key, enc("one"));
+      const second = await backend.writeBlob(key, enc("two"));
+
+      await assert.rejects(
+        () => backend.deleteBlob(key, { expectedVersion: first }),
+        (error) => assertConflict(error, first, second),
+      );
+      assert.equal(await backend.existsBlob(key), true);
+      assert.equal(await backend.deleteBlob(key, { expectedVersion: second }), true);
+      assert.equal(await backend.readBlob(key), null);
+      assert.equal(await backend.deleteBlob(key, { expectedVersion: first }), false);
+      assert.equal(await backend.deleteBlob("artifacts/never-written.bin"), false);
+    });
+  });
+
+}
+
+export function registerStorageBackendHistoryContract(
+  options: BackendContractOptions & {
+    retention: "current-only" | "retained";
+    retainsClientAgent?: boolean;
+  },
+): void {
+  const { name, create, retention, retainsClientAgent = false } = options;
+
+  test(`${name} history contract: reports ${retention} revisions newest-first`, async () => {
+    await withFixture(create, async (backend) => {
+      const id = "concepts/history";
+      const first = await backend.write(id, doc(id, "one"), { actor: "alpha", agent: "agent-a" });
+      const second = await backend.write(id, doc(id, "two"), { actor: "beta", agent: "agent-b" });
+      const versions = await backend.versions(id);
+
+      if (retention === "current-only") {
+        assert.deepEqual(versions.map((entry) => entry.version), [second]);
+      } else {
+        assert.deepEqual(versions.map((entry) => entry.version), [second, first]);
+        assert.deepEqual(versions.map((entry) => entry.actor), ["beta", "alpha"]);
+        if (retainsClientAgent) {
+          assert.deepEqual(versions.map((entry) => entry.agent), ["agent-b", "agent-a"]);
+        }
+      }
+    });
+  });
+}
+
+export function registerStorageBackendAtomicCasContract(
+  options: AtomicBackendContractOptions,
+): void {
+  const { name, createPeers } = options;
+
+  test(`${name} atomic CAS contract: concurrent writers produce one winner`, async () => {
+    const fixture = await createPeers();
+    try {
+      assert.ok(fixture.peers.length > 0);
+      const id = "concepts/race";
+      const initial = await fixture.backend.write(id, doc(id, "initial"));
+      const results = await Promise.allSettled(
+        Array.from({ length: 8 }, (_, index) =>
+          fixture.peers[index % fixture.peers.length]!.write(id, doc(id, `writer-${index}`), {
+            expectedVersion: initial,
+          }),
+        ),
+      );
+      const fulfilled = results.filter(
+        (result): result is PromiseFulfilledResult<Version> => result.status === "fulfilled",
+      );
+      const rejected = results.filter(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
+
+      assert.equal(fulfilled.length, 1);
+      assert.equal(rejected.length, results.length - 1);
+      for (const result of rejected) {
+        assert.ok(result.reason instanceof VersionConflict);
+        assert.equal(result.reason.expected, initial);
+      }
+      assert.equal((await fixture.backend.read(id)).version, fulfilled[0]!.value);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+}
+
+export function registerStorageBackendQueryHeadsContract(options: BackendContractOptions): void {
+  const { name, create } = options;
+
+  test(`${name} queryHeads contract: an implemented projection returns matching body-free heads`, async () => {
+    await withFixture(create, async (backend) => {
+      assert.ok(backend.queryHeads, `${name} must implement queryHeads to register this contract`);
+      const fixtures = [
+        {
+          ...doc("tasks/a", "body-a"),
+          frontmatter: { type: "Task", timestamp: TIMESTAMP, status: "done", tags: ["work"] },
+        },
+        {
+          ...doc("tasks/b", "body-b"),
+          frontmatter: { type: "Task", timestamp: TIMESTAMP, status: "todo", tags: ["work", "urgent"] },
+        },
+        doc("notes/c", "body-c"),
+      ];
+      const versions = new Map<string, Version>();
+      for (const value of fixtures) {
+        versions.set(value.id, await backend.write(value.id, value));
+      }
+
+      const cases: Array<[QueryFilter, string[]]> = [
+        [{}, ["notes/c", "tasks/a", "tasks/b"]],
+        [{ type: "Task" }, ["tasks/a", "tasks/b"]],
+        [{ prefix: "tasks/" }, ["tasks/a", "tasks/b"]],
+        [{ tags: ["urgent"] }, ["tasks/b"]],
+      ];
+      for (const [filter, ids] of cases) {
+        const heads = await backend.queryHeads!(filter);
+        assert.deepEqual(heads.map((head: HeadResult) => head.id), ids);
+        for (const head of heads) {
+          assert.equal(head.version, versions.get(head.id));
+          assert.equal("body" in head, false);
+        }
+      }
+    });
+  });
+}
