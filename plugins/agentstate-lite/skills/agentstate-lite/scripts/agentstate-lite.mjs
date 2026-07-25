@@ -14727,25 +14727,23 @@ function isEnoent2(err) {
   return typeof err === "object" && err !== null && err.code === "ENOENT";
 }
 function decodeId(rawPathTail) {
-  return rawPathTail.split("/").map((seg) => decodeURIComponent(seg)).join("/");
+  try {
+    return rawPathTail.split("/").map((seg) => decodeURIComponent(seg)).join("/");
+  } catch {
+    throw new InvalidInputError(`invalid percent-encoding in document id '${rawPathTail}'`);
+  }
 }
 function decodeBlobKey(rawPathTail) {
-  return rawPathTail.split("/").map((seg) => decodeURIComponent(seg)).join("/");
+  try {
+    return rawPathTail.split("/").map((seg) => decodeURIComponent(seg)).join("/");
+  } catch {
+    throw new InvalidInputError(`invalid percent-encoding in blob key '${rawPathTail}'`);
+  }
 }
 function assertValidDocId(id) {
   assertSafeConceptId(id);
   if (isReservedFile(pathFromConceptId(id))) {
-    throw new Error(`'${id}' is a reserved file, not a concept document`);
-  }
-}
-function assertSafeDir(dir) {
-  if (dir === "") return;
-  const norm = toPosix(dir);
-  if (norm.startsWith("/")) {
-    throw new Error(`dir must be bundle-relative, got absolute '${dir}'`);
-  }
-  if (norm.split("/").some((seg) => seg === "..")) {
-    throw new Error(`dir must not contain '..' segments: '${dir}'`);
+    throw new InvalidInputError(`'${id}' is a reserved file, not a concept document`);
   }
 }
 function jsonResponse(status2, body, headers = {}) {
@@ -14766,10 +14764,10 @@ function errorFromCaught(err) {
   if (isEnoent2(err)) {
     return errorResponse(404, "NOT_FOUND", err instanceof Error ? err.message : "not found");
   }
-  if (err instanceof Error) {
+  if (err instanceof InvalidInputError) {
     return errorResponse(400, "USAGE", err.message);
   }
-  return errorResponse(500, "RUNTIME", String(err));
+  return errorResponse(500, "RUNTIME", err instanceof Error ? err.message : String(err));
 }
 function writeOptionsFromHeaders(req) {
   const options2 = {};
@@ -14831,6 +14829,9 @@ function buildRouter(backend) {
     }
     if (payload === null || typeof payload !== "object" || payload.frontmatter === void 0) {
       return errorResponse(400, "USAGE", "request body must include a frontmatter object");
+    }
+    if (payload.body !== void 0 && typeof payload.body !== "string") {
+      return errorResponse(400, "USAGE", "request body field body must be a string when present");
     }
     const options2 = writeOptionsFromHeaders(req);
     const result = await writeDocVersioned(
@@ -14911,13 +14912,13 @@ function buildRouter(backend) {
     return jsonResponse(200, { count, docs, next_cursor: nextCursor });
   }
   async function handleReadReserved(dir, name) {
-    assertSafeDir(dir);
+    assertSafeReservedDir(dir);
     const result = await backend.readReserved(dir, name);
     if (result === null) return errorResponse(404, "NOT_FOUND", `no reserved file '${name}' at dir '${dir}'`);
     return jsonResponse(200, { content: result.content }, versionHeaders(result.version));
   }
   async function handleWriteReserved(dir, name, req) {
-    assertSafeDir(dir);
+    assertSafeReservedDir(dir);
     let payload;
     try {
       payload = await req.json();
