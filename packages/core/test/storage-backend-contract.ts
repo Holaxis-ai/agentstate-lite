@@ -91,8 +91,10 @@ export function registerStorageBackendBaseContract(options: BackendContractOptio
         () => backend.write(id, doc(id, "duplicate-create"), { expectedVersion: null }),
         (error) => assertConflict(error, null, first),
       );
+      assert.equal((await backend.read(id)).version, first);
 
       const second = await backend.write(id, doc(id, "two"));
+      assert.notEqual(second, first);
       await assert.rejects(
         () => backend.write(id, doc(id, "stale"), { expectedVersion: first }),
         (error) => assertConflict(error, first, second),
@@ -100,6 +102,7 @@ export function registerStorageBackendBaseContract(options: BackendContractOptio
       assert.equal((await backend.read(id)).version, second);
 
       const third = await backend.write(id, doc(id, "three"), { expectedVersion: second });
+      assert.notEqual(third, second);
       assert.equal((await backend.read(id)).version, third);
       await assert.rejects(
         () => backend.write("concepts/missing", doc("concepts/missing", "x"), { expectedVersion: first }),
@@ -110,12 +113,18 @@ export function registerStorageBackendBaseContract(options: BackendContractOptio
 
   test(`${name} contract: readMany preserves order and reports a missing member`, async () => {
     await withFixture(create, async (backend) => {
+      const versions = new Map<string, Version>();
       for (const id of ["z/last", "a/first", "m/mid"]) {
-        await backend.write(id, doc(id, id));
+        versions.set(id, await backend.write(id, doc(id, id)));
       }
 
       const ids = ["m/mid", "a/first", "z/last"];
-      assert.deepEqual((await backend.readMany(ids)).map((result) => result.doc.id), ids);
+      const results = await backend.readMany(ids);
+      assert.deepEqual(results.map((result) => result.doc.id), ids);
+      for (const result of results) {
+        assert.match(result.version, /^sha256:[0-9a-f]{64}$/);
+        assert.equal(result.version, versions.get(result.doc.id));
+      }
       assert.deepEqual(await backend.readMany([]), []);
       await assert.rejects(
         () => backend.readMany(["a/first", "does/not-exist"]),
@@ -149,10 +158,18 @@ export function registerStorageBackendBaseContract(options: BackendContractOptio
         (error) => assertConflict(error, first, second),
       );
       assert.equal(await backend.exists(id), true);
+      assert.equal((await backend.read(id)).version, second);
       assert.equal(await backend.delete(id, { expectedVersion: second }), true);
+      await assert.rejects(
+        () => backend.read(id),
+        (error: unknown) =>
+          Boolean(error && typeof error === "object" && (error as NodeJS.ErrnoException).code === "ENOENT"),
+      );
       assert.equal(await backend.exists(id), false);
+      assert.equal((await backend.list()).includes(id), false);
       assert.deepEqual(await backend.versions(id), []);
       assert.equal(await backend.delete(id, { expectedVersion: first }), false);
+      assert.equal(await backend.delete(id, { expectedVersion: second }), false);
       assert.equal(await backend.delete("concepts/never-written"), false);
     });
   });
@@ -169,12 +186,21 @@ export function registerStorageBackendBaseContract(options: BackendContractOptio
         () => backend.writeReserved("nested", "index.md", "# Duplicate\n", { expectedVersion: null }),
         (error) => assertConflict(error, null, first),
       );
+      assert.equal((await backend.readReserved("nested", "index.md"))?.version, first);
       await assert.rejects(
         () =>
           backend.writeReserved("nested", "index.md", "# Stale\n", {
             expectedVersion: `sha256:${"0".repeat(64)}`,
           }),
         (error) => assertConflict(error, `sha256:${"0".repeat(64)}`, first),
+      );
+      assert.equal((await backend.readReserved("nested", "index.md"))?.version, first);
+      await assert.rejects(
+        () =>
+          backend.writeReserved("missing", "index.md", "# Missing\n", {
+            expectedVersion: first,
+          }),
+        (error) => assertConflict(error, first, null),
       );
 
       const second = await backend.writeReserved("nested", "index.md", "# Two\n", {
@@ -201,9 +227,11 @@ export function registerStorageBackendBlobContract(options: BackendContractOptio
       assert.deepEqual([...read.bytes], [...binary]);
       assert.equal(read.version, version);
       assert.equal(version, blobVersion(binary));
+      assert.equal(read.contentType, "application/octet-stream");
 
-      await backend.writeBlob("other/z.bin", enc("z"));
+      await backend.writeBlob("other/c.bin", enc("c"));
       await backend.writeBlob("artifacts/a.bin", enc("a"));
+      await backend.writeBlob("artifacts/sub/b.bin", enc("b"));
       await backend.writeBlob("artifacts/page.html", enc("<p>page</p>"));
       assert.equal(
         (await backend.readBlob("artifacts/page.html"))?.contentType,
@@ -213,13 +241,16 @@ export function registerStorageBackendBlobContract(options: BackendContractOptio
         "artifacts/a.bin",
         "artifacts/binary.dat",
         "artifacts/page.html",
-        "other/z.bin",
+        "artifacts/sub/b.bin",
+        "other/c.bin",
       ]);
       assert.deepEqual(await backend.listBlobs("artifacts/"), [
         "artifacts/a.bin",
         "artifacts/binary.dat",
         "artifacts/page.html",
+        "artifacts/sub/b.bin",
       ]);
+      assert.deepEqual(await backend.listBlobs("other/"), ["other/c.bin"]);
     });
   });
 
@@ -232,10 +263,12 @@ export function registerStorageBackendBlobContract(options: BackendContractOptio
         () => backend.writeBlob(key, enc("duplicate-create"), undefined, { expectedVersion: null }),
         (error) => assertConflict(error, null, first),
       );
+      assert.equal((await backend.readBlob(key))?.version, first);
 
       const noOp = await backend.writeBlob(key, firstBytes, undefined, { expectedVersion: first });
       assert.equal(noOp, first);
       const second = await backend.writeBlob(key, enc("two"));
+      assert.notEqual(second, first);
       await assert.rejects(
         () => backend.writeBlob(key, enc("stale"), undefined, { expectedVersion: first }),
         (error) => assertConflict(error, first, second),
@@ -243,6 +276,7 @@ export function registerStorageBackendBlobContract(options: BackendContractOptio
       assert.equal((await backend.readBlob(key))?.version, second);
 
       const third = await backend.writeBlob(key, enc("three"), undefined, { expectedVersion: second });
+      assert.notEqual(third, second);
       assert.equal((await backend.readBlob(key))?.version, third);
       await assert.rejects(
         () => backend.writeBlob("artifacts/missing.bin", enc("x"), undefined, { expectedVersion: first }),
@@ -262,8 +296,11 @@ export function registerStorageBackendBlobContract(options: BackendContractOptio
         (error) => assertConflict(error, first, second),
       );
       assert.equal(await backend.existsBlob(key), true);
+      assert.equal((await backend.readBlob(key))?.version, second);
       assert.equal(await backend.deleteBlob(key, { expectedVersion: second }), true);
       assert.equal(await backend.readBlob(key), null);
+      assert.equal(await backend.existsBlob(key), false);
+      assert.deepEqual(await backend.listBlobs("artifacts/"), []);
       assert.equal(await backend.deleteBlob(key, { expectedVersion: first }), false);
       assert.equal(await backend.deleteBlob("artifacts/never-written.bin"), false);
     });
@@ -340,7 +377,7 @@ export function registerStorageBackendAtomicCasContract(
 export function registerStorageBackendQueryHeadsContract(options: BackendContractOptions): void {
   const { name, create } = options;
 
-  test(`${name} queryHeads contract: an implemented projection returns matching body-free heads`, async () => {
+  test(`${name} queryHeads contract: an implemented projection does not under-return body-free heads`, async () => {
     await withFixture(create, async (backend) => {
       assert.ok(backend.queryHeads, `${name} must implement queryHeads to register this contract`);
       const fixtures = [
@@ -367,9 +404,14 @@ export function registerStorageBackendQueryHeadsContract(options: BackendContrac
       ];
       for (const [filter, ids] of cases) {
         const heads = await backend.queryHeads!(filter);
-        assert.deepEqual(heads.map((head: HeadResult) => head.id), ids);
+        const returnedIds = heads.map((head: HeadResult) => head.id);
+        for (const id of ids) {
+          assert.equal(returnedIds.includes(id), true, `queryHeads under-returned ${id}`);
+        }
         for (const head of heads) {
-          assert.equal(head.version, versions.get(head.id));
+          const version = versions.get(head.id);
+          assert.ok(version, `queryHeads returned an unknown id: ${head.id}`);
+          assert.equal(head.version, version);
           assert.equal("body" in head, false);
         }
       }
