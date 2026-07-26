@@ -3,8 +3,6 @@ import {
   readDocVersioned,
   versionOfBytes,
   type Bundle,
-  type Frontmatter,
-  type Version,
 } from "@agentstate-lite/core";
 import {
   registerAppResource,
@@ -14,14 +12,39 @@ import {
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { CallToolResult, ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
+import {
+  TrustedActionService,
+  type ActionTerminalResult,
+} from "@agentstate-lite/view-runtime";
 import { z } from "zod";
+import type {
+  ResolvedViewContent,
+  ShowViewInput,
+  ViewLaunchPayload,
+  ViewObjectSnapshot,
+} from "./contract.js";
 import { MCP_VIEW_HTML } from "./generated/view-html.generated.js";
+import { McpViewLaunchRegistry } from "./launches.js";
 
-export const MCP_VIEW_RESOURCE_URI = "ui://agentstate/view-host/v0.html";
+export const MCP_VIEW_RESOURCE_URI = "ui://agentstate/view-host/v1.html";
 export const SHOW_VIEW_TOOL_NAME = "show_view";
+export const PREPARE_VIEW_ACTION_TOOL_NAME = "prepare_view_action";
+export const FINISH_VIEW_ACTION_TOOL_NAME = "finish_view_action";
 export const MAX_VIEW_PRESENTATION_BYTES = 256 * 1024;
 export const MAX_VIEW_OBJECTS = 20;
+export const MAX_VIEW_ACTIONS = 8;
 export const MAX_VIEW_DATA_BYTES = 1024 * 1024;
+
+const actionScalarSchema = z.union([z.string().max(4096), z.number().finite(), z.boolean()]);
+const generatedActionSchema = z
+  .object({
+    kind: z.literal("document.set-field"),
+    label: z.string().trim().min(1).max(80),
+    objectId: z.string().trim().min(1).max(512),
+    field: z.string().trim().min(1).max(128),
+    value: actionScalarSchema,
+  })
+  .strict();
 
 const inputSchema = {
   title: z.string().trim().min(1).max(120).describe("Short human-facing title for this generated View."),
@@ -41,10 +64,17 @@ const inputSchema = {
     .max(MAX_VIEW_OBJECTS)
     .refine((ids) => new Set(ids).size === ids.length, "objectIds must not contain duplicates")
     .describe("Exact AgentState document IDs to expose to this View. Select them with the normal CLI first."),
+  actions: z
+    .array(generatedActionSchema)
+    .max(MAX_VIEW_ACTIONS)
+    .optional()
+    .describe(
+      "Optional governed scalar actions rendered by the trusted shell. Every objectId must already be selected; generated HTML remains read-only.",
+    ),
 };
 
 const outputSchema = z.object({
-  schemaVersion: z.literal("agentstate.view-launch.v0"),
+  schemaVersion: z.literal("agentstate.view-launch.v1"),
   title: z.string(),
   presentation: z.object({ html: z.string(), css: z.string(), contentHash: z.string() }),
   selection: z.object({ objectIds: z.array(z.string()) }),
@@ -56,31 +86,19 @@ const outputSchema = z.object({
       body: z.string(),
     }),
   ),
+  launch: z.object({
+    launchId: z.string(),
+    actions: z.array(
+      z.object({
+        actionId: z.string(),
+        label: z.string(),
+        targetId: z.string(),
+      }),
+    ),
+  }),
 });
 
-export interface ShowViewInput {
-  title: string;
-  html: string;
-  css?: string;
-  objectIds: string[];
-}
-
-export interface ViewObjectSnapshot {
-  id: string;
-  version: Version;
-  frontmatter: Frontmatter;
-  body: string;
-}
-
-export interface ViewLaunchPayload {
-  schemaVersion: "agentstate.view-launch.v0";
-  title: string;
-  presentation: { html: string; css: string; contentHash: Version };
-  selection: { objectIds: string[] };
-  objects: ViewObjectSnapshot[];
-}
-
-export async function resolveViewLaunch(bundle: Bundle, input: ShowViewInput): Promise<ViewLaunchPayload> {
+async function resolveViewContent(bundle: Bundle, input: ShowViewInput): Promise<ResolvedViewContent> {
   const css = input.css ?? "";
   const presentationBytes = Buffer.byteLength(input.html, "utf8") + Buffer.byteLength(css, "utf8");
   if (presentationBytes > MAX_VIEW_PRESENTATION_BYTES) {
@@ -112,7 +130,7 @@ export async function resolveViewLaunch(bundle: Bundle, input: ShowViewInput): P
     throw new Error(`selected object data is ${dataBytes} bytes; the experimental limit is ${MAX_VIEW_DATA_BYTES}`);
   }
   return {
-    schemaVersion: "agentstate.view-launch.v0",
+    schemaVersion: "agentstate.view-launch.v1",
     title: input.title,
     presentation: {
       html: input.html,
@@ -122,6 +140,14 @@ export async function resolveViewLaunch(bundle: Bundle, input: ShowViewInput): P
     selection: { objectIds: [...input.objectIds] },
     objects,
   };
+}
+
+export async function resolveViewLaunch(
+  bundle: Bundle,
+  input: ShowViewInput,
+  launches = new McpViewLaunchRegistry(),
+): Promise<ViewLaunchPayload> {
+  return launches.mint(input, await resolveViewContent(bundle, input));
 }
 
 function fallbackText(payload: ViewLaunchPayload): string {
@@ -139,6 +165,7 @@ function fallbackText(payload: ViewLaunchPayload): string {
 export interface CreateMcpAppServerOptions {
   bundle: Bundle;
   version?: string;
+  actor?: string;
 }
 
 export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServer {
@@ -146,6 +173,8 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     name: "AgentState Lite Conversational Views",
     version: options.version ?? "0.0.1",
   });
+  const launches = new McpViewLaunchRegistry();
+  const actions = new TrustedActionService(options.bundle, launches, options.actor);
 
   registerAppTool(
     server,
@@ -153,7 +182,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     {
       title: "Show AgentState View",
       description:
-        "Use this after selecting exact document IDs with the AgentState Lite CLI. It renders agent-authored HTML over current authoritative snapshots; it does not mutate the bundle.",
+        "Use this after selecting exact document IDs with the AgentState Lite CLI. It renders agent-authored HTML over current authoritative snapshots. Optional document.set-field declarations become trusted-shell controls; generated HTML remains read-only and every write requires human confirmation.",
       inputSchema,
       outputSchema,
       annotations: {
@@ -166,7 +195,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     },
     async (input): Promise<CallToolResult> => {
       try {
-        const payload = await resolveViewLaunch(options.bundle, input);
+        const payload = await resolveViewLaunch(options.bundle, input, launches);
         return {
           content: [{ type: "text", text: fallbackText(payload) }],
           structuredContent: { ...payload },
@@ -182,6 +211,113 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
           ],
         };
       }
+    },
+  );
+
+  registerAppTool(
+    server,
+    PREPARE_VIEW_ACTION_TOOL_NAME,
+    {
+      title: "Prepare AgentState View action",
+      description: "Prepare one trusted-shell action from the current View for explicit human confirmation.",
+      inputSchema: {
+        launchId: z.string().min(1).max(256),
+        actionId: z.string().min(1).max(256),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async ({ launchId, actionId }): Promise<CallToolResult> => {
+      const action = launches.action(launchId, actionId);
+      const result = action
+        ? await actions.prepare(launchId, action)
+        : ({
+            status: "rejected",
+            action: "document.set-field",
+            message: "the action is unknown, expired, or outside this View",
+          } satisfies ActionTerminalResult);
+      let view = launches.payload(launchId);
+      if (result.status === "conflict") {
+        const input = launches.input(launchId);
+        if (input) view = launches.refresh(launchId, await resolveViewContent(options.bundle, input));
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              result.status === "prepared"
+                ? `Prepared a ${result.confirmation.field} change for human confirmation.`
+                : `AgentState action ${result.status}: ${"message" in result && result.message ? result.message : result.status}`,
+          },
+        ],
+        structuredContent: { result, view },
+      };
+    },
+  );
+
+  registerAppTool(
+    server,
+    FINISH_VIEW_ACTION_TOOL_NAME,
+    {
+      title: "Finish AgentState View action",
+      description: "Commit or cancel an action after the trusted MCP App shell collects the human decision.",
+      inputSchema: {
+        launchId: z.string().min(1).max(256),
+        approvalToken: z.string().min(1).max(256),
+        decision: z.enum(["commit", "cancel"]),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async ({ launchId, approvalToken, decision }): Promise<CallToolResult> => {
+      let result: ActionTerminalResult;
+      let view: ViewLaunchPayload | null = launches.payload(launchId);
+      if (!view) {
+        result = {
+          status: "rejected",
+          action: "document.set-field",
+          message: "the View is unknown or expired",
+        };
+      } else {
+        result =
+          decision === "commit"
+            ? await actions.commit(approvalToken, launchId)
+            : actions.cancel(approvalToken, launchId);
+        if (
+          decision === "commit" &&
+          (result.status === "committed" ||
+            result.status === "unchanged" ||
+            result.status === "conflict")
+        ) {
+          const input = launches.input(launchId);
+          if (input) {
+            view = launches.refresh(launchId, await resolveViewContent(options.bundle, input));
+          }
+        }
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              result.status === "committed"
+                ? `Committed the confirmed ${result.field ?? "field"} change.`
+                : `AgentState action ${result.status}: ${result.message ?? result.status}`,
+          },
+        ],
+        structuredContent: { result, view },
+      };
     },
   );
 

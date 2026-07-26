@@ -26,6 +26,40 @@
         line-height: 1.35;
       }
       .status[data-kind="error"] { color: var(--color-text-danger, #b42318); }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        padding: 0.65rem;
+        border: 1px solid var(--color-border-secondary, color-mix(in srgb, CanvasText 18%, transparent));
+        border-radius: 0.75rem;
+        background: var(--color-background-secondary, color-mix(in srgb, Canvas 94%, CanvasText));
+      }
+      .actions[hidden], .confirmation-backdrop[hidden] { display: none; }
+      .actions-label {
+        color: var(--color-text-secondary, GrayText);
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin-right: 0.15rem;
+      }
+      #action-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+      button {
+        appearance: none;
+        border: 1px solid var(--color-border-primary, color-mix(in srgb, CanvasText 30%, transparent));
+        border-radius: 0.55rem;
+        background: var(--color-background-primary, Canvas);
+        color: var(--color-text-primary, CanvasText);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.84rem;
+        font-weight: 650;
+        padding: 0.48rem 0.72rem;
+      }
+      button:hover:not(:disabled) { border-color: var(--color-border-info, #3984d8); }
+      button:disabled { cursor: default; opacity: 0.55; }
       iframe {
         display: block;
         width: 100%;
@@ -34,11 +68,53 @@
         border-radius: 0.75rem;
         background: transparent;
       }
+      .confirmation-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: grid;
+        place-items: center;
+        padding: 1rem;
+        background: color-mix(in srgb, #000 55%, transparent);
+      }
+      .confirmation {
+        width: min(34rem, 100%);
+        max-height: min(38rem, calc(100vh - 2rem));
+        overflow: auto;
+        border: 1px solid var(--color-border-primary, color-mix(in srgb, CanvasText 24%, transparent));
+        border-radius: 0.9rem;
+        background: var(--color-background-primary, Canvas);
+        color: var(--color-text-primary, CanvasText);
+        box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 0.32);
+        padding: 1rem;
+      }
+      .confirmation h2 { margin: 0.15rem 0 0.6rem; font-size: 1.2rem; }
+      .confirmation p { margin: 0 0 0.8rem; color: var(--color-text-secondary, GrayText); }
+      .confirmation dl { margin: 0; }
+      .confirmation dl div {
+        display: grid;
+        grid-template-columns: minmax(5rem, 0.35fr) minmax(0, 1fr);
+        gap: 0.7rem;
+        padding: 0.48rem 0;
+        border-top: 1px solid var(--color-border-secondary, color-mix(in srgb, CanvasText 14%, transparent));
+      }
+      .confirmation dt { color: var(--color-text-secondary, GrayText); }
+      .confirmation dd { margin: 0; overflow-wrap: anywhere; }
+      .confirmation-buttons { display: flex; justify-content: flex-end; gap: 0.55rem; margin-top: 1rem; }
+      .confirmation-apply {
+        border-color: var(--color-border-success, #168653);
+        background: var(--color-background-success, #16613f);
+        color: var(--color-text-inverse, #fff);
+      }
     </style>
   </head>
   <body>
     <main class="shell">
       <div id="status" class="status">Waiting for an AgentState View…</div>
+      <section id="actions" class="actions" aria-label="Available AgentState actions" hidden>
+        <span class="actions-label">Available actions</span>
+        <span id="action-buttons"></span>
+      </section>
       <iframe
         id="generated-view"
         title="Generated AgentState View"
@@ -46,6 +122,30 @@
         referrerpolicy="no-referrer"
       ></iframe>
     </main>
+    <div id="confirmation-backdrop" class="confirmation-backdrop" role="presentation" hidden>
+      <section
+        class="confirmation"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirmation-title"
+      >
+        <div class="actions-label">AgentState confirmation</div>
+        <h2 id="confirmation-title">Apply this bundle change?</h2>
+        <p>The generated View cannot write directly. The trusted shell will commit only this exact, version-guarded change.</p>
+        <dl>
+          <div><dt>Document</dt><dd id="confirmation-document"></dd></div>
+          <div><dt>Kind</dt><dd id="confirmation-kind"></dd></div>
+          <div><dt>Field</dt><dd id="confirmation-field"></dd></div>
+          <div><dt>Before</dt><dd id="confirmation-before"></dd></div>
+          <div><dt>After</dt><dd id="confirmation-after"></dd></div>
+          <div><dt>Actor</dt><dd id="confirmation-actor"></dd></div>
+        </dl>
+        <div class="confirmation-buttons">
+          <button id="confirmation-cancel" type="button">Cancel</button>
+          <button id="confirmation-apply" class="confirmation-apply" type="button">Apply change</button>
+        </div>
+      </section>
+    </div>
     <!-- ASLITE_MCP_APP_SCRIPT -->
   </body>
 </html>

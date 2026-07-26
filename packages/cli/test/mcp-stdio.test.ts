@@ -27,7 +27,7 @@ test("built npm CLI serves the fixed MCP App contract over clean stdio", async (
 
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [CLI, "mcp", "--dir", root],
+    args: [CLI, "mcp", "--dir", root, "--actor", "mike/test"],
     stderr: "pipe",
   });
   const client = new Client({ name: "stdio-proof", version: "test" }, { capabilities: {} });
@@ -38,7 +38,11 @@ test("built npm CLI serves the fixed MCP App contract over clean stdio", async (
 
   await client.connect(transport);
   const tools = await client.listTools();
-  assert.deepEqual(tools.tools.map((tool) => tool.name), ["show_view"]);
+  assert.deepEqual(tools.tools.map((tool) => tool.name), [
+    "show_view",
+    "prepare_view_action",
+    "finish_view_action",
+  ]);
 
   const result = await client.callTool({
     name: "show_view",

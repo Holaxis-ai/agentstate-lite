@@ -1,9 +1,9 @@
 {
-  "name": "@agentstate-lite/ui-server",
+  "name": "@agentstate-lite/view-runtime",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Reusable loopback host for the local AgentState Lite UI shell. CLI policy and generated assets remain consumer-owned.",
+  "description": "Shared launch and governed-action authority for AgentState human View hosts.",
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,15 +20,13 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --import ./test/ts-loader.mjs ./test/*.test.ts"
+    "test": "node --test ./test/*.test.mjs"
   },
   "dependencies": {
-    "@agentstate-lite/core": "*",
-    "@agentstate-lite/server": "*",
-    "@agentstate-lite/view-runtime": "*"
+    "@agentstate-lite/core": "*"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^5.4.0"
+    "@types/node": "^22.20.0",
+    "typescript": "^5.9.3"
   }
 }

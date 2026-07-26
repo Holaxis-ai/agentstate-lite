@@ -10,7 +10,11 @@ import {
   writeDocVersioned,
   type Bundle,
 } from "@agentstate-lite/core";
-import { PageLaunchRegistry, TrustedActionService } from "../src/actions.js";
+import {
+  PageActionLaunchAuthority,
+  PageLaunchRegistry,
+  TrustedActionService,
+} from "../src/index.js";
 
 const T = "2026-07-18T12:00:00.000Z";
 const HTML = new TextEncoder().encode("<!doctype html><button>done</button>");
@@ -59,7 +63,16 @@ async function fixture(actor: string | undefined = "mike/test") {
     bytes: blob.bytes,
     capability: "bundle-propose",
   });
-  return { bundle, launches, launch, service: new TrustedActionService(bundle, launches, actor) };
+  return {
+    bundle,
+    launches,
+    launch,
+    service: new TrustedActionService(
+      bundle,
+      new PageActionLaunchAuthority(bundle, launches),
+      actor,
+    ),
+  };
 }
 
 test("trusted action: human-confirmed scalar update uses hard CAS and returns the final receipt", async () => {

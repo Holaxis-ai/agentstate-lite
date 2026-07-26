@@ -10,7 +10,7 @@ Object.defineProperty(globalThis, "document", { configurable: true, value: brows
 const { containedDocument, materializePresentation } = await import("../src/presentation.js");
 
 const payload = {
-  schemaVersion: "agentstate.view-launch.v0",
+  schemaVersion: "agentstate.view-launch.v1",
   title: "Containment proof",
   presentation: { html: "", css: "", contentHash: "sha256:presentation" },
   selection: { objectIds: ["tasks/alpha"] },
@@ -22,6 +22,7 @@ const payload = {
       body: "<script>globalThis.pwned=true</script>",
     },
   ],
+  launch: { launchId: "launch", actions: [] },
 };
 
 test("generated HTML is inert and authoritative values materialize only as text", () => {

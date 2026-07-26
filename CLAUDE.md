@@ -7,10 +7,15 @@ porcelain/diff/state-store/engine/flow/autopull; imports ONLY node + core, machi
 its own import-direction test with no allowlist; command UX stays in the CLI),
 `packages/server` (`@agentstate-lite/server`
 — the wire-protocol REFERENCE server, a pure consumer of core; see gate 3 and Scope),
+`packages/view-runtime` (`@agentstate-lite/view-runtime` — the private host-neutral
+trusted-action authority; imports only Node + core),
 `packages/ui-server` (`@agentstate-lite/ui-server` — the private reusable loopback shell host;
-imports only Node + core + server, while CLI policy and generated assets stay in the CLI),
+imports only Node + core + server + view-runtime, while CLI policy and generated assets stay in
+the CLI),
 `packages/ui` (the browser SPA — PRIVATE workspace; only its BUILT assets ship, gzip-embedded
-into the CLI bundle; it launches bundle-authored Views, see gate 4), and `packages/cli` —
+into the CLI bundle; it launches bundle-authored Views, see gate 4),
+`packages/mcp-app` (an EXPERIMENTAL second View host adapter: one fixed MCP App shell over exact
+authoritative snapshots, reusing view-runtime for governed actions), and `packages/cli` —
 the **publishable npm package `@holaxis/aslite`** (scoped interim coordinate per the board
 decision — npm rejected the unscoped name; bins stay `aslite` / `agentstate-lite`), an
 esbuild bundle that inlines core + board-git + server + the built UI assets + deps into one
@@ -136,11 +141,13 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   CLI error wording, remote hints, help text, and the best-effort board-attribution hook. Do not
   duplicate this policy in a future UI or server action path.
 - Keep exactly **ONE** frontmatter parser, **ONE** bundle walk, **ONE** link resolver, and
-  **ONE** human-facing runtime: the local `ui` shell plus bundle-authored Views. Do not
-  reintroduce a parallel static viewer or a second parser inside View tooling; Views consume
-  core semantics through the reference server's narrow bridge. V0 remains read-only; the only
-  write-capable surface is `bundle-propose`, which prepares one governed scalar-field change for
-  explicit trusted-shell confirmation and hard CAS through core's mutation service.
+  **ONE** View semantics/action authority. Human-facing hosts are adapters over that authority:
+  the supported local `ui` shell launches durable bundle-authored Views; the experimental MCP App
+  shell renders invocation-specific Views over exact selected snapshots. Do not reintroduce a
+  parallel static viewer, parser, or mutation policy inside either host. Generated/sandboxed
+  content remains read-only; `bundle-propose` is the only write capability, preparing one governed
+  scalar-field change for explicit trusted-shell confirmation and hard CAS through core's mutation
+  service.
 - **Kind conventions (`core/src/kinds.ts`) are ONE registry, in core, consumed everywhere —
   not a schema fork.** A bundle MAY declare document kinds as plain OKF convention docs
   (`type: Convention`) naming the `type` value they govern, its required/optional fields,
@@ -170,9 +177,9 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   consumer (server/an MCP surface) needs kind awareness, it calls `loadKinds` itself
   — do not thread a second registry implementation through a different layer.
 
-### 4. Human visibility — the local `ui` command + bundle-authored Views
+### 4. Human visibility — one View model, host-specific adapters
 
-The human-visibility surface is the **local `agentstate-lite ui` command**: one loopback
+The supported human-visibility surface is the **local `agentstate-lite ui` command**: one loopback
 server serving the embedded SPA over a bundle (`--dir` mounts the reference router
 in-process; `--remote` reverse-proxies with the stored key; per-run token + Host allowlist
 + CSP). The shell is a launcher for registered `type: View` docs rendered in sandboxed
@@ -184,7 +191,14 @@ stay recognized — relocation is a separate open decision); Views are bundle co
 access goes through the narrow bridge. V0 data access remains read-only; a local `--dir` View may
 opt into `bundle-propose` for one human-confirmed, version-guarded scalar-field action. The former
 `packages/viewer` / `view` → `viz.html` surface is removed — author human
-views as bundle Views rather than adding a second rendering engine. The multi-human collaboration
+views as bundle Views rather than adding a second rendering engine.
+
+The experimental MCP App adapter is a second **host**, not a second View system: a fixed trusted
+shell binds agent-authored presentation to exact current object snapshots, and its app-only
+prepare/finish tools delegate governed scalar actions to the same `view-runtime` authority used by
+the local UI. Invocation-specific MCP Views are not yet a supported product surface and must remain
+on the experimental branch until independent review and adversarial QA close the action boundary.
+The multi-human collaboration
 substrate (hosted worker, auth, admin) is FROZEN per bundle doc `docs/core` and preserved outside
 the OSS repository — it is not a build or deployment target without an explicit human decision.
 
