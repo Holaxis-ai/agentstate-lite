@@ -237,6 +237,12 @@ export interface TrustedActionLaunch {
     registryVersion: Version;
     contentVersion: Version;
   };
+  /**
+   * When present, actions are confined to these exact document versions. Durable local Views omit
+   * this because their declared bundle-propose capability is bundle-scoped; generated MCP Views
+   * supply it because their explicit selection is also their read/action envelope.
+   */
+  documentVersions?: Readonly<Record<string, Version>>;
 }
 
 export interface TrustedActionLaunchAuthority {
@@ -355,7 +361,7 @@ export class TrustedActionService {
   async prepare(launchId: string, rawAction: unknown): Promise<ActionPrepareResult> {
     const rejected = (message: string): ActionTerminalResult => ({ status: "rejected", action: "document.set-field", message });
     const actor = this.actor?.trim();
-    if (!actor) return rejected("set an action actor with ui --actor or AGENTSTATE_LITE_ACTOR before proposing writes");
+    if (!actor) return rejected("set an action actor for this View host before proposing writes");
     const launch = await this.launches.resolve(launchId);
     if (!launch || launch.capability !== "bundle-propose") {
       if (launch) this.launches.revoke(launch.launchId);
@@ -369,6 +375,13 @@ export class TrustedActionService {
       return rejected(error instanceof Error ? error.message : String(error));
     }
     if (["type", "timestamp", "actor"].includes(action.field)) return rejected(`field '${action.field}' is shell-managed and cannot be proposed`);
+    if (
+      launch.documentVersions &&
+      (!Object.hasOwn(launch.documentVersions, action.docId) ||
+        launch.documentVersions[action.docId] !== action.expectedVersion)
+    ) {
+      return rejected(`document '${action.docId}' at that version is outside this View's action envelope`);
+    }
 
     let target: Awaited<ReturnType<typeof readDocVersioned>>;
     try {
@@ -479,19 +492,25 @@ export class TrustedActionService {
     };
   }
 
-  cancel(token: string): ActionTerminalResult {
-    const pending = this.consume(token);
+  cancel(token: string, launchId?: string): ActionTerminalResult {
+    const pending = this.consume(token, launchId);
     return pending
       ? { status: "cancelled", action: "document.set-field", docId: pending.action.docId, field: pending.action.field, changed: false, confirmed: false }
       : { status: "expired", action: "document.set-field", message: "the approval is unknown or expired" };
   }
 
-  async commit(token: string): Promise<ActionTerminalResult> {
-    const pending = this.consume(token);
+  async commit(token: string, launchId?: string): Promise<ActionTerminalResult> {
+    const pending = this.consume(token, launchId);
     if (!pending) return { status: "expired", action: "document.set-field", message: "the approval is unknown or expired" };
     if (this.now() > pending.expiresAt) return { status: "expired", action: "document.set-field", docId: pending.action.docId, field: pending.action.field };
     const launch = await this.launches.resolve(pending.launchId);
-    if (!launch || launch.capability !== "bundle-propose") {
+    if (
+      !launch ||
+      launch.capability !== "bundle-propose" ||
+      (launch.documentVersions &&
+        (!Object.hasOwn(launch.documentVersions, pending.action.docId) ||
+          launch.documentVersions[pending.action.docId] !== pending.action.expectedVersion))
+    ) {
       if (launch) this.launches.revoke(launch.launchId);
       return { status: "revoked", action: "document.set-field", docId: pending.action.docId, field: pending.action.field };
     }
@@ -574,8 +593,9 @@ export class TrustedActionService {
     return this.pending.size;
   }
 
-  private consume(token: string): PendingApproval | undefined {
+  private consume(token: string, launchId?: string): PendingApproval | undefined {
     const pending = this.pending.get(token);
+    if (pending && launchId !== undefined && pending.launchId !== launchId) return undefined;
     if (pending) this.pending.delete(token);
     return pending;
   }

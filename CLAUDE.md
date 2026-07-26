@@ -16,7 +16,8 @@ bounded Markdown-to-React security boundary), `packages/ui` (the browser SPA —
 only its BUILT assets ship, gzip-embedded into the CLI bundle; it launches bundle-authored Views
 and consumes markdown-renderer, see gate 4), `packages/mcp-app` (the PRIVATE experimental local
 stdio adapter: one fixed MCP App shell over exact versioned document snapshots; generated
-presentation is read-only), and `packages/cli` —
+presentation remains read-only while trusted shell chrome may mediate one governed scalar action
+through view-runtime), and `packages/cli` —
 the **publishable npm package `@holaxis/aslite`** (scoped interim coordinate per the board
 decision — npm rejected the unscoped name; bins stay `aslite` / `agentstate-lite`), an
 esbuild bundle that inlines core + board-git + server + the built UI assets + deps into one
@@ -146,8 +147,9 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   the supported local `ui` shell launches durable bundle-authored Views; the experimental `mcp`
   command renders invocation-specific Views over exact selected snapshots. Do not reintroduce a
   parallel static viewer, parser, or mutation policy inside either host. Generated presentation is
-  read-only; `bundle-propose` in the local UI is the only shipped write capability. The governed
-  MCP action proof remains off main pending its own review and adversarial QA.
+  read-only. Both hosts delegate the same bounded `document.set-field` proposal to view-runtime,
+  which requires trusted-shell confirmation and hard CAS through core's mutation service; MCP keeps
+  its prepare/finish tools app-only so the model and generated frame cannot invoke writes directly.
 - **Kind conventions (`core/src/kinds.ts`) are ONE registry, in core, consumed everywhere —
   not a schema fork.** A bundle MAY declare document kinds as plain OKF convention docs
   (`type: Convention`) naming the `type` value they govern, its required/optional fields,
@@ -194,10 +196,13 @@ opt into `bundle-propose` for one human-confirmed, version-guarded scalar-field 
 views as bundle Views rather than adding a second rendering engine.
 
 The experimental local `agentstate-lite mcp` command is a second host adapter, not a second View
-system. Its single `show_view` tool binds agent-authored, script-free HTML/CSS to exact current
-document snapshots selected by id. The fixed trusted shell reuses the bounded Markdown renderer,
-strips navigation and active content, and exposes no mutation tool. It is deliberately local,
-stdio-only, unpublished as a standalone package, and not yet a supported product surface.
+system. Its single model-visible `show_view` tool binds agent-authored, script-free HTML/CSS to
+exact current document snapshots selected by id. The fixed trusted shell reuses the bounded
+Markdown renderer, strips navigation and active content, and may render bounded scalar actions
+outside the generated frame. App-only prepare/finish tools require a configured actor, explicit
+human confirmation, selection/version revalidation, and hard CAS through the shared action and
+mutation authorities. It is deliberately local, stdio-only, unpublished as a standalone package,
+and not yet a supported product surface.
 
 The multi-human collaboration substrate (hosted worker, auth, admin) is FROZEN per bundle doc
 `docs/core` and preserved outside the OSS repository — it is not a build or deployment target

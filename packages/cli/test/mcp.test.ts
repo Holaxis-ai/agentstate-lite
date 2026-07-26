@@ -32,8 +32,9 @@ test("mcp help is offline and does not open a bundle", async () => {
 test("mcp opens the explicit local bundle and leaves stdout untouched for stdio protocol", async () => {
   let openedDir: string | undefined;
   let startedWith: Bundle | undefined;
+  let startedActor: string | undefined;
   let output = "";
-  await mcp(["--dir", "/tmp/board"], {
+  await mcp(["--dir", "/tmp/board", "--actor", "mike/test"], {
     stdout: (text) => {
       output += text;
     },
@@ -41,11 +42,13 @@ test("mcp opens the explicit local bundle and leaves stdout untouched for stdio 
       openedDir = dir;
       return bundle;
     },
-    startServer: async ({ bundle: startedBundle }) => {
+    startServer: async ({ bundle: startedBundle, actor }) => {
       startedWith = startedBundle;
+      startedActor = actor;
     },
   });
   assert.equal(openedDir, "/tmp/board");
   assert.equal(startedWith, bundle);
+  assert.equal(startedActor, "mike/test");
   assert.equal(output, "");
 });
