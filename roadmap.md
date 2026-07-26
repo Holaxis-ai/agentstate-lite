@@ -1,8 +1,8 @@
 ---
 type: Roadmap
 title: agentstate-lite — Roadmap (near-term spine)
-actor: codex
-timestamp: '2026-07-26T14:13:46.476Z'
+actor: openai/codex
+timestamp: '2026-07-26T22:08:12.944Z'
 ---
 # agentstate-lite — Roadmap (near-term spine)
 
@@ -12,41 +12,27 @@ task backlog. The EVENTUAL form is roadmap-items-as-docs under a `Roadmap` kind 
 [the recipe/cookbook design](designs/recipes.md)); this single doc is the spine until that kind
 exists.
 
-# CURRENT FOCUS — the release push (2026-07-20 founders' call)
+# CURRENT FOCUS — release and test-user learning (updated 2026-07-26)
 
-A hard scope gate toward getting the product into test users' hands ahead of the astronomy-paper
-press window (~2-3 weeks; downloads could spike when the article lands). THREE non-negotiables —
-everything else is parked behind them. Per the call: "if something doesn't fit within these,
-question whether we should be doing it now."
+The 2026-07-20 release push remains the scope gate, updated by the 2026-07-21 founder decision in
+`decisions/defer-builtin-recipes`: productized recipes should be learned from real workflows rather
+than guessed before test users.
 
-1. **Name it** — `tasks/npm-package-identity` (P1). One shot at a good public name; check
-   collisions (e.g. an existing "agentstate"). Gates the npm publish and the article narrative.
-2. **Ship via npm + the onboarding journey** — `tasks/npm-cli-skill-prerelease` (P1, blocked on the
-   name) ships the CLI + a thin markdown Agent Skill + session-start hooks via npm (then retire the
-   marketplace executable channel, `roadmap-items/distribution-neutral-resources`; npm is the
-   distribution pattern, NOT the skills marketplace). THE NEW-USER WORKFLOW must work end to end and
-   be TESTED — `tasks/npm-quickstart-onboarding` (P1) owns it: (a) `npm install` the CLI →
-   (b) install the skill/hook for the agent → (c) `init --recipe <name>` to create a bundle from a
-   BUILT-IN recipe BY NAME → (d) immediately productive. Recipes ship as BUILT-INS installable by
-   name (like `context-notes`/`work-tracking`), so `init --recipe personal-task-system` resolves
-   without a folder path. The task system is the first built-in recipe; the mechanism generalizes to
-   the others as they ship.
-3. **One minimally-usable shipped recipe** — `roadmap-items/personal-task-system-recipe` (P1). A
-   **human-agent collaborative Personal Task System**, HAND-AUTHORED (the founder's real private
-   task bundle as a reference implementation, generalized/simplified — automated export deferred,
-   `tasks/recipe-export`). Differentiator: your agent runs your tasks and you mark them done / edit
-   live in a well-designed board View — the collaboration loop, not a checklist; the visual UX
-   quality is the point. SEQUENCED (data first, then UI, then package):
-   (1) `tasks/task-system-kind-design` — the kind(s) + relationships (schema settles first);
-   (2) `tasks/task-system-board-ui` — the collaborative board View: read + human write-back on
-   #109's mechanism (the plumbing shipped; the good board that uses it is the real build);
-   (3) `tasks/recipe-personal-task-system` — hand-author + package the recipe, verify recipe add.
-   NEXT INCREMENT (after ship): the working-memory `Focus`/`Session` layer
-   (`research/ai-power-user-patterns`) toward the "second brain" story. PM recipe deferred.
+1. **Identity — done.** `tasks/npm-package-identity` chose the interim coordinate
+   `@holaxis/aslite`; the prerelease is published.
+2. **Finish npm proof + onboarding.** `tasks/npm-cli-skill-prerelease` owns the remaining founder
+   clean-machine proof and npm-primary documentation. `tasks/npm-quickstart-onboarding` owns the
+   literal tested journey: install the CLI, install the Agent Skill/hook, initialize with the
+   already-shipped `work-tracking` recipe by name, and reach a productive local bundle. The release
+   journey no longer depends on a speculative Personal Task System built-in.
+3. **Learn product recipes with test users.** Walk a few users through creating CUSTOM recipes for
+   their actual workflows and record what converges. `roadmap-items/personal-task-system-recipe`
+   retains the completed kind/UI work, but `tasks/recipe-personal-task-system` stays blocked until
+   those walkthroughs justify the package shape. The later built-in should encode evidence, not the
+   founders' first guess.
 
-**Also in-window — now folded into #3:** UI mutation — interact with Views, mark a task done (#109
-shipped but
-barely tested; needs a real test pass before user hands touch it).
+The governed View mutation mechanism and real human write-back proof are shipped. Build further
+recipe or MCP mechanics only when the onboarding sessions expose a concrete need.
 
 **PARKED behind the push (do the simple way, or defer):**
 - `roadmap-items/bundle-relationships` + `tasks/bundle-relationships-explore` — bundles referencing

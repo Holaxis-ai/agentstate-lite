@@ -3,14 +3,16 @@ type: Roadmap Item
 title: Conversational Views through MCP Apps
 status: active
 description: >-
-  EXPERIMENTAL — fixed-shell rendering and one shared-authority governed action
-  are proved; independent review/QA remains before product adoption.
+  EXPERIMENTAL — fixed-shell rendering, shared-authority governed actions,
+  independent review/QA, and a real Codex conversation-host mutation are proved.
+  Pause new mechanics; dogfood explicit IDs before considering bounded queries
+  or product adoption.
 sequence: >-
   Fixed-shell proof → shared authority extraction → governed action proof →
   independent review/QA → real conversation host → bounded queries if needed →
   durable promotion → second host / remote adapter
 actor: openai/codex
-timestamp: '2026-07-26T18:00:26.466Z'
+timestamp: '2026-07-26T22:08:12.789Z'
 ---
 # Direction
 
@@ -46,18 +48,21 @@ multi-tenant hosting, and a broader remote-agent tool surface remain separate la
    explicit Apply committed with CAS and attribution, and the same View refreshed from the final
    authoritative version. The generated nested document remained script-free and read-only.
 4. Complete independent review, adversarial QA, and one real conversation-host proof.
+   Completed in PR #168 (`f1306ede`): the exact action commit passed independent review and
+   adversarial commit/conflict replays. The first real Codex conversation-host dogfood changed
+   `tasks/mcp-app-governed-action-spike` from `in_progress` to `done`; the persisted receipt
+   carried actor `mike` and the final authoritative version.
 5. Add bounded deterministic queries only if explicit-ID dogfooding proves they are needed.
 6. Promote useful ephemeral presentations into durable bundle Views.
 7. Verify a second host, then consider a remote adapter.
 
 # Current decision gate
 
-Independent review and adversarial QA of the exact governed-action commit are next. The empirical
-reference-host proof is builder evidence, not a substitute for that high-risk review tier. Do not
-widen beyond one selection-bound, kind-validated scalar action or merge the experiment into the
-supported product surface until that review closes. Afterward, prove the same contract in one real
-conversation host; bounded queries are the next product capability only if explicit-ID dogfooding
-shows that selection friction is real.
+The governed-action proof is complete. Pause new MCP mechanics and use the explicit-ID surface for
+real work. Add bounded deterministic queries only if repeated dogfooding shows that selecting exact
+IDs is materially awkward; the first real task did not establish that need. Promote a presentation
+into a durable bundle View only after it proves repeatedly useful. Supported-product status, a
+second host, remote workspaces, and broader action authority remain separate explicit decisions.
 
 [contains](../tasks/mcp-app-fixed-shell-spike.md)
 

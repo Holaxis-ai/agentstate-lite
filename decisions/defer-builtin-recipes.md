@@ -3,8 +3,8 @@ type: Decision
 title: >-
   Defer built-in Personal Task System recipe; learn from test-user custom
   recipes first; focus on launcher tutorial
-actor: mike/claude
-timestamp: '2026-07-21T14:06:30.711Z'
+actor: openai/codex
+timestamp: '2026-07-26T22:08:26.698Z'
 ---
 # Decision
 
@@ -27,9 +27,9 @@ built-in recipe source.
   board UI → instance-free recipe folder → built-in registration) stays valid.
 - tasks/launcher-first-run-onboarding → priority 1; the "lightweight tutorial" is this
   task's scope.
-- tasks/npm-quickstart-onboarding inherits the question: its journey currently calls
-  `init --recipe personal-task-system` by name — its recipe step needs restating against
-  custom-recipe walkthroughs (not resolved here).
+- tasks/npm-quickstart-onboarding no longer waits for this built-in: its deterministic release
+  proof uses the already-shipped `work-tracking` recipe by name. Custom-recipe walkthroughs are
+  the separate product-learning loop.
 
 # Explicitly NOT decided here
 
@@ -42,6 +42,12 @@ built-in recipe source.
 
 A few test-user walkthroughs completed, each producing a working custom recipe for a real
 workflow — then package the built-in from what they converge on.
+
+# Release-path reconciliation (2026-07-26)
+
+Mike approved reconciling the roadmap with this decision. Personal Task System packaging is not a
+release-push non-negotiable. The npm quickstart proves today's real install-to-productive path with
+`work-tracking`; test-user custom-recipe sessions provide the evidence for any richer built-in.
 
 # Provenance
 
