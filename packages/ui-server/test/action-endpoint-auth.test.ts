@@ -106,7 +106,7 @@ async function fixture(): Promise<Fixture> {
       type: "View",
       title: "Actions",
       entry: "views/actions.html",
-      bridge: "bundle-propose",
+      access: "bundle-propose",
       timestamp: T,
     },
     body: "",

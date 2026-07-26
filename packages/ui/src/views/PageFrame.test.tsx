@@ -50,7 +50,7 @@ vi.mock("../pages/pageEvents.js", () => ({
 
 function pageDoc(overrides: Record<string, unknown> = {}) {
   return {
-    doc: { id: "pages-registry/p", frontmatter: { type: "Page", title: "P", entry: "pages/p.html", bridge: "bundle-read", ...overrides }, body: "" },
+    doc: { id: "pages-registry/p", frontmatter: { type: "View", title: "P", entry: "pages/p.html", access: "bundle-read", ...overrides }, body: "" },
     version: "v1",
   };
 }
@@ -90,7 +90,7 @@ describe("PageFrame: bridge revocation race (P1)", () => {
   });
 
   it("registry-doc bundle-read -> none: a bridge request received during the async reload gap is DENIED, never answered under the stale grant", async () => {
-    vi.mocked(getDoc).mockResolvedValueOnce(pageDoc({ bridge: "bundle-read" }));
+    vi.mocked(getDoc).mockResolvedValueOnce(pageDoc({ access: "bundle-read" }));
     vi.mocked(listAllHeads).mockResolvedValue([]);
 
     await act(async () => {
@@ -134,14 +134,14 @@ describe("PageFrame: bridge revocation race (P1)", () => {
     expect(postSpy.mock.calls.find(([msg]) => (msg as { id?: string }).id === "q1")).toBeUndefined();
 
     // Let the reload settle so no promise is left dangling.
-    pending.resolve(pageDoc({ bridge: "none" }));
+    pending.resolve(pageDoc({ access: "none" }));
     await act(async () => {
       await flush();
     });
   });
 
   it("an in-flight bundle-read reply whose epoch advanced (page reloaded to bridge: none) is DROPPED — never delivered to the downgraded frame", async () => {
-    vi.mocked(getDoc).mockResolvedValueOnce(pageDoc({ bridge: "bundle-read" }));
+    vi.mocked(getDoc).mockResolvedValueOnce(pageDoc({ access: "bundle-read" }));
 
     await act(async () => {
       root.render(<PageFrame pageId="pages-registry/p" />);
@@ -169,7 +169,7 @@ describe("PageFrame: bridge revocation race (P1)", () => {
     // navigation, unlike a real browser's stable WindowProxy — either way, whatever window is
     // CURRENT when the stale reply is finally ready is the one that must never receive it).
     const changeListener = vi.mocked(subscribeToChanges).mock.calls[0]![0];
-    vi.mocked(getDoc).mockResolvedValueOnce(pageDoc({ bridge: "none", entry: "pages/p2.html" }));
+    vi.mocked(getDoc).mockResolvedValueOnce(pageDoc({ access: "none", entry: "pages/p2.html" }));
     await act(async () => {
       changeListener({
         docs: { changed: [{ id: "pages-registry/p", version: "v3" }], removed: [] },
@@ -228,7 +228,7 @@ describe("PageFrame: registered Page navigation", () => {
   }
 
   it("allows a bridge:none Page to navigate through the shell", async () => {
-    const source = await mount({ bridge: "none" });
+    const source = await mount({ access: "none" });
     await act(async () => {
       window.dispatchEvent(new MessageEvent("message", { source, data: { bridge: "v0", type: "open-page", pageId: "pages-registry/target" } }));
       await flush();
@@ -280,7 +280,7 @@ describe("PageFrame: registered Page navigation", () => {
   });
 
   it("keeps approval in trusted shell chrome and posts only the terminal action result", async () => {
-    const source = await mount({ type: "View", bridge: "bundle-propose" });
+    const source = await mount({ type: "View", access: "bundle-propose" });
     const postSpy = vi.spyOn(source, "postMessage");
     vi.mocked(prepareTrustedAction).mockResolvedValue({
       status: "prepared",

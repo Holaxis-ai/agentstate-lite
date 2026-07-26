@@ -17,13 +17,10 @@ under `views/…`, declared by a `type: View` registry doc, and rendered by `age
 inside a **sandboxed iframe**. Views are bundle content — authored, versioned, attributed, and
 synced like any other doc — while the shell is the launcher and trusted data broker.
 
-`Page` is the legacy name for this kind, and it is no longer read: a legacy `type: Page` doc
-does not register (the launcher ignores it). Leftover legacy stock is renamed to `type: View`
-in place by the repo's `migrate-legacy-view-names` script, and `aslite status` lists it under
-its `legacy_naming` finding; docs under the legacy `pages-registry/`/`pages/` prefixes stay
-recognized where they are once typed `View`. Author views as `type: View` under
-`views-registry/`/`views/`. Bridge wire names (the `open-page` verb, its `pageId` payload field)
-are stable ABI and did not change with the rename.
+`Page` is the accepted legacy name for this kind: existing `type: Page` docs under the legacy
+`pages-registry/`/`pages/` prefixes keep working and never need migrating — author new views as
+`type: View` under `views-registry/`/`views/`. Bridge wire names (the `open-page` verb, its
+`pageId` payload field) are stable ABI and did not change with the rename.
 
 ## Trust model (why a view can never touch a credential)
 
@@ -64,9 +61,9 @@ view's own iframe; the view drops any message whose `event.source` is not `windo
 
 `open-page` is the sole capability-independent action: `access: none`, `access: bundle-read`, and
 `access: bundle-propose` Views may ask the shell to open another usable registered View. The shell
-accepts only a conservative `views-registry/…` (or legacy-location `pages-registry/…`) concept
-id, validates that it resolves to a `type: View` doc with a safe `views/…`
-(or legacy-location `pages/…`) entry, and mounts the target normally with its own sandbox, nonce, and
+accepts only a conservative `views-registry/…` (or legacy `pages-registry/…`) concept id,
+validates that it resolves to a `type: View` (or legacy `type: Page`) doc with a safe `views/…`
+(or legacy `pages/…`) entry, and mounts the target normally with its own sandbox, nonce, and
 bridge capability. It returns no target body, frontmatter, entry, HTML, or nonce. A failed
 attempt can reveal that one caller-supplied registry id is not usable; this bounded existence
 oracle is the only information exposed by navigation.
@@ -155,11 +152,9 @@ requests at all — and the shell, not the view, is what enforces it:
   submit the narrow v1 proposal above. Each proposal still requires trusted-shell confirmation.
 - `access: none` — a **content view**. The shell replies to every bundle-data request with a
   `FORBIDDEN` error, before touching any bundle data. It may still use `open-page` navigation.
-- `bridge` is the legacy spelling of this field, and it is no longer read: a doc declaring only
-  the legacy `bridge` field resolves to `access: none` (every bundle-data request is denied).
-  The repo's `migrate-legacy-view-names` script renames leftover legacy `bridge` fields to
-  `access` in place, and `aslite status` lists them under its `legacy_naming` finding.
-  Authoring uses `access`.
+- `bridge` is the accepted legacy spelling of this field, honored forever: a doc declaring only
+  `bridge` keeps working unchanged and never needs migrating. When both are present, `access`
+  alone decides. Author new views with `access`.
 - The `View` convention declares `access` REQUIRED — every view is an intentional
   classification, not a silent default. At runtime the shell still fails closed for a doc this
   convention didn't govern (an external bundle, a hand-edited file that skipped the lint): absent,

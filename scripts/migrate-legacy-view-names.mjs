@@ -47,6 +47,31 @@ const CANONICAL_VIEW_CONVENTION = path.resolve(SCRIPT_DIR, "../examples/views/co
 /** Frozen snapshots of every form this repo ever SHIPPED for `conventions/view` (historical artifacts — see the folder). */
 const PRIOR_SHIPPED_DIR = path.resolve(SCRIPT_DIR, "prior-shipped-view-conventions");
 
+// Review F2 (tasks/remove-legacy-page-bridge-support): a COMPLETE historical install also carried
+// TEACHING artifacts that present the legacy names as the live contract. Leaving them behind
+// after the rename pass would migrate the data while the bundle keeps teaching the dead names.
+//   - The superseded `references/page-authoring-v0` is RETIRED (deleted) — same
+//     governance-continuity discipline as the Page-convention deletion: only when its
+//     replacement (`references/view-authoring-v0`) is present at end state (created from the
+//     canonical repo file when absent) and no unreadable docs could be hiding stock.
+//   - The shipped `conventions/review-request` is REFRESHED when its content matches a KNOWN
+//     shipped form (same current/prior/customized classification as `conventions/view`); a
+//     customized one is never touched.
+const LEGACY_REFERENCE_ID = "references/page-authoring-v0";
+const VIEW_REFERENCE_ID = "references/view-authoring-v0";
+const CANONICAL_VIEW_REFERENCE = path.resolve(SCRIPT_DIR, "../examples/views/references/view-authoring-v0.md");
+/** Frozen snapshots of every form this repo ever SHIPPED for `references/view-authoring-v0` —
+ * a MID-VINTAGE bundle (round-2 review P1) carries one of these at the already-renamed id,
+ * still teaching the transitional acceptance story; a known-shipped match refreshes to the
+ * canonical, exactly like the shipped-convention swaps. */
+const PRIOR_SHIPPED_VIEW_REFERENCE_DIR = path.resolve(SCRIPT_DIR, "prior-shipped-view-authoring-references");
+const REVIEW_REQUEST_CONVENTION_ID = "conventions/review-request";
+const CANONICAL_REVIEW_REQUEST = path.resolve(
+  SCRIPT_DIR,
+  "../examples/recipes/review-workflow/conventions/review-request.md",
+);
+const PRIOR_SHIPPED_REVIEW_REQUEST_DIR = path.resolve(SCRIPT_DIR, "prior-shipped-review-request-conventions");
+
 const ACCESS_VALUES = new Set(["none", "bundle-read", "bundle-propose"]);
 
 const isViewTyped = (frontmatter) => frontmatter.type === "Page" || frontmatter.type === "View";
@@ -81,6 +106,24 @@ export function describeReceipt(receipt) {
   if (conventionClause) clauses.push(conventionClause);
   const deleted = receipt.page_conventions_deleted.length;
   if (deleted > 0) clauses.push(`${receipt.dry_run ? "delete" : "deleted"} ${count(deleted, "Page convention")}`);
+  // Phase-3 teaching actions (rebase reconciliation): the refresh/retirement/creation actions
+  // are actions like any other — a run that ONLY refreshed must never read as a clean scan.
+  const reviewRequestClause = {
+    would_swap: "refresh the Review Request convention",
+    swapped: "refreshed the Review Request convention",
+  }[receipt.review_request_swapped];
+  if (reviewRequestClause) clauses.push(reviewRequestClause);
+  const referenceClause = {
+    would_swap: "refresh the View authoring reference",
+    swapped: "refreshed the View authoring reference",
+  }[receipt.reference_refreshed];
+  if (referenceClause) clauses.push(referenceClause);
+  if (receipt.reference_created === true) clauses.push("created the View authoring reference");
+  else if (receipt.reference_created === "would_create") clauses.push("create the View authoring reference");
+  const retiredRefs = receipt.legacy_references_deleted.length;
+  if (retiredRefs > 0) {
+    clauses.push(`${receipt.dry_run ? "retire" : "retired"} ${count(retiredRefs, "legacy Page-authoring reference")}`);
+  }
 
   if (clauses.length === 0) {
     // "No legacy names found" is a clean-scan claim — it may ONLY appear when the scan really
@@ -102,6 +145,15 @@ export function describeReceipt(receipt) {
     } else if (receipt.convention_swapped === "skipped_occupied" || receipt.convention_swapped === "refused_occupied") {
       reasons.push("conventions/view occupied by a non-View-governing doc — left untouched");
     }
+    // Phase-3 teaching states, same warning-record derivation as the retained-Page count.
+    if (receipt.review_request_swapped === "skipped_customized") {
+      reasons.push("customized Review Request convention skipped");
+    }
+    if (receipt.reference_refreshed === "skipped_customized") {
+      reasons.push("customized View authoring reference skipped");
+    }
+    const keptRefs = receipt.warnings.filter((w) => w.warning.startsWith("legacy reference kept")).length;
+    if (keptRefs > 0) reasons.push(`${count(keptRefs, "legacy Page-authoring reference")} retained (see warnings)`);
     if (reasons.length === 0) reasons.push("see warnings");
     return `no changes made, but attention needed — ${count(receipt.warnings.length, "warning")}: ${reasons.join("; ")}`;
   }
@@ -186,6 +238,32 @@ export function loadPriorShippedViewConventions() {
     .map((name) => parseConventionFile(path.join(PRIOR_SHIPPED_DIR, name)));
 }
 
+/** Load THE canonical shipped View-authoring reference (single-sourced from this repo's file). */
+export function loadCanonicalViewReference() {
+  return parseConventionFile(CANONICAL_VIEW_REFERENCE);
+}
+
+/** Load THE canonical shipped Review Request convention (single-sourced from this repo's file). */
+export function loadCanonicalReviewRequestConvention() {
+  return parseConventionFile(CANONICAL_REVIEW_REQUEST);
+}
+
+/** Load every prior shipped form of the Review Request convention (frozen snapshots). */
+export function loadPriorShippedReviewRequestConventions() {
+  return readdirSync(PRIOR_SHIPPED_REVIEW_REQUEST_DIR)
+    .filter((name) => name.endsWith(".md"))
+    .sort()
+    .map((name) => parseConventionFile(path.join(PRIOR_SHIPPED_REVIEW_REQUEST_DIR, name)));
+}
+
+/** Load every prior shipped form of the View-authoring reference (frozen snapshots). */
+export function loadPriorShippedViewAuthoringReferences() {
+  return readdirSync(PRIOR_SHIPPED_VIEW_REFERENCE_DIR)
+    .filter((name) => name.endsWith(".md"))
+    .sort()
+    .map((name) => parseConventionFile(path.join(PRIOR_SHIPPED_VIEW_REFERENCE_DIR, name)));
+}
+
 const isViewConvention = (fm) => fm.type === "Convention" && fm.governs === "View";
 const isPageConvention = (fm) => fm.type === "Convention" && fm.governs === "Page";
 
@@ -201,7 +279,7 @@ function sameConventionContent(a, b) {
 }
 
 /** Classify an existing `conventions/view` doc: `current` | `prior_shipped` | `customized`. */
-function classifyViewConvention(doc, canonical, priorForms) {
+function classifyShippedConvention(doc, canonical, priorForms) {
   if (sameConventionContent(doc, canonical)) return "current";
   if (priorForms.some((form) => sameConventionContent(doc, form))) return "prior_shipped";
   return "customized";
@@ -267,6 +345,10 @@ export async function migrateBundle(bundle, options = {}) {
     timestamp_added_docs: [],
     convention_swapped: false,
     page_conventions_deleted: [],
+    review_request_swapped: false,
+    reference_refreshed: false,
+    reference_created: false,
+    legacy_references_deleted: [],
     changed_docs: [],
     warnings: [],
     skipped_docs: [],
@@ -344,7 +426,7 @@ export async function migrateBundle(bundle, options = {}) {
         receipt.convention_swapped = "would_create";
         viewConventionEndsGoverning = true;
       } else {
-        const shape = classifyViewConvention(viewConventionState.doc, canonical, priorForms);
+        const shape = classifyShippedConvention(viewConventionState.doc, canonical, priorForms);
         if (shape === "prior_shipped") receipt.convention_swapped = "would_swap";
         else if (shape === "customized") {
           if (overwriteCustomConventions) {
@@ -378,7 +460,7 @@ export async function migrateBundle(bundle, options = {}) {
             return { action: "done", result: "refused_occupied" };
           }
           if (state !== undefined) {
-            const shape = classifyViewConvention(state, canonical, priorForms);
+            const shape = classifyShippedConvention(state, canonical, priorForms);
             if (shape === "current") return { action: "done", result: false }; // idempotent no-op.
             if (shape === "customized" && !overwriteCustomConventions) {
               warn(
@@ -460,6 +542,194 @@ export async function migrateBundle(bundle, options = {}) {
       },
     });
     if (outcome.result === true) receipt.page_conventions_deleted.push(id);
+  }
+
+  // ── 3. Shipped-teaching refresh + superseded legacy reference retirement (review F2). ─────────
+  const readDocState = async (id) => {
+    try {
+      const { doc } = await readDocVersioned(bundle, id);
+      return { kind: "present", doc };
+    } catch (err) {
+      if (isAbsence(err)) return { kind: "absent" };
+      if (err instanceof MalformedDocumentError) return { kind: "unreadable" };
+      throw err;
+    }
+  };
+
+  // Readability-guard split (round-3 review ruling): the unreadable-stock guard applies ONLY to
+  // DESTRUCTIVE operations — the Page-convention deletion and the page-authoring-reference
+  // retirement below — because hidden stock is material to whether a REMOVAL is safe. The two
+  // classify-and-CAS REFRESHES (review-request convention, view-authoring reference) are NOT
+  // guarded: their safety comes from exact known-shipped classification at the target id plus
+  // CAS, which an unrelated unreadable doc cannot change. Do not re-unify.
+
+  // 3a. `conventions/review-request`: a KNOWN shipped form still teaching the legacy names is
+  // refreshed to the current canonical; customized content is never touched. Absent is fine —
+  // installing it is the recipe's job, not this script's.
+  const rrState = await readDocState(REVIEW_REQUEST_CONVENTION_ID);
+  if (rrState.kind === "unreadable") {
+    warn(REVIEW_REQUEST_CONVENTION_ID, "unreadable — shipped-teaching refresh skipped");
+  } else if (rrState.kind === "present") {
+    const fm = rrState.doc.frontmatter;
+    if (fm.type !== "Convention" || fm.governs !== "Review Request") {
+      warn(REVIEW_REQUEST_CONVENTION_ID, "exists but is not a Convention governing Review Request — left untouched");
+    } else {
+      const canonicalRR = loadCanonicalReviewRequestConvention();
+      const priorRR = loadPriorShippedReviewRequestConventions();
+      const shape = classifyShippedConvention(rrState.doc, canonicalRR, priorRR);
+      if (shape === "prior_shipped") {
+        if (dryRun) {
+          receipt.review_request_swapped = "would_swap";
+        } else {
+          const outcome = await versionedMutation({
+            read: () => readOrAbsent(bundle, REVIEW_REQUEST_CONVENTION_ID),
+            decide: (state) => {
+              if (state === undefined) return { action: "done", result: false };
+              if (classifyShippedConvention(state, canonicalRR, priorRR) !== "prior_shipped") {
+                return { action: "done", result: false }; // raced into current/customized content — leave it.
+              }
+              return {
+                action: "write",
+                next: { id: REVIEW_REQUEST_CONVENTION_ID, frontmatter: canonicalRR.frontmatter, body: canonicalRR.body },
+                result: "swapped",
+              };
+            },
+            write: async (next, expectedVersion) =>
+              (await writeDocVersioned(bundle, next, { expectedVersion, actor })).version,
+          });
+          receipt.review_request_swapped = outcome.result;
+        }
+      } else if (shape === "customized") {
+        receipt.review_request_swapped = "skipped_customized";
+        warn(
+          REVIEW_REQUEST_CONVENTION_ID,
+          "customized (matches neither the current shipped convention nor any prior shipped form) — left untouched",
+        );
+      }
+    }
+  }
+
+  // 3b. `references/view-authoring-v0` at its already-renamed id (round-2 review P1): a
+  // MID-VINTAGE bundle carries a KNOWN shipped transitional form still teaching bridge/Page
+  // acceptance. A known-shipped match refreshes to the canonical; customized content is never
+  // touched (unguarded refresh — see the guard-split comment above). Runs
+  // BEFORE the retirement below, so the retirement's replacement check sees the refreshed doc.
+  const viewRefState = await readDocState(VIEW_REFERENCE_ID);
+  if (viewRefState.kind === "present" && viewRefState.doc.frontmatter.type === "Reference") {
+    const canonicalRef = loadCanonicalViewReference();
+    const priorRefs = loadPriorShippedViewAuthoringReferences();
+    const shape = classifyShippedConvention(viewRefState.doc, canonicalRef, priorRefs);
+    if (shape === "prior_shipped") {
+      if (dryRun) {
+        receipt.reference_refreshed = "would_swap";
+      } else {
+        const outcome = await versionedMutation({
+          read: () => readOrAbsent(bundle, VIEW_REFERENCE_ID),
+          decide: (state) => {
+            if (state === undefined) return { action: "done", result: false };
+            if (classifyShippedConvention(state, canonicalRef, priorRefs) !== "prior_shipped") {
+              return { action: "done", result: false }; // raced into current/customized content — leave it.
+            }
+            return {
+              action: "write",
+              next: { id: VIEW_REFERENCE_ID, frontmatter: canonicalRef.frontmatter, body: canonicalRef.body },
+              result: "swapped",
+            };
+          },
+          write: async (next, expectedVersion) =>
+            (await writeDocVersioned(bundle, next, { expectedVersion, actor })).version,
+        });
+        receipt.reference_refreshed = outcome.result;
+      }
+    } else if (shape === "customized") {
+      receipt.reference_refreshed = "skipped_customized";
+      warn(
+        VIEW_REFERENCE_ID,
+        "customized (matches neither the current shipped reference nor any prior shipped form) — left untouched",
+      );
+    }
+  } else if (viewRefState.kind === "unreadable") {
+    warn(VIEW_REFERENCE_ID, "unreadable — shipped-teaching refresh skipped");
+  } else if (viewRefState.kind === "present") {
+    warn(VIEW_REFERENCE_ID, "exists but is not a Reference — left untouched");
+  }
+
+  // 3c. Retire the superseded `references/page-authoring-v0` — it teaches the retired names as
+  // the live contract. Same governance-continuity discipline as the Page-convention deletion:
+  // delete only when the REPLACEMENT (`references/view-authoring-v0`, created from the canonical
+  // repo file when absent) is present at end state, and only when no unreadable docs could be
+  // hiding related stock. The receipt reports every outcome.
+  const legacyRefState = await readDocState(LEGACY_REFERENCE_ID);
+  if (legacyRefState.kind === "unreadable") {
+    warn(LEGACY_REFERENCE_ID, "unreadable — legacy reference retirement skipped");
+  } else if (legacyRefState.kind === "present") {
+    if (legacyRefState.doc.frontmatter.type !== "Reference") {
+      warn(LEGACY_REFERENCE_ID, "exists but is not a Reference — left untouched");
+    } else if (receipt.skipped_docs.length > 0) {
+      // DESTRUCTIVE-op guard (see the guard-split comment above): retirement is a deletion, so
+      // hidden stock behind unreadable docs is material — refuse, like the Page-convention gate.
+      warn(
+        LEGACY_REFERENCE_ID,
+        `legacy reference kept: unreadable docs were skipped (${receipt.skipped_docs.map((s) => s.id).join(", ")})`,
+      );
+    } else {
+      const canonicalRef = loadCanonicalViewReference();
+      let replacementPresent = false;
+      const replacementState = await readDocState(VIEW_REFERENCE_ID);
+      if (replacementState.kind === "present" && replacementState.doc.frontmatter.type === "Reference") {
+        replacementPresent = true;
+      } else if (replacementState.kind === "absent") {
+        if (dryRun) {
+          receipt.reference_created = "would_create";
+          replacementPresent = true;
+        } else {
+          const outcome = await versionedMutation({
+            read: () => readOrAbsent(bundle, VIEW_REFERENCE_ID),
+            decide: (state) => {
+              if (state !== undefined) {
+                // Raced into an occupant — only a Reference counts as the replacement.
+                return { action: "done", result: state.frontmatter.type === "Reference" };
+              }
+              return {
+                action: "write",
+                next: { id: VIEW_REFERENCE_ID, frontmatter: canonicalRef.frontmatter, body: canonicalRef.body },
+                result: "created",
+              };
+            },
+            write: async (next, expectedVersion) =>
+              (await writeDocVersioned(bundle, next, { expectedVersion, actor })).version,
+          });
+          if (outcome.result === "created") receipt.reference_created = true;
+          replacementPresent = outcome.result === "created" || outcome.result === true;
+        }
+      } else {
+        warn(VIEW_REFERENCE_ID, "occupied by a non-Reference doc — legacy reference retirement refused");
+      }
+      if (replacementPresent) {
+        if (dryRun) {
+          receipt.legacy_references_deleted.push(LEGACY_REFERENCE_ID);
+        } else {
+          const outcome = await versionedMutation({
+            read: () => readOrAbsent(bundle, LEGACY_REFERENCE_ID),
+            decide: (state) => {
+              if (state === undefined) return { action: "done", result: false };
+              if (state.frontmatter.type !== "Reference") return { action: "done", result: false };
+              return { action: "write", next: state, result: true };
+            },
+            write: async (_next, expectedVersion) => {
+              await deleteDoc(bundle, LEGACY_REFERENCE_ID, { expectedVersion });
+              return expectedVersion;
+            },
+          });
+          if (outcome.result === true) receipt.legacy_references_deleted.push(LEGACY_REFERENCE_ID);
+        }
+      } else {
+        warn(
+          LEGACY_REFERENCE_ID,
+          "legacy reference kept: references/view-authoring-v0 does not end this run as a Reference — deleting would leave View authoring untaught",
+        );
+      }
+    }
   }
 
   // `result` leads the receipt: the human verdict first, the machine counters (unchanged keys)

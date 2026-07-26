@@ -6,14 +6,9 @@
  * `WriteOptions` concept documents use, guarded against traversal / `.md` collision /
  * dot-prefixed segments at every op.
  *
- * Dual-adapter here (FilesystemBackend + MemoryBackend) by design — `RemoteBackend`'s
- * blob methods are REAL as of Part B (wire-protocol v0.1), but its tri-adapter parity,
- * CAS-over-HTTP, and traversal-guard coverage lives in `wire-protocol.test.ts` (it
- * needs the reference router as a transport, which this file deliberately does not
- * depend on).
- *
- * Mirrors `dual-backend.test.ts`'s RUNNERS pattern so every parity assertion runs
- * identically over both adapters.
+ * Universal backend semantics live in `storage-backend-contract.ts` and run against
+ * FilesystemBackend, MemoryBackend, and RemoteBackend. This file owns the pure blob
+ * primitives plus adapter- and engine-specific behavior.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -53,58 +48,6 @@ const RUNNERS = [
 
 const enc = (s: string) => new TextEncoder().encode(s);
 
-/** Bytes 0x00-0xFF, including invalid-UTF-8 sequences — the B1 binary-fidelity fixture. */
-const BINARY_FIXTURE = new Uint8Array(256);
-for (let i = 0; i < 256; i++) BINARY_FIXTURE[i] = i;
-
-// ── parity: write/read/exists/list round-trip across both adapters ───────────
-
-for (const [name, run] of RUNNERS) {
-  test(`${name}: blob write/read/exists/list round-trip`, async () => {
-    await run(async (bundle) => {
-      assert.equal(await existsBlob(bundle, "artifacts/report.html"), false);
-      assert.equal(await readBlob(bundle, "artifacts/report.html"), null);
-
-      const bytes = enc("<html><body>hi</body></html>");
-      const v1 = await writeBlob(bundle, "artifacts/report.html", bytes, "text/html; charset=utf-8");
-      assert.match(v1, /^sha256:[0-9a-f]{64}$/);
-
-      assert.equal(await existsBlob(bundle, "artifacts/report.html"), true);
-      const read = await readBlob(bundle, "artifacts/report.html");
-      assert.ok(read);
-      assert.deepEqual([...read!.bytes], [...bytes]);
-      assert.equal(read!.version, v1);
-
-      assert.deepEqual(await listBlobs(bundle, "artifacts/"), ["artifacts/report.html"]);
-      assert.equal(await readBlob(bundle, "nope/absent.bin"), null);
-    });
-  });
-
-  test(`${name}: BINARY FIXTURE (0x00-0xFF, invalid UTF-8) round-trips byte-identical (B1 regression)`, async () => {
-    await run(async (bundle) => {
-      const v1 = await writeBlob(bundle, "artifacts/binary.dat", BINARY_FIXTURE);
-      const read = await readBlob(bundle, "artifacts/binary.dat");
-      assert.ok(read);
-      assert.deepEqual([...read!.bytes], [...BINARY_FIXTURE]);
-      assert.equal(read!.version, v1);
-      assert.equal(read!.version, blobVersion(BINARY_FIXTURE));
-    });
-  });
-}
-
-test("blob version token is byte-identical across FilesystemBackend and MemoryBackend for the SAME bytes", async () => {
-  let fsVersion = "";
-  await withFsBundle(async (bundle) => {
-    fsVersion = await writeBlob(bundle, "artifacts/binary.dat", BINARY_FIXTURE);
-  });
-  let memVersion = "";
-  await withMemBundle(async (bundle) => {
-    memVersion = await writeBlob(bundle, "artifacts/binary.dat", BINARY_FIXTURE);
-  });
-  assert.equal(fsVersion, memVersion);
-  assert.equal(fsVersion, blobVersion(BINARY_FIXTURE));
-});
-
 // ── raw-bytes versioning: a SEPARATE primitive from the doc-shaped hashes (B1) ─
 
 test("blobVersion hashes RAW bytes with no string/UTF-8 step (binary fidelity)", () => {
@@ -117,58 +60,6 @@ test("blobVersion hashes RAW bytes with no string/UTF-8 step (binary fidelity)",
   const other = new Uint8Array([0x80, 0x82, 0xff, 0x00, 0x01]);
   assert.notEqual(v, blobVersion(other), "distinct byte sequences must hash to distinct versions");
 });
-
-// ── CAS + expect-absent ────────────────────────────────────────────────────
-
-for (const [name, run] of RUNNERS) {
-  test(`${name}: writeBlob CAS rejects a stale expectedVersion`, async () => {
-    await run(async (bundle) => {
-      const v1 = await writeBlob(bundle, "artifacts/x.bin", enc("v1"));
-      const v2 = await writeBlob(bundle, "artifacts/x.bin", enc("v2")); // unconditional overwrite
-      assert.notEqual(v1, v2);
-
-      await assert.rejects(
-        () => writeBlob(bundle, "artifacts/x.bin", enc("v3"), undefined, { expectedVersion: v1 }),
-        (err: unknown) => {
-          assert.ok(err instanceof VersionConflict);
-          assert.equal(err.expected, v1);
-          assert.equal(err.actual, v2);
-          return true;
-        },
-      );
-      assert.equal((await readBlob(bundle, "artifacts/x.bin"))!.version, v2); // unmutated
-
-      const v3 = await writeBlob(bundle, "artifacts/x.bin", enc("v3"), undefined, { expectedVersion: v2 });
-      assert.notEqual(v3, v2);
-      assert.equal((await readBlob(bundle, "artifacts/x.bin"))!.version, v3);
-
-      // CAS against a not-yet-existing blob is a conflict (current version is "none").
-      await assert.rejects(
-        () => writeBlob(bundle, "artifacts/ghost.bin", enc("x"), undefined, { expectedVersion: v1 }),
-        (err: unknown) => err instanceof VersionConflict && err.actual === null,
-      );
-    });
-  });
-
-  test(`${name}: writeBlob honors expectedVersion: null as expect-absent create`, async () => {
-    await run(async (bundle) => {
-      const v1 = await writeBlob(bundle, "artifacts/fresh.bin", enc("one"), undefined, { expectedVersion: null });
-      assert.match(v1, /^sha256:[0-9a-f]{64}$/);
-      assert.equal((await readBlob(bundle, "artifacts/fresh.bin"))!.version, v1);
-
-      await assert.rejects(
-        () => writeBlob(bundle, "artifacts/fresh.bin", enc("two"), undefined, { expectedVersion: null }),
-        (err: unknown) => {
-          assert.ok(err instanceof VersionConflict);
-          assert.equal(err.expected, null);
-          assert.equal(err.actual, v1);
-          return true;
-        },
-      );
-      assert.equal((await readBlob(bundle, "artifacts/fresh.bin"))!.version, v1); // unmutated
-    });
-  });
-}
 
 // ── concurrent CAS writers (B3) ────────────────────────────────────────────
 
@@ -196,64 +87,6 @@ test("FilesystemBackend: N concurrent CAS blob writes to the SAME key produce ex
     assert.equal(final!.version, fulfilled[0]!.value);
   });
 });
-
-// ── delete (DELETE operation, symmetric with dual-backend.test.ts's doc-delete coverage) ──
-
-for (const [name, run] of RUNNERS) {
-  test(`${name}: deleteBlob removes a present blob (true), and afterward readBlob/existsBlob/listBlobs all agree it's gone; a re-delete is idempotent (false)`, async () => {
-    await run(async (bundle) => {
-      await writeBlob(bundle, "artifacts/gone.bin", enc("bye"));
-      assert.equal(await existsBlob(bundle, "artifacts/gone.bin"), true);
-
-      assert.equal(await deleteBlob(bundle, "artifacts/gone.bin"), true);
-
-      assert.equal(await readBlob(bundle, "artifacts/gone.bin"), null);
-      assert.equal(await existsBlob(bundle, "artifacts/gone.bin"), false);
-      assert.deepEqual(await listBlobs(bundle, "artifacts/"), []);
-
-      assert.equal(await deleteBlob(bundle, "artifacts/gone.bin"), false); // idempotent
-    });
-  });
-
-  test(`${name}: deleteBlob on a NEVER-WRITTEN key is a no-op (false), not an error`, async () => {
-    await run(async (bundle) => {
-      assert.equal(await deleteBlob(bundle, "never/written.bin"), false);
-    });
-  });
-
-  test(`${name}: deleteBlob honors expectedVersion CAS — match succeeds, a stale (present but mismatched) version conflicts, and an ABSENT key returns false regardless of expectedVersion`, async () => {
-    await run(async (bundle) => {
-      const v1 = await writeBlob(bundle, "artifacts/cas-delete.bin", enc("v1"));
-      const v2 = await writeBlob(bundle, "artifacts/cas-delete.bin", enc("v2"));
-      assert.notEqual(v1, v2);
-
-      await assert.rejects(
-        () => deleteBlob(bundle, "artifacts/cas-delete.bin", { expectedVersion: v1 }),
-        (err: unknown) => {
-          assert.ok(err instanceof VersionConflict);
-          assert.equal(err.expected, v1);
-          assert.equal(err.actual, v2);
-          return true;
-        },
-      );
-      assert.equal(await existsBlob(bundle, "artifacts/cas-delete.bin"), true); // unmutated
-
-      assert.equal(await deleteBlob(bundle, "artifacts/cas-delete.bin", { expectedVersion: v2 }), true);
-      assert.equal(await existsBlob(bundle, "artifacts/cas-delete.bin"), false);
-
-      // Now ABSENT: any expectedVersion (even a plausible stale one) returns false, never a conflict.
-      assert.equal(await deleteBlob(bundle, "artifacts/cas-delete.bin", { expectedVersion: v1 }), false);
-    });
-  });
-
-  test(`${name}: deleteBlob rejects every unsafe key shape (guard applies to delete too, I1)`, async () => {
-    await run(async (bundle) => {
-      for (const key of UNSAFE_BLOB_KEYS) {
-        await assert.rejects(() => deleteBlob(bundle, key), /blob key/i, `deleteBlob('${key}') must reject`);
-      }
-    });
-  });
-}
 
 test("FilesystemBackend: N concurrent CAS blob deletes racing the SAME expectedVersion converge to exactly ONE true winner and N-1 idempotent false losers (never a VersionConflict)", async () => {
   await withFsBundle(async (bundle) => {
@@ -284,6 +117,7 @@ const UNSAFE_BLOB_KEYS = [
   ".git/config", // dot-prefixed leading segment
   "artifacts/.hidden.bin", // dot-prefixed non-leading segment
   "artifacts/", // trailing slash, names no file
+  "report.md/attachment.png", // .md collision in a non-final segment
 ];
 
 test("assertSafeBlobKey: pure guard rejects every unsafe shape directly", () => {
@@ -294,12 +128,13 @@ test("assertSafeBlobKey: pure guard rejects every unsafe shape directly", () => 
 });
 
 for (const [name, run] of RUNNERS) {
-  test(`${name}: readBlob/writeBlob/existsBlob all reject every unsafe key shape (guard applies to EVERY op, I1)`, async () => {
+  test(`${name}: the engine rejects every unsafe blob key before storage`, async () => {
     await run(async (bundle) => {
       for (const key of UNSAFE_BLOB_KEYS) {
-        await assert.rejects(() => readBlob(bundle, key), /blob key/i, `readBlob('${key}') must reject`);
-        await assert.rejects(() => writeBlob(bundle, key, enc("x")), /blob key/i, `writeBlob('${key}') must reject`);
-        await assert.rejects(() => existsBlob(bundle, key), /blob key/i, `existsBlob('${key}') must reject`);
+        await assert.rejects(() => readBlob(bundle, key), /blob key/i);
+        await assert.rejects(() => writeBlob(bundle, key, enc("x")), /blob key/i);
+        await assert.rejects(() => existsBlob(bundle, key), /blob key/i);
+        await assert.rejects(() => deleteBlob(bundle, key), /blob key/i);
       }
     });
   });
@@ -315,25 +150,6 @@ test("FilesystemBackend: an unsafe blob key never creates a file outside the bun
     assert.equal(await existsBlob(bundle, "safe/blob.bin"), true);
   });
 });
-
-// ── listBlobs: prefix filter + dot-entry exclusion (I3) ───────────────────────
-
-for (const [name, run] of RUNNERS) {
-  test(`${name}: listBlobs prefix filters to keys starting with the given prefix`, async () => {
-    await run(async (bundle) => {
-      await writeBlob(bundle, "artifacts/a.bin", enc("a"));
-      await writeBlob(bundle, "artifacts/sub/b.bin", enc("b"));
-      await writeBlob(bundle, "other/c.bin", enc("c"));
-
-      assert.deepEqual(await listBlobs(bundle, "artifacts/"), ["artifacts/a.bin", "artifacts/sub/b.bin"]);
-      assert.deepEqual(await listBlobs(bundle, "other/"), ["other/c.bin"]);
-      assert.deepEqual(
-        (await listBlobs(bundle)).sort(),
-        ["artifacts/a.bin", "artifacts/sub/b.bin", "other/c.bin"].sort(),
-      );
-    });
-  });
-}
 
 test("FilesystemBackend: listBlobs skips dot-entries on disk (I3 — the WALK itself excludes atomicWrite-shaped temp files and dotfiles, not just the write-time guard)", async () => {
   await withFsBundle(async (bundle) => {
@@ -357,18 +173,6 @@ test("resolveContentType: explicit override wins, else inferred from extension, 
   assert.equal(resolveContentType("artifacts/data.unknownext"), "application/octet-stream");
   assert.equal(resolveContentType("artifacts/noext"), "application/octet-stream");
 });
-
-for (const [name, run] of RUNNERS) {
-  test(`${name}: writeBlob with NO explicit content-type infers from the key extension identically on both adapters`, async () => {
-    await run(async (bundle) => {
-      await writeBlob(bundle, "artifacts/report.html", enc("<p>hi</p>"));
-      assert.equal((await readBlob(bundle, "artifacts/report.html"))!.contentType, "text/html; charset=utf-8");
-
-      await writeBlob(bundle, "artifacts/data.bin", enc("raw"));
-      assert.equal((await readBlob(bundle, "artifacts/data.bin"))!.contentType, "application/octet-stream");
-    });
-  });
-}
 
 test("FilesystemBackend: writeBlob accepts-but-does-NOT-persist an explicit content-type override — readBlob always infers from the key extension (documented divergence, B5)", async () => {
   await withFsBundle(async (bundle) => {
@@ -407,14 +211,6 @@ for (const [name, run] of RUNNERS) {
     });
   });
 }
-
-// RemoteBackend's blob methods are now REAL (wire-protocol v0.1, Stage-1 Unit 2a Part
-// B) — the tri-adapter parity, CAS-over-HTTP, and traversal-guard coverage for
-// RemoteBackend lives in `wire-protocol.test.ts` (it needs the reference router as a
-// transport, which this file deliberately does not depend on). This file stays
-// dual-adapter (fs+mem) by design.
-
-// ── unit-review fixes ──────────────────────────────────────────────────────
 
 test("MemoryBackend: writeBlob copies a Buffer's bytes rather than aliasing them — mutating the caller's buffer AFTER the write must not mutate the stored blob (Buffer.prototype.slice() returns a VIEW, not a copy)", async () => {
   const mem = new MemoryBackend();
@@ -480,34 +276,11 @@ test("FilesystemBackend: readBlob PROPAGATES a real fs error (ENOTDIR) rather th
   });
 });
 
-for (const [name, run] of RUNNERS) {
-  test(`${name}: a byte-identical re-write with expectedVersion set to the CURRENT version is a true no-op — returns the SAME token, not a new one (A2)`, async () => {
-    await run(async (bundle) => {
-      const bytes = enc("stable content");
-      const v1 = await writeBlob(bundle, "artifacts/x.bin", bytes);
-      const v2 = await writeBlob(bundle, "artifacts/x.bin", bytes, undefined, { expectedVersion: v1 });
-      assert.equal(v2, v1, "a byte-identical CAS re-write must return the identical version token");
-      assert.equal((await readBlob(bundle, "artifacts/x.bin"))!.version, v1);
-    });
-  });
-}
-
 test("assertSafeBlobKey: rejects a '.md'-ending NON-FINAL segment, not just the final one — 'report.md/attachment.png' would otherwise create an on-disk directory literally named 'report.md', colliding with a future concept doc at id 'report'", () => {
   assert.throws(() => assertSafeBlobKey("report.md/attachment.png"), /blob key/i);
   assert.throws(() => assertSafeBlobKey("a/Report.MD/b/c.bin"), /blob key/i); // case-insensitive, any depth
   assert.throws(() => assertSafeBlobKey("index.md/nested.bin"), /blob key/i); // a reserved name mid-path too
 });
-
-for (const [name, run] of RUNNERS) {
-  test(`${name}: writeBlob/readBlob/existsBlob all reject a '.md'-ending non-final segment (not just the final one)`, async () => {
-    await run(async (bundle) => {
-      const key = "report.md/attachment.png";
-      await assert.rejects(() => writeBlob(bundle, key, enc("x")), /blob key/i);
-      await assert.rejects(() => readBlob(bundle, key), /blob key/i);
-      await assert.rejects(() => existsBlob(bundle, key), /blob key/i);
-    });
-  });
-}
 
 // ── mutation-survivor pins (core-survivor-triage unit) ────────────────────────
 

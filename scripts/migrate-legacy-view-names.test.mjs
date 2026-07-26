@@ -478,6 +478,335 @@ test("an occupant on conventions/view blocks creation AND preserves the Page con
   }
 });
 
+// ── REQUIRED POST-REMOVAL PIN (tasks/remove-legacy-page-bridge-support, recorded by Brian) ─────
+// Phase 3 removed the runtime's acceptance of the legacy names; the migration script is now the
+// ONLY road from legacy stock to a working bundle, so it MUST keep working against the removed
+// world. This test runs the real CLI entrypoint (a subprocess, not an in-process import) against
+// a full legacy fixture — Page-typed registration doc + own-bridge field + the OLD
+// bridge-required shipped convention — and proves the migrated output is what the CURRENT
+// runtime accepts (core's own post-removal predicates). The script imports only generic engine
+// primitives and its own literals; this pin keeps it that way.
+test("POST-REMOVAL PIN: the CLI-invoked migration script fully migrates a legacy fixture, and the migrated docs satisfy the current runtime's predicates", async () => {
+  const { initBundle, writeDoc, readDoc, query } = await core();
+  const { loadPriorShippedViewConventions, loadCanonicalViewConvention } = await script();
+  // Core's CURRENT (post-removal) recognition — the same predicates the ui launcher consumes.
+  const { parseRegistration, resolveDeclaredAccess } = await import(
+    path.join(repoRoot, "packages", "core", "dist", "page.js")
+  );
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-post-removal-"));
+  try {
+    const bundle = await initBundle(dir);
+    const T = "2026-07-01T00:00:00.000Z";
+    await writeDoc(bundle, {
+      id: "pages-registry/dash",
+      frontmatter: { type: "Page", title: "Dash", entry: "pages/dash.html", bridge: "bundle-read", timestamp: T },
+      body: "A Page-typed registration with the legacy capability spelling.\n",
+    });
+    // The OLD bridge-required shipped convention (prior form #1) — swaps to the canonical one.
+    const bridgeRequired = loadPriorShippedViewConventions()[0];
+    assert.deepEqual(
+      bridgeRequired.frontmatter.fields.required,
+      ["title", "entry", "bridge"],
+      "prior form #1 is the bridge-required convention this pin needs",
+    );
+    await writeDoc(bundle, { id: "conventions/view", frontmatter: bridgeRequired.frontmatter, body: bridgeRequired.body });
+
+    // Pre-migration, the CURRENT runtime rejects/downgrades the stock (this is the removal).
+    const before = await readDoc(bundle, "pages-registry/dash");
+    assert.equal(parseRegistration(before.id, before.frontmatter), null, "a Page-typed doc no longer registers");
+    assert.equal(resolveDeclaredAccess(before.frontmatter), "none", "a bridge-only doc resolves none");
+
+    // Run the REAL CLI entrypoint, exactly as the status finding tells the user to.
+    const { stdout } = await execFileAsync(process.execPath, [SCRIPT, "--dir", dir], {
+      cwd: repoRoot,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    const receipt = JSON.parse(stdout).bundles[0];
+    assert.equal(receipt.types_flipped, 1);
+    assert.equal(receipt.bridge_renamed, 1);
+    assert.equal(receipt.convention_swapped, "swapped", "the old bridge-required convention swapped");
+
+    // Post-migration, the SAME docs satisfy the current runtime: type flipped, field renamed,
+    // convention swapped to the canonical (access-required) form — in place, ids unmoved.
+    const after = await readDoc(bundle, "pages-registry/dash");
+    assert.equal(after.frontmatter.type, "View");
+    assert.equal(after.frontmatter.access, "bundle-read");
+    assert.equal(Object.hasOwn(after.frontmatter, "bridge"), false);
+    const registration = parseRegistration(after.id, after.frontmatter);
+    assert.ok(registration, "the migrated doc registers under the post-removal grammar");
+    assert.equal(registration.entry, "pages/dash.html", "the legacy LOCATION is kept and accepted");
+    assert.equal(resolveDeclaredAccess(after.frontmatter), "bundle-read", "the renamed field grants what bridge no longer can");
+    const canonical = loadCanonicalViewConvention();
+    const swapped = await readDoc(bundle, "conventions/view");
+    assert.deepEqual(swapped.frontmatter, canonical.frontmatter);
+    assert.deepEqual(canonical.frontmatter.fields.required, ["title", "entry", "access"]);
+    assert.equal((await query(bundle, { type: "Page" })).length, 0, "zero Page-typed stock remains");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── Review F2: shipped-teaching refresh + superseded legacy reference retirement ──────────────
+test("F2: a full historical install's teaching artifacts migrate too — page-authoring reference retired (replacement created), historical review-request refreshed; second run is a no-op", async () => {
+  const { migrateBundle, loadCanonicalViewReference, loadCanonicalReviewRequestConvention, loadPriorShippedReviewRequestConventions } =
+    await script();
+  const { initBundle, writeDoc, readDoc } = await core();
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-teaching-"));
+  try {
+    const bundle = await initBundle(dir);
+    const T = "2026-07-01T00:00:00.000Z";
+    await writeDoc(bundle, {
+      id: "pages-registry/dash",
+      frontmatter: { type: "Page", title: "Dash", entry: "pages/dash.html", bridge: "bundle-read", timestamp: T },
+      body: "Legacy stock.\n",
+    });
+    // The HISTORICAL shipped teaching artifacts (frozen snapshots — Page taught as current).
+    const priorRR = loadPriorShippedReviewRequestConventions()[0];
+    await writeDoc(bundle, { id: "conventions/review-request", frontmatter: priorRR.frontmatter, body: priorRR.body });
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: T },
+      body: "# Bundle Page authoring — bridge v0\n\nTeaches type: Page and bridge: as the live contract.\n",
+    });
+
+    const receipt = await migrateBundle(bundle);
+    assert.equal(receipt.review_request_swapped, "swapped", "the known historical form refreshes");
+    assert.equal(receipt.reference_created, true, "the replacement reference is created from the canonical file");
+    assert.deepEqual(receipt.legacy_references_deleted, ["references/page-authoring-v0"]);
+
+    // Engine writes stamp a timestamp when the canonical file omits one — content equality
+    // ignores it (the same rule the script's own classification applies).
+    const minusTimestamp = ({ timestamp: _t, ...rest }) => rest;
+    await assert.rejects(() => readDoc(bundle, "references/page-authoring-v0"), /ENOENT/);
+    const replacement = await readDoc(bundle, "references/view-authoring-v0");
+    const canonicalRef = loadCanonicalViewReference();
+    assert.deepEqual(minusTimestamp(replacement.frontmatter), minusTimestamp(canonicalRef.frontmatter));
+    assert.equal(replacement.body, canonicalRef.body);
+    const rr = await readDoc(bundle, "conventions/review-request");
+    const canonicalRR = loadCanonicalReviewRequestConvention();
+    assert.deepEqual(minusTimestamp(rr.frontmatter), minusTimestamp(canonicalRR.frontmatter));
+    assert.equal(rr.body, canonicalRR.body);
+
+    // Idempotence: run 2 reports nothing for the teaching artifacts.
+    const second = await migrateBundle(bundle);
+    assert.equal(second.review_request_swapped, false);
+    assert.equal(second.reference_created, false);
+    assert.deepEqual(second.legacy_references_deleted, []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("F2 guards: a customized review-request is never touched; an unreadable doc blocks retirement; a non-Reference occupant on the replacement id refuses it", async () => {
+  const { migrateBundle } = await script();
+  const { initBundle, writeDoc, readDoc } = await core();
+  const T = "2026-07-01T00:00:00.000Z";
+
+  // Guard 1: customized review-request — left untouched, warned.
+  const dirA = await mkdtemp(path.join(tmpdir(), "aslite-migrate-teach-custom-"));
+  try {
+    const bundle = await initBundle(dirA);
+    await writeDoc(bundle, {
+      id: "conventions/review-request",
+      frontmatter: { type: "Convention", title: "Review Request", governs: "Review Request", fields: { required: ["title"], optional: [] }, timestamp: T },
+      body: "My own review workflow — customized.\n",
+    });
+    const receipt = await migrateBundle(bundle);
+    assert.equal(receipt.review_request_swapped, "skipped_customized");
+    assert.ok(receipt.warnings.some((w) => w.id === "conventions/review-request" && /customized/.test(w.warning)));
+    assert.equal((await readDoc(bundle, "conventions/review-request")).body, "My own review workflow — customized.\n");
+  } finally {
+    await rm(dirA, { recursive: true, force: true });
+  }
+
+  // Guard 2: an unreadable doc in the bundle blocks the retirement (it could hide stock).
+  const dirB = await mkdtemp(path.join(tmpdir(), "aslite-migrate-teach-skip-"));
+  try {
+    const bundle = await initBundle(dirB);
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: T },
+      body: "Legacy teaching.\n",
+    });
+    writeRawDoc(dirB, "notes/broken.md", "---\ntype: Note\ntitle: Broken\nentry: [unterminated\n---\nnever parses\n");
+    const receipt = await migrateBundle(bundle);
+    assert.ok(receipt.skipped_docs.length > 0, "the malformed doc was skipped");
+    assert.deepEqual(receipt.legacy_references_deleted, [], "retirement is blocked by skipped docs");
+    assert.ok(await readDoc(bundle, "references/page-authoring-v0"), "the legacy reference is kept");
+    assert.ok(receipt.warnings.some((w) => w.id === "references/page-authoring-v0" && /kept/.test(w.warning)));
+  } finally {
+    await rm(dirB, { recursive: true, force: true });
+  }
+
+  // Guard 3: a non-Reference occupant on the replacement id refuses retirement — never delete
+  // the teaching without its replacement in place.
+  const dirC = await mkdtemp(path.join(tmpdir(), "aslite-migrate-teach-occupied-"));
+  try {
+    const bundle = await initBundle(dirC);
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: T },
+      body: "Legacy teaching.\n",
+    });
+    await writeDoc(bundle, {
+      id: "references/view-authoring-v0",
+      frontmatter: { type: "Note", title: "Squatter", timestamp: T },
+      body: "Not a Reference.\n",
+    });
+    const receipt = await migrateBundle(bundle);
+    assert.deepEqual(receipt.legacy_references_deleted, []);
+    assert.ok(await readDoc(bundle, "references/page-authoring-v0"), "the legacy reference is kept");
+    assert.equal((await readDoc(bundle, "references/view-authoring-v0")).frontmatter.type, "Note", "the occupant is untouched");
+    assert.ok(receipt.warnings.some((w) => w.id === "references/view-authoring-v0" && /refused/.test(w.warning)));
+  } finally {
+    await rm(dirC, { recursive: true, force: true });
+  }
+});
+
+// ── Round-2 P1: the known transitional view-authoring reference refreshes at its renamed id ────
+test("round-2 P1: a KNOWN shipped transitional references/view-authoring-v0 refreshes to the canonical; customized is untouched; unreadable stock blocks the refresh", async () => {
+  const { migrateBundle, loadCanonicalViewReference, loadPriorShippedViewAuthoringReferences } = await script();
+  const { initBundle, writeDoc, readDoc } = await core();
+  const priorForms = loadPriorShippedViewAuthoringReferences();
+  const transitional = priorForms[priorForms.length - 1];
+
+  // Refresh: the mid-vintage form swaps to the canonical under CAS; a second run is a no-op.
+  const dirA = await mkdtemp(path.join(tmpdir(), "aslite-migrate-midvintage-"));
+  try {
+    const bundle = await initBundle(dirA);
+    await writeDoc(bundle, { id: "references/view-authoring-v0", frontmatter: transitional.frontmatter, body: transitional.body });
+    const receipt = await migrateBundle(bundle);
+    assert.equal(receipt.reference_refreshed, "swapped");
+    const canonical = loadCanonicalViewReference();
+    const after = await readDoc(bundle, "references/view-authoring-v0");
+    assert.equal(after.body, canonical.body);
+    assert.ok(!/migration window/.test(after.body), "the transitional teaching is gone");
+    const second = await migrateBundle(bundle);
+    assert.equal(second.reference_refreshed, false, "idempotent — the canonical form classifies current");
+  } finally {
+    await rm(dirA, { recursive: true, force: true });
+  }
+
+  // Customized: never touched, warned — consistent with every other customized surface.
+  const dirB = await mkdtemp(path.join(tmpdir(), "aslite-migrate-midvintage-custom-"));
+  try {
+    const bundle = await initBundle(dirB);
+    await writeDoc(bundle, {
+      id: "references/view-authoring-v0",
+      frontmatter: { type: "Reference", title: "My own view guide", protocol: "v0", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "My customized authoring guide.\n",
+    });
+    const receipt = await migrateBundle(bundle);
+    assert.equal(receipt.reference_refreshed, "skipped_customized");
+    assert.ok(receipt.warnings.some((w) => w.id === "references/view-authoring-v0" && /customized/.test(w.warning)));
+    assert.equal((await readDoc(bundle, "references/view-authoring-v0")).body, "My customized authoring guide.\n");
+  } finally {
+    await rm(dirB, { recursive: true, force: true });
+  }
+
+});
+
+test("round-3 P2 GUARD SPLIT: an unrelated malformed doc leaves the classify-and-CAS refreshes RUNNING while retirement and deletion stay blocked — in both modes", async () => {
+  // The reviewer's combined fixture: unrelated malformed doc + known-shipped review-request
+  // convention + legacy page-authoring reference (+ the transitional view-authoring reference
+  // and a Page convention, so every guarded/unguarded operation is present at once). Refresh
+  // safety comes from exact known-shipped classification + CAS at the target id; hidden stock
+  // is material only to REMOVALS.
+  const {
+    migrateBundle,
+    loadCanonicalViewReference,
+    loadCanonicalReviewRequestConvention,
+    loadPriorShippedReviewRequestConventions,
+    loadPriorShippedViewAuthoringReferences,
+  } = await script();
+  const { initBundle, writeDoc, readDoc } = await core();
+  const T = "2026-07-01T00:00:00.000Z";
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-guard-split-"));
+  try {
+    const bundle = await initBundle(dir);
+    const priorRR = loadPriorShippedReviewRequestConventions()[0];
+    await writeDoc(bundle, { id: "conventions/review-request", frontmatter: priorRR.frontmatter, body: priorRR.body });
+    const priorRefs = loadPriorShippedViewAuthoringReferences();
+    const transitional = priorRefs[priorRefs.length - 1];
+    await writeDoc(bundle, { id: "references/view-authoring-v0", frontmatter: transitional.frontmatter, body: transitional.body });
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: T },
+      body: "Legacy teaching.\n",
+    });
+    await writeDoc(bundle, {
+      id: "conventions/page",
+      frontmatter: {
+        type: "Convention",
+        title: "Page",
+        governs: "Page",
+        path: "pages-registry/",
+        fields: { required: ["title", "entry", "bridge"], optional: ["description"], values: { bridge: ["none", "bundle-read"] }, terminal: {} },
+        timestamp: T,
+      },
+      body: "# Page\n\nThe dead legacy kind.\n",
+    });
+    writeRawDoc(dir, "notes/broken.md", "---\ntype: Note\ntitle: Broken\nentry: [unterminated\n---\nnever parses\n");
+
+    // Dry-run first: the same split is PROJECTED.
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.ok(dry.skipped_docs.length > 0);
+    assert.equal(dry.review_request_swapped, "would_swap", "dry-run: the refresh proceeds despite the unrelated skip");
+    assert.equal(dry.reference_refreshed, "would_swap");
+    assert.deepEqual(dry.legacy_references_deleted, [], "dry-run: retirement stays blocked");
+    assert.deepEqual(dry.page_conventions_deleted, [], "dry-run: deletion stays blocked");
+
+    // Real run: refreshes SWAP with receipts saying so; removals stay blocked with warnings.
+    const receipt = await migrateBundle(bundle);
+    assert.ok(receipt.skipped_docs.length > 0);
+    assert.equal(receipt.review_request_swapped, "swapped");
+    assert.equal(receipt.reference_refreshed, "swapped");
+    const canonicalRR = loadCanonicalReviewRequestConvention();
+    assert.equal((await readDoc(bundle, "conventions/review-request")).body, canonicalRR.body, "the convention no longer teaches Page");
+    const canonicalRef = loadCanonicalViewReference();
+    assert.equal((await readDoc(bundle, "references/view-authoring-v0")).body, canonicalRef.body);
+    assert.deepEqual(receipt.legacy_references_deleted, []);
+    assert.ok(await readDoc(bundle, "references/page-authoring-v0"), "retirement blocked — the legacy reference is kept");
+    assert.ok(receipt.warnings.some((w) => w.id === "references/page-authoring-v0" && /unreadable docs were skipped/.test(w.warning)));
+    assert.deepEqual(receipt.page_conventions_deleted, []);
+    assert.ok(await readDoc(bundle, "conventions/page"), "deletion blocked — the Page convention is kept");
+    assert.ok(receipt.warnings.some((w) => w.id === "conventions/page" && /kept/.test(w.warning)));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("round-2 P1 PROVENANCE TRIPWIRE: the frozen prior-shipped view-authoring reference forms are byte-pinned to their source commits", async () => {
+  // Each frozen file was extracted with `git show <commit>:examples/views/references/
+  // view-authoring-v0.md`; these sha256 literals pin the BYTES so the frozen forms can never
+  // drift silently (the legacy-constants-tripwire discipline, applied to whole files). If a
+  // form legitimately needs re-extraction, re-record its hash here in the same change.
+  const { createHash } = await import("node:crypto");
+  const { loadPriorShippedViewAuthoringReferences } = await script();
+  const dir = path.join(repoRoot, "scripts", "prior-shipped-view-authoring-references");
+  const pinned = {
+    "1-cf4f0d3-initial-view-teaching.md": "d8ede4bc61103713515597b1f7892f7c89b5602da2bfa7e12b2761e98a90a68b",
+    "2-ae1dd32-bundle-propose.md": "f96cf46a73d771f6ec7c3c49c123e15724c25983e1daaea36dd08eccf630a25a",
+    "3-c6bcd0d-query-alignment.md": "2f4e586349391fcb9d117f4c23f3023c8c30f54ec137d4440eb1b6894a60733a",
+    "4-fc9474c-personal-task-system.md": "f66a0f1230cb777bfc86df9ba3a8d6ffc6153641d61551d4372343d538fe3509",
+    "5-850a5dc-access-rename.md": "d8b590f991ac81b5a1ec1f3b87d7ed3250f6d1f03fd5e4fa84702e55cae2adc0",
+    "6-5d04732-transitional-wording.md": "4605140c2a296f988bcd03a8e6332c9d50ba026f7f3e9d4e2f61fd9b8bba4680",
+    "7-2901497-phase2a-transitional.md": "7ef06885357e4627f8bb0a695db0354316a4dd65c08fbf9e95f5544281d92b41",
+  };
+  const names = (await import("node:fs")).readdirSync(dir).filter((n) => n.endsWith(".md")).sort();
+  assert.deepEqual(names, Object.keys(pinned), "exactly the recorded frozen forms, no drift in the set");
+  for (const [name, expected] of Object.entries(pinned)) {
+    const bytes = await readFile(path.join(dir, name));
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), expected, `${name}: bytes drifted from the source commit`);
+  }
+  // And the newest frozen forms really are the transitional teaching this fix exists for —
+  // wrong bytes (e.g. accidentally the canonical content) fail here too.
+  const forms = loadPriorShippedViewAuthoringReferences();
+  assert.equal(forms.length, 7);
+  assert.match(forms[6].body, /migration window/);
+  assert.match(forms[5].body, /migration window/);
+});
+
 test("CLI surface: --dry-run over --dir emits the receipt with the normalization note; no --dir exits 2", async () => {
   const { NORMALIZATION_NOTE } = await script();
   const { dir } = await makeFixtureBundle();
@@ -723,5 +1052,191 @@ test("receipt result: warned zero-action states never claim a clean scan (review
     assert.equal(real.result, expected);
   } finally {
     await rm(keptDir, { recursive: true, force: true });
+  }
+});
+
+// ── Rebase reconciliation (PR #158 x phase-3): refresh actions are visible to the verdict ──────
+// A run that ONLY refreshed a teaching artifact (counters 0, warnings 0) must never claim
+// "nothing to migrate — no legacy names found": that is exactly the false-clean class the
+// receipt-verdict review outlawed.
+
+test("receipt result: a refresh-ONLY run states the refresh in mode-aware grammar — never the clean-scan claim", async () => {
+  const { migrateBundle, loadPriorShippedViewAuthoringReferences } = await script();
+  const { initBundle, writeDoc } = await core();
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-verdict-refresh-"));
+  try {
+    const bundle = await initBundle(dir);
+    const priorRefs = loadPriorShippedViewAuthoringReferences();
+    const transitional = priorRefs[priorRefs.length - 1];
+    await writeDoc(bundle, { id: "references/view-authoring-v0", frontmatter: transitional.frontmatter, body: transitional.body });
+
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(dry.result, "would refresh the View authoring reference");
+    const real = await migrateBundle(bundle);
+    assert.equal(real.result, "refreshed the View authoring reference");
+    // Once refreshed, the NEXT run really is clean — and only then may it say so.
+    const after = await migrateBundle(bundle);
+    assert.equal(after.result, "nothing to migrate — no legacy names found in 1 doc (all readable)");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("receipt result: refresh + doc work compose into ONE mode-aware sentence", async () => {
+  const { migrateBundle, loadPriorShippedViewAuthoringReferences, loadPriorShippedReviewRequestConventions } =
+    await script();
+  const { initBundle, writeDoc } = await core();
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-verdict-combined-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "pages-registry/dash",
+      frontmatter: { type: "Page", title: "Dash", entry: "pages/dash.html", bridge: "bundle-read", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "legacy stock\n",
+    });
+    const priorRefs = loadPriorShippedViewAuthoringReferences();
+    const transitional = priorRefs[priorRefs.length - 1];
+    await writeDoc(bundle, { id: "references/view-authoring-v0", frontmatter: transitional.frontmatter, body: transitional.body });
+    const priorRR = loadPriorShippedReviewRequestConventions()[0];
+    await writeDoc(bundle, { id: "conventions/review-request", frontmatter: priorRR.frontmatter, body: priorRR.body });
+
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(
+      dry.result,
+      "would migrate 1 doc (1 type rename, 1 field rename), refresh the Review Request convention, " +
+        "refresh the View authoring reference",
+    );
+    const real = await migrateBundle(bundle);
+    assert.equal(
+      real.result,
+      "migrated 1 doc (1 type rename, 1 field rename), refreshed the Review Request convention, " +
+        "refreshed the View authoring reference",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("receipt result: the absent-replacement retirement pins BOTH the create and retire clauses, dry and real (delta-review P2)", async () => {
+  // Reviewer's finding: forcing the retire clause silent left all focused tests green — a real
+  // migration could delete the legacy reference while the verdict omitted it. Exact sentences.
+  const { migrateBundle } = await script();
+  const { initBundle, writeDoc } = await core();
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-verdict-retire-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "legacy teaching\n",
+    });
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(dry.result, "would create the View authoring reference, retire 1 legacy Page-authoring reference");
+    const real = await migrateBundle(bundle);
+    assert.equal(real.result, "created the View authoring reference, retired 1 legacy Page-authoring reference");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("receipt result: the ALL-ACTION fixture pins the fully-composed sentence INCLUDING clause order, dry and real (delta-review P2)", async () => {
+  const { migrateBundle, loadPriorShippedViewConventions, loadPriorShippedReviewRequestConventions, loadPriorShippedViewAuthoringReferences } =
+    await script();
+  const { initBundle, writeDoc } = await core();
+  const T = "2026-07-01T00:00:00.000Z";
+  const dir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-verdict-composed-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "pages-registry/dash",
+      frontmatter: { type: "Page", title: "Dash", entry: "pages/dash.html", bridge: "bundle-read", timestamp: T },
+      body: "legacy stock\n",
+    });
+    const priorView = loadPriorShippedViewConventions()[0];
+    await writeDoc(bundle, { id: "conventions/view", frontmatter: priorView.frontmatter, body: priorView.body });
+    await writeDoc(bundle, {
+      id: "conventions/page",
+      frontmatter: {
+        type: "Convention",
+        title: "Page",
+        governs: "Page",
+        path: "pages-registry/",
+        fields: { required: ["title", "entry", "bridge"], optional: ["description"], values: { bridge: ["none", "bundle-read"] }, terminal: {} },
+        timestamp: T,
+      },
+      body: "# Page\n",
+    });
+    const priorRR = loadPriorShippedReviewRequestConventions()[0];
+    await writeDoc(bundle, { id: "conventions/review-request", frontmatter: priorRR.frontmatter, body: priorRR.body });
+    const priorRefs = loadPriorShippedViewAuthoringReferences();
+    const transitional = priorRefs[priorRefs.length - 1];
+    await writeDoc(bundle, { id: "references/view-authoring-v0", frontmatter: transitional.frontmatter, body: transitional.body });
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: T },
+      body: "legacy teaching\n",
+    });
+
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(
+      dry.result,
+      "would migrate 1 doc (1 type rename, 1 field rename), swap the View convention, " +
+        "delete 1 Page convention, refresh the Review Request convention, " +
+        "refresh the View authoring reference, retire 1 legacy Page-authoring reference",
+    );
+    const real = await migrateBundle(bundle);
+    assert.equal(
+      real.result,
+      "migrated 1 doc (1 type rename, 1 field rename), swapped the View convention, " +
+        "deleted 1 Page convention, refreshed the Review Request convention, " +
+        "refreshed the View authoring reference, retired 1 legacy Page-authoring reference",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("receipt result: blocked/skipped refresh states surface through the attention verdict, never a clean scan", async () => {
+  const { migrateBundle } = await script();
+  const { initBundle, writeDoc } = await core();
+
+  // (a) A CUSTOMIZED view-authoring reference: zero actions, one warning — named reason.
+  const customDir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-verdict-custom-"));
+  try {
+    const bundle = await initBundle(customDir);
+    await writeDoc(bundle, {
+      id: "references/view-authoring-v0",
+      frontmatter: { type: "Reference", title: "My own guide", protocol: "v0", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "customized\n",
+    });
+    const expected = "no changes made, but attention needed — 1 warning: customized View authoring reference skipped";
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(dry.result, expected);
+    const real = await migrateBundle(bundle);
+    assert.equal(real.result, expected);
+  } finally {
+    await rm(customDir, { recursive: true, force: true });
+  }
+
+  // (b) Retirement blocked by unreadable stock: the retained legacy reference is a named reason
+  // beside the skip note.
+  const blockedDir = await mkdtemp(path.join(tmpdir(), "aslite-migrate-verdict-blocked-"));
+  try {
+    const bundle = await initBundle(blockedDir);
+    await writeDoc(bundle, {
+      id: "references/page-authoring-v0",
+      frontmatter: { type: "Reference", title: "Bundle Page authoring — bridge v0", protocol: "v0", timestamp: "2026-07-01T00:00:00.000Z" },
+      body: "legacy teaching\n",
+    });
+    writeRawDoc(blockedDir, "notes/broken.md", "---\ntype: Note\ntitle: Broken\nbad: [unterminated\n---\nnever parses\n");
+    const expected =
+      "no changes made, but attention needed — 2 warnings: 1 doc unreadable — see skipped_docs; " +
+      "1 legacy Page-authoring reference retained (see warnings)";
+    const dry = await migrateBundle(bundle, { dryRun: true });
+    assert.equal(dry.result, expected);
+    const real = await migrateBundle(bundle);
+    assert.equal(real.result, expected);
+  } finally {
+    await rm(blockedDir, { recursive: true, force: true });
   }
 });

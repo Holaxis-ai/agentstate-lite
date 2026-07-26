@@ -1,29 +1,26 @@
 ---
 type: Reference
-title: Bundle View authoring — read bridge v0 and trusted actions v1
-protocol: v0+v1
-timestamp: "2026-07-22T00:00:00.000Z"
+title: Bundle View authoring — bridge v0
+protocol: v0
+timestamp: "2026-07-17T00:00:00.000Z"
 ---
 
-# Bundle View authoring — read bridge v0 and trusted actions v1
+# Bundle View authoring — bridge v0
 
 Use this reference when creating or revising a human-facing View in this bundle. It travels with
 View-bearing portable recipes so View work does not depend on an agent-harness skill. The installed
 CLI remains the authority for the runtime implementation; this document describes the stable `v0`
-read contract and the deliberately narrow `v1` trusted-action contract.
+contract the View declares and consumes.
 
 A **bundle View** is a self-contained HTML file promoted into an agentstate-lite bundle as a blob
 under `views/…`, declared by a `type: View` registry doc, and rendered by `agentstate-lite ui`
 inside a **sandboxed iframe**. Views are bundle content — authored, versioned, attributed, and
 synced like any other doc — while the shell is the launcher and trusted data broker.
 
-`Page` is the legacy name for this kind, and it is no longer read: a legacy `type: Page` doc
-does not register (the launcher ignores it). Leftover legacy stock is renamed to `type: View`
-in place by the repo's `migrate-legacy-view-names` script, and `aslite status` lists it under
-its `legacy_naming` finding; docs under the legacy `pages-registry/`/`pages/` prefixes stay
-recognized where they are once typed `View`. Author views as `type: View` under
-`views-registry/`/`views/`. Bridge wire names (the `open-page` verb, its `pageId` payload field)
-are stable ABI and did not change with the rename.
+`Page` is the accepted legacy name for this kind: existing `type: Page` docs under the legacy
+`pages-registry/`/`pages/` prefixes keep working and never need migrating — author new views as
+`type: View` under `views-registry/`/`views/`. Bridge wire names (the `open-page` verb, its
+`pageId` payload field) are stable ABI and did not change with the rename.
 
 ## Trust model (why a view can never touch a credential)
 
@@ -38,10 +35,8 @@ The `ui` server serves two privilege tiers on one loopback origin:
 The iframe is `sandbox="allow-scripts"` with **no** `allow-same-origin`, so the view runs at an
 **opaque origin**. Combined with a strict per-view CSP (`connect-src 'none'`), the view **cannot
 open any network request at all** — no fetch, XHR, WebSocket, or EventSource. Its only channel to
-the outside is `postMessage` to the shell. The stable v0 bridge is read-only. A View that declares
-`bundle-propose` may additionally ask trusted shell chrome to prepare one v1 scalar-field action;
-the View still receives no credential or write endpoint, and only the human's shell-native Apply
-choice authorizes the CAS write.
+the outside is `postMessage` to the shell, which brokers a narrow, **read-only** request set on
+its behalf. A leaked token would still be useless: there is no code path from the view to the API.
 
 ## Message shapes
 
@@ -53,20 +48,18 @@ view's own iframe; the view drops any message whose `event.source` is not `windo
 
 | type        | payload                                                    | reply `result`                                             |
 | ----------- | ---------------------------------------------------------- | ---------------------------------------------------------- |
-| `hello`     | —                                                          | `{ bundle: { root, name }, mode, protocol: "v0", grant }` |
+| `hello`     | —                                                          | `{ bundle: { root, name }, mode, protocol: "v0", grant: "read" }` |
 | `query`     | `{ params: { type?, prefix?, field?, open?, limit? } }`    | `{ rows: DocHead[], count }`                               |
 | `read`      | `{ docId }`                                                | `{ id, frontmatter, body }`                                |
 | `edges`     | `{ params: { from?, to?, text? } }`                        | `{ edges: { from, to, text }[], count }`                   |
 | `subscribe` | —                                                          | `{ ok: true }`, then a stream of `change` events          |
 | `open-page` | `{ pageId: "views-registry/…" }`                           | none; fire-and-forget shell navigation                    |
 
-`hello.result.grant` is `"read"` for `bundle-read` and `"propose"` for `bundle-propose`.
-
-`open-page` is the sole capability-independent action: `access: none`, `access: bundle-read`, and
-`access: bundle-propose` Views may ask the shell to open another usable registered View. The shell
-accepts only a conservative `views-registry/…` (or legacy-location `pages-registry/…`) concept
-id, validates that it resolves to a `type: View` doc with a safe `views/…`
-(or legacy-location `pages/…`) entry, and mounts the target normally with its own sandbox, nonce, and
+`open-page` is the sole capability-independent action: both `bridge: none` and
+`bridge: bundle-read` Views may ask the shell to open another usable registered View. The shell
+accepts only a conservative `views-registry/…` (or legacy `pages-registry/…`) concept id,
+validates that it resolves to a `type: View` (or legacy `type: Page`) doc with a safe `views/…`
+(or legacy `pages/…`) entry, and mounts the target normally with its own sandbox, nonce, and
 bridge capability. It returns no target body, frontmatter, entry, HTML, or nonce. A failed
 attempt can reveal that one caller-supplied registry id is not usable; this bounded existence
 oracle is the only information exposed by navigation.
@@ -76,15 +69,13 @@ frontmatter, never a body). `query` params:
 
 - `type` / `prefix` — server-side facets (a bundle-relative id prefix, a frontmatter `type`).
 - `field` — a client-side `key=value` filter; comma-separated values are OR (`status=todo,blocked`).
-  Scalar and array-valued fields use the same string-coerced membership rule as CLI `list`.
 - `open` — drop terminal rows, derived from the BUNDLE'S OWN kind conventions exactly like
   `list --open`: a row is dropped iff the convention governing its `type` declares the row's
   current field value(s) terminal (`fields.terminal`, e.g. the Task kind's `done`/`canceled`).
   A row with no governing kind is kept; a bundle where no kind declares a terminal set filters
   nothing. (The shell loads the registry once per change from the server, which builds it with
   core's `loadKinds` — one registry, no bridge-side schema.)
-- `limit` — a positive number caps `rows`; `0` or absence is unlimited. `count` remains the total
-  matched after `field`/`open` filtering and before the cap, matching CLI `list`.
+- `limit` — cap the row count after filtering.
 
 `edges` is the general graph query — the ONE primitive every edge-shaped question reduces to
 (the same `queryEdges` atom `link list` is a CLI face over). `params`:
@@ -119,23 +110,6 @@ lower-level event stream.
 **There are no mutation messages in v0.** Read-only is enforced *by construction*: the shell
 defines no write/delete/update handler, so any such request returns an `error` reply.
 
-### Trusted action bridge v1
-
-`access: bundle-propose` includes the v0 read surface and adds two exact v1 requests:
-
-- `{ bridge: "v1", type: "read-versioned", id, docId }` returns one canonical document and the
-  version from the same read.
-- `{ bridge: "v1", type: "action.propose", requestId, action: { kind:
-  "document.set-field", docId, field, value, expectedVersion } }` proposes changing one declared
-  scalar field on an existing governed document.
-
-The shell independently re-reads the View registry, exact HTML version, target document, and Kind;
-shows canonical before/after values outside the iframe; and commits only after the human chooses
-Apply. The approval token and immutable launch identity never enter the iframe. A stale target is a
-visible conflict and is never retried behind the human's back. V1 is local `--dir` only and excludes
-body writes, links, creation, deletion, remote writes, and persistent grants. Start the shell with
-`aslite ui --actor <name>` (or set `AGENTSTATE_LITE_ACTOR`) to enable proposals.
-
 ## Live updates
 
 The shell (only) holds one `EventSource('/events')`. The server watches the bundle — `fs.watch`
@@ -144,30 +118,23 @@ a change delta. The shell fans doc changes into subscribed views as `change` eve
 **hot-reloads** a view's iframe (with a fresh nonce) when the view's own HTML blob changes. (Remote
 view-blob hot-reload is a labeled follow-up; live doc updates work in both modes.)
 
-## `access` — the enforced data/content split
+## `bridge` — the enforced data/content split
 
-The registry doc's `access` field decides whether the shell will answer THIS view's bridge
+The registry doc's `bridge` field decides whether the shell will answer THIS view's bridge
 requests at all — and the shell, not the view, is what enforces it:
 
-- `access: bundle-read` — a **data view**. The shell answers `hello`/`query`/`read`/`edges`/
+- `bridge: bundle-read` — a **data view**. The shell answers `hello`/`query`/`read`/`edges`/
   `subscribe` as described above.
-- `access: bundle-propose` — an **interactive view**. It receives the same read surface and may
-  submit the narrow v1 proposal above. Each proposal still requires trusted-shell confirmation.
-- `access: none` — a **content view**. The shell replies to every bundle-data request with a
+- `bridge: none` — a **content view**. The shell replies to every bundle-data request with a
   `FORBIDDEN` error, before touching any bundle data. It may still use `open-page` navigation.
-- `bridge` is the legacy spelling of this field, and it is no longer read: a doc declaring only
-  the legacy `bridge` field resolves to `access: none` (every bundle-data request is denied).
-  The repo's `migrate-legacy-view-names` script renames leftover legacy `bridge` fields to
-  `access` in place, and `aslite status` lists them under its `legacy_naming` finding.
-  Authoring uses `access`.
-- The `View` convention declares `access` REQUIRED — every view is an intentional
+- The `View` convention declares `bridge` REQUIRED — every view is an intentional
   classification, not a silent default. At runtime the shell still fails closed for a doc this
   convention didn't govern (an external bundle, a hand-edited file that skipped the lint): absent,
-  malformed, or any other value is treated as `access: none`. A view only gets bundle access by
-  declaring exactly `bundle-read` or `bundle-propose`.
+  malformed, or any other value is treated as `bridge: none`. A view only gets bundle access by
+  declaring exactly `bundle-read`.
 
-The launcher groups views by this same field: "Dashboards" for `bundle-read`, "Interactive" for
-`bundle-propose`, and "Documents" for `none`.
+The launcher groups views by this same field: "Dashboards" for `bundle-read`, "Documents" for
+`none`.
 
 ## Authoring a view
 
@@ -180,7 +147,7 @@ aslite pull --doc-key views/review-workflow/reviews.html --out my-view.html
 ```
 
 Adapt the HTML as a self-contained file with inline CSS and JavaScript and no external hosts. A
-data View embeds the bridge client below. A content View (`access: none`) may use only its
+data View embeds the bridge client below. A content View (`bridge: none`) may use only its
 fire-and-forget `openPage` helper; its bundle-data calls return `FORBIDDEN`.
 
 Install the HTML blob and its registry entry:
@@ -190,19 +157,19 @@ aslite promote my-view.html --doc-key views/my-view.html
 aslite new "View" my-view \
   --title "My view" \
   --entry views/my-view.html \
-  --access bundle-read \
+  --bridge bundle-read \
   --description "A live view of this bundle."
 aslite ui --open
 ```
 
-`new "View" my-view` applies the View Kind's declared `views-registry/` path. Use `access: none`
+`new "View" my-view` applies the View Kind's declared `views-registry/` path. Use `bridge: none`
 for a static report or diagram. Re-promoting the HTML updates the open View; the shell reloads it
 with a fresh nonce. If the bundle does not yet declare the View Kind, install its View-bearing
 recipe or promote the supplied `conventions/view.md` once before creating the registry entry.
 
-The seed views here are working examples: `pulse.html`/`roadmap.html` are `access: bundle-read`
+The seed views here are working examples: `pulse.html`/`roadmap.html` are `bridge: bundle-read`
 data views — `roadmap.html` is the one that exercises the `edges` request end-to-end (a live graph
-view of Roadmap Items and the tasks each one `contains`) — and `about.html` is an `access: none`
+view of Roadmap Items and the tasks each one `contains`) — and `about.html` is a `bridge: none`
 content view (no bridge calls at all). `demo.sh` (repo only) wires all of this over a scratch copy
 of this repo's own board.
 

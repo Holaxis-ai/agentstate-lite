@@ -1,7 +1,7 @@
 /**
  * App shell: mounts the ONE global interceptor gate (plans/ui-v1.md rev 3.2) in front of whichever
  * view the URL names. The pages-spike (tasks/ui-pages-spike) makes the LAUNCHER the SOLE surface:
- * it lists the bundle's `type: View` (or legacy `type: Page`) docs and frames the chosen one in a sandboxed iframe. The old
+ * it lists the bundle's `type: View` docs and frames the chosen one in a sandboxed iframe. The old
  * paused React views (board/doc/admin/graph) were removed by human verdict — the launcher REPLACES
  * them, not co-exists — so any non-`page` route falls back to the launcher. The banked plumbing
  * (interceptor + relogin recovery, typed client, query layer) is kept and still ridden here.

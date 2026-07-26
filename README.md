@@ -169,10 +169,11 @@ Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPla
   while `bundle-propose` Views may ask trusted shell chrome to confirm one local, CAS-guarded
   scalar-field change. Content Views receive no bundle-data capability. Views can navigate to other registered
   Views, and View-bearing definitions-only recipes can carry the operating model, registry entry,
-  HTML, and authoring reference together. (`Page` is the legacy name for the kind — existing
-  legacy `type: Page` docs keep working during the migration window; the repo's
-  `migrate-legacy-view-names` script renames them in place, and removal of legacy support is a
-  planned later phase.) Authoring is still HTML/agent-driven rather than a
+  HTML, and authoring reference together. (`Page` is the legacy name for the kind and is no
+  longer read — a legacy `type: Page` doc does not register, and the legacy `bridge:` field
+  grants nothing; `aslite status` flags leftover legacy names and the repo's
+  `migrate-legacy-view-names` script renames them in place. Legacy folder locations stay
+  recognized.) Authoring is still HTML/agent-driven rather than a
   polished end-user builder, so treat the surface as a preview.
 - **The public package ends at a generic remote boundary.** `serve` exposes a bundle through the
   versioned wire protocol, and bundle commands can target a service explicitly with `--remote`.

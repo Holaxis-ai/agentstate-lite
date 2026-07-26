@@ -152,12 +152,13 @@ export async function bootUiOverDirBundle(seedTasks: SeedTask[]): Promise<Runnin
  * Seed a fresh temp bundle with the given Tasks AND the three seed views
  * (`examples/views/{pulse,roadmap,about}.html` blobs + their registry docs) — the fixture for the
  * pages-spike e2e (tasks/ui-pages-spike). Pulse and Roadmap are seeded CANONICALLY
- * (`type: View`, `views-registry/`/`views/`); About is DELIBERATELY seeded under the LEGACY
- * spelling (`type: Page`, `pages-registry/`/`pages/`) so the suite pins dual-read end-to-end —
- * a legacy doc must list, open, and navigate to a canonical View for as long as dual-read
- * exists. The tasks are wired into a single `roadmap-items/spike` doc via `contains` links, so
- * the Roadmap view's `edges` request and rollup bar have real data to render. Returns the
- * bundle dir.
+ * (`type: View`, `views-registry/`/`views/`); About is DELIBERATELY seeded at the LEGACY
+ * LOCATIONS (`pages-registry/`/`pages/`) with the CURRENT `type: View` — locations survive the
+ * name removal, and this pins that end-to-end. One RETIRED doc (`pages-registry/retired`,
+ * `type: Page` + `bridge:`) is seeded too: the removal pin asserts it never reaches the
+ * launcher (tasks/remove-legacy-page-bridge-support). The tasks are wired into a single
+ * `roadmap-items/spike` doc via `contains` links, so the Roadmap view's `edges` request and
+ * rollup bar have real data to render. Returns the bundle dir.
  */
 export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
   const { initBundle, writeDoc, writeBlob } = await import("@agentstate-lite/core");
@@ -200,7 +201,7 @@ export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
     { root: dir },
     {
       id: "views-registry/pulse",
-      frontmatter: { type: "View", title: "Pulse — activity feed", entry: "views/pulse.html", description: "Live document feed.", bridge: "bundle-read" },
+      frontmatter: { type: "View", title: "Pulse — activity feed", entry: "views/pulse.html", description: "Live document feed.", access: "bundle-read" },
       body: "",
     },
   );
@@ -208,7 +209,7 @@ export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
     { root: dir },
     {
       id: "views-registry/trusted-action",
-      frontmatter: { type: "View", title: "Trusted action", entry: "views/trusted-action.html", description: "Confirmed scalar update proof.", bridge: "bundle-propose" },
+      frontmatter: { type: "View", title: "Trusted action", entry: "views/trusted-action.html", description: "Confirmed scalar update proof.", access: "bundle-propose" },
       body: "",
     },
   );
@@ -216,16 +217,27 @@ export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
     { root: dir },
     {
       id: "views-registry/roadmap",
-      frontmatter: { type: "View", title: "Roadmap", entry: "views/roadmap.html", description: "Roadmap items and their contained tasks.", bridge: "bundle-read" },
+      frontmatter: { type: "View", title: "Roadmap", entry: "views/roadmap.html", description: "Roadmap items and their contained tasks.", access: "bundle-read" },
       body: "",
     },
   );
-  // LEGACY on purpose (see the doc comment above): a `type: Page` doc under the legacy prefixes.
+  // LEGACY LOCATIONS on purpose (see the doc comment above): a current `type: View` doc under
+  // the legacy prefixes — locations survive the name removal.
   await writeDoc(
     { root: dir },
     {
       id: "pages-registry/about",
-      frontmatter: { type: "Page", title: "About this bundle", entry: "pages/about.html", description: "Content-view navigation example.", bridge: "none" },
+      frontmatter: { type: "View", title: "About this bundle", entry: "pages/about.html", description: "Content-view navigation example.", access: "none" },
+      body: "",
+    },
+  );
+  // RETIRED legacy NAMES on purpose: a `type: Page` + `bridge:` doc with real entry bytes. The
+  // launcher must never list it (the e2e removal pin in pages.spec.ts).
+  await writeDoc(
+    { root: dir },
+    {
+      id: "pages-registry/retired",
+      frontmatter: { type: "Page", title: "Retired legacy page", entry: "pages/retired.html", description: "Must never render.", bridge: "bundle-read" },
       body: "",
     },
   );
@@ -257,6 +269,12 @@ export async function seedPagesBundle(seedTasks: SeedTask[]): Promise<string> {
     "text/html; charset=utf-8",
   );
   await writeBlob({ root: dir }, "pages/about.html", await readFile(path.join(examples, "about.html")), "text/html; charset=utf-8");
+  await writeBlob(
+    { root: dir },
+    "pages/retired.html",
+    new TextEncoder().encode("<!doctype html><title>retired</title><p>must never render</p>"),
+    "text/html; charset=utf-8",
+  );
   return dir;
 }
 

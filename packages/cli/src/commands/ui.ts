@@ -26,7 +26,7 @@ import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 import { resolveActor } from "../actor.js";
 
-export const UI_USAGE = `agentstate-lite ui — boot the local web UI over the bundle: read its docs as rendered pages (cross-links, backlinks), launch its registered Views (type: View docs framed sandboxed with live updates; legacy type: Page docs keep working), and see live activity, sharing status, and your workspaces
+export const UI_USAGE = `agentstate-lite ui — boot the local web UI over the bundle: read its docs as rendered pages (cross-links, backlinks), launch its registered Views (type: View docs framed sandboxed with live updates; legacy type: Page docs are not registered — 'status' lists them and the migrate-legacy-view-names script renames them in place), and see live activity, sharing status, and your workspaces
 
 Usage:
   agentstate-lite ui [--dir <path> | --remote <url>] [--port <n>] [--actor <name>] [--open]
