@@ -183,7 +183,7 @@ export const COMMAND_GROUPS: CommandGroup[] = [
       {
         usage: "mcp [--dir <path>]",
         summary:
-          "Run the experimental local MCP Apps adapter over a bundle (stdio): an agent supplies script-free HTML/CSS with declarative text bindings plus explicit document IDs to show a read-only, invocation-specific View in chat",
+          "Run the experimental local MCP Apps adapter over a bundle (stdio): an agent supplies script-free HTML/CSS with declarative text or bounded Markdown bindings plus explicit document IDs to show a read-only, invocation-specific View in chat",
       },
       {
         usage:

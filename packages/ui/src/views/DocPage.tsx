@@ -20,7 +20,7 @@ import { fetchEdges, fetchKinds } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { navigate } from "../routing.js";
 import { formatWhen } from "./format.js";
-import { renderMarkdown } from "./markdown.js";
+import { renderMarkdown } from "@agentstate-lite/markdown-renderer";
 
 function stringField(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;

@@ -1,5 +1,5 @@
 /**
- * The doc reader's render pipeline (designs/doc-reader rev 2) — the SECURITY BOUNDARY: untrusted
+ * The shared doc render pipeline (designs/doc-reader rev 2) — the SECURITY BOUNDARY: untrusted
  * bundle markdown renders in the SHELL ORIGIN. Three belts, each independently sufficient for its
  * class:
  *

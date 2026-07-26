@@ -29,7 +29,7 @@ const inputSchema = {
     .string()
     .min(1)
     .describe(
-      "Script- and style-free HTML fragment. Insert authoritative values with data-aslite-text=\"objects.<index>.id|version|body|frontmatter.<field>\". Active elements and navigation attributes are removed by the trusted shell.",
+      "Script- and style-free HTML fragment. Insert authoritative scalar values with data-aslite-text=\"objects.<index>.id|version|body|frontmatter.<field>\"; render a selected document body with data-aslite-markdown=\"objects.<index>.body\". Active elements and navigation attributes are removed by the trusted shell.",
     ),
   css: z
     .string()

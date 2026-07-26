@@ -19,8 +19,8 @@ Options:
   -h, --help            Show this help
 
 The experimental server uses stdio and exposes one tool: show_view. An agent selects exact document
-IDs with the normal CLI, supplies script-free HTML/CSS with declarative data-aslite-text bindings,
-and the host renders it over current authoritative snapshots. It does not mutate the bundle, save
+IDs with the normal CLI, supplies script-free HTML/CSS with declarative data-aslite-text or
+data-aslite-markdown bindings, and the host renders it over current authoritative snapshots. It does not mutate the bundle, save
 the generated HTML, accept remote targets, or expose arbitrary filesystem paths.
 `;
 
