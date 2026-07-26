@@ -15,6 +15,14 @@ description: >-
   declaration. Verification must cover deterministic selection,
   empty/over-limit/mutually-exclusive inputs, kind-derived open filtering,
   action confinement, and exact-ID compatibility.
-timestamp: '2026-07-26T22:12:32.999Z'
+timestamp: '2026-07-26T22:25:54.116Z'
 ---
+# Implementation handoff
 
+Draft PR: https://github.com/Holaxis-ai/agentstate-lite/pull/169
+
+Commit under review: `b6301ca`
+
+Implemented exactly one selection mode (`objectIds` or bounded `query`), shared durable-View field/open filtering, deterministic ID ordering, pre-limit match receipts, and frozen exact IDs/versions for refresh and action authority. No subscriptions, live re-query, edge query, broader action, or support declaration.
+
+Verification: `npm run check` passed; focused core/UI/MCP suites passed 576 tests; CLI/View query-agreement passed 7 tests; browser E2E passed 18 tests; npm artifact and generated-skill parity passed. Task remains in progress pending independent exact-SHA review.
