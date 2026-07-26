@@ -8,22 +8,23 @@ priority: '2'
 assignee: claude-main
 actor: claude-main
 description: >-
-  BUILT + REVIEWED, awaiting Brian's PR. Branch feat/home-landing-rethink, now
-  through 92b9f9f: orientation is a 3-PANEL WALKTHROUGH — (1) What is
-  agentstate-lite? + What problems does it solve? (ratchet in plain words;
-  problems sentence softened to honest scope per Brian: 'forget important
-  information / occasionally step on / often keep invisible'); (2) How do I use
-  agentstate-lite? (agents are the main users, built by/for agents italicized,
-  skill+hook install commands); (3) Views examples + Collaborating with others
-  (sharing promise) + try-it. Back/Next + step indicator; Got it only on the
-  last panel, dismissal persistence unchanged; reopen restarts at panel 1. Unit
-  suite walks all panels with global copy rules; e2e drives the full nav +
-  reopen loop; pages e2e 13/13, ui suite + typecheck green. OPEN FLAGS
-  unchanged: plugin-vs-npm truth of 'should have been installed'; no skip path
-  on the walkthrough (3 clicks mandatory to dismiss) — flag for Brian's UX
-  judgment. Prior review round record:
-  context-notes/review-home-landing-rethink.
-timestamp: '2026-07-26T14:29:32.408Z'
+  BUILT + REVIEWED, awaiting Brian's PR. Branch feat/home-landing-rethink
+  through f5d3507: orientation is now a 4-PANEL walkthrough — (1) What is
+  agentstate-lite? + What problems does it solve?; (2) How do I use ASLite?; (3)
+  Views (example prompts) + Recipes subsection (installable document-type
+  definitions, built-ins, recipe add, agent-first ask); (4) Collaborating with
+  others — how sync works today (--establish once, sync commits/pulls/pushes
+  bundle-only, sessions/stale reads pull on their own, converging conflicts,
+  in-tree alternative) + try-it. Nav: Back/Next lower-right (Next outermost),
+  step count lower-left, Got it only on panel 4, dismissal persistence + panel-1
+  reopen unchanged. Empty-views state shrunk to a one-line agent ask
+  (walkthrough owns the explanation; learn-more mechanics kept). Gates green at
+  f5d3507 (unit 174, typecheck, pages e2e 13/13). NOTE: branch predates PR
+  #159's merge — needs a rebase/merge check against current main before PR
+  (legacy-View removal touched adjacent ui files). Open flags: plugin-vs-npm
+  truth of 'should have been installed'; no skip path on the 4-click
+  walkthrough. Review round 1 record: context-notes/review-home-landing-rethink.
+timestamp: '2026-07-26T14:52:55.798Z'
 ---
 # Goal
 
