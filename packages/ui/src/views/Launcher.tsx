@@ -360,10 +360,17 @@ export function Launcher() {
                   </ul>
                   <h3>Recipes</h3>
                   <p>
-                    Recipes extend what the bundle can hold. Each one is a small, installable definition of a document
-                    type — its fields, allowed values, and any views that go with it. ASLite ships with a few built
-                    in: context notes (applied by default), work tracking (the Task type that powers a shared task
-                    board), and roadmap. Run <code>aslite recipes</code> to see what is available and{" "}
+                    ASLite is not limited to what it ships with — it is flexible by design. You (or your agents) can
+                    define your own document types, with their own fields and allowed values; your own typed
+                    relationships between documents; and your own views over all of it. The bundle adapts to how your
+                    project actually works, not the other way around.
+                  </p>
+                  <p>
+                    Recipes are how that flexibility becomes reusable. A recipe packages a custom set of functionality
+                    — document types, relationships, and the views that go with them — into a small, installable
+                    definition you can apply to any bundle and share with others. ASLite ships with a few built in:
+                    context notes (applied by default), work tracking (the Task type that powers a shared task board),
+                    and roadmap. Run <code>aslite recipes</code> to see what is available and{" "}
                     <code>aslite recipe add work-tracking</code> to apply one — or simply ask your agent, e.g.{" "}
                     <em>“Set this project up for task tracking.”</em>
                   </p>

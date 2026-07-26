@@ -296,6 +296,11 @@ describe("home surface", () => {
     expect(examples!.querySelectorAll("li").length).toBeGreaterThanOrEqual(3);
     expect(examples!.textContent).toMatch(/all tasks that have not been completed/i);
     expect(panel3).toContain("Recipes");
+    // Flexibility first (own document types / relationships / views), then recipes as the
+    // reusable, sharable packaging of that flexibility.
+    expect(panel3).toContain("your own document types");
+    expect(panel3).toContain("relationships");
+    expect(panel3).toContain("share with others");
     expect(panel3).toContain("aslite recipe add");
     expect(panel3).toContain("3 of 4");
     expect(orientation()!.querySelector(".orientation-dismiss")).toBeNull();
