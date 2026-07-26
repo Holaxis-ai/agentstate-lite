@@ -1,0 +1,37 @@
+{
+  "name": "@agentstate-lite/mcp-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Experimental local MCP Apps adapter for conversational AgentState Lite Views.",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node scripts/build-view.mjs && tsc",
+    "typecheck": "node scripts/build-view.mjs && tsc --noEmit",
+    "test": "node scripts/build-view.mjs && node --test --import ./test/ts-loader.mjs ./test/*.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^1.7.5",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dompurify": "^3.4.12",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@agentstate-lite/core": "*",
+    "@types/node": "^22.20.0",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3"
+  }
+}

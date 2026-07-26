@@ -56,6 +56,10 @@ export async function buildCliBundle(outfile) {
       // server/src/index.ts is guard-free re-exports (createRouter + serve) — its only deps are
       // core + node:http, so aliasing straight to it keeps the esbuild bundle ONE self-contained file.
       "@agentstate-lite/server": r("../server/src/index.ts"),
+      // The experimental conversational View adapter is private workspace source. It is bundled
+      // into the npm CLI exactly like the other internal packages, leaving no runtime workspace
+      // dependency for users to install or resolve.
+      "@agentstate-lite/mcp-app": r("../mcp-app/src/index.ts"),
       // The loopback UI runtime is a private workspace package; source-alias it so the npm CLI
       // remains one self-contained artifact with no workspace dependency at install time.
       "@agentstate-lite/ui-server": r("../ui-server/src/index.ts"),

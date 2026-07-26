@@ -181,6 +181,11 @@ export const COMMAND_GROUPS: CommandGroup[] = [
           "Boot the local web UI over the bundle (same origin, loopback-only): READ the bundle's docs as rendered pages (frontmatter, cross-links you can follow, derived backlinks), LAUNCH its registered Views (type: View docs framed in sandboxed iframes with live updates; legacy Page-typed docs no longer register — see status's legacy_naming finding), and see a live activity feed, the bundle's sharing status, and your registered workspaces. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type \"Bundle Name\" --title \"<name>\"",
       },
       {
+        usage: "mcp [--dir <path>]",
+        summary:
+          "Run the experimental local MCP Apps adapter over a bundle (stdio): an agent supplies script-free HTML/CSS with declarative text bindings plus explicit document IDs to show a read-only, invocation-specific View in chat",
+      },
+      {
         usage:
           "sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]",
         summary:

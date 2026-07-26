@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+        background: var(--color-background-primary, transparent);
+        color: var(--color-text-primary, CanvasText);
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-width: 0; }
+      .shell {
+        display: grid;
+        gap: 0.65rem;
+        padding: max(0.75rem, env(safe-area-inset-top))
+          max(0.75rem, env(safe-area-inset-right))
+          max(0.75rem, env(safe-area-inset-bottom))
+          max(0.75rem, env(safe-area-inset-left));
+      }
+      .status {
+        color: var(--color-text-secondary, GrayText);
+        font-size: 0.82rem;
+        line-height: 1.35;
+      }
+      .status[data-kind="error"] { color: var(--color-text-danger, #b42318); }
+      iframe {
+        display: block;
+        width: 100%;
+        min-height: 18rem;
+        border: 0;
+        border-radius: 0.75rem;
+        background: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <div id="status" class="status">Waiting for an AgentState View…</div>
+      <iframe
+        id="generated-view"
+        title="Generated AgentState View"
+        sandbox
+        referrerpolicy="no-referrer"
+      ></iframe>
+    </main>
+    <!-- ASLITE_MCP_APP_SCRIPT -->
+  </body>
+</html>
