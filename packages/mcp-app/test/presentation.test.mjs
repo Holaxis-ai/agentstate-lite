@@ -45,7 +45,7 @@ test("generated HTML is inert and authoritative values materialize only as text"
 
   assert.equal(document.querySelector("h1")?.textContent, payload.objects[0].frontmatter.title);
   assert.equal(document.querySelector("p")?.textContent, payload.objects[0].body);
-  assert.equal(document.querySelector("script,img,form,button,iframe"), null);
+  assert.equal(document.querySelector("script,style,meta,img,form,button,iframe"), null);
   assert.equal(document.querySelector("a")?.getAttribute("href"), null);
   assert.equal(document.querySelector("a")?.getAttribute("target"), null);
   assert.equal(document.querySelector("[onerror],[onclick]"), null);
