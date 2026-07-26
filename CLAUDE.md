@@ -7,10 +7,14 @@ porcelain/diff/state-store/engine/flow/autopull; imports ONLY node + core, machi
 its own import-direction test with no allowlist; command UX stays in the CLI),
 `packages/server` (`@agentstate-lite/server`
 — the wire-protocol REFERENCE server, a pure consumer of core; see gate 3 and Scope),
+`packages/view-runtime` (`@agentstate-lite/view-runtime` — the private host-neutral launch and
+trusted-action authority; imports only Node + core),
 `packages/ui-server` (`@agentstate-lite/ui-server` — the private reusable loopback shell host;
-imports only Node + core + server, while CLI policy and generated assets stay in the CLI),
-`packages/ui` (the browser SPA — PRIVATE workspace; only its BUILT assets ship, gzip-embedded
-into the CLI bundle; it launches bundle-authored Views, see gate 4), and `packages/cli` —
+imports only Node + core + server + view-runtime, while CLI policy and generated assets stay in
+the CLI), `packages/markdown-renderer` (`@agentstate-lite/markdown-renderer` — the private shared
+bounded Markdown-to-React security boundary), `packages/ui` (the browser SPA — PRIVATE workspace;
+only its BUILT assets ship, gzip-embedded into the CLI bundle; it launches bundle-authored Views
+and consumes markdown-renderer, see gate 4), and `packages/cli` —
 the **publishable npm package `@holaxis/aslite`** (scoped interim coordinate per the board
 decision — npm rejected the unscoped name; bins stay `aslite` / `agentstate-lite`), an
 esbuild bundle that inlines core + board-git + server + the built UI assets + deps into one

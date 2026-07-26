@@ -1,4 +1,4 @@
-/** Enforce the UI runtime's package boundary with an AST walk and no path allowlist. */
+/** Enforce the loopback host adapter's package boundary with an AST walk and no path allowlist. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
@@ -17,7 +17,9 @@ function allowedPackage(specifier: string): boolean {
     specifier === "@agentstate-lite/core" ||
     specifier.startsWith("@agentstate-lite/core/") ||
     specifier === "@agentstate-lite/server" ||
-    specifier.startsWith("@agentstate-lite/server/")
+    specifier.startsWith("@agentstate-lite/server/") ||
+    specifier === "@agentstate-lite/view-runtime" ||
+    specifier.startsWith("@agentstate-lite/view-runtime/")
   );
 }
 
@@ -86,7 +88,7 @@ async function walk(dir: string): Promise<string[]> {
   return files;
 }
 
-test("import direction: ui-server reaches only node, core, server, and its own source", async () => {
+test("import direction: ui-server reaches only node, core, server, view-runtime, and its own source", async () => {
   const files = await walk(SRC_DIR);
   assert.ok(files.length >= 9, `expected the extracted runtime modules, found ${files.length}`);
   const violations: string[] = [];
@@ -103,13 +105,17 @@ test("import direction: ui-server tests cannot reach CLI sources", async () => {
   assert.deepEqual(violations, [], `test import-direction violations:\n${violations.join("\n")}`);
 });
 
-test("import direction: manifest dependencies are exactly core and server", async () => {
+test("import direction: manifest dependencies are exactly core, server, and view-runtime", async () => {
   const manifest = JSON.parse(await readFile(path.join(PKG_ROOT, "package.json"), "utf8")) as {
     dependencies?: Record<string, string>;
     peerDependencies?: Record<string, string>;
     optionalDependencies?: Record<string, string>;
   };
-  assert.deepEqual(Object.keys(manifest.dependencies ?? {}), ["@agentstate-lite/core", "@agentstate-lite/server"]);
+  assert.deepEqual(Object.keys(manifest.dependencies ?? {}), [
+    "@agentstate-lite/core",
+    "@agentstate-lite/server",
+    "@agentstate-lite/view-runtime",
+  ]);
   assert.equal(manifest.peerDependencies, undefined);
   assert.equal(manifest.optionalDependencies, undefined);
 });
