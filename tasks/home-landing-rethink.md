@@ -8,23 +8,18 @@ priority: '2'
 assignee: claude-main
 actor: claude-main
 description: >-
-  READY FOR BRIAN'S PR at 8243dfd. Branch feat/home-landing-rethink: agent-first
-  4-panel walkthrough (What is agentstate-lite?+problems/ratchet; How do I use
-  ASLite?; Views+Recipes incl. flexibility->reusable/sharable + agents suggest;
-  Collaborating with others = how sync works, agent-first sharing path; 'That's
-  the tour' separated CTA), Back/Next lower-right + step count lower-left, Got
-  it only on panel 4, reopen via 'what is this?' restarts at panel 1 with
-  collapsed disclosures, DIR pill dropped (remote-only badge), empty-views state
-  one sentence. MERGED current main (aaaedb8, clean — post-#159 integrity
-  reviewer-verified). Gates at tip: npm ci/build/typecheck/full npm
-  test/e2e:gate 18/18 all green. TWO review rounds, both APPROVE at exact SHAs,
-  all taken/declined findings recorded in
-  context-notes/review-home-landing-rethink (round 2 killed the last copy
-  overclaim: hooks sentence now truth-gated). Remaining: Brian opens the PR
-  (description delivered in-session); accepted residuals: about-btn flash pin
-  impractical in jsdom, Next->Got-it shared slot double-click (recoverable), no
-  skip path on the walkthrough (design choice).
-timestamp: '2026-07-26T15:41:31.888Z'
+  PR OPEN, review round 3 (PR-side, REQUEST-CHANGES) addressed at d28aee4.
+  Round-3 findings: P1 walkthrough taught bare CLI commands the supported plugin
+  channel cannot run (no PATH bin; skill install npm-only) — all actions now
+  agent-mediated, sync mechanics described without commands, global pin forbids
+  bare aslite invocations in the walkthrough; P2 double-click on last Next
+  dismissed via React's reused button node — Got it ignores detail>1
+  activations, step changes focus the entering panel heading (also closes the
+  keyboard variant + round-2 focus note), pinned in unit (detail-2 dispatch) and
+  e2e (real dblclick). Gates at d28aee4: unit/typecheck/build/e2e:gate 18/18
+  green. Full review history: context-notes/review-home-landing-rethink (rounds
+  1-2) + this round on the PR. Merge remains Brian's.
+timestamp: '2026-07-26T16:43:58.353Z'
 ---
 # Goal
 
