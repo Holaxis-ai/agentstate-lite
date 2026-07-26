@@ -302,6 +302,7 @@ describe("home surface", () => {
     expect(panel3).toContain("relationships");
     expect(panel3).toContain("share with others");
     expect(panel3).toContain("aslite recipe add");
+    expect(panel3).toMatch(/suggest a recipe/i);
     expect(panel3).toContain("3 of 4");
     expect(orientation()!.querySelector(".orientation-dismiss")).toBeNull();
 

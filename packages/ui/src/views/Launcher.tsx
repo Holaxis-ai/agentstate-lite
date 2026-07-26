@@ -374,6 +374,11 @@ export function Launcher() {
                     <code>aslite recipe add work-tracking</code> to apply one — or simply ask your agent, e.g.{" "}
                     <em>“Set this project up for task tracking.”</em>
                   </p>
+                  <p>
+                    Agents can help with recipes themselves, too: ask one to define a recipe for the way you work, or
+                    to package what this bundle already does into a recipe you can share — and they may even suggest a
+                    recipe on their own when they notice a pattern worth capturing.
+                  </p>
                 </>
               )}
               {orientationStep === 3 && (
