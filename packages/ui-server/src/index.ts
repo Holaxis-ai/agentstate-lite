@@ -11,6 +11,7 @@ export { SseHub } from "./events.js";
 export { hostnameOf, isAllowedHost } from "./host.js";
 export { PAGE_BLOB_PREFIXES, pageCsp } from "./pages.js";
 export {
+  PageActionLaunchAuthority,
   PageLaunchRegistry,
   TrustedActionService,
   launchIsCurrent,
@@ -21,7 +22,9 @@ export {
   type ActionTerminalResult,
   type DocumentSetFieldAction,
   type PageLaunch,
-} from "./actions.js";
+  type TrustedActionLaunch,
+  type TrustedActionLaunchAuthority,
+} from "@agentstate-lite/view-runtime";
 export { proxyToRemote } from "./proxy.js";
 export { checkAuth, constantTimeEqual, mintSessionSecret, readCookie, sessionCookieHeader } from "./session.js";
 export {

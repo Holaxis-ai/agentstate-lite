@@ -22,11 +22,12 @@ import type { UiAssetHandler } from "./assets.js";
 import { proxyToRemote } from "./proxy.js";
 import { pageCsp } from "./pages.js";
 import {
+  PageActionLaunchAuthority,
   PageLaunchRegistry,
   TrustedActionService,
   launchIsCurrent,
   type ActionTerminalResult,
-} from "./actions.js";
+} from "@agentstate-lite/view-runtime";
 import { SseHub } from "./events.js";
 import { startWatcher, type ChangeEvent, type WatcherHandle } from "./watch.js";
 
@@ -653,7 +654,14 @@ export async function bootUiServer(options: UiServerOptions): Promise<UiServerHa
   const launches = new PageLaunchRegistry();
   const runtime: UiRuntime = {
     launches,
-    actions: options.mode === "dir" && options.bundle ? new TrustedActionService(options.bundle, launches, options.actor) : undefined,
+    actions:
+      options.mode === "dir" && options.bundle
+        ? new TrustedActionService(
+            options.bundle,
+            new PageActionLaunchAuthority(options.bundle, launches),
+            options.actor,
+          )
+        : undefined,
     sse: new SseHub(),
     shutdown: new AbortController(),
   };
