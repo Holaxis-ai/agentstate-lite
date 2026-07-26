@@ -26,7 +26,6 @@ import type {
   ShowViewInput,
   ViewLaunchPayload,
   ViewObjectSnapshot,
-  ViewQuerySelection,
 } from "./contract.js";
 import { MCP_VIEW_HTML } from "./generated/view-html.generated.js";
 import { McpViewLaunchRegistry } from "./launches.js";
@@ -61,7 +60,13 @@ const querySelectionSchema = z
     prefix: z.string().trim().min(1).max(512).optional(),
     field: fieldSelectionSchema.optional(),
     open: z.boolean().optional(),
-    limit: z.number().int().min(1).max(MAX_VIEW_OBJECTS).optional(),
+    limit: z
+      .number()
+      .refine(
+        (value) => Number.isInteger(value) && value >= 1 && value <= MAX_VIEW_OBJECTS,
+        `query limit must be an integer between 1 and ${MAX_VIEW_OBJECTS}`,
+      )
+      .optional(),
   })
   .strict()
   .refine(
@@ -78,40 +83,46 @@ const generatedActionSchema = z
   })
   .strict();
 
-const inputSchema = {
-  title: z.string().trim().min(1).max(120).describe("Short human-facing title for this generated View."),
-  html: z
-    .string()
-    .min(1)
-    .describe(
-      "Script- and style-free HTML fragment. Insert authoritative scalar values with data-aslite-text=\"objects.<index>.id|version|body|frontmatter.<field>\"; render a selected document body with data-aslite-markdown=\"objects.<index>.body\". Active elements and navigation attributes are removed by the trusted shell.",
-    ),
-  css: z
-    .string()
-    .optional()
-    .describe("Optional CSS for the generated fragment. External resource loads are blocked."),
-  objectIds: z
-    .array(z.string().trim().min(1).max(512))
-    .min(1)
-    .max(MAX_VIEW_OBJECTS)
-    .refine((ids) => new Set(ids).size === ids.length, "objectIds must not contain duplicates")
-    .optional()
-    .describe(
-      "Exact AgentState document IDs to expose. Pass either objectIds or query, never both.",
-    ),
-  query: querySelectionSchema
-    .optional()
-    .describe(
-      `Bounded launch-time selection using the same type/prefix/field/open semantics as bundle Views. Results are id-sorted, capped at ${MAX_VIEW_OBJECTS}, and frozen as exact versioned snapshots for this launch. Pass either query or objectIds, never both.`,
-    ),
-  actions: z
-    .array(generatedActionSchema)
-    .max(MAX_VIEW_ACTIONS)
-    .optional()
-    .describe(
-      "Optional governed scalar actions rendered by the trusted shell. Every objectId must already be selected; generated HTML remains read-only.",
-    ),
-};
+const inputSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120).describe("Short human-facing title for this generated View."),
+    html: z
+      .string()
+      .min(1)
+      .describe(
+        "Script- and style-free HTML fragment. Insert authoritative scalar values with data-aslite-text=\"objects.<index>.id|version|body|frontmatter.<field>\"; render a selected document body with data-aslite-markdown=\"objects.<index>.body\". Active elements and navigation attributes are removed by the trusted shell.",
+      ),
+    css: z
+      .string()
+      .optional()
+      .describe("Optional CSS for the generated fragment. External resource loads are blocked."),
+    objectIds: z
+      .array(z.string().trim().min(1).max(512))
+      .min(1)
+      .max(MAX_VIEW_OBJECTS)
+      .refine((ids) => new Set(ids).size === ids.length, "objectIds must not contain duplicates")
+      .optional()
+      .describe(
+        "Exact AgentState document IDs to expose. Pass either objectIds or query, never both.",
+      ),
+    query: querySelectionSchema
+      .optional()
+      .describe(
+        `Bounded launch-time selection using the same type/prefix/field/open semantics as bundle Views. Results are id-sorted, capped at ${MAX_VIEW_OBJECTS}, and frozen as exact versioned snapshots for this launch. Pass either query or objectIds, never both.`,
+      ),
+    actions: z
+      .array(generatedActionSchema)
+      .max(MAX_VIEW_ACTIONS)
+      .optional()
+      .describe(
+        "Optional governed scalar actions rendered by the trusted shell. Every objectId must already be selected; generated HTML remains read-only.",
+      ),
+  })
+  .strict()
+  .refine(
+    (input) => (input.objectIds === undefined) !== (input.query === undefined),
+    "pass exactly one selection mode: objectIds or query",
+  );
 
 const outputSchema = z.object({
   schemaVersion: z.literal("agentstate.view-launch.v1"),
@@ -142,60 +153,18 @@ const outputSchema = z.object({
   }),
 });
 
-function normalizeQuerySelection(query: ViewQuerySelection): ViewQuerySelection {
-  const normalized: ViewQuerySelection = {};
-  if (typeof query.type === "string" && query.type.trim()) normalized.type = query.type.trim();
-  if (typeof query.prefix === "string" && query.prefix.trim()) normalized.prefix = query.prefix.trim();
-  if (typeof query.field === "string" && query.field.trim()) normalized.field = query.field.trim();
-  if (query.open === true) normalized.open = true;
-  if (query.limit !== undefined) {
-    if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > MAX_VIEW_OBJECTS) {
-      throw new Error(`query limit must be an integer between 1 and ${MAX_VIEW_OBJECTS}`);
-    }
-    normalized.limit = query.limit;
-  }
-  if (!normalized.type && !normalized.prefix && !normalized.field && !normalized.open) {
-    throw new Error("query must declare at least one of type, prefix, field, or open:true");
-  }
-  if (normalized.field) {
-    const eq = normalized.field.indexOf("=");
-    const key = eq > 0 ? normalized.field.slice(0, eq).trim() : "";
-    const members =
-      eq > 0
-        ? normalized.field
-            .slice(eq + 1)
-            .split(",")
-            .map((member) => member.trim())
-        : [];
-    if (!key || members.length === 0 || members.some((member) => !member)) {
-      throw new Error("query field must be '<name>=<value>[,<value>...]' with no empty members");
-    }
-  }
-  return normalized;
-}
-
 async function resolveShowViewInput(
   bundle: Bundle,
-  input: ShowViewInput,
+  rawInput: ShowViewInput,
 ): Promise<ResolvedShowViewInput> {
-  const hasIds = input.objectIds !== undefined;
-  const hasQuery = input.query !== undefined;
-  if (hasIds === hasQuery) {
-    throw new Error("pass exactly one selection mode: objectIds or query");
-  }
-  if (hasIds) {
-    const objectIds = input.objectIds!;
-    if (objectIds.length === 0 || objectIds.length > MAX_VIEW_OBJECTS) {
-      throw new Error(`select between 1 and ${MAX_VIEW_OBJECTS} object IDs`);
-    }
-    if (new Set(objectIds).size !== objectIds.length) {
-      throw new Error("objectIds must not contain duplicates");
-    }
+  const input: ShowViewInput = inputSchema.parse(rawInput);
+  if (input.objectIds) {
+    const objectIds = input.objectIds;
     for (const id of objectIds) assertSafeConceptId(id);
     return { ...input, objectIds: [...objectIds], query: undefined };
   }
 
-  const query = normalizeQuerySelection(input.query!);
+  const query = input.query!;
   const rows = await queryHeads(bundle, { type: query.type, prefix: query.prefix });
   const registry = query.open ? await loadKinds(bundle) : undefined;
   const selected = applyQuerySelectionFilters(

@@ -153,6 +153,73 @@ test("query selection rejects ambiguous, empty, invalid, and no-match envelopes"
   );
 });
 
+test("direct and MCP show_view entry paths share one strict input parser", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const server = createMcpAppServer({ bundle });
+  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const cases: Array<{
+    name: string;
+    input: Record<string, unknown>;
+    expected: RegExp;
+  }> = [
+    {
+      name: "wrong query member type",
+      input: {
+        title: "Invalid",
+        html: "<main></main>",
+        query: { type: "Task", open: "true" },
+      },
+      expected: /expected boolean, received string/i,
+    },
+    {
+      name: "unknown query member",
+      input: {
+        title: "Invalid",
+        html: "<main></main>",
+        query: { type: "Task", unexpected: true },
+      },
+      expected: /unrecognized key.*unexpected/i,
+    },
+    {
+      name: "unknown top-level member",
+      input: {
+        title: "Invalid",
+        html: "<main></main>",
+        objectIds: ["tasks/alpha"],
+        unexpected: true,
+      },
+      expected: /unrecognized key.*unexpected/i,
+    },
+  ];
+
+  for (const entry of cases) {
+    await assert.rejects(
+      () => resolveViewLaunch(bundle, entry.input as never),
+      entry.expected,
+      `${entry.name}: direct resolver`,
+    );
+    const result = await client.callTool({
+      name: SHOW_VIEW_TOOL_NAME,
+      arguments: entry.input,
+    });
+    assert.equal(result.isError, true, `${entry.name}: MCP tool`);
+    assert.match(
+      result.content[0]?.type === "text" ? result.content[0].text : "",
+      entry.expected,
+      `${entry.name}: MCP tool`,
+    );
+  }
+});
+
 test("query selection defaults to twenty id-sorted snapshots and reports the full match count", async () => {
   const bundle = memoryBundle();
   for (let index = 24; index >= 0; index -= 1) {
