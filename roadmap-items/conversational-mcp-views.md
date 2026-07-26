@@ -3,13 +3,14 @@ type: Roadmap Item
 title: Conversational Views through MCP Apps
 status: active
 description: >-
-  EXPERIMENTAL — prove one minimal local MCP View loop before extracting shared
-  runtime architecture.
+  EXPERIMENTAL — fixed-shell rendering and one shared-authority governed action
+  are proved; independent review/QA remains before product adoption.
 sequence: >-
-  Fixed-shell host proof → shared runtime extraction → bounded queries →
-  governed action → durable promotion → second host / remote adapter
+  Fixed-shell proof → shared authority extraction → governed action proof →
+  independent review/QA → real conversation host → bounded queries if needed →
+  durable promotion → second host / remote adapter
 actor: openai/codex
-timestamp: '2026-07-26T16:22:46.631Z'
+timestamp: '2026-07-26T16:46:19.732Z'
 ---
 # Direction
 
@@ -36,18 +37,27 @@ multi-tenant hosting, and a broader remote-agent tool surface remain separate la
    STDIO, and sanitized script-free `srcdoc` rendering with declarative text bindings all pass in
    the official reference host. Arbitrary script was rejected after self-navigation proved to be an
    exfiltration path.
-2. Extract only the launch/action authorities that a second real host actually needs.
-3. Add bounded deterministic queries after explicit-ID rendering works.
-4. Reuse the existing trusted scalar action and shared mutation service.
-5. Promote useful ephemeral presentations into durable bundle Views.
-6. Verify a second host, then consider a remote adapter.
+2. Extract only the launch/action authorities that a second real host actually needs. Implemented
+   experimentally as `@agentstate-lite/view-runtime`; the local UI and MCP adapter now depend on the
+   same `TrustedActionService`, which still delegates final writes to core's `mutateDocument`.
+3. Reuse the existing trusted scalar action and shared mutation service. Implemented and
+   empirically proved in the official MCP Apps reference host for one selected Task status change:
+   prepare did not write, the fixed trusted shell displayed document/kind/field/before/after/actor,
+   explicit Apply committed with CAS and attribution, and the same View refreshed from the final
+   authoritative version. The generated nested document remained script-free and read-only.
+4. Complete independent review, adversarial QA, and one real conversation-host proof.
+5. Add bounded deterministic queries only if explicit-ID dogfooding proves they are needed.
+6. Promote useful ephemeral presentations into durable bundle Views.
+7. Verify a second host, then consider a remote adapter.
 
 # Current decision gate
 
-Independent review of the experimental implementation is next. Do not widen the MCP tool surface or
-extract the write/action runtime in the same unit. If review passes, verify the same fixed-shell and
-containment behavior in one actual conversation host before deciding whether the experiment should
-become a supported npm surface.
+Independent review and adversarial QA of the exact governed-action commit are next. The empirical
+reference-host proof is builder evidence, not a substitute for that high-risk review tier. Do not
+widen beyond one selection-bound, kind-validated scalar action or merge the experiment into the
+supported product surface until that review closes. Afterward, prove the same contract in one real
+conversation host; bounded queries are the next product capability only if explicit-ID dogfooding
+shows that selection friction is real.
 
 [contains](../tasks/mcp-app-fixed-shell-spike.md)
 

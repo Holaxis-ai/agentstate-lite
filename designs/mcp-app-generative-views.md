@@ -1,16 +1,16 @@
 ---
 type: Design
 title: Conversational Generative Views via MCP Apps
-actor: codex
-timestamp: '2026-07-26T14:56:05.338Z'
+actor: openai/codex
+timestamp: '2026-07-26T16:46:19.899Z'
 ---
 # Conversational Generative Views via MCP Apps
 
 ## Status
 
-Working product and architecture direction. This document captures the July 2026 exploration and
-the current point of convergence. It does not claim the MCP surface exists and does not authorize a
-hosted deployment.
+Working product and architecture direction. This document captures the July 2026 exploration,
+implemented experimental proofs, and the current point of convergence. It does not claim the MCP
+surface is supported or authorize a hosted deployment.
 
 The OSS product authority is the
 [agentstate-lite North Star](../docs/north-star.md). This design originated in the Holaxis strategy
@@ -164,7 +164,7 @@ mechanism.
 The experimental `codex/experiment-mcp-apps` implementation proved this lifecycle in the official
 MCP Apps basic host:
 
-- one fixed `ui://agentstate/view-host/v0.html` resource rendered multiple calls with different
+- one fixed `ui://agentstate/view-host/v1.html` resource rendered multiple calls with different
   agent-authored HTML and different explicit object selections;
 - the `show_view` result carried current server-resolved document snapshots and versions, while the
   generated HTML carried no copied bundle data;
@@ -187,6 +187,39 @@ loads the result into `<iframe sandbox srcdoc="…">` with `script-src 'none'`. 
 JavaScript capability and no raw object payload. The official reference host rendered two distinct
 bound presentations through the same resource, while a planted script and external link were
 removed. A second host must reproduce that declarative behavior before the surface is stabilized.
+
+### July 26 governed-action spike result
+
+The next experimental unit proved that the MCP App is a second host adapter over the existing View
+action authority, rather than a parallel action system:
+
+- the local UI's `PageLaunchRegistry` and `TrustedActionService` were lifted into the private
+  host-neutral `@agentstate-lite/view-runtime` package; UI-server remains an adapter and its existing
+  action tests pass unchanged in behavior;
+- `show_view` may declare at most eight `document.set-field` controls, but only for exact objects in
+  that invocation's explicit selection and at the versions shown in the View;
+- the fixed trusted MCP shell renders those controls outside the generated nested frame; clicking
+  one calls app-only prepare/finish tools, while the generated HTML remains script-free and cannot
+  call tools itself;
+- prepare revalidates launch scope, current version, declared Kind field/value rules, and actor,
+  then returns the exact document/kind/field/before/after/actor confirmation without writing;
+- commit consumes a one-shot approval, revalidates launch/document/Kind state, and delegates the
+  hard-CAS write, attribution, conformance, no-op handling, and final-version receipt to the same
+  `mutateDocument` path used below the CLI;
+- cancellation is non-mutating, stale displayed state conflicts visibly, unknown/out-of-selection
+  actions fail closed, and a missing action actor prevents preparation.
+
+The full interaction was exercised against a disposable real filesystem bundle in the official MCP
+Apps basic host. The Task remained `todo` after prepare; the trusted confirmation showed
+`todo → done` and `openai/codex`; Apply persisted `status: done` plus that actor; and the same View
+rerendered from the final authoritative version. This is builder proof on an experimental branch,
+not authorization to merge: the changed write boundary still requires independent review and
+adversarial QA.
+
+The spike deliberately uses a generic scalar `document.set-field` declaration rather than claiming
+a settled public semantic-action vocabulary. It is bounded and Kind-validated, but a future public
+surface may prefer named semantic actions such as `complete-task`. That choice should follow
+dogfooding; it must not create a second mutation policy either way.
 
 ## Installation and process model
 
@@ -655,15 +688,17 @@ This proves the core proposition:
 1. **MCP host spike (implemented experimentally):** one npm-built STDIO command, one fixed App
    resource, dynamic `structuredContent`, explicit-ID snapshots, and script-free nested-`srcdoc`
    containment with declarative text bindings.
-2. **Independent review and second-host proof:** review the experimental boundary and repeat the
-   lifecycle/containment probe in a real target conversation host before stabilizing the surface.
-3. **Behavior-preserving runtime extraction, only where the next slice needs it:** lift the
-   existing launch/action authorities into host-neutral code before adding writes or durable
-   promotion; do not make read-only rendering wait on an extraction it does not yet consume.
-4. **Ephemeral render:** generated script-free HTML/CSS plus an explicit data-selection envelope
+2. **Host-neutral action authority (implemented experimentally):** lift only the existing
+   launch/action authority needed by the MCP host into `@agentstate-lite/view-runtime`; both hosts
+   delegate final writes to core's shared mutation service.
+3. **One governed action (implemented experimentally):** selection-bound Task status change with
+   app-only prepare/finish tools, trusted-shell confirmation, actor attribution, hard CAS, and
+   authoritative post-commit refresh.
+4. **Independent review, adversarial QA, and real-host proof:** review the exact experimental action
+   commit, attack the launch/approval/version boundary, and repeat the lifecycle in a target
+   conversation host before stabilizing the surface.
+5. **Ephemeral render:** generated script-free HTML/CSS plus an explicit data-selection envelope
    supporting stable IDs and one bounded deterministic query.
-5. **One governed action:** adapt the existing scalar `bundle-propose` path for task completion,
-   with trusted-shell confirmation and server-side launch revalidation.
 6. **Bounded relationship expansion:** add it only after explicit IDs and deterministic queries
    have demonstrated a clear need and safe contract.
 7. **Durable View compatibility:** render one existing bundle-authored View through the same MCP
