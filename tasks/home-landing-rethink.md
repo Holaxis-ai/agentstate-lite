@@ -3,23 +3,27 @@ type: Task
 title: >-
   Home landing rethink: agent-first orientation (what aslite is, UI-as-window,
   view-prompt examples)
-status: in_progress
+status: done
 priority: '2'
 assignee: claude-main
 actor: claude-main
 description: >-
-  PR OPEN, review round 3 (PR-side, REQUEST-CHANGES) addressed at d28aee4.
-  Round-3 findings: P1 walkthrough taught bare CLI commands the supported plugin
-  channel cannot run (no PATH bin; skill install npm-only) — all actions now
-  agent-mediated, sync mechanics described without commands, global pin forbids
-  bare aslite invocations in the walkthrough; P2 double-click on last Next
-  dismissed via React's reused button node — Got it ignores detail>1
-  activations, step changes focus the entering panel heading (also closes the
-  keyboard variant + round-2 focus note), pinned in unit (detail-2 dispatch) and
-  e2e (real dblclick). Gates at d28aee4: unit/typecheck/build/e2e:gate 18/18
-  green. Full review history: context-notes/review-home-landing-rethink (rounds
-  1-2) + this round on the PR. Merge remains Brian's.
-timestamp: '2026-07-26T16:43:58.353Z'
+  DONE 2026-07-26 — merged to main as PR #163 (merge b2a6286; bot plugin 1.0.120
+  followed). Shipped: agent-first 4-panel orientation walkthrough (What is
+  agentstate-lite?+problems/ratchet; How do I use ASLite?; Views+Recipes;
+  Collaborating with others=sync + 'That's the tour' CTA), Back/Next lower-right
+  + step count, Got it only on last panel with double-activation guard +
+  panel-heading focus transfer, 'what is this?' reopen at panel 1, remote-only
+  mode pill, one-line empty-views state, ALL actions agent-mediated (global pin
+  forbids bare aslite commands in the walkthrough). THREE review rounds at exact
+  SHAs: subagent rounds 1 (APPROVE 4xP3) + 2 (APPROVE 5xP3) recorded in
+  context-notes/review-home-landing-rethink; PR-side round 3 (REQUEST-CHANGES:
+  P1 channel-truth of bare commands, P2 double-click dismissal — both
+  probe-verified) fixed in d28aee4. Gates green at every round incl. e2e:gate
+  18/18. Post-merge: main rebuilt, local tarball installed globally (aslite on
+  PATH at /opt/homebrew/bin). Honest caveat: the walkthrough has no skip path (3
+  Nexts to dismiss) — recorded design choice, revisit on test-user feedback.
+timestamp: '2026-07-26T17:23:33.722Z'
 ---
 # Goal
 
