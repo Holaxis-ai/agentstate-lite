@@ -25,8 +25,7 @@ import { rm, chmod } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { buildCliBundle } from "./scripts/build-bundle.mjs";
-import { embedUiAssets } from "./scripts/embed-ui-assets.mjs";
-import { buildMcpViewHtml } from "../mcp-app/scripts/build-view.mjs";
+import { prepareCliBundleInputs } from "./scripts/prepare-bundle-inputs.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const r = (p) => resolve(here, p);
@@ -35,13 +34,10 @@ const outfile = r("dist/agentstate-lite.mjs");
 // Clean dist so the packed tarball never carries stale files (files: ["dist"]).
 await rm(r("dist"), { recursive: true, force: true });
 
-// FIRST: rebuild packages/ui fresh and embed its dist/ as generated source
-// (src/generated/ui-assets.generated.ts) — the esbuild bundle below imports it transitively via
-// src/ui/assets.ts, which injects them into the ui-server runtime. Runs identically whether invoked via the root build, `npm run build -w
-// agentstate-lite`, or `prepublishOnly` (all three are just "run this file"), so packages/ui/dist
-// can never be missing or stale by the time esbuild runs (see embed-ui-assets.mjs's module doc).
-await embedUiAssets();
-await buildMcpViewHtml();
+// FIRST: generate every embedded input (the local UI assets and fixed MCP App shell) through the
+// same preparation helper used by the committed-plugin writer and drift checker. The esbuild
+// bundle below imports those generated modules transitively, so none may be missing or stale.
+await prepareCliBundleInputs();
 
 await buildCliBundle(outfile);
 

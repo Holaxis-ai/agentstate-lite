@@ -60,6 +60,10 @@ export async function buildCliBundle(outfile) {
       // into the npm CLI exactly like the other internal packages, leaving no runtime workspace
       // dependency for users to install or resolve.
       "@agentstate-lite/mcp-app": r("../mcp-app/src/index.ts"),
+      // Shared human-surface primitives are private workspace source too. Alias them explicitly
+      // so a clean committed-plugin build never depends on sibling dist/ directories existing.
+      "@agentstate-lite/markdown-renderer": r("../markdown-renderer/src/index.tsx"),
+      "@agentstate-lite/view-runtime": r("../view-runtime/src/index.ts"),
       // The loopback UI runtime is a private workspace package; source-alias it so the npm CLI
       // remains one self-contained artifact with no workspace dependency at install time.
       "@agentstate-lite/ui-server": r("../ui-server/src/index.ts"),
