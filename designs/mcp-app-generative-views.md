@@ -2,7 +2,7 @@
 type: Design
 title: Conversational Generative Views via MCP Apps
 actor: codex
-timestamp: '2026-07-26T14:07:58.055Z'
+timestamp: '2026-07-26T14:56:05.338Z'
 ---
 # Conversational Generative Views via MCP Apps
 
@@ -158,6 +158,35 @@ the first public version should accept script-free HTML and CSS plus declarative
 Shadow DOM or equivalent containment may help isolate styles, but is not itself a JavaScript
 security boundary. Arbitrary generated script should wait for a demonstrated portable isolation
 mechanism.
+
+### July 26 fixed-shell spike result
+
+The experimental `codex/experiment-mcp-apps` implementation proved this lifecycle in the official
+MCP Apps basic host:
+
+- one fixed `ui://agentstate/view-host/v0.html` resource rendered multiple calls with different
+  agent-authored HTML and different explicit object selections;
+- the `show_view` result carried current server-resolved document snapshots and versions, while the
+  generated HTML carried no copied bundle data;
+- an npm-built `aslite mcp --dir <bundle>` process served the same contract over clean STDIO;
+- structured text remained available as the non-App fallback.
+
+The spike also rejected one containment mechanism. A generated `blob:` URL created from inside the
+host's opaque sandbox resolved to a blank document in the reference host, despite an explicit
+`frameDomains: ["blob:"]` grant. A nested `srcdoc` frame rendered reliably.
+
+The deeper adversarial probe rejected arbitrary generated JavaScript. The sandbox blocked parent-DOM
+access and `fetch`, but script could navigate its own child frame to an external URL. That request
+can encode bundle data in its URL even when the destination refuses framing, so `connect-src
+'none'` is not a sufficient no-exfiltration boundary.
+
+The safe first contract is therefore script-free HTML/CSS. The trusted shell sanitizes active
+elements and all navigation-bearing attributes, replaces only explicit
+`data-aslite-text="objects.<index>.…"` bindings with text nodes from the resolved envelope, and
+loads the result into `<iframe sandbox srcdoc="…">` with `script-src 'none'`. The child receives no
+JavaScript capability and no raw object payload. The official reference host rendered two distinct
+bound presentations through the same resource, while a planted script and external link were
+removed. A second host must reproduce that declarative behavior before the surface is stabilized.
 
 ## Installation and process model
 
@@ -623,14 +652,14 @@ This proves the core proposition:
 
 ## Proposed sequencing
 
-1. **MCP host spike:** prove that the target desktop host can spawn an npm-installed STDIO server,
-   render one fixed MCP App resource, deliver dynamic `structuredContent`, and support the intended
-   containment model.
-2. **Behavior-preserving runtime extraction:** lift the existing launch registry and trusted
-   action service into a host-neutral internal View-runtime package; keep the current web UI as its
-   first consumer and preserve existing behavior and tests.
-3. **Read-only MCP adapter:** add an internal MCP App package plus `aslite mcp`, backed by the
-   official MCP SDK/Apps extension rather than a second CLI or storage implementation.
+1. **MCP host spike (implemented experimentally):** one npm-built STDIO command, one fixed App
+   resource, dynamic `structuredContent`, explicit-ID snapshots, and script-free nested-`srcdoc`
+   containment with declarative text bindings.
+2. **Independent review and second-host proof:** review the experimental boundary and repeat the
+   lifecycle/containment probe in a real target conversation host before stabilizing the surface.
+3. **Behavior-preserving runtime extraction, only where the next slice needs it:** lift the
+   existing launch/action authorities into host-neutral code before adding writes or durable
+   promotion; do not make read-only rendering wait on an extraction it does not yet consume.
 4. **Ephemeral render:** generated script-free HTML/CSS plus an explicit data-selection envelope
    supporting stable IDs and one bounded deterministic query.
 5. **One governed action:** adapt the existing scalar `bundle-propose` path for task completion,
@@ -657,8 +686,9 @@ This proves the core proposition:
 - Does the first durable View schema need only a `surfaces` declaration, or is there immediate
   evidence for multiple host-specific `entries`?
 - What bounded relationship-expansion form is justified after explicit IDs and queries?
-- Can target hosts portably isolate arbitrary generated JavaScript inside the fixed App shell? If
-  not, script-free generated presentation remains the first contract.
+- Can a second target host reproduce the reference host's sanitized nested-`srcdoc` rendering and
+  declarative binding behavior? Arbitrary generated JavaScript is explicitly outside the first
+  contract because self-navigation defeats the apparent no-network boundary.
 - Which low-risk semantic actions exist beyond the current scalar-field proposal?
 - When is inline human confirmation sufficient, and when must the host add another approval step?
 - How are actor identity and human principal represented together in local history?
@@ -689,8 +719,8 @@ The current recommendation is:
 2. Give MCP a narrow product role: conversational View rendering and human interaction.
 3. Use one fixed, versioned AgentState MCP App shell and deliver invocation-specific presentation
    and data through the tool result.
-4. Lead with agent-generated, script-free ephemeral HTML/CSS plus a separate data-selection
-   contract supporting explicit IDs and bounded deterministic queries.
+4. Lead with sanitized, script-free agent-generated HTML/CSS plus declarative text bindings; keep
+   presentation separate from the explicit data-selection contract.
 5. Treat the server-resolved launch envelope as both presentation input and the constrained
    read/action capability boundary.
 6. Extract and reuse a host-neutral View runtime rather than regenerate bridge, launch, and action
