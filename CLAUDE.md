@@ -14,7 +14,9 @@ imports only Node + core + server + view-runtime, while CLI policy and generated
 the CLI), `packages/markdown-renderer` (`@agentstate-lite/markdown-renderer` — the private shared
 bounded Markdown-to-React security boundary), `packages/ui` (the browser SPA — PRIVATE workspace;
 only its BUILT assets ship, gzip-embedded into the CLI bundle; it launches bundle-authored Views
-and consumes markdown-renderer, see gate 4), and `packages/cli` —
+and consumes markdown-renderer, see gate 4), `packages/mcp-app` (the PRIVATE experimental local
+stdio adapter: one fixed MCP App shell over exact versioned document snapshots; generated
+presentation is read-only), and `packages/cli` —
 the **publishable npm package `@holaxis/aslite`** (scoped interim coordinate per the board
 decision — npm rejected the unscoped name; bins stay `aslite` / `agentstate-lite`), an
 esbuild bundle that inlines core + board-git + server + the built UI assets + deps into one
@@ -140,11 +142,12 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   CLI error wording, remote hints, help text, and the best-effort board-attribution hook. Do not
   duplicate this policy in a future UI or server action path.
 - Keep exactly **ONE** frontmatter parser, **ONE** bundle walk, **ONE** link resolver, and
-  **ONE** human-facing runtime: the local `ui` shell plus bundle-authored Views. Do not
-  reintroduce a parallel static viewer or a second parser inside View tooling; Views consume
-  core semantics through the reference server's narrow bridge. V0 remains read-only; the only
-  write-capable surface is `bundle-propose`, which prepares one governed scalar-field change for
-  explicit trusted-shell confirmation and hard CAS through core's mutation service.
+  **ONE** View semantics/action authority. Human-facing hosts are adapters over those authorities:
+  the supported local `ui` shell launches durable bundle-authored Views; the experimental `mcp`
+  command renders invocation-specific Views over exact selected snapshots. Do not reintroduce a
+  parallel static viewer, parser, or mutation policy inside either host. Generated presentation is
+  read-only; `bundle-propose` in the local UI is the only shipped write capability. The governed
+  MCP action proof remains off main pending its own review and adversarial QA.
 - **Kind conventions (`core/src/kinds.ts`) are ONE registry, in core, consumed everywhere —
   not a schema fork.** A bundle MAY declare document kinds as plain OKF convention docs
   (`type: Convention`) naming the `type` value they govern, its required/optional fields,
@@ -174,7 +177,7 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
   consumer (server/an MCP surface) needs kind awareness, it calls `loadKinds` itself
   — do not thread a second registry implementation through a different layer.
 
-### 4. Human visibility — the local `ui` command + bundle-authored Views
+### 4. Human visibility — one View model, host-specific adapters
 
 The human-visibility surface is the **local `agentstate-lite ui` command**: one loopback
 server serving the embedded SPA over a bundle (`--dir` mounts the reference router
@@ -188,9 +191,17 @@ stay recognized — relocation is a separate open decision); Views are bundle co
 access goes through the narrow bridge. V0 data access remains read-only; a local `--dir` View may
 opt into `bundle-propose` for one human-confirmed, version-guarded scalar-field action. The former
 `packages/viewer` / `view` → `viz.html` surface is removed — author human
-views as bundle Views rather than adding a second rendering engine. The multi-human collaboration
-substrate (hosted worker, auth, admin) is FROZEN per bundle doc `docs/core` and preserved outside
-the OSS repository — it is not a build or deployment target without an explicit human decision.
+views as bundle Views rather than adding a second rendering engine.
+
+The experimental local `agentstate-lite mcp` command is a second host adapter, not a second View
+system. Its single `show_view` tool binds agent-authored, script-free HTML/CSS to exact current
+document snapshots selected by id. The fixed trusted shell reuses the bounded Markdown renderer,
+strips navigation and active content, and exposes no mutation tool. It is deliberately local,
+stdio-only, unpublished as a standalone package, and not yet a supported product surface.
+
+The multi-human collaboration substrate (hosted worker, auth, admin) is FROZEN per bundle doc
+`docs/core` and preserved outside the OSS repository — it is not a build or deployment target
+without an explicit human decision.
 
 ### 5. Local-first, standards-clean
 

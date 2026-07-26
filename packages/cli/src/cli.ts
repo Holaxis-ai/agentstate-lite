@@ -32,6 +32,7 @@ import { recipe } from "./commands/recipe.js";
 import { status } from "./commands/status.js";
 import { serve } from "./commands/serve.js";
 import { ui } from "./commands/ui.js";
+import { mcp } from "./commands/mcp.js";
 import { sync } from "./commands/sync.js";
 import { home } from "./commands/home.js";
 import { hook } from "./commands/hook.js";
@@ -95,6 +96,7 @@ export const KNOWN_COMMANDS = [
   "status",
   "serve",
   "ui",
+  "mcp",
   "sync",
   "hook",
   "skill",
@@ -298,6 +300,7 @@ export async function main(argv: string[]): Promise<void> {
       status: wrap(status),
       serve: wrap(serve),
       ui: wrap(ui),
+      mcp: wrap(mcp),
       sync: wrap(sync),
       hook: wrap(hook),
       // Install/remove this package's generated Agent Skill in host skill folders.

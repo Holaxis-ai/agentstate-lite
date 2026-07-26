@@ -142,6 +142,7 @@ export const SKILL_COMMAND_RESOURCES: Record<string, string[]> = {
   "recipe add": ["recipes/claims/recipe.md", "recipes/review-workflow/recipe.md"],
   serve: [],
   ui: ["views/references/view-authoring-v0.md"],
+  mcp: [],
   sync: [],
   "session-start": [],
   "hook install|status|uninstall": [],
