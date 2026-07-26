@@ -15,14 +15,16 @@ description: >-
   declaration. Verification must cover deterministic selection,
   empty/over-limit/mutually-exclusive inputs, kind-derived open filtering,
   action confinement, and exact-ID compatibility.
-timestamp: '2026-07-26T22:25:54.116Z'
+timestamp: '2026-07-26T22:41:26.846Z'
 ---
 # Implementation handoff
 
 Draft PR: https://github.com/Holaxis-ai/agentstate-lite/pull/169
 
-Commit under review: `b6301ca`
+Current exact head under re-review: `e8555a8`
 
 Implemented exactly one selection mode (`objectIds` or bounded `query`), shared durable-View field/open filtering, deterministic ID ordering, pre-limit match receipts, and frozen exact IDs/versions for refresh and action authority. No subscriptions, live re-query, edge query, broader action, or support declaration.
 
-Verification: `npm run check` passed; focused core/UI/MCP suites passed 576 tests; CLI/View query-agreement passed 7 tests; browser E2E passed 18 tests; npm artifact and generated-skill parity passed. Task remains in progress pending independent exact-SHA review.
+The first independent review of `b6301ca` found one P2: direct resolver calls could silently drop malformed or unknown fields that the MCP path rejected. Remediation `e8555a8` deletes the manual validator, makes the full strict Zod object the single input authority for MCP registration and direct resolution, and adds a direct/MCP agreement table for wrong types plus unknown nested/top-level members.
+
+Verification after remediation: focused MCP typecheck and 17-test suite passed; `npm run check` passed, including 18 browser E2E tests, npm artifact verification, and generated-skill parity. Task remains in progress pending independent exact-SHA re-review.
