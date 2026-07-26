@@ -1,7 +1,8 @@
 // Build the single, self-contained, publishable CLI bundle.
 //
 // esbuild bundles src/index.ts together with its workspace source packages
-// (@agentstate-lite/core, @agentstate-lite/server, @agentstate-lite/ui-server) and every npm dependency into ONE ESM file with a
+// (@agentstate-lite/core, @agentstate-lite/server, @agentstate-lite/ui-server,
+// @agentstate-lite/mcp-app) and every npm dependency into ONE ESM file with a
 // `#!/usr/bin/env node` shebang. The published `@holaxis/aslite` package therefore has NO runtime
 // dependencies and NO unresolved `workspace:*` links — `npx -y @holaxis/aslite …` runs with zero
 // workspace resolution.
@@ -25,6 +26,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { buildCliBundle } from "./scripts/build-bundle.mjs";
 import { embedUiAssets } from "./scripts/embed-ui-assets.mjs";
+import { buildMcpViewHtml } from "../mcp-app/scripts/build-view.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const r = (p) => resolve(here, p);
@@ -39,6 +41,7 @@ await rm(r("dist"), { recursive: true, force: true });
 // agentstate-lite`, or `prepublishOnly` (all three are just "run this file"), so packages/ui/dist
 // can never be missing or stale by the time esbuild runs (see embed-ui-assets.mjs's module doc).
 await embedUiAssets();
+await buildMcpViewHtml();
 
 await buildCliBundle(outfile);
 

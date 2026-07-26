@@ -52,8 +52,10 @@
   "devDependencies": {
     "@agentstate-lite/board-git": "*",
     "@agentstate-lite/core": "*",
+    "@agentstate-lite/mcp-app": "*",
     "@agentstate-lite/server": "*",
     "@agentstate-lite/ui-server": "*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@toon-format/toon": "2.3.0",
     "@types/node": "^22.0.0",
     "axi-sdk-js": "0.1.8",
