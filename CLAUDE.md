@@ -197,12 +197,14 @@ views as bundle Views rather than adding a second rendering engine.
 
 The experimental local `agentstate-lite mcp` command is a second host adapter, not a second View
 system. Its single model-visible `show_view` tool binds agent-authored, script-free HTML/CSS to
-exact current document snapshots selected by id. The fixed trusted shell reuses the bounded
-Markdown renderer, strips navigation and active content, and may render bounded scalar actions
-outside the generated frame. App-only prepare/finish tools require a configured actor, explicit
-human confirmation, selection/version revalidation, and hard CAS through the shared action and
-mutation authorities. It is deliberately local, stdio-only, unpublished as a standalone package,
-and not yet a supported product surface.
+exact current document snapshots selected by id or by one bounded launch-time query using the
+durable View's shared field/open filtering authority. A query resolves once in deterministic ID
+order and freezes at most 20 exact IDs/versions for the launch and its actions. The fixed trusted
+shell reuses the bounded Markdown renderer, strips navigation and active content, and may render
+bounded scalar actions outside the generated frame. App-only prepare/finish tools require a
+configured actor, explicit human confirmation, selection/version revalidation, and hard CAS
+through the shared action and mutation authorities. It is deliberately local, stdio-only,
+unpublished as a standalone package, and not yet a supported product surface.
 
 The multi-human collaboration substrate (hosted worker, auth, admin) is FROZEN per bundle doc
 `docs/core` and preserved outside the OSS repository — it is not a build or deployment target

@@ -28,6 +28,10 @@
     "./query-filter": {
       "types": "./dist/query-filter.d.ts",
       "default": "./dist/query-filter.js"
+    },
+    "./query-selection": {
+      "types": "./dist/query-selection.d.ts",
+      "default": "./dist/query-selection.js"
     }
   },
   "files": [

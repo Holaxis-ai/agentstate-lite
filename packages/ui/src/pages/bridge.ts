@@ -17,8 +17,10 @@
  * caller passing the framed page's {@link BridgeCapability} — never by anything the sandboxed
  * page itself claims.
  */
-import { matchesFilter } from "@agentstate-lite/core/query-filter";
-import { isTerminal } from "@agentstate-lite/core/kinds";
+import {
+  applyQuerySelectionFilters,
+  type QuerySelectionParams,
+} from "@agentstate-lite/core/query-selection";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
 import type { DocHead, Edge, ReadDocResponse } from "../api/types.js";
 import { isAnyRegistryId, type BridgeCapability } from "./registry.js";
@@ -40,13 +42,7 @@ export interface BridgeRequest {
 }
 
 /** Bridge `query` params: server-side `type`/`prefix`, then shell-side `field` (k=v, comma=OR), `open`, `limit` post-filters. */
-export interface QueryParams {
-  type?: string;
-  prefix?: string;
-  field?: string;
-  open?: boolean;
-  limit?: number;
-}
+export type QueryParams = QuerySelectionParams;
 
 /** Bridge `edges` params — the SAME selector shape core's `queryEdges` defines: `from`/`to` accept an id, a trailing-slash prefix, or an array-union of either (AND across the two facets); `text` is exact-match. */
 export interface EdgeParams {
@@ -150,34 +146,7 @@ export function applyQueryFilters(
   params: QueryParams,
   kinds: KindConvention[] = [],
 ): { rows: DocHead[]; count: number } {
-  let out = rows;
-  if (params.field) {
-    const eq = params.field.indexOf("=");
-    if (eq > 0) {
-      const key = params.field.slice(0, eq).trim();
-      const values = params.field
-        .slice(eq + 1)
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      out = out.filter((row) =>
-        values.some((value) => matchesFilter(row, { fields: { [key]: value } })),
-      );
-    }
-  }
-  if (params.open) {
-    const byGoverns = new Map(kinds.map((k) => [k.governs, k]));
-    out = out.filter((r) => {
-      const kind = byGoverns.get(String(r.frontmatter.type ?? ""));
-      return !kind || !isTerminal(kind, r.frontmatter);
-    });
-  }
-  const count = out.length;
-  // `limit > 0` caps; `limit: 0` (and absent) means UNLIMITED — matching the CLI's documented
-  // `list --limit 0 = unlimited` contract (commands/list.ts). Slicing at 0 would silently return
-  // an empty result with no error, exactly the footgun a page author hits by passing 0 for "all".
-  if (typeof params.limit === "number" && params.limit > 0) out = out.slice(0, params.limit);
-  return { rows: out, count };
+  return applyQuerySelectionFilters(rows, params, kinds);
 }
 
 /**

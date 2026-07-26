@@ -1,5 +1,8 @@
 import {
+  applyQuerySelectionFilters,
   assertSafeConceptId,
+  loadKinds,
+  queryHeads,
   readDocVersioned,
   versionOfBytes,
   type Bundle,
@@ -19,6 +22,7 @@ import {
 import { z } from "zod";
 import type {
   ResolvedViewContent,
+  ResolvedShowViewInput,
   ShowViewInput,
   ViewLaunchPayload,
   ViewObjectSnapshot,
@@ -36,6 +40,39 @@ export const MAX_VIEW_ACTIONS = 8;
 export const MAX_VIEW_DATA_BYTES = 1024 * 1024;
 
 const actionScalarSchema = z.union([z.string().max(4096), z.number().finite(), z.boolean()]);
+const fieldSelectionSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(1024)
+  .refine((value) => {
+    const eq = value.indexOf("=");
+    if (eq <= 0 || !value.slice(0, eq).trim()) return false;
+    const members = value
+      .slice(eq + 1)
+      .split(",")
+      .map((member) => member.trim());
+    return members.length > 0 && members.every(Boolean);
+  }, "field must be '<name>=<value>[,<value>...]' with no empty members");
+const querySelectionSchema = z
+  .object({
+    type: z.string().trim().min(1).max(256).optional(),
+    prefix: z.string().trim().min(1).max(512).optional(),
+    field: fieldSelectionSchema.optional(),
+    open: z.boolean().optional(),
+    limit: z
+      .number()
+      .refine(
+        (value) => Number.isInteger(value) && value >= 1 && value <= MAX_VIEW_OBJECTS,
+        `query limit must be an integer between 1 and ${MAX_VIEW_OBJECTS}`,
+      )
+      .optional(),
+  })
+  .strict()
+  .refine(
+    (query) => Boolean(query.type || query.prefix || query.field || query.open === true),
+    "query must declare at least one of type, prefix, field, or open:true",
+  );
 const generatedActionSchema = z
   .object({
     kind: z.literal("document.set-field"),
@@ -46,38 +83,56 @@ const generatedActionSchema = z
   })
   .strict();
 
-const inputSchema = {
-  title: z.string().trim().min(1).max(120).describe("Short human-facing title for this generated View."),
-  html: z
-    .string()
-    .min(1)
-    .describe(
-      "Script- and style-free HTML fragment. Insert authoritative scalar values with data-aslite-text=\"objects.<index>.id|version|body|frontmatter.<field>\"; render a selected document body with data-aslite-markdown=\"objects.<index>.body\". Active elements and navigation attributes are removed by the trusted shell.",
-    ),
-  css: z
-    .string()
-    .optional()
-    .describe("Optional CSS for the generated fragment. External resource loads are blocked."),
-  objectIds: z
-    .array(z.string().trim().min(1).max(512))
-    .min(1)
-    .max(MAX_VIEW_OBJECTS)
-    .refine((ids) => new Set(ids).size === ids.length, "objectIds must not contain duplicates")
-    .describe("Exact AgentState document IDs to expose to this View. Select them with the normal CLI first."),
-  actions: z
-    .array(generatedActionSchema)
-    .max(MAX_VIEW_ACTIONS)
-    .optional()
-    .describe(
-      "Optional governed scalar actions rendered by the trusted shell. Every objectId must already be selected; generated HTML remains read-only.",
-    ),
-};
+const inputSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120).describe("Short human-facing title for this generated View."),
+    html: z
+      .string()
+      .min(1)
+      .describe(
+        "Script- and style-free HTML fragment. Insert authoritative scalar values with data-aslite-text=\"objects.<index>.id|version|body|frontmatter.<field>\"; render a selected document body with data-aslite-markdown=\"objects.<index>.body\". Active elements and navigation attributes are removed by the trusted shell.",
+      ),
+    css: z
+      .string()
+      .optional()
+      .describe("Optional CSS for the generated fragment. External resource loads are blocked."),
+    objectIds: z
+      .array(z.string().trim().min(1).max(512))
+      .min(1)
+      .max(MAX_VIEW_OBJECTS)
+      .refine((ids) => new Set(ids).size === ids.length, "objectIds must not contain duplicates")
+      .optional()
+      .describe(
+        "Exact AgentState document IDs to expose. Pass either objectIds or query, never both.",
+      ),
+    query: querySelectionSchema
+      .optional()
+      .describe(
+        `Bounded launch-time selection using the same type/prefix/field/open semantics as bundle Views. Results are id-sorted, capped at ${MAX_VIEW_OBJECTS}, and frozen as exact versioned snapshots for this launch. Pass either query or objectIds, never both.`,
+      ),
+    actions: z
+      .array(generatedActionSchema)
+      .max(MAX_VIEW_ACTIONS)
+      .optional()
+      .describe(
+        "Optional governed scalar actions rendered by the trusted shell. Every objectId must already be selected; generated HTML remains read-only.",
+      ),
+  })
+  .strict()
+  .refine(
+    (input) => (input.objectIds === undefined) !== (input.query === undefined),
+    "pass exactly one selection mode: objectIds or query",
+  );
 
 const outputSchema = z.object({
   schemaVersion: z.literal("agentstate.view-launch.v1"),
   title: z.string(),
   presentation: z.object({ html: z.string(), css: z.string(), contentHash: z.string() }),
-  selection: z.object({ objectIds: z.array(z.string()) }),
+  selection: z.object({
+    objectIds: z.array(z.string()),
+    query: querySelectionSchema.optional(),
+    matchedCount: z.number().int().nonnegative().optional(),
+  }),
   objects: z.array(
     z.object({
       id: z.string(),
@@ -98,7 +153,40 @@ const outputSchema = z.object({
   }),
 });
 
-async function resolveViewContent(bundle: Bundle, input: ShowViewInput): Promise<ResolvedViewContent> {
+async function resolveShowViewInput(
+  bundle: Bundle,
+  rawInput: ShowViewInput,
+): Promise<ResolvedShowViewInput> {
+  const input: ShowViewInput = inputSchema.parse(rawInput);
+  if (input.objectIds) {
+    const objectIds = input.objectIds;
+    for (const id of objectIds) assertSafeConceptId(id);
+    return { ...input, objectIds: [...objectIds], query: undefined };
+  }
+
+  const query = input.query!;
+  const rows = await queryHeads(bundle, { type: query.type, prefix: query.prefix });
+  const registry = query.open ? await loadKinds(bundle) : undefined;
+  const selected = applyQuerySelectionFilters(
+    rows,
+    { ...query, limit: query.limit ?? MAX_VIEW_OBJECTS },
+    registry ? [...registry.kinds.values()] : [],
+  );
+  if (selected.rows.length === 0) {
+    throw new Error("query matched no AgentState documents");
+  }
+  return {
+    ...input,
+    objectIds: selected.rows.map((row) => row.id),
+    query,
+    matchedCount: selected.count,
+  };
+}
+
+async function resolveViewContent(
+  bundle: Bundle,
+  input: ResolvedShowViewInput,
+): Promise<ResolvedViewContent> {
   const css = input.css ?? "";
   const presentationBytes = Buffer.byteLength(input.html, "utf8") + Buffer.byteLength(css, "utf8");
   if (presentationBytes > MAX_VIEW_PRESENTATION_BYTES) {
@@ -106,14 +194,6 @@ async function resolveViewContent(bundle: Bundle, input: ShowViewInput): Promise
       `generated HTML/CSS is ${presentationBytes} bytes; the experimental limit is ${MAX_VIEW_PRESENTATION_BYTES}`,
     );
   }
-  if (input.objectIds.length === 0 || input.objectIds.length > MAX_VIEW_OBJECTS) {
-    throw new Error(`select between 1 and ${MAX_VIEW_OBJECTS} object IDs`);
-  }
-  if (new Set(input.objectIds).size !== input.objectIds.length) {
-    throw new Error("objectIds must not contain duplicates");
-  }
-  for (const id of input.objectIds) assertSafeConceptId(id);
-
   const objects = await Promise.all(
     input.objectIds.map(async (id): Promise<ViewObjectSnapshot> => {
       const { doc, version } = await readDocVersioned(bundle, id);
@@ -137,7 +217,10 @@ async function resolveViewContent(bundle: Bundle, input: ShowViewInput): Promise
       css,
       contentHash: versionOfBytes(JSON.stringify({ html: input.html, css })),
     },
-    selection: { objectIds: [...input.objectIds] },
+    selection: {
+      objectIds: [...input.objectIds],
+      ...(input.query ? { query: { ...input.query }, matchedCount: input.matchedCount } : {}),
+    },
     objects,
   };
 }
@@ -147,7 +230,8 @@ export async function resolveViewLaunch(
   input: ShowViewInput,
   launches = new McpViewLaunchRegistry(),
 ): Promise<ViewLaunchPayload> {
-  return launches.mint(input, await resolveViewContent(bundle, input));
+  const resolvedInput = await resolveShowViewInput(bundle, input);
+  return launches.mint(resolvedInput, await resolveViewContent(bundle, resolvedInput));
 }
 
 async function refreshViewLaunch(
@@ -199,7 +283,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     {
       title: "Show AgentState View",
       description:
-        "Use this after selecting exact document IDs with the AgentState Lite CLI. It renders agent-authored HTML over current authoritative snapshots. Optional document.set-field declarations become trusted-shell controls; generated HTML remains read-only and every write requires human confirmation.",
+        "Render agent-authored HTML over current authoritative AgentState snapshots selected by exact IDs or one bounded launch-time query. Optional document.set-field declarations become trusted-shell controls; generated HTML remains read-only and every write requires human confirmation.",
       inputSchema,
       outputSchema,
       annotations: {

@@ -1,4 +1,5 @@
 import type { Frontmatter, Version } from "@agentstate-lite/core";
+import type { QuerySelectionParams } from "@agentstate-lite/core/query-selection";
 import type { ActionScalar } from "@agentstate-lite/view-runtime";
 
 export interface GeneratedActionDeclaration {
@@ -13,7 +14,20 @@ export interface ShowViewInput {
   title: string;
   html: string;
   css?: string;
+  objectIds?: string[];
+  query?: ViewQuerySelection;
+  actions?: GeneratedActionDeclaration[];
+}
+
+export type ViewQuerySelection = QuerySelectionParams;
+
+export interface ResolvedShowViewInput {
+  title: string;
+  html: string;
+  css?: string;
   objectIds: string[];
+  query?: ViewQuerySelection;
+  matchedCount?: number;
   actions?: GeneratedActionDeclaration[];
 }
 
@@ -34,7 +48,12 @@ export interface ResolvedViewContent {
   schemaVersion: "agentstate.view-launch.v1";
   title: string;
   presentation: { html: string; css: string; contentHash: Version };
-  selection: { objectIds: string[] };
+  selection: {
+    objectIds: string[];
+    query?: ViewQuerySelection;
+    /** Total rows matching the launch-time query before its limit was applied. */
+    matchedCount?: number;
+  };
   objects: ViewObjectSnapshot[];
 }
 

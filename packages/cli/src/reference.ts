@@ -183,7 +183,7 @@ export const COMMAND_GROUPS: CommandGroup[] = [
       {
         usage: "mcp [--dir <path>] [--actor <name>]",
         summary:
-          "Run the experimental local MCP Apps adapter over a bundle (stdio): an agent supplies script-free HTML/CSS with declarative text or bounded Markdown bindings plus explicit document IDs; optional governed scalar actions render in trusted shell chrome and require human confirmation",
+          "Run the experimental local MCP Apps adapter over a bundle (stdio): an agent supplies script-free HTML/CSS with declarative text or bounded Markdown bindings plus exact document IDs or one bounded launch-time query; optional governed scalar actions render in trusted shell chrome and require human confirmation",
       },
       {
         usage:

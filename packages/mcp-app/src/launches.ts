@@ -7,8 +7,8 @@ import {
 } from "@agentstate-lite/view-runtime";
 import type {
   GeneratedActionDeclaration,
+  ResolvedShowViewInput,
   ResolvedViewContent,
-  ShowViewInput,
   ViewActionDescriptor,
   ViewLaunchPayload,
 } from "./contract.js";
@@ -21,7 +21,7 @@ interface StoredAction {
 
 interface StoredLaunch {
   expiresAt: number;
-  input: ShowViewInput;
+  input: ResolvedShowViewInput;
   content: ResolvedViewContent;
   actions: Map<string, StoredAction>;
 }
@@ -42,12 +42,14 @@ function ownVersions(content: ResolvedViewContent): Record<string, Version> {
   return versions;
 }
 
-function copyInput(input: ShowViewInput): ShowViewInput {
+function copyInput(input: ResolvedShowViewInput): ResolvedShowViewInput {
   return {
     title: input.title,
     html: input.html,
     css: input.css,
     objectIds: [...input.objectIds],
+    query: input.query ? { ...input.query } : undefined,
+    matchedCount: input.matchedCount,
     actions: input.actions?.map((action) => ({ ...action })),
   };
 }
@@ -69,7 +71,7 @@ export class McpViewLaunchRegistry implements TrustedActionLaunchAuthority {
     this.now = now;
   }
 
-  mint(input: ShowViewInput, content: ResolvedViewContent): ViewLaunchPayload {
+  mint(input: ResolvedShowViewInput, content: ResolvedViewContent): ViewLaunchPayload {
     this.sweepExpired();
     while (this.launches.size >= Math.max(1, this.maxEntries)) {
       const oldest = this.launches.keys().next().value as string | undefined;
@@ -82,7 +84,7 @@ export class McpViewLaunchRegistry implements TrustedActionLaunchAuthority {
       const target = content.objects.find((object) => object.id === declaration.objectId);
       if (!target) {
         throw new Error(
-          `action target '${declaration.objectId}' is outside this View's explicit object selection`,
+          `action target '${declaration.objectId}' is outside this View's frozen object selection`,
         );
       }
       const actionId = randomBytes(32).toString("base64url");
@@ -124,7 +126,7 @@ export class McpViewLaunchRegistry implements TrustedActionLaunchAuthority {
     };
   }
 
-  input(launchId: string): ShowViewInput | null {
+  input(launchId: string): ResolvedShowViewInput | null {
     const launch = this.resolveStored(launchId);
     return launch ? copyInput(launch.input) : null;
   }

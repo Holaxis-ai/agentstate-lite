@@ -139,6 +139,8 @@ export type { QueryOptions, SkippedDoc } from "./bundle.js";
 // withdrawn when the router switched to consuming `queryHeads` wholesale.
 export { queryHeads } from "./bundle.js";
 export { matchesFilter } from "./query-filter.js";
+export { applyQuerySelectionFilters } from "./query-selection.js";
+export type { QuerySelectionParams } from "./query-selection.js";
 export type { HeadResult } from "./types.js";
 
 // Portable, ownership-governed `index.md` projection. Raw reserved-file interop stays on the backend seam.

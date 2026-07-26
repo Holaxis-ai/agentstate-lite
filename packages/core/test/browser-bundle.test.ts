@@ -1,8 +1,9 @@
 /**
  * Isomorphic-boundary gate: every core subpath the BROWSER runtime-imports must bundle for the
  * browser with no `node:*` builtin. The SPA (packages/ui) runtime-imports `@agentstate-lite/core`
- * subpaths — `links` (resolveConceptId), `page` (parseRegistration), `query-filter` (matchesFilter),
- * `kinds` (isTerminal) — into a bundle where node builtins do not resolve.
+ * subpaths — `links` (resolveConceptId), `page` (parseRegistration),
+ * `query-selection` (applyQuerySelectionFilters), `kinds` (isTerminal) — into a bundle where node
+ * builtins do not resolve.
  *
  * This DECLARES that isomorphic surface once and gates it, rather than discovering a Node-only
  * import the hard way at build time (the `links.ts` → `node:path` break, designs/doc-reader HIGH-1,
@@ -26,6 +27,7 @@ const BROWSER_SUBPATHS: Array<{ module: string; symbol: string }> = [
   { module: "links.js", symbol: "resolveConceptId" },
   { module: "page.js", symbol: "parseRegistration" },
   { module: "query-filter.js", symbol: "matchesFilter" },
+  { module: "query-selection.js", symbol: "applyQuerySelectionFilters" },
   { module: "kinds.js", symbol: "isTerminal" },
 ];
 

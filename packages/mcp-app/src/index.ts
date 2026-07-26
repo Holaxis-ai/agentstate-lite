@@ -14,8 +14,10 @@ export {
 } from "./server.js";
 export type {
   GeneratedActionDeclaration,
+  ResolvedShowViewInput,
   ShowViewInput,
   ViewActionDescriptor,
   ViewLaunchPayload,
   ViewObjectSnapshot,
+  ViewQuerySelection,
 } from "./contract.js";

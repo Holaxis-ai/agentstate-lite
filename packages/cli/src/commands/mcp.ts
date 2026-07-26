@@ -21,8 +21,10 @@ Options:
   -h, --help            Show this help
 
 The experimental server uses stdio and exposes one model-visible tool: show_view. An agent selects
-exact document IDs with the normal CLI, supplies script-free HTML/CSS with declarative data-aslite-text or
-data-aslite-markdown bindings, and the host renders it over current authoritative snapshots.
+exact document IDs or supplies one bounded launch-time query, adds script-free HTML/CSS with
+declarative data-aslite-text or data-aslite-markdown bindings, and the host renders it over frozen
+authoritative snapshots. Queries reuse the bundle View's type/prefix/field/open semantics, resolve
+in deterministic ID order, and expose at most 20 documents per launch.
 Optional document.set-field declarations become trusted-shell controls; generated HTML cannot
 write directly, and every action requires explicit human confirmation plus a current version.
 The server does not save generated HTML, accept remote targets, or expose arbitrary filesystem paths.
