@@ -5,7 +5,7 @@ description: >-
   Shared taxonomy, evidence grades, scope boundary, and decision lens for
   comparing agent-relay with agentstate-lite.
 actor: codex-main
-timestamp: '2026-07-26T18:12:20.084Z'
+timestamp: '2026-07-26T18:19:54.219Z'
 ---
 # Purpose
 
@@ -44,7 +44,7 @@ All final claims must include enough wording or annotations to reveal their high
 
 # Evaluation boundary
 
-The primary target is `agent-relay@11.2.0`, packed from npm on 2026-07-26. Current `AgentWorkforce/relay` source may explain implementation, but any divergence from the packed artifact must be labeled. Relayflows, Relayfile, RelayCron, Relayloop, and hosted Agent Relay are ecosystem evidence, not automatically package evidence. The agentstate-lite comparator is the current workspace at commit `639957c94081866d9d888a6d1921111912ff827d`, with current source and bundle behavior taking precedence over older vision prose.
+The primary target is `agent-relay@11.2.0`, packed from npm on 2026-07-26. npm's SLSA provenance attestation binds that artifact to `AgentWorkforce/relay` commit `4dac087288ec0a4947d3b69a5dbd03da68392b38`; the packed build and attested commit remain distinct evidence surfaces, and any divergence from post-publish main must be labeled. Relayflows, Relayfile, RelayCron, Relayloop, and hosted Agent Relay are ecosystem evidence, not automatically package evidence. The agentstate-lite comparator is the current workspace at commit `b83a40b960e623e0684d9d72531cb7df41b7af87` (local `origin/main` was two commits newer and limited to UI renderer work when checked), with current source and bundle behavior taking precedence over older vision prose.
 
 # Decision lens
 
