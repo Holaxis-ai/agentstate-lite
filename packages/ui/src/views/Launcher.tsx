@@ -370,6 +370,9 @@ export function Launcher() {
                 </>
               )}
               <div className="orientation-nav">
+                <span className="orientation-step" aria-live="polite">
+                  {orientationStep + 1} of 3
+                </span>
                 {orientationStep > 0 && (
                   <button
                     type="button"
@@ -392,9 +395,6 @@ export function Launcher() {
                     Got it
                   </button>
                 )}
-                <span className="orientation-step" aria-live="polite">
-                  {orientationStep + 1} of 3
-                </span>
               </div>
             </section>
           )}
