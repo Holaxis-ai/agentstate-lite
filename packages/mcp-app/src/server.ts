@@ -150,6 +150,23 @@ export async function resolveViewLaunch(
   return launches.mint(input, await resolveViewContent(bundle, input));
 }
 
+async function refreshViewLaunch(
+  bundle: Bundle,
+  launches: McpViewLaunchRegistry,
+  launchId: string,
+): Promise<ViewLaunchPayload | null> {
+  const input = launches.input(launchId);
+  if (!input) return null;
+  try {
+    return launches.refresh(launchId, await resolveViewContent(bundle, input));
+  } catch {
+    // The action result is authoritative even when a selected sibling vanished afterward.
+    // Retire the incomplete launch instead of replacing a commit/conflict receipt with refresh noise.
+    launches.revoke(launchId);
+    return null;
+  }
+}
+
 function fallbackText(payload: ViewLaunchPayload): string {
   const rows = payload.objects.map((object) => {
     const title =
@@ -243,8 +260,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
           } satisfies ActionTerminalResult);
       let view = launches.payload(launchId);
       if (result.status === "conflict") {
-        const input = launches.input(launchId);
-        if (input) view = launches.refresh(launchId, await resolveViewContent(options.bundle, input));
+        view = await refreshViewLaunch(options.bundle, launches, launchId);
       }
       return {
         content: [
@@ -300,10 +316,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
             result.status === "unchanged" ||
             result.status === "conflict")
         ) {
-          const input = launches.input(launchId);
-          if (input) {
-            view = launches.refresh(launchId, await resolveViewContent(options.bundle, input));
-          }
+          view = await refreshViewLaunch(options.bundle, launches, launchId);
         }
       }
       return {

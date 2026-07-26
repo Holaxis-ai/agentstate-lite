@@ -83,6 +83,13 @@ function closeConfirmation(): void {
   pending = null;
 }
 
+function retirePayload(): void {
+  currentPayload = null;
+  frame.removeAttribute("srcdoc");
+  actionButtonsEl.replaceChildren();
+  actionsEl.hidden = true;
+}
+
 function openConfirmation(
   launchId: string,
   approvalToken: string,
@@ -113,6 +120,7 @@ async function prepareAction(launchId: string, actionId: string, button: HTMLBut
     });
     const structured = structuredResult(response);
     if (structured && isViewPayload(structured.view)) renderPayload(structured.view);
+    else if (structured?.view === null) retirePayload();
     const result = structured?.result as PrepareResult | undefined;
     if (result?.status === "prepared") {
       openConfirmation(launchId, result.approvalToken, result.confirmation);
@@ -195,6 +203,7 @@ async function finishAction(decision: "commit" | "cancel"): Promise<void> {
     });
     const structured = structuredResult(response);
     if (structured && isViewPayload(structured.view)) renderPayload(structured.view);
+    else if (structured?.view === null) retirePayload();
     statusEl.dataset.kind =
       isRecord(structured?.result) && structured.result.status === "conflict" ? "error" : "ready";
     statusEl.textContent = resultMessage(structured?.result);

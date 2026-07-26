@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { MemoryBackend, readDocVersioned, writeDoc, type Bundle } from "@agentstate-lite/core";
+import {
+  MemoryBackend,
+  deleteDoc,
+  readDocVersioned,
+  writeDoc,
+  type Bundle,
+} from "@agentstate-lite/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
@@ -374,6 +380,154 @@ test("trusted MCP shell requires an actor before preparing any write", async (t)
     (prepared.structuredContent as { result: { message?: string } }).result.message ?? "",
     /action actor/,
   );
+  assert.equal((await readDocVersioned(bundle, "tasks/alpha")).doc.frontmatter.status, "todo");
+});
+
+test("a committed action keeps its receipt and retires the launch when a selected sibling vanished", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const server = createMcpAppServer({ bundle, actor: "mike/test" });
+  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const shown = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: {
+      title: "Task and roadmap",
+      html: "<p>Selected objects</p>",
+      objectIds: ["tasks/alpha", "roadmap-items/views"],
+      actions: [
+        {
+          kind: "document.set-field",
+          label: "Mark complete",
+          objectId: "tasks/alpha",
+          field: "status",
+          value: "done",
+        },
+      ],
+    },
+  });
+  const view = shown.structuredContent as {
+    launch: { launchId: string; actions: Array<{ actionId: string }> };
+  };
+  const prepared = await client.callTool({
+    name: PREPARE_VIEW_ACTION_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      actionId: view.launch.actions[0]!.actionId,
+    },
+  });
+  const approvalToken = (
+    prepared.structuredContent as { result: { status: string; approvalToken?: string } }
+  ).result.approvalToken;
+  assert.ok(approvalToken);
+  await deleteDoc(bundle, "roadmap-items/views");
+
+  const finished = await client.callTool({
+    name: FINISH_VIEW_ACTION_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      approvalToken,
+      decision: "commit",
+    },
+  });
+  const terminal = finished.structuredContent as {
+    result: { status: string; version?: string };
+    view: unknown;
+  };
+  const persisted = await readDocVersioned(bundle, "tasks/alpha");
+  assert.equal(finished.isError, undefined);
+  assert.equal(terminal.result.status, "committed");
+  assert.equal(terminal.result.version, persisted.version);
+  assert.equal(persisted.doc.frontmatter.status, "done");
+  assert.equal(persisted.doc.frontmatter.actor, "mike/test");
+  assert.equal(terminal.view, null);
+
+  const retired = await client.callTool({
+    name: PREPARE_VIEW_ACTION_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      actionId: view.launch.actions[0]!.actionId,
+    },
+  });
+  assert.equal(
+    (retired.structuredContent as { result: { status: string } }).result.status,
+    "rejected",
+  );
+});
+
+test("a CAS conflict keeps its receipt and retires the launch when a selected sibling vanished", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const server = createMcpAppServer({ bundle, actor: "mike/test" });
+  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const shown = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: {
+      title: "Stale task and roadmap",
+      html: "<p>Selected objects</p>",
+      objectIds: ["tasks/alpha", "roadmap-items/views"],
+      actions: [
+        {
+          kind: "document.set-field",
+          label: "Mark complete",
+          objectId: "tasks/alpha",
+          field: "status",
+          value: "done",
+        },
+      ],
+    },
+  });
+  const view = shown.structuredContent as {
+    launch: { launchId: string; actions: Array<{ actionId: string }> };
+  };
+  const prepared = await client.callTool({
+    name: PREPARE_VIEW_ACTION_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      actionId: view.launch.actions[0]!.actionId,
+    },
+  });
+  const approvalToken = (
+    prepared.structuredContent as { result: { status: string; approvalToken?: string } }
+  ).result.approvalToken;
+  assert.ok(approvalToken);
+  await writeDoc(bundle, {
+    id: "tasks/alpha",
+    frontmatter: { type: "Task", title: "Alpha", status: "todo", timestamp: T },
+    body: "# Goal\n\nChanged elsewhere.",
+  });
+  await deleteDoc(bundle, "roadmap-items/views");
+
+  const finished = await client.callTool({
+    name: FINISH_VIEW_ACTION_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      approvalToken,
+      decision: "commit",
+    },
+  });
+  const terminal = finished.structuredContent as {
+    result: { status: string; version?: string };
+    view: unknown;
+  };
+  assert.equal(finished.isError, undefined);
+  assert.equal(terminal.result.status, "conflict");
+  assert.equal(terminal.view, null);
   assert.equal((await readDocVersioned(bundle, "tasks/alpha")).doc.frontmatter.status, "todo");
 });
 
