@@ -1,11 +1,10 @@
 /**
  * Home-surface pins (designs/home-surface):
  *
- *  1. The empty Views state is written for a first-time reader: what a view IS, plus the plain-
- *     language ask that produces one. Authoring mechanics (kind names, blob prefixes, registry
- *     docs) are pinned ABSENT — this is the surface a user meets before they know any of it.
- *     Supersedes the earlier canonical-vocabulary pin from plans/rename-page-kind-to-view
- *     Unit 3, which taught `type: View` / `views/` / `examples/views/` here.
+ *  1. The empty Views state is a SHORT pointer: the plain-language ask that produces a view.
+ *     The full what-is-a-view explanation lives in the orientation walkthrough (2026-07-26);
+ *     authoring mechanics (kind names, blob prefixes, registry docs) are pinned ABSENT from the
+ *     first read and reachable behind "learn more".
  *  2. The grid is FLAT — the capability-grouped sections (Dashboards / Interactive / Documents)
  *     are gone; capability renders as a per-card BADGE (`live data` / `can edit` / `artifact`)
  *     derived from the same enforced `bridge` field. Red-on-old: the grouped launcher rendered a
@@ -132,7 +131,7 @@ describe("home surface", () => {
     }
   }
 
-  it("empty state explains what a view is and how to ask for one, in a first-time reader's vocabulary", async () => {
+  it("empty state is a short pointer to the agent ask — the orientation panels own the full Views explanation", async () => {
     storage.setItem(orientationStorageKey(BUNDLE_ROOT), "dismissed");
     await render();
     for (let i = 0; i < 50 && !container.querySelector(".launcher-empty"); i++) {
@@ -144,9 +143,9 @@ describe("home surface", () => {
     const empty = container.querySelector(".launcher-empty");
     expect(empty, "empty state must render when no views are registered").not.toBeNull();
     const text = empty!.textContent ?? "";
-    // What it is, and the one route to getting one: ask the agent in plain language.
-    expect(text).toContain("interactive HTML file");
-    expect(text).toContain("asking your agent");
+    // One route to getting a view: ask the agent in plain language. The WHAT lives in the
+    // orientation walkthrough now, so the empty state stays a one-breath pointer.
+    expect(text).toContain("Ask your agent");
     expect(text).toMatch(/create a view showing every open task/);
     // Authoring MECHANICS are deliberately absent from the FIRST read: a reader who has never
     // seen a view should not have to parse kind names or blob prefixes to understand it. They
@@ -254,7 +253,7 @@ describe("home surface", () => {
     expect(panel1).toMatch(/ratchets forward instead of slipping back/);
     expect(panel1).toMatch(/becomes the floor the next one builds on/);
     expect(panel1).toMatch(/span days, sessions, and many agents/);
-    expect(panel1).toContain("1 of 3");
+    expect(panel1).toContain("1 of 4");
     expect(orientation()!.querySelector(".orientation-dismiss"), "Got it only on the last panel").toBeNull();
     expect(panel1).not.toContain("Back");
     // designs/home-surface: orient without OKF jargon — the standard lives behind "learn more".
@@ -277,7 +276,7 @@ describe("home surface", () => {
     expect(panel2).toContain("agents are the main users");
     expect(panel2).toContain("built by agents, for agents");
     expect(panel2).toContain("aslite skill install");
-    expect(panel2).toContain("2 of 3");
+    expect(panel2).toContain("2 of 4");
     expect(orientation()!.querySelector(".orientation-dismiss")).toBeNull();
 
     // Back returns to panel 1, Next comes back.
@@ -289,23 +288,32 @@ describe("home surface", () => {
     await clickNext();
     await clickNext();
 
-    // Panel 3 — Views examples + Collaborating with others (the privacy promise, worded to cover
-    // the in-tree mode: chip and promise must never contradict) + the try-it hook.
+    // Panel 3 — Views examples + the Recipes subsection (how the bundle learns new document types).
     const panel3 = panelText();
     expect(panel3).toContain("Views");
-    expect(panel3).toContain("Collaborating with others");
     const examples = orientation()!.querySelector(".orientation-examples");
     expect(examples, "panel 3 must list example view prompts").not.toBeNull();
     expect(examples!.querySelectorAll("li").length).toBeGreaterThanOrEqual(3);
     expect(examples!.textContent).toMatch(/all tasks that have not been completed/i);
-    expect(panel3).toMatch(/stays private until you choose to share it/i);
-    expect(panel3).toContain("committing the folder with your code");
-    expect(panel3).toContain("ask your agent to write something down");
-    expect(panel3).toContain("3 of 3");
+    expect(panel3).toContain("Recipes");
+    expect(panel3).toContain("aslite recipe add");
+    expect(panel3).toContain("3 of 4");
+    expect(orientation()!.querySelector(".orientation-dismiss")).toBeNull();
+
+    // Panel 4 — Collaborating with others: how sync works today (the privacy promise, worded to
+    // cover the in-tree mode: chip and promise must never contradict) + the try-it hook.
+    await clickNext();
+    const panel4 = panelText();
+    expect(panel4).toContain("Collaborating with others");
+    expect(panel4).toMatch(/stays private until you choose to share it/i);
+    expect(panel4).toContain("aslite sync --establish");
+    expect(panel4).toContain("committing the folder with your code");
+    expect(panel4).toContain("ask your agent to write something down");
+    expect(panel4).toContain("4 of 4");
     expect(orientation()!.querySelector(".orientation-next"), "no Next past the last panel").toBeNull();
 
     // Global copy rules hold across the WHOLE walkthrough, not just one panel.
-    const all = panel1 + panel2 + panel3;
+    const all = panel1 + panel2 + panel3 + panel4;
     expect(all).not.toMatch(/works from any terminal/i);
     expect(all).not.toContain('new "Context Note"');
     // Never advertise the UNSCOPED npm coordinate: `aslite` is not ours (404 on the registry),
@@ -355,7 +363,7 @@ describe("home surface", () => {
     expect(container.querySelector(".about-btn")).toBeNull();
 
     // Got it lives on the last panel — walk forward to reach it.
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
       await act(async () => {
         (container.querySelector(".orientation-next") as HTMLButtonElement).click();
         await flush();

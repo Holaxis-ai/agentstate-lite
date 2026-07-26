@@ -13,8 +13,8 @@
  * `bridge`), so the card can never claim a page is one thing while the bridge treats it as
  * another; it is just no longer the organizing principle.
  *
- * Orientation: a 3-panel walkthrough (What is it? + problems / How do I use it? / Views +
- * collaborating) navigated with Back/Next; "Got it" appears only on the last panel and is the
+ * Orientation: a 4-panel walkthrough (What is it? + problems / How do I use it? / Views +
+ * recipes / Collaborating via sync) navigated with Back/Next; "Got it" appears only on the last panel and is the
  * one dismissal path. Shown until dismissed, tracked in localStorage keyed by the bundle root
  * (accepted caveat: a stable-port fallback to an ephemeral port changes the origin, which may
  * resurface it once), and REOPENABLE afterwards via the "what is this?" affordance — the
@@ -358,10 +358,37 @@ export function Launcher() {
                     <li>“Show the decisions made this month, each linking to its full write-up.”</li>
                     <li>“Make a live map of how the documents in this bundle link together.”</li>
                   </ul>
-                  <h3>Collaborating with others</h3>
+                  <h3>Recipes</h3>
                   <p>
-                    The bundle stays private until you choose to share it — by establishing a shared board (
-                    <code>aslite sync --establish</code>) or committing the folder with your code.
+                    Recipes extend what the bundle can hold. Each one is a small, installable definition of a document
+                    type — its fields, allowed values, and any views that go with it. ASLite ships with a few built
+                    in: context notes (applied by default), work tracking (the Task type that powers a shared task
+                    board), and roadmap. Run <code>aslite recipes</code> to see what is available and{" "}
+                    <code>aslite recipe add work-tracking</code> to apply one — or simply ask your agent, e.g.{" "}
+                    <em>“Set this project up for task tracking.”</em>
+                  </p>
+                </>
+              )}
+              {orientationStep === 3 && (
+                <>
+                  <h2>Collaborating with others</h2>
+                  <p>
+                    The bundle stays private until you choose to share it. Sharing runs over git, through the
+                    repository you already have: a one-time <code>aslite sync --establish</code> publishes the bundle
+                    onto its own <code>board</code> branch beside your code, and teammates join by simply running{" "}
+                    <code>aslite sync</code> from their clone.
+                  </p>
+                  <p>
+                    From then on, <code>aslite sync</code> is the whole workflow: it commits your bundle changes,
+                    pulls your teammates’, and pushes yours — touching nothing outside the bundle. Agents run it as
+                    they close out work; new sessions pull the latest state as they start, and stale reads refresh
+                    themselves — so humans and agents on every clone work from the same shared memory.
+                  </p>
+                  <p>
+                    If both sides change the same document, sync converges instead of breaking: the incoming version
+                    is kept, yours is saved to a file, and reconciling is an ordinary edit. (You can also skip the
+                    separate branch entirely by committing the folder with your code — sharing then rides your normal
+                    commits and pushes.)
                   </p>
                   <p>
                     <strong>Try it:</strong> ask your agent to write something down — a decision you just made, or how
@@ -371,7 +398,7 @@ export function Launcher() {
               )}
               <div className="orientation-nav">
                 <span className="orientation-step" aria-live="polite">
-                  {orientationStep + 1} of 3
+                  {orientationStep + 1} of 4
                 </span>
                 {orientationStep > 0 && (
                   <button
@@ -382,11 +409,11 @@ export function Launcher() {
                     Back
                   </button>
                 )}
-                {orientationStep < 2 ? (
+                {orientationStep < 3 ? (
                   <button
                     type="button"
                     className="orientation-nav-btn orientation-next"
-                    onClick={() => setOrientationStep((s) => Math.min(2, s + 1))}
+                    onClick={() => setOrientationStep((s) => Math.min(3, s + 1))}
                   >
                     Next
                   </button>
@@ -415,15 +442,9 @@ export function Launcher() {
             {!pagesQuery.isPending && !pagesQuery.isError && pages.length === 0 && (
               <div className="launcher-empty">
                 <p>
-                  You don’t have any views yet. A view is an interactive HTML file that displays information captured in
-                  the bundle in whatever way is valuable to you. Examples include a board of open tasks, a map of how
-                  your notes link to each other, a navigable folder hierarchy, or a list of the decisions made this
-                  week. Views dynamically update as content changes.
-                </p>
-                <p>
-                  With the aslite skill, you can create views by asking your agent to create one using plain language:
-                  Ex: <em>“create a view showing every open task, grouped by who it’s assigned to.”</em> When it creates
-                  a view, a card or tile summarizing the view will appear on this page, along with a link to it.
+                  No views yet. Ask your agent for one in plain language — e.g.{" "}
+                  <em>“create a view showing every open task, grouped by who it’s assigned to”</em> — and its card
+                  will appear here.
                 </p>
                 <p>
                   <button

@@ -359,6 +359,8 @@ test("home surface: flat badged grid, live activity feed, first-run orientation 
     await expect(orientation).toContainText(/what is agentstate-lite\?/i);
     await orientation.getByRole("button", { name: "Next" }).click();
     await orientation.getByRole("button", { name: "Next" }).click();
+    await expect(orientation).toContainText(/recipes/i);
+    await orientation.getByRole("button", { name: "Next" }).click();
     await expect(orientation).toContainText(/collaborating with others/i);
     await expect(orientation).toContainText(/stays private until you choose to share it/i);
     await orientation.getByRole("button", { name: "Got it" }).click();
@@ -371,6 +373,7 @@ test("home surface: flat badged grid, live activity feed, first-run orientation 
     // the end closes it again.
     await page.locator(".about-btn").click();
     await expect(page.locator(".orientation")).toContainText(/cognitive ecosystem/i);
+    await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
     await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
     await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
     await page.locator(".orientation").getByRole("button", { name: "Got it" }).click();
@@ -427,6 +430,7 @@ test("doc reader: feed rows open rendered docs, links navigate, hostile content 
   try {
     await page.goto(ui.url);
     // Walk the orientation to its last panel — Got it lives only there.
+    await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
     await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
     await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
     await page.locator(".orientation .orientation-dismiss").click();
