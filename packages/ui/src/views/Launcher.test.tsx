@@ -273,7 +273,7 @@ describe("home surface", () => {
     // Panel 2 — HOW it is used: agents are the primary users; install commands connect one.
     await clickNext();
     const panel2 = panelText();
-    expect(panel2).toContain("How do I use agentstate-lite?");
+    expect(panel2).toContain("How do I use ASLite?");
     expect(panel2).toContain("agents are the main users");
     expect(panel2).toContain("built by agents, for agents");
     expect(panel2).toContain("aslite skill install");

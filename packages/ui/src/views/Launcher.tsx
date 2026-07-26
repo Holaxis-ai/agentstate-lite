@@ -316,7 +316,7 @@ export function Launcher() {
               )}
               {orientationStep === 1 && (
                 <>
-                  <h2>How do I use agentstate-lite?</h2>
+                  <h2>How do I use ASLite?</h2>
                   <p>
                     Actually, agents are the main users of ASLite. In fact it was built <em>by</em> agents,{" "}
                     <em>for</em> agents, with features that make it easy for them to work together on long-horizon

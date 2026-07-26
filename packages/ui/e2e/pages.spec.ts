@@ -354,7 +354,7 @@ test("home surface: flat badged grid, live activity feed, first-run orientation 
     await expect(orientation).toContainText(/what is agentstate-lite\?/i);
     await expect(orientation.getByRole("button", { name: "Got it" })).toHaveCount(0);
     await orientation.getByRole("button", { name: "Next" }).click();
-    await expect(orientation).toContainText(/how do i use agentstate-lite\?/i);
+    await expect(orientation).toContainText(/how do i use aslite\?/i);
     await orientation.getByRole("button", { name: "Back" }).click();
     await expect(orientation).toContainText(/what is agentstate-lite\?/i);
     await orientation.getByRole("button", { name: "Next" }).click();
