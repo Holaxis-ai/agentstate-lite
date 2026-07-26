@@ -8,23 +8,23 @@ priority: '2'
 assignee: claude-main
 actor: claude-main
 description: >-
-  BUILT + REVIEWED, awaiting Brian's PR. Branch feat/home-landing-rethink
-  through f5d3507: orientation is now a 4-PANEL walkthrough — (1) What is
-  agentstate-lite? + What problems does it solve?; (2) How do I use ASLite?; (3)
-  Views (example prompts) + Recipes subsection (installable document-type
-  definitions, built-ins, recipe add, agent-first ask); (4) Collaborating with
-  others — how sync works today (--establish once, sync commits/pulls/pushes
-  bundle-only, sessions/stale reads pull on their own, converging conflicts,
-  in-tree alternative) + try-it. Nav: Back/Next lower-right (Next outermost),
-  step count lower-left, Got it only on panel 4, dismissal persistence + panel-1
-  reopen unchanged. Empty-views state shrunk to a one-line agent ask
-  (walkthrough owns the explanation; learn-more mechanics kept). Gates green at
-  f5d3507 (unit 174, typecheck, pages e2e 13/13). NOTE: branch predates PR
-  #159's merge — needs a rebase/merge check against current main before PR
-  (legacy-View removal touched adjacent ui files). Open flags: plugin-vs-npm
-  truth of 'should have been installed'; no skip path on the 4-click
-  walkthrough. Review round 1 record: context-notes/review-home-landing-rethink.
-timestamp: '2026-07-26T14:52:55.798Z'
+  READY FOR BRIAN'S PR at 8243dfd. Branch feat/home-landing-rethink: agent-first
+  4-panel walkthrough (What is agentstate-lite?+problems/ratchet; How do I use
+  ASLite?; Views+Recipes incl. flexibility->reusable/sharable + agents suggest;
+  Collaborating with others = how sync works, agent-first sharing path; 'That's
+  the tour' separated CTA), Back/Next lower-right + step count lower-left, Got
+  it only on panel 4, reopen via 'what is this?' restarts at panel 1 with
+  collapsed disclosures, DIR pill dropped (remote-only badge), empty-views state
+  one sentence. MERGED current main (aaaedb8, clean — post-#159 integrity
+  reviewer-verified). Gates at tip: npm ci/build/typecheck/full npm
+  test/e2e:gate 18/18 all green. TWO review rounds, both APPROVE at exact SHAs,
+  all taken/declined findings recorded in
+  context-notes/review-home-landing-rethink (round 2 killed the last copy
+  overclaim: hooks sentence now truth-gated). Remaining: Brian opens the PR
+  (description delivered in-session); accepted residuals: about-btn flash pin
+  impractical in jsdom, Next->Got-it shared slot double-click (recoverable), no
+  skip path on the walkthrough (design choice).
+timestamp: '2026-07-26T15:41:31.888Z'
 ---
 # Goal
 
