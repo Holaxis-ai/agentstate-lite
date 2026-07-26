@@ -1,14 +1,14 @@
 ---
 type: Task
 title: Prove fixed-shell MCP App rendering over a local bundle
-status: in_progress
+status: done
 priority: '1'
 description: >-
   Claimed on codex/experiment-mcp-apps. Build a discardable explicit-ID
   read-only vertical spike and record the host/containment verdict before
   production extraction.
 actor: codex
-timestamp: '2026-07-26T15:07:08.364Z'
+timestamp: '2026-07-26T15:25:29.226Z'
 ---
 # Claim
 
@@ -80,6 +80,25 @@ Repository verification passed with `npm run check`: the monorepo build/typechec
 script gates, exact npm-tarball proof, generated-skill drift check, and browser E2E gate all exited
 zero. The exact built CLI also completed a real SDK client connection over stdio in the committed
 test suite.
+
+# Review and QA
+
+- Implementation commit: `600591469dceb26b79682767267d011f920f1a6b`.
+- Review/QA hardening commit: `b8f560fd539053813f9764018b5fc251ec2b2661`.
+- Final test-strengthening commit: `ee17813` (explicitly asserts every planted `script`, `style`,
+  `meta`, image, form/control, and nested-frame element is absent).
+- Independent review initially requested changes because the high-risk presentation boundary had
+  only source-string assertions. The boundary was extracted mechanically and now has executable
+  adversarial tests over the actual production functions. The follow-up review approved with no
+  blocking findings.
+- Independent adversarial QA passed in real Chromium through the official ext-apps v1.7.5 host:
+  parent/top access, self-navigation, event handlers, active elements, CSS raw-text breakout, and
+  external CSS/inline-style requests all failed closed; repeated calls rendered distinct current
+  selections.
+- QA found one non-security semantic edge: a `frontmatter.__proto__` binding could see an inherited
+  property. The final boundary reads own frontmatter fields only, with a dedicated regression test.
+- `@agentstate-lite/core` is declared as a runtime dependency of the private workspace package; the
+  published CLI remains a verified single-file artifact with zero runtime dependencies.
 
 # Recommended production boundary
 
