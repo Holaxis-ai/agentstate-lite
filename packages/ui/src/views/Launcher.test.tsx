@@ -275,7 +275,7 @@ describe("home surface", () => {
     expect(panel2).toContain("How do I use ASLite?");
     expect(panel2).toContain("agents are the main users");
     expect(panel2).toContain("built by agents, for agents");
-    expect(panel2).toContain("aslite skill install");
+    expect(panel2).toContain("ask your agent to install the ASLite skill and hooks");
     expect(panel2).toContain("2 of 4");
     expect(orientation()!.querySelector(".orientation-dismiss")).toBeNull();
 
@@ -301,7 +301,7 @@ describe("home surface", () => {
     expect(panel3).toContain("your own document types");
     expect(panel3).toContain("relationships");
     expect(panel3).toContain("share with others");
-    expect(panel3).toContain("aslite recipe add");
+    expect(panel3).toMatch(/set this project up for task tracking/i);
     expect(panel3).toMatch(/suggest a recipe/i);
     expect(panel3).toContain("3 of 4");
     expect(orientation()!.querySelector(".orientation-dismiss")).toBeNull();
@@ -313,7 +313,7 @@ describe("home surface", () => {
     expect(panel4).toContain("Collaborating with others");
     expect(panel4).toMatch(/stays private until you choose to share it/i);
     expect(panel4).toContain("ask your agent to");
-    expect(panel4).toContain("aslite sync --establish");
+    expect(panel4).toContain("publishes the bundle onto its own");
     expect(panel4).toContain("committing the folder with your code");
     // The closing CTA wraps the TOUR, not the sharing section (visually separated, "That's the
     // tour" framing) — so it cannot read as "try syncing".
@@ -330,6 +330,21 @@ describe("home surface", () => {
     // Never advertise the UNSCOPED npm coordinate: `aslite` is not ours (404 on the registry),
     // so a copy-pasted `npx -y aslite …` runs whatever lands on that name. Ours is @holaxis/aslite.
     expect(all).not.toMatch(/npx\s+-y\s+aslite\b/);
+    // No paste-ready bare CLI invocations anywhere in the walkthrough (PR review P1): the only
+    // supported channel today (marketplace plugin) does not put `aslite` on PATH, and `skill
+    // install` is npm-only — actions stay agent-mediated, mechanics described without commands.
+    expect(all).not.toMatch(/aslite (skill|hook|recipes|recipe|sync)\b/);
+
+    // The second click of a double-click on the nav slot (detail 2 — React reuses Next's DOM
+    // node as Got it) must never dismiss (PR review P2).
+    await act(async () => {
+      container
+        .querySelector(".orientation-dismiss")!
+        .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 2 }));
+      await flush();
+    });
+    expect(container.querySelector(".orientation"), "a double-click's trailing click must not dismiss").not.toBeNull();
+    expect(storage.getItem(orientationStorageKey(BUNDLE_ROOT))).toBeNull();
 
     await act(async () => {
       (container.querySelector(".orientation-dismiss") as HTMLButtonElement).click();

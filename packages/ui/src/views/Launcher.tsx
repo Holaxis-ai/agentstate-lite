@@ -27,7 +27,7 @@
  * Live: a doc change over SSE may add/remove/retitle a View doc, so the grid refetches on any
  * doc change — a freshly-promoted view shows up without a manual reload.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchConfig, listPages, invalidateKinds, type PageEntry, type SharingSummary, type WorkspaceSummaryEntry } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
@@ -151,6 +151,8 @@ export function Launcher() {
   const [orientationDismissed, setOrientationDismissed] = useState<boolean | null>(null);
   const [orientationReopened, setOrientationReopened] = useState(false);
   const [orientationStep, setOrientationStep] = useState(0);
+  const orientationCardRef = useRef<HTMLElement | null>(null);
+  const orientationStepSeenRef = useRef(false);
   const [whereOpen, setWhereOpen] = useState(false);
   const [viewsHelpOpen, setViewsHelpOpen] = useState(false);
   const [orientationHelpOpen, setOrientationHelpOpen] = useState(false);
@@ -198,6 +200,17 @@ export function Launcher() {
   // within that mode it shows on first run OR when explicitly reopened via "what is this?".
   const orientationAvailable = config?.mode === "dir" && config.root != null;
   const showOrientation = orientationAvailable && (orientationDismissed === false || orientationReopened);
+
+  // On a step CHANGE (never the initial render — no focus stealing on load), move focus to the
+  // entering panel's heading. This announces the panel and keeps a repeated Enter on the nav slot
+  // from landing on the control that replaced Next (PR review P2's keyboard variant).
+  useEffect(() => {
+    if (!orientationStepSeenRef.current) {
+      orientationStepSeenRef.current = true;
+      return;
+    }
+    orientationCardRef.current?.querySelector("h2")?.focus();
+  }, [orientationStep]);
 
   const dismissOrientation = () => {
     if (config?.mode === "dir" && config.root != null) {
@@ -276,10 +289,10 @@ export function Launcher() {
       <div className="home-columns">
         <div className="home-main">
           {showOrientation && (
-            <section className="orientation">
+            <section className="orientation" ref={orientationCardRef}>
               {orientationStep === 0 && (
                 <>
-                  <h2>What is agentstate-lite?</h2>
+                  <h2 tabIndex={-1}>What is agentstate-lite?</h2>
                   <p>
                     ASLite is a cognitive ecosystem for AI agents: a shared, versioned memory that lives in this
                     project as a folder of plain markdown — notes, decisions, tasks, and the links between them.
@@ -319,24 +332,15 @@ export function Launcher() {
               )}
               {orientationStep === 1 && (
                 <>
-                  <h2>How do I use ASLite?</h2>
+                  <h2 tabIndex={-1}>How do I use ASLite?</h2>
                   <p>
                     Actually, agents are the main users of ASLite. In fact it was built <em>by</em> agents,{" "}
                     <em>for</em> agents, with features that make it easy for them to work together on long-horizon
-                    problems. The ASLite skill
-                    provides agents with some basic instructions on how it all works, and ASLite hooks start each new
-                    session with the bundle’s current state already in view. If they aren’t set up yet, you can
-                    install them into a given project by running the following from a command line:
+                    problems. The ASLite skill provides agents with some basic instructions on how it all works, and
+                    ASLite hooks start each new session with the bundle’s current state already in view. If they
+                    aren’t set up yet, just ask your agent to install the ASLite skill and hooks — for this project
+                    only, or globally for every project at once.
                   </p>
-                  <pre className="orientation-cmds">
-                    <code>{"aslite skill install\naslite hook install"}</code>
-                  </pre>
-                  <p>
-                    Or you can install them globally by adding the <code>--scope global</code> flag:
-                  </p>
-                  <pre className="orientation-cmds">
-                    <code>{"aslite skill install --scope global\naslite hook install --scope global"}</code>
-                  </pre>
                   <p>
                     You may also want to add files into the bundle — for example, if you have context that will help
                     agents understand what you are building. Again, you’ll want to add these files through agents,
@@ -349,7 +353,7 @@ export function Launcher() {
               )}
               {orientationStep === 2 && (
                 <>
-                  <h2>Views</h2>
+                  <h2 tabIndex={-1}>Views</h2>
                   <p>
                     ASLite also makes it extremely easy to create views so that you can see and interact with the
                     project and its bundle. Just tell the agents what you want to see, and they will create it. And
@@ -373,9 +377,8 @@ export function Launcher() {
                     — document types, relationships, and the views that go with them — into a small, installable
                     definition you can apply to any bundle and share with others. ASLite ships with a few built in:
                     context notes (applied by default), work tracking (the Task type that powers a shared task board),
-                    and roadmap. Run <code>aslite recipes</code> to see what is available and{" "}
-                    <code>aslite recipe add work-tracking</code> to apply one — or simply ask your agent, e.g.{" "}
-                    <em>“Set this project up for task tracking.”</em>
+                    and roadmap. To use one, just ask your agent — e.g.{" "}
+                    <em>“Set this project up for task tracking”</em> — and it will apply the right recipe.
                   </p>
                   <p>
                     Agents can help with recipes themselves, too: ask one to define a recipe for the way you work, or
@@ -386,19 +389,19 @@ export function Launcher() {
               )}
               {orientationStep === 3 && (
                 <>
-                  <h2>Collaborating with others</h2>
+                  <h2 tabIndex={-1}>Collaborating with others</h2>
                   <p>
                     The bundle stays private until you choose to share it. Sharing works through git, through the
                     repository you likely already have. As with other functionality, you can simply ask your agent to
                     share your bundle, and it will walk you through any necessary steps (for example, if you need to
-                    initialize a git repo). Or, if you want to do it yourself, a one-time{" "}
-                    <code>aslite sync --establish</code> publishes the bundle onto its own <code>board</code> branch
-                    beside your code, and teammates join by simply running <code>aslite sync</code> from their clone.
+                    initialize a git repo). Under the hood, a one-time establish step
+                    publishes the bundle onto its own <code>board</code> branch beside your code, and teammates join
+                    just by syncing from their clone.
                   </p>
                   <p>
-                    From then on, <code>aslite sync</code> is the whole workflow: it commits your bundle changes,
-                    pulls your teammates’, and pushes yours — touching nothing outside the bundle. Agents run it as
-                    they close out work; new sessions pull the latest state as they start, and stale reads refresh
+                    From then on, syncing is the whole workflow: it commits your bundle changes, pulls your
+                    teammates’, and pushes yours — touching nothing outside the bundle. Agents sync as they close out
+                    work; new sessions pull the latest state as they start, and stale reads refresh
                     themselves — so humans and agents on every clone work from the same shared memory.
                   </p>
                   <p>
@@ -436,7 +439,16 @@ export function Launcher() {
                     Next
                   </button>
                 ) : (
-                  <button type="button" className="orientation-dismiss" onClick={dismissOrientation}>
+                  <button
+                    type="button"
+                    className="orientation-dismiss"
+                    onClick={(e) => {
+                      // The second click of a double-click (detail > 1) belongs to the Next that
+                      // just advanced panels — never treat it as informed dismissal.
+                      if (e.detail > 1) return;
+                      dismissOrientation();
+                    }}
+                  >
                     Got it
                   </button>
                 )}

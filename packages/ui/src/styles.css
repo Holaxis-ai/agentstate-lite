@@ -370,24 +370,6 @@ body {
   text-wrap: balance;
 }
 
-/* Copy-paste command blocks inside the orientation (install instructions). */
-.orientation-cmds {
-  margin: 0 0 0.75rem;
-  padding: 0.55rem 0.8rem;
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
-  line-height: 1.6;
-  max-width: 62ch;
-  overflow-x: auto;
-}
-
-.orientation-cmds code {
-  background: none;
-  padding: 0;
-}
-
 /* Example view prompts — quoted asks a user can hand straight to an agent. */
 .orientation-examples {
   margin: 0 0 0.75rem;
