@@ -1,8 +1,8 @@
 ---
 type: Roadmap
 title: agentstate-lite — Roadmap (near-term spine)
-actor: mike/claude
-timestamp: '2026-07-21T21:03:40.487Z'
+actor: codex
+timestamp: '2026-07-26T14:13:46.476Z'
 ---
 # agentstate-lite — Roadmap (near-term spine)
 
@@ -203,3 +203,5 @@ items the same way, so the whole chain (roadmap → item → task) is one filter
 [contains](roadmap-items/change-surface-simplification.md)
 
 [contains](roadmap-items/launcher-home-surface.md)
+
+[contains](roadmap-items/conversational-mcp-views.md)
