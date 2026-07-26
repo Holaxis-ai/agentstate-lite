@@ -366,14 +366,37 @@ test("home surface: flat badged grid, live activity feed, first-run orientation 
   try {
     await page.goto(ui.url);
 
-    // First run: the orientation renders with the privacy promise; "Got it" dismisses and persists.
+    // First run: the walkthrough opens on panel 1; Next/Back navigate; "Got it" appears only on
+    // the last panel (with the privacy promise), and dismissing there persists.
     const orientation = page.locator(".orientation");
     await expect(orientation).toBeVisible();
+    await expect(orientation).toContainText(/what is agentstate-lite\?/i);
+    await expect(orientation.getByRole("button", { name: "Got it" })).toHaveCount(0);
+    await orientation.getByRole("button", { name: "Next" }).click();
+    await expect(orientation).toContainText(/how do i use aslite\?/i);
+    await orientation.getByRole("button", { name: "Back" }).click();
+    await expect(orientation).toContainText(/what is agentstate-lite\?/i);
+    await orientation.getByRole("button", { name: "Next" }).click();
+    await orientation.getByRole("button", { name: "Next" }).click();
+    await expect(orientation).toContainText(/recipes/i);
+    await orientation.getByRole("button", { name: "Next" }).dblclick();
+    await expect(orientation).toContainText(/collaborating with others/i);
+    await expect(orientation, "a double-click on the last Next must not fall through to Got it").toBeVisible();
     await expect(orientation).toContainText(/stays private until you choose to share it/i);
     await orientation.getByRole("button", { name: "Got it" }).click();
     await expect(orientation).not.toBeVisible();
     await page.reload();
     await expect(page.locator('[data-page-id="views-registry/pulse"]')).toBeVisible();
+    await expect(page.locator(".orientation")).not.toBeVisible();
+
+    // …but the walkthrough stays reachable: "what is this?" reopens it at panel 1, and walking to
+    // the end closes it again.
+    await page.locator(".about-btn").click();
+    await expect(page.locator(".orientation")).toContainText(/cognitive ecosystem/i);
+    await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
+    await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
+    await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
+    await page.locator(".orientation").getByRole("button", { name: "Got it" }).click();
     await expect(page.locator(".orientation")).not.toBeVisible();
 
     // Identity truth (PR-B): a git-less temp bundle is PRIVATE — chip up front, path only behind
@@ -382,11 +405,11 @@ test("home surface: flat badged grid, live activity feed, first-run orientation 
     const chip = page.locator(".chip");
     await expect(chip).toHaveText("private — this computer only");
     await expect(page.locator(".launcher-meta")).not.toContainText(ui.dir);
-    await page.locator(".where-btn").click();
+    await page.getByRole("button", { name: "where is this?" }).click();
     const panel = page.locator(".where-panel");
     await expect(panel).toContainText(ui.dir);
     await expect(panel).toContainText("not shared");
-    await page.locator(".where-btn").click();
+    await page.getByRole("button", { name: "hide details" }).click();
     await expect(panel).toHaveCount(0);
     await expect(page.locator(".workspaces-toggle")).toHaveCount(0);
 
@@ -426,6 +449,10 @@ test("doc reader: feed rows open rendered docs, links navigate, hostile content 
   });
   try {
     await page.goto(ui.url);
+    // Walk the orientation to its last panel — Got it lives only there.
+    await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
+    await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
+    await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
     await page.locator(".orientation .orientation-dismiss").click();
 
     // A doc written behind the server, carrying a resolvable link + hostile vectors.

@@ -13,15 +13,21 @@
  * legacy `bridge` spelling is no longer read), so the card can never claim a page is one thing while the bridge treats it as
  * another; it is just no longer the organizing principle.
  *
- * First-run orientation: shown until dismissed, tracked in localStorage keyed by the bundle root
+ * Orientation: a 4-panel walkthrough (What is it? + problems / How do I use it? / Views +
+ * recipes / Collaborating via sync) navigated with Back/Next; "Got it" appears only on the last panel and is the
+ * one dismissal path. Shown until dismissed, tracked in localStorage keyed by the bundle root
  * (accepted caveat: a stable-port fallback to an ephemeral port changes the origin, which may
- * resurface it once). Copy rules (designs/home-surface): the privacy promise is worded to cover
- * the in-tree mode, and the try-it hook carries a no-agent-yet fallback.
+ * resurface it once), and REOPENABLE afterwards via the "what is this?" affordance — the
+ * overview and the example view prompts must stay reachable, not vanish after one reading.
+ * Copy rules (designs/home-surface + the 2026-07-24 landing rethink): agent-first framing —
+ * ASLite is a cognitive ecosystem used THROUGH agents, and this window exists for the human to
+ * see what agents are doing; the privacy promise is worded to cover the in-tree mode; the
+ * try-it hook carries a no-agent-yet fallback.
  *
  * Live: a doc change over SSE may add/remove/retitle a View doc, so the grid refetches on any
  * doc change — a freshly-promoted view shows up without a manual reload.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchConfig, listPages, invalidateKinds, type PageEntry, type SharingSummary, type WorkspaceSummaryEntry } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
@@ -143,6 +149,10 @@ export function Launcher() {
   });
   const pagesQuery = useQuery({ queryKey: ["pages"], queryFn: listPages });
   const [orientationDismissed, setOrientationDismissed] = useState<boolean | null>(null);
+  const [orientationReopened, setOrientationReopened] = useState(false);
+  const [orientationStep, setOrientationStep] = useState(0);
+  const orientationCardRef = useRef<HTMLElement | null>(null);
+  const orientationStepSeenRef = useRef(false);
   const [whereOpen, setWhereOpen] = useState(false);
   const [viewsHelpOpen, setViewsHelpOpen] = useState(false);
   const [orientationHelpOpen, setOrientationHelpOpen] = useState(false);
@@ -176,6 +186,8 @@ export function Launcher() {
   // The privacy promise describes a LOCAL bundle. Runtime mode is the authority; root may carry a
   // remote display value, so root presence alone must never enable orientation in hosted mode.
   useEffect(() => {
+    setOrientationReopened(false);
+    setOrientationStep(0);
     if (config?.mode !== "dir" || config.root == null) {
       setOrientationDismissed(null);
       return;
@@ -184,7 +196,21 @@ export function Launcher() {
   }, [config?.mode, config?.root]);
 
   const pages = pagesQuery.data ?? [];
-  const showOrientation = config?.mode === "dir" && config.root != null && orientationDismissed === false;
+  // The orientation is gated to local dir mode (its privacy promise describes a local bundle);
+  // within that mode it shows on first run OR when explicitly reopened via "what is this?".
+  const orientationAvailable = config?.mode === "dir" && config.root != null;
+  const showOrientation = orientationAvailable && (orientationDismissed === false || orientationReopened);
+
+  // On a step CHANGE (never the initial render — no focus stealing on load), move focus to the
+  // entering panel's heading. This announces the panel and keeps a repeated Enter on the nav slot
+  // from landing on the control that replaced Next (PR review P2's keyboard variant).
+  useEffect(() => {
+    if (!orientationStepSeenRef.current) {
+      orientationStepSeenRef.current = true;
+      return;
+    }
+    orientationCardRef.current?.querySelector("h2")?.focus();
+  }, [orientationStep]);
 
   const dismissOrientation = () => {
     if (config?.mode === "dir" && config.root != null) {
@@ -195,6 +221,9 @@ export function Launcher() {
       }
     }
     setOrientationDismissed(true);
+    setOrientationReopened(false);
+    setOrientationStep(0);
+    setOrientationHelpOpen(false);
   };
 
   const chip = config ? sharingChip(config.sharing ?? null) : null;
@@ -206,7 +235,9 @@ export function Launcher() {
         <p className="launcher-meta">
           {config ? (
             <>
-              <span className="pill">{config.mode}</span>
+              {/* Local is the default experience and needs no badge; only the remote exception
+                  is worth flagging up front (mechanics live behind "where is this?"). */}
+              {config.mode === "remote" && <span className="pill">remote</span>}
               {chip && (
                 <span className={chip.className} title={chip.title ?? (config.sharing ? `as of ${formatWhen(config.sharing.as_of) ?? config.sharing.as_of}` : undefined)}>
                   {chip.text}
@@ -215,6 +246,11 @@ export function Launcher() {
               <button type="button" className="where-btn" aria-expanded={whereOpen} onClick={() => setWhereOpen((v) => !v)}>
                 {whereOpen ? "hide details" : "where is this?"}
               </button>
+              {orientationAvailable && orientationDismissed === true && !showOrientation && (
+                <button type="button" className="where-btn about-btn" onClick={() => setOrientationReopened(true)}>
+                  what is this?
+                </button>
+              )}
             </>
           ) : (
             "Loading bundle…"
@@ -253,52 +289,170 @@ export function Launcher() {
       <div className="home-columns">
         <div className="home-main">
           {showOrientation && (
-            <section className="orientation">
-              <h2>This is your ASLite bundle’s home</h2>
-              <p>
-                A bundle is a folder of plain markdown documents shared with your agents: notes, decisions, tasks, and
-                the links between them. Each document follows a shared structure which, together with the ASLite CLI
-                and skill, lets agents write, track, and retrieve them as work happens.{" "}
-                <button
-                  type="button"
-                  className="where-btn"
-                  aria-expanded={orientationHelpOpen}
-                  onClick={() => setOrientationHelpOpen((v) => !v)}
-                >
-                  {orientationHelpOpen ? "hide details" : "learn more"}
-                </button>
-              </p>
-              {orientationHelpOpen && (
-                <div className="orientation-details">
+            <section className="orientation" ref={orientationCardRef}>
+              {orientationStep === 0 && (
+                <>
+                  <h2 tabIndex={-1}>What is agentstate-lite?</h2>
                   <p>
-                    That shared structure is an open standard called OKF — the Open Knowledge Format. In practice it
-                    means each file is ordinary markdown with a short header naming what the document is and what it is
-                    called, and ordinary markdown links between files.
+                    ASLite is a cognitive ecosystem for AI agents: a shared, versioned memory that lives in this
+                    project as a folder of plain markdown — notes, decisions, tasks, and the links between them.
+                    Agents read and write it as they work; conflict-safe writes keep concurrent agents from stepping
+                    on each other; and everything they know stays in files you own and can read.{" "}
+                    <button
+                      type="button"
+                      className="where-btn"
+                      aria-expanded={orientationHelpOpen}
+                      onClick={() => setOrientationHelpOpen((v) => !v)}
+                    >
+                      {orientationHelpOpen ? "hide details" : "learn more"}
+                    </button>
                   </p>
+                  {orientationHelpOpen && (
+                    <div className="orientation-details">
+                      <p>
+                        The documents follow an open standard called OKF — the Open Knowledge Format. In practice it
+                        means each file is ordinary markdown with a short header naming what the document is and what
+                        it is called, and ordinary markdown links between files.
+                      </p>
+                      <p>
+                        Nothing about it is proprietary or locked to this tool: any editor that opens markdown can
+                        read your bundle, and aslite can read a bundle some other program wrote.
+                      </p>
+                    </div>
+                  )}
+                  <h3>What problems does it solve?</h3>
                   <p>
-                    Nothing about it is proprietary or locked to this tool: any editor that opens markdown can read
-                    your bundle, and aslite can read a bundle some other program wrote.
+                    On their own, agents forget important information between sessions, occasionally step on each
+                    other’s writes, and often keep what they know invisible to you. A shared memory fixes all three —
+                    and it is what makes long-horizon work possible: progress ratchets forward instead of slipping
+                    back, because what one session settles becomes the floor the next one builds on. Decisions stay
+                    decided, and work can span days, sessions, and many agents without resetting to zero.
                   </p>
-                </div>
+                </>
               )}
-              <p>
-                It stays private until you choose to share it — by establishing a shared board (
-                <code>aslite sync --establish</code>) or committing the folder with your code.
-              </p>
-              <p>
-                <strong>Try it:</strong> ask your agent to write something down — a decision you just made, or how some
-                corner of this project works — and watch it land in the activity feed.
-              </p>
-              <p>
-                Agent doesn’t know about this bundle yet? From your project’s root folder,{" "}
-                <code>aslite skill install</code> teaches it the commands, and <code>aslite hook install</code> starts
-                each new session with this bundle’s state already in view. (Both write into the folder you run them
-                from, so run them where your project lives — or add <code>--scope global</code> to set them up for
-                every project at once.)
-              </p>
-              <button type="button" className="orientation-dismiss" onClick={dismissOrientation}>
-                Got it
-              </button>
+              {orientationStep === 1 && (
+                <>
+                  <h2 tabIndex={-1}>How do I use ASLite?</h2>
+                  <p>
+                    Actually, agents are the main users of ASLite. In fact it was built <em>by</em> agents,{" "}
+                    <em>for</em> agents, with features that make it easy for them to work together on long-horizon
+                    problems. The ASLite skill provides agents with some basic instructions on how it all works, and
+                    ASLite hooks start each new session with the bundle’s current state already in view. If they
+                    aren’t set up yet, just ask your agent to install the ASLite skill and hooks — for this project
+                    only, or globally for every project at once.
+                  </p>
+                  <p>
+                    You may also want to add files into the bundle — for example, if you have context that will help
+                    agents understand what you are building. Again, you’ll want to add these files through agents,
+                    who will know how to add them so that they can find them when they need them. For example, you
+                    can just say <em>“Add this Vision doc to the bundle”</em> and the agents will take care of it.
+                    Beyond that, just work as you normally would. With the skill installed, your agents will write
+                    their own notes and files into the bundle, and retrieve them as they are needed.
+                  </p>
+                </>
+              )}
+              {orientationStep === 2 && (
+                <>
+                  <h2 tabIndex={-1}>Views</h2>
+                  <p>
+                    ASLite also makes it extremely easy to create views so that you can see and interact with the
+                    project and its bundle. Just tell the agents what you want to see, and they will create it. And
+                    they are very good at anticipating what display formats are most useful. Here are a few examples
+                    of views that might be helpful:
+                  </p>
+                  <ul className="orientation-examples">
+                    <li>“Create me a view that shows all tasks that have not been completed, grouped by priority.”</li>
+                    <li>“Show the decisions made this month, each linking to its full write-up.”</li>
+                    <li>“Make a live map of how the documents in this bundle link together.”</li>
+                  </ul>
+                  <h3>Recipes</h3>
+                  <p>
+                    ASLite is not limited to what it ships with — it is flexible by design. You (or your agents) can
+                    define your own document types, with their own fields and allowed values; your own typed
+                    relationships between documents; and your own views over all of it. The bundle adapts to how your
+                    project actually works, not the other way around.
+                  </p>
+                  <p>
+                    Recipes are how that flexibility becomes reusable. A recipe packages a custom set of functionality
+                    — document types, relationships, and the views that go with them — into a small, installable
+                    definition you can apply to any bundle and share with others. ASLite ships with a few built in:
+                    context notes (applied by default), work tracking (the Task type that powers a shared task board),
+                    and roadmap. To use one, just ask your agent — e.g.{" "}
+                    <em>“Set this project up for task tracking”</em> — and it will apply the right recipe.
+                  </p>
+                  <p>
+                    Agents can help with recipes themselves, too: ask one to define a recipe for the way you work, or
+                    to package what this bundle already does into a recipe you can share — and they may even suggest a
+                    recipe on their own when they notice a pattern worth capturing.
+                  </p>
+                </>
+              )}
+              {orientationStep === 3 && (
+                <>
+                  <h2 tabIndex={-1}>Collaborating with others</h2>
+                  <p>
+                    The bundle stays private until you choose to share it. Sharing works through git, through the
+                    repository you likely already have. As with other functionality, you can simply ask your agent to
+                    share your bundle, and it will walk you through any necessary steps (for example, if you need to
+                    initialize a git repo). Under the hood, a one-time establish step
+                    publishes the bundle onto its own <code>board</code> branch beside your code, and teammates join
+                    just by syncing from their clone.
+                  </p>
+                  <p>
+                    From then on, syncing is the whole workflow: it commits your bundle changes, pulls your
+                    teammates’, and pushes yours — touching nothing outside the bundle. Agents sync as they close out
+                    work; new sessions pull the latest state as they start, and stale reads refresh
+                    themselves — so humans and agents on every clone work from the same shared memory.
+                  </p>
+                  <p>
+                    If both sides change the same document, sync converges instead of breaking: the incoming version
+                    is kept, yours is saved to a file, and reconciling is an ordinary edit. (You can also skip the
+                    separate branch entirely by committing the folder with your code — sharing then rides your normal
+                    commits and pushes.)
+                  </p>
+                  <p className="orientation-close">
+                    <strong>That’s the tour.</strong> To see ASLite in action, ask your agent to write something down
+                    — a decision you just made, or how some corner of this project works — and watch it land in the
+                    activity feed.
+                  </p>
+                </>
+              )}
+              <div className="orientation-nav">
+                <span className="orientation-step" aria-live="polite">
+                  {orientationStep + 1} of 4
+                </span>
+                {orientationStep > 0 && (
+                  <button
+                    type="button"
+                    className="orientation-nav-btn"
+                    onClick={() => setOrientationStep((s) => Math.max(0, s - 1))}
+                  >
+                    Back
+                  </button>
+                )}
+                {orientationStep < 3 ? (
+                  <button
+                    type="button"
+                    className="orientation-nav-btn orientation-next"
+                    onClick={() => setOrientationStep((s) => Math.min(3, s + 1))}
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="orientation-dismiss"
+                    onClick={(e) => {
+                      // The second click of a double-click (detail > 1) belongs to the Next that
+                      // just advanced panels — never treat it as informed dismissal.
+                      if (e.detail > 1) return;
+                      dismissOrientation();
+                    }}
+                  >
+                    Got it
+                  </button>
+                )}
+              </div>
             </section>
           )}
 
@@ -318,15 +472,9 @@ export function Launcher() {
             {!pagesQuery.isPending && !pagesQuery.isError && pages.length === 0 && (
               <div className="launcher-empty">
                 <p>
-                  You don’t have any views yet. A view is an interactive HTML file that displays information captured in
-                  the bundle in whatever way is valuable to you. Examples include a board of open tasks, a map of how
-                  your notes link to each other, a navigable folder hierarchy, or a list of the decisions made this
-                  week. Views dynamically update as content changes.
-                </p>
-                <p>
-                  With the aslite skill, you can create views by asking your agent to create one using plain language:
-                  Ex: <em>“create a view showing every open task, grouped by who it’s assigned to.”</em> When it creates
-                  a view, a card or tile summarizing the view will appear on this page, along with a link to it.
+                  You haven’t created any views yet. Ask your agent for one in plain language — e.g.{" "}
+                  <em>“create a view showing every open task, grouped by priority”</em> — and its card will appear
+                  here.
                 </p>
                 <p>
                   Expected views here that have disappeared? They may still use retired legacy naming, which is no

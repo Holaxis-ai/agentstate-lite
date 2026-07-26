@@ -361,6 +361,51 @@ body {
   color: var(--text-secondary);
 }
 
+/* Orientation section titles — smaller siblings of the card's h2, same display voice. */
+.orientation h3 {
+  margin: 1.1rem 0 0.4rem;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.1rem;
+  text-wrap: balance;
+}
+
+/* Example view prompts — quoted asks a user can hand straight to an agent. */
+.orientation-examples {
+  margin: 0 0 0.75rem;
+  padding-left: 1.2rem;
+  max-width: 62ch;
+  color: var(--text-secondary);
+}
+
+.orientation-examples li {
+  margin: 0 0 0.35rem;
+}
+
+/* The walkthrough's closing call-to-action: visually a TOUR footer, not part of the last
+   panel's section content (it wraps the whole orientation, so it must not read as "try sharing"). */
+.orientation-close {
+  border-top: 1px solid var(--rule);
+  padding-top: 0.85rem;
+  margin-top: 1.1rem;
+}
+
+/* Panel navigation: step count reads first (left); Back/Next anchor lower-right, Next
+   outermost = forward (the US reading-flow convention: the eye exits content bottom-right). */
+.orientation-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.orientation-step {
+  margin-right: auto;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.orientation-nav-btn,
 .orientation-dismiss {
   font: inherit;
   font-size: 0.85rem;
@@ -372,12 +417,15 @@ body {
   padding: 0.3rem 0.75rem;
 }
 
+.orientation-nav-btn:hover,
+.orientation-nav-btn:focus-visible,
 .orientation-dismiss:hover,
 .orientation-dismiss:focus-visible {
   border-color: var(--color-structure);
   color: var(--color-structure);
 }
 
+.orientation-nav-btn:focus-visible,
 .orientation-dismiss:focus-visible {
   outline: 2px solid var(--color-structure);
   outline-offset: 2px;

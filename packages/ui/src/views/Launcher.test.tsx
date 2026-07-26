@@ -1,17 +1,22 @@
 /**
  * Home-surface pins (designs/home-surface):
  *
- *  1. The empty Views state is written for a first-time reader: what a view IS, plus the plain-
- *     language ask that produces one. Authoring mechanics (kind names, blob prefixes, registry
- *     docs) are pinned ABSENT — this is the surface a user meets before they know any of it.
- *     Supersedes the earlier canonical-vocabulary pin from plans/rename-page-kind-to-view
- *     Unit 3, which taught `type: View` / `views/` / `examples/views/` here.
+ *  1. The empty Views state is a SHORT pointer: the plain-language ask that produces a view.
+ *     The full what-is-a-view explanation lives in the orientation walkthrough (2026-07-26);
+ *     authoring mechanics (kind names, blob prefixes, registry docs) are pinned ABSENT from the
+ *     first read and reachable behind "learn more".
  *  2. The grid is FLAT — the capability-grouped sections (Dashboards / Interactive / Documents)
  *     are gone; capability renders as a per-card BADGE (`live data` / `can edit` / `artifact`)
  *     derived from the same enforced `bridge` field. Red-on-old: the grouped launcher rendered a
  *     "Documents" heading.
- *  3. First-run orientation shows until dismissed; dismissal persists per bundle root in
- *     localStorage, and a stored dismissal suppresses it.
+ *  3. Orientation shows until dismissed; dismissal persists per bundle root in localStorage, and
+ *     a stored dismissal suppresses it. It stays REACHABLE afterwards: "what is this?" reopens
+ *     it (the 2026-07-24 landing rethink — the overview and the example view prompts must not
+ *     vanish after one reading).
+ *  4. Landing copy is agent-first (the 2026-07-24 rethink): it says what ASLite IS (a cognitive
+ *     ecosystem for agents), WHY it is valuable (the problems it solves; long-horizon work),
+ *     that it is used THROUGH agents with this window as the human's insight surface, and it
+ *     hands the reader example view-building prompts.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
@@ -126,7 +131,7 @@ describe("home surface", () => {
     }
   }
 
-  it("empty state explains what a view is and how to ask for one, in a first-time reader's vocabulary", async () => {
+  it("empty state is a short pointer to the agent ask — the orientation panels own the full Views explanation", async () => {
     storage.setItem(orientationStorageKey(BUNDLE_ROOT), "dismissed");
     await render();
     for (let i = 0; i < 50 && !container.querySelector(".launcher-empty"); i++) {
@@ -138,9 +143,9 @@ describe("home surface", () => {
     const empty = container.querySelector(".launcher-empty");
     expect(empty, "empty state must render when no views are registered").not.toBeNull();
     const text = empty!.textContent ?? "";
-    // What it is, and the one route to getting one: ask the agent in plain language.
-    expect(text).toContain("interactive HTML file");
-    expect(text).toContain("asking your agent");
+    // One route to getting a view: ask the agent in plain language. The WHAT lives in the
+    // orientation walkthrough now, so the empty state stays a one-breath pointer.
+    expect(text).toContain("Ask your agent");
     expect(text).toMatch(/create a view showing every open task/);
     // Authoring MECHANICS are deliberately absent from the FIRST read: a reader who has never
     // seen a view should not have to parse kind names or blob prefixes to understand it. They
@@ -219,7 +224,7 @@ describe("home surface", () => {
     expect(badges).toEqual(["can edit", "live data", "artifact"]);
   });
 
-  it("shows first-run orientation whose next step CONNECTS an agent, never hand-authoring; dismissal persists", async () => {
+  it("first-run orientation is a 4-panel walkthrough: Back/Next navigation, Got it only at the end, dismissal persists", async () => {
     await render();
     for (let i = 0; i < 50 && !container.querySelector(".orientation"); i++) {
       await act(async () => {
@@ -227,43 +232,125 @@ describe("home surface", () => {
       });
     }
 
-    const orientation = container.querySelector(".orientation");
-    expect(orientation, "first run must render the orientation").not.toBeNull();
-    const text = orientation!.textContent ?? "";
-    // The promise is worded to cover the in-tree mode (chip and promise must never contradict).
-    expect(text).toMatch(/stays private until you choose to share it/i);
-    expect(text).toContain("committing the folder with your code");
-    // Agent-first: the try-it hook asks the AGENT to write, and the no-agent fallback connects one
-    // rather than telling a human to hand-author a doc the framework exists to write for them.
-    expect(text).toContain("ask your agent to write something down");
-    expect(text).toContain("aslite skill install");
-    // designs/home-surface: the home "must (1) orient a newcomer without OKF jargon". The standard
-    // is real and worth naming, so it lives one click behind "learn more" (asserted below) rather
-    // than in the first read.
-    expect(text, "first read must orient without OKF jargon (designs/home-surface)").not.toContain("OKF");
-    expect(text).not.toMatch(/works from any terminal/i);
-    expect(text).not.toContain('new "Context Note"');
-    // Never advertise the UNSCOPED npm coordinate: `aslite` is not ours (404 on the registry),
-    // so a copy-pasted `npx -y aslite …` runs whatever lands on that name. Ours is @holaxis/aslite.
-    expect(text).not.toMatch(/npx\s+-y\s+aslite\b/);
+    const orientation = () => container.querySelector(".orientation");
+    const panelText = () => orientation()!.textContent ?? "";
+    const clickNext = async () => {
+      await act(async () => {
+        (orientation()!.querySelector(".orientation-next") as HTMLButtonElement).click();
+        await flush();
+      });
+    };
+    expect(orientation(), "first run must render the orientation").not.toBeNull();
 
-    // ...and reachable one click behind the orientation's own "learn more" — disclosure, not denial.
-    const learnMore = orientation!.querySelector<HTMLButtonElement>("button.where-btn");
-    expect(learnMore, "orientation must offer a 'learn more' disclosure").not.toBeNull();
-    expect(orientation!.querySelector(".orientation-details"), "collapsed by default").toBeNull();
+    // Panel 1 — what ASLite IS, and WHY it is valuable (the ratchet in plain words: settled work
+    // is a floor, not something re-derived — Derfer & Collier 2026). No Back, no Got it yet.
+    const panel1 = panelText();
+    expect(panel1).toContain("What is agentstate-lite?");
+    expect(panel1).toContain("cognitive ecosystem");
+    expect(panel1).toContain("folder of plain markdown");
+    expect(panel1).toContain("What problems does it solve?");
+    expect(panel1).toContain("forget important information between sessions");
+    expect(panel1).toMatch(/ratchets forward instead of slipping back/);
+    expect(panel1).toMatch(/becomes the floor the next one builds on/);
+    expect(panel1).toMatch(/span days, sessions, and many agents/);
+    expect(panel1).toContain("1 of 4");
+    expect(orientation()!.querySelector(".orientation-dismiss"), "Got it only on the last panel").toBeNull();
+    expect(panel1).not.toContain("Back");
+    // designs/home-surface: orient without OKF jargon — the standard lives behind "learn more".
+    expect(panel1, "first read must orient without OKF jargon (designs/home-surface)").not.toContain("OKF");
+    const learnMore = orientation()!.querySelector<HTMLButtonElement>("button.where-btn");
+    expect(learnMore, "panel 1 must offer a 'learn more' disclosure").not.toBeNull();
+    expect(orientation()!.querySelector(".orientation-details"), "collapsed by default").toBeNull();
     await act(async () => {
       learnMore!.click();
       await flush();
     });
-    const okfPanel = orientation!.querySelector(".orientation-details");
+    const okfPanel = orientation()!.querySelector(".orientation-details");
     expect(okfPanel, "clicking 'learn more' must reveal the standard").not.toBeNull();
     expect(okfPanel!.textContent ?? "").toContain("OKF");
+
+    // Panel 2 — HOW it is used: agents are the primary users; install commands connect one.
+    await clickNext();
+    const panel2 = panelText();
+    expect(panel2).toContain("How do I use ASLite?");
+    expect(panel2).toContain("agents are the main users");
+    expect(panel2).toContain("built by agents, for agents");
+    expect(panel2).toContain("ask your agent to install the ASLite skill and hooks");
+    expect(panel2).toContain("2 of 4");
+    expect(orientation()!.querySelector(".orientation-dismiss")).toBeNull();
+
+    // Back returns to panel 1, Next comes back.
+    await act(async () => {
+      (orientation()!.querySelector(".orientation-nav-btn") as HTMLButtonElement).click();
+      await flush();
+    });
+    expect(panelText()).toContain("What is agentstate-lite?");
+    await clickNext();
+    await clickNext();
+
+    // Panel 3 — Views examples + the Recipes subsection (how the bundle learns new document types).
+    const panel3 = panelText();
+    expect(panel3).toContain("Views");
+    const examples = orientation()!.querySelector(".orientation-examples");
+    expect(examples, "panel 3 must list example view prompts").not.toBeNull();
+    expect(examples!.querySelectorAll("li").length).toBeGreaterThanOrEqual(3);
+    expect(examples!.textContent).toMatch(/all tasks that have not been completed/i);
+    expect(panel3).toContain("Recipes");
+    // Flexibility first (own document types / relationships / views), then recipes as the
+    // reusable, sharable packaging of that flexibility.
+    expect(panel3).toContain("your own document types");
+    expect(panel3).toContain("relationships");
+    expect(panel3).toContain("share with others");
+    expect(panel3).toMatch(/set this project up for task tracking/i);
+    expect(panel3).toMatch(/suggest a recipe/i);
+    expect(panel3).toContain("3 of 4");
+    expect(orientation()!.querySelector(".orientation-dismiss")).toBeNull();
+
+    // Panel 4 — Collaborating with others: how sync works today (the privacy promise, worded to
+    // cover the in-tree mode: chip and promise must never contradict) + the try-it hook.
+    await clickNext();
+    const panel4 = panelText();
+    expect(panel4).toContain("Collaborating with others");
+    expect(panel4).toMatch(/stays private until you choose to share it/i);
+    expect(panel4).toContain("ask your agent to");
+    expect(panel4).toContain("publishes the bundle onto its own");
+    expect(panel4).toContain("committing the folder with your code");
+    // The closing CTA wraps the TOUR, not the sharing section (visually separated, "That's the
+    // tour" framing) — so it cannot read as "try syncing".
+    expect(panel4).toContain("That’s the tour.");
+    expect(panel4).toContain("ask your agent to write something down");
+    expect(orientation()!.querySelector(".orientation-close"), "closing CTA must be its own separated block").not.toBeNull();
+    expect(panel4).toContain("4 of 4");
+    expect(orientation()!.querySelector(".orientation-next"), "no Next past the last panel").toBeNull();
+
+    // Global copy rules hold across the WHOLE walkthrough, not just one panel.
+    const all = panel1 + panel2 + panel3 + panel4;
+    expect(all).not.toMatch(/works from any terminal/i);
+    expect(all).not.toContain('new "Context Note"');
+    // Never advertise the UNSCOPED npm coordinate: `aslite` is not ours (404 on the registry),
+    // so a copy-pasted `npx -y aslite …` runs whatever lands on that name. Ours is @holaxis/aslite.
+    expect(all).not.toMatch(/npx\s+-y\s+aslite\b/);
+    // No paste-ready bare CLI invocations anywhere in the walkthrough (PR review P1): the only
+    // supported channel today (marketplace plugin) does not put `aslite` on PATH, and `skill
+    // install` is npm-only — actions stay agent-mediated, mechanics described without commands.
+    expect(all).not.toMatch(/aslite (skill|hook|recipes|recipe|sync)\b/);
+
+    // The second click of a double-click on the nav slot (detail 2 — React reuses Next's DOM
+    // node as Got it) must never dismiss (PR review P2).
+    await act(async () => {
+      container
+        .querySelector(".orientation-dismiss")!
+        .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 2 }));
+      await flush();
+    });
+    expect(container.querySelector(".orientation"), "a double-click's trailing click must not dismiss").not.toBeNull();
+    expect(storage.getItem(orientationStorageKey(BUNDLE_ROOT))).toBeNull();
 
     await act(async () => {
       (container.querySelector(".orientation-dismiss") as HTMLButtonElement).click();
       await flush();
     });
-    expect(container.querySelector(".orientation"), "dismissal hides the orientation").toBeNull();
+    expect(container.querySelector(".orientation"), "Got it hides the walkthrough").toBeNull();
     expect(storage.getItem(orientationStorageKey(BUNDLE_ROOT))).toBe("dismissed");
   });
 
@@ -276,6 +363,56 @@ describe("home surface", () => {
     expect(container.querySelector(".orientation")).toBeNull();
   });
 
+  it("'what is this?' reopens the dismissed orientation — the overview stays reachable", async () => {
+    storage.setItem(orientationStorageKey(BUNDLE_ROOT), "dismissed");
+    await render();
+    for (let i = 0; i < 50 && !container.querySelector(".about-btn"); i++) {
+      await act(async () => {
+        await flush();
+      });
+    }
+
+    const about = container.querySelector<HTMLButtonElement>(".about-btn");
+    expect(about, "a dismissed orientation must leave a 'what is this?' way back").not.toBeNull();
+    expect(about!.textContent).toContain("what is this?");
+    expect(container.querySelector(".orientation")).toBeNull();
+
+    await act(async () => {
+      about!.click();
+      await flush();
+    });
+    const orientation = container.querySelector(".orientation");
+    expect(orientation, "'what is this?' must reopen the orientation").not.toBeNull();
+    // Reopening starts the walkthrough over at panel 1.
+    expect(orientation!.textContent).toContain("What is agentstate-lite?");
+    // The affordance yields to the open card (one copy of the overview on screen at a time).
+    expect(container.querySelector(".about-btn")).toBeNull();
+
+    // Got it lives on the last panel — walk forward to reach it.
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        (container.querySelector(".orientation-next") as HTMLButtonElement).click();
+        await flush();
+      });
+    }
+    await act(async () => {
+      (container.querySelector(".orientation-dismiss") as HTMLButtonElement).click();
+      await flush();
+    });
+    expect(container.querySelector(".orientation"), "Got it closes the reopened card").toBeNull();
+    expect(container.querySelector(".about-btn"), "…and the way back returns").not.toBeNull();
+    expect(storage.getItem(orientationStorageKey(BUNDLE_ROOT))).toBe("dismissed");
+
+    // A SECOND reopen starts over at panel 1 — pins dismissOrientation's step reset, which is the
+    // only guard after an in-session reopen→dismiss cycle (review round 2, finding 1: this line
+    // survived deletion before this pin existed).
+    await act(async () => {
+      (container.querySelector(".about-btn") as HTMLButtonElement).click();
+      await flush();
+    });
+    expect(container.querySelector(".orientation")!.textContent).toContain("What is agentstate-lite?");
+  });
+
   it("never shows local privacy onboarding in remote mode, even when config.root carries the remote URL", async () => {
     vi.mocked(fetchConfig).mockResolvedValue({
       ...BASE_CONFIG,
@@ -285,7 +422,12 @@ describe("home surface", () => {
       sharing: { kind: "hosted", remote: "host.example", as_of: "2026-07-21T12:00:00.000Z" },
     });
     await render();
+    // The remote exception IS badged up front.
+    expect(container.querySelector(".launcher-meta .pill")?.textContent).toBe("remote");
     expect(container.querySelector(".orientation")).toBeNull();
+    // The reopen affordance is gated with the orientation itself — its copy makes the same
+    // local-bundle privacy promise, so remote mode gets neither.
+    expect(container.querySelector(".about-btn")).toBeNull();
 
     await act(async () => {
       (container.querySelector(".where-btn") as HTMLButtonElement).click();
@@ -360,7 +502,9 @@ describe("home surface", () => {
       });
     }
 
-    // The chip is up front; the raw path is NOT (progressive disclosure).
+    // The chip is up front; the raw path is NOT (progressive disclosure), and dir mode — the
+    // default experience — carries no mode pill (only the remote exception gets a badge).
+    expect(container.querySelector(".launcher-meta .pill")).toBeNull();
     expect(container.querySelector(".chip")!.textContent).toBe("shared · org/repo");
     expect(container.querySelector(".launcher-meta")!.textContent).not.toContain(BUNDLE_ROOT);
     expect(container.querySelector(".where-panel")).toBeNull();
