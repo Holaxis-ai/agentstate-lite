@@ -5,15 +5,17 @@ status: in_progress
 priority: '1'
 assignee: openai/codex
 description: >-
-  PR #164 opened from commit 881d6a8 as a draft. Behavior-preserving unit only:
-  the bounded Markdown renderer moved 99% intact into private
-  @agentstate-lite/markdown-renderer; DocPage remains the only current main
-  consumer; the existing render-path security gate now scans both the UI and
-  extracted package. Explicitly excludes MCP command/shell/actions and Brian's
-  Launcher/activity/headless-verifier surfaces. Targeted renderer/DocPage tests
-  passed 33/33; full npm run check passed including UI 175/175 and browser
-  18/18. Independent review and CI remain before merge.
+  PR #164 at exact SHA 881d6a8fd5da424407453d1ed24dd25468eabe78. Independent
+  review posted at
+  https://github.com/Holaxis-ai/agentstate-lite/pull/164#pullrequestreview-4782267592
+  with COMMENT/no findings; ready once intentionally moved out of draft.
+  Reviewer proved main vs PR emitted UI assets and final CLI bundle
+  byte-identical, ran fresh root/package builds, 33 targeted tests, a successful
+  red probe of the moved security gate, npm tarball proof, React single-instance
+  dedupe, and cited green exact-SHA CI on Node 20/22/26. No open PR or semantic
+  overlap with Brian's work. Residual: revisit React peer/externalization only
+  if the private renderer is ever published independently.
 actor: openai/codex
-timestamp: '2026-07-26T17:40:13.963Z'
+timestamp: '2026-07-26T17:48:36.193Z'
 ---
 
