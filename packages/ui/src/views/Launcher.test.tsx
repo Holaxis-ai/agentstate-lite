@@ -224,7 +224,7 @@ describe("home surface", () => {
     expect(badges).toEqual(["can edit", "live data", "artifact"]);
   });
 
-  it("first-run orientation is a 3-panel walkthrough: Back/Next navigation, Got it only at the end, dismissal persists", async () => {
+  it("first-run orientation is a 4-panel walkthrough: Back/Next navigation, Got it only at the end, dismissal persists", async () => {
     await render();
     for (let i = 0; i < 50 && !container.querySelector(".orientation"); i++) {
       await act(async () => {
@@ -387,6 +387,15 @@ describe("home surface", () => {
     expect(container.querySelector(".orientation"), "Got it closes the reopened card").toBeNull();
     expect(container.querySelector(".about-btn"), "…and the way back returns").not.toBeNull();
     expect(storage.getItem(orientationStorageKey(BUNDLE_ROOT))).toBe("dismissed");
+
+    // A SECOND reopen starts over at panel 1 — pins dismissOrientation's step reset, which is the
+    // only guard after an in-session reopen→dismiss cycle (review round 2, finding 1: this line
+    // survived deletion before this pin existed).
+    await act(async () => {
+      (container.querySelector(".about-btn") as HTMLButtonElement).click();
+      await flush();
+    });
+    expect(container.querySelector(".orientation")!.textContent).toContain("What is agentstate-lite?");
   });
 
   it("never shows local privacy onboarding in remote mode, even when config.root carries the remote URL", async () => {

@@ -210,6 +210,7 @@ export function Launcher() {
     setOrientationDismissed(true);
     setOrientationReopened(false);
     setOrientationStep(0);
+    setOrientationHelpOpen(false);
   };
 
   const chip = config ? sharingChip(config.sharing ?? null) : null;
@@ -322,9 +323,9 @@ export function Launcher() {
                   <p>
                     Actually, agents are the main users of ASLite. In fact it was built <em>by</em> agents,{" "}
                     <em>for</em> agents, with features that make it easy for them to work together on long-horizon
-                    problems. The ASLite skill provides agents with some basic instructions on how it all works, and
-                    ASLite hooks help to ensure that agents are reminded to update the bundle at appropriate times.
-                    The skill and hooks should have been installed when you installed ASLite. If not, you can always
+                    problems. The ASLite skill
+                    provides agents with some basic instructions on how it all works, and ASLite hooks start each new
+                    session with the bundle’s current state already in view. If they aren’t set up yet, you can
                     install them into a given project by running the following from a command line:
                   </p>
                   <pre className="orientation-cmds">
