@@ -1,22 +1,17 @@
 ---
 type: Task
 title: Make plugin regeneration self-sufficient after package extraction
-status: in_progress
+status: done
 priority: P1
 assignee: codex
 description: >-
-  Release blocker found while dogfooding the merged MCP View host: the
-  main-branch version/bundle bot ran the committed-plugin writer from a clean
-  checkout, but that path neither built the extracted view-runtime nor generated
-  the MCP App HTML before esbuild. PR #167 centralizes every embedded input
-  behind one shared preparation helper, source-aliases the private runtime
-  packages, and pins all three bundle producers to that helper. Verification:
-  removed ignored generated/dist inputs and rebuilt successfully; npm run
-  test:scripts passed 64/64 with the real bot path converging on its second run;
-  npm run check passed including packed-install and 18/18 browser E2E. Awaiting
-  independent exact-SHA review before merge; after merge the bot should publish
-  the first installable post-#166 plugin.
+  Fixed and merged as PR #167 (merge 8aab3ce). The clean Node 26 rerun passed in
+  4m36s alongside the Node 22 gate and Node 20 installed-CLI smoke. The
+  post-merge CI version + bundle automation then succeeded in 26s and committed
+  plugin 1.0.121 as 45562c9, proving the formerly broken clean-checkout
+  regeneration path now builds every embedded CLI input and publishes the
+  installable post-#166 plugin.
 actor: openai/codex
-timestamp: '2026-07-26T19:37:01.126Z'
+timestamp: '2026-07-26T20:18:07.823Z'
 ---
 
