@@ -38,6 +38,7 @@ async function seed(bundle: Bundle): Promise<void> {
         required: ["title", "status"],
         optional: [],
         values: { status: ["todo", "done"] },
+        terminal: { status: ["done"] },
       },
       timestamp: T,
     },
@@ -47,6 +48,16 @@ async function seed(bundle: Bundle): Promise<void> {
     id: "tasks/alpha",
     frontmatter: { type: "Task", title: "Alpha", status: "todo", timestamp: T },
     body: "# Goal\n\nFirst task.",
+  });
+  await writeDoc(bundle, {
+    id: "tasks/beta",
+    frontmatter: { type: "Task", title: "Beta", status: "done", timestamp: T },
+    body: "# Goal\n\nCompleted task.",
+  });
+  await writeDoc(bundle, {
+    id: "tasks/gamma",
+    frontmatter: { type: "Task", title: "Gamma", status: "todo", timestamp: T },
+    body: "# Goal\n\nAnother task.",
   });
   await writeDoc(bundle, {
     id: "roadmap-items/views",
@@ -67,13 +78,122 @@ test("resolveViewLaunch returns current versioned snapshots in the caller's expl
   const alpha = await readDocVersioned(bundle, "tasks/alpha");
 
   assert.equal(payload.schemaVersion, "agentstate.view-launch.v1");
-  assert.deepEqual(payload.selection.objectIds, ["roadmap-items/views", "tasks/alpha"]);
+  assert.deepEqual(payload.selection, {
+    objectIds: ["roadmap-items/views", "tasks/alpha"],
+  });
   assert.deepEqual(payload.objects.map((object) => object.id), ["roadmap-items/views", "tasks/alpha"]);
   assert.equal(payload.objects[1]?.version, alpha.version);
   assert.equal(payload.objects[1]?.body, "# Goal\n\nFirst task.");
   assert.equal(payload.presentation.css, "");
   assert.equal(payload.launch.actions.length, 0);
   assert.match(payload.presentation.contentHash, /^sha256:[a-f0-9]{64}$/);
+});
+
+test("resolveViewLaunch applies the shared View query semantics once and freezes an honest bounded selection", async () => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+
+  const payload = await resolveViewLaunch(bundle, {
+    title: "Open tasks",
+    html: "<main></main>",
+    query: {
+      type: "Task",
+      field: "status=todo,done",
+      open: true,
+      limit: 1,
+    },
+  });
+
+  assert.deepEqual(payload.selection, {
+    objectIds: ["tasks/alpha"],
+    query: {
+      type: "Task",
+      field: "status=todo,done",
+      open: true,
+      limit: 1,
+    },
+    matchedCount: 2,
+  });
+  assert.deepEqual(payload.objects.map((object) => object.id), ["tasks/alpha"]);
+});
+
+test("query selection rejects ambiguous, empty, invalid, and no-match envelopes", async () => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const base = { title: "Invalid", html: "<main></main>" };
+
+  await assert.rejects(
+    () => resolveViewLaunch(bundle, base),
+    /exactly one selection mode/,
+  );
+  await assert.rejects(
+    () =>
+      resolveViewLaunch(bundle, {
+        ...base,
+        objectIds: ["tasks/alpha"],
+        query: { type: "Task" },
+      }),
+    /exactly one selection mode/,
+  );
+  await assert.rejects(
+    () => resolveViewLaunch(bundle, { ...base, query: {} }),
+    /at least one of type, prefix, field, or open:true/,
+  );
+  await assert.rejects(
+    () => resolveViewLaunch(bundle, { ...base, query: { type: "Task", limit: 21 } }),
+    /between 1 and 20/,
+  );
+  await assert.rejects(
+    () => resolveViewLaunch(bundle, { ...base, query: { field: "status=todo,,done" } }),
+    /no empty members/,
+  );
+  await assert.rejects(
+    () => resolveViewLaunch(bundle, { ...base, query: { type: "Missing" } }),
+    /matched no AgentState documents/,
+  );
+});
+
+test("query selection defaults to twenty id-sorted snapshots and reports the full match count", async () => {
+  const bundle = memoryBundle();
+  for (let index = 24; index >= 0; index -= 1) {
+    const suffix = String(index).padStart(2, "0");
+    await writeDoc(bundle, {
+      id: `bulk/${suffix}`,
+      frontmatter: { type: "Bulk", title: suffix, timestamp: T },
+      body: "",
+    });
+  }
+
+  const payload = await resolveViewLaunch(bundle, {
+    title: "Bounded",
+    html: "<main></main>",
+    query: { type: "Bulk" },
+  });
+
+  assert.equal(payload.selection.matchedCount, 25);
+  assert.equal(payload.selection.objectIds.length, 20);
+  assert.deepEqual(payload.selection.objectIds, [
+    "bulk/00",
+    "bulk/01",
+    "bulk/02",
+    "bulk/03",
+    "bulk/04",
+    "bulk/05",
+    "bulk/06",
+    "bulk/07",
+    "bulk/08",
+    "bulk/09",
+    "bulk/10",
+    "bulk/11",
+    "bulk/12",
+    "bulk/13",
+    "bulk/14",
+    "bulk/15",
+    "bulk/16",
+    "bulk/17",
+    "bulk/18",
+    "bulk/19",
+  ]);
 });
 
 test("MCP contract exposes one fixed App resource and invocation-specific tool results", async (t) => {
@@ -164,6 +284,26 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
     "roadmap-items/views",
   ]);
   assert.equal(secondPayload.objects[0]?.body, "# Goal\n\nCompleted.");
+
+  const queried = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: {
+      title: "Open tasks",
+      html: "<h1>Open tasks</h1>",
+      query: { type: "Task", open: true, limit: 2 },
+    },
+  });
+  assert.equal(queried.isError, undefined);
+  assert.deepEqual(
+    (queried.structuredContent as {
+      selection: { objectIds: string[]; matchedCount: number };
+    }).selection,
+    {
+      objectIds: ["tasks/gamma"],
+      query: { type: "Task", open: true, limit: 2 },
+      matchedCount: 1,
+    },
+  );
 });
 
 test("show_view fails closed for an unknown document ID", async (t) => {
@@ -330,6 +470,77 @@ test("trusted MCP shell prepares, confirms, commits, and refreshes one selected 
     "expired",
     "the shared approval authority is one-shot",
   );
+});
+
+test("a query-selected action refreshes the frozen selection instead of re-running the query", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const server = createMcpAppServer({ bundle, actor: "mike/test" });
+  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const shown = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: {
+      title: "First open task",
+      html: "<p data-aslite-text='objects.0.frontmatter.status'></p>",
+      query: { type: "Task", field: "status=todo", open: true, limit: 1 },
+      actions: [
+        {
+          kind: "document.set-field",
+          label: "Mark complete",
+          objectId: "tasks/alpha",
+          field: "status",
+          value: "done",
+        },
+      ],
+    },
+  });
+  const launch = shown.structuredContent as {
+    selection: { objectIds: string[]; matchedCount: number };
+    launch: { launchId: string; actions: Array<{ actionId: string }> };
+  };
+  assert.deepEqual(launch.selection.objectIds, ["tasks/alpha"]);
+  assert.equal(launch.selection.matchedCount, 2);
+
+  const prepared = await client.callTool({
+    name: PREPARE_VIEW_ACTION_TOOL_NAME,
+    arguments: {
+      launchId: launch.launch.launchId,
+      actionId: launch.launch.actions[0]!.actionId,
+    },
+  });
+  const approvalToken = (
+    prepared.structuredContent as { result: { approvalToken?: string } }
+  ).result.approvalToken;
+  assert.ok(approvalToken);
+
+  const finished = await client.callTool({
+    name: FINISH_VIEW_ACTION_TOOL_NAME,
+    arguments: {
+      launchId: launch.launch.launchId,
+      approvalToken,
+      decision: "commit",
+    },
+  });
+  const terminal = finished.structuredContent as {
+    result: { status: string };
+    view: {
+      selection: { objectIds: string[]; matchedCount: number };
+      objects: Array<{ id: string; frontmatter: Record<string, unknown> }>;
+    };
+  };
+  assert.equal(terminal.result.status, "committed");
+  assert.deepEqual(terminal.view.selection.objectIds, ["tasks/alpha"]);
+  assert.equal(terminal.view.selection.matchedCount, 2);
+  assert.equal(terminal.view.objects[0]?.id, "tasks/alpha");
+  assert.equal(terminal.view.objects[0]?.frontmatter.status, "done");
 });
 
 test("trusted MCP shell requires an actor before preparing any write", async (t) => {
@@ -549,7 +760,7 @@ test("MCP actions fail closed outside the explicit envelope and on stale display
     arguments: {
       title: "Outside",
       html: "<p>Task only</p>",
-      objectIds: ["tasks/alpha"],
+      query: { type: "Task", field: "status=todo", limit: 1 },
       actions: [
         {
           kind: "document.set-field",
@@ -564,7 +775,7 @@ test("MCP actions fail closed outside the explicit envelope and on stale display
   assert.equal(outside.isError, true);
   assert.match(
     outside.content[0]?.type === "text" ? outside.content[0].text : "",
-    /outside this View's explicit object selection/,
+    /outside this View's frozen object selection/,
   );
 
   const shown = await client.callTool({

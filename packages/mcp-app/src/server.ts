@@ -1,5 +1,8 @@
 import {
+  applyQuerySelectionFilters,
   assertSafeConceptId,
+  loadKinds,
+  queryHeads,
   readDocVersioned,
   versionOfBytes,
   type Bundle,
@@ -19,9 +22,11 @@ import {
 import { z } from "zod";
 import type {
   ResolvedViewContent,
+  ResolvedShowViewInput,
   ShowViewInput,
   ViewLaunchPayload,
   ViewObjectSnapshot,
+  ViewQuerySelection,
 } from "./contract.js";
 import { MCP_VIEW_HTML } from "./generated/view-html.generated.js";
 import { McpViewLaunchRegistry } from "./launches.js";
@@ -36,6 +41,33 @@ export const MAX_VIEW_ACTIONS = 8;
 export const MAX_VIEW_DATA_BYTES = 1024 * 1024;
 
 const actionScalarSchema = z.union([z.string().max(4096), z.number().finite(), z.boolean()]);
+const fieldSelectionSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(1024)
+  .refine((value) => {
+    const eq = value.indexOf("=");
+    if (eq <= 0 || !value.slice(0, eq).trim()) return false;
+    const members = value
+      .slice(eq + 1)
+      .split(",")
+      .map((member) => member.trim());
+    return members.length > 0 && members.every(Boolean);
+  }, "field must be '<name>=<value>[,<value>...]' with no empty members");
+const querySelectionSchema = z
+  .object({
+    type: z.string().trim().min(1).max(256).optional(),
+    prefix: z.string().trim().min(1).max(512).optional(),
+    field: fieldSelectionSchema.optional(),
+    open: z.boolean().optional(),
+    limit: z.number().int().min(1).max(MAX_VIEW_OBJECTS).optional(),
+  })
+  .strict()
+  .refine(
+    (query) => Boolean(query.type || query.prefix || query.field || query.open === true),
+    "query must declare at least one of type, prefix, field, or open:true",
+  );
 const generatedActionSchema = z
   .object({
     kind: z.literal("document.set-field"),
@@ -63,7 +95,15 @@ const inputSchema = {
     .min(1)
     .max(MAX_VIEW_OBJECTS)
     .refine((ids) => new Set(ids).size === ids.length, "objectIds must not contain duplicates")
-    .describe("Exact AgentState document IDs to expose to this View. Select them with the normal CLI first."),
+    .optional()
+    .describe(
+      "Exact AgentState document IDs to expose. Pass either objectIds or query, never both.",
+    ),
+  query: querySelectionSchema
+    .optional()
+    .describe(
+      `Bounded launch-time selection using the same type/prefix/field/open semantics as bundle Views. Results are id-sorted, capped at ${MAX_VIEW_OBJECTS}, and frozen as exact versioned snapshots for this launch. Pass either query or objectIds, never both.`,
+    ),
   actions: z
     .array(generatedActionSchema)
     .max(MAX_VIEW_ACTIONS)
@@ -77,7 +117,11 @@ const outputSchema = z.object({
   schemaVersion: z.literal("agentstate.view-launch.v1"),
   title: z.string(),
   presentation: z.object({ html: z.string(), css: z.string(), contentHash: z.string() }),
-  selection: z.object({ objectIds: z.array(z.string()) }),
+  selection: z.object({
+    objectIds: z.array(z.string()),
+    query: querySelectionSchema.optional(),
+    matchedCount: z.number().int().nonnegative().optional(),
+  }),
   objects: z.array(
     z.object({
       id: z.string(),
@@ -98,7 +142,82 @@ const outputSchema = z.object({
   }),
 });
 
-async function resolveViewContent(bundle: Bundle, input: ShowViewInput): Promise<ResolvedViewContent> {
+function normalizeQuerySelection(query: ViewQuerySelection): ViewQuerySelection {
+  const normalized: ViewQuerySelection = {};
+  if (typeof query.type === "string" && query.type.trim()) normalized.type = query.type.trim();
+  if (typeof query.prefix === "string" && query.prefix.trim()) normalized.prefix = query.prefix.trim();
+  if (typeof query.field === "string" && query.field.trim()) normalized.field = query.field.trim();
+  if (query.open === true) normalized.open = true;
+  if (query.limit !== undefined) {
+    if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > MAX_VIEW_OBJECTS) {
+      throw new Error(`query limit must be an integer between 1 and ${MAX_VIEW_OBJECTS}`);
+    }
+    normalized.limit = query.limit;
+  }
+  if (!normalized.type && !normalized.prefix && !normalized.field && !normalized.open) {
+    throw new Error("query must declare at least one of type, prefix, field, or open:true");
+  }
+  if (normalized.field) {
+    const eq = normalized.field.indexOf("=");
+    const key = eq > 0 ? normalized.field.slice(0, eq).trim() : "";
+    const members =
+      eq > 0
+        ? normalized.field
+            .slice(eq + 1)
+            .split(",")
+            .map((member) => member.trim())
+        : [];
+    if (!key || members.length === 0 || members.some((member) => !member)) {
+      throw new Error("query field must be '<name>=<value>[,<value>...]' with no empty members");
+    }
+  }
+  return normalized;
+}
+
+async function resolveShowViewInput(
+  bundle: Bundle,
+  input: ShowViewInput,
+): Promise<ResolvedShowViewInput> {
+  const hasIds = input.objectIds !== undefined;
+  const hasQuery = input.query !== undefined;
+  if (hasIds === hasQuery) {
+    throw new Error("pass exactly one selection mode: objectIds or query");
+  }
+  if (hasIds) {
+    const objectIds = input.objectIds!;
+    if (objectIds.length === 0 || objectIds.length > MAX_VIEW_OBJECTS) {
+      throw new Error(`select between 1 and ${MAX_VIEW_OBJECTS} object IDs`);
+    }
+    if (new Set(objectIds).size !== objectIds.length) {
+      throw new Error("objectIds must not contain duplicates");
+    }
+    for (const id of objectIds) assertSafeConceptId(id);
+    return { ...input, objectIds: [...objectIds], query: undefined };
+  }
+
+  const query = normalizeQuerySelection(input.query!);
+  const rows = await queryHeads(bundle, { type: query.type, prefix: query.prefix });
+  const registry = query.open ? await loadKinds(bundle) : undefined;
+  const selected = applyQuerySelectionFilters(
+    rows,
+    { ...query, limit: query.limit ?? MAX_VIEW_OBJECTS },
+    registry ? [...registry.kinds.values()] : [],
+  );
+  if (selected.rows.length === 0) {
+    throw new Error("query matched no AgentState documents");
+  }
+  return {
+    ...input,
+    objectIds: selected.rows.map((row) => row.id),
+    query,
+    matchedCount: selected.count,
+  };
+}
+
+async function resolveViewContent(
+  bundle: Bundle,
+  input: ResolvedShowViewInput,
+): Promise<ResolvedViewContent> {
   const css = input.css ?? "";
   const presentationBytes = Buffer.byteLength(input.html, "utf8") + Buffer.byteLength(css, "utf8");
   if (presentationBytes > MAX_VIEW_PRESENTATION_BYTES) {
@@ -106,14 +225,6 @@ async function resolveViewContent(bundle: Bundle, input: ShowViewInput): Promise
       `generated HTML/CSS is ${presentationBytes} bytes; the experimental limit is ${MAX_VIEW_PRESENTATION_BYTES}`,
     );
   }
-  if (input.objectIds.length === 0 || input.objectIds.length > MAX_VIEW_OBJECTS) {
-    throw new Error(`select between 1 and ${MAX_VIEW_OBJECTS} object IDs`);
-  }
-  if (new Set(input.objectIds).size !== input.objectIds.length) {
-    throw new Error("objectIds must not contain duplicates");
-  }
-  for (const id of input.objectIds) assertSafeConceptId(id);
-
   const objects = await Promise.all(
     input.objectIds.map(async (id): Promise<ViewObjectSnapshot> => {
       const { doc, version } = await readDocVersioned(bundle, id);
@@ -137,7 +248,10 @@ async function resolveViewContent(bundle: Bundle, input: ShowViewInput): Promise
       css,
       contentHash: versionOfBytes(JSON.stringify({ html: input.html, css })),
     },
-    selection: { objectIds: [...input.objectIds] },
+    selection: {
+      objectIds: [...input.objectIds],
+      ...(input.query ? { query: { ...input.query }, matchedCount: input.matchedCount } : {}),
+    },
     objects,
   };
 }
@@ -147,7 +261,8 @@ export async function resolveViewLaunch(
   input: ShowViewInput,
   launches = new McpViewLaunchRegistry(),
 ): Promise<ViewLaunchPayload> {
-  return launches.mint(input, await resolveViewContent(bundle, input));
+  const resolvedInput = await resolveShowViewInput(bundle, input);
+  return launches.mint(resolvedInput, await resolveViewContent(bundle, resolvedInput));
 }
 
 async function refreshViewLaunch(
@@ -199,7 +314,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     {
       title: "Show AgentState View",
       description:
-        "Use this after selecting exact document IDs with the AgentState Lite CLI. It renders agent-authored HTML over current authoritative snapshots. Optional document.set-field declarations become trusted-shell controls; generated HTML remains read-only and every write requires human confirmation.",
+        "Render agent-authored HTML over current authoritative AgentState snapshots selected by exact IDs or one bounded launch-time query. Optional document.set-field declarations become trusted-shell controls; generated HTML remains read-only and every write requires human confirmation.",
       inputSchema,
       outputSchema,
       annotations: {
