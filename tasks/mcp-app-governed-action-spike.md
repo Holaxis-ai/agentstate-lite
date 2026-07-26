@@ -1,7 +1,7 @@
 ---
 type: Task
 title: Prove MCP-host reuse of the governed View action authority
-status: in_progress
+status: done
 priority: '1'
 assignee: openai/codex
 description: >-
@@ -14,7 +14,7 @@ description: >-
   including MCP, package, and browser E2E gates. Empirical re-review is
   replaying the finding now; after it clears, this task itself will be completed
   through the trusted MCP App control as the first real dogfood mutation.
-actor: openai/codex
-timestamp: '2026-07-26T20:47:51.161Z'
+actor: mike
+timestamp: '2026-07-26T20:52:56.335Z'
 ---
 
