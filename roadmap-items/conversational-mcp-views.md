@@ -8,8 +8,8 @@ description: >-
 sequence: >-
   Fixed-shell host proof → shared runtime extraction → bounded queries →
   governed action → durable promotion → second host / remote adapter
-actor: codex
-timestamp: '2026-07-26T14:56:05.513Z'
+actor: openai/codex
+timestamp: '2026-07-26T15:45:40.087Z'
 ---
 # Direction
 
@@ -50,3 +50,5 @@ containment behavior in one actual conversation host before deciding whether the
 become a supported npm surface.
 
 [contains](../tasks/mcp-app-fixed-shell-spike.md)
+
+[contains](../tasks/mcp-app-markdown-rendering-proof.md)
