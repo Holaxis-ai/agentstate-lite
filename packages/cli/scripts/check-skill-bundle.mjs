@@ -1,8 +1,8 @@
 // Drift gate for the committed SKILL bundle (plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite.mjs).
 //
-// Rebuilds the CLI with the SAME esbuild config used by build.mjs (scripts/build-bundle.mjs — one
-// bundler config, no duplication) into a scratch temp file, then byte-compares it against the
-// committed skill bundle. Exits 1 on any mismatch (missing committed file, or bytes differ).
+// Rebuilds the CLI with the SAME generated-input preparation and esbuild config used by build.mjs
+// into a scratch temp file, then byte-compares it against the committed skill bundle. Exits 1 on
+// any mismatch (missing committed file, or bytes differ).
 //
 // NOT part of the root `npm run check` PR gate (2026-07-09): the committed bundle is version-keyed
 // plugin content that a CI bot now regenerates + bumps on merge to main
@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildCliBundle } from "./build-bundle.mjs";
+import { prepareCliBundleInputs } from "./prepare-bundle-inputs.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // packages/cli/scripts -> repo root -> plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite.mjs
@@ -32,6 +33,7 @@ const scratchDir = await mkdtemp(join(tmpdir(), "aslite-skill-bundle-"));
 const scratchFile = join(scratchDir, "agentstate-lite.mjs");
 
 try {
+  await prepareCliBundleInputs();
   await buildCliBundle(scratchFile);
 
   const fresh = await readFile(scratchFile);

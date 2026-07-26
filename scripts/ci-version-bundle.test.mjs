@@ -16,7 +16,7 @@ import {
   REAL_PATHS,
 } from "./ci-version-bundle.mjs";
 import { buildCliBundle } from "../packages/cli/scripts/build-bundle.mjs";
-import { embedUiAssets } from "../packages/cli/scripts/embed-ui-assets.mjs";
+import { prepareCliBundleInputs } from "../packages/cli/scripts/prepare-bundle-inputs.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -27,6 +27,21 @@ test("the CI workflow enters regeneration through the npm-owned script", async (
   assert.equal(manifest.scripts["ci:version-bundle"], "node scripts/ci-version-bundle.mjs");
   assert.equal(workflow.match(/npm run ci:version-bundle/g)?.length, 1);
   assert.doesNotMatch(workflow, /^\s*node scripts\/ci-version-bundle\.mjs\s*$/m);
+});
+
+test("every CLI bundle producer uses the shared generated-input preparation", async () => {
+  const producers = [
+    "packages/cli/build.mjs",
+    "packages/cli/scripts/build-plugin-bundle.mjs",
+    "packages/cli/scripts/check-skill-bundle.mjs",
+  ];
+  for (const path of producers) {
+    const source = await readFile(join(repoRoot, path), "utf8");
+    assert.match(source, /import \{ prepareCliBundleInputs \} from /, path);
+    assert.match(source, /await prepareCliBundleInputs\(\)/, path);
+    assert.doesNotMatch(source, /\bembedUiAssets\(\)/, path);
+    assert.doesNotMatch(source, /\bbuildMcpViewHtml\(\)/, path);
+  }
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -283,7 +298,7 @@ describe("real build (repo-tied)", () => {
   test("two real builds of the same source are byte-identical and embed no version literal", async () => {
     const dir = await mkdtemp(join(tmpdir(), "ci-version-bundle-real-"));
     try {
-      embedUiAssets();
+      await prepareCliBundleInputs();
       const out1 = join(dir, "build1.mjs");
       const out2 = join(dir, "build2.mjs");
       await buildCliBundle(out1);
