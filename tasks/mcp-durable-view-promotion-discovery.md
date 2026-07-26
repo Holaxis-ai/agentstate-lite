@@ -4,12 +4,15 @@ title: Design durable MCP View promotion and discovery
 status: in_progress
 priority: '2'
 description: >-
-  Define how a useful ephemeral MCP presentation becomes a durable bundle View
-  and how agents discover/invoke available Views through one generic bounded
-  surface rather than one tool per View.
+  Design drafted at designs/mcp-durable-view-promotion-discovery.
+  Recommendation: ship one bounded model-visible list_views together with
+  show_view(viewId), backed by one cross-host script-free declarative View
+  format; do not use tool-per-View, resources-only discovery, or raw scriptful
+  View reuse. Prove discovery/invocation before exact-byte human-confirmed
+  promotion.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-07-26T22:53:47.224Z'
+timestamp: '2026-07-26T22:59:45.344Z'
 ---
 # Product question
 
