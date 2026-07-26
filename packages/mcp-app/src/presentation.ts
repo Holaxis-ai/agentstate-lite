@@ -1,21 +1,9 @@
 import { renderMarkdown } from "@agentstate-lite/markdown-renderer";
 import DOMPurify from "dompurify";
 import { renderToStaticMarkup } from "react-dom/server";
+import type { ViewLaunchPayload } from "./contract.js";
 
-export interface ViewObject {
-  id: string;
-  version: string;
-  frontmatter: Record<string, unknown>;
-  body: string;
-}
-
-export interface ViewPayload {
-  schemaVersion: "agentstate.view-launch.v0";
-  title: string;
-  presentation: { html: string; css: string; contentHash: string };
-  selection: { objectIds: string[] };
-  objects: ViewObject[];
-}
+export type ViewPayload = ViewLaunchPayload;
 
 function bindingValue(payload: ViewPayload, path: string): unknown {
   const match = /^objects\.(\d+)\.(id|version|body|frontmatter\.([A-Za-z0-9_-]+))$/.exec(path);
