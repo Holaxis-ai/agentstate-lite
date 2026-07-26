@@ -9,7 +9,7 @@ sequence: >-
   Fixed-shell host proof → shared runtime extraction → bounded queries →
   governed action → durable promotion → second host / remote adapter
 actor: openai/codex
-timestamp: '2026-07-26T15:45:40.087Z'
+timestamp: '2026-07-26T16:22:46.631Z'
 ---
 # Direction
 
@@ -52,3 +52,5 @@ become a supported npm surface.
 [contains](../tasks/mcp-app-fixed-shell-spike.md)
 
 [contains](../tasks/mcp-app-markdown-rendering-proof.md)
+
+[contains](../tasks/mcp-app-governed-action-spike.md)
