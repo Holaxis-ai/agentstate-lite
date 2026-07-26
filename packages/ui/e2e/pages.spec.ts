@@ -347,9 +347,19 @@ test("home surface: flat badged grid, live activity feed, first-run orientation 
   try {
     await page.goto(ui.url);
 
-    // First run: the orientation renders with the privacy promise; "Got it" dismisses and persists.
+    // First run: the walkthrough opens on panel 1; Next/Back navigate; "Got it" appears only on
+    // the last panel (with the privacy promise), and dismissing there persists.
     const orientation = page.locator(".orientation");
     await expect(orientation).toBeVisible();
+    await expect(orientation).toContainText(/what is agentstate-lite\?/i);
+    await expect(orientation.getByRole("button", { name: "Got it" })).toHaveCount(0);
+    await orientation.getByRole("button", { name: "Next" }).click();
+    await expect(orientation).toContainText(/how do i use agentstate-lite\?/i);
+    await orientation.getByRole("button", { name: "Back" }).click();
+    await expect(orientation).toContainText(/what is agentstate-lite\?/i);
+    await orientation.getByRole("button", { name: "Next" }).click();
+    await orientation.getByRole("button", { name: "Next" }).click();
+    await expect(orientation).toContainText(/collaborating with others/i);
     await expect(orientation).toContainText(/stays private until you choose to share it/i);
     await orientation.getByRole("button", { name: "Got it" }).click();
     await expect(orientation).not.toBeVisible();
@@ -357,9 +367,12 @@ test("home surface: flat badged grid, live activity feed, first-run orientation 
     await expect(page.locator('[data-page-id="views-registry/pulse"]')).toBeVisible();
     await expect(page.locator(".orientation")).not.toBeVisible();
 
-    // …but the overview stays reachable: "what is this?" reopens it, "Got it" closes it again.
+    // …but the walkthrough stays reachable: "what is this?" reopens it at panel 1, and walking to
+    // the end closes it again.
     await page.locator(".about-btn").click();
     await expect(page.locator(".orientation")).toContainText(/cognitive ecosystem/i);
+    await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
+    await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
     await page.locator(".orientation").getByRole("button", { name: "Got it" }).click();
     await expect(page.locator(".orientation")).not.toBeVisible();
 
@@ -413,6 +426,9 @@ test("doc reader: feed rows open rendered docs, links navigate, hostile content 
   });
   try {
     await page.goto(ui.url);
+    // Walk the orientation to its last panel — Got it lives only there.
+    await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
+    await page.locator(".orientation").getByRole("button", { name: "Next" }).click();
     await page.locator(".orientation .orientation-dismiss").click();
 
     // A doc written behind the server, carrying a resolvable link + hostile vectors.

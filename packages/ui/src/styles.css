@@ -400,6 +400,21 @@ body {
   margin: 0 0 0.35rem;
 }
 
+/* Panel navigation: Back/Next through the walkthrough; Got it only on the last panel. */
+.orientation-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.orientation-step {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.orientation-nav-btn,
 .orientation-dismiss {
   font: inherit;
   font-size: 0.85rem;
@@ -411,12 +426,15 @@ body {
   padding: 0.3rem 0.75rem;
 }
 
+.orientation-nav-btn:hover,
+.orientation-nav-btn:focus-visible,
 .orientation-dismiss:hover,
 .orientation-dismiss:focus-visible {
   border-color: var(--color-structure);
   color: var(--color-structure);
 }
 
+.orientation-nav-btn:focus-visible,
 .orientation-dismiss:focus-visible {
   outline: 2px solid var(--color-structure);
   outline-offset: 2px;

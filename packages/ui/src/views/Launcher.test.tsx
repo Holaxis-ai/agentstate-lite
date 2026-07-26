@@ -225,7 +225,7 @@ describe("home surface", () => {
     expect(badges).toEqual(["can edit", "live data", "artifact"]);
   });
 
-  it("shows first-run orientation whose next step CONNECTS an agent, never hand-authoring; dismissal persists", async () => {
+  it("first-run orientation is a 3-panel walkthrough: Back/Next navigation, Got it only at the end, dismissal persists", async () => {
     await render();
     for (let i = 0; i < 50 && !container.querySelector(".orientation"); i++) {
       await act(async () => {
@@ -233,64 +233,90 @@ describe("home surface", () => {
       });
     }
 
-    const orientation = container.querySelector(".orientation");
-    expect(orientation, "first run must render the orientation").not.toBeNull();
-    const text = orientation!.textContent ?? "";
-    // The landing rethink's content pillars (2026-07-24, sectioned 2026-07-25): what ASLite IS…
-    expect(text).toContain("What is agentstate-lite?");
-    expect(text).toContain("cognitive ecosystem");
-    expect(text).toContain("folder of plain markdown");
-    // …WHY it is valuable — the problems it solves and the long-horizon consequence (the ratchet,
-    // in plain words: settled work is a floor, not something re-derived — Derfer & Collier 2026)…
-    expect(text).toContain("What problems does it solve?");
-    expect(text).toContain("forget everything between sessions");
-    expect(text).toMatch(/ratchets forward instead of slipping back/);
-    expect(text).toMatch(/becomes the floor the next one builds on/);
-    expect(text).toMatch(/span days, sessions, and many agents/);
-    // …HOW it is used — agents are the primary users; the human connects them…
-    expect(text).toContain("How do I use it?");
-    expect(text).toContain("agents are the main users");
-    expect(text).toContain("built by agents, for agents");
-    // …and example view-building prompts the reader can hand straight to an agent.
-    expect(text).toContain("Views");
-    const examples = orientation!.querySelector(".orientation-examples");
-    expect(examples, "orientation must list example view prompts").not.toBeNull();
-    expect(examples!.querySelectorAll("li").length).toBeGreaterThanOrEqual(3);
-    expect(examples!.textContent).toMatch(/all tasks that have not been completed/i);
-    // The promise is worded to cover the in-tree mode (chip and promise must never contradict).
-    expect(text).toMatch(/stays private until you choose to share it/i);
-    expect(text).toContain("committing the folder with your code");
-    // Agent-first: the try-it hook asks the AGENT to write, and the no-agent fallback connects one
-    // rather than telling a human to hand-author a doc the framework exists to write for them.
-    expect(text).toContain("ask your agent to write something down");
-    expect(text).toContain("aslite skill install");
-    // designs/home-surface: the home "must (1) orient a newcomer without OKF jargon". The standard
-    // is real and worth naming, so it lives one click behind "learn more" (asserted below) rather
-    // than in the first read.
-    expect(text, "first read must orient without OKF jargon (designs/home-surface)").not.toContain("OKF");
-    expect(text).not.toMatch(/works from any terminal/i);
-    expect(text).not.toContain('new "Context Note"');
-    // Never advertise the UNSCOPED npm coordinate: `aslite` is not ours (404 on the registry),
-    // so a copy-pasted `npx -y aslite …` runs whatever lands on that name. Ours is @holaxis/aslite.
-    expect(text).not.toMatch(/npx\s+-y\s+aslite\b/);
+    const orientation = () => container.querySelector(".orientation");
+    const panelText = () => orientation()!.textContent ?? "";
+    const clickNext = async () => {
+      await act(async () => {
+        (orientation()!.querySelector(".orientation-next") as HTMLButtonElement).click();
+        await flush();
+      });
+    };
+    expect(orientation(), "first run must render the orientation").not.toBeNull();
 
-    // ...and reachable one click behind the orientation's own "learn more" — disclosure, not denial.
-    const learnMore = orientation!.querySelector<HTMLButtonElement>("button.where-btn");
-    expect(learnMore, "orientation must offer a 'learn more' disclosure").not.toBeNull();
-    expect(orientation!.querySelector(".orientation-details"), "collapsed by default").toBeNull();
+    // Panel 1 — what ASLite IS, and WHY it is valuable (the ratchet in plain words: settled work
+    // is a floor, not something re-derived — Derfer & Collier 2026). No Back, no Got it yet.
+    const panel1 = panelText();
+    expect(panel1).toContain("What is agentstate-lite?");
+    expect(panel1).toContain("cognitive ecosystem");
+    expect(panel1).toContain("folder of plain markdown");
+    expect(panel1).toContain("What problems does it solve?");
+    expect(panel1).toContain("forget important information between sessions");
+    expect(panel1).toMatch(/ratchets forward instead of slipping back/);
+    expect(panel1).toMatch(/becomes the floor the next one builds on/);
+    expect(panel1).toMatch(/span days, sessions, and many agents/);
+    expect(panel1).toContain("1 of 3");
+    expect(orientation()!.querySelector(".orientation-dismiss"), "Got it only on the last panel").toBeNull();
+    expect(panel1).not.toContain("Back");
+    // designs/home-surface: orient without OKF jargon — the standard lives behind "learn more".
+    expect(panel1, "first read must orient without OKF jargon (designs/home-surface)").not.toContain("OKF");
+    const learnMore = orientation()!.querySelector<HTMLButtonElement>("button.where-btn");
+    expect(learnMore, "panel 1 must offer a 'learn more' disclosure").not.toBeNull();
+    expect(orientation()!.querySelector(".orientation-details"), "collapsed by default").toBeNull();
     await act(async () => {
       learnMore!.click();
       await flush();
     });
-    const okfPanel = orientation!.querySelector(".orientation-details");
+    const okfPanel = orientation()!.querySelector(".orientation-details");
     expect(okfPanel, "clicking 'learn more' must reveal the standard").not.toBeNull();
     expect(okfPanel!.textContent ?? "").toContain("OKF");
+
+    // Panel 2 — HOW it is used: agents are the primary users; install commands connect one.
+    await clickNext();
+    const panel2 = panelText();
+    expect(panel2).toContain("How do I use agentstate-lite?");
+    expect(panel2).toContain("agents are the main users");
+    expect(panel2).toContain("built by agents, for agents");
+    expect(panel2).toContain("aslite skill install");
+    expect(panel2).toContain("2 of 3");
+    expect(orientation()!.querySelector(".orientation-dismiss")).toBeNull();
+
+    // Back returns to panel 1, Next comes back.
+    await act(async () => {
+      (orientation()!.querySelector(".orientation-nav-btn") as HTMLButtonElement).click();
+      await flush();
+    });
+    expect(panelText()).toContain("What is agentstate-lite?");
+    await clickNext();
+    await clickNext();
+
+    // Panel 3 — Views examples + Collaborating with others (the privacy promise, worded to cover
+    // the in-tree mode: chip and promise must never contradict) + the try-it hook.
+    const panel3 = panelText();
+    expect(panel3).toContain("Views");
+    expect(panel3).toContain("Collaborating with others");
+    const examples = orientation()!.querySelector(".orientation-examples");
+    expect(examples, "panel 3 must list example view prompts").not.toBeNull();
+    expect(examples!.querySelectorAll("li").length).toBeGreaterThanOrEqual(3);
+    expect(examples!.textContent).toMatch(/all tasks that have not been completed/i);
+    expect(panel3).toMatch(/stays private until you choose to share it/i);
+    expect(panel3).toContain("committing the folder with your code");
+    expect(panel3).toContain("ask your agent to write something down");
+    expect(panel3).toContain("3 of 3");
+    expect(orientation()!.querySelector(".orientation-next"), "no Next past the last panel").toBeNull();
+
+    // Global copy rules hold across the WHOLE walkthrough, not just one panel.
+    const all = panel1 + panel2 + panel3;
+    expect(all).not.toMatch(/works from any terminal/i);
+    expect(all).not.toContain('new "Context Note"');
+    // Never advertise the UNSCOPED npm coordinate: `aslite` is not ours (404 on the registry),
+    // so a copy-pasted `npx -y aslite …` runs whatever lands on that name. Ours is @holaxis/aslite.
+    expect(all).not.toMatch(/npx\s+-y\s+aslite\b/);
 
     await act(async () => {
       (container.querySelector(".orientation-dismiss") as HTMLButtonElement).click();
       await flush();
     });
-    expect(container.querySelector(".orientation"), "dismissal hides the orientation").toBeNull();
+    expect(container.querySelector(".orientation"), "Got it hides the walkthrough").toBeNull();
     expect(storage.getItem(orientationStorageKey(BUNDLE_ROOT))).toBe("dismissed");
   });
 
@@ -323,9 +349,18 @@ describe("home surface", () => {
     });
     const orientation = container.querySelector(".orientation");
     expect(orientation, "'what is this?' must reopen the orientation").not.toBeNull();
+    // Reopening starts the walkthrough over at panel 1.
+    expect(orientation!.textContent).toContain("What is agentstate-lite?");
     // The affordance yields to the open card (one copy of the overview on screen at a time).
     expect(container.querySelector(".about-btn")).toBeNull();
 
+    // Got it lives on the last panel — walk forward to reach it.
+    for (let i = 0; i < 2; i++) {
+      await act(async () => {
+        (container.querySelector(".orientation-next") as HTMLButtonElement).click();
+        await flush();
+      });
+    }
     await act(async () => {
       (container.querySelector(".orientation-dismiss") as HTMLButtonElement).click();
       await flush();
