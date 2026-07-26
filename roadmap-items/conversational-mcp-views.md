@@ -12,7 +12,7 @@ sequence: >-
   independent review/QA → real conversation host → bounded queries if needed →
   durable promotion → second host / remote adapter
 actor: openai/codex
-timestamp: '2026-07-26T22:08:12.789Z'
+timestamp: '2026-07-26T22:12:33.150Z'
 ---
 # Direction
 
@@ -73,3 +73,5 @@ second host, remote workspaces, and broader action authority remain separate exp
 [contains](../tasks/mcp-shared-markdown-renderer-main.md)
 
 [contains](../tasks/mcp-view-runtime-extraction-main.md)
+
+[contains](../tasks/mcp-app-query-selection.md)
