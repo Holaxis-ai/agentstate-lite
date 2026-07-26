@@ -410,6 +410,13 @@ export function Launcher() {
                     separate branch entirely by committing the folder with your code — sharing then rides your normal
                     commits and pushes.)
                   </p>
+                  <p>
+                    <strong>Worth knowing:</strong> a shared bundle is exactly as visible as the repository that
+                    carries it. If the repo is public, the bundle is public too — the tasks agents record, the notes
+                    they keep, and the documents they generate all become part of the project’s public record. For
+                    work happening in the open that can be a feature rather than a problem; just apply the same
+                    judgment to what lands in the bundle as you would to any commit.
+                  </p>
                   <p className="orientation-close">
                     <strong>That’s the tour.</strong> To see ASLite in action, ask your agent to write something down
                     — a decision you just made, or how some corner of this project works — and watch it land in the

@@ -314,6 +314,10 @@ describe("home surface", () => {
     expect(panel4).toMatch(/stays private until you choose to share it/i);
     expect(panel4).toContain("ask your agent to");
     expect(panel4).toContain("publishes the bundle onto its own");
+    // Public-repo awareness: sharing inherits the repo's visibility — stated as a consideration
+    // (open-by-design can be a feature), never buried, never alarmist.
+    expect(panel4).toContain("as visible as the repository that carries it");
+    expect(panel4).toContain("part of the project’s public record");
     expect(panel4).toContain("committing the folder with your code");
     // The closing CTA wraps the TOUR, not the sharing section (visually separated, "That's the
     // tour" framing) — so it cannot read as "try syncing".
