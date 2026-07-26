@@ -312,6 +312,7 @@ describe("home surface", () => {
     const panel4 = panelText();
     expect(panel4).toContain("Collaborating with others");
     expect(panel4).toMatch(/stays private until you choose to share it/i);
+    expect(panel4).toContain("ask your agent to");
     expect(panel4).toContain("aslite sync --establish");
     expect(panel4).toContain("committing the folder with your code");
     // The closing CTA wraps the TOUR, not the sharing section (visually separated, "That's the

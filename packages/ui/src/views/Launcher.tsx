@@ -387,10 +387,12 @@ export function Launcher() {
                 <>
                   <h2>Collaborating with others</h2>
                   <p>
-                    The bundle stays private until you choose to share it. Sharing runs over git, through the
-                    repository you already have: a one-time <code>aslite sync --establish</code> publishes the bundle
-                    onto its own <code>board</code> branch beside your code, and teammates join by simply running{" "}
-                    <code>aslite sync</code> from their clone.
+                    The bundle stays private until you choose to share it. Sharing works through git, through the
+                    repository you likely already have. As with other functionality, you can simply ask your agent to
+                    share your bundle, and it will walk you through any necessary steps (for example, if you need to
+                    initialize a git repo). Or, if you want to do it yourself, a one-time{" "}
+                    <code>aslite sync --establish</code> publishes the bundle onto its own <code>board</code> branch
+                    beside your code, and teammates join by simply running <code>aslite sync</code> from their clone.
                   </p>
                   <p>
                     From then on, <code>aslite sync</code> is the whole workflow: it commits your bundle changes,
