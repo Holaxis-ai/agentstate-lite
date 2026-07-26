@@ -442,9 +442,9 @@ export function Launcher() {
             {!pagesQuery.isPending && !pagesQuery.isError && pages.length === 0 && (
               <div className="launcher-empty">
                 <p>
-                  No views yet. Ask your agent for one in plain language — e.g.{" "}
-                  <em>“create a view showing every open task, grouped by who it’s assigned to”</em> — and its card
-                  will appear here.
+                  You haven’t created any views yet. Ask your agent for one in plain language — e.g.{" "}
+                  <em>“create a view showing every open task, grouped by priority”</em> — and its card will appear
+                  here.
                 </p>
                 <p>
                   <button
