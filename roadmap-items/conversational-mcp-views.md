@@ -10,7 +10,7 @@ sequence: >-
   independent review/QA → real conversation host → bounded queries if needed →
   durable promotion → second host / remote adapter
 actor: openai/codex
-timestamp: '2026-07-26T16:46:19.732Z'
+timestamp: '2026-07-26T17:33:28.867Z'
 ---
 # Direction
 
@@ -64,3 +64,5 @@ shows that selection friction is real.
 [contains](../tasks/mcp-app-markdown-rendering-proof.md)
 
 [contains](../tasks/mcp-app-governed-action-spike.md)
+
+[contains](../tasks/mcp-shared-markdown-renderer-main.md)
