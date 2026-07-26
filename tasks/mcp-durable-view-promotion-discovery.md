@@ -1,18 +1,15 @@
 ---
 type: Task
 title: Design durable MCP View promotion and discovery
-status: in_progress
+status: todo
 priority: '2'
 description: >-
-  Design drafted at designs/mcp-durable-view-promotion-discovery.
-  Recommendation: ship one bounded model-visible list_views together with
-  show_view(viewId), backed by one cross-host script-free declarative View
-  format; do not use tool-per-View, resources-only discovery, or raw scriptful
-  View reuse. Prove discovery/invocation before exact-byte human-confirmed
-  promotion.
+  Deferred pending the reviewed shared-security/bridge design in
+  tasks/mcp-view-security-model-unification. The current declarative-v1-first
+  recommendation is under reconsideration and must not drive implementation.
 actor: openai/codex
-assignee: openai/codex
-timestamp: '2026-07-26T22:59:45.344Z'
+assignee: ''
+timestamp: '2026-07-26T23:24:49.284Z'
 ---
 # Product question
 
@@ -50,3 +47,5 @@ surface.
 - Recommend the smallest reversible contract, including why it is preferable to tool-per-View
   registration.
 - Do not implement until the discovery and invocation contract is chosen.
+
+[depends on](mcp-view-security-model-unification.md)

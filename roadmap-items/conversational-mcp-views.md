@@ -4,15 +4,16 @@ title: Conversational Views through MCP Apps
 status: active
 description: >-
   EXPERIMENTAL — fixed-shell rendering, governed actions, real conversation-host
-  mutation, and bounded query selection are proved or in review. Next: durable
-  View promotion/discovery, host sizing evidence, then optimized authoring
-  guidance.
+  mutation, and bounded query selection are proved. Next gate: independently
+  reviewed shared durable-View security/bridge design; then one unchanged
+  durable View proof before promotion/discovery.
 sequence: >-
-  Fixed-shell proof → shared authority → governed action → conversation proof →
-  bounded queries → durable promotion/discovery → sizing evidence → authoring
-  guidance → dogfood → second host / remote adapter
+  Fixed-shell proof → shared action authority → governed action → conversation
+  proof → bounded queries → shared View security design/review → durable bridge
+  proof → promotion/discovery → sizing evidence → authoring guidance → dogfood →
+  second host / remote adapter
 actor: openai/codex
-timestamp: '2026-07-26T22:33:45.300Z'
+timestamp: '2026-07-26T23:25:43.891Z'
 ---
 # Direction
 
@@ -38,23 +39,30 @@ multi-tenant hosting, and a broader remote-agent tool surface remain separate la
 2. Shared host-neutral launch/action authority: shipped as `@agentstate-lite/view-runtime`.
 3. Governed scalar action through the shared core mutation service: proved.
 4. Independent review, adversarial QA, and real conversation-host mutation: proved in PR #168.
-5. Bounded deterministic query selection using the durable View's shared query semantics: under
-   independent exact-SHA review in PR #169.
-6. Define durable promotion plus generic bundle-scoped View discovery and invocation. Do not expose
+5. Bounded deterministic query selection using the durable View's shared query semantics: proved
+   and merged in PR #169.
+6. Research and independently review ONE durable View security model across the local web UI and
+   MCP App host. Decide the shared sandbox/access/bridge authority and preserve script-free
+   generated HTML only as an ephemeral presentation tier.
+7. Prove one existing scriptful durable bundle View through the reviewed MCP host adapter before
+   designing promotion around a new durable format.
+8. Define durable promotion plus generic bundle-scoped View discovery and invocation. Do not expose
    one MCP tool per View; compare a generic catalog tool with MCP resources and host support.
-7. Empirically establish what control MCP Apps have over iframe/presentation size across hosts.
-8. Turn the proven data, action, sizing, and promotion constraints into concise agent authoring
+9. Empirically establish what control MCP Apps have over iframe/presentation size across hosts.
+10. Turn the proven data, action, sizing, and promotion constraints into concise agent authoring
    guidance delivered through the lowest-token discoverable surface.
-9. Dogfood promotion and discovery with a presentation that has proved repeatedly useful.
-10. Verify a second host, then separately consider a remote adapter.
+11. Dogfood promotion and discovery with a presentation that has proved repeatedly useful.
+12. Verify a second host, then separately consider a remote adapter.
 
 # Current decision gate
 
-Finish review of bounded query selection without widening its scope. The next product-design unit is
-durable promotion and discovery: a promoted View is only valuable to an agent if the bundle can
-advertise it through one generic, bounded surface and invoke it without rewriting the presentation.
-The sizing investigation may run alongside that design because it is empirical and host-facing.
-Authoring guidance follows both so it encodes evidence rather than guesses.
+The next unit is the shared durable View security model. The existing promotion/discovery design
+recommended a script-free declarative durable format before proving whether the established
+sandboxed postMessage bridge can be hosted safely through MCP Apps. That recommendation is now
+under review and must not drive implementation. Research must trace both current hosts, define one
+host-neutral authority with thin transport adapters, and receive independent review before code
+work begins. Promotion/discovery follows the bridge proof; sizing may proceed independently because
+it is empirical and host-facing. Authoring guidance follows the accepted architecture and evidence.
 
 These are still experimental follow-ons, not a supported-product declaration. Broader action
 authority, remote workspaces, authentication, and a tool-per-View surface remain out of scope.
@@ -76,3 +84,5 @@ authority, remote workspaces, authentication, and a tool-per-View surface remain
 [contains](../tasks/mcp-app-presentation-sizing.md)
 
 [contains](../tasks/mcp-view-authoring-guidance.md)
+
+[contains](../tasks/mcp-view-security-model-unification.md)

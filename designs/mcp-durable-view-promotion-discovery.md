@@ -5,15 +5,21 @@ description: >-
   Recommended contract for one generic View catalog, durable invocation through
   the fixed MCP shell, a cross-host declarative View format, and exact-byte
   human-confirmed promotion.
-actor: openai/codex
-timestamp: '2026-07-26T22:59:36.555Z'
+actor: openai/research-agent
+timestamp: '2026-07-26T23:42:02.869Z'
 ---
 # Durable conversational Views: promotion, discovery, and invocation
 
 ## Status
 
-Recommended design for the next experimental unit. This document chooses the product boundary and
-the order of proof; it does not freeze a durable schema or authorize implementation on `main`.
+Superseded on 2026-07-26 by
+[MCP and web View security-model unification](mcp-view-security-model-unification.md).
+
+Keep this document's generic `list_views`, generic invocation, and exact-byte promotion
+recommendations as later product work. Withdraw its script-free-declarative-first durable format
+and sequencing recommendation: lifecycle, execution, provenance, and authority are independent
+axes, and the next architectural proof is the established bridge under a shared security model.
+Neither document authorizes implementation on `main` without review.
 
 Parent direction: `designs/mcp-app-generative-views`.
 
