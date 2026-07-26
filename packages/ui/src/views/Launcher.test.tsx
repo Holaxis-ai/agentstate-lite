@@ -397,6 +397,8 @@ describe("home surface", () => {
       sharing: { kind: "hosted", remote: "host.example", as_of: "2026-07-21T12:00:00.000Z" },
     });
     await render();
+    // The remote exception IS badged up front.
+    expect(container.querySelector(".launcher-meta .pill")?.textContent).toBe("remote");
     expect(container.querySelector(".orientation")).toBeNull();
     // The reopen affordance is gated with the orientation itself — its copy makes the same
     // local-bundle privacy promise, so remote mode gets neither.
@@ -475,7 +477,9 @@ describe("home surface", () => {
       });
     }
 
-    // The chip is up front; the raw path is NOT (progressive disclosure).
+    // The chip is up front; the raw path is NOT (progressive disclosure), and dir mode — the
+    // default experience — carries no mode pill (only the remote exception gets a badge).
+    expect(container.querySelector(".launcher-meta .pill")).toBeNull();
     expect(container.querySelector(".chip")!.textContent).toBe("shared · org/repo");
     expect(container.querySelector(".launcher-meta")!.textContent).not.toContain(BUNDLE_ROOT);
     expect(container.querySelector(".where-panel")).toBeNull();

@@ -221,7 +221,9 @@ export function Launcher() {
         <p className="launcher-meta">
           {config ? (
             <>
-              <span className="pill">{config.mode}</span>
+              {/* Local is the default experience and needs no badge; only the remote exception
+                  is worth flagging up front (mechanics live behind "where is this?"). */}
+              {config.mode === "remote" && <span className="pill">remote</span>}
               {chip && (
                 <span className={chip.className} title={chip.title ?? (config.sharing ? `as of ${formatWhen(config.sharing.as_of) ?? config.sharing.as_of}` : undefined)}>
                   {chip.text}
