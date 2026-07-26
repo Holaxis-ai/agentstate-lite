@@ -12,7 +12,7 @@ actor: openai/codex
 sequence: >-
   Choose identity → npm CLI + skill prerelease → founder proof → npm primary →
   delete marketplace channel
-timestamp: '2026-07-20T02:49:05.997Z'
+timestamp: '2026-07-26T19:29:31.063Z'
 ---
 # Remaining sequence
 
@@ -47,3 +47,5 @@ npm owns executable mechanics plus the optional bootstrap skill.
 [contains](../tasks/npm-cli-skill-prerelease.md)
 
 [contains](../tasks/retire-marketplace-channel.md)
+
+[contains](../tasks/plugin-regeneration-dependency-order.md)
