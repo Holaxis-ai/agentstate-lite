@@ -3,16 +3,16 @@ type: Roadmap Item
 title: Conversational Views through MCP Apps
 status: active
 description: >-
-  EXPERIMENTAL — fixed-shell rendering, shared-authority governed actions,
-  independent review/QA, and a real Codex conversation-host mutation are proved.
-  Pause new mechanics; dogfood explicit IDs before considering bounded queries
-  or product adoption.
+  EXPERIMENTAL — fixed-shell rendering, governed actions, real conversation-host
+  mutation, and bounded query selection are proved or in review. Next: durable
+  View promotion/discovery, host sizing evidence, then optimized authoring
+  guidance.
 sequence: >-
-  Fixed-shell proof → shared authority extraction → governed action proof →
-  independent review/QA → real conversation host → bounded queries if needed →
-  durable promotion → second host / remote adapter
+  Fixed-shell proof → shared authority → governed action → conversation proof →
+  bounded queries → durable promotion/discovery → sizing evidence → authoring
+  guidance → dogfood → second host / remote adapter
 actor: openai/codex
-timestamp: '2026-07-26T22:12:33.150Z'
+timestamp: '2026-07-26T22:33:45.300Z'
 ---
 # Direction
 
@@ -34,35 +34,30 @@ multi-tenant hosting, and a broader remote-agent tool surface remain separate la
 
 # Sequence
 
-1. Empirically prove the fixed-resource/dynamic-result lifecycle and generated-content containment.
-   Implemented on `codex/experiment-mcp-apps`: fixed resource, dynamic explicit-ID snapshots, clean
-   STDIO, and sanitized script-free `srcdoc` rendering with declarative text bindings all pass in
-   the official reference host. Arbitrary script was rejected after self-navigation proved to be an
-   exfiltration path.
-2. Extract only the launch/action authorities that a second real host actually needs. Implemented
-   experimentally as `@agentstate-lite/view-runtime`; the local UI and MCP adapter now depend on the
-   same `TrustedActionService`, which still delegates final writes to core's `mutateDocument`.
-3. Reuse the existing trusted scalar action and shared mutation service. Implemented and
-   empirically proved in the official MCP Apps reference host for one selected Task status change:
-   prepare did not write, the fixed trusted shell displayed document/kind/field/before/after/actor,
-   explicit Apply committed with CAS and attribution, and the same View refreshed from the final
-   authoritative version. The generated nested document remained script-free and read-only.
-4. Complete independent review, adversarial QA, and one real conversation-host proof.
-   Completed in PR #168 (`f1306ede`): the exact action commit passed independent review and
-   adversarial commit/conflict replays. The first real Codex conversation-host dogfood changed
-   `tasks/mcp-app-governed-action-spike` from `in_progress` to `done`; the persisted receipt
-   carried actor `mike` and the final authoritative version.
-5. Add bounded deterministic queries only if explicit-ID dogfooding proves they are needed.
-6. Promote useful ephemeral presentations into durable bundle Views.
-7. Verify a second host, then consider a remote adapter.
+1. Fixed-resource/dynamic-result lifecycle and generated-content containment: proved.
+2. Shared host-neutral launch/action authority: shipped as `@agentstate-lite/view-runtime`.
+3. Governed scalar action through the shared core mutation service: proved.
+4. Independent review, adversarial QA, and real conversation-host mutation: proved in PR #168.
+5. Bounded deterministic query selection using the durable View's shared query semantics: under
+   independent exact-SHA review in PR #169.
+6. Define durable promotion plus generic bundle-scoped View discovery and invocation. Do not expose
+   one MCP tool per View; compare a generic catalog tool with MCP resources and host support.
+7. Empirically establish what control MCP Apps have over iframe/presentation size across hosts.
+8. Turn the proven data, action, sizing, and promotion constraints into concise agent authoring
+   guidance delivered through the lowest-token discoverable surface.
+9. Dogfood promotion and discovery with a presentation that has proved repeatedly useful.
+10. Verify a second host, then separately consider a remote adapter.
 
 # Current decision gate
 
-The governed-action proof is complete. Pause new MCP mechanics and use the explicit-ID surface for
-real work. Add bounded deterministic queries only if repeated dogfooding shows that selecting exact
-IDs is materially awkward; the first real task did not establish that need. Promote a presentation
-into a durable bundle View only after it proves repeatedly useful. Supported-product status, a
-second host, remote workspaces, and broader action authority remain separate explicit decisions.
+Finish review of bounded query selection without widening its scope. The next product-design unit is
+durable promotion and discovery: a promoted View is only valuable to an agent if the bundle can
+advertise it through one generic, bounded surface and invoke it without rewriting the presentation.
+The sizing investigation may run alongside that design because it is empirical and host-facing.
+Authoring guidance follows both so it encodes evidence rather than guesses.
+
+These are still experimental follow-ons, not a supported-product declaration. Broader action
+authority, remote workspaces, authentication, and a tool-per-View surface remain out of scope.
 
 [contains](../tasks/mcp-app-fixed-shell-spike.md)
 
@@ -75,3 +70,9 @@ second host, remote workspaces, and broader action authority remain separate exp
 [contains](../tasks/mcp-view-runtime-extraction-main.md)
 
 [contains](../tasks/mcp-app-query-selection.md)
+
+[contains](../tasks/mcp-durable-view-promotion-discovery.md)
+
+[contains](../tasks/mcp-app-presentation-sizing.md)
+
+[contains](../tasks/mcp-view-authoring-guidance.md)
