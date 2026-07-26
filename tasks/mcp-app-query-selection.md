@@ -1,21 +1,17 @@
 ---
 type: Task
 title: Add bounded snapshot query selection to conversational MCP Views
-status: in_progress
+status: done
 priority: '2'
 assignee: openai/codex
 actor: openai/codex
 description: >-
-  Experimental follow-on to PR #168. Extend show_view with exactly one selection
-  mode: explicit objectIds OR a bounded declarative query using existing core
-  type/prefix/field/open semantics. Resolve the query once into at most 20 exact
-  document IDs and versions, freeze that selection for refresh/actions, report
-  the pre-limit count and resolved IDs, and keep generated HTML read-only. No
-  subscriptions, live re-query, edges query, broader actions, or product-support
-  declaration. Verification must cover deterministic selection,
-  empty/over-limit/mutually-exclusive inputs, kind-derived open filtering,
-  action confinement, and exact-ID compatibility.
-timestamp: '2026-07-26T22:41:26.846Z'
+  Shipped in PR #169 (merge 23d69da): show_view accepts exact IDs or one bounded
+  launch-time query using shared durable-View semantics, freezes exact
+  IDs/versions for actions, and uses one strict parser across MCP/direct entry
+  paths. Independent exact-SHA re-review approved e8555a8; Node 20/22/26 CI
+  green.
+timestamp: '2026-07-26T22:53:47.065Z'
 ---
 # Implementation handoff
 

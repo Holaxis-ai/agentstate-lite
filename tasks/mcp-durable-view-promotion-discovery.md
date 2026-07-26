@@ -1,14 +1,15 @@
 ---
 type: Task
 title: Design durable MCP View promotion and discovery
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Define how a useful ephemeral MCP presentation becomes a durable bundle View
   and how agents discover/invoke available Views through one generic bounded
   surface rather than one tool per View.
 actor: openai/codex
-timestamp: '2026-07-26T22:33:33.531Z'
+assignee: openai/codex
+timestamp: '2026-07-26T22:53:47.224Z'
 ---
 # Product question
 
