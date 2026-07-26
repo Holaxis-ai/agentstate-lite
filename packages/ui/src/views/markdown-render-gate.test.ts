@@ -8,7 +8,10 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const SRC = path.resolve(process.cwd(), "src");
+const SOURCES = [
+  path.resolve(process.cwd(), "src"),
+  path.resolve(process.cwd(), "../markdown-renderer/src"),
+];
 const BANNED = [/dangerouslySetInnerHTML/, /\binnerHTML\s*=/, /new DOMParser\(/];
 
 function walk(dir: string): string[] {
@@ -24,10 +27,12 @@ function walk(dir: string): string[] {
 describe("reader render-path gate", () => {
   it("bans dangerouslySetInnerHTML / innerHTML assignment / DOMParser in SPA source", () => {
     const offenders: string[] = [];
-    for (const file of walk(SRC)) {
-      const content = readFileSync(file, "utf8");
-      for (const pattern of BANNED) {
-        if (pattern.test(content)) offenders.push(`${path.relative(SRC, file)}: ${pattern}`);
+    for (const source of SOURCES) {
+      for (const file of walk(source)) {
+        const content = readFileSync(file, "utf8");
+        for (const pattern of BANNED) {
+          if (pattern.test(content)) offenders.push(`${path.relative(source, file)}: ${pattern}`);
+        }
       }
     }
     expect(offenders).toEqual([]);
