@@ -402,9 +402,10 @@ export function Launcher() {
                     separate branch entirely by committing the folder with your code — sharing then rides your normal
                     commits and pushes.)
                   </p>
-                  <p>
-                    <strong>Try it:</strong> ask your agent to write something down — a decision you just made, or how
-                    some corner of this project works — and watch it land in the activity feed.
+                  <p className="orientation-close">
+                    <strong>That’s the tour.</strong> To see ASLite in action, ask your agent to write something down
+                    — a decision you just made, or how some corner of this project works — and watch it land in the
+                    activity feed.
                   </p>
                 </>
               )}

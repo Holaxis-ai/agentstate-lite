@@ -314,7 +314,11 @@ describe("home surface", () => {
     expect(panel4).toMatch(/stays private until you choose to share it/i);
     expect(panel4).toContain("aslite sync --establish");
     expect(panel4).toContain("committing the folder with your code");
+    // The closing CTA wraps the TOUR, not the sharing section (visually separated, "That's the
+    // tour" framing) — so it cannot read as "try syncing".
+    expect(panel4).toContain("That’s the tour.");
     expect(panel4).toContain("ask your agent to write something down");
+    expect(orientation()!.querySelector(".orientation-close"), "closing CTA must be its own separated block").not.toBeNull();
     expect(panel4).toContain("4 of 4");
     expect(orientation()!.querySelector(".orientation-next"), "no Next past the last panel").toBeNull();
 
