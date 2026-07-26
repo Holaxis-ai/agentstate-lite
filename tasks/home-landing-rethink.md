@@ -8,20 +8,22 @@ priority: '2'
 assignee: claude-main
 actor: claude-main
 description: >-
-  BUILT + REVIEWED, awaiting Brian's PR. Branch feat/home-landing-rethink
-  (0ae63d6 rethink, 4e713c6 review fixes, cb3da83 why-it-matters, 195d9c1
-  ratchet wording, d423c42 sectioned restructure with Brian's copy). Orientation
-  is now four titled sections: What is agentstate-lite? / What problems does it
-  solve? (ratchet in plain words) / How do I use it? (agents are the main users;
-  skill+hook install commands inline) / Views (example prompts). Privacy promise
-  retained (chip/promise consistency rule + e2e pin); redundant closing install
-  paragraph dropped. OPEN COPY FLAGS for Brian: (1) 'should have been installed
-  when you installed ASLite' is true for the plugin channel, not npm (no
-  lifecycle scripts by design); (2) the window-as-insight-surface sentence was
-  removed with the replaced range. Gates green each commit (unit+typecheck+pages
-  e2e; d423c42 copy/style tier). Review round 1 record:
-  context-notes/review-home-landing-rethink. Merge is Brian's.
-timestamp: '2026-07-25T20:07:34.477Z'
+  BUILT + REVIEWED, awaiting Brian's PR. Branch feat/home-landing-rethink, now
+  through 92b9f9f: orientation is a 3-PANEL WALKTHROUGH — (1) What is
+  agentstate-lite? + What problems does it solve? (ratchet in plain words;
+  problems sentence softened to honest scope per Brian: 'forget important
+  information / occasionally step on / often keep invisible'); (2) How do I use
+  agentstate-lite? (agents are the main users, built by/for agents italicized,
+  skill+hook install commands); (3) Views examples + Collaborating with others
+  (sharing promise) + try-it. Back/Next + step indicator; Got it only on the
+  last panel, dismissal persistence unchanged; reopen restarts at panel 1. Unit
+  suite walks all panels with global copy rules; e2e drives the full nav +
+  reopen loop; pages e2e 13/13, ui suite + typecheck green. OPEN FLAGS
+  unchanged: plugin-vs-npm truth of 'should have been installed'; no skip path
+  on the walkthrough (3 clicks mandatory to dismiss) — flag for Brian's UX
+  judgment. Prior review round record:
+  context-notes/review-home-landing-rethink.
+timestamp: '2026-07-26T14:29:32.408Z'
 ---
 # Goal
 
