@@ -503,8 +503,10 @@ export function Launcher() {
                     <p>
                       A view is an HTML file stored in this bundle under <code>views/</code>, registered by a{" "}
                       <code>type: View</code> document that gives it a title, points at the file, and declares how much
-                      of the bundle it may see. Every view runs in a sandboxed frame with no network access, and that
-                      declaration is what the badge on its card reports:
+                      of the bundle it may see. A live-data view is executable HTML, so its exact bytes must be
+                      approved before it can see bundle data. It runs in a sandboxed frame with direct network and
+                      data-API access restricted; approval is still the decision to trust that code. The declaration
+                      is what the badge on its card reports:
                     </p>
                     <ul>
                       <li>

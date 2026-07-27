@@ -10,7 +10,7 @@ export interface GeneratedActionDeclaration {
   value: ActionScalar;
 }
 
-export interface ShowViewInput {
+export interface GeneratedShowViewInput {
   title: string;
   html: string;
   css?: string;
@@ -19,9 +19,15 @@ export interface ShowViewInput {
   actions?: GeneratedActionDeclaration[];
 }
 
+export interface DurableShowViewInput {
+  viewId: string;
+}
+
+export type ShowViewInput = GeneratedShowViewInput | DurableShowViewInput;
+
 export type ViewQuerySelection = QuerySelectionParams;
 
-export interface ResolvedShowViewInput {
+export interface ResolvedShowViewInput extends GeneratedShowViewInput {
   title: string;
   html: string;
   css?: string;
@@ -63,3 +69,24 @@ export interface ViewLaunchPayload extends ResolvedViewContent {
     actions: ViewActionDescriptor[];
   };
 }
+
+export interface DurableViewLaunchPayload {
+  schemaVersion: "agentstate.durable-view-launch.v1";
+  title: string;
+  source: {
+    viewId: string;
+    entry: string;
+    html: string;
+    contentType: string;
+    contentVersion: Version;
+  };
+  launch: {
+    launchId: string;
+    authorization: {
+      required: boolean;
+      authorized: boolean;
+    };
+  };
+}
+
+export type McpViewPayload = ViewLaunchPayload | DurableViewLaunchPayload;

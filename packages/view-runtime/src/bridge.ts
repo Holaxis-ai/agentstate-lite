@@ -22,6 +22,9 @@ const MAX_QUERY_ROWS = 500;
 const MAX_EDGE_ROWS = 1_000;
 const MAX_DOCUMENT_BODY_BYTES = 1024 * 1024;
 const MAX_REPLY_BYTES = 2 * 1024 * 1024;
+const MAX_CHANGE_ROWS = 100;
+const MAX_CHANGE_BYTES = 256 * 1024;
+const MAX_SUBSCRIPTION_HEADS = 10_000;
 
 export interface BridgeLaunch {
   launchId: string;
@@ -43,6 +46,20 @@ export interface BridgeOutcome {
   reply: Record<string, unknown> | null;
   subscribed?: boolean;
   openPageId?: string;
+}
+
+export type BridgePollOutcome =
+  | { status: "unchanged" }
+  | { status: "change"; generation: string; message: Record<string, unknown> }
+  | { status: "reload-required"; message: string };
+
+interface SubscriptionState {
+  baseline: Map<string, string>;
+  pending?: {
+    generation: string;
+    next: Map<string, string>;
+    message: Record<string, unknown>;
+  };
 }
 
 interface BaseRequest {
@@ -271,6 +288,8 @@ export interface BridgeServiceOptions {
   bundle: Bundle;
   launches: BridgeLaunchAuthority;
   config: () => Promise<BridgeConfig>;
+  allowActionProtocol?: boolean;
+  enablePolling?: boolean;
 }
 
 /**
@@ -278,11 +297,24 @@ export interface BridgeServiceOptions {
  * child and forward an opaque launch id plus one bounded request.
  */
 export class BridgeService {
+  private readonly subscriptions = new Map<string, SubscriptionState>();
+  private nextPollGeneration = 0;
+
   constructor(private readonly options: BridgeServiceOptions) {}
 
   async handle(launchId: string, rawRequest: unknown): Promise<BridgeOutcome> {
     const request = parseBridgeRequest(rawRequest);
     if (!request) return { reply: fail(undefined, BRIDGE_PROTOCOL, "USAGE", "invalid or unsupported bridge request") };
+    if (request.bridge === ACTION_BRIDGE_PROTOCOL && this.options.allowActionProtocol === false) {
+      return {
+        reply: fail(
+          request.id,
+          request.bridge,
+          "FORBIDDEN",
+          "this host admits only the read-only v0 View bridge",
+        ),
+      };
+    }
     const dataBearing = request.type !== "open-page";
     const before = await this.options.launches.resolve(launchId, dataBearing);
     if (!before) {
@@ -312,13 +344,96 @@ export class BridgeService {
 
     const after = await this.options.launches.resolve(launchId, dataBearing);
     if (!after) {
-      this.options.launches.revoke(launchId);
+      this.revoke(launchId);
       return { reply: fail(request.id, request.bridge, "REVOKED", "the View changed while the request was running") };
     }
     if (outcome.reply && !replyWithinLimit(outcome.reply)) {
       return { reply: fail(request.id, request.bridge, "TOO_LARGE", "the bridge reply exceeded the 2 MiB safety limit") };
     }
     return outcome;
+  }
+
+  /**
+   * Poll a server-owned subscription snapshot. A delivered change remains pending until the host
+   * acknowledges its generation on the next poll, so a failed frame delivery is retried rather
+   * than silently advancing freshness state.
+   */
+  async poll(launchId: string, acknowledgeGeneration?: string): Promise<BridgePollOutcome> {
+    const before = await this.options.launches.resolve(launchId, true);
+    if (!before) return this.reload(launchId, "the View launch changed, expired, or lost authorization");
+    const subscription = this.subscriptions.get(launchId);
+    if (!subscription) return this.reload(launchId, "the View has no current subscription baseline");
+
+    if (acknowledgeGeneration !== undefined) {
+      if (subscription.pending?.generation !== acknowledgeGeneration) {
+        return this.reload(launchId, "the View poll acknowledgement did not match the pending generation");
+      }
+      subscription.baseline = subscription.pending.next;
+      subscription.pending = undefined;
+    }
+    if (subscription.pending) {
+      return {
+        status: "change",
+        generation: subscription.pending.generation,
+        message: subscription.pending.message,
+      };
+    }
+
+    let next: Map<string, string>;
+    try {
+      next = await this.subscriptionSnapshot();
+    } catch (error) {
+      return this.reload(
+        launchId,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    const after = await this.options.launches.resolve(launchId, true);
+    if (!after) return this.reload(launchId, "the View changed while its subscription was polled");
+
+    const changes: { id: string; version: string }[] = [];
+    const removed: string[] = [];
+    for (const [id, version] of next) {
+      if (subscription.baseline.get(id) !== version) changes.push({ id, version });
+    }
+    for (const id of subscription.baseline.keys()) {
+      if (!next.has(id)) removed.push(id);
+    }
+    changes.sort((a, b) => a.id.localeCompare(b.id));
+    removed.sort();
+    if (changes.length === 0 && removed.length === 0) return { status: "unchanged" };
+    if (changes.length > MAX_CHANGE_ROWS || removed.length > MAX_CHANGE_ROWS) {
+      return this.reload(launchId, "the View change set exceeded the polling safety limit");
+    }
+    const message = changeMessage(changes, removed);
+    if (Buffer.byteLength(JSON.stringify(message), "utf8") > MAX_CHANGE_BYTES) {
+      return this.reload(launchId, "the View change set exceeded the polling byte limit");
+    }
+    const generation = String(++this.nextPollGeneration);
+    subscription.pending = { generation, next, message };
+    return { status: "change", generation, message };
+  }
+
+  revoke(launchId: string): void {
+    this.subscriptions.delete(launchId);
+    this.options.launches.revoke(launchId);
+  }
+
+  private reload(launchId: string, message: string): BridgePollOutcome {
+    this.revoke(launchId);
+    return { status: "reload-required", message };
+  }
+
+  private async subscriptionSnapshot(): Promise<Map<string, string>> {
+    const rows = await queryHeads(this.options.bundle, {});
+    if (rows.length > MAX_SUBSCRIPTION_HEADS) {
+      throw new Error("the bundle is too large for the experimental View polling snapshot");
+    }
+    return new Map(
+      [...rows]
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .map((row) => [row.id, row.version]),
+    );
   }
 
   private async execute(launch: BridgeLaunch, request: ParsedBridgeRequest): Promise<BridgeOutcome> {
@@ -374,6 +489,11 @@ export class BridgeService {
       }
       const projected = edges.map(({ from, to, text }) => ({ from, to, text }));
       return { reply: ok(request.id, request.bridge, request.type, { edges: projected, count: projected.length }) };
+    }
+    if (this.options.enablePolling) {
+      this.subscriptions.set(launch.launchId, {
+        baseline: await this.subscriptionSnapshot(),
+      });
     }
     return { reply: ok(request.id, request.bridge, request.type, { ok: true }), subscribed: true };
   }
