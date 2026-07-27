@@ -7,13 +7,13 @@ actor: openai/codex
 description: >-
   IMPLEMENTED 2026-07-27 by openai/codex — draft PR #175 adds the bounded
   current-window/launch/epoch/nonce height relay for generated and durable MCP
-  Views. Full repository check passed; focused MCP suite 28/28 covers growth,
-  shrink, viewport reflow, stale/wrong-source/malformed inputs, caps, and
-  containment. Direct Codex-host dimension inspection remained unavailable
-  because no browser-control target was exposed. Independent review is pending
-  before merge.
+  Views. Review findings were fixed at 5ba50c0: fixed hosts now derive chrome
+  from intrinsic shell geometry, and hidden generated size reports are retained
+  without reopening the hidden durable bridge. Full repository check passed;
+  focused MCP suite 30/30; independent re-review approved in substance after
+  reproducing the 800×600 Chromium case. Awaiting merge.
 assignee: openai/codex
-timestamp: '2026-07-27T12:58:02.600Z'
+timestamp: '2026-07-27T14:45:23.182Z'
 ---
 # Problem
 
