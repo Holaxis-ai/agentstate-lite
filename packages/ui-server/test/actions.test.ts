@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 
 import {
   MemoryBackend,
-  readBlob,
   readDocVersioned,
   writeBlob,
   writeDoc,
   writeDocVersioned,
   type Bundle,
 } from "@agentstate-lite/core";
+import { mintActiveViewLaunch } from "@agentstate-lite/view-runtime";
 import {
   PageActionLaunchAuthority,
   PageLaunchRegistry,
@@ -52,20 +52,8 @@ async function fixture(actor: string | undefined = "mike/test") {
   });
   await writeBlob(bundle, "views/actions.html", HTML, "text/html; charset=utf-8");
 
-  const registry = await readDocVersioned(bundle, "views-registry/actions");
-  const blob = (await readBlob(bundle, "views/actions.html"))!;
   const launches = new PageLaunchRegistry();
-  const launch = launches.mint({
-    registryId: registry.doc.id,
-    registryType: "View",
-    registryVersion: registry.version,
-    registryTitle: "Actions",
-    entryKey: "views/actions.html",
-    contentType: blob.contentType,
-    contentVersion: blob.version,
-    bytes: blob.bytes,
-    capability: "bundle-propose",
-  });
+  const launch = await mintActiveViewLaunch(bundle, launches, "views-registry/actions");
   const authorizations = new SessionViewAuthorizationStore();
   await authorizations.authorize(pageLaunchAuthorizationSubject(launch));
   return {
