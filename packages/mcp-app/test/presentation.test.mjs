@@ -8,6 +8,13 @@ Object.defineProperty(globalThis, "window", { configurable: true, value: browser
 Object.defineProperty(globalThis, "document", { configurable: true, value: browser.window.document });
 
 const { containedDocument, materializePresentation } = await import("../src/presentation.js");
+const { createFrameSizingSession } = await import("../src/frame-sizing.js");
+
+const sizing = createFrameSizingSession(
+  "launch",
+  1,
+  "0123456789abcdef0123456789abcdef",
+);
 
 const payload = {
   schemaVersion: "agentstate.view-launch.v1",
@@ -125,19 +132,24 @@ test("generated CSS cannot break out of the trusted style element", () => {
   const html = containedDocument(
     "<h1>Safe</h1>",
     'body{color:green;background:url("https://example.invalid/leak")}</style><script>globalThis.pwned=true</script><style>h1{color:red}',
+    sizing,
   );
   const rendered = new JSDOM(html, { runScripts: "dangerously" });
   const csp =
     rendered.window.document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content") ??
     "";
 
-  assert.equal(rendered.window.document.querySelectorAll("script").length, 0);
+  assert.equal(
+    rendered.window.document.querySelectorAll("script").length,
+    1,
+    "only the product-owned size observer remains executable",
+  );
   assert.equal(rendered.window.document.querySelector("h1")?.textContent, "Safe");
   assert.equal(rendered.window.pwned, undefined);
   assert.equal(rendered.window.location.href, "about:blank");
   assert.match(rendered.window.document.querySelector("style")?.textContent ?? "", /\\3c \/style>/);
   assert.match(csp, /default-src 'none'/);
-  assert.match(csp, /script-src 'none'/);
+  assert.match(csp, new RegExp(`script-src 'nonce-${sizing.nonce}'`));
   assert.match(csp, /img-src data:/);
   assert.match(csp, /connect-src 'none'/);
 });

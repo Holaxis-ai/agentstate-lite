@@ -358,7 +358,8 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   assert.match(content.text, /prepare_view_action/);
   assert.match(content.text, /finish_view_action/);
   assert.match(content.text, /navigated away from its approved document/);
-  assert.match(content.text, /script-src 'none'/);
+  assert.match(content.text, /script-src 'nonce-/);
+  assert.match(content.text, /agentstate\.frame-size\.v1/);
   assert.match(content.text, /style-src 'unsafe-inline'/);
   const scriptStart = content.text.indexOf("<script>") + "<script>".length;
   const scriptEnd = content.text.lastIndexOf("</script>");

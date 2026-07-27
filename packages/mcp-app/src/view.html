@@ -41,6 +41,7 @@
         background: var(--color-background-secondary, color-mix(in srgb, Canvas 94%, CanvasText));
       }
       .actions[hidden], .confirmation-backdrop[hidden] { display: none; }
+      body[data-dialog-open] .shell { display: none; }
       .actions-label {
         color: var(--color-text-secondary, GrayText);
         font-size: 0.76rem;
@@ -67,15 +68,12 @@
       iframe {
         display: block;
         width: 100%;
-        min-height: 18rem;
+        height: 18rem;
         border: 0;
         border-radius: 0.75rem;
         background: transparent;
       }
       .confirmation-backdrop {
-        position: fixed;
-        inset: 0;
-        z-index: 10;
         display: grid;
         place-items: center;
         padding: 1rem;
@@ -83,8 +81,6 @@
       }
       .confirmation {
         width: min(34rem, 100%);
-        max-height: min(38rem, calc(100vh - 2rem));
-        overflow: auto;
         border: 1px solid var(--color-border-primary, color-mix(in srgb, CanvasText 24%, transparent));
         border-radius: 0.9rem;
         background: var(--color-background-primary, Canvas);
