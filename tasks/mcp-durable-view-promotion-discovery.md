@@ -1,15 +1,14 @@
 ---
 type: Task
 title: Design durable MCP View promotion and discovery
-status: todo
+status: in_progress
 priority: '2'
 description: >-
-  Deferred until intrinsic nested-frame sizing is proved. Preserve one View
-  identity while allowing optional inline/workspace/fullscreen presentations;
-  discovery must report only compatible presentations honestly.
+  CLAIMED 2026-07-27 by openai/codex — designing the smallest portable promotion
+  and host-compatible discovery contract against the current MCP implementation.
 actor: openai/codex
-assignee: ''
-timestamp: '2026-07-27T12:33:25.894Z'
+assignee: openai/codex
+timestamp: '2026-07-27T15:12:50.476Z'
 ---
 # Product question
 
