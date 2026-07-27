@@ -50302,6 +50302,16 @@ write directly, and every action requires explicit human confirmation plus a cur
 The server does not save generated HTML, accept remote targets, or expose arbitrary filesystem paths.
 `;
 async function mcp(argv, deps = {}) {
+  const stderr = deps.stderr ?? ((text) => void process.stderr.write(text));
+  try {
+    await mcpInner(argv, deps);
+  } catch (error51) {
+    const { envelope, handled } = toExit(error51);
+    if (!handled) stderr(renderErrorEnvelope(envelope));
+    throw handled ? error51 : asHandled(error51);
+  }
+}
+async function mcpInner(argv, deps) {
   const stdout = deps.stdout ?? ((text) => void process.stdout.write(text));
   const open3 = deps.openBundle ?? ((dir) => openBundle(dir));
   const start = deps.startServer ?? startMcpStdioServer;
