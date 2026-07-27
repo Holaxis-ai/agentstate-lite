@@ -2,6 +2,10 @@ import { renderMarkdown } from "@agentstate-lite/markdown-renderer";
 import DOMPurify from "dompurify";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ViewLaunchPayload } from "./contract.js";
+import {
+  frameSizingScriptTag,
+  type FrameSizingSession,
+} from "./frame-sizing.js";
 
 export type ViewPayload = ViewLaunchPayload;
 
@@ -123,17 +127,21 @@ function safeCss(css: string): string {
   return css.replaceAll("<", "\\3c ");
 }
 
-export function containedDocument(html: string, css: string): string {
-  // The fixed shell materializes data as text before this document exists. The nested child gets no
-  // script execution and no navigation/network-bearing elements or attributes.
+export function containedDocument(
+  html: string,
+  css: string,
+  sizing: FrameSizingSession,
+): string {
+  // Agent-authored active content is removed before this document exists. The only executable code
+  // is the nonce-bound, product-owned intrinsic-size reporter.
   return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${sizing.nonce}'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <style>${safeCss(css)}</style>
 </head>
-<body>${html}</body>
+<body>${html}${frameSizingScriptTag(sizing, { nonce: sizing.nonce })}</body>
 </html>`;
 }

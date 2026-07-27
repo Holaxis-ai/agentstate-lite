@@ -13,6 +13,14 @@ import type {
 } from "./contract.js";
 import { mayForwardDurableActivity } from "./durable-activity.js";
 import { FrameLoadGuard } from "./frame-load-guard.js";
+import {
+  appendFrameSizingScript,
+  clampFrameHeight,
+  createFrameSizingSession,
+  measureShellChromeHeight,
+  readFrameSizeEvent,
+  type FrameSizingSession,
+} from "./frame-sizing.js";
 import { containedDocument, materializePresentation } from "./presentation.js";
 
 type HostContext = NonNullable<ReturnType<App["getHostContext"]>>;
@@ -27,6 +35,7 @@ type PrepareResult =
 
 const statusEl = document.getElementById("status")!;
 const frame = document.getElementById("generated-view") as HTMLIFrameElement;
+const shell = frame.closest(".shell") as HTMLElement;
 const actionsEl = document.getElementById("actions")!;
 const actionButtonsEl = document.getElementById("action-buttons")!;
 const confirmationBackdrop = document.getElementById("confirmation-backdrop")!;
@@ -44,6 +53,9 @@ let pollTimer: number | null = null;
 let pollAcknowledgement: string | undefined;
 let suspendedDurableLaunch: string | null = null;
 let frameObjectUrl: string | null = null;
+let frameSizingSession: FrameSizingSession | null = null;
+let requestedFrameHeight: number | null = null;
+let currentHostContext: HostContext | null = null;
 const frameLoadGuard = new FrameLoadGuard();
 
 const ACTIVE_VIEW_CHILD_CSP = [
@@ -137,6 +149,7 @@ function setConfirmationField(id: string, value: unknown): void {
 function closeConfirmation(): void {
   confirmationBackdrop.hidden = true;
   pending = null;
+  syncDialogState();
 }
 
 function stopPolling(): void {
@@ -149,6 +162,7 @@ function closeAuthorization(): void {
   authorizationBackdrop.hidden = true;
   authorizationApply.disabled = true;
   authorizationCancel.disabled = false;
+  syncDialogState();
 }
 
 function closeDurableLaunch(launchId: string): void {
@@ -160,7 +174,19 @@ function closeDurableLaunch(launchId: string): void {
     .catch(() => {});
 }
 
-function setFrameDocument(html: string, contentType = "text/html; charset=utf-8"): void {
+function resetFrameSizing(): void {
+  frameSizingSession = null;
+  requestedFrameHeight = null;
+  frame.style.removeProperty("height");
+}
+
+function setFrameDocument(
+  html: string,
+  sizing: FrameSizingSession,
+  contentType = "text/html; charset=utf-8",
+): void {
+  resetFrameSizing();
+  frameSizingSession = sizing;
   if (frameObjectUrl) URL.revokeObjectURL(frameObjectUrl);
   frameObjectUrl = URL.createObjectURL(new Blob([html], { type: contentType }));
   frame.removeAttribute("srcdoc");
@@ -170,6 +196,7 @@ function setFrameDocument(html: string, contentType = "text/html; charset=utf-8"
 
 function clearFrameDocument(): void {
   frameLoadGuard.reset();
+  resetFrameSizing();
   frame.removeAttribute("srcdoc");
   frame.removeAttribute("src");
   if (frameObjectUrl) URL.revokeObjectURL(frameObjectUrl);
@@ -210,6 +237,7 @@ function openConfirmation(
   setConfirmationField("confirmation-actor", confirmation.actor);
   confirmationApply.disabled = true;
   confirmationBackdrop.hidden = false;
+  syncDialogState();
   window.setTimeout(() => {
     if (pending?.approvalToken === approvalToken) confirmationApply.disabled = false;
   }, 350);
@@ -273,9 +301,13 @@ function renderGeneratedPayload(payload: ViewLaunchPayload): void {
     statusEl.dataset.kind = "ready";
     statusEl.textContent = `${payload.title} · ${payload.objects.length} authoritative object${payload.objects.length === 1 ? "" : "s"}`;
     frame.title = payload.title;
-    frame.setAttribute("sandbox", "");
+    frame.setAttribute("sandbox", "allow-scripts");
     frame.removeAttribute("csp");
-    setFrameDocument(containedDocument(presentation, payload.presentation.css));
+    const sizing = createFrameSizingSession(payload.launch.launchId, frameEpoch);
+    setFrameDocument(
+      containedDocument(presentation, payload.presentation.css, sizing),
+      sizing,
+    );
     renderActions(payload);
   } catch (error) {
     retirePayload();
@@ -312,6 +344,7 @@ function renderDurablePayload(payload: DurableViewLaunchPayload): void {
     setConfirmationField("authorization-view", payload.source.viewId);
     setConfirmationField("authorization-version", payload.source.contentVersion);
     authorizationBackdrop.hidden = false;
+    syncDialogState();
     window.setTimeout(() => {
       if (
         currentPayload?.schemaVersion === "agentstate.durable-view-launch.v1" &&
@@ -327,7 +360,12 @@ function renderDurablePayload(payload: DurableViewLaunchPayload): void {
   statusEl.textContent = `${payload.title} · exact registered View · live bundle-read bridge`;
   frame.setAttribute("sandbox", "allow-scripts");
   frame.setAttribute("csp", ACTIVE_VIEW_CHILD_CSP);
-  setFrameDocument(payload.source.html, payload.source.contentType);
+  const sizing = createFrameSizingSession(payload.launch.launchId, frameEpoch);
+  setFrameDocument(
+    appendFrameSizingScript(payload.source.html, sizing),
+    sizing,
+    payload.source.contentType,
+  );
 }
 
 function renderPayload(payload: McpViewPayload): void {
@@ -548,9 +586,47 @@ async function finishAction(decision: "commit" | "cancel"): Promise<void> {
 }
 
 function applyHostContext(context: HostContext): void {
+  currentHostContext = { ...(currentHostContext ?? {}), ...context };
   if (context.theme) applyDocumentTheme(context.theme);
   if (context.styles?.variables) applyHostStyleVariables(context.styles.variables);
   if (context.styles?.css?.fonts) applyHostFonts(context.styles.css.fonts);
+  applyRequestedFrameHeight();
+}
+
+function syncDialogState(): void {
+  const open = !confirmationBackdrop.hidden || !authorizationBackdrop.hidden;
+  document.body.toggleAttribute("data-dialog-open", open);
+  if (!open) applyRequestedFrameHeight();
+}
+
+function hostHeightLimit(): number | undefined {
+  const dimensions = currentHostContext?.containerDimensions;
+  if (!dimensions) return undefined;
+  if ("height" in dimensions) return dimensions.height;
+  return dimensions.maxHeight;
+}
+
+function shellChromeHeight(): number {
+  return measureShellChromeHeight(
+    shell.getBoundingClientRect().height,
+    frame.getBoundingClientRect().height,
+  );
+}
+
+function applyRequestedFrameHeight(): void {
+  if (
+    requestedFrameHeight === null ||
+    document.body.hasAttribute("data-dialog-open")
+  ) {
+    return;
+  }
+  const height = clampFrameHeight(requestedFrameHeight, {
+    hostHeightLimit: hostHeightLimit(),
+    shellChromeHeight: shellChromeHeight(),
+  });
+  if (frame.style.height !== `${height}px`) {
+    frame.style.height = `${height}px`;
+  }
 }
 
 confirmationApply.addEventListener("click", () => void finishAction("commit"));
@@ -575,11 +651,28 @@ frame.addEventListener("load", () => {
 
 window.addEventListener("message", (event) => {
   const payload = currentPayload;
+  if (!payload) return;
+  if (frameSizingSession) {
+    const sizing = readFrameSizeEvent(
+      event.data,
+      event.source,
+      frame.contentWindow,
+      frameSizingSession,
+      frameEpoch,
+    );
+    if (sizing.kind !== "other") {
+      if (sizing.kind === "accepted") {
+        requestedFrameHeight = sizing.height;
+        applyRequestedFrameHeight();
+      }
+      return;
+    }
+  }
   if (
     document.visibilityState === "hidden" ||
-    payload?.schemaVersion !== "agentstate.durable-view-launch.v1" ||
-    !payload.launch.authorization.authorized ||
-    event.source !== frame.contentWindow
+    event.source !== frame.contentWindow ||
+    payload.schemaVersion !== "agentstate.durable-view-launch.v1" ||
+    !payload.launch.authorization.authorized
   ) {
     return;
   }
@@ -599,6 +692,7 @@ document.addEventListener("visibilitychange", () => {
   ) {
     suspendedDurableLaunch = payload.launch.launchId;
     frameEpoch++;
+    resetFrameSizing();
     stopPolling();
     return;
   }
