@@ -3,18 +3,18 @@ type: Task
 title: >-
   No test proves the host-computed hash beats a dishonest backend version
   (active View launch)
-status: in_progress
+status: done
 priority: '3'
 description: >-
-  BUILT, NOT PUSHED — 3 pins green + probed red on branch
-  test/view-launch-version-trust @ 33d67bf, local worktree only, no PR. Review
-  returned 2 findings: the middle pin's characterization is corrected and
-  committed; remaining work is to adopt #173's mintActiveViewLaunch in
-  actions.test.ts after #173 merges. An unpushed local commit is not recoverable
-  by another agent — push before relying on this record for handoff.
-actor: mike/claude
-assignee: mike/claude
-timestamp: '2026-07-27T03:10:25.039Z'
+  SHIPPED 2026-07-27 in PR #174 (merge 48cf431). Added three remote-mode
+  integration pins proving a dishonest fixed upstream x-version cannot control
+  active-View launch identity, currentness, or prior authorization. Rebased onto
+  #173 and replaced the action fixture's hand-recreated admission/hash sequence
+  with shared mintActiveViewLaunch. Validation: ui-server 42/42; full npm run
+  check; GitHub Node 20 smoke and Node 22/26 gates all green.
+actor: openai/codex
+assignee: openai/codex
+timestamp: '2026-07-27T03:28:19.850Z'
 ---
 # Gap
 
