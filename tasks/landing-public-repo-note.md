@@ -6,14 +6,17 @@ priority: '2'
 actor: claude-main
 description: >-
   DONE 2026-07-26, awaiting Brian's PR. Branch feat/landing-public-repo-note
-  (89195db, one commit off current main). Panel 4 gains a 'Worth knowing'
-  paragraph: a shared bundle is exactly as visible as the repository carrying it
-  — public repo means public bundle (tasks/notes/generated docs become the
-  project's public record) — framed as a consideration with the
-  apply-commit-judgment heuristic, not a warning. Trivial tier (copy+pin only):
-  author-validated, gates green (ui unit suite incl. 2 new pins, typecheck,
-  repo-root build). Sits between the conflict/in-tree paragraph and the 'That's
-  the tour' CTA.
-timestamp: '2026-07-26T19:48:04.478Z'
+  (89195db + e3669c0). Panel 4: 'Worth knowing' public-repo paragraph (bundle is
+  as visible as its repo; tasks/notes/docs become the public record; apply
+  commit judgment, remembering agents sync automatically as they work — no user
+  action gates sharing) AND the promise sentence now reads 'stays LOCAL until
+  you choose to share it' — keeping the local/shared axis distinct from the
+  repo's private/public axis (Brian's call; a shared bundle can live in either).
+  Trivial tier: gates green (unit incl. pins, typecheck, build, pages e2e
+  13/13). FLAGGED FOLLOW-UP, not this unit: the sharing CHIP vocabulary still
+  says 'private — this computer only' for the local-only state — same
+  private/local collision on a settled, pinned truth-table surface; renaming it
+  is its own small unit if wanted.
+timestamp: '2026-07-27T01:14:34.736Z'
 ---
 
