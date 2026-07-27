@@ -1,16 +1,15 @@
 ---
 type: Task
 title: Investigate MCP App presentation sizing controls
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  CLAIMED 2026-07-27 by openai/codex. Researching protocol guarantees, official
-  reference-host behavior, and current Codex/ChatGPT host behavior before
-  deciding whether desktop and conversational Views share one entry, use
-  variants, or remain separate presentations.
+  COMPLETED 2026-07-27 — flexible host sizing and display-mode negotiation are
+  real; AgentState still needs a bounded nested-frame height relay, and
+  discovery must distinguish inline/workspace presentations.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-07-27T12:22:00.785Z'
+timestamp: '2026-07-27T12:33:25.601Z'
 ---
 # Question
 
@@ -37,3 +36,20 @@ parts are guaranteed by the protocol versus advisory or entirely host-controlled
   behavior.
 - Identify any minimal metadata/API addition worth trying in the experimental adapter, but do not
   make it a product contract until it is empirically supported.
+
+# Outcome
+
+Completed 2026-07-27. The protocol and official reference host support flexible intrinsic sizing
+and negotiated display modes, but AgentState's opaque nested durable-View iframe does not currently
+relay its content height to the outer MCP App. The host can size the shell correctly while the
+actual View remains a 288px internal scroller.
+
+Keep one View identity and security/data/action contract, but allow optional presentation variants
+for workspace, inline, and fullscreen compositions. Do not assume every desktop View is
+conversationally compatible. The next proof is a bounded, launch-bound child-height relay; only
+then should promotion/discovery define presentation-aware registry semantics.
+
+Full evidence, measurements, capability table, and recommendation:
+[MCP App presentation sizing](../research/mcp-app-presentation-sizing.md).
+
+[evidence](../research/mcp-app-presentation-sizing.md)

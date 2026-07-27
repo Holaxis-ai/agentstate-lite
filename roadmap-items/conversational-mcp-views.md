@@ -3,17 +3,18 @@ type: Roadmap Item
 title: Conversational Views through MCP Apps
 status: active
 description: >-
-  EXPERIMENTAL — core MCP proofs are merged and the shared web/MCP View security
-  design is independently approved. Public implementation is blocked on
-  mandatory private Stage 0 disposition; then prove one unchanged active Roadmap
-  View before promotion/discovery.
+  EXPERIMENTAL — active durable Views are proved. Sizing evidence found a
+  bounded nested-frame height relay as the next enabler; promotion/discovery
+  follows and must support optional inline/workspace/fullscreen presentations
+  under one View identity.
 sequence: >-
   Fixed-shell proof → shared action authority → governed action → conversation
   proof → bounded queries → shared View security design/review → durable bridge
-  proof → promotion/discovery → sizing evidence → authoring guidance → dogfood →
-  second host / remote adapter
-actor: mike/claude
-timestamp: '2026-07-27T01:49:45.399Z'
+  proof → sizing evidence → intrinsic nested-frame sizing → presentation-aware
+  promotion/discovery → authoring guidance → dogfood → second host / remote
+  adapter
+actor: openai/codex
+timestamp: '2026-07-27T12:33:25.698Z'
 ---
 # Direction
 
@@ -48,23 +49,29 @@ multi-tenant hosting, and a broader remote-agent tool surface remain separate la
    durable.
 7. Prove one existing scriptful durable bundle View through the reviewed MCP host adapter before
    designing promotion around a new durable format.
-8. Define durable promotion plus generic bundle-scoped View discovery and invocation. Do not expose
-   one MCP tool per View; compare a generic catalog tool with MCP resources and host support.
-9. Empirically establish what control MCP Apps have over iframe/presentation size across hosts.
-10. Turn the proven data, action, sizing, and promotion constraints into concise agent authoring
+8. Empirically establish what control MCP Apps have over iframe/presentation size across hosts:
+   complete at [MCP App presentation sizing](../research/mcp-app-presentation-sizing.md). MCP hosts
+   can size the outer App, but AgentState must still relay the opaque nested View's intrinsic height.
+9. Prove bounded, launch-bound intrinsic sizing through the nested durable-View iframe in both the
+   reference host and the conversation host.
+10. Define durable promotion plus generic bundle-scoped View discovery and invocation. Keep one
+   View identity while allowing optional inline/workspace/fullscreen presentation variants; never
+   expose one MCP tool per View or assume every desktop View is conversationally compatible.
+11. Turn the proven data, action, sizing, and promotion constraints into concise agent authoring
    guidance delivered through the lowest-token discoverable surface.
-11. Dogfood promotion and discovery with a presentation that has proved repeatedly useful.
-12. Verify a second host, then separately consider a remote adapter.
+12. Dogfood promotion and discovery with a presentation that has proved repeatedly useful.
+13. Verify a second host, then separately consider a remote adapter.
 
 # Current decision gate
 
 The shared durable View security design and mandatory private Stage 0 disposition are complete.
-PR #172 shipped exact-byte local authorization for active View source and the one server-owned,
-launch-bound `BridgeService`; independent review and adversarial QA passed. The current unit is the
-read-only unchanged-source Roadmap View proof through a thin MCP adapter
-(`tasks/mcp-durable-view-unchanged-proof`). Promotion/discovery follows that proof; sizing may
-proceed independently because it is empirical and host-facing. Authoring guidance follows the
-accepted architecture and evidence.
+PRs #173/#174 proved one unchanged active View through the thin MCP adapter and pinned its exact
+launch identity. Sizing research is complete and found one concrete platform gap: the outer MCP App
+auto-sizes, but the opaque nested durable-View iframe has no intrinsic-height relay. The current
+unit is that bounded sizing proof. Promotion/discovery follows it and must be presentation-aware:
+one View identity may have optional inline/workspace/fullscreen entries, while a single genuinely
+responsive entry may serve more than one surface. Authoring guidance follows the accepted
+architecture and evidence.
 
 These are still experimental follow-ons, not a supported-product declaration. Broader action
 authority, remote workspaces, authentication, and a tool-per-View surface remain out of scope.
@@ -94,3 +101,5 @@ authority, remote workspaces, authentication, and a tool-per-View surface remain
 [contains](../tasks/mcp-install-verb.md)
 
 [contains](../tasks/mcp-stdio-error-routing.md)
+
+[contains](../tasks/mcp-durable-view-intrinsic-sizing.md)

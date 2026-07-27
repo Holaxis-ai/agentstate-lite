@@ -4,12 +4,12 @@ title: Design durable MCP View promotion and discovery
 status: todo
 priority: '2'
 description: >-
-  Deferred pending the reviewed shared-security/bridge design in
-  tasks/mcp-view-security-model-unification. The current declarative-v1-first
-  recommendation is under reconsideration and must not drive implementation.
+  Deferred until intrinsic nested-frame sizing is proved. Preserve one View
+  identity while allowing optional inline/workspace/fullscreen presentations;
+  discovery must report only compatible presentations honestly.
 actor: openai/codex
 assignee: ''
-timestamp: '2026-07-26T23:24:49.284Z'
+timestamp: '2026-07-27T12:33:25.894Z'
 ---
 # Product question
 
@@ -30,6 +30,12 @@ surface.
   `list_views`/`get_views`-style tool, or another host-compatible catalog surface.
 - Define how the agent invokes a discovered durable View without rewriting its HTML. Prefer one
   generic invocation path keyed by stable View ID.
+- Preserve one semantic View identity—purpose, access, query/data selection, actions, and
+  provenance—while allowing optional host-aware presentation entries. Keep the existing `entry` as
+  the workspace/default entry unless a later migration proves necessary.
+- Make catalog results presentation-aware. A desktop-only View must not be represented as inline
+  compatible merely because the MCP shell can technically mount its bytes; a responsive single
+  entry may serve multiple modes when it has actually been tested there.
 - Keep discovery bundle-scoped and honest about unavailable, malformed, or access-incompatible
   registrations.
 - Separate model discovery from human launcher presentation; both may read the same View registry,
@@ -49,3 +55,10 @@ surface.
 - Do not implement until the discovery and invocation contract is chosen.
 
 [depends on](mcp-view-security-model-unification.md)
+
+[depends on](mcp-app-presentation-sizing.md)
+
+Sizing and variant evidence:
+[MCP App presentation sizing](../research/mcp-app-presentation-sizing.md).
+
+[depends on](mcp-durable-view-intrinsic-sizing.md)
