@@ -1,15 +1,15 @@
 ---
 type: Task
 title: Unify durable View security across web and MCP hosts
-status: in_progress
+status: blocked
 priority: '1'
-assignee: research-agent
-actor: openai/research-agent
+assignee: openai/codex
+actor: openai/codex
 description: >-
-  Revise and re-review the shared launch-bound View authority design;
-  implementation remains blocked on private Stage 0 disposition and exact-design
-  approval.
-timestamp: '2026-07-26T23:58:41.308Z'
+  Architecture approved after independent exact-version review. Public
+  implementation is blocked on the mandatory private Stage 0 security
+  disposition; no design-document blockers remain.
+timestamp: '2026-07-27T00:03:38.658Z'
 ---
 # Objective
 
@@ -54,3 +54,15 @@ This public task must not contain concrete current-main failure mechanics.
 Research and design only. Do not modify product code or start implementation until the mandatory
 Stage 0 gate is complete. The first proof remains read-only; v1 actions wait until the durable read
 proof and its adversarial QA pass.
+
+# Design outcome
+
+- Revised design approved:
+  `designs/mcp-view-security-model-unification` at
+  `sha256:0dc37c152da4749574f5f66c4c3b393f3e78761b123e18e0be390e3d415ee9ae`.
+- Independent final review:
+  `reviews/mcp-view-security-model-unification` at
+  `sha256:2514b02e947600f01fd3396f9e2e528ae27572e8c0a3caca7385f7c70cf626de`,
+  verdict `approve`.
+- No design-document blockers remain.
+- Implementation remains blocked solely on the private Stage 0 disposition and clearance.

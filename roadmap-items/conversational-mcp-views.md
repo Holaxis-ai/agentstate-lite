@@ -3,17 +3,17 @@ type: Roadmap Item
 title: Conversational Views through MCP Apps
 status: active
 description: >-
-  EXPERIMENTAL — fixed-shell rendering, governed actions, real conversation-host
-  mutation, and bounded query selection are proved. Next gate: independently
-  reviewed shared durable-View security/bridge design; then one unchanged
-  durable View proof before promotion/discovery.
+  EXPERIMENTAL — core MCP proofs are merged and the shared web/MCP View security
+  design is independently approved. Public implementation is blocked on
+  mandatory private Stage 0 disposition; then prove one unchanged active Roadmap
+  View before promotion/discovery.
 sequence: >-
   Fixed-shell proof → shared action authority → governed action → conversation
   proof → bounded queries → shared View security design/review → durable bridge
   proof → promotion/discovery → sizing evidence → authoring guidance → dogfood →
   second host / remote adapter
 actor: openai/codex
-timestamp: '2026-07-26T23:25:43.891Z'
+timestamp: '2026-07-27T00:03:38.810Z'
 ---
 # Direction
 
@@ -42,8 +42,10 @@ multi-tenant hosting, and a broader remote-agent tool surface remain separate la
 5. Bounded deterministic query selection using the durable View's shared query semantics: proved
    and merged in PR #169.
 6. Research and independently review ONE durable View security model across the local web UI and
-   MCP App host. Decide the shared sandbox/access/bridge authority and preserve script-free
-   generated HTML only as an ephemeral presentation tier.
+   MCP App host: approved at
+   `designs/mcp-view-security-model-unification`. Lifecycle, execution, provenance, local
+   authorization, and requested authority remain independent; passive Views may be ephemeral or
+   durable.
 7. Prove one existing scriptful durable bundle View through the reviewed MCP host adapter before
    designing promotion around a new durable format.
 8. Define durable promotion plus generic bundle-scoped View discovery and invocation. Do not expose
@@ -56,13 +58,14 @@ multi-tenant hosting, and a broader remote-agent tool surface remain separate la
 
 # Current decision gate
 
-The next unit is the shared durable View security model. The existing promotion/discovery design
-recommended a script-free declarative durable format before proving whether the established
-sandboxed postMessage bridge can be hosted safely through MCP Apps. That recommendation is now
-under review and must not drive implementation. Research must trace both current hosts, define one
-host-neutral authority with thin transport adapters, and receive independent review before code
-work begins. Promotion/discovery follows the bridge proof; sizing may proceed independently because
-it is empirical and host-facing. Authoring guidance follows the accepted architecture and evidence.
+The shared durable View security design is approved after independent review and revision. It
+requires one server-side, launch-bound `BridgeService` consumed by thin web and MCP adapters;
+durability is persistence rather than trust, and passive versus active is an independent execution
+choice. Public implementation is BLOCKED until the mandatory private Stage 0 security disposition
+is complete. After clearance, the first public unit is a read-only unchanged-source Roadmap View
+proof under the shared bridge. Promotion/discovery follows that proof; sizing may proceed
+independently because it is empirical and host-facing. Authoring guidance follows the accepted
+architecture and evidence.
 
 These are still experimental follow-ons, not a supported-product declaration. Broader action
 authority, remote workspaces, authentication, and a tool-per-View surface remain out of scope.
