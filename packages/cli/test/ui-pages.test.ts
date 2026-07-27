@@ -592,6 +592,11 @@ test("ONE-PREDICATE: remote-mode mint filters rows through the registration pred
   // PREDICATE, not the query params it sent.
   const server = createHttpServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (url.pathname.includes("/blobs/")) {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-version": "bv1" });
+      res.end("<!doctype html><p>remote View</p>");
+      return;
+    }
     const type = url.searchParams.get("type");
     const docs =
       type === "View"
@@ -733,6 +738,11 @@ test("XSS pin (route-level): the serve-time 502 error page is served as escaped 
   let failViews = false;
   const server = createHttpServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (url.pathname.includes("/blobs/")) {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-version": "bv1" });
+      res.end("<!doctype html><p>remote View</p>");
+      return;
+    }
     const type = url.searchParams.get("type");
     if (type === "View" && failViews) {
       res.writeHead(500, { "content-type": "application/json" });
@@ -965,6 +975,11 @@ test("P2: remote mint paginates the View registry to exhaustion — a page past 
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(body));
     };
+    if (url.pathname.includes("/blobs/")) {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-version": "bv1" });
+      res.end("<!doctype html><p>remote View</p>");
+      return;
+    }
     if (url.searchParams.get("type") === "View") {
       if (url.searchParams.get("cursor") === "page-2") {
         json({ docs: [{ id: "pages-registry/deep", version: "v1", frontmatter: { type: "View", entry: "pages/deep.html" } }], next_cursor: null });
@@ -1003,6 +1018,11 @@ test("REJECTION PIN: remote-mode mint queries ONLY type=View — the legacy type
   const queriedTypes = new Set<string>();
   const server = createHttpServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (url.pathname.includes("/blobs/")) {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-version": "bv1" });
+      res.end("<!doctype html><p>remote View</p>");
+      return;
+    }
     const type = url.searchParams.get("type");
     if (type) queriedTypes.add(type);
     const docs =

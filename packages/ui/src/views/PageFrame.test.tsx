@@ -1,21 +1,14 @@
 /**
- * PageFrame bridge-revocation race tests (P1, adversarial-review fold-in). The bridge broker's
- * dep calls (`getDoc`, `mintPageNonce`, `listAllHeads`, …) are async, so a fail-closed capability
- * check taken at the WRONG time — either too late (the reload hasn't revoked yet) or only at
- * receipt with no re-check at delivery — leaves a window where a `bundle-read` grant survives
- * past the edit/reload that was supposed to end it. These two tests reproduce both windows
- * against the REAL component (a real iframe, a real postMessage round-trip) and prove
- * `PageFrame.tsx`'s fix closes them: (a) pre-revoking the capability/subscription ref
- * SYNCHRONOUSLY at the top of `loadPage`, before its first `await`, and (b) fencing the
- * `onMessage` broker's async reply against `loadSeqRef` so a reply computed under an OLD
- * generation is dropped, never delivered into a frame that has since reloaded.
+ * PageFrame launch-revocation race tests. A reload must revoke the old launch synchronously, and
+ * an asynchronous server-bridge reply must remain fenced to the iframe generation that requested
+ * it. These component tests control both gaps with real iframe/postMessage boundaries.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { PageFrame } from "./PageFrame.js";
 import { getDoc, listAllHeads } from "../api/client.js";
-import { cancelTrustedAction, commitTrustedAction, mintPageNonce, prepareTrustedAction, resolvePageTarget } from "../api/pages.js";
+import { authorizeViewLaunch, cancelTrustedAction, commitTrustedAction, mintPageNonce, prepareTrustedAction, resolvePageTarget } from "../api/pages.js";
 import { subscribeToChanges } from "../pages/pageEvents.js";
 import { __resetInterceptorForTests } from "../query/interceptor.js";
 
@@ -29,7 +22,44 @@ vi.mock("../api/client.js", async (importOriginal) => {
 });
 
 vi.mock("../api/pages.js", () => ({
-  mintPageNonce: vi.fn(async (registryId: string) => ({ url: `/__page/nonce-${registryId}`, launchId: `launch-${registryId}` })),
+  mintPageNonce: vi.fn(async (registryId: string) => {
+    const loaded = await getDoc(registryId);
+    const fm = loaded.doc.frontmatter;
+    if (fm.type !== "View" || typeof fm.entry !== "string") {
+      throw new Error(`page '${registryId}' is not a usable registered Page`);
+    }
+    const capability =
+      fm.access === "bundle-read" || fm.access === "bundle-propose" ? fm.access : "none";
+    return {
+      url: `/__page/nonce-${registryId}`,
+      launchId: `launch-${registryId}`,
+      title: typeof fm.title === "string" ? fm.title : registryId,
+      entry: fm.entry,
+      capability,
+      authorization: { required: capability !== "none", authorized: true, contentVersion: "bv1" },
+    };
+  }),
+  authorizeViewLaunch: vi.fn(async () => ({ required: true, authorized: true })),
+  verifyViewLaunch: vi.fn(async () => ({ required: true, authorized: true })),
+  sendViewBridge: vi.fn(async (_launchId: string, request: Record<string, unknown>) => {
+    if (request.type === "open-page") {
+      return (await resolvePageTarget(request.pageId as string))
+        ? { reply: null, openPageId: request.pageId as string }
+        : { reply: { bridge: "v0", type: "error" } };
+    }
+    if (request.type === "query") {
+      const rows = await listAllHeads(request.params as Record<string, unknown>);
+      return {
+        reply: {
+          bridge: "v0",
+          id: request.id,
+          type: "query:result",
+          result: { rows, count: rows.length },
+        },
+      };
+    }
+    return { reply: null };
+  }),
   prepareTrustedAction: vi.fn(),
   commitTrustedAction: vi.fn(),
   cancelTrustedAction: vi.fn(async () => ({ status: "cancelled", action: "document.set-field" })),
@@ -237,6 +267,43 @@ describe("PageFrame: registered Page navigation", () => {
     expect(window.location.search).toBe("?view=page&id=pages-registry%2Ftarget");
   });
 
+  it("mounts new active HTML only after trusted-shell approval", async () => {
+    vi.mocked(getDoc).mockResolvedValue(pageDoc({ access: "bundle-read" }));
+    vi.mocked(mintPageNonce).mockResolvedValueOnce({
+      url: "/__page/new-active-view",
+      launchId: "launch-new-active-view",
+      title: "P",
+      entry: "pages/p.html",
+      capability: "bundle-read",
+      authorization: {
+        required: true,
+        authorized: false,
+        contentVersion: "sha256:new-html",
+      },
+    });
+    await act(async () => {
+      root.render(<PageFrame pageId="pages-registry/p" />);
+      await flush();
+    });
+
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.textContent).toContain("Allow this View to read bundle data?");
+    const allow = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Allow this View",
+    )!;
+    expect(allow.disabled).toBe(true);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 550));
+    });
+    expect(allow.disabled).toBe(false);
+    await act(async () => {
+      allow.click();
+      await flush();
+    });
+    expect(authorizeViewLaunch).toHaveBeenCalledWith("launch-new-active-view");
+    expect(container.querySelector("iframe")?.getAttribute("src")).toBe("/__page/new-active-view");
+  });
+
   it("navigates at most once per source generation when resolutions race", async () => {
     const source = await mount();
     const first = deferred<boolean>();
@@ -386,7 +453,7 @@ describe("PageFrame: registered Page navigation", () => {
       root.render(<PageFrame pageId="pages-registry/p" />);
       await flush();
     });
-    expect(mintPageNonce).not.toHaveBeenCalled();
+    expect(mintPageNonce).toHaveBeenCalledWith("pages-registry/p");
     expect(container.querySelector("iframe")).toBeNull();
     expect(container.textContent).toContain("not a usable registered Page");
   });

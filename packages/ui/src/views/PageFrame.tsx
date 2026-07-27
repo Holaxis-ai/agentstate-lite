@@ -3,45 +3,41 @@
  * bridge. The iframe is `sandbox="allow-scripts"` with NO `allow-same-origin`, so it runs at an
  * opaque origin — it cannot fetch the data API even if a token leaked, and its scripts talk to the
  * shell ONLY via postMessage. This component:
- *   1. Resolves the page's registry doc -> its `entry` blob key -> a minted nonce URL (the `src`),
- *      and its declared `access` capability (fail-closed via core's `resolveDeclaredAccess`; the legacy `bridge` spelling is no longer read).
+ *   1. Asks the server to resolve the registry doc and exact HTML into one immutable launch.
+ *      Active data-bearing Views mount only after the trusted shell confirms that exact launch
+ *      (unchanged approvals are remembered locally by the CLI host).
  *   2. Listens for the page's postMessage requests, VALIDATING `event.source` is this iframe, and
- *      brokers v0 reads through {@link handleBridgeRequest}; `bundle-propose` may additionally
+ *      forwards opaque requests to the server-owned bridge; `bundle-propose` may additionally
  *      prepare one v1 action for explicit confirmation in trusted shell chrome.
  *   3. Fans SSE doc changes into the subscribed page as bridge `change` events, and HOT-RELOADS the
  *      iframe (fresh nonce) when the page's own HTML blob changes.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getDoc, listAllHeads, ApiError } from "../api/client.js";
 import {
+  authorizeViewLaunch,
   cancelTrustedAction,
   commitTrustedAction,
   mintPageNonce,
   prepareTrustedAction,
-  fetchConfig,
-  fetchKinds,
-  fetchEdges,
   invalidateKinds,
-  resolvePageTarget,
+  sendViewBridge,
+  verifyViewLaunch,
   type ActionConfirmation,
+  type MintedView,
 } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
-import { handleBridgeRequest, changeMessage, type BridgeDeps } from "../pages/bridge.js";
-import { parseRegisteredPage, type BridgeCapability } from "../pages/registry.js";
 import { navigate } from "../routing.js";
-import { setInterceptorStatus } from "../query/interceptor.js";
 import { actionError, actionReply, parseActionBridgeMessage } from "../pages/actions.js";
 
-const bridgeDeps: BridgeDeps = {
-  config: fetchConfig,
-  query: ({ type, prefix }) => listAllHeads({ type, prefix }),
-  read: (docId) => getDoc(docId).then((r) => r.doc),
-  kinds: fetchKinds,
-  edges: fetchEdges,
-  resolvePage: resolvePageTarget,
-};
-
 const ACTION_CONFIRMATION_ARM_MS = 500;
+const VIEW_AUTHORIZATION_ARM_MS = 500;
+
+function changeMessage(
+  changes: { id: string; version: string }[],
+  removed: string[],
+): Record<string, unknown> {
+  return { bridge: "v0", type: "change", event: { changes, removed } };
+}
 
 interface PendingAction {
   seq: number;
@@ -58,10 +54,6 @@ function scalarLabel(value: string | number | boolean | null): string {
 export function PageFrame({ pageId }: { pageId: string }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const subscribedRef = useRef(false);
-  // The framed page's ENFORCED capability, read by the bridge broker below (never trusting
-  // anything the sandboxed page itself sends). Fail-closed: starts (and, on revoke, reverts to)
-  // "none" so no in-flight bridge message is ever answered while no page is confirmed loaded.
-  const bridgeCapabilityRef = useRef<BridgeCapability>("none");
   // A shell navigation consumes the currently framed document's right to navigate. Unlike the
   // async-load epoch below, this remains locked while that old iframe can still post messages.
   const navigationConsumedRef = useRef(false);
@@ -79,6 +71,9 @@ export function PageFrame({ pageId }: { pageId: string }) {
   const [entryKey, setEntryKey] = useState<string | null>(null);
   const [title, setTitle] = useState<string>(pageId);
   const [error, setError] = useState<string | null>(null);
+  const [pendingLaunch, setPendingLaunch] = useState<MintedView | null>(null);
+  const [authorizationBusy, setAuthorizationBusy] = useState(false);
+  const [authorizationArmed, setAuthorizationArmed] = useState(false);
   const [confirmation, setConfirmation] = useState<ActionConfirmation | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionArmed, setActionArmed] = useState(false);
@@ -104,6 +99,18 @@ export function PageFrame({ pageId }: { pageId: string }) {
     return () => window.clearTimeout(timer);
   }, [confirmation]);
 
+  useEffect(() => {
+    if (!pendingLaunch) {
+      setAuthorizationArmed(false);
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setAuthorizationArmed(true),
+      VIEW_AUTHORIZATION_ARM_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [pendingLaunch]);
+
   const ownFrame = useCallback((node: HTMLIFrameElement | null) => {
     iframeRef.current = node;
     if (!node) return;
@@ -119,8 +126,9 @@ export function PageFrame({ pageId }: { pageId: string }) {
     discardPendingAction();
     loadSeqRef.current++;
     subscribedRef.current = false;
-    bridgeCapabilityRef.current = "none";
     launchIdRef.current = null;
+    setPendingLaunch(null);
+    setAuthorizationBusy(false);
     setSrc(null);
     setFrameSeq(null);
     setEntryKey(null);
@@ -135,61 +143,43 @@ export function PageFrame({ pageId }: { pageId: string }) {
   const loadPage = useCallback(async () => {
     discardPendingAction();
     const seq = ++loadSeqRef.current;
-    // Pre-revoke IMMEDIATELY, synchronously, before the async getDoc/mint round-trip below. This
+    // Pre-revoke IMMEDIATELY, synchronously, before the async server mint below. This
     // is the ONE entry point every re-resolution path shares (mount, page switch, a live
     // registry-doc change, blob hot-reload, resync), so the OLD capability/subscription can never
     // survive past this line: a bridge request arriving during the async gap below is answered
     // fail-closed (denied), never under a grant this reload is already in the middle of revoking
-    // — closes the window where a live `bundle-read` -> `none` edit left the stale grant standing
-    // through the getDoc/mint round-trip (P1).
+    // — closes the window where a live `bundle-read` -> `none` edit left the stale launch standing
+    // through the mint round-trip (P1).
     subscribedRef.current = false;
-    bridgeCapabilityRef.current = "none";
     launchIdRef.current = null;
-
-    // getDoc is split from the mint below because ONLY its 403 is trip-worthy: `/v0/*` has no
-    // other 403 source than this ui server's own session gate, so a 403 here is ALWAYS a dead
-    // session (most commonly a stable-port restart minting a fresh secret out from under this
-    // open tab's cookie) — imperative, not TanStack-managed, so `queryClient.ts`'s
-    // `onQueryError` never sees it; trip the SAME global interceptor directly (see
-    // `interceptor.ts`'s doc comment).
-    let loaded: Awaited<ReturnType<typeof getDoc>>;
-    try {
-      loaded = await getDoc(pageId);
-    } catch (e) {
-      if (seq !== loadSeqRef.current) return;
-      subscribedRef.current = false;
-      bridgeCapabilityRef.current = "none";
-      setSrc(null);
-      setFrameSeq(null);
-      setEntryKey(null);
-      if (e instanceof ApiError && e.status === 403) setInterceptorStatus("session_expired");
-      setError(e instanceof Error ? e.message : String(e));
-      return;
-    }
+    setPendingLaunch(null);
+    setAuthorizationBusy(false);
 
     try {
-      const { doc } = loaded;
-      const registered = parseRegisteredPage(pageId, doc.frontmatter);
-      if (!registered) throw new Error(`page '${pageId}' is not a usable registered Page`);
       const minted = await mintPageNonce(pageId);
       if (seq !== loadSeqRef.current) return;
       subscribedRef.current = false;
-      bridgeCapabilityRef.current = registered.bridge;
       launchIdRef.current = minted.launchId;
-      setEntryKey(registered.entry);
-      setTitle(registered.title);
+      setEntryKey(minted.entry);
+      setTitle(minted.title);
       setError(null);
-      setFrameSeq(seq);
-      setSrc(minted.url);
+      if (minted.authorization.required && !minted.authorization.authorized) {
+        setPendingLaunch(minted);
+        setFrameSeq(null);
+        setSrc(null);
+      } else {
+        setFrameSeq(seq);
+        setSrc(minted.url);
+      }
     } catch (e) {
       if (seq !== loadSeqRef.current) return;
       subscribedRef.current = false;
-      bridgeCapabilityRef.current = "none";
       launchIdRef.current = null;
+      setPendingLaunch(null);
       setSrc(null);
       setFrameSeq(null);
       setEntryKey(null);
-      // mintPageNonce's 403 is NOT trip-worthy like getDoc's above: `/__page/mint` also 403s
+      // A mint 403 is not necessarily a dead session: `/__page/mint` also rejects malformed
       // (code FORBIDDEN) when this doc's `entry` is a confinement violation — outside `pages/`,
       // or not any Page doc's registered entry (server.ts's `handleMint`) — a malformed-DOC
       // problem, not a dead session. The launcher doesn't filter entries by prefix, so such a
@@ -199,8 +189,8 @@ export function PageFrame({ pageId }: { pageId: string }) {
     }
   }, [discardPendingAction, pageId]);
 
-  // Resolve registry doc -> entry key -> nonce URL on mount / page switch. The bridge-capability
-  // reset now happens unconditionally at the TOP of loadPage itself (every re-resolution path
+  // Resolve registry doc -> entry key -> nonce URL on mount / page switch. Launch revocation
+  // happens unconditionally at the TOP of loadPage itself (every re-resolution path
   // shares it), so this effect only owns the page-SWITCH UX: blank the frame immediately so a
   // newly-selected page never shows the outgoing page's stale content while it resolves.
   useEffect(() => {
@@ -222,14 +212,13 @@ export function PageFrame({ pageId }: { pageId: string }) {
       const frame = iframeRef.current;
       if (!frame || ev.source !== frame.contentWindow) return;
       if (activeFrameSeqRef.current !== loadSeqRef.current) return;
-      // Capture the epoch AND the capability at RECEIPT — the request is decided under whatever
-      // grant this iframe held the instant it asked. `handleBridgeRequest`'s dep calls are async,
-      // so a slow reply must be FENCED against a LATER reload before it's delivered: the SAME
+      // Capture the shell epoch at receipt. The server independently resolves the launch,
+      // authorization, and current bytes before AND after the request; this browser fence ensures
+      // a slow reply is not delivered into a later iframe generation. The SAME
       // framed document can be replaced by reload/hot-reload/page-switch while that work is in
       // flight, so without this check a reply computed for the OLD page could cross the revoke
       // boundary (P1).
       const seq = loadSeqRef.current;
-      const capability = bridgeCapabilityRef.current;
 
       const actionMessage = parseActionBridgeMessage(ev.data);
       if (actionMessage !== null) {
@@ -245,22 +234,17 @@ export function PageFrame({ pageId }: { pageId: string }) {
           }
           return;
         }
-        if (capability !== "bundle-propose") {
-          if (actionMessage.message.type === "action.propose") {
-            post(actionReply(actionMessage.message.requestId, {
-              status: "rejected",
-              action: "document.set-field",
-              message: "this View does not declare access: bundle-propose",
-            }));
-          } else {
-            post(actionError(actionMessage.message.id, "this View does not declare access: bundle-propose"));
-          }
-          return;
-        }
         if (actionMessage.message.type === "read-versioned") {
           const readMessage = actionMessage.message;
-          void getDoc(readMessage.docId).then(
-            (result) => post({ bridge: "v1", id: readMessage.id, type: "read-versioned:result", result }),
+          const launchId = launchIdRef.current;
+          if (!launchId) {
+            post(actionError(readMessage.id, "the frame launch is no longer current"));
+            return;
+          }
+          void sendViewBridge(launchId, readMessage).then(
+            (outcome) => {
+              if (outcome.reply) post(outcome.reply);
+            },
             (error) => post(actionError(readMessage.id, error instanceof Error ? error.message : String(error))),
           );
           return;
@@ -305,25 +289,37 @@ export function PageFrame({ pageId }: { pageId: string }) {
         return;
       }
 
-      void handleBridgeRequest(ev.data, bridgeDeps, capability).then((outcome) => {
-        if (seq !== loadSeqRef.current) return; // frame reloaded/revoked since receipt — drop it
-        if (outcome.openPageId) {
-          if (outcome.openPageId === pageId) return;
-          if (navigationConsumedRef.current) return;
-          // End this source generation before changing history. Concurrent outcomes captured
-          // under it then fail the fence above and cannot navigate a second time.
-          navigationConsumedRef.current = true;
-          loadSeqRef.current++;
-          discardPendingAction();
-          subscribedRef.current = false;
-          bridgeCapabilityRef.current = "none";
-          launchIdRef.current = null;
-          navigate({ view: "page", id: outcome.openPageId });
-          return;
-        }
-        if (outcome.subscribed) subscribedRef.current = true;
-        if (outcome.reply && frame.contentWindow) frame.contentWindow.postMessage(outcome.reply, "*");
-      });
+      const launchId = launchIdRef.current;
+      if (!launchId) return;
+      void sendViewBridge(launchId, ev.data).then(
+        (outcome) => {
+          if (seq !== loadSeqRef.current) return; // frame reloaded/revoked since receipt — drop it
+          if (outcome.openPageId) {
+            if (outcome.openPageId === pageId) return;
+            if (navigationConsumedRef.current) return;
+            // End this source generation before changing history. Concurrent outcomes captured
+            // under it then fail the fence above and cannot navigate a second time.
+            navigationConsumedRef.current = true;
+            loadSeqRef.current++;
+            discardPendingAction();
+            subscribedRef.current = false;
+            launchIdRef.current = null;
+            navigate({ view: "page", id: outcome.openPageId });
+            return;
+          }
+          if (outcome.subscribed) subscribedRef.current = true;
+          if (outcome.reply && frame.contentWindow) frame.contentWindow.postMessage(outcome.reply, "*");
+        },
+        (error) => {
+          const raw = ev.data as { id?: unknown };
+          if (seq === loadSeqRef.current && typeof raw?.id === "string") {
+            frame.contentWindow?.postMessage(
+              actionError(raw.id, error instanceof Error ? error.message : String(error)),
+              "*",
+            );
+          }
+        },
+      );
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -337,8 +333,34 @@ export function PageFrame({ pageId }: { pageId: string }) {
     return subscribeToChanges((e) => {
       invalidateKinds([...e.docs.changed.map((c) => c.id), ...e.docs.removed]);
       const frame = iframeRef.current;
-      if (subscribedRef.current && frame?.contentWindow && (e.docs.changed.length > 0 || e.docs.removed.length > 0)) {
-        frame.contentWindow.postMessage(changeMessage(e.docs.changed, e.docs.removed), "*");
+      const launchId = launchIdRef.current;
+      if (
+        launchId &&
+        subscribedRef.current &&
+        frame?.contentWindow &&
+        (e.docs.changed.length > 0 || e.docs.removed.length > 0)
+      ) {
+        const seq = loadSeqRef.current;
+        void verifyViewLaunch(launchId).then(
+          (status) => {
+            if (
+              status.authorized &&
+              seq === loadSeqRef.current &&
+              subscribedRef.current &&
+              iframeRef.current?.contentWindow
+            ) {
+              iframeRef.current.contentWindow.postMessage(
+                changeMessage(e.docs.changed, e.docs.removed),
+                "*",
+              );
+            }
+          },
+          () => {
+            if (seq === loadSeqRef.current) {
+              revoke("This View changed or its local authorization is no longer current.");
+            }
+          },
+        );
       }
       if (e.docs.removed.includes(pageId)) {
         revoke("This page's registry doc was removed from the bundle — the page has been closed.");
@@ -352,8 +374,8 @@ export function PageFrame({ pageId }: { pageId: string }) {
 
   // P1 (connection resilience): the SSE stream carries NO replay — anything that changed during a
   // gap never arrives as a delta. On reconnect, re-resolve and RELOAD the frame outright: the page
-  // re-queries on boot (full catch-up), a registry doc deleted during the gap lands in the revoked
-  // state (getDoc fails), and a changed blob comes back as fresh bytes.
+  // re-queries on boot (full catch-up), a registry doc deleted during the gap makes the server
+  // mint fail, and a changed blob comes back as fresh bytes.
   useEffect(() => {
     return subscribeToResync(() => {
       invalidateKinds(); // anything may have changed during the gap, conventions included
@@ -388,6 +410,33 @@ export function PageFrame({ pageId }: { pageId: string }) {
     }
   }, [actionArmed]);
 
+  const settleAuthorization = useCallback(async (approve: boolean) => {
+    const pending = pendingLaunch;
+    if (!pending || !authorizationArmed || authorizationBusy) return;
+    if (!approve) {
+      setPendingLaunch(null);
+      navigate({ view: "launcher" });
+      return;
+    }
+    const seq = loadSeqRef.current;
+    setAuthorizationBusy(true);
+    try {
+      const status = await authorizeViewLaunch(pending.launchId);
+      if (seq !== loadSeqRef.current || pendingLaunch !== pending) return;
+      if (!status.authorized) throw new Error("the View was not authorized");
+      setPendingLaunch(null);
+      setAuthorizationBusy(false);
+      setFrameSeq(seq);
+      setSrc(pending.url);
+    } catch (error) {
+      if (seq !== loadSeqRef.current || pendingLaunch !== pending) return;
+      setPendingLaunch(null);
+      setAuthorizationBusy(false);
+      launchIdRef.current = null;
+      setError(error instanceof Error ? error.message : String(error));
+    }
+  }, [authorizationArmed, authorizationBusy, pendingLaunch]);
+
   return (
     <div className="page-frame">
       <div className="page-frame-bar">
@@ -402,6 +451,8 @@ export function PageFrame({ pageId }: { pageId: string }) {
       </div>
       {error ? (
         <p className="view-status view-status-error">Could not open page: {error}</p>
+      ) : pendingLaunch ? (
+        <p className="view-status">Waiting for local View approval…</p>
       ) : src ? (
         // allow-scripts ONLY — no allow-same-origin: opaque origin, no data-API reach. And NO
         // referrer: the shell's URL (which carried ?token= before the scrub) must never reach the
@@ -417,6 +468,43 @@ export function PageFrame({ pageId }: { pageId: string }) {
         />
       ) : (
         <p className="view-status">Opening page…</p>
+      )}
+      {pendingLaunch && (
+        <div className="action-confirmation-backdrop" role="presentation">
+          <section className="action-confirmation" role="dialog" aria-modal="true" aria-labelledby="view-authorization-title">
+            <p className="action-confirmation-eyebrow">Local View approval</p>
+            <h2 id="view-authorization-title">Allow this View to read bundle data?</h2>
+            <p>
+              <strong>{pendingLaunch.title}</strong> contains active HTML and requests{" "}
+              <code>{pendingLaunch.capability}</code> access.
+            </p>
+            <dl>
+              <div><dt>View</dt><dd><code>{pageId}</code></dd></div>
+              <div><dt>HTML</dt><dd><code>{pendingLaunch.authorization.contentVersion}</code></dd></div>
+            </dl>
+            <p className="action-confirmation-note">
+              Approval is stored only on this computer for these exact View bytes and declared access.
+              Changed HTML or access asks again.
+            </p>
+            <div className="action-confirmation-buttons">
+              <button
+                type="button"
+                disabled={authorizationBusy || !authorizationArmed}
+                onClick={() => void settleAuthorization(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="action-apply"
+                disabled={authorizationBusy || !authorizationArmed}
+                onClick={() => void settleAuthorization(true)}
+              >
+                {authorizationBusy ? "Allowing…" : "Allow this View"}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
       {confirmation && (
         <div className="action-confirmation-backdrop" role="presentation">

@@ -190,7 +190,11 @@ RETIRED: a legacy Page-typed doc no longer registers and a legacy bridge-only do
 `access: none`; `scripts/migrate-legacy-view-names.mjs` renames legacy content in place and
 `status`'s legacy_naming finding is the loud diagnostic for leftover stock. Old folder LOCATIONS
 stay recognized — relocation is a separate open decision); Views are bundle content, and their live data
-access goes through the narrow bridge. V0 data access remains read-only; a local `--dir` View may
+access goes through one server-owned, launch-bound bridge. Active Views that request bundle data
+are mounted only after trusted shell chrome approves their exact HTML bytes and declared access;
+the CLI remembers that approval locally (never in the synced bundle), and changed bytes or
+expanded access ask again. Bridge authority is revalidated before and after each request. V0 data
+access remains read-only; a local `--dir` View may
 opt into `bundle-propose` for one human-confirmed, version-guarded scalar-field action. The former
 `packages/viewer` / `view` → `viz.html` surface is removed — author human
 views as bundle Views rather than adding a second rendering engine.

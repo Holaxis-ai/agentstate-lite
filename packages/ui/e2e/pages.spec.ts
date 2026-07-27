@@ -12,7 +12,7 @@ import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { rm } from "node:fs/promises";
 import { writeDoc } from "@agentstate-lite/core";
-import { bootUiOverPagesBundle, bootUiServerInProcess, seedPagesBundle, CLI_DIST } from "./harness.js";
+import { approveViewIfPrompted, bootUiOverPagesBundle, bootUiServerInProcess, openRegisteredView, seedPagesBundle, CLI_DIST } from "./harness.js";
 
 const TASKS = [
   { id: "tasks/alpha", frontmatter: { type: "Task", title: "Alpha task", status: "todo" }, body: "" },
@@ -54,7 +54,7 @@ test("a directly opened data Page completes its startup bridge queries before if
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="views-registry/roadmap"]').click();
+    await openRegisteredView(page, "views-registry/roadmap");
 
     const iframe = page.locator("iframe.page-frame-iframe");
     await expect(iframe).toBeVisible();
@@ -76,7 +76,7 @@ test("a bundle-propose View can change one governed scalar only after trusted-sh
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="views-registry/trusted-action"]').click();
+    await openRegisteredView(page, "views-registry/trusted-action");
     const frame = page.frameLocator("iframe.page-frame-iframe");
     await expect(frame.locator("#status")).toHaveText("todo");
 
@@ -122,7 +122,7 @@ test("About navigation opens Roadmap and its startup bridge queries under the ta
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="pages-registry/about"]').click();
+    await openRegisteredView(page, "pages-registry/about");
     const about = page.frameLocator("iframe.page-frame-iframe");
     await expect(about.getByRole("heading", { name: "About this bundle" })).toBeVisible();
 
@@ -135,6 +135,7 @@ test("About navigation opens Roadmap and its startup bridge queries under the ta
     expect(page.url()).toBe(before);
 
     await about.getByRole("button", { name: "Open the Roadmap view" }).click();
+    await approveViewIfPrompted(page);
     await expect(page).toHaveURL(/view=page&id=views-registry%2Froadmap/);
     const roadmap = page.frameLocator("iframe.page-frame-iframe");
     // Target capability is resolved independently: Roadmap receives bundle data although About
@@ -154,7 +155,7 @@ test("the sandboxed page is structurally blocked from reaching the data API (con
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="views-registry/roadmap"]').click();
+    await openRegisteredView(page, "views-registry/roadmap");
     const handle = await page.waitForSelector("iframe.page-frame-iframe");
     const frame = await handle.contentFrame();
     if (!frame) throw new Error("iframe had no content frame");
@@ -186,7 +187,7 @@ test("the sandboxed page cannot navigate its frame (or the top) to an external o
 
     await page.goto(ui.url);
     const topOriginBefore = new URL(page.url()).origin;
-    await page.locator('[data-page-id="views-registry/roadmap"]').click();
+    await openRegisteredView(page, "views-registry/roadmap");
     const handle = await page.waitForSelector("iframe.page-frame-iframe");
     const frame = await handle.contentFrame();
     if (!frame) throw new Error("iframe had no content frame");
@@ -233,7 +234,7 @@ test("P1: an SSE outage self-heals — a change made while the stream was down a
   let second: Awaited<ReturnType<typeof bootUiServerInProcess>> | undefined;
   try {
     await page.goto(`http://127.0.0.1:${first.port}/?token=${secret}`);
-    await page.locator('[data-page-id="views-registry/roadmap"]').click();
+    await openRegisteredView(page, "views-registry/roadmap");
     const frame = page.frameLocator("iframe.page-frame-iframe");
     const spike = frame.locator(".item", { hasText: "Spike work" });
     // Neither seeded task is done/canceled yet.
@@ -273,7 +274,7 @@ test("P1: a session-rotating restart surfaces 'Connection lost' instead of stayi
   let second: Awaited<ReturnType<typeof bootUiServerInProcess>> | undefined;
   try {
     await page.goto(`http://127.0.0.1:${first.port}/?token=restart-403-first-secret`);
-    await page.locator('[data-page-id="views-registry/roadmap"]').click();
+    await openRegisteredView(page, "views-registry/roadmap");
     await expect(page.locator("iframe.page-frame-iframe")).toBeVisible();
 
     // The server goes away and comes back on the SAME port with a DIFFERENT secret — the open
@@ -321,7 +322,7 @@ test("P1: deleting an open page's registry doc revokes the frame — the iframe 
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="views-registry/roadmap"]').click();
+    await openRegisteredView(page, "views-registry/roadmap");
     const frame = page.frameLocator("iframe.page-frame-iframe");
     await expect(frame.locator(".item .title", { hasText: "Spike work" })).toBeVisible();
 
@@ -340,7 +341,7 @@ test("a status change streams live into the open page (roadmap rollup updates, n
   const ui = await bootUiOverPagesBundle(TASKS);
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="views-registry/roadmap"]').click();
+    await openRegisteredView(page, "views-registry/roadmap");
 
     const frame = page.frameLocator("iframe.page-frame-iframe");
     const spike = frame.locator(".item", { hasText: "Spike work" });

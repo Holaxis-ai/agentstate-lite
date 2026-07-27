@@ -35,14 +35,55 @@ export interface ServerHandle {
   close(): Promise<void>;
 }
 
+export interface RequestAdapterOptions {
+  /** Reject while streaming once this many body bytes would be exceeded. Omit for no adapter cap. */
+  maxBodyBytes?: number;
+}
+
+export class RequestBodyTooLargeError extends Error {
+  readonly limitBytes: number;
+
+  constructor(limitBytes: number) {
+    super(`request body exceeds ${limitBytes} bytes`);
+    this.name = "RequestBodyTooLargeError";
+    this.limitBytes = limitBytes;
+  }
+}
+
 /** Read a Node request body into a `Buffer`, or `undefined` for a body-less method. */
-function readBody(req: IncomingMessage): Promise<Buffer | undefined> {
+function readBody(req: IncomingMessage, maxBodyBytes?: number): Promise<Buffer | undefined> {
   if (req.method === "GET" || req.method === "HEAD") return Promise.resolve(undefined);
+  if (maxBodyBytes !== undefined) {
+    const declared = Number(req.headers["content-length"]);
+    if (Number.isFinite(declared) && declared > maxBodyBytes) {
+      return Promise.reject(new RequestBodyTooLargeError(maxBodyBytes));
+    }
+  }
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
-    req.on("end", () => resolve(chunks.length > 0 ? Buffer.concat(chunks) : undefined));
-    req.on("error", reject);
+    let total = 0;
+    let settled = false;
+    req.on("data", (chunk: Buffer) => {
+      if (settled) return;
+      total += chunk.byteLength;
+      if (maxBodyBytes !== undefined && total > maxBodyBytes) {
+        settled = true;
+        chunks.length = 0;
+        reject(new RequestBodyTooLargeError(maxBodyBytes));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (settled) return;
+      settled = true;
+      resolve(chunks.length > 0 ? Buffer.concat(chunks, total) : undefined);
+    });
+    req.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
   });
 }
 
@@ -53,7 +94,11 @@ function readBody(req: IncomingMessage): Promise<Buffer | undefined> {
  * (a single node:http listener serving both the SPA and `/v0/*`, same origin) — reusing this
  * adapter means the CLI never forks the Request/Response marshaling this module already owns.
  */
-export async function requestFromIncomingMessage(req: IncomingMessage, origin: string): Promise<Request> {
+export async function requestFromIncomingMessage(
+  req: IncomingMessage,
+  origin: string,
+  options: RequestAdapterOptions = {},
+): Promise<Request> {
   const url = new URL(req.url ?? "/", origin);
   const headers = new Headers();
   for (const [key, value] of Object.entries(req.headers)) {
@@ -64,7 +109,7 @@ export async function requestFromIncomingMessage(req: IncomingMessage, origin: s
       headers.set(key, value);
     }
   }
-  const body = await readBody(req);
+  const body = await readBody(req, options.maxBodyBytes);
   return new Request(url, { method: req.method ?? "GET", headers, body });
 }
 

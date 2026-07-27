@@ -34,7 +34,7 @@ export interface PageEntry {
   description?: string;
   actor?: string;
   timestamp?: string;
-  /** The page's ENFORCED bridge capability (see `../pages/bridge.js`) — groups the launcher. */
+  /** The server-enforced bridge capability — groups the launcher. */
   bridge: BridgeCapability;
 }
 
@@ -142,8 +142,32 @@ function toArray(v: string | string[] | undefined): string[] {
   return Array.isArray(v) ? v : [v];
 }
 
-/** Resolve one registry doc to an immutable frame launch and its nonce-gated byte URL. */
-export async function mintPageNonce(registryId: string): Promise<{ url: string; launchId: string }> {
+export interface MintedView {
+  url: string;
+  launchId: string;
+  title: string;
+  entry: string;
+  capability: BridgeCapability;
+  authorization: {
+    required: boolean;
+    authorized: boolean;
+    contentVersion: string;
+  };
+}
+
+export interface ViewAuthorizationStatus {
+  required: boolean;
+  authorized: boolean;
+}
+
+export interface ViewBridgeOutcome {
+  reply: Record<string, unknown> | null;
+  subscribed?: boolean;
+  openPageId?: string;
+}
+
+/** Resolve one registry doc and its exact HTML bytes to an immutable server-owned launch. */
+export async function mintPageNonce(registryId: string): Promise<MintedView> {
   const res = await fetch("/__page/mint", {
     method: "POST",
     credentials: "same-origin",
@@ -151,10 +175,10 @@ export async function mintPageNonce(registryId: string): Promise<{ url: string; 
     body: JSON.stringify({ registryId }),
   });
   if (!res.ok) throw await parseErrorEnvelope(res);
-  return (await res.json()) as { url: string; launchId: string };
+  return (await res.json()) as MintedView;
 }
 
-async function postTrustedAction<T>(path: string, body: unknown): Promise<T> {
+async function postTrustedShell<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, {
     method: "POST",
     credentials: "same-origin",
@@ -166,15 +190,27 @@ async function postTrustedAction<T>(path: string, body: unknown): Promise<T> {
 }
 
 export function prepareTrustedAction(launchId: string, action: DocumentSetFieldAction): Promise<ActionPrepareResult> {
-  return postTrustedAction("/__ui/actions/prepare", { launchId, action });
+  return postTrustedShell("/__ui/actions/prepare", { launchId, action });
 }
 
 export function commitTrustedAction(approvalToken: string): Promise<ActionTerminalResult> {
-  return postTrustedAction("/__ui/actions/commit", { approvalToken });
+  return postTrustedShell("/__ui/actions/commit", { approvalToken });
 }
 
 export function cancelTrustedAction(approvalToken: string): Promise<ActionTerminalResult> {
-  return postTrustedAction("/__ui/actions/cancel", { approvalToken });
+  return postTrustedShell("/__ui/actions/cancel", { approvalToken });
+}
+
+export function authorizeViewLaunch(launchId: string): Promise<ViewAuthorizationStatus> {
+  return postTrustedShell("/__ui/views/authorize", { launchId });
+}
+
+export function verifyViewLaunch(launchId: string): Promise<ViewAuthorizationStatus> {
+  return postTrustedShell("/__ui/views/verify", { launchId });
+}
+
+export function sendViewBridge(launchId: string, request: unknown): Promise<ViewBridgeOutcome> {
+  return postTrustedShell("/__ui/views/bridge", { launchId, request });
 }
 
 export type { ActionConfirmation, ActionPrepareResult, ActionTerminalResult, DocumentSetFieldAction, SharingSummary, WorkspaceSummaryEntry };

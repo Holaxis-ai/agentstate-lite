@@ -23,6 +23,10 @@ const JSON_HEADERS = {
   "content-type": "application/json",
   "x-requested-with": "agentstate-lite-ui",
 };
+const PREAUTHORIZED_VIEWS = {
+  async isAuthorized() { return true; },
+  async authorize() {},
+};
 
 interface ProbeResponse {
   status: number;
@@ -109,6 +113,7 @@ test("access-only registry docs (dir mode): mint derives the capability from `ac
     router: createRouter(bundle),
     sessionSecret: SECRET,
     actor: "mike/test",
+    viewAuthorization: PREAUTHORIZED_VIEWS,
     serveAsset: () => ({ status: 404, headers: { "content-type": "text/plain; charset=utf-8" }, body: new Uint8Array() }),
   });
   try {
@@ -164,6 +169,7 @@ test("REJECTION PIN (dir mode): a legacy bridge-only registry doc resolves acces
     router: createRouter(bundle),
     sessionSecret: SECRET,
     actor: "mike/test",
+    viewAuthorization: PREAUTHORIZED_VIEWS,
     serveAsset: () => ({ status: 404, headers: { "content-type": "text/plain; charset=utf-8" }, body: new Uint8Array() }),
   });
   try {
@@ -208,7 +214,12 @@ test("access-only registry doc (remote mode): the inline serve-time revalidation
     remote.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${(remote.address() as AddressInfo).port}`));
   });
   try {
-    const server = await bootUiServer({ mode: "remote", remoteBase: remoteOrigin, sessionSecret: SECRET });
+    const server = await bootUiServer({
+      mode: "remote",
+      remoteBase: remoteOrigin,
+      sessionSecret: SECRET,
+      viewAuthorization: PREAUTHORIZED_VIEWS,
+    });
     try {
       const launch = await mintLaunch(server, "views-registry/board");
       const served = await fetchPage(server, launch.url);

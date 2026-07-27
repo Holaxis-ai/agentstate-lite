@@ -12,9 +12,11 @@ import { fileURLToPath } from "node:url";
 import type { Readable } from "node:stream";
 import { gzipSync } from "node:zlib";
 import type { Frontmatter } from "@agentstate-lite/core";
+import type { Page } from "@playwright/test";
 import {
   bootUiServer,
   createEmbeddedAssetHandler,
+  SessionViewAuthorizationStore,
   type EmbeddedUiAssets,
 } from "@agentstate-lite/ui-server";
 
@@ -22,9 +24,30 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // packages/ui/e2e -> repo root -> packages/cli/dist/agentstate-lite.mjs
 export const CLI_DIST = path.resolve(here, "../../cli/dist/agentstate-lite.mjs");
 const UI_DIST = path.resolve(here, "../dist");
+// The production CLI persists exact-byte approvals outside the bundle. The in-process restart
+// harness cannot import that CLI-owned adapter without reversing the package graph, so retain one
+// process-local test store per isolated bundle root to model the same restart behavior.
+const inProcessViewAuthorizations = new Map<string, SessionViewAuthorizationStore>();
 
 /** The exact stdio shape `bootUi` spawns with (`stdio: ["ignore", "pipe", "pipe"]`) — stdin is `null` since it's ignored. */
 type UiChild = ChildProcessByStdio<null, Readable, Readable>;
+
+/** Cross-suite helper for the product's exact-byte active-View consent gate. */
+export async function approveViewIfPrompted(page: Page): Promise<void> {
+  const dialog = page.getByRole("dialog", {
+    name: "Allow this View to read bundle data?",
+  });
+  if (!await dialog.isVisible().catch(() => false)) {
+    await dialog.waitFor({ state: "visible", timeout: 1_000 }).catch(() => {});
+  }
+  if (!await dialog.isVisible().catch(() => false)) return;
+  await dialog.getByRole("button", { name: "Allow this View" }).click();
+}
+
+export async function openRegisteredView(page: Page, registryId: string): Promise<void> {
+  await page.locator(`[data-page-id="${registryId}"]`).click();
+  await approveViewIfPrompted(page);
+}
 
 /** A Task doc to seed a temp bundle with before booting `ui` over it. */
 export interface SeedTask {
@@ -405,12 +428,18 @@ export async function bootUiServerInProcess(opts: { dir: string; port?: number; 
   const { createRouter } = await import("@agentstate-lite/server");
   const bundle = { root: opts.dir };
   const assets = await loadEmbeddedUiAssets();
+  let viewAuthorization = inProcessViewAuthorizations.get(opts.dir);
+  if (!viewAuthorization) {
+    viewAuthorization = new SessionViewAuthorizationStore();
+    inProcessViewAuthorizations.set(opts.dir, viewAuthorization);
+  }
   return bootUiServer({
     mode: "dir",
     port: opts.port ?? 0,
     router: createRouter(bundle),
     bundle,
     sessionSecret: opts.sessionSecret,
+    viewAuthorization,
     serveAsset: createEmbeddedAssetHandler(assets),
     resolveBundleDisplayName: async () => path.basename(opts.dir),
   });

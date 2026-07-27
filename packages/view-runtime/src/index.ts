@@ -4,6 +4,7 @@ import {
   KindConformanceError,
   VersionConflict,
   assertSafeConceptId,
+  blobVersion,
   loadKinds,
   mutateDocument,
   readBlob,
@@ -22,6 +23,13 @@ import {
   type BridgeCapability,
   type PageTypeName,
 } from "@agentstate-lite/core/page";
+import {
+  ACTIVE_VIEW_POLICY_VERSION,
+  admitActiveView,
+  type ViewAuthorizationStore,
+  type ViewAuthorizationSubject,
+} from "./authorization.js";
+import type { BridgeLaunch, BridgeLaunchAuthority } from "./bridge.js";
 
 export type ActionScalar = string | number | boolean;
 
@@ -47,6 +55,17 @@ export interface PageLaunch {
   capability: BridgeCapability;
   nonceExpiresAt: number;
   expiresAt: number;
+}
+
+export function pageLaunchAuthorizationSubject(launch: PageLaunch): ViewAuthorizationSubject {
+  return {
+    registryId: launch.registryId,
+    contentVersion: launch.contentVersion,
+    contentType: launch.contentType,
+    capability: launch.capability,
+    execution: "active",
+    policyVersion: ACTIVE_VIEW_POLICY_VERSION,
+  };
 }
 
 const DEFAULT_LAUNCH_TTL_MS = 60 * 60 * 1000;
@@ -222,9 +241,43 @@ export async function launchIsCurrent(bundle: Bundle, launch: PageLaunch): Promi
       return false;
     }
     const blob = await readBlob(bundle, launch.entryKey);
-    return blob !== null && blob.version === launch.contentVersion && blob.contentType === launch.contentType;
+    if (blob === null) return false;
+    const admitted = admitActiveView(blob.bytes, blob.contentType);
+    return (
+      admitted.contentType === launch.contentType &&
+      blobVersion(admitted.bytes) === launch.contentVersion
+    );
   } catch {
     return false;
+  }
+}
+
+/** Server-side launch authority shared by the web bridge endpoint and future MCP adapter. */
+export class PageBridgeLaunchAuthority implements BridgeLaunchAuthority {
+  constructor(
+    private readonly bundle: Bundle,
+    private readonly launches: PageLaunchRegistry,
+    private readonly authorizations: ViewAuthorizationStore,
+  ) {}
+
+  async resolve(launchId: string, requireAuthorization: boolean): Promise<BridgeLaunch | null> {
+    const launch = this.launches.resolveLaunch(launchId);
+    if (!launch || !(await launchIsCurrent(this.bundle, launch))) {
+      if (launch) this.launches.revoke(launch.launchId);
+      return null;
+    }
+    if (
+      requireAuthorization &&
+      launch.capability !== "none" &&
+      !(await this.authorizations.isAuthorized(pageLaunchAuthorizationSubject(launch)))
+    ) {
+      return null;
+    }
+    return { launchId: launch.launchId, capability: launch.capability };
+  }
+
+  revoke(launchId: string): void {
+    this.launches.revoke(launchId);
   }
 }
 
@@ -255,11 +308,17 @@ export class PageActionLaunchAuthority implements TrustedActionLaunchAuthority {
   constructor(
     private readonly bundle: Bundle,
     private readonly launches: PageLaunchRegistry,
+    private readonly authorizations: ViewAuthorizationStore,
   ) {}
 
   async resolve(launchId: string): Promise<TrustedActionLaunch | null> {
     const launch = this.launches.resolveLaunch(launchId);
-    if (!launch || !(await launchIsCurrent(this.bundle, launch))) {
+    if (
+      !launch ||
+      !(await launchIsCurrent(this.bundle, launch)) ||
+      (launch.capability !== "none" &&
+        !(await this.authorizations.isAuthorized(pageLaunchAuthorizationSubject(launch))))
+    ) {
       if (launch) this.launches.revoke(launch.launchId);
       return null;
     }
@@ -279,6 +338,29 @@ export class PageActionLaunchAuthority implements TrustedActionLaunchAuthority {
     this.launches.revoke(launchId);
   }
 }
+
+export {
+  ACTIVE_VIEW_CONTENT_TYPE,
+  ACTIVE_VIEW_POLICY_VERSION,
+  MAX_ACTIVE_VIEW_BYTES,
+  SessionViewAuthorizationStore,
+  admitActiveView,
+  type ViewAuthorizationStore,
+  type ViewAuthorizationSubject,
+} from "./authorization.js";
+export {
+  ACTION_BRIDGE_PROTOCOL,
+  BRIDGE_PROTOCOL,
+  BridgeService,
+  changeMessage,
+  parseBridgeRequest,
+  type BridgeConfig,
+  type BridgeLaunch,
+  type BridgeLaunchAuthority,
+  type BridgeOutcome,
+  type BridgeServiceOptions,
+  type EdgeParams,
+} from "./bridge.js";
 
 export interface ActionConfirmation {
   source: {
@@ -503,15 +585,8 @@ export class TrustedActionService {
     const pending = this.consume(token, launchId);
     if (!pending) return { status: "expired", action: "document.set-field", message: "the approval is unknown or expired" };
     if (this.now() > pending.expiresAt) return { status: "expired", action: "document.set-field", docId: pending.action.docId, field: pending.action.field };
-    const launch = await this.launches.resolve(pending.launchId);
-    if (
-      !launch ||
-      launch.capability !== "bundle-propose" ||
-      (launch.documentVersions &&
-        (!Object.hasOwn(launch.documentVersions, pending.action.docId) ||
-          launch.documentVersions[pending.action.docId] !== pending.action.expectedVersion))
-    ) {
-      if (launch) this.launches.revoke(launch.launchId);
+    const launch = await this.resolvePendingLaunch(pending);
+    if (!launch) {
       return { status: "revoked", action: "document.set-field", docId: pending.action.docId, field: pending.action.field };
     }
 
@@ -535,6 +610,13 @@ export class TrustedActionService {
         return { status: "revoked", action: "document.set-field", message: "the governing Kind changed" };
       }
 
+      // Re-check after every target/Kind read and immediately before the write. The View and
+      // target are separate backend resources, so no cross-resource atomic CAS exists; the target
+      // CAS below remains the final write guard while this closes the reachable asynchronous gap.
+      const finalLaunch = await this.resolvePendingLaunch(pending);
+      if (!finalLaunch) {
+        return { status: "revoked", action: "document.set-field", docId: pending.action.docId, field: pending.action.field };
+      }
       const result = await mutateDocument({
         bundle: this.bundle,
         id: pending.action.docId,
@@ -562,9 +644,9 @@ export class TrustedActionService {
         warnings: result.warnings,
         confirmed: true,
         source: {
-          registryId: launch.source.registryId,
-          registryVersion: launch.source.registryVersion,
-          contentVersion: launch.source.contentVersion,
+          registryId: finalLaunch.source.registryId,
+          registryVersion: finalLaunch.source.registryVersion,
+          contentVersion: finalLaunch.source.contentVersion,
         },
       };
     } catch (error) {
@@ -591,6 +673,21 @@ export class TrustedActionService {
   size(): number {
     this.sweepExpired();
     return this.pending.size;
+  }
+
+  private async resolvePendingLaunch(pending: PendingApproval): Promise<TrustedActionLaunch | null> {
+    const launch = await this.launches.resolve(pending.launchId);
+    if (
+      !launch ||
+      launch.capability !== "bundle-propose" ||
+      (launch.documentVersions &&
+        (!Object.hasOwn(launch.documentVersions, pending.action.docId) ||
+          launch.documentVersions[pending.action.docId] !== pending.action.expectedVersion))
+    ) {
+      if (launch) this.launches.revoke(launch.launchId);
+      return null;
+    }
+    return launch;
   }
 
   private consume(token: string, launchId?: string): PendingApproval | undefined {
