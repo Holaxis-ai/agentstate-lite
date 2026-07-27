@@ -12,8 +12,8 @@ sequence: >-
   proof → bounded queries → shared View security design/review → durable bridge
   proof → promotion/discovery → sizing evidence → authoring guidance → dogfood →
   second host / remote adapter
-actor: openai/codex
-timestamp: '2026-07-27T01:42:37.532Z'
+actor: mike/claude
+timestamp: '2026-07-27T01:48:11.042Z'
 ---
 # Direction
 
@@ -90,3 +90,5 @@ authority, remote workspaces, authentication, and a tool-per-View surface remain
 [contains](../tasks/mcp-view-security-model-unification.md)
 
 [contains](../tasks/mcp-durable-view-unchanged-proof.md)
+
+[contains](../tasks/mcp-install-verb.md)
