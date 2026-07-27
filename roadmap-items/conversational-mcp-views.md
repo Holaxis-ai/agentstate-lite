@@ -3,18 +3,18 @@ type: Roadmap Item
 title: Conversational Views through MCP Apps
 status: active
 description: >-
-  EXPERIMENTAL — active durable Views are proved. Sizing evidence found a
-  bounded nested-frame height relay as the next enabler; promotion/discovery
-  follows and must support optional inline/workspace/fullscreen presentations
-  under one View identity.
+  EXPERIMENTAL — active durable Views and intrinsic sizing are proved.
+  Promotion/discovery design is accepted; next is one bounded list_views catalog
+  with explicit workspace/inline/adaptive author intent over the existing
+  generic show_view invocation.
 sequence: >-
   Fixed-shell proof → shared action authority → governed action → conversation
-  proof → bounded queries → shared View security design/review → durable bridge
-  proof → sizing evidence → intrinsic nested-frame sizing → presentation-aware
-  promotion/discovery → authoring guidance → dogfood → second host / remote
-  adapter
+  proof → bounded queries → shared View security → durable bridge → sizing
+  evidence → intrinsic sizing → promotion/discovery design → bounded View
+  catalog → authoring guidance → dogfood → promotion ergonomics decision →
+  second host / remote adapter
 actor: openai/codex
-timestamp: '2026-07-27T12:33:25.698Z'
+timestamp: '2026-07-27T15:18:46.660Z'
 ---
 # Direction
 
@@ -53,25 +53,32 @@ multi-tenant hosting, and a broader remote-agent tool surface remain separate la
    complete at [MCP App presentation sizing](../research/mcp-app-presentation-sizing.md). MCP hosts
    can size the outer App, but AgentState must still relay the opaque nested View's intrinsic height.
 9. Prove bounded, launch-bound intrinsic sizing through the nested durable-View iframe in both the
-   reference host and the conversation host.
-10. Define durable promotion plus generic bundle-scoped View discovery and invocation. Keep one
-   View identity while allowing optional inline/workspace/fullscreen presentation variants; never
-   expose one MCP tool per View or assume every desktop View is conversationally compatible.
-11. Turn the proven data, action, sizing, and promotion constraints into concise agent authoring
-   guidance delivered through the lowest-token discoverable surface.
-12. Dogfood promotion and discovery with a presentation that has proved repeatedly useful.
-13. Verify a second host, then separately consider a remote adapter.
+   reference host and the conversation host: shipped in PR #175.
+10. Define durable promotion plus generic bundle-scoped View discovery and invocation: accepted at
+    [Durable conversational Views: promotion, discovery, and invocation](../designs/mcp-durable-view-promotion-discovery.md).
+    Keep one View identity and canonical entry; declare `workspace | inline | adaptive` author
+    intent rather than assuming every technically mountable desktop View is conversationally fit.
+11. Implement one bounded `list_views` model catalog over the existing generic
+    `show_view({viewId})` invocation. Never expose one tool or dynamic MCP resource per View.
+12. Turn the proven data, action, sizing, discovery, and existing exact-byte authoring flow into
+    concise agent guidance.
+13. Dogfood manual promotion and discovery with a presentation that has proved repeatedly useful;
+    only then decide whether one-step promotion ergonomics warrant a new command or shell action.
+14. Verify a second host, then separately consider a remote adapter.
 
 # Current decision gate
 
 The shared durable View security design and mandatory private Stage 0 disposition are complete.
 PRs #173/#174 proved one unchanged active View through the thin MCP adapter and pinned its exact
-launch identity. Sizing research is complete and found one concrete platform gap: the outer MCP App
-auto-sizes, but the opaque nested durable-View iframe has no intrinsic-height relay. The current
-unit is that bounded sizing proof. Promotion/discovery follows it and must be presentation-aware:
-one View identity may have optional inline/workspace/fullscreen entries, while a single genuinely
-responsive entry may serve more than one surface. Authoring guidance follows the accepted
-architecture and evidence.
+launch identity; PR #175 shipped the bounded intrinsic-height relay in both the reference and
+conversation hosts.
+
+Promotion/discovery design is now accepted. The next unit is deliberately small: optional
+`presentation: workspace | inline | adaptive` author intent plus one bounded model-visible
+`list_views` tool. It reads the existing registry and returns only Views the current durable
+`show_view({viewId})` path can honestly invoke. MCP resources continue to deliver the one fixed
+shell, not a dynamic bundle catalog. Existing `promote` plus `new "View"` remain the durable
+authoring path until dogfooding proves a one-step operation would buy real value.
 
 These are still experimental follow-ons, not a supported-product declaration. Broader action
 authority, remote workspaces, authentication, and a tool-per-View surface remain out of scope.
@@ -103,3 +110,5 @@ authority, remote workspaces, authentication, and a tool-per-View surface remain
 [contains](../tasks/mcp-stdio-error-routing.md)
 
 [contains](../tasks/mcp-durable-view-intrinsic-sizing.md)
+
+[contains](../tasks/mcp-durable-view-catalog.md)

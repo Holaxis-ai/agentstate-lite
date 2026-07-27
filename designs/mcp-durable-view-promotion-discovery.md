@@ -2,281 +2,332 @@
 type: Design
 title: 'Durable conversational Views: promotion, discovery, and invocation'
 description: >-
-  Recommended contract for one generic View catalog, durable invocation through
-  the fixed MCP shell, a cross-host declarative View format, and exact-byte
-  human-confirmed promotion.
-actor: openai/research-agent
-timestamp: '2026-07-26T23:42:02.869Z'
+  Accepted contract: one bounded model-visible View catalog over the existing
+  generic durable invocation; ordinary exact-byte bundle authoring remains the
+  promotion path until dogfooding proves a compound operation is warranted.
+actor: openai/codex
+timestamp: '2026-07-27T15:18:18.020Z'
 ---
 # Durable conversational Views: promotion, discovery, and invocation
 
 ## Status
 
-Superseded on 2026-07-26 by
+Recommended on 2026-07-27 after the shared-security, unchanged-byte durable-View, and intrinsic
+sizing proofs shipped.
+
+This revision replaces the document's earlier `declarative-v1` recommendation. That earlier
+recommendation correctly chose one generic catalog and one stable View identity, but it assumed
+the MCP host could not safely run the existing active View format. That assumption is now false:
+the web UI and MCP adapter resolve the same `type: View` registration, mint the same exact-byte
+launch identity, and delegate bridge requests to the same `view-runtime` authority.
+
+Parent direction: [Conversational Generative Views via MCP Apps](mcp-app-generative-views.md).
+Security authority:
 [MCP and web View security-model unification](mcp-view-security-model-unification.md).
 
-Keep this document's generic `list_views`, generic invocation, and exact-byte promotion
-recommendations as later product work. Withdraw its script-free-declarative-first durable format
-and sequencing recommendation: lifecycle, execution, provenance, and authority are independent
-axes, and the next architectural proof is the established bridge under a shared security model.
-Neither document authorizes implementation on `main` without review.
+## Decision
 
-Parent direction: `designs/mcp-app-generative-views`.
+1. Keep the existing `type: View` registry document and HTML blob as the one durable identity and
+   executable presentation.
+2. Add one bounded, model-visible `list_views` tool. It reports compatible bundle Views; it never
+   returns HTML or creates one tool per View.
+3. Invoke a discovered View through the already-shipped generic
+   `show_view({ viewId: "views-registry/…" })` path and the fixed package-owned MCP App shell.
+4. Use MCP resources only to deliver that fixed shell. Do not rely on resource listing for model
+   discovery of bundle content.
+5. Add one optional author-declared `presentation` field to View registrations:
+   `workspace | inline | adaptive`. Absence means the existing workspace/default posture.
+6. Do not add multiple entry blobs, a second `MCP View` kind, or persisted fullscreen variants
+   now. One responsive entry remains the default architecture; fullscreen is a host display mode,
+   not a second durable object.
+7. Treat promotion as curation into an ordinary portable View using the existing byte and kind
+   authoring paths. Do not add a one-click MCP write path or compound CLI command until dogfooding
+   demonstrates repeated friction.
 
-## Decision summary
+The first executable unit is discovery only: `presentation` metadata plus `list_views`, backed by
+the existing generic invocation. Promotion requires no new engine or storage capability.
 
-1. Keep one stable bundle View identity and one fixed MCP App shell.
-2. Add one generic model-visible `list_views` tool when—and only when—the server can invoke at
-   least one durable View through the existing generic `show_view` tool.
-3. Do not register one MCP tool or one changing MCP UI resource per bundle View.
-4. Do not treat ordinary MCP resources as reliable agent discovery. Core MCP defines resources as
-   application-controlled and tools as model-controlled; MCP Apps primarily associates UI
-   resources with tools through static tool metadata.
-5. Do not feed today's scriptful `bridge-v0` bundle HTML into the conversational nested frame.
-   That would reopen the arbitrary-script/self-navigation exfiltration boundary already rejected
-   by the fixed-shell spike.
-6. Prove a script-free declarative durable View format that both the local UI and MCP adapter can
-   interpret. Existing scriptful Views remain valid workspace Views; they are not silently claimed
-   as conversation-compatible.
-7. Prove durable discovery/invocation before building promotion. A catalog with no invokable
-   consumer is inert; promotion before a stable durable contract would persist the wrong thing.
-8. Promotion must save the exact reviewed presentation bytes and data contract from a successful
-   ephemeral launch. It must not ask the model to regenerate them.
+## Why the previous format proposal is retired
+
+The original draft proposed a new script-free durable format because generated MCP presentation
+and active web Views had different security models. Subsequent work removed that premise:
+
+- `view-runtime` owns registry resolution, exact-byte launch identity, approval, currentness, and
+  the read bridge for both hosts;
+- the MCP adapter mounts an unchanged active View in a second opaque-origin child;
+- the generated presentation frame remains a separate, passive authoring mode;
+- durable View authorization is tied to exact registry and entry versions; and
+- the nested-frame sizing relay now lets the same active View participate in conversational
+  layout without changing its source contract.
+
+Adding `declarative-v1` now would create the second View format the shared-security work was meant
+to avoid. Generated and durable are lifecycle/provenance distinctions, not separate durable
+ontologies.
 
 ## What exists today
 
-### One durable identity and registry
+### Durable identity
 
-The bundle already has the right identity seam:
+A durable View is already ordinary bundle content:
 
 - a `type: View` registry document under `views-registry/`;
-- stable `title`, optional `description`, `entry`, and shell-enforced `access`;
-- an HTML blob under `views/`;
-- one core `parseRegistration` grammar used by launcher and server security checks;
-- recipe portability for a View registry/entry pair.
+- `title`, optional `description`, `entry`, and shell-enforced `access`;
+- an HTML blob under `views/`; and
+- actor/timestamp provenance on the registry document plus version identity for both registry and
+  entry.
 
-That registry—not MCP's tool list—should remain the authority for which Views the bundle contains.
+Core's `parseRegistration` is the one authority for valid registry IDs and entry keys.
+`mintActiveViewLaunch` resolves the exact registry and blob versions. Both human-facing hosts
+consume that authority.
 
-### Two intentionally different presentation contracts
+### Generic invocation
 
-The local UI currently runs a durable View as a sandboxed `allow-scripts` application. The View's
-JavaScript talks to the trusted shell through the `bridge-v0` postMessage API for query, read,
-edges, subscribe, navigation, and optionally one governed proposal.
-
-The MCP App fixed shell intentionally rejects arbitrary generated script. It accepts script-free
-HTML/CSS, materializes bounded `data-aslite-*` bindings from a server-resolved launch envelope, and
-places trusted controls outside the generated frame.
-
-Those are two host adapters over shared AgentState data/action authorities, but the stored HTML is
-not currently interchangeable. An unqualified “promote this MCP HTML as a View” would therefore be
-dishonest: the local shell would serve unresolved declarative bindings, while the MCP shell cannot
-safely execute an existing scriptful View.
-
-## Why discovery should be a tool
-
-The MCP specification describes tools as model-controlled and resources as application-controlled.
-The MCP Apps specification associates a UI resource with a tool through the tool's
-`_meta.ui.resourceUri`; hosts may prefetch/cache that resource, and servers may omit UI-only
-resources from ordinary resource listing.
-
-Therefore:
-
-- MCP resources remain appropriate for the fixed package-owned App shell.
-- Bundle View definitions remain bundle data, not dynamically changing MCP UI resources.
-- A model that must choose a bundle View needs one bounded model-visible discovery tool.
-
-The recommended name is `list_views`, not `get_views`: it returns a bounded catalog of metadata,
-never HTML bytes or one View body.
-
-Conceptual output:
-
-```json
-{
-  "count": 3,
-  "views": [
-    {
-      "id": "views-registry/task-focus",
-      "title": "Task focus",
-      "description": "Open Tasks grouped by priority",
-      "access": "bundle-read",
-      "conversationReady": true
-    }
-  ]
-}
-```
-
-The first version should be token-lean and deterministic: ID-sorted, at most 20 rows, with the
-pre-limit count. It should expose identity, purpose, access, and compatibility—not entry keys,
-HTML, credentials, nonces, or registry bodies.
-
-`list_views` is read-only and model-visible. Existing refresh/action tools remain app-only.
-
-## Invocation remains generic
-
-Do not add a tool per durable View. Extend the existing `show_view` contract with an exclusive
-durable source:
+`show_view` already accepts the exclusive durable form:
 
 ```json
 { "viewId": "views-registry/task-focus" }
 ```
 
-This is mutually exclusive with agent-authored `html`/`css`. The server:
+The MCP adapter resolves the current registration, admits its exact HTML bytes, requires local
+approval when the View requests bundle access, and runs bridge traffic through the shared
+read-only authority. No HTML is rewritten or copied into the tool call.
 
-1. resolves the registry through the existing core grammar;
-2. verifies the View is declared conversation-compatible;
-3. reads the exact entry version;
-4. parses the declarative presentation and its data contract;
-5. resolves a bounded selection using existing query authorities;
-6. mints the same frozen, versioned launch envelope used by ephemeral Views; and
-7. returns the presentation through the same fixed `ui://agentstate/view-host/v1.html` shell.
+### Existing authoring primitives
 
-The tool result should identify the durable View ID plus registry/entry versions so fallback text
-and review evidence remain honest. The generated frame still receives no bundle credential.
+The CLI can already persist both halves without placing the HTML in model context:
 
-## Conversation-compatible durable format
-
-The next proof needs a format distinction, not another View kind. The existing `type: View`
-identity remains stable.
-
-Illustrative registry shape:
-
-```yaml
-type: View
-title: Task focus
-description: Open Tasks grouped by priority.
-entry: views/task-focus.html
-access: bundle-read
-format: declarative-v1
-query:
-  type: Task
-  open: true
-  limit: 10
+```sh
+aslite promote task-focus.html --doc-key views/task-focus.html
+aslite new "View" task-focus \
+  --title "Task focus" \
+  --description "Open tasks grouped by priority" \
+  --entry views/task-focus.html \
+  --access bundle-read \
+  --presentation adaptive \
+  --actor <actor>
 ```
 
-The exact field shape is deliberately not frozen here. The proof must decide whether the
-declarative contract belongs directly in registry frontmatter or in an inert, strictly parsed
-manifest carried with the entry. Either way:
+The View remains plain OKF metadata plus an opaque blob. It travels through local files, git sync,
+recipes, or a future remote backend without MCP-specific storage.
 
-- `format: declarative-v1` means script-free presentation interpreted by trusted host code;
-- absent `format` means today's existing `bridge-v0` workspace application;
-- the query vocabulary is the existing shared `type`/`prefix`/`field`/`open`/bounded-limit
-  authority, not a second query language;
-- the stored contract never carries resolved instance bodies;
-- both hosts parse the same contract;
-- unknown fields and versions fail closed.
+## Discovery contract
 
-The first proof should support one query-backed, read-only View. Agent-supplied ID input contracts,
-relationship expansion, durable actions, variants, and live subscriptions should follow only after
-that one format runs identically in both hosts.
+### Why a tool, not a resource
 
-This deliberately creates no `MCP View` kind. “Conversation-ready” is a capability of a View
-presentation, not a second ontology.
+Core MCP classifies tools as model-controlled and resources as application-controlled. MCP Apps
+links a tool to a UI resource through `_meta.ui.resourceUri`; the specification explicitly permits
+servers to omit UI-only resources from ordinary resource listing.
 
-## Existing scriptful Views
+The official `ext-apps` reference host enumerates both tools and resources for its own host UI, but
+that is host behavior, not a guarantee that resource metadata reaches the model. In the current
+conversation host, the agent-facing discovery surface exposes model-visible tools; it does not
+offer the server's resource list as an equivalent callable catalog.
 
-Existing `bridge-v0` Views remain fully supported in `aslite ui`. `list_views` may either omit them
-or return them with `conversationReady: false`; the first proof should choose whichever produces
-the clearest agent behavior.
+Therefore:
 
-It must not:
+- the fixed `ui://agentstate/view-host/v1.html` resource remains the App shell;
+- bundle registrations remain bundle data rather than dynamic UI resources; and
+- one read-only tool provides reliable model discovery.
 
-- claim they can be shown inline when they cannot;
-- execute their arbitrary JavaScript inside the generated-content frame;
-- synthesize a separate model-visible tool for each one; or
-- fork their registry identity into an unrelated MCP record.
+### `list_views`
 
-A future compatibility adapter could implement the bridge through app-only MCP calls, but that is
-not a cheap translation. It would need query/read/edges, subscription semantics, navigation,
-capability revocation, and proposal handling inside another sandbox boundary. It should compete
-against declarative migration only after real scriptful Views demonstrate that need.
+The first tool has no search language and no per-View dynamic schema:
+
+```json
+{}
+```
+
+Conceptual result:
+
+```json
+{
+  "schemaVersion": "agentstate.view-catalog.v1",
+  "count": 2,
+  "views": [
+    {
+      "viewId": "views-registry/task-focus",
+      "title": "Task focus",
+      "description": "Open tasks grouped by priority",
+      "access": "bundle-read",
+      "presentation": "adaptive"
+    }
+  ],
+  "omitted": {
+    "unsupportedAccess": 1,
+    "notInlineDeclared": 2,
+    "invalid": 1
+  }
+}
+```
+
+Required behavior:
+
+- query the current bundle for `type: View` heads;
+- reuse `parseRegistration` and `resolveDeclaredAccess`;
+- sort by stable View ID;
+- return at most 20 rows and a pre-limit compatible count;
+- include only registrations declared `presentation: inline | adaptive`;
+- in the first unit, include only the access levels `show_view({viewId})` actually accepts
+  (`bundle-read` today);
+- return identity, purpose, access, and presentation only;
+- never return entry keys, HTML, registry bodies, credentials, nonces, or approval state;
+- name omitted categories so a small catalog is not mistaken for the entire bundle;
+- provide a concise text fallback for non-App hosts; and
+- declare the tool read-only, idempotent, closed-world, and model-visible without a UI resource.
+
+The exact omission counters may be simplified during implementation, but invalid and unsupported
+registrations must not be silently represented as invokable.
+
+`list_views` and `show_view` remain separate verbs because one enumerates a bounded catalog while
+the other creates a launch. Combining them into a mode-switching schema would save one tool at the
+cost of a less legible model contract.
+
+## Presentation metadata
+
+Add one optional scalar field to the existing View convention:
+
+```yaml
+presentation: workspace
+```
+
+Allowed values:
+
+- `workspace` — designed for the full local launcher; the default when absent;
+- `inline` — designed and tested for a conversational container; and
+- `adaptive` — designed and tested for both workspace and inline containers.
+
+This is author intent, not a new security capability. `access` still controls data/action
+authority, and the host still owns actual dimensions. The MCP catalog uses presentation metadata
+to avoid claiming that every technically mountable desktop dashboard is a good conversational
+View.
+
+Do not add `inline_entry`, `workspace_entry`, or `fullscreen_entry` now:
+
+- exact-byte trust and update lifecycle are simpler with one entry;
+- responsive CSS plus the shipped sizing relay covers the demonstrated need;
+- fullscreen is negotiated at runtime with the MCP host;
+- multiple entries can drift semantically while sharing one title and purpose; and
+- no current user journey has proved that duplicated presentation source is worth that cost.
+
+If dogfooding finds a genuinely valuable View that cannot adapt across containers, add an optional
+presentation map under the same registry identity in a later schema version. Do not pre-commit to
+its shape here.
 
 ## Promotion
 
-Promotion is a lifecycle write, not byte copying alone:
+### Product meaning
 
-```text
-ephemeral launch
-  -> human chooses Save
-  -> exact presentation + unresolved data contract are validated
-  -> content-addressed entry is written
-  -> durable View registry is created
-  -> new identity appears in list_views
-  -> show_view(viewId) reproduces it
-```
+Promotion means: “this presentation is useful enough to become named, portable bundle content.”
+It is not merely copying the current rendered rows.
 
-The promotion receipt must carry:
+The durable result contains:
 
-- new View ID;
-- registry and entry versions/content hashes;
-- title and description;
-- declarative format version;
-- unresolved query/input contract;
-- access/action declaration;
-- actor attribution; and
-- any orphaned blob key if registry creation fails after the blob write.
+- a stable View ID;
+- title and purpose description;
+- exact self-contained HTML bytes;
+- `access`;
+- `presentation`;
+- any query/read/edge behavior authored inside the existing bridge client;
+- actor and timestamp on the registration; and
+- registry and blob versions from the two existing writes.
 
-Do not freeze the currently resolved object snapshots into the durable definition.
+Resolved document snapshots are not persisted into the View. The durable HTML queries current
+bundle state through the bridge when launched.
 
-The ideal eventual experience is a trusted-shell Save action because the running MCP process owns
-the exact launch bytes and can obtain explicit human confirmation. The smallest implementation may
-instead use an agent-mediated CLI command, but it must accept the exact presentation bytes and
-verify their hash against the launch receipt rather than regenerate them.
+### Current honest journey
 
-The existing generic `promote` + `new "View"` sequence remains valid for expert-authored
-`bridge-v0` Views. A compound declarative promotion path is justified only because it must preserve
-and validate presentation, data contract, format, attribution, and two persisted objects as one
-honest product operation.
+An ephemeral generated View and an active durable View use different *authoring* contracts:
+generated HTML uses shell-materialized bindings, while a durable View contains its bridge client.
+The system therefore cannot honestly promise that arbitrary ephemeral bytes can be saved unchanged
+as an active durable View.
 
-## Security and authority
+For the first product loop:
 
-- The fixed MCP UI resource remains package-owned and versioned.
-- Durable bundle presentation remains untrusted data.
-- Declarative entries run with `script-src 'none'`.
-- Registry identity and entry bytes are resolved server-side and version-bound into the launch.
-- A stale or changed registry/entry requires a new launch.
-- Query resolution remains bounded and freezes exact IDs/versions for that launch.
-- `access` remains shell-enforced; presentation cannot grant itself bundle access.
-- Promotion is explicit, attributed, and compare-and-swap guarded.
-- Durable actions remain out of the first read-only compatibility proof.
+1. An agent creates an invocation-specific View and the human uses it.
+2. Repeated value is the signal to keep it.
+3. The agent authors the durable equivalent as one self-contained active View file, using the
+   existing View authoring reference and the same query vocabulary.
+4. `promote` writes the exact file bytes; `new "View"` writes the portable registration.
+5. The author declares `presentation: inline` or `adaptive` only after testing it there.
+6. `list_views` discovers it, and `show_view({viewId})` invokes it without rewriting its source.
 
-## Recommended implementation sequence
+This is a curation step, not a one-click serialization step. That is acceptable while the feature
+is experimental and the authors are agents already using the CLI.
 
-1. **Compatibility fixture:** manually install one query-backed `declarative-v1` View in a scratch
-   bundle and prove both the local UI and MCP fixed shell render the same authoritative rows from
-   the same stored entry/contract.
-2. **Shared parsing authority:** place the strict declarative registration/contract parser below
-   both hosts. Extract presentation materialization only when the second host consumes it—not as a
-   speculative package first.
-3. **Discovery + invocation unit:** ship bounded `list_views` and
-   `show_view({viewId})` together. A discovered conversation-ready View must be immediately
-   invokable; no “key without a lock.”
-4. **Promotion unit:** save an exact successful ephemeral query-backed presentation as a durable
-   declarative View after explicit human confirmation, then prove it appears in `list_views` and
-   reproduces through `show_view(viewId)`.
-5. **Later:** agent-supplied durable inputs, trusted durable actions, relationship expansion,
-   live refresh, presentation variants, second-host verification.
+### Why no new promotion command yet
+
+A compound `view create` or trusted-shell Save action would need to own two-object failure,
+collision handling, exact source capture, capability selection, actor attribution, and the
+generated-to-active authoring conversion. The generic engine already owns the important
+invariants; the remaining value is ergonomic.
+
+Build that command only after dogfooding answers two questions:
+
+1. Is repeated ephemeral-to-durable conversion common?
+2. Can the conversion be deterministic, or does it remain an agent authoring step?
+
+If the answer justifies a command, it should compose `promote` and kind creation like
+`artifact create`, report any orphaned blob explicitly, and produce ordinary bundle content. It
+must not introduce an MCP-only persistence store.
+
+## User and agent journeys
+
+### Human
+
+The human asks for a task-focused View, uses the generated result, and decides it is reusable.
+The agent turns it into a durable adaptive View and shows it once for confirmation. Days later the
+human asks, “show my task focus view”; the agent discovers the named View and opens it inline.
+
+### Agent
+
+1. Call `list_views`.
+2. Match the user's request against stable ID, title, and description.
+3. Call `show_view({viewId})`.
+4. Let the trusted shell handle exact-byte authorization and bridge lifecycle.
+5. If no suitable View exists, use generated `show_view` rather than creating durable state
+   silently.
+
+The model never reads the View's HTML merely to launch it.
+
+## Implementation sequence
+
+1. **Catalog unit:** add the optional `presentation` field to the shipped View convention and add
+   bounded `list_views`, with agreement tests proving every listed ID is accepted by the shared
+   registration/access authorities and invokable through durable `show_view`.
+2. **Authoring guidance:** teach agents when to declare `inline` versus `adaptive`, how to test
+   intrinsic layout, and how to perform the existing two-step exact-byte authoring flow.
+3. **Dogfood:** promote one repeatedly useful generated concept into an adaptive durable View,
+   discover it in a fresh conversation, and invoke it without live explanation.
+4. **Promotion ergonomics decision:** only then decide whether to add `view create`, a trusted
+   shell Save action, or nothing.
+5. **Later:** support additional durable access levels, presentation variants only with evidence,
+   then verify a second host and consider a remote adapter separately.
 
 ## Rejected first moves
 
-- **One MCP tool per View:** tool-catalog growth, bundle churn, and unnecessary model context.
-- **Dynamic UI resource per View:** conflicts with the fixed-shell/cacheable-resource design and
-  still does not provide reliable model-controlled discovery.
-- **Resources-only discovery:** resources are application-controlled; agent visibility varies by
-  host.
-- **Catalog before invocation:** creates an inert feature that advertises objects the MCP adapter
-  cannot show.
-- **Raw scriptful View reuse:** reopens the exfiltration boundary rejected by the fixed-shell proof.
-- **A new `MCP View` kind:** forks identity, recipes, descriptions, and lifecycle.
-- **Automatic promotion:** turns temporary presentation into synced executable content without an
-  explicit human decision.
+- **One MCP tool per View:** tool-catalog growth and bundle churn become model-context churn.
+- **Dynamic UI resource per View:** duplicates the fixed shell and does not guarantee model
+  discovery.
+- **Resources-only discovery:** resources are application-controlled and host exposure varies.
+- **A second `MCP View` kind:** forks identity, recipes, descriptions, and lifecycle.
+- **A new declarative durable format:** the shared active-View authority now works in both hosts.
+- **Multiple presentation entries now:** no evidence yet justifies extra executable sources and
+  trust subjects.
+- **Implicit “all Views are inline” discovery:** mounting success is not author-declared product
+  suitability.
+- **Automatic promotion:** temporary presentation must not become synced executable bundle content
+  without an explicit durable authoring decision.
 
-## External protocol references
+## External protocol evidence
 
 - MCP server primitive control model:
   https://modelcontextprotocol.io/specification/2025-06-18/server/index
-- MCP Apps stable specification and tool/UI resource linkage:
+- MCP Apps stable specification, UI-resource linkage, and resource-listing discretion:
   https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx
-- MCP Apps overview and lifecycle:
+- MCP Apps lifecycle and host-context presentation modes:
   https://github.com/modelcontextprotocol/ext-apps/blob/main/docs/overview.md
+- Official reference host implementation (`ext-apps` v1.7.5), which enumerates resources for the
+  host but does not turn them into a guaranteed model-controlled catalog:
+  https://github.com/modelcontextprotocol/ext-apps/blob/v1.7.5/examples/basic-host/src/implementation.ts
 
 [designs task](../tasks/mcp-durable-view-promotion-discovery.md)
