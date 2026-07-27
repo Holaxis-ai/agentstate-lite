@@ -141,7 +141,7 @@ the rest of the line unchanged.
 - `"$ASLITE" ui [--dir <path> | --remote <url>] [--port <p>] [--open]`
   — Boot the local web UI over the bundle (same origin, loopback-only): READ the bundle's docs as rendered pages (frontmatter, cross-links you can follow, derived backlinks), LAUNCH its registered Views (type: View docs framed in sandboxed iframes with live updates; legacy Page-typed docs no longer register — see status's legacy_naming finding), and see a live activity feed, the bundle's sharing status, and your registered workspaces. The header shows the bundle's display name — derived from the project folder unless set explicitly: doc write docs/bundle --type "Bundle Name" --title "<name>"
 - `"$ASLITE" mcp [--dir <path>] [--actor <name>]`
-  — Run the experimental local MCP Apps adapter over a bundle (stdio): an agent supplies script-free HTML/CSS with declarative text or bounded Markdown bindings plus exact document IDs or one bounded launch-time query; optional governed scalar actions render in trusted shell chrome and require human confirmation
+  — Run the experimental local MCP Apps adapter over a bundle (stdio): launch an existing registered bundle View unchanged by exact ID through the locally authorized read-only bridge, or render agent-supplied script-free HTML/CSS with declarative text/Markdown bindings over exact document IDs or one bounded query; optional generated-view scalar actions stay in trusted shell chrome and require human confirmation
 - `"$ASLITE" sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]`
   — Share the board branch with a remote — commits, pulls, and pushes (git tier; --pull-only skips commit+push). `init` makes a LOCAL bundle; --establish is the separate, explicit act that starts sharing it (creates the board branch, pushes; never automatic). A bundle folder already committed on the code branch is the same flag's hard case: preview first, --yes executes, and the folder's removal from the code branch rides a prepared side-branch commit you push and open as a PR. A bundle committed with code and NO board branch anywhere is the IN-TREE mode (read-side): full sync refuses (sharing rides your normal commit/push), --pull-only fetches the branch's tracking upstream and reports incoming board docs ('git pull' delivers them), and --establish converts to a dedicated board branch. A doc changed on both sides converges: teammate's version kept, yours exported; --show-incoming <id> (exclusive with --pull-only) prints the incoming version as of the last fetch. Board-reading commands (list/doc read/status/home/link show) auto-run the ff-only pull when board state is >~5m stale — silent, bounded (~2s), never a push; AGENTSTATE_LITE_NO_AUTOPULL=<any value, even 0> disables it
 
@@ -388,8 +388,11 @@ A **bundle view** is a self-contained HTML file living IN the bundle: promoted a
 `views/…`, declared by a `type: View` registry doc (`title`, `entry`, `access` — the legacy
 `bridge` spelling is no longer read: a doc declaring only `bridge` resolves to `access: none`,
 so author with `access`), and rendered by
-`"$ASLITE" ui` inside a sandboxed, opaque-origin iframe (`sandbox="allow-scripts"`, no network
-access) — its only channel out is a narrow postMessage bridge to the trusted shell.
+`"$ASLITE" ui` inside a sandboxed, opaque-origin iframe. A data-bearing View is executable
+code: the shell requires local approval of its exact bytes and declared access, and changed
+bytes ask again. The sandbox and CSP deny direct credentials/data-API access and restrict
+ordinary network APIs as defense-in-depth; approval remains the decision to trust the View's
+source. Bundle data flows only through the narrow postMessage bridge to the trusted shell.
 (`Page` is the legacy name and no longer registers: the launcher ignores `type: Page` docs.
 `"$ASLITE" status` lists legacy-named docs under its legacy_naming finding, and the
 repo's migrate-legacy-view-names script renames legacy content in place; docs under the
