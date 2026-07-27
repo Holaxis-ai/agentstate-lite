@@ -6,11 +6,11 @@ title: >-
 status: in_progress
 priority: '2'
 description: >-
-  CLAIMED 2026-07-27 by openai/codex — fixing the live Claude Desktop failure by
-  reserving MCP stdout for JSON-RPC across every pre-initialize error path.
+  Implemented in PR #176; full repository gate green; awaiting independent
+  review and merge.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-07-27T15:24:38.979Z'
+timestamp: '2026-07-27T15:32:34.345Z'
 ---
 # Defect
 
@@ -64,3 +64,24 @@ Raised by unpinning `--dir` from a user-scoped MCP entry, which makes the server
 project rather than one. On a machine with 81 project entries, the bundle-less case is the common
 case, not the exotic one. Impact is a dead server entry and an invisible cause rather than data
 loss, but it fires on ordinary use of an experimental surface we are actively asking people to try.
+
+# Implementation (2026-07-27)
+
+PR [#176](https://github.com/Holaxis-ai/agentstate-lite/pull/176), commit `6b94195`, puts the
+exception at the public `mcp` command boundary. It renders any unhandled parse, bundle-resolution,
+or server-startup failure once to stderr, marks the error handled, and rethrows it so the outer AXI
+boundary preserves the existing exit code without rendering a second envelope to stdout.
+
+The change deliberately does not hide the underlying configuration error. A Claude Desktop entry
+that cannot resolve a bundle still reports `NOT_FOUND`, but now reports it as a useful diagnostic
+instead of corrupting the JSON-RPC transport.
+
+# Verification
+
+- Focused MCP command and built-stdio tests: 6/6 pass.
+- Built subprocess assertions pin stdout as exactly zero bytes for both `USAGE` and `NOT_FOUND`.
+- Direct boundary assertions cover argument parsing, bundle resolution, and server startup.
+- Full repository `npm run check` passes, including build, typecheck, all workspace/script tests,
+  installed-package proof, skill check, and 19 Playwright end-to-end tests.
+
+The task remains `in_progress` until independent review and merge.
