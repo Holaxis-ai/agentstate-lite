@@ -7,16 +7,24 @@ assignee: openai/codex
 description: >-
   PR #173 at 7e22fcc proves the shipped Roadmap HTML runs from unchanged current
   bytes through the shared launch authority and read-only BridgeService in the
-  MCP App. The security follow-up makes the exact-byte trust boundary explicit:
-  a human trusts approved View bytes as executable code with declared bundle
-  access; host/static/child CSP and sandboxing are defense-in-depth. It also
-  retires the launch after an unexpected child-frame navigation. Existing
-  generated Views and web subscriptions remain intact. npm run check is green,
-  including MCP App 19/19, browser E2E 19/19, npm packaging, and skill parity.
-  Remaining merge gates: renewed independent exact-SHA architecture/security
-  review, adversarial QA of containment/currentness/lifecycle, and one real
-  conversational-host launch after installing this branch.
+  MCP App. The security follow-up makes approval's executable-code trust
+  boundary explicit, adds shell CSP defense-in-depth, and retires a launch after
+  unexpected child navigation. Exact-SHA independent review requested changes:
+  (1) suspension currently clears scheduled polling but an in-flight bridge/poll
+  response can still forward and restart polling because the active predicate
+  ignores hidden/suspended state; add delayed bridge and poll tests across
+  hide/resume. (2) UTF-8 BOM bytes are part of the approved stored version but
+  default TextDecoder handling strips the BOM before Blob execution, falsifying
+  literal exact-byte identity; preserve BOM or narrow the claim and pin
+  round-trip behavior. (3) the new guard test imports unbuilt dist and
+  package-only npm test fails from a clean checkout; use the TS loader/source or
+  add the package build prerequisite. Positive review evidence: exact-SHA CI
+  green on Node 20/22/26, focused suites green after build, Chromium proved the
+  static shell CSP constrains the nested blob View even without iframe csp
+  support, and no generated-view/durable-bridge regression was found. Status
+  remains in progress; fix these findings, then renew exact-SHA review, run
+  adversarial QA, and dogfood in a real conversational host before merge.
 actor: openai/codex
-timestamp: '2026-07-27T02:49:38.065Z'
+timestamp: '2026-07-27T03:03:44.951Z'
 ---
 
