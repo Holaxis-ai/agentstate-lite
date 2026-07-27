@@ -3,7 +3,7 @@ type: Task
 title: >-
   No test proves the host-computed hash beats a dishonest backend version
   (active View launch)
-status: todo
+status: in_progress
 priority: '3'
 description: >-
   PR #172 moved launch identity to a host-computed hash, but no committed test
@@ -13,7 +13,8 @@ description: >-
   byte SHA, so the two coincide and the gap is invisible until a
   document-centric remote backend. Coverage gap, not a live vulnerability.
 actor: mike/claude
-timestamp: '2026-07-27T01:58:36.398Z'
+assignee: mike/claude
+timestamp: '2026-07-27T02:03:42.276Z'
 ---
 # Gap
 
