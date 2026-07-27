@@ -13,7 +13,7 @@ sequence: >-
   proof → promotion/discovery → sizing evidence → authoring guidance → dogfood →
   second host / remote adapter
 actor: openai/codex
-timestamp: '2026-07-27T00:03:38.810Z'
+timestamp: '2026-07-27T01:42:37.532Z'
 ---
 # Direction
 
@@ -58,14 +58,13 @@ multi-tenant hosting, and a broader remote-agent tool surface remain separate la
 
 # Current decision gate
 
-The shared durable View security design is approved after independent review and revision. It
-requires one server-side, launch-bound `BridgeService` consumed by thin web and MCP adapters;
-durability is persistence rather than trust, and passive versus active is an independent execution
-choice. Public implementation is BLOCKED until the mandatory private Stage 0 security disposition
-is complete. After clearance, the first public unit is a read-only unchanged-source Roadmap View
-proof under the shared bridge. Promotion/discovery follows that proof; sizing may proceed
-independently because it is empirical and host-facing. Authoring guidance follows the accepted
-architecture and evidence.
+The shared durable View security design and mandatory private Stage 0 disposition are complete.
+PR #172 shipped exact-byte local authorization for active View source and the one server-owned,
+launch-bound `BridgeService`; independent review and adversarial QA passed. The current unit is the
+read-only unchanged-source Roadmap View proof through a thin MCP adapter
+(`tasks/mcp-durable-view-unchanged-proof`). Promotion/discovery follows that proof; sizing may
+proceed independently because it is empirical and host-facing. Authoring guidance follows the
+accepted architecture and evidence.
 
 These are still experimental follow-ons, not a supported-product declaration. Broader action
 authority, remote workspaces, authentication, and a tool-per-View surface remain out of scope.
@@ -89,3 +88,5 @@ authority, remote workspaces, authentication, and a tool-per-View surface remain
 [contains](../tasks/mcp-view-authoring-guidance.md)
 
 [contains](../tasks/mcp-view-security-model-unification.md)
+
+[contains](../tasks/mcp-durable-view-unchanged-proof.md)

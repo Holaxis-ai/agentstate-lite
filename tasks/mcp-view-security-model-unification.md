@@ -1,15 +1,17 @@
 ---
 type: Task
 title: Unify durable View security across web and MCP hosts
-status: blocked
+status: done
 priority: '1'
 assignee: openai/codex
 actor: openai/codex
 description: >-
-  Architecture approved after independent exact-version review. Public
-  implementation is blocked on the mandatory private Stage 0 security
-  disposition; no design-document blockers remain.
-timestamp: '2026-07-27T00:03:38.658Z'
+  Design approved and Stage 0 cleared. PR #172 (merge 3fc335b) shipped
+  exact-byte local authorization for active View source, the server-owned
+  launch-bound BridgeService, pre/post currentness checks, action revalidation,
+  bounded trusted ingress, and removal of the duplicate browser bridge;
+  independent review and adversarial QA passed.
+timestamp: '2026-07-27T01:42:09.805Z'
 ---
 # Objective
 
