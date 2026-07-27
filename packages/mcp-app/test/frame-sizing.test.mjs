@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import { JSDOM } from "jsdom";
@@ -9,6 +10,7 @@ import {
   appendFrameSizingScript,
   clampFrameHeight,
   createFrameSizingSession,
+  measureShellChromeHeight,
   readFrameSizeEvent,
   readFrameSizeMessage,
 } from "../src/frame-sizing.js";
@@ -116,12 +118,29 @@ test("size events must come from the currently mounted child window", () => {
   };
 
   assert.deepEqual(
-    readFrameSizeEvent(accepted, expectedSource, expectedSource, session),
+    readFrameSizeEvent(
+      accepted,
+      expectedSource,
+      expectedSource,
+      session,
+      session.epoch,
+    ),
     { kind: "accepted", height: 200 },
   );
   assert.deepEqual(
-    readFrameSizeEvent(accepted, {}, expectedSource, session),
+    readFrameSizeEvent(accepted, {}, expectedSource, session, session.epoch),
     { kind: "invalid" },
+  );
+  assert.deepEqual(
+    readFrameSizeEvent(
+      accepted,
+      expectedSource,
+      expectedSource,
+      session,
+      session.epoch + 1,
+    ),
+    { kind: "invalid" },
+    "retiring the mount epoch invalidates its otherwise matching size session",
   );
   assert.deepEqual(
     readFrameSizeEvent(
@@ -129,8 +148,56 @@ test("size events must come from the currently mounted child window", () => {
       {},
       expectedSource,
       session,
+      session.epoch,
     ),
     { kind: "other" },
+  );
+});
+
+test("shell chrome uses intrinsic shell geometry, never the fixed host viewport floor", () => {
+  const fixedHostViewport = 600;
+  const frameHeight = 288;
+  const shellHeight = 341;
+
+  assert.equal(fixedHostViewport - frameHeight, 312);
+  assert.equal(
+    measureShellChromeHeight(shellHeight, frameHeight),
+    53,
+    "unused fixed-host viewport space is not charged as shell chrome",
+  );
+  assert.equal(
+    clampFrameHeight(500, {
+      hostHeightLimit: fixedHostViewport,
+      shellChromeHeight: measureShellChromeHeight(shellHeight, frameHeight),
+    }),
+    500,
+    "the old 18rem frame can grow when the fixed host has room",
+  );
+  assert.equal(measureShellChromeHeight(Number.NaN, frameHeight), 0);
+});
+
+test("generated size reports are handled before the hidden-document bridge gate", async () => {
+  const source = await readFile(
+    new URL("../src/view.ts", import.meta.url),
+    "utf8",
+  );
+  const handlerStart = source.indexOf('window.addEventListener("message"');
+  const handlerEnd = source.indexOf(
+    'document.addEventListener("visibilitychange"',
+    handlerStart,
+  );
+  const handler = source.slice(handlerStart, handlerEnd);
+
+  assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
+  assert.ok(
+    handler.indexOf("if (frameSizingSession)") <
+      handler.indexOf('document.visibilityState === "hidden"'),
+    "layout-only reports must update generated Views while hidden; only the durable bridge is gated",
+  );
+  assert.match(
+    source.slice(handlerEnd),
+    /frameEpoch\+\+;\s+resetFrameSizing\(\);\s+stopPolling\(\);/,
+    "suspended durable mounts invalidate their sizing session with their bridge epoch",
   );
 });
 

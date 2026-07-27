@@ -17,6 +17,7 @@ import {
   appendFrameSizingScript,
   clampFrameHeight,
   createFrameSizingSession,
+  measureShellChromeHeight,
   readFrameSizeEvent,
   type FrameSizingSession,
 } from "./frame-sizing.js";
@@ -34,6 +35,7 @@ type PrepareResult =
 
 const statusEl = document.getElementById("status")!;
 const frame = document.getElementById("generated-view") as HTMLIFrameElement;
+const shell = frame.closest(".shell") as HTMLElement;
 const actionsEl = document.getElementById("actions")!;
 const actionButtonsEl = document.getElementById("action-buttons")!;
 const confirmationBackdrop = document.getElementById("confirmation-backdrop")!;
@@ -605,12 +607,9 @@ function hostHeightLimit(): number | undefined {
 }
 
 function shellChromeHeight(): number {
-  return Math.max(
-    0,
-    Math.ceil(
-      document.documentElement.scrollHeight -
-        frame.getBoundingClientRect().height,
-    ),
+  return measureShellChromeHeight(
+    shell.getBoundingClientRect().height,
+    frame.getBoundingClientRect().height,
   );
 }
 
@@ -652,18 +651,14 @@ frame.addEventListener("load", () => {
 
 window.addEventListener("message", (event) => {
   const payload = currentPayload;
-  if (
-    document.visibilityState === "hidden" ||
-    !payload
-  ) {
-    return;
-  }
+  if (!payload) return;
   if (frameSizingSession) {
     const sizing = readFrameSizeEvent(
       event.data,
       event.source,
       frame.contentWindow,
       frameSizingSession,
+      frameEpoch,
     );
     if (sizing.kind !== "other") {
       if (sizing.kind === "accepted") {
@@ -674,6 +669,7 @@ window.addEventListener("message", (event) => {
     }
   }
   if (
+    document.visibilityState === "hidden" ||
     event.source !== frame.contentWindow ||
     payload.schemaVersion !== "agentstate.durable-view-launch.v1" ||
     !payload.launch.authorization.authorized
@@ -696,6 +692,7 @@ document.addEventListener("visibilitychange", () => {
   ) {
     suspendedDurableLaunch = payload.launch.launchId;
     frameEpoch++;
+    resetFrameSizing();
     stopPolling();
     return;
   }

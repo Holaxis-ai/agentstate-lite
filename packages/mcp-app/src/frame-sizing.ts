@@ -92,10 +92,28 @@ export function readFrameSizeEvent(
   source: unknown,
   expectedSource: unknown,
   session: FrameSizingSession,
+  currentEpoch: number,
 ): FrameSizeMessageResult {
   const message = readFrameSizeMessage(value, session);
   if (message.kind === "other") return message;
-  return source === expectedSource ? message : { kind: "invalid" };
+  return source === expectedSource && session.epoch === currentEpoch
+    ? message
+    : { kind: "invalid" };
+}
+
+export function measureShellChromeHeight(
+  shellHeight: number,
+  frameHeight: number,
+): number {
+  if (
+    !Number.isFinite(shellHeight) ||
+    !Number.isFinite(frameHeight) ||
+    shellHeight <= 0 ||
+    frameHeight < 0
+  ) {
+    return 0;
+  }
+  return Math.max(0, Math.ceil(shellHeight - frameHeight));
 }
 
 export function clampFrameHeight(
