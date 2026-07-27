@@ -1,19 +1,18 @@
 ---
 type: Task
 title: Prove intrinsic sizing through the nested MCP View frame
-status: in_progress
+status: done
 priority: '2'
 actor: openai/codex
 description: >-
-  IMPLEMENTED 2026-07-27 by openai/codex — draft PR #175 adds the bounded
-  current-window/launch/epoch/nonce height relay for generated and durable MCP
-  Views. Review findings were fixed at 5ba50c0: fixed hosts now derive chrome
-  from intrinsic shell geometry, and hidden generated size reports are retained
-  without reopening the hidden durable bridge. Full repository check passed;
-  focused MCP suite 30/30; independent re-review approved in substance after
-  reproducing the 800×600 Chromium case. Awaiting merge.
+  SHIPPED 2026-07-27 — PR #175 merged at a0f1340. AgentState MCP Views now relay
+  bounded intrinsic child height through the trusted shell using
+  current-window/launch/epoch/nonce identity, intrinsic shell geometry for fixed
+  hosts, and hidden-lifecycle handling that leaves the durable bridge
+  fail-closed. Full local and GitHub gates passed; independent review and
+  Chromium re-review found no remaining blockers.
 assignee: openai/codex
-timestamp: '2026-07-27T14:45:23.182Z'
+timestamp: '2026-07-27T14:54:35.269Z'
 ---
 # Problem
 
