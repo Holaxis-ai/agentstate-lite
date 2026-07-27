@@ -3,15 +3,14 @@ type: Task
 title: >-
   MCP stdio server writes its error envelope onto the JSON-RPC channel (stdout),
   leaving stderr empty
-status: todo
+status: in_progress
 priority: '2'
 description: >-
-  Every pre-initialize failure of 'aslite mcp' emits a TOON envelope on stdout —
-  the protocol stream — with 0 bytes on stderr, so the host sees malformed
-  JSON-RPC then EOF and the user sees no cause. Same carve-out as 'doc read
-  --out -', never extended to the second stdout-reserving surface.
-actor: mike/claude
-timestamp: '2026-07-27T01:49:41.555Z'
+  CLAIMED 2026-07-27 by openai/codex — fixing the live Claude Desktop failure by
+  reserving MCP stdout for JSON-RPC across every pre-initialize error path.
+actor: openai/codex
+assignee: openai/codex
+timestamp: '2026-07-27T15:24:38.979Z'
 ---
 # Defect
 
