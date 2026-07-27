@@ -25,7 +25,7 @@ recognized where they are once typed `View`. Author views as `type: View` under
 `views-registry/`/`views/`. Bridge wire names (the `open-page` verb, its `pageId` payload field)
 are stable ABI and did not change with the rename.
 
-## Trust model (why a view can never touch a credential)
+## Trust model (exact-byte approval + no credential)
 
 The `ui` server serves two privilege tiers on one loopback origin:
 
@@ -36,12 +36,14 @@ The `ui` server serves two privilege tiers on one loopback origin:
   open the page route to arbitrary keys.
 
 The iframe is `sandbox="allow-scripts"` with **no** `allow-same-origin`, so the view runs at an
-**opaque origin**. Combined with a strict per-view CSP (`connect-src 'none'`), the view **cannot
-open any network request at all** — no fetch, XHR, WebSocket, or EventSource. Its only channel to
-the outside is `postMessage` to the shell. The stable v0 bridge is read-only. A View that declares
-`bundle-propose` may additionally ask trusted shell chrome to prepare one v1 scalar-field action;
-the View still receives no credential or write endpoint, and only the human's shell-native Apply
-choice authorizes the CAS write.
+**opaque origin**. A strict per-view CSP (`connect-src 'none'`) blocks ordinary direct network APIs
+such as fetch, XHR, WebSocket, and EventSource, while the View never receives the shell's credential
+or a data endpoint. Those controls are defense-in-depth: a data-bearing View is executable code,
+and approving its exact bytes and declared access is the decision to trust that code. Approve only
+a View whose source or author you trust; changed bytes or expanded access ask again. The supported
+bundle-data channel is `postMessage` to the shell, whose stable v0 bridge is read-only. A View that
+declares `bundle-propose` may additionally ask trusted shell chrome to prepare one v1 scalar-field
+action; only the human's shell-native Apply choice authorizes the CAS write.
 
 ## Message shapes
 

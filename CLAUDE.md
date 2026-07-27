@@ -193,22 +193,27 @@ stay recognized — relocation is a separate open decision); Views are bundle co
 access goes through one server-owned, launch-bound bridge. Active Views that request bundle data
 are mounted only after trusted shell chrome approves their exact HTML bytes and declared access;
 the CLI remembers that approval locally (never in the synced bundle), and changed bytes or
-expanded access ask again. Bridge authority is revalidated before and after each request. V0 data
+expanded access ask again. Approval treats those exact bytes as trusted executable code with the
+declared bundle authority; sandboxing and CSP remain defense-in-depth, not a substitute for
+trusting the View's source. Bridge authority is revalidated before and after each request. V0 data
 access remains read-only; a local `--dir` View may
 opt into `bundle-propose` for one human-confirmed, version-guarded scalar-field action. The former
 `packages/viewer` / `view` → `viz.html` surface is removed — author human
 views as bundle Views rather than adding a second rendering engine.
 
 The experimental local `agentstate-lite mcp` command is a second host adapter, not a second View
-system. Its single model-visible `show_view` tool binds agent-authored, script-free HTML/CSS to
-exact current document snapshots selected by id or by one bounded launch-time query using the
-durable View's shared field/open filtering authority. A query resolves once in deterministic ID
-order and freezes at most 20 exact IDs/versions for the launch and its actions. The fixed trusted
-shell reuses the bounded Markdown renderer, strips navigation and active content, and may render
-bounded scalar actions outside the generated frame. App-only prepare/finish tools require a
-configured actor, explicit human confirmation, selection/version revalidation, and hard CAS
-through the shared action and mutation authorities. It is deliberately local, stdio-only,
-unpublished as a standalone package, and not yet a supported product surface.
+system. Its single model-visible `show_view` tool either binds agent-authored, script-free HTML/CSS
+to exact current document snapshots or launches one existing registered View unchanged by exact
+id. Generated input may select by id or by one bounded launch-time query using the durable View's
+shared field/open filtering authority; the query resolves once in deterministic ID order and
+freezes at most 20 exact IDs/versions for the launch and its actions. Registered executable Views
+use the shared launch/bridge authority and require exact-byte local trust approval before bundle
+data is exposed. The fixed trusted shell reuses the bounded Markdown renderer, strips navigation
+and active content from generated presentations, and may render bounded scalar actions outside
+that generated frame. App-only lifecycle and prepare/finish tools remain hidden from the model;
+actions require a configured actor, explicit human confirmation, selection/version revalidation,
+and hard CAS through the shared action and mutation authorities. It is deliberately local,
+stdio-only, unpublished as a standalone package, and not yet a supported product surface.
 
 The multi-human collaboration substrate (hosted worker, auth, admin) is FROZEN per bundle doc
 `docs/core` and preserved outside the OSS repository — it is not a build or deployment target

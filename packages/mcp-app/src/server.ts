@@ -436,7 +436,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     {
       title: "Show AgentState View",
       description:
-        "Render either agent-authored script-free HTML over current authoritative AgentState snapshots, or one existing registered bundle View by exact viewId. A registered View runs from its unchanged current bytes through the shared read-only bridge and requires trusted-shell approval before bundle data is exposed.",
+        "Render either agent-authored script-free HTML over current authoritative AgentState snapshots, or one existing registered bundle View by exact viewId. A registered View runs from its unchanged current bytes through the shared read-only bridge and requires the human to trust those executable bytes before bundle data is exposed.",
       inputSchema,
       outputSchema,
       annotations: {
@@ -483,7 +483,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     {
       title: "Authorize registered AgentState View",
       description:
-        "Record the trusted shell's local approval for the exact current registered View bytes and return the revalidated launch.",
+        "Record the trusted shell's local decision to trust the exact current registered View bytes with bundle-read access, then return the revalidated launch.",
       inputSchema: z
         .object({ launchId: z.string().min(1).max(128) })
         .strict(),

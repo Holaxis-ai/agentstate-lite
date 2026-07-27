@@ -483,6 +483,8 @@ export function PageFrame({ pageId }: { pageId: string }) {
               <div><dt>HTML</dt><dd><code>{pendingLaunch.authorization.contentVersion}</code></dd></div>
             </dl>
             <p className="action-confirmation-note">
+              Approval trusts these executable bytes with the declared bundle access. Approve only Views whose
+              source or author you trust.{" "}
               Approval is stored only on this computer for these exact View bytes and declared access.
               Changed HTML or access asks again.
             </p>

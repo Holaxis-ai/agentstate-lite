@@ -324,8 +324,11 @@ A **bundle view** is a self-contained HTML file living IN the bundle: promoted a
 `views/…`, declared by a `type: View` registry doc (`title`, `entry`, `access` — the legacy
 `bridge` spelling is no longer read: a doc declaring only `bridge` resolves to `access: none`,
 so author with `access`), and rendered by
-`aslite ui` inside a sandboxed, opaque-origin iframe (`sandbox="allow-scripts"`, no network
-access) — its only channel out is a narrow postMessage bridge to the trusted shell.
+`aslite ui` inside a sandboxed, opaque-origin iframe. A data-bearing View is executable
+code: the shell requires local approval of its exact bytes and declared access, and changed
+bytes ask again. The sandbox and CSP deny direct credentials/data-API access and restrict
+ordinary network APIs as defense-in-depth; approval remains the decision to trust the View's
+source. Bundle data flows only through the narrow postMessage bridge to the trusted shell.
 (`Page` is the legacy name and no longer registers: the launcher ignores `type: Page` docs.
 `aslite status` lists legacy-named docs under its legacy_naming finding, and the
 repo's migrate-legacy-view-names script renames legacy content in place; docs under the

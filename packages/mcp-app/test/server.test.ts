@@ -346,12 +346,18 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   assert.match(content.text, /data-aslite-text/);
   assert.match(content.text, /id="confirmation-backdrop"/);
   assert.match(content.text, /id="authorization-backdrop"/);
+  assert.match(content.text, /Trust this View with bundle data\?/);
+  assert.match(
+    content.text,
+    /http-equiv="Content-Security-Policy"[\s\S]*connect-src 'none'[\s\S]*frame-src blob:/,
+  );
   assert.match(content.text, /authorize_durable_view/);
   assert.match(content.text, /durable_view_bridge/);
   assert.match(content.text, /poll_durable_view/);
   assert.match(content.text, /close_durable_view/);
   assert.match(content.text, /prepare_view_action/);
   assert.match(content.text, /finish_view_action/);
+  assert.match(content.text, /navigated away from its approved document/);
   assert.match(content.text, /script-src 'none'/);
   assert.match(content.text, /style-src 'unsafe-inline'/);
   const scriptStart = content.text.indexOf("<script>") + "<script>".length;

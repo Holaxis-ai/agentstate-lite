@@ -722,10 +722,11 @@ function renderBundleViewsSection(invocation: string, ref: RefPointer): string[]
   );
   lines.push("`bridge` spelling is no longer read: a doc declaring only `bridge` resolves to `access: none`,");
   lines.push("so author with `access`), and rendered by");
-  lines.push(
-    `\`${invocation} ui\` inside a sandboxed, opaque-origin iframe (\`sandbox="allow-scripts"\`, no network`,
-  );
-  lines.push("access) — its only channel out is a narrow postMessage bridge to the trusted shell.");
+  lines.push(`\`${invocation} ui\` inside a sandboxed, opaque-origin iframe. A data-bearing View is executable`);
+  lines.push("code: the shell requires local approval of its exact bytes and declared access, and changed");
+  lines.push("bytes ask again. The sandbox and CSP deny direct credentials/data-API access and restrict");
+  lines.push("ordinary network APIs as defense-in-depth; approval remains the decision to trust the View's");
+  lines.push("source. Bundle data flows only through the narrow postMessage bridge to the trusted shell.");
   lines.push("(`Page` is the legacy name and no longer registers: the launcher ignores `type: Page` docs.");
   lines.push(`\`${invocation} status\` lists legacy-named docs under its legacy_naming finding, and the`);
   lines.push("repo's migrate-legacy-view-names script renames legacy content in place; docs under the");

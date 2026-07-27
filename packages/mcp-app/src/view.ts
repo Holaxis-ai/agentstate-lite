@@ -11,6 +11,7 @@ import type {
   McpViewPayload,
   ViewLaunchPayload,
 } from "./contract.js";
+import { FrameLoadGuard } from "./frame-load-guard.js";
 import { containedDocument, materializePresentation } from "./presentation.js";
 
 type HostContext = NonNullable<ReturnType<App["getHostContext"]>>;
@@ -42,6 +43,7 @@ let pollTimer: number | null = null;
 let pollAcknowledgement: string | undefined;
 let suspendedDurableLaunch: string | null = null;
 let frameObjectUrl: string | null = null;
+const frameLoadGuard = new FrameLoadGuard();
 
 const ACTIVE_VIEW_CHILD_CSP = [
   "default-src 'none'",
@@ -161,10 +163,12 @@ function setFrameDocument(html: string, contentType = "text/html; charset=utf-8"
   if (frameObjectUrl) URL.revokeObjectURL(frameObjectUrl);
   frameObjectUrl = URL.createObjectURL(new Blob([html], { type: contentType }));
   frame.removeAttribute("srcdoc");
+  frameLoadGuard.expectNext();
   frame.src = frameObjectUrl;
 }
 
 function clearFrameDocument(): void {
+  frameLoadGuard.reset();
   frame.removeAttribute("srcdoc");
   frame.removeAttribute("src");
   if (frameObjectUrl) URL.revokeObjectURL(frameObjectUrl);
@@ -547,6 +551,21 @@ confirmationApply.addEventListener("click", () => void finishAction("commit"));
 confirmationCancel.addEventListener("click", () => void finishAction("cancel"));
 authorizationApply.addEventListener("click", () => void authorizeDurableView());
 authorizationCancel.addEventListener("click", cancelDurableAuthorization);
+
+frame.addEventListener("load", () => {
+  if (frameLoadGuard.accept()) return;
+  const payload = currentPayload;
+  if (
+    payload?.schemaVersion !== "agentstate.durable-view-launch.v1" ||
+    !payload.launch.authorization.authorized
+  ) {
+    return;
+  }
+  retirePayload();
+  statusEl.dataset.kind = "error";
+  statusEl.textContent =
+    "This View navigated away from its approved document, so AgentState closed the launch. Reopen it to continue.";
+});
 
 window.addEventListener("message", (event) => {
   const payload = currentPayload;
