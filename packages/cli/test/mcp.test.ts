@@ -4,6 +4,7 @@ import { test } from "node:test";
 import type { Bundle } from "@agentstate-lite/core";
 import { KNOWN_COMMANDS } from "../src/cli.js";
 import { MCP_USAGE, mcp } from "../src/commands/mcp.js";
+import { CliError } from "../src/errors.js";
 import { COMMAND_GROUPS } from "../src/reference.js";
 
 const bundle = { root: "/tmp/board" } as Bundle;
@@ -57,4 +58,61 @@ test("mcp opens the explicit local bundle and leaves stdout untouched for stdio 
   assert.equal(startedBundleName, "board");
   assert.equal(startedWithAuthorization, true);
   assert.equal(output, "");
+});
+
+test("mcp routes every pre-initialize failure to stderr and marks it handled", async () => {
+  const rows: Array<{
+    name: string;
+    argv: string[];
+    openBundle: () => Promise<Bundle>;
+    startServer?: () => Promise<void>;
+    code: "USAGE" | "NOT_FOUND" | "RUNTIME";
+  }> = [
+    {
+      name: "argument parsing",
+      argv: ["--nope"],
+      openBundle: async () => bundle,
+      code: "USAGE",
+    },
+    {
+      name: "bundle resolution",
+      argv: [],
+      openBundle: async () => {
+        throw new CliError("NOT_FOUND", "no bundle for MCP");
+      },
+      code: "NOT_FOUND",
+    },
+    {
+      name: "server startup",
+      argv: [],
+      openBundle: async () => bundle,
+      startServer: async () => {
+        throw new Error("server could not start");
+      },
+      code: "RUNTIME",
+    },
+  ];
+
+  for (const row of rows) {
+    let stdout = "";
+    let stderr = "";
+    await assert.rejects(
+      mcp(row.argv, {
+        stdout: (text) => {
+          stdout += text;
+        },
+        stderr: (text) => {
+          stderr += text;
+        },
+        openBundle: row.openBundle,
+        startServer: "startServer" in row ? row.startServer : async () => {},
+      }),
+      (error: unknown) =>
+        error instanceof CliError && error.code === row.code && error.handled,
+      row.name,
+    );
+    assert.equal(stdout, "", `${row.name}: protocol stdout`);
+    assert.match(stderr, /^error:\n/, `${row.name}: structured envelope`);
+    assert.match(stderr, new RegExp(`code: ${row.code}`), `${row.name}: error classification`);
+  }
 });
