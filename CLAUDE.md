@@ -61,8 +61,9 @@ Watch-points that are easy to regress here:
 - **A `view`/detail shows backlink counts inline.** `link show` reports the derived
   "cited by" count next to the concept.
 - **Errors go to stdout in structured form.** Error envelopes render as TOON on stdout with
-  a capped exit-code taxonomy (0/1/2/4/5/6). Exception: `doc read --out -` routes the
-  envelope to STDERR because stdout is reserved for raw bytes.
+  a capped exit-code taxonomy (0/1/2/4/5/6). Exceptions: `doc read --out -` routes the
+  envelope to STDERR because stdout is reserved for raw bytes, and `mcp` routes every startup or
+  runtime envelope to STDERR because stdout is the JSON-RPC transport.
 - **Mutations are idempotent.** Re-writing a doc or re-adding an existing link must be a
   no-op that exits 0 (`link add` returns `changed:false` when the link already exists).
 - **The SessionStart hook targets Claude Code, Codex, AND OpenCode.** `hook install` writes a
