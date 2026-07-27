@@ -311,7 +311,7 @@ describe("home surface", () => {
     await clickNext();
     const panel4 = panelText();
     expect(panel4).toContain("Collaborating with others");
-    expect(panel4).toMatch(/stays private until you choose to share it/i);
+    expect(panel4).toMatch(/stays local until you choose to share it/i);
     expect(panel4).toContain("ask your agent to");
     expect(panel4).toContain("publishes the bundle onto its own");
     // Public-repo awareness: sharing inherits the repo's visibility — stated as a consideration

@@ -382,7 +382,7 @@ test("home surface: flat badged grid, live activity feed, first-run orientation 
     await orientation.getByRole("button", { name: "Next" }).dblclick();
     await expect(orientation).toContainText(/collaborating with others/i);
     await expect(orientation, "a double-click on the last Next must not fall through to Got it").toBeVisible();
-    await expect(orientation).toContainText(/stays private until you choose to share it/i);
+    await expect(orientation).toContainText(/stays local until you choose to share it/i);
     await orientation.getByRole("button", { name: "Got it" }).click();
     await expect(orientation).not.toBeVisible();
     await page.reload();

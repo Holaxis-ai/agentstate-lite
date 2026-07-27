@@ -391,7 +391,7 @@ export function Launcher() {
                 <>
                   <h2 tabIndex={-1}>Collaborating with others</h2>
                   <p>
-                    The bundle stays private until you choose to share it. Sharing works through git, through the
+                    The bundle stays local until you choose to share it. Sharing works through git, through the
                     repository you likely already have. As with other functionality, you can simply ask your agent to
                     share your bundle, and it will walk you through any necessary steps (for example, if you need to
                     initialize a git repo). Under the hood, a one-time establish step
@@ -413,9 +413,10 @@ export function Launcher() {
                   <p>
                     <strong>Worth knowing:</strong> a shared bundle is exactly as visible as the repository that
                     carries it. If the repo is public, the bundle is public too — the tasks agents record, the notes
-                    they keep, and the documents they generate all become part of the project’s public record. For
-                    work happening in the open that can be a feature rather than a problem; just apply the same
-                    judgment to what lands in the bundle as you would to any commit.
+                    they keep, and the documents they generate all become part of the project’s public record. Apply
+                    the same judgment to what lands in the bundle as you would to any commit, keeping in mind that
+                    agents sync the bundle automatically as they work — sharing does not wait for any action from
+                    you.
                   </p>
                   <p className="orientation-close">
                     <strong>That’s the tour.</strong> To see ASLite in action, ask your agent to write something down
