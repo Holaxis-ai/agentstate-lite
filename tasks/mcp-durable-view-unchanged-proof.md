@@ -5,13 +5,16 @@ status: in_progress
 priority: '1'
 assignee: openai/codex
 description: >-
-  Launch one existing registered scriptful durable bundle View unchanged through
-  the MCP App host using the shared server-owned BridgeService. Read-only proof
-  only: no promotion, catalog, broader action authority, or new durable format.
-  Acceptance: exact registered source, access and currentness remain
-  authoritative; the MCP adapter is thin; focused security and lifecycle tests
-  plus a real conversation-host dogfood path.
+  PR #173 at e3bbd09 proves the shipped Roadmap HTML runs from unchanged current
+  bytes through the shared launch authority and read-only BridgeService in the
+  MCP App. Implemented exact-byte local approval, app-only bridge lifecycle
+  tools, MCP-only replay-until-ack polling, suspension fail-closed behavior, and
+  stale-source revocation; existing generated Views and web subscriptions remain
+  intact. npm run check is green. Remaining merge gates: independent exact-SHA
+  architecture/security review, adversarial QA of
+  containment/currentness/lifecycle, and one real conversational-host launch
+  after installing this branch.
 actor: openai/codex
-timestamp: '2026-07-27T01:42:09.950Z'
+timestamp: '2026-07-27T02:16:38.191Z'
 ---
 
