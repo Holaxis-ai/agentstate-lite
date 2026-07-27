@@ -252,7 +252,48 @@ export async function launchIsCurrent(bundle: Bundle, launch: PageLaunch): Promi
   }
 }
 
-/** Server-side launch authority shared by the web bridge endpoint and future MCP adapter. */
+/**
+ * Resolve one local registered View and its exact entry bytes into the shared active-View launch
+ * model. Host adapters decide how to present authorization and transport the bytes; registry,
+ * entry, admission, and currentness stay owned here.
+ */
+export async function mintActiveViewLaunch(
+  bundle: Bundle,
+  launches: PageLaunchRegistry,
+  registryId: string,
+): Promise<PageLaunch> {
+  const registryRead = await readDocVersioned(bundle, registryId);
+  const registration = parseRegistration(registryRead.doc.id, registryRead.doc.frontmatter);
+  if (!registration) {
+    throw new Error(
+      `'${registryId}' is not a valid type:View registration (the legacy type:Page name no longer registers)`,
+    );
+  }
+  const blob = await readBlob(bundle, registration.entry);
+  if (blob === null) throw new Error(`no View bytes found for '${registration.entry}'`);
+  const admitted = admitActiveView(blob.bytes, blob.contentType);
+  const launch = launches.mint({
+    registryId: registration.id,
+    registryType: registration.type,
+    registryVersion: registryRead.version,
+    registryTitle:
+      typeof registryRead.doc.frontmatter.title === "string"
+        ? registryRead.doc.frontmatter.title
+        : registration.id,
+    entryKey: registration.entry,
+    contentType: admitted.contentType,
+    contentVersion: blobVersion(admitted.bytes),
+    bytes: admitted.bytes,
+    capability: resolveDeclaredAccess(registryRead.doc.frontmatter),
+  });
+  if (!(await launchIsCurrent(bundle, launch))) {
+    launches.revoke(launch.launchId);
+    throw new Error("the View changed while its launch was being prepared");
+  }
+  return launch;
+}
+
+/** Server-side launch authority shared by the web bridge endpoint and MCP adapter. */
 export class PageBridgeLaunchAuthority implements BridgeLaunchAuthority {
   constructor(
     private readonly bundle: Bundle,
@@ -358,6 +399,7 @@ export {
   type BridgeLaunch,
   type BridgeLaunchAuthority,
   type BridgeOutcome,
+  type BridgePollOutcome,
   type BridgeServiceOptions,
   type EdgeParams,
 } from "./bridge.js";

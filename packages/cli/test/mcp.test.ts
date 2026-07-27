@@ -33,6 +33,8 @@ test("mcp opens the explicit local bundle and leaves stdout untouched for stdio 
   let openedDir: string | undefined;
   let startedWith: Bundle | undefined;
   let startedActor: string | undefined;
+  let startedBundleName: string | undefined;
+  let startedWithAuthorization = false;
   let output = "";
   await mcp(["--dir", "/tmp/board", "--actor", "mike/test"], {
     stdout: (text) => {
@@ -42,13 +44,17 @@ test("mcp opens the explicit local bundle and leaves stdout untouched for stdio 
       openedDir = dir;
       return bundle;
     },
-    startServer: async ({ bundle: startedBundle, actor }) => {
+    startServer: async ({ bundle: startedBundle, actor, bundleName, viewAuthorization }) => {
       startedWith = startedBundle;
       startedActor = actor;
+      startedBundleName = bundleName;
+      startedWithAuthorization = viewAuthorization !== undefined;
     },
   });
   assert.equal(openedDir, "/tmp/board");
   assert.equal(startedWith, bundle);
   assert.equal(startedActor, "mike/test");
+  assert.equal(startedBundleName, "board");
+  assert.equal(startedWithAuthorization, true);
   assert.equal(output, "");
 });

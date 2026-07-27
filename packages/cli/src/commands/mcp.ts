@@ -4,11 +4,14 @@
 import { parseArgs } from "node:util";
 import { startMcpStdioServer } from "@agentstate-lite/mcp-app";
 import type { Bundle } from "@agentstate-lite/core";
+import type { ViewAuthorizationStore } from "@agentstate-lite/view-runtime";
 import { parseOrUsage } from "../args.js";
 import { resolveActor } from "../actor.js";
 import { openBundle } from "../bundle.js";
+import { deriveBundleDisplayName } from "../bundle-name.js";
 import { CliError } from "../errors.js";
 import { cliInvocation } from "../invocation.js";
+import { LocalViewAuthorizationStore } from "../ui/view-authorizations.js";
 
 export const MCP_USAGE = `agentstate-lite mcp — expose invocation-specific AgentState Views to an MCP Apps host
 
@@ -20,11 +23,13 @@ Options:
   --actor <name>        Attribute confirmed human actions (overrides AGENTSTATE_LITE_ACTOR)
   -h, --help            Show this help
 
-The experimental server uses stdio and exposes one model-visible tool: show_view. An agent selects
-exact document IDs or supplies one bounded launch-time query, adds script-free HTML/CSS with
-declarative data-aslite-text or data-aslite-markdown bindings, and the host renders it over frozen
-authoritative snapshots. Queries reuse the bundle View's type/prefix/field/open semantics, resolve
-in deterministic ID order, and expose at most 20 documents per launch.
+The experimental server uses stdio and exposes one model-visible tool: show_view. An agent can
+provide an exact registered View ID to launch its current HTML unchanged through the shared
+read-only bundle bridge, after trusted-shell approval of those exact bytes. Or the agent can select
+exact document IDs or supply one bounded launch-time query, then add script-free HTML/CSS with
+declarative data-aslite-text or data-aslite-markdown bindings over frozen authoritative snapshots.
+Queries reuse the bundle View's type/prefix/field/open semantics, resolve in deterministic ID order,
+and expose at most 20 documents per launch.
 Optional document.set-field declarations become trusted-shell controls; generated HTML cannot
 write directly, and every action requires explicit human confirmation plus a current version.
 The server does not save generated HTML, accept remote targets, or expose arbitrary filesystem paths.
@@ -33,7 +38,13 @@ The server does not save generated HTML, accept remote targets, or expose arbitr
 export interface McpCliDeps {
   stdout: (text: string) => void;
   openBundle: (dir: string | undefined) => Promise<Bundle>;
-  startServer: (options: { bundle: Bundle; version?: string; actor?: string }) => Promise<void>;
+  startServer: (options: {
+    bundle: Bundle;
+    version?: string;
+    actor?: string;
+    bundleName?: string;
+    viewAuthorization?: ViewAuthorizationStore;
+  }) => Promise<void>;
 }
 
 export async function mcp(argv: string[], deps: Partial<McpCliDeps> = {}): Promise<void> {
@@ -67,5 +78,11 @@ export async function mcp(argv: string[], deps: Partial<McpCliDeps> = {}): Promi
   const actor = resolveActor(values.actor, {
     help: `${cliInvocation()} mcp --actor <name>`,
   });
-  await start({ bundle, actor });
+  const bundleName = (await deriveBundleDisplayName(bundle)).name;
+  await start({
+    bundle,
+    actor,
+    bundleName,
+    viewAuthorization: new LocalViewAuthorizationStore(bundle.root),
+  });
 }

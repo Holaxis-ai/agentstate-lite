@@ -40,9 +40,20 @@ test("built npm CLI serves the fixed MCP App contract over clean stdio", async (
   const tools = await client.listTools();
   assert.deepEqual(tools.tools.map((tool) => tool.name), [
     "show_view",
+    "authorize_durable_view",
+    "durable_view_bridge",
+    "poll_durable_view",
+    "close_durable_view",
     "prepare_view_action",
     "finish_view_action",
   ]);
+  assert.deepEqual(
+    tools.tools
+      .filter((tool) => tool.name !== "show_view")
+      .map((tool) => tool._meta?.ui?.visibility),
+    Array.from({ length: 6 }, () => ["app"]),
+    "only show_view is visible to the model; lifecycle and bridge tools belong to the trusted App",
+  );
 
   const result = await client.callTool({
     name: "show_view",

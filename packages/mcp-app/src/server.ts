@@ -16,11 +16,24 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { CallToolResult, ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
 import {
+  BridgeService,
+  PageBridgeLaunchAuthority,
+  PageLaunchRegistry,
+  SessionViewAuthorizationStore,
   TrustedActionService,
+  launchIsCurrent,
+  mintActiveViewLaunch,
+  pageLaunchAuthorizationSubject,
   type ActionTerminalResult,
+  type PageLaunch,
+  type ViewAuthorizationStore,
 } from "@agentstate-lite/view-runtime";
 import { z } from "zod";
 import type {
+  DurableShowViewInput,
+  DurableViewLaunchPayload,
+  GeneratedShowViewInput,
+  McpViewPayload,
   ResolvedViewContent,
   ResolvedShowViewInput,
   ShowViewInput,
@@ -34,6 +47,10 @@ export const MCP_VIEW_RESOURCE_URI = "ui://agentstate/view-host/v1.html";
 export const SHOW_VIEW_TOOL_NAME = "show_view";
 export const PREPARE_VIEW_ACTION_TOOL_NAME = "prepare_view_action";
 export const FINISH_VIEW_ACTION_TOOL_NAME = "finish_view_action";
+export const AUTHORIZE_DURABLE_VIEW_TOOL_NAME = "authorize_durable_view";
+export const DURABLE_VIEW_BRIDGE_TOOL_NAME = "durable_view_bridge";
+export const POLL_DURABLE_VIEW_TOOL_NAME = "poll_durable_view";
+export const CLOSE_DURABLE_VIEW_TOOL_NAME = "close_durable_view";
 export const MAX_VIEW_PRESENTATION_BYTES = 256 * 1024;
 export const MAX_VIEW_OBJECTS = 20;
 export const MAX_VIEW_ACTIONS = 8;
@@ -83,7 +100,7 @@ const generatedActionSchema = z
   })
   .strict();
 
-const inputSchema = z
+const generatedInputSchema = z
   .object({
     title: z.string().trim().min(1).max(120).describe("Short human-facing title for this generated View."),
     html: z
@@ -124,7 +141,35 @@ const inputSchema = z
     "pass exactly one selection mode: objectIds or query",
   );
 
-const outputSchema = z.object({
+const durableInputSchema = z
+  .object({
+    viewId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(512)
+      .describe(
+        "Exact ID of an existing registered bundle View to run unchanged through the shared read-only bridge.",
+      ),
+  })
+  .strict();
+
+const inputSchema = z
+  .object({
+    viewId: durableInputSchema.shape.viewId.optional(),
+    title: generatedInputSchema.shape.title.optional(),
+    html: generatedInputSchema.shape.html.optional(),
+    css: generatedInputSchema.shape.css,
+    objectIds: generatedInputSchema.shape.objectIds,
+    query: generatedInputSchema.shape.query,
+    actions: generatedInputSchema.shape.actions,
+  })
+  .strict()
+  .describe(
+    "Pass exactly viewId for a registered durable View, or title/html plus exactly one generated selection mode.",
+  );
+
+const generatedOutputSchema = z.object({
   schemaVersion: z.literal("agentstate.view-launch.v1"),
   title: z.string(),
   presentation: z.object({ html: z.string(), css: z.string(), contentHash: z.string() }),
@@ -153,11 +198,50 @@ const outputSchema = z.object({
   }),
 });
 
+const durableOutputSchema = z.object({
+  schemaVersion: z.literal("agentstate.durable-view-launch.v1"),
+  title: z.string(),
+  source: z.object({
+    viewId: z.string(),
+    entry: z.string(),
+    html: z.string(),
+    contentType: z.string(),
+    contentVersion: z.string(),
+  }),
+  launch: z.object({
+    launchId: z.string(),
+    authorization: z.object({
+      required: z.boolean(),
+      authorized: z.boolean(),
+    }),
+  }),
+});
+
+const outputSchema = z.object({
+  schemaVersion: z.string(),
+  title: z.string(),
+  presentation: generatedOutputSchema.shape.presentation.optional(),
+  selection: generatedOutputSchema.shape.selection.optional(),
+  objects: generatedOutputSchema.shape.objects.optional(),
+  source: durableOutputSchema.shape.source.optional(),
+  launch: z.object({
+    launchId: z.string(),
+    actions: generatedOutputSchema.shape.launch.shape.actions.optional(),
+    authorization: durableOutputSchema.shape.launch.shape.authorization.optional(),
+  }),
+});
+
+function parseShowViewInput(input: unknown): ShowViewInput {
+  const outer = inputSchema.parse(input);
+  if (outer.viewId !== undefined) return durableInputSchema.parse(outer);
+  return generatedInputSchema.parse(outer);
+}
+
 async function resolveShowViewInput(
   bundle: Bundle,
-  rawInput: ShowViewInput,
+  rawInput: GeneratedShowViewInput,
 ): Promise<ResolvedShowViewInput> {
-  const input: ShowViewInput = inputSchema.parse(rawInput);
+  const input: GeneratedShowViewInput = generatedInputSchema.parse(rawInput);
   if (input.objectIds) {
     const objectIds = input.objectIds;
     for (const id of objectIds) assertSafeConceptId(id);
@@ -227,11 +311,55 @@ async function resolveViewContent(
 
 export async function resolveViewLaunch(
   bundle: Bundle,
-  input: ShowViewInput,
+  input: GeneratedShowViewInput,
   launches = new McpViewLaunchRegistry(),
 ): Promise<ViewLaunchPayload> {
   const resolvedInput = await resolveShowViewInput(bundle, input);
   return launches.mint(resolvedInput, await resolveViewContent(bundle, resolvedInput));
+}
+
+function durablePayload(
+  launch: PageLaunch,
+  authorized: boolean,
+): DurableViewLaunchPayload {
+  return {
+    schemaVersion: "agentstate.durable-view-launch.v1",
+    title: launch.registryTitle,
+    source: {
+      viewId: launch.registryId,
+      entry: launch.entryKey,
+      html: new TextDecoder("utf-8", { fatal: true }).decode(launch.bytes),
+      contentType: launch.contentType,
+      contentVersion: launch.contentVersion,
+    },
+    launch: {
+      launchId: launch.launchId,
+      authorization: {
+        required: launch.capability !== "none",
+        authorized,
+      },
+    },
+  };
+}
+
+export async function resolveDurableViewLaunch(
+  bundle: Bundle,
+  input: DurableShowViewInput,
+  launches = new PageLaunchRegistry(),
+  authorizations: ViewAuthorizationStore = new SessionViewAuthorizationStore(),
+): Promise<DurableViewLaunchPayload> {
+  const parsed = durableInputSchema.parse(input);
+  const launch = await mintActiveViewLaunch(bundle, launches, parsed.viewId);
+  if (launch.capability !== "bundle-read") {
+    launches.revoke(launch.launchId);
+    throw new Error(
+      `View '${parsed.viewId}' declares '${launch.capability}' access; the durable MCP proof accepts bundle-read Views only`,
+    );
+  }
+  return durablePayload(
+    launch,
+    await authorizations.isAuthorized(pageLaunchAuthorizationSubject(launch)),
+  );
 }
 
 async function refreshViewLaunch(
@@ -251,7 +379,12 @@ async function refreshViewLaunch(
   }
 }
 
-function fallbackText(payload: ViewLaunchPayload): string {
+function fallbackText(payload: McpViewPayload): string {
+  if (payload.schemaVersion === "agentstate.durable-view-launch.v1") {
+    return payload.launch.authorization.authorized
+      ? `Prepared registered AgentState View "${payload.title}" (${payload.source.viewId}) from its exact current bundle bytes.`
+      : `Registered AgentState View "${payload.title}" (${payload.source.viewId}) is ready for local approval of its exact current bytes before it can read bundle data.`;
+  }
   const rows = payload.objects.map((object) => {
     const title =
       typeof object.frontmatter.title === "string" && object.frontmatter.title.trim()
@@ -267,6 +400,8 @@ export interface CreateMcpAppServerOptions {
   bundle: Bundle;
   version?: string;
   actor?: string;
+  bundleName?: string;
+  viewAuthorization?: ViewAuthorizationStore;
 }
 
 export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServer {
@@ -276,6 +411,24 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
   });
   const launches = new McpViewLaunchRegistry();
   const actions = new TrustedActionService(options.bundle, launches, options.actor);
+  const durableLaunches = new PageLaunchRegistry();
+  const durableAuthorizations =
+    options.viewAuthorization ?? new SessionViewAuthorizationStore();
+  const durableBridge = new BridgeService({
+    bundle: options.bundle,
+    launches: new PageBridgeLaunchAuthority(
+      options.bundle,
+      durableLaunches,
+      durableAuthorizations,
+    ),
+    config: async () => ({
+      root: null,
+      name: options.bundleName ?? "AgentState bundle",
+      mode: "local-mcp",
+    }),
+    allowActionProtocol: false,
+    enablePolling: true,
+  });
 
   registerAppTool(
     server,
@@ -283,7 +436,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     {
       title: "Show AgentState View",
       description:
-        "Render agent-authored HTML over current authoritative AgentState snapshots selected by exact IDs or one bounded launch-time query. Optional document.set-field declarations become trusted-shell controls; generated HTML remains read-only and every write requires human confirmation.",
+        "Render either agent-authored script-free HTML over current authoritative AgentState snapshots, or one existing registered bundle View by exact viewId. A registered View runs from its unchanged current bytes through the shared read-only bridge and requires trusted-shell approval before bundle data is exposed.",
       inputSchema,
       outputSchema,
       annotations: {
@@ -296,7 +449,16 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     },
     async (input): Promise<CallToolResult> => {
       try {
-        const payload = await resolveViewLaunch(options.bundle, input, launches);
+        const parsed = parseShowViewInput(input);
+        const payload =
+          "viewId" in parsed
+            ? await resolveDurableViewLaunch(
+                options.bundle,
+                parsed,
+                durableLaunches,
+                durableAuthorizations,
+              )
+            : await resolveViewLaunch(options.bundle, parsed, launches);
         return {
           content: [{ type: "text", text: fallbackText(payload) }],
           structuredContent: { ...payload },
@@ -312,6 +474,144 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
           ],
         };
       }
+    },
+  );
+
+  registerAppTool(
+    server,
+    AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+    {
+      title: "Authorize registered AgentState View",
+      description:
+        "Record the trusted shell's local approval for the exact current registered View bytes and return the revalidated launch.",
+      inputSchema: z
+        .object({ launchId: z.string().min(1).max(128) })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async ({ launchId }): Promise<CallToolResult> => {
+      const launch = durableLaunches.resolveLaunch(launchId);
+      if (
+        !launch ||
+        launch.capability !== "bundle-read" ||
+        !(await launchIsCurrent(options.bundle, launch))
+      ) {
+        if (launch) durableBridge.revoke(launch.launchId);
+        return {
+          isError: true,
+          content: [{ type: "text", text: "The registered View changed or expired before approval." }],
+        };
+      }
+      const subject = pageLaunchAuthorizationSubject(launch);
+      await durableAuthorizations.authorize(subject);
+      if (
+        !(await launchIsCurrent(options.bundle, launch)) ||
+        !(await durableAuthorizations.isAuthorized(subject))
+      ) {
+        durableBridge.revoke(launch.launchId);
+        return {
+          isError: true,
+          content: [{ type: "text", text: "The registered View changed while approval was being recorded." }],
+        };
+      }
+      const view = durablePayload(launch, true);
+      return {
+        content: [{ type: "text", text: `Approved exact current bytes for "${view.title}".` }],
+        structuredContent: { view },
+      };
+    },
+  );
+
+  registerAppTool(
+    server,
+    DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    {
+      title: "Run registered AgentState View bridge request",
+      description:
+        "Forward one bounded read-only bridge request from the current approved registered View.",
+      inputSchema: z
+        .object({
+          launchId: z.string().min(1).max(128),
+          request: z.unknown(),
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async ({ launchId, request }): Promise<CallToolResult> => {
+      const outcome = await durableBridge.handle(launchId, request);
+      return {
+        content: [{ type: "text", text: "Processed one registered View bridge request." }],
+        structuredContent: { outcome },
+      };
+    },
+  );
+
+  registerAppTool(
+    server,
+    POLL_DURABLE_VIEW_TOOL_NAME,
+    {
+      title: "Poll registered AgentState View changes",
+      description:
+        "Poll the server-owned subscription baseline for the current registered View.",
+      inputSchema: z
+        .object({
+          launchId: z.string().min(1).max(128),
+          acknowledgeGeneration: z.string().min(1).max(128).optional(),
+        })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async ({ launchId, acknowledgeGeneration }): Promise<CallToolResult> => {
+      const poll = await durableBridge.poll(launchId, acknowledgeGeneration);
+      return {
+        content: [{ type: "text", text: `Registered View poll: ${poll.status}.` }],
+        structuredContent: { poll },
+      };
+    },
+  );
+
+  registerAppTool(
+    server,
+    CLOSE_DURABLE_VIEW_TOOL_NAME,
+    {
+      title: "Close registered AgentState View",
+      description:
+        "Revoke one process-local registered View launch and discard its subscription state.",
+      inputSchema: z
+        .object({ launchId: z.string().min(1).max(128) })
+        .strict(),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async ({ launchId }): Promise<CallToolResult> => {
+      durableBridge.revoke(launchId);
+      return {
+        content: [{ type: "text", text: "Closed the registered AgentState View launch." }],
+        structuredContent: { closed: true },
+      };
     },
   );
 
@@ -437,7 +737,9 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
               csp: {
                 connectDomains: [],
                 resourceDomains: [],
-                // The generated document is a sandboxed srcdoc child, so it needs no frame origin.
+                // Invocation content stays in a sandboxed opaque-origin child. A blob URL keeps
+                // registered source byte-derived and avoids a host-specific frame origin.
+                frameDomains: ["blob:"],
                 baseUriDomains: [],
               },
               prefersBorder: false,

@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import {
   MemoryBackend,
   deleteDoc,
   readDocVersioned,
+  writeBlob,
   writeDoc,
   type Bundle,
 } from "@agentstate-lite/core";
@@ -12,13 +14,19 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import {
+  AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+  CLOSE_DURABLE_VIEW_TOOL_NAME,
+  DURABLE_VIEW_BRIDGE_TOOL_NAME,
   FINISH_VIEW_ACTION_TOOL_NAME,
   MCP_VIEW_RESOURCE_URI,
+  POLL_DURABLE_VIEW_TOOL_NAME,
   PREPARE_VIEW_ACTION_TOOL_NAME,
   SHOW_VIEW_TOOL_NAME,
   createMcpAppServer,
+  resolveDurableViewLaunch,
   resolveViewLaunch,
 } from "../src/index.js";
+import { SessionViewAuthorizationStore } from "@agentstate-lite/view-runtime";
 
 const T = "2026-07-26T12:00:00.000Z";
 
@@ -64,6 +72,25 @@ async function seed(bundle: Bundle): Promise<void> {
     frontmatter: { type: "Roadmap Item", title: "Conversational Views", status: "active", timestamp: T },
     body: "# Outcome\n\nUseful views in chat.",
   });
+  await writeDoc(bundle, {
+    id: "views-registry/roadmap",
+    frontmatter: {
+      type: "View",
+      title: "Roadmap",
+      entry: "views/roadmap.html",
+      access: "bundle-read",
+      timestamp: T,
+    },
+    body: "Existing durable Roadmap View.",
+  });
+  await writeBlob(
+    bundle,
+    "views/roadmap.html",
+    new Uint8Array(
+      await readFile(new URL("../../../examples/views/roadmap.html", import.meta.url)),
+    ),
+    "text/html; charset=utf-8",
+  );
 }
 
 test("resolveViewLaunch returns current versioned snapshots in the caller's explicit order", async () => {
@@ -279,14 +306,34 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   const tools = await client.listTools();
   assert.deepEqual(tools.tools.map((tool) => tool.name), [
     SHOW_VIEW_TOOL_NAME,
+    AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+    DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    POLL_DURABLE_VIEW_TOOL_NAME,
+    CLOSE_DURABLE_VIEW_TOOL_NAME,
     PREPARE_VIEW_ACTION_TOOL_NAME,
     FINISH_VIEW_ACTION_TOOL_NAME,
   ]);
   const showTool = tools.tools.find((tool) => tool.name === SHOW_VIEW_TOOL_NAME);
+  const authorizeTool = tools.tools.find(
+    (tool) => tool.name === AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+  );
+  const bridgeTool = tools.tools.find(
+    (tool) => tool.name === DURABLE_VIEW_BRIDGE_TOOL_NAME,
+  );
+  const pollTool = tools.tools.find(
+    (tool) => tool.name === POLL_DURABLE_VIEW_TOOL_NAME,
+  );
+  const closeTool = tools.tools.find(
+    (tool) => tool.name === CLOSE_DURABLE_VIEW_TOOL_NAME,
+  );
   const prepareTool = tools.tools.find((tool) => tool.name === PREPARE_VIEW_ACTION_TOOL_NAME);
   const finishTool = tools.tools.find((tool) => tool.name === FINISH_VIEW_ACTION_TOOL_NAME);
   assert.equal(showTool?._meta?.ui?.resourceUri, MCP_VIEW_RESOURCE_URI);
   assert.equal(showTool?.annotations?.readOnlyHint, true);
+  assert.deepEqual(authorizeTool?._meta?.ui?.visibility, ["app"]);
+  assert.deepEqual(bridgeTool?._meta?.ui?.visibility, ["app"]);
+  assert.deepEqual(pollTool?._meta?.ui?.visibility, ["app"]);
+  assert.deepEqual(closeTool?._meta?.ui?.visibility, ["app"]);
   assert.deepEqual(prepareTool?._meta?.ui?.visibility, ["app"]);
   assert.deepEqual(finishTool?._meta?.ui?.visibility, ["app"]);
   assert.equal(finishTool?.annotations?.readOnlyHint, false);
@@ -298,6 +345,11 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   assert.doesNotMatch(content.text, /sandbox="allow-scripts"/);
   assert.match(content.text, /data-aslite-text/);
   assert.match(content.text, /id="confirmation-backdrop"/);
+  assert.match(content.text, /id="authorization-backdrop"/);
+  assert.match(content.text, /authorize_durable_view/);
+  assert.match(content.text, /durable_view_bridge/);
+  assert.match(content.text, /poll_durable_view/);
+  assert.match(content.text, /close_durable_view/);
   assert.match(content.text, /prepare_view_action/);
   assert.match(content.text, /finish_view_action/);
   assert.match(content.text, /script-src 'none'/);
@@ -306,7 +358,7 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   const scriptEnd = content.text.lastIndexOf("</script>");
   assert.ok(scriptStart >= "<script>".length && scriptEnd > scriptStart);
   assert.doesNotThrow(() => new Function(content.text.slice(scriptStart, scriptEnd)));
-  assert.equal(content._meta?.ui?.csp?.frameDomains, undefined);
+  assert.deepEqual(content._meta?.ui?.csp?.frameDomains, ["blob:"]);
   assert.deepEqual(content._meta?.ui?.csp?.connectDomains, []);
 
   const first = await client.callTool({
@@ -371,6 +423,262 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
       matchedCount: 1,
     },
   );
+});
+
+test("registered Roadmap View runs from unchanged source through the authorized read-only bridge", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const authorization = new SessionViewAuthorizationStore();
+  const expectedSource = await readFile(
+    new URL("../../../examples/views/roadmap.html", import.meta.url),
+    "utf8",
+  );
+  const direct = await resolveDurableViewLaunch(
+    bundle,
+    { viewId: "views-registry/roadmap" },
+    undefined,
+    authorization,
+  );
+  assert.equal(direct.source.html, expectedSource);
+  assert.equal(direct.source.entry, "views/roadmap.html");
+  assert.equal(direct.launch.authorization.authorized, false);
+
+  const server = createMcpAppServer({
+    bundle,
+    version: "test",
+    bundleName: "Proof bundle",
+    viewAuthorization: authorization,
+  });
+  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const shown = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: { viewId: "views-registry/roadmap" },
+  });
+  assert.equal(shown.isError, undefined);
+  const view = shown.structuredContent as {
+    source: { html: string; contentVersion: string };
+    launch: {
+      launchId: string;
+      authorization: { required: boolean; authorized: boolean };
+    };
+  };
+  assert.equal(view.source.html, expectedSource);
+  assert.equal(view.launch.authorization.required, true);
+  assert.equal(view.launch.authorization.authorized, false);
+
+  const beforeApproval = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      request: { bridge: "v0", type: "hello", id: "hello-before" },
+    },
+  });
+  assert.deepEqual(
+    (beforeApproval.structuredContent as {
+      outcome: { reply: { error: { code: string } } };
+    }).outcome.reply.error.code,
+    "FORBIDDEN",
+  );
+
+  const approved = await client.callTool({
+    name: AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: view.launch.launchId },
+  });
+  assert.equal(approved.isError, undefined);
+  const approvedView = (approved.structuredContent as {
+    view: {
+      source: { html: string; contentVersion: string };
+      launch: { authorization: { authorized: boolean } };
+    };
+  }).view;
+  assert.equal(approvedView.source.html, expectedSource);
+  assert.equal(approvedView.source.contentVersion, view.source.contentVersion);
+  assert.equal(approvedView.launch.authorization.authorized, true);
+
+  const hello = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      request: { bridge: "v0", type: "hello", id: "hello" },
+    },
+  });
+  assert.deepEqual(
+    (hello.structuredContent as {
+      outcome: {
+        reply: {
+          result: {
+            bundle: { root: null; name: string };
+            mode: string;
+            grant: string;
+          };
+        };
+      };
+    }).outcome.reply.result,
+    {
+      bundle: { root: null, name: "Proof bundle" },
+      mode: "local-mcp",
+      protocol: "v0",
+      grant: "read",
+    },
+  );
+
+  const query = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      request: {
+        bridge: "v0",
+        type: "query",
+        id: "tasks",
+        params: { type: "Task", open: true, limit: 10 },
+      },
+    },
+  });
+  assert.deepEqual(
+    (
+      query.structuredContent as {
+        outcome: { reply: { result: { rows: Array<{ id: string }> } } };
+      }
+    ).outcome.reply.result.rows.map((row) => row.id),
+    ["tasks/alpha", "tasks/gamma"],
+  );
+
+  const read = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      request: { bridge: "v0", type: "read", id: "read", docId: "tasks/alpha" },
+    },
+  });
+  assert.equal(
+    (
+      read.structuredContent as {
+        outcome: { reply: { result: { body: string } } };
+      }
+    ).outcome.reply.result.body,
+    "# Goal\n\nFirst task.",
+  );
+
+  const actionProtocol = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      request: {
+        bridge: "v1",
+        type: "read-versioned",
+        id: "versioned",
+        docId: "tasks/alpha",
+      },
+    },
+  });
+  assert.equal(
+    (
+      actionProtocol.structuredContent as {
+        outcome: { reply: { error: { code: string } } };
+      }
+    ).outcome.reply.error.code,
+    "FORBIDDEN",
+  );
+
+  const subscribed = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      request: { bridge: "v0", type: "subscribe", id: "subscribe" },
+    },
+  });
+  assert.equal(
+    (
+      subscribed.structuredContent as {
+        outcome: { subscribed: boolean };
+      }
+    ).outcome.subscribed,
+    true,
+  );
+  const unchanged = await client.callTool({
+    name: POLL_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: view.launch.launchId },
+  });
+  assert.equal(
+    (unchanged.structuredContent as { poll: { status: string } }).poll.status,
+    "unchanged",
+  );
+
+  await writeDoc(bundle, {
+    id: "tasks/alpha",
+    frontmatter: { type: "Task", title: "Alpha", status: "done", timestamp: T },
+    body: "# Goal\n\nCompleted during the proof.",
+  });
+  const changed = await client.callTool({
+    name: POLL_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: view.launch.launchId },
+  });
+  const change = (changed.structuredContent as {
+    poll: {
+      status: string;
+      generation: string;
+      message: { event: { changes: Array<{ id: string }> } };
+    };
+  }).poll;
+  assert.equal(change.status, "change");
+  assert.deepEqual(change.message.event.changes.map((entry) => entry.id), ["tasks/alpha"]);
+
+  const replayed = await client.callTool({
+    name: POLL_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: view.launch.launchId },
+  });
+  assert.deepEqual(
+    (replayed.structuredContent as { poll: unknown }).poll,
+    change,
+    "a change remains pending until the host acknowledges its generation",
+  );
+  const acknowledged = await client.callTool({
+    name: POLL_DURABLE_VIEW_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      acknowledgeGeneration: change.generation,
+    },
+  });
+  assert.equal(
+    (acknowledged.structuredContent as { poll: { status: string } }).poll.status,
+    "unchanged",
+  );
+
+  await writeBlob(
+    bundle,
+    "views/roadmap.html",
+    new TextEncoder().encode("<!doctype html><p>changed source</p>"),
+    "text/html; charset=utf-8",
+  );
+  const revoked = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      request: { bridge: "v0", type: "hello", id: "stale" },
+    },
+  });
+  assert.equal(
+    (
+      revoked.structuredContent as {
+        outcome: { reply: { error: { code: string } } };
+      }
+    ).outcome.reply.error.code,
+    "FORBIDDEN",
+  );
+
+  const closed = await client.callTool({
+    name: CLOSE_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: view.launch.launchId },
+  });
+  assert.deepEqual(closed.structuredContent, { closed: true });
 });
 
 test("show_view fails closed for an unknown document ID", async (t) => {
