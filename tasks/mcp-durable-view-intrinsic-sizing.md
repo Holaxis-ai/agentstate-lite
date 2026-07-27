@@ -1,10 +1,15 @@
 ---
 type: Task
 title: Prove intrinsic sizing through the nested MCP View frame
-status: todo
+status: in_progress
 priority: '2'
 actor: openai/codex
-timestamp: '2026-07-27T12:33:25.798Z'
+description: >-
+  CLAIMED 2026-07-27 by openai/codex — implementing a bounded
+  source/launch/epoch-bound nested-frame height relay from current origin/main,
+  with responsive and adversarial tests.
+assignee: openai/codex
+timestamp: '2026-07-27T12:37:02.061Z'
 ---
 # Problem
 
