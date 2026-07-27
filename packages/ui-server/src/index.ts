@@ -12,9 +12,12 @@ export { hostnameOf, isAllowedHost } from "./host.js";
 export { PAGE_BLOB_PREFIXES, pageCsp } from "./pages.js";
 export {
   PageActionLaunchAuthority,
+  PageBridgeLaunchAuthority,
   PageLaunchRegistry,
+  SessionViewAuthorizationStore,
   TrustedActionService,
   launchIsCurrent,
+  pageLaunchAuthorizationSubject,
   parseDocumentSetFieldAction,
   type ActionConfirmation,
   type ActionPrepareResult,
@@ -22,6 +25,8 @@ export {
   type ActionTerminalResult,
   type DocumentSetFieldAction,
   type PageLaunch,
+  type ViewAuthorizationStore,
+  type ViewAuthorizationSubject,
   type TrustedActionLaunch,
   type TrustedActionLaunchAuthority,
 } from "@agentstate-lite/view-runtime";

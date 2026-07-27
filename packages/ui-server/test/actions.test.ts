@@ -13,7 +13,10 @@ import {
 import {
   PageActionLaunchAuthority,
   PageLaunchRegistry,
+  SessionViewAuthorizationStore,
   TrustedActionService,
+  pageLaunchAuthorizationSubject,
+  type TrustedActionLaunchAuthority,
 } from "../src/index.js";
 
 const T = "2026-07-18T12:00:00.000Z";
@@ -63,16 +66,27 @@ async function fixture(actor: string | undefined = "mike/test") {
     bytes: blob.bytes,
     capability: "bundle-propose",
   });
+  const authorizations = new SessionViewAuthorizationStore();
+  await authorizations.authorize(pageLaunchAuthorizationSubject(launch));
   return {
     bundle,
     launches,
     launch,
+    authorizations,
     service: new TrustedActionService(
       bundle,
-      new PageActionLaunchAuthority(bundle, launches),
+      new PageActionLaunchAuthority(bundle, launches, authorizations),
       actor,
     ),
   };
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 test("trusted action: human-confirmed scalar update uses hard CAS and returns the final receipt", async () => {
@@ -134,6 +148,58 @@ test("trusted action: target races conflict and changed View bytes revoke withou
   await writeBlob(changedView.bundle, "views/actions.html", new TextEncoder().encode("changed"), "text/html; charset=utf-8");
   assert.equal((await changedView.service.commit(viewPrepared.approvalToken)).status, "revoked");
   assert.equal((await readDocVersioned(changedView.bundle, "tasks/alpha")).doc.frontmatter.status, "todo");
+});
+
+test("trusted action: View bytes changing after the first commit check revoke before mutation", async () => {
+  const state = await fixture();
+  const base = new PageActionLaunchAuthority(
+    state.bundle,
+    state.launches,
+    state.authorizations,
+  );
+  const initialCommitCheckReached = deferred();
+  const releaseCommit = deferred();
+  let resolveCount = 0;
+  const authority: TrustedActionLaunchAuthority = {
+    resolve: async (launchId) => {
+      const result = await base.resolve(launchId);
+      resolveCount++;
+      // prepare is call 1; commit's initial source check is call 2.
+      if (resolveCount === 2) {
+        initialCommitCheckReached.resolve();
+        await releaseCommit.promise;
+      }
+      return result;
+    },
+    revoke: (launchId) => base.revoke(launchId),
+  };
+  const service = new TrustedActionService(state.bundle, authority, "mike/test");
+  const target = await readDocVersioned(state.bundle, "tasks/alpha");
+  const prepared = await service.prepare(state.launch.launchId, {
+    kind: "document.set-field",
+    docId: "tasks/alpha",
+    field: "status",
+    value: "done",
+    expectedVersion: target.version,
+  });
+  assert.equal(prepared.status, "prepared");
+  if (prepared.status !== "prepared") return;
+
+  const committing = service.commit(prepared.approvalToken);
+  await initialCommitCheckReached.promise;
+  await writeBlob(
+    state.bundle,
+    "views/actions.html",
+    new TextEncoder().encode("<!doctype html><p>changed during commit</p>"),
+    "text/html; charset=utf-8",
+  );
+  releaseCommit.resolve();
+
+  assert.equal((await committing).status, "revoked");
+  assert.equal(
+    (await readDocVersioned(state.bundle, "tasks/alpha")).doc.frontmatter.status,
+    "todo",
+  );
 });
 
 test("trusted action: rejects absent actor, undeclared fields, non-scalar replacement, and semantic no-ops", async () => {

@@ -13,25 +13,20 @@ import path from "node:path";
 import {
   CONVENTION_TYPE,
   initBundle,
-  loadKinds,
-  queryHeads,
   writeDoc,
   type Bundle,
   type HeadResult,
+  type QuerySelectionParams,
 } from "@agentstate-lite/core";
+import { BridgeService } from "@agentstate-lite/view-runtime";
 
 import { list } from "../src/commands/list.js";
-import {
-  handleBridgeRequest,
-  type BridgeDeps,
-  type QueryParams,
-} from "../../ui/src/pages/bridge.js";
 
 const T = "2026-07-18T00:00:00.000Z";
 
 interface AgreementRow {
   name: string;
-  params: QueryParams;
+  params: QuerySelectionParams;
   ids: string[];
   count: number;
 }
@@ -79,7 +74,7 @@ async function makeBundle(): Promise<{ bundle: Bundle; cleanup: () => Promise<vo
   return { bundle, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
-async function cliResult(bundle: Bundle, params: QueryParams): Promise<{ ids: string[]; count: number }> {
+async function cliResult(bundle: Bundle, params: QuerySelectionParams): Promise<{ ids: string[]; count: number }> {
   const argv = ["--dir", bundle.root, "--type", "Task", "--fields", "status,priority", "--json"];
   if (params.field) argv.push("--field", params.field);
   if (params.open) argv.push("--open");
@@ -91,40 +86,34 @@ async function cliResult(bundle: Bundle, params: QueryParams): Promise<{ ids: st
 }
 
 async function bridgeResult(
-  heads: HeadResult[],
-  deps: BridgeDeps,
-  params: QueryParams,
+  bundle: Bundle,
+  params: QuerySelectionParams,
 ): Promise<{ ids: string[]; count: number }> {
-  const outcome = await handleBridgeRequest(
+  const service = new BridgeService({
+    bundle,
+    launches: {
+      resolve: async (launchId) => ({ launchId, capability: "bundle-read" }),
+      revoke: () => {},
+    },
+    config: async () => ({ root: bundle.root, name: "agreement", mode: "dir" }),
+  });
+  const outcome = await service.handle(
+    "agreement-launch",
     { bridge: "v0", id: "agreement", type: "query", params: { type: "Task", ...params } },
-    deps,
-    "bundle-read",
   );
   const result = (outcome.reply as { result: { rows: HeadResult[]; count: number } }).result;
   assert.deepEqual(result.rows.map((row) => row.id), result.rows.map((row) => row.id).sort());
-  assert.ok(heads.length > 0);
   return { ids: result.rows.map((row) => row.id), count: result.count };
 }
 
 test("CLI list and View bridge query agree row-for-row on valid filtering semantics", async (t) => {
   const { bundle, cleanup } = await makeBundle();
   try {
-    const heads = await queryHeads(bundle, { type: "Task" });
-    const registry = await loadKinds(bundle);
-    const deps: BridgeDeps = {
-      config: async () => ({ root: bundle.root, name: "agreement", mode: "dir" }),
-      query: async () => heads,
-      read: async () => ({ id: "unused", frontmatter: { type: "Task" }, body: "" }),
-      kinds: async () => [...registry.kinds.values()],
-      edges: async () => [],
-      resolvePage: async () => false,
-    };
-
     for (const row of AGREEMENT_ROWS) {
       await t.test(row.name, async () => {
         const expected = { ids: row.ids, count: row.count };
         assert.deepEqual(await cliResult(bundle, row.params), expected, "CLI projection");
-        assert.deepEqual(await bridgeResult(heads, deps, row.params), expected, "bridge projection");
+        assert.deepEqual(await bridgeResult(bundle, row.params), expected, "bridge projection");
       });
     }
   } finally {

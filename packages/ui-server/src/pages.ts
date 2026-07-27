@@ -1,16 +1,17 @@
 // The PAGE-BYTES privilege tier of the loopback UI server (tasks/ui-pages-spike): a bundle page is a
 // self-contained HTML blob promoted into the store under `pages/…`. It is served to a SANDBOXED,
-// OPAQUE-ORIGIN iframe (`sandbox="allow-scripts"`, no `allow-same-origin`) whose ONLY channel to
-// the rest of the world is a postMessage bridge to the shell — never a direct fetch of the data
-// API. Two mechanisms enforce that, belt-and-braces:
+// OPAQUE-ORIGIN iframe (`sandbox="allow-scripts"`, no `allow-same-origin`). Active HTML is code,
+// not inert content: before a data-bearing View is mounted, the trusted shell requires a local
+// approval keyed to its exact bytes and declared authority. These defenses then confine what the
+// approved code can do:
 //
 //   1. A per-page NONCE (this module). The session-authed shell mints a nonce for ONE specific
 //      blob key; the nonce fetches THAT page's static bytes only and is rejected by every data
 //      route (it is not the session secret, so `checkAuth` fails on `/v0/*`). The data token, in
 //      turn, does not serve page bytes — the two credentials are structurally distinct.
-//   2. A strict per-page CSP with `connect-src 'none'` ({@link pageCsp}). Even a hostile page
-//      cannot open a fetch/XHR/WebSocket/EventSource at all — its bytes are inert except for
-//      `postMessage`, which the shell validates by source before honoring (read-only in v0).
+//   2. A strict per-page CSP with `connect-src 'none'` ({@link pageCsp}). The page cannot open a
+//      fetch/XHR/WebSocket/EventSource; the shell validates the postMessage source and forwards
+//      only bounded requests to a server-owned, launch-bound bridge authority.
 //
 // The nonce is a capability, not a durable grant: short-TTL, single bundle-run, in-memory only.
 import { PAGE_ENTRY_PREFIX, VIEW_ENTRY_PREFIX } from "@agentstate-lite/core/page";

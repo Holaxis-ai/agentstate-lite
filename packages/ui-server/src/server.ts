@@ -9,11 +9,16 @@
 // Bundle Views add a second privilege tier alongside the data API: a
 // PAGE-BYTES route (`/__page/<nonce>`) that serves a bundle page's static HTML to a sandboxed,
 // opaque-origin iframe, gated by a per-page nonce the session-authed shell mints (`POST
-// /__page/mint`) — NOT by the session token, so a page structurally cannot reach `/v0/*`. Plus an
-// SSE `/events` stream (shell-only) fed by a version-token watcher for live updates. See
-// `pages.ts`, `events.ts`, `watch.ts`.
+// /__page/mint`) — NOT by the session token, so a page cannot call `/v0/*` directly. Data-bearing
+// active HTML also requires an exact-byte local approval, and its bridge requests are resolved
+// here against the immutable launch before and after each read. Plus an SSE `/events` stream
+// (shell-only) fed by a version-token watcher. See `pages.ts`, `events.ts`, `watch.ts`.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { requestFromIncomingMessage, writeResponseToServerResponse } from "@agentstate-lite/server";
+import {
+  RequestBodyTooLargeError,
+  requestFromIncomingMessage,
+  writeResponseToServerResponse,
+} from "@agentstate-lite/server";
 import { assertSafeBlobKey, blobVersion, readBlob, readDocVersioned, loadKinds, queryEdges, queryHeads, type Bundle, type EdgeFilter, type Frontmatter } from "@agentstate-lite/core";
 import { PAGE_TYPE_NAMES, parseRegistration, resolveDeclaredAccess } from "@agentstate-lite/core/page";
 import { isAllowedHost } from "./host.js";
@@ -22,11 +27,19 @@ import type { UiAssetHandler } from "./assets.js";
 import { proxyToRemote } from "./proxy.js";
 import { pageCsp } from "./pages.js";
 import {
+  BridgeService,
   PageActionLaunchAuthority,
+  PageBridgeLaunchAuthority,
   PageLaunchRegistry,
+  SessionViewAuthorizationStore,
   TrustedActionService,
+  admitActiveView,
   launchIsCurrent,
+  pageLaunchAuthorizationSubject,
   type ActionTerminalResult,
+  type BridgeOutcome,
+  type PageLaunch,
+  type ViewAuthorizationStore,
 } from "@agentstate-lite/view-runtime";
 import { SseHub } from "./events.js";
 import { startWatcher, type ChangeEvent, type WatcherHandle } from "./watch.js";
@@ -113,6 +126,12 @@ export interface UiServerOptions {
   /** Advisory identity recorded by a confirmed local View action. Read-only UI needs no actor. */
   actor?: string;
   /**
+   * Consumer-owned approval persistence for active Views. The runtime defaults to process-local
+   * approvals; the CLI injects a local exact-byte store so a user approves unchanged View code
+   * once without placing trust state in the synced bundle.
+   */
+  viewAuthorization?: ViewAuthorizationStore;
+  /**
    * `--remote` mode only: override the watcher's boot-time initial-snapshot timeout (default
    * `DEFAULT_REMOTE_BOOT_TIMEOUT_MS` in `watch.ts`, ~5s) — a test seam
    * (tasks/ui-remote-watcher-boot-timeout) so a "never-responding remote" boot-bound test doesn't
@@ -132,10 +151,36 @@ export interface UiServerHandle {
 /** Per-run mutable state the request handler closes over: the page-nonce registry, the SSE fan-out, the change watcher, and the shutdown signal (aborts remote-mode upstream requests at close()). */
 interface UiRuntime {
   launches: PageLaunchRegistry;
+  authorizations: ViewAuthorizationStore;
+  bridge?: BridgeService;
   actions?: TrustedActionService;
   sse: SseHub;
   watcher?: WatcherHandle;
   shutdown: AbortController;
+}
+
+async function viewLaunchIsCurrent(options: UiServerOptions, launch: PageLaunch): Promise<boolean> {
+  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
+  if (bundle) return launchIsCurrent(bundle, launch);
+  if (options.mode !== "remote") return false;
+  const head = (await remoteRegistryHeads(options)).find(
+    (candidate) => candidate.id === launch.registryId,
+  );
+  const registration = head ? parseRegistration(head.id, head.frontmatter) : null;
+  const blob = registration ? await readPageBlob(options, registration.entry) : null;
+  const admitted = blob ? admitActiveView(blob.bytes, blob.contentType) : null;
+  return Boolean(
+    head &&
+    registration &&
+    head.version === launch.registryVersion &&
+    registration.type === launch.registryType &&
+    registration.entry === launch.entryKey &&
+    resolveDeclaredAccess(head.frontmatter) === launch.capability &&
+    blob &&
+    admitted?.contentType === launch.contentType &&
+    admitted !== null &&
+    blobVersion(admitted.bytes) === launch.contentVersion,
+  );
 }
 
 function jsonError(status: number, code: string, message: string): Response {
@@ -209,27 +254,9 @@ async function remoteRegistryHeads(options: UiServerOptions): Promise<RegistryHe
 async function servePageBytes(options: UiServerOptions, runtime: UiRuntime, nonce: string): Promise<Response> {
   const launch = runtime.launches.resolveNonce(nonce);
   if (!launch) return pageError(403, "This view link is unknown or has expired. Reopen the view from the launcher.");
-  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
   let current = false;
   try {
-    if (bundle) {
-      current = await launchIsCurrent(bundle, launch);
-    } else if (options.mode === "remote") {
-      const head = (await remoteRegistryHeads(options)).find((candidate) => candidate.id === launch.registryId);
-      const registration = head ? parseRegistration(head.id, head.frontmatter) : null;
-      const blob = registration ? await readPageBlob(options, registration.entry) : null;
-      current = Boolean(
-        head &&
-        registration &&
-        head.version === launch.registryVersion &&
-        registration.type === launch.registryType &&
-        registration.entry === launch.entryKey &&
-        resolveDeclaredAccess(head.frontmatter) === launch.capability &&
-        blob &&
-        blob.version === launch.contentVersion &&
-        blob.contentType === launch.contentType,
-      );
-    }
+    current = await viewLaunchIsCurrent(options, launch);
   } catch (error) {
     return pageError(502, `The bundle's View registry could not be read (${error instanceof Error ? error.message : String(error)}). Try again.`);
   }
@@ -312,18 +339,43 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
   }
   const blob = await readPageBlob(options, registration.entry);
   if (!blob) return jsonError(404, "NOT_FOUND", `no View bytes found for '${registration.entry}'`);
+  let admitted: ReturnType<typeof admitActiveView>;
+  try {
+    admitted = admitActiveView(blob.bytes, blob.contentType);
+  } catch (error) {
+    return jsonError(403, "FORBIDDEN", error instanceof Error ? error.message : String(error));
+  }
   const launch = runtime.launches.mint({
     registryId: registration.id,
     registryType: registration.type,
     registryVersion: registryRead.version,
     registryTitle: typeof registryRead.doc.frontmatter.title === "string" ? registryRead.doc.frontmatter.title : registration.id,
     entryKey: registration.entry,
-    contentType: blob.contentType,
-    contentVersion: blob.version,
-    bytes: blob.bytes,
+    contentType: admitted.contentType,
+    contentVersion: blobVersion(admitted.bytes),
+    bytes: admitted.bytes,
     capability: resolveDeclaredAccess(registryRead.doc.frontmatter),
   });
-  return new Response(JSON.stringify({ nonce: launch.nonce, url: `/__page/${launch.nonce}`, launchId: launch.launchId }), {
+  if (!(await viewLaunchIsCurrent(options, launch))) {
+    runtime.launches.revoke(launch.launchId);
+    return jsonError(403, "FORBIDDEN", "the View changed while its launch was being prepared");
+  }
+  const subject = pageLaunchAuthorizationSubject(launch);
+  const required = launch.capability !== "none";
+  const authorized = !required || await runtime.authorizations.isAuthorized(subject);
+  return new Response(JSON.stringify({
+    nonce: launch.nonce,
+    url: `/__page/${launch.nonce}`,
+    launchId: launch.launchId,
+    title: launch.registryTitle,
+    entry: launch.entryKey,
+    capability: launch.capability,
+    authorization: {
+      required,
+      authorized,
+      contentVersion: launch.contentVersion,
+    },
+  }), {
     status: 200,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
@@ -337,7 +389,14 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
  * else root basename), read per request so a `doc write docs/bundle --title …` shows up on the
  * next load without a server restart. Remote mode keeps the origin host as the label.
  */
-async function configResponse(options: UiServerOptions): Promise<Response> {
+async function configData(options: UiServerOptions): Promise<{
+  mode: "dir" | "remote";
+  remoteUrl: string | null;
+  root: string | null;
+  name: string;
+  sharing: SharingSummary | null;
+  workspaces: WorkspaceSummaryEntry[];
+}> {
   const name =
     options.mode === "dir"
       ? options.bundle
@@ -352,15 +411,19 @@ async function configResponse(options: UiServerOptions): Promise<Response> {
             return options.remoteBase ?? "remote";
           }
         })();
+  return {
+    mode: options.mode,
+    remoteUrl: options.mode === "remote" ? (options.remoteBase ?? null) : null,
+    root: options.mode === "dir" ? (options.bundle?.root ?? null) : (options.remoteBase ?? null),
+    name,
+    sharing: await sharingSummary(options),
+    workspaces: await workspacesSummary(options),
+  };
+}
+
+async function configResponse(options: UiServerOptions): Promise<Response> {
   return new Response(
-    JSON.stringify({
-      mode: options.mode,
-      remoteUrl: options.mode === "remote" ? (options.remoteBase ?? null) : null,
-      root: options.mode === "dir" ? (options.bundle?.root ?? null) : (options.remoteBase ?? null),
-      name,
-      sharing: await sharingSummary(options),
-      workspaces: await workspacesSummary(options),
-    }),
+    JSON.stringify(await configData(options)),
     { status: 200, headers: { "content-type": "application/json; charset=utf-8" } },
   );
 }
@@ -486,37 +549,42 @@ function exactOwnKeys(value: unknown, keys: readonly string[]): value is Record<
 
 const MAX_TRUSTED_ACTION_BODY_BYTES = 16 * 1024;
 
-async function actionPayload(req: Request, keys: readonly string[]): Promise<Record<string, unknown> | Response> {
+async function trustedPayload(
+  req: Request,
+  keys: readonly string[],
+  label = "trusted action",
+): Promise<Record<string, unknown> | Response> {
   if (req.headers.get("x-requested-with") !== "agentstate-lite-ui") {
-    return jsonError(403, "FORBIDDEN", "trusted actions require X-Requested-With: agentstate-lite-ui");
+    const subject = label === "trusted action" ? "trusted actions" : `${label} requests`;
+    return jsonError(403, "FORBIDDEN", `${subject} require X-Requested-With: agentstate-lite-ui`);
   }
   if (req.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") {
-    return jsonError(415, "USAGE", "trusted action requests require application/json");
+    return jsonError(415, "USAGE", `${label} requests require application/json`);
   }
   const declaredLength = Number(req.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_TRUSTED_ACTION_BODY_BYTES) {
-    return jsonError(413, "USAGE", "trusted action request body must be at most 16 KiB");
+    return jsonError(413, "USAGE", `${label} request body must be at most 16 KiB`);
   }
   let text: string;
   try {
     text = await req.text();
   } catch {
-    return jsonError(400, "USAGE", "trusted action request body could not be read");
+    return jsonError(400, "USAGE", `${label} request body could not be read`);
   }
   if (Buffer.byteLength(text, "utf8") > MAX_TRUSTED_ACTION_BODY_BYTES) {
-    return jsonError(413, "USAGE", "trusted action request body must be at most 16 KiB");
+    return jsonError(413, "USAGE", `${label} request body must be at most 16 KiB`);
   }
   let value: unknown;
   try {
     value = JSON.parse(text);
   } catch {
-    return jsonError(400, "USAGE", "trusted action request body must be valid JSON");
+    return jsonError(400, "USAGE", `${label} request body must be valid JSON`);
   }
-  return exactOwnKeys(value, keys) ? value : jsonError(400, "USAGE", `trusted action request must contain exactly ${keys.join(", ")}`);
+  return exactOwnKeys(value, keys) ? value : jsonError(400, "USAGE", `${label} request must contain exactly ${keys.join(", ")}`);
 }
 
 async function prepareAction(req: Request, options: UiServerOptions, runtime: UiRuntime): Promise<Response> {
-  const payload = await actionPayload(req, ["launchId", "action"]);
+  const payload = await trustedPayload(req, ["launchId", "action"]);
   if (payload instanceof Response) return payload;
   if (options.mode !== "dir" || !runtime.actions) {
     const result: ActionTerminalResult = { status: "rejected", action: "document.set-field", message: "trusted View actions are available only in local --dir mode" };
@@ -528,7 +596,7 @@ async function prepareAction(req: Request, options: UiServerOptions, runtime: Ui
 }
 
 async function finishAction(req: Request, runtime: UiRuntime, operation: "commit" | "cancel"): Promise<Response> {
-  const payload = await actionPayload(req, ["approvalToken"]);
+  const payload = await trustedPayload(req, ["approvalToken"]);
   if (payload instanceof Response) return payload;
   const token = typeof payload.approvalToken === "string" ? payload.approvalToken : "";
   if (!token || token.length > 256) return jsonError(400, "USAGE", "approvalToken must be a non-empty string of at most 256 characters");
@@ -536,6 +604,67 @@ async function finishAction(req: Request, runtime: UiRuntime, operation: "commit
     return actionJson({ status: "rejected", action: "document.set-field", message: "trusted View actions are unavailable" } satisfies ActionTerminalResult);
   }
   return actionJson(operation === "commit" ? await runtime.actions.commit(token) : runtime.actions.cancel(token));
+}
+
+function launchIdFrom(payload: Record<string, unknown>): string | null {
+  const launchId = typeof payload.launchId === "string" ? payload.launchId : "";
+  return launchId && launchId.length <= 256 ? launchId : null;
+}
+
+async function resolveViewAuthorization(
+  options: UiServerOptions,
+  runtime: UiRuntime,
+  launchId: string,
+  authorize: boolean,
+): Promise<{ required: boolean; authorized: boolean } | null> {
+  const launch = runtime.launches.resolveLaunch(launchId);
+  if (!launch || !(await viewLaunchIsCurrent(options, launch))) {
+    if (launch) runtime.launches.revoke(launch.launchId);
+    return null;
+  }
+  const subject = pageLaunchAuthorizationSubject(launch);
+  const required = launch.capability !== "none";
+  if (authorize && required) await runtime.authorizations.authorize(subject);
+  if (!(await viewLaunchIsCurrent(options, launch))) {
+    runtime.launches.revoke(launch.launchId);
+    return null;
+  }
+  return {
+    required,
+    authorized: !required || await runtime.authorizations.isAuthorized(subject),
+  };
+}
+
+async function authorizeView(req: Request, options: UiServerOptions, runtime: UiRuntime): Promise<Response> {
+  const payload = await trustedPayload(req, ["launchId"], "View authorization");
+  if (payload instanceof Response) return payload;
+  const launchId = launchIdFrom(payload);
+  if (!launchId) return jsonError(400, "USAGE", "launchId must be a non-empty string of at most 256 characters");
+  const status = await resolveViewAuthorization(options, runtime, launchId, true);
+  return status
+    ? actionJson(status)
+    : jsonError(403, "FORBIDDEN", "the View launch is unknown, changed, or expired");
+}
+
+async function verifyView(req: Request, options: UiServerOptions, runtime: UiRuntime): Promise<Response> {
+  const payload = await trustedPayload(req, ["launchId"], "View verification");
+  if (payload instanceof Response) return payload;
+  const launchId = launchIdFrom(payload);
+  if (!launchId) return jsonError(400, "USAGE", "launchId must be a non-empty string of at most 256 characters");
+  const status = await resolveViewAuthorization(options, runtime, launchId, false);
+  return status
+    ? actionJson(status)
+    : jsonError(403, "FORBIDDEN", "the View launch is unknown, changed, or expired");
+}
+
+async function handleViewBridge(req: Request, runtime: UiRuntime): Promise<Response> {
+  const payload = await trustedPayload(req, ["launchId", "request"], "View bridge");
+  if (payload instanceof Response) return payload;
+  const launchId = launchIdFrom(payload);
+  if (!launchId) return jsonError(400, "USAGE", "launchId must be a non-empty string of at most 256 characters");
+  if (!runtime.bridge) return jsonError(403, "FORBIDDEN", "the View bridge is unavailable for this host");
+  const outcome: BridgeOutcome = await runtime.bridge.handle(launchId, payload.request);
+  return actionJson(outcome);
 }
 
 async function handleRequest(
@@ -551,8 +680,7 @@ async function handleRequest(
   }
 
   const origin = `http://${req.headers.host}`;
-  const request = await requestFromIncomingMessage(req, origin);
-  const url = new URL(request.url);
+  const url = new URL(req.url ?? "/", origin);
 
   // PAGE BYTES — the second privilege tier. Nonce-gated and SESSION-INDEPENDENT: the sandboxed,
   // opaque-origin iframe that loads this URL holds no session token, and the nonce is its sole
@@ -566,13 +694,42 @@ async function handleRequest(
     return;
   }
 
-  const auth = checkAuth(sessionSecret, url.searchParams.get("token"), request.headers.get("cookie"));
+  // Authenticate from the raw request metadata before adapting/buffering any body. A caller with
+  // no session must not be able to make the loopback process allocate an arbitrary request body
+  // merely to discover that it is unauthorized.
+  const auth = checkAuth(
+    sessionSecret,
+    url.searchParams.get("token"),
+    req.headers.cookie ?? null,
+  );
   if (!auth.ok) {
     await writeResponseToServerResponse(
       res,
       jsonError(403, "FORBIDDEN", "missing or invalid session — open the printed URL (with its ?token) again"),
     );
     return;
+  }
+  const boundedTrustedBody =
+    url.pathname === "/__page/mint" || url.pathname.startsWith("/__ui/");
+  let request: Request;
+  try {
+    request = await requestFromIncomingMessage(req, origin, {
+      ...(boundedTrustedBody ? { maxBodyBytes: MAX_TRUSTED_ACTION_BODY_BYTES } : {}),
+    });
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      const label = url.pathname.startsWith("/__ui/actions/")
+        ? "trusted action"
+        : url.pathname.startsWith("/__ui/views/")
+          ? "View"
+          : "View launch";
+      await writeResponseToServerResponse(
+        res,
+        jsonError(413, "USAGE", `${label} request body must be at most 16 KiB`),
+      );
+      return;
+    }
+    throw error;
   }
   if (request.method !== "GET" && request.method !== "HEAD" && !request.headers.get("x-requested-with")) {
     await writeResponseToServerResponse(res, jsonError(403, "FORBIDDEN", "a mutation requires an X-Requested-With header"));
@@ -590,6 +747,12 @@ async function handleRequest(
   let response: Response;
   if (url.pathname === "/__page/mint" && request.method === "POST") {
     response = await handleMint(request, runtime, options);
+  } else if (url.pathname === "/__ui/views/authorize" && request.method === "POST") {
+    response = await authorizeView(request, options, runtime);
+  } else if (url.pathname === "/__ui/views/verify" && request.method === "POST") {
+    response = await verifyView(request, options, runtime);
+  } else if (url.pathname === "/__ui/views/bridge" && request.method === "POST") {
+    response = await handleViewBridge(request, runtime);
   } else if (url.pathname === "/__ui/actions/prepare" && request.method === "POST") {
     response = await prepareAction(request, options, runtime);
   } else if (url.pathname === "/__ui/actions/commit" && request.method === "POST") {
@@ -652,13 +815,30 @@ const CLOSE_DRAIN_WATCHDOG_MS = 5_000;
 export async function bootUiServer(options: UiServerOptions): Promise<UiServerHandle> {
   const sessionSecret = options.sessionSecret ?? mintSessionSecret();
   const launches = new PageLaunchRegistry();
+  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
+  const authorizations = options.viewAuthorization ?? new SessionViewAuthorizationStore();
+  const bridgeAuthority = bundle
+    ? new PageBridgeLaunchAuthority(bundle, launches, authorizations)
+    : undefined;
   const runtime: UiRuntime = {
     launches,
+    authorizations,
+    bridge:
+      bundle && bridgeAuthority
+        ? new BridgeService({
+            bundle,
+            launches: bridgeAuthority,
+            config: async () => {
+              const config = await configData(options);
+              return { root: config.root, name: config.name, mode: config.mode };
+            },
+          })
+        : undefined,
     actions:
       options.mode === "dir" && options.bundle
         ? new TrustedActionService(
             options.bundle,
-            new PageActionLaunchAuthority(options.bundle, launches),
+            new PageActionLaunchAuthority(options.bundle, launches, authorizations),
             options.actor,
           )
         : undefined,

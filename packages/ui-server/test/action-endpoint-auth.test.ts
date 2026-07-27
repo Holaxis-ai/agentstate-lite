@@ -25,6 +25,10 @@ const JSON_HEADERS = {
   "content-type": "application/json",
   "x-requested-with": "agentstate-lite-ui",
 };
+const PREAUTHORIZED_VIEWS = {
+  async isAuthorized() { return true; },
+  async authorize() {},
+};
 
 interface ProbeResponse {
   status: number;
@@ -77,6 +81,49 @@ async function post(
   });
 }
 
+/**
+ * Write a body chunk but deliberately never end the request. A bounded server must answer from
+ * headers/stream limits instead of waiting for EOF and buffering the rest.
+ */
+async function postChunkBeforeEnd(
+  server: UiServerHandle,
+  pathname: string,
+  chunk: Buffer,
+  headers: Record<string, string>,
+): Promise<ProbeResponse> {
+  return new Promise((resolve, reject) => {
+    const req = request(
+      {
+        hostname: server.host,
+        port: server.port,
+        path: pathname,
+        method: "POST",
+        headers,
+      },
+      (res) => {
+        let responseText = "";
+        res.setEncoding("utf8");
+        res.on("data", (part) => (responseText += part));
+        res.on("end", () => {
+          req.destroy();
+          try {
+            resolve({
+              status: res.statusCode ?? 0,
+              body: JSON.parse(responseText) as ProbeResponse["body"],
+            });
+          } catch (error) {
+            reject(new Error(`response was not JSON: ${responseText} (${String(error)})`));
+          }
+        });
+      },
+    );
+    req.once("error", (error) => {
+      if (!req.destroyed) reject(error);
+    });
+    req.write(chunk);
+  });
+}
+
 async function fixture(): Promise<Fixture> {
   const bundle: Bundle = { root: "mem://action-endpoint-auth", backend: new MemoryBackend() };
   await writeDoc(bundle, {
@@ -124,6 +171,7 @@ async function fixture(): Promise<Fixture> {
     router: createRouter(bundle),
     sessionSecret: SECRET,
     actor: "mike/test",
+    viewAuthorization: PREAUTHORIZED_VIEWS,
     serveAsset: () => ({
       status: 404,
       headers: { "content-type": "text/plain; charset=utf-8" },
@@ -252,6 +300,40 @@ test("/__ui/actions endpoints reject every request layer before action state cha
         });
       }
     }
+  } finally {
+    await f.server.close();
+  }
+});
+
+test("request ingress rejects unauthenticated and oversized chunked bodies before EOF", async () => {
+  const f = await fixture();
+  try {
+    const unauthenticated = await postChunkBeforeEnd(
+      f.server,
+      "/__ui/actions/prepare",
+      Buffer.alloc(1024 * 1024),
+      {
+        "content-type": "application/json",
+        "x-requested-with": "agentstate-lite-ui",
+      },
+    );
+    assert.equal(unauthenticated.status, 403);
+    assert.match(
+      String(unauthenticated.body.error?.message ?? ""),
+      /missing or invalid session/,
+    );
+
+    const oversized = await postChunkBeforeEnd(
+      f.server,
+      "/__ui/actions/prepare",
+      Buffer.alloc(16 * 1024 + 1),
+      JSON_HEADERS,
+    );
+    assert.equal(oversized.status, 413);
+    assert.match(
+      String(oversized.body.error?.message ?? ""),
+      /trusted action request body must be at most 16 KiB/,
+    );
   } finally {
     await f.server.close();
   }

@@ -1,12 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
-import { bootUiOverPersonalTaskSystemBundle, CLI_DIST } from "./harness.js";
+import { bootUiOverPersonalTaskSystemBundle, CLI_DIST, openRegisteredView } from "./harness.js";
 
 test("the Personal Task System board projects links live and commits a confirmed status change", async ({ page }) => {
   const ui = await bootUiOverPersonalTaskSystemBundle();
   try {
     await page.goto(ui.url);
-    await page.locator('[data-page-id="views-registry/personal-task-system-board"]').click();
+    await openRegisteredView(page, "views-registry/personal-task-system-board");
     const frame = page.frameLocator("iframe.page-frame-iframe");
 
     await expect(frame.getByRole("heading", { name: "Personal task board" })).toBeVisible();

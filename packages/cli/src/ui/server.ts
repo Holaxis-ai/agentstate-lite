@@ -10,6 +10,7 @@ import {
 import { deriveBundleDisplayName } from "../bundle-name.js";
 import { serveEmbeddedUiAsset } from "./assets.js";
 import { createSharingLoader, createWorkspacesLoader } from "./sharing.js";
+import { LocalViewAuthorizationStore } from "./view-authorizations.js";
 
 export { escapeHtml, pageError };
 export type { UiServerHandle };
@@ -23,8 +24,15 @@ export function bootUiServer(options: UiServerOptions): Promise<UiServerHandle> 
   // Dir mode injects the CLI's board-channel classification + catalog projection through the
   // runtime's consumer-owned seams (remote mode derives `hosted` in the runtime itself).
   const bundleRoot = options.mode === "dir" ? options.bundle?.root : undefined;
+  const bundleIdentity =
+    options.mode === "dir"
+      ? options.bundle?.root
+      : options.remoteBase;
   return bootUiServerRuntime({
     ...options,
+    ...(bundleIdentity
+      ? { viewAuthorization: new LocalViewAuthorizationStore(bundleIdentity) }
+      : {}),
     serveAsset: serveEmbeddedUiAsset,
     resolveBundleDisplayName: async (bundle) => (await deriveBundleDisplayName(bundle)).name,
     ...(bundleRoot !== undefined

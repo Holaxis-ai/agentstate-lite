@@ -6,7 +6,8 @@
  * exactly what's under test.
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
-import { bootUiOverDirBundle, bootUiOverPagesBundle } from "./harness.js";
+import { writeBlob } from "@agentstate-lite/core";
+import { bootUiOverDirBundle, bootUiOverPagesBundle, openRegisteredView } from "./harness.js";
 
 test("a request with no token and no session cookie is rejected (403)", async () => {
   const instance = await bootUiOverDirBundle([]);
@@ -62,7 +63,7 @@ test("P1: the session token never reaches a framed page — address bar scrubbed
       .not.toContain(token as string);
 
     // The session survives the scrub (cookie-auth'd from here on): open a page.
-    await page.locator('[data-page-id="views-registry/roadmap"]').click();
+    await openRegisteredView(page, "views-registry/roadmap");
     const handle = await page.waitForSelector("iframe.page-frame-iframe");
     const frame = await handle.contentFrame();
     if (!frame) throw new Error("iframe had no content frame");
@@ -72,6 +73,41 @@ test("P1: the session token never reaches a framed page — address bar scrubbed
     const referrer = await frame.evaluate(() => document.referrer);
     expect(referrer).toBe("");
     expect(referrer).not.toContain(token as string);
+  } finally {
+    await ui.cleanup();
+  }
+});
+
+test("active View consent is trusted shell chrome, remembered for exact bytes, and invalidated by changed HTML", async ({ page }) => {
+  const ui = await bootUiOverPagesBundle([
+    { id: "tasks/alpha", frontmatter: { type: "Task", title: "Alpha task", status: "todo" }, body: "" },
+  ]);
+  try {
+    await page.goto(ui.url);
+    await page.locator('[data-page-id="views-registry/roadmap"]').click();
+    const consent = page.getByRole("dialog", {
+      name: "Allow this View to read bundle data?",
+    });
+    await expect(consent).toBeVisible();
+    await expect(page.locator("iframe.page-frame-iframe")).toHaveCount(0);
+    await consent.getByRole("button", { name: "Allow this View" }).click();
+    await expect(page.frameLocator("iframe.page-frame-iframe").locator(".item").first()).toBeVisible();
+
+    await page.locator(".page-back").click();
+    await page.locator('[data-page-id="views-registry/roadmap"]').click();
+    await expect(page.locator("iframe.page-frame-iframe")).toBeVisible();
+    await expect(consent).toHaveCount(0);
+
+    await page.locator(".page-back").click();
+    await writeBlob(
+      { root: ui.dir },
+      "views/roadmap.html",
+      new TextEncoder().encode("<!doctype html><p>changed exact bytes</p>"),
+      "text/html; charset=utf-8",
+    );
+    await page.locator('[data-page-id="views-registry/roadmap"]').click();
+    await expect(consent).toBeVisible();
+    await expect(page.locator("iframe.page-frame-iframe")).toHaveCount(0);
   } finally {
     await ui.cleanup();
   }

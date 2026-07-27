@@ -9,5 +9,14 @@
  */
 
 export { createRouter, createRouterForBackend } from "./router.js";
-export { serve, requestFromIncomingMessage, writeResponseToServerResponse } from "./serve.js";
-export type { ServeOptions, ServerHandle } from "./serve.js";
+export {
+  RequestBodyTooLargeError,
+  serve,
+  requestFromIncomingMessage,
+  writeResponseToServerResponse,
+} from "./serve.js";
+export type {
+  RequestAdapterOptions,
+  ServeOptions,
+  ServerHandle,
+} from "./serve.js";
