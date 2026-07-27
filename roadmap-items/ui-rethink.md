@@ -2,8 +2,8 @@
 type: Roadmap Item
 title: 'The human window rethink: what replaces the kanban primitive'
 status: active
-actor: openai/codex
-timestamp: '2026-07-12T02:46:09.569Z'
+actor: mike/claude
+timestamp: '2026-07-27T01:58:39.041Z'
 ---
 [contains](../tasks/ui-v1.md)
 
@@ -22,3 +22,5 @@ timestamp: '2026-07-12T02:46:09.569Z'
 [contains](../tasks/review-request-workflow.md)
 
 [contains](../tasks/ui-page-watch-helper.md)
+
+[contains](../tasks/view-launch-version-trust-test.md)
