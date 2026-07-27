@@ -1,14 +1,16 @@
 ---
 type: Task
 title: Investigate MCP App presentation sizing controls
-status: todo
+status: in_progress
 priority: '2'
 description: >-
-  Establish empirically what control MCP Apps have over initial and subsequent
-  iframe/presentation size across official and current conversation hosts,
-  separating protocol guarantees from advisory host behavior.
+  CLAIMED 2026-07-27 by openai/codex. Researching protocol guarantees, official
+  reference-host behavior, and current Codex/ChatGPT host behavior before
+  deciding whether desktop and conversational Views share one entry, use
+  variants, or remain separate presentations.
 actor: openai/codex
-timestamp: '2026-07-26T22:33:33.688Z'
+assignee: openai/codex
+timestamp: '2026-07-27T12:22:00.785Z'
 ---
 # Question
 
