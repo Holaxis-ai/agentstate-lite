@@ -2,7 +2,7 @@
 type: Design Review
 title: Design review — MCP and web View security-model unification
 actor: openai/design-reviewer
-timestamp: '2026-07-26T23:52:14.942Z'
+timestamp: '2026-07-27T00:01:52.361Z'
 ---
 # Exact design reviewed
 
@@ -162,6 +162,75 @@ from the inner child cannot be mistaken for MCP JSON-RPC to the host transport.
 7. Define the executable HTML/content-type/CSP admission profile and supported-host failure mode.
 8. Define polling baseline, cursor/gap, visibility, teardown, and reload semantics.
 9. Keep Stage 2 read-only; do not add v1 actions until the read proof and its adversarial QA pass.
+
+# Re-review of the revised design
+
+## Exact revised design reviewed
+
+`designs/mcp-view-security-model-unification` at
+`sha256:0dc37c152da4749574f5f66c4c3b393f3e78761b123e18e0be390e3d415ee9ae`.
+
+This re-review compares that exact version against the original review above at
+`sha256:9842ce64a0bcd760bafb403c6d43c13f6b11e0e79f05ee5e52a2f1e05b2bfc25`.
+
+## Final verdict
+
+`approve`
+
+All seven design blockers are resolved. This approves the architecture and sequencing; it does
+not clear the mandatory private Stage 0 security gate or authorize implementation while that gate
+remains open.
+
+## Finding-by-finding disposition
+
+1. **Private disposition — resolved in the design.** Stage 0 is now mandatory, explicitly blocks
+   every public implementation path, states only the public invariant, and requires a private
+   decision on interim web behavior and clearance.
+2. **Server-side authority — resolved.** `BridgeService` is server-side in `view-runtime`;
+   `ui-server` and `mcp-app` are its consumers. Browser code forwards only launch ID plus request,
+   imports no Node runtime, and no longer supplies capability or semantic dependencies.
+3. **Provenance versus authorization — resolved.** They are separate axes and stored as distinct
+   facts. Verified package provenance requires exact package-controlled evidence and is not
+   inherited by copying.
+4. **Currentness — resolved.** The design defines precheck, bounded operation, postcheck,
+   release, and host-epoch fence; names the postcheck as the authorization point; and states the
+   sequential-backend race honestly rather than claiming instantaneous revocation.
+5. **First trust policy and identity — resolved.** The first proof is process-memory,
+   session-only, scoped to one running bundle instance and an exact seven-element tuple.
+   Persistent trust and portable bundle identity are explicitly deferred.
+6. **Unchanged source and host admission — resolved.** `active-view-v1` freezes content type,
+   UTF-8 decoding, size/hash, CSP/sandbox, credential exclusion, and host probes. The claim is
+   correctly narrowed to unchanged source against one bridge contract, with fail-closed host
+   incompatibility.
+7. **Generic broker bounds — resolved.** Exact envelopes, discriminated requests, identifiers,
+   selectors, rows, edges, bodies, batches, errors, and total replies are bounded. Nested MCP
+   transport-shaped input is explicitly rejected before bundle work.
+
+The prior nonblocking findings are also incorporated: passive is defined by presentation-owned
+authority rather than interactivity; MCP root is nullable; subscription arms a server baseline
+and reloads on uncertainty; navigation gives the target a new authorization decision; Page
+renaming remains out of scope; Stage 2 is read-only; and discovery/promotion remain deferred.
+
+## Remaining implementation details, not design blockers
+
+- The Stage 1 plan should spell out the trusted-shell consent ceremony and its server operation:
+  active bytes may load under the admitted sandbox, but only trusted shell chrome can create the
+  session authorization record, and no data-bearing reply may precede it.
+- Add a per-launch request/concurrency budget or circuit breaker. Per-message bounds prevent large
+  inputs and replies, but presentation-owned script can still flood many individually valid
+  requests. Adversarial QA should prove revocation/teardown stops queued and in-flight work.
+- “Baseline advances only after accepted delivery” needs an explicit adapter handshake. For MCP
+  polling, retain/repeat a pending delta until fixed-shell acknowledgement, or send the prior
+  delivery token on the next app-only poll; returning a tool result alone must not silently count
+  as child delivery.
+- Name the real supported conversation host before Stage 2 QA begins and pin the exact
+  `active-view-v1` host probe there.
+
+## Remaining blocker status
+
+There are no remaining design-document blockers. Implementation remains blocked by the separate
+mandatory private Stage 0 disposition and public-work clearance. That gate is deliberately not
+satisfied by this approval.
 
 [reviews design](../designs/mcp-view-security-model-unification.md)
 
