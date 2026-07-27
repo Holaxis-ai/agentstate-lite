@@ -328,7 +328,7 @@ function durablePayload(
     source: {
       viewId: launch.registryId,
       entry: launch.entryKey,
-      html: new TextDecoder("utf-8", { fatal: true }).decode(launch.bytes),
+      html: new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(launch.bytes),
       contentType: launch.contentType,
       contentVersion: launch.contentVersion,
     },

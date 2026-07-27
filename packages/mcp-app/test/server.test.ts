@@ -431,6 +431,25 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   );
 });
 
+test("durable View execution preserves a UTF-8 BOM included in the approved bytes", async () => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const bytes = new Uint8Array([
+    0xef,
+    0xbb,
+    0xbf,
+    ...new TextEncoder().encode("<!doctype html><title>BOM View</title>"),
+  ]);
+  await writeBlob(bundle, "views/roadmap.html", bytes, "text/html; charset=utf-8");
+
+  const payload = await resolveDurableViewLaunch(bundle, {
+    viewId: "views-registry/roadmap",
+  });
+
+  assert.equal(payload.source.html.codePointAt(0), 0xfeff);
+  assert.deepEqual(new TextEncoder().encode(payload.source.html), bytes);
+});
+
 test("registered Roadmap View runs from unchanged source through the authorized read-only bridge", async (t) => {
   const bundle = memoryBundle();
   await seed(bundle);

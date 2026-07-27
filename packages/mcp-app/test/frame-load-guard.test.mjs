@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { FrameLoadGuard } from "../dist/frame-load-guard.js";
+import { FrameLoadGuard } from "../src/frame-load-guard.js";
 
 test("only the programmed mount load is accepted; later iframe navigation is rejected", () => {
   const guard = new FrameLoadGuard();

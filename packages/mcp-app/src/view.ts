@@ -11,6 +11,7 @@ import type {
   McpViewPayload,
   ViewLaunchPayload,
 } from "./contract.js";
+import { mayForwardDurableActivity } from "./durable-activity.js";
 import { FrameLoadGuard } from "./frame-load-guard.js";
 import { containedDocument, materializePresentation } from "./presentation.js";
 
@@ -360,7 +361,12 @@ function durablePayloadFor(
 ): DurableViewLaunchPayload | null {
   const payload = currentPayload;
   return (
-    epoch === frameEpoch &&
+    mayForwardDurableActivity({
+      operationEpoch: epoch,
+      currentEpoch: frameEpoch,
+      visibilityState: document.visibilityState,
+      suspendedLaunchId: suspendedDurableLaunch,
+    }) &&
     payload?.schemaVersion === "agentstate.durable-view-launch.v1" &&
     payload.launch.launchId === launchId &&
     payload.launch.authorization.authorized
@@ -592,6 +598,7 @@ document.addEventListener("visibilitychange", () => {
     payload.launch.authorization.authorized
   ) {
     suspendedDurableLaunch = payload.launch.launchId;
+    frameEpoch++;
     stopPolling();
     return;
   }
