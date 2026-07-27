@@ -11,7 +11,7 @@ description: >-
   risk, and two claude mcp round-trips. Gated behind the MCP security-model
   unification.
 actor: mike/claude
-timestamp: '2026-07-27T01:48:11.181Z'
+timestamp: '2026-07-27T01:49:45.535Z'
 ---
 # Problem
 
@@ -69,3 +69,5 @@ not precede, the security-model unification that `tasks/mcp-view-security-model-
 disposition would be backwards. File now, sequence later.
 
 [depends on](mcp-view-security-model-unification.md)
+
+[depends on](mcp-stdio-error-routing.md)

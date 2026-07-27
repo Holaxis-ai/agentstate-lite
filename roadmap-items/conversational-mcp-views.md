@@ -13,7 +13,7 @@ sequence: >-
   proof → promotion/discovery → sizing evidence → authoring guidance → dogfood →
   second host / remote adapter
 actor: mike/claude
-timestamp: '2026-07-27T01:48:11.042Z'
+timestamp: '2026-07-27T01:49:45.399Z'
 ---
 # Direction
 
@@ -92,3 +92,5 @@ authority, remote workspaces, authentication, and a tool-per-View surface remain
 [contains](../tasks/mcp-durable-view-unchanged-proof.md)
 
 [contains](../tasks/mcp-install-verb.md)
+
+[contains](../tasks/mcp-stdio-error-routing.md)
