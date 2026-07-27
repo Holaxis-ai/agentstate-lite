@@ -5,11 +5,15 @@ status: in_progress
 priority: '2'
 actor: openai/codex
 description: >-
-  CLAIMED 2026-07-27 by openai/codex — implementing a bounded
-  source/launch/epoch-bound nested-frame height relay from current origin/main,
-  with responsive and adversarial tests.
+  IMPLEMENTED 2026-07-27 by openai/codex — draft PR #175 adds the bounded
+  current-window/launch/epoch/nonce height relay for generated and durable MCP
+  Views. Full repository check passed; focused MCP suite 28/28 covers growth,
+  shrink, viewport reflow, stale/wrong-source/malformed inputs, caps, and
+  containment. Direct Codex-host dimension inspection remained unavailable
+  because no browser-control target was exposed. Independent review is pending
+  before merge.
 assignee: openai/codex
-timestamp: '2026-07-27T12:37:02.061Z'
+timestamp: '2026-07-27T12:58:02.600Z'
 ---
 # Problem
 
