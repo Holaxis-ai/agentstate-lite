@@ -3,14 +3,14 @@ type: Task
 title: >-
   MCP stdio server writes its error envelope onto the JSON-RPC channel (stdout),
   leaving stderr empty
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Implemented in PR #176; full repository gate green; awaiting independent
-  review and merge.
+  Shipped in PR #176: MCP errors now go to stderr and stdout remains a pristine
+  JSON-RPC channel.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-07-27T15:32:34.345Z'
+timestamp: '2026-07-27T18:54:07.341Z'
 ---
 # Defect
 
@@ -84,4 +84,7 @@ instead of corrupting the JSON-RPC transport.
 - Full repository `npm run check` passes, including build, typecheck, all workspace/script tests,
   installed-package proof, skill check, and 19 Playwright end-to-end tests.
 
-The task remains `in_progress` until independent review and merge.
+Independent review found no blocking or non-blocking issues and added adversarial subprocess
+coverage for an unexpected positional argument, a blank actor, ambient discovery from a
+bundle-less directory, and an already-handled runtime rejection. PR #176 merged to `main` as
+`03a07dd7ab1f26f49b7410666a7179e6bee3219e` on 2026-07-27.
