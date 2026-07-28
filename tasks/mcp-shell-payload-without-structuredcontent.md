@@ -19,45 +19,61 @@ description: >-
   bridge is already dead on Desktop and this becomes a larger unit. Full record:
   context-notes/design-review-mcp-payload-recovery. Claim held by claude-main;
   probe build is the next step.
-timestamp: '2026-07-28T00:40:23.815Z'
+timestamp: '2026-07-28T00:51:07.964Z'
 ---
-# Root cause (diagnosed 2026-07-27, claude-main + Brian field testing)
+# Root cause (corrected after design review — see the review record for the full chain)
 
-The MCP Apps protocol makes structuredContent in tool results an OPTIONAL host capability
-(ext-apps 1.7.5 host-capabilities schema: 'Host supports structured content'). The shipped shell's
-renderPayload path consumes ONLY result.structuredContent (view.ts renderResult), so on any host
-that does not deliver it — empirically: Claude Desktop, which otherwise renders MCP Apps fine —
-every launch shows 'This tool result did not contain a valid AgentState View payload.' over a blank
-frame. Server, schemas, validator, and the durable approval loop are all verified correct
-(full chain: context-notes/mcp-durable-view-render-field-report). Prediction logged: the generated
-path fails identically on such hosts (same channel).
+Claude Desktop delivers show_view tool results that the App shell judges payload-less, so nothing
+renders on that host (both generated and registered paths; server-side results verified complete
+over raw stdio). WHY is unknown: the earlier 'optional structuredContent host capability' framing
+was a misreading (that schema text covers app-to-host modalities); a payload-size limit fits the
+symptom equally. The shell's sole dependency on result.structuredContent is the fragility either
+way.
 
-# Fix direction (design touchpoint with the security review)
+# ADOPTED DESIGN (supersedes the original proposal — do not build anything else)
 
-The App has its own host-proxied JSON-RPC channel to the server (callServerTool /
-readServerResource — core to the Apps spec, host support not optional). Options, roughly in order
-of preference:
+The original argument-replay proposal (shell re-invokes show_view with captured tool-input
+arguments) is REJECTED: it requires making show_view app-callable (arbitrary bundle selection
+handed to the App — authority widening), violates the security-unification invariant (App sends
+only opaque IDs, never View specification), and mints duplicate launches. Full adjudication:
+[design review record](../context-notes/design-review-mcp-payload-recovery.md).
 
-1. App-visible payload fetch: register a tool with visibility: ['app'] (the ext-apps tool-meta
-   supports model/app visibility scoping) — e.g. resolve_launch — that returns the current launch
-   payload; the shell calls it when ontoolresult arrives without a valid payload, keying off the
-   toolinput notification's arguments (viewId / generated args), which the Apps protocol DOES
-   deliver to the App. No trust-surface change: the App already receives this payload when
-   structuredContent works; visibility 'app' keeps it out of the model's tool list.
-2. Fallback: shell checks app.getHostCapabilities() and surfaces an honest diagnostic naming the
-   missing capability instead of the generic message (worth doing regardless, for the next host).
-3. Rejected: mirroring JSON into a text content part (pollutes the text fallback every non-App
-   host shows).
+Build instead, GATED on the probe below:
+
+- show_view records requestId -> launchId in a small bounded, TTL'd, ONE-SHOT map
+  (RequestHandlerExtra.requestId is available in every tool callback; the ui/initialize handshake
+  delivers the same id to the shell as hostContext.toolInfo.id).
+- New app-only resolve_launch({ toolCallId }) (visibility: ['app']) re-derives the already-minted
+  payload from existing launch state and deletes the mapping on first read. No payload copies, no
+  second launch, no re-frozen query.
+- Shell: on a payload-less NON-ERROR result, call resolve_launch with getHostContext().toolInfo.id.
+  Never recover from isError results — surface the server's error text instead of the generic
+  message. Hard per-instance retry cap (no reference-equality retry bounding).
+- Keep the pure result-recovery module; DELETE view.ts's duplicate validators in the same unit.
+- Fallback ONLY if the probe shows toolInfo.id absent on Desktop: argumentless
+  most-recent-undelivered-launch, one-shot, with the concurrent-panel ambiguity stated in code.
+
+# Build gates (in order; the build does not start until 1-2 pass)
+
+1. Throwaway instrumentation branch (NEVER merged), ONE Claude Desktop launch, findings written
+   server-side via a temporary app-only echo tool: (a) ontoolinput fired + arg keys; (b) actual
+   getHostCapabilities keys; (c) toolInfo.id present; (d) delivered result shape; (e) callServerTool
+   response structuredContent for SMALL and ~1MB payloads; (f) does result._meta survive.
+2. STOP if (e) fails: proxied responses also lossy means the durable bridge is already dead on
+   Desktop — bigger unit, re-plan.
+3. If (f) shows _meta survives while structuredContent does not, zero-round-trip _meta mirroring
+   beats resolve_launch — adopt it instead and record the swap.
 
 # Acceptance sketch
 
-- On a host that withholds structuredContent, both generated and durable launches render.
-- On capability-declaring hosts, behavior unchanged (no double-fetch, or a cheap no-op one).
-- Shell unit covers ontoolresult-without-structuredContent for both schemas; the diagnostic
-  message names the real condition when recovery also fails.
-- Security note: confirm with the in-flight security-model unification review that an app-visible
-  resolve_launch leaks nothing beyond what structuredContent delivery already grants.
+- On a host that omits structuredContent from tool-result notifications, generated and durable
+  launches both render (or, when the probe's answers make that impossible, the shell shows an
+  evidence-based diagnostic describing what was observed — never a capability that does not exist).
+- Healthy hosts: behavior unchanged; recovery path provably idle.
+- Unit tests: extraction + coordinator ordering/one-shot invariants; isError never recovers;
+  registry one-shot consumption; server test pins resolve_launch app-only visibility.
 
-[field report with the full empirical chain](../context-notes/mcp-durable-view-render-field-report.md)
+[design review record (authoritative adjudication)](../context-notes/design-review-mcp-payload-recovery.md)
+[corrected field report](../context-notes/mcp-durable-view-render-field-report.md)
+[security design this conforms to](../../designs/mcp-view-security-model-unification.md)
 [Mike's catalog WIP this must not collide with](mcp-durable-view-catalog.md)
-[security design under review](../../designs/mcp-view-security-model-unification.md)
