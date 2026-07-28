@@ -13,8 +13,8 @@ sequence: >-
   evidence → intrinsic sizing → promotion/discovery design → bounded View
   catalog → authoring guidance → dogfood → promotion ergonomics decision →
   second host / remote adapter
-actor: claude-main
-timestamp: '2026-07-28T15:15:37.531Z'
+actor: codex-pr177-reviewer
+timestamp: '2026-07-28T21:24:17.408Z'
 ---
 # Direction
 
@@ -114,3 +114,5 @@ authority, remote workspaces, authentication, and a tool-per-View surface remain
 [contains](../tasks/mcp-durable-view-catalog.md)
 
 [simple-prompt unlock: bundle self-description for generated views](../tasks/mcp-generated-view-type-discovery.md)
+
+[contains](../tasks/pr-177-review.md)
