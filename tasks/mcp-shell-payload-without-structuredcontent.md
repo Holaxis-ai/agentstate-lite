@@ -7,18 +7,19 @@ status: in_progress
 priority: '1'
 actor: claude-main
 description: >-
-  CONFIRMED both paths 2026-07-27 ~18:15: generated show_view fails on Claude
-  Desktop with the identical invalid-payload error, as predicted — host
-  withholds structuredContent; shell depends on it exclusively. CLAIMED by
-  claude-main (Brian's go): building the layered fix — (1) shell stores the
-  toolinput arguments the Apps protocol delivers and, when a toolresult arrives
-  without a valid payload, recovers by re-invoking show_view over the App's own
-  host-proxied server channel (callServerTool) and rendering that response's
-  payload; (2) when recovery is impossible (no toolinput either), an honest
-  diagnostic naming the host capability gap replaces the generic message. No new
-  trust surface: the App receives exactly the payload structuredContent delivery
-  would have granted. Branch + tests + review gate to follow.
-timestamp: '2026-07-28T00:15:44.471Z'
+  REDESIGNED after pre-build independent design review (Brian's call — review
+  caught a misread root cause, an authority-widening flaw in the argument-replay
+  mechanism, and an unverified gating assumption). Adopted design: app-only
+  resolve_launch keyed on hostContext.toolInfo.id, one-shot, re-derived from
+  existing launch state — conforms to the security-unification invariant; NO
+  dual-visibility show_view, NO argument replay, NO second launch. BUILD GATED
+  on a throwaway Desktop instrumentation probe (does the proxied tools/call
+  response preserve structuredContent? does toolInfo.id arrive? is it a SIZE
+  limit?) — if proxied responses also drop structuredContent, STOP: the durable
+  bridge is already dead on Desktop and this becomes a larger unit. Full record:
+  context-notes/design-review-mcp-payload-recovery. Claim held by claude-main;
+  probe build is the next step.
+timestamp: '2026-07-28T00:40:23.815Z'
 ---
 # Root cause (diagnosed 2026-07-27, claude-main + Brian field testing)
 

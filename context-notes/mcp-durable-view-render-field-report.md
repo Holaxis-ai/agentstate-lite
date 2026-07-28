@@ -4,7 +4,7 @@ title: >-
   Field report: durable View launch on Claude Desktop — approval loop works, App
   shell render fails
 actor: claude-main
-timestamp: '2026-07-27T23:41:26.327Z'
+timestamp: '2026-07-28T00:39:18.639Z'
 ---
 Empirical chain from Brian's machine, 2026-07-27, installed 0.1.0-pre.1 build of main, Claude Desktop as host (which DOES render MCP Apps — the panel frame appears).
 
@@ -20,3 +20,15 @@ OPEN: the GENERATED path (html+query) has not yet been rendered on this host —
 [the WIP unit this feeds](../tasks/mcp-durable-view-catalog.md)
 [security design under review](../designs/mcp-view-security-model-unification.md)
 [sibling error-surface findings](mcp-stdio-error-field-repro.md)
+
+## CORRECTION (2026-07-27, after independent design review)
+
+The root-cause FRAMING above is wrong, though the observations stand. The 'optional host
+capability' text in ext-apps describes content modalities the APP may send the HOST
+(updateModelContext/message), not host-to-app tool-result delivery — there is no declared
+structuredContent capability a host can withhold, and McpUiToolResultNotification's params ARE the
+full CallToolResult including structuredContent. What is established: Desktop delivered tool
+results the shell judged payload-less; WHY is unknown (candidates include host-side omission and a
+payload-SIZE limit — generated payloads run to ~1MB). An instrumentation probe on Desktop is the
+gating next step; hold any upstream report until it replaces this framing with observed behavior.
+Full review record: context-notes/design-review-mcp-payload-recovery.
