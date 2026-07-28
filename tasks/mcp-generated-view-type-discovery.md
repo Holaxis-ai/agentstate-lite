@@ -3,10 +3,22 @@ type: Task
 title: >-
   Generated MCP views: model cannot discover bundle types/fields; no-match
   errors should name them
-status: todo
+status: in_progress
 priority: '2'
 actor: claude-main
-timestamp: '2026-07-28T03:17:39.993Z'
+description: >-
+  CLAIMED claude-main 2026-07-28 (Brian's go). Building the error-enrichment
+  slice as this unit's coherent claim: the generated-path no-match error becomes
+  self-describing — a type miss names the bundle's actual types (bounded list)
+  with a nearest-match hint ('task' -> 'Task'); a field-filter miss reports how
+  many documents the type matched and the observed values of the filtered field
+  (bounded), so 'priority 1-4' style facts surface exactly when needed. The
+  model-visible kinds-CATALOG idea stays OUT of this unit — it needs the
+  tool-placement call that tasks/mcp-durable-view-catalog's
+  two-model-visible-tools pin owns; flagged there rather than built here.
+  Ordinary tier: unit+server tests in-diff, repo gates, independent review at
+  exact SHA before PR.
+timestamp: '2026-07-28T16:27:07.733Z'
 ---
 # Field evidence (Brian, Claude Desktop chat, 2026-07-27 evening)
 
