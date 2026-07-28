@@ -60,3 +60,18 @@ test("distinctTypes dedupes, trims, sorts, and drops blank types", () => {
     ["Design", "Task"],
   );
 });
+
+test("observed values are clipped per value and array fields flatten per element", () => {
+  const long = "x".repeat(200);
+  const message = describeEmptySelection({
+    query: { type: "Task", field: "tags=nope" },
+    typeMatched: [
+      head("Task", { tags: ["alpha", "beta"] }),
+      head("Task", { tags: long }),
+    ],
+    bundleTypes: [],
+  });
+  assert.match(message, /'alpha', 'beta'/, "array fields must list elements, not a joined string");
+  assert.ok(!message.includes(long), "long values must be clipped");
+  assert.ok(message.includes("x".repeat(80) + "…"));
+});

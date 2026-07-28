@@ -13,9 +13,14 @@ import type { Frontmatter } from "@agentstate-lite/core";
 
 const MAX_LISTED_TYPES = 12;
 const MAX_LISTED_VALUES = 8;
+const MAX_VALUE_CHARS = 80;
+
+function clip(value: string): string {
+  return value.length > MAX_VALUE_CHARS ? `${value.slice(0, MAX_VALUE_CHARS)}…` : value;
+}
 
 function bounded(values: readonly string[], cap: number): string {
-  const shown = values.slice(0, cap).map((value) => `'${value}'`);
+  const shown = values.slice(0, cap).map((value) => `'${clip(value)}'`);
   const more = values.length - shown.length;
   return shown.join(", ") + (more > 0 ? ` (and ${more} more)` : "");
 }
@@ -70,10 +75,15 @@ export function describeEmptySelection({ query, typeMatched, bundleTypes }: Empt
   if (query.field) {
     const eq = query.field.indexOf("=");
     const key = (eq > 0 ? query.field.slice(0, eq) : query.field).trim();
+    // Arrays flatten per element to mirror matchesFilter's per-element coercion — the hint must
+    // teach values in the exact shape a retry filter matches on.
     const observed = [
       ...new Set(
         typeMatched
-          .map((row) => row.frontmatter[key])
+          .flatMap((row) => {
+            const raw = row.frontmatter[key];
+            return Array.isArray(raw) ? raw : [raw];
+          })
           .filter((value) => value !== undefined && value !== null)
           .map((value) => String(value)),
       ),
