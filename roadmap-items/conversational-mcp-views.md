@@ -13,8 +13,8 @@ sequence: >-
   evidence → intrinsic sizing → promotion/discovery design → bounded View
   catalog → authoring guidance → dogfood → promotion ergonomics decision →
   second host / remote adapter
-actor: openai/codex
-timestamp: '2026-07-27T15:18:46.660Z'
+actor: claude-main
+timestamp: '2026-07-28T15:15:37.531Z'
 ---
 # Direction
 
@@ -112,3 +112,5 @@ authority, remote workspaces, authentication, and a tool-per-View surface remain
 [contains](../tasks/mcp-durable-view-intrinsic-sizing.md)
 
 [contains](../tasks/mcp-durable-view-catalog.md)
+
+[simple-prompt unlock: bundle self-description for generated views](../tasks/mcp-generated-view-type-discovery.md)
