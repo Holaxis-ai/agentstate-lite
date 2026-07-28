@@ -13,6 +13,7 @@ import {
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
+import { extractClaimId } from "../src/result-recovery.js";
 import {
   AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
   CLOSE_DURABLE_VIEW_TOOL_NAME,
@@ -21,6 +22,7 @@ import {
   MCP_VIEW_RESOURCE_URI,
   POLL_DURABLE_VIEW_TOOL_NAME,
   PREPARE_VIEW_ACTION_TOOL_NAME,
+  RESOLVE_LAUNCH_TOOL_NAME,
   SHOW_VIEW_TOOL_NAME,
   createMcpAppServer,
   resolveDurableViewLaunch,
@@ -312,6 +314,7 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
     CLOSE_DURABLE_VIEW_TOOL_NAME,
     PREPARE_VIEW_ACTION_TOOL_NAME,
     FINISH_VIEW_ACTION_TOOL_NAME,
+    RESOLVE_LAUNCH_TOOL_NAME,
   ]);
   const showTool = tools.tools.find((tool) => tool.name === SHOW_VIEW_TOOL_NAME);
   const authorizeTool = tools.tools.find(
@@ -1224,4 +1227,123 @@ test("MCP actions fail closed outside the explicit envelope and on stale display
     (unknown.structuredContent as { result: { status: string } }).result.status,
     "rejected",
   );
+});
+
+test("resolve_launch redeems the one-shot claim ticket for an undelivered generated launch", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const server = createMcpAppServer({ bundle, version: "test" });
+  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  // The tool exists and is app-only — never model-visible.
+  const tools = await client.listTools();
+  const resolveTool = tools.tools.find((tool) => tool.name === RESOLVE_LAUNCH_TOOL_NAME);
+  assert.ok(resolveTool, "resolve_launch must be registered");
+  assert.deepEqual(resolveTool._meta?.ui?.visibility, ["app"]);
+
+  const shown = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: {
+      title: "Recovery proof",
+      html: "<p data-aslite-text=\"objects.0.id\"></p>",
+      objectIds: ["tasks/alpha"],
+    },
+  });
+  const shownPayload = shown.structuredContent;
+  assert.ok(shownPayload && typeof shownPayload.launch?.launchId === "string");
+
+  // The claim marker rides the preserved text channel; the shell's parser finds it there.
+  const claim = extractClaimId(shown);
+  assert.ok(claim, "show_view's text content must carry the claim marker");
+
+  // An unknown claim fails closed — NEVER another pending launch (PR #178 P1).
+  const wrong = await client.callTool({
+    name: RESOLVE_LAUNCH_TOOL_NAME,
+    arguments: { claim: "not-a-real-claim-id" },
+  });
+  assert.equal(wrong.isError, true);
+
+  // The exact claim redeems the ALREADY-MINTED launch…
+  const resolved = await client.callTool({
+    name: RESOLVE_LAUNCH_TOOL_NAME,
+    arguments: { claim },
+  });
+  assert.notEqual(resolved.isError, true);
+  assert.equal(
+    resolved.structuredContent?.launch?.launchId,
+    shownPayload.launch.launchId,
+    "resolve_launch must return the ALREADY-MINTED launch, not a new one",
+  );
+
+  // …and is one-shot.
+  const second = await client.callTool({
+    name: RESOLVE_LAUNCH_TOOL_NAME,
+    arguments: { claim },
+  });
+  assert.equal(second.isError, true);
+});
+
+test("resolve_launch redeems a durable launch with its current authorization state", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const server = createMcpAppServer({ bundle, version: "test" });
+  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const shown = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: { viewId: "views-registry/roadmap" },
+  });
+  const shownPayload = shown.structuredContent;
+  assert.equal(shownPayload?.schemaVersion, "agentstate.durable-view-launch.v1");
+  const claim = extractClaimId(shown);
+  assert.ok(claim, "durable show_view results carry the claim marker too");
+
+  const resolved = await client.callTool({ name: RESOLVE_LAUNCH_TOOL_NAME, arguments: { claim } });
+  assert.notEqual(resolved.isError, true);
+  const payload = resolved.structuredContent;
+  assert.equal(payload?.schemaVersion, "agentstate.durable-view-launch.v1");
+  assert.equal(payload?.launch?.launchId, shownPayload.launch.launchId);
+  assert.equal(payload?.launch?.authorization?.authorized, false);
+  assert.equal(payload?.source?.viewId, "views-registry/roadmap");
+});
+
+test("a failed show_view records no claim ticket", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const server = createMcpAppServer({ bundle, version: "test" });
+  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const failed = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: { viewId: "views-registry/does-not-exist" },
+  });
+  assert.equal(failed.isError, true);
+  assert.equal(extractClaimId(failed), null, "a failed show_view carries no claim marker");
+
+  const resolved = await client.callTool({
+    name: RESOLVE_LAUNCH_TOOL_NAME,
+    arguments: { claim: "claim-that-was-never-minted" },
+  });
+  assert.equal(resolved.isError, true, "no pending launch may be minted by a failed show_view");
 });

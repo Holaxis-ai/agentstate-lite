@@ -41,7 +41,9 @@ import type {
   ViewObjectSnapshot,
 } from "./contract.js";
 import { MCP_VIEW_HTML } from "./generated/view-html.generated.js";
+import { randomBytes } from "node:crypto";
 import { McpViewLaunchRegistry } from "./launches.js";
+import { PendingLaunchRegistry } from "./pending-launches.js";
 
 export const MCP_VIEW_RESOURCE_URI = "ui://agentstate/view-host/v1.html";
 export const SHOW_VIEW_TOOL_NAME = "show_view";
@@ -51,6 +53,20 @@ export const AUTHORIZE_DURABLE_VIEW_TOOL_NAME = "authorize_durable_view";
 export const DURABLE_VIEW_BRIDGE_TOOL_NAME = "durable_view_bridge";
 export const POLL_DURABLE_VIEW_TOOL_NAME = "poll_durable_view";
 export const CLOSE_DURABLE_VIEW_TOOL_NAME = "close_durable_view";
+export const RESOLVE_LAUNCH_TOOL_NAME = "resolve_launch";
+
+/**
+ * Claim marker carried in show_view's TEXT content — the channel Claude Desktop preserves when it
+ * strips structuredContent (probe-established). Model-visible by construction; conveys no model
+ * authority: resolve_launch is app-only, same-connection, bounded, one-shot, exact-match-only.
+ */
+export function formatClaimMarker(claimId: string): string {
+  return `[agentstate-claim:v1:${claimId}]`;
+}
+
+function mintClaimId(): string {
+  return randomBytes(16).toString("base64url");
+}
 export const MAX_VIEW_PRESENTATION_BYTES = 256 * 1024;
 export const MAX_VIEW_OBJECTS = 20;
 export const MAX_VIEW_ACTIONS = 8;
@@ -414,6 +430,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
   const durableLaunches = new PageLaunchRegistry();
   const durableAuthorizations =
     options.viewAuthorization ?? new SessionViewAuthorizationStore();
+  const pendingLaunches = new PendingLaunchRegistry();
   const durableBridge = new BridgeService({
     bundle: options.bundle,
     launches: new PageBridgeLaunchAuthority(
@@ -450,17 +467,24 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     async (input): Promise<CallToolResult> => {
       try {
         const parsed = parseShowViewInput(input);
-        const payload =
-          "viewId" in parsed
-            ? await resolveDurableViewLaunch(
-                options.bundle,
-                parsed,
-                durableLaunches,
-                durableAuthorizations,
-              )
-            : await resolveViewLaunch(options.bundle, parsed, launches);
+        const durable = "viewId" in parsed;
+        const payload = durable
+          ? await resolveDurableViewLaunch(
+              options.bundle,
+              parsed as DurableShowViewInput,
+              durableLaunches,
+              durableAuthorizations,
+            )
+          : await resolveViewLaunch(options.bundle, parsed as GeneratedShowViewInput, launches);
+        // Claim ticket for hosts whose tool-result notifications strip structuredContent
+        // (probe-established for Claude Desktop): the marker rides the preserved text channel
+        // and the App redeems it — exact-match, one-shot — via the app-only resolve_launch.
+        const claimId = mintClaimId();
+        pendingLaunches.record(claimId, payload.launch.launchId, durable ? "durable" : "generated");
         return {
-          content: [{ type: "text", text: fallbackText(payload) }],
+          content: [
+            { type: "text", text: `${fallbackText(payload)}\n${formatClaimMarker(claimId)}` },
+          ],
           structuredContent: { ...payload },
         };
       } catch (error) {
@@ -748,6 +772,62 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
         },
       ],
     }),
+  );
+
+  registerAppTool(
+    server,
+    RESOLVE_LAUNCH_TOOL_NAME,
+    {
+      title: "Resolve undelivered AgentState View launch",
+      description:
+        "Redeem the exact one-shot claim marker from a show_view result whose structured payload the host stripped. Returns the already-minted payload; unknown or reused claims fail closed.",
+      inputSchema: { claim: z.string().min(8).max(256) },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async ({ claim }): Promise<CallToolResult> => {
+      const entry = pendingLaunches.consume(claim);
+      if (!entry) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: "Unknown, expired, or already-redeemed AgentState View claim. Reopen the View.",
+            },
+          ],
+        };
+      }
+      let payload: McpViewPayload | null = null;
+      if (entry.kind === "generated") {
+        payload = launches.payload(entry.launchId);
+      } else {
+        const launch = durableLaunches.resolveLaunch(entry.launchId);
+        if (launch) {
+          payload = durablePayload(
+            launch,
+            await durableAuthorizations.isAuthorized(pageLaunchAuthorizationSubject(launch)),
+          );
+        }
+      }
+      if (!payload) {
+        return {
+          isError: true,
+          content: [
+            { type: "text", text: "The pending View launch expired before it could be resolved. Reopen the View." },
+          ],
+        };
+      }
+      return {
+        content: [{ type: "text", text: fallbackText(payload) }],
+        structuredContent: { ...payload },
+      };
+    },
   );
 
   return server;

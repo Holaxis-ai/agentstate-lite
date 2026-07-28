@@ -12,6 +12,14 @@ import type {
   ViewLaunchPayload,
 } from "./contract.js";
 import { mayForwardDurableActivity } from "./durable-activity.js";
+import {
+  RecoveryGuard,
+  extractClaimId,
+  extractViewPayload,
+  firstResultText,
+  isDurableViewPayload,
+  isViewPayload,
+} from "./result-recovery.js";
 import { FrameLoadGuard } from "./frame-load-guard.js";
 import {
   appendFrameSizingScript,
@@ -75,53 +83,6 @@ const ACTIVE_VIEW_CHILD_CSP = [
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isGeneratedViewPayload(value: unknown): value is ViewLaunchPayload {
-  if (!isRecord(value)) return false;
-  const presentation = value.presentation;
-  const selection = value.selection;
-  const launch = value.launch;
-  return (
-    value.schemaVersion === "agentstate.view-launch.v1" &&
-    typeof value.title === "string" &&
-    isRecord(presentation) &&
-    typeof presentation.html === "string" &&
-    typeof presentation.css === "string" &&
-    typeof presentation.contentHash === "string" &&
-    isRecord(selection) &&
-    Array.isArray(selection.objectIds) &&
-    Array.isArray(value.objects) &&
-    isRecord(launch) &&
-    typeof launch.launchId === "string" &&
-    Array.isArray(launch.actions)
-  );
-}
-
-function isDurableViewPayload(value: unknown): value is DurableViewLaunchPayload {
-  if (!isRecord(value)) return false;
-  const source = value.source;
-  const launch = value.launch;
-  const authorization = isRecord(launch) ? launch.authorization : null;
-  return (
-    value.schemaVersion === "agentstate.durable-view-launch.v1" &&
-    typeof value.title === "string" &&
-    isRecord(source) &&
-    typeof source.viewId === "string" &&
-    typeof source.entry === "string" &&
-    typeof source.html === "string" &&
-    typeof source.contentType === "string" &&
-    typeof source.contentVersion === "string" &&
-    isRecord(launch) &&
-    typeof launch.launchId === "string" &&
-    isRecord(authorization) &&
-    typeof authorization.required === "boolean" &&
-    typeof authorization.authorized === "boolean"
-  );
-}
-
-function isViewPayload(value: unknown): value is McpViewPayload {
-  return isGeneratedViewPayload(value) || isDurableViewPayload(value);
 }
 
 function structuredResult(result: CallToolResult): Record<string, unknown> | null {
@@ -376,21 +337,66 @@ function renderPayload(payload: McpViewPayload): void {
   }
 }
 
+const recoveryGuard = new RecoveryGuard();
+
 function renderResult(result: CallToolResult): void {
-  const structured = structuredResult(result);
-  if (isViewPayload(structured)) {
-    renderPayload(structured);
+  const payload = extractViewPayload(result);
+  if (payload) {
+    renderPayload(payload);
     return;
   }
-  if (structured && isViewPayload(structured.view)) {
-    renderPayload(structured.view);
-    return;
-  }
-  if (!currentPayload) {
+  if (currentPayload) return;
+  if (result.isError === true) {
     statusEl.dataset.kind = "error";
-    statusEl.textContent = "This tool result did not contain a valid AgentState View payload.";
+    statusEl.textContent =
+      firstResultText(result) ?? "The AgentState server reported an error for this View.";
     clearFrameDocument();
+    return;
   }
+  void recoverPayload(result);
+}
+
+// Probe-established (tasks/mcp-shell-payload-without-structuredcontent): some hosts rebuild
+// tool-result notifications with prose only, stripping structuredContent while PRESERVING text —
+// and proxy the App's own tools/call requests faithfully. The delivered text carries an exact
+// one-shot claim marker; redeem it over the app channel. No marker means fail closed: guessing
+// (e.g. most-recent fallback) could hand this panel another launch's payload (PR #178 review).
+async function recoverPayload(result: CallToolResult): Promise<void> {
+  const claim = extractClaimId(result);
+  if (!claim) {
+    reportUndeliveredPayload("the delivered result carried no claim marker");
+    return;
+  }
+  if (!recoveryGuard.tryAcquire()) {
+    reportUndeliveredPayload(null);
+    return;
+  }
+  statusEl.dataset.kind = "ready";
+  statusEl.textContent = "Recovering the View payload over the app channel…";
+  try {
+    const response = await app.callServerTool({
+      name: "resolve_launch",
+      arguments: { claim },
+    });
+    if (currentPayload) return;
+    const payload = extractViewPayload(response);
+    if (payload) {
+      renderPayload(payload);
+      return;
+    }
+    reportUndeliveredPayload(firstResultText(response));
+  } catch (error) {
+    reportUndeliveredPayload(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function reportUndeliveredPayload(detail: string | null): void {
+  if (currentPayload) return;
+  statusEl.dataset.kind = "error";
+  statusEl.textContent = detail
+    ? `This host delivered the tool result without its structured View payload, and recovery failed: ${detail}`
+    : "This host delivered the tool result without its structured View payload, and recovery over the app channel was unavailable.";
+  clearFrameDocument();
 }
 
 function durablePayloadFor(
