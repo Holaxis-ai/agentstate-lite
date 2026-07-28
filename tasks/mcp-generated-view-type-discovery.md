@@ -8,21 +8,22 @@ priority: '2'
 actor: claude-main
 description: >-
   BUILT + REVIEWED, awaiting Brian's PR. Branch
-  feat/mcp-empty-selection-self-description (23a4c86 mechanic+tests, 71-prefixed
-  review fix appended). Generated show_view empty selections are now
-  self-describing: type/prefix miss names the bundle's types (bounded 12) with
-  case/plural nearest-match hint ('task' -> did you mean 'Task'?); filter miss
-  reports pre-filter count + observed field values (bounded 8, clipped 80 chars,
+  feat/mcp-empty-selection-self-description (23a4c86 mechanic+tests, 546bff6
+  review fixes). Generated show_view empty selections are now self-describing:
+  type/prefix miss names the bundle's types (bounded 12) with case/plural
+  nearest-match hint ('task' -> did you mean 'Task'?); filter miss reports
+  pre-filter count + observed field values (bounded 8, clipped 80 chars/value,
   arrays flattened per element to match filter semantics); absent fields and
   open:true named. Full head scan only on the miss path. Independent review at
-  exact SHA: APPROVE, 3x P3 (2 taken in the appended commit; field-key-parse
-  three-way duplication recorded as a core consolidation follow-up). Disclosure
-  analysis clean: hint reveals nothing the model's existing show_view authority
-  could not already read. Reviewer's own stdio session reproduced both hint
-  shapes. Kinds-CATALOG tool deliberately excluded — placement belongs to
-  tasks/mcp-durable-view-catalog. Merge is Brian's; after merge the Desktop
-  simple-prompt flow should self-correct without human answers.
-timestamp: '2026-07-28T16:43:17.553Z'
+  exact SHA 23a4c86: APPROVE, 3x P3 — 2 taken in 546bff6, 1 recorded
+  (pre-existing three-way field-key-parse duplication; core parseFieldSelection
+  consolidation follow-up). Disclosure analysis clean: the hint reveals nothing
+  the model's existing show_view authority could not already read. Reviewer's
+  stdio session reproduced both hint shapes; probes red-capable incl. the wiring
+  pin. Kinds-CATALOG tool deliberately excluded — placement belongs to
+  tasks/mcp-durable-view-catalog. Merge is Brian's; post-merge, the Desktop
+  simple-prompt flow self-corrects without human answers.
+timestamp: '2026-07-28T16:44:01.309Z'
 ---
 # Field evidence (Brian, Claude Desktop chat, 2026-07-27 evening)
 
