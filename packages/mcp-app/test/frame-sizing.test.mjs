@@ -10,6 +10,8 @@ import {
   appendFrameSizingScript,
   clampFrameHeight,
   createFrameSizingSession,
+  flexibleHostHeightLimit,
+  hasFixedHostHeight,
   measureShellChromeHeight,
   readFrameSizeEvent,
   readFrameSizeMessage,
@@ -27,6 +29,13 @@ test("the injected observer reports initial and live intrinsic height with mount
     <script>
       window.__height = 42.2;
       document.documentElement.getBoundingClientRect = () => ({ height: window.__height });
+      document.body.getBoundingClientRect = () => ({ height: window.__height });
+      Object.defineProperty(document.documentElement, "scrollHeight", {
+        get: () => window.__height
+      });
+      Object.defineProperty(document.body, "scrollHeight", {
+        get: () => window.__height
+      });
       window.requestAnimationFrame = (callback) => { callback(); return 1; };
       window.__messages = [];
       window.parent.postMessage = (message) => window.__messages.push(message);
@@ -74,6 +83,11 @@ test("the injected observer reports initial and live intrinsic height with mount
     browser.window.__messages.length,
     4,
     "unchanged measurements are not re-posted",
+  );
+  assert.doesNotMatch(
+    instrumented,
+    /\.style\.height/,
+    "measuring an observed document must not mutate its height and retrigger the observer",
   );
 });
 
@@ -154,24 +168,25 @@ test("size events must come from the currently mounted child window", () => {
   );
 });
 
-test("shell chrome uses intrinsic shell geometry, never the fixed host viewport floor", () => {
-  const fixedHostViewport = 600;
+test("fixed and flexible host height contracts stay distinct", () => {
+  const fixedHostViewport = 288;
   const frameHeight = 288;
   const shellHeight = 341;
+  const chromeHeight = measureShellChromeHeight(shellHeight, frameHeight);
 
-  assert.equal(fixedHostViewport - frameHeight, 312);
+  assert.equal(hasFixedHostHeight({ height: fixedHostViewport }), true);
+  assert.equal(hasFixedHostHeight({ maxHeight: 800 }), false);
+  assert.equal(hasFixedHostHeight(undefined), false);
   assert.equal(
-    measureShellChromeHeight(shellHeight, frameHeight),
+    flexibleHostHeightLimit({ height: fixedHostViewport }),
+    undefined,
+    "fixed height is not an intrinsic-resize ceiling because the host owns that dimension",
+  );
+  assert.equal(flexibleHostHeightLimit({ maxHeight: 800 }), 800);
+  assert.equal(
+    chromeHeight,
     53,
     "unused fixed-host viewport space is not charged as shell chrome",
-  );
-  assert.equal(
-    clampFrameHeight(500, {
-      hostHeightLimit: fixedHostViewport,
-      shellChromeHeight: measureShellChromeHeight(shellHeight, frameHeight),
-    }),
-    500,
-    "the old 18rem frame can grow when the fixed host has room",
   );
   assert.equal(measureShellChromeHeight(Number.NaN, frameHeight), 0);
 });
@@ -195,6 +210,40 @@ test("generated size reports are handled before the hidden-document bridge gate"
     "layout-only reports must update generated Views while hidden; only the durable bridge is gated",
   );
   assert.match(
+    source,
+    /if \(hasFixedHostHeight\(currentHostContext\?\.containerDimensions\)\) \{\s*frame\.style\.removeProperty\("height"\);\s*return;/,
+    "a fixed host owns outer height and receives a fill-and-scroll child rather than resize pressure",
+  );
+  assert.match(
+    source,
+    /\{ availableDisplayModes: \["inline", "fullscreen"\] \}/,
+    "the shell declares only the inline and explicit expansion modes it implements",
+  );
+  assert.match(
+    source,
+    /availableDisplayModes\?\.includes\(target\)/,
+    "the expand control is exposed only when the host advertises the target mode",
+  );
+  assert.match(
+    source,
+    /app\.requestDisplayMode\(\{ mode: target \}\)/,
+    "the trusted shell uses the standard host-mediated display-mode request",
+  );
+  const html = await readFile(
+    new URL("../src/view.html", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    html,
+    /html\[data-fixed-height\] iframe \{\s*flex: 1 1 auto;\s*height: auto;/,
+    "a fixed host's frame fills the remaining card allocation",
+  );
+  assert.match(
+    html,
+    /html\[data-fixed-height\], html\[data-fixed-height\] body \{\s*height: 100%;\s*overflow: hidden;/,
+    "the trusted shell itself never creates a second outer scrollbar in fixed mode",
+  );
+  assert.match(
     source.slice(handlerEnd),
     /frameEpoch\+\+;\s+resetFrameSizing\(\);\s+stopPolling\(\);/,
     "suspended durable mounts invalidate their sizing session with their bridge epoch",
@@ -204,20 +253,17 @@ test("generated size reports are handled before the hidden-document bridge gate"
 test("height is capped by both the host and the product ceiling after shell chrome", () => {
   assert.equal(clampFrameHeight(120.1), 121);
   assert.equal(clampFrameHeight(100_000), DEFAULT_MAX_FRAME_HEIGHT);
-  assert.equal(
-    clampFrameHeight(2_000, {
-      hostHeightLimit: 800,
-      shellChromeHeight: 125.2,
-    }),
-    674,
-  );
-  assert.equal(
-    clampFrameHeight(200, {
-      hostHeightLimit: 100,
-      shellChromeHeight: 500,
-    }),
-    1,
-  );
+  const flexibleLimit = flexibleHostHeightLimit({ maxHeight: 800 });
+  const hostBoundFrame = clampFrameHeight(2_000, {
+    hostHeightLimit: flexibleLimit,
+    shellChromeHeight: 125.2,
+  });
+  assert.equal(hostBoundFrame, 674);
+  const chromeDominatedFrame = clampFrameHeight(200, {
+    hostHeightLimit: 100,
+    shellChromeHeight: 500,
+  });
+  assert.equal(chromeDominatedFrame, 1);
   assert.equal(
     clampFrameHeight(200, {
       hostHeightLimit: Number.NaN,

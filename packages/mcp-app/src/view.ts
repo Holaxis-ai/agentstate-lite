@@ -25,6 +25,8 @@ import {
   appendFrameSizingScript,
   clampFrameHeight,
   createFrameSizingSession,
+  flexibleHostHeightLimit,
+  hasFixedHostHeight,
   measureShellChromeHeight,
   readFrameSizeEvent,
   type FrameSizingSession,
@@ -52,6 +54,7 @@ const confirmationCancel = document.getElementById("confirmation-cancel") as HTM
 const authorizationBackdrop = document.getElementById("authorization-backdrop")!;
 const authorizationApply = document.getElementById("authorization-apply") as HTMLButtonElement;
 const authorizationCancel = document.getElementById("authorization-cancel") as HTMLButtonElement;
+const displayModeButton = document.getElementById("display-mode") as HTMLButtonElement;
 
 let app: App;
 let currentPayload: McpViewPayload | null = null;
@@ -171,6 +174,7 @@ function retirePayload(closeDurable = true): void {
   closeAuthorization();
   suspendedDurableLaunch = null;
   currentPayload = null;
+  syncDisplayModeButton();
   clearFrameDocument();
   frame.setAttribute("sandbox", "");
   frame.removeAttribute("csp");
@@ -335,6 +339,7 @@ function renderPayload(payload: McpViewPayload): void {
   } else {
     renderGeneratedPayload(payload);
   }
+  syncDisplayModeButton();
 }
 
 const recoveryGuard = new RecoveryGuard();
@@ -596,20 +601,18 @@ function applyHostContext(context: HostContext): void {
   if (context.theme) applyDocumentTheme(context.theme);
   if (context.styles?.variables) applyHostStyleVariables(context.styles.variables);
   if (context.styles?.css?.fonts) applyHostFonts(context.styles.css.fonts);
+  document.documentElement.toggleAttribute(
+    "data-fixed-height",
+    hasFixedHostHeight(currentHostContext.containerDimensions),
+  );
   applyRequestedFrameHeight();
+  syncDisplayModeButton();
 }
 
 function syncDialogState(): void {
   const open = !confirmationBackdrop.hidden || !authorizationBackdrop.hidden;
   document.body.toggleAttribute("data-dialog-open", open);
   if (!open) applyRequestedFrameHeight();
-}
-
-function hostHeightLimit(): number | undefined {
-  const dimensions = currentHostContext?.containerDimensions;
-  if (!dimensions) return undefined;
-  if ("height" in dimensions) return dimensions.height;
-  return dimensions.maxHeight;
 }
 
 function shellChromeHeight(): number {
@@ -620,18 +623,67 @@ function shellChromeHeight(): number {
 }
 
 function applyRequestedFrameHeight(): void {
+  if (hasFixedHostHeight(currentHostContext?.containerDimensions)) {
+    frame.style.removeProperty("height");
+    return;
+  }
   if (
     requestedFrameHeight === null ||
     document.body.hasAttribute("data-dialog-open")
   ) {
     return;
   }
+  const chromeHeight = shellChromeHeight();
   const height = clampFrameHeight(requestedFrameHeight, {
-    hostHeightLimit: hostHeightLimit(),
-    shellChromeHeight: shellChromeHeight(),
+    hostHeightLimit: flexibleHostHeightLimit(
+      currentHostContext?.containerDimensions,
+    ),
+    shellChromeHeight: chromeHeight,
   });
   if (frame.style.height !== `${height}px`) {
     frame.style.height = `${height}px`;
+  }
+}
+
+function requestedDisplayMode(): "inline" | "fullscreen" | null {
+  if (!currentPayload) return null;
+  const current = currentHostContext?.displayMode ?? "inline";
+  const target = current === "fullscreen" ? "inline" : "fullscreen";
+  return currentHostContext?.availableDisplayModes?.includes(target)
+    ? target
+    : null;
+}
+
+function syncDisplayModeButton(): void {
+  const target = requestedDisplayMode();
+  displayModeButton.hidden = target === null;
+  if (target) {
+    displayModeButton.textContent =
+      target === "fullscreen" ? "Expand" : "Return inline";
+  }
+}
+
+async function changeDisplayMode(): Promise<void> {
+  const target = requestedDisplayMode();
+  if (!target) return;
+  displayModeButton.disabled = true;
+  try {
+    const result = await app.requestDisplayMode({ mode: target });
+    if (currentHostContext) {
+      currentHostContext = {
+        ...currentHostContext,
+        displayMode: result.mode,
+      };
+    }
+    syncDisplayModeButton();
+  } catch (error) {
+    statusEl.dataset.kind = "error";
+    statusEl.textContent =
+      error instanceof Error
+        ? `This host could not change the View display mode: ${error.message}`
+        : "This host could not change the View display mode.";
+  } finally {
+    displayModeButton.disabled = false;
   }
 }
 
@@ -639,6 +691,7 @@ confirmationApply.addEventListener("click", () => void finishAction("commit"));
 confirmationCancel.addEventListener("click", () => void finishAction("cancel"));
 authorizationApply.addEventListener("click", () => void authorizeDurableView());
 authorizationCancel.addEventListener("click", cancelDurableAuthorization);
+displayModeButton.addEventListener("click", () => void changeDisplayMode());
 
 frame.addEventListener("load", () => {
   if (frameLoadGuard.accept()) return;
@@ -716,7 +769,10 @@ document.addEventListener("visibilitychange", () => {
 });
 
 void (async () => {
-  app = new App({ name: "AgentState View Host", version: "0.0.1" });
+  app = new App(
+    { name: "AgentState View Host", version: "0.0.1" },
+    { availableDisplayModes: ["inline", "fullscreen"] },
+  );
   app.ontoolresult = renderResult;
   app.onhostcontextchanged = applyHostContext;
   app.onteardown = async () => {
