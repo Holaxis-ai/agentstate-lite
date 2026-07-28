@@ -7,8 +7,9 @@
  * {hostRequestId -> launchId} here, and the app-only resolve_launch tool redeems it: by exact
  * request id where the host reuses the JSON-RPC id in its handshake toolInfo (spec-faithful
  * hosts), else by most-recent-unconsumed (Desktop reports an unrelated toolu_* id — under the
- * local trust model the ambiguity window is two panels launching concurrently in one process,
- * and one-shot consumption bounds the blast radius to one stale render).
+ * local trust model the ambiguity window is two panels launching concurrently in one process;
+ * one-shot consumption voids each ticket, and the shell's RecoveryGuard caps an instance at
+ * three redemptions total).
  */
 export interface PendingLaunchEntry {
   key: string | null;
