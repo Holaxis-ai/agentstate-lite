@@ -7,21 +7,26 @@ status: in_progress
 priority: '1'
 actor: claude-main
 description: >-
-  PROBE COMPLETE 2026-07-27 evening — building the fix. Two instrumented Desktop
-  launches (report: ~/.agentstate/mcp-probe-report.json, findings mirrored in
-  the review record): (1) Desktop REBUILDS tool-result notifications — content
-  text only (adds its own second part), structuredContent AND _meta stripped;
-  (2) the App's request-response channel is FAITHFUL at 200B and 1MB
-  (structuredContent+_meta intact) — not a size limit, durable bridge viable
-  post-render; (3) ui/notifications/tool-input fires with full args; (4)
-  hostContext.toolInfo.id is an Anthropic toolu_* string while the server sees
-  JSON-RPC id '3' — the requestId keying is DEAD on Desktop, so resolve_launch
-  ships with the reviewed FALLBACK as the working path: one-shot
-  most-recent-undelivered launch (concurrency ambiguity documented), with
-  optional toolCallId matching kept for spec-faithful hosts. Build proceeding on
-  fix/mcp-shell-structuredcontent-fallback per the adopted design; code review
-  round to follow at exact SHA.
-timestamp: '2026-07-28T01:45:26.540Z'
+  BUILT + REVIEWED, awaiting Brian's Desktop acceptance + PR. Branch
+  fix/mcp-shell-structuredcontent-fallback (7cfcedf mechanic+tests as one unit,
+  351fee4 review-comment fix). Shipped the design-review-adopted claim-ticket
+  recovery: show_view records one-shot {requestId->launchId} tickets (bounded
+  16, TTL 10m, failed calls mint nothing); app-only resolve_launch redeems the
+  ALREADY-MINTED payload (exact-key for spec-faithful hosts,
+  most-recent-unconsumed fallback for Desktop's unrelated toolu_* id); shell
+  recovers only on payload-less NON-ERROR results over the
+  probe-verified-faithful app channel, surfaces server error text on isError,
+  RecoveryGuard caps 3 attempts/instance, evidence-based diagnostics. Validators
+  consolidated into result-recovery.ts (view.ts duplicates deleted). THREE
+  review stages all pre-merge: design review (REDESIGN — killed
+  argument-replay), two Desktop probes (every assumption observed), code review
+  at exact SHA 7cfcedf (APPROVE, 4xP3: 1 taken in 351fee4, 3 accepted+recorded —
+  keyed-host miss-fallback ambiguity is a documented forced trade, view.ts DOM
+  glue untested per package pattern, cosmetic isRecord/outputSchema asymmetry).
+  Reviewer's own live stdio session reproduced the acceptance flow; 3/3 probes
+  red-capable; full gates green at both SHAs. Fix build installed as Brian's
+  global aslite for Desktop verification — panel render is the acceptance test.
+timestamp: '2026-07-28T02:18:07.624Z'
 ---
 # Root cause (corrected after design review — see the review record for the full chain)
 
