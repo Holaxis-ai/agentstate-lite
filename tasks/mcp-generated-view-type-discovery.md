@@ -7,18 +7,22 @@ status: in_progress
 priority: '2'
 actor: claude-main
 description: >-
-  CLAIMED claude-main 2026-07-28 (Brian's go). Building the error-enrichment
-  slice as this unit's coherent claim: the generated-path no-match error becomes
-  self-describing — a type miss names the bundle's actual types (bounded list)
-  with a nearest-match hint ('task' -> 'Task'); a field-filter miss reports how
-  many documents the type matched and the observed values of the filtered field
-  (bounded), so 'priority 1-4' style facts surface exactly when needed. The
-  model-visible kinds-CATALOG idea stays OUT of this unit — it needs the
-  tool-placement call that tasks/mcp-durable-view-catalog's
-  two-model-visible-tools pin owns; flagged there rather than built here.
-  Ordinary tier: unit+server tests in-diff, repo gates, independent review at
-  exact SHA before PR.
-timestamp: '2026-07-28T16:27:07.733Z'
+  BUILT + REVIEWED, awaiting Brian's PR. Branch
+  feat/mcp-empty-selection-self-description (23a4c86 mechanic+tests, 71-prefixed
+  review fix appended). Generated show_view empty selections are now
+  self-describing: type/prefix miss names the bundle's types (bounded 12) with
+  case/plural nearest-match hint ('task' -> did you mean 'Task'?); filter miss
+  reports pre-filter count + observed field values (bounded 8, clipped 80 chars,
+  arrays flattened per element to match filter semantics); absent fields and
+  open:true named. Full head scan only on the miss path. Independent review at
+  exact SHA: APPROVE, 3x P3 (2 taken in the appended commit; field-key-parse
+  three-way duplication recorded as a core consolidation follow-up). Disclosure
+  analysis clean: hint reveals nothing the model's existing show_view authority
+  could not already read. Reviewer's own stdio session reproduced both hint
+  shapes. Kinds-CATALOG tool deliberately excluded — placement belongs to
+  tasks/mcp-durable-view-catalog. Merge is Brian's; after merge the Desktop
+  simple-prompt flow should self-correct without human answers.
+timestamp: '2026-07-28T16:43:17.553Z'
 ---
 # Field evidence (Brian, Claude Desktop chat, 2026-07-27 evening)
 
