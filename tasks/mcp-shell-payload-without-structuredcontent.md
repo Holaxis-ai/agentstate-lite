@@ -3,25 +3,29 @@ type: Task
 title: >-
   App shell must not depend on structuredContent delivery — an OPTIONAL host
   capability
-status: in_progress
+status: done
 priority: '1'
 actor: claude-main
 description: >-
-  PR #178 review round ADDRESSED at 72e674f, awaiting Brian's Desktop acceptance
-  (the review's kept merge gate). codex-pr178-review's P1 (recency fallback
-  could swap concurrent panels' launches on Desktop) fixed with the reviewer's
-  design: show_view mints a random 128-bit claim embedded as an
+  DONE 2026-07-28 — merged to main as PR #178 (merge 1c28c02; bot plugin
+  1.0.130). Shipped: App shell recovers View payloads on hosts whose tool-result
+  relay strips structuredContent (probe-established for Claude Desktop).
+  Mechanism: show_view mints a random 128-bit one-shot claim embedded as an
   [agentstate-claim:v1:...] marker in the TEXT content (the channel Desktop
-  preserves); resolve_launch redeems EXACT-match one-shot only, fail closed — no
-  requestId coupling, no recency fallback. Marker is model-visible, conveys no
-  model authority (app-only/same-connection/bounded/one-shot resolver —
-  documented at mint+redeem sites). Shell parses the marker from delivered text,
-  fails closed without it. Gates green (build/typecheck/full npm test); live
-  stdio e2e: marker->bogus fails->exact returns identical launchId->reuse fails.
-  Branch: 7cfcedf mechanic, 351fee4 + 72e674f review rounds, each delta visible.
-  Prior records: context-notes/pr-178-review (Mike's round),
-  design-review-mcp-payload-recovery, mcp-durable-view-render-field-report.
-timestamp: '2026-07-28T03:02:11.162Z'
+  preserves); app-only resolve_launch redeems EXACT-match, fail-closed — no
+  recency fallback, so concurrent panels cannot swap launches. Healthy-host
+  structuredContent fast path unchanged. FOUR review stages: pre-build design
+  review (REDESIGN — killed argument-replay authority widening), two
+  instrumented Desktop probes (all assumptions observed; report artifact +
+  upstream ext-apps repro), code review at 7cfcedf (APPROVE 4xP3), and PR-side
+  review by a codex team BRIAN ran (NOT Mike's — correcting earlier attribution)
+  whose P1 (recency-swap) was fixed at 72e674f with that reviewer's claim-marker
+  design. ACCEPTANCE: both paths visually confirmed in Brian's Claude Desktop —
+  registered Board view rendered, then generated per-priority panels authored
+  end-to-end by the Desktop model itself. Follow-ons filed separately:
+  mcp-generated-view-type-discovery, plus authoring-guidance inputs. Commits:
+  7cfcedf / 351fee4 / 72e674f, each round's delta visible.
+timestamp: '2026-07-28T13:56:06.738Z'
 ---
 # Root cause (corrected after design review — see the review record for the full chain)
 
