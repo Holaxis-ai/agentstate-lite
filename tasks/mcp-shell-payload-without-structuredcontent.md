@@ -7,26 +7,21 @@ status: in_progress
 priority: '1'
 actor: claude-main
 description: >-
-  BUILT + REVIEWED, awaiting Brian's Desktop acceptance + PR. Branch
-  fix/mcp-shell-structuredcontent-fallback (7cfcedf mechanic+tests as one unit,
-  351fee4 review-comment fix). Shipped the design-review-adopted claim-ticket
-  recovery: show_view records one-shot {requestId->launchId} tickets (bounded
-  16, TTL 10m, failed calls mint nothing); app-only resolve_launch redeems the
-  ALREADY-MINTED payload (exact-key for spec-faithful hosts,
-  most-recent-unconsumed fallback for Desktop's unrelated toolu_* id); shell
-  recovers only on payload-less NON-ERROR results over the
-  probe-verified-faithful app channel, surfaces server error text on isError,
-  RecoveryGuard caps 3 attempts/instance, evidence-based diagnostics. Validators
-  consolidated into result-recovery.ts (view.ts duplicates deleted). THREE
-  review stages all pre-merge: design review (REDESIGN — killed
-  argument-replay), two Desktop probes (every assumption observed), code review
-  at exact SHA 7cfcedf (APPROVE, 4xP3: 1 taken in 351fee4, 3 accepted+recorded —
-  keyed-host miss-fallback ambiguity is a documented forced trade, view.ts DOM
-  glue untested per package pattern, cosmetic isRecord/outputSchema asymmetry).
-  Reviewer's own live stdio session reproduced the acceptance flow; 3/3 probes
-  red-capable; full gates green at both SHAs. Fix build installed as Brian's
-  global aslite for Desktop verification — panel render is the acceptance test.
-timestamp: '2026-07-28T02:18:07.624Z'
+  PR #178 review round ADDRESSED at 72e674f, awaiting Brian's Desktop acceptance
+  (the review's kept merge gate). codex-pr178-review's P1 (recency fallback
+  could swap concurrent panels' launches on Desktop) fixed with the reviewer's
+  design: show_view mints a random 128-bit claim embedded as an
+  [agentstate-claim:v1:...] marker in the TEXT content (the channel Desktop
+  preserves); resolve_launch redeems EXACT-match one-shot only, fail closed — no
+  requestId coupling, no recency fallback. Marker is model-visible, conveys no
+  model authority (app-only/same-connection/bounded/one-shot resolver —
+  documented at mint+redeem sites). Shell parses the marker from delivered text,
+  fails closed without it. Gates green (build/typecheck/full npm test); live
+  stdio e2e: marker->bogus fails->exact returns identical launchId->reuse fails.
+  Branch: 7cfcedf mechanic, 351fee4 + 72e674f review rounds, each delta visible.
+  Prior records: context-notes/pr-178-review (Mike's round),
+  design-review-mcp-payload-recovery, mcp-durable-view-render-field-report.
+timestamp: '2026-07-28T03:02:11.162Z'
 ---
 # Root cause (corrected after design review — see the review record for the full chain)
 
