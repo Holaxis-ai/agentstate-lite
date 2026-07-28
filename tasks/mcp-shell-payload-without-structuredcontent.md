@@ -3,10 +3,22 @@ type: Task
 title: >-
   App shell must not depend on structuredContent delivery — an OPTIONAL host
   capability
-status: todo
+status: in_progress
 priority: '1'
 actor: claude-main
-timestamp: '2026-07-28T00:07:20.223Z'
+description: >-
+  CONFIRMED both paths 2026-07-27 ~18:15: generated show_view fails on Claude
+  Desktop with the identical invalid-payload error, as predicted — host
+  withholds structuredContent; shell depends on it exclusively. CLAIMED by
+  claude-main (Brian's go): building the layered fix — (1) shell stores the
+  toolinput arguments the Apps protocol delivers and, when a toolresult arrives
+  without a valid payload, recovers by re-invoking show_view over the App's own
+  host-proxied server channel (callServerTool) and rendering that response's
+  payload; (2) when recovery is impossible (no toolinput either), an honest
+  diagnostic naming the host capability gap replaces the generic message. No new
+  trust surface: the App receives exactly the payload structuredContent delivery
+  would have granted. Branch + tests + review gate to follow.
+timestamp: '2026-07-28T00:15:44.471Z'
 ---
 # Root cause (diagnosed 2026-07-27, claude-main + Brian field testing)
 
