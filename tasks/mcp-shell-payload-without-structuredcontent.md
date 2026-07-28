@@ -7,19 +7,21 @@ status: in_progress
 priority: '1'
 actor: claude-main
 description: >-
-  REDESIGNED after pre-build independent design review (Brian's call — review
-  caught a misread root cause, an authority-widening flaw in the argument-replay
-  mechanism, and an unverified gating assumption). Adopted design: app-only
-  resolve_launch keyed on hostContext.toolInfo.id, one-shot, re-derived from
-  existing launch state — conforms to the security-unification invariant; NO
-  dual-visibility show_view, NO argument replay, NO second launch. BUILD GATED
-  on a throwaway Desktop instrumentation probe (does the proxied tools/call
-  response preserve structuredContent? does toolInfo.id arrive? is it a SIZE
-  limit?) — if proxied responses also drop structuredContent, STOP: the durable
-  bridge is already dead on Desktop and this becomes a larger unit. Full record:
-  context-notes/design-review-mcp-payload-recovery. Claim held by claude-main;
-  probe build is the next step.
-timestamp: '2026-07-28T00:51:07.964Z'
+  PROBE COMPLETE 2026-07-27 evening — building the fix. Two instrumented Desktop
+  launches (report: ~/.agentstate/mcp-probe-report.json, findings mirrored in
+  the review record): (1) Desktop REBUILDS tool-result notifications — content
+  text only (adds its own second part), structuredContent AND _meta stripped;
+  (2) the App's request-response channel is FAITHFUL at 200B and 1MB
+  (structuredContent+_meta intact) — not a size limit, durable bridge viable
+  post-render; (3) ui/notifications/tool-input fires with full args; (4)
+  hostContext.toolInfo.id is an Anthropic toolu_* string while the server sees
+  JSON-RPC id '3' — the requestId keying is DEAD on Desktop, so resolve_launch
+  ships with the reviewed FALLBACK as the working path: one-shot
+  most-recent-undelivered launch (concurrency ambiguity documented), with
+  optional toolCallId matching kept for spec-faithful hosts. Build proceeding on
+  fix/mcp-shell-structuredcontent-fallback per the adopted design; code review
+  round to follow at exact SHA.
+timestamp: '2026-07-28T01:45:26.540Z'
 ---
 # Root cause (corrected after design review — see the review record for the full chain)
 
