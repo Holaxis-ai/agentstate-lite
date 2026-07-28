@@ -42,6 +42,7 @@ import type {
 } from "./contract.js";
 import { MCP_VIEW_HTML } from "./generated/view-html.generated.js";
 import { McpViewLaunchRegistry } from "./launches.js";
+import { PendingLaunchRegistry } from "./pending-launches.js";
 
 export const MCP_VIEW_RESOURCE_URI = "ui://agentstate/view-host/v1.html";
 export const SHOW_VIEW_TOOL_NAME = "show_view";
@@ -51,6 +52,7 @@ export const AUTHORIZE_DURABLE_VIEW_TOOL_NAME = "authorize_durable_view";
 export const DURABLE_VIEW_BRIDGE_TOOL_NAME = "durable_view_bridge";
 export const POLL_DURABLE_VIEW_TOOL_NAME = "poll_durable_view";
 export const CLOSE_DURABLE_VIEW_TOOL_NAME = "close_durable_view";
+export const RESOLVE_LAUNCH_TOOL_NAME = "resolve_launch";
 export const MAX_VIEW_PRESENTATION_BYTES = 256 * 1024;
 export const MAX_VIEW_OBJECTS = 20;
 export const MAX_VIEW_ACTIONS = 8;
@@ -414,6 +416,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
   const durableLaunches = new PageLaunchRegistry();
   const durableAuthorizations =
     options.viewAuthorization ?? new SessionViewAuthorizationStore();
+  const pendingLaunches = new PendingLaunchRegistry();
   const durableBridge = new BridgeService({
     bundle: options.bundle,
     launches: new PageBridgeLaunchAuthority(
@@ -447,18 +450,25 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
       },
       _meta: { ui: { resourceUri: MCP_VIEW_RESOURCE_URI, visibility: ["model"] } },
     },
-    async (input): Promise<CallToolResult> => {
+    async (input, extra): Promise<CallToolResult> => {
       try {
         const parsed = parseShowViewInput(input);
-        const payload =
-          "viewId" in parsed
-            ? await resolveDurableViewLaunch(
-                options.bundle,
-                parsed,
-                durableLaunches,
-                durableAuthorizations,
-              )
-            : await resolveViewLaunch(options.bundle, parsed, launches);
+        const durable = "viewId" in parsed;
+        const payload = durable
+          ? await resolveDurableViewLaunch(
+              options.bundle,
+              parsed as DurableShowViewInput,
+              durableLaunches,
+              durableAuthorizations,
+            )
+          : await resolveViewLaunch(options.bundle, parsed as GeneratedShowViewInput, launches);
+        // Claim ticket for hosts whose tool-result notifications strip structuredContent
+        // (probe-established for Claude Desktop): the App redeems it via resolve_launch.
+        pendingLaunches.record(
+          extra?.requestId !== undefined ? String(extra.requestId) : null,
+          payload.launch.launchId,
+          durable ? "durable" : "generated",
+        );
         return {
           content: [{ type: "text", text: fallbackText(payload) }],
           structuredContent: { ...payload },
@@ -748,6 +758,59 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
         },
       ],
     }),
+  );
+
+  registerAppTool(
+    server,
+    RESOLVE_LAUNCH_TOOL_NAME,
+    {
+      title: "Resolve undelivered AgentState View launch",
+      description:
+        "Redeem the one-shot claim ticket for a launch whose tool result the host delivered without its structured payload. Returns the already-minted payload; grants nothing else.",
+      inputSchema: { toolCallId: z.string().min(1).max(256).optional() },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async ({ toolCallId }): Promise<CallToolResult> => {
+      const entry = pendingLaunches.consume(toolCallId ?? null);
+      if (!entry) {
+        return {
+          isError: true,
+          content: [
+            { type: "text", text: "No undelivered AgentState View launch is pending in this session." },
+          ],
+        };
+      }
+      let payload: McpViewPayload | null = null;
+      if (entry.kind === "generated") {
+        payload = launches.payload(entry.launchId);
+      } else {
+        const launch = durableLaunches.resolveLaunch(entry.launchId);
+        if (launch) {
+          payload = durablePayload(
+            launch,
+            await durableAuthorizations.isAuthorized(pageLaunchAuthorizationSubject(launch)),
+          );
+        }
+      }
+      if (!payload) {
+        return {
+          isError: true,
+          content: [
+            { type: "text", text: "The pending View launch expired before it could be resolved. Reopen the View." },
+          ],
+        };
+      }
+      return {
+        content: [{ type: "text", text: fallbackText(payload) }],
+        structuredContent: { ...payload },
+      };
+    },
   );
 
   return server;
