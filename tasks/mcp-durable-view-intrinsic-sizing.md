@@ -1,18 +1,17 @@
 ---
 type: Task
 title: Prove intrinsic sizing through the nested MCP View frame
-status: done
+status: in_progress
 priority: '2'
 actor: openai/codex
 description: >-
-  SHIPPED 2026-07-27 — PR #175 merged at a0f1340. AgentState MCP Views now relay
-  bounded intrinsic child height through the trusted shell using
-  current-window/launch/epoch/nonce identity, intrinsic shell geometry for fixed
-  hosts, and hidden-lifecycle handling that leaves the durable bridge
-  fail-closed. Full local and GitHub gates passed; independent review and
-  Chromium re-review found no remaining blockers.
+  REOPENED 2026-07-28 — real Codex dogfooding showed the inline View remains
+  substantially shorter than Codex can display. The prior relay was
+  unit/Chromium-proven but lacked the required host acceptance proof. Fix the
+  current-height feedback lock, pin initial-short-to-tall growth, and close only
+  after a real Codex View expands without nested scrolling.
 assignee: openai/codex
-timestamp: '2026-07-27T14:54:35.269Z'
+timestamp: '2026-07-28T01:22:17.830Z'
 ---
 # Problem
 
