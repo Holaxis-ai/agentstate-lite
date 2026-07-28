@@ -14,6 +14,7 @@ import type {
 import { mayForwardDurableActivity } from "./durable-activity.js";
 import {
   RecoveryGuard,
+  extractClaimId,
   extractViewPayload,
   firstResultText,
   isDurableViewPayload,
@@ -352,13 +353,20 @@ function renderResult(result: CallToolResult): void {
     clearFrameDocument();
     return;
   }
-  void recoverPayload();
+  void recoverPayload(result);
 }
 
 // Probe-established (tasks/mcp-shell-payload-without-structuredcontent): some hosts rebuild
-// tool-result notifications with prose only, stripping structuredContent — while proxying the
-// App's own tools/call requests faithfully. Redeem the launch's one-shot claim ticket there.
-async function recoverPayload(): Promise<void> {
+// tool-result notifications with prose only, stripping structuredContent while PRESERVING text —
+// and proxy the App's own tools/call requests faithfully. The delivered text carries an exact
+// one-shot claim marker; redeem it over the app channel. No marker means fail closed: guessing
+// (e.g. most-recent fallback) could hand this panel another launch's payload (PR #178 review).
+async function recoverPayload(result: CallToolResult): Promise<void> {
+  const claim = extractClaimId(result);
+  if (!claim) {
+    reportUndeliveredPayload("the delivered result carried no claim marker");
+    return;
+  }
   if (!recoveryGuard.tryAcquire()) {
     reportUndeliveredPayload(null);
     return;
@@ -366,12 +374,10 @@ async function recoverPayload(): Promise<void> {
   statusEl.dataset.kind = "ready";
   statusEl.textContent = "Recovering the View payload over the app channel…";
   try {
-    const toolInfoId = app.getHostContext()?.toolInfo?.id;
-    const args =
-      typeof toolInfoId === "string" || typeof toolInfoId === "number"
-        ? { toolCallId: String(toolInfoId) }
-        : {};
-    const response = await app.callServerTool({ name: "resolve_launch", arguments: args });
+    const response = await app.callServerTool({
+      name: "resolve_launch",
+      arguments: { claim },
+    });
     if (currentPayload) return;
     const payload = extractViewPayload(response);
     if (payload) {

@@ -89,6 +89,24 @@ export function firstResultText(result: unknown): string | null {
   return null;
 }
 
+/**
+ * Claim marker parsing — the counterpart of the server's formatClaimMarker. The marker rides the
+ * text channel Claude Desktop preserves when it strips structuredContent; redemption is exact and
+ * one-shot server-side, so parsing from ANY text part is safe: a wrong/stale marker fails closed.
+ */
+const CLAIM_MARKER_PATTERN = /\[agentstate-claim:v1:([A-Za-z0-9_-]{8,})\]/;
+
+export function extractClaimId(result: unknown): string | null {
+  if (!isRecord(result) || !Array.isArray(result.content)) return null;
+  for (const part of result.content) {
+    if (isRecord(part) && part.type === "text" && typeof part.text === "string") {
+      const match = CLAIM_MARKER_PATTERN.exec(part.text);
+      if (match) return match[1] ?? null;
+    }
+  }
+  return null;
+}
+
 /** Hard per-App-instance bound on recovery attempts — never by result identity. */
 export class RecoveryGuard {
   #remaining: number;

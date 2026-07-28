@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   RecoveryGuard,
+  extractClaimId,
   extractViewPayload,
   firstResultText,
 } from "../src/result-recovery.js";
@@ -70,4 +71,20 @@ test("RecoveryGuard enforces a hard per-instance attempt cap", () => {
   assert.equal(guard.tryAcquire(), true);
   assert.equal(guard.tryAcquire(), false);
   assert.equal(guard.tryAcquire(), false, "the cap never re-arms");
+});
+
+test("extractClaimId finds the marker in any text part and rejects malformed markers", () => {
+  assert.equal(
+    extractClaimId({
+      content: [
+        { type: "text", text: "Prepared View..." },
+        { type: "text", text: "summary\n[agentstate-claim:v1:AbC123_-xyz789aa]" },
+      ],
+    }),
+    "AbC123_-xyz789aa",
+  );
+  assert.equal(extractClaimId({ content: [{ type: "text", text: "[agentstate-claim:v1:short]" }] }), null);
+  assert.equal(extractClaimId({ content: [{ type: "text", text: "no marker here" }] }), null);
+  assert.equal(extractClaimId({ content: [] }), null);
+  assert.equal(extractClaimId(null), null);
 });

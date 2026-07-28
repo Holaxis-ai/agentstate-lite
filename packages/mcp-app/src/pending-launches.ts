@@ -3,16 +3,16 @@
  *
  * Probe-established (tasks/mcp-shell-payload-without-structuredcontent): Claude Desktop rebuilds
  * tool-result notifications with prose content only — structuredContent and _meta are stripped —
- * while the App's own host-proxied tools/call channel is faithful. show_view therefore records
- * {hostRequestId -> launchId} here, and the app-only resolve_launch tool redeems it: by exact
- * request id where the host reuses the JSON-RPC id in its handshake toolInfo (spec-faithful
- * hosts), else by most-recent-unconsumed (Desktop reports an unrelated toolu_* id — under the
- * local trust model the ambiguity window is two panels launching concurrently in one process;
- * one-shot consumption voids each ticket, and the shell's RecoveryGuard caps an instance at
- * three redemptions total).
+ * while preserving text content and proxying the App's own tools/call channel faithfully.
+ * show_view therefore mints a RANDOM one-shot claim id, embeds it as an opaque marker in the
+ * result's text content (the channel that provably survives), and records {claimId -> launchId}
+ * here. The app-only resolve_launch tool redeems it by EXACT match only — an unknown or reused
+ * claim fails closed, never falls back to another launch, so concurrent panels can never swap
+ * launches (PR #178 review's blocking finding). The marker is model-visible by construction and
+ * conveys no model authority: the resolver is app-only, same-connection, bounded, and one-shot.
  */
 export interface PendingLaunchEntry {
-  key: string | null;
+  claimId: string;
   launchId: string;
   kind: "generated" | "durable";
   recordedAt: number;
@@ -30,25 +30,16 @@ export class PendingLaunchRegistry {
     this.#now = now;
   }
 
-  record(key: string | null, launchId: string, kind: "generated" | "durable"): void {
+  record(claimId: string, launchId: string, kind: "generated" | "durable"): void {
     this.#prune();
-    this.#entries.push({ key, launchId, kind, recordedAt: this.#now() });
+    this.#entries.push({ claimId, launchId, kind, recordedAt: this.#now() });
     if (this.#entries.length > this.#limit) this.#entries.shift();
   }
 
-  /** Exact key match wins; otherwise the most recent unconsumed entry. Consumption is one-shot. */
-  consume(key?: string | null): PendingLaunchEntry | null {
+  /** Exact match only, one-shot. Unknown, expired, or already-consumed claims fail closed. */
+  consume(claimId: string): PendingLaunchEntry | null {
     this.#prune();
-    let index = -1;
-    if (key) {
-      for (let i = this.#entries.length - 1; i >= 0; i--) {
-        if (this.#entries[i]!.key === key) {
-          index = i;
-          break;
-        }
-      }
-    }
-    if (index < 0) index = this.#entries.length - 1;
+    const index = this.#entries.findIndex((entry) => entry.claimId === claimId);
     if (index < 0) return null;
     const [entry] = this.#entries.splice(index, 1);
     return entry ?? null;

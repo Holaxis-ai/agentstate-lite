@@ -3,43 +3,37 @@ import { test } from "node:test";
 
 import { PendingLaunchRegistry } from "../src/pending-launches.js";
 
-test("exact key match wins over recency, and consumption is one-shot", () => {
+test("redemption is exact-match one-shot; unknown claims fail closed, never fall back", () => {
   const registry = new PendingLaunchRegistry();
-  registry.record("1", "launch-a", "generated");
-  registry.record("2", "launch-b", "durable");
+  registry.record("claim-a", "launch-a", "generated");
+  registry.record("claim-b", "launch-b", "durable");
 
-  const byKey = registry.consume("1");
-  assert.equal(byKey?.launchId, "launch-a");
-  assert.equal(byKey?.kind, "generated");
+  assert.equal(
+    registry.consume("claim-zz"),
+    null,
+    "an unknown claim must NEVER redeem another pending launch (PR #178 P1)",
+  );
 
-  // The consumed entry is gone; only launch-b remains.
-  const again = registry.consume("1");
-  assert.equal(again?.launchId, "launch-b");
-  assert.equal(registry.consume(), null);
-});
+  const a = registry.consume("claim-a");
+  assert.equal(a?.launchId, "launch-a");
+  assert.equal(a?.kind, "generated");
+  assert.equal(registry.consume("claim-a"), null, "a redeemed claim is void");
 
-test("an unknown key falls back to the most recent unconsumed entry (Desktop's toolu_* id)", () => {
-  const registry = new PendingLaunchRegistry();
-  registry.record("1", "launch-a", "generated");
-  registry.record("2", "launch-b", "generated");
-
-  const entry = registry.consume("toolu_01NotTheWireId");
-  assert.equal(entry?.launchId, "launch-b");
-  const next = registry.consume(null);
-  assert.equal(next?.launchId, "launch-a");
+  const b = registry.consume("claim-b");
+  assert.equal(b?.launchId, "launch-b");
+  assert.equal(registry.size, 0);
 });
 
 test("the registry is bounded (oldest evicted) and entries expire by TTL", () => {
   let now = 0;
   const registry = new PendingLaunchRegistry(2, 1000, () => now);
-  registry.record("1", "launch-a", "generated");
-  registry.record("2", "launch-b", "generated");
-  registry.record("3", "launch-c", "generated");
-  // Bound of 2: launch-a was evicted, so exact key "1" cannot match — falls back to most recent.
-  const fallback = registry.consume("1");
-  assert.equal(fallback?.launchId, "launch-c");
-  assert.equal(registry.size, 1);
+  registry.record("claim-a", "launch-a", "generated");
+  registry.record("claim-b", "launch-b", "generated");
+  registry.record("claim-c", "launch-c", "generated");
+  assert.equal(registry.consume("claim-a"), null, "evicted claims fail closed");
+  assert.equal(registry.consume("claim-b")?.launchId, "launch-b");
 
   now = 5000;
-  assert.equal(registry.consume(), null, "TTL expiry empties the registry");
+  assert.equal(registry.consume("claim-c"), null, "expired claims fail closed");
+  assert.equal(registry.size, 0);
 });
