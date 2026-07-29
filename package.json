@@ -14,7 +14,7 @@
     "test": "npm test --workspaces --if-present",
     "test:scripts": "node --test --test-concurrency=1 scripts/ci-version-bundle.test.mjs scripts/package-core-external-proof.test.mjs scripts/package-server-external-proof.test.mjs scripts/dev-build-no-plugin-writes.test.mjs scripts/oss-hosted-boundary.test.mjs scripts/verify-npm-package.test.mjs scripts/mutation-survivors.test.mjs scripts/migrate-legacy-view-names.test.mjs",
     "e2e": "npm run e2e:gate -w @agentstate-lite/ui",
-    "check": "npm run build && npm run typecheck && npm test --workspaces --if-present && npm run test:scripts && npm run verify:npm-package && npm run check:skill -w @holaxis/aslite && npm run e2e:gate -w @agentstate-lite/ui",
+    "check": "npm run build && npm run typecheck && npm test --workspaces --if-present && npm run test:scripts && npm run verify:npm-package && npm run check:skill -w @holaxis/aslite && npm run test:browser -w @agentstate-lite/mcp-app && npm run e2e:gate -w @agentstate-lite/ui",
     "verify:npm-package": "node scripts/verify-npm-package.mjs",
     "ci:version-bundle": "node scripts/ci-version-bundle.mjs",
     "check:plugin-bundle": "npm run check:skill:bundle -w @holaxis/aslite && npm run check:bundle -w @holaxis/aslite",
