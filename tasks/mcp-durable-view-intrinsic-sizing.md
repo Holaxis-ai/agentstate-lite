@@ -3,14 +3,14 @@ type: Task
 title: Prove intrinsic sizing through the nested MCP View frame
 status: in_progress
 priority: '2'
-actor: openai/codex
+actor: codex-pr177-followup
 description: >-
   REVISED 2026-07-29 — Codex declares a fixed-height MCP container, so the host
   owns outer card height. Make fixed cards fill-and-scroll, preserve intrinsic
   sizing only for flexible hosts, and offer host-capability-gated fullscreen.
   Close only after real Codex usability dogfood.
-assignee: openai/codex
-timestamp: '2026-07-29T12:44:48.533Z'
+assignee: codex-pr177-followup
+timestamp: '2026-07-29T16:19:32.508Z'
 ---
 # Corrected problem
 
@@ -52,6 +52,26 @@ query selection, polling, action confirmation, and CAS mutation semantics remain
 - The focused MCP suite, repository gate, exact-SHA review, and one real Codex fixed-card dogfood
   pass before merge.
 
+# Current handoff and proximate goal
+
+Mike handed the remaining empirical verification to Brian in
+`context-notes/pr-177-current-head-chromium-handoff`; Brian handed it to
+`codex-pr177-followup` on 2026-07-29.
+
+Ultimate goal: keep agentstate-lite a dependable, conflict-safe, user-owned shared-memory system
+whose conversational Views are immediately usable in real MCP hosts.
+
+Proximate goal: make exact PR #177 head prove correct real-browser behavior when a flexible parent
+applies each child height report, including shrink after growth and first visible mount without user
+interaction, while preserving fixed-card internal scrolling. This serves the ultimate goal by
+turning the remaining host-dependent assumption into reproducible acceptance evidence.
+
+The first implementation step is a committed Chromium regression matching production feedback:
+initial content around 150px, growth to around 900px, parent application of the reported iframe
+height, then shrink back to 150–200px. The test must also cover hidden/remounted visibility and the
+288px fixed-host contract. A patch is accepted only after those tests fail before and pass after the
+correction.
+
 # Boundary
 
 Do not add View-registry presentation fields, promotion/discovery behavior, retry loops, or
@@ -61,3 +81,5 @@ layout.
 Evidence: [MCP App presentation sizing](../research/mcp-app-presentation-sizing.md).
 
 [depends on](mcp-app-presentation-sizing.md)
+
+[verification handoff](../context-notes/pr-177-current-head-chromium-handoff.md)
