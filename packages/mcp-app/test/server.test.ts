@@ -1347,3 +1347,39 @@ test("a failed show_view records no claim ticket", async (t) => {
   });
   assert.equal(resolved.isError, true, "no pending launch may be minted by a failed show_view");
 });
+
+test("an empty generated query returns a self-describing error at the tool surface", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const server = createMcpAppServer({ bundle, version: "test" });
+  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  // The exact miss a Desktop model hit in the field: lowercase type.
+  const typeMiss = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: { title: "T", html: "<p>x</p>", query: { type: "task" } },
+  });
+  assert.equal(typeMiss.isError, true);
+  const typeMissText = (typeMiss.content as Array<{ text?: string }>)[0]?.text ?? "";
+  assert.match(typeMissText, /did you mean 'Task'\?/);
+  assert.match(typeMissText, /this bundle's types: /);
+  assert.match(typeMissText, /'Task'/);
+
+  // A filter miss teaches the field's actual values instead of a dead end.
+  const filterMiss = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: { title: "T", html: "<p>x</p>", query: { type: "Task", field: "status=nonexistent" } },
+  });
+  assert.equal(filterMiss.isError, true);
+  const filterMissText = (filterMiss.content as Array<{ text?: string }>)[0]?.text ?? "";
+  assert.match(filterMissText, /matched type 'Task' before filters/);
+  assert.match(filterMissText, /field 'status' values in the first \d+ matched document\(s\): /);
+  assert.match(filterMissText, /'todo'/);
+});

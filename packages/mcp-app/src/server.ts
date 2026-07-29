@@ -42,6 +42,7 @@ import type {
 } from "./contract.js";
 import { MCP_VIEW_HTML } from "./generated/view-html.generated.js";
 import { randomBytes } from "node:crypto";
+import { describeEmptySelection, distinctTypes } from "./empty-selection.js";
 import { McpViewLaunchRegistry } from "./launches.js";
 import { PendingLaunchRegistry } from "./pending-launches.js";
 
@@ -267,13 +268,18 @@ async function resolveShowViewInput(
   const query = input.query!;
   const rows = await queryHeads(bundle, { type: query.type, prefix: query.prefix });
   const registry = query.open ? await loadKinds(bundle) : undefined;
+  const limit = query.limit ?? MAX_VIEW_OBJECTS;
   const selected = applyQuerySelectionFilters(
     rows,
-    { ...query, limit: query.limit ?? MAX_VIEW_OBJECTS },
+    { ...query, limit },
     registry ? [...registry.kinds.values()] : [],
   );
   if (selected.rows.length === 0) {
-    throw new Error("query matched no AgentState documents");
+    // Self-describing empty selection (tasks/mcp-generated-view-type-discovery): the model's only
+    // window into the bundle's vocabulary is this error, so name what exists. The full head scan
+    // runs ONLY on the type/prefix-miss error path.
+    const bundleTypes = rows.length === 0 ? distinctTypes(await queryHeads(bundle, {})) : [];
+    throw new Error(describeEmptySelection({ query, typeMatched: rows, bundleTypes, limit }));
   }
   return {
     ...input,
