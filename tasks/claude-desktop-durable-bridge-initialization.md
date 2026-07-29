@@ -9,51 +9,57 @@ description: >-
   registered Roadmap never sends an app-only durable bridge call and remains in
   its initial loading state.
 actor: codex-pr177-followup
-timestamp: '2026-07-29T21:37:11.247Z'
+timestamp: '2026-07-29T23:18:01.940Z'
 ---
 # Problem
 
-Claude Desktop, configured directly to exact merged PR #177 head `13fcc2c`, renders and authorizes `pages-registry/roadmap` and advertises fullscreen. The registered View remains indefinitely at `loading the graph...` / `reading the roadmap...` both inline and after a successful Expand transition.
+Claude Desktop, configured directly to exact merged PR #177 head `13fcc2c`, rendered and authorized `pages-registry/roadmap` and advertised fullscreen, but the registered View remained indefinitely at `loading the graph...` / `reading the roadmap...`. Server evidence showed initialize, discovery, resource read, and the initial tool response, but no subsequent app-only bridge or polling call.
 
-Server evidence shows initialize, discovery, resource read, and the initial tool response, but no subsequent app-only `durable_view_bridge`, `resume_durable_view`, polling, or close call. This is a bridge-initialization failure, not bundle latency.
+# Root cause and system model
 
-# System model
+The model-visible `show_view` tool advertises one MCP App shell through `_meta.ui.resourceUri`. Hosts may preload and cache that resource before invocation. Since the App shell was introduced, byte-distinct revisions all advertised `ui://agentstate/view-host/v1.html`.
 
-The model-visible `show_view` call mints one exact-byte durable launch. Claude loads the trusted outer App shell, which mounts the registered Roadmap in a sandboxed child iframe. The child emits one-shot `hello` and `subscribe` messages; the shell forwards them through app-only `durable_view_bridge`; the server reads the graph, establishes the subscription baseline, and replies into the child. Claude owns outer sizing, visibility, and inline/fullscreen presentation. A hidden interval quarantines the launch and visible recovery rotates through app-only `resume_durable_view`.
+That mutable identity made an exact server build insufficient to select exact outer-shell bytes: the server could return a new tool implementation while Claude or ChatGPT reused older executable HTML for the same resource identifier. An earlier ChatGPT run visibly executed an old suspension string. In Claude, the reused identity produced no app-only bridge calls.
 
-Exact `13fcc2c` has an initialization gap: an already-authorized result received while the outer document is already hidden is mounted without recording suspension. The child's one-shot messages are then rejected by the shell's hidden gate, and a later visible state has no suspension marker from which to resume. An independent SDK-backed browser probe reproduced the exact loading placeholders, successful display-mode changes, and zero app-only bridge calls with this ordering; the unique-URI Claude diagnostic is the remaining field-causality check.
+A diagnostic build based on current main used a unique resource URI plus an on-card fingerprint. Claude reported the outer App visible from shell boot, loaded the live Roadmap on the first invocation, and immediately emitted the expected app-only bridge burst followed by sustained polling. The final production rule is therefore structural: derive the resource URI deterministically from the full SHA-256 of `MCP_VIEW_HTML`, and feed that one value to tool metadata, resource registration, and returned content. Identical bytes keep one identity; any byte change creates a new identity.
 
-A separate deterministic verification defect aliases byte-distinct App shells under the unchanged cacheable URI `ui://agentstate/view-host/v1.html`. The production repair must make shell resource identity content-derived so exact-build host tests cannot silently execute stale bytes.
+The diagnosis also exposed a separate initially-hidden activation defect. It is tracked independently as `tasks/mcp-app-hidden-authorized-first-mount` and must not be described as this incident's cause.
 
 # Goals
 
 Ultimate goal: keep agentstate-lite a dependable, conflict-safe, user-owned shared-memory system whose conversational Views are immediately usable in real MCP hosts.
 
-Proximate goal: make first registered-View activation lifecycle-safe across Claude Desktop and ChatGPT while giving each exact shell byte sequence an immutable resource identity. This serves the ultimate goal by closing the demonstrated cross-host initialization gap and making future verification trustworthy.
+Proximate goal: give every exact MCP App shell byte sequence an immutable discoverable identity across Claude Desktop and ChatGPT. This serves the ultimate goal by preventing supported hosts from silently executing stale trusted-shell code.
 
 # Progress
 
-- Architecture review completed and synced in `context-notes/claude-bridge-architecture-diagnosis-13fcc2c`.
-- QA test-model review completed and synced in `context-notes/claude-bridge-test-model-13fcc2c`.
-- A throwaway diagnostic build now has a unique resource URI, visible build fingerprint, and ordered child/outer/SDK boundary trace.
-- A feature worktree is ready at `/private/tmp/aslite-claude-bridge-fix` on `fix/claude-desktop-durable-bridge-init`.
-- Next gate: capture the diagnostic ordering in Claude, then execute the unchanged host-shaped regression red on parent before implementing.
+- Unique-resource Claude diagnostic passed: outer visible from boot, live graph rendered, app-only bridge and polling traffic present.
+- Content-derived URI implementation and regression are present in `/private/tmp/aslite-claude-bridge-fix` on `fix/claude-desktop-durable-bridge-init`.
+- The URI regression failed against the parent static URI and passes after the repair.
+- Focused suites, repository-wide typecheck, and full `npm run check` pass.
+- Next gates: exact-SHA independent review, adversarial QA, uninstrumented content-derived Claude acceptance, commit/push, then task completion.
 
 # Acceptance criteria
 
-- A unique-resource diagnostic build records the first missing event and its ordering without weakening authority or relying on timing guesses.
-- A committed host-shaped regression fails before and passes after the correction.
-- App shell resource identity is a deterministic full-content hash shared by tool metadata, registration, and returned resource content.
-- Exact current build renders the Roadmap data on its first Claude Desktop launch.
-- Expand and Return inline work repeatedly when Claude advertises fullscreen.
-- A real background hidden/visible transition resumes through a fresh server-owned launch.
-- ChatGPT fixed-card scrolling and display transitions remain green.
-- Independent code review precedes QA; focused MCP tests and the repository gate pass before any merge.
+- A unique-resource diagnostic build loads the live Roadmap in Claude and records app-only bridge/poll traffic.
+- The App shell resource URI is the deterministic full-content hash of exact generated HTML.
+- Tool metadata, registered resource URI, and returned content URI use the identical derived value.
+- A one-byte HTML change produces a different resource identity.
+- The reviewed uninstrumented exact fixed SHA loads the Roadmap on its first Claude Desktop invocation.
+- Expand and Return inline continue to work when Claude advertises fullscreen.
+- ChatGPT sizing/display lifecycle tests and the full repository gate remain green.
+- Independent review precedes adversarial QA; no merge occurs here.
 
 [depends on](mcp-durable-view-intrinsic-sizing.md)
 
-[diagnostic evidence](../context-notes/claude-pr177-initial-bridge-stall-13fcc2c.md)
+[diagnostic result](../context-notes/claude-bridge-probe-result-77c84e4.md)
+
+[diagnostic provenance](../context-notes/claude-bridge-probe-provenance-77c84e4.md)
+
+[initial failure evidence](../context-notes/claude-pr177-initial-bridge-stall-13fcc2c.md)
 
 [architecture review](../context-notes/claude-bridge-architecture-diagnosis-13fcc2c.md)
 
 [test-model review](../context-notes/claude-bridge-test-model-13fcc2c.md)
+
+[separate lifecycle finding](mcp-app-hidden-authorized-first-mount.md)
