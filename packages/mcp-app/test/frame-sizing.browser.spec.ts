@@ -392,22 +392,82 @@ test("fullscreen visibility transitions rotate a fresh durable launch in both di
     .poll(() => page.evaluate(() => window.__resumeRequests))
     .toHaveLength(3);
   await setDocumentVisibility(outer, "hidden");
+  await setDocumentVisibility(outer, "visible");
+  await page.evaluate(() => {
+    window.__holdResumeRequest = false;
+    window.__releaseResumeRequest();
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__resumeRequests))
+    .toHaveLength(4);
+  await expect
+    .poll(() => page.evaluate(() => window.__closedLaunches))
+    .toContain("launch-resumed-3");
+  await expect(outer.locator("#status")).not.toContainText("Reopen this View");
+  await expect
+    .poll(() => page.evaluate(() => window.__closedLaunches))
+    .toContain("launch-resumed-2");
+});
+
+test("replayed results cannot reactivate a quarantined or retired durable launch", async ({
+  page,
+}) => {
+  const outer = await lifecycleHost(page);
+  const authorization = outer.locator("#authorization-apply");
+  await expect(authorization).toBeVisible();
+  await expect(authorization).toBeEnabled();
+  await authorization.click();
+  await expect(outer.locator("#status")).toContainText(
+    "exact registered View",
+  );
+
+  await page.evaluate(() => {
+    window.__holdResumeRequest = true;
+  });
+  await setDocumentVisibility(outer, "hidden");
+  await setDocumentVisibility(outer, "visible");
+  await expect
+    .poll(() => page.evaluate(() => window.__resumeRequests))
+    .toEqual(["launch-inline"]);
+  await page.evaluate(() => window.__replayOriginalResult());
   await page.evaluate(() => {
     window.__holdResumeRequest = false;
     window.__releaseResumeRequest();
   });
   await expect
     .poll(() => page.evaluate(() => window.__closedLaunches))
-    .toContain("launch-resumed-3");
+    .toContain("launch-inline");
 
-  await setDocumentVisibility(outer, "visible");
+  await page.evaluate(() => window.__replayOriginalResult());
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => window.__closedLaunches)).not.toContain(
+    "launch-resumed-1",
+  );
+});
+
+test("newer host display context wins over a delayed request result", async ({
+  page,
+}) => {
+  const outer = await lifecycleHost(page);
+  const displayMode = outer.locator("#display-mode");
+  await expect(displayMode).toHaveText("Expand");
+  await page.evaluate(() => {
+    window.__holdDisplayRequest = true;
+    window.__displayResponseMode = "fullscreen";
+    window.__suppressDisplayContextOnResolve = true;
+  });
+  await displayMode.click();
   await expect
-    .poll(() => page.evaluate(() => window.__resumeRequests))
-    .toHaveLength(4);
-  await expect(outer.locator("#status")).not.toContainText("Reopen this View");
-  await expect
-    .poll(() => page.evaluate(() => window.__closedLaunches))
-    .toContain("launch-resumed-2");
+    .poll(() => page.evaluate(() => window.__displayRequests))
+    .toEqual(["fullscreen"]);
+
+  await page.evaluate(() => window.__emitDisplayMode("fullscreen"));
+  await expect(displayMode).toHaveText("Return inline");
+  await page.evaluate(() => window.__emitDisplayMode("inline"));
+  await expect(displayMode).toHaveText("Expand");
+  await page.evaluate(() => window.__releaseDisplayRequest());
+  await expect(displayMode).toBeEnabled();
+  await expect(displayMode).toHaveText("Expand");
 });
 
 test("explicit resource teardown waits for the durable launch to close", async ({
@@ -445,6 +505,7 @@ declare global {
   interface Window {
     __appliedHeightReports?: AppliedHeightReport[];
     __closedLaunches: string[];
+    __displayResponseMode: "inline" | "fullscreen" | null;
     __displayRequests: string[];
     __resumeRequests: string[];
     __holdCloseRequest: boolean;
@@ -452,7 +513,10 @@ declare global {
     __holdResumeRequest: boolean;
     __hostInitialized?: boolean;
     __mountReports?: Array<{ launchId: string; height: number }>;
+    __suppressDisplayContextOnResolve: boolean;
     __teardownSettled: boolean;
+    __emitDisplayMode: (mode: "inline" | "fullscreen") => void;
+    __replayOriginalResult: () => Promise<void>;
     __releaseCloseRequest: () => void;
     __releaseDisplayRequest: () => void;
     __releaseResumeRequest: () => void;

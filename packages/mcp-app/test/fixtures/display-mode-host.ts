@@ -62,6 +62,8 @@ window.__closedLaunches = [];
 window.__holdDisplayRequest = false;
 window.__holdResumeRequest = false;
 window.__holdCloseRequest = false;
+window.__displayResponseMode = null;
+window.__suppressDisplayContextOnResolve = false;
 window.__teardownSettled = false;
 window.__releaseDisplayRequest = () => {
   releaseDisplayRequest?.();
@@ -88,6 +90,16 @@ const bridge = new AppBridge(
   { serverTools: {} },
   { hostContext: context() },
 );
+window.__emitDisplayMode = (mode) => {
+  displayMode = mode;
+  bridge.setHostContext(context());
+};
+window.__replayOriginalResult = async () => {
+  await bridge.sendToolResult({
+    content: [{ type: "text", text: "Roadmap replay" }],
+    structuredContent: payload("launch-inline", true),
+  });
+};
 window.__startTeardown = () => {
   window.__teardownSettled = false;
   void bridge.teardownResource({}).then(() => {
@@ -161,9 +173,14 @@ bridge.onrequestdisplaymode = async ({ mode }) => {
       releaseDisplayRequest = resolve;
     });
   }
-  displayMode = mode === "fullscreen" ? "fullscreen" : "inline";
-  bridge.setHostContext(context());
-  return { mode: displayMode };
+  const resolvedMode =
+    window.__displayResponseMode ??
+    (mode === "fullscreen" ? "fullscreen" : "inline");
+  if (!window.__suppressDisplayContextOnResolve) {
+    displayMode = resolvedMode;
+    bridge.setHostContext(context());
+  }
+  return { mode: resolvedMode };
 };
 
 bridge.oninitialized = () => {
@@ -186,13 +203,17 @@ void bridge.connect(
 declare global {
   interface Window {
     __closedLaunches: string[];
+    __displayResponseMode: DisplayMode | null;
     __displayRequests: string[];
     __resumeRequests: string[];
     __holdCloseRequest: boolean;
     __holdDisplayRequest: boolean;
     __holdResumeRequest: boolean;
     __hostInitialized?: boolean;
+    __suppressDisplayContextOnResolve: boolean;
     __teardownSettled: boolean;
+    __emitDisplayMode: (mode: DisplayMode) => void;
+    __replayOriginalResult: () => Promise<void>;
     __releaseCloseRequest: () => void;
     __releaseDisplayRequest: () => void;
     __releaseResumeRequest: () => void;

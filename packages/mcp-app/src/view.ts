@@ -67,10 +67,13 @@ let frameObjectUrl: string | null = null;
 let frameSizingSession: FrameSizingSession | null = null;
 let requestedFrameHeight: number | null = null;
 let currentHostContext: HostContext | null = null;
+let displayModeContextRevision = 0;
 let resumingDurableLaunch: {
   launchId: string;
   epoch: number;
 } | null = null;
+const retiredDurableLaunchIds = new Set<string>();
+const MAX_RETIRED_DURABLE_LAUNCH_IDS = 256;
 const frameLoadGuard = new FrameLoadGuard();
 
 const ACTIVE_VIEW_CHILD_CSP = [
@@ -133,7 +136,22 @@ function closeAuthorization(): void {
   syncDialogState();
 }
 
+function rememberRetiredDurableLaunch(launchId: string): void {
+  if (retiredDurableLaunchIds.has(launchId)) return;
+  while (
+    retiredDurableLaunchIds.size >= MAX_RETIRED_DURABLE_LAUNCH_IDS
+  ) {
+    const oldest = retiredDurableLaunchIds.values().next().value as
+      | string
+      | undefined;
+    if (!oldest) break;
+    retiredDurableLaunchIds.delete(oldest);
+  }
+  retiredDurableLaunchIds.add(launchId);
+}
+
 async function closeDurableLaunch(launchId: string): Promise<void> {
+  rememberRetiredDurableLaunch(launchId);
   await app.callServerTool({
     name: "close_durable_view",
     arguments: { launchId },
@@ -356,6 +374,15 @@ const recoveryGuard = new RecoveryGuard();
 function renderResult(result: CallToolResult): void {
   const payload = extractViewPayload(result);
   if (payload) {
+    if (
+      payload.schemaVersion === "agentstate.durable-view-launch.v1" &&
+      (retiredDurableLaunchIds.has(payload.launch.launchId) ||
+        (currentPayload?.schemaVersion ===
+          "agentstate.durable-view-launch.v1" &&
+          currentPayload.launch.launchId === payload.launch.launchId))
+    ) {
+      return;
+    }
     renderPayload(payload);
     return;
   }
@@ -606,6 +633,9 @@ async function finishAction(decision: "commit" | "cancel"): Promise<void> {
 }
 
 function applyHostContext(context: HostContext): void {
+  if (Object.hasOwn(context, "displayMode")) {
+    displayModeContextRevision++;
+  }
   currentHostContext = { ...(currentHostContext ?? {}), ...context };
   if (context.theme) applyDocumentTheme(context.theme);
   if (context.styles?.variables) applyHostStyleVariables(context.styles.variables);
@@ -675,10 +705,14 @@ function syncDisplayModeButton(): void {
 async function changeDisplayMode(): Promise<void> {
   const target = requestedDisplayMode();
   if (!target) return;
+  const contextRevision = displayModeContextRevision;
   displayModeButton.disabled = true;
   try {
     const result = await app.requestDisplayMode({ mode: target });
-    if (currentHostContext) {
+    if (
+      currentHostContext &&
+      displayModeContextRevision === contextRevision
+    ) {
       currentHostContext = {
         ...currentHostContext,
         displayMode: result.mode,
@@ -832,7 +866,6 @@ document.addEventListener("visibilitychange", () => {
     payload?.schemaVersion === "agentstate.durable-view-launch.v1" &&
     payload.launch.authorization.authorized
   ) {
-    if (suspendedDurableLaunch === payload.launch.launchId) return;
     suspendedDurableLaunch = payload.launch.launchId;
     frameEpoch++;
     resetFrameSizing();
