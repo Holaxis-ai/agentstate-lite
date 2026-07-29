@@ -67,6 +67,10 @@ let frameObjectUrl: string | null = null;
 let frameSizingSession: FrameSizingSession | null = null;
 let requestedFrameHeight: number | null = null;
 let currentHostContext: HostContext | null = null;
+let resumingDurableLaunch: {
+  launchId: string;
+  epoch: number;
+} | null = null;
 const frameLoadGuard = new FrameLoadGuard();
 
 const ACTIVE_VIEW_CHILD_CSP = [
@@ -129,13 +133,15 @@ function closeAuthorization(): void {
   syncDialogState();
 }
 
-function closeDurableLaunch(launchId: string): void {
-  void app
-    .callServerTool({
-      name: "close_durable_view",
-      arguments: { launchId },
-    })
-    .catch(() => {});
+async function closeDurableLaunch(launchId: string): Promise<void> {
+  await app.callServerTool({
+    name: "close_durable_view",
+    arguments: { launchId },
+  });
+}
+
+function closeDurableLaunchEventually(launchId: string): void {
+  void closeDurableLaunch(launchId).catch(() => {});
 }
 
 function resetFrameSizing(): void {
@@ -173,6 +179,7 @@ function retirePayload(closeDurable = true): void {
   stopPolling();
   closeAuthorization();
   suspendedDurableLaunch = null;
+  resumingDurableLaunch = null;
   currentPayload = null;
   syncDisplayModeButton();
   clearFrameDocument();
@@ -184,7 +191,7 @@ function retirePayload(closeDurable = true): void {
     closeDurable &&
     previous?.schemaVersion === "agentstate.durable-view-launch.v1"
   ) {
-    closeDurableLaunch(previous.launch.launchId);
+    closeDurableLaunchEventually(previous.launch.launchId);
   }
 }
 
@@ -259,9 +266,10 @@ function renderGeneratedPayload(payload: ViewLaunchPayload): void {
     stopPolling();
     closeAuthorization();
     suspendedDurableLaunch = null;
+    resumingDurableLaunch = null;
     currentPayload = payload;
     if (previous?.schemaVersion === "agentstate.durable-view-launch.v1") {
-      closeDurableLaunch(previous.launch.launchId);
+      closeDurableLaunchEventually(previous.launch.launchId);
     }
     statusEl.dataset.kind = "ready";
     statusEl.textContent = `${payload.title} · ${payload.objects.length} authoritative object${payload.objects.length === 1 ? "" : "s"}`;
@@ -290,12 +298,13 @@ function renderDurablePayload(payload: DurableViewLaunchPayload): void {
   stopPolling();
   closeAuthorization();
   suspendedDurableLaunch = null;
+  resumingDurableLaunch = null;
   currentPayload = payload;
   if (
     previous?.schemaVersion === "agentstate.durable-view-launch.v1" &&
     !sameLaunch
   ) {
-    closeDurableLaunch(previous.launch.launchId);
+    closeDurableLaunchEventually(previous.launch.launchId);
   }
   actionButtonsEl.replaceChildren();
   actionsEl.hidden = true;
@@ -687,6 +696,80 @@ async function changeDisplayMode(): Promise<void> {
   }
 }
 
+function currentSuspendedDurablePayload(
+  launchId: string,
+  epoch: number,
+): DurableViewLaunchPayload | null {
+  const payload = currentPayload;
+  return (
+    document.visibilityState === "visible" &&
+    frameEpoch === epoch &&
+    suspendedDurableLaunch === launchId &&
+    payload?.schemaVersion === "agentstate.durable-view-launch.v1" &&
+    payload.launch.launchId === launchId &&
+    payload.launch.authorization.authorized
+  )
+    ? payload
+    : null;
+}
+
+function resumeSuspendedDurableView(): void {
+  const payload = currentPayload;
+  const launchId = suspendedDurableLaunch;
+  if (
+    document.visibilityState !== "visible" ||
+    resumingDurableLaunch !== null ||
+    payload?.schemaVersion !== "agentstate.durable-view-launch.v1" ||
+    !payload.launch.authorization.authorized ||
+    launchId !== payload.launch.launchId
+  ) {
+    return;
+  }
+  const operation = { launchId, epoch: frameEpoch };
+  resumingDurableLaunch = operation;
+  void (async () => {
+    try {
+      const response = await app.callServerTool({
+        name: "resume_durable_view",
+        arguments: { launchId },
+      });
+      const resumed = structuredResult(response)?.view;
+      if (
+        !isDurableViewPayload(resumed) ||
+        resumed.launch.launchId === launchId ||
+        resumed.source.viewId !== payload.source.viewId
+      ) {
+        throw new Error(
+          firstResultText(response) ??
+            "The durable View resume returned an invalid replacement.",
+        );
+      }
+      if (!currentSuspendedDurablePayload(launchId, operation.epoch)) {
+        closeDurableLaunchEventually(resumed.launch.launchId);
+        return;
+      }
+      renderDurablePayload(resumed);
+    } catch (error) {
+      if (currentSuspendedDurablePayload(launchId, operation.epoch)) {
+        retirePayload();
+        statusEl.dataset.kind = "error";
+        statusEl.textContent = `Reopen this View: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    } finally {
+      if (resumingDurableLaunch === operation) {
+        resumingDurableLaunch = null;
+      }
+      if (
+        document.visibilityState === "visible" &&
+        suspendedDurableLaunch !== null &&
+        resumingDurableLaunch === null
+      ) {
+        window.queueMicrotask(resumeSuspendedDurableView);
+      }
+    }
+  })();
+}
+
 confirmationApply.addEventListener("click", () => void finishAction("commit"));
 confirmationCancel.addEventListener("click", () => void finishAction("cancel"));
 authorizationApply.addEventListener("click", () => void authorizeDurableView());
@@ -749,6 +832,7 @@ document.addEventListener("visibilitychange", () => {
     payload?.schemaVersion === "agentstate.durable-view-launch.v1" &&
     payload.launch.authorization.authorized
   ) {
+    if (suspendedDurableLaunch === payload.launch.launchId) return;
     suspendedDurableLaunch = payload.launch.launchId;
     frameEpoch++;
     resetFrameSizing();
@@ -760,11 +844,7 @@ document.addEventListener("visibilitychange", () => {
     payload?.schemaVersion === "agentstate.durable-view-launch.v1" &&
     suspendedDurableLaunch === payload.launch.launchId
   ) {
-    suspendedDurableLaunch = null;
-    retirePayload();
-    statusEl.dataset.kind = "error";
-    statusEl.textContent =
-      "Reopen this View after suspension so AgentState can establish a fresh subscription baseline.";
+    resumeSuspendedDurableView();
   }
 });
 
@@ -777,7 +857,14 @@ void (async () => {
   app.onhostcontextchanged = applyHostContext;
   app.onteardown = async () => {
     closeConfirmation();
-    retirePayload();
+    const launchId =
+      currentPayload?.schemaVersion === "agentstate.durable-view-launch.v1"
+        ? currentPayload.launch.launchId
+        : null;
+    retirePayload(false);
+    if (launchId) {
+      await closeDurableLaunch(launchId).catch(() => {});
+    }
     return {};
   };
   await app.connect();

@@ -22,6 +22,7 @@ import {
   MCP_VIEW_RESOURCE_URI,
   POLL_DURABLE_VIEW_TOOL_NAME,
   PREPARE_VIEW_ACTION_TOOL_NAME,
+  RESUME_DURABLE_VIEW_TOOL_NAME,
   RESOLVE_LAUNCH_TOOL_NAME,
   SHOW_VIEW_TOOL_NAME,
   createMcpAppServer,
@@ -310,6 +311,7 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
     SHOW_VIEW_TOOL_NAME,
     AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
     DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    RESUME_DURABLE_VIEW_TOOL_NAME,
     POLL_DURABLE_VIEW_TOOL_NAME,
     CLOSE_DURABLE_VIEW_TOOL_NAME,
     PREPARE_VIEW_ACTION_TOOL_NAME,
@@ -329,6 +331,9 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   const closeTool = tools.tools.find(
     (tool) => tool.name === CLOSE_DURABLE_VIEW_TOOL_NAME,
   );
+  const resumeTool = tools.tools.find(
+    (tool) => tool.name === RESUME_DURABLE_VIEW_TOOL_NAME,
+  );
   const prepareTool = tools.tools.find((tool) => tool.name === PREPARE_VIEW_ACTION_TOOL_NAME);
   const finishTool = tools.tools.find((tool) => tool.name === FINISH_VIEW_ACTION_TOOL_NAME);
   assert.equal(showTool?._meta?.ui?.resourceUri, MCP_VIEW_RESOURCE_URI);
@@ -336,6 +341,7 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   assert.deepEqual(authorizeTool?._meta?.ui?.visibility, ["app"]);
   assert.deepEqual(bridgeTool?._meta?.ui?.visibility, ["app"]);
   assert.deepEqual(pollTool?._meta?.ui?.visibility, ["app"]);
+  assert.deepEqual(resumeTool?._meta?.ui?.visibility, ["app"]);
   assert.deepEqual(closeTool?._meta?.ui?.visibility, ["app"]);
   assert.deepEqual(prepareTool?._meta?.ui?.visibility, ["app"]);
   assert.deepEqual(finishTool?._meta?.ui?.visibility, ["app"]);
@@ -708,6 +714,90 @@ test("registered Roadmap View runs from unchanged source through the authorized 
     arguments: { launchId: view.launch.launchId },
   });
   assert.deepEqual(closed.structuredContent, { closed: true });
+});
+
+test("durable resume rotates to fresh current bytes and recomputes authorization", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const authorization = new SessionViewAuthorizationStore();
+  const server = createMcpAppServer({
+    bundle,
+    viewAuthorization: authorization,
+  });
+  const client = new Client(
+    { name: "test-client", version: "test" },
+    { capabilities: {} },
+  );
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const shown = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: { viewId: "views-registry/roadmap" },
+  });
+  const original = shown.structuredContent as {
+    source: { contentVersion: string };
+    launch: { launchId: string };
+  };
+  const unknown = await client.callTool({
+    name: RESUME_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: "unknown-launch" },
+  });
+  assert.equal(unknown.isError, true);
+  const unapproved = await client.callTool({
+    name: RESUME_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: original.launch.launchId },
+  });
+  assert.equal(unapproved.isError, true);
+  await client.callTool({
+    name: AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: original.launch.launchId },
+  });
+
+  const resumed = await client.callTool({
+    name: RESUME_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: original.launch.launchId },
+  });
+  const current = (resumed.structuredContent as {
+    view: {
+      source: { contentVersion: string };
+      launch: {
+        launchId: string;
+        authorization: { authorized: boolean };
+      };
+    };
+  }).view;
+  assert.notEqual(current.launch.launchId, original.launch.launchId);
+  assert.equal(current.source.contentVersion, original.source.contentVersion);
+  assert.equal(current.launch.authorization.authorized, true);
+
+  await writeBlob(
+    bundle,
+    "views/roadmap.html",
+    new TextEncoder().encode("<!doctype html><p>changed during suspension</p>"),
+    "text/html; charset=utf-8",
+  );
+  const changed = await client.callTool({
+    name: RESUME_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: original.launch.launchId },
+  });
+  const changedView = (changed.structuredContent as {
+    view: {
+      source: { contentVersion: string };
+      launch: { authorization: { authorized: boolean } };
+    };
+  }).view;
+  assert.notEqual(
+    changedView.source.contentVersion,
+    original.source.contentVersion,
+  );
+  assert.equal(changedView.launch.authorization.authorized, false);
 });
 
 test("show_view fails closed for an unknown document ID", async (t) => {

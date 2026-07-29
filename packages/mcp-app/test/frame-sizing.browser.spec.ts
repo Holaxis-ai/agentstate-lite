@@ -1,12 +1,14 @@
 import { readFile } from "node:fs/promises";
 
 import { expect, test, type Frame, type Page } from "@playwright/test";
+import { build } from "esbuild";
 
 import {
   FRAME_SIZE_MESSAGE_TYPE,
   appendFrameSizingScript,
   createFrameSizingSession,
 } from "../src/frame-sizing.ts";
+import { buildMcpViewHtml } from "../scripts/build-view.mjs";
 
 interface AppliedHeightReport {
   height: number;
@@ -22,6 +24,70 @@ async function generatedFrame(page: Page): Promise<Frame> {
     .find((candidate) => candidate !== page.mainFrame());
   if (!frame) throw new Error("Expected one generated View frame.");
   return frame;
+}
+
+async function lifecycleHost(page: Page): Promise<Frame> {
+  const hostBundle = await build({
+    entryPoints: [
+      new URL("./fixtures/display-mode-host.ts", import.meta.url).pathname,
+    ],
+    bundle: true,
+    platform: "browser",
+    format: "iife",
+    target: "es2022",
+    minify: true,
+    write: false,
+    logLevel: "silent",
+  });
+  const hostScript = hostBundle.outputFiles?.[0]?.text;
+  if (!hostScript) throw new Error("MCP lifecycle host build produced no JavaScript.");
+  await page.setContent(
+    `<!doctype html><html><body><iframe id="app"></iframe><script>${hostScript.replaceAll("</script", "<\\/script")}</script></body></html>`,
+  );
+  const html = (await buildMcpViewHtml()).replace(
+    "<script>",
+    `<script>
+      if (typeof crypto.randomUUID !== "function") {
+        crypto.randomUUID = () => "00000000-0000-4000-8000-000000000001";
+      }
+    </script><script>`,
+  );
+  await page.locator("#app").evaluate(
+    (element, source) => {
+      (element as HTMLIFrameElement).srcdoc = source;
+    },
+    html,
+  );
+  await expect
+    .poll(() => page.evaluate(() => window.__hostInitialized === true))
+    .toBe(true);
+  const outer = page
+    .frames()
+    .find((frame) => frame.parentFrame() === page.mainFrame());
+  if (!outer) throw new Error("Expected one MCP App frame.");
+  return outer;
+}
+
+async function setDocumentVisibility(
+  frame: Frame,
+  state: DocumentVisibilityState,
+): Promise<void> {
+  await frame.evaluate((next) => {
+    const target = window as Window & {
+      __testVisibilityState?: DocumentVisibilityState;
+    };
+    target.__testVisibilityState = next;
+    if (!Object.hasOwn(target, "__testVisibilityInstalled")) {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => target.__testVisibilityState ?? "visible",
+      });
+      Object.defineProperty(target, "__testVisibilityInstalled", {
+        value: true,
+      });
+    }
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, state);
 }
 
 test("a flexible parent can apply growth and still receive intrinsic shrink", async ({
@@ -267,9 +333,129 @@ test("a 288px fixed host has no outer scroll and keeps child scrolling", async (
   await page.close();
 });
 
+test("fullscreen visibility transitions rotate a fresh durable launch in both directions", async ({
+  page,
+}) => {
+  const outer = await lifecycleHost(page);
+  const authorization = outer.locator("#authorization-apply");
+  await expect(authorization).toBeVisible();
+  await expect(authorization).toBeEnabled();
+  await authorization.click();
+  await expect(outer.locator("#status")).toContainText(
+    "exact registered View",
+  );
+  await expect(outer.locator("#display-mode")).toHaveText("Expand");
+
+  await outer.locator("#display-mode").click();
+  await expect
+    .poll(() => page.evaluate(() => window.__displayRequests))
+    .toEqual(["fullscreen"]);
+  await setDocumentVisibility(outer, "hidden");
+  await setDocumentVisibility(outer, "visible");
+  await expect(outer.locator("#status")).not.toContainText(
+    "Reopen this View after suspension",
+  );
+  await expect(outer.locator("#display-mode")).toHaveText("Return inline");
+  await expect
+    .poll(() => page.evaluate(() => window.__closedLaunches))
+    .toContain("launch-inline");
+
+  await page.evaluate(() => {
+    window.__holdDisplayRequest = true;
+  });
+  await outer.locator("#display-mode").click();
+  await expect
+    .poll(() => page.evaluate(() => window.__displayRequests))
+    .toEqual(["fullscreen", "inline"]);
+  await setDocumentVisibility(outer, "hidden");
+  await setDocumentVisibility(outer, "visible");
+  await page.evaluate(() => {
+    window.__releaseDisplayRequest();
+  });
+  await expect(outer.locator("#status")).not.toContainText(
+    "Reopen this View after suspension",
+  );
+  await expect(outer.locator("#display-mode")).toHaveText("Expand");
+
+  const nested = page
+    .frames()
+    .find((frame) => frame.parentFrame() === outer);
+  if (!nested) throw new Error("Expected the resumed registered View frame.");
+  await expect(nested.locator("#inside")).toBeVisible();
+
+  await page.evaluate(() => {
+    window.__holdResumeRequest = true;
+  });
+  await setDocumentVisibility(outer, "hidden");
+  await setDocumentVisibility(outer, "visible");
+  await expect
+    .poll(() => page.evaluate(() => window.__resumeRequests))
+    .toHaveLength(3);
+  await setDocumentVisibility(outer, "hidden");
+  await page.evaluate(() => {
+    window.__holdResumeRequest = false;
+    window.__releaseResumeRequest();
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__closedLaunches))
+    .toContain("launch-resumed-3");
+
+  await setDocumentVisibility(outer, "visible");
+  await expect
+    .poll(() => page.evaluate(() => window.__resumeRequests))
+    .toHaveLength(4);
+  await expect(outer.locator("#status")).not.toContainText("Reopen this View");
+  await expect
+    .poll(() => page.evaluate(() => window.__closedLaunches))
+    .toContain("launch-resumed-2");
+});
+
+test("explicit resource teardown waits for the durable launch to close", async ({
+  page,
+}) => {
+  const outer = await lifecycleHost(page);
+  const authorization = outer.locator("#authorization-apply");
+  await expect(authorization).toBeVisible();
+  await expect(authorization).toBeEnabled();
+  await authorization.click();
+  await expect(outer.locator("#status")).toContainText(
+    "exact registered View",
+  );
+
+  await page.evaluate(() => {
+    window.__holdCloseRequest = true;
+    window.__startTeardown();
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__closedLaunches))
+    .toContain("launch-inline");
+  await expect
+    .poll(() => page.evaluate(() => window.__teardownSettled))
+    .toBe(false);
+  await page.evaluate(() => {
+    window.__holdCloseRequest = false;
+    window.__releaseCloseRequest();
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__teardownSettled))
+    .toBe(true);
+});
+
 declare global {
   interface Window {
     __appliedHeightReports?: AppliedHeightReport[];
+    __closedLaunches: string[];
+    __displayRequests: string[];
+    __resumeRequests: string[];
+    __holdCloseRequest: boolean;
+    __holdDisplayRequest: boolean;
+    __holdResumeRequest: boolean;
+    __hostInitialized?: boolean;
     __mountReports?: Array<{ launchId: string; height: number }>;
+    __teardownSettled: boolean;
+    __releaseCloseRequest: () => void;
+    __releaseDisplayRequest: () => void;
+    __releaseResumeRequest: () => void;
+    __startTeardown: () => void;
   }
 }
