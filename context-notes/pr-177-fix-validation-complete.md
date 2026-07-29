@@ -3,7 +3,7 @@ type: Context Note
 title: 'PR #177 fix validation complete'
 description: 'Post-merge sizing fix, exact-SHA evidence, and final CI state for PR #177.'
 actor: codex-pr177-validator
-timestamp: '2026-07-29T14:55:24.928Z'
+timestamp: '2026-07-29T14:57:01.200Z'
 ---
 # Summary
 
@@ -38,3 +38,15 @@ The validation/follow-up task `tasks/pr-177-fix-validation` is complete. The bro
 `tasks/mcp-durable-view-intrinsic-sizing` task remains assigned to `openai/codex` because its
 acceptance separately requires real Codex dogfooding; this validation did not close or take over
 that task.
+
+## Orchestration reflection
+
+The generator-critic gate was effective: the independent reviewer checked the exact combined SHA
+and independently reproduced the browser behavior. Reusing the prior QA agent leaked stale task
+context into its first response, and its custom browser probe later hung. Both outputs were rejected;
+the exact-SHA full gate evidence was retained, while the known-good probe and GitHub CI supplied the
+remaining acceptance evidence.
+
+For future reused-agent gates, the contract should explicitly invalidate prior assignments, name
+the exact verification script or command up front, and reject any result that does not echo the
+requested SHA and evidence schema.
