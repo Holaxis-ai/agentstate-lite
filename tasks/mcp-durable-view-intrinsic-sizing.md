@@ -1,7 +1,7 @@
 ---
 type: Task
 title: Prove intrinsic sizing through the nested MCP View frame
-status: in_progress
+status: blocked
 priority: '2'
 actor: codex-pr177-followup
 description: >-
@@ -10,7 +10,7 @@ description: >-
   sizing only for flexible hosts, and offer host-capability-gated fullscreen.
   Close only after real Codex usability dogfood.
 assignee: codex-pr177-followup
-timestamp: '2026-07-29T16:32:42.982Z'
+timestamp: '2026-07-29T16:59:15.281Z'
 ---
 # Corrected problem
 
@@ -83,7 +83,27 @@ correction.
 - Commit `ca6d6aa` ignores root scroll height only when it equals root client height, while retaining
   genuine root overflow beyond the viewport. The focused MCP suite passes 54/54 and the committed
   Chromium suite passes 3/3.
-- Independent exact-SHA review is in progress. Full repository QA is gated on that review.
+- Independent exact-SHA review passed with high confidence and no findings; evidence is in
+  `context-notes/pr-177-followup-review-ca6d6aa`.
+- Formal QA passed exact SHA `ca6d6aa`: fresh `npm ci`, unpiped root `npm run check`, MCP Chromium
+  3/3, UI Chromium 19/19, and a clean unchanged worktree. Evidence is in
+  `context-notes/pr-177-followup-qa-ca6d6aa`.
+- `ca6d6aa` was pushed to the existing PR #177 branch. GitHub run `30472697686` passed Node 20
+  smoke plus the Node 22 and Node 26 expanded full gates.
+
+# Remaining external acceptance
+
+This session does not expose the AgentState MCP App host surface, so it cannot perform the final
+manual Codex-host fixed-card interaction against the branch. The closest automatable lifecycle is
+now committed and green: hidden first mount becomes visible without interaction, a new launch/epoch
+remount reports its first usable height, the flexible parent applies growth and then receives
+shrink, and the 288px fixed card scrolls only inside its child.
+
+Keep the PR draft and this task open until a Codex host configured to exact head `ca6d6aa` confirms:
+
+- the fixed card is immediately interactive and internally scrollable on first insertion, without
+  scrolling the conversation away and back;
+- **Expand** appears only if Codex advertises fullscreen.
 
 # Boundary
 
