@@ -49566,6 +49566,110 @@ var MCP_VIEW_HTML = '<!doctype html>\n<html lang="en">\n  <head>\n    <meta char
 // ../mcp-app/src/server.ts
 import { randomBytes as randomBytes5 } from "node:crypto";
 
+// ../mcp-app/src/empty-selection.ts
+var MAX_LISTED_TYPES = 12;
+var MAX_LISTED_VALUES = 8;
+var MAX_VALUE_CHARS = 80;
+function isRepresentableFilterValue(value, maxChars = MAX_VALUE_CHARS) {
+  return value !== "" && value === value.trim() && !value.includes(",") && value.length <= maxChars;
+}
+function advertise(values, cap3, maxChars = MAX_VALUE_CHARS) {
+  const usable = values.filter((value) => isRepresentableFilterValue(value, maxChars));
+  const unusable = values.length - usable.length;
+  const shown = usable.slice(0, cap3);
+  const notes = [];
+  const capped = usable.length - shown.length;
+  if (capped > 0) notes.push(`${capped} more`);
+  if (unusable > 0) notes.push(`${unusable} not expressible as a filter value`);
+  const suffix = notes.length > 0 ? ` (${notes.join("; ")})` : "";
+  return {
+    text: shown.map((value) => `'${value}'`).join(", ") + suffix,
+    shownCount: shown.length
+  };
+}
+function distinctTypes(rows) {
+  const types = /* @__PURE__ */ new Set();
+  for (const row2 of rows) {
+    const type = row2.frontmatter.type;
+    if (typeof type === "string" && type.trim()) types.add(type.trim());
+  }
+  return [...types].sort((a, b) => a.localeCompare(b));
+}
+function suggestType(requested, available) {
+  const normalize = (value) => value.trim().toLowerCase().replace(/s$/, "");
+  const wanted = normalize(requested);
+  if (!wanted) return null;
+  for (const candidate of available) {
+    if (normalize(candidate) === wanted && candidate !== requested) return candidate;
+  }
+  return null;
+}
+function describeSelectionMiss(query2, bundleTypes) {
+  const parts = [];
+  const { type, prefix } = query2;
+  const suggestion = type ? suggestType(type, bundleTypes) : null;
+  const hint = suggestion ? ` \u2014 did you mean '${suggestion}'?` : "";
+  const typeExistsElsewhere = type !== void 0 && bundleTypes.includes(type);
+  if (type && prefix) {
+    parts.push(
+      typeExistsElsewhere ? `no documents of type '${type}' under prefix '${prefix}' \u2014 that type exists elsewhere in this bundle` : `no documents of type '${type}' under prefix '${prefix}'${hint}`
+    );
+  } else if (type) {
+    parts.push(`no documents of type '${type}'${hint}`);
+  } else if (prefix) {
+    parts.push(`no documents under prefix '${prefix}'`);
+  }
+  if (bundleTypes.length > 0) {
+    const { text } = advertise(bundleTypes, MAX_LISTED_TYPES, 256);
+    if (text) parts.push(`this bundle's types: ${text}`);
+  }
+  return parts;
+}
+function describeFilterMiss(query2, typeMatched, limit) {
+  const parts = [];
+  const scope = query2.type ? `type '${query2.type}'` : "the type/prefix selection";
+  parts.push(`${typeMatched.length} document(s) matched ${scope} before filters`);
+  if (query2.field) {
+    const evidence = typeMatched.slice(0, limit);
+    const eq = query2.field.indexOf("=");
+    const key = (eq > 0 ? query2.field.slice(0, eq) : query2.field).trim();
+    const observed = [
+      ...new Set(
+        evidence.flatMap((row2) => {
+          const raw = row2.frontmatter[key];
+          return Array.isArray(raw) ? raw : [raw];
+        }).filter((value) => value !== void 0 && value !== null).map((value) => String(value))
+      )
+    ].sort((a, b) => a.localeCompare(b));
+    const { text, shownCount } = advertise(observed, MAX_LISTED_VALUES);
+    if (observed.length === 0) {
+      parts.push(`field '${key}' is absent from the first ${evidence.length} matched document(s)`);
+    } else if (shownCount === 0) {
+      parts.push(
+        `field '${key}' is present in the first ${evidence.length} matched document(s), but no observed value can be expressed as a filter value`
+      );
+    } else {
+      parts.push(
+        `field '${key}' values in the first ${evidence.length} matched document(s): ${text}`
+      );
+    }
+  }
+  if (query2.open) parts.push("open: true excludes documents in a declared terminal state");
+  return parts;
+}
+function describeEmptySelection({
+  query: query2,
+  typeMatched,
+  bundleTypes,
+  limit
+}) {
+  const parts = ["query matched no AgentState documents"];
+  parts.push(
+    ...typeMatched.length === 0 ? describeSelectionMiss(query2, bundleTypes) : describeFilterMiss(query2, typeMatched, limit)
+  );
+  return parts.join("; ");
+}
+
 // ../mcp-app/src/launches.ts
 import { randomBytes as randomBytes4 } from "node:crypto";
 var DEFAULT_TTL_MS = 60 * 60 * 1e3;
@@ -49908,13 +50012,15 @@ async function resolveShowViewInput(bundle, rawInput) {
   const query2 = input.query;
   const rows = await queryHeads(bundle, { type: query2.type, prefix: query2.prefix });
   const registry2 = query2.open ? await loadKinds(bundle) : void 0;
+  const limit = query2.limit ?? MAX_VIEW_OBJECTS;
   const selected = applyQuerySelectionFilters(
     rows,
-    { ...query2, limit: query2.limit ?? MAX_VIEW_OBJECTS },
+    { ...query2, limit },
     registry2 ? [...registry2.kinds.values()] : []
   );
   if (selected.rows.length === 0) {
-    throw new Error("query matched no AgentState documents");
+    const bundleTypes = rows.length === 0 ? distinctTypes(await queryHeads(bundle, {})) : [];
+    throw new Error(describeEmptySelection({ query: query2, typeMatched: rows, bundleTypes, limit }));
   }
   return {
     ...input,
