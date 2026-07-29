@@ -7,23 +7,24 @@ status: in_progress
 priority: '2'
 actor: claude-main
 description: >-
-  BUILT + REVIEWED, awaiting Brian's PR. Branch
-  feat/mcp-empty-selection-self-description (23a4c86 mechanic+tests, 546bff6
-  review fixes). Generated show_view empty selections are now self-describing:
-  type/prefix miss names the bundle's types (bounded 12) with case/plural
-  nearest-match hint ('task' -> did you mean 'Task'?); filter miss reports
-  pre-filter count + observed field values (bounded 8, clipped 80 chars/value,
-  arrays flattened per element to match filter semantics); absent fields and
-  open:true named. Full head scan only on the miss path. Independent review at
-  exact SHA 23a4c86: APPROVE, 3x P3 — 2 taken in 546bff6, 1 recorded
-  (pre-existing three-way field-key-parse duplication; core parseFieldSelection
-  consolidation follow-up). Disclosure analysis clean: the hint reveals nothing
-  the model's existing show_view authority could not already read. Reviewer's
-  stdio session reproduced both hint shapes; probes red-capable incl. the wiring
-  pin. Kinds-CATALOG tool deliberately excluded — placement belongs to
-  tasks/mcp-durable-view-catalog. Merge is Brian's; post-merge, the Desktop
-  simple-prompt flow self-corrects without human answers.
-timestamp: '2026-07-28T16:44:01.309Z'
+  PR #179 review round ADDRESSED at 6eae227 (branch
+  feat/mcp-empty-selection-self-description: 23a4c86 mechanic, 546bff6 + 6eae227
+  review rounds). Codex reviewer's three findings all fixed: P1 field evidence
+  now bounded to the launch's frozen envelope (limit threaded from server;
+  'values in the first N matched document(s)' label) — the reviewer's 25-row
+  probe reproduced over real stdio, row-25-only value no longer disclosed, pin
+  red-verified; P2 empty type+prefix INTERSECTION reported as a conjunction,
+  type axis asserted only when the whole-bundle type list settles it, prefix
+  axis never claimed empty on intersection evidence; P3 only retry-representable
+  values advertised (isRepresentableFilterValue mirrors the
+  comma-split/trim/non-empty grammar against matchesFilter's exact comparison) —
+  empty/padded/comma-bearing/over-long values counted not shown, clipping
+  removed since clipped values cannot round-trip, all-unusable branch says so.
+  Gates green at 6eae227 (build/typecheck/full npm test); three stdio probes
+  reproduce the reviewer's cases. Earlier subagent review round (APPROVE 3xP3)
+  is superseded on the value-list logic by this round. Open question for Brian:
+  whether the PR reviewer re-reviews 6eae227 before merge.
+timestamp: '2026-07-29T14:10:29.950Z'
 ---
 # Field evidence (Brian, Claude Desktop chat, 2026-07-27 evening)
 
