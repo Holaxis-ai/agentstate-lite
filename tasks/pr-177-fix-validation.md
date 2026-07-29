@@ -1,14 +1,14 @@
 ---
 type: Task
 title: 'Validate PR #177 fixed-host repair'
-status: in_progress
+status: done
 priority: high
 assignee: codex-pr177-validator
 description: >-
   Independent exact-SHA validation of the post-review fixed/flexible height
   correction; patch only if a gap survives.
 actor: codex-pr177-validator
-timestamp: '2026-07-29T14:31:50.523Z'
+timestamp: '2026-07-29T14:55:34.554Z'
 ---
 # Purpose
 
@@ -51,4 +51,15 @@ The whole-system sizing model and invariants are recorded in
 - Chromium now reports `150 -> 900 -> 150`; fixed-height outer scrolling remains absent and nested
   scrolling remains functional.
 - Merged current `main`; combined commit is `5f36f0e`.
-- Independent code review is in progress. Full repository QA is gated on that review.
+- Independent review passed exact SHA `5f36f0e` with high confidence and no findings; durable
+  evidence is in `context-notes/pr-177-sizing-fix-review-5f36f0e`.
+- The full local repository gate passed unpiped on the exact SHA.
+- Pushed `5f36f0e` to the existing PR branch `codex/fix-mcp-intrinsic-height`.
+- GitHub CI run `30462784638` passed Node 20 smoke plus the Node 22 and Node 26 full gates.
+- PR #177 is open, draft, mergeable, and based on current `main` at `cb396e4`.
+
+# Outcome
+
+Done. The surviving overflow-only resize bug is fixed and regression-tested; the latest merged
+`main` is integrated; independent review, local verification, browser verification, and GitHub CI
+all pass on the pushed exact head.
