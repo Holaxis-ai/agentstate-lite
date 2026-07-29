@@ -5,58 +5,59 @@ status: in_progress
 priority: '2'
 actor: openai/codex
 description: >-
-  REOPENED 2026-07-28 — real Codex dogfooding showed the inline View remains
-  substantially shorter than Codex can display. The prior relay was
-  unit/Chromium-proven but lacked the required host acceptance proof. Fix the
-  current-height feedback lock, pin initial-short-to-tall growth, and close only
-  after a real Codex View expands without nested scrolling.
+  REVISED 2026-07-29 — Codex declares a fixed-height MCP container, so the host
+  owns outer card height. Make fixed cards fill-and-scroll, preserve intrinsic
+  sizing only for flexible hosts, and offer host-capability-gated fullscreen.
+  Close only after real Codex usability dogfood.
 assignee: openai/codex
-timestamp: '2026-07-28T01:22:17.830Z'
+timestamp: '2026-07-29T12:44:48.533Z'
 ---
-# Problem
+# Corrected problem
 
-The MCP SDK auto-sizes the outer App document, but AgentState mounts active durable View bytes in a
-second opaque-origin iframe whose height is fixed at a minimum of 18rem. The shell cannot inspect
-the child DOM, so long or dynamically growing Views can produce nested scrolling even when the
-host correctly honors intrinsic App sizing.
+Live Codex acceptance disproved the original target. Codex supplies the MCP App with a fixed
+`containerDimensions.height`; under the MCP Apps contract, the host owns that dimension. The app
+sent both an initial intrinsic-height notification and a distinct delayed notification, but Codex
+kept the card short until its own conversation virtualization remounted the content. More retries
+inside AgentState cannot make that host-controlled behavior reliable.
 
-Evidence and host measurements:
-[MCP App presentation sizing](../research/mcp-app-presentation-sizing.md).
+The non-scrollable yellow diagnostic was intentionally authored with `overflow: hidden` to make
+clipping obvious. It was not proof that fixed MCP App cards cannot scroll.
 
-# Small proof
+# Revised unit
 
-Add one narrow, shell-owned layout signal from the current generated/durable View frame to the
-trusted MCP App shell. It is a layout hint, never data or authority.
+Make the one MCP shell adapt to the host's declared height mode:
 
-The shell must:
+- **Fixed height (`height`)** — fill the exact host allocation, keep the trusted shell from
+  creating a second outer scrollbar, and let the nested View scroll its own content.
+- **Flexible height (`maxHeight` or omitted)** — retain the authenticated nested-frame
+  intrinsic-height relay and let the SDK report outer size normally.
+- Declare `inline` and `fullscreen` support, and show an **Expand** / **Return inline** action only
+  when the host advertises the target display mode. The request remains host-mediated and the host
+  may decline it.
+- Keep the nested measurement read-only (`scrollHeight` / bounds); never mutate an observed
+  document merely to measure it.
 
-- accept it only from the current iframe `contentWindow`;
-- bind acceptance to the active launch ID and frame epoch so stale/replaced documents cannot resize
-  the current launch;
-- parse a finite positive height and clamp it to a conservative, host-aware maximum;
-- update only the child iframe height;
-- preserve the existing sandbox, CSP, source authorization, bridge authority, and action model;
-- let the MCP SDK's existing outer auto-resize propagate the changed shell height to the host.
+This changes presentation policy only. Sandbox, CSP, exact-byte authorization, bridge authority,
+query selection, polling, action confirmation, and CAS mutation semantics remain unchanged.
 
-Prefer one reusable View-runtime helper or injected bootstrap over asking every View author to
-invent resize observation and message shapes.
+# Required proof
 
-# Proof cases
-
-- short content does not retain an arbitrary 18rem blank floor;
-- long content grows without an inner scrollbar up to the declared cap;
-- narrow/mobile-like reflow updates height;
-- live content growth and shrink update height;
-- stale-launch and wrong-source messages are ignored;
-- malformed, negative, non-finite, and excessive sizes fail closed or clamp;
-- the trusted action/authorization confirmation remains usable without a second scroll trap;
-- official reference host and current Codex conversation host are both exercised where host access
-  permits, with any measurement gap recorded rather than inferred.
+- Fixed-host layout has no outer shell scroll, gives the nested iframe the remaining allocation,
+  and leaves taller child content internally scrollable.
+- Flexible-host content still grows and shrinks from the nonce/launch/epoch-bound child signal.
+- Wrong-source, stale-session, malformed, negative, non-finite, and excessive size messages remain
+  rejected or bounded.
+- Expand is absent unless the host advertises fullscreen, and uses the standard
+  `ui/request-display-mode` path.
+- The focused MCP suite, repository gate, exact-SHA review, and one real Codex fixed-card dogfood
+  pass before merge.
 
 # Boundary
 
-Do not add View-registry presentation fields or promotion/discovery behavior in this unit. Do not
-declare fullscreen/PiP support yet. This proof only makes the existing nested-frame composition
-behave correctly under the protocol's already-present flexible sizing.
+Do not add View-registry presentation fields, promotion/discovery behavior, retry loops, or
+host-specific Codex APIs. Do not claim AgentState controls a fixed host's outer conversation
+layout.
+
+Evidence: [MCP App presentation sizing](../research/mcp-app-presentation-sizing.md).
 
 [depends on](mcp-app-presentation-sizing.md)
