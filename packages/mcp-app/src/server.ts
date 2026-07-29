@@ -54,6 +54,7 @@ export const AUTHORIZE_DURABLE_VIEW_TOOL_NAME = "authorize_durable_view";
 export const DURABLE_VIEW_BRIDGE_TOOL_NAME = "durable_view_bridge";
 export const POLL_DURABLE_VIEW_TOOL_NAME = "poll_durable_view";
 export const CLOSE_DURABLE_VIEW_TOOL_NAME = "close_durable_view";
+export const RESUME_DURABLE_VIEW_TOOL_NAME = "resume_durable_view";
 export const RESOLVE_LAUNCH_TOOL_NAME = "resolve_launch";
 
 /**
@@ -585,6 +586,91 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
         content: [{ type: "text", text: "Processed one registered View bridge request." }],
         structuredContent: { outcome },
       };
+    },
+  );
+
+  registerAppTool(
+    server,
+    RESUME_DURABLE_VIEW_TOOL_NAME,
+    {
+      title: "Resume registered AgentState View",
+      description:
+        "Mint a fresh current registered View launch after the trusted App quarantines an old visible mount. View identity and authorization are derived only from server-owned launch state.",
+      inputSchema: z
+        .object({ launchId: z.string().min(1).max(128) })
+        .strict(),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: { ui: { visibility: ["app"] } },
+    },
+    async ({ launchId }): Promise<CallToolResult> => {
+      const previous = durableLaunches.resolveLaunch(launchId);
+      if (
+        !previous ||
+        previous.capability !== "bundle-read" ||
+        !(await durableAuthorizations.isAuthorized(
+          pageLaunchAuthorizationSubject(previous),
+        ))
+      ) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: "The suspended registered View is unknown, expired, or no longer authorized.",
+            },
+          ],
+        };
+      }
+      try {
+        const view = await resolveDurableViewLaunch(
+          options.bundle,
+          { viewId: previous.registryId },
+          durableLaunches,
+          durableAuthorizations,
+        );
+        const stillCurrent = durableLaunches.resolveLaunch(launchId);
+        if (
+          stillCurrent !== previous ||
+          !(await durableAuthorizations.isAuthorized(
+            pageLaunchAuthorizationSubject(previous),
+          ))
+        ) {
+          durableBridge.revoke(view.launch.launchId);
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: "The suspended registered View changed while its replacement was being minted.",
+              },
+            ],
+          };
+        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Minted a fresh current launch for "${view.title}".`,
+            },
+          ],
+          structuredContent: { view },
+        };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `Could not resume the registered View: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
     },
   );
 

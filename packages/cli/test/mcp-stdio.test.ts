@@ -68,6 +68,7 @@ test("built npm CLI serves the fixed MCP App contract over clean stdio", async (
     "show_view",
     "authorize_durable_view",
     "durable_view_bridge",
+    "resume_durable_view",
     "poll_durable_view",
     "close_durable_view",
     "prepare_view_action",
@@ -78,7 +79,7 @@ test("built npm CLI serves the fixed MCP App contract over clean stdio", async (
     tools.tools
       .filter((tool) => tool.name !== "show_view")
       .map((tool) => tool._meta?.ui?.visibility),
-    Array.from({ length: 7 }, () => ["app"]),
+    Array.from({ length: 8 }, () => ["app"]),
     "only show_view is visible to the model; lifecycle and bridge tools belong to the trusted App",
   );
 

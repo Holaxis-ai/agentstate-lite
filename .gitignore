@@ -14,6 +14,7 @@ packages/mcp-app/src/generated/
 # Playwright E2E output (packages/ui) — never committed.
 packages/ui/test-results/
 packages/ui/playwright-report/
+packages/mcp-app/test-results/
 packages/ui/blob-report/
 /docs/
 .agentstate.json

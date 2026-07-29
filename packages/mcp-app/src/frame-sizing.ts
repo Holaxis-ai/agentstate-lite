@@ -37,8 +37,8 @@ export function createFrameSizingSession(
 }
 
 /**
- * Mirrors the MCP Apps SDK's intrinsic-height measurement for the opaque nested frame.
- * The outer App keeps its default autoResize behavior and remains the only MCP-facing layer.
+ * Mirrors intrinsic-height measurement for the opaque nested frame. The trusted outer shell
+ * remains the only MCP-facing sizing authority.
  */
 export function frameSizingScript(session: FrameSizingSession): string {
   const identity = safeScriptJson({
@@ -47,7 +47,7 @@ export function frameSizingScript(session: FrameSizingSession): string {
     epoch: session.epoch,
     nonce: session.nonce,
   });
-  return `(()=>{"use strict";const identity=${identity};let scheduled=false;let lastHeight=0;const requestFrame=typeof window.requestAnimationFrame==="function"?window.requestAnimationFrame.bind(window):(callback)=>window.setTimeout(callback,0);const measure=()=>{scheduled=false;const html=document.documentElement;const originalHeight=html.style.height;html.style.height="max-content";const height=Math.ceil(html.getBoundingClientRect().height);html.style.height=originalHeight;if(!Number.isFinite(height)||height<=0||height===lastHeight)return;lastHeight=height;window.parent.postMessage({...identity,height},"*")};const schedule=()=>{if(scheduled)return;scheduled=true;requestFrame(measure)};schedule();if(typeof ResizeObserver==="function"){const observer=new ResizeObserver(schedule);observer.observe(document.documentElement);if(document.body)observer.observe(document.body)}window.addEventListener("resize",schedule);document.fonts?.ready?.then(schedule,()=>{})})();`;
+  return `(()=>{"use strict";const identity=${identity};let scheduled=false;let lastHeight=0;const requestFrame=typeof window.requestAnimationFrame==="function"?window.requestAnimationFrame.bind(window):(callback)=>window.setTimeout(callback,0);const measure=()=>{scheduled=false;const html=document.documentElement;const body=document.body;const rootScrollHeight=html.scrollHeight;const height=Math.ceil(Math.max(rootScrollHeight===html.clientHeight?0:rootScrollHeight,body?.scrollHeight??0,html.getBoundingClientRect().height,body?.getBoundingClientRect().height??0));if(!Number.isFinite(height)||height<=0||height===lastHeight)return;lastHeight=height;window.parent.postMessage({...identity,height},"*")};const schedule=()=>{if(scheduled)return;scheduled=true;requestFrame(measure)};schedule();if(typeof ResizeObserver==="function"){const observer=new ResizeObserver(schedule);observer.observe(document.documentElement);if(document.body)observer.observe(document.body)}if(typeof MutationObserver==="function"){const observer=new MutationObserver(schedule);observer.observe(document.documentElement,{attributes:true,characterData:true,childList:true,subtree:true})}window.addEventListener("resize",schedule);document.fonts?.ready?.then(schedule,()=>{})})();`;
 }
 
 export function frameSizingScriptTag(
@@ -114,6 +114,26 @@ export function measureShellChromeHeight(
     return 0;
   }
   return Math.max(0, Math.ceil(shellHeight - frameHeight));
+}
+
+export function hasFixedHostHeight(
+  dimensions:
+    | { height: number; maxHeight?: never }
+    | { height?: never; maxHeight?: number }
+    | undefined,
+): boolean {
+  return dimensions !== undefined && "height" in dimensions;
+}
+
+export function flexibleHostHeightLimit(
+  dimensions:
+    | { height: number; maxHeight?: never }
+    | { height?: never; maxHeight?: number }
+    | undefined,
+): number | undefined {
+  return dimensions && "maxHeight" in dimensions
+    ? dimensions.maxHeight
+    : undefined;
 }
 
 export function clampFrameHeight(

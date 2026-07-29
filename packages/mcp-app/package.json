@@ -23,7 +23,8 @@
     "pretypecheck": "npm run build -w @agentstate-lite/markdown-renderer -w @agentstate-lite/view-runtime",
     "typecheck": "node scripts/build-view.mjs && tsc --noEmit",
     "pretest": "npm run build -w @agentstate-lite/markdown-renderer -w @agentstate-lite/view-runtime",
-    "test": "node scripts/build-view.mjs && node --test --import ./test/ts-loader.mjs ./test/*.test.ts ./test/*.test.mjs"
+    "test": "node scripts/build-view.mjs && node --test --import ./test/ts-loader.mjs ./test/*.test.ts ./test/*.test.mjs",
+    "test:browser": "playwright install chromium && playwright test --config playwright.config.ts"
   },
   "dependencies": {
     "@agentstate-lite/core": "*",
@@ -37,6 +38,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "@types/node": "^22.20.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

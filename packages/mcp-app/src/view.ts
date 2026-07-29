@@ -25,6 +25,8 @@ import {
   appendFrameSizingScript,
   clampFrameHeight,
   createFrameSizingSession,
+  flexibleHostHeightLimit,
+  hasFixedHostHeight,
   measureShellChromeHeight,
   readFrameSizeEvent,
   type FrameSizingSession,
@@ -52,6 +54,7 @@ const confirmationCancel = document.getElementById("confirmation-cancel") as HTM
 const authorizationBackdrop = document.getElementById("authorization-backdrop")!;
 const authorizationApply = document.getElementById("authorization-apply") as HTMLButtonElement;
 const authorizationCancel = document.getElementById("authorization-cancel") as HTMLButtonElement;
+const displayModeButton = document.getElementById("display-mode") as HTMLButtonElement;
 
 let app: App;
 let currentPayload: McpViewPayload | null = null;
@@ -64,6 +67,13 @@ let frameObjectUrl: string | null = null;
 let frameSizingSession: FrameSizingSession | null = null;
 let requestedFrameHeight: number | null = null;
 let currentHostContext: HostContext | null = null;
+let displayModeContextRevision = 0;
+let resumingDurableLaunch: {
+  launchId: string;
+  epoch: number;
+} | null = null;
+const retiredDurableLaunchIds = new Set<string>();
+const MAX_RETIRED_DURABLE_LAUNCH_IDS = 256;
 const frameLoadGuard = new FrameLoadGuard();
 
 const ACTIVE_VIEW_CHILD_CSP = [
@@ -126,13 +136,30 @@ function closeAuthorization(): void {
   syncDialogState();
 }
 
-function closeDurableLaunch(launchId: string): void {
-  void app
-    .callServerTool({
-      name: "close_durable_view",
-      arguments: { launchId },
-    })
-    .catch(() => {});
+function rememberRetiredDurableLaunch(launchId: string): void {
+  if (retiredDurableLaunchIds.has(launchId)) return;
+  while (
+    retiredDurableLaunchIds.size >= MAX_RETIRED_DURABLE_LAUNCH_IDS
+  ) {
+    const oldest = retiredDurableLaunchIds.values().next().value as
+      | string
+      | undefined;
+    if (!oldest) break;
+    retiredDurableLaunchIds.delete(oldest);
+  }
+  retiredDurableLaunchIds.add(launchId);
+}
+
+async function closeDurableLaunch(launchId: string): Promise<void> {
+  rememberRetiredDurableLaunch(launchId);
+  await app.callServerTool({
+    name: "close_durable_view",
+    arguments: { launchId },
+  });
+}
+
+function closeDurableLaunchEventually(launchId: string): void {
+  void closeDurableLaunch(launchId).catch(() => {});
 }
 
 function resetFrameSizing(): void {
@@ -170,7 +197,9 @@ function retirePayload(closeDurable = true): void {
   stopPolling();
   closeAuthorization();
   suspendedDurableLaunch = null;
+  resumingDurableLaunch = null;
   currentPayload = null;
+  syncDisplayModeButton();
   clearFrameDocument();
   frame.setAttribute("sandbox", "");
   frame.removeAttribute("csp");
@@ -180,7 +209,7 @@ function retirePayload(closeDurable = true): void {
     closeDurable &&
     previous?.schemaVersion === "agentstate.durable-view-launch.v1"
   ) {
-    closeDurableLaunch(previous.launch.launchId);
+    closeDurableLaunchEventually(previous.launch.launchId);
   }
 }
 
@@ -255,9 +284,10 @@ function renderGeneratedPayload(payload: ViewLaunchPayload): void {
     stopPolling();
     closeAuthorization();
     suspendedDurableLaunch = null;
+    resumingDurableLaunch = null;
     currentPayload = payload;
     if (previous?.schemaVersion === "agentstate.durable-view-launch.v1") {
-      closeDurableLaunch(previous.launch.launchId);
+      closeDurableLaunchEventually(previous.launch.launchId);
     }
     statusEl.dataset.kind = "ready";
     statusEl.textContent = `${payload.title} · ${payload.objects.length} authoritative object${payload.objects.length === 1 ? "" : "s"}`;
@@ -286,12 +316,13 @@ function renderDurablePayload(payload: DurableViewLaunchPayload): void {
   stopPolling();
   closeAuthorization();
   suspendedDurableLaunch = null;
+  resumingDurableLaunch = null;
   currentPayload = payload;
   if (
     previous?.schemaVersion === "agentstate.durable-view-launch.v1" &&
     !sameLaunch
   ) {
-    closeDurableLaunch(previous.launch.launchId);
+    closeDurableLaunchEventually(previous.launch.launchId);
   }
   actionButtonsEl.replaceChildren();
   actionsEl.hidden = true;
@@ -335,6 +366,7 @@ function renderPayload(payload: McpViewPayload): void {
   } else {
     renderGeneratedPayload(payload);
   }
+  syncDisplayModeButton();
 }
 
 const recoveryGuard = new RecoveryGuard();
@@ -342,6 +374,15 @@ const recoveryGuard = new RecoveryGuard();
 function renderResult(result: CallToolResult): void {
   const payload = extractViewPayload(result);
   if (payload) {
+    if (
+      payload.schemaVersion === "agentstate.durable-view-launch.v1" &&
+      (retiredDurableLaunchIds.has(payload.launch.launchId) ||
+        (currentPayload?.schemaVersion ===
+          "agentstate.durable-view-launch.v1" &&
+          currentPayload.launch.launchId === payload.launch.launchId))
+    ) {
+      return;
+    }
     renderPayload(payload);
     return;
   }
@@ -592,24 +633,25 @@ async function finishAction(decision: "commit" | "cancel"): Promise<void> {
 }
 
 function applyHostContext(context: HostContext): void {
+  if (Object.hasOwn(context, "displayMode")) {
+    displayModeContextRevision++;
+  }
   currentHostContext = { ...(currentHostContext ?? {}), ...context };
   if (context.theme) applyDocumentTheme(context.theme);
   if (context.styles?.variables) applyHostStyleVariables(context.styles.variables);
   if (context.styles?.css?.fonts) applyHostFonts(context.styles.css.fonts);
+  document.documentElement.toggleAttribute(
+    "data-fixed-height",
+    hasFixedHostHeight(currentHostContext.containerDimensions),
+  );
   applyRequestedFrameHeight();
+  syncDisplayModeButton();
 }
 
 function syncDialogState(): void {
   const open = !confirmationBackdrop.hidden || !authorizationBackdrop.hidden;
   document.body.toggleAttribute("data-dialog-open", open);
   if (!open) applyRequestedFrameHeight();
-}
-
-function hostHeightLimit(): number | undefined {
-  const dimensions = currentHostContext?.containerDimensions;
-  if (!dimensions) return undefined;
-  if ("height" in dimensions) return dimensions.height;
-  return dimensions.maxHeight;
 }
 
 function shellChromeHeight(): number {
@@ -620,25 +662,158 @@ function shellChromeHeight(): number {
 }
 
 function applyRequestedFrameHeight(): void {
+  if (hasFixedHostHeight(currentHostContext?.containerDimensions)) {
+    frame.style.removeProperty("height");
+    return;
+  }
   if (
     requestedFrameHeight === null ||
     document.body.hasAttribute("data-dialog-open")
   ) {
     return;
   }
+  const chromeHeight = shellChromeHeight();
   const height = clampFrameHeight(requestedFrameHeight, {
-    hostHeightLimit: hostHeightLimit(),
-    shellChromeHeight: shellChromeHeight(),
+    hostHeightLimit: flexibleHostHeightLimit(
+      currentHostContext?.containerDimensions,
+    ),
+    shellChromeHeight: chromeHeight,
   });
   if (frame.style.height !== `${height}px`) {
     frame.style.height = `${height}px`;
   }
 }
 
+function requestedDisplayMode(): "inline" | "fullscreen" | null {
+  if (!currentPayload) return null;
+  const current = currentHostContext?.displayMode ?? "inline";
+  const target = current === "fullscreen" ? "inline" : "fullscreen";
+  return currentHostContext?.availableDisplayModes?.includes(target)
+    ? target
+    : null;
+}
+
+function syncDisplayModeButton(): void {
+  const target = requestedDisplayMode();
+  displayModeButton.hidden = target === null;
+  if (target) {
+    displayModeButton.textContent =
+      target === "fullscreen" ? "Expand" : "Return inline";
+  }
+}
+
+async function changeDisplayMode(): Promise<void> {
+  const target = requestedDisplayMode();
+  if (!target) return;
+  const contextRevision = displayModeContextRevision;
+  displayModeButton.disabled = true;
+  try {
+    const result = await app.requestDisplayMode({ mode: target });
+    if (
+      currentHostContext &&
+      displayModeContextRevision === contextRevision
+    ) {
+      currentHostContext = {
+        ...currentHostContext,
+        displayMode: result.mode,
+      };
+    }
+    syncDisplayModeButton();
+  } catch (error) {
+    const supersededByHostContext =
+      displayModeContextRevision !== contextRevision &&
+      currentHostContext?.displayMode === target;
+    if (!supersededByHostContext) {
+      statusEl.dataset.kind = "error";
+      statusEl.textContent =
+        error instanceof Error
+          ? `This host could not change the View display mode: ${error.message}`
+          : "This host could not change the View display mode.";
+    }
+  } finally {
+    displayModeButton.disabled = false;
+  }
+}
+
+function currentSuspendedDurablePayload(
+  launchId: string,
+  epoch: number,
+): DurableViewLaunchPayload | null {
+  const payload = currentPayload;
+  return (
+    document.visibilityState === "visible" &&
+    frameEpoch === epoch &&
+    suspendedDurableLaunch === launchId &&
+    payload?.schemaVersion === "agentstate.durable-view-launch.v1" &&
+    payload.launch.launchId === launchId &&
+    payload.launch.authorization.authorized
+  )
+    ? payload
+    : null;
+}
+
+function resumeSuspendedDurableView(): void {
+  const payload = currentPayload;
+  const launchId = suspendedDurableLaunch;
+  if (
+    document.visibilityState !== "visible" ||
+    resumingDurableLaunch !== null ||
+    payload?.schemaVersion !== "agentstate.durable-view-launch.v1" ||
+    !payload.launch.authorization.authorized ||
+    launchId !== payload.launch.launchId
+  ) {
+    return;
+  }
+  const operation = { launchId, epoch: frameEpoch };
+  resumingDurableLaunch = operation;
+  void (async () => {
+    try {
+      const response = await app.callServerTool({
+        name: "resume_durable_view",
+        arguments: { launchId },
+      });
+      const resumed = structuredResult(response)?.view;
+      if (
+        !isDurableViewPayload(resumed) ||
+        resumed.launch.launchId === launchId ||
+        resumed.source.viewId !== payload.source.viewId
+      ) {
+        throw new Error(
+          firstResultText(response) ??
+            "The durable View resume returned an invalid replacement.",
+        );
+      }
+      if (!currentSuspendedDurablePayload(launchId, operation.epoch)) {
+        closeDurableLaunchEventually(resumed.launch.launchId);
+        return;
+      }
+      renderDurablePayload(resumed);
+    } catch (error) {
+      if (currentSuspendedDurablePayload(launchId, operation.epoch)) {
+        retirePayload();
+        statusEl.dataset.kind = "error";
+        statusEl.textContent = `Reopen this View: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    } finally {
+      if (resumingDurableLaunch === operation) {
+        resumingDurableLaunch = null;
+      }
+      if (
+        document.visibilityState === "visible" &&
+        suspendedDurableLaunch !== null &&
+        resumingDurableLaunch === null
+      ) {
+        window.queueMicrotask(resumeSuspendedDurableView);
+      }
+    }
+  })();
+}
+
 confirmationApply.addEventListener("click", () => void finishAction("commit"));
 confirmationCancel.addEventListener("click", () => void finishAction("cancel"));
 authorizationApply.addEventListener("click", () => void authorizeDurableView());
 authorizationCancel.addEventListener("click", cancelDurableAuthorization);
+displayModeButton.addEventListener("click", () => void changeDisplayMode());
 
 frame.addEventListener("load", () => {
   if (frameLoadGuard.accept()) return;
@@ -707,21 +882,27 @@ document.addEventListener("visibilitychange", () => {
     payload?.schemaVersion === "agentstate.durable-view-launch.v1" &&
     suspendedDurableLaunch === payload.launch.launchId
   ) {
-    suspendedDurableLaunch = null;
-    retirePayload();
-    statusEl.dataset.kind = "error";
-    statusEl.textContent =
-      "Reopen this View after suspension so AgentState can establish a fresh subscription baseline.";
+    resumeSuspendedDurableView();
   }
 });
 
 void (async () => {
-  app = new App({ name: "AgentState View Host", version: "0.0.1" });
+  app = new App(
+    { name: "AgentState View Host", version: "0.0.1" },
+    { availableDisplayModes: ["inline", "fullscreen"] },
+  );
   app.ontoolresult = renderResult;
   app.onhostcontextchanged = applyHostContext;
   app.onteardown = async () => {
     closeConfirmation();
-    retirePayload();
+    const launchId =
+      currentPayload?.schemaVersion === "agentstate.durable-view-launch.v1"
+        ? currentPayload.launch.launchId
+        : null;
+    retirePayload(false);
+    if (launchId) {
+      await closeDurableLaunch(launchId).catch(() => {});
+    }
     return {};
   };
   await app.connect();
