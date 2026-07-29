@@ -268,9 +268,10 @@ async function resolveShowViewInput(
   const query = input.query!;
   const rows = await queryHeads(bundle, { type: query.type, prefix: query.prefix });
   const registry = query.open ? await loadKinds(bundle) : undefined;
+  const limit = query.limit ?? MAX_VIEW_OBJECTS;
   const selected = applyQuerySelectionFilters(
     rows,
-    { ...query, limit: query.limit ?? MAX_VIEW_OBJECTS },
+    { ...query, limit },
     registry ? [...registry.kinds.values()] : [],
   );
   if (selected.rows.length === 0) {
@@ -278,7 +279,7 @@ async function resolveShowViewInput(
     // window into the bundle's vocabulary is this error, so name what exists. The full head scan
     // runs ONLY on the type/prefix-miss error path.
     const bundleTypes = rows.length === 0 ? distinctTypes(await queryHeads(bundle, {})) : [];
-    throw new Error(describeEmptySelection({ query, typeMatched: rows, bundleTypes }));
+    throw new Error(describeEmptySelection({ query, typeMatched: rows, bundleTypes, limit }));
   }
   return {
     ...input,

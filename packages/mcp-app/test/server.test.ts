@@ -1380,6 +1380,6 @@ test("an empty generated query returns a self-describing error at the tool surfa
   assert.equal(filterMiss.isError, true);
   const filterMissText = (filterMiss.content as Array<{ text?: string }>)[0]?.text ?? "";
   assert.match(filterMissText, /matched type 'Task' before filters/);
-  assert.match(filterMissText, /field 'status' observed values: /);
+  assert.match(filterMissText, /field 'status' values in the first \d+ matched document\(s\): /);
   assert.match(filterMissText, /'todo'/);
 });
