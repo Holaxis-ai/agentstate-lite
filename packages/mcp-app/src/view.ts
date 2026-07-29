@@ -720,11 +720,16 @@ async function changeDisplayMode(): Promise<void> {
     }
     syncDisplayModeButton();
   } catch (error) {
-    statusEl.dataset.kind = "error";
-    statusEl.textContent =
-      error instanceof Error
-        ? `This host could not change the View display mode: ${error.message}`
-        : "This host could not change the View display mode.";
+    const supersededByHostContext =
+      displayModeContextRevision !== contextRevision &&
+      currentHostContext?.displayMode === target;
+    if (!supersededByHostContext) {
+      statusEl.dataset.kind = "error";
+      statusEl.textContent =
+        error instanceof Error
+          ? `This host could not change the View display mode: ${error.message}`
+          : "This host could not change the View display mode.";
+    }
   } finally {
     displayModeButton.disabled = false;
   }

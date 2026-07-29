@@ -470,6 +470,37 @@ test("newer host display context wins over a delayed request result", async ({
   await expect(displayMode).toHaveText("Expand");
 });
 
+test("a stale display rejection cannot overwrite status after newer host success", async ({
+  page,
+}) => {
+  const outer = await lifecycleHost(page);
+  const authorization = outer.locator("#authorization-apply");
+  await expect(authorization).toBeVisible();
+  await expect(authorization).toBeEnabled();
+  await authorization.click();
+  const status = outer.locator("#status");
+  await expect(status).toContainText("exact registered View");
+
+  const displayMode = outer.locator("#display-mode");
+  await expect(displayMode).toHaveText("Expand");
+  await page.evaluate(() => {
+    window.__holdDisplayRequest = true;
+    window.__displayRequestError = "late host rejection";
+  });
+  await displayMode.click();
+  await expect
+    .poll(() => page.evaluate(() => window.__displayRequests))
+    .toEqual(["fullscreen"]);
+
+  await page.evaluate(() => window.__emitDisplayMode("fullscreen"));
+  await expect(displayMode).toHaveText("Return inline");
+  await page.evaluate(() => window.__releaseDisplayRequest());
+  await expect(displayMode).toBeEnabled();
+  await expect(displayMode).toHaveText("Return inline");
+  await expect(status).toContainText("exact registered View");
+  await expect(status).not.toContainText("late host rejection");
+});
+
 test("explicit resource teardown waits for the durable launch to close", async ({
   page,
 }) => {
@@ -505,6 +536,7 @@ declare global {
   interface Window {
     __appliedHeightReports?: AppliedHeightReport[];
     __closedLaunches: string[];
+    __displayRequestError: string | null;
     __displayResponseMode: "inline" | "fullscreen" | null;
     __displayRequests: string[];
     __resumeRequests: string[];

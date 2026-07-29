@@ -63,6 +63,7 @@ window.__holdDisplayRequest = false;
 window.__holdResumeRequest = false;
 window.__holdCloseRequest = false;
 window.__displayResponseMode = null;
+window.__displayRequestError = null;
 window.__suppressDisplayContextOnResolve = false;
 window.__teardownSettled = false;
 window.__releaseDisplayRequest = () => {
@@ -173,6 +174,9 @@ bridge.onrequestdisplaymode = async ({ mode }) => {
       releaseDisplayRequest = resolve;
     });
   }
+  if (window.__displayRequestError) {
+    throw new Error(window.__displayRequestError);
+  }
   const resolvedMode =
     window.__displayResponseMode ??
     (mode === "fullscreen" ? "fullscreen" : "inline");
@@ -203,6 +207,7 @@ void bridge.connect(
 declare global {
   interface Window {
     __closedLaunches: string[];
+    __displayRequestError: string | null;
     __displayResponseMode: DisplayMode | null;
     __displayRequests: string[];
     __resumeRequests: string[];
