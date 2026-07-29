@@ -28,10 +28,15 @@ test("the injected observer reports initial and live intrinsic height with mount
     <main>content</main>
     <script>
       window.__height = 42.2;
+      window.__htmlScrollFloor = 0;
+      window.__htmlClientHeight = 0;
       document.documentElement.getBoundingClientRect = () => ({ height: window.__height });
       document.body.getBoundingClientRect = () => ({ height: window.__height });
       Object.defineProperty(document.documentElement, "scrollHeight", {
-        get: () => window.__height
+        get: () => Math.max(window.__height, window.__htmlScrollFloor)
+      });
+      Object.defineProperty(document.documentElement, "clientHeight", {
+        get: () => window.__htmlClientHeight
       });
       Object.defineProperty(document.body, "scrollHeight", {
         get: () => window.__height
@@ -96,17 +101,28 @@ test("the injected observer reports initial and live intrinsic height with mount
   );
 
   browser.window.__height = 51.1;
+  browser.window.__htmlScrollFloor = 900;
+  browser.window.__htmlClientHeight = 900;
   browser.window.__resize();
   assert.equal(
     browser.window.__messages.at(-1).height,
     52,
-    "content shrink is reported as well as growth",
+    "content shrink is reported even when the root scroll height is floored by the applied viewport",
+  );
+
+  browser.window.__htmlScrollFloor = 1_000;
+  browser.window.__htmlClientHeight = 900;
+  browser.window.__mutation();
+  assert.equal(
+    browser.window.__messages.at(-1).height,
+    1_000,
+    "root overflow beyond the viewport remains part of intrinsic height",
   );
 
   browser.window.__resize();
   assert.equal(
     browser.window.__messages.length,
-    5,
+    6,
     "unchanged measurements are not re-posted",
   );
   assert.doesNotMatch(
