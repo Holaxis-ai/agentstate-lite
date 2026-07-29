@@ -1,7 +1,7 @@
 ---
 type: Task
 title: Prove intrinsic sizing through the nested MCP View frame
-status: blocked
+status: in_progress
 priority: '2'
 actor: codex-pr177-followup
 description: >-
@@ -10,7 +10,7 @@ description: >-
   sizing only for flexible hosts, and offer host-capability-gated fullscreen.
   Close only after real Codex usability dogfood.
 assignee: codex-pr177-followup
-timestamp: '2026-07-29T16:59:15.281Z'
+timestamp: '2026-07-29T17:44:58.941Z'
 ---
 # Corrected problem
 
