@@ -1,16 +1,16 @@
 ---
 type: Task
 title: Prove intrinsic sizing through the nested MCP View frame
-status: in_progress
+status: blocked
 priority: '2'
 actor: codex-pr177-followup
 description: >-
-  REVISED 2026-07-29 — Codex declares a fixed-height MCP container, so the host
-  owns outer card height. Make fixed cards fill-and-scroll, preserve intrinsic
-  sizing only for flexible hosts, and offer host-capability-gated fullscreen.
-  Close only after real Codex usability dogfood.
+  AUTOMATED COMPLETE 2026-07-29 — PR #177 head 13fcc2c passes independent review
+  and exact-SHA QA (root check, MCP 55/55, MCP Chromium 8/8, UI Chromium 19/19).
+  Blocked only on Brian's real ChatGPT Work Expand → Return inline dogfood; do
+  not merge or mark done until that passes.
 assignee: codex-pr177-followup
-timestamp: '2026-07-29T17:44:58.941Z'
+timestamp: '2026-07-29T19:20:38.391Z'
 ---
 # Corrected problem
 
