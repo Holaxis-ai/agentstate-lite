@@ -43,6 +43,10 @@ test("the injected observer reports initial and live intrinsic height with mount
         constructor(callback) { window.__resize = callback; }
         observe() {}
       };
+      window.MutationObserver = class {
+        constructor(callback) { window.__mutation = callback; }
+        observe(target, options) { window.__mutationObservation = { target, options }; }
+      };
     </script>
   </body></html>`;
   const instrumented = appendFrameSizingScript(source, session);
@@ -61,6 +65,27 @@ test("the injected observer reports initial and live intrinsic height with mount
   browser.window.__height = 88.1;
   browser.window.__resize();
   assert.equal(browser.window.__messages.at(-1).height, 89);
+
+  browser.window.__height = 101.1;
+  browser.window.__mutation();
+  assert.equal(
+    browser.window.__messages.at(-1).height,
+    102,
+    "overflow-only DOM changes are remeasured even when observed boxes stay fixed",
+  );
+  assert.equal(
+    browser.window.__mutationObservation.target,
+    browser.window.document.documentElement,
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(browser.window.__mutationObservation.options)),
+    {
+      attributes: true,
+      characterData: true,
+      childList: true,
+      subtree: true,
+    },
+  );
 
   browser.window.__height = 144.4;
   browser.window.dispatchEvent(new browser.window.Event("resize"));
@@ -81,7 +106,7 @@ test("the injected observer reports initial and live intrinsic height with mount
   browser.window.__resize();
   assert.equal(
     browser.window.__messages.length,
-    4,
+    5,
     "unchanged measurements are not re-posted",
   );
   assert.doesNotMatch(
