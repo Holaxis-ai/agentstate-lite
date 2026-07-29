@@ -10,7 +10,7 @@ description: >-
   sizing only for flexible hosts, and offer host-capability-gated fullscreen.
   Close only after real Codex usability dogfood.
 assignee: codex-pr177-followup
-timestamp: '2026-07-29T16:19:32.508Z'
+timestamp: '2026-07-29T16:32:42.982Z'
 ---
 # Corrected problem
 
@@ -71,6 +71,19 @@ initial content around 150px, growth to around 900px, parent application of the 
 height, then shrink back to 150–200px. The test must also cover hidden/remounted visibility and the
 288px fixed-host contract. A patch is accepted only after those tests fail before and pass after the
 correction.
+
+# Progress
+
+- Exact PR head `5f36f0e` was pinned in an isolated worktree.
+- Commit `69b2383` adds the required Playwright feedback-loop, hidden/remount, and fixed-card tests
+  and makes the browser suite part of root `npm run check`.
+- The unchanged implementation produced one intentional failure: after the parent applied 900px,
+  body scroll/bounds and root bounds shrank to 180px while root `scrollHeight` stayed at the 900px
+  viewport floor, suppressing the shrink report. The other two browser tests passed.
+- Commit `ca6d6aa` ignores root scroll height only when it equals root client height, while retaining
+  genuine root overflow beyond the viewport. The focused MCP suite passes 54/54 and the committed
+  Chromium suite passes 3/3.
+- Independent exact-SHA review is in progress. Full repository QA is gated on that review.
 
 # Boundary
 
