@@ -1,16 +1,17 @@
 ---
 type: Task
 title: Prove intrinsic sizing through the nested MCP View frame
-status: blocked
+status: done
 priority: '2'
 actor: codex-pr177-followup
 description: >-
-  AUTOMATED COMPLETE 2026-07-29 — PR #177 head 13fcc2c passes independent review
-  and exact-SHA QA (root check, MCP 55/55, MCP Chromium 8/8, UI Chromium 19/19).
-  Blocked only on Brian's real ChatGPT Work Expand → Return inline dogfood; do
-  not merge or mark done until that passes.
+  COMPLETE 2026-07-29 — PR #177 head 13fcc2c passed independent review,
+  exact-SHA QA, all GitHub checks, and Brian's real ChatGPT Work dogfood after a
+  clean app restart. Expand → Return inline works repeatedly. One pre-restart
+  second-Expand no-op did not reproduce after restart and is recorded as a
+  stale-process observation, not a release blocker.
 assignee: codex-pr177-followup
-timestamp: '2026-07-29T19:20:38.391Z'
+timestamp: '2026-07-29T20:12:17.025Z'
 ---
 # Corrected problem
 
