@@ -2,7 +2,7 @@
 type: Context Note
 title: 'Architecture diagnosis: Claude bridge initialization at 13fcc2c'
 actor: claude-bridge-architecture
-timestamp: '2026-07-29T21:28:15.451Z'
+timestamp: '2026-07-29T21:29:10.960Z'
 ---
 # Summary
 
@@ -114,6 +114,20 @@ The existing lifecycle fixture is insufficient: it delivers an unauthorized resu
 ## Sufficiency of the proposed sequence
 
 With these refinements, the probe/regression sequence is sufficient before implementation. Without a unique URI it cannot prove which code ran; without an already-authorized, initially hidden, one-shot child regression it does not model the suspected failure.
+
+# Source pointers at exact `13fcc2c`
+
+- `packages/mcp-app/src/server.ts:49`: stable `MCP_VIEW_RESOURCE_URI`.
+- `packages/mcp-app/src/server.ts:472`: `show_view` advertises that URI.
+- `packages/mcp-app/src/server.ts:837-866`: resource registration and returned content reuse the same URI with mutable `MCP_VIEW_HTML`.
+- `packages/mcp-app/src/view.ts:301-335`: durable activation clears suspension and mounts an authorized child without inspecting current visibility.
+- `packages/mcp-app/src/view.ts:529-560`: app-only bridge call and post-await currentness gate.
+- `packages/mcp-app/src/view.ts:738-810`: exact fresh-launch resume logic, which requires a pre-existing suspension marker.
+- `packages/mcp-app/src/view.ts:833-865`: sizing classification followed by hidden/source/schema/authorization admission.
+- `packages/mcp-app/src/view.ts:867-887`: only a post-activation hidden event creates the marker used by visible recovery.
+- `examples/views/roadmap.html:213-220`: one-shot hello/watch initialization with no retry.
+- `packages/mcp-app/test/fixtures/display-mode-host.ts:15-35, 199-210`: current registered child has no bridge bootstrap, and the initial test result is unauthorized.
+- `packages/mcp-app/test/frame-sizing.browser.spec.ts:63-92, 333-425`: visibility helper always dispatches an event after activation; lifecycle coverage therefore misses already-hidden activation.
 
 # Acceptance refinements
 
