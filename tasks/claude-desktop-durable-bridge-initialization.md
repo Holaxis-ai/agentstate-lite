@@ -5,12 +5,13 @@ status: in_progress
 priority: '1'
 assignee: codex-pr177-followup
 description: >-
-  Cache root cause proven by unique-URI Claude probe. Separated cache-only
-  candidate a0dd5cb content-addresses the exact App-shell bytes; parent-red, MCP
-  56/56, and full npm run check are green. Independent review is in progress;
-  hidden-lifecycle work remains a separate task and branch.
+  Cache-only exact a0dd5cb is independently reviewed and adversarially
+  QA-approved with no findings. Parent-red, full npm run check, built-server
+  identity/alias/reproducibility probes, MCP 56/56, and Chromium 8/8 are green.
+  Claude Desktop now points to the uninstrumented exact build; final human host
+  acceptance is in progress.
 actor: codex-pr177-followup
-timestamp: '2026-07-30T00:21:25.258Z'
+timestamp: '2026-07-30T00:38:25.838Z'
 ---
 # Problem
 
