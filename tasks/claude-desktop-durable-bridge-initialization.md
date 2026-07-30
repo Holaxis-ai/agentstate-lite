@@ -1,17 +1,15 @@
 ---
 type: Task
 title: Fix Claude Desktop registered View bridge initialization
-status: in_progress
+status: done
 priority: '1'
 assignee: codex-pr177-followup
 description: >-
-  Cache-only exact a0dd5cb is independently reviewed and adversarially
-  QA-approved with no findings. Parent-red, full npm run check, built-server
-  identity/alias/reproducibility probes, MCP 56/56, and Chromium 8/8 are green.
-  Claude Desktop now points to the uninstrumented exact build; final human host
-  acceptance is in progress.
+  Cache-only exact a0dd5cb is independently reviewed, adversarially QA-approved,
+  and human-validated in uninstrumented Claude Desktop. The first exact-server
+  invocation rendered the live Roadmap; branch is ready for PR handoff.
 actor: codex-pr177-followup
-timestamp: '2026-07-30T00:38:25.838Z'
+timestamp: '2026-07-30T00:45:11.297Z'
 ---
 # Problem
 
@@ -36,10 +34,19 @@ Proximate goal: give every exact MCP App shell byte sequence an immutable discov
 # Progress
 
 - Unique-resource Claude diagnostic passed: outer visible from boot, live graph rendered, app-only bridge and polling traffic present.
-- Content-derived URI implementation and regression are present in `/private/tmp/aslite-claude-bridge-fix` on `fix/claude-desktop-durable-bridge-init`.
-- The URI regression failed against the parent static URI and passes after the repair.
+- The cache-only repair is exact commit `a0dd5cb0ef5ecd3f4e59ee35b75060ec764932ea`
+  on `fix/claude-view-resource-cache-identity`.
+- The URI regression fails against parent `77c84e4` because it returns the static
+  `ui://agentstate/view-host/v1.html`; it passes after the repair.
 - Focused suites, repository-wide typecheck, and full `npm run check` pass.
-- Next gates: exact-SHA independent review, adversarial QA, uninstrumented content-derived Claude acceptance, commit/push, then task completion.
+- Independent review approved exact `a0dd5cb` with no findings before adversarial QA.
+- Adversarial QA approved exact `a0dd5cb` with no findings after built-server and production-CLI
+  identity probes, alias rejection, byte-change rotation, reproducible builds, MCP 56/56, and
+  Chromium 8/8.
+- Uninstrumented Claude Desktop acceptance passed on 2026-07-29 using server
+  `agentstate-lite-claude-cache-a0dd5cb`: the first invocation rendered the live Roadmap with 20
+  roadmap items, 154 contains-edges, and 244 tasks. The View reported `live`, exposed Expand, and
+  contained no diagnostic trace.
 
 # Acceptance criteria
 
@@ -65,3 +72,19 @@ Proximate goal: give every exact MCP App shell byte sequence an immutable discov
 [test-model review](../context-notes/claude-bridge-test-model-13fcc2c.md)
 
 [separate lifecycle finding](mcp-app-hidden-authorized-first-mount.md)
+
+# Closure evidence
+
+- Accepted design: immutable `ui://agentstate/view-host/v1/<full-sha256>.html` identity derived from
+  exact generated App-shell bytes and shared by tool metadata, resource registration, and returned
+  resource content.
+- Implementation: `a0dd5cb0ef5ecd3f4e59ee35b75060ec764932ea`.
+- Review: `context-notes/claude-cache-code-review-a0dd5cb` — approved, no findings.
+- QA: `context-notes/claude-cache-qa-a0dd5cb` — approved, no findings.
+- Automated evidence: parent-red URI contract; MCP 56/56; Chromium 8/8; UI E2E 19/19; full
+  `npm run check`.
+- Human evidence: Claude Desktop exact-SHA screenshot at
+  `/Users/brian/Desktop/Screenshot 2026-07-29 at 6.42.18 PM.png` shows the uninstrumented live
+  Roadmap under the exact candidate server.
+- Known limitation: the independently discovered initially-hidden lifecycle defect is not part of
+  this cache-identity claim and remains open at `tasks/mcp-app-hidden-authorized-first-mount`.
