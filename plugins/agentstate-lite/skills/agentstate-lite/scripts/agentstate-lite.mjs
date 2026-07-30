@@ -49857,7 +49857,10 @@ var PendingLaunchRegistry = class {
 };
 
 // ../mcp-app/src/server.ts
-var MCP_VIEW_RESOURCE_URI = "ui://agentstate/view-host/v1.html";
+var MCP_VIEW_RESOURCE_DIGEST = versionOfBytes(MCP_VIEW_HTML).slice(
+  "sha256:".length
+);
+var MCP_VIEW_RESOURCE_URI = `ui://agentstate/view-host/v1/${MCP_VIEW_RESOURCE_DIGEST}.html`;
 var SHOW_VIEW_TOOL_NAME = "show_view";
 var PREPARE_VIEW_ACTION_TOOL_NAME = "prepare_view_action";
 var FINISH_VIEW_ACTION_TOOL_NAME = "finish_view_action";
