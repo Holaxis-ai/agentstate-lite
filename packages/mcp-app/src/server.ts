@@ -46,7 +46,13 @@ import { describeEmptySelection, distinctTypes } from "./empty-selection.js";
 import { McpViewLaunchRegistry } from "./launches.js";
 import { PendingLaunchRegistry } from "./pending-launches.js";
 
-export const MCP_VIEW_RESOURCE_URI = "ui://agentstate/view-host/v1.html";
+// MCP Apps hosts may preload/cache resources by URI. Keep one URI immutable to one exact shell
+// byte sequence so a newly built server cannot silently execute stale trusted-shell code.
+const MCP_VIEW_RESOURCE_DIGEST = versionOfBytes(MCP_VIEW_HTML).slice(
+  "sha256:".length,
+);
+export const MCP_VIEW_RESOURCE_URI =
+  `ui://agentstate/view-host/v1/${MCP_VIEW_RESOURCE_DIGEST}.html`;
 export const SHOW_VIEW_TOOL_NAME = "show_view";
 export const PREPARE_VIEW_ACTION_TOOL_NAME = "prepare_view_action";
 export const FINISH_VIEW_ACTION_TOOL_NAME = "finish_view_action";

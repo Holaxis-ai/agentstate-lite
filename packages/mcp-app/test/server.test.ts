@@ -6,6 +6,7 @@ import {
   MemoryBackend,
   deleteDoc,
   readDocVersioned,
+  versionOfBytes,
   writeBlob,
   writeDoc,
   type Bundle,
@@ -14,6 +15,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import { extractClaimId } from "../src/result-recovery.js";
+import { MCP_VIEW_HTML } from "../src/generated/view-html.generated.js";
 import {
   AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
   CLOSE_DURABLE_VIEW_TOOL_NAME,
@@ -32,6 +34,21 @@ import {
 import { SessionViewAuthorizationStore } from "@agentstate-lite/view-runtime";
 
 const T = "2026-07-26T12:00:00.000Z";
+
+test("the App shell resource URI is derived from its exact HTML bytes", () => {
+  const digest = versionOfBytes(MCP_VIEW_HTML).slice("sha256:".length);
+  assert.equal(
+    MCP_VIEW_RESOURCE_URI,
+    `ui://agentstate/view-host/v1/${digest}.html`,
+  );
+  const changedDigest = versionOfBytes(`${MCP_VIEW_HTML} `).slice(
+    "sha256:".length,
+  );
+  assert.notEqual(
+    MCP_VIEW_RESOURCE_URI,
+    `ui://agentstate/view-host/v1/${changedDigest}.html`,
+  );
+});
 
 function memoryBundle(): Bundle {
   return { root: "mem://mcp-app-test", backend: new MemoryBackend() };
@@ -350,6 +367,7 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   const resource = await client.readResource({ uri: MCP_VIEW_RESOURCE_URI });
   const content = resource.contents[0];
   assert.ok(content && "text" in content);
+  assert.equal(content.uri, MCP_VIEW_RESOURCE_URI);
   assert.match(content.text, /id="generated-view"[\s\S]*\bsandbox\b/);
   assert.doesNotMatch(content.text, /sandbox="allow-scripts"/);
   assert.match(content.text, /data-aslite-text/);
