@@ -2,59 +2,29 @@
 type: Context Note
 title: Version/update implementation-plan review
 actor: codex-version-plan-reviewer
-timestamp: '2026-07-31T21:19:45.141Z'
+timestamp: '2026-07-31T21:23:56.622Z'
 ---
 # Summary
 
 - **Original outcome:** `REVISE / D0 not approved` with two blockers, six major findings, and one minor ownership finding.
-- **Revision audit:** the revised domain model, new normative protocol design, Decision, and Plan resolve the original two-release proof blocker; F9-before-D8 ordering; separate R6A/R6B release-preparation ownership; additive public identity/check/compatibility schemas and fixed notifier constants; high-risk C2H destructive Review→QA gate; explicit build flavors plus retained-tarball verification; P5B/P5S repository/external protection; and nonblocking Q6 evidence ownership. The latest staged flow also correctly assigns interactive `stage download`/checksum inspection before approval and explicitly makes rejected-stage SemVer consumption project policy.
-- **Final verdict: CHANGES_REQUESTED.** No architecture rework is needed. Three remaining normative contradictions would otherwise force U3/C2H/C2S builders to invent behavior. One small P5S wording residual should also be corrected. Re-review can be limited to the exact rows below.
-- **Proximate goal status:** review complete. The revision now serves the ultimate goal structurally; final approval waits only for internally consistent state/ownership/manifest semantics.
+- **First revision outcome:** `CHANGES_REQUESTED` on four narrow remaining issues: deprecated-state precedence/passive command nullability, undecidable hook authorship, unspecified Skill Manifest v2 comparison semantics, and P5S overclaiming pre-tag empirical OIDC proof.
+- **Final revision audit:** reviewed exact current revisions `designs/version-update-protocols` `sha256:a7cdfc8305700f9d790e188846234a9514ba645ff20fffd4ab5abcb645995536`, `decisions/version-update-contract` `sha256:38e6bedc797428c1f50eb443c3e4fc2eb22804965bf667325fe32aade885830e`, and `plans/version-string-channel-identity` `sha256:d85eeaab7ff577d7960b0094abb588318df3582e05c4a34027708f6e3d724c48`.
+- **Final verdict: APPROVED.** No blocker or major issue remains. D0 is build-ready under the normative protocol and explicit unit gates.
+- **Proximate goal status:** complete. The approved design makes release identity, update discovery, integration compatibility, staged publication, two-release proof, and marketplace retirement implementable without builders inventing public behavior.
 
-# Remaining severity-ranked issues
+# Final correction audit
 
-## MAJOR 1 — the `deprecated` check state is unreachable and its passive notice has no command
+- **Selected deprecation/passive notice:** resolved. A different deprecated selected target is `unavailable`; an exact-equal deprecated target is the reachable `deprecated` state. Passive notice explicitly permits nullable `command`, so the commandless inconsistent-policy warning is coherent.
+- **Semantic hook ownership:** resolved. Exact generated-compatible command/config shape is explicitly tool-owned regardless of who typed it; non-exact hand-authored/near-match forms are unmanaged. This is decidable from available evidence and remains gated by install+uninstall adversarial QA.
+- **Skill Manifest v2:** resolved. Exact persisted keys/digests are specified, including retention of existing `installed_by: "aslite skill install"`. Asset bytes plus the skill contract determine compatibility; CLI release/commit/channel/executable hash are informational provenance and cannot alone make compatible assets stale. Legacy ownership remains recognized.
+- **P5S vs E7A:** resolved. P5S stores reviewed configuration and verifies externally observable settings; the protocol explicitly acknowledges npm cannot validate OIDC binding before a real attempt. E7A's first fail-closed stage is the empirical trusted-publisher proof.
+- **`durable_global`:** resolved. Persistent npm-package skill/hook installation requires injected, read-only global-prefix/layout evidence and rejects npm-exec/npx cache false positives; PATH equality alone is insufficient. C2H includes a literal regression fixture.
+- **`draft_prepared`:** resolved. Draft creation/asset attachment is a separately permissioned `contents: write` state before staging; later phases verify immutable draft/asset identifiers and digests, while the stage job retains only read+OIDC permissions and finalization does not rebuild.
 
-The protocol first declares any selected deprecated version `unavailable`, and the first precedence row consumes that condition. The next row then declares “running exact version equals selected and running version is deprecated” as `deprecated`. Because running and selected refer to the same packument version entry when equal, that second row can never execute.
+# Approved gates and residuals
 
-The passive protocol compounds the contradiction: it displays `deprecated` notices while specifying that every actionable notice contains an exact command, but the `deprecated` row deliberately has `command: null`.
-
-**Required edit:** choose one coherent contract. Recommended:
-
-- remove standalone `deprecated` from successful check/passive-notice states;
-- a dist-tag selecting a deprecated version remains `unavailable/selected_deprecated`;
-- when the running version is deprecated and the selected exact version differs, retain `upgrade_available` or `rollback_available`, include `running_deprecated`, and print the exact selected-version command.
-
-Alternatively, move exact-equal deprecated ahead of selected-deprecated and explicitly define a commandless warning notice. Whichever policy is chosen, make the precedence table, status enum, cache eligibility, and `update_notice.command` nullability agree.
-
-## MAJOR 2 — hook ownership still asks the classifier to infer unknowable authorship
-
-The protocol says the pure tokenized classifier recognizes exact `aslite session-start`/historical generated shapes while rejecting “hand-authored commands.” A command string/config shape carries no provenance: a human-authored exact `aslite session-start` is byte-for-byte indistinguishable from the installer's output. C2H cannot satisfy both rules, and the ambiguity sits on uninstall's destructive ownership boundary.
-
-The revised Plan is closer—it rejects hand-authored **npx forms**—but the normative protocol still governs and uses the broader impossible rule.
-
-**Required edit:** state the operational convention explicitly: an exact supported/generated command+shape is tool-owned by semantic form regardless of who originally typed it; unsupported hand-authored forms and near-matches are unmanaged. If actual authorship must matter, add a durable ownership marker and a migration rule instead. Align the table and C2H fixtures with the chosen decidable rule.
-
-## MAJOR 3 — Skill Manifest v2 fields and comparison semantics remain unspecified
-
-The protocol says Manifest v2 adds `compatibility_contract` and “running artifact identity fields,” but it does not name the persisted keys/types/schema version or say whether those provenance fields participate in compatibility. This matters because the normative state table says matching asset bytes + equal contract is `current`. If an older manifest's recorded CLI version/fingerprint is exact-compared to the new running artifact, every CLI release can mark an otherwise compatible unchanged skill stale, contradicting the table and the per-integration contract rule.
-
-**Required edit:** add the exact Manifest v2 JSON shape and parser/evolution rules. State that compatibility is decided by owned asset bytes plus the skill contract (and any explicitly named asset identity), while installer/provenance fields are informational unless D0 deliberately chooses release-coupled staleness. Define the `newer_contract` row's retained legacy `state` deterministically from byte state.
-
-## MINOR 4 — P5S overstates pre-tag empirical verification of npm's publisher binding
-
-P5S says the path is “empirically protected” and the preflight verifies the exact npm trusted-publisher binding before any live tag. The release research records that npm does not validate that binding when configured; the first real OIDC stage attempt is the empirical proof. GitHub settings and a reviewed npm configuration receipt can be verified beforehand, but npm's end-to-end binding cannot.
-
-**Required edit:** describe P5S as reviewed configuration/preflight evidence and E7A's first fail-closed stage as empirical trusted-publisher proof. A failed stage is safe and consumes the version only by the now-explicit project policy.
-
-# Resolved findings retained as gates
-
-- E7A honestly bootstraps pre.2; E7B separately proves self-discovery/passive notice.
-- F9 completes before D8 relies on frozen recovery.
-- R6A/R6B own reviewed release-preparation PRs; E7 units are operational receipts.
-- Public `0.1.x` projections are additive; exact identity/check/cache constants and exits are normative.
-- C2H explicitly covers install and uninstall with exact-SHA Review before adversarial QA.
-- I1/P5A require explicit flavor/source inputs and verify the exact retained candidate without rebuilding.
-- P5B resolves the direct-main bot conflict; P5S blocks tags on external setup evidence.
-- Q6 is parallel durable onboarding evidence, not a release-mechanics predecessor.
-- Every QA/deploy remains downstream of independent Review.
+- Both honest release transitions remain required before retirement: pre.2 bootstrap, then a real self-discovered successor and passive-notice proof.
+- F9 precedes D8; R6A/R6B own release-preparation PRs; Q6 stays parallel evidence.
+- C2H, U3, N4, P5A, and P5B retain exact-SHA independent Review before adversarial QA/deployment.
+- P5S blocks tagging; failed/rejected/public release states and immutable receipts are explicit.
+- No known blocker or major residual remains. Minor implementation discoveries that would alter a normative schema/state/constant return to D0 review rather than being chosen inside a build unit.
