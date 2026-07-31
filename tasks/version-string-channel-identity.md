@@ -4,12 +4,14 @@ title: Define and ship the npm versioning and update contract
 status: in_progress
 priority: '1'
 description: >-
-  HIGHEST PRIORITY: make npm the single executable authority and prove a
-  cache-independent install, version identity, update-discovery, upgrade,
-  skill/hook compatibility, and rollback contract before npm becomes primary.
+  HIGHEST PRIORITY: PR #181 prepares the cache-independent npm test-user release
+  @holaxis/aslite@0.1.0-pre.2 and documents npm as the executable authority.
+  Full update discovery, upgrade proof, automation, and compatibility contract
+  remain in progress; registry publication requires npm owner authentication
+  after merge.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-07-31T13:27:47.717Z'
+timestamp: '2026-07-31T13:36:13.234Z'
 ---
 # Problem
 
