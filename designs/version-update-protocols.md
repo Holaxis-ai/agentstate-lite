@@ -5,7 +5,7 @@ description: >-
   Normative schemas, state precedence, budgets, compatibility tables, build
   flavors, staged-release state machine, and two-release proof.
 actor: openai/codex
-timestamp: '2026-07-31T21:13:41.399Z'
+timestamp: '2026-07-31T21:15:55.413Z'
 ---
 # Purpose
 
@@ -218,9 +218,10 @@ The package verifier gains `--tarball <path>` exact-artifact mode that never bui
 | State | Operation/owner | Required immutable receipt |
 |---|---|---|
 | `prepared` | Tag-triggered stage run; read-only source permissions | version/tag/source SHA, run ID, artifact ID/digest, tarball SHA/integrity, exact-artifact proofs |
-| `staged` | Same run, job with only `contents: read` + `id-token: write`; `npm stage publish <tgz> --tag <policy-tag>` | npm stage ID and immutable tag, downloaded-stage SHA equals retained tarball |
+| `staged` | Same run, job with only `contents: read` + `id-token: write`; `npm stage publish <tgz> --tag <policy-tag>` | npm stage ID and immutable tag plus retained run/artifact/tarball identifiers; the run ends |
+| `inspected` | Brian or Mike interactively runs `npm stage download <stage-id>` and compares its SHA-256 to the retained receipt | actor/time/stage ID and observed matching checksum; mismatch requires rejection |
 | `rejected` | Brian or Mike: `npm stage reject <stage-id>` + 2FA | actor/time/reason/stage ID; no public version exists |
-| `approved_public` | Brian or Mike: `npm stage approve <stage-id>` + 2FA | actor/time/stage ID; public version/tag snapshot |
+| `approved_public` | Brian or Mike after `inspected`: `npm stage approve <stage-id>` + 2FA | actor/time/stage ID; public version/tag snapshot |
 | `registry_verified` | Separate manual finalizer invocation, scoped read permissions | source run/artifact/stage IDs; packument integrity/signature/provenance, clean install/bins/identity/MCP smoke |
 | `promoted` | Brian or Mike interactive dist-tag command after required proof | before/after tags, actor/time, exact version |
 | `final` | Manual finalizer job with `contents: write` publishes already-prepared draft/attached exact bytes | immutable GitHub release/tag/assets/attestation and full receipt |
@@ -234,7 +235,7 @@ External approval never resumes/polls the original run. Finalization is a separa
 - Before approval, all tarball-install, upgrade-to-local-tarball, integration, offline, both-bin, identity, and downloaded-stage checksum tests must pass. Failed inspection rejects the stage; tags remain unchanged.
 - After prerelease approval, run only registry-dependent smoke and the required public upgrade proof. On failure, immediately move `next` back to the prior known-good exact version, deprecate the public candidate with that recovery command, keep `latest` unchanged, and leave the GitHub release draft marked failed.
 - At first stable, approval under `latest` can move the default before registry smoke. Any failure immediately restores prior `latest`, restores/removes `next` to its prior state, deprecates the failed version, and records the receipt. Success removes stale `next` unless a genuine preview exists.
-- A published version is never reused. A rejected staged version also consumes its name/version according to npm staging rules; the next attempt increments SemVer.
+- A published version is never reused. Project policy also treats a rejected stage as spent and prepares the next SemVer, even if npm would permit rejecting and restaging the same never-public version; this keeps stage receipts unambiguous.
 
 # 6. Two-release acceptance protocol
 

@@ -6,7 +6,7 @@ description: >-
   compatibility, discovery, notice, publishing, proof, documentation, recovery,
   and retirement units.
 actor: openai/codex
-timestamp: '2026-07-31T21:13:41.826Z'
+timestamp: '2026-07-31T21:15:55.619Z'
 ---
 # Goal
 
@@ -110,7 +110,7 @@ Builder:
 - Refactor package verifier into ordinary scratch-candidate mode and `--tarball` no-build/no-pack mode; refactor `prepublishOnly` so it cannot create a second candidate.
 - Add one release-candidate command that cleans/builds `npm-package` with injected tag SHA, packs once, emits manifest/checksums, and feeds exact-tarball tests.
 - Add pure state reconciler plus tag-triggered stage and separately dispatched finalizer jobs with job-scoped permissions and immutable run/artifact/stage identifiers.
-- Stage literal retained path with explicit tag; download/compare staged bytes before approval instructions; prepare but do not publish GitHub draft.
+- Stage the literal retained path with explicit tag, end the run with immutable identifiers, and emit interactive `stage download` checksum-comparison instructions required before approval; prepare but do not publish the GitHub draft.
 - Emit exact stage reject/approve, secondary tag, stable-next removal, rollback/deprecation, registry signature/integrity/install, and immutable-release operations.
 - Dry-run tests cover every state/mismatch/rerun/failure, prerelease/stable transitions, artifact retention, and prove no build/pack after candidate creation.
 
