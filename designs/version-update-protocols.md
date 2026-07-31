@@ -5,7 +5,7 @@ description: >-
   Normative schemas, state precedence, budgets, compatibility tables, build
   flavors, staged-release state machine, and two-release proof.
 actor: openai/codex
-timestamp: '2026-07-31T21:15:55.413Z'
+timestamp: '2026-07-31T21:21:33.067Z'
 ---
 # Purpose
 
@@ -85,7 +85,7 @@ Local adjacent-manifest inspection is diagnostics only. A stale baked executable
 - Redirects: rejected. Retries: zero. Total abort deadline: 2,000 ms. Maximum response body: 1,048,576 bytes.
 - Default track: `latest`. Preview is explicit `--tag next`; no implicit persistence in v1.
 - The exact version selected by the requested dist-tag is policy-authoritative. SemVer direction is explanatory, never permission to ignore a rollback.
-- The response must contain a valid requested dist-tag, matching version entry, strict SemVer, and bounded string metadata. A selected deprecated version is an inconsistent policy state and is never recommended.
+- The response must contain a valid requested dist-tag, matching version entry, strict SemVer, and bounded string metadata. A selected deprecated version is never recommended; when it is also the running exact version the result is `deprecated`, otherwise the inconsistent target is `unavailable`.
 
 ## Normative `version --check --json` extension
 
@@ -121,8 +121,9 @@ All listed keys are always present. Inapplicable scalar values are `null`; `veri
 
 | Condition, in order | `status` | `relation` | Exact command | Exit |
 |---|---|---|---|---|
-| Request cannot produce one validated selected version, including selected version deprecated | `unavailable` | `unknown` | `null` | 1 |
-| Running exact version equals selected and running version is deprecated | `deprecated` | `equal` | `null`; registry policy needs repair | 0 |
+| Request cannot produce one validated selected version | `unavailable` | `unknown` | `null` | 1 |
+| Selected version is deprecated and differs from running | `unavailable` | `unknown` | `null`; inconsistent registry policy | 1 |
+| Running exact version equals selected and that version is deprecated | `deprecated` | `equal` | `null`; registry policy needs repair | 0 |
 | Exact versions equal | `current` | `equal` | `null` | 0 |
 | Selected SemVer is greater | `upgrade_available` | `selected_newer` | Install exact selected version | 0 |
 | Selected SemVer is lower (including tag rollback) | `rollback_available` | `selected_older` | Install exact selected version | 0 |
@@ -140,7 +141,7 @@ Default human/TOON output is the same data. No check changes npm, integrations, 
 - Cross-process lease: `~/.agentstate/update-check-v1.lock`, exclusive create, random token, 30,000 ms stale lease. At most one eligible process starts one worker per TTL window. Stale/foreign/symlinked locks fail closed and never block rendering.
 - Refresh: one detached invocation of the exact current executable's private `__update-refresh-v1` worker, stdio ignored, no retries, using the same 2,000 ms/1 MiB network primitive. Parent returns without waiting. Worker writes only a successful latest-track cache entry and removes only its matching lease token.
 - One-run flag: `--no-update-check` on home/session-start. Environment opt-outs: presence of `ASLITE_NO_UPDATE_CHECK` or `NO_UPDATE_NOTIFIER`; `CI` presence also disables. Tests set `ASLITE_NO_UPDATE_CHECK`. Any suppressor disables both cached display and refresh; explicit `version --check` is unaffected.
-- Cached output is a single additive `update_notice` object in default home/session-start TOON, containing only `status`, running/selected version, checked time, and exact command. It appears only for `upgrade_available`, `rollback_available`, or `deprecated`.
+- Cached output is a single additive `update_notice` object in default home/session-start TOON, containing only `status`, running/selected version, checked time, and nullable exact command. It appears only for `upgrade_available`, `rollback_available`, or `deprecated`; the deprecated/equal inconsistent-policy notice has `command: null`.
 - The session-start render path and its existing ten-second hook timeout are not extended. No network promise, child close, or lease wait is awaited by rendering. Ordinary commands and all MCP/JSON protocol output are byte-unaffected.
 
 # 4. Integration compatibility protocol
@@ -164,11 +165,31 @@ The `0.1.x-pre.N` line preserves current public output:
 | Owned manifest; bytes differ or installed contract lower | `stale` | `stale` | Explicit skill install |
 | Installed contract higher than CLI | retained owned state | `newer_contract` | Upgrade CLI/check supported release; do not downgrade asset silently |
 
-Manifest v2 adds `compatibility_contract` and running artifact identity fields additively. Same SemVer/different bytes remains stale.
+Manifest v2 is exact and additive (existing keys retained):
+
+```json
+{
+  "schema": "aslite.skill-manifest.v2",
+  "package": "@holaxis/aslite",
+  "version": "0.1.0-pre.3",
+  "installed_by": "aslite",
+  "compatibility_contract": 1,
+  "source_identity": {
+    "release_version": "0.1.0-pre.3",
+    "source_commit": "<40-hex-or-null>",
+    "artifact_channel": "npm-package",
+    "artifact_sha256": "sha256:<64-hex-or-null>"
+  },
+  "files": ["SKILL.md", "references/..."],
+  "file_sha256": { "SKILL.md": "sha256:<64-hex>", "references/...": "sha256:<64-hex>" }
+}
+```
+
+`files` and `file_sha256` have the same sorted keys and cover every managed asset. Ownership continues to require the existing package/installer/file shape; a legacy owned manifest without `schema`/contract stays owned. Compatibility is determined only by actual installed-vs-running asset bytes and the skill contract table: package `version`, source commit/channel, and executable artifact SHA are provenance/informational and never by themselves make matching compatible assets stale. Manifest digests must match actual installed bytes or the receipt is corrupt/stale. Same SemVer/different actual bytes remains stale.
 
 ## Hook ownership and mutation boundary
 
-A pure tokenized classifier is the sole authority for status, install deduplication/rewrite, and uninstall. It must preserve explicitly enumerated historical managed forms (bare/absolute `agentstate-lite ...`, current exact bare `aslite session-start`, known generated quoted cache paths, known legacy npx coordinate, and exact OpenCode generated marker/source) while rejecting foreign near-misses and hand-authored commands. A substring mention is never ownership evidence.
+A pure tokenized classifier is the sole authority for status, install deduplication/rewrite, and uninstall. It must preserve explicitly enumerated historical managed forms (bare/absolute `agentstate-lite ...`, current exact bare `aslite session-start`, known generated quoted cache paths, known legacy npx coordinate, and exact OpenCode generated marker/source) while rejecting foreign near-misses. Claude/Codex settings carry no provenance marker, so an exact generated-compatible semantic shape is deemed owned regardless of who typed it; non-exact/near-match hand-authored forms are unmanaged. A substring mention is never ownership evidence.
 
 | Class | Compatibility | Mutator behavior | Remedy |
 |---|---|---|---|
@@ -176,11 +197,11 @@ A pure tokenized classifier is the sole authority for status, install deduplicat
 | Exact historically generated command with old subcommand/timeout | `stale` | Explicit install may converge; uninstall may remove | `aslite hook install --scope <scope>` |
 | Exact generated absolute plugin/cache path | `legacy_path_bound` | Remains owned; explicit install from supported global CLI converges | Install global CLI, then hook install |
 | No managed hook | `absent` | Install may add without touching foreign entries | Hook install |
-| Foreign/hand-authored near-match | `unmanaged` | Never rewrite/remove/deduplicate | User-managed |
+| Foreign/non-exact hand-authored near-match | `unmanaged` | Never rewrite/remove/deduplicate | User-managed |
 
 C2H is a high-risk mutation-authority change. Adversarial QA runs both install and uninstall against every historical form and foreign near-match and byte-compares unrelated configuration.
 
-For an `npm-package` invocation, persistent skill/hook install refuses unless a managed `aslite` or `agentstate-lite` on PATH resolves to the running executable. This prevents an npx cache path or an ephemeral asset install from becoming a persistent authority. `npx` remains supported for read-only/trial/bootstrap commands. Temporary `marketplace-legacy` behavior remains explicitly legacy until cutover; `local-dev` behavior is test/developer-only.
+For an `npm-package` invocation, persistent skill/hook install requires `durable_global` evidence, not merely PATH equality (npm exec/npx adds its cache bin to PATH). The classifier must resolve a managed bin on PATH to the running executable; obtain and validate the absolute `npm prefix --global`; prove the bin and real executable reside in that prefix's supported macOS/Linux global layout; reject npm-exec/npx-cache path or environment evidence; and fail closed to `unknown`/refusal when any proof is unavailable. The resolver is injected for tests and performs no write. `npx` remains supported for read-only/trial/bootstrap commands. Temporary `marketplace-legacy` behavior remains explicitly legacy until cutover; `local-dev` behavior is test/developer-only.
 
 ## MCP
 
@@ -190,7 +211,7 @@ MCP contract v1 is the host argv contract `aslite mcp` resolved through PATH plu
 
 ## External protection prerequisite
 
-Before the first live `v*` tag, a Brian-or-Mike-owned receipt must prove:
+Before the first live `v*` tag, a Brian-or-Mike-owned reviewed configuration receipt must show:
 
 1. the temporary marketplace bot no longer pushes directly to protected `main` (preferred: it opens/updates a bot PR);
 2. required `main` checks/review protection is active;
@@ -199,7 +220,7 @@ Before the first live `v*` tag, a Brian-or-Mike-owned receipt must prove:
 5. npm's trusted publisher is exact repo/workflow/environment and stage-only; Brian and Mike have owner access, 2FA, and recovery; and
 6. GitHub immutable releases are enabled. Traditional publish credentials are revoked after the first OIDC proof, not before recovery is proven.
 
-The release preflight reads/verifies these settings and refuses staging when evidence is absent. Code may merge before the external receipt; live tags may not.
+The release preflight reads/verifies every externally observable setting and refuses staging when evidence is absent. npm does not validate the trusted-publisher binding until a real stage attempt, so P5S records reviewed configuration rather than claiming empirical OIDC success; E7A's first fail-closed stage is the empirical trusted-publisher proof. Code may merge before the external receipt; live tags may not.
 
 ## Exact candidate creation
 
@@ -217,14 +238,15 @@ The package verifier gains `--tarball <path>` exact-artifact mode that never bui
 
 | State | Operation/owner | Required immutable receipt |
 |---|---|---|
-| `prepared` | Tag-triggered stage run; read-only source permissions | version/tag/source SHA, run ID, artifact ID/digest, tarball SHA/integrity, exact-artifact proofs |
+| `prepared` | Tag-triggered candidate job; read-only source permissions | version/tag/source SHA, run ID, artifact ID/digest, tarball SHA/integrity, exact-artifact proofs |
+| `draft_prepared` | Separate job with only `contents: write`; create/update the tag's GitHub draft and attach the retained tgz/checksum/manifest | draft release ID plus asset IDs/digests matching the prepared receipt; draft remains unpublished/mutable but every later phase re-verifies it |
 | `staged` | Same run, job with only `contents: read` + `id-token: write`; `npm stage publish <tgz> --tag <policy-tag>` | npm stage ID and immutable tag plus retained run/artifact/tarball identifiers; the run ends |
 | `inspected` | Brian or Mike interactively runs `npm stage download <stage-id>` and compares its SHA-256 to the retained receipt | actor/time/stage ID and observed matching checksum; mismatch requires rejection |
 | `rejected` | Brian or Mike: `npm stage reject <stage-id>` + 2FA | actor/time/reason/stage ID; no public version exists |
 | `approved_public` | Brian or Mike after `inspected`: `npm stage approve <stage-id>` + 2FA | actor/time/stage ID; public version/tag snapshot |
 | `registry_verified` | Separate manual finalizer invocation, scoped read permissions | source run/artifact/stage IDs; packument integrity/signature/provenance, clean install/bins/identity/MCP smoke |
 | `promoted` | Brian or Mike interactive dist-tag command after required proof | before/after tags, actor/time, exact version |
-| `final` | Manual finalizer job with `contents: write` publishes already-prepared draft/attached exact bytes | immutable GitHub release/tag/assets/attestation and full receipt |
+| `final` | Manual finalizer job with `contents: write` verifies draft/asset IDs and digests, attaches only any final receipt, then publishes the prepared draft | immutable GitHub release/tag/assets/attestation and full receipt |
 
 External approval never resumes/polls the original run. Finalization is a separate explicitly dispatched mode/job that accepts the original run/artifact/stage IDs, downloads/verifies rather than rebuilds, and fails closed on mismatch. Each state is idempotently reconcilable from immutable IDs.
 

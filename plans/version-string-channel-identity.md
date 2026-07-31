@@ -6,7 +6,7 @@ description: >-
   compatibility, discovery, notice, publishing, proof, documentation, recovery,
   and retirement units.
 actor: openai/codex
-timestamp: '2026-07-31T21:15:55.619Z'
+timestamp: '2026-07-31T21:21:33.478Z'
 ---
 # Goal
 
@@ -62,7 +62,7 @@ Builder:
 - Replace substring ownership across status, home prompts, install rewrite/dedupe, uninstall, and OpenCode handling with the protocol table.
 - Preserve existing booleans/command; add per-host compatibility/evidence/remedy.
 - Preserve exact recognized legacy forms, including path-bound classifications, while rejecting mere mentions and hand-authored npx forms.
-- Enforce stable managed PATH target for persistent installs from `npm-package`; retain explicitly classified temporary legacy/local behavior.
+- Enforce injected, fail-closed `durable_global` npm-prefix evidence for persistent installs from `npm-package` (PATH equality alone is insufficient); retain explicitly classified temporary legacy/local behavior. Include a literal real `npm exec`/npx-cache fixture that would pass the old PATH-only test and must now refuse without writes.
 - Build a fixture matrix for all hosts/scopes, quoted/absolute/bare/old-subcommand/old-timeout/old-coordinate/generated-marker forms, and foreign near-misses.
 
 Risk: high destructive configuration ownership boundary. Gate: Hook Builder → independent exact-SHA Reviewer → adversarial QA running both install and uninstall with byte snapshots, malformed/partial/symlink/concurrency/interruption probes → repository gate → merge.
@@ -72,9 +72,9 @@ Risk: high destructive configuration ownership boundary. Gate: Hook Builder → 
 **Claim:** skill status is additively actionable, and MCP's stable PATH/handshake contract is proven without claiming arbitrary host-config inspection.
 
 Builder:
-- Add skill manifest v2 contract/identity fields while retaining legacy owned manifests and existing state strings/top-level version.
+- Add the protocol's exact skill manifest v2 fields/digests while retaining legacy owned manifests and existing state strings/top-level version; provenance fields remain informational when asset bytes and contract are compatible.
 - Implement protocol skill compatibility table, same-SemVer byte drift, newer-contract behavior, explicit remedies, and no overwrite/uninstall of unmanaged targets.
-- Require stable PATH target for persistent npm-package skill installation.
+- Require injected, fail-closed `durable_global` npm-prefix evidence for persistent npm-package skill installation.
 - Prove `aslite mcp` PATH startup and exact MCP server release version; add generic cache-path migration guidance only to bounded help/generated-skill/release-receipt surfaces.
 
 Risk: medium-high persisted-asset contract. Gate: Skill/MCP Builder → independent exact-SHA Reviewer → adversarial owned/unmanaged/legacy/partial/no-write QA → repository + package/MCP gates → merge.
@@ -109,7 +109,7 @@ Risk: high timing/cache/process boundary. Gate: Orientation Builder → independ
 Builder:
 - Refactor package verifier into ordinary scratch-candidate mode and `--tarball` no-build/no-pack mode; refactor `prepublishOnly` so it cannot create a second candidate.
 - Add one release-candidate command that cleans/builds `npm-package` with injected tag SHA, packs once, emits manifest/checksums, and feeds exact-tarball tests.
-- Add pure state reconciler plus tag-triggered stage and separately dispatched finalizer jobs with job-scoped permissions and immutable run/artifact/stage identifiers.
+- Add pure state reconciler plus tag-triggered candidate, separately permissioned draft-preparation, stage, and separately dispatched finalizer jobs with job-scoped permissions and immutable run/draft/asset/artifact/stage identifiers.
 - Stage the literal retained path with explicit tag, end the run with immutable identifiers, and emit interactive `stage download` checksum-comparison instructions required before approval; prepare but do not publish the GitHub draft.
 - Emit exact stage reject/approve, secondary tag, stable-next removal, rollback/deprecation, registry signature/integrity/install, and immutable-release operations.
 - Dry-run tests cover every state/mismatch/rerun/failure, prerelease/stable transitions, artifact retention, and prove no build/pack after candidate creation.
@@ -128,9 +128,9 @@ Dependencies: I1 (because plugin build identity changes). Risk: high workflow/re
 
 **Claim:** the live trusted-publish path is empirically protected and recoverable before any tag can stage.
 
-Brian/Mike operation: after P5A/P5B merge, configure/verify required main checks/reviews, immutable `v*` rules, ref-restricted no-bypass release environment, exact stage-only npm trusted publisher, both maintainers' 2FA/recovery, and immutable releases. Run the code preflight and store sanitized settings evidence. Do not revoke the fallback publish credential until the first OIDC stage succeeds; then require 2FA/disallow tokens and revoke obsolete automation tokens.
+Brian/Mike operation: after P5A/P5B merge, configure/verify required main checks/reviews, immutable `v*` rules, ref-restricted no-bypass release environment, exact stage-only npm trusted publisher, both maintainers' 2FA/recovery, and immutable releases. Run the code preflight and store sanitized reviewed-configuration evidence. npm cannot validate the OIDC binding before a real attempt, so E7A's first fail-closed stage—not P5S—is the empirical publisher proof. Do not revoke the fallback publish credential until that succeeds; then require 2FA/disallow tokens and revoke obsolete automation tokens.
 
-Gate: operator setup → independent release/security Reviewer of receipt → preflight red/green proof. P5S blocks E7A tagging.
+Gate: operator setup → independent release/security Reviewer of configuration receipt → observable-setting preflight red/green proof. P5S blocks E7A tagging; E7A records the first empirical OIDC result.
 
 # Q6 — durable first-install quickstart (separate onboarding task/PR)
 

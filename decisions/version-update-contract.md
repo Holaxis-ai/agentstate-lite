@@ -6,7 +6,7 @@ description: >-
   discovery, explicit upgrade journey, integration compatibility, human
   approval, and rollback boundary.
 actor: openai/codex
-timestamp: '2026-07-31T21:13:41.613Z'
+timestamp: '2026-07-31T21:21:33.273Z'
 ---
 # Decision
 
@@ -28,7 +28,7 @@ AgentState will treat `@holaxis/aslite` on npm as the single executable authorit
 - Releases are on demand. A reviewed release-preparation PR assigns SemVer in package source/lockfile plus compatible generated claims and candidate notes. The workflow never invents or commits a version or self-referential future commit SHA.
 - Protected annotated tag `v<version>` selects one gate-clean `main` commit. Tag text, source/lockfile version, build-time-injected commit, generated assets/docs, packed identity, and checkout SHA must agree.
 - Before the first live tag, Brian or Mike must record the protection preflight defined by the protocol: resolve the current direct-main marketplace-bot conflict, protect main and `v*`, bind the exact stage-only trusted publisher/environment, verify both maintainers' 2FA/recovery, and enable immutable releases. Code can merge before this external setup; staging cannot run.
-- Source gates may build for testing. After they pass, a release-candidate command builds the production candidate once, packs once, records `.tgz`/SHA/integrity/source identity, and verifies that retained tarball without rebuilding/repacking. The exact retained path is passed to npm.
+- Source gates may build for testing. After they pass, a release-candidate command builds the production candidate once, packs once, records `.tgz`/SHA/integrity/source identity, and verifies that retained tarball without rebuilding/repacking. A separately permissioned job creates the unpublished GitHub draft and attaches those exact assets before the exact retained path is passed to npm.
 - Stage-only trusted publishing is selected. A tag-triggered run stages the exact tarball through OIDC and ends with immutable run/artifact/stage identifiers. Either Brian or Mike downloads/inspects it and approves or rejects the stage with npm 2FA. This is the one publication approval; GitHub environment restrictions add no second human gate.
 - External npm approval never resumes or is polled by the original run. A separate explicitly dispatched finalizer accepts the immutable identifiers, downloads/verifies rather than rebuilds, performs registry smoke, records interactive tag operations, and publishes the already-prepared immutable GitHub release with separately scoped permissions.
 - For prereleases, stage on `next`; after public registry proof and the required upgrade evidence, Brian or Mike moves `latest` to the exact candidate. Preapproval failure rejects the stage. Postapproval failure restores `next` immediately, keeps `latest` unchanged, deprecates the candidate, and records the failed draft/receipt. Stable failure restores all prior tag state immediately.
@@ -45,7 +45,7 @@ AgentState will treat `@holaxis/aslite` on npm as the single executable authorit
 # 4. Explicit supported-release discovery
 
 - `aslite version --check` checks `latest`; `--tag next` explicitly checks preview. It makes one fixed official-registry request under the protocol's 2,000 ms/1 MiB/no-redirect/no-retry bounds and validates tag/version/deprecation/integrity metadata.
-- Exact running and selected versions decide: `current`, `upgrade_available`, `rollback_available`, `deprecated`, or `unavailable`. A rollback-selected lower version prints the exact downgrade; numeric “ahead” is never treated as supported. A selected deprecated target is inconsistent/unavailable and is not recommended.
+- Exact running and selected versions decide: `current`, `upgrade_available`, `rollback_available`, `deprecated`, or `unavailable`. A rollback-selected lower version prints the exact downgrade; numeric “ahead” is never treated as supported. A selected deprecated target is `deprecated` only when it is the running exact version; a different deprecated target is inconsistent/unavailable and is not recommended.
 - Successful comparisons exit 0; unavailable/invalid local runtime exits 1; usage exits 2. Local identity is still returned for a structured remote `unavailable` result. Ordinary commands are unaffected.
 - Reconciliation prints the exact observed version, e.g. `npm install --global @holaxis/aslite@0.1.0-pre.3`, followed by skill/hook status and stable MCP verification guidance. This deliberate deviation from generic `npm update -g` prevents tag movement between check and install and works for controlled rollback.
 - The command mutates no installation/configuration/bundle and stores no release preference. `aslite update` stays reserved for a future command that actually updates.
@@ -62,7 +62,7 @@ AgentState will treat `@holaxis/aslite` on npm as the single executable authorit
 - Skill status compares owned manifest, bytes, and skill contract. Legacy owned manifests remain recognized; same-SemVer/different-byte is stale. Reconciliation occurs only through explicit `skill install`.
 - One tokenized hook classifier owns status, install rewrite/deduplication, and uninstall. It recognizes enumerated historically generated forms and exact current commands while rejecting foreign near-matches. Because this is a destructive ownership boundary, install and uninstall receive independent Review followed by adversarial byte-preservation QA.
 - Supported MCP host configuration is exact PATH `aslite mcp`; MCP advertises the running CLI release. The CLI proves that contract and emits generic legacy cache-path guidance but does not scan or claim per-host config state and never rewrites it.
-- npx is read-only trial/bootstrap, not a persistent integration authority. For an `npm-package` invocation, skill/hook installation refuses unless a managed PATH bin resolves to the running executable, preventing npx cache paths/assets from being persisted. Docs teach global npm before integration install. Temporary marketplace/local-dev behavior is classified separately until cutover.
+- npx is read-only trial/bootstrap, not a persistent integration authority. PATH equality alone is insufficient because npm exec adds cache bins; persistent npm-package skill/hook installation requires the protocol's independently validated `durable_global` npm-prefix evidence and otherwise refuses. Docs teach global npm before integration install. Temporary marketplace/local-dev behavior is classified separately until cutover.
 
 # 7. Honest two-release proof
 
