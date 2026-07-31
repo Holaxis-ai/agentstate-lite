@@ -4,14 +4,15 @@ title: Define and ship the npm versioning and update contract
 status: in_progress
 priority: '1'
 description: >-
-  HIGHEST PRIORITY: @holaxis/aslite@0.1.0-pre.2 is now publicly published under
-  the next tag from merged PR #181. A clean isolated registry install proved
-  both aslite and agentstate-lite resolve from PATH at pre.2. Remaining work is
-  the durable update-discovery, upgrade, skill/hook compatibility, automation,
-  and rollback contract before retiring the marketplace channel.
+  HIGHEST PRIORITY: @holaxis/aslite@0.1.0-pre.2 is publicly published from
+  merged PR #181; both latest and next now resolve to pre.2. Clean isolated
+  registry installs proved the plain npm install path plus both aslite and
+  agentstate-lite binaries. Remaining work is the durable update-discovery,
+  upgrade, skill/hook compatibility, automation, and rollback contract before
+  retiring the marketplace channel.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-07-31T13:47:00.945Z'
+timestamp: '2026-07-31T13:49:18.954Z'
 ---
 # Problem
 
