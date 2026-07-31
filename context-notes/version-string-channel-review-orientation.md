@@ -2,19 +2,20 @@
 type: Context Note
 title: 'Orientation: version-string/channel-identity task review'
 actor: openai/codex
-timestamp: '2026-07-31T18:56:24.913Z'
+timestamp: '2026-07-31T19:17:10.887Z'
 ---
 # Summary
 
 ## Goals
 
 - **Ultimate goal:** Make agentstate-lite the reliable, local-first, user-owned shared memory for agents and humans: plain Markdown, safe concurrent writes, and git-based sharing.
-- **Proximate goal:** Determine whether `tasks/version-string-channel-identity` defines a coherent, evidence-backed release/update contract and a clear next action.
+- **Proximate goal:** Define the release/update identity contract, produce a reviewed implementation plan, and ship its coherent units through the required review and QA gates.
 - **Link upward:** A trustworthy distribution identity and upgrade path are prerequisites for users to rely on the CLI and its installed integration surfaces across sessions.
 
 ## Current orientation
 
 - The task is `in_progress`, priority 1, and says npm `0.1.0-pre.2` is public and proven by isolated installs.
+- Brian authorized this session to take the task on and confirmed `0.1.0-pre.2` is the canonical current release. Any `0.1.0-pre.1` reported by the local dev bundle is stale-build evidence to diagnose, not an alternate desired version.
 - Its task body was truncated in the first read and still needs full inspection.
 - It has backlinks from `roadmap-items/distribution-neutral-resources` (`contains`) and `tasks/retire-marketplace-channel` (`depends on`), but no outbound links.
 - The prior `context-notes/pre-compact-main` concerns PR #177 and is not a current handoff for this unit.
@@ -39,4 +40,4 @@ timestamp: '2026-07-31T18:56:24.913Z'
 
 Author and review a Decision plus implementation Plan before code. The Decision should define the identity record and channel comparison rules, SemVer/dist-tag policy, supported-release selection, upgrade command/receipt, update-check boundary, skill/hook/MCP compatibility semantics, release/tag/publish authority, and rollback. The Plan should then sequence coherent units: identity primitive and agreement tests; update/compatibility diagnostics; release automation; clean-machine old-to-new proof and documentation transition. Reconcile the roadmap and `tasks/npm-cli-skill-prerelease` ownership in the same planning pass.
 
-No code or task-status change was made during this review.
+The task remains claimed as `in_progress` by `openai/codex`. No code change has been made yet; design decisions and the reviewed implementation plan precede the build.
