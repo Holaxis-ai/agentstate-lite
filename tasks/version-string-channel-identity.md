@@ -12,7 +12,7 @@ description: >-
   retiring the marketplace channel.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-07-31T20:22:21.251Z'
+timestamp: '2026-07-31T20:49:36.647Z'
 ---
 # Problem
 
@@ -105,3 +105,7 @@ authority by installing guidance from `main` that can drift ahead of the install
   necessary.
 
 [uses domain model](../designs/version-update-domain-model.md)
+
+[governed by decision](../decisions/version-update-contract.md)
+
+[implemented by plan](../plans/version-string-channel-identity.md)
