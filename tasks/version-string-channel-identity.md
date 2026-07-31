@@ -12,7 +12,7 @@ description: >-
   retiring the marketplace channel.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-07-31T21:13:42.025Z'
+timestamp: '2026-07-31T21:28:53.560Z'
 ---
 # Problem
 
@@ -111,3 +111,14 @@ authority by installing guidance from `main` that can drift ahead of the install
 [implemented by plan](../plans/version-string-channel-identity.md)
 
 [specified by protocol design](../designs/version-update-protocols.md)
+
+# Approved decomposition and current progress (2026-07-31)
+
+D0 is complete: two independent reviewers approved the domain model, release/update Decision,
+normative protocol design, and implementation Plan after multiple correction rounds. The task stays
+as the umbrella and closes only after both public-release proofs succeed. Child tasks and typed
+dependencies now live under `roadmap-items/distribution-neutral-resources`.
+
+Current unit: [one build/runtime identity authority](version-build-identity.md). Later code and
+operational units follow the exact DAG in the approved Plan; marketplace deletion remains a
+separate blocked task.

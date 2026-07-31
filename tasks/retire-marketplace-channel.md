@@ -4,18 +4,19 @@ title: Retire the marketplace executable and plugin distribution channel
 status: blocked
 priority: '2'
 description: >-
-  BLOCKED on successful npm-first founder proof. Delete the duplicate
-  marketplace executable, cache resolvers, manifests, build/drift/version
-  automation, and dual-channel branches while retaining npm-carried skill and
-  hook installation.
+  BLOCKED until both npm release proofs, independently proven frozen marketplace
+  recovery, npm-primary docs, and safety-gate transfer pass. Then delete
+  duplicate marketplace executable/cache/build/version machinery in a
+  deletion-only unit.
 actor: openai/codex
-timestamp: '2026-07-31T02:20:16.025Z'
+timestamp: '2026-07-31T21:28:53.349Z'
 ---
 # Gate
 
-Begin only after the npm CLI + skill prerelease has survived the founder acceptance proof and npm
-is the documented primary installation path. Preserve a rollback tag or release artifact before
-deleting the old channel.
+Begin only after both public npm transitions pass (`bootstrap-pre2-upgrade-proof` and
+`self-discovered-upgrade-proof`), the final marketplace recovery release is independently proven,
+npm is the documented primary installation path, and every surviving marketplace invariant has a
+named npm gate. The recovery release must exist before docs or deletion rely on it.
 
 # Deletion scope
 
@@ -60,3 +61,11 @@ check has a named surviving owner or is proven obsolete.
 [depends on](npm-cli-skill-prerelease.md)
 
 [depends on](version-string-channel-identity.md)
+
+[depends on](npm-primary-docs-cutover.md)
+
+[depends on](freeze-marketplace-recovery.md)
+
+[depends on](transfer-marketplace-gates.md)
+
+[approved sequencing](../plans/version-string-channel-identity.md)

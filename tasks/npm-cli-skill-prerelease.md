@@ -4,12 +4,12 @@ title: 'npm prerelease: authoritative CLI plus explicitly installable Agent Skil
 status: in_progress
 priority: '1'
 description: >-
-  PUBLISHED: @holaxis/aslite@0.1.0-pre.1 live on npmjs (tag next; latest forced
-  by first-publish). Registry cold-install smoke all green incl. skill+hook
-  round-trips and npx. Remaining: founder proof on a clean machine (human), then
-  npm-as-primary-channel doc step + marketplace retirement as separate units.
-actor: anthropic/claude
-timestamp: '2026-07-21T23:53:18.059Z'
+  PUBLISHED: @holaxis/aslite@0.1.0-pre.2 is canonical; registry installs, both
+  bins, optional skill, hook, and npx smoke are proven. Remaining ownership is
+  the singular founder/unfamiliar-bundle first-use judgment; upgrade mechanics
+  and npm-primary cutover moved to the approved version/update program.
+actor: openai/codex
+timestamp: '2026-07-31T21:28:52.928Z'
 ---
 # Behavioral claim
 
@@ -41,7 +41,8 @@ From the exact packed prerelease in an isolated home and without this source che
 - start a fresh agent session against an unfamiliar real bundle;
 - discover its Kinds/workflow, make an attributed mutation, and open a View without founder
   explanation;
-- upgrade/reinstall the package without an executable or hook path expiring; and
+- contribute the founder/unfamiliar-bundle judgment to the separately owned pre.2 bootstrap release
+  receipt (upgrade mechanics are owned by `tasks/version-string-channel-identity`); and
 - confirm the npm tarball contains exactly one executable implementation.
 
 # Non-goals
@@ -57,13 +58,14 @@ From the exact packed prerelease in an isolated home and without this source che
 
 [depends on](npm-package-identity.md)
 
-# Package coordinate (unblocked 2026-07-20)
+# Package coordinate and superseded working tag policy
 
-The identity gate is resolved: publish as **`aslite`** (interim — see
-[the decision doc](../decisions/npm-interim-package-name.md) for rationale, the working
-version/tag policy, and the rename/rollback path). The package name matches the preferred
-bin, so `npx -y aslite` resolves with no bin alias. Prereleases go out as `0.x.y-pre.N` on
-dist-tag `next`, never `latest`.
+The identity gate is resolved at scoped **`@holaxis/aslite`** with bins `aslite` and
+`agentstate-lite`. The original unscoped coordinate and “next never advances latest” working rule
+from [the decision doc](../decisions/npm-interim-package-name.md) were superseded by its amendment and
+[release/update Decision](../decisions/version-update-contract.md). Before stable, latest and next
+coincide at rest on the proven supported prerelease; during proof next may temporarily name the
+explicit candidate while latest remains supported.
 
 # Delivery record (2026-07-20)
 
@@ -87,7 +89,7 @@ Shipped as TWO stacked PRs (Brian opens/merges; publish itself stays human-gated
   packed prerelease on a clean machine, fresh agent session on an unfamiliar real bundle,
   attributed mutation + View open without founder explanation, upgrade without path expiry.
 
-# PUBLISHED (2026-07-21)
+# PUBLISHED bootstrap history (2026-07-21 through 2026-07-30)
 
 `@holaxis/aslite@0.1.0-pre.1` is live on npmjs (public, org `holaxis` created and owner-verified;
 scoped coordinate per the amended decision — unscoped `aslite` was 403'd by npm's publish-time
@@ -98,8 +100,10 @@ registry, fully isolated (scratch prefix/HOME): install, help, init, new, list, 
 install/status/uninstall (both hosts, files verified on disk), hook install writing exactly
 `aslite session-start`, clean uninstalls, and `npx -y @holaxis/aslite@next` — all green.
 
-Remaining acceptance items (HUMAN, post-publish): founder installs on a clean machine/home,
-fresh agent session against an unfamiliar real bundle, discovers Kinds/workflow and makes an
-attributed mutation + opens a View without founder explanation, upgrade/reinstall without path
-expiry. Then: make npm the documented primary channel, and marketplace retirement as separate
-deletion units (design transition steps 5-6).
+`0.1.0-pre.2` is now the canonical public bootstrap release; both `latest` and `next` resolve to it,
+and isolated registry installs proved both bins. Remaining acceptance here is the singular founder
+clean-home/unfamiliar-bundle judgment. `tasks/bootstrap-pre2-upgrade-proof` owns and records the
+upgrade mechanics and links that human evidence back here. npm-primary docs, self-discovery proof,
+frozen recovery, gate transfer, and marketplace deletion are separate reviewed units.
+
+[acceptance evidence from](bootstrap-pre2-upgrade-proof.md)
