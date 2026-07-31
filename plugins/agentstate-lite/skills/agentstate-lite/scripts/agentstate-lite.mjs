@@ -54699,7 +54699,7 @@ import { readFileSync as readFileSync7 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { dirname as dirname5, join as join11 } from "node:path";
 function cliVersion() {
-  if ("0.1.0-pre.1") return "0.1.0-pre.1";
+  if ("0.1.0-pre.2") return "0.1.0-pre.2";
   try {
     const pkgPath = join11(dirname5(fileURLToPath2(import.meta.url)), "..", "package.json");
     const pkg = JSON.parse(readFileSync7(pkgPath, "utf8"));
