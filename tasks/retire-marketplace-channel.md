@@ -9,7 +9,7 @@ description: >-
   automation, and dual-channel branches while retaining npm-carried skill and
   hook installation.
 actor: openai/codex
-timestamp: '2026-07-20T02:49:06.254Z'
+timestamp: '2026-07-31T02:20:16.025Z'
 ---
 # Gate
 
@@ -58,3 +58,5 @@ check has a named surviving owner or is proven obsolete.
 [completes](../roadmap-items/distribution-neutral-resources.md)
 
 [depends on](npm-cli-skill-prerelease.md)
+
+[depends on](version-string-channel-identity.md)

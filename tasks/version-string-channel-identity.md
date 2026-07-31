@@ -1,65 +1,101 @@
 ---
 type: Task
-title: >-
-  CLI version string cannot distinguish channel or vintage (npm frozen behind
-  the skill channel)
+title: Define and ship the npm versioning and update contract
 status: todo
-priority: '2'
+priority: '1'
 description: >-
-  All three installed channels report 0.1.0-pre.1 while carrying different code;
-  npm has been frozen at the 2026-07-21 publish while the plugin channel tracks
-  main. Support has no discriminator and the npm quickstart installs pre-MCP
-  code.
-actor: mike/claude
-timestamp: '2026-07-27T01:01:22.921Z'
+  HIGHEST PRIORITY: make npm the single executable authority and prove a
+  cache-independent install, version identity, update-discovery, upgrade,
+  skill/hook compatibility, and rollback contract before npm becomes primary.
+actor: openai/codex
+timestamp: '2026-07-31T02:20:15.723Z'
 ---
 # Problem
 
-The CLI version string does not distinguish distribution channels or vintages. On 2026-07-26 all
-three installed channels on a founder machine reported `0.1.0-pre.1` while carrying substantially
-different code:
+AgentState currently has no trustworthy user-facing answer to four basic questions:
 
-| Channel | Built | Bundle bytes | MCP host present |
-|---|---|---|---|
-| Skill/plugin (marketplace v1.0.124) | 2026-07-26 20:56 | 3,017,625 | yes |
-| Local dev dist | 2026-07-26 18:40 | 3,017,385 | yes |
-| npm `@holaxis/aslite@0.1.0-pre.1` | 2026-07-21 23:37 | 1,025,371 | no (`show_view`: 0 hits) |
+1. Which executable and release am I running?
+2. Is it the current supported release?
+3. What exact command safely upgrades it?
+4. After upgrading, are the installed Agent Skill, hooks, and MCP configuration still compatible?
 
-The npm package was published once (`created`, the version entry, and `modified` share one
-timestamp) and has not been republished. The plugin channel regenerates from main's tip on every
-merge, so it accumulates every merged change while the npm coordinate stays frozen — and the
-package version, which both report, moves for neither.
+The marketplace/plugin channel and npm channel can carry materially different code while reporting
+the same package version. The plugin also lives under host-owned, version-keyed cache paths that
+move or disappear during upgrades. Agents repeatedly have to rediscover those paths, and a session
+can continue holding instructions for an expired cache. On 2026-07-30, even the installed skill
+catalog's advertised path was stale and had to be rediscovered under a different cache nesting.
 
-# Why it matters
+The npm prerelease gives us a stable executable authority, but publishing once is not an update
+system. Before npm becomes the primary channel, define and prove the complete release and upgrade
+contract.
 
-1. Support has no discriminator. Asking a test user "what version are you on?" returns
-   `0.1.0-pre.1` regardless of which channel they installed or how old it is. Only the plugin
-   manifest version (1.0.124) tracks reality, and npm users have no equivalent.
-2. It lands directly on `tasks/npm-quickstart-onboarding`. The quickstart's install path is npm,
-   so a new user following it receives 2026-07-21 code while the documentation describes main.
-   Anything merged since — the shared Markdown renderer, `view-runtime`, the experimental MCP
-   View host, governed actions, bounded query selection, the Home landing rethink — is absent
-   from what they install.
-3. It weakens the npm-as-primary-channel claim that `tasks/npm-cli-skill-prerelease` is closing.
+# Product outcome
 
-# Scope
+A user installs AgentState conventionally, agents invoke the stable short command `aslite`, and
+both can tell whether it is current and how to upgrade without knowing anything about plugin
+caches. The npm package is the single executable authority. The optional installed Agent Skill
+contains guidance and references, not another copy of the CLI, and its compatibility with the CLI
+is explicit.
 
-Decide and implement how a running CLI reports enough identity to locate its own build. Options to
-weigh, not a chosen design:
+`npx` remains a useful zero-install bootstrap or trial path. It must not create a second unversioned
+authority by installing guidance from `main` that can drift ahead of the installed npm executable.
 
-- Bump and republish the npm prerelease as part of the release push, so the coordinate is not
-  frozen behind the plugin channel.
-- Embed build provenance in the bundle (source commit and/or build timestamp) and surface it from
-  the version surface, so identity does not depend on a hand-moved package version.
-- Extend the existing bot-owned version automation to cover the npm channel, or state explicitly
-  that npm publishes are manual and cadence-gated.
+# Decisions this task must make
 
-# Out of scope
+1. **Version policy:** SemVer policy before 1.0; when patch/minor/major changes apply; prerelease
+   naming; and the meaning of npm dist-tags such as `latest` and `next`.
+2. **Release authority and cadence:** what event publishes a package, who can publish, how Git tags
+   and commits map to npm versions, and how a bad release is deprecated or rolled back.
+3. **Runtime identity:** the command/output that reports package version, build commit, channel, and
+   executable path well enough to distinguish npm, local development, and any temporary legacy
+   channel.
+4. **Update discovery:** whether and where the CLI performs a bounded, non-blocking check for a
+   newer supported release; how it behaves offline; how often it checks; and how users or agents
+   explicitly suppress it.
+5. **Upgrade verb and guidance:** decide whether AgentState owns an `aslite update` convenience
+   command or prints the package-manager command. In either case, provide one exact, copyable
+   upgrade path and a verification receipt.
+6. **Skill and hook compatibility:** define how an npm upgrade detects an older Agent Skill or
+   installed hook, whether the user reruns `aslite skill install` / `aslite hook install`, and how
+   status commands explain mismatches without silently mutating configuration.
+7. **`npx` role:** support `npx @holaxis/aslite ...` for trial/bootstrap while keeping repeated
+   operation on the installed `aslite` binary. If `npx skills add` is supported, publish or generate
+   a slim skill artifact pinned to a compatible release rather than installing from a moving
+   `main`.
+8. **Marketplace retirement boundary:** identify the proof that allows deletion of the embedded
+   marketplace executable and cache-resolution machinery, while preserving a rollback artifact.
 
-Release automation and the publish cadence decision itself, which
-`tasks/npm-cli-skill-prerelease` and the founders own.
+# Acceptance
 
-# Evidence
+- A recorded design or decision answers all eight questions above and names one recommended
+  end-user install and upgrade journey.
+- A clean-machine proof installs one npm version, uses it, upgrades to the next test release, and
+  verifies the CLI, Agent Skill, hooks, and MCP startup afterward.
+- The installed runtime reports a version identity that changes when its bytes/release changes;
+  two different distribution vintages cannot truthfully present as the same build.
+- When a newer supported version exists, the user receives an accurate, bounded, non-fatal notice
+  and one exact upgrade command. Offline use remains fully functional.
+- `aslite skill status` and `aslite hook status` can identify any actionable post-upgrade mismatch
+  without relying on marketplace cache paths.
+- The npm package, generated skill, release tag, and documentation are produced from one release
+  source. CI prevents publishing a version whose declared identity or packaged assets disagree.
+- README and onboarding documentation stop teaching marketplace-cache discovery once the npm
+  upgrade proof passes.
+- The existing narrow version-string finding is resolved by this task rather than implemented as a
+  disconnected patch.
 
-Observed 2026-07-26/27 on a founder machine. `npm view @holaxis/aslite time` returns a single
-publish timestamp; bundle sizes and the `show_view` probe are as tabulated above.
+# Non-goals
+
+- A mandatory background updater or silent self-modification.
+- Making `npx skills add` the primary executable installation mechanism.
+- Renaming the product or npm package.
+- Removing the marketplace rollback path before the npm upgrade proof succeeds.
+- Changes to bundle storage, synchronization, or remote hosting.
+
+# Relevant existing work
+
+- The npm CLI and optional-skill prerelease is already published and awaiting founder proof.
+- The npm distribution design already chooses npm as the intended sole executable authority.
+- Marketplace retirement remains gated on successful npm-first proof.
+- Installer-hardening follow-ups remain separate unless the upgrade contract makes one directly
+  necessary.

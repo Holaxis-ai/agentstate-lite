@@ -3,16 +3,16 @@ type: Roadmap Item
 title: >-
   npm-first distribution: executable, optional skill, and bundle-native
   knowledge
-status: queued
+status: active
 description: >-
-  Runtime independence and installed-tarball verification are complete. Choose
-  package identity, ship an npm-carried optional skill, prove founder use, then
-  retire the marketplace executable channel.
+  HIGHEST PRIORITY: define and prove the npm version/update lifecycle so users
+  and agents stay current without plugin-cache discovery; then make npm primary
+  and retire the duplicate marketplace executable.
 actor: openai/codex
 sequence: >-
-  Choose identity → npm CLI + skill prerelease → founder proof → npm primary →
-  delete marketplace channel
-timestamp: '2026-07-26T19:29:31.063Z'
+  npm version/update contract → founder upgrade proof → npm primary → delete
+  marketplace channel
+timestamp: '2026-07-31T02:20:15.928Z'
 ---
 # Remaining sequence
 
@@ -49,3 +49,5 @@ npm owns executable mechanics plus the optional bootstrap skill.
 [contains](../tasks/retire-marketplace-channel.md)
 
 [contains](../tasks/plugin-regeneration-dependency-order.md)
+
+[contains](../tasks/version-string-channel-identity.md)
