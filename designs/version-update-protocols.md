@@ -5,7 +5,7 @@ description: >-
   Normative schemas, state precedence, budgets, compatibility tables, build
   flavors, staged-release state machine, and two-release proof.
 actor: openai/codex
-timestamp: '2026-07-31T21:21:33.067Z'
+timestamp: '2026-07-31T21:22:48.303Z'
 ---
 # Purpose
 
@@ -172,7 +172,7 @@ Manifest v2 is exact and additive (existing keys retained):
   "schema": "aslite.skill-manifest.v2",
   "package": "@holaxis/aslite",
   "version": "0.1.0-pre.3",
-  "installed_by": "aslite",
+  "installed_by": "aslite skill install",
   "compatibility_contract": 1,
   "source_identity": {
     "release_version": "0.1.0-pre.3",
