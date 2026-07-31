@@ -5,7 +5,7 @@ status: in_progress
 priority: '1'
 description: 'Implement I1: exact offline build/runtime identity and agreeing projections.'
 actor: openai/codex
-timestamp: '2026-07-31T23:14:27.569Z'
+timestamp: '2026-07-31T23:46:30.561Z'
 ---
 # Goal
 
@@ -17,23 +17,24 @@ Implement the offline `BuildIdentityV1` authority and exact `aslite version` pro
 - Explicit build flavor/source input at every bundle producer; missing evidence fails closed.
 - Runtime file SHA/path/launch evidence and adjacent-manifest drift are honest.
 - Home, skill running version, MCP server version, aliases, and package verifier agree.
-- Stale-dist, same-SemVer/different-byte, npx/global ambiguity, plugin/local/npm, and missing-evidence tests pass.
+- Local development and marketplace production/drift workflows retain their documented usability and structural convergence.
+- Stale-dist, same-SemVer/different-byte, npx/global ambiguity, plugin/local/npm, missing-evidence, dirty-tree gate, and identity-normalized drift tests pass.
 
 # Gate
 
-Builder → independent exact-SHA Review → dedicated evidence QA → focused agreement/package tests → full repository gate → Brian-owned PR/merge.
+Builder → independent exact-SHA Review → dedicated evidence QA → focused agreement/package tests → full repository gate → Brian-owned merge.
 
-# Outcome
+# Current review state
 
-Implementation is PR-ready at exact SHA `d5d2f3f2dd37472f612e5b287f449a1c0b942285` on pushed branch `feat/version-build-identity`. The canonical package version remains `0.1.0-pre.2`.
+PR #183 is open at `d5d2f3f`, but its earlier PR-ready conclusion and zero-finding review/QA claims are superseded. Brian's PR review approved the runtime identity and requested changes in the build/CI/drift surroundings.
 
-The CLI now has one baked immutable identity authority and a complete offline `version` envelope. One-line aliases, home/session-start, npm skill, MCP initialize, package verification, runtime path/hash/launch evidence, adjacent-manifest drift, and all explicit build flavors agree. Source execution explicitly registers and hashes `src/index.ts`. Marketplace generation owns one pre-write source snapshot, so honest commit/dirty evidence remains deterministic without weakening the load-bearing bot actor guard. PR-owned `packages/cli/SKILL.md` is current; bot-owned marketplace artifacts and manifests are intentionally absent from the branch diff.
+F1 and F2 are independently reproduced at the exact PR SHA in an isolated worktree: an untracked file makes the local npm package proof fail through the strict `npm-package` clean-source guard, and `build:plugin-bundle` followed immediately by `check:plugin-bundle` reports false drift after the writer changes ambient provenance. F3/F4 follow from raw commit-sensitive comparison: doc-only commits bump and rewrite the marketplace artifact, while loop safety depends on the current actor/token configuration. F5/F6 are confirmed statically: npm environment inference outranks concrete managed-PATH evidence, and package name is hardcoded while version comes from the manifest.
 
-Independent exact-SHA Review approved `d5d2f3f` with 0 blockers, 0 majors, and 0 minors. Dedicated final adversarial QA passed the same SHA with 0 findings: runtime/install matrix, 76/76 focused identity/home/skill/MCP/help tests, 65/65 marketplace/distribution/package script tests, direct npm package proof, honest `dirty:true`, and one-bump-then-no-op regeneration.
+The whole producer/gate/checker/automation system and invariants were re-modeled before another fix. The proposed repair preserves full runtime identity while: separating local package-contract verification from strict release construction; normalizing only source commit/dirty in marketplace comparison; restoring provenance-only generated output before CI commit detection; making convergence structural again; correcting launch precedence; and sourcing baked package name/version from one manifest read. Independent plan review is in progress. No repair code has been written yet.
 
-The final repository-wide `npm run check` passed on the exact SHA: build, typecheck, all workspace tests, script/distribution tests, npm package verifier (`0.1.0-pre.2`, 30 files, zero runtime dependencies, both bins, offline workflow), npm skill drift, 8 browser tests, and 19 UI/security E2E tests.
+[PR review reorientation](../context-notes/version-build-identity-pr183-review-reorientation.md)
 
-Task remains `in_progress` only for Brian-owned PR creation and merge; the implementation/review/QA/gate work is complete.
+[repair plan](../plans/version-build-identity-pr183-review-fixes.md)
 
 [initial code review](../context-notes/version-build-identity-code-review-b2caf37.md)
 
@@ -51,9 +52,9 @@ Task remains `in_progress` only for Brian-owned PR creation and merge; the imple
 
 [independent regeneration-loop analysis](../context-notes/version-build-identity-marketplace-regeneration-loop-a71866b.md)
 
-[final approved review](../context-notes/version-build-identity-final-code-rereview-d5d2f3f.md)
+[prior final review, now superseded for build/CI surfaces](../context-notes/version-build-identity-final-code-rereview-d5d2f3f.md)
 
-[final QA pass](../context-notes/version-build-identity-final-qa-d5d2f3f.md)
+[prior final QA, now superseded for build/CI surfaces](../context-notes/version-build-identity-final-qa-d5d2f3f.md)
 
 [unit contract](../plans/version-string-channel-identity.md)
 
