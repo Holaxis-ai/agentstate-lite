@@ -5,7 +5,7 @@ status: in_progress
 priority: '1'
 description: 'Implement I1: exact offline build/runtime identity and agreeing projections.'
 actor: openai/codex
-timestamp: '2026-07-31T22:59:59.719Z'
+timestamp: '2026-07-31T23:14:27.569Z'
 ---
 # Goal
 
@@ -23,13 +23,17 @@ Implement the offline `BuildIdentityV1` authority and exact `aslite version` pro
 
 Builder → independent exact-SHA Review → dedicated evidence QA → focused agreement/package tests → full repository gate → Brian-owned PR/merge.
 
-# Progress
+# Outcome
 
-The implementation reached exact SHA `3579b98` on `feat/version-build-identity`. Earlier exact-SHA Review approved `723ea52` and adversarial QA passed it after the executable-entry authority was corrected. The later full gate exposed two additional gate-level issues rather than runtime identity disagreement: the help-index smoke assertion did not account for the new first Session command, and marketplace regeneration resampled Git dirty state after writing its own tracked outputs.
+Implementation is PR-ready at exact SHA `d5d2f3f2dd37472f612e5b287f449a1c0b942285` on pushed branch `feat/version-build-identity`. The canonical package version remains `0.1.0-pre.2`.
 
-Per the persistent-problem rule, the full marketplace producer/workflow/checker loop was modeled before the structural fix. Independent QA recommended one transaction-owned source snapshot. `3579b98` now captures commit/dirty evidence once before generation, propagates that exact object through the marketplace producer, reuses it across the convergence proof, and keeps the bot actor guard load-bearing for the new bot commit SHA. The smoke test now pins ordered adjacency, the standalone checker snapshots before preparation, `git diff --check` is clean, the help integration suite passes 8/8, and script/distribution tests pass 65/65 including the complete npm package proof.
+The CLI now has one baked immutable identity authority and a complete offline `version` envelope. One-line aliases, home/session-start, npm skill, MCP initialize, package verification, runtime path/hash/launch evidence, adjacent-manifest drift, and all explicit build flavors agree. Source execution explicitly registers and hashes `src/index.ts`. Marketplace generation owns one pre-write source snapshot, so honest commit/dirty evidence remains deterministic without weakening the load-bearing bot actor guard. PR-owned `packages/cli/SKILL.md` is current; bot-owned marketplace artifacts and manifests are intentionally absent from the branch diff.
 
-Final independent exact-SHA Review of `3579b98` is in progress. Dedicated final QA and the full repository gate remain after approval; the branch has not been pushed and no PR has been opened.
+Independent exact-SHA Review approved `d5d2f3f` with 0 blockers, 0 majors, and 0 minors. Dedicated final adversarial QA passed the same SHA with 0 findings: runtime/install matrix, 76/76 focused identity/home/skill/MCP/help tests, 65/65 marketplace/distribution/package script tests, direct npm package proof, honest `dirty:true`, and one-bump-then-no-op regeneration.
+
+The final repository-wide `npm run check` passed on the exact SHA: build, typecheck, all workspace tests, script/distribution tests, npm package verifier (`0.1.0-pre.2`, 30 files, zero runtime dependencies, both bins, offline workflow), npm skill drift, 8 browser tests, and 19 UI/security E2E tests.
+
+Task remains `in_progress` only for Brian-owned PR creation and merge; the implementation/review/QA/gate work is complete.
 
 [initial code review](../context-notes/version-build-identity-code-review-b2caf37.md)
 
@@ -46,6 +50,10 @@ Final independent exact-SHA Review of `3579b98` is in progress. Dedicated final 
 [marketplace regeneration system model](../context-notes/version-build-identity-marketplace-regeneration-system-model.md)
 
 [independent regeneration-loop analysis](../context-notes/version-build-identity-marketplace-regeneration-loop-a71866b.md)
+
+[final approved review](../context-notes/version-build-identity-final-code-rereview-d5d2f3f.md)
+
+[final QA pass](../context-notes/version-build-identity-final-qa-d5d2f3f.md)
 
 [unit contract](../plans/version-string-channel-identity.md)
 
