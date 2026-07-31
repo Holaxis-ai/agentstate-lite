@@ -9,28 +9,28 @@ the interim npm coordinate `@holaxis/aslite` (the installed commands stay `aslit
 
 The npm artifact ships one self-contained executable file with **zero runtime dependencies**,
 plus the generated Agent Skill (`SKILL.md` and its `references/` folder — installable into host
-skill folders with `aslite skill install`). It is built and
-pack-tested today but not yet published to npm; the current supported install is the plugin
-marketplace described in the [repository README](https://github.com/Holaxis-ai/agentstate-lite#install).
-Maintainers can reproduce the complete package proof from the repository root with
-`npm run verify:npm-package`; it builds, packs, installs into an isolated prefix, resolves both
-command names from `PATH`, and exercises an offline bundle workflow.
-Once published, the package-facing flow is:
+skill folders with `aslite skill install`). The public prerelease is the recommended test-user
+channel; the older marketplace bundle remains temporarily available only as a rollback path while
+the npm upgrade journey is proven. Maintainers can reproduce the complete package proof from the
+repository root with `npm run verify:npm-package`; it builds, packs, installs into an isolated
+prefix, resolves both command names from `PATH`, and exercises an offline bundle workflow.
+The zero-install trial flow is:
 
 ```sh
-npx -y @holaxis/aslite init
-npx -y @holaxis/aslite new "Context Note" cycle-1 --title "cycle-1"
-npx -y @holaxis/aslite doc update context-notes/cycle-1 --body "Chose token auth over sessions."
-npx -y @holaxis/aslite list
-npx -y @holaxis/aslite ui --open # opens a browser window: read the bundle's docs + launch its Views
+npx -y @holaxis/aslite@next init
+npx -y @holaxis/aslite@next new "Context Note" cycle-1 --title "cycle-1"
+npx -y @holaxis/aslite@next doc update context-notes/cycle-1 --body "Chose token auth over sessions."
+npx -y @holaxis/aslite@next list
+npx -y @holaxis/aslite@next ui --open # opens a browser window: read the bundle's docs + launch its Views
 ```
 
 Install it globally if you prefer (installs both the `aslite` command and the long-form alias
 `agentstate-lite`):
 
 ```sh
-npm install -g @holaxis/aslite
-aslite --help
+npm install -g @holaxis/aslite@next
+aslite --version
+aslite skill install --scope global # optional guidance for Claude Code + Codex
 ```
 
 ## What it is
