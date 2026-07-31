@@ -26,6 +26,7 @@ import { readFile, writeFile, readdir, stat } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { dirname, resolve, relative, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { currentSourceFacts } from "../packages/cli/scripts/build-bundle.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // scripts/ -> repo root
@@ -191,7 +192,11 @@ function snapshotsEqual(a, b) {
  * pair, never the real regen against fake paths (gen-skill.mjs always writes to the real
  * committed SKILL.md location, so mixing the two would silently target the wrong file).
  */
-export async function run({ regenerate = regenerateArtifacts, paths = REAL_PATHS, source } = {}) {
+export async function run({
+  regenerate = regenerateArtifacts,
+  paths = REAL_PATHS,
+  source = currentSourceFacts(),
+} = {}) {
   const beforeSkillMd = await readBytesOrNull(paths.skillMd);
   const beforeBundle = await readBytesOrNull(paths.bundleMjs);
   const beforeReferences = await snapshotDir(paths.referencesDir);

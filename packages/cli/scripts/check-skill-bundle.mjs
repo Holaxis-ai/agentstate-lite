@@ -18,7 +18,7 @@ import { readFile, rm, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildCliBundle } from "./build-bundle.mjs";
+import { buildCliBundle, currentSourceFacts } from "./build-bundle.mjs";
 import { prepareCliBundleInputs } from "./prepare-bundle-inputs.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -27,10 +27,13 @@ const committedPath = resolve(here, "../../../plugins/agentstate-lite/skills/age
 
 const scratchDir = await mkdtemp(join(tmpdir(), "aslite-skill-bundle-"));
 const scratchFile = join(scratchDir, "agentstate-lite.mjs");
+// Source identity is an input to this complete check. Capture it before preparation can write any
+// generated module, then use that exact evidence for the scratch artifact.
+const source = currentSourceFacts();
 
 try {
   await prepareCliBundleInputs();
-  await buildCliBundle(scratchFile, { artifactChannel: "marketplace-legacy" });
+  await buildCliBundle(scratchFile, { artifactChannel: "marketplace-legacy", source });
 
   const fresh = await readFile(scratchFile);
   let existing;

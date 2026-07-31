@@ -1,5 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, writeFile, rm, cp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -142,6 +143,24 @@ async function makeFixtureBundle({ marketplaceVersion = "1.2.3", pluginVersion =
 }
 
 describe("run() orchestration (fixtures, fake regenerate)", () => {
+  test("the transaction forwards one exact source snapshot to its generator", async () => {
+    const { dir, paths } = await makeFixtureBundle();
+    const source = { commit: "0123456789012345678901234567890123456789", dirty: true };
+    let received;
+    try {
+      const identityRegen = async (p, context) => {
+        received = context.source;
+        await writeFile(p.skillMd, "# SKILL v1\n");
+        await writeFile(p.bundleMjs, "console.log('bundle v1');\n");
+      };
+      const result = await run({ regenerate: identityRegen, paths, source });
+      assert.deepEqual(result, { changed: false });
+      assert.equal(received, source, "the orchestrator must propagate the immutable snapshot itself");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("artifact-current no-op: regen produces byte-identical content -> no bump, manifests untouched", async () => {
     const { dir, paths } = await makeFixtureBundle();
     try {
@@ -306,8 +325,9 @@ describe("real build (repo-tied)", () => {
       await prepareCliBundleInputs();
       const out1 = join(dir, "build1.mjs");
       const out2 = join(dir, "build2.mjs");
-      await buildCliBundle(out1, { artifactChannel: "marketplace-legacy" });
-      await buildCliBundle(out2, { artifactChannel: "marketplace-legacy" });
+      const source = { commit: "0123456789012345678901234567890123456789", dirty: true };
+      await buildCliBundle(out1, { artifactChannel: "marketplace-legacy", source });
+      await buildCliBundle(out2, { artifactChannel: "marketplace-legacy", source });
       const bytes1 = await readFile(out1);
       const bytes2 = await readFile(out2);
       assert.ok(bytes1.equals(bytes2), "two consecutive real builds must be byte-identical");
@@ -316,6 +336,8 @@ describe("real build (repo-tied)", () => {
         bytes1.toString("latin1").includes("marketplace-legacy"),
         "the explicit marketplace build flavor must be baked into the bundle",
       );
+      const envelope = JSON.parse(execFileSync(process.execPath, [out1, "version", "--json"], { encoding: "utf8" }));
+      assert.deepEqual(envelope.identity.source, source, "known dirty evidence must remain honest");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -348,6 +370,9 @@ describe("real build (repo-tied)", () => {
       // committed bundle predates a compressor/tooling change the bot hasn't regenerated for yet).
       const first = await run({ source }); // real regenerate, real paths — fixed source evidence
       assert.equal(typeof first.changed, "boolean");
+      const firstMarketplaceVersion = extractVersion(await readFile(REAL_PATHS.marketplace, "utf8"), "m");
+      const firstPluginVersion = extractVersion(await readFile(REAL_PATHS.pluginJson, "utf8"), "p");
+      assert.equal(firstMarketplaceVersion, firstPluginVersion);
 
       // Against the now-current tree the bot MUST converge: a second regeneration produces the
       // same bytes and reports changed:false, leaving the manifests untouched. This is the
@@ -356,6 +381,8 @@ describe("real build (repo-tied)", () => {
       // it now holds across machines and Node versions, not just on the machine that built last.
       const second = await run({ source });
       assert.equal(second.changed, false, "regenerating an already-current tree must be a no-op");
+      assert.equal(extractVersion(await readFile(REAL_PATHS.marketplace, "utf8"), "m"), firstMarketplaceVersion);
+      assert.equal(extractVersion(await readFile(REAL_PATHS.pluginJson, "utf8"), "p"), firstPluginVersion);
     } finally {
       for (const key of fileKeys) {
         await writeFile(REAL_PATHS[key], backup[key]);
