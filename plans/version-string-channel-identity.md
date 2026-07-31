@@ -6,7 +6,7 @@ description: >-
   compatibility, discovery, notice, publishing, proof, documentation, recovery,
   and retirement units.
 actor: openai/codex
-timestamp: '2026-07-31T21:21:33.478Z'
+timestamp: '2026-07-31T21:23:13.475Z'
 ---
 # Goal
 
@@ -72,7 +72,7 @@ Risk: high destructive configuration ownership boundary. Gate: Hook Builder → 
 **Claim:** skill status is additively actionable, and MCP's stable PATH/handshake contract is proven without claiming arbitrary host-config inspection.
 
 Builder:
-- Add the protocol's exact skill manifest v2 fields/digests while retaining legacy owned manifests and existing state strings/top-level version; provenance fields remain informational when asset bytes and contract are compatible.
+- Add the protocol's exact skill manifest v2 fields/digests while retaining legacy owned manifests and existing state strings/top-level version; provenance fields remain informational when asset bytes and contract are compatible. Pin legacy/v2 parser and exact existing `installed_by` ownership fixtures.
 - Implement protocol skill compatibility table, same-SemVer byte drift, newer-contract behavior, explicit remedies, and no overwrite/uninstall of unmanaged targets.
 - Require injected, fail-closed `durable_global` npm-prefix evidence for persistent npm-package skill installation.
 - Prove `aslite mcp` PATH startup and exact MCP server release version; add generic cache-path migration guidance only to bounded help/generated-skill/release-receipt surfaces.
