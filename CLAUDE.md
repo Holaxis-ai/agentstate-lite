@@ -450,11 +450,12 @@ Standing gates on future work:
 - **Hosted revival is human-gated.** This repository carries no Cloudflare deployment target.
   The frozen private reference records that any future revival must review the architecture and
   apply D1 migrations before deploying dependent code.
-- **Distribution today is the in-repo marketplace/plugin channel** — self-contained CLI + skill in
-  one install, verified end-to-end from Claude Code and Codex; it ships the tool AND the knowledge
-  of how to use it. The npm CLI is now an actively prepared, still-unpublished parallel channel:
-  keep `npm run verify:npm-package` green and preserve the SKILL generator's dual-channel design.
-  Publication, release automation, and a final install UX remain separate explicit decisions.
+- **The public npm prerelease is the test-user distribution channel.** `@holaxis/aslite` ships the
+  self-contained CLI plus an optional installable Agent Skill; keep `npm run verify:npm-package`
+  green and preserve the SKILL generator's dual-channel design during the transition. The older
+  marketplace/plugin bundle remains a temporary rollback channel until the npm upgrade proof
+  passes. Automated publishing, the durable update-notification contract, and deletion of the
+  marketplace channel remain separate explicit units.
 - **Multi-bundle partitioning + per-bundle key scoping + bundle-scoped authz** is its own
   future unit, designed and built TOGETHER (the Stage-2 review's adjudication) — do not build
   piecemeal, and do not build without an explicit decision. Same for the GitHub device-flow

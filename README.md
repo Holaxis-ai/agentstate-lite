@@ -7,26 +7,30 @@ what they know invisible to the humans they work for. `agentstate-lite` gives th
 shared, versioned, conflict-safe memory in plain text — offline-first, standards-based,
 owned by you.
 
-**Status: early and experimental.** This is a young project moving fast: it is not yet
-published to npm, formats and commands will change without ceremony, and some of its
-biggest ideas are still bets under test. The honest breakdown is below — read it before
-depending on anything.
+**Status: early and experimental.** A public npm prerelease is available for testing; formats and
+commands will change without ceremony, and some of the project's biggest ideas are still bets
+under test. The honest breakdown is below — read it before depending on anything.
 
 ## Install
 
-This repo is its own plugin marketplace — the skill carries a self-contained build of
-the CLI, so agents get the tool and the knowledge of how to use it in one install:
+Install the test-user prerelease from npm. The package puts the stable short command `aslite` on
+`PATH`; its optional Agent Skill teaches Claude Code and Codex how to use that command without
+carrying another copy of the executable:
 
 ```sh
-# Claude Code
-/plugin marketplace add Holaxis-ai/agentstate-lite   # then install via /plugin
-
-# Codex
-codex plugin marketplace add Holaxis-ai/agentstate-lite
-codex plugin add agentstate-lite@agentstate-lite
+npm install -g @holaxis/aslite@next
+aslite --version
+aslite skill install --scope global
+aslite hook install --scope global
 ```
 
-(An npm package is planned but not yet published.)
+Restart Claude Code or Codex after installing the skill. `hook install` is optional: it gives
+Claude Code, Codex, and OpenCode a compact AgentState orientation at session start. To try one
+command without installing anything, substitute `npx -y @holaxis/aslite@next` for `aslite`.
+
+The older marketplace plugin remains temporarily available as a rollback channel while the npm
+upgrade journey is proven. New test installations should use npm so agents rely on `PATH`, not a
+host-owned versioned plugin cache.
 
 ## Quickstart
 
@@ -35,16 +39,14 @@ aslite init --dir .agentstate-lite   # create the project's bundle (seeds contex
 aslite recipe add work-tracking      # install the Task kind — a task board, as data
 aslite recipe add roadmap            # its companion: Roadmap + Roadmap Item kinds
                                      # (typed 'contains' links: roadmap → item → task)
-aslite hook install                  # agents orient automatically at session start
-                                     # (Claude Code, Codex, OpenCode)
 aslite sync --establish              # optional: share the board — creates the 'board'
                                      # branch on origin; teammates just run 'aslite sync'
 ```
 
 The conventional `.agentstate-lite/` folder at the project root is discovered with zero
 config (the way git finds `.git`) — every command after setup runs bare from anywhere in
-the project tree. The bundle is committed shared memory: check it in and every
-collaborator's agents work against the same workspace.
+the project tree. A bundle stays local until `sync --establish` explicitly shares it on the
+repository's dedicated `board` branch.
 
 **When the conventional project folder does not fit:**
 
@@ -159,7 +161,7 @@ Bundles are valid [Open Knowledge Format v0.1](https://github.com/GoogleCloudPla
 
 ## What's early or experimental
 
-- **Everything is pre-1.0.** Breaking changes are likely; nothing is on npm yet.
+- **Everything is pre-1.0.** The npm package is a prerelease and breaking changes are likely.
 - **Recipes as composition** is a thesis under test, not a result. The repository includes
   small first-party definitions-only packages, including a Kind-plus-View reference, but package
   dependencies, upgrades, migrations, and marketplace discovery remain future work. "Cookbooks"
