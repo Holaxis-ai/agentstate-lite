@@ -5,7 +5,7 @@ status: in_progress
 priority: '1'
 description: 'Implement I1: exact offline build/runtime identity and agreeing projections.'
 actor: openai/codex
-timestamp: '2026-07-31T22:18:14.356Z'
+timestamp: '2026-07-31T22:59:59.719Z'
 ---
 # Goal
 
@@ -25,17 +25,27 @@ Builder → independent exact-SHA Review → dedicated evidence QA → focused a
 
 # Progress
 
-Review approved `677b507`, but dedicated QA rejected it because a real unbundled launch of `src/index.ts` reported and hashed imported helper `src/invocation.ts`. Per the persistent-problem escalation rule, the full bundled/source executable-resolution system and invariants were modeled before another fix. Exact SHA `723ea52` implements the structural correction: `src/index.ts` explicitly registers its own canonical entry before dispatch, and every existing consumer reads that one path authority. The real QA reproduction now reports and hashes `src/index.ts`; focused identity/MCP/hook tests pass 15/15 and CLI typecheck passes. Exact-SHA Review of `723ea52` is in progress; dedicated QA must rerun after approval.
+The implementation reached exact SHA `3579b98` on `feat/version-build-identity`. Earlier exact-SHA Review approved `723ea52` and adversarial QA passed it after the executable-entry authority was corrected. The later full gate exposed two additional gate-level issues rather than runtime identity disagreement: the help-index smoke assertion did not account for the new first Session command, and marketplace regeneration resampled Git dirty state after writing its own tracked outputs.
 
-The existing marketplace bot actor guard remains explicitly load-bearing because marketplace build identity embeds checkout SHA, and the workflow test pins that invariant.
+Per the persistent-problem rule, the full marketplace producer/workflow/checker loop was modeled before the structural fix. Independent QA recommended one transaction-owned source snapshot. `3579b98` now captures commit/dirty evidence once before generation, propagates that exact object through the marketplace producer, reuses it across the convergence proof, and keeps the bot actor guard load-bearing for the new bot commit SHA. The smoke test now pins ordered adjacency, the standalone checker snapshots before preparation, `git diff --check` is clean, the help integration suite passes 8/8, and script/distribution tests pass 65/65 including the complete npm package proof.
+
+Final independent exact-SHA Review of `3579b98` is in progress. Dedicated final QA and the full repository gate remain after approval; the branch has not been pushed and no PR has been opened.
 
 [initial code review](../context-notes/version-build-identity-code-review-b2caf37.md)
 
 [approved re-review](../context-notes/version-build-identity-code-rereview-677b507.md)
 
-[QA rejection](../context-notes/version-build-identity-qa-677b507.md)
+[QA rejection that found entry-path authority](../context-notes/version-build-identity-qa-677b507.md)
 
 [executable-path system model](../context-notes/version-build-identity-executable-path-system-model.md)
+
+[approved review at 723ea52](../context-notes/version-build-identity-code-review-723ea52.md)
+
+[QA pass at 723ea52](../context-notes/version-build-identity-qa-723ea52.md)
+
+[marketplace regeneration system model](../context-notes/version-build-identity-marketplace-regeneration-system-model.md)
+
+[independent regeneration-loop analysis](../context-notes/version-build-identity-marketplace-regeneration-loop-a71866b.md)
 
 [unit contract](../plans/version-string-channel-identity.md)
 
