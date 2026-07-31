@@ -5,27 +5,57 @@
  * lone-script layout with NO adjacent package.json STILL prints it — proving the version is baked in
  * at build time (esbuild `define`), not merely read from a neighboring file.
  *
- * Requires the built bundle; the cli `test` script builds (`node build.mjs`) before running, same as
+ * Requires the built bundle; the cli `test` script builds (`node build.mjs local-dev`) before running, same as
  * every other integration test here.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  appendFileSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { cliVersion } from "../src/cli.js";
+import { cliVersion, KNOWN_COMMANDS } from "../src/cli.js";
+import { BUILD_IDENTITY_SCHEMA } from "../src/build-identity.js";
+import { buildCliBundle } from "../scripts/build-bundle.mjs";
+import { COMMAND_GROUPS } from "../src/reference.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cliPackageRoot = path.resolve(here, "..");
 const cliBin = path.resolve(cliPackageRoot, "dist/agentstate-lite.mjs");
 const pkgVersion = (JSON.parse(readFileSync(path.resolve(cliPackageRoot, "package.json"), "utf8")) as { version: string }).version;
 
+function runCli(executable: string, args: string[]) {
+  return spawnSync("node", [executable, ...args], { encoding: "utf8" });
+}
+
+function runIdentity(executable: string): Record<string, any> {
+  const result = runCli(executable, ["version", "--json"]);
+  assert.equal(result.status, 0, result.stderr);
+  return JSON.parse(result.stdout) as Record<string, any>;
+}
+
 test("cliVersion() returns the package's own version (never 'unknown')", () => {
   assert.equal(cliVersion(), pkgVersion);
   assert.match(cliVersion(), /^\d+\.\d+\.\d+/); // a real semver, so the fallback never leaked
+});
+
+test("version is registered in command discovery", () => {
+  assert.ok(KNOWN_COMMANDS.includes("version"));
+  assert.ok(
+    COMMAND_GROUPS.flatMap((group) => group.commands).some((command) =>
+      command.usage.startsWith("version "),
+    ),
+  );
 });
 
 test("the BUILT CLI: `--version` and `-v` print the version and exit 0", () => {
@@ -34,6 +64,24 @@ test("the BUILT CLI: `--version` and `-v` print the version and exit 0", () => {
     assert.equal(r.status, 0, `${flag} exits 0 (was exit 2 USAGE before this fix)`);
     assert.equal(r.stdout.trim(), pkgVersion, `${flag} prints the version`);
   }
+});
+
+test("the BUILT CLI exposes the exact complete envelope in JSON and TOON", () => {
+  const envelope = runIdentity(cliBin);
+  assert.deepEqual(Object.keys(envelope), ["identity", "drift"]);
+  assert.equal(envelope.identity.schema, BUILD_IDENTITY_SCHEMA);
+  assert.deepEqual(envelope.identity.package, { name: "@holaxis/aslite", version: pkgVersion });
+  assert.equal(envelope.identity.artifact.channel, "local-dev");
+  assert.match(envelope.identity.artifact.sha256, /^sha256:[a-f0-9]{64}$/);
+  assert.equal(envelope.identity.runtime.executable_path, cliBin);
+  assert.ok(["direct", "path"].includes(envelope.identity.runtime.launch_mode));
+  assert.deepEqual(envelope.identity.compatibility_contracts, { skill: 1, hook: 1, mcp: 1 });
+  assert.deepEqual(envelope.drift, { adjacent_package_version: pkgVersion, version_mismatch: false });
+
+  const toon = runCli(cliBin, ["version"]);
+  assert.equal(toon.status, 0, toon.stderr);
+  assert.match(toon.stdout, /schema: aslite\.build-identity\.v1/);
+  assert.match(toon.stdout, new RegExp(`version: ${pkgVersion.replaceAll(".", "\\.")}`));
 });
 
 test("plugin-channel layout: a bundle with NO adjacent package.json still prints the BAKED version", () => {
@@ -48,6 +96,78 @@ test("plugin-channel layout: a bundle with NO adjacent package.json still prints
     const r = spawnSync("node", [stray, "--version"], { encoding: "utf8" });
     assert.equal(r.status, 0, "plugin-layout --version exits 0");
     assert.equal(r.stdout.trim(), pkgVersion, "plugin-layout --version prints the baked version, not 'unknown'");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a stale adjacent package manifest is drift evidence, never version authority", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "aslite-stale-adjacent-"));
+  try {
+    const dist = path.join(dir, "dist");
+    mkdirSync(dist, { recursive: true });
+    const executable = path.join(dist, "agentstate-lite.mjs");
+    copyFileSync(cliBin, executable);
+    writeFileSync(path.join(dir, "package.json"), JSON.stringify({ version: "9.9.9" }));
+
+    assert.equal(runCli(executable, ["--version"]).stdout.trim(), pkgVersion);
+    const envelope = runIdentity(executable);
+    assert.equal(envelope.identity.package.version, pkgVersion);
+    assert.deepEqual(envelope.drift, {
+      adjacent_package_version: "9.9.9",
+      version_mismatch: true,
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("same version with different bytes cannot present the same complete identity", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "aslite-byte-identity-"));
+  try {
+    const original = path.join(dir, "original.mjs");
+    const relocated = path.join(dir, "relocated.mjs");
+    const changed = path.join(dir, "changed.mjs");
+    copyFileSync(cliBin, original);
+    copyFileSync(cliBin, relocated);
+    copyFileSync(cliBin, changed);
+    appendFileSync(changed, "\n// test-only byte change\n");
+
+    const a = runIdentity(original);
+    const relocatedIdentity = runIdentity(relocated);
+    const changedIdentity = runIdentity(changed);
+    assert.equal(a.identity.package.version, pkgVersion);
+    assert.equal(changedIdentity.identity.package.version, pkgVersion);
+    assert.equal(a.identity.artifact.sha256, relocatedIdentity.identity.artifact.sha256);
+    assert.notEqual(a.identity.runtime.executable_path, relocatedIdentity.identity.runtime.executable_path);
+    assert.notEqual(a.identity.artifact.sha256, changedIdentity.identity.artifact.sha256);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("build flavor is mandatory and the legacy marketplace flavor is explicit", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "aslite-build-flavor-"));
+  try {
+    const missing = path.join(dir, "missing.mjs");
+    await assert.rejects(() => buildCliBundle(missing), /requires artifactChannel/);
+    await assert.rejects(
+      () =>
+        buildCliBundle(path.join(dir, "dirty-npm.mjs"), {
+          artifactChannel: "npm-package",
+          source: { commit: "0123456789012345678901234567890123456789", dirty: true },
+        }),
+      /npm-package builds require an exact source commit and dirty:false/,
+    );
+
+    const marketplace = path.join(dir, "marketplace.mjs");
+    await buildCliBundle(marketplace, {
+      artifactChannel: "marketplace-legacy",
+      source: { commit: null, dirty: null },
+    });
+    const envelope = runIdentity(marketplace);
+    assert.equal(envelope.identity.artifact.channel, "marketplace-legacy");
+    assert.deepEqual(envelope.identity.source, { commit: null, dirty: null });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

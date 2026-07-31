@@ -7,7 +7,7 @@
     "nodeArgs": ["--import", "./test/ts-loader.mjs", "--test-reporter=tap", "-r", "../../scripts/stryker-cwd-pin.cjs", "-r", "{{hookFile}}", "{{testFile}}"],
     "forceBail": true
   },
-  "buildCommand": "node build.mjs",
+  "buildCommand": "node build.mjs local-dev",
   "mutate": [
     "src/errors.ts",
     "src/mutate.ts",

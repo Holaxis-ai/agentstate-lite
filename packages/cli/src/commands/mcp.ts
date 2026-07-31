@@ -13,6 +13,7 @@ import { asHandled, CliError, toExit } from "../errors.js";
 import { cliInvocation } from "../invocation.js";
 import { renderErrorEnvelope } from "../output.js";
 import { LocalViewAuthorizationStore } from "../ui/view-authorizations.js";
+import { cliVersion } from "../build-identity.js";
 
 export const MCP_USAGE = `agentstate-lite mcp — expose invocation-specific AgentState Views to an MCP Apps host
 
@@ -96,6 +97,7 @@ async function mcpInner(argv: string[], deps: Partial<McpCliDeps>): Promise<void
   const bundleName = (await deriveBundleDisplayName(bundle)).name;
   await start({
     bundle,
+    version: cliVersion(),
     actor,
     bundleName,
     viewAuthorization: new LocalViewAuthorizationStore(bundle.root),

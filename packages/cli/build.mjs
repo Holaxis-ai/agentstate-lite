@@ -15,7 +15,7 @@
 // A createRequire shim is injected in the banner because a bundled CommonJS dependency (gray-matter)
 // may call require() at runtime; ESM output has no ambient `require`, so we provide one.
 //
-// This DEV/NPM build writes ONLY dist/ (plus the gitignored generated UI-assets module). It must
+// This explicitly flavored DEV/NPM build writes ONLY dist/ (plus the gitignored generated UI-assets module). It must
 // NEVER touch the COMMITTED plugin bundle (plugins/agentstate-lite/skills/agentstate-lite/scripts/
 // agentstate-lite.mjs) — that artifact is bot-owned on merge to main, and a default build dirtying
 // it made every subsequent `git pull` collide. The one writer of the committed path is
@@ -30,6 +30,10 @@ import { prepareCliBundleInputs } from "./scripts/prepare-bundle-inputs.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const r = (p) => resolve(here, p);
 const outfile = r("dist/agentstate-lite.mjs");
+const artifactChannel = process.argv[2];
+if (artifactChannel !== "local-dev" && artifactChannel !== "npm-package") {
+  throw new Error("usage: node build.mjs local-dev|npm-package");
+}
 
 // Clean dist so the packed tarball never carries stale files (files: ["dist"]).
 await rm(r("dist"), { recursive: true, force: true });
@@ -39,7 +43,7 @@ await rm(r("dist"), { recursive: true, force: true });
 // bundle below imports those generated modules transitively, so none may be missing or stale.
 await prepareCliBundleInputs();
 
-await buildCliBundle(outfile);
+await buildCliBundle(outfile, { artifactChannel });
 
 // The bin must be directly executable via its shebang (npm sets +x on install, but keep it correct
 // in the tarball and for direct `./dist/agentstate-lite.mjs` runs).

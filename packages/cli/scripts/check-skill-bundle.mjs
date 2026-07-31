@@ -12,12 +12,8 @@
 //
 //   node scripts/check-skill-bundle.mjs
 //
-// GUARD NOTE — version-literal normalization: this repo's build is verified deterministic and
-// embeds NO version / `git describe` / build-timestamp literal (confirmed: two builds from the
-// same source are byte-identical), so a straight byte compare is correct today. If version
-// stamping is ever added to the bundle (see the axi-skills "gotcha #4" precedent), this gate MUST
-// gain a normalization step — strip/replace the stamped literal on both sides before comparing —
-// or it will fail on every commit. Until then, normalization is a deliberate no-op.
+// Build identity is deterministic for a fixed source checkout and explicit flavor. Both the writer
+// and this checker stamp `marketplace-legacy`, so a straight byte comparison remains correct.
 import { readFile, rm, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
@@ -34,7 +30,7 @@ const scratchFile = join(scratchDir, "agentstate-lite.mjs");
 
 try {
   await prepareCliBundleInputs();
-  await buildCliBundle(scratchFile);
+  await buildCliBundle(scratchFile, { artifactChannel: "marketplace-legacy" });
 
   const fresh = await readFile(scratchFile);
   let existing;

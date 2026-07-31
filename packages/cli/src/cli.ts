@@ -42,37 +42,14 @@ import { bundleCommand } from "./commands/bundle.js";
 import { catalog } from "./commands/catalog.js";
 import { indexCommand } from "./commands/index.js";
 import { artifact } from "./commands/artifact.js";
+import { versionCommand } from "./commands/version.js";
+import { cliVersion } from "./build-identity.js";
 import { CliError, toEnvelope, toExit } from "./errors.js";
 import { renderErrorEnvelope } from "./output.js";
 import { DESCRIPTION, helpIndexText } from "./reference.js";
 import { cliInvocation } from "./invocation.js";
 import { parseArgs } from "node:util";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-
-/** Version baked in at build time (esbuild `define` in scripts/build-bundle.mjs); `undefined` when running the TS source directly (tests). */
-declare const __ASLITE_VERSION__: string | undefined;
-
-/**
- * The CLI's own version. In every BUNDLED channel it is the build-time constant `__ASLITE_VERSION__`
- * — the one source that works regardless of file layout, INCLUDING the plugin bundle (a lone
- * `scripts/agentstate-lite.mjs` with NO adjacent package.json, where a runtime file read can't find
- * one). When running the TS source (tests) the constant is undefined, so fall back to reading the
- * package's own `package.json` — path computed AT RUNTIME from `import.meta.url` (via `fileURLToPath`
- * + `join`, NOT `new URL(…, import.meta.url)` which esbuild would asset-bundle). A missing/unreadable
- * manifest degrades to "unknown" rather than throwing on the version path.
- */
-export function cliVersion(): string {
-  if (typeof __ASLITE_VERSION__ === "string" && __ASLITE_VERSION__) return __ASLITE_VERSION__;
-  try {
-    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: unknown };
-    return typeof pkg.version === "string" && pkg.version ? pkg.version : "unknown";
-  } catch {
-    return "unknown";
-  }
-}
+export { cliVersion } from "./build-identity.js";
 
 export const KNOWN_COMMANDS = [
   "init",
@@ -101,6 +78,7 @@ export const KNOWN_COMMANDS = [
   "hook",
   "skill",
   "session-start",
+  "version",
 ] as const;
 
 /**
@@ -307,6 +285,7 @@ export async function main(argv: string[]): Promise<void> {
       skill: wrap(skill),
       // The SessionStart hook payload: time-boxed board pull, then the home render — in-process.
       "session-start": wrap(sessionStart),
+      version: wrap(versionCommand),
       // Explicit `home` handler so a SessionStart hook (or an agent) can also call `<bin> home`, not
       // only the bare zero-arg form. Not listed in COMMAND_GROUPS — the bare invocation is the primary
       // home surface (AXI §8); this is a defensive alias with identical output.

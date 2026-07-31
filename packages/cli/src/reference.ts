@@ -197,6 +197,11 @@ export const COMMAND_GROUPS: CommandGroup[] = [
     group: "Session",
     commands: [
       {
+        usage: "version [--json]",
+        summary:
+          "Show the complete local build/runtime identity, including artifact bytes and adjacent-manifest drift; never contacts npm",
+      },
+      {
         usage: "session-start [--dir <path>]",
         summary:
           "The SessionStart hook payload: a time-boxed best-effort board pull, then the home view — every pull failure falls through to the render (exit 0)",

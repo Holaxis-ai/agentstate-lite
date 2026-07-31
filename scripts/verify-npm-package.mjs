@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { access, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -188,7 +189,7 @@ export async function verifyNpmPackage() {
     await Promise.all([mkdir(packDir), mkdir(prefix), mkdir(home)]);
     await writeFile(npmUserConfig, "");
     const cleanBuildEnv = sanitizedNpmEnvironment(process.env, npmUserConfig);
-    await run(process.execPath, [path.join(repoRoot, "packages", "cli", "build.mjs")], {
+    await run(process.execPath, [path.join(repoRoot, "packages", "cli", "build.mjs"), "npm-package"], {
       cwd: repoRoot,
       env: cleanBuildEnv,
     });
@@ -282,6 +283,42 @@ export async function verifyNpmPackage() {
         ? run(process.execPath, [installedEntrypoint, ...args], { cwd, env })
         : run(command, args, { cwd, env });
     };
+
+    // Every installed projection agrees with the immutable build identity. Both bin aliases resolve
+    // the same bytes, and the adjacent installed manifest is diagnostic rather than authority.
+    const preferredVersion = (await runCli("aslite", ["--version"])).stdout.trim();
+    const legacyVersion = (await runCli("agentstate-lite", ["-v"])).stdout.trim();
+    assert.equal(preferredVersion, manifest.version, "aslite --version must equal the package manifest");
+    assert.equal(legacyVersion, manifest.version, "agentstate-lite -v must equal the package manifest");
+    const preferredIdentity = parseJson(
+      (await runCli("aslite", ["version", "--json"])).stdout,
+      "aslite version --json",
+    );
+    const legacyIdentity = parseJson(
+      (await runCli("agentstate-lite", ["version", "--json"])).stdout,
+      "agentstate-lite version --json",
+    );
+    assert.deepEqual(legacyIdentity, preferredIdentity, "both installed bin aliases must report one identity");
+    assert.equal(preferredIdentity.identity.schema, "aslite.build-identity.v1");
+    assert.deepEqual(preferredIdentity.identity.package, {
+      name: "@holaxis/aslite",
+      version: manifest.version,
+    });
+    assert.equal(preferredIdentity.identity.artifact.channel, "npm-package");
+    const installedSha = `sha256:${createHash("sha256").update(await readFile(installedEntrypoint)).digest("hex")}`;
+    assert.equal(preferredIdentity.identity.artifact.sha256, installedSha);
+    assert.equal(preferredIdentity.identity.runtime.executable_path, await stat(installedEntrypoint).then(() => installedEntrypoint));
+    assert.deepEqual(preferredIdentity.identity.compatibility_contracts, { skill: 1, hook: 1, mcp: 1 });
+    assert.deepEqual(preferredIdentity.drift, {
+      adjacent_package_version: manifest.version,
+      version_mismatch: false,
+    });
+    const homeIdentity = parseJson((await runCli("aslite", ["--json"])).stdout, "aslite home --json")[
+      "agentstate-lite"
+    ];
+    assert.equal(homeIdentity.version, manifest.version);
+    assert.equal(homeIdentity.channel, "npm-package");
+    assert.equal(homeIdentity.bin, installedEntrypoint);
 
     await runCli("agentstate-lite", ["--help"]);
     await runCli("aslite", ["--help"]);
@@ -475,6 +512,14 @@ export async function verifyNpmPackage() {
       files: receipt.files.length,
       bins: Object.keys(manifest.bin),
       workflow: ["init", "recipe add", "new", "list", "skill install/status/uninstall", "hook install/uninstall"],
+      identity: preferredIdentity,
+      tarball: {
+        filename: receipt.filename,
+        shasum: receipt.shasum,
+        integrity: receipt.integrity,
+        size: receipt.size,
+        unpacked_size: receipt.unpackedSize,
+      },
     };
   } finally {
     await rm(scratch, { recursive: true, force: true });

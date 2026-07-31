@@ -1,5 +1,5 @@
 // Shared esbuild config for the self-contained CLI bundle — the ONE bundler config, reused by
-// its three consumers: `build.mjs` (the default dev/npm build, writing ONLY dist/ — never the
+// its three consumers: `build.mjs` (an explicitly flavored dev or npm build, writing ONLY dist/ — never the
 // committed plugin path), `build-plugin-bundle.mjs` (the ONE writer of the committed skill
 // bundle, used by the CI bot and the manual `npm run build:plugin-bundle`), and
 // `check-skill-bundle.mjs` (rebuilds to a scratch temp file for a byte-compare drift gate).
@@ -7,6 +7,7 @@
 // other.
 import { build } from "esbuild";
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -15,18 +16,60 @@ const here = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(here, "..");
 const r = (p) => resolve(pkgRoot, p);
 
-// The published package version, BAKED into the bundle as `__ASLITE_VERSION__`. This is the only
-// source that works in EVERY channel: the npm dist could read its adjacent package.json, but the
-// plugin bundle ships as a lone `scripts/agentstate-lite.mjs` with no package.json at `../`. Baking
-// it at build time makes `--version` report the same product version everywhere.
+// The package version is one part of the immutable build identity baked into every bundle. Runtime
+// code never promotes an adjacent package.json to version authority; it reads one only as a drift
+// diagnostic. This is what keeps lone-file legacy marketplace bundles authoritative too.
 const version = JSON.parse(readFileSync(r("package.json"), "utf8")).version;
+const repoRoot = resolve(pkgRoot, "../..");
+export const BUILD_ARTIFACT_CHANNELS = ["npm-package", "local-dev", "marketplace-legacy"];
+
+function gitFact(args, fallback) {
+  try {
+    return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();
+  } catch {
+    return fallback;
+  }
+}
+
+/** Build-time source evidence. Unknown is represented explicitly, never invented. */
+export function currentSourceFacts() {
+  const commit = gitFact(["rev-parse", "HEAD"], "");
+  const status = gitFact(["status", "--porcelain=v1", "--untracked-files=all"], null);
+  return {
+    commit: commit || null,
+    dirty: status === null ? null : status.length > 0,
+  };
+}
 
 /**
  * Bundle src/index.ts (+ the workspace source packages + every npm dep) into ONE self-contained
  * ESM file at `outfile`. Does NOT chmod the result — callers decide whether the output needs +x
  * (the committed bundles do; a scratch drift-gate temp file does not).
  */
-export async function buildCliBundle(outfile) {
+export async function buildCliBundle(outfile, options) {
+  const artifactChannel = options?.artifactChannel;
+  if (!BUILD_ARTIFACT_CHANNELS.includes(artifactChannel)) {
+    throw new Error(
+      `buildCliBundle requires artifactChannel: ${BUILD_ARTIFACT_CHANNELS.join(" | ")}`,
+    );
+  }
+  const source = options?.source ?? currentSourceFacts();
+  if (
+    !(source?.commit === null || (typeof source?.commit === "string" && /^[a-f0-9]{40}$/.test(source.commit))) ||
+    !(source?.dirty === null || typeof source?.dirty === "boolean")
+  ) {
+    throw new Error("buildCliBundle source must contain commit:40-hex|null and dirty:boolean|null");
+  }
+  if (artifactChannel === "npm-package" && (source.commit === null || source.dirty !== false)) {
+    throw new Error("npm-package builds require an exact source commit and dirty:false");
+  }
+  const identity = {
+    schema: "aslite.build-identity.v1",
+    package: { name: "@holaxis/aslite", version },
+    source,
+    artifact: { channel: artifactChannel },
+    compatibility_contracts: { skill: 1, hook: 1, mcp: 1 },
+  };
   await build({
     // Pin esbuild's working directory — it otherwise defaults to `process.cwd()` and embeds
     // paths relative to it in the CJS-interop module comments/keys (e.g. `node_modules/foo/…`
@@ -42,8 +85,9 @@ export async function buildCliBundle(outfile) {
     platform: "node",
     format: "esm",
     target: "node20",
-    // Compile-time constant read by cli.ts's cliVersion() — channel-independent (see `version` above).
-    define: { __ASLITE_VERSION__: JSON.stringify(version) },
+    // One compile-time authority read by build-identity.ts. The artifact hash is deliberately NOT
+    // embedded (that would be recursive); runtime hashes the actual executing bytes lazily.
+    define: { __ASLITE_BUILD_IDENTITY__: JSON.stringify(identity) },
     // Resolve the workspace deps to their TypeScript source so no dist pre-build is needed.
     alias: {
       // List browser-safe core subpaths before the package root so esbuild does not append the

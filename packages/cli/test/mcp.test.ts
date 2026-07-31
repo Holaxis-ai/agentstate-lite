@@ -6,6 +6,7 @@ import { KNOWN_COMMANDS } from "../src/cli.js";
 import { MCP_USAGE, mcp } from "../src/commands/mcp.js";
 import { CliError } from "../src/errors.js";
 import { COMMAND_GROUPS } from "../src/reference.js";
+import { cliVersion } from "../src/build-identity.js";
 
 const bundle = { root: "/tmp/board" } as Bundle;
 
@@ -35,6 +36,7 @@ test("mcp opens the explicit local bundle and leaves stdout untouched for stdio 
   let startedWith: Bundle | undefined;
   let startedActor: string | undefined;
   let startedBundleName: string | undefined;
+  let startedVersion: string | undefined;
   let startedWithAuthorization = false;
   let output = "";
   await mcp(["--dir", "/tmp/board", "--actor", "mike/test"], {
@@ -45,10 +47,11 @@ test("mcp opens the explicit local bundle and leaves stdout untouched for stdio 
       openedDir = dir;
       return bundle;
     },
-    startServer: async ({ bundle: startedBundle, actor, bundleName, viewAuthorization }) => {
+    startServer: async ({ bundle: startedBundle, actor, bundleName, version, viewAuthorization }) => {
       startedWith = startedBundle;
       startedActor = actor;
       startedBundleName = bundleName;
+      startedVersion = version;
       startedWithAuthorization = viewAuthorization !== undefined;
     },
   });
@@ -56,6 +59,7 @@ test("mcp opens the explicit local bundle and leaves stdout untouched for stdio 
   assert.equal(startedWith, bundle);
   assert.equal(startedActor, "mike/test");
   assert.equal(startedBundleName, "board");
+  assert.equal(startedVersion, cliVersion());
   assert.equal(startedWithAuthorization, true);
   assert.equal(output, "");
 });

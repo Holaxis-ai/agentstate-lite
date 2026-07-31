@@ -6,24 +6,16 @@
 // that grew O(n^2) in concurrent PRs (each crossing cost a rebase + re-bump + regen + full gate
 // re-run).
 //
-// EMPIRICAL FINDING (see .agentstate-lite/tasks/ci-version-bundle-automation.md): the committed
-// bundle embeds NO version/timestamp literal — confirmed by (1) zero occurrences of the current
-// manifest version string inside the built artifact, and (2) a fresh rebuild of a byte-identical
-// source tree producing byte-identical output with the manifests untouched (see the
-// determinism guard note in packages/cli/scripts/check-skill-bundle.mjs, which this script's
-// design leans on). Consequence: bumping the version and regenerating the bundle are FULLY
-// independent operations — there is no ordering constraint between them, and no risk that
-// bumping the version changes what the regenerated bundle looks like (which would otherwise
-// create a moving target for the diff below). This script always regenerates FIRST, then decides
-// whether to bump, purely because "should we bump" is defined in terms of whether regeneration
-// changed anything.
+// BUILD-IDENTITY UPDATE (version-build-identity): the bundle now embeds the CLI package version,
+// exact checkout commit/dirty fact, and `marketplace-legacy` flavor. It still does NOT embed either
+// marketplace manifest's plugin version, so bumping those manifests cannot change the regenerated
+// bytes within this checkout. A fixed checkout remains deterministic; changing HEAD intentionally
+// changes the artifact identity even if only non-CLI files changed.
 //
-// LOOP SAFETY: this script's own bot commit lands the regenerated artifacts AND the bumped
-// version together. The very next run (triggered by that push) regenerates again, compares
-// against what is now committed (its own prior output), finds NO diff, and no-ops without
-// touching the manifests. Convergence — not a paths filter or actor check — is what makes this
-// safe against infinite commit loops; the workflow's actor-check is only a cheap optimization to
-// skip a redundant job, never the correctness guarantee (see .github/workflows/ci-version-bundle.yml).
+// LOOP SAFETY: because HEAD is part of build identity, the workflow's github-actions[bot] actor
+// guard is now load-bearing: the bot commit necessarily has a new SHA and must not regenerate itself.
+// Within one fixed checkout, repeat regeneration still converges and retrying after a concurrent
+// main update correctly rebuilds for that new exact checkout (see .github/workflows/ci-version-bundle.yml).
 //
 // Usage: npm run ci:version-bundle
 // Exits 0 whether or not anything changed; exits 1 on any unexpected failure (regen error,

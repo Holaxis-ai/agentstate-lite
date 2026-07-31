@@ -87,6 +87,7 @@ import { maybeAutoPull } from "../autopull.js";
 import { defaultSyncStore, type AwarenessCache, type AwarenessDeltaRow } from "../cursor.js";
 import { hookNeedsUpdate } from "./hook.js";
 import { loadCatalog } from "../catalog.js";
+import { staticBuildIdentity, type ArtifactChannel } from "../build-identity.js";
 
 /** A dashboard row in the minimal list schema (AXI §2) — reuses `list.ts`'s exact projection. */
 export interface HomeRow {
@@ -602,7 +603,11 @@ export async function defaultLoadBoardStatus(dir?: string): Promise<BoardStatus 
  * exception, since home must never crash) renders as a standalone `project_binding_error` note.
  */
 export function buildHomeView(
-  deps: { binPath: () => string; invocation: () => string },
+  deps: {
+    binPath: () => string;
+    invocation: () => string;
+    identity?: () => { version: string; channel: ArtifactChannel };
+  },
   summary?: BundleSummary | UnreadableBundle | null,
   remote?: string,
   binding?: HomeBindingNote,
@@ -614,8 +619,15 @@ export function buildHomeView(
   const inv = deps.invocation();
   const ref = commandReference(inv);
 
+  const projectedIdentity = deps.identity?.();
   const view: Record<string, unknown> = {
-    "agentstate-lite": { bin: deps.binPath(), description: DESCRIPTION },
+    "agentstate-lite": {
+      bin: deps.binPath(),
+      ...(projectedIdentity
+        ? { version: projectedIdentity.version, channel: projectedIdentity.channel }
+        : {}),
+      description: DESCRIPTION,
+    },
   };
 
   if (remote) {
@@ -872,6 +884,10 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
         {
           binPath: deps.binPath ?? binPath,
           invocation,
+          identity: () => {
+            const build = staticBuildIdentity();
+            return { version: build.package.version, channel: build.artifact.channel };
+          },
         },
         summary,
         remote,

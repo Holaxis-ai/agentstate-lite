@@ -144,6 +144,7 @@ export const SKILL_COMMAND_RESOURCES: Record<string, string[]> = {
   ui: ["views/references/view-authoring-v0.md"],
   mcp: [],
   sync: [],
+  version: [],
   "session-start": [],
   "hook install|status|uninstall": [],
   // Installs the shipped assets themselves; its own advertised capability needs no reference.

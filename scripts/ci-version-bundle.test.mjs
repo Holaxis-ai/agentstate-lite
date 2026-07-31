@@ -27,6 +27,11 @@ test("the CI workflow enters regeneration through the npm-owned script", async (
   assert.equal(manifest.scripts["ci:version-bundle"], "node scripts/ci-version-bundle.mjs");
   assert.equal(workflow.match(/npm run ci:version-bundle/g)?.length, 1);
   assert.doesNotMatch(workflow, /^\s*node scripts\/ci-version-bundle\.mjs\s*$/m);
+  assert.match(
+    workflow,
+    /if: github\.actor != 'github-actions\[bot\]'/,
+    "the bot actor guard is load-bearing once build identity includes the exact checkout SHA",
+  );
 });
 
 test("every CLI bundle producer uses the shared generated-input preparation", async () => {
@@ -202,9 +207,9 @@ describe("run() orchestration (fixtures, fake regenerate)", () => {
       assert.equal(first.newVersion, "1.2.4");
 
       // Run 2: simulates the bot's OWN commit re-triggering the workflow. A deterministic rebuild
-      // reproduces exactly what run 1 just committed (byte-identical, per the empirical no-embedded-
-      // version finding) — so this must be a no-op, not a further bump. This is the loop-safety
-      // property the workflow depends on instead of a paths filter or actor check.
+      // reproduces exactly what run 1 just generated within the SAME fixed checkout. This proves
+      // deterministic retry convergence; the separate workflow actor guard prevents the bot's own
+      // NEW commit SHA from recursively regenerating another identity.
       const secondRegen = async (p) => writeFile(p.skillMd, "# SKILL v2 (regenerated)\n");
       const second = await run({ regenerate: secondRegen, paths });
       assert.deepEqual(second, { changed: false });
@@ -295,23 +300,21 @@ describe("references/ snapshot (the load-bearing widening)", () => {
 // ---------------------------------------------------------------------------------------------
 
 describe("real build (repo-tied)", () => {
-  test("two real builds of the same source are byte-identical and embed no version literal", async () => {
+  test("two identically flavored real builds of the same source are byte-identical", async () => {
     const dir = await mkdtemp(join(tmpdir(), "ci-version-bundle-real-"));
     try {
       await prepareCliBundleInputs();
       const out1 = join(dir, "build1.mjs");
       const out2 = join(dir, "build2.mjs");
-      await buildCliBundle(out1);
-      await buildCliBundle(out2);
+      await buildCliBundle(out1, { artifactChannel: "marketplace-legacy" });
+      await buildCliBundle(out2, { artifactChannel: "marketplace-legacy" });
       const bytes1 = await readFile(out1);
       const bytes2 = await readFile(out2);
       assert.ok(bytes1.equals(bytes2), "two consecutive real builds must be byte-identical");
 
-      const currentMarketplace = await readFile(REAL_PATHS.marketplace, "utf8");
-      const currentVersion = extractVersion(currentMarketplace, REAL_PATHS.marketplace);
       assert.ok(
-        !bytes1.toString("latin1").includes(currentVersion),
-        `built bundle must not embed the manifest version literal (${currentVersion})`,
+        bytes1.toString("latin1").includes("marketplace-legacy"),
+        "the explicit marketplace build flavor must be baked into the bundle",
       );
     } finally {
       await rm(dir, { recursive: true, force: true });
