@@ -26,7 +26,7 @@ const cliBin = path.join(cliPackageRoot, "dist", "agentstate-lite.mjs");
 // each kicking off a concurrent `vite build` (node --test runs files in parallel) that would race
 // on packages/ui/dist. Building here still supports running THIS file on its own.
 before(() => {
-  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
+  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs", "local-dev"], { cwd: cliPackageRoot, stdio: "inherit" });
 });
 
 function run(args: string[]): string {

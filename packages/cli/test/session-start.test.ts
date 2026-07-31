@@ -90,7 +90,7 @@ const cliBin = path.join(cliPackageRoot, "dist", "agentstate-lite.mjs");
 let preferredBinDirPromise: Promise<string> | undefined;
 function preferredBinDir(): Promise<string> {
   preferredBinDirPromise ??= (async () => {
-    if (!existsSync(cliBin)) execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
+    if (!existsSync(cliBin)) execFileSync("node", ["build.mjs", "local-dev"], { cwd: cliPackageRoot, stdio: "inherit" });
     const dir = await mkdtemp(path.join(tmpdir(), "aslite-preferred-bin-"));
     await symlink(cliBin, path.join(dir, "aslite"));
     return dir;

@@ -14,7 +14,7 @@ const cliPackageRoot = path.resolve(here, "..");
 const cliBin = path.join(cliPackageRoot, "dist", "agentstate-lite.mjs");
 
 before(() => {
-  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
+  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs", "local-dev"], { cwd: cliPackageRoot, stdio: "inherit" });
 });
 
 interface ChildResult {

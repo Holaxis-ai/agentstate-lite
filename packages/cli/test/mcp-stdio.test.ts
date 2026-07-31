@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { initBundle, writeDoc } from "@agentstate-lite/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { cliVersion } from "../src/build-identity.js";
 
 const CLI = fileURLToPath(new URL("../dist/agentstate-lite.mjs", import.meta.url));
 
@@ -63,6 +64,7 @@ test("built npm CLI serves the fixed MCP App contract over clean stdio", async (
   });
 
   await client.connect(transport);
+  assert.equal(client.getServerVersion()?.version, cliVersion());
   const tools = await client.listTools();
   assert.deepEqual(tools.tools.map((tool) => tool.name), [
     "show_view",

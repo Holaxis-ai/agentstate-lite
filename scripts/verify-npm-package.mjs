@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { access, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -307,7 +307,8 @@ export async function verifyNpmPackage() {
     assert.equal(preferredIdentity.identity.artifact.channel, "npm-package");
     const installedSha = `sha256:${createHash("sha256").update(await readFile(installedEntrypoint)).digest("hex")}`;
     assert.equal(preferredIdentity.identity.artifact.sha256, installedSha);
-    assert.equal(preferredIdentity.identity.runtime.executable_path, await stat(installedEntrypoint).then(() => installedEntrypoint));
+    const installedEntrypointRealPath = await realpath(installedEntrypoint);
+    assert.equal(preferredIdentity.identity.runtime.executable_path, installedEntrypointRealPath);
     assert.deepEqual(preferredIdentity.identity.compatibility_contracts, { skill: 1, hook: 1, mcp: 1 });
     assert.deepEqual(preferredIdentity.drift, {
       adjacent_package_version: manifest.version,
@@ -318,7 +319,7 @@ export async function verifyNpmPackage() {
     ];
     assert.equal(homeIdentity.version, manifest.version);
     assert.equal(homeIdentity.channel, "npm-package");
-    assert.equal(homeIdentity.bin, installedEntrypoint);
+    assert.equal(homeIdentity.bin, installedEntrypointRealPath);
 
     await runCli("agentstate-lite", ["--help"]);
     await runCli("aslite", ["--help"]);

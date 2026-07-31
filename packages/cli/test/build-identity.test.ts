@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -74,10 +74,23 @@ test("runtime evidence distinguishes global PATH, probable npx, direct, source, 
       ...base,
       executablePath: () => source,
       managedBin: () => undefined,
-      argv: ["node", source],
+      argv: ["node", path.join(dir, "test-runner.mjs")],
     });
     assert.equal(sourceRun.identity.runtime.launch_mode, "source");
-    assert.equal(sourceRun.identity.runtime.launch_confidence, "certain");
+    assert.equal(sourceRun.identity.runtime.launch_confidence, "inferred");
+
+    const misleadingSourceDir = path.join(dir, "src");
+    const copiedBundle = path.join(misleadingSourceDir, "agentstate-lite.mjs");
+    mkdirSync(misleadingSourceDir);
+    writeFileSync(copiedBundle, "#!/usr/bin/env node\n");
+    const copiedDirect = buildIdentityEnvelope({
+      ...base,
+      executablePath: () => copiedBundle,
+      managedBin: () => undefined,
+      argv: ["node", copiedBundle],
+    });
+    assert.equal(copiedDirect.identity.runtime.launch_mode, "direct");
+    assert.equal(copiedDirect.identity.runtime.launch_confidence, "certain");
 
     const unknown = buildIdentityEnvelope({
       ...base,

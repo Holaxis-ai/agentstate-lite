@@ -52,7 +52,7 @@ async function tempDir(): Promise<string> {
 // integration files from launching CONCURRENT `vite build`s that clobber packages/ui/dist (the
 // node --test runner runs files in parallel). Building here still supports running THIS file alone.
 before(() => {
-  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
+  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs", "local-dev"], { cwd: cliPackageRoot, stdio: "inherit" });
 });
 
 test("built CLI: raw doc-read channels route early missing-id and unknown-option envelopes only to stderr", () => {

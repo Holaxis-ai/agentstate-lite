@@ -16,7 +16,7 @@ const cliBin = path.join(cliPackageRoot, "dist", "agentstate-lite.mjs");
 const sampleBundle = path.join(repoRoot, "examples", "sample-bundle");
 
 before(() => {
-  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
+  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs", "local-dev"], { cwd: cliPackageRoot, stdio: "inherit" });
 });
 
 interface RunResult {

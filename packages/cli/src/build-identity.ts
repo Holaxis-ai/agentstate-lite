@@ -213,14 +213,20 @@ function launchEvidence(
   executablePath: string | null,
   deps: RuntimeIdentityDeps,
 ): { mode: LaunchMode; confidence: LaunchConfidence } {
-  if (executablePath?.endsWith(".ts") || executablePath?.includes("/src/")) {
-    return { mode: "source", confidence: "certain" };
-  }
   const npmExec = deps.env.npm_command === "exec" || deps.env.npm_lifecycle_event === "npx";
   const npxCachePath = executablePath?.includes("/_npx/") || executablePath?.includes("\\_npx\\");
   if (npmExec || npxCachePath) return { mode: "npx-inferred", confidence: "inferred" };
   if (deps.managedBin()) return { mode: "path", confidence: "certain" };
   if (sameRealPath(deps.argv[1], executablePath)) return { mode: "direct", confidence: "certain" };
+  // File suffix/layout is suggestive only. It never outranks concrete PATH/direct evidence and can
+  // never establish certainty: a bundled .mjs can be copied beneath a directory named `src`.
+  if (
+    executablePath?.endsWith(".ts") ||
+    executablePath?.includes("/src/") ||
+    executablePath?.includes("\\src\\")
+  ) {
+    return { mode: "source", confidence: "inferred" };
+  }
   return { mode: "unknown", confidence: "unknown" };
 }
 
