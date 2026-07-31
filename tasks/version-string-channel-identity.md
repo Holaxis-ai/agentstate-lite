@@ -12,7 +12,7 @@ description: >-
   retiring the marketplace channel.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-07-31T13:49:18.954Z'
+timestamp: '2026-07-31T20:22:21.251Z'
 ---
 # Problem
 
@@ -103,3 +103,5 @@ authority by installing guidance from `main` that can drift ahead of the install
 - Marketplace retirement remains gated on successful npm-first proof.
 - Installer-hardening follow-ups remain separate unless the upgrade contract makes one directly
   necessary.
+
+[uses domain model](../designs/version-update-domain-model.md)

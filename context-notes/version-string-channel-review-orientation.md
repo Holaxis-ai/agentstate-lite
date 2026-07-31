@@ -2,7 +2,7 @@
 type: Context Note
 title: 'Orientation: version-string/channel-identity task review'
 actor: openai/codex
-timestamp: '2026-07-31T20:03:49.213Z'
+timestamp: '2026-07-31T20:22:20.836Z'
 ---
 # Summary
 
@@ -52,6 +52,6 @@ Brian confirmed the following product defaults:
 4. AgentState does not silently self-modify; it reports an exact npm upgrade command and verification receipt.
 5. Automatic discovery is limited to the human-orientation surface, daily-cached, bounded/non-fatal, offline-safe, suppressible, and absent from ordinary bundle-command output.
 
-Convention check: npm's own `update` verb mutates installed packages, so a bare non-mutating `aslite update` would be mildly surprising. Proposed refinement pending Brian's confirmation: use `aslite version --check` for the explicit read-only check and reserve `aslite update` for a future command that actually updates. The established CLI notifier pattern supports the agreed daily cache/opt-out policy and refreshes asynchronously, so item 5 is convention-aligned; prefer cached-result-now/background-refresh over adding startup latency.
+Convention check: npm's own `update` verb mutates installed packages, so a bare non-mutating `aslite update` would be mildly surprising. Brian confirmed the refinement: use `aslite version --check` for the explicit read-only check and reserve `aslite update` for a future command that actually updates. The established CLI notifier pattern supports the agreed daily cache/opt-out policy and refreshes asynchronously, so item 5 is convention-aligned; prefer cached-result-now/background-refresh over adding startup latency.
 
-Item 6 remains pending plain-language confirmation: stable `aslite mcp` host configuration across npm upgrades, plus an immutable emergency copy of the final marketplace release before that live channel is deleted.
+Brian also confirmed item 6: supported MCP host configuration launches the stable `aslite mcp` PATH command and survives npm upgrades without edits; legacy cache-path configuration receives explicit migration guidance, never a silent rewrite. Before the live marketplace channel is deleted, preserve its final working state as an immutable Git tag and downloadable GitHub release—an emergency backup, not a maintained second channel.
