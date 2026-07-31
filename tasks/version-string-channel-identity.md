@@ -1,14 +1,15 @@
 ---
 type: Task
 title: Define and ship the npm versioning and update contract
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   HIGHEST PRIORITY: make npm the single executable authority and prove a
   cache-independent install, version identity, update-discovery, upgrade,
   skill/hook compatibility, and rollback contract before npm becomes primary.
 actor: openai/codex
-timestamp: '2026-07-31T02:20:15.723Z'
+assignee: openai/codex
+timestamp: '2026-07-31T13:27:47.717Z'
 ---
 # Problem
 
