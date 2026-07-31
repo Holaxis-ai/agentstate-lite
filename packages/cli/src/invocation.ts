@@ -42,9 +42,29 @@ function realOrUndefined(p: string): string | undefined {
   }
 }
 
-/** The absolute real path of the running executable (the bundled entry), or undefined. */
+let registeredExecutableEntry: string | undefined;
+
+/**
+ * Register the production entry module before command dispatch. In a bundle, the entry module's
+ * import.meta.url is the emitted .mjs; in a loader-driven source run it is src/index.ts. Imported
+ * helpers and test runners must never replace that explicit entry with their own module path.
+ */
+export function registerExecutableEntry(entryPath: string): void {
+  const resolved = realOrUndefined(entryPath);
+  if (!resolved) return;
+  if (registeredExecutableEntry && registeredExecutableEntry !== resolved) {
+    throw new Error(
+      `CLI executable entry was already registered as ${registeredExecutableEntry}; refusing ${resolved}`,
+    );
+  }
+  registeredExecutableEntry = resolved;
+}
+
+/** The absolute real path of the registered CLI entry (bundled or source), or a helper fallback. */
 export function currentExecutableRealPath(): string | undefined {
+  if (registeredExecutableEntry) return registeredExecutableEntry;
   // import.meta.url is the running module; under the bundle that IS the executable file.
+  // Helper-only unit tests do not evaluate src/index.ts and deliberately retain this fallback.
   const fromModule = realOrUndefined(fileURLToPath(import.meta.url));
   if (fromModule) return fromModule;
   const argv1 = process.argv[1];

@@ -11,6 +11,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   appendFileSync,
   copyFileSync,
@@ -82,6 +83,24 @@ test("the BUILT CLI exposes the exact complete envelope in JSON and TOON", () =>
   assert.equal(toon.status, 0, toon.stderr);
   assert.match(toon.stdout, /schema: aslite\.build-identity\.v1/);
   assert.match(toon.stdout, new RegExp(`version: ${pkgVersion.replaceAll(".", "\\.")}`));
+});
+
+test("a real loader-driven source launch identifies and hashes src/index.ts, not an imported helper", () => {
+  const sourceEntry = path.resolve(cliPackageRoot, "src/index.ts");
+  const loader = path.resolve(cliPackageRoot, "test/ts-loader.mjs");
+  const result = spawnSync(
+    "node",
+    ["--import", loader, sourceEntry, "version", "--json"],
+    { cwd: cliPackageRoot, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const envelope = JSON.parse(result.stdout) as Record<string, any>;
+  const expectedSha = `sha256:${createHash("sha256").update(readFileSync(sourceEntry)).digest("hex")}`;
+  assert.equal(envelope.identity.runtime.executable_path, sourceEntry);
+  assert.equal(envelope.identity.artifact.sha256, expectedSha);
+  assert.equal(envelope.identity.artifact.channel, "local-dev");
+  assert.equal(envelope.identity.runtime.launch_mode, "direct");
+  assert.equal(envelope.identity.runtime.launch_confidence, "certain");
 });
 
 test("plugin-channel layout: a bundle with NO adjacent package.json still prints the BAKED version", () => {
