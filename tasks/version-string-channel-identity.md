@@ -4,14 +4,14 @@ title: Define and ship the npm versioning and update contract
 status: in_progress
 priority: '1'
 description: >-
-  HIGHEST PRIORITY: PR #181 prepares the cache-independent npm test-user release
-  @holaxis/aslite@0.1.0-pre.2 and documents npm as the executable authority.
-  Full update discovery, upgrade proof, automation, and compatibility contract
-  remain in progress; registry publication requires npm owner authentication
-  after merge.
+  HIGHEST PRIORITY: @holaxis/aslite@0.1.0-pre.2 is now publicly published under
+  the next tag from merged PR #181. A clean isolated registry install proved
+  both aslite and agentstate-lite resolve from PATH at pre.2. Remaining work is
+  the durable update-discovery, upgrade, skill/hook compatibility, automation,
+  and rollback contract before retiring the marketplace channel.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-07-31T13:36:13.234Z'
+timestamp: '2026-07-31T13:47:00.945Z'
 ---
 # Problem
 
