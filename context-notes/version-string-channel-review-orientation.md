@@ -2,7 +2,7 @@
 type: Context Note
 title: 'Orientation: version-string/channel-identity task review'
 actor: openai/codex
-timestamp: '2026-07-31T19:17:10.887Z'
+timestamp: '2026-07-31T20:03:49.213Z'
 ---
 # Summary
 
@@ -41,3 +41,17 @@ timestamp: '2026-07-31T19:17:10.887Z'
 Author and review a Decision plus implementation Plan before code. The Decision should define the identity record and channel comparison rules, SemVer/dist-tag policy, supported-release selection, upgrade command/receipt, update-check boundary, skill/hook/MCP compatibility semantics, release/tag/publish authority, and rollback. The Plan should then sequence coherent units: identity primitive and agreement tests; update/compatibility diagnostics; release automation; clean-machine old-to-new proof and documentation transition. Reconcile the roadmap and `tasks/npm-cli-skill-prerelease` ownership in the same planning pass.
 
 The task remains claimed as `in_progress` by `openai/codex`. No code change has been made yet; design decisions and the reviewed implementation plan precede the build.
+
+## Founder policy confirmations (2026-07-31)
+
+Brian confirmed the following product defaults:
+
+1. Until the first stable release, use `0.1.0-pre.N` and let both `latest` and `next` identify the newest supported prerelease; after `0.1.0`, `latest` means stable and `next` means preview. Breaking pre-1.0 contracts advance the minor line.
+2. The supported installed journey is global npm; `npx` is trial/bootstrap, and other package managers are not initially guaranteed.
+3. A protected release may be approved by either Brian or Mike.
+4. AgentState does not silently self-modify; it reports an exact npm upgrade command and verification receipt.
+5. Automatic discovery is limited to the human-orientation surface, daily-cached, bounded/non-fatal, offline-safe, suppressible, and absent from ordinary bundle-command output.
+
+Convention check: npm's own `update` verb mutates installed packages, so a bare non-mutating `aslite update` would be mildly surprising. Proposed refinement pending Brian's confirmation: use `aslite version --check` for the explicit read-only check and reserve `aslite update` for a future command that actually updates. The established CLI notifier pattern supports the agreed daily cache/opt-out policy and refreshes asynchronously, so item 5 is convention-aligned; prefer cached-result-now/background-refresh over adding startup latency.
+
+Item 6 remains pending plain-language confirmation: stable `aslite mcp` host configuration across npm upgrades, plus an immutable emergency copy of the final marketplace release before that live channel is deleted.
