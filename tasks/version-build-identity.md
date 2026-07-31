@@ -5,7 +5,7 @@ status: in_progress
 priority: '1'
 description: 'Implement I1: exact offline build/runtime identity and agreeing projections.'
 actor: openai/codex
-timestamp: '2026-07-31T21:29:06.877Z'
+timestamp: '2026-07-31T21:49:03.807Z'
 ---
 # Goal
 
@@ -22,6 +22,10 @@ Implement the offline `BuildIdentityV1` authority and exact `aslite version` pro
 # Gate
 
 Builder → independent exact-SHA Review → focused agreement/package tests → full repository gate → Brian-owned PR/merge.
+
+# Progress
+
+Implementation is committed at exact SHA `b2caf37`. Identity-focused tests and TypeScript checks pass. Independent exact-SHA code review is in progress; repository/package QA remains intentionally pending until Review approves. The existing marketplace bot actor guard is now explicitly load-bearing because marketplace build identity embeds checkout SHA, and the workflow test pins that invariant.
 
 [unit contract](../plans/version-string-channel-identity.md)
 
