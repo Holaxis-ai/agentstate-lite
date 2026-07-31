@@ -15,7 +15,7 @@ import {
   regenerateArtifacts,
   REAL_PATHS,
 } from "./ci-version-bundle.mjs";
-import { buildCliBundle } from "../packages/cli/scripts/build-bundle.mjs";
+import { buildCliBundle, currentSourceFacts } from "../packages/cli/scripts/build-bundle.mjs";
 import { prepareCliBundleInputs } from "../packages/cli/scripts/prepare-bundle-inputs.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -337,10 +337,16 @@ describe("real build (repo-tied)", () => {
     const referencesBackupDir = await mkdtemp(join(tmpdir(), "ci-version-bundle-references-backup-"));
     if (referencesExisted) await cp(REAL_PATHS.referencesDir, referencesBackupDir, { recursive: true });
     try {
+      // Capture the build input before regeneration writes any of its own tracked outputs. The
+      // second pass proves deterministic regeneration of that SAME checkout state; recomputing
+      // dirty after the first pass would measure the generator's outputs as if they were new
+      // source inputs and create a false feedback loop.
+      const source = currentSourceFacts();
+
       // First run brings the committed artifacts up to date with a fresh regeneration. It may
       // legitimately report changed:true (a developer mid-edit on CLI source, or a branch whose
       // committed bundle predates a compressor/tooling change the bot hasn't regenerated for yet).
-      const first = await run(); // real regenerate, real paths — no overrides
+      const first = await run({ source }); // real regenerate, real paths — fixed source evidence
       assert.equal(typeof first.changed, "boolean");
 
       // Against the now-current tree the bot MUST converge: a second regeneration produces the
@@ -348,7 +354,7 @@ describe("real build (repo-tied)", () => {
       // loop-safety property the CI workflow's correctness rests on, and — with the embed
       // pipeline's compressor pinned to an exact library version (pako) instead of node:zlib —
       // it now holds across machines and Node versions, not just on the machine that built last.
-      const second = await run();
+      const second = await run({ source });
       assert.equal(second.changed, false, "regenerating an already-current tree must be a no-op");
     } finally {
       for (const key of fileKeys) {

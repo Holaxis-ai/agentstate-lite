@@ -51,8 +51,10 @@ for (const argv of [["--help"], ["-h"], ["help"]]) {
     assert.match(out, /\n {2}catalog \(add <label>[^\n]* — Register and deterministically resolve this user's explicitly named local workspaces/);
     assert.match(out, /\n {2}init \[--dir <path>\][^\n]* — Create \(or open\) an OKF knowledge bundle/);
     assert.match(out, /\nDocuments & links:\n {2}doc write <id> --type <t>/);
-    assert.match(out, /\nSession:\n {2}version \[--json\][^\n]* — Show the complete local build\/runtime identity/);
-    assert.match(out, /\n {2}session-start/);
+    assert.match(
+      out,
+      /\nSession:\n {2}version \[--json\][^\n]* — Show the complete local build\/runtime identity[^\n]*\n {2}session-start/,
+    );
     assert.match(out, /\n {2}hook install\|status\|uninstall/);
 
     // The footer pointers are still present, and readably wrapped (no single line runs the whole

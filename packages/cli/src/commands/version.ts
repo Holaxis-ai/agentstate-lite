@@ -53,4 +53,3 @@ export async function versionCommand(
   }
   stdout(render((deps.identity ?? buildIdentityEnvelope)(), resolveMode(values)));
 }
-

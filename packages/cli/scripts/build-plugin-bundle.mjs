@@ -16,7 +16,7 @@
 import { chmod } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildCliBundle } from "./build-bundle.mjs";
+import { buildCliBundle, currentSourceFacts } from "./build-bundle.mjs";
 import { prepareCliBundleInputs } from "./prepare-bundle-inputs.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -27,10 +27,17 @@ const skillScriptsDir = resolve(here, "../../../plugins/agentstate-lite/skills/a
 export const COMMITTED_BUNDLE_PATH = resolve(skillScriptsDir, "agentstate-lite.mjs");
 const committedShimPath = resolve(skillScriptsDir, "agentstate-lite");
 
-/** Rebuild the committed plugin bundle in place and keep it (and its bash shim) executable — the skill channel has no npm-install step, so the checked-out files must be directly runnable. */
-export async function buildPluginBundle() {
+/**
+ * Rebuild the committed plugin bundle in place and keep it (and its bash shim) executable — the
+ * skill channel has no npm-install step, so the checked-out files must be directly runnable.
+ *
+ * The CI orchestrator may pass one source-fact snapshot captured before it writes any generated
+ * output. That keeps a deterministic retry tied to the same build input instead of letting the
+ * generator's own tracked outputs feed back into `source.dirty`.
+ */
+export async function buildPluginBundle({ source = currentSourceFacts() } = {}) {
   await prepareCliBundleInputs();
-  await buildCliBundle(COMMITTED_BUNDLE_PATH, { artifactChannel: "marketplace-legacy" });
+  await buildCliBundle(COMMITTED_BUNDLE_PATH, { artifactChannel: "marketplace-legacy", source });
   await chmod(COMMITTED_BUNDLE_PATH, 0o755);
   await chmod(committedShimPath, 0o755);
   console.log(`built committed plugin bundle -> ${COMMITTED_BUNDLE_PATH}`);

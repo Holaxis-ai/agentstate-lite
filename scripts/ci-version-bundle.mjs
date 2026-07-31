@@ -14,8 +14,9 @@
 //
 // LOOP SAFETY: because HEAD is part of build identity, the workflow's github-actions[bot] actor
 // guard is now load-bearing: the bot commit necessarily has a new SHA and must not regenerate itself.
-// Within one fixed checkout, repeat regeneration still converges and retrying after a concurrent
-// main update correctly rebuilds for that new exact checkout (see .github/workflows/ci-version-bundle.yml).
+// Within one fixed source-fact snapshot, repeat regeneration still converges and retrying after a
+// concurrent main update correctly rebuilds for that new exact checkout (see
+// .github/workflows/ci-version-bundle.yml).
 //
 // Usage: npm run ci:version-bundle
 // Exits 0 whether or not anything changed; exits 1 on any unexpected failure (regen error,
@@ -104,10 +105,10 @@ export function replaceVersion(manifestText, newVersion, label) {
 // writes the committed path) plus a `gen-skill.mjs --target skill` regen.
 // ---------------------------------------------------------------------------------------------
 
-export async function regenerateArtifacts() {
+export async function regenerateArtifacts(_paths, { source } = {}) {
   const { buildPluginBundle } = await import("../packages/cli/scripts/build-plugin-bundle.mjs");
 
-  await buildPluginBundle();
+  await buildPluginBundle({ source });
 
   execFileSync(
     process.execPath,
@@ -190,12 +191,16 @@ function snapshotsEqual(a, b) {
  * pair, never the real regen against fake paths (gen-skill.mjs always writes to the real
  * committed SKILL.md location, so mixing the two would silently target the wrong file).
  */
-export async function run({ regenerate = regenerateArtifacts, paths = REAL_PATHS } = {}) {
+export async function run({ regenerate = regenerateArtifacts, paths = REAL_PATHS, source } = {}) {
   const beforeSkillMd = await readBytesOrNull(paths.skillMd);
   const beforeBundle = await readBytesOrNull(paths.bundleMjs);
   const beforeReferences = await snapshotDir(paths.referencesDir);
 
-  await regenerate(paths);
+  // `source` is an explicit snapshot for the complete generation attempt. In production the
+  // plugin writer derives it immediately before building. Tests that perform two regenerations
+  // against one logical checkout pass the same snapshot both times; otherwise the first run's
+  // generated tracked outputs would redefine the second run's dirty evidence.
+  await regenerate(paths, { source });
 
   const afterSkillMd = await readBytesOrNull(paths.skillMd);
   const afterBundle = await readBytesOrNull(paths.bundleMjs);
