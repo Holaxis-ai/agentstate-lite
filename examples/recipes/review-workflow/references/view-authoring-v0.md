@@ -171,6 +171,11 @@ requests at all — and the shell, not the view, is what enforces it:
 The launcher groups views by this same field: "Dashboards" for `bundle-read`, "Interactive" for
 `bundle-propose`, and "Documents" for `none`.
 
+An optional `presentation: workspace | inline | adaptive` field is only a layout preference for
+hosts. It never changes whether a host can run the View, never changes `access`, and may be ignored
+when the available surface differs from the author's preference. Omit it when either surface is
+equally useful.
+
 ## Authoring a view
 
 Start from an installed View when possible—the working HTML is both a template and executable

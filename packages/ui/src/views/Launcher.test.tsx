@@ -198,9 +198,9 @@ describe("home surface", () => {
   it("renders ONE flat grid with capability badges — no Dashboards/Interactive/Documents sections", async () => {
     storage.setItem(orientationStorageKey(BUNDLE_ROOT), "dismissed");
     vi.mocked(listPages).mockResolvedValue([
-      { id: "views-registry/board", version: "v1", title: "Board", entry: "views/board.html", bridge: "bundle-propose" },
-      { id: "views-registry/pulse", version: "v1", title: "Pulse", entry: "views/pulse.html", bridge: "bundle-read" },
-      { id: "views-registry/map", version: "v1", title: "Map", entry: "views/map.html", bridge: "none" },
+      { id: "views-registry/board", version: "v1", title: "Board", bridge: "bundle-propose" },
+      { id: "views-registry/pulse", version: "v1", title: "Pulse", bridge: "bundle-read" },
+      { id: "views-registry/map", version: "v1", title: "Map", bridge: "none" },
     ]);
     await render();
     for (let i = 0; i < 50 && container.querySelectorAll(".launcher-card").length < 3; i++) {

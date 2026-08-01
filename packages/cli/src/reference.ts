@@ -186,6 +186,11 @@ export const COMMAND_GROUPS: CommandGroup[] = [
           "Run the experimental local MCP Apps adapter over a bundle (stdio): launch an existing registered bundle View unchanged by exact ID through the locally authorized read-only bridge, or render agent-supplied script-free HTML/CSS with declarative text/Markdown bindings over exact document IDs or one bounded query; optional generated-view scalar actions stay in trusted shell chrome and require human confirmation",
       },
       {
+        usage: "view list [--limit <n>] [--dir <path> | --remote <url>]",
+        summary:
+          "List the bundle's registered durable Views from the same catalog used by the web launcher and MCP list_views",
+      },
+      {
         usage:
           "sync [--establish [--yes] | --pull-only | --show-incoming <id> [--out <file>]] [--dir <path>] [--limit <n>]",
         summary:

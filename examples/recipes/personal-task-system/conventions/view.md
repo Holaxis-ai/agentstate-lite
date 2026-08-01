@@ -10,11 +10,16 @@ fields:
     - access
   optional:
     - description
+    - presentation
   values:
     access:
       - none
       - bundle-read
       - bundle-propose
+    presentation:
+      - workspace
+      - inline
+      - adaptive
   terminal: {}
 timestamp: "2026-07-24T00:00:00.000Z"
 ---
@@ -37,6 +42,9 @@ repo's `migrate-legacy-view-names` script renames leftover legacy names in place
 - `title` (required) — the launcher card's heading.
 - `entry` (required) — the HTML blob key, e.g. `views/roadmap.html`.
 - `description` (optional) — one line shown on the launcher card.
+- `presentation` (optional) — an advisory host-layout hint: `workspace | inline | adaptive`.
+  It never controls whether a host may run the View and never grants authority. A host may ignore
+  it when its available surface differs from the author's preference.
 - `access` (required) — `none | bundle-read | bundle-propose`. Required so every View is an INTENTIONAL
   classification, not a silent default — an author who forgets to declare it gets a clear
   authoring-time lint, not a view that quietly renders empty against a full bundle. ENFORCED by

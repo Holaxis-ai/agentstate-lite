@@ -9,11 +9,11 @@
  * A page's HTML never rides the model/query path: only its registry doc (frontmatter) is read
  * here; the bytes travel opaquely through the nonce route into the iframe.
  */
-import { getDoc, listAllHeads, parseErrorEnvelope } from "./client.js";
+import { getDoc, parseErrorEnvelope } from "./client.js";
 import type { Edge, EdgesResponse, Frontmatter } from "./types.js";
 import type { KindConvention } from "@agentstate-lite/core/kinds";
 import type { ActionConfirmation, ActionPrepareResult, ActionTerminalResult, DocumentSetFieldAction, SharingSummary, WorkspaceSummaryEntry } from "@agentstate-lite/ui-server";
-import { PAGE_TYPE_NAMES, parseRegisteredPage, type BridgeCapability } from "../pages/registry.js";
+import { parseRegisteredPage, type BridgeCapability } from "../pages/registry.js";
 
 /** `/__ui/config` shape (server `configResponse`). `sharing`/`workspaces` are ui-server's plain data shapes (type-only import — no runtime dependency), CLI-injected in dir mode. */
 export interface UiConfig {
@@ -30,10 +30,10 @@ export interface PageEntry {
   id: string;
   version: string;
   title: string;
-  entry: string;
   description?: string;
   actor?: string;
   timestamp?: string;
+  presentation?: "workspace" | "inline" | "adaptive";
   /** The server-enforced bridge capability — groups the launcher. */
   bridge: BridgeCapability;
 }
@@ -45,23 +45,34 @@ export async function fetchConfig(): Promise<UiConfig> {
 }
 
 /**
- * Every valid `type: View` registration, newest-first, projected for the launcher. Validity is
- * core's `parseRegistration` (via {@link pageFromFrontmatter} -> `parseRegisteredPage`) — the
- * SAME predicate the server's mint/serve allowlist consumes. The wire query takes ONE type, so
- * the accepted names ride `PAGE_TYPE_NAMES` (exactly `View` post-removal — a legacy `type: Page`
- * doc is never listed; the CLI's `status` legacy_naming finding is its diagnostic).
- *
- * Failure policy (matches the server's allowlist enumeration): if ANY per-type query fails, the
- * WHOLE listing fails (`Promise.all` rejects) — never a partial launcher that hides one kind while
- * the mint route still errors, or vice versa.
+ * Every valid durable View from the server-owned shared catalog. Discovery no longer re-runs in
+ * the browser: the web launcher, CLI, and MCP all consume the same runtime projection.
  */
 export async function listPages(): Promise<PageEntry[]> {
-  const heads = (await Promise.all(PAGE_TYPE_NAMES.map((type) => listAllHeads({ type })))).flat();
-  const pages = heads
-    .map((h) => pageFromFrontmatter(h.id, h.version, h.frontmatter))
-    .filter((p): p is PageEntry => p !== null);
-  pages.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? "") || a.title.localeCompare(b.title));
-  return pages;
+  const res = await fetch("/__ui/views", { credentials: "same-origin" });
+  if (!res.ok) throw await parseErrorEnvelope(res);
+  const payload = (await res.json()) as {
+    views?: Array<{
+      id: string;
+      version: string;
+      title: string;
+      access: BridgeCapability;
+      description?: string;
+      actor?: string;
+      timestamp?: string;
+      presentation?: "workspace" | "inline" | "adaptive";
+    }>;
+  };
+  return (payload.views ?? []).map((entry) => ({
+    id: entry.id,
+    version: entry.version,
+    title: entry.title,
+    bridge: entry.access,
+    ...(entry.description ? { description: entry.description } : {}),
+    ...(entry.actor ? { actor: entry.actor } : {}),
+    ...(entry.timestamp ? { timestamp: entry.timestamp } : {}),
+    ...(entry.presentation ? { presentation: entry.presentation } : {}),
+  }));
 }
 
 /** Exported for the `bridge` fail-closed-default unit test (pages.test.ts) — not otherwise a public API. */
@@ -72,7 +83,6 @@ export function pageFromFrontmatter(id: string, version: string, fm: Frontmatter
     id: page.id,
     version,
     title: page.title,
-    entry: page.entry,
     description: page.description,
     actor: page.actor,
     timestamp: page.timestamp,

@@ -143,6 +143,7 @@ export const SKILL_COMMAND_RESOURCES: Record<string, string[]> = {
   serve: [],
   ui: ["views/references/view-authoring-v0.md"],
   mcp: [],
+  "view list": [],
   sync: [],
   version: [],
   "session-start": [],
