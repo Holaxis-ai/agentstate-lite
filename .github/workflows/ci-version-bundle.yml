@@ -6,10 +6,11 @@ name: CI version + bundle automation
 # regeneration actually changed something — bump the plugin version in both manifests, committing
 # artifact+manifests together (the plugin cache is version-keyed, so they must land atomically).
 #
-# LOOP SAFETY: build identity includes the exact checkout SHA. The bot's own artifact commit thus
-# has a new SHA and would create another artifact if it regenerated itself. The
-# `github.actor != 'github-actions[bot]'` job guard is load-bearing and tested; fixed-checkout
-# regeneration remains convergent for retries within one attempt.
+# LOOP SAFETY: build identity includes the exact checkout SHA, but drift comparison normalizes only
+# source commit/dirty and restores a regenerated artifact when no other bytes changed. A bot commit
+# therefore converges structurally even if a PAT/app actor retriggers this workflow. The
+# `github.actor != 'github-actions[bot]'` guard remains a cheap optimization, not a correctness
+# dependency.
 #
 # RACE SAFETY: `concurrency` serializes THIS WORKFLOW's own runs against each other (never cancels
 # one mid-push) and the checkout below pins `ref: main` (not the triggering commit's fixed sha) so

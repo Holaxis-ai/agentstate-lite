@@ -176,7 +176,7 @@ test("build flavor is mandatory and the legacy marketplace flavor is explicit", 
           artifactChannel: "npm-package",
           source: { commit: "0123456789012345678901234567890123456789", dirty: true },
         }),
-      /npm-package builds require an exact source commit and dirty:false/,
+      /npm-package release builds require an exact clean Git source.*Use local-dev for ordinary verification/s,
     );
 
     const marketplace = path.join(dir, "marketplace.mjs");

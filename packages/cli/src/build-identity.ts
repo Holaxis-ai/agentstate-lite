@@ -37,7 +37,7 @@ export interface CompatibilityContracts {
 
 export interface StaticBuildIdentity {
   schema: typeof BUILD_IDENTITY_SCHEMA;
-  package: { name: typeof PACKAGE_NAME; version: string };
+  package: { name: string; version: string };
   source: { commit: string | null; dirty: boolean | null };
   artifact: { channel: ArtifactChannel };
   compatibility_contracts: CompatibilityContracts;
@@ -46,7 +46,7 @@ export interface StaticBuildIdentity {
 export interface BuildIdentityEnvelope {
   identity: {
     schema: typeof BUILD_IDENTITY_SCHEMA;
-    package: { name: typeof PACKAGE_NAME; version: string };
+    package: { name: string; version: string };
     source: { commit: string | null; dirty: boolean | null };
     artifact: { channel: ArtifactChannel; sha256: string | null };
     runtime: {
@@ -68,6 +68,14 @@ function isNullableCommit(value: unknown): value is string | null {
   return value === null || (typeof value === "string" && /^[a-f0-9]{40}$/.test(value));
 }
 
+function isPackageName(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= 214 &&
+    /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/.test(value)
+  );
+}
+
 /** Validate the untrusted compile-time literal before it becomes product identity. */
 export function parseBakedBuildIdentity(value: unknown): StaticBuildIdentity | null {
   if (value === null || typeof value !== "object") return null;
@@ -85,13 +93,13 @@ export function parseBakedBuildIdentity(value: unknown): StaticBuildIdentity | n
   const s = source as Record<string, unknown>;
   const a = artifact as Record<string, unknown>;
   const c = contracts as Record<string, unknown>;
-  if (p.name !== PACKAGE_NAME || typeof p.version !== "string" || p.version.length === 0) return null;
+  if (!isPackageName(p.name) || typeof p.version !== "string" || p.version.length === 0) return null;
   if (!isNullableCommit(s.commit) || !(s.dirty === null || typeof s.dirty === "boolean")) return null;
   if (!ARTIFACT_CHANNELS.includes(a.channel as ArtifactChannel) || a.channel === "unknown") return null;
   if (!isNullableContract(c.skill) || !isNullableContract(c.hook) || !isNullableContract(c.mcp)) return null;
   return {
     schema: BUILD_IDENTITY_SCHEMA,
-    package: { name: PACKAGE_NAME, version: p.version },
+    package: { name: p.name, version: p.version },
     source: { commit: s.commit, dirty: s.dirty },
     artifact: { channel: a.channel as ArtifactChannel },
     compatibility_contracts: { skill: c.skill, hook: c.hook, mcp: c.mcp },
@@ -121,16 +129,24 @@ export function resolveBakedBuildIdentity(value: unknown): StaticBuildIdentity {
   return freezeBuildIdentity(parseBakedBuildIdentity(value) ?? unknownBuildIdentity());
 }
 
-function sourcePackageVersion(): string {
+function sourcePackageIdentity(): { name: string; version: string } {
   try {
     const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
-    const manifest = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: unknown };
-    return typeof manifest.version === "string" && manifest.version.length > 0
-      ? manifest.version
-      : "unknown";
+    const manifest = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+      name?: unknown;
+      version?: unknown;
+    };
+    if (
+      isPackageName(manifest.name) &&
+      typeof manifest.version === "string" &&
+      manifest.version.length > 0
+    ) {
+      return { name: manifest.name, version: manifest.version };
+    }
   } catch {
-    return "unknown";
+    // Fall through to the explicit fail-closed development identity.
   }
+  return { name: PACKAGE_NAME, version: "unknown" };
 }
 
 function bakedConstant(): { present: boolean; value: unknown } {
@@ -150,7 +166,7 @@ export function staticBuildIdentity(): StaticBuildIdentity {
   }
   staticIdentityCache = freezeBuildIdentity({
     schema: BUILD_IDENTITY_SCHEMA,
-    package: { name: PACKAGE_NAME, version: sourcePackageVersion() },
+    package: sourcePackageIdentity(),
     source: { commit: null, dirty: null },
     artifact: { channel: "local-dev" },
     compatibility_contracts: { skill: 1, hook: 1, mcp: 1 },
@@ -215,9 +231,13 @@ function launchEvidence(
 ): { mode: LaunchMode; confidence: LaunchConfidence } {
   const npmExec = deps.env.npm_command === "exec" || deps.env.npm_lifecycle_event === "npx";
   const npxCachePath = executablePath?.includes("/_npx/") || executablePath?.includes("\\_npx\\");
-  if (npmExec || npxCachePath) return { mode: "npx-inferred", confidence: "inferred" };
+  // A cache-resident executable is concrete npx evidence. Ambient npm lifecycle variables are
+  // only a fallback: they can leak into nested processes and never outrank an executable that is
+  // demonstrably on PATH or was launched directly.
+  if (npxCachePath) return { mode: "npx-inferred", confidence: "inferred" };
   if (deps.managedBin()) return { mode: "path", confidence: "certain" };
   if (sameRealPath(deps.argv[1], executablePath)) return { mode: "direct", confidence: "certain" };
+  if (npmExec) return { mode: "npx-inferred", confidence: "inferred" };
   // File suffix/layout is suggestive only. It never outranks concrete PATH/direct evidence and can
   // never establish certainty: a bundled .mjs can be copied beneath a directory named `src`.
   if (

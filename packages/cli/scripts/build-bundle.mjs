@@ -19,7 +19,18 @@ const r = (p) => resolve(pkgRoot, p);
 // The package version is one part of the immutable build identity baked into every bundle. Runtime
 // code never promotes an adjacent package.json to version authority; it reads one only as a drift
 // diagnostic. This is what keeps lone-file legacy marketplace bundles authoritative too.
-const version = JSON.parse(readFileSync(r("package.json"), "utf8")).version;
+const manifest = JSON.parse(readFileSync(r("package.json"), "utf8"));
+const packageName = manifest.name;
+const version = manifest.version;
+if (
+  typeof packageName !== "string" ||
+  !/^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/.test(packageName) ||
+  packageName.length > 214 ||
+  typeof version !== "string" ||
+  version.length === 0
+) {
+  throw new Error("packages/cli/package.json must contain a valid npm package name and non-empty version");
+}
 const repoRoot = resolve(pkgRoot, "../..");
 export const BUILD_ARTIFACT_CHANNELS = ["npm-package", "local-dev", "marketplace-legacy"];
 
@@ -61,11 +72,16 @@ export async function buildCliBundle(outfile, options) {
     throw new Error("buildCliBundle source must contain commit:40-hex|null and dirty:boolean|null");
   }
   if (artifactChannel === "npm-package" && (source.commit === null || source.dirty !== false)) {
-    throw new Error("npm-package builds require an exact source commit and dirty:false");
+    throw new Error(
+      "npm-package release builds require an exact clean Git source " +
+        `(40-hex commit and dirty:false); observed commit=${source.commit ?? "null"}, ` +
+        `dirty=${String(source.dirty)}. Use local-dev for ordinary verification, or commit/stash/remove ` +
+        "changes before release publication.",
+    );
   }
   const identity = {
     schema: "aslite.build-identity.v1",
-    package: { name: "@holaxis/aslite", version },
+    package: { name: packageName, version },
     source,
     artifact: { channel: artifactChannel },
     compatibility_contracts: { skill: 1, hook: 1, mcp: 1 },

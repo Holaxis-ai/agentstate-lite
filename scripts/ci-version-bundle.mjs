@@ -6,17 +6,15 @@
 // that grew O(n^2) in concurrent PRs (each crossing cost a rebase + re-bump + regen + full gate
 // re-run).
 //
-// BUILD-IDENTITY UPDATE (version-build-identity): the bundle now embeds the CLI package version,
-// exact checkout commit/dirty fact, and `marketplace-legacy` flavor. It still does NOT embed either
-// marketplace manifest's plugin version, so bumping those manifests cannot change the regenerated
-// bytes within this checkout. A fixed checkout remains deterministic; changing HEAD intentionally
-// changes the artifact identity even if only non-CLI files changed.
+// BUILD-IDENTITY UPDATE (version-build-identity): the runtime bundle embeds the CLI package
+// identity, exact checkout commit/dirty fact, and `marketplace-legacy` flavor. Drift/version
+// decisions normalize ONLY the baked source commit/dirty fields. If regeneration differs only by
+// those facts, this script restores the prior artifact before returning; provenance-only commits
+// therefore do not rewrite ~3MB or invalidate the version-keyed marketplace cache.
 //
-// LOOP SAFETY: because HEAD is part of build identity, the workflow's github-actions[bot] actor
-// guard is now load-bearing: the bot commit necessarily has a new SHA and must not regenerate itself.
-// Within one fixed source-fact snapshot, repeat regeneration still converges and retrying after a
-// concurrent main update correctly rebuilds for that new exact checkout (see
-// .github/workflows/ci-version-bundle.yml).
+// LOOP SAFETY is structural: rebuilding a bot commit changes only the normalized source stamp, so
+// the prior artifact is restored and the run no-ops. The workflow actor check is a cheap
+// optimization, not a correctness dependency; PAT/app actors may retrigger safely.
 //
 // Usage: npm run ci:version-bundle
 // Exits 0 whether or not anything changed; exits 1 on any unexpected failure (regen error,
@@ -27,6 +25,7 @@ import { execFileSync } from "node:child_process";
 import { dirname, resolve, relative, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { currentSourceFacts } from "../packages/cli/scripts/build-bundle.mjs";
+import { bundleContentEqual } from "../packages/cli/scripts/bundle-identity-comparison.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // scripts/ -> repo root
@@ -212,8 +211,15 @@ export async function run({
   const afterReferences = await snapshotDir(paths.referencesDir);
 
   const skillMdChanged = !buffersEqual(beforeSkillMd, afterSkillMd);
-  const bundleChanged = !buffersEqual(beforeBundle, afterBundle);
+  const bundleBytesChanged = !buffersEqual(beforeBundle, afterBundle);
+  const bundleChanged = !bundleContentEqual(beforeBundle, afterBundle);
   const referencesChanged = !snapshotsEqual(beforeReferences, afterReferences);
+  if (bundleBytesChanged && !bundleChanged && beforeBundle !== null) {
+    // The writer stamped a different checkout/dirty fact onto otherwise identical content. Keep
+    // the already-committed runtime artifact (and its honest provenance) so the workflow's later
+    // `git status` check cannot turn source-only churn into a commit or plugin-version bump.
+    await writeFile(paths.bundleMjs, beforeBundle);
+  }
   const changed = skillMdChanged || bundleChanged || referencesChanged;
 
   if (!changed) {

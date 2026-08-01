@@ -24,7 +24,17 @@ test("baked identity accepts the normative schema and malformed input fails clos
   assert.deepEqual(parseBakedBuildIdentity(VALID_BAKED), VALID_BAKED);
   assert.equal(parseBakedBuildIdentity({ ...VALID_BAKED, schema: "future" }), null);
   assert.equal(parseBakedBuildIdentity({ ...VALID_BAKED, package: { version: "9.9.9" } }), null);
+  assert.equal(
+    parseBakedBuildIdentity({ ...VALID_BAKED, package: { name: "Invalid Package", version: "9.9.9" } }),
+    null,
+  );
   assert.equal(parseBakedBuildIdentity({ ...VALID_BAKED, artifact: { channel: "latest" } }), null);
+
+  const renamed = {
+    ...VALID_BAKED,
+    package: { name: "@holaxis/renamed", version: VALID_BAKED.package.version },
+  };
+  assert.deepEqual(parseBakedBuildIdentity(renamed), renamed);
 
   const failed = resolveBakedBuildIdentity({ ...VALID_BAKED, source: { commit: 42, dirty: "no" } });
   assert.equal(failed.package.version, "unknown");
@@ -62,13 +72,35 @@ test("runtime evidence distinguishes global PATH, probable npx, direct, source, 
     assert.equal(global.identity.runtime.launch_confidence, "certain");
     assert.match(global.identity.artifact.sha256 ?? "", /^sha256:[a-f0-9]{64}$/);
 
-    const npx = buildIdentityEnvelope({ ...base, env: { npm_command: "exec" } });
-    assert.equal(npx.identity.runtime.launch_mode, "npx-inferred");
-    assert.equal(npx.identity.runtime.launch_confidence, "inferred");
+    const npmSubprocessOnPath = buildIdentityEnvelope({ ...base, env: { npm_command: "exec" } });
+    assert.equal(npmSubprocessOnPath.identity.runtime.launch_mode, "path");
+    assert.equal(npmSubprocessOnPath.identity.runtime.launch_confidence, "certain");
+
+    const npxDir = path.join(dir, "_npx", "cache", "node_modules", ".bin");
+    const npxExecutable = path.join(npxDir, "agentstate-lite.mjs");
+    mkdirSync(npxDir, { recursive: true });
+    writeFileSync(npxExecutable, "#!/usr/bin/env node\n");
+    const cacheNpx = buildIdentityEnvelope({
+      ...base,
+      executablePath: () => npxExecutable,
+      argv: ["node", path.join(dir, "npm-cli.js")],
+      env: { npm_command: "exec" },
+    });
+    assert.equal(cacheNpx.identity.runtime.launch_mode, "npx-inferred");
+    assert.equal(cacheNpx.identity.runtime.launch_confidence, "inferred");
 
     const direct = buildIdentityEnvelope({ ...base, managedBin: () => undefined });
     assert.equal(direct.identity.runtime.launch_mode, "direct");
     assert.equal(direct.identity.runtime.launch_confidence, "certain");
+
+    const npmEnvironmentOnly = buildIdentityEnvelope({
+      ...base,
+      managedBin: () => undefined,
+      argv: ["node", path.join(dir, "npm-cli.js")],
+      env: { npm_command: "exec" },
+    });
+    assert.equal(npmEnvironmentOnly.identity.runtime.launch_mode, "npx-inferred");
+    assert.equal(npmEnvironmentOnly.identity.runtime.launch_confidence, "inferred");
 
     const sourceRun = buildIdentityEnvelope({
       ...base,

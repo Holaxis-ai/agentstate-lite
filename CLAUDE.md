@@ -272,7 +272,10 @@ bundle-relative**.
   `list`, `link add`/`show`, and `status` on `examples/sample-bundle`. Run
   `npm run verify:npm-package` to prove the exact tarball allowlist, zero-runtime-dependency
   boundary, both command names on an isolated `PATH`, an offline create/query workflow, and no
-  writes to the committed plugin channel. `prepublishOnly` runs the same proof.
+  writes to the committed plugin channel. The developer gate builds an honestly labeled
+  `local-dev` tarball so it remains runnable on an in-progress/dirty checkout. `prepublishOnly`
+  runs the same journey in strict `npm-package` mode and refuses unless Git proves an exact clean
+  source commit.
 - **Mutation testing measures the SUITE, on demand — never a merge gate.** `npm run
   mutation:core` / `mutation:cli` run Stryker (tap-runner over the repo's own `node --test`
   ts-loader invocation; `inPlace`, so run them in a clean tree — a crash restores from

@@ -13,7 +13,10 @@ skill folders with `aslite skill install`). The public prerelease is the recomme
 channel; the older marketplace bundle remains temporarily available only as a rollback path while
 the npm upgrade journey is proven. Maintainers can reproduce the complete package proof from the
 repository root with `npm run verify:npm-package`; it builds, packs, installs into an isolated
-prefix, resolves both command names from `PATH`, and exercises an offline bundle workflow.
+prefix, resolves both command names from `PATH`, and exercises an offline bundle workflow. This
+developer proof deliberately stamps `local-dev`, so it works on an in-progress/dirty checkout;
+`prepublishOnly` runs the same journey in strict `npm-package` mode and refuses unless Git proves
+an exact clean source commit.
 The zero-install trial flow is:
 
 ```sh
