@@ -2,21 +2,25 @@
 type: Design
 title: 'One portable View model: author once, invoke anywhere'
 actor: openai/codex
-timestamp: '2026-08-01T19:56:33.179Z'
+timestamp: '2026-08-01T20:05:50.666Z'
 ---
 # One portable View model: author once, invoke anywhere
 
 ## Status
 
-Proposed product and architecture direction for review. This design consolidates the existing
-web View and conversational MCP work; it does not introduce a third rendering system.
+Revised product and architecture direction after independent review. The reviewer approved the
+direction with contract corrections incorporated here. This design consolidates the existing web
+View and conversational MCP work; it does not introduce a third rendering system.
 
 Parent roadmap: [Conversational Views through MCP Apps](../roadmap-items/conversational-mcp-views.md).
+Independent review: [Unified portable View model review](../reviews/unified-portable-view-model.md).
 
 The governing product invariant is:
 
 > A View is durable bundle content. Web, MCP Apps, and future hosts are invocation adapters over
-> the same View identity, source bytes, access declaration, bridge semantics, and trust decision.
+> the same View identity, source bytes, requested access, admission policy, bridge semantics, and
+> authorization subject. Authorization decisions remain local to a host, process, machine, or
+> principal and do not travel merely because the View does.
 
 `show_view` is one way to invoke a View. Clicking it in the local launcher, opening it from
 another View, or asking a future host to present it are other ways. None of those surfaces defines
@@ -51,9 +55,9 @@ A durable View consists of the existing portable pair:
 2. exact self-contained HTML bytes stored as a bundle blob.
 
 The View is independent of its host. It travels with the bundle through local files, board sync,
-recipes, export, or a future remote backend. Its identity is the registry ID; its trust subject is
-the exact current registry, entry bytes, and declared access already computed by the shared View
-runtime.
+recipes, export, or a future remote backend. Its identity is the registry ID; its authorization
+subject is the exact current registry, entry bytes, and declared access already computed by the
+shared View runtime. A host applies its own local authorization decision to that subject.
 
 ### View invocation
 
@@ -69,7 +73,9 @@ Equivalent invocation surfaces include:
 - a future CLI or hosted shell opening that same ID.
 
 All must resolve through the same authority. A host cannot reinterpret the registry, weaken access,
-or substitute different source.
+or substitute different source. Portability does not require every host to support every access
+level immediately: an unsupported access level must fail explicitly without creating a different
+View class. Durable MCP invocation currently supports `bundle-read`, not `bundle-propose`.
 
 ### Preview
 
@@ -97,8 +103,12 @@ contract:
 3. write a matching `type: View` registry document; and
 4. ensure the View convention is available when the bundle uses conventions.
 
-The proven `artifact create` precedent and recent cross-bundle dogfood now justify the previously
-gated compound command. The first ergonomic unit should be create-only:
+The proven `artifact create` precedent and executable blob/registry pairing create a sound
+independent case for the previously gated compound command. Recent cross-bundle dogfood proves an
+authoring/discovery legibility failure; it does **not** by itself satisfy the earlier hypothesis
+about repeated preview-to-durable promotion. The command should be unblocked only when the founder
+explicitly accepts View as a mechanism-level framework exception. If accepted, the first ergonomic
+unit should be create-only:
 
 ```sh
 aslite view create latest-documents \
@@ -111,6 +121,8 @@ aslite view create latest-documents \
 It should compose existing generic writes rather than add View storage or mutation policy:
 
 - validate `access` with the one shared access authority;
+- validate entry path, content type, UTF-8, and size through the current active-View admission
+  authority rather than retyping those checks;
 - choose collision-safe registry and blob keys;
 - promote exact bytes;
 - create the registry using create-only CAS;
@@ -131,7 +143,7 @@ extension channel for domain taxonomies.
 There should be one shared `listViews` authority over valid bundle registrations. Every discovery
 surface projects it:
 
-- `aslite views` for agents and terminal users;
+- `aslite view list` for agents and terminal users;
 - MCP `list_views` for a model connected to one bundle; and
 - the web launcher for humans.
 
@@ -139,36 +151,45 @@ The shared result should contain stable ID, title, description, access, and vali
 information needed to decide whether the View can be invoked. It must not return HTML, credentials,
 nonces, approval state, or other launch secrets.
 
-The first MCP catalog remains bounded and model-visible, but it should list every valid View whose
-access the MCP host supports. It should not require `presentation: inline | adaptive` or hide a
-View merely because its author imagined a large window. A View is portable; the host owns inline,
-expanded, or fullscreen presentation.
+The first MCP catalog remains bounded and model-visible, but every valid View whose access the MCP
+host supports must remain discoverable and invokable. It should not require
+`presentation: inline | adaptive` or hide a View merely because its author imagined a large window.
+A View is portable; the host owns inline, expanded, or fullscreen presentation.
 
-If later evidence shows that author intent improves ranking, an optional display preference may be
-added as an advisory hint. It must never create host compatibility classes or a second entry blob.
-Responsive authoring and host display negotiation remain the default.
+The already-proposed optional `presentation: workspace | inline | adaptive` field may remain as an
+advisory preference used for ranking, warnings, or initial display mode. It is never an eligibility
+or security gate and never selects a different entry blob. Absence means no preference.
+
+Bounded output must be honest: return total compatible count, deterministic ordering, whether the
+result is truncated, and a bounded continuation cursor (or equivalently bounded follow-up query)
+when more Views exist. A 20-row cap without continuation would still silently hide valid Views.
 
 ## One capability contract
 
 Registered Views should receive the same semantic bridge in every supported host. The contract is
 owned below adapters and tested once across them.
 
-Current common capabilities:
+Current common read capabilities:
 
 - `hello`
 - `query`
 - `read`
 - `edges`
 - `subscribe`
-- governed scalar proposals where the declared access permits them
+
+Governed scalar proposals are shared in concept but are not yet supported for durable MCP Views;
+action parity is later capability-matrix work, not a current portability claim.
 
 Remaining parity work should be treated as shared View work, not MCP or web features:
 
-1. **Standard Markdown/document rendering.** Add a host-mediated `render-document` (name to be
-   finalized) request accepting an authoritative document ID. Trusted code rereads the document,
-   uses the shared bounded Markdown renderer, and returns safe bounded HTML with internal document
-   targets represented as IDs. Both web and MCP adapters implement the same request. The existing
-   `data-aslite-markdown` preview binding becomes sugar over the same rendering authority.
+1. **Standard Markdown/document rendering.** Design an additive host-mediated `render-document`
+   (name to be finalized) request accepting an authoritative document ID. `BridgeService` owns
+   request validation, authorization, authoritative reread, captured version, and reply bounds;
+   `markdown-renderer` remains the closed-construction rendering authority and is supplied through
+   a narrow host-neutral seam rather than imported into `view-runtime`. Freeze the reply contract
+   before implementation: exact version, bounded/truncated status, inert safe markup, and internal
+   targets represented as IDs without raw navigable URLs. Both hosts implement the same semantic.
+   The existing `data-aslite-markdown` preview binding then becomes sugar over that authority.
 2. **View-to-View navigation.** `open-page` keeps its stable wire spelling for compatibility but
    must work in MCP as well as web. Each host decides how to present the target; both validate the
    target through the shared registration authority.
@@ -202,7 +223,8 @@ This design preserves the shared security model rather than widening it:
 
 - bundle-provided active HTML remains sandboxed and opaque-origin;
 - direct data/network credentials remain unavailable to the child;
-- the trusted shell enforces declared access and exact-byte approval;
+- the trusted shell enforces declared access and exact-byte approval through a local authorization
+  decision; approval does not become portable merely because the subject is stable;
 - bridge schemas, response sizes, query limits, and subscriptions remain bounded;
 - generated previews remain script-free and cannot silently become durable executable content;
 - mutations remain governed proposals handled by trusted chrome and the shared mutation boundary;
@@ -224,23 +246,25 @@ Generated HTML is described as a preview invocation mode. MCP is an adapter, not
 **Keep:** one existing `type: View` identity, one bounded `list_views`, generic
 `show_view({viewId})`, one responsive entry, and no MCP-only persistence.
 
-**Change:** do not add or gate discovery on `presentation: workspace | inline | adaptive` in the
-first unit. All supported registered Views are discoverable and invokable; display mode is owned by
-the host. The dogfood evidence also resolves the earlier “wait before `view create`” decision:
-agents are already failing to discover the durable authoring path, so the compound create command
-now has demonstrated value.
+**Change:** retain `presentation: workspace | inline | adaptive` only as an advisory preference,
+never a discovery eligibility rule. All access-supported registered Views remain discoverable and
+invokable; display mode is owned by the host. The dogfood evidence proves the durable authoring
+path is illegible, but does not complete the earlier preview-promotion experiment. `view create`
+instead rests on the separate structural case and an explicit founder mechanism-level decision.
 
 ### [`designs/mcp-view-security-model-unification`](mcp-view-security-model-unification.md)
 
-**Adopt unchanged as the security authority.** Its shared launch-bound bridge and separate
-provenance/authorization model are the enabling architecture for this design. This document changes
-product framing and shared capabilities, not the trust boundary.
+**Retain as the security authority and amend additively for new bridge rows.** Its shared
+launch-bound bridge and separate provenance/authorization model enable this design. A future
+`render-document` reply carries new data and therefore requires explicit bounds and adversarial
+tests; this design does not claim that change is already covered.
 
 ### [`designs/view-create`](view-create.md) and [`tasks/cli-view-create-verb`](../tasks/cli-view-create-verb.md)
 
-**Unblock in principle.** The earlier design is the detailed implementation authority. Update its
-legacy `bridge` option spelling to `access`, preserve its safety conditions, and treat the current
-cross-bundle authoring failure as the founders' scope evidence the gate requested.
+**Ready for an explicit founder decision.** The earlier design is the detailed implementation
+authority. If accepted as a mechanism-level exception, update its legacy `bridge` option spelling
+to `access`, add current active-View admission validation, and preserve its safety conditions. Do
+not mislabel the current cross-bundle discoverability failure as preview-promotion dogfood.
 
 ### [`designs/page-model-and-viewer-deprecation`](page-model-and-viewer-deprecation.md)
 
@@ -266,17 +290,21 @@ may still carry View definitions as part of a portable operating model.
 
 ## Proposed sequence
 
-1. Ratify this one-View invariant and update the conversational-Views roadmap language.
-2. Implement one shared bounded View catalog, projected as CLI `views`, MCP `list_views`, and the
-   existing web launcher; remove the proposed MCP-only presentation eligibility filter.
-3. Implement the already-designed create-only `aslite view create` command using `access` and the
+1. Ratify this one-View invariant and explicitly supersede the conflicting roadmap/design/task
+   language in the same decision unit.
+2. Implement one shared bounded View catalog, projected as CLI `view list`, MCP `list_views`, and
+   the existing web launcher; keep presentation advisory and add honest bounded continuation.
+3. Consolidate authoring guidance around one durable View workflow and call generated HTML a
+   preview; repeat the fresh-agent discovery journey.
+4. Record the explicit founder decision on the mechanism-level `view create` exception. If
+   accepted, implement the create-only command using `access`, current admission checks, and the
    existing write authorities.
-4. Consolidate authoring guidance around one durable View workflow and call generated HTML a
-   preview.
-5. Add shared authoritative document/Markdown rendering to the bridge and retire duplicated
-   View-local Markdown parsers when adopted.
-6. Make `open-page` host-parity complete and add the cross-host agreement fixture.
-7. Dogfood from a fresh agent in another bundle: discover no suitable View, author one, verify it,
+5. Specify and security-review authoritative document/Markdown rendering as a new shared bridge
+   row, then implement it and retire duplicated View-local Markdown parsers as Views adopt it.
+6. Make `open-page` host-parity complete and add the cross-host agreement fixture; target launch
+   authorization remains independent of source approval.
+7. Address durable governed-action parity after read/render/navigation semantics stabilize.
+8. Dogfood from a fresh agent in another bundle: discover no suitable View, author one, verify it,
    create it durably, discover it, launch it in MCP, and open the same ID in the web launcher.
 
 ## Acceptance proof
@@ -291,7 +319,8 @@ and MCP View systems:
 4. invoke it in conversation by ID;
 5. expand, collapse, suspend, and resume it without losing the experience;
 6. open the same View from the web launcher; and
-7. observe the same data, Markdown rendering, navigation, and governed-action semantics in both.
+7. observe the same supported data, Markdown rendering, and navigation semantics in both, with
+   unsupported access failing explicitly rather than changing View identity.
 
 ## Non-goals
 
