@@ -4,6 +4,9 @@
 // throw->exit mapping lives in cli.ts's `formatError`; runAxiCli sets `process.exitCode` (never
 // `process.exit`), so the full 0/1/2/4/5/6 taxonomy survives and the process drains naturally. argv
 // is passed explicitly so tests can inject it.
+import { fileURLToPath } from "node:url";
 import { main } from "./cli.js";
+import { registerExecutableEntry } from "./invocation.js";
 
+registerExecutableEntry(fileURLToPath(import.meta.url));
 await main(process.argv.slice(2));

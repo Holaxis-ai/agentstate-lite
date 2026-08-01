@@ -42,9 +42,29 @@ function realOrUndefined(p: string): string | undefined {
   }
 }
 
-/** The absolute real path of the running executable (the bundled entry), or undefined. */
+let registeredExecutableEntry: string | undefined;
+
+/**
+ * Register the production entry module before command dispatch. In a bundle, the entry module's
+ * import.meta.url is the emitted .mjs; in a loader-driven source run it is src/index.ts. Imported
+ * helpers and test runners must never replace that explicit entry with their own module path.
+ */
+export function registerExecutableEntry(entryPath: string): void {
+  const resolved = realOrUndefined(entryPath);
+  if (!resolved) return;
+  if (registeredExecutableEntry && registeredExecutableEntry !== resolved) {
+    throw new Error(
+      `CLI executable entry was already registered as ${registeredExecutableEntry}; refusing ${resolved}`,
+    );
+  }
+  registeredExecutableEntry = resolved;
+}
+
+/** The absolute real path of the registered CLI entry (bundled or source), or a helper fallback. */
 export function currentExecutableRealPath(): string | undefined {
+  if (registeredExecutableEntry) return registeredExecutableEntry;
   // import.meta.url is the running module; under the bundle that IS the executable file.
+  // Helper-only unit tests do not evaluate src/index.ts and deliberately retain this fallback.
   const fromModule = realOrUndefined(fileURLToPath(import.meta.url));
   if (fromModule) return fromModule;
   const argv1 = process.argv[1];
@@ -56,7 +76,7 @@ export function currentExecutableRealPath(): string | undefined {
  * running executable, return that bare name (portable). Otherwise undefined. POSIX PATH scan — the
  * target platforms are macOS/Linux; Windows PATHEXT is not handled (the tool ships as an .mjs).
  */
-function binNameOnPath(): string | undefined {
+export function managedBinNameOnPath(): string | undefined {
   const exe = currentExecutableRealPath();
   if (!exe) return undefined;
   const dirs = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
@@ -73,10 +93,9 @@ function binNameOnPath(): string | undefined {
  * True when the running executable IS the self-contained skill bundle
  * (skills/agentstate-lite/scripts/agentstate-lite.mjs — the `npx skills add` channel), as opposed
  * to the npm dist/ bundle (dist/agentstate-lite.mjs) or an unbundled dev/test run (src/*.ts).
- * Distinguished by WHERE the running file lives on disk, not by an embedded build-time literal —
- * the npm dist/ and skill scripts/ bundles are produced by the identical esbuild config
- * (scripts/build-bundle.mjs) and stay byte-identical; only the runtime path differs. Exported for
- * `skill install`'s channel refusal (the marketplace bundle carries no npm-layout skill assets).
+ * Distinguished by WHERE the running file lives on disk. The explicit baked artifact channel is
+ * authoritative for identity, but this path classifier remains the asset-layout guard used by
+ * `skill install` (the marketplace bundle carries no npm-layout skill assets).
  */
 export function isSkillBundlePath(exe: string): boolean {
   const parts = exe.split("/");
@@ -93,7 +112,7 @@ export function isSkillBundlePath(exe: string): boolean {
  * built from this so a copy-pasted next step always runs the real tool.
  */
 export function cliInvocation(): string {
-  const onPath = binNameOnPath();
+  const onPath = managedBinNameOnPath();
   if (onPath) return onPath;
   const exe = currentExecutableRealPath();
   if (exe && isSkillBundlePath(exe)) return collapseHomeDirectory(exe);
@@ -116,5 +135,5 @@ export function binPath(): string {
  * `resolvePortableHookCommand` semantics, so the value we DISPLAY matches what the installer writes.
  */
 export function hookCommand(): string {
-  return binNameOnPath() ?? currentExecutableRealPath() ?? PACKAGE_NAME;
+  return managedBinNameOnPath() ?? currentExecutableRealPath() ?? PACKAGE_NAME;
 }

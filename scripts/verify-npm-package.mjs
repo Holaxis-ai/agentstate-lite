@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { access, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -24,6 +25,21 @@ const runtimeDependencyFields = [
   "bundleDependencies",
 ];
 
+export function verificationPolicy(mode) {
+  if (mode === "local") return { mode, artifactChannel: "local-dev" };
+  if (mode === "release") return { mode, artifactChannel: "npm-package" };
+  throw new Error("usage: verify-npm-package.mjs --local|--release [--json]");
+}
+
+export function parseVerificationArgs(argv) {
+  const json = argv.includes("--json");
+  const positionals = argv.filter((arg) => arg !== "--json");
+  if (positionals.length !== 1 || (positionals[0] !== "--local" && positionals[0] !== "--release")) {
+    throw new Error("usage: verify-npm-package.mjs --local|--release [--json]");
+  }
+  return { mode: positionals[0].slice(2), json };
+}
+
 function npmInvocation(args, env = process.env) {
   const npmCli = env.npm_execpath?.trim();
   if (!npmCli) {
@@ -39,23 +55,29 @@ async function run(command, args, options = {}) {
   });
 }
 
-export function sanitizedNpmEnvironment(source, userConfig) {
+export function sanitizedNpmEnvironment(source, userConfig, cache) {
   const env = {};
   for (const [key, value] of Object.entries(source)) {
     if (!key.toLowerCase().startsWith("npm_config_")) env[key] = value;
   }
-  return {
+  const sanitized = {
     ...env,
     npm_config_dry_run: "false",
     npm_config_bin_links: "true",
     npm_config_userconfig: userConfig,
   };
+  if (cache) sanitized.npm_config_cache = cache;
+  return sanitized;
 }
 
 async function runNpm(args, options = {}) {
-  const env = sanitizedNpmEnvironment(options.env ?? process.env, options.npmUserConfig);
+  const env = sanitizedNpmEnvironment(
+    options.env ?? process.env,
+    options.npmUserConfig,
+    options.npmCache,
+  );
   const invocation = npmInvocation(args, env);
-  const { npmUserConfig: _, ...runOptions } = options;
+  const { npmUserConfig: _, npmCache: __, ...runOptions } = options;
   return run(invocation.command, invocation.args, { ...runOptions, env });
 }
 
@@ -172,13 +194,15 @@ export async function assertCommandInBin(command, env, binDir, platform = proces
   return expected;
 }
 
-export async function verifyNpmPackage() {
+export async function verifyNpmPackage({ mode }) {
+  const policy = verificationPolicy(mode);
   const scratch = await mkdtemp(path.join(tmpdir(), "agentstate-lite-npm-proof-"));
   const packDir = path.join(scratch, "pack");
   const prefix = path.join(scratch, "prefix");
   const home = path.join(scratch, "home");
   const bundle = path.join(scratch, "bundle");
   const npmUserConfig = path.join(scratch, "empty-npmrc");
+  const npmCache = path.join(scratch, "npm-cache");
   const pluginsDir = path.join(repoRoot, "plugins");
   const marketplaceDir = path.join(repoRoot, ".claude-plugin");
   const pluginsBefore = await snapshotTree(pluginsDir);
@@ -187,8 +211,8 @@ export async function verifyNpmPackage() {
   try {
     await Promise.all([mkdir(packDir), mkdir(prefix), mkdir(home)]);
     await writeFile(npmUserConfig, "");
-    const cleanBuildEnv = sanitizedNpmEnvironment(process.env, npmUserConfig);
-    await run(process.execPath, [path.join(repoRoot, "packages", "cli", "build.mjs")], {
+    const cleanBuildEnv = sanitizedNpmEnvironment(process.env, npmUserConfig, npmCache);
+    await run(process.execPath, [path.join(repoRoot, "packages", "cli", "build.mjs"), policy.artifactChannel], {
       cwd: repoRoot,
       env: cleanBuildEnv,
     });
@@ -200,7 +224,7 @@ export async function verifyNpmPackage() {
         "--pack-destination",
         packDir,
       ],
-      { cwd: path.join(repoRoot, "packages", "cli"), npmUserConfig },
+      { cwd: path.join(repoRoot, "packages", "cli"), npmUserConfig, npmCache },
     );
     const receipts = parseJson(packed.stdout, "npm pack");
     assert.equal(receipts.length, 1, "npm pack must produce exactly one tarball");
@@ -219,7 +243,7 @@ export async function verifyNpmPackage() {
         "--no-fund",
         tarball,
       ],
-      { cwd: scratch, npmUserConfig },
+      { cwd: scratch, npmUserConfig, npmCache },
     );
 
     const installedRoot =
@@ -282,6 +306,43 @@ export async function verifyNpmPackage() {
         ? run(process.execPath, [installedEntrypoint, ...args], { cwd, env })
         : run(command, args, { cwd, env });
     };
+
+    // Every installed projection agrees with the immutable build identity. Both bin aliases resolve
+    // the same bytes, and the adjacent installed manifest is diagnostic rather than authority.
+    const preferredVersion = (await runCli("aslite", ["--version"])).stdout.trim();
+    const legacyVersion = (await runCli("agentstate-lite", ["-v"])).stdout.trim();
+    assert.equal(preferredVersion, manifest.version, "aslite --version must equal the package manifest");
+    assert.equal(legacyVersion, manifest.version, "agentstate-lite -v must equal the package manifest");
+    const preferredIdentity = parseJson(
+      (await runCli("aslite", ["version", "--json"])).stdout,
+      "aslite version --json",
+    );
+    const legacyIdentity = parseJson(
+      (await runCli("agentstate-lite", ["version", "--json"])).stdout,
+      "agentstate-lite version --json",
+    );
+    assert.deepEqual(legacyIdentity, preferredIdentity, "both installed bin aliases must report one identity");
+    assert.equal(preferredIdentity.identity.schema, "aslite.build-identity.v1");
+    assert.deepEqual(preferredIdentity.identity.package, {
+      name: "@holaxis/aslite",
+      version: manifest.version,
+    });
+    assert.equal(preferredIdentity.identity.artifact.channel, policy.artifactChannel);
+    const installedSha = `sha256:${createHash("sha256").update(await readFile(installedEntrypoint)).digest("hex")}`;
+    assert.equal(preferredIdentity.identity.artifact.sha256, installedSha);
+    const installedEntrypointRealPath = await realpath(installedEntrypoint);
+    assert.equal(preferredIdentity.identity.runtime.executable_path, installedEntrypointRealPath);
+    assert.deepEqual(preferredIdentity.identity.compatibility_contracts, { skill: 1, hook: 1, mcp: 1 });
+    assert.deepEqual(preferredIdentity.drift, {
+      adjacent_package_version: manifest.version,
+      version_mismatch: false,
+    });
+    const homeIdentity = parseJson((await runCli("aslite", ["--json"])).stdout, "aslite home --json")[
+      "agentstate-lite"
+    ];
+    assert.equal(homeIdentity.version, manifest.version);
+    assert.equal(homeIdentity.channel, policy.artifactChannel);
+    assert.equal(homeIdentity.bin, installedEntrypointRealPath);
 
     await runCli("agentstate-lite", ["--help"]);
     await runCli("aslite", ["--help"]);
@@ -471,10 +532,19 @@ export async function verifyNpmPackage() {
     assertSnapshotUnchanged(marketplaceBefore, await snapshotTree(marketplaceDir), ".claude-plugin/");
 
     return {
+      mode: policy.mode,
       package: `${manifest.name}@${manifest.version}`,
       files: receipt.files.length,
       bins: Object.keys(manifest.bin),
       workflow: ["init", "recipe add", "new", "list", "skill install/status/uninstall", "hook install/uninstall"],
+      identity: preferredIdentity,
+      tarball: {
+        filename: receipt.filename,
+        shasum: receipt.shasum,
+        integrity: receipt.integrity,
+        size: receipt.size,
+        unpacked_size: receipt.unpackedSize,
+      },
     };
   } finally {
     await rm(scratch, { recursive: true, force: true });
@@ -483,8 +553,18 @@ export async function verifyNpmPackage() {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   try {
-    const result = await verifyNpmPackage();
-    console.log(`verified ${result.package}: ${result.files} files, zero runtime dependencies, bins ${result.bins.join("/")}, offline workflow passed`);
+    const args = parseVerificationArgs(process.argv.slice(2));
+    const result = await verifyNpmPackage({ mode: args.mode });
+    if (args.json) {
+      console.log(JSON.stringify(result));
+    } else {
+      const source = result.identity.identity.source;
+      console.log(
+        `verified ${result.mode} ${result.package}: ${result.files} files, zero runtime dependencies, ` +
+          `bins ${result.bins.join("/")}, source commit=${source.commit ?? "unknown"} dirty=${source.dirty ?? "unknown"}, ` +
+          "offline workflow passed",
+      );
+    }
   } catch (error) {
     console.error(error instanceof Error ? error.stack : error);
     process.exitCode = 1;

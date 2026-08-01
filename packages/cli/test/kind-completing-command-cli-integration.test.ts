@@ -33,7 +33,7 @@ const cliBin = path.join(cliPackageRoot, "dist", "agentstate-lite.mjs");
 // Build ONLY if the bundle is absent (see doc-cli-integration.test.ts's identical comment: the
 // package `test` script builds once up front, so this is a no-op under `npm test`/`npm run check`).
 before(() => {
-  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
+  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs", "local-dev"], { cwd: cliPackageRoot, stdio: "inherit" });
 });
 
 async function tempDir(prefix: string): Promise<string> {

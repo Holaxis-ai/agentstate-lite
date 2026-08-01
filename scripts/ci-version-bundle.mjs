@@ -6,24 +6,15 @@
 // that grew O(n^2) in concurrent PRs (each crossing cost a rebase + re-bump + regen + full gate
 // re-run).
 //
-// EMPIRICAL FINDING (see .agentstate-lite/tasks/ci-version-bundle-automation.md): the committed
-// bundle embeds NO version/timestamp literal — confirmed by (1) zero occurrences of the current
-// manifest version string inside the built artifact, and (2) a fresh rebuild of a byte-identical
-// source tree producing byte-identical output with the manifests untouched (see the
-// determinism guard note in packages/cli/scripts/check-skill-bundle.mjs, which this script's
-// design leans on). Consequence: bumping the version and regenerating the bundle are FULLY
-// independent operations — there is no ordering constraint between them, and no risk that
-// bumping the version changes what the regenerated bundle looks like (which would otherwise
-// create a moving target for the diff below). This script always regenerates FIRST, then decides
-// whether to bump, purely because "should we bump" is defined in terms of whether regeneration
-// changed anything.
+// BUILD-IDENTITY UPDATE (version-build-identity): the runtime bundle embeds the CLI package
+// identity, exact checkout commit/dirty fact, and `marketplace-legacy` flavor. Drift/version
+// decisions normalize ONLY the baked source commit/dirty fields. If regeneration differs only by
+// those facts, this script restores the prior artifact before returning; provenance-only commits
+// therefore do not rewrite ~3MB or invalidate the version-keyed marketplace cache.
 //
-// LOOP SAFETY: this script's own bot commit lands the regenerated artifacts AND the bumped
-// version together. The very next run (triggered by that push) regenerates again, compares
-// against what is now committed (its own prior output), finds NO diff, and no-ops without
-// touching the manifests. Convergence — not a paths filter or actor check — is what makes this
-// safe against infinite commit loops; the workflow's actor-check is only a cheap optimization to
-// skip a redundant job, never the correctness guarantee (see .github/workflows/ci-version-bundle.yml).
+// LOOP SAFETY is structural: rebuilding a bot commit changes only the normalized source stamp, so
+// the prior artifact is restored and the run no-ops. The workflow actor check is a cheap
+// optimization, not a correctness dependency; PAT/app actors may retrigger safely.
 //
 // Usage: npm run ci:version-bundle
 // Exits 0 whether or not anything changed; exits 1 on any unexpected failure (regen error,
@@ -33,6 +24,8 @@ import { readFile, writeFile, readdir, stat } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { dirname, resolve, relative, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { currentSourceFacts } from "../packages/cli/scripts/build-bundle.mjs";
+import { bundleContentEqual } from "../packages/cli/scripts/bundle-identity-comparison.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // scripts/ -> repo root
@@ -112,10 +105,10 @@ export function replaceVersion(manifestText, newVersion, label) {
 // writes the committed path) plus a `gen-skill.mjs --target skill` regen.
 // ---------------------------------------------------------------------------------------------
 
-export async function regenerateArtifacts() {
+export async function regenerateArtifacts(_paths, { source } = {}) {
   const { buildPluginBundle } = await import("../packages/cli/scripts/build-plugin-bundle.mjs");
 
-  await buildPluginBundle();
+  await buildPluginBundle({ source });
 
   execFileSync(
     process.execPath,
@@ -198,20 +191,35 @@ function snapshotsEqual(a, b) {
  * pair, never the real regen against fake paths (gen-skill.mjs always writes to the real
  * committed SKILL.md location, so mixing the two would silently target the wrong file).
  */
-export async function run({ regenerate = regenerateArtifacts, paths = REAL_PATHS } = {}) {
+export async function run({
+  regenerate = regenerateArtifacts,
+  paths = REAL_PATHS,
+  source = currentSourceFacts(),
+} = {}) {
   const beforeSkillMd = await readBytesOrNull(paths.skillMd);
   const beforeBundle = await readBytesOrNull(paths.bundleMjs);
   const beforeReferences = await snapshotDir(paths.referencesDir);
 
-  await regenerate(paths);
+  // `source` is an explicit snapshot for the complete generation attempt. In production the
+  // plugin writer derives it immediately before building. Tests that perform two regenerations
+  // against one logical checkout pass the same snapshot both times; otherwise the first run's
+  // generated tracked outputs would redefine the second run's dirty evidence.
+  await regenerate(paths, { source });
 
   const afterSkillMd = await readBytesOrNull(paths.skillMd);
   const afterBundle = await readBytesOrNull(paths.bundleMjs);
   const afterReferences = await snapshotDir(paths.referencesDir);
 
   const skillMdChanged = !buffersEqual(beforeSkillMd, afterSkillMd);
-  const bundleChanged = !buffersEqual(beforeBundle, afterBundle);
+  const bundleBytesChanged = !buffersEqual(beforeBundle, afterBundle);
+  const bundleChanged = !bundleContentEqual(beforeBundle, afterBundle);
   const referencesChanged = !snapshotsEqual(beforeReferences, afterReferences);
+  if (bundleBytesChanged && !bundleChanged && beforeBundle !== null) {
+    // The writer stamped a different checkout/dirty fact onto otherwise identical content. Keep
+    // the already-committed runtime artifact (and its honest provenance) so the workflow's later
+    // `git status` check cannot turn source-only churn into a commit or plugin-version bump.
+    await writeFile(paths.bundleMjs, beforeBundle);
+  }
   const changed = skillMdChanged || bundleChanged || referencesChanged;
 
   if (!changed) {

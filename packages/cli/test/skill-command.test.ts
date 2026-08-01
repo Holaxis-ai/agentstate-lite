@@ -28,6 +28,9 @@ import {
   skillTargets,
 } from "../src/commands/skill.js";
 import { CliError } from "../src/errors.js";
+import { cliVersion } from "../src/build-identity.js";
+
+const RUNNING_VERSION = cliVersion();
 
 const ASSET_FILES: Record<string, string> = {
   "SKILL.md": "---\nname: aslite\n---\n# aslite\n",
@@ -91,7 +94,7 @@ test("skill install (project scope): assets + manifest land in BOTH host folders
   const receipt = await runSkill(["install"], { cwd, executable });
   assert.equal(receipt.skill.action, "install");
   assert.equal(receipt.skill.changed, true);
-  assert.equal(receipt.skill.version, "9.9.9");
+  assert.equal(receipt.skill.version, RUNNING_VERSION);
 
   for (const host of [".claude", ".codex"]) {
     const dir = path.join(cwd, host, "skills", "aslite");
@@ -100,7 +103,7 @@ test("skill install (project scope): assets + manifest land in BOTH host folders
     }
     const manifest = JSON.parse(readFileSync(path.join(dir, SKILL_MANIFEST_FILENAME), "utf8"));
     assert.equal(manifest.package, "@holaxis/aslite");
-    assert.equal(manifest.version, "9.9.9");
+    assert.equal(manifest.version, RUNNING_VERSION);
     assert.equal(manifest.installed_by, "aslite skill install");
     assert.deepEqual(manifest.files, Object.keys(ASSET_FILES).sort());
   }
@@ -169,7 +172,7 @@ test("skill status: absent before install, unmanaged for a manifest-less folder,
   await runSkill(["install"], { cwd, executable });
   const installed = await runSkill(["status"], { cwd, executable });
   assert.equal(installed.skill.hosts.claude_code.state, "installed");
-  assert.equal(installed.skill.hosts.claude_code.version, "9.9.9");
+  assert.equal(installed.skill.hosts.claude_code.version, RUNNING_VERSION);
 });
 
 test("skill uninstall removes exactly the managed folders and leaves foreign sibling skills untouched", async () => {
@@ -316,10 +319,10 @@ test("a distribution without shipped skill assets is a loud runtime error, not a
   assert.equal(existsSync(path.join(cwd, ".claude")), false);
 });
 
-test("resolveSkillAssets reads the package root next to dist/ and lists SKILL.md + references recursively", () => {
+test("resolveSkillAssets uses running build version, not stale adjacent manifest, and lists assets", () => {
   const { executable } = scratch();
   const assets = resolveSkillAssets(executable);
-  assert.equal(assets.version, "9.9.9");
+  assert.equal(assets.version, RUNNING_VERSION);
   assert.deepEqual(assets.files, Object.keys(ASSET_FILES).sort());
   assert.equal(skillStatusForDir(path.join(assets.root, "does-not-exist"), assets).state, "absent");
 });

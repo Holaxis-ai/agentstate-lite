@@ -11,7 +11,7 @@
  * from `/dev/null` (a character device — `isTTY === undefined`, neither a TTY nor a real pipe, the
  * precise agent-harness shape the live-verified bug reproduced in) and asserts the guard still fires.
  *
- * `test.before` builds the CLI once (`node build.mjs` in this package) so the test is self-contained
+ * `test.before` builds the CLI once (`node build.mjs local-dev` in this package) so the test is self-contained
  * regardless of invocation order — no other test file in this package needs the built artifact, so
  * there is no existing "build once" convention to reuse (see CLAUDE.md's build/verify gate: `npm run
  * build` normally precedes `npm test` in `npm run check`, but a bare `npm test -w @holaxis/aslite`
@@ -52,7 +52,7 @@ async function tempDir(): Promise<string> {
 // integration files from launching CONCURRENT `vite build`s that clobber packages/ui/dist (the
 // node --test runner runs files in parallel). Building here still supports running THIS file alone.
 before(() => {
-  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs"], { cwd: cliPackageRoot, stdio: "inherit" });
+  if (!existsSync(cliBin)) execFileSync("node", ["build.mjs", "local-dev"], { cwd: cliPackageRoot, stdio: "inherit" });
 });
 
 test("built CLI: raw doc-read channels route early missing-id and unknown-option envelopes only to stderr", () => {

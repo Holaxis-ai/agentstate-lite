@@ -1,8 +1,9 @@
 // Drift gate for the committed SKILL bundle (plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite.mjs).
 //
 // Rebuilds the CLI with the SAME generated-input preparation and esbuild config used by build.mjs
-// into a scratch temp file, then byte-compares it against the committed skill bundle. Exits 1 on
-// any mismatch (missing committed file, or bytes differ).
+// into a scratch temp file, then content-compares it against the committed skill bundle. The
+// runtime artifacts retain their complete identity; comparison normalizes only the baked source
+// commit/dirty fields, which are provenance rather than shipped behavior.
 //
 // NOT part of the root `npm run check` PR gate (2026-07-09): the committed bundle is version-keyed
 // plugin content that a CI bot now regenerates + bumps on merge to main
@@ -12,17 +13,14 @@
 //
 //   node scripts/check-skill-bundle.mjs
 //
-// GUARD NOTE — version-literal normalization: this repo's build is verified deterministic and
-// embeds NO version / `git describe` / build-timestamp literal (confirmed: two builds from the
-// same source are byte-identical), so a straight byte compare is correct today. If version
-// stamping is ever added to the bundle (see the axi-skills "gotcha #4" precedent), this gate MUST
-// gain a normalization step — strip/replace the stamped literal on both sides before comparing —
-// or it will fail on every commit. Until then, normalization is a deliberate no-op.
+// The comparison primitive is cardinality-checked and fail-closed. Code, package identity,
+// artifact channel, and compatibility contracts remain byte-significant.
 import { readFile, rm, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildCliBundle } from "./build-bundle.mjs";
+import { buildCliBundle, currentSourceFacts } from "./build-bundle.mjs";
+import { bundleContentEqual } from "./bundle-identity-comparison.mjs";
 import { prepareCliBundleInputs } from "./prepare-bundle-inputs.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -31,10 +29,13 @@ const committedPath = resolve(here, "../../../plugins/agentstate-lite/skills/age
 
 const scratchDir = await mkdtemp(join(tmpdir(), "aslite-skill-bundle-"));
 const scratchFile = join(scratchDir, "agentstate-lite.mjs");
+// Source identity is an input to this complete check. Capture it before preparation can write any
+// generated module, then use that exact evidence for the scratch artifact.
+const source = currentSourceFacts();
 
 try {
   await prepareCliBundleInputs();
-  await buildCliBundle(scratchFile);
+  await buildCliBundle(scratchFile, { artifactChannel: "marketplace-legacy", source });
 
   const fresh = await readFile(scratchFile);
   let existing;
@@ -47,7 +48,7 @@ try {
     process.exit(1);
   }
 
-  if (!fresh.equals(existing)) {
+  if (!bundleContentEqual(fresh, existing)) {
     console.error(`skill bundle is stale: ${committedPath}`);
     console.error("does not byte-match a fresh build of src/. This is EXPECTED on a PR branch — leave it");
     console.error("to the CI bot, which regenerates the committed bundle (and bumps the plugin version)");

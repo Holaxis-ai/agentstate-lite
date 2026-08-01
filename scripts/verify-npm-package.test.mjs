@@ -11,8 +11,10 @@ import {
   assertCommandInBin,
   assertPackageContract,
   expectedTarballFiles,
+  parseVerificationArgs,
   resolveCommandOnPath,
   sanitizedNpmEnvironment,
+  verificationPolicy,
 } from "./verify-npm-package.mjs";
 import { npmInvocation as uiBuildNpmInvocation } from "../packages/cli/scripts/embed-ui-assets.mjs";
 
@@ -110,6 +112,7 @@ test("npm subprocesses discard inherited lifecycle, workspace, prefix, and bin s
       npm_config_bin_links: "false",
     },
     "/isolated/npmrc",
+    "/isolated/cache",
   );
   assert.deepEqual(clean, {
     PATH: "/runtime/bin",
@@ -117,7 +120,18 @@ test("npm subprocesses discard inherited lifecycle, workspace, prefix, and bin s
     npm_config_dry_run: "false",
     npm_config_bin_links: "true",
     npm_config_userconfig: "/isolated/npmrc",
+    npm_config_cache: "/isolated/cache",
   });
+});
+
+test("package proof modes separate dirty-tree verification from strict release construction", () => {
+  assert.deepEqual(verificationPolicy("local"), { mode: "local", artifactChannel: "local-dev" });
+  assert.deepEqual(verificationPolicy("release"), { mode: "release", artifactChannel: "npm-package" });
+  assert.deepEqual(parseVerificationArgs(["--local", "--json"]), { mode: "local", json: true });
+  assert.deepEqual(parseVerificationArgs(["--release"]), { mode: "release", json: false });
+  for (const invalid of [[], ["--json"], ["--local", "--release"], ["--unknown"]]) {
+    assert.throws(() => parseVerificationArgs(invalid), /usage: verify-npm-package/);
+  }
 });
 
 test("the UI build launches npm shell-free through the lifecycle CLI path", () => {
@@ -158,20 +172,33 @@ test("Windows resolution requires the npm .cmd shim inside the prefix", async ()
   }
 });
 
-test("the complete proof survives poisoned npm lifecycle configuration", async () => {
+test("the complete local proof survives an untracked file and poisoned npm lifecycle configuration", async () => {
   const npmCli = process.env.npm_execpath?.trim();
   assert.ok(npmCli, "run this proof through npm so npm_execpath is available");
-  const result = await execFileAsync(process.execPath, [path.join(repoRoot, "scripts", "verify-npm-package.mjs")], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      npm_config_dry_run: "true",
-      npm_config_workspaces: "false",
-      npm_config_workspace: "@holaxis/aslite",
-      npm_config_prefix: path.join(tmpdir(), "wrong-agentstate-lite-prefix"),
-      npm_config_bin_links: "false",
-    },
-    maxBuffer: 20 * 1024 * 1024,
-  });
-  assert.match(result.stdout, /offline workflow passed/);
+  const dirtyDir = await mkdtemp(path.join(repoRoot, ".verify-npm-package-dirty-"));
+  try {
+    await writeFile(path.join(dirtyDir, "untracked.txt"), "local verification must remain available\n");
+    const result = await execFileAsync(
+      process.execPath,
+      [path.join(repoRoot, "scripts", "verify-npm-package.mjs"), "--local", "--json"],
+      {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          npm_config_dry_run: "true",
+          npm_config_workspaces: "false",
+          npm_config_workspace: "@holaxis/aslite",
+          npm_config_prefix: path.join(tmpdir(), "wrong-agentstate-lite-prefix"),
+          npm_config_bin_links: "false",
+        },
+        maxBuffer: 20 * 1024 * 1024,
+      },
+    );
+    const receipt = JSON.parse(result.stdout);
+    assert.equal(receipt.mode, "local");
+    assert.equal(receipt.identity.identity.artifact.channel, "local-dev");
+    assert.equal(receipt.identity.identity.source.dirty, true);
+  } finally {
+    await rm(dirtyDir, { recursive: true, force: true });
+  }
 });

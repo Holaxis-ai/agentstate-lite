@@ -55,6 +55,7 @@ import { render, resolveMode } from "../output.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { HOST_CONFIG_ROOTS, resolveHostConfigRoot } from "../host-config.js";
+import { cliVersion } from "../build-identity.js";
 
 export const SKILL_USAGE = `agentstate-lite skill — install this package's Agent Skill into host skill folders
 
@@ -142,15 +143,8 @@ export function resolveSkillAssets(executable?: string): SkillAssets {
       { help: "run the npm-installed (or repo-built) CLI, whose package root ships both" },
     );
   }
-  let version: string;
-  try {
-    const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { version?: unknown };
-    version = typeof manifest.version === "string" ? manifest.version : "unknown";
-  } catch {
-    version = "unknown";
-  }
   const files = ["SKILL.md", ...listFilesRelative(referencesDir).map((f) => `references/${f}`)].sort();
-  return { root, version, files };
+  return { root, version: cliVersion(), files };
 }
 
 /** The per-host target folders (the `skills/aslite` dir itself) for one resolved scope. */

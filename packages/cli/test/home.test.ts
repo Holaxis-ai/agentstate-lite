@@ -35,6 +35,7 @@ import {
   type HomeRow,
   type UnreadableBundle,
 } from "../src/commands/home.js";
+import { cliVersion } from "../src/build-identity.js";
 import { addCatalogEntry } from "../src/catalog.js";
 
 const INVOKE = "npx -y @holaxis/aslite";
@@ -126,6 +127,10 @@ test("home --json is honored (renders valid JSON, not silently ignored TOON)", a
   assert.notEqual(jsonOut, toon);
   const parsed = JSON.parse(jsonOut) as Record<string, unknown>;
   assert.ok(parsed["agentstate-lite"], "the identity header survives into the JSON view");
+  const identity = parsed["agentstate-lite"] as Record<string, unknown>;
+  assert.equal(identity.version, cliVersion());
+  assert.equal(identity.channel, "local-dev");
+  assert.equal(identity.bin, "/bin/agentstate-lite");
 });
 
 test("workspace catalog orientation: non-empty only, minimal fields, before command reference", async () => {

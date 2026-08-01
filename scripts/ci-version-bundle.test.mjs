@@ -1,5 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, writeFile, rm, cp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -15,7 +16,8 @@ import {
   regenerateArtifacts,
   REAL_PATHS,
 } from "./ci-version-bundle.mjs";
-import { buildCliBundle } from "../packages/cli/scripts/build-bundle.mjs";
+import { buildCliBundle, currentSourceFacts } from "../packages/cli/scripts/build-bundle.mjs";
+import { bundleContentEqual } from "../packages/cli/scripts/bundle-identity-comparison.mjs";
 import { prepareCliBundleInputs } from "../packages/cli/scripts/prepare-bundle-inputs.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -27,6 +29,12 @@ test("the CI workflow enters regeneration through the npm-owned script", async (
   assert.equal(manifest.scripts["ci:version-bundle"], "node scripts/ci-version-bundle.mjs");
   assert.equal(workflow.match(/npm run ci:version-bundle/g)?.length, 1);
   assert.doesNotMatch(workflow, /^\s*node scripts\/ci-version-bundle\.mjs\s*$/m);
+  assert.match(
+    workflow,
+    /if: github\.actor != 'github-actions\[bot\]'/,
+    "the ordinary bot actor guard remains a cheap redundant-run optimization",
+  );
+  assert.match(workflow, /converges structurally/, "workflow docs must retain the actor-independent loop invariant");
 });
 
 test("every CLI bundle producer uses the shared generated-input preparation", async () => {
@@ -136,7 +144,69 @@ async function makeFixtureBundle({ marketplaceVersion = "1.2.3", pluginVersion =
   return { dir, paths };
 }
 
+function bakedBundle({
+  commit = "0123456789012345678901234567890123456789",
+  dirty = false,
+  code = "console.log('bundle v1');",
+} = {}) {
+  return `var define_ASLITE_BUILD_IDENTITY_default = { schema: "aslite.build-identity.v1", package: { name: "@holaxis/aslite", version: "0.1.0-pre.2" }, source: { commit: "${commit}", dirty: ${dirty} }, artifact: { channel: "marketplace-legacy" }, compatibility_contracts: { skill: 1, hook: 1, mcp: 1 } };\n${code}\n`;
+}
+
 describe("run() orchestration (fixtures, fake regenerate)", () => {
+  test("source-only artifact drift is restored and cannot bump or leave a bot commit", async () => {
+    const { dir, paths } = await makeFixtureBundle();
+    const committed = bakedBundle();
+    try {
+      await writeFile(paths.bundleMjs, committed);
+      const sourceOnlyRegen = async (p) => {
+        await writeFile(
+          p.bundleMjs,
+          bakedBundle({ commit: "abcdefabcdefabcdefabcdefabcdefabcdefabcd", dirty: true }),
+        );
+      };
+      const result = await run({ regenerate: sourceOnlyRegen, paths });
+      assert.deepEqual(result, { changed: false });
+      assert.equal(await readFile(paths.bundleMjs, "utf8"), committed, "provenance-only output must be restored");
+      assert.equal(extractVersion(await readFile(paths.marketplace, "utf8"), "m"), "1.2.3");
+      assert.equal(extractVersion(await readFile(paths.pluginJson, "utf8"), "p"), "1.2.3");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("real executable-content drift remains visible and bumps exactly once", async () => {
+    const { dir, paths } = await makeFixtureBundle();
+    try {
+      await writeFile(paths.bundleMjs, bakedBundle());
+      const contentRegen = async (p) => writeFile(p.bundleMjs, bakedBundle({ code: "console.log('bundle v2');" }));
+      const result = await run({ regenerate: contentRegen, paths });
+      assert.equal(result.changed, true);
+      assert.equal(result.bundleChanged, true);
+      assert.equal(result.newVersion, "1.2.4");
+      assert.match(await readFile(paths.bundleMjs, "utf8"), /bundle v2/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the transaction forwards one exact source snapshot to its generator", async () => {
+    const { dir, paths } = await makeFixtureBundle();
+    const source = { commit: "0123456789012345678901234567890123456789", dirty: true };
+    let received;
+    try {
+      const identityRegen = async (p, context) => {
+        received = context.source;
+        await writeFile(p.skillMd, "# SKILL v1\n");
+        await writeFile(p.bundleMjs, "console.log('bundle v1');\n");
+      };
+      const result = await run({ regenerate: identityRegen, paths, source });
+      assert.deepEqual(result, { changed: false });
+      assert.equal(received, source, "the orchestrator must propagate the immutable snapshot itself");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("artifact-current no-op: regen produces byte-identical content -> no bump, manifests untouched", async () => {
     const { dir, paths } = await makeFixtureBundle();
     try {
@@ -202,9 +272,9 @@ describe("run() orchestration (fixtures, fake regenerate)", () => {
       assert.equal(first.newVersion, "1.2.4");
 
       // Run 2: simulates the bot's OWN commit re-triggering the workflow. A deterministic rebuild
-      // reproduces exactly what run 1 just committed (byte-identical, per the empirical no-embedded-
-      // version finding) — so this must be a no-op, not a further bump. This is the loop-safety
-      // property the workflow depends on instead of a paths filter or actor check.
+      // reproduces exactly what run 1 just generated within the SAME fixed checkout. This proves
+      // deterministic retry convergence; the separate workflow actor guard prevents the bot's own
+      // NEW commit SHA from recursively regenerating another identity.
       const secondRegen = async (p) => writeFile(p.skillMd, "# SKILL v2 (regenerated)\n");
       const second = await run({ regenerate: secondRegen, paths });
       assert.deepEqual(second, { changed: false });
@@ -295,24 +365,33 @@ describe("references/ snapshot (the load-bearing widening)", () => {
 // ---------------------------------------------------------------------------------------------
 
 describe("real build (repo-tied)", () => {
-  test("two real builds of the same source are byte-identical and embed no version literal", async () => {
+  test("two identically flavored real builds of the same source are byte-identical", async () => {
     const dir = await mkdtemp(join(tmpdir(), "ci-version-bundle-real-"));
     try {
       await prepareCliBundleInputs();
       const out1 = join(dir, "build1.mjs");
       const out2 = join(dir, "build2.mjs");
-      await buildCliBundle(out1);
-      await buildCliBundle(out2);
+      const out3 = join(dir, "build3-different-source.mjs");
+      const source = { commit: "0123456789012345678901234567890123456789", dirty: true };
+      await buildCliBundle(out1, { artifactChannel: "marketplace-legacy", source });
+      await buildCliBundle(out2, { artifactChannel: "marketplace-legacy", source });
+      await buildCliBundle(out3, {
+        artifactChannel: "marketplace-legacy",
+        source: { commit: "abcdefabcdefabcdefabcdefabcdefabcdefabcd", dirty: false },
+      });
       const bytes1 = await readFile(out1);
       const bytes2 = await readFile(out2);
+      const bytes3 = await readFile(out3);
       assert.ok(bytes1.equals(bytes2), "two consecutive real builds must be byte-identical");
+      assert.equal(bytes1.equals(bytes3), false, "runtime artifacts retain different source provenance");
+      assert.equal(bundleContentEqual(bytes1, bytes3), true, "drift comparison ignores only source provenance");
 
-      const currentMarketplace = await readFile(REAL_PATHS.marketplace, "utf8");
-      const currentVersion = extractVersion(currentMarketplace, REAL_PATHS.marketplace);
       assert.ok(
-        !bytes1.toString("latin1").includes(currentVersion),
-        `built bundle must not embed the manifest version literal (${currentVersion})`,
+        bytes1.toString("latin1").includes("marketplace-legacy"),
+        "the explicit marketplace build flavor must be baked into the bundle",
       );
+      const envelope = JSON.parse(execFileSync(process.execPath, [out1, "version", "--json"], { encoding: "utf8" }));
+      assert.deepEqual(envelope.identity.source, source, "known dirty evidence must remain honest");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -334,19 +413,30 @@ describe("real build (repo-tied)", () => {
     const referencesBackupDir = await mkdtemp(join(tmpdir(), "ci-version-bundle-references-backup-"));
     if (referencesExisted) await cp(REAL_PATHS.referencesDir, referencesBackupDir, { recursive: true });
     try {
+      // Capture the build input before regeneration writes any of its own tracked outputs. The
+      // second pass proves deterministic regeneration of that SAME checkout state; recomputing
+      // dirty after the first pass would measure the generator's outputs as if they were new
+      // source inputs and create a false feedback loop.
+      const source = currentSourceFacts();
+
       // First run brings the committed artifacts up to date with a fresh regeneration. It may
       // legitimately report changed:true (a developer mid-edit on CLI source, or a branch whose
       // committed bundle predates a compressor/tooling change the bot hasn't regenerated for yet).
-      const first = await run(); // real regenerate, real paths — no overrides
+      const first = await run({ source }); // real regenerate, real paths — fixed source evidence
       assert.equal(typeof first.changed, "boolean");
+      const firstMarketplaceVersion = extractVersion(await readFile(REAL_PATHS.marketplace, "utf8"), "m");
+      const firstPluginVersion = extractVersion(await readFile(REAL_PATHS.pluginJson, "utf8"), "p");
+      assert.equal(firstMarketplaceVersion, firstPluginVersion);
 
       // Against the now-current tree the bot MUST converge: a second regeneration produces the
       // same bytes and reports changed:false, leaving the manifests untouched. This is the
       // loop-safety property the CI workflow's correctness rests on, and — with the embed
       // pipeline's compressor pinned to an exact library version (pako) instead of node:zlib —
       // it now holds across machines and Node versions, not just on the machine that built last.
-      const second = await run();
+      const second = await run({ source });
       assert.equal(second.changed, false, "regenerating an already-current tree must be a no-op");
+      assert.equal(extractVersion(await readFile(REAL_PATHS.marketplace, "utf8"), "m"), firstMarketplaceVersion);
+      assert.equal(extractVersion(await readFile(REAL_PATHS.pluginJson, "utf8"), "p"), firstPluginVersion);
     } finally {
       for (const key of fileKeys) {
         await writeFile(REAL_PATHS[key], backup[key]);
