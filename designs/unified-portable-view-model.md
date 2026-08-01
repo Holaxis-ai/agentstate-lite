@@ -2,15 +2,18 @@
 type: Design
 title: 'One portable View model: author once, invoke anywhere'
 actor: openai/codex
-timestamp: '2026-08-01T20:05:50.666Z'
+timestamp: '2026-08-01T20:09:40.155Z'
 ---
 # One portable View model: author once, invoke anywhere
 
 ## Status
 
-Revised product and architecture direction after independent review. The reviewer approved the
-direction with contract corrections incorporated here. This design consolidates the existing web
-View and conversational MCP work; it does not introduce a third rendering system.
+Ratified product and architecture direction on 2026-08-01 after independent review. The reviewer
+approved the direction with contract corrections incorporated here. This design supersedes the
+host-specific discovery and authoring sequencing described in the earlier durable conversational
+View plan while retaining that plan's one-registry, one-entry, generic-invocation decisions. It
+consolidates the existing web View and conversational MCP work; it does not introduce a third
+rendering system.
 
 Parent roadmap: [Conversational Views through MCP Apps](../roadmap-items/conversational-mcp-views.md).
 Independent review: [Unified portable View model review](../reviews/unified-portable-view-model.md).
