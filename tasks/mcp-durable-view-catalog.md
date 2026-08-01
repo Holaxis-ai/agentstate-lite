@@ -9,7 +9,7 @@ description: >-
   the web launcher; presentation is advisory, results are bounded and
   continuable, and host access support fails honestly.
 actor: openai/codex
-timestamp: '2026-08-01T20:10:04.642Z'
+timestamp: '2026-08-01T20:55:24.130Z'
 ---
 # Behavioral claim
 
@@ -45,8 +45,12 @@ not a compatibility or security gate.
   not represented as invokable.
 - Each adapter filters only access levels it actually supports and reports unsupported-access and
   invalid counts honestly. Durable MCP supports `bundle-read` in this unit.
-- Order deterministically by stable View ID. MCP output is bounded to 20 rows per page, reports the
-  compatible total and truncation, and accepts an opaque continuation cursor for later rows.
+- Order deterministically by stable View ID. MCP output is bounded to 20 rows per page and active
+  admission work to 40 registrations per call. Report the exact access-compatible registration
+  total from heads, the page-local examined/unavailable counts, and truncation; accept an opaque
+  continuation cursor that advances by the last examined registration, including broken entries.
+  Never claim an exact launchable total without reading every blob. Deduplicate shared entry probes
+  within one catalog operation.
 - Keep the web launcher behavior and visual design otherwise unchanged; this is authority
   consolidation and discovery, not a UI redesign.
 - Add agreement tests proving all three surfaces derive their rows from the shared authority and
@@ -63,3 +67,12 @@ not a compatibility or security gate.
 - presentation metadata cannot hide an otherwise supported View;
 - invalid and unsupported registrations are excluded with honest bounded counts; and
 - focused agreement tests plus the full repository gate pass.
+
+# Implementation evidence
+
+Draft PR [#184](https://github.com/Holaxis-ai/agentstate-lite/pull/184) implements the first unit on
+commit `2c26af5`: one shared catalog authority; CLI, MCP, and web projections; advisory
+presentation; entry-key confinement; active-HTML admission; and hard-bounded MCP admission work.
+The full repository gate passed, including package/skill proofs, 8 MCP browser tests, and 19 web UI
+acceptance tests. Independent exact-SHA review approved the final commit with no findings after an
+adversarial read-count test proved the 40-registration work bound and broken-entry continuation.

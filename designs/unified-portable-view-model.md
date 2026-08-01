@@ -2,7 +2,7 @@
 type: Design
 title: 'One portable View model: author once, invoke anywhere'
 actor: openai/codex
-timestamp: '2026-08-01T20:09:40.155Z'
+timestamp: '2026-08-01T20:52:04.622Z'
 ---
 # One portable View model: author once, invoke anywhere
 
@@ -163,9 +163,14 @@ The already-proposed optional `presentation: workspace | inline | adaptive` fiel
 advisory preference used for ranking, warnings, or initial display mode. It is never an eligibility
 or security gate and never selects a different entry blob. Absence means no preference.
 
-Bounded output must be honest: return total compatible count, deterministic ordering, whether the
-result is truncated, and a bounded continuation cursor (or equivalently bounded follow-up query)
-when more Views exist. A 20-row cap without continuation would still silently hide valid Views.
+Bounded output and bounded work must both be honest. The MCP adapter returns up to 20 admitted
+Views while examining at most 40 access-compatible registrations per call. Its exact total is the
+number of compatible registrations found from document heads—not a false claim that every entry
+blob was read—and it separately reports how many candidates this page examined and rejected during
+active-HTML admission. The opaque continuation cursor advances by the last registration examined,
+including broken entries, so repeated pages make progress without rescanning earlier bytes. Shared
+entry keys are admitted once per catalog operation. A 20-row output cap without these work bounds
+and continuation semantics would still permit unbounded reads or silently hide valid Views.
 
 ## One capability contract
 
