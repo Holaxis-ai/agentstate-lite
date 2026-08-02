@@ -13,7 +13,7 @@ description: >-
   supersedes the canceled not-validated conclusion in
   tasks/governed-create-one-command for the official agent workflow.
 actor: openai/codex
-timestamp: '2026-08-02T21:01:05.129Z'
+timestamp: '2026-08-02T21:14:56.122Z'
 ---
 # Implementation
 
@@ -23,13 +23,18 @@ Independent review of the initial head `ea35b3655298f83ad30de09fed9a40c50ff6d044
 
 Commit `b16861b` routes `body` through the existing central reserved-field policy alongside `body-file`. A colliding legacy convention now receives the standard `KIND_RESERVED_FIELD` rename warning; `body` cannot enter dynamic field parsing or frontmatter; and per-kind help presents only the Markdown control.
 
+Independent re-review then found the supported `kind field add` path carried a duplicate reserved-name list and could falsely report success for an immediately ignored declaration. Final head `c72c02bb3367e51eee077ce76e59897ee1272329` removes that duplicate, publicly exports and consumes the core authority, rejects reserved additions, and preserves `kind field remove` as the migration path for legacy collisions.
+
 # Evidence
 
 - Initial focused CLI and skill tests: 82 passed.
 - Built CLI smoke: init, inline Context Note create, and body byte-channel readback succeeded.
 - Collision-fix focused suite: 100 passed, including core reservation receipts, point-of-use warning behavior, frontmatter exclusion, and single-help-entry coverage.
-- Full `npm run check` passed after the collision fix, including package verification, 9 MCP browser tests, and 19 UI end-to-end tests.
+- Final focused suite: 117 passed, including `body`/`body-file` authoring rejection and legacy removal migration.
+- Full `npm run check` passed on exact clean commit `c72c02bb`, including package verification, 9 MCP browser tests, and 19 UI end-to-end tests.
+- Final independent review of `c72c02bb` reported no findings and judged the PR merge-ready.
+- All required GitHub checks passed on Node 20, 22, and 26; PR #195 is ready, mergeable, and clean.
 
 # Remaining
 
-Independent re-review of exact head `b16861b` and merge. The task remains in progress until both complete.
+Merge PR #195. The task remains in progress until merge completes.
