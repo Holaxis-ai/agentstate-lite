@@ -7,14 +7,15 @@ status: in_progress
 priority: '2'
 actor: openai/codex
 description: >-
-  Implemented 2026-08-02 on codex/typed-unknown-view-error: shared launch
-  authority maps only ENOENT to typed ViewNotFoundError (VIEW_NOT_FOUND); MCP
-  projects an actionable list_views recovery hint. Real-filesystem and MCP
-  regressions prove no errno, .md path, bundle root, or failed claim escapes.
-  Focused suites/typechecks and repository-wide npm run check pass; awaiting
-  independent exact-SHA review.
+  Implemented in draft PR #186 at exact SHA a287aa3: shared launch authority
+  maps only ENOENT to typed ViewNotFoundError (VIEW_NOT_FOUND); MCP projects an
+  actionable list_views recovery hint. Real-filesystem and MCP regressions prove
+  no errno, .md path, bundle root, or failed claim escapes, while EACCES still
+  propagates. Focused suites/typechecks and repository-wide npm run check pass;
+  awaiting one lightweight independent exact-SHA review (no full review ladder
+  needed).
 assignee: openai/codex
-timestamp: '2026-08-02T14:12:53.936Z'
+timestamp: '2026-08-02T14:14:40.868Z'
 ---
 # Field repro (Brian via Claude Desktop chat, 2026-07-27)
 
