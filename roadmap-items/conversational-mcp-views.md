@@ -11,7 +11,7 @@ sequence: >-
   view-create decision → shared document rendering → navigation parity → later
   action parity → fresh-agent cross-host proof
 actor: openai/codex
-timestamp: '2026-08-02T03:11:29.292Z'
+timestamp: '2026-08-02T16:03:27.489Z'
 ---
 # Direction
 
@@ -126,3 +126,5 @@ Current parity gaps:
 [contains](../tasks/pr-177-review.md)
 
 [contains](../tasks/pr-177-fix-validation.md)
+
+[contains](../tasks/shared-view-document-rendering.md)
