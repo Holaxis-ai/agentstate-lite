@@ -838,6 +838,50 @@ test("new --body-file: a formerly-valid colliding domain field is centrally rese
   }
 });
 
+test("new --body: a formerly-valid colliding domain field is centrally reserved and warns at point of use", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/artifact",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Artifact",
+        path: "artifacts/",
+        fields: { required: ["title"], optional: ["body"] },
+        timestamp: T,
+      },
+      body: "A convention written before body became a CLI Markdown channel.",
+    });
+
+    let help = "";
+    await newCommand(["Artifact", "--help", "--dir", dir], { stdout: (s) => (help += s) });
+    assert.equal((help.match(/  --body <markdown>/g) ?? []).length, 1);
+    assert.doesNotMatch(help, /--body <v>/);
+
+    const receipt = await runJson(newCommand, [
+      "Artifact",
+      "a",
+      "--title",
+      "A",
+      "--body",
+      "# Summary\n\nAuthored body.\n",
+      "--dir",
+      dir,
+    ]);
+    const saved = await readDoc(bundle, "artifacts/a");
+    assert.equal(saved.body, "# Summary\n\nAuthored body.\n");
+    assert.equal(Object.hasOwn(saved.frontmatter, "body"), false);
+    const warnings = receipt.warnings as Array<Record<string, unknown>>;
+    assert.equal(warnings[0]!.code, "KIND_RESERVED_FIELD");
+    assert.match(String(warnings[0]!.message), /body/);
+    assert.match(String(warnings[0]!.message), /rename those domain fields/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("new: a kind with declared 'sections' scaffolds them as empty body headings", async () => {
   const dir = await tempDir();
   try {

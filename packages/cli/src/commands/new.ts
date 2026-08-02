@@ -422,8 +422,8 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
   }
 
   // Phase 2 — strict, kind-aware, AUTHORITATIVE parse. Core strips every centrally-reserved kind
-  // field before this point (including `body-file`); only `actor` and `link` remain command controls
-  // with intentional kind-aware behavior, so they are excluded here explicitly.
+  // field before this point (including `body` and `body-file`); only `actor` and `link` remain
+  // command controls with intentional kind-aware behavior, so they are excluded here explicitly.
   const declaredFields = [...kind.fields.required, ...kind.fields.optional];
   const fieldNames = declaredFields.filter((f) => f !== "actor" && f !== "link");
   const fieldOptions = Object.fromEntries(
@@ -591,8 +591,9 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     timestamp: saved.frontmatter.timestamp ?? null,
   };
   // Registry warnings for THIS convention belong at the point of use too. In particular, a bundle
-  // that previously declared `body-file` as a domain field must not have the now-reserved control
-  // silently reinterpret its command: the successful receipt carries the central rename guidance.
+  // that previously declared `body` or `body-file` as a domain field must not have the now-reserved
+  // controls silently reinterpret its command: the successful receipt carries the central rename
+  // guidance.
   const conventionWarningPrefix = `kind convention '${kind.id}'`;
   const conventionWarnings = registry.warnings.filter((warning) =>
     warning.message.startsWith(conventionWarningPrefix),
