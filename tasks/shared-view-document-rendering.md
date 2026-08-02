@@ -1,17 +1,21 @@
 ---
 type: Task
 title: Shared bounded document rendering for portable Views
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  IN PROGRESS — Unit 1 shipped in PR #188; Unit 2 shipped in PR #189 (merge
-  af30e83) after independent approval and all CI gates. Unit 3 active as
-  bundle-only dogfood: migrate the core user-journey View's linked-record panel
-  from its local Markdown approximation to Bridge.renderDocument, then prove the
-  same durable View in web and MCP expanded surfaces.
+  DONE — Unit 1 shipped the shared inert Markdown output profile in PR #188.
+  Unit 2 shipped the read-only render-document bridge with cross-host agreement
+  tests in PR #189 (merge af30e83), after independent approval and green CI.
+  Unit 3 dogfooded the capability in views-registry/core-user-journey at source
+  sha256:d637d202a05b9820646d893bff03389dc5a5259860b4d4c8d558dc235c5f1cdc: the
+  same durable View rendered roadmap-items/conversational-mcp-views through both
+  the local web host and real MCP transport, preserving canonical headings,
+  lists, inline code, safe concept markers, and authoritative document
+  versioning without a View-local Markdown parser.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-02T17:04:36.890Z'
+timestamp: '2026-08-02T17:12:39.253Z'
 ---
 # Outcome
 
