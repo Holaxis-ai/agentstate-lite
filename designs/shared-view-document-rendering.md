@@ -2,11 +2,13 @@
 type: Design
 title: Shared bounded document rendering for portable Views
 actor: openai/codex
-timestamp: '2026-08-02T16:03:27.148Z'
+timestamp: '2026-08-02T16:09:04.884Z'
 ---
 # Shared bounded document rendering for portable Views
 
-**Status:** Proposed for independent review, 2026-08-02.
+**Status:** Reviewed and implementation-ready, 2026-08-02. The independent
+[design review](../reviews/shared-view-document-rendering.md) returned approve-after-changes; all
+six findings are incorporated below.
 
 ## Decision
 
@@ -109,15 +111,18 @@ AgentState returns a safe semantic fragment, not a themed component:
 
 Concept links need a host-neutral representation. The renderer must not emit a raw Markdown URL.
 For the first slice, a link accepted by the existing concept-id resolver becomes inert semantic
-content carrying only the resolved target id in `data-aslite-doc-id`; rejected, external, reserved,
-or non-document links remain inert text. The View may use event delegation on that marker and call
-`render-document` for the resolved target. There is no automatic navigation and no `href` in the
-returned fragment.
+content carrying only the syntactically valid, normalized concept id in `data-aslite-doc-id`;
+rejected, external, reserved, or non-document links remain inert text. Resolution does not prove
+that the target currently exists, so following a marker may honestly return `NOT_FOUND`; the host
+must not add an existence read or N+1 validation pass. The View may use event delegation on the
+marker and call `render-document` for the target. There is no automatic navigation and no `href`
+in the returned fragment.
 
 Insertion into the View DOM is necessarily an HTML-string boundary because the trusted host and
-opaque-origin View communicate through messages. The authoring contract must say that
-`innerHTML` is permitted only for the unmodified `html` value returned by this operation. A View
-must not concatenate bundle data, user input, or its own strings into the trusted fragment.
+opaque-origin View communicate through messages. The returned fragment is inert and safe when
+produced. Authoring guidance should tell a View to insert that value unmodified and not concatenate
+bundle data or user input into it, but that is guidance rather than an enforceable security
+invariant: a locally approved View is executable code and may transform any string it receives.
 
 ## Owning architecture
 
@@ -126,18 +131,26 @@ Its current direction—Node plus core—is valuable, and rendering is a host-pr
 
 Instead:
 
-1. Extend `@agentstate-lite/markdown-renderer` with one static-fragment helper built from the same
-   parser, closed React construction, bounds, and concept-id resolver as `renderMarkdown`.
-2. Add an optional renderer dependency to `BridgeServiceOptions`. `BridgeService` continues to
+1. Extend `@agentstate-lite/markdown-renderer` with one explicit inert/static output profile and
+   static-fragment helper built from the same parser, closed React construction, bounds, and
+   concept-id resolver as `renderMarkdown`. The profile constructs resolved links as inert
+   `data-aslite-doc-id` markers and task markers as inert text or semantic spans. It never
+   constructs `href`, `src`, form elements, event attributes, or active content. Hosts do not
+   sanitize or rewrite the result afterward.
+2. Add a required renderer dependency to `BridgeServiceOptions`. `BridgeService` continues to
    own request parsing, authorization, exact versioned reads, body/reply bounds, and the response
    shape; the injected function owns only interpretation of the already-read document body.
-3. Have both `@agentstate-lite/ui-server` and `@agentstate-lite/mcp-app` inject that same helper.
-   Neither host implements its own request semantics or parser.
+3. Inject at the composition roots without weakening package direction. The CLI imports the
+   shared helper and passes it through `UiServerOptions`; `ui-server` knows only the renderer
+   interface owned by `view-runtime` and forwards the function to `BridgeService`. The MCP App
+   imports and injects the same helper directly. The existing `ui-server` dependency manifest and
+   import-direction gate remain unchanged. Neither host implements request semantics or a parser.
 4. Keep the existing generated-presentation binding on the same helper. It becomes another
    consumer of the shared rendering authority, not a privileged second implementation.
 
-If a host intentionally omits the renderer dependency, the bridge returns a typed unsupported
-error for `render-document`. The shipped web and MCP hosts must both provide it.
+The renderer dependency is required wherever a shipped host constructs the shared bridge. Tests
+may inject a deterministic stub, but a production composition root cannot silently omit the
+capability. This makes missing host wiring a compile-time failure rather than a host difference.
 
 The injected seam should accept the canonical `id` and body and return `{ html, bounded }` only.
 It must not read storage or decide authorization. This keeps one document read and one version
@@ -155,27 +168,40 @@ to write. The implementation must nevertheless preserve these properties:
   may only tighten those bounds.
 - Returned markup is created by the existing closed renderer, never from raw HTML passthrough.
 - No script, event handler, form control, image fetch, embedded frame, inline style, raw URL, or
-  executable navigation enters the fragment.
+  executable navigation is constructed by the inert profile.
 - The renderer receives no View-provided Markdown in the first slice.
 - MCP and web use the same request parser, bridge service, rendering helper, and agreement cases.
 
 The renderer's current web-document navigation callback cannot be serialized into a fragment.
-The static helper therefore represents resolved concept links as inert data markers; it does not
-simulate clicks or invent a second navigation authority.
+The static helper therefore constructs normalized concept links as inert data markers; it does not
+simulate clicks, prove target existence, or invent a second navigation authority.
+
+## Freshness rule
+
+The reply version and the rendered fragment come from the same exact read. A View should retain
+that version for the active document. When a `subscribe` change event reports a different version
+for that id, the View re-renders the active document; it must not silently combine metadata from a
+later `read` with rendered content from the earlier version. Pre-request and post-request launch
+revalidation protect authority changes, while this client rule makes ordinary bundle freshness
+honest.
 
 ## Implementation units
 
 ### Unit 1 — shared static rendering authority
 
 - Add the static helper to `@agentstate-lite/markdown-renderer` without forking the parser/walk.
-- Preserve current bounds and raw-link invariant with focused adversarial tests.
+- Preserve current bounds and raw-link invariant with focused adversarial tests that pin the final
+  serialized fragment's allowlist, including hostile raw HTML, URLs, images, task items, and deeply
+  nested input.
 - Replace the generated MCP presentation's private React-to-static conversion with the helper.
-  This proves the helper against an existing consumer and deletes duplicated conversion logic.
+  This is already a real consumer, proves the inert profile under output-parity tests, and deletes
+  duplicated conversion/cleanup logic.
 
 ### Unit 2 — portable bridge capability
 
 - Add and parse `render-document` in `BridgeService`.
-- Inject the renderer from both shipped hosts.
+- Inject the renderer from the CLI composition root and MCP App while preserving the ui-server
+  import-direction gate.
 - Add one cross-host agreement row proving identical success, denial, not-found, bounded, and
   changed-launch outcomes.
 - Update the shipped View-authoring contract with a small copy-paste client method and styling
@@ -189,18 +215,20 @@ simulate clicks or invent a second navigation authority.
   follow-ups rather than coupling every bundle View to the runtime PR.
 - Prove the same durable View in the web launcher and MCP expanded surface.
 
-Units 1 and 2 may ship together if separating them would leave an exported helper with no new
-consumer or require duplicate review overhead. Unit 3 is bundle content and should not be bundled
-into the runtime PR.
+Units 1 and 2 should remain separate. Unit 1 has the generated MCP presentation as an existing
+consumer and can land under output-parity tests; Unit 2 then adds a wider bridge operation using an
+already-proven helper. Unit 3 is bundle content and should not be bundled into either runtime PR.
 
 ## Acceptance criteria
 
 The architecture is ready to implement when an independent review agrees that:
 
 1. the bridge remains document-centric and read-only;
-2. renderer injection preserves package direction and one semantic authority;
+2. composition-root renderer injection preserves the existing package-direction gate and one
+   semantic authority;
 3. the fragment contract lets a View style and compose freely without accepting active markup;
-4. concept links disclose only resolver-approved document ids and remain inert by default;
+4. concept links disclose only syntactically valid, normalized concept ids and remain inert by
+   default;
 5. both shipped hosts have agreement coverage over the same operation; and
 6. the first dogfood View contains no Markdown parser of its own.
 
@@ -236,4 +264,3 @@ interactive document panel composed inside a View and would preserve the web/MCP
 
 **Put React rendering directly in `view-runtime`.** That makes a security and authorization
 authority depend on a UI stack and reverses the package boundary for convenience.
-
