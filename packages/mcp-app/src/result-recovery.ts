@@ -11,6 +11,7 @@
 import type {
   DurableViewLaunchPayload,
   McpViewPayload,
+  TransientViewLaunchPayload,
   ViewLaunchPayload,
 } from "./contract.js";
 
@@ -61,8 +62,34 @@ export function isDurableViewPayload(value: unknown): value is DurableViewLaunch
   );
 }
 
+export function isTransientViewPayload(value: unknown): value is TransientViewLaunchPayload {
+  if (!isRecord(value)) return false;
+  const source = value.source;
+  const launch = value.launch;
+  const authorization = isRecord(launch) ? launch.authorization : null;
+  return (
+    value.schemaVersion === "agentstate.transient-view-launch.v1" &&
+    typeof value.title === "string" &&
+    isRecord(source) &&
+    source.kind === "transient" &&
+    typeof source.html === "string" &&
+    typeof source.contentType === "string" &&
+    typeof source.contentVersion === "string" &&
+    isRecord(launch) &&
+    typeof launch.launchId === "string" &&
+    isRecord(authorization) &&
+    typeof authorization.required === "boolean" &&
+    typeof authorization.authorized === "boolean"
+  );
+}
+
+export const isActiveViewPayload = (
+  value: unknown,
+): value is DurableViewLaunchPayload | TransientViewLaunchPayload =>
+  isDurableViewPayload(value) || isTransientViewPayload(value);
+
 export function isViewPayload(value: unknown): value is McpViewPayload {
-  return isGeneratedViewPayload(value) || isDurableViewPayload(value);
+  return isGeneratedViewPayload(value) || isActiveViewPayload(value);
 }
 
 /**

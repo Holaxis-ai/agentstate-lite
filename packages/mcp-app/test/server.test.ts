@@ -891,6 +891,115 @@ test("registered Roadmap View runs from unchanged source through the authorized 
   assert.deepEqual(closed.structuredContent, { closed: true });
 });
 
+test("transient HTML uses the registered active-View bridge without a synthetic registration", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  let persistentStoreCalls = 0;
+  const server = createMcpAppServer({
+    bundle,
+    version: "test",
+    bundleName: "Transient proof bundle",
+    viewAuthorization: {
+      async isAuthorized() {
+        persistentStoreCalls += 1;
+        return false;
+      },
+      async authorize() {
+        persistentStoreCalls += 1;
+      },
+    },
+  });
+  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const html = "<!doctype html><title>Transient</title><script>parent.postMessage({bridge:'v0',type:'query',id:'q',params:{type:'Task'}}, '*')</script>";
+  const shown = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: { mode: "transient", title: "Transient proof", html },
+  });
+  assert.notEqual(shown.isError, true);
+  const view = shown.structuredContent as {
+    schemaVersion: string;
+    source: { kind: string; html: string; contentVersion: string; viewId?: string };
+    launch: { launchId: string; authorization: { authorized: boolean } };
+  };
+  assert.equal(view.schemaVersion, "agentstate.transient-view-launch.v1");
+  assert.equal(view.source.kind, "transient");
+  assert.equal(view.source.html, html);
+  assert.equal(view.source.viewId, undefined);
+  assert.match(view.source.contentVersion, /^sha256:/);
+  assert.equal(view.launch.authorization.authorized, false);
+  assert.equal(persistentStoreCalls, 0, "transient approval never reaches the persistent registered-View store");
+
+  const beforeApproval = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      request: { bridge: "v0", type: "hello", id: "before" },
+    },
+  });
+  assert.equal(
+    (beforeApproval.structuredContent as { outcome: { reply: { error: { code: string } } } })
+      .outcome.reply.error.code,
+    "FORBIDDEN",
+  );
+
+  const approved = await client.callTool({
+    name: AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: view.launch.launchId },
+  });
+  const approvedView = (approved.structuredContent as { view: typeof view }).view;
+  assert.equal(approvedView.schemaVersion, "agentstate.transient-view-launch.v1");
+  assert.equal(approvedView.launch.authorization.authorized, true);
+  assert.equal(persistentStoreCalls, 0);
+
+  const rendered = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      request: {
+        bridge: "v0",
+        type: "render-document",
+        id: "render",
+        docId: "tasks/alpha",
+      },
+    },
+  });
+  assert.match(
+    (rendered.structuredContent as { outcome: { reply: { result: { html: string } } } })
+      .outcome.reply.result.html,
+    /<h1>Goal<\/h1>/,
+  );
+
+  const resumed = await client.callTool({
+    name: RESUME_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: view.launch.launchId },
+  });
+  const resumedView = (resumed.structuredContent as { view: typeof view }).view;
+  assert.notEqual(resumedView.launch.launchId, view.launch.launchId);
+  assert.equal(resumedView.source.contentVersion, view.source.contentVersion);
+  assert.equal(resumedView.source.html, html);
+  assert.equal(resumedView.launch.authorization.authorized, true);
+  assert.equal(persistentStoreCalls, 0);
+
+  const mixedContract = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: {
+      mode: "transient",
+      title: "Ambiguous",
+      html: "<p>x</p>",
+      objectIds: ["tasks/alpha"],
+    },
+  });
+  assert.equal(mixedContract.isError, true, "transient and generated inputs cannot be mixed");
+});
+
 test("durable resume rotates to fresh current bytes and recomputes authorization", async (t) => {
   const bundle = memoryBundle();
   await seed(bundle);

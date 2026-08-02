@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
+  RegisteredViewAuthorizationSubject,
   ViewAuthorizationStore,
   ViewAuthorizationSubject,
 } from "@agentstate-lite/ui-server";
@@ -14,10 +15,11 @@ interface StoredAuthorization {
   subject: ViewAuthorizationSubject;
 }
 
-function stableRecord(bundle: string, subject: ViewAuthorizationSubject): StoredAuthorization {
+function stableRecord(bundle: string, subject: RegisteredViewAuthorizationSubject): StoredAuthorization {
   return {
     bundle,
     subject: {
+      sourceKind: "registered",
       registryId: subject.registryId,
       contentVersion: subject.contentVersion,
       contentType: subject.contentType,
@@ -29,7 +31,14 @@ function stableRecord(bundle: string, subject: ViewAuthorizationSubject): Stored
 }
 
 function serialized(bundle: string, subject: ViewAuthorizationSubject): string {
-  return JSON.stringify(stableRecord(bundle, subject));
+  if (subject.sourceKind !== "registered") {
+    throw new Error("transient View approvals are process-local and cannot be persisted");
+  }
+  const record = stableRecord(bundle, subject);
+  // Preserve the original on-disk registered-View approval bytes across this source-identity
+  // refactor. The discriminator is runtime-only for this established persistent format.
+  const { sourceKind: _sourceKind, ...storedSubject } = record.subject;
+  return JSON.stringify({ bundle: record.bundle, subject: storedSubject });
 }
 
 function fileName(bundle: string, subject: ViewAuthorizationSubject): string {
@@ -50,6 +59,7 @@ export class LocalViewAuthorizationStore implements ViewAuthorizationStore {
   }
 
   async isAuthorized(subject: ViewAuthorizationSubject): Promise<boolean> {
+    if (subject.sourceKind !== "registered") return false;
     const expected = serialized(this.bundleIdentity, subject);
     try {
       const raw = await readFile(
@@ -64,6 +74,9 @@ export class LocalViewAuthorizationStore implements ViewAuthorizationStore {
   }
 
   async authorize(subject: ViewAuthorizationSubject): Promise<void> {
+    if (subject.sourceKind !== "registered") {
+      throw new Error("transient View approvals are process-local and cannot be persisted");
+    }
     await writeFileAtomic0600(
       join(credentialsDir(this.home), STORE_DIR),
       fileName(this.bundleIdentity, subject),

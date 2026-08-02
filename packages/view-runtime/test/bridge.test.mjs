@@ -2,7 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   BridgeService,
+  PageBridgeLaunchAuthority,
+  PageLaunchRegistry,
   parseBridgeRequest,
+  mintTransientViewLaunch,
+  pageLaunchAuthorizationSubject,
   SessionViewAuthorizationStore,
 } from "../dist/index.js";
 import {
@@ -84,6 +88,7 @@ test("bridge parser admits only exact bounded requests", () => {
 test("session authorization keys approval to the complete active-View subject", async () => {
   const store = new SessionViewAuthorizationStore();
   const subject = {
+    sourceKind: "registered",
     registryId: "views-registry/a",
     contentVersion: "sha256:a",
     contentType: "text/html; charset=utf-8",
@@ -98,6 +103,45 @@ test("session authorization keys approval to the complete active-View subject", 
     await store.isAuthorized({ ...subject, capability: "bundle-propose" }),
     false,
   );
+});
+
+test("transient active Views have exact-byte identity and process-local authorization", async () => {
+  const bundle = { root: "mem://transient-view", backend: new MemoryBackend() };
+  const launches = new PageLaunchRegistry();
+  const authorizations = new SessionViewAuthorizationStore();
+  const launch = mintTransientViewLaunch(bundle, launches, {
+    title: "Transient proof",
+    html: "<!doctype html><script>parent.postMessage({bridge:'v0',type:'hello',id:'h'}, '*')</script>",
+  });
+  assert.equal(launch.sourceKind, "transient");
+  assert.equal(launch.bundleIdentity, bundle.root);
+  assert.match(launch.contentVersion, /^sha256:/);
+  assert.equal("registryId" in launch, false, "transient identity never fabricates a registry id");
+
+  const authority = new PageBridgeLaunchAuthority(
+    bundle,
+    launches,
+    new SessionViewAuthorizationStore(),
+    authorizations,
+  );
+  assert.equal(await authority.resolve(launch.launchId, true), null);
+  await authorizations.authorize(pageLaunchAuthorizationSubject(launch));
+  assert.deepEqual(await authority.resolve(launch.launchId, true), {
+    launchId: launch.launchId,
+    capability: "bundle-read",
+  });
+
+  const differentBundle = {
+    root: "mem://different-bundle",
+    backend: new MemoryBackend(),
+  };
+  const wrongAuthority = new PageBridgeLaunchAuthority(
+    differentBundle,
+    launches,
+    new SessionViewAuthorizationStore(),
+    authorizations,
+  );
+  assert.equal(await wrongAuthority.resolve(launch.launchId, true), null);
 });
 
 test("bridge polling retains a bounded change until acknowledgement and stays read-only when configured", async () => {

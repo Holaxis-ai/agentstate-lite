@@ -8,6 +8,7 @@ import { credentialsDir } from "../src/credentials.js";
 import { LocalViewAuthorizationStore } from "../src/ui/view-authorizations.js";
 
 const subject: ViewAuthorizationSubject = {
+  sourceKind: "registered",
   registryId: "views-registry/roadmap",
   contentVersion: "sha256:exact-html",
   contentType: "text/html; charset=utf-8",

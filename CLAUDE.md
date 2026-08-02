@@ -15,9 +15,9 @@ the CLI), `packages/markdown-renderer` (`@agentstate-lite/markdown-renderer` —
 bounded Markdown-to-React security boundary), `packages/ui` (the browser SPA — PRIVATE workspace;
 only its BUILT assets ship, gzip-embedded into the CLI bundle; it launches bundle-authored Views
 and consumes markdown-renderer, see gate 4), `packages/mcp-app` (the PRIVATE experimental local
-stdio adapter: one fixed MCP App shell over exact versioned document snapshots; generated
-presentation remains read-only while trusted shell chrome may mediate one governed scalar action
-through view-runtime), and `packages/cli` —
+stdio adapter: one fixed MCP App shell over frozen presentations and active registered or
+process-local Views; generated presentation remains read-only while trusted shell chrome may
+mediate one governed scalar action through view-runtime), and `packages/cli` —
 the **publishable npm package `@holaxis/aslite`** (scoped interim coordinate per the board
 decision — npm rejected the unscoped name; bins stay `aslite` / `agentstate-lite`), an
 esbuild bundle that inlines core + board-git + server + the built UI assets + deps into one
@@ -204,14 +204,17 @@ views as bundle Views rather than adding a second rendering engine.
 
 The experimental local `agentstate-lite mcp` command is a second host adapter, not a second View
 system. Its single model-visible `show_view` tool either binds agent-authored, script-free HTML/CSS
-to exact current document snapshots or launches one existing registered View unchanged by exact
-id. Generated input may select by id or by one bounded launch-time query using the durable View's
+to exact current document snapshots, launches agent-authored active HTML as a process-local
+transient View, or launches one existing registered View unchanged by exact id. Generated input
+may select by id or by one bounded launch-time query using the registered View's
 shared field/open filtering authority; the query resolves once in deterministic ID order and
 freezes at most 20 exact IDs/versions for the launch and its actions. Registered executable Views
-use the shared launch/bridge authority and require exact-byte local trust approval before bundle
-data is exposed. The fixed trusted shell reuses the bounded Markdown renderer, strips navigation
-and active content from generated presentations, and may render bounded scalar actions outside
-that generated frame. App-only lifecycle and prepare/finish tools remain hidden from the model;
+and transient executable Views use the same launch/bridge authority and require exact-byte local
+trust approval before bundle data is exposed; transient approval is process-local and never enters
+the persistent registered-View trust store. The fixed trusted shell reuses the bounded Markdown
+renderer, strips navigation and active content from generated presentations, and may render bounded
+scalar actions outside that generated frame. App-only lifecycle and prepare/finish tools remain
+hidden from the model;
 actions require a configured actor, explicit human confirmation, selection/version revalidation,
 and hard CAS through the shared action and mutation authorities. It is deliberately local,
 stdio-only, unpublished as a standalone package, and not yet a supported product surface.

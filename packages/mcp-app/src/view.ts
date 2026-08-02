@@ -7,7 +7,7 @@ import {
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { ActionConfirmation, ActionTerminalResult } from "@agentstate-lite/view-runtime";
 import type {
-  DurableViewLaunchPayload,
+  ActiveViewLaunchPayload,
   McpViewPayload,
   ViewLaunchPayload,
 } from "./contract.js";
@@ -17,7 +17,7 @@ import {
   extractClaimId,
   extractViewPayload,
   firstResultText,
-  isDurableViewPayload,
+  isActiveViewPayload,
   isViewPayload,
 } from "./result-recovery.js";
 import { FrameLoadGuard } from "./frame-load-guard.js";
@@ -207,7 +207,7 @@ function retirePayload(closeDurable = true): void {
   actionsEl.hidden = true;
   if (
     closeDurable &&
-    previous?.schemaVersion === "agentstate.durable-view-launch.v1"
+    isActiveViewPayload(previous)
   ) {
     closeDurableLaunchEventually(previous.launch.launchId);
   }
@@ -286,7 +286,7 @@ function renderGeneratedPayload(payload: ViewLaunchPayload): void {
     suspendedDurableLaunch = null;
     resumingDurableLaunch = null;
     currentPayload = payload;
-    if (previous?.schemaVersion === "agentstate.durable-view-launch.v1") {
+    if (isActiveViewPayload(previous)) {
       closeDurableLaunchEventually(previous.launch.launchId);
     }
     statusEl.dataset.kind = "ready";
@@ -307,10 +307,10 @@ function renderGeneratedPayload(payload: ViewLaunchPayload): void {
   }
 }
 
-function renderDurablePayload(payload: DurableViewLaunchPayload): void {
+function renderDurablePayload(payload: ActiveViewLaunchPayload): void {
   const previous = currentPayload;
   const sameLaunch =
-    previous?.schemaVersion === "agentstate.durable-view-launch.v1" &&
+    isActiveViewPayload(previous) &&
     previous.launch.launchId === payload.launch.launchId;
   frameEpoch++;
   stopPolling();
@@ -319,7 +319,7 @@ function renderDurablePayload(payload: DurableViewLaunchPayload): void {
   resumingDurableLaunch = null;
   currentPayload = payload;
   if (
-    previous?.schemaVersion === "agentstate.durable-view-launch.v1" &&
+    isActiveViewPayload(previous) &&
     !sameLaunch
   ) {
     closeDurableLaunchEventually(previous.launch.launchId);
@@ -333,13 +333,18 @@ function renderDurablePayload(payload: DurableViewLaunchPayload): void {
     frame.removeAttribute("csp");
     statusEl.dataset.kind = "ready";
     statusEl.textContent = `Waiting for local approval of "${payload.title}"…`;
-    setConfirmationField("authorization-view", payload.source.viewId);
+    setConfirmationField(
+      "authorization-view",
+      payload.schemaVersion === "agentstate.durable-view-launch.v1"
+        ? payload.source.viewId
+        : "Transient process-local View",
+    );
     setConfirmationField("authorization-version", payload.source.contentVersion);
     authorizationBackdrop.hidden = false;
     syncDialogState();
     window.setTimeout(() => {
       if (
-        currentPayload?.schemaVersion === "agentstate.durable-view-launch.v1" &&
+        isActiveViewPayload(currentPayload) &&
         currentPayload.launch.launchId === payload.launch.launchId &&
         !currentPayload.launch.authorization.authorized
       ) {
@@ -349,7 +354,7 @@ function renderDurablePayload(payload: DurableViewLaunchPayload): void {
     return;
   }
   statusEl.dataset.kind = "ready";
-  statusEl.textContent = `${payload.title} · exact registered View · live bundle-read bridge`;
+  statusEl.textContent = `${payload.title} · exact ${payload.schemaVersion === "agentstate.durable-view-launch.v1" ? "registered" : "transient"} View · live bundle-read bridge`;
   frame.setAttribute("sandbox", "allow-scripts");
   frame.setAttribute("csp", ACTIVE_VIEW_CHILD_CSP);
   const sizing = createFrameSizingSession(payload.launch.launchId, frameEpoch);
@@ -361,7 +366,7 @@ function renderDurablePayload(payload: DurableViewLaunchPayload): void {
 }
 
 function renderPayload(payload: McpViewPayload): void {
-  if (payload.schemaVersion === "agentstate.durable-view-launch.v1") {
+  if (isActiveViewPayload(payload)) {
     renderDurablePayload(payload);
   } else {
     renderGeneratedPayload(payload);
@@ -375,10 +380,9 @@ function renderResult(result: CallToolResult): void {
   const payload = extractViewPayload(result);
   if (payload) {
     if (
-      payload.schemaVersion === "agentstate.durable-view-launch.v1" &&
+      isActiveViewPayload(payload) &&
       (retiredDurableLaunchIds.has(payload.launch.launchId) ||
-        (currentPayload?.schemaVersion ===
-          "agentstate.durable-view-launch.v1" &&
+        (isActiveViewPayload(currentPayload) &&
           currentPayload.launch.launchId === payload.launch.launchId))
     ) {
       return;
@@ -443,7 +447,7 @@ function reportUndeliveredPayload(detail: string | null): void {
 function durablePayloadFor(
   launchId: string,
   epoch: number,
-): DurableViewLaunchPayload | null {
+): ActiveViewLaunchPayload | null {
   const payload = currentPayload;
   return (
     mayForwardDurableActivity({
@@ -452,7 +456,7 @@ function durablePayloadFor(
       visibilityState: document.visibilityState,
       suspendedLaunchId: suspendedDurableLaunch,
     }) &&
-    payload?.schemaVersion === "agentstate.durable-view-launch.v1" &&
+    isActiveViewPayload(payload) &&
     payload.launch.launchId === launchId &&
     payload.launch.authorization.authorized
   )
@@ -563,7 +567,7 @@ async function forwardDurableBridgeMessage(
 async function authorizeDurableView(): Promise<void> {
   const payload = currentPayload;
   if (
-    payload?.schemaVersion !== "agentstate.durable-view-launch.v1" ||
+    !isActiveViewPayload(payload) ||
     payload.launch.authorization.authorized ||
     authorizationApply.disabled
   ) {
@@ -580,8 +584,8 @@ async function authorizeDurableView(): Promise<void> {
       arguments: { launchId },
     });
     const view = structuredResult(response)?.view;
-    if (!isDurableViewPayload(view) || view.launch.launchId !== launchId) {
-      throw new Error("The durable View changed or returned an invalid approved launch.");
+    if (!isActiveViewPayload(view) || view.launch.launchId !== launchId) {
+      throw new Error("The active View changed or returned an invalid approved launch.");
     }
     renderDurablePayload(view);
   } catch (error) {
@@ -596,10 +600,10 @@ async function authorizeDurableView(): Promise<void> {
 
 function cancelDurableAuthorization(): void {
   const payload = currentPayload;
-  if (payload?.schemaVersion !== "agentstate.durable-view-launch.v1") return;
+  if (!isActiveViewPayload(payload)) return;
   retirePayload();
   statusEl.dataset.kind = "ready";
-  statusEl.textContent = "The registered View was not authorized.";
+  statusEl.textContent = "The active View was not authorized.";
 }
 
 async function finishAction(decision: "commit" | "cancel"): Promise<void> {
@@ -738,13 +742,13 @@ async function changeDisplayMode(): Promise<void> {
 function currentSuspendedDurablePayload(
   launchId: string,
   epoch: number,
-): DurableViewLaunchPayload | null {
+): ActiveViewLaunchPayload | null {
   const payload = currentPayload;
   return (
     document.visibilityState === "visible" &&
     frameEpoch === epoch &&
     suspendedDurableLaunch === launchId &&
-    payload?.schemaVersion === "agentstate.durable-view-launch.v1" &&
+    isActiveViewPayload(payload) &&
     payload.launch.launchId === launchId &&
     payload.launch.authorization.authorized
   )
@@ -758,7 +762,7 @@ function resumeSuspendedDurableView(): void {
   if (
     document.visibilityState !== "visible" ||
     resumingDurableLaunch !== null ||
-    payload?.schemaVersion !== "agentstate.durable-view-launch.v1" ||
+    !isActiveViewPayload(payload) ||
     !payload.launch.authorization.authorized ||
     launchId !== payload.launch.launchId
   ) {
@@ -774,9 +778,13 @@ function resumeSuspendedDurableView(): void {
       });
       const resumed = structuredResult(response)?.view;
       if (
-        !isDurableViewPayload(resumed) ||
+        !isActiveViewPayload(resumed) ||
         resumed.launch.launchId === launchId ||
-        resumed.source.viewId !== payload.source.viewId
+        resumed.schemaVersion !== payload.schemaVersion ||
+        resumed.source.contentVersion !== payload.source.contentVersion ||
+        (resumed.schemaVersion === "agentstate.durable-view-launch.v1" &&
+          payload.schemaVersion === "agentstate.durable-view-launch.v1" &&
+          resumed.source.viewId !== payload.source.viewId)
       ) {
         throw new Error(
           firstResultText(response) ??
@@ -819,7 +827,7 @@ frame.addEventListener("load", () => {
   if (frameLoadGuard.accept()) return;
   const payload = currentPayload;
   if (
-    payload?.schemaVersion !== "agentstate.durable-view-launch.v1" ||
+    !isActiveViewPayload(payload) ||
     !payload.launch.authorization.authorized
   ) {
     return;
@@ -852,7 +860,7 @@ window.addEventListener("message", (event) => {
   if (
     document.visibilityState === "hidden" ||
     event.source !== frame.contentWindow ||
-    payload.schemaVersion !== "agentstate.durable-view-launch.v1" ||
+    !isActiveViewPayload(payload) ||
     !payload.launch.authorization.authorized
   ) {
     return;
@@ -868,7 +876,7 @@ document.addEventListener("visibilitychange", () => {
   const payload = currentPayload;
   if (
     document.visibilityState === "hidden" &&
-    payload?.schemaVersion === "agentstate.durable-view-launch.v1" &&
+    isActiveViewPayload(payload) &&
     payload.launch.authorization.authorized
   ) {
     suspendedDurableLaunch = payload.launch.launchId;
@@ -879,7 +887,7 @@ document.addEventListener("visibilitychange", () => {
   }
   if (
     document.visibilityState === "visible" &&
-    payload?.schemaVersion === "agentstate.durable-view-launch.v1" &&
+    isActiveViewPayload(payload) &&
     suspendedDurableLaunch === payload.launch.launchId
   ) {
     resumeSuspendedDurableView();
@@ -896,7 +904,7 @@ void (async () => {
   app.onteardown = async () => {
     closeConfirmation();
     const launchId =
-      currentPayload?.schemaVersion === "agentstate.durable-view-launch.v1"
+      isActiveViewPayload(currentPayload)
         ? currentPayload.launch.launchId
         : null;
     retirePayload(false);

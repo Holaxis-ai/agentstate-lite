@@ -30,12 +30,29 @@ const durablePayload = {
   launch: { launchId: "launch-2", authorization: { required: true, authorized: true } },
 };
 
-test("extractViewPayload finds both schemas, direct or nested under .view", () => {
+const transientPayload = {
+  schemaVersion: "agentstate.transient-view-launch.v1",
+  title: "Transient",
+  source: {
+    kind: "transient",
+    html: "<!doctype html>",
+    contentType: "text/html; charset=utf-8",
+    contentVersion: "sha256:transient",
+  },
+  launch: { launchId: "launch-3", authorization: { required: true, authorized: false } },
+};
+
+test("extractViewPayload finds generated, registered, and transient schemas", () => {
   assert.equal(extractViewPayload({ structuredContent: generatedPayload }), generatedPayload);
   assert.equal(extractViewPayload({ structuredContent: durablePayload }), durablePayload);
   assert.equal(
     extractViewPayload({ structuredContent: { view: durablePayload } }),
     durablePayload,
+  );
+  assert.equal(extractViewPayload({ structuredContent: transientPayload }), transientPayload);
+  assert.equal(
+    extractViewPayload({ structuredContent: { view: transientPayload } }),
+    transientPayload,
   );
 });
 
