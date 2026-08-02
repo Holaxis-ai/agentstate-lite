@@ -1,19 +1,18 @@
 ---
 type: Task
 title: Make transient authorization isolation the safe default
-status: in_progress
+status: done
 priority: '1'
 assignee: openai/codex
 description: >-
-  PR #193 at exact SHA 35dda0f replaces the unsafe registered-store alias with a
-  fresh process-local SessionViewAuthorizationStore default. Independent review
-  APPROVED after proving the regression red on parent and green on the PR.
-  Adversarial QA PASSED: omitted defaults never consulted persistent stores;
-  subject discriminators, changed bytes/capability/bundle, separate authorities,
-  separate MCP sessions, and disk-backed stores all failed closed; deliberate
-  explicit same-session injection still works. Root build/typecheck,
-  view-runtime 24/24, and GitHub Node 20/22/26 gates pass. Ready to merge.
+  Merged as PR #193 at c13b506. PageBridgeLaunchAuthority now owns a fresh
+  process-local SessionViewAuthorizationStore when callers omit the transient
+  store, eliminating the implicit alias to registered approval. Independent
+  review APPROVED and adversarial QA PASSED exact SHA 35dda0f; red/green
+  provenance and custom/persistent store, subject collision, currentness,
+  cross-authority, cross-MCP-session, and disk-store attacks all survived.
+  GitHub gates passed on Node 20, 22, and 26.
 actor: openai/codex
-timestamp: '2026-08-02T20:37:05.580Z'
+timestamp: '2026-08-02T20:37:35.574Z'
 ---
 
