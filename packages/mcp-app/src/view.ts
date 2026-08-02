@@ -52,6 +52,7 @@ const confirmationBackdrop = document.getElementById("confirmation-backdrop")!;
 const confirmationApply = document.getElementById("confirmation-apply") as HTMLButtonElement;
 const confirmationCancel = document.getElementById("confirmation-cancel") as HTMLButtonElement;
 const authorizationBackdrop = document.getElementById("authorization-backdrop")!;
+const authorizationDescription = document.getElementById("authorization-description")!;
 const authorizationApply = document.getElementById("authorization-apply") as HTMLButtonElement;
 const authorizationCancel = document.getElementById("authorization-cancel") as HTMLButtonElement;
 const displayModeButton = document.getElementById("display-mode") as HTMLButtonElement;
@@ -333,6 +334,10 @@ function renderDurablePayload(payload: ActiveViewLaunchPayload): void {
     frame.removeAttribute("csp");
     statusEl.dataset.kind = "ready";
     statusEl.textContent = `Waiting for local approval of "${payload.title}"…`;
+    authorizationDescription.textContent =
+      payload.schemaVersion === "agentstate.durable-view-launch.v1"
+        ? "This registered View comes from the bundle and contains executable HTML. Approving trusts these exact bytes to read bundle data. Continue only if you trust the View and its author; browser containment is additional protection, not a substitute for that trust."
+        : "This View contains agent-authored HTML created for this MCP session. It is process-local and is not a registered bundle View. Approving trusts these exact bytes to read bundle data for this process. Continue only if you trust the agent-authored HTML; browser containment is additional protection, not a substitute for that trust.";
     setConfirmationField(
       "authorization-view",
       payload.schemaVersion === "agentstate.durable-view-launch.v1"
