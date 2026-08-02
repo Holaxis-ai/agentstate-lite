@@ -402,10 +402,11 @@ source. Bundle data flows only through the narrow postMessage bridge to the trus
 repo's migrate-legacy-view-names script renames legacy content in place; docs under the
 legacy `pages-registry/`/`pages/` folders stay recognized once typed `View`.)
 
-The bridge (protocol `v0`) has five read-only data request types: `hello` (bundle identity), `query`
-(frontmatter-filtered rows — the same head projection `list` uses), `read` (one doc), `edges`
-(the general from/to/text graph query — backlinks and containment both reduce to this), and
-`subscribe` (opt into a server-pushed `change` event whenever the watched bundle moves). There
+The bridge (protocol `v0`) has six read-only data request types: `hello` (bundle identity), `query`
+(frontmatter-filtered rows — the same head projection `list` uses), `read` (one doc), `render-document`
+(the shared bounded Markdown presentation for one canonical doc), `edges` (the general
+from/to/text graph query — backlinks and containment both reduce to this), and `subscribe`
+(opt into a server-pushed `change` event whenever the watched bundle moves). There
 is no mutation message in v0 — read-only is enforced by construction. A View that declares
 `bundle-propose` may use the local-only v1 contract to propose ONE governed scalar-field
 change; the trusted shell revalidates it, shows canonical before/after values, and writes

@@ -52,7 +52,7 @@ repo's `migrate-legacy-view-names` script renames leftover legacy names in place
   `bundle-read` or `bundle-propose` is treated as `none` at runtime — fail-closed defense for a doc this convention
   didn't govern (an external bundle, a hand-edited file that skipped the lint).
   - `bundle-read` — a **data view**: the shell answers its bridge requests (`hello`/`query`/
-    `read`/`edges`/`subscribe`) with live bundle data. Groups under the launcher's "Dashboards".
+    `read`/`render-document`/`edges`/`subscribe`) with live bundle data. Groups under the launcher's "Dashboards".
   - `bundle-propose` — an **interactive view**: includes the read surface and may propose one
     declared scalar field update. Every proposal is independently validated and shown in trusted
     shell chrome; only the human's Apply action authorizes a hard-CAS local write.
