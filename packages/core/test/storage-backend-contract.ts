@@ -15,6 +15,7 @@ import type {
   Version,
 } from "../src/types.js";
 import { blobVersion, contentVersion, VersionConflict } from "../src/versioning.js";
+import { InvalidInputError } from "../src/errors.js";
 
 export interface BackendFixture {
   backend: StorageBackend;
@@ -80,6 +81,45 @@ export function registerStorageBackendBaseContract(options: BackendContractOptio
       assert.equal(first.doc.id, value.id);
       assert.deepEqual(first.doc.frontmatter, value.frontmatter);
       assert.equal(first.doc.body.trimEnd(), value.body);
+    });
+  });
+
+  test(`${name} contract: concept ids are canonical, exact, and invertible`, async () => {
+    await withFixture(create, async (backend) => {
+      for (const alias of ["./a/b", "a//b", "a\\b", "a/./b", "a/b/", "a.md/b"]) {
+        await assert.rejects(
+          () => backend.write(alias, doc(alias, alias)),
+          (error: unknown) => error instanceof InvalidInputError,
+        );
+      }
+
+      const plain = "concepts/x";
+      const markdownSuffixed = "concepts/x.md";
+      const plainVersion = await backend.write(plain, doc(plain, "physical x.md"), { expectedVersion: null });
+      const suffixedVersion = await backend.write(
+        markdownSuffixed,
+        doc(markdownSuffixed, "physical x.md.md"),
+        { expectedVersion: null },
+      );
+
+      assert.notEqual(plainVersion, suffixedVersion);
+      assert.deepEqual(await backend.list("concepts/"), [plain, markdownSuffixed]);
+      assert.equal((await backend.read(plain)).doc.body.trimEnd(), "physical x.md");
+      assert.equal((await backend.read(markdownSuffixed)).doc.body.trimEnd(), "physical x.md.md");
+      await assert.rejects(
+        () => backend.write(markdownSuffixed, doc(markdownSuffixed, "duplicate"), { expectedVersion: null }),
+        (error) => assertConflict(error, null, suffixedVersion),
+      );
+      assert.equal((await backend.read(plain)).version, plainVersion);
+      assert.equal((await backend.read(markdownSuffixed)).version, suffixedVersion);
+    });
+  });
+
+  test(`${name} contract: the write key owns the returned document identity`, async () => {
+    await withFixture(create, async (backend) => {
+      const id = "concepts/route-id";
+      await backend.write(id, doc("concepts/mismatched-body-id", "body"));
+      assert.equal((await backend.read(id)).doc.id, id);
     });
   });
 

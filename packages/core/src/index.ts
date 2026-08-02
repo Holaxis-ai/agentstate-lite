@@ -50,6 +50,7 @@ export {
   initBundle,
   writeDoc,
   readDoc,
+  existsDoc,
   query,
   parseLinks,
   backlinks,

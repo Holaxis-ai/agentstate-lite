@@ -34,31 +34,57 @@ export function isReservedFile(relPath: string): boolean {
  * drop a leading `./` or `/`, and strip the trailing `.md`.
  */
 export function conceptIdFromPath(relPath: string): ConceptId {
-  const norm = toPosix(relPath).replace(/^\.?\//, "");
+  const norm = toPosix(relPath)
+    .replace(/^\.?\//, "")
+    .split("/")
+    .filter((segment) => segment !== ".")
+    .join("/");
   return norm.endsWith(".md") ? norm.slice(0, -3) : norm;
 }
 
-/** Bundle-relative markdown file path for a concept ID (adds `.md` exactly once). */
+/**
+ * Bundle-relative markdown file path for an ALREADY-CANONICAL concept ID.
+ *
+ * A concept ID is the file path with exactly its FINAL `.md` suffix removed. Therefore an
+ * ordinary `x.md` file has id `x`, while a valid `x.md.md` file has id `x.md`. Do not strip a
+ * suffix here: doing so aliases those two distinct concepts onto the same physical file. User
+ * interfaces that accept file-like spellings normalize them through {@link conceptIdFromPath}
+ * before entering the engine/storage seam.
+ */
 export function pathFromConceptId(id: ConceptId): string {
-  const norm = toPosix(id).replace(/^\.?\//, "").replace(/\.md$/, "");
-  return `${norm}.md`;
+  assertSafeConceptId(id);
+  return `${id}.md`;
 }
 
 /**
- * Guard a concept ID against path traversal / absolute escape before it is joined
- * onto the bundle root for a filesystem read or write. Throws on empty ids,
- * absolute ids, or any `..` segment.
+ * Guard the canonical concept-ID grammar before an id reaches storage. In addition to path
+ * traversal / absolute escape, aliases that a filesystem would silently normalize (`./`, `//`,
+ * `\\`, or an interior `.` segment) are rejected so every backend keys the SAME identity.
+ * File-like user input is normalized before this boundary with {@link conceptIdFromPath}.
  */
 export function assertSafeConceptId(id: ConceptId): void {
   if (typeof id !== "string" || id.trim() === "") {
     throw new InvalidInputError("Concept id must be a non-empty string.");
   }
-  const norm = toPosix(id);
-  if (norm.startsWith("/")) {
+  if (id.startsWith("/")) {
     throw new InvalidInputError(`Concept id must be bundle-relative, got absolute '${id}'.`);
   }
-  if (norm.split("/").some((seg) => seg === "..")) {
+  if (id.includes("\\")) {
+    throw new InvalidInputError(`Concept id must use forward slashes: '${id}'.`);
+  }
+  const segments = id.split("/");
+  if (segments.some((seg) => seg === "..")) {
     throw new InvalidInputError(`Concept id must not contain '..' segments: '${id}'.`);
+  }
+  if (segments.some((seg) => seg === "." || seg === "")) {
+    throw new InvalidInputError(
+      `Concept id must be canonical (no '.', duplicate-slash, leading './', or trailing-slash segments): '${id}'.`,
+    );
+  }
+  if (segments.slice(0, -1).some((seg) => seg.toLowerCase().endsWith(".md"))) {
+    throw new InvalidInputError(
+      `Concept id must not contain a non-final segment ending in '.md': '${id}' (it collides with a concept file at that path).`,
+    );
   }
 }
 

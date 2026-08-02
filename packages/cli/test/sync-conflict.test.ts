@@ -526,6 +526,22 @@ test("show-incoming: a reserved file renders `path:`, never `id:`, under every s
     pushBoard(topo.a);
     // A NESTED reserved file (index.md/log.md are reserved at ANY directory level, gate 2).
     await writeFile(path.join(topo.a.board, "tasks", "index.md"), "# nested reserved index\n");
+    // A distinct ordinary concept at canonical id tasks/index.md also exists physically beside
+    // it. The shorter `tasks/index.md` spelling must still mean the reserved path; the concept is
+    // addressed explicitly as `tasks/index.md.md`.
+    await writeFile(
+      path.join(topo.a.board, "tasks", "index.md.md"),
+      "---\ntype: Note\ntitle: Literal index.md concept\n---\n# Literal\n",
+    );
+    // Two adjacent levels in a `.md` identity chain pin the leading-`./` physical-path escape.
+    await writeFile(
+      path.join(topo.a.board, "tasks", "chain.md.md"),
+      "---\ntype: Note\ntitle: Middle chain.md concept\n---\n# Middle\n",
+    );
+    await writeFile(
+      path.join(topo.a.board, "tasks", "chain.md.md.md"),
+      "---\ntype: Note\ntitle: Deep chain.md.md concept\n---\n# Deep\n",
+    );
     commitBoard(topo.a, "board: seed nested tasks/index.md");
     pushBoard(topo.a);
     fetchBoard(topo.b);
@@ -541,6 +557,21 @@ test("show-incoming: a reserved file renders `path:`, never `id:`, under every s
     assert.match(nestedIndex.out, /^path: tasks\/index\.md$/m, "a NESTED reserved file renders `path:` too");
     assert.doesNotMatch(nestedIndex.out, /^id: tasks\/index\.md$/m);
 
+    const literalIndex = await runSync(homeB!, ["--show-incoming", "tasks/index.md.md", "--dir", topo.b.root]);
+    assert.equal(literalIndex.err, undefined, literalIndex.err?.message);
+    assert.match(literalIndex.out, /^id: tasks\/index\.md$/m);
+    assert.match(literalIndex.out, /Literal index\.md concept/);
+
+    const bareChain = await runSync(homeB!, ["--show-incoming", "tasks/chain.md.md", "--dir", topo.b.root]);
+    assert.equal(bareChain.err, undefined, bareChain.err?.message);
+    assert.match(bareChain.out, /^id: tasks\/chain\.md\.md$/m, "bare spelling prefers the existing literal id");
+    assert.match(bareChain.out, /Deep chain\.md\.md concept/);
+
+    const physicalChain = await runSync(homeB!, ["--show-incoming", "./tasks/chain.md.md", "--dir", topo.b.root]);
+    assert.equal(physicalChain.err, undefined, physicalChain.err?.message);
+    assert.match(physicalChain.out, /^id: tasks\/chain\.md$/m, "leading ./ selects the exact physical path");
+    assert.match(physicalChain.out, /Middle chain\.md concept/);
+
     // The BARE spelling resolves through the concept derivation to the same reserved file —
     // still raw, and the render names the file it actually read (`log.md`, not an input echo).
     const bareLog = await runSync(homeB!, ["--show-incoming", "log", "--dir", topo.b.root]);
@@ -553,7 +584,7 @@ test("show-incoming: a reserved file renders `path:`, never `id:`, under every s
     // same classification `doc read tasks/seed-one.md` gives that spelling.
     const mdDoc = await runSync(homeB!, ["--show-incoming", "tasks/seed-one.md", "--dir", topo.b.root]);
     assert.equal(mdDoc.err, undefined, mdDoc.err?.message);
-    assert.match(mdDoc.out, /^id: tasks\/seed-one\.md$/m, ".md-spelled doc id renders PARSED, not raw");
+    assert.match(mdDoc.out, /^id: tasks\/seed-one$/m, ".md path alias renders the canonical id actually read");
     assert.doesNotMatch(mdDoc.out, /^path: tasks\/seed-one\.md$/m);
     assert.match(mdDoc.out, /Task/, "parsed frontmatter fields present");
     assert.match(mdDoc.out, /Seed one/);
@@ -628,17 +659,19 @@ test("show-incoming: --out <file> writes the raw upstream bytes; --out - streams
 
     // --out <file>: raw bytes to disk, receipt on stdout.
     const outFile = path.join(outDir, "incoming.md");
-    const toFile = await runSync(homeB!, ["--show-incoming", "tasks/seed-one", "--out", outFile, "--dir", topo.b.root]);
+    const toFile = await runSync(homeB!, ["--show-incoming", "tasks/seed-one.md", "--out", outFile, "--dir", topo.b.root]);
     assert.equal(toFile.err, undefined, toFile.err?.message);
     assert.equal(await readFile(outFile, "utf8"), upstream, "raw upstream bytes on disk");
     assert.match(toFile.out, /size_bytes/);
+    assert.match(toFile.out, /id: tasks\/seed-one\b/, "receipt reports the canonical id actually read");
 
     // --out -: raw bytes on stdout's byte channel, receipt on STDERR, nothing else on stdout.
-    const toStdout = await runSync(homeB!, ["--show-incoming", "tasks/seed-one", "--out", "-", "--dir", topo.b.root]);
+    const toStdout = await runSync(homeB!, ["--show-incoming", "tasks/seed-one.md", "--out", "-", "--dir", topo.b.root]);
     assert.equal(toStdout.err, undefined, toStdout.err?.message);
     assert.equal(toStdout.bytes.toString("utf8"), upstream, "byte stream is the raw doc");
     assert.equal(toStdout.out, "", "stdout carries ONLY the byte stream");
     assert.match(toStdout.errOut, /size_bytes/);
+    assert.match(toStdout.errOut, /id: tasks\/seed-one\b/, "stream receipt reports the canonical id actually read");
   } finally {
     await cleanup();
     await rm(outDir, { recursive: true, force: true });

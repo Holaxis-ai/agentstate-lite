@@ -1134,6 +1134,29 @@ test("link list --from/--to: whitespace is trimmed off a real value (not just de
   }
 });
 
+test("link list resolves .md convenience before exact core filtering, preserving distinct canonical ids", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "agentstate-lite-link-id-test-"));
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "hub",
+      frontmatter: { type: "T", timestamp: OLD_TS },
+      body: "[plain](x.md) [literal](x.md.md)",
+    });
+    await writeDoc(bundle, { id: "x", frontmatter: { type: "T", timestamp: OLD_TS }, body: "" });
+    await writeDoc(bundle, { id: "x.md", frontmatter: { type: "T", timestamp: OLD_TS }, body: "" });
+
+    assert.deepEqual((await linkList(dir, ["--to", "x"])).edges, [
+      { from: "hub", to: "x", text: "plain" },
+    ]);
+    assert.deepEqual((await linkList(dir, ["--to", "x.md"])).edges, [
+      { from: "hub", to: "x.md", text: "literal" },
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("link list --text zero-match over --remote: exactly ONE round trip (2 HTTP requests: list + read-many), not two round trips (4) — the near-miss hint reuses the already-fetched scoped edges rather than re-scanning", async () => {
   const { dir, cleanup } = await makeEdgeFixtureBundle();
   try {

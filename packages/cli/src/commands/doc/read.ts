@@ -21,6 +21,7 @@ import { CliError, toExit, asHandled } from "../../errors.js";
 import { parseOrUsage } from "../../args.js";
 import { render, resolveMode, renderErrorEnvelope } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
+import { conceptIdFromCliArgument, resolveConceptIdCliArgument } from "../../concept-id.js";
 import { DOC_READ_USAGE, type DocCliDeps, BODY_PREVIEW_LIMIT, readErrorToCliError } from "./common.js";
 
 export async function docRead(argv: string[], deps: Partial<DocCliDeps>): Promise<void> {
@@ -68,12 +69,13 @@ async function docReadInner(argv: string[], deps: Partial<DocCliDeps>): Promise<
     return;
   }
 
-  const id = positionals[0]?.trim();
-  if (!id) {
+  const rawId = positionals[0]?.trim();
+  if (!rawId) {
     throw new CliError("USAGE", "doc read requires a concept <id> positional", {
       help: `${cliInvocation()} doc read <id>`,
     });
   }
+  let id = conceptIdFromCliArgument(rawId);
 
   const bodyOutValue = values["body-out"];
   const bodyOutPresent = bodyOutValue !== undefined;
@@ -122,6 +124,7 @@ async function docReadInner(argv: string[], deps: Partial<DocCliDeps>): Promise<
   // Runs on the READ verb only (never doc write/update/delete — the trigger is for reads).
   if (!remote) await (deps.autoPull ?? maybeAutoPull)(values.dir);
   const bundle = await openBundle(values.dir, remote);
+  id = await resolveConceptIdCliArgument(bundle, rawId);
 
   // Body-only byte channel: one versioned read owns BOTH the semantic parsed body and the CAS token
   // in the receipt. The resulting file is therefore safe to edit and pass straight to

@@ -27,6 +27,7 @@ import { render, type OutputMode } from "../output.js";
 import { CliError } from "../errors.js";
 import { cliInvocation } from "../invocation.js";
 import { parseOrUsage } from "../args.js";
+import { resolveConceptIdCliArgument } from "../concept-id.js";
 
 export const ARTIFACT_USAGE = `agentstate-lite artifact — produced outputs you share with a human (HTML today)
 
@@ -143,7 +144,10 @@ export async function artifact(argv: string[], deps: Partial<ArtifactCliDeps> = 
   // keeps the same-directory 'supersedes' link correct AND guarantees a real Artifact is the doc that
   // gets flipped — a cross-dir or non-Artifact target is a caller error, rejected before we touch the
   // store rather than silently writing a dangling edge (review #150 F3/F5).
-  const supersedes = (values.supersedes as string | undefined)?.trim();
+  const rawSupersedes = (values.supersedes as string | undefined)?.trim();
+  const supersedes = rawSupersedes
+    ? await resolveConceptIdCliArgument(bundle, rawSupersedes)
+    : undefined;
   if (supersedes) {
     if (!supersedes.startsWith("artifacts/")) {
       throw new CliError("USAGE", `--supersedes must be an artifacts/ id (got '${supersedes}')`, {

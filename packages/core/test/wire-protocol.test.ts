@@ -222,16 +222,16 @@ test("wire security: DELETE .../docs/%2Fetc%2Fpasswd (an id that decodes to an a
   assert.deepEqual(spy.calls, []);
 });
 
-test("wire security: DELETE /docs/index.md (a reserved filename) is rejected 400 USAGE before touching the backend", async () => {
+test("wire security: DELETE canonical id /docs/index (the reserved index.md) is rejected 400 USAGE before touching the backend", async () => {
   const { router, spy } = freshSpiedRouter();
-  const res = await router(new Request("http://wire.local/v0/bundles/test/docs/index.md", { method: "DELETE" }));
+  const res = await router(new Request("http://wire.local/v0/bundles/test/docs/index", { method: "DELETE" }));
   await assertUsageEnvelope(res);
   assert.deepEqual(spy.calls, []);
 });
 
-test("wire security: DELETE /docs/log.md (the other reserved filename) is rejected 400 USAGE before touching the backend", async () => {
+test("wire security: DELETE canonical id /docs/log (the reserved log.md) is rejected 400 USAGE before touching the backend", async () => {
   const { router, spy } = freshSpiedRouter();
-  const res = await router(new Request("http://wire.local/v0/bundles/test/docs/log.md", { method: "DELETE" }));
+  const res = await router(new Request("http://wire.local/v0/bundles/test/docs/log", { method: "DELETE" }));
   await assertUsageEnvelope(res);
   assert.deepEqual(spy.calls, []);
 });

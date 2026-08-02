@@ -53,10 +53,11 @@ function referenceResolve(fromId: string, href: string): string | null {
   return resolved.replace(/\.md$/, "");
 }
 
+/** Canonical-ID emit reference on node:path.posix. */
 function referenceRelativeHref(fromId: string, target: string): string {
   const t = target.trim();
   if (isExternalHref(t)) return t;
-  const targetId = t.replace(/^\/+/, "").replace(/\.md$/, "");
+  const targetId = t;
   const slash = fromId.lastIndexOf("/");
   const fromDir = slash >= 0 ? fromId.slice(0, slash) : "";
   let rel = path.posix.relative(fromDir, targetId);
@@ -105,11 +106,11 @@ test("resolveConceptId parity: pure string helpers === node:path.posix reference
 
 const RELATIVE_CASES: Array<[string, string]> = [
   ["tasks/alpha", "tasks/beta"],
-  ["tasks/alpha", "/designs/home.md"],
+  ["tasks/alpha", "designs/home"],
   ["alpha", "docs/deep/x"],
   ["a/b/c", "a/x"],
   ["a/b", "a/b"],
-  ["deep/nest/from", "/top.md"],
+  ["deep/nest/from", "top"],
   ["x", "https://example.com/keep"],
 ];
 

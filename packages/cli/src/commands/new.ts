@@ -56,6 +56,7 @@ import {
   type KindRegistry,
   type ValidationWarning,
 } from "@agentstate-lite/core";
+import { resolveConceptIdCliArgument } from "../concept-id.js";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
 import { CliError, asHandled, classifyBundleError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
@@ -149,13 +150,6 @@ const NEW_CONTROL_OPTIONS = {
   json: { type: "boolean" },
   help: { type: "boolean", short: "h" },
 } as const;
-
-/** Prepend the kind's declared `path` prefix onto `id`, unless `id` already carries it. */
-function resolveInstanceId(kind: KindConvention, id: string): string {
-  if (!kind.path) return id;
-  const prefix = kind.path.replace(/\/+$/, "") + "/";
-  return id.startsWith(prefix) ? id : `${prefix}${id}`;
-}
 
 /** One parsed `--link "<type>=<target-id>"` value. */
 interface ParsedLinkFlag {
@@ -481,12 +475,13 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
     dynamicValues.set(token.name, accumulated);
   }
 
-  const id = (positionals[1] as string | undefined)?.trim();
-  if (!id) {
+  const rawId = (positionals[1] as string | undefined)?.trim();
+  if (!rawId) {
     throw new CliError("USAGE", 'new requires "<Kind>" and <id> positionals', {
       help: `${cliInvocation()} new "<Kind>" <id> --<field> <value>`,
     });
   }
+  const id = await resolveConceptIdCliArgument(bundle, rawId);
   // A stray extra positional almost always means a flag was mistyped (e.g. a missing `--` before
   // a value) rather than a deliberate third argument — surface it instead of silently absorbing it.
   if (positionals.length > 2) {
@@ -547,7 +542,9 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
   // escape hatch for when a caller needs a specific id/namespace that differs from the kind's
   // convention (cold-start study r3: an agent needing a literal prefix had to drop off `new` onto
   // `doc write`, losing strict kind validation, because the auto-prefix rewrote its id).
-  const targetId = values["no-prefix"] ? id : resolveInstanceId(kind, id);
+  const targetId = values["no-prefix"]
+    ? id
+    : await resolveConceptIdCliArgument(bundle, rawId, { prefix: kind.path });
   const remote = values.remote as string | undefined;
 
   // "create-only" mode: expect-absent CAS, the same closed-create-race pattern the CLI's recipe

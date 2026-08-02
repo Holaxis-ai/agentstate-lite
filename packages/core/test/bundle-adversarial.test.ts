@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -111,12 +111,13 @@ test("initBundle swallows only the expect-absent VersionConflict from a winning 
 
 test("writeDocVersioned rejects every empty or non-string type before storage", async () => {
   const bundle = memoryBundle();
-  for (const type of [undefined, null, 0, false, "", "   "]) {
+  for (const [index, type] of [undefined, null, 0, false, "", "   "].entries()) {
+    const id = `bad/${index}`;
     await assert.rejects(
-      () => writeDocVersioned(bundle, doc(`bad/${String(type)}`, { type } as never)),
+      () => writeDocVersioned(bundle, doc(id, { type } as never)),
       (error: unknown) =>
         error instanceof InvalidInputError &&
-        error.message === `OKF §9.2: frontmatter.type is required and must be non-empty (concept 'bad/${String(type)}').`,
+        error.message === `OKF §9.2: frontmatter.type is required and must be non-empty (concept '${id}').`,
     );
   }
   assert.deepEqual(await bundle.backend!.list(), []);
@@ -154,8 +155,8 @@ test("writeDocVersioned normalizes ordering, timestamp, and absent body without 
 test("write, versioned read, and history all reject reserved ids at the engine boundary", async () => {
   const bundle = memoryBundle();
   const cases = [
-    ["index.md", "index.md"],
-    ["nested/log.md", "nested/log.md"],
+    ["index", "index.md"],
+    ["nested/log", "nested/log.md"],
   ] as const;
 
   for (const [id, rel] of cases) {
@@ -185,6 +186,43 @@ test("deleteDoc still admits ordinary ids and remains idempotent after enforcing
   assert.equal(await deleteDoc(bundle, "notes/delete-me"), true);
   assert.equal(await deleteDoc(bundle, "notes/delete-me"), false);
 });
+
+test("filesystem listing rejects a markdown directory that cannot be a canonical concept namespace", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "okf-noncanonical-dir-"));
+  try {
+    await mkdir(path.join(root, "foo.md"));
+    await writeFile(path.join(root, "foo.md", "bar.md"), "---\ntype: Note\n---\n", "utf8");
+    await assert.rejects(
+      () => new FilesystemBackend(root).list(),
+      (error: unknown) =>
+        error instanceof InvalidInputError &&
+        error.message.includes("non-final segment ending in '.md'") &&
+        error.message.includes("foo.md/bar"),
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test(
+  "filesystem listing rejects a literal backslash filename instead of reinterpreting its identity",
+  { skip: process.platform === "win32" },
+  async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "okf-noncanonical-backslash-"));
+    try {
+      await writeFile(path.join(root, "odd\\name.md"), "---\ntype: Note\n---\n", "utf8");
+      await assert.rejects(
+        () => new FilesystemBackend(root).list(),
+        (error: unknown) =>
+          error instanceof InvalidInputError &&
+          error.message.includes("does not round-trip through canonical id 'odd/name'") &&
+          error.message.includes("odd\\name.md"),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test("matchesFilter distinguishes absent facets, empty tag filters, arrays, nulls, and falsey scalars", () => {
   const candidate = {
@@ -284,12 +322,14 @@ test("parseLinks remains the public path to the one markdown-link resolver", () 
   assert.deepEqual(links, [{ from: "notes/a", to: "tasks/t", text: "Task", href: "../tasks/t.md" }]);
 });
 
-test("edge selectors normalize one leading slash and strip only a terminal markdown extension", async () => {
+test("edge selectors require exact canonical ids and do not strip a terminal markdown extension", async () => {
   const bundle = memoryBundle();
   await writeDocVersioned(bundle, doc("notes/a", { type: "Note", timestamp: T }, "[Task](../tasks/t.md) [Deep](../tasks/t/suffix.md)"));
   assert.deepEqual(
-    (await queryEdges(bundle, { from: "/notes/a", to: "/tasks/t.md" })).map((edge) => edge.to),
+    (await queryEdges(bundle, { from: "notes/a", to: "tasks/t" })).map((edge) => edge.to),
     ["tasks/t"],
   );
-  assert.deepEqual(await queryEdges(bundle, { to: "tasks/t.md/suffix" }), []);
+  assert.deepEqual(await queryEdges(bundle, { to: "tasks/t.md" }), []);
+  await assert.rejects(() => queryEdges(bundle, { from: "/notes/a" }), InvalidInputError);
+  await assert.rejects(() => queryEdges(bundle, { to: "tasks/t.md/suffix" }), InvalidInputError);
 });

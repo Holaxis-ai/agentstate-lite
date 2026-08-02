@@ -19,7 +19,6 @@ import {
   assertSafeConceptId,
   isReservedFile,
   pathFromConceptId,
-  toPosix,
 } from "./paths.js";
 import { InvalidInputError } from "./errors.js";
 import { matchesFilter } from "./query-filter.js";
@@ -172,6 +171,16 @@ export async function readDocVersioned(bundle: Bundle, id: ConceptId): Promise<R
 /** Read and parse a single concept document by ID. Rejects reserved-file ids. */
 export async function readDoc(bundle: Bundle, id: ConceptId): Promise<OkfDocument> {
   return (await readDocVersioned(bundle, id)).doc;
+}
+
+/** True when the exact canonical concept ID exists. File-like aliases belong at user ingress. */
+export async function existsDoc(bundle: Bundle, id: ConceptId): Promise<boolean> {
+  assertSafeConceptId(id);
+  const rel = pathFromConceptId(id);
+  if (isReservedFile(rel)) {
+    throw new InvalidInputError(`'${id}' is a reserved file (index.md / log.md), not a concept document.`);
+  }
+  return backendFor(bundle).exists(id);
 }
 
 /**
@@ -361,29 +370,33 @@ export function parseLinks(_bundle: Bundle, doc: OkfDocument): Link[] {
 }
 
 /**
- * Normalize a raw `from`/`to` {@link EdgeFilter} selector the same way a concept id is
- * normalized everywhere else (posix-ify, strip a single leading `./` or `/` — mirroring
- * {@link backlinks}'s pre-existing target normalization). A trailing slash is a deliberate
- * prefix marker and is kept; it is stripped from nothing else.
+ * Validate one exact canonical `from`/`to` {@link EdgeFilter} selector. A trailing slash is the
+ * query API's deliberate prefix marker; its stem must still be a canonical concept-id prefix.
+ * File-like/user-friendly aliases belong at CLI ingress, never in the engine graph contract.
  */
 function normalizeEdgeSelector(raw: string): string {
-  return toPosix(raw).replace(/^\.?\//, "");
+  if (raw.endsWith("/")) {
+    const stem = raw.slice(0, -1);
+    assertSafeConceptId(stem);
+    return `${stem}/`;
+  }
+  assertSafeConceptId(raw);
+  return raw;
 }
 
 /**
  * True when `value` (a resolved `from` or `to` concept id) matches ANY of `selectors` —
  * union (OR) within one flag — or when `selectors` is `undefined` (the facet was never
- * set, so it imposes no restriction). Each selector is either an EXACT id match (any
- * trailing `.md` stripped) or, when it ends in `/`, a PREFIX match — one rule, no glob
- * syntax, per {@link EdgeFilter}'s contract.
+ * set, so it imposes no restriction). Each selector is either an EXACT canonical id match or,
+ * when it ends in `/`, a PREFIX match — one rule, no glob syntax, per {@link EdgeFilter}'s
+ * contract.
  */
 function matchesEdgeSelector(value: ConceptId, selectors: string[] | undefined): boolean {
   if (selectors === undefined) return true;
-  for (const raw of selectors) {
-    const normalized = normalizeEdgeSelector(raw);
+  for (const normalized of selectors) {
     if (normalized.endsWith("/")) {
       if (value.startsWith(normalized)) return true;
-    } else if (value === normalized.replace(/\.md$/, "")) {
+    } else if (value === normalized) {
       return true;
     }
   }
@@ -419,8 +432,10 @@ function toSelectorList(v: string | string[] | undefined): string[] | undefined 
  * concept id. Deterministic output: sorted by `(from, to, text)`.
  */
 export async function queryEdges(bundle: Bundle, filter: EdgeFilter = {}): Promise<Link[]> {
-  const fromSelectors = toSelectorList(filter.from);
-  const toSelectors = toSelectorList(filter.to);
+  // Validate and canonicalize selectors before scanning, including on an empty bundle. Invalid
+  // engine input must not appear valid merely because there were no edges to compare it with.
+  const fromSelectors = toSelectorList(filter.from)?.map(normalizeEdgeSelector);
+  const toSelectors = toSelectorList(filter.to)?.map(normalizeEdgeSelector);
   const docs = await query(bundle);
   const edges: Link[] = [];
   for (const doc of docs) {

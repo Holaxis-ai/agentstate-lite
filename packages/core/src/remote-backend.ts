@@ -59,6 +59,7 @@
 
 import { DEFAULT_BLOB_CONTENT_TYPE } from "./content-type.js";
 import { InvalidInputError } from "./errors.js";
+import { assertSafeConceptId } from "./paths.js";
 import { VersionConflict, stripETagWrapper } from "./versioning.js";
 import type {
   BlobKey,
@@ -318,15 +319,19 @@ export class RemoteBackend implements StorageBackend {
   }
 
   async read(id: ConceptId): Promise<ReadResult> {
+    assertSafeConceptId(id);
     const res = await this.send(`/docs/${encodeId(id)}`, { method: "GET" });
     if (res.status === 404) throw notFound(id);
     if (!res.ok) throw await this.toError(res, id);
     const version = extractVersion(res, `GET /docs/${id}`);
     const payload = (await res.json()) as Pick<OkfDocument, "id" | "frontmatter" | "body">;
-    return { doc: { id: payload.id, frontmatter: payload.frontmatter, body: payload.body }, version };
+    // The requested route key owns identity. A foreign or buggy server payload must not rename
+    // the document the caller asked for (the same rule FilesystemBackend/MemoryBackend enforce).
+    return { doc: { id, frontmatter: payload.frontmatter, body: payload.body }, version };
   }
 
   async readMany(ids: ConceptId[]): Promise<ReadResult[]> {
+    for (const id of ids) assertSafeConceptId(id);
     if (ids.length === 0) return [];
     const res = await this.send("/docs:read-many", {
       method: "POST",
@@ -347,13 +352,23 @@ export class RemoteBackend implements StorageBackend {
     const payload = (await res.json()) as {
       results: Array<Pick<OkfDocument, "id" | "frontmatter" | "body"> & { version: Version }>;
     };
-    return payload.results.map((r) => ({
-      doc: { id: r.id, frontmatter: r.frontmatter, body: r.body },
+    if (payload.results.length !== ids.length) {
+      throw new RemoteError(
+        `wire read-many returned ${payload.results.length} result(s) for ${ids.length} requested id(s)`,
+        "RUNTIME",
+        502,
+      );
+    }
+    return payload.results.map((r, index) => ({
+      // `readMany`'s positional contract pairs each payload with the requested id at that index;
+      // never trust a redundant payload id to redefine the route-owned identity.
+      doc: { id: ids[index]!, frontmatter: r.frontmatter, body: r.body },
       version: r.version,
     }));
   }
 
   async write(id: ConceptId, doc: OkfDocument, options: WriteOptions = {}): Promise<Version> {
+    assertSafeConceptId(id);
     assertValidExpectedVersion(options.expectedVersion);
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (options.expectedVersion === null) headers["If-None-Match"] = "*";
@@ -371,6 +386,7 @@ export class RemoteBackend implements StorageBackend {
   }
 
   async exists(id: ConceptId): Promise<boolean> {
+    assertSafeConceptId(id);
     const res = await this.send(`/docs/${encodeId(id)}`, { method: "HEAD" });
     if (res.status === 404) return false;
     if (!res.ok) throw await this.toError(res, id);
@@ -438,6 +454,7 @@ export class RemoteBackend implements StorageBackend {
   }
 
   async versions(id: ConceptId): Promise<VersionInfo[]> {
+    assertSafeConceptId(id);
     const res = await this.send(`/docs/${encodeId(id)}/versions`, { method: "GET" });
     if (!res.ok) throw await this.toError(res, id);
     // Parse `agent` explicitly (defensive against foreign/extra fields) rather than trusting
@@ -497,6 +514,7 @@ export class RemoteBackend implements StorageBackend {
    * `RemoteError`.
    */
   async delete(id: ConceptId, options: DeleteOptions = {}): Promise<boolean> {
+    assertSafeConceptId(id);
     assertValidExpectedVersion(options.expectedVersion);
     const headers: Record<string, string> = {};
     if (options.expectedVersion !== undefined) headers["If-Match"] = options.expectedVersion;

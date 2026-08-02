@@ -41,7 +41,7 @@ test("unknown backend failures are 500 RUNTIME, not 400 USAGE", async () => {
 test("router-owned invalid input remains 400 USAGE", async () => {
   const router = createRouterForBackend(new MemoryBackend());
   const cases = [
-    "http://wire.local/v0/bundles/default/docs/index.md",
+    "http://wire.local/v0/bundles/default/docs/index",
     "http://wire.local/v0/bundles/default/docs/%E0%A4%A",
     "http://wire.local/v0/bundles/default/blobs/%E0%A4%A",
     `http://wire.local/v0/bundles/default/reserved/log.md?dir=${encodeURIComponent("../outside")}`,
