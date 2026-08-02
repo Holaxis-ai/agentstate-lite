@@ -13,7 +13,7 @@ sequence: >-
   save → bundle-propose parity → delete generated presentation contract →
   navigation parity
 actor: openai/codex
-timestamp: '2026-08-02T19:18:41.160Z'
+timestamp: '2026-08-02T19:20:50.994Z'
 ---
 # Direction
 
@@ -136,3 +136,5 @@ Current work:
 [Proposed transient/durable source unification](../designs/transient-durable-view-unification.md)
 
 [contains](../tasks/transient-active-view-launch.md)
+
+[contains](../tasks/transient-view-exact-byte-save.md)

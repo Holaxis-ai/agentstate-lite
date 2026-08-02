@@ -1,18 +1,17 @@
 ---
 type: Task
 title: Prove transient launches of the standard active View source
-status: in_progress
+status: done
 priority: '1'
 assignee: openai/codex
 description: >-
-  First executable unit of designs/transient-durable-view-unification: add a
-  real hash-identified, process-local transient source to the shared active-View
-  launch authority and expose it through MCP without removing the existing
-  generated presentation path. Prove authorization-before-data, standard bridge
-  behavior, bounded lifecycle, and no synthetic registry identity. Exact-byte
-  save, bundle-propose parity, and deletion remain separate follow-on units.
+  Shipped in PR #191 (merge 333f0b4): transient exact HTML bytes now launch
+  through the standard active View runtime in MCP with hash identity,
+  process-local authorization, bounded lifetime, and no synthetic registry
+  record. Exact-byte durable save, bundle-propose parity, and generated-contract
+  deletion remain separate follow-on units.
 actor: openai/codex
-timestamp: '2026-08-02T19:15:16.343Z'
+timestamp: '2026-08-02T19:20:50.720Z'
 ---
 [specified by](../designs/transient-durable-view-unification.md)
 
