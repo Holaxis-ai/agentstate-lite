@@ -3,19 +3,19 @@ type: Task
 title: >-
   MCP view launch leaks raw ENOENT with a guessed doc path instead of a typed
   unknown-View error
-status: in_progress
+status: done
 priority: '2'
 actor: openai/codex
 description: >-
-  Implemented in draft PR #186 at exact SHA a287aa3: shared launch authority
-  maps only ENOENT to typed ViewNotFoundError (VIEW_NOT_FOUND); MCP projects an
-  actionable list_views recovery hint. Real-filesystem and MCP regressions prove
-  no errno, .md path, bundle root, or failed claim escapes, while EACCES still
-  propagates. Focused suites/typechecks and repository-wide npm run check pass;
-  awaiting one lightweight independent exact-SHA review (no full review ladder
-  needed).
+  Shipped in PR #186, merged as ee307c7 after exact-SHA a287aa3 independent
+  review (APPROVE, no findings) and green Node 20/22/26 CI. The shared launch
+  authority now maps only ENOENT registration absence to typed ViewNotFoundError
+  (VIEW_NOT_FOUND); MCP adds actionable list_views recovery guidance.
+  Real-filesystem and MCP regressions prove no errno, .md path, bundle root, or
+  failed claim escapes, while EACCES and other storage failures still propagate
+  unchanged.
 assignee: openai/codex
-timestamp: '2026-08-02T14:14:40.868Z'
+timestamp: '2026-08-02T14:20:45.615Z'
 ---
 # Field repro (Brian via Claude Desktop chat, 2026-07-27)
 
