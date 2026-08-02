@@ -34,7 +34,7 @@ export interface ViewCatalog {
 
 export interface ViewCatalogProjectionOptions {
   skippedDocuments?: number;
-  admitEntry: (entry: string) => Promise<boolean>;
+  admitEntry: (entry: string, expectedVersion?: string) => Promise<boolean>;
 }
 
 export interface ViewCatalogPageOptions {
@@ -59,6 +59,7 @@ export interface ViewCatalogPage {
 interface ViewCatalogCandidate {
   row: ViewCatalogEntry;
   entry: string;
+  entryVersion?: string;
 }
 
 function optionalString(value: unknown): string | undefined {
@@ -89,6 +90,7 @@ function projectCandidates(heads: readonly HeadResult[]): {
     const timestamp = optionalString(head.frontmatter.timestamp);
     candidates.push({
       entry: registration.entry,
+      ...(registration.entryVersion ? { entryVersion: registration.entryVersion } : {}),
       row: {
         id: registration.id,
         version: head.version,
@@ -106,21 +108,23 @@ function projectCandidates(heads: readonly HeadResult[]): {
 }
 
 function cachedAdmission(
-  admitEntry: (entry: string) => Promise<boolean>,
-): (entry: string) => Promise<boolean> {
+  admitEntry: (entry: string, expectedVersion?: string) => Promise<boolean>,
+): (entry: string, expectedVersion?: string) => Promise<boolean> {
   const cache = new Map<string, Promise<boolean>>();
-  return (entry) => {
-    const existing = cache.get(entry);
+  return (entry, expectedVersion) => {
+    const cacheKey = `${entry}\0${expectedVersion ?? ""}`;
+    const existing = cache.get(cacheKey);
     if (existing) return existing;
-    const pending = admitEntry(entry).catch(() => false);
-    cache.set(entry, pending);
+    const pending = admitEntry(entry, expectedVersion).catch(() => false);
+    cache.set(cacheKey, pending);
     return pending;
   };
 }
 
-async function admitBundleEntry(bundle: Bundle, entry: string): Promise<boolean> {
+async function admitBundleEntry(bundle: Bundle, entry: string, expectedVersion?: string): Promise<boolean> {
   const blob = await readBlob(bundle, entry);
   if (blob === null) return false;
+  if (expectedVersion && expectedVersion !== blob.version) return false;
   admitActiveView(blob.bytes, blob.contentType);
   return true;
 }
@@ -139,7 +143,7 @@ export async function projectViewCatalog(
   const entries: ViewCatalogEntry[] = [];
   let unavailableEntries = 0;
   for (const candidate of candidates) {
-    if (!(await admitEntry(candidate.entry))) {
+    if (!(await admitEntry(candidate.entry, candidate.entryVersion))) {
       unavailableEntries += 1;
       continue;
     }
@@ -160,7 +164,7 @@ export async function listViewCatalog(bundle: Bundle): Promise<ViewCatalog> {
   const heads = await queryHeads(bundle, { type: "View" }, { onSkip: (row) => skipped.push(row) });
   return projectViewCatalog(heads, {
     skippedDocuments: skipped.length,
-    admitEntry: (entry) => admitBundleEntry(bundle, entry),
+    admitEntry: (entry, expectedVersion) => admitBundleEntry(bundle, entry, expectedVersion),
   });
 }
 
@@ -192,7 +196,7 @@ export async function listViewCatalogPage(
   let unavailableEntries = 0;
   let lastExaminedId: string | undefined;
   const entries: ViewCatalogEntry[] = [];
-  const admitEntry = cachedAdmission((entry) => admitBundleEntry(bundle, entry));
+  const admitEntry = cachedAdmission((entry, expectedVersion) => admitBundleEntry(bundle, entry, expectedVersion));
   while (
     index < compatible.length &&
     examined < options.scanLimit &&
@@ -202,7 +206,7 @@ export async function listViewCatalogPage(
     index += 1;
     examined += 1;
     lastExaminedId = candidate.row.id;
-    if (await admitEntry(candidate.entry)) entries.push(candidate.row);
+    if (await admitEntry(candidate.entry, candidate.entryVersion)) entries.push(candidate.row);
     else unavailableEntries += 1;
   }
   const truncated = index < compatible.length;

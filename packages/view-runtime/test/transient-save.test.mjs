@@ -300,6 +300,38 @@ test("entry replacement during registry creation fails and leaves a version-pinn
   );
 });
 
+test("entry deletion during registry creation never produces a stale retained-entry receipt", async () => {
+  class DeletingEntryBackend extends MemoryBackend {
+    deleted = false;
+
+    async write(id, doc, options) {
+      if (id === "views-registry/deleted" && !this.deleted) {
+        this.deleted = true;
+        await super.deleteBlob("views/deleted.html");
+      }
+      return super.write(id, doc, options);
+    }
+  }
+
+  const f = fixture(new DeletingEntryBackend());
+  await approve(f);
+  await assert.rejects(
+    saveTransientView(
+      f.bundle,
+      f.launches,
+      f.authorizations,
+      { launchId: f.launch.launchId, viewId: "views-registry/deleted" },
+    ),
+    (error) => {
+      assert.ok(error instanceof TransientViewSaveError);
+      assert.equal(error.retainedEntry, undefined);
+      assert.equal(error.retainedRegistration?.id, "views-registry/deleted");
+      return true;
+    },
+  );
+  assert.equal(await readBlob(f.bundle, "views/deleted.html"), null);
+});
+
 test("registration creation uses strict kind validation and preserves actor attribution", async () => {
   const f = fixture();
   await approve(f);

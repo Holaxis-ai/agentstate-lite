@@ -280,7 +280,7 @@ export async function persistTransientView(
     if (!sameEntry(finalEntry, source) || !finalRegistry || !sameSavedRegistration(finalRegistry.doc, desiredRegistry) || !finalSourceIsCurrent) {
       throw new TransientViewSaveError(
         "The exact View entry, registration, or transient approval changed before save completion; the retained durable state was not reported as a successful save.",
-        finalEntry ? { key: entry, version: finalEntry.version } : retainedEntry,
+        finalEntry ? { key: entry, version: finalEntry.version } : undefined,
         finalRegistry ? { id: viewId, version: finalRegistry.version } : undefined,
       );
     }
@@ -297,14 +297,24 @@ export async function persistTransientView(
       registryCreated,
     };
   } catch (error) {
-    if (error instanceof TransientViewSaveError) throw error;
-    const currentRegistry = await readRegistrationIfPresent(bundle, viewId).catch(() => null);
+    const [currentEntry, currentRegistry] = await Promise.all([
+      readBlob(bundle, entry).catch(() => null),
+      readRegistrationIfPresent(bundle, viewId).catch(() => null),
+    ]);
+    if (error instanceof TransientViewSaveError) {
+      if (!error.retainedEntry && !error.retainedRegistration) throw error;
+      throw new TransientViewSaveError(
+        error.message,
+        currentEntry ? { key: entry, version: currentEntry.version } : undefined,
+        currentRegistry ? { id: viewId, version: currentRegistry.version } : undefined,
+      );
+    }
     const prefix = entryCreated
       ? `The exact View entry was retained at '${entry}', but`
       : `The existing exact View entry at '${entry}' was left untouched, but`;
     throw new TransientViewSaveError(
       `${prefix} its registration could not be created: ${error instanceof Error ? error.message : String(error)}`,
-      retainedEntry,
+      currentEntry ? { key: entry, version: currentEntry.version } : undefined,
       currentRegistry ? { id: viewId, version: currentRegistry.version } : undefined,
     );
   }

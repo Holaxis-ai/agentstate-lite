@@ -511,9 +511,10 @@ async function viewsResponse(options: UiServerOptions): Promise<Response> {
     const catalog = bundle
       ? await listViewCatalog(bundle)
       : await projectViewCatalog(await remoteRegistryHeads(options), {
-          admitEntry: async (entry) => {
+          admitEntry: async (entry, expectedVersion) => {
             const blob = await readPageBlob(options, entry);
             if (blob === null) return false;
+            if (expectedVersion && expectedVersion !== blob.version) return false;
             admitActiveView(blob.bytes, blob.contentType);
             return true;
           },
