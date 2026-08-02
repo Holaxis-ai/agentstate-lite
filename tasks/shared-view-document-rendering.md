@@ -1,17 +1,16 @@
 ---
 type: Task
 title: Shared bounded document rendering for portable Views
-status: todo
+status: in_progress
 priority: '2'
 description: >-
-  DESIGNED + REVIEWED 2026-08-02 — implementation-ready. Add one
-  document-centric read-only rendering capability so durable Views reuse
-  AgentState's bounded Markdown semantics unchanged in web and MCP. Two units:
-  first prove an inert static output profile through the existing generated MCP
-  consumer; then add render-document through composition-root injection without
-  weakening ui-server package direction.
+  CLAIMED 2026-08-02 by openai/codex. Implementing the reviewed design in two
+  units: first the inert shared static Markdown profile through the existing MCP
+  generated-presentation consumer; then the render-document bridge capability
+  across web and MCP without weakening ui-server package direction.
 actor: openai/codex
-timestamp: '2026-08-02T16:09:27.117Z'
+assignee: openai/codex
+timestamp: '2026-08-02T16:12:33.721Z'
 ---
 # Outcome
 
