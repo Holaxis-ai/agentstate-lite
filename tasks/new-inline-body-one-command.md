@@ -1,7 +1,7 @@
 ---
 type: Task
 title: 'new: accept inline body for one-command governed creation'
-status: in_progress
+status: done
 priority: '1'
 assignee: openai/codex
 description: >-
@@ -13,7 +13,7 @@ description: >-
   supersedes the canceled not-validated conclusion in
   tasks/governed-create-one-command for the official agent workflow.
 actor: openai/codex
-timestamp: '2026-08-02T21:14:56.122Z'
+timestamp: '2026-08-02T21:16:11.077Z'
 ---
 # Implementation
 
@@ -35,6 +35,6 @@ Independent re-review then found the supported `kind field add` path carried a d
 - Final independent review of `c72c02bb` reported no findings and judged the PR merge-ready.
 - All required GitHub checks passed on Node 20, 22, and 26; PR #195 is ready, mergeable, and clean.
 
-# Remaining
+# Completion
 
-Merge PR #195. The task remains in progress until merge completes.
+PR #195 was squash-merged into `main` as `642189bf9bf04ac90e3bae15c263fa6d1a0cee51` on 2026-08-02. No required work remains.
