@@ -7,12 +7,14 @@ status: in_progress
 priority: '2'
 actor: openai/codex
 description: >-
-  Claimed 2026-08-02: reproduce and replace the raw filesystem ENOENT for
-  unknown durable View IDs at the shared launch authority, with one typed error
-  projected consistently to MCP and web-facing consumers. Scope excludes
-  release/version files.
+  Implemented 2026-08-02 on codex/typed-unknown-view-error: shared launch
+  authority maps only ENOENT to typed ViewNotFoundError (VIEW_NOT_FOUND); MCP
+  projects an actionable list_views recovery hint. Real-filesystem and MCP
+  regressions prove no errno, .md path, bundle root, or failed claim escapes.
+  Focused suites/typechecks and repository-wide npm run check pass; awaiting
+  independent exact-SHA review.
 assignee: openai/codex
-timestamp: '2026-08-02T14:08:01.788Z'
+timestamp: '2026-08-02T14:12:53.936Z'
 ---
 # Field repro (Brian via Claude Desktop chat, 2026-07-27)
 
