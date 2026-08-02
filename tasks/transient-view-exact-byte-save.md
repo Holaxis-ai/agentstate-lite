@@ -5,13 +5,15 @@ status: in_progress
 priority: '1'
 assignee: openai/codex
 description: >-
-  Implement the next unit of designs/transient-durable-view-unification: a
-  server-owned save operation resolves an approved, current transient launch;
-  persists its immutable exact HTML bytes; create-only registers a durable View;
-  reports partial/orphan outcomes honestly; and proves the saved identity
-  launches in MCP and web after fresh durable authorization. It accepts identity
-  and metadata decisions, never replacement HTML.
+  PR #192 at 0010f55 implements a host-neutral exact-byte persistence service
+  plus the model-visible MCP save_transient_view adapter. It accepts
+  launchId/viewId/optional description but no HTML; revalidates process-local
+  approval, derives the entry path, uses create-only CAS/idempotency for blob
+  and registry, preserves actor/final versions, reports retained inert entries
+  on partial failure, and requires fresh durable authorization. Full npm run
+  check is green; exact-SHA independent review and adversarial QA are in
+  progress.
 actor: openai/codex
-timestamp: '2026-08-02T19:20:50.863Z'
+timestamp: '2026-08-02T19:37:09.474Z'
 ---
 
