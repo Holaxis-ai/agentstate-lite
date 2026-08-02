@@ -5,17 +5,15 @@ status: in_progress
 priority: '1'
 assignee: openai/codex
 description: >-
-  Follow up the medium-priority API footgun in
-  context-notes/transient-view-pr191-implementation-review.
-  PageBridgeLaunchAuthority currently defaults transient authorization to the
-  registered authorization store. Make omission fail safe by owning a fresh
-  process-local SessionViewAuthorizationStore (or a comparably small
-  compile-enforced design), so a future host cannot accidentally persist
-  transient approval merely by omitting the fourth constructor argument. Add a
-  regression test proving authorization in the registered store does not
-  authorize a transient launch when no transient store is supplied. Keep this
-  separate from approval copy, launch immutability, and bundle-propose.
+  PR #193 at exact SHA 35dda0f replaces the unsafe registered-store alias in
+  PageBridgeLaunchAuthority with a fresh process-local
+  SessionViewAuthorizationStore default. Explicit callers remain unchanged. A
+  regression test proves that even if the registered store contains the exact
+  transient subject, omitting the transient store does not authorize the launch.
+  Root build and typecheck pass; view-runtime tests pass 24/24. Independent
+  review and adversarial QA are required because this changes an authorization
+  boundary.
 actor: openai/codex
-timestamp: '2026-08-02T20:23:39.562Z'
+timestamp: '2026-08-02T20:26:25.839Z'
 ---
 
