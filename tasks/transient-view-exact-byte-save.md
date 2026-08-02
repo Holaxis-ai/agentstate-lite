@@ -1,21 +1,19 @@
 ---
 type: Task
 title: Save a transient View as exact durable bytes
-status: in_progress
+status: done
 priority: '1'
 assignee: openai/codex
 description: >-
-  PR #192 at exact SHA 691be7a implements the exact-byte persistence service and
-  save_transient_view MCP adapter. Review found and the revision fixed
-  cross-resource races: saved registrations pin entry_version; MCP and web hosts
-  refuse mismatched bytes; catalogs admit and cache by the pin; registry
-  creation routes through strict mutateDocument with persisted actor
-  attribution; and final entry, registry, approval, deletion-race, and
-  lost-write-acknowledgement state is reconciled before any success receipt.
-  Independent review APPROVED and adversarial QA PASSED the exact SHA. Focused
-  suites are green (View runtime 23/23, MCP 59/59, UI server 43/43, recipes
-  51/51); GitHub full gates are the only remaining merge condition.
+  Merged as PR #192 at 255d05a. Approved transient MCP Views can now be saved
+  byte-for-byte as durable registered Views through save_transient_view. Saved
+  registrations pin entry_version; MCP and web hosts and catalogs refuse
+  mismatched bytes; registry creation uses the shared strict mutation boundary
+  with actor attribution; and concurrency, deletion, revocation, lost
+  acknowledgements, and retained-state receipts are reconciled before success.
+  Independent review APPROVED and adversarial QA PASSED exact SHA 691be7a.
+  GitHub gates passed on Node 20, 22, and 26.
 actor: openai/codex
-timestamp: '2026-08-02T20:16:17.863Z'
+timestamp: '2026-08-02T20:17:50.110Z'
 ---
 
