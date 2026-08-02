@@ -1,17 +1,23 @@
 ---
 type: Task
 title: Portable View authoring guidance and fresh-agent dogfood
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Reopened for the missing final unit: tighten the single authoritative
-  View-authoring reference so it teaches one responsive durable View across web
-  and MCP, shared render-document use, and concise cross-host verification
-  without introducing another guide. The successful fresh-agent proof and prior
-  evidence remain valid.
+  DONE — PR #190 merged as 6c067f4. The one authoritative View-authoring
+  contract now opens with a concise product model: author one durable responsive
+  View for both web and MCP; use the shared bridge and render-document; let the
+  host choose size/expansion; do not fork inline, expanded, web, or MCP
+  implementations. The optional presentation taxonomy is no longer taught, the
+  portable recipe's agent-harness independence remains explicit, and no new
+  guide or runtime concept was added. The authority is five lines shorter; npm
+  projections remain byte-identical and the plugin projection is bot-owned.
+  Verification: exact previously failing recipe test plus complete recipes suite
+  51/51, documentation/distribution suite 30/30, skill drift check, and all
+  three PR CI jobs green.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-02T18:04:49.874Z'
+timestamp: '2026-08-02T18:21:17.573Z'
 ---
 # Product invariant
 
