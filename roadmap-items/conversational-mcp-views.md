@@ -3,17 +3,17 @@ type: Roadmap Item
 title: Conversational Views through MCP Apps
 status: active
 description: >-
-  ACTIVE — one portable durable View across web and MCP. Shared catalog, shared
-  bounded document rendering, unified authoring guidance, and a fresh-agent
-  cross-bundle/cross-host proof have shipped. Next product decision: whether
-  one-command durable View creation is worth its scope; next isolated
-  host-parity mechanic after that is MCP open-page navigation.
+  ACTIVE — converge transient and durable Views on one active source contract.
+  Durable catalog, shared rendering, authoring guidance, and cross-host dogfood
+  have shipped. The current unit proves a hash-identified process-local
+  transient launch; exact-byte save, governed-action parity, and deletion of the
+  generated presentation contract follow.
 sequence: >-
-  Shared View catalog shipped → shared document rendering shipped → unified
-  authoring guidance + fresh-agent dogfood shipped → explicit view-create
-  decision → navigation parity → later action parity
+  Durable View foundations shipped → transient active-source proof → exact-byte
+  save → bundle-propose parity → delete generated presentation contract →
+  navigation parity
 actor: openai/codex
-timestamp: '2026-08-02T18:52:55.627Z'
+timestamp: '2026-08-02T19:18:41.160Z'
 ---
 # Direction
 
@@ -29,6 +29,10 @@ Governing architecture:
 Supporting security authority:
 [MCP and web View security-model unification](../designs/mcp-view-security-model-unification.md).
 
+The proposed [transient/durable source unification](../designs/transient-durable-view-unification.md)
+narrows this model further: transient and registered Views use the same active HTML source and
+runtime. Lifetime changes persistence and discoverability, not the View language or bridge.
+
 The earlier [Conversational Generative Views](../designs/mcp-app-generative-views.md) design remains
 the authority for the fixed MCP shell and transient generated preview containment. Generated HTML
 is a View preview, not a separate durable MCP View format.
@@ -37,7 +41,9 @@ is a View preview, not a separate durable MCP View format.
 
 The OSS npm artifact owns one local STDIO MCP adapter scoped explicitly to one bundle. Agents use
 the CLI for general bundle work. MCP remains a small presentation surface: a bounded catalog and
-generic `show_view` invocation for durable Views, plus the existing transient preview path.
+generic `show_view` invocation accepting either a registered View or an exact, temporarily retained
+active View source. The existing script-free generated preview remains only during the transition
+and is deleted after transient launch, exact-byte save, and governed-action parity are proven.
 
 Remote workspaces, authentication, multi-tenant hosting, and a broader remote-agent CRUD surface
 remain separate decisions.
@@ -53,35 +59,31 @@ Shipped and proved:
 - one shared durable View catalog projected through CLI `view list`, MCP `list_views`, and the
   web launcher, with bounded continuation and fail-closed admission;
 - intrinsic sizing and automatic suspension recovery; and
-- one shared bounded Markdown renderer, currently consumed by trusted web document pages and
-  generated MCP bindings.
+- one shared bounded Markdown renderer and `render-document` bridge, consumed by durable Views
+  across web and MCP as well as the remaining generated path.
 
-Current parity gaps:
+Current work:
 
-- durable authoring remains a hand-coordinated blob/registry sequence;
-- standard Markdown/document rendering is not exposed to registered Views;
-- MCP rejects the shared runtime's validated `open-page` outcome; and
-- durable MCP currently supports `bundle-read`, not `bundle-propose`.
+- prove a hash-identified, process-local transient source through the shared active-View authority;
+- add server-owned exact-byte save into a durable registration;
+- add `bundle-propose` parity for transient and durable MCP Views;
+- remove the superseded generated snapshot/binding/presentation contract; and
+- add MCP `open-page` navigation parity afterward.
 
 # Sequence
 
 1. **Shared View catalog — shipped in PR #184.** One authority is projected as CLI `view list`,
    MCP `list_views`, and the web launcher. Presentation intent is advisory, never an eligibility
    gate; bounded results report total/truncation and provide continuation.
-2. **Unified authoring guidance and dogfood — active next unit.** Teach one durable View workflow
-   plus transient previews, then repeat the fresh-agent cross-bundle journey before adding more
-   mechanics.
-3. **Create ergonomics decision and unit.** If explicitly accepted as the mechanism-level
-   framework exception, update and implement the create-only `aslite view create` design using
-   `access` and current admission checks.
-4. **Shared document rendering.** Specify and security-review a bounded `render-document` bridge
-   row while keeping rendering in `markdown-renderer`.
-5. **Navigation parity.** Handle `open-page` in MCP with independent target launch authorization
-   and add cross-host agreement tests.
-6. **Later capability parity.** Consider durable governed actions only after read/render/navigation
-   semantics stabilize.
-7. **End-to-end proof.** A fresh agent creates one durable View ID, discovers it, invokes that exact
-   ID in conversation, and opens the same ID in the web launcher without source-code archaeology.
+2. **Durable foundations — shipped.** Shared bounded document rendering, authoring guidance, and
+   cross-host dogfood now sit beside the catalog.
+3. **Transient active-source proof — in progress.** Reuse the standard active View admission,
+   authorization, bridge, and lifecycle without synthetic registry identity.
+4. **Exact-byte save.** Persist the admitted transient bytes unchanged and register them durably.
+5. **Governed-action parity.** Support `bundle-propose` for transient and durable MCP Views.
+6. **Consolidation.** Delete the generated presentation contract once the replacement journey is
+   proven.
+7. **Navigation parity.** Add independently authorized MCP `open-page`.
 
 [contains](../tasks/mcp-durable-view-catalog.md)
 
