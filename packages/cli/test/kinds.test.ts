@@ -571,19 +571,61 @@ test("new surfaces the auto-applied path prefix in its receipt — no silent id 
   }
 });
 
-test("new --body gives targeted --body-file guidance, not a confusing 'unknown field body' (maturity)", async () => {
+test("new --body creates a complete governed Context Note in one command", async () => {
   const { dir, cleanup } = await makeSeededBundle();
   try {
+    const authored = "# Summary\n\nWhat this session did and what comes next.\n";
+    const result = await runJson(newCommand, [
+      "Context Note",
+      "x",
+      "--title",
+      "T",
+      "--body",
+      authored,
+      "--dir",
+      dir,
+      "--json",
+    ]);
+    assert.equal(result.id, "context-notes/x");
+    assert.equal((await readDoc({ root: dir }, "context-notes/x")).body, authored);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("new body sources are exclusive and an explicit empty body never falls back to scaffolding", async () => {
+  const { dir, cleanup } = await makeSeededBundle();
+  try {
+    const bodyFile = path.join(dir, "note.md");
+    await writeFile(bodyFile, "# Summary\n\nFrom a file.\n", "utf8");
     await assert.rejects(
-      () => newCommand(["Context Note", "x", "--title", "T", "--body", "hi", "--dir", dir, "--json"]),
-      (err: unknown) => {
-        assert.ok(err instanceof CliError);
-        assert.equal(err.code, "USAGE");
-        assert.match(err.message, /does not take --body/);
-        assert.match(err.message, /--body-file/);
-        return true;
-      },
+      () => newCommand([
+        "Context Note",
+        "ambiguous",
+        "--title",
+        "T",
+        "--body",
+        "# Summary\n\nInline.\n",
+        "--body-file",
+        bodyFile,
+        "--dir",
+        dir,
+      ]),
+      (err: unknown) =>
+        err instanceof CliError &&
+        err.code === "USAGE" &&
+        /mutually exclusive/.test(err.message),
     );
+    await assert.rejects(() => readDoc({ root: dir }, "context-notes/ambiguous"));
+
+    await assert.rejects(
+      () => newCommand(["Context Note", "empty", "--title", "T", "--body", "", "--dir", dir]),
+      (err: unknown) =>
+        err instanceof CliError &&
+        err.code === "USAGE" &&
+        /Summary/.test(err.message),
+    );
+    await assert.rejects(() => readDoc({ root: dir }, "context-notes/empty"));
   } finally {
     await cleanup();
   }
@@ -790,6 +832,50 @@ test("new --body-file: a formerly-valid colliding domain field is centrally rese
     const warnings = receipt.warnings as Array<Record<string, unknown>>;
     assert.equal(warnings[0]!.code, "KIND_RESERVED_FIELD");
     assert.match(String(warnings[0]!.message), /body-file/);
+    assert.match(String(warnings[0]!.message), /rename those domain fields/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("new --body: a formerly-valid colliding domain field is centrally reserved and warns at point of use", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle: Bundle = { root: dir };
+    await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "conventions/artifact",
+      frontmatter: {
+        type: CONVENTION_TYPE,
+        governs: "Artifact",
+        path: "artifacts/",
+        fields: { required: ["title"], optional: ["body"] },
+        timestamp: T,
+      },
+      body: "A convention written before body became a CLI Markdown channel.",
+    });
+
+    let help = "";
+    await newCommand(["Artifact", "--help", "--dir", dir], { stdout: (s) => (help += s) });
+    assert.equal((help.match(/  --body <markdown>/g) ?? []).length, 1);
+    assert.doesNotMatch(help, /--body <v>/);
+
+    const receipt = await runJson(newCommand, [
+      "Artifact",
+      "a",
+      "--title",
+      "A",
+      "--body",
+      "# Summary\n\nAuthored body.\n",
+      "--dir",
+      dir,
+    ]);
+    const saved = await readDoc(bundle, "artifacts/a");
+    assert.equal(saved.body, "# Summary\n\nAuthored body.\n");
+    assert.equal(Object.hasOwn(saved.frontmatter, "body"), false);
+    const warnings = receipt.warnings as Array<Record<string, unknown>>;
+    assert.equal(warnings[0]!.code, "KIND_RESERVED_FIELD");
+    assert.match(String(warnings[0]!.message), /body/);
     assert.match(String(warnings[0]!.message), /rename those domain fields/);
   } finally {
     await rm(dir, { recursive: true, force: true });

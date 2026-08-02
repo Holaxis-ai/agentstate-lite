@@ -206,6 +206,7 @@ export { InvalidInputError } from "./errors.js";
 export {
   CONVENTIONS_PREFIX,
   CONVENTION_TYPE,
+  RESERVED_KIND_FIELD_NAMES,
   validateAgainstKind,
   defaultTimestampAndValidateAgainstRegistry,
   freshnessHorizonMs,

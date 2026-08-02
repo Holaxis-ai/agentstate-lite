@@ -12,7 +12,7 @@
 // over `--dir` and `--remote` alike (it is just a doc read + write). Idempotent: adding an
 // already-declared field, or removing an absent one, is a no-op that exits 0.
 import { parseArgs } from "node:util";
-import { loadKinds, type Frontmatter } from "@agentstate-lite/core";
+import { loadKinds, RESERVED_KIND_FIELD_NAMES, type Frontmatter } from "@agentstate-lite/core";
 import { openBundle, resolveRemoteFlag } from "../bundle.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
@@ -20,8 +20,8 @@ import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 import { mutateDoc } from "../mutate.js";
 
-/** Field names a kind convention may NOT declare — `type` is stamped from `governs`; the rest are CLI control flags (core's `RESERVED_FIELD_NAMES`). */
-const RESERVED_FIELD_NAMES = new Set(["type", "dir", "remote", "json", "help"]);
+/** The core parser owns the one authoritative set of field names reserved by mutation surfaces. */
+const RESERVED_FIELD_NAMES = new Set<string>(RESERVED_KIND_FIELD_NAMES);
 
 export const KIND_USAGE = `agentstate-lite kind — edit a bundle's kind conventions (a kind's schema)
 
@@ -135,10 +135,12 @@ export async function kind(argv: string[], deps: Partial<KindCliDeps> = {}): Pro
       { help: helpHint },
     );
   }
-  if (RESERVED_FIELD_NAMES.has(fieldName)) {
+  // Reject new collisions, but keep `remove` available as the supported migration path for a
+  // convention authored before a name became reserved.
+  if (action === "add" && RESERVED_FIELD_NAMES.has(fieldName)) {
     throw new CliError(
       "USAGE",
-      `'${fieldName}' is a reserved name and cannot be a kind field (type is stamped from the kind; dir/remote/json/help are control flags).`,
+      `'${fieldName}' is reserved by the CLI and cannot be added as a kind field.`,
       { help: helpHint },
     );
   }

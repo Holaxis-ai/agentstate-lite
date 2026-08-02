@@ -192,7 +192,7 @@ test("every deny-adjacent top-level enum spelling produces its own precise warni
 test("reserved field filtering covers every carrier and returns deterministic receipts", () => {
   const parsed = parseConventionDoc(convention({
     fields: {
-      required: ["remote", "body-file", "title"],
+      required: ["remote", "body", "body-file", "title"],
       optional: ["dir"],
       values: { help: ["yes"], type: ["Task"] },
     },
@@ -202,9 +202,10 @@ test("reserved field filtering covers every carrier and returns deterministic re
   assert.deepEqual(parsed.kind.fields.required, ["title"]);
   assert.deepEqual(parsed.kind.fields.optional, []);
   assert.deepEqual(parsed.kind.fields.values, {});
-  assert.deepEqual(parsed.reservedFieldsIgnored, ["body-file", "dir", "help", "remote", "type"]);
+  assert.deepEqual(parsed.reservedFieldsIgnored, ["body", "body-file", "dir", "help", "remote", "type"]);
   assert.deepEqual(parsed.reservedFieldPaths, [
     "fields.optional.dir",
+    "fields.required.body",
     "fields.required.body-file",
     "fields.required.remote",
     "fields.values.help",
