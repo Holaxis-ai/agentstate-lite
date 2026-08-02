@@ -69,6 +69,18 @@ export interface PageLaunch {
   expiresAt: number;
 }
 
+/** A caller-supplied View registration ID does not exist in the active bundle. */
+export class ViewNotFoundError extends Error {
+  readonly code = "VIEW_NOT_FOUND";
+  readonly viewId: string;
+
+  constructor(viewId: string) {
+    super(`No registered View with ID '${viewId}'.`);
+    this.name = "ViewNotFoundError";
+    this.viewId = viewId;
+  }
+}
+
 export function pageLaunchAuthorizationSubject(launch: PageLaunch): ViewAuthorizationSubject {
   return {
     registryId: launch.registryId,
@@ -274,7 +286,15 @@ export async function mintActiveViewLaunch(
   launches: PageLaunchRegistry,
   registryId: string,
 ): Promise<PageLaunch> {
-  const registryRead = await readDocVersioned(bundle, registryId);
+  let registryRead;
+  try {
+    registryRead = await readDocVersioned(bundle, registryId);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      throw new ViewNotFoundError(registryId);
+    }
+    throw error;
+  }
   const registration = parseRegistration(registryRead.doc.id, registryRead.doc.frontmatter);
   if (!registration) {
     throw new Error(

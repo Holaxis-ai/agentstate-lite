@@ -21,6 +21,7 @@ import {
   PageLaunchRegistry,
   SessionViewAuthorizationStore,
   TrustedActionService,
+  ViewNotFoundError,
   launchIsCurrent,
   listViewCatalogPage,
   mintActiveViewLaunch,
@@ -631,12 +632,17 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
           structuredContent: { ...payload },
         };
       } catch (error) {
+        const detail = error instanceof ViewNotFoundError
+          ? `${error.message} Call list_views to discover the available View IDs.`
+          : error instanceof Error
+            ? error.message
+            : String(error);
         return {
           isError: true,
           content: [
             {
               type: "text",
-              text: `Could not render the AgentState View: ${error instanceof Error ? error.message : String(error)}`,
+              text: `Could not render the AgentState View: ${detail}`,
             },
           ],
         };
