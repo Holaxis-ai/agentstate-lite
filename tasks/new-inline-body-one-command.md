@@ -13,6 +13,18 @@ description: >-
   supersedes the canceled not-validated conclusion in
   tasks/governed-create-one-command for the official agent workflow.
 actor: openai/codex
-timestamp: '2026-08-02T20:35:02.737Z'
+timestamp: '2026-08-02T20:45:24.124Z'
 ---
+# Implementation
 
+Draft PR #195 implements generic inline `new --body` at exact commit `ea35b3655298f83ad30de09fed9a40c50ff6d044`. It keeps `--body-file` for file-backed Markdown, rejects both sources together before mutation, preserves explicit empty-body semantics and strict create-only validation, and regenerates the npm skill with one-command Context Note creation.
+
+# Evidence
+
+- Focused CLI and skill tests: 82 passed.
+- Built CLI smoke: init, inline Context Note create, and body byte-channel readback succeeded.
+- Full `npm run check` passed on the exact rebased commit, including package verification plus MCP and UI browser gates.
+
+# Remaining
+
+Independent review and merge. The task remains in progress until both complete.
