@@ -7,8 +7,8 @@ lane: shared
 readiness: rough
 criticality: core
 description: Stage 12 of the new-user-to-recurring-value journey.
-actor: openai/codex
-timestamp: '2026-08-02T15:25:54.317Z'
+actor: anthropic/claude
+timestamp: '2026-08-02T16:28:37.713Z'
 ---
 # Desired experience
 
@@ -43,3 +43,5 @@ upgrade proof.
 [journey stage implemented by](../tasks/version-string-channel-identity.md)
 
 [journey stage implemented by](../tasks/self-discovered-upgrade-proof.md)
+
+[journey stage implemented by](../tasks/skill-freshness.md)
