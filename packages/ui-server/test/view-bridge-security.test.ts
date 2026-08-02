@@ -10,6 +10,10 @@ import { createRouter } from "@agentstate-lite/server";
 import { bootUiServer } from "../src/server.js";
 
 const SECRET = "view-bridge-security-secret";
+const renderDocument = ({ id, body }: { id: string; body: string }) => ({
+  html: `<article data-id="${id}">${body}</article>`,
+  bounded: false,
+});
 const T = "2026-07-26T00:00:00.000Z";
 const headers = {
   cookie: `aslite_ui_session=${SECRET}`,
@@ -58,6 +62,7 @@ test("active View data is denied before exact-byte approval and revoked when tho
     bundle,
     router: createRouter(bundle),
     sessionSecret: SECRET,
+    renderDocument,
     serveAsset: () => ({
       status: 404,
       headers: { "content-type": "text/plain; charset=utf-8" },
@@ -99,6 +104,24 @@ test("active View data is denied before exact-byte approval and revoked when tho
       request: { bridge: "v0", type: "read", id: "r2", docId: "docs/secret" },
     });
     assert.equal(read.body.reply.result.body, "sensitive bundle data");
+
+    const rendered = await post("/__ui/views/bridge", {
+      launchId: minted.body.launchId,
+      request: { bridge: "v0", type: "render-document", id: "render", docId: "docs/secret" },
+    });
+    assert.equal(rendered.body.reply.result.document.id, "docs/secret");
+    assert.match(rendered.body.reply.result.document.version, /^sha256:/);
+    assert.equal(
+      rendered.body.reply.result.html,
+      '<article data-id="docs/secret">sensitive bundle data</article>',
+    );
+    assert.equal(rendered.body.reply.result.bounded, false);
+
+    const missing = await post("/__ui/views/bridge", {
+      launchId: minted.body.launchId,
+      request: { bridge: "v0", type: "render-document", id: "missing", docId: "docs/missing" },
+    });
+    assert.equal(missing.body.reply.error.code, "NOT_FOUND");
 
     await writeBlob(
       bundle,
@@ -152,6 +175,7 @@ test("active View admission accepts only bounded UTF-8 HTML", async () => {
     bundle,
     router: createRouter(bundle),
     sessionSecret: SECRET,
+    renderDocument,
     serveAsset: () => ({
       status: 404,
       headers: { "content-type": "text/plain; charset=utf-8" },

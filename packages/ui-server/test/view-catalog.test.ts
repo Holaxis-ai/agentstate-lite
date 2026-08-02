@@ -44,6 +44,7 @@ test("the web launcher endpoint serves the shared durable View catalog", async (
     bundle,
     router: createRouter(bundle),
     sessionSecret: secret,
+    renderDocument: ({ body }) => ({ html: body, bounded: false }),
     serveAsset: () => ({
       status: 404,
       headers: { "content-type": "text/plain; charset=utf-8" },

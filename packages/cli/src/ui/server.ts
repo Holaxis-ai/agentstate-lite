@@ -7,6 +7,7 @@ import {
   type UiServerHandle,
   type UiServerOptions as RuntimeUiServerOptions,
 } from "@agentstate-lite/ui-server";
+import { renderDocumentToStaticHtml } from "@agentstate-lite/markdown-renderer/static";
 import { deriveBundleDisplayName } from "../bundle-name.js";
 import { serveEmbeddedUiAsset } from "./assets.js";
 import { createSharingLoader, createWorkspacesLoader } from "./sharing.js";
@@ -17,7 +18,7 @@ export type { UiServerHandle };
 
 export type UiServerOptions = Omit<
   RuntimeUiServerOptions,
-  "serveAsset" | "resolveBundleDisplayName" | "loadSharingSummary" | "loadWorkspaces"
+  "serveAsset" | "resolveBundleDisplayName" | "loadSharingSummary" | "loadWorkspaces" | "renderDocument"
 >;
 
 export function bootUiServer(options: UiServerOptions): Promise<UiServerHandle> {
@@ -33,6 +34,7 @@ export function bootUiServer(options: UiServerOptions): Promise<UiServerHandle> 
     ...(bundleIdentity
       ? { viewAuthorization: new LocalViewAuthorizationStore(bundleIdentity) }
       : {}),
+    renderDocument: renderDocumentToStaticHtml,
     serveAsset: serveEmbeddedUiAsset,
     resolveBundleDisplayName: async (bundle) => (await deriveBundleDisplayName(bundle)).name,
     ...(bundleRoot !== undefined

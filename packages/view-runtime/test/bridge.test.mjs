@@ -54,6 +54,31 @@ test("bridge parser admits only exact bounded requests", () => {
     "../outside",
     "concept-id safety remains the backend's single authority; the bridge only bounds transport",
   );
+  assert.deepEqual(
+    parseBridgeRequest({
+      bridge: "v0",
+      type: "render-document",
+      id: "render-1",
+      docId: "docs/one",
+    }),
+    {
+      bridge: "v0",
+      type: "render-document",
+      id: "render-1",
+      docId: "docs/one",
+    },
+  );
+  assert.equal(
+    parseBridgeRequest({
+      bridge: "v0",
+      type: "render-document",
+      id: "render-1",
+      docId: "docs/one",
+      html: "<p>caller supplied</p>",
+    }),
+    null,
+    "callers cannot inject presentation bytes into a document render",
+  );
 });
 
 test("session authorization keys approval to the complete active-View subject", async () => {
@@ -102,6 +127,7 @@ test("bridge polling retains a bounded change until acknowledgement and stays re
     bundle,
     launches,
     config: async () => ({ root: null, name: "Test", mode: "test" }),
+    renderDocument: ({ body }) => ({ html: body, bounded: false }),
     allowActionProtocol: false,
     enablePolling: true,
   });
@@ -149,4 +175,66 @@ test("bridge polling retains a bounded change until acknowledgement and stays re
     message: "the View poll acknowledgement did not match the pending generation",
   });
   assert.equal(current, false);
+});
+
+test("render-document reads one canonical version, bounds it, and revalidates the launch", async () => {
+  const bundle = { root: "mem://bridge-render", backend: new MemoryBackend() };
+  await writeDoc(bundle, {
+    id: "docs/one",
+    frontmatter: { type: "Doc", title: "One", timestamp: "2026-08-02T00:00:00.000Z" },
+    body: "# One\n\nBody",
+  });
+  let current = true;
+  let revokeDuringRender = false;
+  const calls = [];
+  const bridge = new BridgeService({
+    bundle,
+    launches: {
+      async resolve(launchId) {
+        return launchId === "launch" && current
+          ? { launchId, capability: "bundle-read" }
+          : null;
+      },
+      revoke() {
+        current = false;
+      },
+    },
+    config: async () => ({ root: null, name: "Test", mode: "test" }),
+    renderDocument(document) {
+      calls.push(document);
+      if (revokeDuringRender) current = false;
+      return { html: `<article>${document.body}</article>`, bounded: false };
+    },
+  });
+
+  const rendered = await bridge.handle("launch", {
+    bridge: "v0",
+    type: "render-document",
+    id: "render",
+    docId: "docs/one",
+  });
+  assert.deepEqual(calls, [{ id: "docs/one", body: "# One\n\nBody" }]);
+  assert.deepEqual(rendered.reply.result.document.id, "docs/one");
+  assert.match(rendered.reply.result.document.version, /^sha256:/);
+  assert.equal(rendered.reply.result.html, "<article># One\n\nBody</article>");
+  assert.equal(rendered.reply.result.bounded, false);
+
+  const missing = await bridge.handle("launch", {
+    bridge: "v0",
+    type: "render-document",
+    id: "missing",
+    docId: "docs/missing",
+  });
+  assert.equal(missing.reply.error.code, "NOT_FOUND");
+  assert.doesNotMatch(JSON.stringify(missing.reply), /ENOENT|mem:\/\//);
+
+  revokeDuringRender = true;
+  const revoked = await bridge.handle("launch", {
+    bridge: "v0",
+    type: "render-document",
+    id: "revoked",
+    docId: "docs/one",
+  });
+  assert.equal(revoked.reply.error.code, "REVOKED");
+  assert.doesNotMatch(JSON.stringify(revoked.reply), /<article>/);
 });

@@ -14,6 +14,7 @@ import { createRouter } from "@agentstate-lite/server";
 import { bootUiServer, type SharingSummary, type UiServerHandle, type UiServerOptions } from "../src/server.js";
 
 const SECRET = "config-contract-secret";
+const renderDocument = ({ body }: { body: string }) => ({ html: body, bounded: false });
 
 function stubAsset(): { status: number; headers: Record<string, string>; body: Uint8Array } {
   return { status: 404, headers: { "content-type": "text/plain; charset=utf-8" }, body: new Uint8Array() };
@@ -51,6 +52,7 @@ async function bootDir(extra: Partial<UiServerOptions>): Promise<UiServerHandle>
     bundle,
     router: createRouter(bundle),
     sessionSecret: SECRET,
+    renderDocument,
     serveAsset: stubAsset,
     ...extra,
   });
@@ -114,6 +116,7 @@ test("remote mode derives hosted from remoteBase in the runtime — no injection
     mode: "remote",
     remoteBase: "http://127.0.0.1:1", // never dialed by the config route
     sessionSecret: SECRET,
+    renderDocument,
     serveAsset: stubAsset,
     watcherBootTimeoutMs: 1, // the live watcher's boot probe fails fast and is tolerated
   });

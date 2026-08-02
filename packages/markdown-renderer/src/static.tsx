@@ -15,6 +15,16 @@ export interface StaticRenderedMarkdown extends Omit<RenderedMarkdown, "element"
   html: string;
 }
 
+export interface StaticRenderableDocument {
+  id: string;
+  body: string;
+}
+
+export interface StaticRenderedDocument {
+  html: string;
+  bounded: boolean;
+}
+
 /** Serialize the shared renderer's inert profile for transport into an opaque-origin View. */
 export function renderMarkdownToStaticHtml(
   body: string,
@@ -29,4 +39,12 @@ export function renderMarkdownToStaticHtml(
     <div data-aslite-rendered-document="">{rendered.element}</div>,
   );
   return { html, bounded: rendered.bounded, limits: rendered.limits };
+}
+
+/** Bridge-shaped adapter shared by every host that presents a canonical bundle document. */
+export function renderDocumentToStaticHtml(
+  document: StaticRenderableDocument,
+): StaticRenderedDocument {
+  const rendered = renderMarkdownToStaticHtml(document.body, { fromId: document.id });
+  return { html: rendered.html, bounded: rendered.bounded };
 }

@@ -15,6 +15,7 @@ import { createRouter } from "@agentstate-lite/server";
 import { bootUiServer, type UiServerHandle } from "../src/server.js";
 
 const SECRET = "access-field-secret";
+const renderDocument = ({ body }: { body: string }) => ({ html: body, bounded: false });
 const COOKIE = `aslite_ui_session=${SECRET}`;
 const T = "2026-07-23T00:00:00.000Z";
 const HTML = "<!doctype html><button>done</button>";
@@ -112,6 +113,7 @@ test("access-only registry docs (dir mode): mint derives the capability from `ac
     bundle,
     router: createRouter(bundle),
     sessionSecret: SECRET,
+    renderDocument,
     actor: "mike/test",
     viewAuthorization: PREAUTHORIZED_VIEWS,
     serveAsset: () => ({ status: 404, headers: { "content-type": "text/plain; charset=utf-8" }, body: new Uint8Array() }),
@@ -168,6 +170,7 @@ test("REJECTION PIN (dir mode): a legacy bridge-only registry doc resolves acces
     bundle,
     router: createRouter(bundle),
     sessionSecret: SECRET,
+    renderDocument,
     actor: "mike/test",
     viewAuthorization: PREAUTHORIZED_VIEWS,
     serveAsset: () => ({ status: 404, headers: { "content-type": "text/plain; charset=utf-8" }, body: new Uint8Array() }),
@@ -218,6 +221,7 @@ test("access-only registry doc (remote mode): the inline serve-time revalidation
       mode: "remote",
       remoteBase: remoteOrigin,
       sessionSecret: SECRET,
+      renderDocument,
       viewAuthorization: PREAUTHORIZED_VIEWS,
     });
     try {

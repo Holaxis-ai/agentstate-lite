@@ -745,6 +745,38 @@ test("registered Roadmap View runs from unchanged source through the authorized 
     "# Goal\n\nFirst task.",
   );
 
+  const rendered = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: view.launch.launchId,
+      request: {
+        bridge: "v0",
+        type: "render-document",
+        id: "render",
+        docId: "tasks/alpha",
+      },
+    },
+  });
+  const renderedResult = (
+    rendered.structuredContent as {
+      outcome: {
+        reply: {
+          result: {
+            document: { id: string; version: string };
+            html: string;
+            bounded: boolean;
+          };
+        };
+      };
+    }
+  ).outcome.reply.result;
+  assert.equal(renderedResult.document.id, "tasks/alpha");
+  assert.match(renderedResult.document.version, /^sha256:/);
+  assert.match(renderedResult.html, /data-aslite-rendered-document/);
+  assert.match(renderedResult.html, /<h1>Goal<\/h1>/);
+  assert.doesNotMatch(renderedResult.html, /<script|<a\b|<input\b/);
+  assert.equal(renderedResult.bounded, false);
+
   const actionProtocol = await client.callTool({
     name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
     arguments: {
