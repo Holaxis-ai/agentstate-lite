@@ -12,6 +12,7 @@ import { mutateDoc } from "../../mutate.js";
 import { isLegacyPageDoc, LEGACY_PAGE_TYPE_HINT } from "../../legacy-page.js";
 import { boardPostPersistHook } from "../../board-attribution.js";
 import { resolveActor } from "../../actor.js";
+import { conceptIdFromCliArgument, resolveConceptIdCliArgument } from "../../concept-id.js";
 import {
   DOC_UPDATE_USAGE,
   type DocCliDeps,
@@ -216,12 +217,13 @@ export async function docUpdate(argv: string[], deps: Partial<DocCliDeps>): Prom
     return;
   }
 
-  const id = p.positionals[0]?.trim();
-  if (!id) {
+  const rawId = p.positionals[0]?.trim();
+  if (!rawId) {
     throw new CliError("USAGE", "doc update requires a concept <id> positional", {
       help: `${cliInvocation()} doc update <id> --title <t>`,
     });
   }
+  let id = conceptIdFromCliArgument(rawId);
   // A stray extra positional almost always means a flag was mistyped (e.g. a missing `--` before a
   // value) rather than a deliberate second argument — surface it instead of silently absorbing it
   // (mirrors `new.ts`'s identical guard).
@@ -296,6 +298,7 @@ export async function docUpdate(argv: string[], deps: Partial<DocCliDeps>): Prom
   }
 
   const bundle = await openBundle(p.dir, await resolveRemoteFlag(p.remote, p.dir));
+  id = await resolveConceptIdCliArgument(bundle, rawId);
   const mode = resolveMode({ json: p.json });
 
   // Load the kind registry ONCE (it doesn't depend on this doc's version) — used below to validate

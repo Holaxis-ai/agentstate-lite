@@ -3,7 +3,13 @@
 // `--out -` stderr envelope), labeled "as of last fetch" (no implicit fetch, ever).
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { assertSafeConceptId, isReservedFile, parseMarkdown, pathFromConceptId } from "@agentstate-lite/core";
+import {
+  assertSafeConceptId,
+  conceptIdFromPath,
+  isReservedFile,
+  parseMarkdown,
+  pathFromConceptId,
+} from "@agentstate-lite/core";
 import {
   BOARD_BRANCH,
   BOARD_REF,
@@ -125,17 +131,28 @@ export async function showIncoming(
     // `tasks/index`), the probe is RAW — honest `path:` plus literal content, never a fabricated
     // `id:`. A `.md`-suffixed NON-reserved doc id collapses onto its own path and stays a DOC,
     // matching `doc read` for the same spelling.
-    interface Probe { relPath: string; isDoc: boolean }
+    interface Probe { relPath: string; isDoc: boolean; conceptId?: string }
     const candidates: Probe[] = [];
     let conceptIdOk = true;
+    const aliasId = conceptIdFromPath(id);
     try {
-      assertSafeConceptId(id);
+      assertSafeConceptId(aliasId);
     } catch {
       conceptIdOk = false;
     }
     if (conceptIdOk) {
-      const conceptRelPath = pathFromConceptId(id);
-      candidates.push({ relPath: conceptRelPath, isDoc: !isReservedFile(conceptRelPath) });
+      // Mirror CLI `.md` ambiguity resolution against the fetched tree: a literal canonical id
+      // (`x.md` -> `x.md.md`) wins when present; otherwise `x.md` remains the path alias for `x`.
+      const aliasPath = pathFromConceptId(aliasId);
+      // Keep the same explicit physical-path escape as every other CLI ingress: leading `./`
+      // suppresses the deeper literal-id probe, so `./x.md.md` always reads physical `x.md.md`.
+      if (id.endsWith(".md") && !/^\.[\\/]/.test(id) && !isReservedFile(aliasPath)) {
+        const literalId = conceptIdFromPath(`${id}.md`);
+        assertSafeConceptId(literalId);
+        const literalPath = pathFromConceptId(literalId);
+        candidates.push({ relPath: literalPath, isDoc: !isReservedFile(literalPath), conceptId: literalId });
+      }
+      candidates.push({ relPath: aliasPath, isDoc: !isReservedFile(aliasPath), conceptId: aliasId });
     }
     if (candidates.every((c) => c.relPath !== id)) candidates.push({ relPath: id, isDoc: false });
 
@@ -166,11 +183,13 @@ export async function showIncoming(
     if (out) {
       const receipt: Record<string, unknown> = {
         sync: "show-incoming",
-        id,
         as_of: SHOW_INCOMING_AS_OF,
         out,
         size_bytes: bytes.byteLength,
       };
+      // Report the identity that was actually read, not the caller's potentially path-like alias.
+      if (hit.probe.isDoc && hit.probe.conceptId !== undefined) receipt.id = hit.probe.conceptId;
+      else receipt.path = hit.probe.relPath;
       if (streamMode) {
         writeStdoutBytes(bytes);
         stderr(render(receipt, mode));
@@ -202,7 +221,7 @@ export async function showIncoming(
       } catch {
         parsed = null;
       }
-      rec.id = id;
+      rec.id = hit.probe.conceptId;
       if (parsed) {
         const KNOWN_ORDER = ["type", "title", "description", "resource", "tags", "timestamp"];
         const RESERVED_OUTPUT = new Set(["id", "as_of", "body", "body_truncated", "body_chars", "help"]);

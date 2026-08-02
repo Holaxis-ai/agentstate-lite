@@ -6,6 +6,7 @@ import { CliError, classifyBundleError } from "../../errors.js";
 import { parseOrUsage } from "../../args.js";
 import { render, resolveMode } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
+import { conceptIdFromCliArgument, resolveConceptIdCliArgument } from "../../concept-id.js";
 import { DOC_DELETE_USAGE, type DocCliDeps } from "./common.js";
 
 export async function docDelete(argv: string[], deps: Partial<DocCliDeps>): Promise<void> {
@@ -31,17 +32,16 @@ export async function docDelete(argv: string[], deps: Partial<DocCliDeps>): Prom
     return;
   }
 
-  const id = positionals[0]?.trim();
-  if (!id) {
+  const rawId = positionals[0]?.trim();
+  if (!rawId) {
     throw new CliError("USAGE", "doc delete requires a concept <id> positional", {
       help: `${cliInvocation()} doc delete <id>`,
     });
   }
+  let id = conceptIdFromCliArgument(rawId);
 
-  // Explicit reserved-id reject BEFORE the bundle is even opened (and, over --remote, before
-  // any network round trip) — index.md/log.md were never deletable through this path; the
-  // engine's own deleteDoc carries the identical guard as a backstop, but surfacing it HERE
-  // gives a faster, clearer USAGE error than a round trip just to hit the same rejection.
+  // Reserved path aliases are decidable without opening a bundle. Keep this guard before any I/O;
+  // the distinct canonical id `index.md` is spelled `index.md.md` at the CLI boundary.
   if (isReservedFile(pathFromConceptId(id))) {
     throw new CliError(
       "USAGE",
@@ -66,6 +66,16 @@ export async function docDelete(argv: string[], deps: Partial<DocCliDeps>): Prom
   }
 
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
+  id = await resolveConceptIdCliArgument(bundle, rawId);
+
+  // Belt-and-suspenders after `.md` ambiguity resolution and any future resolver changes.
+  if (isReservedFile(pathFromConceptId(id))) {
+    throw new CliError(
+      "USAGE",
+      `'${id}' is a reserved file (index.md/log.md) — reserved files cannot be deleted.`,
+      { help: `${cliInvocation()} doc delete --help` },
+    );
+  }
   const mode = resolveMode(values);
   const expectedVersion = rawExpected?.trim();
 

@@ -28,7 +28,8 @@
  * isomorphic-boundary gate over every browser-consumed core subpath).
  */
 
-import { isReservedFile } from "./paths.js";
+import { assertSafeConceptId, isReservedFile } from "./paths.js";
+import { InvalidInputError } from "./errors.js";
 import type { ConceptId, Link, OkfDocument } from "./types.js";
 
 /** Normalize posix segments with a stack: `.` drops, `..` pops (or survives at the front when nothing is left to pop — matching `path.posix.join` semantics), empty segments drop. Exported for the direct parity pin (links-path-parity.test.ts) — the resolver's `..`-past-root guard is otherwise masked by its leading-`../` post-strip. */
@@ -121,8 +122,17 @@ export function resolveConceptId(fromId: ConceptId, href: string): ConceptId | n
   // documents — a link to one is not a concept edge. Check BEFORE dropping the
   // `.md` suffix, since `isReservedFile` matches on the filename incl. extension.
   if (isReservedFile(resolved)) return null;
-  // Drop the `.md` suffix to yield the concept id.
-  return resolved.replace(/\.md$/, "");
+  // Drop the `.md` suffix to yield the concept id, then enforce the same canonical grammar used
+  // at the storage seam. For example, `/foo.md/bar.md` cannot become `foo.md/bar`: that id would
+  // collide with the concept file `foo.md` and no backend can expose it consistently.
+  const id = resolved.replace(/\.md$/, "");
+  try {
+    assertSafeConceptId(id);
+    return id;
+  } catch (error) {
+    if (error instanceof InvalidInputError) return null;
+    throw error;
+  }
 }
 
 /**
@@ -136,7 +146,11 @@ export function resolveConceptId(fromId: ConceptId, href: string): ConceptId | n
 export function relativeHref(fromId: ConceptId, target: string): string {
   const t = target.trim();
   if (isExternalHref(t)) return t;
-  const targetId = t.replace(/^\/+/, "").replace(/\.md$/, "");
+  assertSafeConceptId(fromId);
+  assertSafeConceptId(t);
+  // `target` is an already-canonical ConceptId, not a file-like user address. A canonical id may
+  // itself end in `.md` (the concept stored at `x.md.md`), so stripping here would alias it to `x`.
+  const targetId = t;
   const slash = fromId.lastIndexOf("/");
   const fromDir = slash >= 0 ? fromId.slice(0, slash) : "";
   let rel = relativePosix(fromDir, targetId);

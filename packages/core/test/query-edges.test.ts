@@ -236,14 +236,16 @@ test("backlinks('tasks/') stays [] even when a doc literally named 'tasks' exist
   });
 });
 
-test("queryEdges selector input normalization: a trailing '.md' and a leading './' both resolve to the same exact id as the bare id", async () => {
+test("queryEdges exact selectors keep canonical x and x.md distinct and reject aliases", async () => {
   await withBundle(async (bundle) => {
-    await seedFixture(bundle);
-    const bare = await queryEdges(bundle, { to: "tasks/a" });
-    const withMdSuffix = await queryEdges(bundle, { to: "tasks/a.md" });
-    const withLeadingDotSlash = await queryEdges(bundle, { to: "./tasks/a" });
-    assert.deepEqual(withMdSuffix, bare);
-    assert.deepEqual(withLeadingDotSlash, bare);
-    assert.ok(bare.length > 0, "sanity: the bare-id query must actually match something");
+    await writeDoc(bundle, {
+      id: "hub",
+      frontmatter: { type: "T", timestamp: T },
+      body: "[plain](x.md) [literal](x.md.md)",
+    });
+    assert.deepEqual((await queryEdges(bundle, { to: "x" })).map((edge) => edge.text), ["plain"]);
+    assert.deepEqual((await queryEdges(bundle, { to: "x.md" })).map((edge) => edge.text), ["literal"]);
+    await assert.rejects(() => queryEdges(bundle, { to: "./x" }), /Concept id must be canonical/);
+    await assert.rejects(() => queryEdges(bundle, { to: "x//" }), /Concept id must be canonical/);
   });
 });

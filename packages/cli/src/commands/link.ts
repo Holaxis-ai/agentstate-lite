@@ -57,6 +57,7 @@ import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 import { collectLinkDeclarations } from "../link-types.js";
 import { resolveActor } from "../actor.js";
+import { conceptIdFromCliArgument, resolveConceptIdCliArgument } from "../concept-id.js";
 
 /** The common flags every `link` subcommand accepts — appended to each verb's focused help. */
 const LINK_COMMON_OPTIONS = `Common options:
@@ -334,7 +335,7 @@ export interface AddLinkOptions {
 export interface AddLinkResult {
   /** The source doc's id (post-write, or as read on the idempotent no-op path). */
   from: string;
-  /** The link's bundle-relative normalized target (leading slash / `.md` suffix stripped). */
+  /** The link's exact canonical target after CLI path-alias resolution. */
   normalizedTo: string;
   href: string;
   text: string;
@@ -359,11 +360,14 @@ export async function addLink(
   to: string,
   opts: AddLinkOptions = {},
 ): Promise<AddLinkResult> {
-  const text = opts.text?.trim() || to;
+  const requestedText = to;
+  from = await resolveConceptIdCliArgument(bundle, from);
+  to = await resolveConceptIdCliArgument(bundle, to);
+  const text = opts.text?.trim() || requestedText;
   const href = relativeHref(from, to);
-  // Resolve the href we actually emit through core's one link resolver. This collapses equivalent
-  // target spellings (`x`, `./x`, `/x.md`, repeated separators) onto the same concept identity.
-  const normalizedTo = resolveConceptId(from, href) ?? to.replace(/^\/+/, "").replace(/\.md$/, "");
+  // Resolve the exact canonical href we emit through core's one link resolver so idempotency and
+  // graph parsing compare the same edge. CLI aliases were normalized at the boundary above.
+  const normalizedTo = resolveConceptId(from, href) ?? to;
 
   // Reserved files (index.md/log.md, any directory level) are never concept documents, so they
   // can never be a link target — core's `resolveConceptId` now drops such a link from the parsed
@@ -628,35 +632,42 @@ async function linkShow(
     }
   }
 
-  const id = positionals[0]?.trim();
-  if (!id) {
+  const rawId = positionals[0]?.trim();
+  if (!rawId) {
     throw new CliError("USAGE", "link show requires a concept <id>", {
       help: `${cliInvocation()} link show <id>`,
     });
   }
+  // A trailing slash is an intentional exact, impossible-doc selector on `link show` (historical
+  // contract: zero outbound/backlinks), not the prefix selector that only `link list` supports.
+  const impossibleExactId = rawId.endsWith("/");
+  let id = impossibleExactId ? rawId : conceptIdFromCliArgument(rawId);
 
   const remote = await resolveRemoteFlag(values.remote, values.dir);
   // Opportunistic board freshness (autopull.ts): silent, fail-soft, detection-gated — see list.ts.
   if (!remote) await (autoPull ?? maybeAutoPull)(values.dir);
   const bundle = await openBundle(values.dir, remote);
+  if (!impossibleExactId) id = await resolveConceptIdCliArgument(bundle, rawId);
 
   // Outbound links come from the source doc (missing doc → NOT_FOUND). Backlinks are derived over the
   // whole bundle and are valid even for a not-yet-written target, so they are computed regardless.
   let outbound: { to: string; text: string; href: string }[] = [];
-  let exists = true;
-  try {
-    const source = await readDoc(bundle, id);
-    outbound = parseLinks(bundle, source).map((l) => ({ to: l.to, text: l.text, href: l.href }));
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
-      throw classifyBundleError(err, values.remote);
+  let exists = !impossibleExactId;
+  if (!impossibleExactId) {
+    try {
+      const source = await readDoc(bundle, id);
+      outbound = parseLinks(bundle, source).map((l) => ({ to: l.to, text: l.text, href: l.href }));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
+        throw classifyBundleError(err, values.remote);
+      }
+      // ENOENT: no document at this id YET. NOT an error — a concept can be CITED before it is written
+      // (backlinks are derived over the whole bundle and stay meaningful). Report `exists:false` so an
+      // agent can distinguish "doc exists, zero outbound links" from "no doc here" — which a bare
+      // outbound_count:0 could not (the #5 gap: `link add` errors NOT_FOUND on the same id; `link show`
+      // must not silently look identical to an existing-but-linkless doc).
+      exists = false;
     }
-    // ENOENT: no document at this id YET. NOT an error — a concept can be CITED before it is written
-    // (backlinks are derived over the whole bundle and stay meaningful). Report `exists:false` so an
-    // agent can distinguish "doc exists, zero outbound links" from "no doc here" — which a bare
-    // outbound_count:0 could not (the #5 gap: `link add` errors NOT_FOUND on the same id; `link show`
-    // must not silently look identical to an existing-but-linkless doc).
-    exists = false;
   }
 
   const inbound = await backlinks(bundle, id);
@@ -716,8 +727,8 @@ async function linkShow(
  * `link list` (graph-query-v0): the whole-bundle derived edge list, filtered — a thin CLI face
  * over core `queryEdges`. Row schema is AXI-minimal (`{from, to, text}` + `count`), no `--fields`
  * hatch (no consumer has asked for one yet). `--from`/`--to` are repeatable (union within the
- * flag, AND across the two flags) and each accept an exact id or a trailing-slash prefix — the
- * SAME one rule `queryEdges` itself defines, not a second CLI-side interpretation of it. Over
+ * flag, AND across the two flags) and each accept an exact id or a trailing-slash prefix. CLI
+ * path aliases are resolved once before entering core's exact canonical selector contract. Over
  * `--remote`, `queryEdges` rides `query`'s existing whole-bundle `readMany` batch (exactly like
  * `backlinks`/`link show` already do today) — one round trip, no wire change.
  */
@@ -789,14 +800,23 @@ async function linkList(argv: string[], stdout: (s: string) => void): Promise<vo
 
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
 
+  const resolveSelector = async (raw: string): Promise<string> => {
+    if (raw.endsWith("/")) return `${conceptIdFromCliArgument(raw.replace(/\/+$/, ""))}/`;
+    return resolveConceptIdCliArgument(bundle, raw);
+  };
+  const [fromSelectors, toSelectors] = await Promise.all([
+    Promise.all(fromValues.map(resolveSelector)),
+    Promise.all(toValues.map(resolveSelector)),
+  ]);
+
   // The scope filter carries ONLY --from/--to, never --text: this fetches the from/to-scoped edge
   // set in exactly ONE queryEdges call (one round trip over --remote) regardless of whether --text
   // is also given. --text is then applied as a local exact-match filter over that same
   // already-fetched list — so a zero-match --text query costs ONE scan, not two (the near-miss
   // hint below reuses these SAME scoped edges for its "texts present" list rather than re-scanning).
   const scopeFilter: EdgeFilter = {};
-  if (fromValues.length > 0) scopeFilter.from = fromValues;
-  if (toValues.length > 0) scopeFilter.to = toValues;
+  if (fromSelectors.length > 0) scopeFilter.from = fromSelectors;
+  if (toSelectors.length > 0) scopeFilter.to = toSelectors;
 
   let scopedEdges: Link[];
   try {

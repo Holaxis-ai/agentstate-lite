@@ -19,6 +19,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { RemoteBackend, RemoteError } from "../src/remote-backend.js";
+import { InvalidInputError } from "../src/errors.js";
 
 const TOKEN = "sha256:" + "a".repeat(64);
 
@@ -156,6 +157,49 @@ test("read(): a response with ONLY a properly quoted ETag (no X-Version) parses 
   assert.equal(result.version, TOKEN);
 });
 
+test("read/readMany keep route-owned identity when a foreign payload reports different ids", async () => {
+  const remote = new RemoteBackend({
+    baseUrl: "http://identity.local",
+    bundle: "test",
+    fetchImpl: async (req: Request) => {
+      if (req.url.endsWith("/docs:read-many")) {
+        return jsonResponse(
+          200,
+          {
+            results: [
+              { id: "payload/a", frontmatter: { type: "T" }, body: "a", version: TOKEN },
+              { id: "payload/b", frontmatter: { type: "T" }, body: "b", version: TOKEN },
+            ],
+          },
+        );
+      }
+      return jsonResponse(
+        200,
+        { id: "payload/renamed", frontmatter: { type: "T" }, body: "one" },
+        { "X-Version": TOKEN },
+      );
+    },
+  });
+
+  assert.equal((await remote.read("route/one")).doc.id, "route/one");
+  assert.deepEqual((await remote.readMany(["route/a", "route/b"])).map((result) => result.doc.id), [
+    "route/a",
+    "route/b",
+  ]);
+});
+
+test("readMany rejects a response whose result count cannot satisfy the positional identity contract", async () => {
+  const remote = new RemoteBackend({
+    baseUrl: "http://identity.local",
+    bundle: "test",
+    fetchImpl: async () => jsonResponse(200, { results: [] }),
+  });
+  await assert.rejects(
+    () => remote.readMany(["route/a"]),
+    (error: unknown) => error instanceof RemoteError && error.code === "RUNTIME" && error.status === 502,
+  );
+});
+
 test("readBlob(): a response with ONLY a quoted ETag parses correctly", async () => {
   const remote = new RemoteBackend({
     baseUrl: "http://quoted.local",
@@ -225,4 +269,20 @@ test("read(): a legacy BARE (unquoted) ETag with no X-Version still parses corre
 
   const result = await remote.read("x");
   assert.equal(result.version, TOKEN);
+});
+test("RemoteBackend rejects noncanonical concept aliases before URL construction or fetch", async () => {
+  let calls = 0;
+  const remote = new RemoteBackend({
+    baseUrl: "http://wire.local",
+    bundle: "test",
+    fetchImpl: async () => {
+      calls++;
+      return new Response(null, { status: 500 });
+    },
+    maxRetries: 0,
+  });
+
+  await assert.rejects(() => remote.read("./a/b"), InvalidInputError);
+  await assert.rejects(() => remote.write("a//b", { id: "a//b", frontmatter: { type: "T" }, body: "" }), InvalidInputError);
+  assert.equal(calls, 0);
 });

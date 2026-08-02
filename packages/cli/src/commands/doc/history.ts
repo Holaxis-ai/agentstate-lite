@@ -6,6 +6,7 @@ import { CliError } from "../../errors.js";
 import { parseOrUsage } from "../../args.js";
 import { render, resolveMode } from "../../output.js";
 import { cliInvocation } from "../../invocation.js";
+import { conceptIdFromCliArgument, resolveConceptIdCliArgument } from "../../concept-id.js";
 import { DOC_HISTORY_USAGE, type DocCliDeps, readErrorToCliError } from "./common.js";
 
 /**
@@ -41,12 +42,13 @@ export async function docHistory(argv: string[], deps: Partial<DocCliDeps>): Pro
     return;
   }
 
-  const id = positionals[0]?.trim();
-  if (!id) {
+  const rawId = positionals[0]?.trim();
+  if (!rawId) {
     throw new CliError("USAGE", "doc history requires a concept <id> positional", {
       help: `${cliInvocation()} doc history <id>`,
     });
   }
+  let id = conceptIdFromCliArgument(rawId);
 
   // Same validation shape as `list`/`status`/`blobs`/`link`: a non-negative integer, 0 = unlimited.
   let limit = DEFAULT_LIMIT;
@@ -61,6 +63,7 @@ export async function docHistory(argv: string[], deps: Partial<DocCliDeps>): Pro
   }
 
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
+  id = await resolveConceptIdCliArgument(bundle, rawId);
   let versions: VersionInfo[];
   try {
     versions = await docVersions(bundle, id);

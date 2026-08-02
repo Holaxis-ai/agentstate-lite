@@ -122,7 +122,11 @@ export class MemoryBackend implements StorageBackend {
     if (options.expectedVersion !== undefined && options.expectedVersion !== current) {
       throw new VersionConflict(id, options.expectedVersion, current);
     }
-    const version = contentVersion(doc);
+    // The seam's `id` argument owns identity. Filesystem and wire adapters reconstruct/attach
+    // that route id on reads because document bytes do not serialize `doc.id`; mirror them here
+    // instead of retaining a mismatched caller-supplied `doc.id` in the in-memory snapshot.
+    const storedDoc = { ...doc, id };
+    const version = contentVersion(storedDoc);
     // Idempotent: re-writing byte-identical content is a no-op that does not grow the
     // chain (the content address is unchanged). A genuine content change appends a revision.
     if (current === version) return version;
@@ -132,7 +136,7 @@ export class MemoryBackend implements StorageBackend {
       timestamp: new Date().toISOString(),
       // Unlike `actor`, an unattested agent is simply absent — no default is applied.
       agent: options.agent?.trim() || undefined,
-      doc: snapshot(doc),
+      doc: snapshot(storedDoc),
     };
     this.chains.set(id, chain ? [revision, ...chain] : [revision]);
     return version;

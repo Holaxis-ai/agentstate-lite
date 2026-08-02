@@ -145,7 +145,10 @@ async function walkMarkdown(root: string, sub = ""): Promise<string[]> {
     if (entry.isDirectory()) {
       out.push(...(await walkMarkdown(root, rel)));
     } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      out.push(toPosix(rel));
+      // `rel` is already assembled with `/`. Preserve any literal backslash in an entry name so
+      // `list()` can reject it as a noncanonical on-disk identity instead of silently converting
+      // it into a different nested concept id.
+      out.push(rel);
     }
   }
   return out;
@@ -371,6 +374,12 @@ export class FilesystemBackend implements StorageBackend {
     for (const rel of files) {
       if (isReservedFile(rel)) continue;
       const id = conceptIdFromPath(rel);
+      assertSafeConceptId(id);
+      if (pathFromConceptId(id) !== rel) {
+        throw new InvalidInputError(
+          `Concept path '${rel}' does not round-trip through canonical id '${id}'. Rename the file to '${pathFromConceptId(id)}'.`,
+        );
+      }
       if (prefix && !id.startsWith(prefix)) continue;
       ids.push(id);
     }

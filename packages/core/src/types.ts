@@ -11,9 +11,11 @@
 
 /**
  * A concept's stable identity within a bundle: its path relative to the bundle
- * root with the trailing `.md` removed (e.g. `tables/users`). IDs always use
- * forward slashes. Directory hierarchy implies parent/child but is NOT emitted
- * as graph edges — only explicit body links are.
+ * root with exactly the final `.md` removed (e.g. `tables/users`). IDs always use
+ * forward slashes and are canonical storage keys, not file-like aliases: `x` maps
+ * to `x.md`, while canonical id `x.md` maps to the distinct file `x.md.md`.
+ * Directory hierarchy implies parent/child but is NOT emitted as graph edges —
+ * only explicit body links are.
  */
 export type ConceptId = string;
 
@@ -228,6 +230,11 @@ export interface DeleteOptions {
  * filesystem critical section over the on-disk hash);
  * `MemoryBackend` proves the same contract for the hard case (a real version chain,
  * enforced CAS, per-write attribution).
+ *
+ * Every `ConceptId` passed through this seam is canonical and exact. Backends MUST NOT
+ * normalize aliases independently: the invariant is
+ * `conceptIdFromPath(pathFromConceptId(id)) === id`, and the route/write key owns the
+ * identity of the returned document even when the input document carries a different `id`.
  */
 export interface StorageBackend {
   /** Read + parse the concept document at `id`, with its version token. Rejects (ENOENT-shaped) if absent. */
@@ -429,8 +436,9 @@ export interface Link {
  * with that literal string — one rule, no glob syntax), or an array of either (union: a match
  * against ANY entry satisfies that facet). Providing both `from` and `to` ANDs them. `text` is an
  * EXACT match against the link's display text (never substring/regex/case-insensitive). All facets
- * are optional; an empty filter returns every edge in the bundle (still including dangling ones —
- * a link to a nonexistent doc is a valid edge, per §5).
+ * are optional. ID selectors are exact canonical engine identities (`x` and `x.md` are distinct),
+ * not path-like aliases. An empty filter returns every edge in the bundle (still including
+ * dangling ones — a link to a nonexistent doc is a valid edge, per §5).
  */
 export interface EdgeFilter {
   /** Restrict to edges whose source matches this id/prefix (or union of ids/prefixes). */

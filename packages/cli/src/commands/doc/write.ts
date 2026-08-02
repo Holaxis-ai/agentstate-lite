@@ -12,6 +12,7 @@ import { mutateDoc } from "../../mutate.js";
 import { isLegacyPageDoc, LEGACY_PAGE_TYPE_HINT } from "../../legacy-page.js";
 import { boardPostPersistHook } from "../../board-attribution.js";
 import { resolveActor } from "../../actor.js";
+import { conceptIdFromCliArgument, resolveConceptIdCliArgument } from "../../concept-id.js";
 import {
   DOC_WRITE_USAGE,
   type DocCliDeps,
@@ -56,12 +57,13 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
     return;
   }
 
-  const id = positionals[0]?.trim();
-  if (!id) {
+  const rawId = positionals[0]?.trim();
+  if (!rawId) {
     throw new CliError("USAGE", "doc write requires a concept <id> positional", {
       help: `${cliInvocation()} doc write <id> --type <t>`,
     });
   }
+  let id = conceptIdFromCliArgument(rawId);
   const type = values.type?.trim();
   if (!type) {
     throw new CliError("USAGE", "--type <t> is required (OKF concepts must carry a non-empty type)", {
@@ -119,6 +121,7 @@ export async function docWrite(argv: string[], deps: Partial<DocCliDeps>): Promi
   }
 
   const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
+  id = await resolveConceptIdCliArgument(bundle, rawId);
   const isConventionPath = id.startsWith("conventions/");
 
   // `--replace-links` narrows the LINK-DROP guard's own decision ("I accept dropping MY OWN read's

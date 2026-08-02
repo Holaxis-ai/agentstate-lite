@@ -113,6 +113,25 @@ test("create --supersedes: flips the prior to superseded and links this one 'sup
   }
 });
 
+test("create --supersedes resolves path-style .md input before the exact storage seam", async () => {
+  const { dir, html, cleanup } = await makeBundle();
+  try {
+    await writeDoc({ root: dir }, {
+      id: "artifacts/prior",
+      frontmatter: { type: "Artifact", status: "active" },
+      body: "",
+    });
+    const receipt = await runJson([
+      "create", html, "--title", "Next", "--supersedes", "artifacts/prior.md", "--dir", dir, "--actor", "t",
+    ]);
+    assert.equal(receipt.supersedes, "artifacts/prior");
+    assert.match(await readFile(path.join(dir, "artifacts", "prior.md"), "utf8"), /status: superseded/);
+    assert.match(await readFile(path.join(dir, "artifacts", "next.md"), "utf8"), /\[supersedes\]\(prior\.md\)/);
+  } finally {
+    await cleanup();
+  }
+});
+
 test("create --supersedes: a cross-dir / missing / non-Artifact target is rejected upfront (no write)", async () => {
   const { dir, html, cleanup } = await makeBundle();
   try {

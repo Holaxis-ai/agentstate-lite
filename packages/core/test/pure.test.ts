@@ -30,12 +30,14 @@ import {
   inferContentTypeForNewBlob,
 } from "../src/content-type.js";
 import type { OkfDocument } from "../src/types.js";
+import { InvalidInputError } from "../src/errors.js";
 
 test("paths: conceptId <-> path round-trip and reserved detection", () => {
   assert.equal(conceptIdFromPath("tables/users.md"), "tables/users");
   assert.equal(conceptIdFromPath("./a/b.md"), "a/b");
   assert.equal(pathFromConceptId("tables/users"), "tables/users.md");
-  assert.equal(pathFromConceptId("tables/users.md"), "tables/users.md"); // idempotent .md
+  assert.equal(pathFromConceptId("tables/users.md"), "tables/users.md.md");
+  assert.equal(conceptIdFromPath(pathFromConceptId("tables/users.md")), "tables/users.md");
   assert.ok(isReservedFile("index.md"));
   assert.ok(isReservedFile("datasets/log.md"));
   assert.ok(!isReservedFile("datasets/events.md"));
@@ -43,11 +45,17 @@ test("paths: conceptId <-> path round-trip and reserved detection", () => {
 
 test("paths: assertSafeConceptId rejects traversal / absolute", () => {
   assert.doesNotThrow(() => assertSafeConceptId("a/b/c"));
+  assert.doesNotThrow(() => assertSafeConceptId("a/b.md"));
   assert.throws(() => assertSafeConceptId("../escape"));
   assert.throws(() => assertSafeConceptId("/abs/path"));
   assert.throws(() => assertSafeConceptId(""));
   // A mixed sub + parent-dir-escape id (a legitimate-looking prefix that still climbs out).
   assert.throws(() => assertSafeConceptId("concepts/../../../etc/passwd"));
+  for (const alias of ["./a/b", "a//b", "a\\b", "a/./b", "a/b/"]) {
+    assert.throws(() => assertSafeConceptId(alias), InvalidInputError);
+  }
+  assert.throws(() => assertSafeConceptId("a.md/b"), InvalidInputError);
+  assert.doesNotThrow(() => assertSafeConceptId("a/b.md"));
 });
 
 test("paths: assertSafeReservedDir rejects traversal / absolute but allows the bundle root", () => {
@@ -88,6 +96,16 @@ test("links: parseLinksFromDoc keeps broken links, drops non-concept links", () 
     ["notes/b", "notes/ghost"],
   );
   assert.equal(links[0]!.from, "notes/a");
+});
+
+test("links: malformed paths that cannot name canonical concepts never become graph edges", () => {
+  assert.equal(resolveConceptId("notes/a", "/foo.md/bar.md"), null);
+  const doc: OkfDocument = {
+    id: "notes/a",
+    frontmatter: { type: "Note" },
+    body: "[invalid](/foo.md/bar.md) [valid](/foo/bar.md)",
+  };
+  assert.deepEqual(parseLinksFromDoc(doc).map((link) => link.to), ["foo/bar"]);
 });
 
 test("links: resolveConceptId returns null for a reserved-filename target (index.md/log.md), any directory level, any href form", () => {
@@ -135,7 +153,8 @@ test("links: relativeHref emits bundle-relative form (and passes external URLs t
     "../concepts/okf-alignment.md",
   );
   // Accepts an absolute-or-.md target and still emits relative.
-  assert.equal(relativeHref("a/b/c", "/a/x.md"), "../x.md");
+  assert.equal(relativeHref("a/b/c", "a/x"), "../x.md");
+  assert.equal(relativeHref("a/b/c", "a/x.md"), "../x.md.md");
   // External URLs are not rewritten.
   assert.equal(relativeHref("a/b", "https://example.com/x"), "https://example.com/x");
   // A relative link round-trips through the resolver back to the full concept id.
@@ -222,7 +241,8 @@ test("pin: id/path normalization edges — absolute strip, non-.md passthrough, 
   assert.equal(conceptIdFromPath("notes.txt"), "notes.txt");
   assert.equal(conceptIdFromPath("a//b.md"), "a/b");
   assert.equal(conceptIdFromPath("a\\b.md"), "a/b");
-  assert.equal(pathFromConceptId("/a"), "a.md");
+  assert.equal(conceptIdFromPath("a/./b.md"), "a/b");
+  assert.throws(() => pathFromConceptId("/a"), InvalidInputError);
   assert.equal(pathFromConceptId("x.md.y"), "x.md.y.md");
 });
 
@@ -256,9 +276,9 @@ test("pin: isExternalHref anchors at the start and trims; resolveConceptId clamp
 // kills: links.ts:98:50 Regex #2339
 // kills: links.ts:100:19 ConditionalExpression #2342
 test("pin: relativeHref edges — multi-slash absolute targets, mid-name .md, and a root-level fromId", () => {
-  assert.equal(relativeHref("a/b", "//x.md"), "../x.md");
-  assert.equal(relativeHref("r", "/a.md-plan.md"), "a.md-plan.md");
-  assert.equal(relativeHref("readme", "x.md"), "x.md");
+  assert.throws(() => relativeHref("a/b", "//x.md"), InvalidInputError);
+  assert.equal(relativeHref("r", "a.md-plan.md"), "a.md-plan.md.md");
+  assert.equal(relativeHref("readme", "x.md"), "x.md.md");
 });
 
 // kills: freshness.ts:57:11 ConditionalExpression #1257

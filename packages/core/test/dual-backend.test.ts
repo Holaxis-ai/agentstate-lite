@@ -77,14 +77,14 @@ test("dual-backend: core operations return identical results over filesystem and
 });
 
 for (const [name, run] of RUNNERS) {
-  test(`${name}: deleteDoc (engine) rejects reserved ids (index.md/log.md) — never reaches the backend's delete()`, async () => {
+  test(`${name}: deleteDoc (engine) rejects reserved ids (index/log) — never reaches the backend's delete()`, async () => {
     await run(async (bundle) => {
       // Seed both reserved files so a (bug-induced) delete would be observable if it ran.
       await bundle.backend!.writeReserved("", "index.md", "# root\n");
       await bundle.backend!.writeReserved("", "log.md", "# Log\n");
 
-      await assert.rejects(() => deleteDoc(bundle, "index.md"), /reserved file/i);
-      await assert.rejects(() => deleteDoc(bundle, "log.md"), /reserved file/i);
+      await assert.rejects(() => deleteDoc(bundle, "index"), /reserved file/i);
+      await assert.rejects(() => deleteDoc(bundle, "log"), /reserved file/i);
 
       // Both reserved files are untouched.
       assert.ok((await bundle.backend!.readReserved("", "index.md")) !== null);
