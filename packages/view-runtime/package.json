@@ -12,6 +12,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./action-bridge": {
+      "types": "./dist/action-bridge.d.ts",
+      "default": "./dist/action-bridge.js"
     }
   },
   "files": [

@@ -3,7 +3,6 @@ import {
   DocumentNotFoundError,
   KindConformanceError,
   VersionConflict,
-  assertSafeConceptId,
   blobVersion,
   loadKinds,
   mutateDocument,
@@ -37,6 +36,21 @@ import {
   type SaveTransientViewInput,
   type SaveTransientViewResult,
 } from "./transient-save.js";
+import {
+  parseDocumentSetFieldAction,
+  type ActionScalar,
+  type DocumentSetFieldAction,
+} from "./action-bridge.js";
+
+export {
+  actionError,
+  actionReply,
+  parseActionBridgeMessage,
+  parseDocumentSetFieldAction,
+  type ActionBridgeMessage,
+  type ActionScalar,
+  type DocumentSetFieldAction,
+} from "./action-bridge.js";
 
 export {
   TransientViewSaveError,
@@ -55,16 +69,6 @@ export {
   type ViewCatalogProjectionOptions,
   type ViewPresentation,
 } from "./catalog.js";
-
-export type ActionScalar = string | number | boolean;
-
-export interface DocumentSetFieldAction {
-  kind: "document.set-field";
-  docId: string;
-  field: string;
-  value: ActionScalar;
-  expectedVersion: Version;
-}
 
 interface BasePageLaunch {
   launchId: string;
@@ -240,32 +244,6 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
-}
-
-function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  const actual = Object.keys(value).sort();
-  const sortedExpected = [...expected].sort();
-  return actual.length === sortedExpected.length && actual.every((key, index) => key === sortedExpected[index]);
-}
-
-export function parseDocumentSetFieldAction(value: unknown): DocumentSetFieldAction {
-  if (!isPlainRecord(value) || !hasExactKeys(value, ["kind", "docId", "field", "value", "expectedVersion"])) {
-    throw new Error("action must contain exactly kind, docId, field, value, and expectedVersion");
-  }
-  if (value.kind !== "document.set-field") throw new Error("unsupported action kind");
-  const docId = typeof value.docId === "string" ? value.docId.trim() : "";
-  assertSafeConceptId(docId);
-  const field = typeof value.field === "string" ? value.field.trim() : "";
-  if (!field || Buffer.byteLength(field, "utf8") > 128) throw new Error("field must be a non-empty string of at most 128 bytes");
-  const expectedVersion = typeof value.expectedVersion === "string" ? value.expectedVersion.trim() : "";
-  if (!expectedVersion || expectedVersion.length > 256) {
-    throw new Error("expectedVersion must be a non-empty string of at most 256 characters");
-  }
-  const scalar = value.value;
-  if (!isActionScalar(scalar) || (typeof scalar === "string" && Buffer.byteLength(scalar, "utf8") > 4096)) {
-    throw new Error("value must be a string (at most 4 KiB), finite number, or boolean");
-  }
-  return { kind: "document.set-field", docId, field, value: scalar, expectedVersion };
 }
 
 function stableJson(value: unknown): string {
@@ -504,15 +482,17 @@ export interface TrustedActionLaunch {
   launchId: string;
   capability: BridgeCapability;
   source: {
-    registryId: string;
+    kind: "registered" | "transient" | "generated";
+    id: string;
     title: string;
-    registryVersion: Version;
+    version: Version;
     contentVersion: Version;
   };
   /**
-   * When present, actions are confined to these exact document versions. Durable local Views omit
-   * this because their declared bundle-propose capability is bundle-scoped; generated MCP Views
-   * supply it because their explicit selection is also their read/action envelope.
+   * When present, actions are confined to these exact document versions. Active registered and
+   * transient Views omit this because their declared bundle-propose capability is bundle-scoped;
+   * generated snapshot presentations supply it because their explicit selection is also their
+   * read/action envelope.
    */
   documentVersions?: Readonly<Record<string, Version>>;
 }
@@ -522,22 +502,25 @@ export interface TrustedActionLaunchAuthority {
   revoke(launchId: string): void;
 }
 
-/** Adapts the local UI's registered-View launch registry to the shared action authority. */
+/** Adapts registered and transient active-View launches to the shared action authority. */
 export class PageActionLaunchAuthority implements TrustedActionLaunchAuthority {
   constructor(
     private readonly bundle: Bundle,
     private readonly launches: PageLaunchRegistry,
-    private readonly authorizations: ViewAuthorizationStore,
+    private readonly registeredAuthorizations: ViewAuthorizationStore,
+    private readonly transientAuthorizations: ViewAuthorizationStore = new SessionViewAuthorizationStore(),
   ) {}
 
   async resolve(launchId: string): Promise<TrustedActionLaunch | null> {
     const launch = this.launches.resolveLaunch(launchId);
     if (
       !launch ||
-      launch.sourceKind !== "registered" ||
       !(await launchIsCurrent(this.bundle, launch)) ||
       (launch.capability !== "none" &&
-        !(await this.authorizations.isAuthorized(pageLaunchAuthorizationSubject(launch))))
+        !(await (launch.sourceKind === "registered"
+          ? this.registeredAuthorizations
+          : this.transientAuthorizations
+        ).isAuthorized(pageLaunchAuthorizationSubject(launch))))
     ) {
       if (launch) this.launches.revoke(launch.launchId);
       return null;
@@ -545,12 +528,21 @@ export class PageActionLaunchAuthority implements TrustedActionLaunchAuthority {
     return {
       launchId: launch.launchId,
       capability: launch.capability,
-      source: {
-        registryId: launch.registryId,
-        title: launch.registryTitle,
-        registryVersion: launch.registryVersion,
-        contentVersion: launch.contentVersion,
-      },
+      source: launch.sourceKind === "registered"
+        ? {
+            kind: "registered",
+            id: launch.registryId,
+            title: launch.registryTitle,
+            version: launch.registryVersion,
+            contentVersion: launch.contentVersion,
+          }
+        : {
+            kind: "transient",
+            id: `transient:${launch.contentVersion}`,
+            title: launch.title,
+            version: launch.contentVersion,
+            contentVersion: launch.contentVersion,
+          },
     };
   }
 
@@ -589,9 +581,10 @@ export {
 
 export interface ActionConfirmation {
   source: {
-    registryId: string;
+    kind: "registered" | "transient" | "generated";
+    id: string;
     title: string;
-    registryVersion: Version;
+    version: Version;
     contentVersion: Version;
   };
   target: { docId: string; title: string; kind: string; version: Version };
@@ -615,7 +608,12 @@ export interface ActionTerminalResult {
   confirmed?: boolean;
   expectedVersion?: Version;
   actualVersion?: Version | null;
-  source?: { registryId: string; registryVersion: Version; contentVersion: Version };
+  source?: {
+    kind: "registered" | "transient" | "generated";
+    id: string;
+    version: Version;
+    contentVersion: Version;
+  };
   message?: string;
 }
 
@@ -739,8 +737,9 @@ export class TrustedActionService {
         version: target.version,
         confirmed: false,
         source: {
-          registryId: launch.source.registryId,
-          registryVersion: launch.source.registryVersion,
+          kind: launch.source.kind,
+          id: launch.source.id,
+          version: launch.source.version,
           contentVersion: launch.source.contentVersion,
         },
       };
@@ -784,9 +783,10 @@ export class TrustedActionService {
       expiresAt,
       confirmation: {
         source: {
-          registryId: launch.source.registryId,
+          kind: launch.source.kind,
+          id: launch.source.id,
           title: launch.source.title,
-          registryVersion: launch.source.registryVersion,
+          version: launch.source.version,
           contentVersion: launch.source.contentVersion,
         },
         target: { docId: action.docId, title: this.pending.get(token)!.targetTitle, kind: targetType, version: target.version },
@@ -869,8 +869,9 @@ export class TrustedActionService {
         warnings: result.warnings,
         confirmed: true,
         source: {
-          registryId: finalLaunch.source.registryId,
-          registryVersion: finalLaunch.source.registryVersion,
+          kind: finalLaunch.source.kind,
+          id: finalLaunch.source.id,
+          version: finalLaunch.source.version,
           contentVersion: finalLaunch.source.contentVersion,
         },
       };

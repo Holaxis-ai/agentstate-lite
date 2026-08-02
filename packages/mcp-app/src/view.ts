@@ -6,6 +6,12 @@ import {
 } from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { ActionConfirmation, ActionTerminalResult } from "@agentstate-lite/view-runtime";
+import {
+  actionError,
+  actionReply,
+  parseActionBridgeMessage,
+  type DocumentSetFieldAction,
+} from "@agentstate-lite/view-runtime/action-bridge";
 import type {
   ActiveViewLaunchPayload,
   McpViewPayload,
@@ -55,11 +61,19 @@ const authorizationBackdrop = document.getElementById("authorization-backdrop")!
 const authorizationDescription = document.getElementById("authorization-description")!;
 const authorizationApply = document.getElementById("authorization-apply") as HTMLButtonElement;
 const authorizationCancel = document.getElementById("authorization-cancel") as HTMLButtonElement;
+const authorizationAccess = document.getElementById("authorization-access")!;
 const displayModeButton = document.getElementById("display-mode") as HTMLButtonElement;
 
 let app: App;
 let currentPayload: McpViewPayload | null = null;
-let pending: { launchId: string; approvalToken: string } | null = null;
+type PendingAction =
+  | { kind: "generated"; launchId: string; approvalToken: string; epoch: number }
+  | { kind: "active"; launchId: string; approvalToken: string; requestId: string; epoch: number };
+
+let pending: PendingAction | null = null;
+let preparingActiveAction: { launchId: string; requestId: string; epoch: number } | null = null;
+let preparingGeneratedAction: { launchId: string; epoch: number } | null = null;
+let finishingAction: PendingAction | null = null;
 let frameEpoch = 0;
 let pollTimer: number | null = null;
 let pollAcknowledgement: string | undefined;
@@ -122,6 +136,27 @@ function closeConfirmation(): void {
   confirmationBackdrop.hidden = true;
   pending = null;
   syncDialogState();
+}
+
+function abandonPendingAction(): void {
+  const abandoned = pending;
+  closeConfirmation();
+  if (!abandoned) return;
+  void app.callServerTool({
+    name: "finish_view_action",
+    arguments: {
+      launchId: abandoned.launchId,
+      approvalToken: abandoned.approvalToken,
+      decision: "cancel",
+    },
+  }).catch(() => {});
+}
+
+function abandonActionOperations(): void {
+  abandonPendingAction();
+  preparingActiveAction = null;
+  preparingGeneratedAction = null;
+  finishingAction = null;
 }
 
 function stopPolling(): void {
@@ -197,6 +232,7 @@ function retirePayload(closeDurable = true): void {
   frameEpoch++;
   stopPolling();
   closeAuthorization();
+  abandonActionOperations();
   suspendedDurableLaunch = null;
   resumingDurableLaunch = null;
   currentPayload = null;
@@ -215,11 +251,10 @@ function retirePayload(closeDurable = true): void {
 }
 
 function openConfirmation(
-  launchId: string,
-  approvalToken: string,
+  action: PendingAction,
   confirmation: ActionConfirmation,
 ): void {
-  pending = { launchId, approvalToken };
+  pending = action;
   setConfirmationField("confirmation-document", `${confirmation.target.title} (${confirmation.target.docId})`);
   setConfirmationField("confirmation-kind", confirmation.target.kind);
   setConfirmationField("confirmation-field", confirmation.field);
@@ -230,11 +265,14 @@ function openConfirmation(
   confirmationBackdrop.hidden = false;
   syncDialogState();
   window.setTimeout(() => {
-    if (pending?.approvalToken === approvalToken) confirmationApply.disabled = false;
+    if (pending?.approvalToken === action.approvalToken) confirmationApply.disabled = false;
   }, 350);
 }
 
 async function prepareAction(launchId: string, actionId: string, button: HTMLButtonElement): Promise<void> {
+  if (pending || preparingActiveAction || preparingGeneratedAction || finishingAction) return;
+  const reservation = { launchId, epoch: frameEpoch };
+  preparingGeneratedAction = reservation;
   button.disabled = true;
   statusEl.dataset.kind = "working";
   statusEl.textContent = "Preparing the exact change for confirmation…";
@@ -244,21 +282,65 @@ async function prepareAction(launchId: string, actionId: string, button: HTMLBut
       arguments: { launchId, actionId },
     });
     const structured = structuredResult(response);
+    const result = structured?.result as PrepareResult | undefined;
+    const stillCurrent = currentPayload !== null &&
+      !isActiveViewPayload(currentPayload) &&
+      currentPayload.launch.launchId === launchId &&
+      frameEpoch === reservation.epoch;
+    if (!stillCurrent) {
+      if (result?.status === "prepared") {
+        void app.callServerTool({
+          name: "finish_view_action",
+          arguments: {
+            launchId,
+            approvalToken: result.approvalToken,
+            decision: "cancel",
+          },
+        }).catch(() => {});
+      }
+      return;
+    }
     if (structured && isViewPayload(structured.view)) renderPayload(structured.view);
     else if (structured?.view === null) retirePayload();
-    const result = structured?.result as PrepareResult | undefined;
     if (result?.status === "prepared") {
-      openConfirmation(launchId, result.approvalToken, result.confirmation);
-      statusEl.dataset.kind = "ready";
-      statusEl.textContent = "Review the trusted AgentState confirmation.";
+      if (
+        currentPayload !== null &&
+        !isActiveViewPayload(currentPayload) &&
+        currentPayload.launch.launchId === launchId
+      ) {
+        openConfirmation(
+          { kind: "generated", launchId, approvalToken: result.approvalToken, epoch: frameEpoch },
+          result.confirmation,
+        );
+        statusEl.dataset.kind = "ready";
+        statusEl.textContent = "Review the trusted AgentState confirmation.";
+      } else {
+        void app.callServerTool({
+          name: "finish_view_action",
+          arguments: {
+            launchId,
+            approvalToken: result.approvalToken,
+            decision: "cancel",
+          },
+        }).catch(() => {});
+      }
     } else {
       statusEl.dataset.kind = result?.status === "conflict" ? "error" : "ready";
       statusEl.textContent = resultMessage(result);
     }
   } catch (error) {
-    statusEl.dataset.kind = "error";
-    statusEl.textContent = error instanceof Error ? error.message : String(error);
+    if (
+      preparingGeneratedAction === reservation &&
+      currentPayload !== null &&
+      !isActiveViewPayload(currentPayload) &&
+      currentPayload.launch.launchId === launchId &&
+      frameEpoch === reservation.epoch
+    ) {
+      statusEl.dataset.kind = "error";
+      statusEl.textContent = error instanceof Error ? error.message : String(error);
+    }
   } finally {
+    if (preparingGeneratedAction === reservation) preparingGeneratedAction = null;
     button.disabled = false;
   }
 }
@@ -281,6 +363,7 @@ function renderGeneratedPayload(payload: ViewLaunchPayload): void {
   try {
     const presentation = materializePresentation(payload.presentation.html, payload);
     const previous = currentPayload;
+    abandonActionOperations();
     frameEpoch++;
     stopPolling();
     closeAuthorization();
@@ -313,6 +396,7 @@ function renderDurablePayload(payload: ActiveViewLaunchPayload): void {
   const sameLaunch =
     isActiveViewPayload(previous) &&
     previous.launch.launchId === payload.launch.launchId;
+  abandonActionOperations();
   frameEpoch++;
   stopPolling();
   closeAuthorization();
@@ -335,9 +419,13 @@ function renderDurablePayload(payload: ActiveViewLaunchPayload): void {
     statusEl.dataset.kind = "ready";
     statusEl.textContent = `Waiting for local approval of "${payload.title}"…`;
     authorizationDescription.textContent =
-      payload.schemaVersion === "agentstate.durable-view-launch.v1"
-        ? "This registered View comes from the bundle and contains executable HTML. Approving trusts these exact bytes to read bundle data. Continue only if you trust the View and its author; browser containment is additional protection, not a substitute for that trust."
-        : "This View contains agent-authored HTML created for this MCP session. It is process-local and is not a registered bundle View. Approving trusts these exact bytes to read bundle data for this process. Continue only if you trust the agent-authored HTML; browser containment is additional protection, not a substitute for that trust.";
+      `${payload.schemaVersion === "agentstate.durable-view-launch.v1"
+        ? "This registered View comes from the bundle and contains executable HTML."
+        : "This View contains agent-authored HTML created for this MCP session. It is process-local and is not a registered bundle View."} ` +
+      `${payload.launch.access === "bundle-propose"
+        ? "Approving trusts these exact bytes to read bundle data and propose version-guarded changes that still require a separate human confirmation."
+        : "Approving trusts these exact bytes to read bundle data."} ` +
+      "Continue only if you trust the View and its author; browser containment is additional protection, not a substitute for that trust.";
     setConfirmationField(
       "authorization-view",
       payload.schemaVersion === "agentstate.durable-view-launch.v1"
@@ -345,6 +433,7 @@ function renderDurablePayload(payload: ActiveViewLaunchPayload): void {
         : "Transient process-local View",
     );
     setConfirmationField("authorization-version", payload.source.contentVersion);
+    authorizationAccess.textContent = payload.launch.access;
     authorizationBackdrop.hidden = false;
     syncDialogState();
     window.setTimeout(() => {
@@ -359,7 +448,7 @@ function renderDurablePayload(payload: ActiveViewLaunchPayload): void {
     return;
   }
   statusEl.dataset.kind = "ready";
-  statusEl.textContent = `${payload.title} · exact ${payload.schemaVersion === "agentstate.durable-view-launch.v1" ? "registered" : "transient"} View · live bundle-read bridge`;
+  statusEl.textContent = `${payload.title} · exact ${payload.schemaVersion === "agentstate.durable-view-launch.v1" ? "registered" : "transient"} View · live ${payload.launch.access} bridge`;
   frame.setAttribute("sandbox", "allow-scripts");
   frame.setAttribute("csp", ACTIVE_VIEW_CHILD_CSP);
   const sizing = createFrameSizingSession(payload.launch.launchId, frameEpoch);
@@ -569,6 +658,91 @@ async function forwardDurableBridgeMessage(
   }
 }
 
+function postActiveActionResult(
+  launchId: string,
+  epoch: number,
+  requestId: string,
+  result: unknown,
+): void {
+  if (!durablePayloadFor(launchId, epoch)) return;
+  frame.contentWindow?.postMessage(actionReply(requestId, result), "*");
+}
+
+async function prepareActiveAction(
+  launchId: string,
+  epoch: number,
+  requestId: string,
+  action: DocumentSetFieldAction,
+): Promise<void> {
+  if (pending || preparingActiveAction || preparingGeneratedAction || finishingAction) {
+    postActiveActionResult(launchId, epoch, requestId, {
+      status: "rejected",
+      action: "document.set-field",
+      message: "this View already has an action proposal in progress",
+    });
+    return;
+  }
+  const reservation = { launchId, epoch, requestId };
+  preparingActiveAction = reservation;
+  statusEl.dataset.kind = "working";
+  statusEl.textContent = "Preparing the exact change for confirmation…";
+  try {
+    const response = await app.callServerTool({
+      name: "prepare_view_action",
+      arguments: { launchId, requestId, action },
+    });
+    const result = structuredResult(response)?.result as PrepareResult | undefined;
+    if (!durablePayloadFor(launchId, epoch)) {
+      if (result?.status === "prepared") {
+        void app.callServerTool({
+          name: "finish_view_action",
+          arguments: {
+            launchId,
+            approvalToken: result.approvalToken,
+            decision: "cancel",
+          },
+        }).catch(() => {});
+      }
+      return;
+    }
+    if (result?.status === "prepared") {
+      openConfirmation(
+        {
+          kind: "active",
+          launchId,
+          approvalToken: result.approvalToken,
+          requestId,
+          epoch,
+        },
+        result.confirmation,
+      );
+      statusEl.dataset.kind = "ready";
+      statusEl.textContent = "Review the trusted AgentState confirmation.";
+      return;
+    }
+    statusEl.dataset.kind = result?.status === "conflict" ? "error" : "ready";
+    statusEl.textContent = resultMessage(result);
+    postActiveActionResult(launchId, epoch, requestId, result ?? {
+      status: "failed",
+      action: "document.set-field",
+      message: "the action service returned an invalid result",
+    });
+  } catch (error) {
+    const result = {
+      status: "failed",
+      action: "document.set-field",
+      message: error instanceof Error ? error.message : String(error),
+    };
+    if (durablePayloadFor(launchId, epoch)) {
+      statusEl.dataset.kind = "error";
+      statusEl.textContent = result.message;
+      postActiveActionResult(launchId, epoch, requestId, result);
+    }
+  } finally {
+    if (preparingActiveAction === reservation) preparingActiveAction = null;
+  }
+}
+
 async function authorizeDurableView(): Promise<void> {
   const payload = currentPayload;
   if (
@@ -614,8 +788,11 @@ function cancelDurableAuthorization(): void {
 async function finishAction(decision: "commit" | "cancel"): Promise<void> {
   const selected = pending;
   if (!selected) return;
+  finishingAction = selected;
+  pending = null;
   confirmationApply.disabled = true;
   confirmationCancel.disabled = true;
+  if (selected.kind === "active") closeConfirmation();
   try {
     const response = await app.callServerTool({
       name: "finish_view_action",
@@ -626,18 +803,58 @@ async function finishAction(decision: "commit" | "cancel"): Promise<void> {
       },
     });
     const structured = structuredResult(response);
-    if (structured && isViewPayload(structured.view)) renderPayload(structured.view);
-    else if (structured?.view === null) retirePayload();
-    statusEl.dataset.kind =
-      isRecord(structured?.result) && structured.result.status === "conflict" ? "error" : "ready";
-    statusEl.textContent = resultMessage(structured?.result);
+    const stillCurrent = finishingAction === selected && (selected.kind === "active"
+      ? durablePayloadFor(selected.launchId, selected.epoch) !== null
+      : currentPayload !== null &&
+        !isActiveViewPayload(currentPayload) &&
+        currentPayload.launch.launchId === selected.launchId &&
+        frameEpoch === selected.epoch);
+    if (stillCurrent && selected.kind === "generated") {
+      if (structured && isViewPayload(structured.view)) renderPayload(structured.view);
+      else if (structured?.view === null) retirePayload();
+    }
+    if (stillCurrent) {
+      statusEl.dataset.kind =
+        isRecord(structured?.result) && structured.result.status === "conflict" ? "error" : "ready";
+      statusEl.textContent = resultMessage(structured?.result);
+    }
+    if (stillCurrent && selected.kind === "active") {
+      postActiveActionResult(
+        selected.launchId,
+        selected.epoch,
+        selected.requestId,
+        structured?.result ?? {
+          status: "failed",
+          action: "document.set-field",
+          message: "the action service returned an invalid result",
+        },
+      );
+    }
   } catch (error) {
-    statusEl.dataset.kind = "error";
-    statusEl.textContent = error instanceof Error ? error.message : String(error);
+    const stillCurrent = finishingAction === selected && (selected.kind === "active"
+      ? durablePayloadFor(selected.launchId, selected.epoch) !== null
+      : currentPayload !== null &&
+        !isActiveViewPayload(currentPayload) &&
+        currentPayload.launch.launchId === selected.launchId &&
+        frameEpoch === selected.epoch);
+    if (stillCurrent) {
+      statusEl.dataset.kind = "error";
+      statusEl.textContent = error instanceof Error ? error.message : String(error);
+    }
+    if (stillCurrent && selected.kind === "active") {
+      postActiveActionResult(selected.launchId, selected.epoch, selected.requestId, {
+        status: "failed",
+        action: "document.set-field",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   } finally {
     confirmationApply.disabled = false;
     confirmationCancel.disabled = false;
-    closeConfirmation();
+    if (finishingAction === selected) {
+      finishingAction = null;
+      closeConfirmation();
+    }
   }
 }
 
@@ -870,6 +1087,31 @@ window.addEventListener("message", (event) => {
   ) {
     return;
   }
+  const actionMessage = parseActionBridgeMessage(event.data);
+  if (actionMessage !== null) {
+    if (!actionMessage.ok) {
+      const raw = event.data as { id?: unknown; requestId?: unknown };
+      if (typeof raw.requestId === "string") {
+        postActiveActionResult(payload.launch.launchId, frameEpoch, raw.requestId, {
+          status: "rejected",
+          action: "document.set-field",
+          message: actionMessage.message,
+        });
+      } else if (typeof raw.id === "string") {
+        frame.contentWindow?.postMessage(actionError(raw.id, actionMessage.message), "*");
+      }
+      return;
+    }
+    if (actionMessage.message.type === "action.propose") {
+      void prepareActiveAction(
+        payload.launch.launchId,
+        frameEpoch,
+        actionMessage.message.requestId,
+        actionMessage.message.action,
+      );
+      return;
+    }
+  }
   void forwardDurableBridgeMessage(
     payload.launch.launchId,
     frameEpoch,
@@ -884,6 +1126,7 @@ document.addEventListener("visibilitychange", () => {
     isActiveViewPayload(payload) &&
     payload.launch.authorization.authorized
   ) {
+    abandonActionOperations();
     suspendedDurableLaunch = payload.launch.launchId;
     frameEpoch++;
     resetFrameSizing();

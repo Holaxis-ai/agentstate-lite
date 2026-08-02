@@ -159,9 +159,10 @@ export class McpViewLaunchRegistry implements TrustedActionLaunchAuthority {
       launchId,
       capability: "bundle-propose",
       source: {
-        registryId: `mcp-ephemeral:${launch.content.presentation.contentHash}`,
+        kind: "generated",
+        id: `mcp-generated:${launch.content.presentation.contentHash}`,
         title: launch.content.title,
-        registryVersion: launch.content.presentation.contentHash,
+        version: launch.content.presentation.contentHash,
         contentVersion: launch.content.presentation.contentHash,
       },
       documentVersions: ownVersions(launch.content),

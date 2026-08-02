@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@agentstate-lite/markdown-renderer": "*",
+    "@agentstate-lite/view-runtime": "*",
     "@tanstack/react-query": "^5.62.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

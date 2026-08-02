@@ -27,7 +27,7 @@ import {
 } from "../api/pages.js";
 import { subscribeToChanges, subscribeToResync } from "../pages/pageEvents.js";
 import { navigate } from "../routing.js";
-import { actionError, actionReply, parseActionBridgeMessage } from "../pages/actions.js";
+import { actionError, actionReply, parseActionBridgeMessage } from "@agentstate-lite/view-runtime/action-bridge";
 
 const ACTION_CONFIRMATION_ARM_MS = 500;
 const VIEW_AUTHORIZATION_ARM_MS = 500;
@@ -514,7 +514,7 @@ export function PageFrame({ pageId }: { pageId: string }) {
             <p className="action-confirmation-eyebrow">AgentState confirmation</p>
             <h2 id="action-confirmation-title">Apply this bundle change?</h2>
             <p>
-              View <code>{confirmation.source.registryId}</code> proposes changing <strong>{confirmation.target.title}</strong>.
+              View <code>{confirmation.source.id}</code> proposes changing <strong>{confirmation.target.title}</strong>.
             </p>
             <dl>
               <div><dt>Document</dt><dd><code>{confirmation.target.docId}</code></dd></div>
