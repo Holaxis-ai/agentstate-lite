@@ -12,7 +12,7 @@ description: >-
   behavior, bounded lifecycle, and no synthetic registry identity. Exact-byte
   save, bundle-propose parity, and deletion remain separate follow-on units.
 actor: openai/codex
-timestamp: '2026-08-02T19:09:47.537Z'
+timestamp: '2026-08-02T19:15:16.343Z'
 ---
 [specified by](../designs/transient-durable-view-unification.md)
 
@@ -25,7 +25,8 @@ PR #191 at 80f831d adds a discriminated registered/transient launch identity and
 - Transient exact bytes enter the shared active iframe, read-only bridge, polling, suspension, resume, and document renderer path.
 - Approval is required before data and stored only in the MCP process; the injected persistent registered-View store receives zero transient calls.
 - No synthetic registry ID exists. Bundle identity plus content version define authorization.
-- Workspace builds pass; view-runtime 12/12, mcp-app 58/58, and affected CLI/UI tests 45/45 pass.
+- Workspace builds pass; view-runtime 12/12, mcp-app 58/58, affected CLI/UI tests 45/45, and MCP browser tests 8/8 pass.
+- Independent review APPROVED exact SHA 80f831d with no findings; Node 20 smoke and Node 22/26 repository gates are green.
 
 # Deferred
 
