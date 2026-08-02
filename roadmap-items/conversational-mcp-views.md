@@ -3,16 +3,17 @@ type: Roadmap Item
 title: Conversational Views through MCP Apps
 status: active
 description: >-
-  ACTIVE — one portable durable View across web and MCP. Shared discovery
-  shipped in PR #184 and shared bounded document rendering in PRs #188/#189.
-  Active unit: unify authoring guidance and run fresh-agent cross-bundle dogfood
-  before adding navigation or action mechanics.
+  ACTIVE — one portable durable View across web and MCP. Shared catalog, shared
+  bounded document rendering, unified authoring guidance, and a fresh-agent
+  cross-bundle/cross-host proof have shipped. Next product decision: whether
+  one-command durable View creation is worth its scope; next isolated
+  host-parity mechanic after that is MCP open-page navigation.
 sequence: >-
   Shared View catalog shipped → shared document rendering shipped → unified
-  authoring guidance + fresh-agent dogfood → explicit view-create decision →
-  navigation parity → later action parity → fresh-agent cross-host proof
+  authoring guidance + fresh-agent dogfood shipped → explicit view-create
+  decision → navigation parity → later action parity
 actor: openai/codex
-timestamp: '2026-08-02T17:30:20.510Z'
+timestamp: '2026-08-02T17:43:33.613Z'
 ---
 # Direction
 

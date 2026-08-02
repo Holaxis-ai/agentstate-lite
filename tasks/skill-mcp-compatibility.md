@@ -3,9 +3,18 @@ type: Task
 title: Add skill compatibility and prove stable MCP launch
 status: todo
 priority: '1'
-description: 'Implement C2S: additive skill receipts plus bounded MCP PATH/handshake proof.'
+description: >-
+  P1 C2S — EMPIRICAL DOGFOOD 2026-08-02: the installed skill resolver chose
+  stale /opt/homebrew/bin/agentstate-lite from PATH even though the current
+  1.0.141 skill shim was available; that binary rejected the skill's documented
+  'version' command. The fresh agent recovered only by locating the versioned
+  shim. Fix under the approved compatibility/identity contract: compare an
+  executable's skill/runtime compatibility and prove the MCP handshake, rather
+  than adding a partial PATH-precedence heuristic. Evidence:
+  context-notes/portable-view-authoring-dogfood-2026-08-02. Gate and Brian-owned
+  merge remain unchanged.
 actor: openai/codex
-timestamp: '2026-07-31T21:26:26.859Z'
+timestamp: '2026-08-02T17:43:33.583Z'
 ---
 # Goal
 

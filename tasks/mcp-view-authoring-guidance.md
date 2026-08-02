@@ -1,17 +1,24 @@
 ---
 type: Task
 title: Portable View authoring guidance and fresh-agent dogfood
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  IN PROGRESS — Reframed around one durable View authored once for web and MCP.
-  The shipped View contract is the single guidance authority; this unit now
-  proves it by having a fresh agent build a bounded Latest documents View in a
-  different registered bundle, render selected bodies through render-document,
-  and invoke the exact same registered bytes through both hosts.
+  DONE — A fresh agent with no AgentState source context used only the installed
+  skill/reference to create and promote views-registry/latest-documents in the
+  separate holaxis-strategy bundle. Web proof covered exact-byte approval,
+  68-row bounded live query, canonical render-document output, inert concept
+  markers, 480px single-panel navigation, and 1440px two-pane layout. Real stdio
+  MCP resolved the identical source hash
+  sha256:2d80a0c98a6b9b0f9407222788b376ea9059081ade65c161d8908b260523691d and
+  rendered the same authoritative document/version. No View-local Markdown
+  parser, host fork, source archaeology, or coaching was needed. The only
+  material friction was stale PATH executable precedence; routed to
+  tasks/skill-mcp-compatibility. Evidence:
+  context-notes/portable-view-authoring-dogfood-2026-08-02.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-02T17:30:12.408Z'
+timestamp: '2026-08-02T17:43:33.603Z'
 ---
 # Product invariant
 
