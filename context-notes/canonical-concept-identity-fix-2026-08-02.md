@@ -1,12 +1,13 @@
 ---
 type: Context Note
-title: Canonical concept identity bug fix and unpublished handoff
+title: 'Canonical concept identity fix shipped in PR #185'
 actor: openai/codex
-timestamp: '2026-08-02T13:48:04.442Z'
+timestamp: '2026-08-02T14:02:11.383Z'
 ---
 # Summary
 
-The canonical concept identity bug is fixed and fully verified in commit `85a098b`, but the commit currently exists only on local `main`; it has not been pushed and no GitHub PR exists.
+The canonical concept identity bug is fixed and shipped in PR #185. The reviewed implementation is
+commit `85a098b`; GitHub merged it to `main` as `101caf0`.
 
 ## What changed
 
@@ -18,11 +19,14 @@ Commit `85a098b` makes storage identity canonical and exact. Path-like convenien
 
 - Full `npm run check` passed on exact commit `85a098b`.
 - Independent static review of the exact SHA found no remaining P1/P2 issues.
+- GitHub CI passed the Node 20 built-CLI smoke and full gates on Node 22 and Node 26 before merge.
 - The review rounds found real missed projections, confirming that identity interpretation was too distributed.
 
-## Current handoff state
+## Delivery state
 
-The commit was fast-forwarded into local `main`, but it has NOT been pushed. Local `main` is one commit ahead of `origin/main` (`b0ad00b`). No remote fix branch or GitHub PR exists yet. Publishing still requires pushing a branch, opening a PR, and merging it on GitHub.
+PR #185 merged to public `main` on 2026-08-02. No code work remains in this unit; ordinary
+marketplace regeneration follows the repository's main-merge automation, while npm publication
+remains part of the separate version/update release program.
 
 ## Architectural follow-up
 
