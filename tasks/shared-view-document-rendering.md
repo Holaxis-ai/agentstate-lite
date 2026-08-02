@@ -4,13 +4,14 @@ title: Shared bounded document rendering for portable Views
 status: in_progress
 priority: '2'
 description: >-
-  CLAIMED 2026-08-02 by openai/codex. Implementing the reviewed design in two
-  units: first the inert shared static Markdown profile through the existing MCP
-  generated-presentation consumer; then the render-document bridge capability
-  across web and MCP without weakening ui-server package direction.
+  IN PROGRESS — Unit 1 is PR #188 at 98f8e72: one inert static output profile in
+  the shared Markdown renderer, generated MCP presentation migrated to it, and
+  MCP's direct React cleanup path removed. Full repository gate passed.
+  Independent security-boundary review pending before merge; Unit 2
+  render-document has not started.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-02T16:12:33.721Z'
+timestamp: '2026-08-02T16:20:22.160Z'
 ---
 # Outcome
 
