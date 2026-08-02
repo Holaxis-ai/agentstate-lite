@@ -2,7 +2,7 @@
 type: Review
 title: 'Independent review: PR #187 project-directory bundle resolution'
 actor: openai/codex-reviewer
-timestamp: '2026-08-02T14:49:14.289Z'
+timestamp: '2026-08-02T14:52:40.780Z'
 ---
 # Exact change reviewed
 
@@ -37,3 +37,26 @@ The implementation now intentionally accepts either an exact bundle root or a pr
 - Conventional-child detection requires the child `index.md`; an empty `.agentstate-lite/` folder remains unavailable.
 
 [tasks/cli-dir-error-steers-to-divergent-bundle](../tasks/cli-dir-error-steers-to-divergent-bundle.md)
+# Re-review addendum — 2026-08-02
+
+Exact commit reviewed: `2a787553a6c99f23e8e1828340315f717ce9b181`.
+
+## Final verdict
+
+`approve` — the prior P2 coherence finding is fully resolved; no new findings.
+
+## Resolution verified
+
+- Built `bundle --help` now says explicit `--dir` accepts a bundle root or its direct `.agentstate-lite` child.
+- Built `catalog --help` now describes the same project-directory affordance for `catalog add`.
+- `openBundle` documentation now states the exact boundary: requested root or direct conventional child, never an ancestor.
+- The two session-start/home comments now truthfully distinguish direct-child explicit resolution from the upward walk needed for a nested run directory and a separately resolved board checkout.
+- A source-wide stale-phrase scan found no remaining literal-root-only assertion about explicit `--dir`.
+
+## Re-review evidence
+
+- Detached exact-SHA worktree with fresh `npm ci`.
+- Repo-root build succeeded.
+- Both revised help surfaces were sampled from the freshly built CLI and matched the implementation.
+- The follow-up commit changes only the five help/comment sites named by the prior finding; resolver code and its previously reviewed tests are unchanged.
+- Exact-SHA GitHub CI was still running when this addendum was recorded; the standing gate remains the merge prerequisite.
