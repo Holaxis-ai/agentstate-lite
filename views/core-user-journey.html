@@ -107,6 +107,7 @@
     .record-body h1 { font-size:19px; } .record-body h2 { font-size:17px; } .record-body h3 { font-size:15px; }
     .record-body p, .record-body li { font-size:13px; line-height:1.58; }
     .record-body p { margin:0 0 8px; } .record-body ul { margin:0 0 9px; padding-left:18px; }
+    .record-body [data-aslite-doc-id] { color:var(--accent); cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
     .empty-state, .error { padding:24px; border:1px solid var(--line); border-radius:var(--radius); color:var(--muted); background:var(--panel); }
     .error { color:var(--red); border-color:#68332f; }
     .hidden { display:none !important; }
@@ -205,6 +206,7 @@
       window.Bridge = {
         query: function (params) { return send("query", { params: params }); },
         read: function (docId) { return send("read", { docId: docId }); },
+        renderDocument: function (docId) { return send("render-document", { docId: docId }); },
         edges: function (params) { return send("edges", { params: params }); },
         subscribe: function (cb) { subs.push(cb); return send("subscribe"); },
         watch: watch
@@ -336,8 +338,9 @@
         section.appendChild(bodyNodes(content));
         return section;
       }
-      function selectStage(id) {
-        state.selected = id; state.relatedSelected = null; renderMap();
+      function selectStage(id, preserveRelated) {
+        var relatedId = preserveRelated ? state.relatedSelected : null;
+        state.selected = id; state.relatedSelected = relatedId; renderMap();
         var stage = state.stages.find(function (s) { return s.id === id; });
         if (!stage) return;
         var fm = stage.frontmatter, sections = parseSections(stage.body), root = document.getElementById("detail");
@@ -357,6 +360,7 @@
         var list = el("div", "related-list"), edges = relatedFor(id);
         edges.forEach(function (edge) {
           var item = el("button", "related-item"); item.type = "button";
+          item.dataset.targetId = edge.to;
           item.appendChild(el("b", "", edge.text + " · "));
           item.appendChild(document.createTextNode(state.titles[edge.to] || edge.to));
           item.addEventListener("click", function () { void selectRelated(edge, item); });
@@ -366,6 +370,13 @@
         related.appendChild(list);
         var recordPanel = el("div", "related-record"); recordPanel.id = "related-record-panel";
         related.appendChild(recordPanel); grid.appendChild(related); root.appendChild(grid);
+        if (relatedId) {
+          var relatedEdge = edges.find(function (edge) { return edge.to === relatedId; });
+          var relatedButton = Array.from(list.querySelectorAll("[data-target-id]")).find(function (item) {
+            return item.dataset.targetId === relatedId;
+          });
+          if (relatedEdge) void selectRelated(relatedEdge, relatedButton);
+        }
         root.scrollIntoView({ behavior:"smooth", block:"nearest" });
       }
 
@@ -376,20 +387,24 @@
         if (!panel) return;
         panel.textContent = ""; panel.appendChild(el("div", "record-body", "Reading the current record…"));
         try {
-          var doc = await Bridge.read(edge.to), fm = doc.frontmatter || {};
+          var rendered = await Bridge.renderDocument(edge.to);
           if (state.relatedSelected !== edge.to) return;
           panel.textContent = "";
           var head = el("div", "record-head"), titleWrap = el("div");
-          titleWrap.appendChild(el("div", "record-kind", (fm.type || "Record") + " · " + edge.text));
-          titleWrap.appendChild(el("h5", "", fm.title || doc.id));
-          head.appendChild(titleWrap); head.appendChild(el("div", "record-id", doc.id)); panel.appendChild(head);
-          var meta = el("div", "record-meta");
-          ["status","priority","assignee","sequence"].forEach(function (key) {
-            if (fm[key] !== undefined && String(fm[key]).trim()) meta.appendChild(el("span", "record-chip", key + ": " + fm[key]));
+          titleWrap.appendChild(el("div", "record-kind", "Rendered document · " + edge.text));
+          titleWrap.appendChild(el("h5", "", state.titles[edge.to] || edge.to));
+          head.appendChild(titleWrap);
+          head.appendChild(el("div", "record-id", rendered.document.id + " · " + rendered.document.version.slice(0, 18) + "…"));
+          panel.appendChild(head);
+          var body = el("div", "record-body");
+          body.innerHTML = rendered.html;
+          body.addEventListener("click", function (event) {
+            var target = event.target instanceof Element ? event.target.closest("[data-aslite-doc-id]") : null;
+            var docId = target && target.getAttribute("data-aslite-doc-id");
+            if (docId) void selectRelated({ to:docId, text:"document reference" }, null);
           });
-          if (meta.children.length) panel.appendChild(meta);
-          if (fm.description) panel.appendChild(el("p", "record-description", String(fm.description)));
-          var body = el("div", "record-body"); body.appendChild(bodyNodes(doc.body || "No body recorded.")); panel.appendChild(body);
+          panel.appendChild(body);
+          if (rendered.bounded) panel.appendChild(el("div", "record-description", "This document was safely shortened for display."));
           panel.scrollIntoView({ behavior:"smooth", block:"nearest" });
         } catch (error) {
           panel.textContent = ""; panel.appendChild(el("div", "record-body", "Could not read this linked record: " + error.message));
@@ -421,7 +436,7 @@
           document.getElementById("promise").textContent = journey.frontmatter.product_promise;
         }
         renderSummary(); renderMap();
-        if (state.selected) selectStage(state.selected);
+        if (state.selected) selectStage(state.selected, true);
       }
 
       document.querySelectorAll(".filter").forEach(function (button) {
