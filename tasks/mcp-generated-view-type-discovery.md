@@ -3,28 +3,15 @@ type: Task
 title: >-
   Generated MCP views: model cannot discover bundle types/fields; no-match
   errors should name them
-status: in_progress
+status: done
 priority: '2'
-actor: claude-main
+actor: openai/codex
 description: >-
-  PR #179 review round ADDRESSED at 6eae227 (branch
-  feat/mcp-empty-selection-self-description: 23a4c86 mechanic, 546bff6 + 6eae227
-  review rounds). Codex reviewer's three findings all fixed: P1 field evidence
-  now bounded to the launch's frozen envelope (limit threaded from server;
-  'values in the first N matched document(s)' label) — the reviewer's 25-row
-  probe reproduced over real stdio, row-25-only value no longer disclosed, pin
-  red-verified; P2 empty type+prefix INTERSECTION reported as a conjunction,
-  type axis asserted only when the whole-bundle type list settles it, prefix
-  axis never claimed empty on intersection evidence; P3 only retry-representable
-  values advertised (isRepresentableFilterValue mirrors the
-  comma-split/trim/non-empty grammar against matchesFilter's exact comparison) —
-  empty/padded/comma-bearing/over-long values counted not shown, clipping
-  removed since clipped values cannot round-trip, all-unusable branch says so.
-  Gates green at 6eae227 (build/typecheck/full npm test); three stdio probes
-  reproduce the reviewer's cases. Earlier subagent review round (APPROVE 3xP3)
-  is superseded on the value-list logic by this round. Open question for Brian:
-  whether the PR reviewer re-reviews 6eae227 before merge.
-timestamp: '2026-07-29T14:10:29.950Z'
+  Shipped in PR #179 (merge beea568): bounded launch-envelope type/field
+  evidence, conjunction-accurate no-match diagnostics, and only
+  retry-representable suggested values. Review findings were addressed and the
+  full gate passed.
+timestamp: '2026-08-02T03:11:29.478Z'
 ---
 # Field evidence (Brian, Claude Desktop chat, 2026-07-27 evening)
 

@@ -3,15 +3,15 @@ type: Roadmap Item
 title: Conversational Views through MCP Apps
 status: active
 description: >-
-  ACTIVE — one portable durable View across web and MCP. Next: one shared
-  catalog projected as CLI view list, MCP list_views, and the web launcher;
-  presentation is advisory, not eligibility.
+  ACTIVE — one portable durable View across web and MCP. Shared discovery
+  shipped in PR #184; next is unified authoring guidance plus fresh-agent
+  cross-bundle dogfood before more mechanics.
 sequence: >-
-  Shared View catalog → unified authoring guidance → explicit view-create
-  decision → shared document rendering → navigation parity → later action parity
-  → fresh-agent cross-host proof
+  Shared View catalog shipped → unified authoring guidance + dogfood → explicit
+  view-create decision → shared document rendering → navigation parity → later
+  action parity → fresh-agent cross-host proof
 actor: openai/codex
-timestamp: '2026-08-01T20:10:04.450Z'
+timestamp: '2026-08-02T03:11:29.292Z'
 ---
 # Direction
 
@@ -48,13 +48,14 @@ Shipped and proved:
 - bounded exact-snapshot selection and governed preview actions;
 - shared active-View registration, launch, exact-byte trust, and bridge authority;
 - unchanged durable View execution in web and MCP;
+- one shared durable View catalog projected through CLI `view list`, MCP `list_views`, and the
+  web launcher, with bounded continuation and fail-closed admission;
 - intrinsic sizing and automatic suspension recovery; and
 - one shared bounded Markdown renderer, currently consumed by trusted web document pages and
   generated MCP bindings.
 
 Current parity gaps:
 
-- agents cannot discover durable Views through MCP or a dedicated CLI View catalog;
 - durable authoring remains a hand-coordinated blob/registry sequence;
 - standard Markdown/document rendering is not exposed to registered Views;
 - MCP rejects the shared runtime's validated `open-page` outcome; and
@@ -62,11 +63,12 @@ Current parity gaps:
 
 # Sequence
 
-1. **Shared View catalog — active next unit.** One authority projected as CLI `view list`, MCP
-   `list_views`, and the web launcher. Presentation intent is advisory, never an eligibility gate;
-   bounded results report total/truncation and provide continuation.
-2. **Unified authoring guidance.** Teach one durable View workflow plus transient previews; repeat
-   the fresh-agent cross-bundle journey.
+1. **Shared View catalog — shipped in PR #184.** One authority is projected as CLI `view list`,
+   MCP `list_views`, and the web launcher. Presentation intent is advisory, never an eligibility
+   gate; bounded results report total/truncation and provide continuation.
+2. **Unified authoring guidance and dogfood — active next unit.** Teach one durable View workflow
+   plus transient previews, then repeat the fresh-agent cross-bundle journey before adding more
+   mechanics.
 3. **Create ergonomics decision and unit.** If explicitly accepted as the mechanism-level
    framework exception, update and implement the create-only `aslite view create` design using
    `access` and current admission checks.
