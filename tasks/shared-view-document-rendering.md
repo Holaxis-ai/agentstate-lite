@@ -11,7 +11,7 @@ description: >-
   consumer; then add render-document through composition-root injection without
   weakening ui-server package direction.
 actor: openai/codex
-timestamp: '2026-08-02T16:09:05.233Z'
+timestamp: '2026-08-02T16:09:27.117Z'
 ---
 # Outcome
 
@@ -27,7 +27,8 @@ Governing design: [shared bounded document rendering](../designs/shared-view-doc
 - Reuse the existing `@agentstate-lite/markdown-renderer`; do not add another parser.
 - Preserve `view-runtime` package direction through an injected static-rendering function.
 - Provide the same capability and agreement tests in the web and MCP hosts.
-- Keep resolved document references inert and expose only resolver-approved target ids.
+- Keep normalized concept references inert; following a syntactically valid id may still return
+  `NOT_FOUND` when the target does not exist.
 - Update authoring guidance and dogfood one durable View across both hosts.
 
 # Not in scope
@@ -42,4 +43,3 @@ editing, or a separate MCP View model.
 - One durable bundle View removes its local Markdown approximation and works unchanged in web and
   MCP expanded mode.
 - Fresh-agent authoring proof does not require reading product source.
-
