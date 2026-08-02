@@ -1,29 +1,24 @@
 ---
 type: Reference
-title: Bundle View authoring — read bridge v0 and trusted actions v1
+title: Bundle View authoring — shared web and MCP contract
 protocol: v0+v1
 timestamp: "2026-07-22T00:00:00.000Z"
 ---
 
-# Bundle View authoring — read bridge v0 and trusted actions v1
+# Bundle View authoring — shared web and MCP contract
 
-Use this reference when creating or revising a human-facing View in this bundle. It travels with
-View-bearing portable recipes so View work does not depend on an agent-harness skill. The installed
-CLI remains the authority for the runtime implementation; this document describes the stable `v0`
-read contract and the deliberately narrow `v1` trusted-action contract.
+Author **one durable View** for both local web and MCP hosts: a self-contained, responsive HTML
+blob under `views/…` plus a `type: View` registry doc under `views-registry/…`. Both hosts launch
+the same registry id, exact HTML bytes, access declaration, and bridge contract. The host chooses
+the available size and may offer expansion; do not create separate inline, expanded, web, or MCP
+implementations.
 
-A **bundle View** is a self-contained HTML file promoted into an agentstate-lite bundle as a blob
-under `views/…`, declared by a `type: View` registry doc, and rendered by `agentstate-lite ui`
-inside a **sandboxed iframe**. Views are bundle content — authored, versioned, attributed, and
-synced like any other doc — while the shell is the launcher and trusted data broker.
+Use the bridge for bundle data and `render-document` for canonical Markdown presentation. Style
+the returned inert fragment inside the View; do not ship another Markdown parser. The sections
+below are the exact protocol contract and copy-paste client.
 
-`Page` is the legacy name for this kind, and it is no longer read: a legacy `type: Page` doc
-does not register (the launcher ignores it). Leftover legacy stock is renamed to `type: View`
-in place by the repo's `migrate-legacy-view-names` script, and `aslite status` lists it under
-its `legacy_naming` finding; docs under the legacy `pages-registry/`/`pages/` prefixes stay
-recognized where they are once typed `View`. Author views as `type: View` under
-`views-registry/`/`views/`. Bridge wire names (the `open-page` verb, its `pageId` payload field)
-are stable ABI and did not change with the rename.
+Legacy `Page` and `bridge` are retired authoring names. Use `type: View` and `access`; `aslite status`
+reports legacy content that needs migration. Legacy wire names such as `open-page` remain stable.
 
 ## Trust model (exact-byte approval + no credential)
 
@@ -181,24 +176,20 @@ requests at all — and the shell, not the view, is what enforces it:
 The launcher groups views by this same field: "Dashboards" for `bundle-read`, "Interactive" for
 `bundle-propose`, and "Documents" for `none`.
 
-An optional `presentation: workspace | inline | adaptive` field is only a layout preference for
-hosts. It never changes whether a host can run the View, never changes `access`, and may be ignored
-when the available surface differs from the author's preference. Omit it when either surface is
-equally useful.
-
 ## Authoring a view
 
-Start from an installed View when possible—the working HTML is both a template and executable
-evidence of the bridge version it uses:
+Start from a working installed View when possible, then adapt it responsively for the space the
+host provides. Keep data selection bounded and show empty, partial, over-limit, and unavailable
+states.
 
 ```sh
 aslite blobs --prefix views/
 aslite pull --doc-key views/review-workflow/reviews.html --out my-view.html
 ```
 
-Adapt the HTML as a self-contained file with inline CSS and JavaScript and no external hosts. A
-data View embeds the bridge client below. A content View (`access: none`) may use only its
-fire-and-forget `openPage` helper; its bundle-data calls return `FORBIDDEN`.
+Keep HTML, CSS, and JavaScript self-contained with no external hosts. A data View embeds the bridge
+client below. A content View (`access: none`) may use only `openPage`; bundle-data calls return
+`FORBIDDEN`.
 
 Install the HTML blob and its registry entry:
 
@@ -216,6 +207,9 @@ aslite ui --open
 for a static report or diagram. Re-promoting the HTML updates the open View; the shell reloads it
 with a fresh nonce. If the bundle does not yet declare the View Kind, install its View-bearing
 recipe or promote the supplied `conventions/view.md` once before creating the registry entry.
+
+Verify the same registered id in both surfaces: open it with `aslite ui`, then have an MCP-capable
+desktop list and show that View. Confirm narrow and expanded layouts without changing the source.
 
 The seed views here are working examples: `pulse.html`/`roadmap.html` are `access: bundle-read`
 data views — `roadmap.html` is the one that exercises the `edges` request end-to-end (a live graph
