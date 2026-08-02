@@ -5,15 +5,19 @@ status: in_progress
 priority: '1'
 assignee: delegated/codex
 description: >-
-  Follow up the post-merge PR #191 review at
-  context-notes/transient-view-pr191-implementation-review. Make the MCP
-  active-View approval dialog source-aware: registered Views retain
-  registered-source trust copy; transient Views explicitly say the HTML is
-  agent-authored and process-local. The human trust prompt must not misstate
-  provenance. Add a UI-level regression test covering both source kinds. Keep
-  this PR limited to copy selection and its executable proof; do not include
-  authorization-store construction or launch immutability.
+  Implementation published in PR #194 at exact commit
+  f23c2ad8db7448d3a4ea84c89740612d795660a7. The trusted MCP App approval dialog
+  now selects provenance copy from the active launch schema: registered Views
+  say they come from the bundle; transient Views explicitly identify
+  agent-authored HTML created for the MCP session, process-local lifetime, and
+  absence of a registered bundle identity. Authorization stores, launch
+  lifetime, action authority, and generated presentation behavior are unchanged.
+  Executable proof: a browser regression drives both source kinds through the
+  built App shell and checks the visible copy and identity. Evidence on exact
+  commit: root npm run build PASS; root npm run typecheck PASS; MCP unit suite
+  59/59; MCP browser suite 9/9. Awaiting independent review; do not merge until
+  that ordinary-code review completes.
 actor: openai/codex
-timestamp: '2026-08-02T20:22:33.556Z'
+timestamp: '2026-08-02T20:27:18.673Z'
 ---
 
