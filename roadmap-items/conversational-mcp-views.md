@@ -13,7 +13,7 @@ sequence: >-
   authoring guidance + fresh-agent dogfood shipped → explicit view-create
   decision → navigation parity → later action parity
 actor: openai/codex
-timestamp: '2026-08-02T18:39:30.178Z'
+timestamp: '2026-08-02T18:52:55.627Z'
 ---
 # Direction
 
@@ -132,3 +132,5 @@ Current parity gaps:
 [contains](../tasks/shared-view-document-rendering.md)
 
 [Proposed transient/durable source unification](../designs/transient-durable-view-unification.md)
+
+[contains](../tasks/transient-active-view-launch.md)
