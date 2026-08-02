@@ -4,14 +4,15 @@ title: Shared bounded document rendering for portable Views
 status: in_progress
 priority: '2'
 description: >-
-  IN PROGRESS — Unit 1 shipped in PR #188 (merge 890cfab): shared inert static
-  Markdown profile, generated MCP consumer migrated, old cleanup authority
-  deleted; independent review and all CI gates passed. Unit 2 now active: add
-  render-document to the shared bridge and inject the same renderer from CLI and
-  MCP composition roots.
+  IN PROGRESS — Unit 1 shipped in PR #188 (merge 890cfab). Unit 2 implemented at
+  exact commit a8a8458: one document-centric render-document request in the
+  shared BridgeService; the CLI web host and MCP host inject the same inert
+  renderer; author guidance is regenerated; a cross-host agreement table passes
+  denial, success, NOT_FOUND, bounded, and changed-launch outcomes. Full npm run
+  check is green. Independent review is active before publication.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-02T16:35:01.911Z'
+timestamp: '2026-08-02T16:52:12.634Z'
 ---
 # Outcome
 
