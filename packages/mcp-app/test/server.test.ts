@@ -1572,6 +1572,10 @@ test("a failed show_view records no claim ticket", async (t) => {
     arguments: { viewId: "views-registry/does-not-exist" },
   });
   assert.equal(failed.isError, true);
+  const failedText = (failed.content as Array<{ text?: string }>)[0]?.text ?? "";
+  assert.match(failedText, /No registered View with ID 'views-registry\/does-not-exist'\./);
+  assert.match(failedText, /Call list_views to discover the available View IDs\./);
+  assert.doesNotMatch(failedText, /ENOENT|\.md|mem:\/\//);
   assert.equal(extractClaimId(failed), null, "a failed show_view carries no claim marker");
 
   const resolved = await client.callTool({
