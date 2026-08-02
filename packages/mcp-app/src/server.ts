@@ -20,6 +20,7 @@ import {
   PageBridgeLaunchAuthority,
   PageLaunchRegistry,
   SessionViewAuthorizationStore,
+  TransientViewSaveError,
   TrustedActionService,
   ViewNotFoundError,
   launchIsCurrent,
@@ -27,6 +28,7 @@ import {
   mintActiveViewLaunch,
   mintTransientViewLaunch,
   pageLaunchAuthorizationSubject,
+  saveTransientView,
   type ActionTerminalResult,
   type PageLaunch,
   type RegisteredPageLaunch,
@@ -71,6 +73,7 @@ export const POLL_DURABLE_VIEW_TOOL_NAME = "poll_durable_view";
 export const CLOSE_DURABLE_VIEW_TOOL_NAME = "close_durable_view";
 export const RESUME_DURABLE_VIEW_TOOL_NAME = "resume_durable_view";
 export const RESOLVE_LAUNCH_TOOL_NAME = "resolve_launch";
+export const SAVE_TRANSIENT_VIEW_TOOL_NAME = "save_transient_view";
 
 /**
  * Claim marker carried in show_view's TEXT content — the channel Claude Desktop preserves when it
@@ -324,6 +327,44 @@ const transientOutputSchema = z.object({
     contentVersion: z.string(),
   }),
   launch: durableOutputSchema.shape.launch,
+});
+
+const saveTransientViewInputSchema = z
+  .object({
+    launchId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(128)
+      .describe("Exact transient launchId returned by show_view."),
+    viewId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(512)
+      .describe("New durable registration id under views-registry/; its views/...html entry is derived."),
+    description: z
+      .string()
+      .trim()
+      .min(1)
+      .max(500)
+      .optional()
+      .describe("Optional durable catalog description."),
+  })
+  .strict();
+
+const saveTransientViewOutputSchema = z.object({
+  saved: z.object({
+    viewId: z.string(),
+    entry: z.string(),
+    title: z.string(),
+    access: z.enum(["none", "bundle-read", "bundle-propose"]),
+    sourceVersion: z.string(),
+    entryVersion: z.string(),
+    registryVersion: z.string(),
+    entryCreated: z.boolean(),
+    registryCreated: z.boolean(),
+  }),
 });
 
 const outputSchema = z.object({
@@ -795,6 +836,62 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
         content: [{ type: "text", text: `Approved exact current bytes for "${view.title}".` }],
         structuredContent: { view },
       };
+    },
+  );
+
+  registerAppTool(
+    server,
+    SAVE_TRANSIENT_VIEW_TOOL_NAME,
+    {
+      title: "Save transient AgentState View",
+      description:
+        "Save an already locally approved transient active View as a durable registered bundle View without transforming its HTML. Pass only the transient launchId from show_view, a new views-registry/... id, and optional description; the server rereads its own immutable launch bytes and never accepts replacement HTML.",
+      inputSchema: saveTransientViewInputSchema,
+      outputSchema: saveTransientViewOutputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: { ui: { visibility: ["model"] } },
+    },
+    async (input): Promise<CallToolResult> => {
+      try {
+        const parsed = saveTransientViewInputSchema.parse(input);
+        const saved = await saveTransientView(
+          options.bundle,
+          durableLaunches,
+          transientAuthorizations,
+          parsed,
+          { ...(options.actor ? { actor: options.actor } : {}) },
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `Saved exact transient View bytes as '${saved.viewId}' (${saved.entry}). ` +
+                "Call show_view with that viewId to launch the durable identity; it requires its own local authorization.",
+            },
+          ],
+          structuredContent: { saved },
+        };
+      } catch (error) {
+        const retained =
+          error instanceof TransientViewSaveError && error.retainedEntry
+            ? ` The exact entry remains at '${error.retainedEntry.key}' (${error.retainedEntry.version}); no successful registration was reported.`
+            : "";
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `Could not save the transient AgentState View: ${error instanceof Error ? error.message : String(error)}${retained}`,
+            },
+          ],
+        };
+      }
     },
   );
 

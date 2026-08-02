@@ -5,6 +5,7 @@ import { test } from "node:test";
 import {
   MemoryBackend,
   deleteDoc,
+  readBlob,
   readDocVersioned,
   versionOfBytes,
   writeBlob,
@@ -27,6 +28,7 @@ import {
   PREPARE_VIEW_ACTION_TOOL_NAME,
   RESUME_DURABLE_VIEW_TOOL_NAME,
   RESOLVE_LAUNCH_TOOL_NAME,
+  SAVE_TRANSIENT_VIEW_TOOL_NAME,
   SHOW_VIEW_TOOL_NAME,
   createMcpAppServer,
   resolveDurableViewLaunch,
@@ -450,6 +452,7 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
     LIST_VIEWS_TOOL_NAME,
     SHOW_VIEW_TOOL_NAME,
     AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+    SAVE_TRANSIENT_VIEW_TOOL_NAME,
     DURABLE_VIEW_BRIDGE_TOOL_NAME,
     RESUME_DURABLE_VIEW_TOOL_NAME,
     POLL_DURABLE_VIEW_TOOL_NAME,
@@ -462,6 +465,9 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   const showTool = tools.tools.find((tool) => tool.name === SHOW_VIEW_TOOL_NAME);
   const authorizeTool = tools.tools.find(
     (tool) => tool.name === AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+  );
+  const saveTool = tools.tools.find(
+    (tool) => tool.name === SAVE_TRANSIENT_VIEW_TOOL_NAME,
   );
   const bridgeTool = tools.tools.find(
     (tool) => tool.name === DURABLE_VIEW_BRIDGE_TOOL_NAME,
@@ -480,6 +486,17 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   const finishTool = tools.tools.find((tool) => tool.name === FINISH_VIEW_ACTION_TOOL_NAME);
   assert.equal(showTool?._meta?.ui?.resourceUri, MCP_VIEW_RESOURCE_URI);
   assert.equal(showTool?.annotations?.readOnlyHint, true);
+  assert.deepEqual(saveTool?._meta?.ui?.visibility, ["model"]);
+  assert.equal(saveTool?.annotations?.readOnlyHint, false);
+  assert.equal(saveTool?.annotations?.idempotentHint, true);
+  assert.equal(
+    Object.hasOwn(
+      (saveTool?.inputSchema.properties ?? {}) as Record<string, unknown>,
+      "html",
+    ),
+    false,
+    "the save contract cannot accept replacement source bytes",
+  );
   assert.deepEqual(authorizeTool?._meta?.ui?.visibility, ["app"]);
   assert.deepEqual(bridgeTool?._meta?.ui?.visibility, ["app"]);
   assert.deepEqual(pollTool?._meta?.ui?.visibility, ["app"]);
@@ -998,6 +1015,120 @@ test("transient HTML uses the registered active-View bridge without a synthetic 
     },
   });
   assert.equal(mixedContract.isError, true, "transient and generated inputs cannot be mixed");
+});
+
+test("save_transient_view persists server-owned exact bytes and returns a freshly unauthorized durable View", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const server = createMcpAppServer({ bundle, actor: "openai/codex" });
+  const client = new Client({ name: "save-test", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const html = "<!doctype html><title>Save me</title><script>parent.postMessage({bridge:'v0',type:'query',id:'q',params:{type:'Task'}}, '*')</script>";
+  const shown = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: { mode: "transient", title: "Saved from chat", html },
+  });
+  const transient = shown.structuredContent as {
+    source: { contentVersion: string };
+    launch: { launchId: string };
+  };
+
+  const beforeApproval = await client.callTool({
+    name: SAVE_TRANSIENT_VIEW_TOOL_NAME,
+    arguments: {
+      launchId: transient.launch.launchId,
+      viewId: "views-registry/saved-from-chat",
+    },
+  });
+  assert.equal(beforeApproval.isError, true);
+  assert.match(
+    beforeApproval.content[0]?.type === "text" ? beforeApproval.content[0].text : "",
+    /must be locally approved/,
+  );
+  assert.equal(await readBlob(bundle, "views/saved-from-chat.html"), null);
+
+  await client.callTool({
+    name: AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: transient.launch.launchId },
+  });
+
+  const replacementBytes = await client.callTool({
+    name: SAVE_TRANSIENT_VIEW_TOOL_NAME,
+    arguments: {
+      launchId: transient.launch.launchId,
+      viewId: "views-registry/saved-from-chat",
+      html: "<p>replacement bytes must never be accepted</p>",
+    },
+  });
+  assert.equal(replacementBytes.isError, true);
+  assert.match(
+    replacementBytes.content[0]?.type === "text" ? replacementBytes.content[0].text : "",
+    /unrecognized key.*html/i,
+  );
+  assert.equal(await readBlob(bundle, "views/saved-from-chat.html"), null);
+
+  const savedResult = await client.callTool({
+    name: SAVE_TRANSIENT_VIEW_TOOL_NAME,
+    arguments: {
+      launchId: transient.launch.launchId,
+      viewId: "views-registry/saved-from-chat",
+      description: "A durable View saved unchanged from its chat preview.",
+    },
+  });
+  assert.notEqual(savedResult.isError, true);
+  const saved = (savedResult.structuredContent as {
+    saved: {
+      viewId: string;
+      entry: string;
+      sourceVersion: string;
+      entryVersion: string;
+      entryCreated: boolean;
+      registryCreated: boolean;
+    };
+  }).saved;
+  assert.equal(saved.viewId, "views-registry/saved-from-chat");
+  assert.equal(saved.entry, "views/saved-from-chat.html");
+  assert.equal(saved.sourceVersion, transient.source.contentVersion);
+  assert.equal(saved.entryVersion, transient.source.contentVersion);
+  assert.equal(saved.entryCreated, true);
+  assert.equal(saved.registryCreated, true);
+  const bytes = await readBlob(bundle, saved.entry);
+  assert.ok(bytes);
+  assert.equal(new TextDecoder().decode(bytes.bytes), html);
+
+  const durableResult = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: { viewId: saved.viewId },
+  });
+  const durable = durableResult.structuredContent as {
+    schemaVersion: string;
+    source: { viewId: string; html: string; contentVersion: string };
+    launch: { authorization: { authorized: boolean } };
+  };
+  assert.equal(durable.schemaVersion, "agentstate.durable-view-launch.v1");
+  assert.equal(durable.source.viewId, saved.viewId);
+  assert.equal(durable.source.html, html);
+  assert.equal(durable.source.contentVersion, transient.source.contentVersion);
+  assert.equal(
+    durable.launch.authorization.authorized,
+    false,
+    "the durable registry identity requires fresh local approval",
+  );
+
+  const catalog = await client.callTool({ name: LIST_VIEWS_TOOL_NAME, arguments: {} });
+  assert.ok(
+    (catalog.structuredContent as { views: Array<{ id: string }> }).views.some(
+      (entry) => entry.id === saved.viewId,
+    ),
+    "the saved View is discoverable through the shared web/MCP catalog",
+  );
 });
 
 test("durable resume rotates to fresh current bytes and recomputes authorization", async (t) => {

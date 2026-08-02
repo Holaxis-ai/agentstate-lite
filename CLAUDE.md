@@ -211,7 +211,9 @@ shared field/open filtering authority; the query resolves once in deterministic 
 freezes at most 20 exact IDs/versions for the launch and its actions. Registered executable Views
 and transient executable Views use the same launch/bridge authority and require exact-byte local
 trust approval before bundle data is exposed; transient approval is process-local and never enters
-the persistent registered-View trust store. The fixed trusted shell reuses the bounded Markdown
+the persistent registered-View trust store. The model-visible `save_transient_view` tool can persist
+an approved launch unchanged as a registered View; it accepts no HTML, and the new durable identity
+requires its own local approval. The fixed trusted shell reuses the bounded Markdown
 renderer, strips navigation and active content from generated presentations, and may render bounded
 scalar actions outside that generated frame. App-only lifecycle and prepare/finish tools remain
 hidden from the model;
