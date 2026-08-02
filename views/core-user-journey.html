@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AgentState Lite — Core user journey</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #08110f;
+      --panel: #0d1916;
+      --panel-2: #12231e;
+      --line: #203a32;
+      --text: #edf8f2;
+      --muted: #91a79f;
+      --green: #66e2aa;
+      --green-soft: #193e31;
+      --amber: #f4c96b;
+      --amber-soft: #3c3017;
+      --red: #ff8f87;
+      --red-soft: #40211f;
+      --blue: #94c8ff;
+      --blue-soft: #183047;
+      --radius: 18px;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); }
+    button { font: inherit; }
+    .app { min-height: 100vh; padding: clamp(18px, 3vw, 42px); }
+    .hero {
+      position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 26px;
+      padding: clamp(22px, 4vw, 52px); background:
+        radial-gradient(circle at 88% 5%, rgba(102,226,170,.16), transparent 34%),
+        linear-gradient(145deg, #0e1d18 0%, #09120f 74%);
+    }
+    .eyebrow { color: var(--green); text-transform: uppercase; letter-spacing: .14em; font-size: 12px; font-weight: 800; }
+    h1 { max-width: 900px; margin: 12px 0 12px; font-size: clamp(34px, 6vw, 72px); line-height: .98; letter-spacing: -.045em; }
+    .promise { max-width: 800px; margin: 0; color: #bed1c9; font-size: clamp(16px, 2vw, 21px); line-height: 1.5; }
+    .surface-note { margin-top: 22px; color: var(--muted); font-size: 13px; }
+    .surface-note strong { color: var(--text); }
+    .summary { display: grid; grid-template-columns: 1.5fr repeat(3, minmax(120px,.55fr)); gap: 12px; margin: 16px 0 26px; }
+    .summary-card { min-height: 110px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+    .summary-card .label { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+    .summary-card .value { margin-top: 9px; font-size: clamp(22px,3vw,34px); font-weight: 760; letter-spacing: -.03em; }
+    .summary-card .sub { margin-top: 7px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .summary-card.weakest { background: linear-gradient(145deg, var(--red-soft), var(--panel)); border-color: #69342f; }
+    .toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:9px; margin: 0 0 18px; }
+    .toolbar .title { margin-right:auto; font-size: 14px; color: var(--muted); }
+    .filter { border:1px solid var(--line); border-radius:999px; padding:8px 12px; color:var(--muted); background:transparent; cursor:pointer; }
+    .filter:hover, .filter.active { color:var(--text); background:var(--green-soft); border-color:#34765c; }
+    .phase { margin: 0 0 24px; }
+    .phase-head { display:flex; align-items:baseline; gap:10px; margin:0 0 10px; }
+    .phase-number { color:var(--green); font-size:12px; font-weight:800; letter-spacing:.12em; }
+    .phase h2 { margin:0; font-size:20px; letter-spacing:-.02em; }
+    .stage-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(245px,1fr)); gap:10px; }
+    .stage {
+      position:relative; min-height:205px; width:100%; padding:17px; text-align:left; color:inherit;
+      border:1px solid var(--line); border-radius:var(--radius); background:var(--panel); cursor:pointer;
+      transition:transform .15s ease, border-color .15s ease, background .15s ease;
+    }
+    .stage:hover, .stage:focus-visible { transform:translateY(-2px); border-color:#3b6c5b; background:var(--panel-2); outline:none; }
+    .stage.selected { border-color:var(--green); box-shadow:0 0 0 2px rgba(102,226,170,.12); }
+    .stage-top { display:flex; align-items:center; gap:8px; }
+    .order { color:var(--muted); font-size:12px; font-weight:750; }
+    .badge { border-radius:999px; padding:5px 8px; font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+    .readiness-missing { background:var(--red-soft); color:var(--red); }
+    .readiness-rough { background:var(--amber-soft); color:var(--amber); }
+    .readiness-works { background:var(--blue-soft); color:var(--blue); }
+    .readiness-supported, .readiness-validated { background:var(--green-soft); color:var(--green); }
+    .core-mark { margin-left:auto; width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 0 4px rgba(102,226,170,.1); }
+    .stage h3 { margin:18px 0 9px; font-size:20px; line-height:1.18; letter-spacing:-.02em; }
+    .stage .now { margin:0; color:#aec2ba; font-size:13px; line-height:1.46; }
+    .stage-foot { position:absolute; bottom:16px; left:17px; right:17px; display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:11px; }
+    .lane { text-transform:capitalize; }
+    .links-count { color:var(--green); }
+    .detail { margin-top:18px; border:1px solid var(--line); border-radius:24px; background:var(--panel); overflow:hidden; }
+    .detail.empty { display:none; }
+    .detail-head { display:flex; gap:14px; align-items:flex-start; padding:22px; border-bottom:1px solid var(--line); }
+    .detail-head h2 { margin:5px 0 0; font-size:clamp(24px,4vw,38px); letter-spacing:-.035em; }
+    .close { margin-left:auto; border:1px solid var(--line); border-radius:50%; width:36px; height:36px; color:var(--muted); background:transparent; cursor:pointer; }
+    .detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .detail-section { padding:21px 22px; border-bottom:1px solid var(--line); }
+    .detail-section:nth-child(odd) { border-right:1px solid var(--line); }
+    .detail-section h4 { margin:0 0 10px; color:var(--green); font-size:11px; text-transform:uppercase; letter-spacing:.11em; }
+    .detail-section p, .detail-section li { color:#c3d3cd; font-size:14px; line-height:1.58; }
+    .detail-section p { margin:0 0 8px; }
+    .detail-section ul { margin:0; padding-left:18px; }
+    .related { grid-column:1/-1; padding:20px 22px 24px; }
+    .related h4 { margin:0 0 11px; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.11em; }
+    .related-list { display:flex; flex-wrap:wrap; gap:8px; }
+    .related-item { max-width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:10px; color:#c7d9d2; background:#0a1512; font-size:12px; }
+    .related-item b { color:var(--green); font-weight:700; }
+    .empty-state, .error { padding:24px; border:1px solid var(--line); border-radius:var(--radius); color:var(--muted); background:var(--panel); }
+    .error { color:var(--red); border-color:#68332f; }
+    .hidden { display:none !important; }
+    @media (max-width: 900px) {
+      .summary { grid-template-columns:1fr 1fr; }
+      .summary-card.weakest { grid-column:1/-1; }
+    }
+    @media (max-width: 620px) {
+      .app { padding:12px; }
+      .hero { border-radius:20px; padding:22px 18px; }
+      .summary { grid-template-columns:1fr 1fr; }
+      .summary-card { min-height:92px; padding:14px; }
+      .summary-card .value { font-size:23px; }
+      .stage-grid { grid-template-columns:1fr; }
+      .stage { min-height:180px; }
+      .detail-grid { grid-template-columns:1fr; }
+      .detail-section:nth-child(odd) { border-right:0; }
+      .toolbar .title { flex-basis:100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="hero">
+      <div class="eyebrow">Live product support map</div>
+      <h1 id="journey-title">New user to recurring value</h1>
+      <p class="promise" id="promise">Loading the authoritative journey…</p>
+      <p class="surface-note"><strong>One View, three containers:</strong> MCP inline · MCP expanded/full-page · local web</p>
+    </section>
+
+    <section class="summary" id="summary" aria-label="Journey summary"></section>
+
+    <nav class="toolbar" aria-label="Journey filters">
+      <span class="title" id="map-caption">Loading stages…</span>
+      <button class="filter active" data-filter="all">All</button>
+      <button class="filter" data-filter="gaps">Gaps only</button>
+      <button class="filter" data-filter="claude-desktop">Claude</button>
+      <button class="filter" data-filter="chatgpt-app">ChatGPT</button>
+      <button class="filter" data-filter="terminal-web">Terminal / web</button>
+    </nav>
+
+    <section id="map"><div class="empty-state">Reading live journey records…</div></section>
+    <section class="detail empty" id="detail" aria-live="polite"></section>
+  </main>
+
+  <script>
+    (function () {
+      var PROTO = "v0", seq = 0, pending = {}, subs = [];
+      function send(type, extra) {
+        return new Promise(function (resolve, reject) {
+          var id = String(++seq);
+          pending[id] = { resolve: resolve, reject: reject };
+          var msg = { bridge: PROTO, id: id, type: type };
+          if (extra) for (var k in extra) msg[k] = extra[k];
+          parent.postMessage(msg, "*");
+        });
+      }
+      function watch(refresh) {
+        if (typeof refresh !== "function") return Promise.reject(new TypeError("Bridge.watch requires a refresh function"));
+        var active = true, ready = false, running = false, queued = [];
+        function schedule(initial) {
+          running = true;
+          var batch = queued.splice(0);
+          return Promise.resolve().then(function () { return refresh(batch); }).then(function (value) {
+            running = false;
+            if (queued.length) void schedule(false);
+            return value;
+          }, function (err) {
+            running = false;
+            if (queued.length) void schedule(false);
+            if (initial) throw err;
+            console.error("Bridge.watch refresh failed", err);
+          });
+        }
+        function onChange(event) {
+          if (!active) return;
+          queued.push(event);
+          if (ready && !running) void schedule(false);
+        }
+        return window.Bridge.subscribe(onChange).then(function () {
+          ready = true;
+          return schedule(true);
+        }, function (err) { active = false; throw err; });
+      }
+      window.addEventListener("message", function (e) {
+        if (e.source !== window.parent) return;
+        var m = e.data;
+        if (!m || m.bridge !== PROTO) return;
+        if (m.type === "change") { subs.forEach(function (cb) { cb(m.event); }); return; }
+        var p = pending[m.id];
+        if (!p) return;
+        delete pending[m.id];
+        if (m.type === "error") p.reject(new Error((m.error && m.error.message) || "bridge error"));
+        else p.resolve(m.result);
+      });
+      window.Bridge = {
+        query: function (params) { return send("query", { params: params }); },
+        read: function (docId) { return send("read", { docId: docId }); },
+        edges: function (params) { return send("edges", { params: params }); },
+        subscribe: function (cb) { subs.push(cb); return send("subscribe"); },
+        watch: watch
+      };
+    })();
+
+    (function () {
+      var state = { stages: [], edges: [], titles: {}, filter: "all", selected: null };
+      var phases = [
+        { id: "start", number: "01", title: "Start and orient", match: function (n) { return n <= 4; } },
+        { id: "shape", number: "02", title: "Shape the workspace", match: function (n) { return n >= 5 && n <= 6; } },
+        { id: "experience", number: "03", title: "Experience the living interface", match: function (n) { return n >= 7 && n <= 10; } },
+        { id: "return", number: "04", title: "Return with continuity", match: function (n) { return n >= 11 && n <= 12; } },
+        { id: "extend", number: "05", title: "Extend the ecosystem", match: function (n) { return n >= 13; } }
+      ];
+      var rank = { missing: 0, rough: 1, works: 2, supported: 3, validated: 4 };
+
+      function el(tag, cls, text) {
+        var node = document.createElement(tag);
+        if (cls) node.className = cls;
+        if (text !== undefined) node.textContent = text;
+        return node;
+      }
+      function orderNumber(stage) { return parseInt(String(stage.frontmatter.order), 10) || 999; }
+      function label(value) { return String(value || "").replace(/-/g, " "); }
+      function currentSnippet(body) {
+        var sections = parseSections(body || "");
+        var text = sections["Current experience"] || "Open this stage for the current assessment.";
+        return text.replace(/\n+/g, " ").slice(0, 155) + (text.length > 155 ? "…" : "");
+      }
+      function parseSections(body) {
+        var out = {}, name = null;
+        String(body || "").split("\n").forEach(function (line) {
+          var heading = line.match(/^#\s+(.+)$/);
+          if (heading) { name = heading[1].trim(); out[name] = ""; return; }
+          if (name && !/^\[[^\]]+\]\([^\)]+\)$/.test(line.trim())) out[name] += line + "\n";
+        });
+        Object.keys(out).forEach(function (key) { out[key] = out[key].trim(); });
+        return out;
+      }
+      function bodyNodes(text) {
+        var fragment = document.createDocumentFragment();
+        var lines = String(text || "No detail recorded yet.").split("\n");
+        var list = null;
+        lines.forEach(function (line) {
+          if (/^-\s+/.test(line)) {
+            if (!list) { list = el("ul"); fragment.appendChild(list); }
+            list.appendChild(el("li", "", line.replace(/^-\s+/, "")));
+          } else if (line.trim()) {
+            list = null;
+            fragment.appendChild(el("p", "", line));
+          }
+        });
+        return fragment;
+      }
+      function matches(stage) {
+        var f = state.filter, fm = stage.frontmatter;
+        if (f === "all") return true;
+        if (f === "gaps") return fm.readiness === "missing" || fm.readiness === "rough";
+        return fm.lane === f || fm.lane === "shared";
+      }
+      function relatedFor(id) { return state.edges.filter(function (edge) { return edge.from === id; }); }
+
+      function renderSummary() {
+        var root = document.getElementById("summary"); root.textContent = "";
+        var core = state.stages.filter(function (s) { return s.frontmatter.criticality === "core"; });
+        var weakest = core.slice().sort(function (a,b) { return rank[a.frontmatter.readiness] - rank[b.frontmatter.readiness]; })[0];
+        var counts = { missing:0, rough:0, works:0, supported:0, validated:0 };
+        state.stages.forEach(function (s) { counts[s.frontmatter.readiness] = (counts[s.frontmatter.readiness] || 0) + 1; });
+        var weak = el("article", "summary-card weakest");
+        weak.appendChild(el("div", "label", "Weakest core stage"));
+        weak.appendChild(el("div", "value", weakest ? weakest.frontmatter.title : "No stages"));
+        weak.appendChild(el("div", "sub", weakest ? label(weakest.frontmatter.readiness) + " · fix the path, not the score" : ""));
+        root.appendChild(weak);
+        [["Missing",counts.missing,"Cannot complete"],["Rough",counts.rough,"Needs coaching or recovery"],["Works+",counts.works+counts.supported+counts.validated,"Repeatable path"]].forEach(function (item) {
+          var card = el("article", "summary-card");
+          card.appendChild(el("div", "label", item[0]));
+          card.appendChild(el("div", "value", String(item[1])));
+          card.appendChild(el("div", "sub", item[2]));
+          root.appendChild(card);
+        });
+      }
+
+      function renderMap() {
+        var root = document.getElementById("map"); root.textContent = "";
+        var visible = state.stages.filter(matches);
+        document.getElementById("map-caption").textContent = visible.length + " of " + state.stages.length + " stages · click a stage for evidence and linked work";
+        phases.forEach(function (phase) {
+          var items = visible.filter(function (stage) { return phase.match(orderNumber(stage)); });
+          if (!items.length) return;
+          var section = el("section", "phase");
+          var head = el("div", "phase-head");
+          head.appendChild(el("span", "phase-number", phase.number));
+          head.appendChild(el("h2", "", phase.title));
+          section.appendChild(head);
+          var grid = el("div", "stage-grid");
+          items.forEach(function (stage) {
+            var fm = stage.frontmatter, card = el("button", "stage" + (state.selected === stage.id ? " selected" : ""));
+            card.type = "button"; card.dataset.id = stage.id;
+            var top = el("div", "stage-top");
+            top.appendChild(el("span", "order", fm.order));
+            top.appendChild(el("span", "badge readiness-" + fm.readiness, fm.readiness));
+            if (fm.criticality === "core") top.appendChild(el("span", "core-mark"));
+            card.appendChild(top);
+            card.appendChild(el("h3", "", fm.title));
+            card.appendChild(el("p", "now", currentSnippet(stage.body)));
+            var foot = el("div", "stage-foot");
+            foot.appendChild(el("span", "lane", label(fm.lane)));
+            var count = relatedFor(stage.id).length;
+            foot.appendChild(el("span", "links-count", count + " linked " + (count === 1 ? "record" : "records")));
+            card.appendChild(foot);
+            card.addEventListener("click", function () { selectStage(stage.id); });
+            grid.appendChild(card);
+          });
+          section.appendChild(grid); root.appendChild(section);
+        });
+        if (!root.children.length) root.appendChild(el("div", "empty-state", "No stages match this filter."));
+      }
+
+      function detailSection(title, content) {
+        var section = el("section", "detail-section");
+        section.appendChild(el("h4", "", title));
+        section.appendChild(bodyNodes(content));
+        return section;
+      }
+      function selectStage(id) {
+        state.selected = id; renderMap();
+        var stage = state.stages.find(function (s) { return s.id === id; });
+        if (!stage) return;
+        var fm = stage.frontmatter, sections = parseSections(stage.body), root = document.getElementById("detail");
+        root.classList.remove("empty"); root.textContent = "";
+        var head = el("div", "detail-head"), titleWrap = el("div");
+        titleWrap.appendChild(el("span", "badge readiness-" + fm.readiness, fm.readiness + " · " + label(fm.lane)));
+        titleWrap.appendChild(el("h2", "", fm.title));
+        head.appendChild(titleWrap);
+        var close = el("button", "close", "×"); close.type = "button"; close.setAttribute("aria-label", "Close stage detail");
+        close.addEventListener("click", function () { state.selected = null; root.classList.add("empty"); root.textContent = ""; renderMap(); });
+        head.appendChild(close); root.appendChild(head);
+        var grid = el("div", "detail-grid");
+        ["Desired experience","Current experience","Acceptance criteria","Evidence","Remaining gaps"].forEach(function (name) {
+          grid.appendChild(detailSection(name, sections[name]));
+        });
+        var related = el("section", "related"); related.appendChild(el("h4", "", "Linked work and authority"));
+        var list = el("div", "related-list"), edges = relatedFor(id);
+        edges.forEach(function (edge) {
+          var item = el("div", "related-item"); item.appendChild(el("b", "", edge.text + " · "));
+          item.appendChild(document.createTextNode(state.titles[edge.to] || edge.to)); list.appendChild(item);
+        });
+        if (!edges.length) list.appendChild(el("span", "related-item", "No linked work recorded"));
+        related.appendChild(list); grid.appendChild(related); root.appendChild(grid);
+        root.scrollIntoView({ behavior:"smooth", block:"nearest" });
+      }
+
+      async function snapshot() {
+        var results = await Promise.all([
+          Bridge.query({ type:"Journey", prefix:"journeys/", limit:0 }),
+          Bridge.query({ type:"Journey Stage", prefix:"journey-stages/", limit:0 }),
+          Bridge.query({ type:"Roadmap Item", limit:0 }),
+          Bridge.query({ type:"Task", limit:0 }),
+          Bridge.query({ type:"Design", limit:0 })
+        ]);
+        var journey = results[0].rows.find(function (row) { return row.id === "journeys/new-user-to-recurring-value"; });
+        var heads = results[1].rows.filter(function (row) { return row.frontmatter.journey === "journeys/new-user-to-recurring-value"; });
+        var docs = await Promise.all(heads.map(function (row) { return Bridge.read(row.id); }));
+        var ids = heads.map(function (row) { return row.id; });
+        var edgeResult = ids.length ? await Bridge.edges({ from: ids }) : { edges:[] };
+        state.stages = heads.map(function (row) {
+          var doc = docs.find(function (item) { return item.id === row.id; });
+          return { id:row.id, version:row.version, frontmatter:row.frontmatter, body:doc ? doc.body : "" };
+        }).sort(function (a,b) { return String(a.frontmatter.order).localeCompare(String(b.frontmatter.order), undefined, {numeric:true}); });
+        state.edges = edgeResult.edges || [];
+        state.titles = {};
+        results.slice(2).forEach(function (result) { result.rows.forEach(function (row) { state.titles[row.id] = row.frontmatter.title || row.id; }); });
+        if (journey) {
+          document.getElementById("journey-title").textContent = journey.frontmatter.title;
+          document.getElementById("promise").textContent = journey.frontmatter.product_promise;
+        }
+        renderSummary(); renderMap();
+        if (state.selected) selectStage(state.selected);
+      }
+
+      document.querySelectorAll(".filter").forEach(function (button) {
+        button.addEventListener("click", function () {
+          state.filter = button.dataset.filter;
+          document.querySelectorAll(".filter").forEach(function (b) { b.classList.toggle("active", b === button); });
+          renderMap();
+        });
+      });
+      Bridge.watch(snapshot).catch(function (error) {
+        var root = document.getElementById("map"); root.textContent = "";
+        root.appendChild(el("div", "error", "Could not load the live journey: " + error.message));
+      });
+    })();
+  </script>
+</body>
+</html>
