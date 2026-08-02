@@ -3,10 +3,16 @@ type: Task
 title: >-
   MCP view launch leaks raw ENOENT with a guessed doc path instead of a typed
   unknown-View error
-status: todo
+status: in_progress
 priority: '2'
-actor: claude-main
-timestamp: '2026-07-27T22:09:25.399Z'
+actor: openai/codex
+description: >-
+  Claimed 2026-08-02: reproduce and replace the raw filesystem ENOENT for
+  unknown durable View IDs at the shared launch authority, with one typed error
+  projected consistently to MCP and web-facing consumers. Scope excludes
+  release/version files.
+assignee: openai/codex
+timestamp: '2026-08-02T14:08:01.788Z'
 ---
 # Field repro (Brian via Claude Desktop chat, 2026-07-27)
 
