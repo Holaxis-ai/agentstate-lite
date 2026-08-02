@@ -1,24 +1,17 @@
 ---
 type: Task
 title: Portable View authoring guidance and fresh-agent dogfood
-status: done
+status: in_progress
 priority: '2'
 description: >-
-  DONE — A fresh agent with no AgentState source context used only the installed
-  skill/reference to create and promote views-registry/latest-documents in the
-  separate holaxis-strategy bundle. Web proof covered exact-byte approval,
-  68-row bounded live query, canonical render-document output, inert concept
-  markers, 480px single-panel navigation, and 1440px two-pane layout. Real stdio
-  MCP resolved the identical source hash
-  sha256:2d80a0c98a6b9b0f9407222788b376ea9059081ade65c161d8908b260523691d and
-  rendered the same authoritative document/version. No View-local Markdown
-  parser, host fork, source archaeology, or coaching was needed. The only
-  material friction was stale PATH executable precedence; routed to
-  tasks/skill-mcp-compatibility. Evidence:
-  context-notes/portable-view-authoring-dogfood-2026-08-02.
+  Reopened for the missing final unit: tighten the single authoritative
+  View-authoring reference so it teaches one responsive durable View across web
+  and MCP, shared render-document use, and concise cross-host verification
+  without introducing another guide. The successful fresh-agent proof and prior
+  evidence remain valid.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-02T17:43:33.603Z'
+timestamp: '2026-08-02T18:04:49.874Z'
 ---
 # Product invariant
 
