@@ -1,52 +1,80 @@
 ---
 type: Task
-title: Define optimized conversational View authoring guidance
-status: todo
+title: Portable View authoring guidance and fresh-agent dogfood
+status: in_progress
 priority: '2'
 description: >-
-  Choose a low-token, discoverable way to teach agents to author responsive,
-  bounded, accessible MCP Views while reusing the existing View data, Markdown,
-  and trusted-action authorities.
+  IN PROGRESS — Reframed around one durable View authored once for web and MCP.
+  The shipped View contract is the single guidance authority; this unit now
+  proves it by having a fresh agent build a bounded Latest documents View in a
+  different registered bundle, render selected bodies through render-document,
+  and invoke the exact same registered bytes through both hosts.
 actor: openai/codex
-timestamp: '2026-07-26T22:33:45.583Z'
+assignee: openai/codex
+timestamp: '2026-08-02T17:30:12.408Z'
 ---
-# Product question
+# Product invariant
 
-How should an agent learn to author a high-quality conversational AgentState View without inflating
-every tool call or creating a second Page/View authoring doctrine?
+AgentState has one portable durable View model. A View is bundle content; the local web launcher
+and MCP Apps are invocation adapters over the same registry id, HTML bytes, access declaration,
+launch authority, and bridge semantics. Guidance must not teach a separate "MCP View" format.
 
-# Guidance content to derive
+Governing architecture:
+[One portable View model](../designs/unified-portable-view-model.md).
 
-- Use the existing script-free bindings and bounded shared Markdown renderer rather than copying
-  authoritative values into generated HTML.
-- Design responsively for host-controlled dimensions, narrow/mobile widths, and bounded vertical
-  space; use progressive disclosure for long content.
-- Prefer a clear task-oriented composition over reproducing the full bundle UI.
-- Keep object selection/query bounded and make empty, partial, and over-limit states legible.
-- Put mutations only in declared trusted-shell actions; generated HTML remains read-only.
-- Avoid redundant metadata, oversized headings, horizontal scrolling, inaccessible contrast, and
-  presentation that depends on arbitrary script.
-- Make ephemeral and promoted durable Views follow the same visual/data contract where possible.
+Shared document presentation:
+[Shared bounded document rendering](../designs/shared-view-document-rendering.md).
 
-# Delivery options to evaluate
+# Delivery decision
 
-- Concise descriptions embedded in the `show_view` input schema for rules needed on every call.
-- One discoverable package-owned authoring reference or MCP resource for richer guidance and
-  examples.
-- Bundle-owned View authoring reference/recipe for durable Views, shared with the existing local UI
-  authoring model rather than forked for MCP.
-- A small starter template or design-token contract only if it measurably improves generated Views.
+Keep the detailed contract in the one package-owned View-authoring reference already shipped with
+the optional Agent Skill: `references/views/references/view-authoring-v0.md`. Keep the main skill
+description short and point agents to that reference only when they need to author or revise a
+View. The CLI's `view list`, `promote`, and `ui`/`mcp` help remain the executable discovery
+surfaces. Do not create an MCP-only recipe, renderer, template language, or second authoring guide.
+
+# Guidance the authority must teach
+
+- Author one self-contained HTML/CSS/JS View and one `type: View` registry record.
+- Use the shared bridge for live data: bounded `query`, `read`, `render-document`, `edges`,
+  `subscribe`, and `open-page`; never call host APIs directly.
+- Use `render-document` for a complete authoritative Markdown document. Compose and style the
+  returned inert semantic fragment inside the View; do not bundle another Markdown parser.
+- Keep object selection bounded and show empty, partial, over-limit, and unavailable states.
+- Design responsively for host-controlled inline dimensions and MCP expanded/full-page mode;
+  progressive disclosure is preferable to permanent nested scrolling.
+- Treat local web and MCP as different containers, not different View products. Unsupported host
+  capabilities must fail explicitly.
+- Put mutations only behind declared governed actions and trusted-shell confirmation. Generated
+  previews remain script-free and read-only; they are not a second durable View format.
+- Avoid copied authoritative values, redundant metadata, oversized headings, horizontal scrolling,
+  inaccessible contrast, and styling that assumes one fixed host size.
+
+# Fresh-agent proof
+
+Give an agent with no repository-source context a different registered bundle and only the shipped
+AgentState guidance. Ask it to create a useful `Latest documents` durable View that:
+
+1. discovers the bundle and the View contract without source-code archaeology;
+2. queries a bounded set of documents and makes ordering/truncation honest;
+3. lets a human select a record and renders its authoritative body through `render-document`;
+4. remains useful at narrow inline width and expanded/full-page width; and
+5. invokes the exact same registered View through local web and MCP.
+
+Record every point where live coaching, source reading, guessed protocol behavior, duplicate
+Markdown code, or host-specific View code was required. Turn only observed recurring friction into
+product code.
 
 # Acceptance
 
-- Choose the lowest-token delivery mechanism that agents actually discover and follow.
-- Reuse the existing View/Page authoring authority wherever the host differences do not require an
-  explicit MCP-specific rule.
-- Include two or three representative examples and an anti-example, then test whether a fresh agent
-  can author a useful responsive View without live coaching.
-- Sequence the final guidance after the sizing investigation and promotion/discovery contract so it
-  does not encode guesses as rules.
+- The fresh agent authors and promotes the View from shipped guidance alone.
+- The same source version is resolved through web and MCP.
+- A selected document renders canonical headings, lists, inline code, and inert concept markers.
+- No View-local Markdown parser or host-specific fork is present.
+- Any code follow-up is justified by a concrete failed or awkward step from the proof.
 
 [depends on](mcp-durable-view-promotion-discovery.md)
 
 [depends on](mcp-app-presentation-sizing.md)
+
+[enabled by shared rendering](shared-view-document-rendering.md)
