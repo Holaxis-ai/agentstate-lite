@@ -14,12 +14,11 @@
  *     script, event-handler attributes, and `javascript:` navigation even under a hypothetical
  *     bypass of belts 1–2.
  *
- * THE INVARIANT (review HIGH-2, pinned red by markdown.test.tsx): anchor attributes are BUILT
- * from `resolveConceptId`'s output ONLY — a raw markdown href/src NEVER reaches a DOM attribute.
- * A resolved doc link becomes the `?view=doc&id=…` route; everything the resolver rejects
- * (external URLs, `javascript:`/`data:`/any scheme, non-`.md`, reserved files) renders as inert
- * text. Images are inert in v1 (figures arrive in the next unit PR; raster images are a recorded
- * conscious deferral — designs/doc-reader decision 5).
+ * THE INVARIANT (pinned red by markdown.test.tsx + static.test.mjs): a raw markdown href/src NEVER
+ * reaches a DOM attribute. An interactive resolved link gets a route built from
+ * `resolveConceptId`; the inert profile gets only that normalized id in `data-aslite-doc-id`.
+ * Everything the resolver rejects (external URLs, `javascript:`/`data:`/any scheme, non-`.md`,
+ * reserved files) renders as inert text. Images are inert in v1.
  *
  * RESOURCE BOUNDS: body bytes capped ({@link MAX_BODY_CHARS}, with an honest truncation notice —
  * the AXI `read` truncation's human analog) and the walk bounded ({@link MAX_NODES} nodes,
@@ -57,6 +56,8 @@ export interface RenderOptions {
   fromId: string;
   /** Shell navigation for a RESOLVED doc link (the only thing a link can do). */
   onNavigateDoc: (id: string) => void;
+  /** Interactive for the shell reader; inert for serialized fragments crossing into a View. */
+  profile?: "interactive" | "inert";
   /** Resolve a concept id to its title, for the inline "verb → title" edge rows (falls back to the id). */
   titleFor?: (conceptId: string) => string | undefined;
   /**
@@ -216,7 +217,11 @@ function renderNode(node: RootContent | Node, state: WalkState, depth: number, i
       const checked = (node as { checked?: boolean | null }).checked;
       return (
         <li key={index} className={typeof checked === "boolean" ? "doc-task-item" : undefined}>
-          {typeof checked === "boolean" && <input type="checkbox" disabled checked={checked} readOnly />}
+          {typeof checked === "boolean" && (
+            state.options.profile === "inert"
+              ? <span className="doc-task-marker">{checked ? "☑" : "☐"}</span>
+              : <input type="checkbox" disabled checked={checked} readOnly />
+          )}
           {renderChildren(node as Parent, state, depth)}
         </li>
       );
@@ -232,7 +237,18 @@ function renderNode(node: RootContent | Node, state: WalkState, depth: number, i
       const children = renderChildren(node as Parent, state, depth);
       if (resolved === null) {
         return (
-          <span key={index} className="doc-link-inert" title="external or unresolved target">
+          <span
+            key={index}
+            className="doc-link-inert"
+            title={state.options.profile === "inert" ? undefined : "external or unresolved target"}
+          >
+            {children}
+          </span>
+        );
+      }
+      if (state.options.profile === "inert") {
+        return (
+          <span key={index} className="doc-link-inert" data-aslite-doc-id={resolved}>
             {children}
           </span>
         );
@@ -254,7 +270,11 @@ function renderNode(node: RootContent | Node, state: WalkState, depth: number, i
     case "image":
       // v1: images are inert (figures are the next unit PR; raster images a recorded deferral).
       return (
-        <span key={index} className="doc-link-inert" title="images render in a later version">
+        <span
+          key={index}
+          className="doc-link-inert"
+          title={state.options.profile === "inert" ? undefined : "images render in a later version"}
+        >
           [image{(node as { alt?: string }).alt ? `: ${(node as { alt?: string }).alt}` : ""}]
         </span>
       );
@@ -308,6 +328,16 @@ function renderEdgeList(links: Node[], state: WalkState, index: number): ReactNo
     if (to === null) continue; // isBareLinkBlock guarantees resolvability; defensive
     const verb = textOf(links[i]!).trim();
     const target = titleFor?.(to) ?? to;
+    if (state.options.profile === "inert") {
+      rows.push(
+        <span key={i} className="doc-edge-row" data-aslite-doc-id={to}>
+          <span className="doc-edge-verb">{verb}</span>
+          <span className="doc-edge-arrow" aria-hidden="true">→</span>
+          <span className="doc-edge-target">{target}</span>
+        </span>,
+      );
+      continue;
+    }
     rows.push(
       <a
         key={i}

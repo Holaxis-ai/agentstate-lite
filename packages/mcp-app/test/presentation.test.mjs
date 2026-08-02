@@ -93,7 +93,7 @@ test("bindings cannot read outside the selected envelope or supported fields", (
   );
 });
 
-test("Markdown binding reuses the bounded reader renderer and strips child navigation", () => {
+test("Markdown binding reuses the bounded inert renderer", () => {
   const markdownPayload = {
     ...payload,
     objects: [
@@ -123,8 +123,9 @@ test("Markdown binding reuses the bounded reader renderer and strips child navig
   assert.equal(document.querySelectorAll("li").length, 2);
   assert.equal(document.querySelector("script"), null);
   assert.match(document.body.textContent ?? "", /<script>globalThis\.pwned=true<\/script>/);
-  assert.equal(document.querySelector("a")?.getAttribute("href"), null);
-  assert.equal(document.querySelector(".doc-link-inert")?.textContent, "external");
+  assert.equal(document.querySelector("a,input,form,button,img"), null);
+  assert.equal(document.querySelector("[data-aslite-doc-id]")?.getAttribute("data-aslite-doc-id"), "designs/x");
+  assert.equal(document.querySelector(".doc-link-inert:not([data-aslite-doc-id])")?.textContent, "external");
   assert.equal(document.querySelector("[data-aslite-markdown]"), null);
 });
 
