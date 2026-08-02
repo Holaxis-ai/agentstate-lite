@@ -96,6 +96,7 @@ async function bridgeResult(
       revoke: () => {},
     },
     config: async () => ({ root: bundle.root, name: "agreement", mode: "dir" }),
+    renderDocument: ({ body }) => ({ html: body, bounded: false }),
   });
   const outcome = await service.handle(
     "agreement-launch",

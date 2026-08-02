@@ -18,6 +18,7 @@ import { createRouter } from "@agentstate-lite/server";
 import { bootUiServer, type UiServerHandle } from "../src/server.js";
 
 const SECRET = "action-endpoint-auth-secret";
+const renderDocument = ({ body }: { body: string }) => ({ html: body, bounded: false });
 const COOKIE = `aslite_ui_session=${SECRET}`;
 const T = "2026-07-19T00:00:00.000Z";
 const JSON_HEADERS = {
@@ -170,6 +171,7 @@ async function fixture(): Promise<Fixture> {
     bundle,
     router: createRouter(bundle),
     sessionSecret: SECRET,
+    renderDocument,
     actor: "mike/test",
     viewAuthorization: PREAUTHORIZED_VIEWS,
     serveAsset: () => ({

@@ -3,7 +3,10 @@ import { test } from "node:test";
 
 import { JSDOM } from "jsdom";
 
-import { renderMarkdownToStaticHtml } from "../dist/static.js";
+import {
+  renderDocumentToStaticHtml,
+  renderMarkdownToStaticHtml,
+} from "../dist/static.js";
 
 function parsed(markdown, options = {}) {
   const rendered = renderMarkdownToStaticHtml(markdown, {
@@ -80,8 +83,20 @@ test("static rendering reports the shared bounds it enforces", () => {
   assert.equal(document.querySelector("[data-aslite-rendered-document]")?.textContent, "one two");
 });
 
+test("the document adapter preserves only the bridge's presentation contract", () => {
+  const rendered = renderDocumentToStaticHtml({
+    id: "docs/one",
+    body: "# One",
+  });
+  assert.deepEqual(Object.keys(rendered).sort(), ["bounded", "html"]);
+  assert.match(rendered.html, /data-aslite-rendered-document/);
+  assert.match(rendered.html, /<h1>One<\/h1>/);
+  assert.equal(rendered.bounded, false);
+});
+
 test("deep nesting collapses at the shared depth limit without introducing active markup", () => {
-  const { document } = parsed(`${"> ".repeat(45)}deep`);
+  const { rendered, document } = parsed(`${"> ".repeat(45)}deep`);
+  assert.equal(rendered.bounded, true, "depth collapse is disclosed as a bounded render");
   assert.equal(document.querySelectorAll("blockquote").length, 40);
   assert.equal(document.querySelector("[data-aslite-rendered-document]")?.textContent, "deep");
   assert.equal(document.querySelector("a,input,form,button,img,script,style,iframe,object,embed"), null);

@@ -733,16 +733,19 @@ function renderBundleViewsSection(invocation: string, ref: RefPointer): string[]
   lines.push("legacy `pages-registry/`/`pages/` folders stay recognized once typed `View`.)");
   lines.push("");
   lines.push(
-    "The bridge (protocol `v0`) has five read-only data request types: `hello` (bundle identity), `query`",
+    "The bridge (protocol `v0`) has six read-only data request types: `hello` (bundle identity), `query`",
   );
   lines.push(
-    "(frontmatter-filtered rows — the same head projection `list` uses), `read` (one doc), `edges`",
+    "(frontmatter-filtered rows — the same head projection `list` uses), `read` (one doc), `render-document`",
   );
   lines.push(
-    "(the general from/to/text graph query — backlinks and containment both reduce to this), and",
+    "(the shared bounded Markdown presentation for one canonical doc), `edges` (the general",
   );
   lines.push(
-    "`subscribe` (opt into a server-pushed `change` event whenever the watched bundle moves). There",
+    "from/to/text graph query — backlinks and containment both reduce to this), and `subscribe`",
+  );
+  lines.push(
+    "(opt into a server-pushed `change` event whenever the watched bundle moves). There",
   );
   lines.push("is no mutation message in v0 — read-only is enforced by construction. A View that declares");
   lines.push("`bundle-propose` may use the local-only v1 contract to propose ONE governed scalar-field");

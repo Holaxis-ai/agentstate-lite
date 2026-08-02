@@ -30,6 +30,7 @@ import {
   type PageLaunch,
   type ViewAuthorizationStore,
 } from "@agentstate-lite/view-runtime";
+import { renderDocumentToStaticHtml } from "@agentstate-lite/markdown-renderer/static";
 import { z } from "zod";
 import type {
   DurableShowViewInput,
@@ -514,6 +515,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
       name: options.bundleName ?? "AgentState bundle",
       mode: "local-mcp",
     }),
+    renderDocument: renderDocumentToStaticHtml,
     allowActionProtocol: false,
     enablePolling: true,
   });

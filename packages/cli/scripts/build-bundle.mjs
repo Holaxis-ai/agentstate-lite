@@ -109,6 +109,7 @@ export async function buildCliBundle(outfile, options) {
       // List browser-safe core subpaths before the package root so esbuild does not append the
       // subpath to `index.ts` (which would resolve as the impossible `index.ts/page`).
       "@agentstate-lite/core/page": r("../core/src/page.ts"),
+      "@agentstate-lite/core/links": r("../core/src/links.ts"),
       "@agentstate-lite/core": r("../core/src/index.ts"),
       // The git tier lives in its own workspace package (board-git A1); alias to source so the
       // npm artifact stays ONE self-contained file with no dist pre-build.
@@ -122,6 +123,7 @@ export async function buildCliBundle(outfile, options) {
       "@agentstate-lite/mcp-app": r("../mcp-app/src/index.ts"),
       // Shared human-surface primitives are private workspace source too. Alias them explicitly
       // so a clean committed-plugin build never depends on sibling dist/ directories existing.
+      "@agentstate-lite/markdown-renderer/static": r("../markdown-renderer/src/static.tsx"),
       "@agentstate-lite/markdown-renderer": r("../markdown-renderer/src/index.tsx"),
       "@agentstate-lite/view-runtime": r("../view-runtime/src/index.ts"),
       // The loopback UI runtime is a private workspace package; source-alias it so the npm CLI

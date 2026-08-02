@@ -65,7 +65,7 @@ interface SubscriptionState {
 interface BaseRequest {
   bridge: typeof BRIDGE_PROTOCOL;
   id: string;
-  type: "hello" | "query" | "read" | "edges" | "subscribe";
+  type: "hello" | "query" | "read" | "render-document" | "edges" | "subscribe";
 }
 
 interface HelloRequest extends BaseRequest {
@@ -79,6 +79,11 @@ interface QueryRequest extends BaseRequest {
 
 interface ReadRequest extends BaseRequest {
   type: "read";
+  docId: string;
+}
+
+interface RenderDocumentRequest extends BaseRequest {
+  type: "render-document";
   docId: string;
 }
 
@@ -115,6 +120,7 @@ type ParsedBridgeRequest =
   | HelloRequest
   | QueryRequest
   | ReadRequest
+  | RenderDocumentRequest
   | EdgesRequest
   | SubscribeRequest
   | OpenPageRequest
@@ -244,10 +250,10 @@ export function parseBridgeRequest(value: unknown): ParsedBridgeRequest | null {
     if (!exactKeys(value, ["bridge", "type", "id"])) return null;
     return { bridge: BRIDGE_PROTOCOL, type: value.type, id };
   }
-  if (value.type === "read") {
+  if (value.type === "read" || value.type === "render-document") {
     if (!exactKeys(value, ["bridge", "type", "id", "docId"])) return null;
     const docId = boundedString(value.docId, MAX_DOC_ID_BYTES);
-    return docId ? { bridge: BRIDGE_PROTOCOL, type: "read", id, docId } : null;
+    return docId ? { bridge: BRIDGE_PROTOCOL, type: value.type, id, docId } : null;
   }
   if (value.type === "query") {
     if (!exactKeys(value, ["bridge", "type", "id", "params"])) return null;
@@ -288,9 +294,24 @@ export interface BridgeServiceOptions {
   bundle: Bundle;
   launches: BridgeLaunchAuthority;
   config: () => Promise<BridgeConfig>;
+  renderDocument: BridgeDocumentRenderer;
   allowActionProtocol?: boolean;
   enablePolling?: boolean;
 }
+
+export interface BridgeDocumentRendererInput {
+  id: string;
+  body: string;
+}
+
+export interface BridgeDocumentRendererResult {
+  html: string;
+  bounded: boolean;
+}
+
+export type BridgeDocumentRenderer = (
+  document: BridgeDocumentRendererInput,
+) => BridgeDocumentRendererResult;
 
 /**
  * Server-owned semantic authority for the View bridge. Host shells only validate their current
@@ -480,6 +501,35 @@ export class BridgeService {
           request.type,
           request.type === "read" ? result.doc : result,
         ),
+      };
+    }
+    if (request.type === "render-document") {
+      let result;
+      try {
+        result = await readDocVersioned(this.options.bundle, request.docId);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+          return {
+            reply: fail(
+              request.id,
+              request.bridge,
+              "NOT_FOUND",
+              `Document '${request.docId}' is not available`,
+            ),
+          };
+        }
+        throw error;
+      }
+      if (Buffer.byteLength(result.doc.body, "utf8") > MAX_DOCUMENT_BODY_BYTES) {
+        return { reply: fail(request.id, request.bridge, "TOO_LARGE", "the document body exceeded the 1 MiB View limit") };
+      }
+      const rendered = this.options.renderDocument({ id: result.doc.id, body: result.doc.body });
+      return {
+        reply: ok(request.id, request.bridge, request.type, {
+          document: { id: result.doc.id, version: result.version },
+          html: rendered.html,
+          bounded: rendered.bounded,
+        }),
       };
     }
     if (request.type === "edges") {

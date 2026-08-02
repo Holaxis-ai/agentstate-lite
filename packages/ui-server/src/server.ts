@@ -39,6 +39,7 @@ import {
   pageLaunchAuthorizationSubject,
   projectViewCatalog,
   type ActionTerminalResult,
+  type BridgeDocumentRenderer,
   type BridgeOutcome,
   type PageLaunch,
   type ViewAuthorizationStore,
@@ -110,6 +111,8 @@ export interface UiServerOptions {
    * every other kind/graph-aware CLI command already rides for `--remote`.
    */
   kindsBundle?: Bundle;
+  /** Consumer-owned canonical document renderer; this host never imports presentation code. */
+  renderDocument: BridgeDocumentRenderer;
   /** Asset bytes stay consumer-owned (the CLI injects its build-generated embedded table). */
   serveAsset: UiAssetHandler;
   /** Consumer-owned display-name policy; the runtime never imports CLI naming rules. */
@@ -865,6 +868,7 @@ export async function bootUiServer(options: UiServerOptions): Promise<UiServerHa
         ? new BridgeService({
             bundle,
             launches: bridgeAuthority,
+            renderDocument: options.renderDocument,
             config: async () => {
               const config = await configData(options);
               return { root: config.root, name: config.name, mode: config.mode };

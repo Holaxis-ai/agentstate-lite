@@ -17,6 +17,7 @@ import { blobVersion } from "@agentstate-lite/core";
 import { SessionViewAuthorizationStore, bootUiServer, type UiServerHandle } from "../src/index.js";
 
 const SECRET = "version-trust-secret";
+const renderDocument = ({ body }: { body: string }) => ({ html: body, bounded: false });
 const COOKIE = `aslite_ui_session=${SECRET}`;
 const JSON_HEADERS = {
   cookie: COOKIE,
@@ -117,6 +118,7 @@ test("launch identity is the host's own hash, not the version the upstream asser
       mode: "remote",
       remoteBase: upstream.origin,
       sessionSecret: SECRET,
+      renderDocument,
       viewAuthorization: new SessionViewAuthorizationStore(),
     });
     try {
@@ -151,6 +153,7 @@ test("a pinned upstream version cannot hold a launch current across a byte swap"
       mode: "remote",
       remoteBase: upstream.origin,
       sessionSecret: SECRET,
+      renderDocument,
       viewAuthorization: new SessionViewAuthorizationStore(),
     });
     try {
@@ -191,6 +194,7 @@ test("an approval for the honest bytes does not admit substituted bytes under th
       mode: "remote",
       remoteBase: upstream.origin,
       sessionSecret: SECRET,
+      renderDocument,
       viewAuthorization: authorizations,
     });
     try {

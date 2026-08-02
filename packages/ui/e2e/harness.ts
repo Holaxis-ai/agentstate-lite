@@ -439,6 +439,7 @@ export async function bootUiServerInProcess(opts: { dir: string; port?: number; 
     router: createRouter(bundle),
     bundle,
     sessionSecret: opts.sessionSecret,
+    renderDocument: ({ body }) => ({ html: body, bounded: false }),
     viewAuthorization,
     serveAsset: createEmbeddedAssetHandler(assets),
     resolveBundleDisplayName: async () => path.basename(opts.dir),

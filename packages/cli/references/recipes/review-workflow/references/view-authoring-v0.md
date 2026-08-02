@@ -58,6 +58,7 @@ view's own iframe; the view drops any message whose `event.source` is not `windo
 | `hello`     | —                                                          | `{ bundle: { root, name }, mode, protocol: "v0", grant }` |
 | `query`     | `{ params: { type?, prefix?, field?, open?, limit? } }`    | `{ rows: DocHead[], count }`                               |
 | `read`      | `{ docId }`                                                | `{ id, frontmatter, body }`                                |
+| `render-document` | `{ docId }`                                         | `{ document: { id, version }, html, bounded }`              |
 | `edges`     | `{ params: { from?, to?, text? } }`                        | `{ edges: { from, to, text }[], count }`                   |
 | `subscribe` | —                                                          | `{ ok: true }`, then a stream of `change` events          |
 | `open-page` | `{ pageId: "views-registry/…" }`                           | none; fire-and-forget shell navigation                    |
@@ -75,6 +76,15 @@ oracle is the only information exposed by navigation.
 
 `DocHead` is `{ id, version, frontmatter }` — the same **head projection** `list` uses (full
 frontmatter, never a body). `query` params:
+
+`render-document` reads the canonical document and serializes its body with the shell's shared,
+bounded Markdown renderer. The returned `html` is inert semantic markup: it contains no scripts,
+event handlers, forms, controls, images, or navigable anchors. Internal concept links become
+passive elements carrying `data-aslite-doc-id`; the View may delegate clicks on those markers to
+its own selection logic and issue another `render-document` request. Insert only the unmodified
+`html` returned by this request. The accompanying document `version` is the exact version rendered;
+after a matching `change` event, refetch instead of treating old HTML as current. `bounded: true`
+means renderer safety limits truncated or collapsed part of the input.
 
 - `type` / `prefix` — server-side facets (a bundle-relative id prefix, a frontmatter `type`).
 - `field` — a client-side `key=value` filter; comma-separated values are OR (`status=todo,blocked`).
@@ -151,8 +161,8 @@ view-blob hot-reload is a labeled follow-up; live doc updates work in both modes
 The registry doc's `access` field decides whether the shell will answer THIS view's bridge
 requests at all — and the shell, not the view, is what enforces it:
 
-- `access: bundle-read` — a **data view**. The shell answers `hello`/`query`/`read`/`edges`/
-  `subscribe` as described above.
+- `access: bundle-read` — a **data view**. The shell answers `hello`/`query`/`read`/
+  `render-document`/`edges`/`subscribe` as described above.
 - `access: bundle-propose` — an **interactive view**. It receives the same read surface and may
   submit the narrow v1 proposal above. Each proposal still requires trusted-shell confirmation.
 - `access: none` — a **content view**. The shell replies to every bundle-data request with a
@@ -277,12 +287,32 @@ of this repo's own board.
     hello: function () { return send("hello"); },
     query: function (params) { return send("query", { params: params }); },
     read: function (docId) { return send("read", { docId: docId }); },
+    renderDocument: function (docId) { return send("render-document", { docId: docId }); },
     edges: function (params) { return send("edges", { params: params }); },
     openPage: openPage,
     subscribe: function (cb) { subs.push(cb); return send("subscribe"); },
     watch: watch
   };
 })();
+```
+
+Compose and style the trusted fragment inside the View; do not rewrite or concatenate its HTML:
+
+```js
+async function showDocument(docId) {
+  var rendered = await Bridge.renderDocument(docId);
+  documentPanel.innerHTML = rendered.html;
+}
+documentPanel.addEventListener("click", function (event) {
+  var target = event.target instanceof Element ? event.target.closest("[data-aslite-doc-id]") : null;
+  if (target) void showDocument(target.getAttribute("data-aslite-doc-id"));
+});
+```
+
+```css
+.document-panel [data-aslite-rendered-document] { line-height: 1.6; }
+.document-panel h1 { font: 600 1.5rem/1.2 system-ui; }
+.document-panel [data-aslite-doc-id] { cursor: pointer; text-decoration: underline; }
 ```
 
 A live view supplies only its domain snapshot and render work:
