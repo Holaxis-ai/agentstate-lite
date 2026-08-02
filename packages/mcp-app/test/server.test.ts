@@ -155,7 +155,7 @@ test("list_views is bounded, continues deterministically, and every listed id is
         type: "View",
         title: `View ${suffix}`,
         entry: "views/shared.html",
-        access: "bundle-read",
+        access: index === 0 ? "bundle-propose" : "bundle-read",
         ...(index === 0 ? { presentation: "inline" } : {}),
       },
       body: "",
@@ -210,7 +210,7 @@ test("list_views is bounded, continues deterministically, and every listed id is
 
   const first = await client.callTool({ name: LIST_VIEWS_TOOL_NAME, arguments: {} });
   const firstPage = first.structuredContent as {
-    views: Array<{ id: string; presentation?: string }>;
+    views: Array<{ id: string; access: string; presentation?: string }>;
     registeredTotal: number;
     shown: number;
     excluded: number;
@@ -230,6 +230,7 @@ test("list_views is bounded, continues deterministically, and every listed id is
   assert.equal(firstPage.examined, 22);
   assert.equal(firstPage.truncated, true);
   assert.equal(firstPage.views[0]?.id, "views-registry/view-00");
+  assert.equal(firstPage.views[0]?.access, "bundle-propose");
   assert.equal(firstPage.views[0]?.presentation, "inline");
 
   for (const row of firstPage.views) {
@@ -620,7 +621,7 @@ test("durable View execution preserves a UTF-8 BOM included in the approved byte
   assert.deepEqual(new TextEncoder().encode(payload.source.html), bytes);
 });
 
-test("registered Roadmap View runs from unchanged source through the authorized read-only bridge", async (t) => {
+test("registered Roadmap View runs from unchanged source through the authorized active bridge", async (t) => {
   const bundle = memoryBundle();
   await seed(bundle);
   const authorization = new SessionViewAuthorizationStore();
@@ -809,12 +810,19 @@ test("registered Roadmap View runs from unchanged source through the authorized 
   assert.equal(
     (
       actionProtocol.structuredContent as {
-        outcome: { reply: { error: { code: string } } };
+        outcome: { reply: { result: { doc: { id: string }; version: string } } };
       }
-    ).outcome.reply.error.code,
-    "FORBIDDEN",
+    ).outcome.reply.result.doc.id,
+    "tasks/alpha",
   );
-
+  assert.match(
+    (
+      actionProtocol.structuredContent as {
+        outcome: { reply: { result: { version: string } } };
+      }
+    ).outcome.reply.result.version,
+    /^sha256:/,
+  );
   const subscribed = await client.callTool({
     name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
     arguments: {
@@ -916,6 +924,7 @@ test("transient HTML uses the registered active-View bridge without a synthetic 
     bundle,
     version: "test",
     bundleName: "Transient proof bundle",
+    actor: "mike/test",
     viewAuthorization: {
       async isAuthorized() {
         persistentStoreCalls += 1;
@@ -1004,6 +1013,27 @@ test("transient HTML uses the registered active-View bridge without a synthetic 
   assert.equal(resumedView.source.html, html);
   assert.equal(resumedView.launch.authorization.authorized, true);
   assert.equal(persistentStoreCalls, 0);
+
+  const target = await readDocVersioned(bundle, "tasks/alpha");
+  const readOnlyProposal = await client.callTool({
+    name: PREPARE_VIEW_ACTION_TOOL_NAME,
+    arguments: {
+      launchId: resumedView.launch.launchId,
+      requestId: "read-only-proposal",
+      action: {
+        kind: "document.set-field",
+        docId: "tasks/alpha",
+        field: "status",
+        value: "done",
+        expectedVersion: target.version,
+      },
+    },
+  });
+  assert.equal(
+    (readOnlyProposal.structuredContent as { result: { status: string } }).result.status,
+    "revoked",
+    "bundle-read can read but cannot prepare a change",
+  );
 
   const mixedContract = await client.callTool({
     name: SHOW_VIEW_TOOL_NAME,
@@ -1129,6 +1159,109 @@ test("save_transient_view persists server-owned exact bytes and returns a freshl
     ),
     "the saved View is discoverable through the shared web/MCP catalog",
   );
+});
+
+test("one bundle-propose action works from transient bytes and their exact saved durable View", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  const server = createMcpAppServer({ bundle, actor: "openai/codex" });
+  const client = new Client({ name: "active-action-test", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const html = "<!doctype html><title>Task action</title><script>/* uses the standard v1 action bridge */</script>";
+  const shown = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: {
+      mode: "transient",
+      title: "Transient task action",
+      html,
+      access: "bundle-propose",
+    },
+  });
+  const transient = shown.structuredContent as {
+    source: { contentVersion: string };
+    launch: { launchId: string; access: string; authorization: { authorized: boolean } };
+  };
+  assert.equal(transient.launch.access, "bundle-propose");
+  assert.equal(transient.launch.authorization.authorized, false);
+  await client.callTool({
+    name: AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: transient.launch.launchId },
+  });
+
+  const runAction = async (launchId: string, value: "todo" | "done") => {
+    const target = await readDocVersioned(bundle, "tasks/alpha");
+    const prepared = await client.callTool({
+      name: PREPARE_VIEW_ACTION_TOOL_NAME,
+      arguments: {
+        launchId,
+        requestId: `set-${value}`,
+        action: {
+          kind: "document.set-field",
+          docId: "tasks/alpha",
+          field: "status",
+          value,
+          expectedVersion: target.version,
+        },
+      },
+    });
+    const result = (prepared.structuredContent as {
+      result: { status: string; approvalToken?: string; confirmation?: { actor: string } };
+    }).result;
+    assert.equal(result.status, "prepared");
+    assert.equal(result.confirmation?.actor, "openai/codex");
+    assert.equal((await readDocVersioned(bundle, "tasks/alpha")).version, target.version);
+    const finished = await client.callTool({
+      name: FINISH_VIEW_ACTION_TOOL_NAME,
+      arguments: {
+        launchId,
+        approvalToken: result.approvalToken,
+        decision: "commit",
+      },
+    });
+    assert.equal(
+      (finished.structuredContent as { result: { status: string } }).result.status,
+      "committed",
+    );
+    assert.equal((await readDocVersioned(bundle, "tasks/alpha")).doc.frontmatter.status, value);
+  };
+
+  await runAction(transient.launch.launchId, "done");
+
+  const saved = await client.callTool({
+    name: SAVE_TRANSIENT_VIEW_TOOL_NAME,
+    arguments: {
+      launchId: transient.launch.launchId,
+      viewId: "views-registry/saved-task-action",
+    },
+  });
+  assert.equal(
+    (saved.structuredContent as { saved: { access: string } }).saved.access,
+    "bundle-propose",
+  );
+  const registered = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: { viewId: "views-registry/saved-task-action" },
+  });
+  const durable = registered.structuredContent as {
+    source: { html: string; contentVersion: string };
+    launch: { launchId: string; access: string; authorization: { authorized: boolean } };
+  };
+  assert.equal(durable.source.html, html);
+  assert.equal(durable.source.contentVersion, transient.source.contentVersion);
+  assert.equal(durable.launch.access, "bundle-propose");
+  assert.equal(durable.launch.authorization.authorized, false);
+  await client.callTool({
+    name: AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId: durable.launch.launchId },
+  });
+  await runAction(durable.launch.launchId, "todo");
 });
 
 test("durable resume rotates to fresh current bytes and recomputes authorization", async (t) => {

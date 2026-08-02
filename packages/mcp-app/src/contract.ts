@@ -1,4 +1,5 @@
 import type { Frontmatter, Version } from "@agentstate-lite/core";
+import type { BridgeCapability } from "@agentstate-lite/core/page";
 import type { QuerySelectionParams } from "@agentstate-lite/core/query-selection";
 import type { ActionScalar } from "@agentstate-lite/view-runtime";
 
@@ -27,6 +28,7 @@ export interface TransientShowViewInput {
   mode: "transient";
   title: string;
   html: string;
+  access?: Extract<BridgeCapability, "bundle-read" | "bundle-propose">;
 }
 
 export type ShowViewInput =
@@ -91,6 +93,7 @@ export interface DurableViewLaunchPayload {
   };
   launch: {
     launchId: string;
+    access: BridgeCapability;
     authorization: {
       required: boolean;
       authorized: boolean;
@@ -109,6 +112,7 @@ export interface TransientViewLaunchPayload {
   };
   launch: {
     launchId: string;
+    access: BridgeCapability;
     authorization: {
       required: boolean;
       authorized: boolean;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseActionBridgeMessage } from "./actions.js";
+import { parseActionBridgeMessage } from "@agentstate-lite/view-runtime/action-bridge";
 
 describe("trusted action bridge parser", () => {
   it("accepts the exact versioned-read and scalar-action messages", () => {

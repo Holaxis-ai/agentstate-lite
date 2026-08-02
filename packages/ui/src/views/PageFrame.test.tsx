@@ -354,7 +354,7 @@ describe("PageFrame: registered Page navigation", () => {
       approvalToken: "shell-secret-token",
       expiresAt: Date.now() + 60_000,
       confirmation: {
-        source: { registryId: "pages-registry/p", title: "P", registryVersion: "rv1", contentVersion: "bv1" },
+        source: { kind: "registered", id: "pages-registry/p", title: "P", version: "rv1", contentVersion: "bv1" },
         target: { docId: "tasks/alpha", title: "Alpha", kind: "Task", version: "dv1" },
         field: "status",
         before: "todo",

@@ -435,6 +435,171 @@ test("authorization dialog reports registered and transient View provenance hone
   );
 });
 
+test("bundle-propose active Views receive only a human-confirmed terminal action result", async ({
+  page,
+}) => {
+  const outer = await lifecycleHost(page);
+  await page.evaluate(() => window.__showActionResult());
+  await expect(outer.locator("#authorization-access")).toHaveText("bundle-propose");
+  await expect(outer.locator("#authorization-description")).toContainText(
+    "propose version-guarded changes that still require a separate human confirmation",
+  );
+  const authorization = outer.locator("#authorization-apply");
+  await expect(authorization).toBeEnabled();
+  await authorization.click();
+
+  await expect
+    .poll(() => page.frames().filter((frame) => frame.parentFrame() === outer).length)
+    .toBe(1);
+  const active = page.frames().find((frame) => frame.parentFrame() === outer);
+  if (!active) throw new Error("Expected the active View frame.");
+  await active.locator("#propose").click();
+
+  await expect
+    .poll(() => page.evaluate(() => window.__preparedActions.length))
+    .toBe(1);
+  await expect(outer.locator("#confirmation-document")).toContainText("Alpha");
+  await expect(outer.locator("#confirmation-before")).toHaveText("todo");
+  await expect(outer.locator("#confirmation-after")).toHaveText("done");
+  await expect
+    .poll(() => page.evaluate(() => window.__finishedActions.length))
+    .toBe(0);
+
+  const apply = outer.locator("#confirmation-apply");
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expect
+    .poll(() => page.evaluate(() => window.__finishedActions.length))
+    .toBe(1);
+  await expect(active.locator("#result")).toHaveText("committed");
+});
+
+test("active View proposals serialize before preparation and cancel on payload replacement", async ({
+  page,
+}) => {
+  const outer = await lifecycleHost(page);
+  await page.evaluate(() => window.__showActionResult());
+  await outer.locator("#authorization-apply").click();
+  const active = page.frames().find((frame) => frame.parentFrame() === outer);
+  if (!active) throw new Error("Expected the active View frame.");
+
+  await active.locator("#propose").evaluate((button: HTMLButtonElement) => {
+    button.click();
+    button.click();
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__preparedActions.length))
+    .toBe(1);
+  await expect(outer.locator("#confirmation-document")).toContainText("Alpha");
+
+  await page.evaluate(() => window.__showTransientResult());
+  await expect(outer.locator("#confirmation-backdrop")).toBeHidden();
+  await expect(outer.locator("#authorization-view")).toHaveText(
+    "Transient process-local View",
+  );
+  await expect
+    .poll(() => page.evaluate(() => window.__finishedActions))
+    .toEqual([
+      expect.objectContaining({
+        launchId: "launch-action",
+        approvalToken: "approval-1",
+        decision: "cancel",
+      }),
+    ]);
+});
+
+test("a delayed finish cannot overwrite a replacement View", async ({ page }) => {
+  const outer = await lifecycleHost(page);
+  await page.evaluate(() => window.__showActionResult());
+  await outer.locator("#authorization-apply").click();
+  const active = page.frames().find((frame) => frame.parentFrame() === outer);
+  if (!active) throw new Error("Expected the active View frame.");
+  await active.locator("#propose").click();
+  await expect(outer.locator("#confirmation-apply")).toBeEnabled();
+  await page.evaluate(() => {
+    window.__holdFinishRequest = true;
+  });
+  await outer.locator("#confirmation-apply").click();
+  await expect
+    .poll(() => page.evaluate(() => window.__finishedActions.length))
+    .toBe(1);
+
+  await page.evaluate(() => window.__showTransientResult());
+  await expect(outer.locator("#authorization-backdrop")).toBeVisible();
+  await expect(outer.locator("#authorization-view")).toHaveText(
+    "Transient process-local View",
+  );
+  await expect(outer.locator("#status")).toContainText(
+    "Waiting for local approval",
+  );
+
+  await page.evaluate(() => window.__releaseFinishRequest());
+  await page.waitForTimeout(50);
+  await expect(outer.locator("#authorization-backdrop")).toBeVisible();
+  await expect(outer.locator("#status")).toContainText(
+    "Waiting for local approval",
+  );
+});
+
+test("generated actions stay serialized and same-launch replay fences delayed finish", async ({
+  page,
+}) => {
+  const outer = await lifecycleHost(page);
+  await page.evaluate(() => window.__showGeneratedActionResult());
+  const action = outer.locator("#actions button");
+  await expect(action).toHaveText("Mark complete");
+  await action.click();
+  await expect(outer.locator("#confirmation-apply")).toBeEnabled();
+  await expect
+    .poll(() => page.evaluate(() => window.__preparedActions.length))
+    .toBe(1);
+
+  await page.evaluate(() => {
+    window.__holdFinishRequest = true;
+  });
+  await outer.locator("#confirmation-apply").click();
+  await expect(outer.locator("#confirmation-backdrop")).toBeVisible();
+  await action.evaluate((button: HTMLButtonElement) => button.click());
+  await expect
+    .poll(() => page.evaluate(() => window.__preparedActions.length))
+    .toBe(1);
+
+  await page.evaluate(() => window.__showGeneratedActionResult());
+  await expect(outer.locator("#confirmation-backdrop")).toBeHidden();
+  await expect(outer.locator("#status")).toContainText("Generated task action");
+  await page.evaluate(() => window.__releaseFinishRequest());
+  await page.waitForTimeout(50);
+  await expect
+    .poll(() => page.evaluate(() => window.__finishedActions))
+    .toHaveLength(1);
+  await expect(outer.locator("#status")).toContainText("Generated task action");
+});
+
+test("a delayed generated prepare failure cannot overwrite a replacement View", async ({
+  page,
+}) => {
+  const outer = await lifecycleHost(page);
+  await page.evaluate(() => window.__showGeneratedActionResult());
+  await page.evaluate(() => {
+    window.__holdPrepareRequest = true;
+    window.__prepareRequestError = "delayed generated prepare failure";
+  });
+  await outer.locator("#actions button").click();
+  await expect
+    .poll(() => page.evaluate(() => window.__preparedActions.length))
+    .toBe(1);
+
+  await page.evaluate(() => window.__showTransientResult());
+  await expect(outer.locator("#status")).toContainText(
+    "Waiting for local approval",
+  );
+  await page.evaluate(() => window.__releasePrepareRequest());
+  await page.waitForTimeout(50);
+  await expect(outer.locator("#status")).toContainText(
+    "Waiting for local approval",
+  );
+});
+
 test("replayed results cannot reactivate a quarantined or retired durable launch", async ({
   page,
 }) => {
@@ -562,6 +727,8 @@ declare global {
   interface Window {
     __appliedHeightReports?: AppliedHeightReport[];
     __closedLaunches: string[];
+    __preparedActions: unknown[];
+    __finishedActions: unknown[];
     __displayRequestError: string | null;
     __displayResponseMode: "inline" | "fullscreen" | null;
     __displayRequests: string[];
@@ -580,5 +747,6 @@ declare global {
     __releaseResumeRequest: () => void;
     __startTeardown: () => void;
     __showTransientResult: () => Promise<void>;
+    __showActionResult: () => Promise<void>;
   }
 }

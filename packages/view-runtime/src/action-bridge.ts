@@ -1,7 +1,15 @@
-import type { DocumentSetFieldAction } from "../api/pages.js";
-
 export const ACTION_BRIDGE_PROTOCOL = "v1";
 const MAX_MESSAGE_BYTES = 8 * 1024;
+
+export type ActionScalar = string | number | boolean;
+
+export interface DocumentSetFieldAction {
+  kind: "document.set-field";
+  docId: string;
+  field: string;
+  value: ActionScalar;
+  expectedVersion: string;
+}
 
 export type ActionBridgeMessage =
   | { bridge: "v1"; type: "read-versioned"; id: string; docId: string }
@@ -19,24 +27,55 @@ function exactKeys(record: Record<string, unknown>, expected: readonly string[])
   return actual.length === sortedExpected.length && actual.every((key, index) => key === sortedExpected[index]);
 }
 
-function safeDocId(value: unknown): value is string {
-  if (typeof value !== "string" || value.trim() === "") return false;
-  const normalized = value.replaceAll("\\", "/");
-  return !normalized.startsWith("/") && !normalized.split("/").includes("..");
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
 }
 
-function safeScalar(value: unknown): value is string | number | boolean {
-  if (typeof value === "string") return new TextEncoder().encode(value).byteLength <= 4096;
+function safeDocId(value: unknown): value is string {
+  if (typeof value !== "string" || value.trim() === "" || value.startsWith("/") || value.includes("\\")) return false;
+  const segments = value.split("/");
+  return (
+    !segments.some((segment) => segment === "" || segment === "." || segment === "..") &&
+    !segments.slice(0, -1).some((segment) => segment.toLowerCase().endsWith(".md"))
+  );
+}
+
+function safeScalar(value: unknown): value is ActionScalar {
+  if (typeof value === "string") return byteLength(value) <= 4096;
   if (typeof value === "number") return Number.isFinite(value);
   return typeof value === "boolean";
 }
 
 function jsonSize(value: unknown): number | null {
   try {
-    return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    return byteLength(JSON.stringify(value));
   } catch {
     return null;
   }
+}
+
+export function parseDocumentSetFieldAction(value: unknown): DocumentSetFieldAction {
+  if (!isPlainRecord(value) || !exactKeys(value, ["kind", "docId", "field", "value", "expectedVersion"])) {
+    throw new Error("action must contain exactly kind, docId, field, value, and expectedVersion");
+  }
+  if (value.kind !== "document.set-field") throw new Error("unsupported action kind");
+  if (!safeDocId(value.docId)) throw new Error("docId must be one canonical bundle-relative concept id");
+  const field = typeof value.field === "string" ? value.field.trim() : "";
+  if (!field || byteLength(field) > 128) throw new Error("field must be a non-empty string of at most 128 bytes");
+  const expectedVersion = typeof value.expectedVersion === "string" ? value.expectedVersion.trim() : "";
+  if (!expectedVersion || expectedVersion.length > 256) {
+    throw new Error("expectedVersion must be a non-empty string of at most 256 characters");
+  }
+  if (!safeScalar(value.value)) {
+    throw new Error("value must be a string (at most 4 KiB), finite number, or boolean");
+  }
+  return {
+    kind: "document.set-field",
+    docId: value.docId,
+    field,
+    value: value.value,
+    expectedVersion,
+  };
 }
 
 /** Validate the complete structured-clone message before any shell work or confirmation UI. */
@@ -56,23 +95,12 @@ export function parseActionBridgeMessage(value: unknown): { ok: true; message: A
     if (!exactKeys(value, ["bridge", "type", "requestId", "action"]) || typeof value.requestId !== "string" || !value.requestId || value.requestId.length > 64) {
       return { ok: false, message: "action.propose requires an exact non-empty requestId of at most 64 characters" };
     }
-    const action = value.action;
-    if (
-      !isPlainRecord(action) ||
-      !exactKeys(action, ["kind", "docId", "field", "value", "expectedVersion"]) ||
-      action.kind !== "document.set-field" ||
-      !safeDocId(action.docId) ||
-      typeof action.field !== "string" ||
-      !action.field ||
-      new TextEncoder().encode(action.field).byteLength > 128 ||
-      typeof action.expectedVersion !== "string" ||
-      !action.expectedVersion ||
-      action.expectedVersion.length > 256 ||
-      !safeScalar(action.value)
-    ) {
+    try {
+      const action = parseDocumentSetFieldAction(value.action);
+      return { ok: true, message: { bridge: ACTION_BRIDGE_PROTOCOL, type: "action.propose", requestId: value.requestId, action } };
+    } catch {
       return { ok: false, message: "action.propose requires one valid document.set-field scalar action" };
     }
-    return { ok: true, message: value as ActionBridgeMessage };
   }
 
   return { ok: false, message: `unknown action bridge request '${value.type}'` };

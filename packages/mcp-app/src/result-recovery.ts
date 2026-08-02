@@ -19,6 +19,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isBridgeCapability(value: unknown): boolean {
+  return value === "none" || value === "bundle-read" || value === "bundle-propose";
+}
+
 export function isGeneratedViewPayload(value: unknown): value is ViewLaunchPayload {
   if (!isRecord(value)) return false;
   const presentation = value.presentation;
@@ -56,6 +60,7 @@ export function isDurableViewPayload(value: unknown): value is DurableViewLaunch
     typeof source.contentVersion === "string" &&
     isRecord(launch) &&
     typeof launch.launchId === "string" &&
+    isBridgeCapability(launch.access) &&
     isRecord(authorization) &&
     typeof authorization.required === "boolean" &&
     typeof authorization.authorized === "boolean"
@@ -77,6 +82,7 @@ export function isTransientViewPayload(value: unknown): value is TransientViewLa
     typeof source.contentVersion === "string" &&
     isRecord(launch) &&
     typeof launch.launchId === "string" &&
+    isBridgeCapability(launch.access) &&
     isRecord(authorization) &&
     typeof authorization.required === "boolean" &&
     typeof authorization.authorized === "boolean"

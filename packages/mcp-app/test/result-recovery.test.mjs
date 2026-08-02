@@ -27,7 +27,7 @@ const durablePayload = {
     contentType: "text/html",
     contentVersion: "v1",
   },
-  launch: { launchId: "launch-2", authorization: { required: true, authorized: true } },
+  launch: { launchId: "launch-2", access: "bundle-read", authorization: { required: true, authorized: true } },
 };
 
 const transientPayload = {
@@ -39,7 +39,7 @@ const transientPayload = {
     contentType: "text/html; charset=utf-8",
     contentVersion: "sha256:transient",
   },
-  launch: { launchId: "launch-3", authorization: { required: true, authorized: false } },
+  launch: { launchId: "launch-3", access: "bundle-propose", authorization: { required: true, authorized: false } },
 };
 
 test("extractViewPayload finds generated, registered, and transient schemas", () => {

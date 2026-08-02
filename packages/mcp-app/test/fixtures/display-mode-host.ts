@@ -17,6 +17,7 @@ interface DurablePayload {
   };
   launch: {
     launchId: string;
+    access: "bundle-read" | "bundle-propose";
     authorization: {
       required: boolean;
       authorized: boolean;
@@ -35,6 +36,7 @@ interface TransientPayload {
   };
   launch: {
     launchId: string;
+    access: "bundle-read" | "bundle-propose";
     authorization: {
       required: boolean;
       authorized: boolean;
@@ -62,7 +64,8 @@ function payload(launchId: string, authorized: boolean): DurablePayload {
     title: "Roadmap",
     source,
     launch: {
-      launchId,
+    launchId,
+      access: "bundle-read",
       authorization: { required: true, authorized },
     },
   };
@@ -80,7 +83,59 @@ function transientPayload(launchId: string): TransientPayload {
     },
     launch: {
       launchId,
+      access: "bundle-read",
       authorization: { required: true, authorized: false },
+    },
+  };
+}
+
+function actionPayload(authorized: boolean): TransientPayload {
+  return {
+    schemaVersion: "agentstate.transient-view-launch.v1",
+    title: "Task action",
+    source: {
+      kind: "transient",
+      html: `<!doctype html><button id="propose">Mark complete</button><output id="result"></output><script>
+        document.querySelector('#propose').addEventListener('click', () => parent.postMessage({
+          bridge: 'v1', type: 'action.propose', requestId: 'action-1',
+          action: { kind: 'document.set-field', docId: 'tasks/alpha', field: 'status', value: 'done', expectedVersion: 'sha256:target' }
+        }, '*'));
+        addEventListener('message', (event) => {
+          if (event.data?.bridge === 'v1' && event.data?.type === 'action.result') {
+            document.querySelector('#result').textContent = event.data.result?.status ?? 'invalid';
+          }
+        });
+      </script>`,
+      contentType: source.contentType,
+      contentVersion: `sha256:${"3".repeat(64)}`,
+    },
+    launch: {
+      launchId: "launch-action",
+      access: "bundle-propose",
+      authorization: { required: true, authorized },
+    },
+  };
+}
+
+function generatedActionPayload() {
+  return {
+    schemaVersion: "agentstate.view-launch.v1" as const,
+    title: "Generated task action",
+    presentation: {
+      html: "<h1>Generated task action</h1>",
+      css: "",
+      contentHash: `sha256:${"4".repeat(64)}`,
+    },
+    selection: { objectIds: ["tasks/alpha"] },
+    objects: [{
+      id: "tasks/alpha",
+      version: "sha256:target",
+      frontmatter: { type: "Task", title: "Alpha", status: "todo" },
+      body: "",
+    }],
+    launch: {
+      launchId: "launch-generated",
+      actions: [{ actionId: "generated-action", label: "Mark complete", targetId: "tasks/alpha" }],
     },
   };
 }
@@ -90,13 +145,20 @@ let nextLaunch = 1;
 let releaseDisplayRequest: (() => void) | null = null;
 let releaseResumeRequest: (() => void) | null = null;
 let releaseCloseRequest: (() => void) | null = null;
+let releaseFinishRequest: (() => void) | null = null;
+let releasePrepareRequest: (() => void) | null = null;
 
 window.__displayRequests = [];
 window.__resumeRequests = [];
 window.__closedLaunches = [];
+window.__preparedActions = [];
+window.__finishedActions = [];
 window.__holdDisplayRequest = false;
 window.__holdResumeRequest = false;
 window.__holdCloseRequest = false;
+window.__holdFinishRequest = false;
+window.__holdPrepareRequest = false;
+window.__prepareRequestError = null;
 window.__displayResponseMode = null;
 window.__displayRequestError = null;
 window.__suppressDisplayContextOnResolve = false;
@@ -112,6 +174,14 @@ window.__releaseResumeRequest = () => {
 window.__releaseCloseRequest = () => {
   releaseCloseRequest?.();
   releaseCloseRequest = null;
+};
+window.__releaseFinishRequest = () => {
+  releaseFinishRequest?.();
+  releaseFinishRequest = null;
+};
+window.__releasePrepareRequest = () => {
+  releasePrepareRequest?.();
+  releasePrepareRequest = null;
 };
 
 const context = () => ({
@@ -142,6 +212,18 @@ window.__showTransientResult = async () => {
     structuredContent: transientPayload("launch-transient"),
   });
 };
+window.__showActionResult = async () => {
+  await bridge.sendToolResult({
+    content: [{ type: "text", text: "Action View ready" }],
+    structuredContent: actionPayload(false),
+  });
+};
+window.__showGeneratedActionResult = async () => {
+  await bridge.sendToolResult({
+    content: [{ type: "text", text: "Generated action View ready" }],
+    structuredContent: generatedActionPayload(),
+  });
+};
 window.__startTeardown = () => {
   window.__teardownSettled = false;
   void bridge.teardownResource({}).then(() => {
@@ -155,7 +237,9 @@ bridge.oncalltool = async ({ name, arguments: args }) => {
   if (name === "authorize_durable_view") {
     return {
       content: [{ type: "text", text: "authorized" }],
-      structuredContent: { view: payload(launchId, true) },
+      structuredContent: {
+        view: launchId === "launch-action" ? actionPayload(true) : payload(launchId, true),
+      },
     };
   }
   if (name === "resume_durable_view") {
@@ -205,6 +289,62 @@ bridge.oncalltool = async ({ name, arguments: args }) => {
       structuredContent: { poll: { status: "unchanged" } },
     };
   }
+  if (name === "prepare_view_action") {
+    window.__preparedActions.push(args ?? {});
+    if (window.__holdPrepareRequest) {
+      await new Promise<void>((resolve) => {
+        releasePrepareRequest = resolve;
+      });
+    }
+    if (window.__prepareRequestError) throw new Error(window.__prepareRequestError);
+    return {
+      content: [{ type: "text", text: "prepared" }],
+      structuredContent: {
+        result: {
+          status: "prepared",
+          approvalToken: "approval-1",
+          expiresAt: Date.now() + 60_000,
+          confirmation: {
+            source: {
+              kind: "transient",
+              id: "transient:sha256:source",
+              title: "Task action",
+              version: "sha256:source",
+              contentVersion: "sha256:source",
+            },
+            target: { docId: "tasks/alpha", title: "Alpha", kind: "Task", version: "sha256:target" },
+            field: "status",
+            before: "todo",
+            after: "done",
+            actor: "openai/codex",
+            timestamp: "2026-08-02T12:00:00.000Z",
+          },
+        },
+      },
+    };
+  }
+  if (name === "finish_view_action") {
+    window.__finishedActions.push(args ?? {});
+    if (window.__holdFinishRequest) {
+      await new Promise<void>((resolve) => {
+        releaseFinishRequest = resolve;
+      });
+    }
+    return {
+      content: [{ type: "text", text: "committed" }],
+      structuredContent: {
+        result: {
+          status: args?.decision === "commit" ? "committed" : "cancelled",
+          action: "document.set-field",
+          docId: "tasks/alpha",
+          field: "status",
+          changed: args?.decision === "commit",
+          confirmed: args?.decision === "commit",
+        },
+        ...(launchId === "launch-generated" ? { view: generatedActionPayload() } : {}),
+      },
+    };
+  }
   throw new Error(`Unexpected App tool '${name}'.`);
 };
 
@@ -248,11 +388,15 @@ void bridge.connect(
 declare global {
   interface Window {
     __closedLaunches: string[];
+    __preparedActions: unknown[];
+    __finishedActions: unknown[];
     __displayRequestError: string | null;
     __displayResponseMode: DisplayMode | null;
     __displayRequests: string[];
     __resumeRequests: string[];
     __holdCloseRequest: boolean;
+    __holdFinishRequest: boolean;
+    __holdPrepareRequest: boolean;
     __holdDisplayRequest: boolean;
     __holdResumeRequest: boolean;
     __hostInitialized?: boolean;
@@ -261,9 +405,14 @@ declare global {
     __emitDisplayMode: (mode: DisplayMode) => void;
     __replayOriginalResult: () => Promise<void>;
     __releaseCloseRequest: () => void;
+    __releaseFinishRequest: () => void;
+    __releasePrepareRequest: () => void;
     __releaseDisplayRequest: () => void;
     __releaseResumeRequest: () => void;
     __startTeardown: () => void;
     __showTransientResult: () => Promise<void>;
+    __showActionResult: () => Promise<void>;
+    __showGeneratedActionResult: () => Promise<void>;
+    __prepareRequestError: string | null;
   }
 }
