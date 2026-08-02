@@ -1,15 +1,17 @@
 ---
 type: Task
 title: 'Implement the shared durable View catalog across CLI, MCP, and web'
-status: in_progress
+status: done
 priority: '1'
 assignee: openai/codex
 description: >-
-  One shared catalog authority projected as CLI view list, MCP list_views, and
-  the web launcher; presentation is advisory, results are bounded and
-  continuable, and host access support fails honestly.
+  Shipped in PR #184 (merge 187036f): one shared durable View catalog authority
+  projected through CLI view list, MCP list_views, and the web launcher;
+  presentation remains advisory, invalid entries fail closed, and MCP discovery
+  is bounded and continuable. Exact-SHA review approved and CI passed on Node
+  20/22/26.
 actor: openai/codex
-timestamp: '2026-08-01T20:55:24.130Z'
+timestamp: '2026-08-02T03:06:45.351Z'
 ---
 # Behavioral claim
 
