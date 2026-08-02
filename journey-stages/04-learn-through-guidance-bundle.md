@@ -8,7 +8,7 @@ readiness: missing
 criticality: core
 description: Stage 03 of the new-user-to-recurring-value journey.
 actor: openai/codex
-timestamp: '2026-08-02T15:25:52.154Z'
+timestamp: '2026-08-02T15:35:23.392Z'
 ---
 # Desired experience
 
@@ -39,3 +39,5 @@ first real workspace.
 [journey stage planned by](../roadmap-items/distribution-neutral-resources.md)
 
 [journey stage planned by](../roadmap-items/launcher-home-surface.md)
+
+[journey stage implemented by](../tasks/guidance-bundle-onboarding.md)
