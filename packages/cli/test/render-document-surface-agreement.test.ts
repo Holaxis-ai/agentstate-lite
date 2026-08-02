@@ -81,7 +81,7 @@ async function seed(): Promise<{ bundle: Bundle; backend: LaunchChangingBackend 
   await writeDoc(bundle, {
     id: "docs/bounded",
     frontmatter: { type: "Doc", title: "Bounded", timestamp: T },
-    body: "x".repeat(262_145),
+    body: `${"> ".repeat(45)}deep`,
   });
   await writeDoc(bundle, {
     id: "docs/change",

@@ -95,7 +95,8 @@ test("the document adapter preserves only the bridge's presentation contract", (
 });
 
 test("deep nesting collapses at the shared depth limit without introducing active markup", () => {
-  const { document } = parsed(`${"> ".repeat(45)}deep`);
+  const { rendered, document } = parsed(`${"> ".repeat(45)}deep`);
+  assert.equal(rendered.bounded, true, "depth collapse is disclosed as a bounded render");
   assert.equal(document.querySelectorAll("blockquote").length, 40);
   assert.equal(document.querySelector("[data-aslite-rendered-document]")?.textContent, "deep");
   assert.equal(document.querySelector("a,input,form,button,img,script,style,iframe,object,embed"), null);

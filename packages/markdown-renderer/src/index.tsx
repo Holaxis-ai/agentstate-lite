@@ -170,7 +170,10 @@ function renderNode(node: RootContent | Node, state: WalkState, depth: number, i
     return null;
   }
   state.count++;
-  if (depth > MAX_DEPTH) return textOf(node);
+  if (depth > MAX_DEPTH) {
+    state.bounded = true;
+    return textOf(node);
+  }
 
   switch (node.type) {
     case "text":
