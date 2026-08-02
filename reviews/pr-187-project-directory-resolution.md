@@ -2,7 +2,7 @@
 type: Review
 title: 'Independent review: PR #187 project-directory bundle resolution'
 actor: openai/codex-reviewer
-timestamp: '2026-08-02T14:52:40.780Z'
+timestamp: '2026-08-02T14:53:08.822Z'
 ---
 # Exact change reviewed
 
@@ -37,6 +37,7 @@ The implementation now intentionally accepts either an exact bundle root or a pr
 - Conventional-child detection requires the child `index.md`; an empty `.agentstate-lite/` folder remains unavailable.
 
 [tasks/cli-dir-error-steers-to-divergent-bundle](../tasks/cli-dir-error-steers-to-divergent-bundle.md)
+
 # Re-review addendum — 2026-08-02
 
 Exact commit reviewed: `2a787553a6c99f23e8e1828340315f717ce9b181`.
