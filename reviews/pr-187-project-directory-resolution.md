@@ -2,7 +2,7 @@
 type: Review
 title: 'Independent review: PR #187 project-directory bundle resolution'
 actor: openai/codex-reviewer
-timestamp: '2026-08-02T14:48:10.010Z'
+timestamp: '2026-08-02T14:49:14.289Z'
 ---
 # Exact change reviewed
 
@@ -36,4 +36,4 @@ The implementation now intentionally accepts either an exact bundle root or a pr
 - `openBundle` and `bundle locate` consume the same `resolveLocalBundleTarget` authority; locate projects its canonical root while openBundle retains the lexical path.
 - Conventional-child detection requires the child `index.md`; an empty `.agentstate-lite/` folder remains unavailable.
 
-[reviews task](../tasks/cli-dir-error-steers-to-divergent-bundle.md)
+[tasks/cli-dir-error-steers-to-divergent-bundle](../tasks/cli-dir-error-steers-to-divergent-bundle.md)
