@@ -31,7 +31,7 @@ Commands:
   resolve   Revalidate and return exactly one registered workspace
 
 Options:
-  --dir <path>   add: literal bundle root; otherwise normal project-local discovery applies
+  --dir <path>   add: bundle root or project directory with a direct .agentstate-lite bundle
   --field path   resolve: print only the canonical path plus a newline
   --json         Emit compact JSON instead of TOON
   -h, --help     Show this help

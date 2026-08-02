@@ -15,7 +15,7 @@ Commands:
   locate                  Resolve the exact local bundle this invocation would use
 
 Options:
-  --dir <path>            Resolve this literal bundle root instead of project context
+  --dir <path>            Resolve this bundle root or its direct .agentstate-lite child
   --json                  Emit compact JSON instead of TOON
   -h, --help              Show this help
 

@@ -48,6 +48,24 @@ test("bundle locate: explicit --dir wins and identifies the same physical root o
   }
 });
 
+test("bundle locate: an explicit project directory identifies its conventional bundle", async () => {
+  const project = await tempDir();
+  try {
+    const conventional = path.join(project, ".agentstate-lite");
+    await initBundle(conventional);
+
+    const receipt = await runJson(["locate", "--dir", project], project);
+    assert.deepEqual(receipt, {
+      schema_version: 1,
+      locator: { kind: "local-path", path: conventional },
+      selected_by: "explicit-dir",
+      available: true,
+    });
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
+
 test("bundle locate: a project binding wins discovery and names the binding that selected it", async () => {
   const root = await tempDir();
   try {

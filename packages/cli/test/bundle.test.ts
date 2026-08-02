@@ -410,6 +410,42 @@ test("openBundle: an explicit --dir suppresses a project binding SILENTLY — re
   }
 });
 
+test("openBundle: an explicit --dir may name a project directory containing the conventional bundle", async () => {
+  const project = await tempDir();
+  try {
+    const conventional = path.join(project, CONVENTIONAL_BUNDLE_DIR_NAME);
+    await initBundle(conventional);
+
+    const bundle = await openBundle(project, undefined);
+    assert.equal(bundle.root, conventional);
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
+
+test("openBundle: a bad explicit --dir inside a project points to the existing bundle instead of suggesting a divergent init", async () => {
+  const project = await tempDir();
+  try {
+    const conventional = path.join(project, CONVENTIONAL_BUNDLE_DIR_NAME);
+    await initBundle(conventional);
+    const nested = path.join(project, "src");
+    await mkdir(nested);
+
+    await assert.rejects(
+      () => openBundle(nested, undefined),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError);
+        assert.equal(err.code, "NOT_FOUND");
+        assert.ok(err.help?.includes(`--dir ${conventional}`));
+        assert.doesNotMatch(err.help ?? "", / init /);
+        return true;
+      },
+    );
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
+
 test("openBundle: an explicit --dir to a NON-bundle path is the plain NOT_FOUND (no binding mention) even with a binding present elsewhere — suppressed, not merged", async () => {
   const root = await tempDir();
   try {
@@ -428,6 +464,7 @@ test("openBundle: an explicit --dir to a NON-bundle path is the plain NOT_FOUND 
           assert.ok(err instanceof CliError);
           assert.equal(err.code, "NOT_FOUND");
           assert.doesNotMatch(err.message, /project binding/);
+          assert.ok(err.help?.includes(`init --dir ${badDir}`));
           return true;
         },
       );

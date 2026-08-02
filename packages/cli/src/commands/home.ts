@@ -293,9 +293,8 @@ export async function defaultSummarizeBundle(dir?: string): Promise<BundleSummar
  * `defaultSummarizeBundle` with DISCOVERY semantics: walk up from `startDir` for the nearest
  * bundle root (a level's own `index.md`, else its conventional `.agentstate-lite/index.md` —
  * bundle.ts's one walk) and summarize THAT. session-start's `--dir` bridge uses this when no
- * board resolved: its `--dir` names a PROJECT directory, so treating it as a literal bundle root
- * (what an explicit `--dir` means to `openBundle`) would miss a committed conventional bundle
- * sitting right under it and dangle a wrong `init` hint next to a real bundle.
+ * board resolved because its `--dir` may name a nested run directory. Ordinary explicit `--dir`
+ * accepts the requested bundle or its direct conventional child, but never selects an ancestor.
  */
 export async function discoverSummarizeBundle(
   startDir: string,
@@ -341,9 +340,8 @@ export interface BoardPullOutcome {
   notes?: string[];
   /**
    * The provisioned board checkout the pull step resolved (absolute). session-start uses it to
-   * point an explicit `--dir <project>` invocation's bundle dashboard at the board bundle (home's
-   * own `--dir` names a literal bundle root, not a project directory — different verb, different
-   * flag semantics).
+   * point an explicit `--dir <project>` invocation's dashboard at the resolved board checkout;
+   * that checkout is not necessarily the project's direct conventional child.
    */
   boardPath?: string;
 }
