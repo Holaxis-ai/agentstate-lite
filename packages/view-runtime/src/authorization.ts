@@ -4,14 +4,27 @@ export const ACTIVE_VIEW_POLICY_VERSION = "active-view-v1";
 export const MAX_ACTIVE_VIEW_BYTES = 512 * 1024;
 export const ACTIVE_VIEW_CONTENT_TYPE = "text/html; charset=utf-8";
 
-export interface ViewAuthorizationSubject {
-  registryId: string;
+interface ActiveViewAuthorizationSubject {
   contentVersion: string;
   contentType: string;
   capability: BridgeCapability;
   execution: "active";
   policyVersion: typeof ACTIVE_VIEW_POLICY_VERSION;
 }
+
+export interface RegisteredViewAuthorizationSubject extends ActiveViewAuthorizationSubject {
+  sourceKind: "registered";
+  registryId: string;
+}
+
+export interface TransientViewAuthorizationSubject extends ActiveViewAuthorizationSubject {
+  sourceKind: "transient";
+  bundleIdentity: string;
+}
+
+export type ViewAuthorizationSubject =
+  | RegisteredViewAuthorizationSubject
+  | TransientViewAuthorizationSubject;
 
 export interface ViewAuthorizationStore {
   isAuthorized(subject: ViewAuthorizationSubject): Promise<boolean>;
@@ -39,14 +52,19 @@ export function admitActiveView(
 }
 
 function stableSubject(subject: ViewAuthorizationSubject): string {
-  return JSON.stringify({
-    registryId: subject.registryId,
+  const common = {
+    sourceKind: subject.sourceKind,
     contentVersion: subject.contentVersion,
     contentType: subject.contentType,
     capability: subject.capability,
     execution: subject.execution,
     policyVersion: subject.policyVersion,
-  });
+  };
+  return JSON.stringify(
+    subject.sourceKind === "registered"
+      ? { ...common, registryId: subject.registryId }
+      : { ...common, bundleIdentity: subject.bundleIdentity },
+  );
 }
 
 /** Process-local fallback. Product hosts may inject a persistent user-controlled store. */

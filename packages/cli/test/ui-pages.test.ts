@@ -31,6 +31,7 @@ import { writeUiUrlFile, clearUiUrlFile, uiUrlFilePath } from "../src/ui/url-fil
 
 function launchInput(key: string) {
   return {
+    sourceKind: "registered" as const,
     registryId: `pages-registry/${key.split("/").pop()!.replace(/\.html$/, "")}`,
     registryType: "View" as const,
     registryVersion: `registry-${key}`,

@@ -25,6 +25,7 @@ export {
   type ActionTerminalResult,
   type DocumentSetFieldAction,
   type PageLaunch,
+  type RegisteredViewAuthorizationSubject,
   type ViewAuthorizationStore,
   type ViewAuthorizationSubject,
   type TrustedActionLaunch,

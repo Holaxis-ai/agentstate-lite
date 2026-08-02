@@ -23,7 +23,16 @@ export interface DurableShowViewInput {
   viewId: string;
 }
 
-export type ShowViewInput = GeneratedShowViewInput | DurableShowViewInput;
+export interface TransientShowViewInput {
+  mode: "transient";
+  title: string;
+  html: string;
+}
+
+export type ShowViewInput =
+  | GeneratedShowViewInput
+  | DurableShowViewInput
+  | TransientShowViewInput;
 
 export type ViewQuerySelection = QuerySelectionParams;
 
@@ -89,4 +98,26 @@ export interface DurableViewLaunchPayload {
   };
 }
 
-export type McpViewPayload = ViewLaunchPayload | DurableViewLaunchPayload;
+export interface TransientViewLaunchPayload {
+  schemaVersion: "agentstate.transient-view-launch.v1";
+  title: string;
+  source: {
+    kind: "transient";
+    html: string;
+    contentType: string;
+    contentVersion: Version;
+  };
+  launch: {
+    launchId: string;
+    authorization: {
+      required: boolean;
+      authorized: boolean;
+    };
+  };
+}
+
+export type ActiveViewLaunchPayload =
+  | DurableViewLaunchPayload
+  | TransientViewLaunchPayload;
+
+export type McpViewPayload = ViewLaunchPayload | ActiveViewLaunchPayload;

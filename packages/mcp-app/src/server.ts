@@ -25,9 +25,12 @@ import {
   launchIsCurrent,
   listViewCatalogPage,
   mintActiveViewLaunch,
+  mintTransientViewLaunch,
   pageLaunchAuthorizationSubject,
   type ActionTerminalResult,
   type PageLaunch,
+  type RegisteredPageLaunch,
+  type TransientPageLaunch,
   type ViewAuthorizationStore,
 } from "@agentstate-lite/view-runtime";
 import { renderDocumentToStaticHtml } from "@agentstate-lite/markdown-renderer/static";
@@ -40,6 +43,8 @@ import type {
   ResolvedViewContent,
   ResolvedShowViewInput,
   ShowViewInput,
+  TransientShowViewInput,
+  TransientViewLaunchPayload,
   ViewLaunchPayload,
   ViewObjectSnapshot,
 } from "./contract.js";
@@ -237,8 +242,17 @@ const durableInputSchema = z
   })
   .strict();
 
+const transientInputSchema = z
+  .object({
+    mode: z.literal("transient"),
+    title: z.string().trim().min(1).max(120),
+    html: z.string().min(1),
+  })
+  .strict();
+
 const inputSchema = z
   .object({
+    mode: z.literal("transient").optional(),
     viewId: durableInputSchema.shape.viewId.optional(),
     title: generatedInputSchema.shape.title.optional(),
     html: generatedInputSchema.shape.html.optional(),
@@ -249,7 +263,7 @@ const inputSchema = z
   })
   .strict()
   .describe(
-    "Pass exactly viewId for a registered durable View, or title/html plus exactly one generated selection mode.",
+    "Pass exactly viewId for a registered View; mode:transient plus title/html for an active process-local View; or title/html plus exactly one generated selection mode.",
   );
 
 const generatedOutputSchema = z.object({
@@ -300,13 +314,25 @@ const durableOutputSchema = z.object({
   }),
 });
 
+const transientOutputSchema = z.object({
+  schemaVersion: z.literal("agentstate.transient-view-launch.v1"),
+  title: z.string(),
+  source: z.object({
+    kind: z.literal("transient"),
+    html: z.string(),
+    contentType: z.string(),
+    contentVersion: z.string(),
+  }),
+  launch: durableOutputSchema.shape.launch,
+});
+
 const outputSchema = z.object({
   schemaVersion: z.string(),
   title: z.string(),
   presentation: generatedOutputSchema.shape.presentation.optional(),
   selection: generatedOutputSchema.shape.selection.optional(),
   objects: generatedOutputSchema.shape.objects.optional(),
-  source: durableOutputSchema.shape.source.optional(),
+  source: z.union([durableOutputSchema.shape.source, transientOutputSchema.shape.source]).optional(),
   launch: z.object({
     launchId: z.string(),
     actions: generatedOutputSchema.shape.launch.shape.actions.optional(),
@@ -317,6 +343,7 @@ const outputSchema = z.object({
 function parseShowViewInput(input: unknown): ShowViewInput {
   const outer = inputSchema.parse(input);
   if (outer.viewId !== undefined) return durableInputSchema.parse(outer);
+  if (outer.mode === "transient") return transientInputSchema.parse(outer);
   return generatedInputSchema.parse(outer);
 }
 
@@ -407,7 +434,7 @@ export async function resolveViewLaunch(
 }
 
 function durablePayload(
-  launch: PageLaunch,
+  launch: RegisteredPageLaunch,
   authorized: boolean,
 ): DurableViewLaunchPayload {
   return {
@@ -428,6 +455,52 @@ function durablePayload(
       },
     },
   };
+}
+
+function transientPayload(
+  launch: TransientPageLaunch,
+  authorized: boolean,
+): TransientViewLaunchPayload {
+  return {
+    schemaVersion: "agentstate.transient-view-launch.v1",
+    title: launch.title,
+    source: {
+      kind: "transient",
+      html: new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(launch.bytes),
+      contentType: launch.contentType,
+      contentVersion: launch.contentVersion,
+    },
+    launch: {
+      launchId: launch.launchId,
+      authorization: {
+        required: launch.capability !== "none",
+        authorized,
+      },
+    },
+  };
+}
+
+function activePayload(
+  launch: PageLaunch,
+  authorized: boolean,
+): DurableViewLaunchPayload | TransientViewLaunchPayload {
+  return launch.sourceKind === "registered"
+    ? durablePayload(launch, authorized)
+    : transientPayload(launch, authorized);
+}
+
+export async function resolveTransientViewLaunch(
+  bundle: Bundle,
+  input: TransientShowViewInput,
+  launches = new PageLaunchRegistry(),
+  authorizations: ViewAuthorizationStore = new SessionViewAuthorizationStore(),
+): Promise<TransientViewLaunchPayload> {
+  const parsed = transientInputSchema.parse(input);
+  const launch = mintTransientViewLaunch(bundle, launches, parsed);
+  return transientPayload(
+    launch,
+    await authorizations.isAuthorized(pageLaunchAuthorizationSubject(launch)),
+  );
 }
 
 export async function resolveDurableViewLaunch(
@@ -468,6 +541,11 @@ async function refreshViewLaunch(
 }
 
 function fallbackText(payload: McpViewPayload): string {
+  if (payload.schemaVersion === "agentstate.transient-view-launch.v1") {
+    return payload.launch.authorization.authorized
+      ? `Prepared transient AgentState View "${payload.title}" from its exact process-local bytes.`
+      : `Transient AgentState View "${payload.title}" is ready for local approval of its exact process-local bytes before it can read bundle data.`;
+  }
   if (payload.schemaVersion === "agentstate.durable-view-launch.v1") {
     return payload.launch.authorization.authorized
       ? `Prepared registered AgentState View "${payload.title}" (${payload.source.viewId}) from its exact current bundle bytes.`
@@ -502,6 +580,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
   const durableLaunches = new PageLaunchRegistry();
   const durableAuthorizations =
     options.viewAuthorization ?? new SessionViewAuthorizationStore();
+  const transientAuthorizations = new SessionViewAuthorizationStore();
   const pendingLaunches = new PendingLaunchRegistry();
   const durableBridge = new BridgeService({
     bundle: options.bundle,
@@ -509,6 +588,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
       options.bundle,
       durableLaunches,
       durableAuthorizations,
+      transientAuthorizations,
     ),
     config: async () => ({
       root: null,
@@ -599,7 +679,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     {
       title: "Show AgentState View",
       description:
-        "Render either agent-authored script-free HTML over current authoritative AgentState snapshots, or one existing registered bundle View by exact viewId. A registered View runs from its unchanged current bytes through the shared read-only bridge and requires the human to trust those executable bytes before bundle data is exposed.",
+        "Render agent-authored script-free HTML over frozen snapshots, launch active process-local HTML with mode:transient, or run an existing registered bundle View by exact viewId. Active Views share the read-only bridge and require the human to trust their exact executable bytes before bundle data is exposed.",
       inputSchema,
       outputSchema,
       annotations: {
@@ -614,6 +694,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
       try {
         const parsed = parseShowViewInput(input);
         const durable = "viewId" in parsed;
+        const transient = "mode" in parsed && parsed.mode === "transient";
         const payload = durable
           ? await resolveDurableViewLaunch(
               options.bundle,
@@ -621,12 +702,23 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
               durableLaunches,
               durableAuthorizations,
             )
+          : transient
+            ? await resolveTransientViewLaunch(
+                options.bundle,
+                parsed as TransientShowViewInput,
+                durableLaunches,
+                transientAuthorizations,
+              )
           : await resolveViewLaunch(options.bundle, parsed as GeneratedShowViewInput, launches);
         // Claim ticket for hosts whose tool-result notifications strip structuredContent
         // (probe-established for Claude Desktop): the marker rides the preserved text channel
         // and the App redeems it — exact-match, one-shot — via the app-only resolve_launch.
         const claimId = mintClaimId();
-        pendingLaunches.record(claimId, payload.launch.launchId, durable ? "durable" : "generated");
+        pendingLaunches.record(
+          claimId,
+          payload.launch.launchId,
+          durable || transient ? "durable" : "generated",
+        );
         return {
           content: [
             { type: "text", text: `${fallbackText(payload)}\n${formatClaimMarker(claimId)}` },
@@ -656,9 +748,9 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     server,
     AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
     {
-      title: "Authorize registered AgentState View",
+      title: "Authorize active AgentState View",
       description:
-        "Record the trusted shell's local decision to trust the exact current registered View bytes with bundle-read access, then return the revalidated launch.",
+        "Record the trusted shell's local decision to trust exact active View bytes with bundle-read access, then return the revalidated launch.",
       inputSchema: z
         .object({ launchId: z.string().min(1).max(128) })
         .strict(),
@@ -672,6 +764,9 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     },
     async ({ launchId }): Promise<CallToolResult> => {
       const launch = durableLaunches.resolveLaunch(launchId);
+      const authorizationStore = launch?.sourceKind === "transient"
+        ? transientAuthorizations
+        : durableAuthorizations;
       if (
         !launch ||
         launch.capability !== "bundle-read" ||
@@ -684,10 +779,10 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
         };
       }
       const subject = pageLaunchAuthorizationSubject(launch);
-      await durableAuthorizations.authorize(subject);
+      await authorizationStore.authorize(subject);
       if (
         !(await launchIsCurrent(options.bundle, launch)) ||
-        !(await durableAuthorizations.isAuthorized(subject))
+        !(await authorizationStore.isAuthorized(subject))
       ) {
         durableBridge.revoke(launch.launchId);
         return {
@@ -695,7 +790,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
           content: [{ type: "text", text: "The registered View changed while approval was being recorded." }],
         };
       }
-      const view = durablePayload(launch, true);
+      const view = activePayload(launch, true);
       return {
         content: [{ type: "text", text: `Approved exact current bytes for "${view.title}".` }],
         structuredContent: { view },
@@ -707,9 +802,9 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     server,
     DURABLE_VIEW_BRIDGE_TOOL_NAME,
     {
-      title: "Run registered AgentState View bridge request",
+      title: "Run active AgentState View bridge request",
       description:
-        "Forward one bounded read-only bridge request from the current approved registered View.",
+        "Forward one bounded read-only bridge request from the current approved active View.",
       inputSchema: z
         .object({
           launchId: z.string().min(1).max(128),
@@ -727,7 +822,7 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     async ({ launchId, request }): Promise<CallToolResult> => {
       const outcome = await durableBridge.handle(launchId, request);
       return {
-        content: [{ type: "text", text: "Processed one registered View bridge request." }],
+        content: [{ type: "text", text: "Processed one active View bridge request." }],
         structuredContent: { outcome },
       };
     },
@@ -737,9 +832,9 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     server,
     RESUME_DURABLE_VIEW_TOOL_NAME,
     {
-      title: "Resume registered AgentState View",
+      title: "Resume active AgentState View",
       description:
-        "Mint a fresh current registered View launch after the trusted App quarantines an old visible mount. View identity and authorization are derived only from server-owned launch state.",
+        "Mint a fresh active View launch after the trusted App quarantines an old visible mount. View identity and authorization are derived only from server-owned launch state.",
       inputSchema: z
         .object({ launchId: z.string().min(1).max(128) })
         .strict(),
@@ -753,10 +848,13 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     },
     async ({ launchId }): Promise<CallToolResult> => {
       const previous = durableLaunches.resolveLaunch(launchId);
+      const authorizationStore = previous?.sourceKind === "transient"
+        ? transientAuthorizations
+        : durableAuthorizations;
       if (
         !previous ||
         previous.capability !== "bundle-read" ||
-        !(await durableAuthorizations.isAuthorized(
+        !(await authorizationStore.isAuthorized(
           pageLaunchAuthorizationSubject(previous),
         ))
       ) {
@@ -771,16 +869,27 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
         };
       }
       try {
-        const view = await resolveDurableViewLaunch(
-          options.bundle,
-          { viewId: previous.registryId },
-          durableLaunches,
-          durableAuthorizations,
-        );
+        const view = previous.sourceKind === "registered"
+          ? await resolveDurableViewLaunch(
+              options.bundle,
+              { viewId: previous.registryId },
+              durableLaunches,
+              durableAuthorizations,
+            )
+          : await resolveTransientViewLaunch(
+              options.bundle,
+              {
+                mode: "transient",
+                title: previous.title,
+                html: new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(previous.bytes),
+              },
+              durableLaunches,
+              transientAuthorizations,
+            );
         const stillCurrent = durableLaunches.resolveLaunch(launchId);
         if (
           stillCurrent !== previous ||
-          !(await durableAuthorizations.isAuthorized(
+          !(await authorizationStore.isAuthorized(
             pageLaunchAuthorizationSubject(previous),
           ))
         ) {
@@ -822,9 +931,9 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     server,
     POLL_DURABLE_VIEW_TOOL_NAME,
     {
-      title: "Poll registered AgentState View changes",
+      title: "Poll active AgentState View changes",
       description:
-        "Poll the server-owned subscription baseline for the current registered View.",
+        "Poll the server-owned subscription baseline for the current active View.",
       inputSchema: z
         .object({
           launchId: z.string().min(1).max(128),
@@ -852,9 +961,9 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     server,
     CLOSE_DURABLE_VIEW_TOOL_NAME,
     {
-      title: "Close registered AgentState View",
+      title: "Close active AgentState View",
       description:
-        "Revoke one process-local registered View launch and discard its subscription state.",
+        "Revoke one process-local active View launch and discard its subscription state.",
       inputSchema: z
         .object({ launchId: z.string().min(1).max(128) })
         .strict(),
@@ -1045,9 +1154,12 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
       } else {
         const launch = durableLaunches.resolveLaunch(entry.launchId);
         if (launch) {
-          payload = durablePayload(
+          const authorizationStore = launch.sourceKind === "transient"
+            ? transientAuthorizations
+            : durableAuthorizations;
+          payload = activePayload(
             launch,
-            await durableAuthorizations.isAuthorized(pageLaunchAuthorizationSubject(launch)),
+            await authorizationStore.isAuthorized(pageLaunchAuthorizationSubject(launch)),
           );
         }
       }

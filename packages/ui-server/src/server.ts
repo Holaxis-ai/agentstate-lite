@@ -167,7 +167,7 @@ interface UiRuntime {
 async function viewLaunchIsCurrent(options: UiServerOptions, launch: PageLaunch): Promise<boolean> {
   const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
   if (bundle) return launchIsCurrent(bundle, launch);
-  if (options.mode !== "remote") return false;
+  if (options.mode !== "remote" || launch.sourceKind !== "registered") return false;
   const head = (await remoteRegistryHeads(options)).find(
     (candidate) => candidate.id === launch.registryId,
   );
@@ -351,6 +351,7 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
     return jsonError(403, "FORBIDDEN", error instanceof Error ? error.message : String(error));
   }
   const launch = runtime.launches.mint({
+    sourceKind: "registered",
     registryId: registration.id,
     registryType: registration.type,
     registryVersion: registryRead.version,
@@ -364,6 +365,10 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
   if (!(await viewLaunchIsCurrent(options, launch))) {
     runtime.launches.revoke(launch.launchId);
     return jsonError(403, "FORBIDDEN", "the View changed while its launch was being prepared");
+  }
+  if (launch.sourceKind !== "registered") {
+    runtime.launches.revoke(launch.launchId);
+    return jsonError(500, "INTERNAL", "the web host minted an invalid transient launch");
   }
   const subject = pageLaunchAuthorizationSubject(launch);
   const required = launch.capability !== "none";

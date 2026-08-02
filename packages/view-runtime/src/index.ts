@@ -53,14 +53,9 @@ export interface DocumentSetFieldAction {
   expectedVersion: Version;
 }
 
-export interface PageLaunch {
+interface BasePageLaunch {
   launchId: string;
   nonce: string;
-  registryId: string;
-  registryType: PageTypeName;
-  registryVersion: Version;
-  registryTitle: string;
-  entryKey: string;
   contentType: string;
   contentVersion: Version;
   bytes: Uint8Array;
@@ -68,6 +63,28 @@ export interface PageLaunch {
   nonceExpiresAt: number;
   expiresAt: number;
 }
+
+export interface RegisteredPageLaunch extends BasePageLaunch {
+  sourceKind: "registered";
+  registryId: string;
+  registryType: PageTypeName;
+  registryVersion: Version;
+  registryTitle: string;
+  entryKey: string;
+}
+
+export interface TransientPageLaunch extends BasePageLaunch {
+  sourceKind: "transient";
+  title: string;
+  bundleIdentity: string;
+}
+
+export type PageLaunch = RegisteredPageLaunch | TransientPageLaunch;
+type PageLaunchInput = PageLaunch extends infer Launch
+  ? Launch extends PageLaunch
+    ? Omit<Launch, "launchId" | "nonce" | "nonceExpiresAt" | "expiresAt">
+    : never
+  : never;
 
 /** A caller-supplied View registration ID does not exist in the active bundle. */
 export class ViewNotFoundError extends Error {
@@ -82,14 +99,16 @@ export class ViewNotFoundError extends Error {
 }
 
 export function pageLaunchAuthorizationSubject(launch: PageLaunch): ViewAuthorizationSubject {
-  return {
-    registryId: launch.registryId,
+  const common = {
     contentVersion: launch.contentVersion,
     contentType: launch.contentType,
     capability: launch.capability,
     execution: "active",
     policyVersion: ACTIVE_VIEW_POLICY_VERSION,
-  };
+  } as const;
+  return launch.sourceKind === "registered"
+    ? { ...common, sourceKind: "registered", registryId: launch.registryId }
+    : { ...common, sourceKind: "transient", bundleIdentity: launch.bundleIdentity };
 }
 
 const DEFAULT_LAUNCH_TTL_MS = 60 * 60 * 1000;
@@ -117,7 +136,7 @@ export class PageLaunchRegistry {
     this.nonceTtlMs = nonceTtlMs;
   }
 
-  mint(input: Omit<PageLaunch, "launchId" | "nonce" | "nonceExpiresAt" | "expiresAt">): PageLaunch {
+  mint(input: PageLaunchInput): PageLaunch {
     this.sweepExpired();
     while (this.byLaunch.size >= Math.max(1, this.maxEntries)) {
       const oldest = this.byLaunch.keys().next().value as string | undefined;
@@ -126,14 +145,14 @@ export class PageLaunchRegistry {
     }
     const launchId = randomBytes(32).toString("base64url");
     const nonce = randomBytes(32).toString("base64url");
-    const launch: PageLaunch = {
+    const launch = {
       ...input,
       bytes: input.bytes.slice(),
       launchId,
       nonce,
       nonceExpiresAt: this.now() + this.nonceTtlMs,
       expiresAt: this.now() + this.ttlMs,
-    };
+    } as PageLaunch;
     this.byLaunch.set(launchId, launch);
     this.byNonce.set(nonce, launchId);
     return launch;
@@ -252,6 +271,12 @@ function kindDigest(kind: KindConvention): Version {
 }
 
 export async function launchIsCurrent(bundle: Bundle, launch: PageLaunch): Promise<boolean> {
+  if (launch.sourceKind === "transient") {
+    return (
+      launch.bundleIdentity === bundle.root &&
+      blobVersion(launch.bytes) === launch.contentVersion
+    );
+  }
   try {
     const registryRead = await readDocVersioned(bundle, launch.registryId);
     if (registryRead.version !== launch.registryVersion) return false;
@@ -285,7 +310,7 @@ export async function mintActiveViewLaunch(
   bundle: Bundle,
   launches: PageLaunchRegistry,
   registryId: string,
-): Promise<PageLaunch> {
+): Promise<RegisteredPageLaunch> {
   let registryRead;
   try {
     registryRead = await readDocVersioned(bundle, registryId);
@@ -305,6 +330,7 @@ export async function mintActiveViewLaunch(
   if (blob === null) throw new Error(`no View bytes found for '${registration.entry}'`);
   const admitted = admitActiveView(blob.bytes, blob.contentType);
   const launch = launches.mint({
+    sourceKind: "registered",
     registryId: registration.id,
     registryType: registration.type,
     registryVersion: registryRead.version,
@@ -322,7 +348,28 @@ export async function mintActiveViewLaunch(
     launches.revoke(launch.launchId);
     throw new Error("the View changed while its launch was being prepared");
   }
-  return launch;
+  return launch as RegisteredPageLaunch;
+}
+
+/** Admit exact, process-local HTML bytes into the same active-View runtime as a registered View. */
+export function mintTransientViewLaunch(
+  bundle: Bundle,
+  launches: PageLaunchRegistry,
+  input: { title: string; html: string; capability?: BridgeCapability },
+): TransientPageLaunch {
+  const admitted = admitActiveView(
+    new TextEncoder().encode(input.html),
+    "text/html; charset=utf-8",
+  );
+  return launches.mint({
+    sourceKind: "transient",
+    title: input.title,
+    bundleIdentity: bundle.root,
+    contentType: admitted.contentType,
+    contentVersion: blobVersion(admitted.bytes),
+    bytes: admitted.bytes,
+    capability: input.capability ?? "bundle-read",
+  }) as TransientPageLaunch;
 }
 
 /** Server-side launch authority shared by the web bridge endpoint and MCP adapter. */
@@ -330,7 +377,8 @@ export class PageBridgeLaunchAuthority implements BridgeLaunchAuthority {
   constructor(
     private readonly bundle: Bundle,
     private readonly launches: PageLaunchRegistry,
-    private readonly authorizations: ViewAuthorizationStore,
+    private readonly registeredAuthorizations: ViewAuthorizationStore,
+    private readonly transientAuthorizations: ViewAuthorizationStore = registeredAuthorizations,
   ) {}
 
   async resolve(launchId: string, requireAuthorization: boolean): Promise<BridgeLaunch | null> {
@@ -342,7 +390,10 @@ export class PageBridgeLaunchAuthority implements BridgeLaunchAuthority {
     if (
       requireAuthorization &&
       launch.capability !== "none" &&
-      !(await this.authorizations.isAuthorized(pageLaunchAuthorizationSubject(launch)))
+      !(await (launch.sourceKind === "registered"
+        ? this.registeredAuthorizations
+        : this.transientAuthorizations
+      ).isAuthorized(pageLaunchAuthorizationSubject(launch)))
     ) {
       return null;
     }
@@ -388,6 +439,7 @@ export class PageActionLaunchAuthority implements TrustedActionLaunchAuthority {
     const launch = this.launches.resolveLaunch(launchId);
     if (
       !launch ||
+      launch.sourceKind !== "registered" ||
       !(await launchIsCurrent(this.bundle, launch)) ||
       (launch.capability !== "none" &&
         !(await this.authorizations.isAuthorized(pageLaunchAuthorizationSubject(launch))))
@@ -418,6 +470,7 @@ export {
   MAX_ACTIVE_VIEW_BYTES,
   SessionViewAuthorizationStore,
   admitActiveView,
+  type RegisteredViewAuthorizationSubject,
   type ViewAuthorizationStore,
   type ViewAuthorizationSubject,
 } from "./authorization.js";
