@@ -878,16 +878,20 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
           structuredContent: { saved },
         };
       } catch (error) {
-        const retained =
+        const retainedEntry =
           error instanceof TransientViewSaveError && error.retainedEntry
-            ? ` The exact entry remains at '${error.retainedEntry.key}' (${error.retainedEntry.version}); no successful registration was reported.`
+            ? ` The entry remains at '${error.retainedEntry.key}' (${error.retainedEntry.version}).`
             : "";
+        const retainedRegistration =
+          error instanceof TransientViewSaveError && error.retainedRegistration
+            ? ` A registration also remains at '${error.retainedRegistration.id}' (${error.retainedRegistration.version}), but this operation did not report a successful exact save.`
+            : " No successful registration was reported.";
         return {
           isError: true,
           content: [
             {
               type: "text",
-              text: `Could not save the transient AgentState View: ${error instanceof Error ? error.message : String(error)}${retained}`,
+              text: `Could not save the transient AgentState View: ${error instanceof Error ? error.message : String(error)}${retainedEntry}${retainedRegistration}`,
             },
           ],
         };

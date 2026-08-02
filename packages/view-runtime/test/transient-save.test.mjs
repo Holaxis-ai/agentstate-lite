@@ -75,7 +75,9 @@ test("save persists exact transient bytes and creates a separately authorized du
     title: "Saved proof",
     description: "An exact-byte persistence proof.",
     entry: "views/saved-proof.html",
+    entry_version: f.launch.contentVersion,
     access: "bundle-read",
+    actor: "openai/codex",
     timestamp: "2026-08-02T19:30:00.000Z",
   });
   assert.equal((await docVersions(f.bundle, saved.viewId))[0]?.actor, "openai/codex");
@@ -253,4 +255,149 @@ test("create-only registry races converge only when the winner installed the sam
     (await readDocVersioned(different.bundle, "views-registry/race")).doc.frontmatter.title,
     "Concurrent winner",
   );
+});
+
+test("entry replacement during registry creation fails and leaves a version-pinned unlaunchable registration", async () => {
+  class ReplacingEntryBackend extends MemoryBackend {
+    replaced = false;
+
+    async write(id, doc, options) {
+      if (id === "views-registry/replaced" && !this.replaced) {
+        this.replaced = true;
+        await super.writeBlob(
+          "views/replaced.html",
+          new TextEncoder().encode("<p>replacement</p>"),
+          "text/html; charset=utf-8",
+          {},
+        );
+      }
+      return super.write(id, doc, options);
+    }
+  }
+
+  const f = fixture(new ReplacingEntryBackend());
+  await approve(f);
+  await assert.rejects(
+    saveTransientView(
+      f.bundle,
+      f.launches,
+      f.authorizations,
+      { launchId: f.launch.launchId, viewId: "views-registry/replaced" },
+    ),
+    (error) => {
+      assert.ok(error instanceof TransientViewSaveError);
+      assert.match(error.message, /not reported as a successful save/);
+      assert.equal(error.retainedRegistration?.id, "views-registry/replaced");
+      assert.notEqual(error.retainedEntry?.version, f.launch.contentVersion);
+      return true;
+    },
+  );
+  const registry = await readDocVersioned(f.bundle, "views-registry/replaced");
+  assert.equal(registry.doc.frontmatter.entry_version, f.launch.contentVersion);
+  await assert.rejects(
+    mintActiveViewLaunch(f.bundle, f.launches, "views-registry/replaced"),
+    /no longer matches its pinned entry_version/,
+  );
+});
+
+test("registration creation uses strict kind validation and preserves actor attribution", async () => {
+  const f = fixture();
+  await approve(f);
+  await writeDoc(f.bundle, {
+    id: "conventions/view",
+    frontmatter: {
+      type: "Convention",
+      title: "View",
+      governs: "View",
+      path: "views-registry/",
+      fields: {
+        required: ["title", "entry", "entry_version", "access", "owner"],
+        optional: [],
+        values: {},
+        terminal: {},
+      },
+    },
+    body: "",
+  });
+  await assert.rejects(
+    saveTransientView(
+      f.bundle,
+      f.launches,
+      f.authorizations,
+      { launchId: f.launch.launchId, viewId: "views-registry/nonconforming" },
+      { actor: "openai/codex" },
+    ),
+    /does not satisfy the 'View' kind.*owner/,
+  );
+  await assert.rejects(readDocVersioned(f.bundle, "views-registry/nonconforming"), { code: "ENOENT" });
+  assert.ok(await readBlob(f.bundle, "views/nonconforming.html"), "the inert exact blob is retained truthfully");
+});
+
+test("approval revocation immediately before registry creation retains only the inert exact entry", async () => {
+  const f = fixture();
+  let checks = 0;
+  const authorizations = {
+    async authorize() {},
+    async isAuthorized() {
+      checks += 1;
+      return checks < 3;
+    },
+  };
+  await assert.rejects(
+    saveTransientView(
+      f.bundle,
+      f.launches,
+      authorizations,
+      { launchId: f.launch.launchId, viewId: "views-registry/revoked" },
+    ),
+    /changed or expired before registration creation/,
+  );
+  assert.ok(await readBlob(f.bundle, "views/revoked.html"));
+  await assert.rejects(readDocVersioned(f.bundle, "views-registry/revoked"), { code: "ENOENT" });
+});
+
+test("lost write acknowledgements reconcile exact committed state without false creation claims", async () => {
+  class CommitThenThrowBackend extends MemoryBackend {
+    constructor(stage) {
+      super();
+      this.stage = stage;
+      this.thrown = false;
+    }
+
+    async writeBlob(key, bytes, contentType, options) {
+      const version = await super.writeBlob(key, bytes, contentType, options);
+      if (this.stage === "entry" && !this.thrown) {
+        this.thrown = true;
+        throw new Error("entry acknowledgement lost");
+      }
+      return version;
+    }
+
+    async write(id, doc, options) {
+      const version = await super.write(id, doc, options);
+      if (this.stage === "registry" && id === "views-registry/ack" && !this.thrown) {
+        this.thrown = true;
+        throw new Error("registry acknowledgement lost");
+      }
+      return version;
+    }
+  }
+
+  for (const stage of ["entry", "registry"]) {
+    const f = fixture(new CommitThenThrowBackend(stage));
+    await approve(f);
+    const saved = await saveTransientView(
+      f.bundle,
+      f.launches,
+      f.authorizations,
+      { launchId: f.launch.launchId, viewId: "views-registry/ack" },
+    );
+    assert.equal(saved.entryCreated, stage !== "entry");
+    assert.equal(saved.registryCreated, stage !== "registry");
+    assert.equal(saved.entryVersion, f.launch.contentVersion);
+    assert.equal(
+      (await readDocVersioned(f.bundle, saved.viewId)).doc.frontmatter.entry_version,
+      f.launch.contentVersion,
+    );
+  }
 });

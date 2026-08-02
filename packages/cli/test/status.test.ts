@@ -1009,6 +1009,32 @@ test("status: invalid_view_registrations catches docs the STRICT authoring path 
   }
 });
 
+test("status: a malformed optional entry_version names that exact invalid registration leg", async () => {
+  const dir = await tempDir();
+  try {
+    const bundle = await initBundle(dir);
+    await writeDoc(bundle, {
+      id: "views-registry/bad-pin",
+      frontmatter: {
+        type: "View",
+        title: "Bad pin",
+        entry: "views/bad-pin.html",
+        entry_version: "sha256:not-a-version",
+        access: "none",
+      },
+      body: "",
+    });
+    const result = await runJson(["--dir", dir]);
+    assert.equal(result.invalid_view_registrations, 1);
+    const invalid = result.invalid_view_registrations_rows as { rows: Record<string, unknown>[] };
+    assert.deepEqual(invalid.rows, [
+      { id: "views-registry/bad-pin", problem: "entry_version" },
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("status: --limit caps the View-surface row blocks (dangling_view_entries_rows + invalid_view_registrations_rows); counters keep the TOTAL; --limit 0 is unlimited", async () => {
   const { dir, cleanup } = await makeViewEntryFixtureBundle(); // 2 dangling rows + 2 invalid rows
   try {

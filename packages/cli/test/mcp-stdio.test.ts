@@ -70,6 +70,7 @@ test("built npm CLI serves the fixed MCP App contract over clean stdio", async (
     "list_views",
     "show_view",
     "authorize_durable_view",
+    "save_transient_view",
     "durable_view_bridge",
     "resume_durable_view",
     "poll_durable_view",
@@ -80,10 +81,15 @@ test("built npm CLI serves the fixed MCP App contract over clean stdio", async (
   ]);
   assert.deepEqual(
     tools.tools
-      .filter((tool) => tool.name !== "show_view" && tool.name !== "list_views")
+      .filter((tool) => tool._meta?.ui?.visibility?.includes("app"))
       .map((tool) => tool._meta?.ui?.visibility),
     Array.from({ length: 8 }, () => ["app"]),
-    "only catalog and invocation are visible to the model; lifecycle and bridge tools belong to the trusted App",
+    "lifecycle and bridge tools belong to the trusted App",
+  );
+  assert.deepEqual(
+    tools.tools.find((tool) => tool.name === "save_transient_view")?._meta?.ui?.visibility,
+    ["model"],
+    "the model can explicitly request persistence after the human approved the transient View",
   );
 
   const result = await client.callTool({

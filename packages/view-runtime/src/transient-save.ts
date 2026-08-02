@@ -1,9 +1,10 @@
 import {
   VersionConflict,
+  loadKinds,
+  mutateDocument,
   readBlob,
   readDocVersioned,
   writeBlob,
-  writeDocVersioned,
   type Bundle,
   type Frontmatter,
   type OkfDocument,
@@ -51,11 +52,17 @@ export interface TransientViewSaveSource {
 export class TransientViewSaveError extends Error {
   readonly code = "TRANSIENT_VIEW_SAVE_FAILED";
   readonly retainedEntry?: { key: string; version: Version };
+  readonly retainedRegistration?: { id: string; version: Version };
 
-  constructor(message: string, retainedEntry?: { key: string; version: Version }) {
+  constructor(
+    message: string,
+    retainedEntry?: { key: string; version: Version },
+    retainedRegistration?: { id: string; version: Version },
+  ) {
     super(message);
     this.name = "TransientViewSaveError";
     this.retainedEntry = retainedEntry;
+    this.retainedRegistration = retainedRegistration;
   }
 }
 
@@ -73,7 +80,7 @@ function transientViewEntry(viewId: string): string {
 }
 
 function withoutTimestamp(frontmatter: Frontmatter): Frontmatter {
-  const { timestamp: _timestamp, ...rest } = frontmatter;
+  const { timestamp: _timestamp, actor: _actor, ...rest } = frontmatter;
   return rest as Frontmatter;
 }
 
@@ -88,6 +95,18 @@ function sameSavedRegistration(existing: OkfDocument, desired: OkfDocument): boo
       (key, index) => key === desiredKeys[index] && existingFields[key] === desiredFields[key],
     ) &&
     existing.body === desired.body
+  );
+}
+
+function sameEntry(
+  existing: Awaited<ReturnType<typeof readBlob>>,
+  source: TransientViewSaveSource,
+): existing is NonNullable<Awaited<ReturnType<typeof readBlob>>> {
+  return Boolean(
+    existing &&
+      existing.version === source.contentVersion &&
+      existing.contentType === source.contentType &&
+      Buffer.from(existing.bytes).equals(Buffer.from(source.bytes)),
   );
 }
 
@@ -129,7 +148,9 @@ export async function persistTransientView(
       title,
       ...(description ? { description } : {}),
       entry,
+      entry_version: source.contentVersion,
       access: source.capability,
+      ...(options.actor ? { actor: options.actor } : {}),
       timestamp: options.now ?? new Date().toISOString(),
     },
     body: "",
@@ -139,11 +160,7 @@ export async function persistTransientView(
     readBlob(bundle, entry),
     readRegistrationIfPresent(bundle, viewId),
   ]);
-  if (
-    existingEntry !== null &&
-    (existingEntry.contentType !== source.contentType ||
-      !Buffer.from(existingEntry.bytes).equals(Buffer.from(source.bytes)))
-  ) {
+  if (existingEntry !== null && !sameEntry(existingEntry, source)) {
     throw new TransientViewSaveError(
       `Cannot save '${viewId}' because a different View entry already exists at '${entry}'.`,
     );
@@ -172,22 +189,25 @@ export async function persistTransientView(
       );
       entryCreated = true;
     } catch (error) {
-      if (!(error instanceof VersionConflict)) throw error;
       const winner = await readBlob(bundle, entry);
-      if (
-        winner === null ||
-        winner.contentType !== source.contentType ||
-        !Buffer.from(winner.bytes).equals(Buffer.from(source.bytes))
-      ) {
+      if (!sameEntry(winner, source)) {
+        if (!(error instanceof VersionConflict)) {
+          throw new TransientViewSaveError(
+            `The View entry write was not acknowledged and no exact retained entry could be verified: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
         throw new TransientViewSaveError(
           `Cannot save '${viewId}' because another writer created a different View entry at '${entry}'.`,
         );
       }
       entryVersion = winner.version;
+      // A backend may commit and then lose its acknowledgement. The exact retained bytes make a
+      // retry safe, but they do not prove this caller created them, so keep the receipt conservative.
+      entryCreated = false;
     }
   }
 
-  const retainedEntry = entryCreated ? { key: entry, version: entryVersion } : undefined;
+  const retainedEntry = { key: entry, version: entryVersion };
   let sourceIsCurrent = false;
   try {
     sourceIsCurrent = await revalidateSource();
@@ -203,7 +223,6 @@ export async function persistTransientView(
 
   try {
     let registryCreated = false;
-    let registryVersion: Version;
     const currentRegistry = await readRegistrationIfPresent(bundle, viewId);
     if (currentRegistry !== null) {
       if (!sameSavedRegistration(currentRegistry.doc, desiredRegistry)) {
@@ -212,26 +231,58 @@ export async function persistTransientView(
           retainedEntry,
         );
       }
-      registryVersion = currentRegistry.version;
     } else {
+      const registry = await loadKinds(bundle);
+      if (!(await revalidateSource().catch(() => false))) {
+        throw new TransientViewSaveError(
+          "The transient View changed or expired before registration creation; the exact entry was retained without a registration.",
+          retainedEntry,
+        );
+      }
       try {
-        const written = await writeDocVersioned(bundle, desiredRegistry, {
-          expectedVersion: null,
-          ...(options.actor ? { actor: options.actor } : {}),
+        const written = await mutateDocument({
+          bundle,
+          id: viewId,
+          mode: "create-only",
+          registry,
+          strict: true,
+          actor: options.actor,
+          persistActor: true,
+          buildCandidate: () => ({
+            frontmatter: desiredRegistry.frontmatter,
+            body: desiredRegistry.body,
+          }),
         });
-        registryVersion = written.version;
         registryCreated = true;
       } catch (error) {
-        if (!(error instanceof VersionConflict)) throw error;
         const winner = await readRegistrationIfPresent(bundle, viewId);
         if (winner === null || !sameSavedRegistration(winner.doc, desiredRegistry)) {
+          if (!(error instanceof VersionConflict)) throw error;
           throw new TransientViewSaveError(
             `Cannot save '${viewId}' because another writer created a different View registration.`,
             retainedEntry,
           );
         }
-        registryVersion = winner.version;
+        // As with the blob, an exact post-error read proves convergence but not authorship.
+        registryCreated = false;
       }
+    }
+
+    // The registration's entry_version is the durable cross-resource guard. Reconcile both
+    // resources and the process-local approval after creation so success has a truthful final
+    // receipt; later blob replacement makes the durable registration unlaunchable rather than
+    // silently changing the exact View identity.
+    const [finalEntry, finalRegistry, finalSourceIsCurrent] = await Promise.all([
+      readBlob(bundle, entry),
+      readRegistrationIfPresent(bundle, viewId),
+      revalidateSource().catch(() => false),
+    ]);
+    if (!sameEntry(finalEntry, source) || !finalRegistry || !sameSavedRegistration(finalRegistry.doc, desiredRegistry) || !finalSourceIsCurrent) {
+      throw new TransientViewSaveError(
+        "The exact View entry, registration, or transient approval changed before save completion; the retained durable state was not reported as a successful save.",
+        finalEntry ? { key: entry, version: finalEntry.version } : retainedEntry,
+        finalRegistry ? { id: viewId, version: finalRegistry.version } : undefined,
+      );
     }
 
     return {
@@ -240,19 +291,21 @@ export async function persistTransientView(
       title,
       access: source.capability,
       sourceVersion: source.contentVersion,
-      entryVersion,
-      registryVersion,
+      entryVersion: finalEntry.version,
+      registryVersion: finalRegistry.version,
       entryCreated,
       registryCreated,
     };
   } catch (error) {
     if (error instanceof TransientViewSaveError) throw error;
+    const currentRegistry = await readRegistrationIfPresent(bundle, viewId).catch(() => null);
     const prefix = entryCreated
       ? `The exact View entry was retained at '${entry}', but`
       : `The existing exact View entry at '${entry}' was left untouched, but`;
     throw new TransientViewSaveError(
       `${prefix} its registration could not be created: ${error instanceof Error ? error.message : String(error)}`,
       retainedEntry,
+      currentRegistry ? { id: viewId, version: currentRegistry.version } : undefined,
     );
   }
 }

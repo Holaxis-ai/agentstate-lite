@@ -182,6 +182,7 @@ async function viewLaunchIsCurrent(options: UiServerOptions, launch: PageLaunch)
     registration.entry === launch.entryKey &&
     resolveDeclaredAccess(head.frontmatter) === launch.capability &&
     blob &&
+    (!registration.entryVersion || registration.entryVersion === blob.version) &&
     admitted?.contentType === launch.contentType &&
     admitted !== null &&
     blobVersion(admitted.bytes) === launch.contentVersion,
@@ -344,6 +345,9 @@ async function handleMint(req: Request, runtime: UiRuntime, options: UiServerOpt
   }
   const blob = await readPageBlob(options, registration.entry);
   if (!blob) return jsonError(404, "NOT_FOUND", `no View bytes found for '${registration.entry}'`);
+  if (registration.entryVersion && registration.entryVersion !== blob.version) {
+    return jsonError(409, "VERSION_CONFLICT", `View entry '${registration.entry}' no longer matches its pinned entry_version`);
+  }
   let admitted: ReturnType<typeof admitActiveView>;
   try {
     admitted = admitActiveView(blob.bytes, blob.contentType);

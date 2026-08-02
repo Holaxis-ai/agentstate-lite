@@ -303,6 +303,7 @@ export async function launchIsCurrent(bundle: Bundle, launch: PageLaunch): Promi
     }
     const blob = await readBlob(bundle, launch.entryKey);
     if (blob === null) return false;
+    if (registration.entryVersion && registration.entryVersion !== blob.version) return false;
     const admitted = admitActiveView(blob.bytes, blob.contentType);
     return (
       admitted.contentType === launch.contentType &&
@@ -340,6 +341,9 @@ export async function mintActiveViewLaunch(
   }
   const blob = await readBlob(bundle, registration.entry);
   if (blob === null) throw new Error(`no View bytes found for '${registration.entry}'`);
+  if (registration.entryVersion && registration.entryVersion !== blob.version) {
+    throw new Error(`View entry '${registration.entry}' no longer matches its pinned entry_version`);
+  }
   const admitted = admitActiveView(blob.bytes, blob.contentType);
   const launch = launches.mint({
     sourceKind: "registered",
