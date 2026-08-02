@@ -186,7 +186,7 @@ test("isPageTypeName accepts exactly the one registered kind name — REJECTION 
   }
 });
 
-test("parseRegistration: THE one registration predicate — View triples parse in both LOCATIONS; a Page-typed doc is NOT a registration", () => {
+test("parseRegistration: THE one registration predicate — Views parse in both LOCATIONS; a Page-typed doc is NOT a registration", () => {
   assert.deepEqual(parseRegistration("views-registry/board", { type: "View", entry: "views/board.html" }), {
     id: "views-registry/board",
     type: "View",
@@ -202,6 +202,34 @@ test("parseRegistration: THE one registration predicate — View triples parse i
   // REJECTION PIN: the legacy kind NAME does not register anywhere — even with valid id + entry.
   assert.equal(parseRegistration("pages-registry/about", { type: "Page", entry: "pages/about.html" }), null);
   assert.equal(parseRegistration("views-registry/board", { type: "Page", entry: "views/board.html" }), null);
+});
+
+test("parseRegistration: an optional entry_version is a strict content-addressed launch pin", () => {
+  const entryVersion = `sha256:${"a".repeat(64)}`;
+  assert.deepEqual(
+    parseRegistration("views-registry/pinned", {
+      type: "View",
+      entry: "views/pinned.html",
+      entry_version: entryVersion,
+    }),
+    {
+      id: "views-registry/pinned",
+      type: "View",
+      entry: "views/pinned.html",
+      entryVersion,
+    },
+  );
+  for (const invalid of ["", "sha256:nope", `sha256:${"A".repeat(64)}`, 42, null]) {
+    assert.equal(
+      parseRegistration("views-registry/pinned", {
+        type: "View",
+        entry: "views/pinned.html",
+        entry_version: invalid,
+      }),
+      null,
+      JSON.stringify(invalid),
+    );
+  }
 });
 
 test("parseRegistration: rejects an invalid registry id even when the entry is valid (the mint/serve drift hole)", () => {

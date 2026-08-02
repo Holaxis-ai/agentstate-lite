@@ -30,6 +30,18 @@ import {
   type ViewAuthorizationSubject,
 } from "./authorization.js";
 import type { BridgeLaunch, BridgeLaunchAuthority } from "./bridge.js";
+import {
+  persistTransientView,
+  TransientViewSaveError,
+  type SaveTransientViewInput,
+  type SaveTransientViewResult,
+} from "./transient-save.js";
+
+export {
+  TransientViewSaveError,
+  type SaveTransientViewInput,
+  type SaveTransientViewResult,
+} from "./transient-save.js";
 
 export {
   listViewCatalog,
@@ -291,6 +303,7 @@ export async function launchIsCurrent(bundle: Bundle, launch: PageLaunch): Promi
     }
     const blob = await readBlob(bundle, launch.entryKey);
     if (blob === null) return false;
+    if (registration.entryVersion && registration.entryVersion !== blob.version) return false;
     const admitted = admitActiveView(blob.bytes, blob.contentType);
     return (
       admitted.contentType === launch.contentType &&
@@ -328,6 +341,9 @@ export async function mintActiveViewLaunch(
   }
   const blob = await readBlob(bundle, registration.entry);
   if (blob === null) throw new Error(`no View bytes found for '${registration.entry}'`);
+  if (registration.entryVersion && registration.entryVersion !== blob.version) {
+    throw new Error(`View entry '${registration.entry}' no longer matches its pinned entry_version`);
+  }
   const admitted = admitActiveView(blob.bytes, blob.contentType);
   const launch = launches.mint({
     sourceKind: "registered",
@@ -370,6 +386,80 @@ export function mintTransientViewLaunch(
     bytes: admitted.bytes,
     capability: input.capability ?? "bundle-read",
   }) as TransientPageLaunch;
+}
+
+async function requireApprovedTransientLaunch(
+  bundle: Bundle,
+  launches: PageLaunchRegistry,
+  authorizations: ViewAuthorizationStore,
+  launchId: string,
+): Promise<TransientPageLaunch> {
+  const launch = launches.resolveLaunch(launchId);
+  if (
+    !launch ||
+    launch.sourceKind !== "transient" ||
+    !(await launchIsCurrent(bundle, launch))
+  ) {
+    if (launch) launches.revoke(launch.launchId);
+    throw new TransientViewSaveError(
+      "The transient View is unknown, expired, or no longer the exact launched content.",
+    );
+  }
+  if (!(await authorizations.isAuthorized(pageLaunchAuthorizationSubject(launch)))) {
+    throw new TransientViewSaveError(
+      "The transient View must be locally approved before its exact bytes can be saved.",
+    );
+  }
+  return launch;
+}
+
+/**
+ * Persist one approved transient launch unchanged as a durable registered View.
+ *
+ * The caller supplies durable identity metadata only. HTML is resolved exclusively from the
+ * process-local launch registry, revalidated before each write boundary, and stored with
+ * expect-absent CAS. Exact existing content makes the operation idempotent; different content at
+ * either destination fails closed. The blob intentionally precedes the registry document so a
+ * partial failure can leave only an inert entry, never a discoverable registration pointing at
+ * absent bytes.
+ */
+export async function saveTransientView(
+  bundle: Bundle,
+  launches: PageLaunchRegistry,
+  authorizations: ViewAuthorizationStore,
+  input: SaveTransientViewInput,
+  options: { actor?: string; now?: string } = {},
+): Promise<SaveTransientViewResult> {
+  const launchId = input.launchId.trim();
+  if (!launchId || launchId.length > 128) {
+    throw new TransientViewSaveError("launchId must be a non-empty string of at most 128 characters");
+  }
+  const launch = await requireApprovedTransientLaunch(
+    bundle,
+    launches,
+    authorizations,
+    launchId,
+  );
+  return persistTransientView(
+    bundle,
+    launch,
+    input,
+    async () => {
+      try {
+        return (
+          (await requireApprovedTransientLaunch(
+            bundle,
+            launches,
+            authorizations,
+            launchId,
+          )) === launch
+        );
+      } catch {
+        return false;
+      }
+    },
+    options,
+  );
 }
 
 /** Server-side launch authority shared by the web bridge endpoint and MCP adapter. */

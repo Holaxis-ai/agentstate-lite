@@ -10,6 +10,7 @@ fields:
     - access
   optional:
     - description
+    - entry_version
     - presentation
   values:
     access:
@@ -41,6 +42,8 @@ repo's `migrate-legacy-view-names` script renames leftover legacy names in place
 
 - `title` (required) — the launcher card's heading.
 - `entry` (required) — the HTML blob key, e.g. `views/roadmap.html`.
+- `entry_version` (optional) — an exact content-version pin. When present, every host refuses to
+  launch the View if the current entry bytes no longer match it. Ordinary mutable Views may omit it.
 - `description` (optional) — one line shown on the launcher card.
 - `presentation` (optional) — an advisory host-layout hint: `workspace | inline | adaptive`.
   It never controls whether a host may run the View and never grants authority. A host may ignore

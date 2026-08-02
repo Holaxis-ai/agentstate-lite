@@ -906,7 +906,7 @@ test("portable Review Workflow: clean-room install carries Kinds, a View, and it
     assert.ok(pageKind);
     assert.equal(pageKind!.path, "views-registry/");
     assert.deepEqual(pageKind!.fields.required, ["title", "entry", "access"]);
-    assert.deepEqual(pageKind!.fields.optional, ["description", "presentation"], "the shipped convention no longer declares legacy `bridge`");
+    assert.deepEqual(pageKind!.fields.optional, ["description", "entry_version", "presentation"], "the shipped convention no longer declares legacy `bridge`");
     assert.deepEqual(pageKind!.fields.values.access, ["none", "bundle-read", "bundle-propose"]);
     assert.deepEqual(pageKind!.fields.values.presentation, ["workspace", "inline", "adaptive"]);
     assert.equal(pageKind!.fields.values.bridge, undefined);

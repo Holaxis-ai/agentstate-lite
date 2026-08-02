@@ -137,7 +137,12 @@ export function isAnyEntryKey(entry: unknown): entry is string {
   return isPageEntryKey(entry) || isViewEntryKey(entry);
 }
 
-/** A COMPLETE, valid View registration — the narrow triple every consumer needs. */
+/** True only for the content-addressed version tokens allowed to pin executable View bytes. */
+export function isViewEntryVersion(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value);
+}
+
+/** A complete, valid View registration — one identity, entry, and optional exact-byte pin. */
 export interface PageRegistration {
   /** The registry doc's concept id (under an accepted registry prefix). */
   id: string;
@@ -145,13 +150,16 @@ export interface PageRegistration {
   type: PageTypeName;
   /** The declared executable entry blob key (under an accepted entry prefix). */
   entry: string;
+  /** Optional exact blob-version pin. When present, every host must refuse other bytes. */
+  entryVersion?: string;
 }
 
 /**
  * THE one registration predicate: a doc is a usable View registration iff its id satisfies
  * an accepted registry-id grammar ({@link isAnyRegistryId}), its `type` is exactly an accepted
  * kind name ({@link isPageTypeName}), AND its `entry` satisfies an accepted entry-key grammar
- * ({@link isAnyEntryKey}). Returns the validated triple, or `null`.
+ * ({@link isAnyEntryKey}). An explicitly declared `entry_version` must be a canonical
+ * content-addressed token. Returns the validated registration, or `null`.
  *
  * This is a SECURITY boundary shared by every surface that decides what counts as a registered
  * page — the launcher/`open-page` parse (ui `parseRegisteredPage`), the `ui` command's
@@ -161,5 +169,19 @@ export interface PageRegistration {
  */
 export function parseRegistration(id: unknown, frontmatter: Record<string, unknown>): PageRegistration | null {
   if (!isAnyRegistryId(id) || !isPageTypeName(frontmatter.type) || !isAnyEntryKey(frontmatter.entry)) return null;
-  return { id, type: frontmatter.type, entry: frontmatter.entry };
+  const rawEntryVersion = Object.hasOwn(frontmatter, "entry_version")
+    ? frontmatter.entry_version
+    : undefined;
+  if (
+    rawEntryVersion !== undefined &&
+    !isViewEntryVersion(rawEntryVersion)
+  ) {
+    return null;
+  }
+  return {
+    id,
+    type: frontmatter.type,
+    entry: frontmatter.entry,
+    ...(rawEntryVersion ? { entryVersion: rawEntryVersion } : {}),
+  };
 }

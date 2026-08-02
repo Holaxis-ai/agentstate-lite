@@ -78,6 +78,53 @@ test("unknown presentation is advisory and does not invalidate a View", async ()
   assert.equal(catalog.entries[0].presentation, undefined);
 });
 
+test("catalog admission keeps shared-entry registrations distinct by optional version pin", async () => {
+  const backend = new CountingMemoryBackend();
+  const bundle = { root: "mem://pinned-view-catalog", backend };
+  const bytes = new TextEncoder().encode("<!doctype html><title>Pinned</title>");
+  const actualVersion = await writeBlob(bundle, "views/shared-pinned.html", bytes, "text/html; charset=utf-8");
+  await writeDoc(bundle, {
+    id: "views-registry/current",
+    frontmatter: {
+      type: "View",
+      title: "Current",
+      entry: "views/shared-pinned.html",
+      entry_version: actualVersion,
+      access: "bundle-read",
+    },
+    body: "",
+  });
+  await writeDoc(bundle, {
+    id: "views-registry/stale",
+    frontmatter: {
+      type: "View",
+      title: "Stale",
+      entry: "views/shared-pinned.html",
+      entry_version: `sha256:${"0".repeat(64)}`,
+      access: "bundle-read",
+    },
+    body: "",
+  });
+  await writeDoc(bundle, {
+    id: "views-registry/mutable",
+    frontmatter: {
+      type: "View",
+      title: "Mutable",
+      entry: "views/shared-pinned.html",
+      access: "bundle-read",
+    },
+    body: "",
+  });
+
+  const catalog = await listViewCatalog(bundle);
+  assert.deepEqual(catalog.entries.map((entry) => entry.id), [
+    "views-registry/current",
+    "views-registry/mutable",
+  ]);
+  assert.equal(catalog.unavailableEntries, 1);
+  assert.equal(backend.blobReads, 3, "entry+pin is the cache identity; different pin policies do not alias");
+});
+
 test("agent-facing View catalog pages bound admission work and advance past broken entries", async () => {
   const backend = new CountingMemoryBackend();
   const bundle = { root: "mem://bounded-view-catalog", backend };

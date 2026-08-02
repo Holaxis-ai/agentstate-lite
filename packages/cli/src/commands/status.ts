@@ -35,6 +35,7 @@ import {
   isAnyEntryKey,
   isAnyRegistryId,
   isPageTypeName,
+  isViewEntryVersion,
   parseRegistration,
   VIEW_ENTRY_PREFIX,
 } from "@agentstate-lite/core/page";
@@ -462,6 +463,12 @@ export async function status(argv: string[], deps: Partial<StatusCliDeps> = {}):
     const legs: string[] = [];
     if (!isAnyRegistryId(doc.id)) legs.push("id");
     if (!isAnyEntryKey(doc.frontmatter.entry)) legs.push("entry");
+    if (
+      Object.hasOwn(doc.frontmatter, "entry_version") &&
+      !isViewEntryVersion(doc.frontmatter.entry_version)
+    ) {
+      legs.push("entry_version");
+    }
     invalidRegistrationRows.push({ id: doc.id, problem: legs.join("+") });
   }
 
