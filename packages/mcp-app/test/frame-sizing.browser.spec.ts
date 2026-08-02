@@ -409,6 +409,32 @@ test("fullscreen visibility transitions rotate a fresh durable launch in both di
     .toContain("launch-resumed-2");
 });
 
+test("authorization dialog reports registered and transient View provenance honestly", async ({
+  page,
+}) => {
+  const outer = await lifecycleHost(page);
+  const description = outer.locator("#authorization-description");
+
+  await expect(description).toContainText(
+    "This registered View comes from the bundle",
+  );
+  await expect(description).not.toContainText("process-local");
+  await expect(outer.locator("#authorization-view")).toHaveText(
+    "pages-registry/roadmap",
+  );
+
+  await page.evaluate(() => window.__showTransientResult());
+  await expect(description).toContainText(
+    "agent-authored HTML created for this MCP session",
+  );
+  await expect(description).toContainText(
+    "process-local and is not a registered bundle View",
+  );
+  await expect(outer.locator("#authorization-view")).toHaveText(
+    "Transient process-local View",
+  );
+});
+
 test("replayed results cannot reactivate a quarantined or retired durable launch", async ({
   page,
 }) => {
@@ -553,5 +579,6 @@ declare global {
     __releaseDisplayRequest: () => void;
     __releaseResumeRequest: () => void;
     __startTeardown: () => void;
+    __showTransientResult: () => Promise<void>;
   }
 }

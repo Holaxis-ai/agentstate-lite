@@ -24,6 +24,24 @@ interface DurablePayload {
   };
 }
 
+interface TransientPayload {
+  schemaVersion: "agentstate.transient-view-launch.v1";
+  title: string;
+  source: {
+    kind: "transient";
+    html: string;
+    contentType: string;
+    contentVersion: string;
+  };
+  launch: {
+    launchId: string;
+    authorization: {
+      required: boolean;
+      authorized: boolean;
+    };
+  };
+}
+
 const appFrame = document.querySelector<HTMLIFrameElement>("#app");
 if (!appFrame?.contentWindow) throw new Error("Missing MCP App frame.");
 
@@ -46,6 +64,23 @@ function payload(launchId: string, authorized: boolean): DurablePayload {
     launch: {
       launchId,
       authorization: { required: true, authorized },
+    },
+  };
+}
+
+function transientPayload(launchId: string): TransientPayload {
+  return {
+    schemaVersion: "agentstate.transient-view-launch.v1",
+    title: "Agent-authored task summary",
+    source: {
+      kind: "transient",
+      html: source.html,
+      contentType: source.contentType,
+      contentVersion: `sha256:${"2".repeat(64)}`,
+    },
+    launch: {
+      launchId,
+      authorization: { required: true, authorized: false },
     },
   };
 }
@@ -99,6 +134,12 @@ window.__replayOriginalResult = async () => {
   await bridge.sendToolResult({
     content: [{ type: "text", text: "Roadmap replay" }],
     structuredContent: payload("launch-inline", true),
+  });
+};
+window.__showTransientResult = async () => {
+  await bridge.sendToolResult({
+    content: [{ type: "text", text: "Transient View ready" }],
+    structuredContent: transientPayload("launch-transient"),
   });
 };
 window.__startTeardown = () => {
@@ -223,5 +264,6 @@ declare global {
     __releaseDisplayRequest: () => void;
     __releaseResumeRequest: () => void;
     __startTeardown: () => void;
+    __showTransientResult: () => Promise<void>;
   }
 }
