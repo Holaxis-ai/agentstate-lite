@@ -5,16 +5,15 @@ status: in_progress
 priority: '1'
 assignee: openai/codex
 description: >-
-  PR #193 at exact SHA 35dda0f changes the unsafe registered-store alias to a
-  fresh process-local SessionViewAuthorizationStore default. Independent
-  exact-SHA review APPROVED with no findings and proved the regression red on
-  parent 02847ec and green on the PR. Registered launches, deliberate explicit
-  same-store injection, MCP distinct-store injection, and the registered-only
-  web host remain unchanged; no production caller relied on the old default.
-  Root build/typecheck and view-runtime 24/24 pass. Adversarial
-  authorization-boundary QA is running; GitHub Node 20 and 26 are green while
-  Node 22 finishes.
+  PR #193 at exact SHA 35dda0f replaces the unsafe registered-store alias with a
+  fresh process-local SessionViewAuthorizationStore default. Independent review
+  APPROVED after proving the regression red on parent and green on the PR.
+  Adversarial QA PASSED: omitted defaults never consulted persistent stores;
+  subject discriminators, changed bytes/capability/bundle, separate authorities,
+  separate MCP sessions, and disk-backed stores all failed closed; deliberate
+  explicit same-session injection still works. Root build/typecheck,
+  view-runtime 24/24, and GitHub Node 20/22/26 gates pass. Ready to merge.
 actor: openai/codex
-timestamp: '2026-08-02T20:32:23.545Z'
+timestamp: '2026-08-02T20:37:05.580Z'
 ---
 
