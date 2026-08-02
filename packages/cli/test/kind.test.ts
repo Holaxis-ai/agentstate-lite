@@ -246,12 +246,14 @@ test("kind field remove: an absent field does not normalize an existing empty de
   }
 });
 
-test("kind field guards: unknown kind, reserved field name, and a bad action are all USAGE (exit 2)", async () => {
+test("kind field guards: unknown kind, every body control name, and a bad action are all USAGE (exit 2)", async () => {
   const { dir, cleanup } = await seeded();
   try {
     const cases: Array<[string[], RegExp]> = [
       [["field", "Bogus", "add", "x", "--dir", dir], /unknown kind 'Bogus'/],
-      [["field", "Context Note", "add", "type", "--dir", dir], /reserved name/],
+      [["field", "Context Note", "add", "type", "--dir", dir], /reserved by the CLI/],
+      [["field", "Context Note", "add", "body", "--dir", dir], /reserved by the CLI/],
+      [["field", "Context Note", "add", "body-file", "--dir", dir], /reserved by the CLI/],
       [["field", "Context Note", "frobnicate", "x", "--dir", dir], /must be 'add' or 'remove'/],
     ];
     for (const [argv, re] of cases) {
@@ -265,6 +267,29 @@ test("kind field guards: unknown kind, reserved field name, and a bad action are
         },
       );
     }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("kind field remove remains a migration path for body controls declared before reservation", async () => {
+  const { dir, cleanup } = await seeded();
+  try {
+    const bundle: Bundle = { root: dir };
+    const convention = await readDoc(bundle, "conventions/context-note");
+    const fields = convention.frontmatter.fields as Record<string, unknown>;
+    fields.optional = [...(fields.optional as string[]), "body", "body-file"];
+    await writeDoc(bundle, convention);
+
+    for (const field of ["body", "body-file"]) {
+      const result = await runKind(["field", "Context Note", "remove", field, "--dir", dir]);
+      assert.equal(result.changed, true);
+    }
+
+    const updated = await readDoc(bundle, "conventions/context-note");
+    const optional = ((updated.frontmatter.fields as Record<string, unknown>).optional ?? []) as string[];
+    assert.equal(optional.includes("body"), false);
+    assert.equal(optional.includes("body-file"), false);
   } finally {
     await cleanup();
   }
