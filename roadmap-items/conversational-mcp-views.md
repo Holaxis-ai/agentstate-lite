@@ -13,7 +13,7 @@ sequence: >-
   save → bundle-propose parity → delete generated presentation contract →
   navigation parity
 actor: openai/codex
-timestamp: '2026-08-02T20:23:39.733Z'
+timestamp: '2026-08-02T20:42:40.702Z'
 ---
 # Direction
 
@@ -142,3 +142,5 @@ Current work:
 [contains](../tasks/transient-view-approval-copy.md)
 
 [contains](../tasks/transient-authorization-store-isolation.md)
+
+[contains](../tasks/mcp-active-view-bundle-propose.md)
