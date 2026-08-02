@@ -15,7 +15,8 @@ implementations.
 
 Use the bridge for bundle data and `render-document` for canonical Markdown presentation. Style
 the returned inert fragment inside the View; do not ship another Markdown parser. The sections
-below are the exact protocol contract and copy-paste client.
+below are the exact protocol contract and copy-paste client. This contract travels with portable
+View-bearing recipes, so authoring does not depend on an agent-harness skill.
 
 Legacy `Page` and `bridge` are retired authoring names. Use `type: View` and `access`; `aslite status`
 reports legacy content that needs migration. Legacy wire names such as `open-page` remain stable.
