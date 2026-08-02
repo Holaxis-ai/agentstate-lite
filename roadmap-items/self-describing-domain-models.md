@@ -5,8 +5,8 @@ status: active
 description: >-
   Make Kinds communicate the meaning of concepts, fields, relationships, and
   lifecycle values through the one registry and at the point of agent action.
-actor: mike/codex
-timestamp: '2026-07-18T16:58:08.402Z'
+actor: openai/codex
+timestamp: '2026-08-02T20:35:02.915Z'
 ---
 # Vision
 
@@ -69,3 +69,5 @@ guidance or a parallel schema. The same metadata reaches Pages through the exist
 [contains](../tasks/kind-required-heading-help.md)
 
 [contains](../tasks/kinds-survivor-hardening.md)
+
+[contains](../tasks/new-inline-body-one-command.md)
