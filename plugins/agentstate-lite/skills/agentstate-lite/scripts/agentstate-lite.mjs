@@ -44,7 +44,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var define_ASLITE_BUILD_IDENTITY_default;
 var init_define_ASLITE_BUILD_IDENTITY = __esm({
   "<define:__ASLITE_BUILD_IDENTITY__>"() {
-    define_ASLITE_BUILD_IDENTITY_default = { schema: "aslite.build-identity.v1", package: { name: "@holaxis/aslite", version: "0.1.0-pre.2" }, source: { commit: "ee307c7a56871ad4289eeb74c6d8511388d85634", dirty: false }, artifact: { channel: "marketplace-legacy" }, compatibility_contracts: { skill: 1, hook: 1, mcp: 1 } };
+    define_ASLITE_BUILD_IDENTITY_default = { schema: "aslite.build-identity.v1", package: { name: "@holaxis/aslite", version: "0.1.0-pre.2" }, source: { commit: "c0b0eb9beeaaec668889de1c56ff64c716528ebc", dirty: false }, artifact: { channel: "marketplace-legacy" }, compatibility_contracts: { skill: 1, hook: 1, mcp: 1 } };
   }
 });
 
@@ -31828,12 +31828,26 @@ async function canonicalBundleRoot(root, notFoundMessage, help) {
 async function resolveLocalBundleTarget(dirFlag, startDir = process.cwd()) {
   if (dirFlag !== void 0) {
     const requested = path9.resolve(startDir, dirFlag);
+    const conventional = path9.join(requested, CONVENTIONAL_BUNDLE_DIR_NAME);
+    let root = null;
+    if (await exists(path9.join(requested, "index.md"))) root = requested;
+    else if (await exists(path9.join(conventional, "index.md"))) root = conventional;
+    if (root === null) {
+      const enclosing = await findBundleRoot(requested);
+      throw new CliError(
+        "NOT_FOUND",
+        `no OKF bundle at ${requested} (no index.md or ${CONVENTIONAL_BUNDLE_DIR_NAME}/index.md)`,
+        {
+          help: enclosing ? `${cliInvocation()} <command> --dir ${enclosing}` : `${cliInvocation()} init --dir ${dirFlag}`
+        }
+      );
+    }
     const canonicalRoot2 = await canonicalBundleRoot(
-      requested,
-      `no OKF bundle at ${requested} (no index.md)`,
-      `${cliInvocation()} init --dir ${dirFlag}`
+      root,
+      `no OKF bundle at ${root} (no index.md)`,
+      `${cliInvocation()} init --dir ${root}`
     );
-    return { root: requested, canonicalRoot: canonicalRoot2, selectedBy: "explicit-dir" };
+    return { root, canonicalRoot: canonicalRoot2, selectedBy: "explicit-dir" };
   }
   const binding = await resolveProjectBinding(startDir);
   if (binding) {
@@ -55205,7 +55219,7 @@ Commands:
   locate                  Resolve the exact local bundle this invocation would use
 
 Options:
-  --dir <path>            Resolve this literal bundle root instead of project context
+  --dir <path>            Resolve this bundle root or its direct .agentstate-lite child
   --json                  Emit compact JSON instead of TOON
   -h, --help              Show this help
 
@@ -55274,7 +55288,7 @@ Commands:
   resolve   Revalidate and return exactly one registered workspace
 
 Options:
-  --dir <path>   add: literal bundle root; otherwise normal project-local discovery applies
+  --dir <path>   add: bundle root or project directory with a direct .agentstate-lite bundle
   --field path   resolve: print only the canonical path plus a newline
   --json         Emit compact JSON instead of TOON
   -h, --help     Show this help
