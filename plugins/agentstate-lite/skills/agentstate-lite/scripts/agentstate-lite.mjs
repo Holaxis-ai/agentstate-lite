@@ -44,7 +44,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var define_ASLITE_BUILD_IDENTITY_default;
 var init_define_ASLITE_BUILD_IDENTITY = __esm({
   "<define:__ASLITE_BUILD_IDENTITY__>"() {
-    define_ASLITE_BUILD_IDENTITY_default = { schema: "aslite.build-identity.v1", package: { name: "@holaxis/aslite", version: "0.1.0-pre.2" }, source: { commit: "101caf046bad622211b2cdbb0a60851f743f90ea", dirty: false }, artifact: { channel: "marketplace-legacy" }, compatibility_contracts: { skill: 1, hook: 1, mcp: 1 } };
+    define_ASLITE_BUILD_IDENTITY_default = { schema: "aslite.build-identity.v1", package: { name: "@holaxis/aslite", version: "0.1.0-pre.2" }, source: { commit: "ee307c7a56871ad4289eeb74c6d8511388d85634", dirty: false }, artifact: { channel: "marketplace-legacy" }, compatibility_contracts: { skill: 1, hook: 1, mcp: 1 } };
   }
 });
 
@@ -38443,6 +38443,15 @@ function changeMessage(changes, removed) {
 }
 
 // ../view-runtime/src/index.ts
+var ViewNotFoundError = class extends Error {
+  code = "VIEW_NOT_FOUND";
+  viewId;
+  constructor(viewId) {
+    super(`No registered View with ID '${viewId}'.`);
+    this.name = "ViewNotFoundError";
+    this.viewId = viewId;
+  }
+};
 function pageLaunchAuthorizationSubject(launch) {
   return {
     registryId: launch.registryId,
@@ -38598,7 +38607,15 @@ async function launchIsCurrent(bundle, launch) {
   }
 }
 async function mintActiveViewLaunch(bundle, launches, registryId) {
-  const registryRead = await readDocVersioned(bundle, registryId);
+  let registryRead;
+  try {
+    registryRead = await readDocVersioned(bundle, registryId);
+  } catch (error51) {
+    if (error51?.code === "ENOENT") {
+      throw new ViewNotFoundError(registryId);
+    }
+    throw error51;
+  }
   const registration = parseRegistration(registryRead.doc.id, registryRead.doc.frontmatter);
   if (!registration) {
     throw new Error(
@@ -51038,12 +51055,13 @@ ${formatClaimMarker(claimId)}` }
           structuredContent: { ...payload }
         };
       } catch (error51) {
+        const detail = error51 instanceof ViewNotFoundError ? `${error51.message} Call list_views to discover the available View IDs.` : error51 instanceof Error ? error51.message : String(error51);
         return {
           isError: true,
           content: [
             {
               type: "text",
-              text: `Could not render the AgentState View: ${error51 instanceof Error ? error51.message : String(error51)}`
+              text: `Could not render the AgentState View: ${detail}`
             }
           ]
         };
