@@ -75,8 +75,8 @@ Every example below assumes the `aslite` bin is on PATH. If it is not:
 
 ### Kinds
 
-- `aslite new "<Kind>" <id> --<field> <value> [...] [--body-file <path>] [--link "<type>=<target-id>" ...] [--no-prefix] [--actor <n>] [--remote <url>]`
-  — Create a new instance of a bundle-declared kind — initial Markdown may come from --body-file (otherwise declared sections are scaffolded); validates strictly, and repeatable --link wires typed cross-links in the same step
+- `aslite new "<Kind>" <id> --<field> <value> [...] [--body <markdown> | --body-file <path>] [--link "<type>=<target-id>" ...] [--no-prefix] [--actor <n>] [--remote <url>]`
+  — Create a new instance of a bundle-declared kind — initial Markdown may come from --body or --body-file (otherwise declared sections are scaffolded); validates strictly, and repeatable --link wires typed cross-links in the same step
 - `aslite kinds [--remote <url>]`
   — List the kind conventions this bundle declares (purpose, described fields, exact required body headings, typed-link vocabulary, horizon)
 - `aslite kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]`
@@ -210,9 +210,10 @@ aslite init --dir .agentstate-lite   # GREENFIELD — never on a project that al
 aslite sync --establish
 
 # Everything after runs bare, from anywhere in the project tree
-# Create a context note (an OKF concept) for the next session
-aslite new "Context Note" cycle-1 --title "cycle-1" --actor <your-name>
-aslite doc update context-notes/cycle-1 --body "What this session did and what's next" --actor <your-name>
+# Create a complete context note (an OKF concept) for the next session in one command
+aslite new "Context Note" cycle-1 --title "cycle-1" --body '# Summary
+
+What this session did and what comes next' --actor <your-name>
 
 # Read it back
 aslite doc read context-notes/cycle-1

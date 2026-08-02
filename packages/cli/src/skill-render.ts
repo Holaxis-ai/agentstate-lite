@@ -310,9 +310,10 @@ function renderTypicalFlow(prefix: string): string[] {
   lines.push(`${prefix} sync --establish`);
   lines.push("");
   lines.push(`# Everything after runs bare, from anywhere in the project tree`);
-  lines.push(`# Create a context note (an OKF concept) for the next session`);
-  lines.push(`${prefix} new "Context Note" cycle-1 --title "cycle-1" --actor <your-name>`);
-  lines.push(`${prefix} doc update context-notes/cycle-1 --body "What this session did and what's next" --actor <your-name>`);
+  lines.push(`# Create a complete context note (an OKF concept) for the next session in one command`);
+  lines.push(`${prefix} new "Context Note" cycle-1 --title "cycle-1" --body '# Summary`);
+  lines.push("");
+  lines.push(`What this session did and what comes next' --actor <your-name>`);
   lines.push("");
   lines.push(`# Read it back`);
   lines.push(`${prefix} doc read context-notes/cycle-1`);

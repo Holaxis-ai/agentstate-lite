@@ -213,6 +213,16 @@ test("the View authoring reference documents hello grants for both read and prop
 const rendered = renderSkill();
 const renderedNpm = renderNpm();
 
+test("the typical flow creates a complete Context Note in one command", () => {
+  for (const text of [renderedNpm, rendered]) {
+    assert.match(
+      text,
+      /new "Context Note" cycle-1 --title "cycle-1" --body '# Summary\n\nWhat this session did and what comes next' --actor <your-name>/,
+    );
+    assert.doesNotMatch(text, /doc update context-notes\/cycle-1/);
+  }
+});
+
 test("npm and plugin skill channels share the authenticated-remote access contract", () => {
   for (const text of [renderedNpm, rendered]) {
     assert.match(text, /## Remote bundle access \(--remote, serve\)/);

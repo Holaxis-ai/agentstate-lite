@@ -71,7 +71,7 @@ import { addLink } from "./link.js";
 export const NEW_USAGE = `agentstate-lite new — create a new instance of a bundle-declared kind
 
 Usage:
-  agentstate-lite new "<Kind>" <id> --<field> <value> [--<field> <value> ...] [--body-file <path>] [options]
+  agentstate-lite new "<Kind>" <id> --<field> <value> [--<field> <value> ...] [--body <markdown> | --body-file <path>] [options]
 
 The kind must be declared by a kind convention doc under conventions/ — run 'agentstate-lite kinds'
 to list what a bundle declares. Supply each of the kind's required fields via --<field> <value>
@@ -95,6 +95,9 @@ Options:
                          history by a persisting backend. Precedence: --actor >
                          AGENTSTATE_LITE_ACTOR > absent. A present-but-blank flag or environment
                          value is a USAGE error (exit 2).
+  --body <markdown>     Use inline Markdown as the complete initial body. Mutually exclusive with
+                       --body-file. The supplied body is validated strictly against the kind's
+                       declared sections before anything is written.
   --body-file <path>   Read the initial Markdown body from a local file. When omitted, scaffold
                        the kind's declared sections as empty '# Heading' blocks. The supplied body
                        is validated strictly against those declared sections before anything is
@@ -145,6 +148,7 @@ const NEW_CONTROL_OPTIONS = {
   remote: { type: "string" },
   actor: { type: "string" },
   link: { type: "string", multiple: true },
+  body: { type: "string" },
   "body-file": { type: "string" },
   "no-prefix": { type: "boolean" },
   json: { type: "boolean" },
@@ -324,6 +328,9 @@ function renderKindHelp(kind: KindConvention, registry: KindRegistry, inv: strin
     `To ADD a field to this kind, edit its convention doc (${inv} kinds names it; then pull → edit fields.optional → promote).\n\n` +
     `Options:\n` +
     `  --actor <name>   Attribute the write (overrides AGENTSTATE_LITE_ACTOR)\n` +
+    `  --body <markdown>\n` +
+    `                   Use inline Markdown as the complete initial body; mutually exclusive with\n` +
+    `                   --body-file\n` +
     `  --body-file <path>\n` +
     `                   Read the complete initial Markdown body from a local file; when omitted,\n` +
     `                   scaffold the declared body sections\n` +
@@ -441,16 +448,6 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
       if ((err as { code?: unknown } | null)?.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION") {
         const raw = /'([^']+)'/.exec((err as Error).message)?.[1] ?? "";
         const field = raw.replace(/^--?/, ""); // node quotes the raw '--name'; strip the dashes
-        if (field === "body") {
-          // --body is a `doc write` flag, not a `new` one. `new` accepts the byte channel instead,
-          // so substantial content stays in a local file rather than a shell argument.
-          throw new CliError(
-            "USAGE",
-            `'new' does not take --body — pass substantial initial Markdown with --body-file <path>, or omit it ` +
-              `to scaffold the kind's declared sections as empty '# Heading' blocks.`,
-            { help: `${cliInvocation()} new "${kindName}" <id>` },
-          );
-        }
         throw new CliError(
           "USAGE",
           `unknown field(s) for kind '${kind.governs}': ${field}` +
@@ -502,11 +499,18 @@ export async function newCommand(argv: string[], deps: Partial<NewCliDeps> = {})
   const linkFlags = (values.link as string[] | undefined) ?? [];
   const parsedLinks = linkFlags.map(parseLinkFlagValue);
 
-  // Read the byte channel ONCE and before any mutation. A missing/unreadable file is a caller input
-  // problem and must leave no partially-created document. Empty file content is still deliberate
-  // input; strict kind validation below decides whether it satisfies the declared sections.
+  // Resolve the body ONCE and before any mutation. Missing/unreadable or ambiguous input is a
+  // caller problem and must leave no partially-created document. An explicit empty inline body or
+  // empty file is still deliberate input; strict kind validation decides whether it satisfies the
+  // declared sections.
+  const inlineBody = values.body as string | undefined;
   const bodyFile = values["body-file"] as string | undefined;
-  let suppliedBody: string | undefined;
+  if (inlineBody !== undefined && bodyFile !== undefined) {
+    throw new CliError("USAGE", "--body and --body-file are mutually exclusive", {
+      help: `${cliInvocation()} new "${kindName}" <id> [--body <markdown> | --body-file <path>]`,
+    });
+  }
+  let suppliedBody = inlineBody;
   if (bodyFile !== undefined) {
     if (bodyFile.trim() === "") {
       throw new CliError("USAGE", "--body-file requires a non-empty path", {
