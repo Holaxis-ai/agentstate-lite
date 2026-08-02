@@ -4,14 +4,14 @@ title: Shared bounded document rendering for portable Views
 status: in_progress
 priority: '2'
 description: >-
-  IN PROGRESS — Unit 1 is PR #188 at 98f8e72: one inert static output profile in
-  the shared Markdown renderer, generated MCP presentation migrated to it, and
-  MCP's direct React cleanup path removed. Full repository gate passed.
-  Independent security-boundary review pending before merge; Unit 2
-  render-document has not started.
+  IN PROGRESS — Unit 1 shipped in PR #188 (merge 890cfab): shared inert static
+  Markdown profile, generated MCP consumer migrated, old cleanup authority
+  deleted; independent review and all CI gates passed. Unit 2 now active: add
+  render-document to the shared bridge and inject the same renderer from CLI and
+  MCP composition roots.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-02T16:20:22.160Z'
+timestamp: '2026-08-02T16:35:01.911Z'
 ---
 # Outcome
 
