@@ -10,6 +10,7 @@ fields:
     - access
   optional:
     - description
+    - entry_version
   values:
     access:
       - none
@@ -35,6 +36,8 @@ planned later phase. Author new views as `type: View` with `access`.
 
 - `title` (required) — the launcher card's heading.
 - `entry` (required) — the HTML blob key, e.g. `views/roadmap.html`.
+- `entry_version` (optional) — an exact content-version pin. When present, every host refuses to
+  launch the View if the current entry bytes no longer match it. Ordinary mutable Views may omit it.
 - `description` (optional) — one line shown on the launcher card.
 - `access` (required) — `none | bundle-read | bundle-propose`. Required so every View is an INTENTIONAL
   classification, not a silent default — an author who forgets to declare it gets a clear
