@@ -89,8 +89,24 @@
     .related { grid-column:1/-1; padding:20px 22px 24px; }
     .related h4 { margin:0 0 11px; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.11em; }
     .related-list { display:flex; flex-wrap:wrap; gap:8px; }
-    .related-item { max-width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:10px; color:#c7d9d2; background:#0a1512; font-size:12px; }
+    .related-item { max-width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:10px; color:#c7d9d2; background:#0a1512; font-size:12px; font-family:inherit; text-align:left; }
+    button.related-item { cursor:pointer; transition:border-color .15s ease, background .15s ease; }
+    button.related-item:hover, button.related-item:focus-visible, button.related-item.active { border-color:var(--green); background:var(--green-soft); outline:none; }
     .related-item b { color:var(--green); font-weight:700; }
+    .related-record { margin-top:16px; border:1px solid var(--line); border-radius:16px; overflow:hidden; background:#08120f; }
+    .related-record:empty { display:none; }
+    .record-head { display:flex; align-items:flex-start; gap:12px; padding:17px 18px; border-bottom:1px solid var(--line); }
+    .record-head h5 { margin:5px 0 0; color:var(--text); font-size:19px; line-height:1.25; letter-spacing:-.02em; }
+    .record-kind { color:var(--green); font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
+    .record-id { margin-left:auto; max-width:42%; color:var(--muted); font:11px ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap:anywhere; text-align:right; }
+    .record-meta { display:flex; flex-wrap:wrap; gap:7px; padding:14px 18px 0; }
+    .record-chip { padding:5px 8px; border-radius:999px; color:#bcd0c8; background:var(--panel-2); font-size:11px; }
+    .record-description { margin:14px 18px 0; color:#c5d6cf; font-size:14px; line-height:1.55; }
+    .record-body { padding:16px 18px 19px; color:#b8cbc3; }
+    .record-body h1, .record-body h2, .record-body h3 { margin:18px 0 8px; color:var(--text); line-height:1.25; }
+    .record-body h1 { font-size:19px; } .record-body h2 { font-size:17px; } .record-body h3 { font-size:15px; }
+    .record-body p, .record-body li { font-size:13px; line-height:1.58; }
+    .record-body p { margin:0 0 8px; } .record-body ul { margin:0 0 9px; padding-left:18px; }
     .empty-state, .error { padding:24px; border:1px solid var(--line); border-radius:var(--radius); color:var(--muted); background:var(--panel); }
     .error { color:var(--red); border-color:#68332f; }
     .hidden { display:none !important; }
@@ -196,7 +212,7 @@
     })();
 
     (function () {
-      var state = { stages: [], edges: [], titles: {}, filter: "all", selected: null };
+      var state = { stages: [], edges: [], titles: {}, filter: "all", selected: null, relatedSelected: null };
       var phases = [
         { id: "start", number: "01", title: "Start and orient", match: function (n) { return n <= 4; } },
         { id: "shape", number: "02", title: "Shape the workspace", match: function (n) { return n >= 5 && n <= 6; } },
@@ -234,7 +250,13 @@
         var lines = String(text || "No detail recorded yet.").split("\n");
         var list = null;
         lines.forEach(function (line) {
-          if (/^-\s+/.test(line)) {
+          var heading = line.match(/^(#{1,3})\s+(.+)$/);
+          if (/^\[[^\]]+\]\([^\)]+\)$/.test(line.trim())) {
+            list = null;
+          } else if (heading) {
+            list = null;
+            fragment.appendChild(el("h" + heading[1].length, "", heading[2]));
+          } else if (/^-\s+/.test(line)) {
             if (!list) { list = el("ul"); fragment.appendChild(list); }
             list.appendChild(el("li", "", line.replace(/^-\s+/, "")));
           } else if (line.trim()) {
@@ -315,7 +337,7 @@
         return section;
       }
       function selectStage(id) {
-        state.selected = id; renderMap();
+        state.selected = id; state.relatedSelected = null; renderMap();
         var stage = state.stages.find(function (s) { return s.id === id; });
         if (!stage) return;
         var fm = stage.frontmatter, sections = parseSections(stage.body), root = document.getElementById("detail");
@@ -334,12 +356,44 @@
         var related = el("section", "related"); related.appendChild(el("h4", "", "Linked work and authority"));
         var list = el("div", "related-list"), edges = relatedFor(id);
         edges.forEach(function (edge) {
-          var item = el("div", "related-item"); item.appendChild(el("b", "", edge.text + " · "));
-          item.appendChild(document.createTextNode(state.titles[edge.to] || edge.to)); list.appendChild(item);
+          var item = el("button", "related-item"); item.type = "button";
+          item.appendChild(el("b", "", edge.text + " · "));
+          item.appendChild(document.createTextNode(state.titles[edge.to] || edge.to));
+          item.addEventListener("click", function () { void selectRelated(edge, item); });
+          list.appendChild(item);
         });
         if (!edges.length) list.appendChild(el("span", "related-item", "No linked work recorded"));
-        related.appendChild(list); grid.appendChild(related); root.appendChild(grid);
+        related.appendChild(list);
+        var recordPanel = el("div", "related-record"); recordPanel.id = "related-record-panel";
+        related.appendChild(recordPanel); grid.appendChild(related); root.appendChild(grid);
         root.scrollIntoView({ behavior:"smooth", block:"nearest" });
+      }
+
+      async function selectRelated(edge, button) {
+        state.relatedSelected = edge.to;
+        document.querySelectorAll("button.related-item").forEach(function (item) { item.classList.toggle("active", item === button); });
+        var panel = document.getElementById("related-record-panel");
+        if (!panel) return;
+        panel.textContent = ""; panel.appendChild(el("div", "record-body", "Reading the current record…"));
+        try {
+          var doc = await Bridge.read(edge.to), fm = doc.frontmatter || {};
+          if (state.relatedSelected !== edge.to) return;
+          panel.textContent = "";
+          var head = el("div", "record-head"), titleWrap = el("div");
+          titleWrap.appendChild(el("div", "record-kind", (fm.type || "Record") + " · " + edge.text));
+          titleWrap.appendChild(el("h5", "", fm.title || doc.id));
+          head.appendChild(titleWrap); head.appendChild(el("div", "record-id", doc.id)); panel.appendChild(head);
+          var meta = el("div", "record-meta");
+          ["status","priority","assignee","sequence"].forEach(function (key) {
+            if (fm[key] !== undefined && String(fm[key]).trim()) meta.appendChild(el("span", "record-chip", key + ": " + fm[key]));
+          });
+          if (meta.children.length) panel.appendChild(meta);
+          if (fm.description) panel.appendChild(el("p", "record-description", String(fm.description)));
+          var body = el("div", "record-body"); body.appendChild(bodyNodes(doc.body || "No body recorded.")); panel.appendChild(body);
+          panel.scrollIntoView({ behavior:"smooth", block:"nearest" });
+        } catch (error) {
+          panel.textContent = ""; panel.appendChild(el("div", "record-body", "Could not read this linked record: " + error.message));
+        }
       }
 
       async function snapshot() {
