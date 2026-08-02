@@ -123,8 +123,8 @@ the rest of the line unchanged.
 
 ### Kinds
 
-- `"$ASLITE" new "<Kind>" <id> --<field> <value> [...] [--body-file <path>] [--link "<type>=<target-id>" ...] [--no-prefix] [--actor <n>] [--remote <url>]`
-  — Create a new instance of a bundle-declared kind — initial Markdown may come from --body-file (otherwise declared sections are scaffolded); validates strictly, and repeatable --link wires typed cross-links in the same step
+- `"$ASLITE" new "<Kind>" <id> --<field> <value> [...] [--body <markdown> | --body-file <path>] [--link "<type>=<target-id>" ...] [--no-prefix] [--actor <n>] [--remote <url>]`
+  — Create a new instance of a bundle-declared kind — initial Markdown may come from --body or --body-file (otherwise declared sections are scaffolded); validates strictly, and repeatable --link wires typed cross-links in the same step
 - `"$ASLITE" kinds [--remote <url>]`
   — List the kind conventions this bundle declares (purpose, described fields, exact required body headings, typed-link vocabulary, horizon)
 - `"$ASLITE" kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]`
@@ -258,9 +258,10 @@ share this bundle? When the user's intent is ambiguous, ask rather than defaulti
 "$ASLITE" sync --establish
 
 # Everything after runs bare, from anywhere in the project tree
-# Create a context note (an OKF concept) for the next session
-"$ASLITE" new "Context Note" cycle-1 --title "cycle-1" --actor <your-name>
-"$ASLITE" doc update context-notes/cycle-1 --body "What this session did and what's next" --actor <your-name>
+# Create a complete context note (an OKF concept) for the next session in one command
+"$ASLITE" new "Context Note" cycle-1 --title "cycle-1" --body '# Summary
+
+What this session did and what comes next' --actor <your-name>
 
 # Read it back
 "$ASLITE" doc read context-notes/cycle-1
