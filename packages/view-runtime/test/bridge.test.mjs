@@ -144,6 +144,28 @@ test("transient active Views have exact-byte identity and process-local authoriz
   assert.equal(await wrongAuthority.resolve(launch.launchId, true), null);
 });
 
+test("bridge authority never reuses registered approval for a transient View by default", async () => {
+  const bundle = { root: "mem://transient-default-auth", backend: new MemoryBackend() };
+  const launches = new PageLaunchRegistry();
+  const registeredAuthorizations = new SessionViewAuthorizationStore();
+  const launch = mintTransientViewLaunch(bundle, launches, {
+    title: "Transient isolation proof",
+    html: "<!doctype html><p>Transient</p>",
+  });
+  await registeredAuthorizations.authorize(pageLaunchAuthorizationSubject(launch));
+
+  const authority = new PageBridgeLaunchAuthority(
+    bundle,
+    launches,
+    registeredAuthorizations,
+  );
+  assert.equal(
+    await authority.resolve(launch.launchId, true),
+    null,
+    "omitting a transient store must create an isolated session store, not reuse registered approval",
+  );
+});
+
 test("bridge polling retains a bounded change until acknowledgement and stays read-only when configured", async () => {
   const bundle = { root: "mem://bridge-poll", backend: new MemoryBackend() };
   await writeDoc(bundle, {

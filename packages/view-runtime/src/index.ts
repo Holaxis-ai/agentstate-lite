@@ -25,6 +25,7 @@ import {
 } from "@agentstate-lite/core/page";
 import {
   ACTIVE_VIEW_POLICY_VERSION,
+  SessionViewAuthorizationStore,
   admitActiveView,
   type ViewAuthorizationStore,
   type ViewAuthorizationSubject,
@@ -462,13 +463,17 @@ export async function saveTransientView(
   );
 }
 
-/** Server-side launch authority shared by the web bridge endpoint and MCP adapter. */
+/**
+ * Server-side launch authority shared by the web bridge endpoint and MCP adapter. Transient
+ * approval defaults to an isolated session store and never aliases registered-View approval.
+ */
 export class PageBridgeLaunchAuthority implements BridgeLaunchAuthority {
   constructor(
     private readonly bundle: Bundle,
     private readonly launches: PageLaunchRegistry,
     private readonly registeredAuthorizations: ViewAuthorizationStore,
-    private readonly transientAuthorizations: ViewAuthorizationStore = registeredAuthorizations,
+    private readonly transientAuthorizations: ViewAuthorizationStore =
+      new SessionViewAuthorizationStore(),
   ) {}
 
   async resolve(launchId: string, requireAuthorization: boolean): Promise<BridgeLaunch | null> {
