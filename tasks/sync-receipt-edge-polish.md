@@ -1,18 +1,18 @@
 ---
 type: Task
 title: 'Sync receipt honesty + error-message polish (PR#13 review, items 7-8)'
-status: in_progress
+status: todo
 priority: '2'
 description: >-
-  ITEM 2 ACTIVE in draft PR #126 (commit 8932c71): a real two-clone
-  non-fast-forward push now classifies TRANSIENT/retryable with specific
-  teammate-race guidance, and the CLI partial receipt preserves both the
-  local-commit reassurance and re-run-sync action. Focused tests plus full npm
-  run check passed. This unit intentionally leaves cross-run receipt accounting
-  and the other parked PR #13 findings untouched. Previously closed: items 7 + 4
-  via PR #104 and item 3 via PR #108.
-actor: mike/claude
-timestamp: '2026-07-20T01:40:25.648Z'
+  PR #126 SHIPPED on 2026-07-20 as merge 3878372: non-fast-forward push
+  rejection is now a typed retryable collaboration race with re-run-sync
+  guidance. This record is no longer actively claimed. Remaining parked findings
+  are cross-run receipt accounting/provision attribution (items 1/10),
+  narrowed-ref visibility (5/9), linked-checkout raw-git translation (6), and
+  one vocabulary inconsistency (8); take them only as separate evidence-backed
+  units.
+actor: openai/codex
+timestamp: '2026-08-02T14:33:11.233Z'
 ---
 From the PR#13 three-lane review (all empirical):
 1. Cross-run receipt under-report: fetch-succeeded-then-failed run → NEXT run
