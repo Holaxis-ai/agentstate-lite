@@ -413,11 +413,11 @@ export async function resolveLocalBundleTarget(
 /**
  * Resolve the {@link Bundle} an OKF command should operate on: `--remote <url>` wins (mutually
  * exclusive with `--dir`, checked here — a USAGE error, exit 2, if both are given); otherwise the
- * existing filesystem discovery applies. With `--dir`, that directory is used verbatim (and must
- * already be a bundle). Without either, a committed `.agentstate.json` directory-type binding
- * applies next (item 43 follow-on — see the module header); only then does discovery walk up from
- * the cwd. Throws a NOT_FOUND CliError (exit 6) when no LOCAL bundle is found — the fixing command
- * points at `axi init`.
+ * existing filesystem discovery applies. With `--dir`, the requested directory must be a bundle
+ * or contain one at its direct conventional child; it never selects an ancestor. Without either,
+ * a committed `.agentstate.json` directory-type binding applies next (item 43 follow-on — see the
+ * module header); only then does discovery walk up from the cwd. Throws a NOT_FOUND CliError (exit
+ * 6) when no LOCAL bundle is found — the fixing command points at `axi init`.
  *
  * Callers pass `remoteFlag` through {@link resolveRemoteFlag} first, so any truthy value here is an
  * explicit `--remote` flag and the mutual-exclusion error below is unambiguous.

@@ -302,10 +302,9 @@ export async function sessionStart(argv: string[], deps: Partial<SessionStartDep
   // GUARANTEED fall-through: the home render, in-process. home itself never throws and never
   // touches the network — the whole render is fs + local-git, stale-instant by construction.
   //
-  // `--dir` SEMANTICS BRIDGE: this verb's `--dir` names the PROJECT directory to run from (sync's
-  // semantics); home's `--dir` names a literal BUNDLE root. Forwarding a project path verbatim
-  // would make home's dashboard miss the project's bundle and dangle a wrong `init` hint next to
-  // it. So with an explicit --dir the dashboard's summarizer is redirected: board resolved →
+  // `--dir` SEMANTICS BRIDGE: this verb's `--dir` names the directory to run from and may be
+  // nested inside a project; home's explicit resolution never walks upward to select an ancestor.
+  // So with an explicit --dir the dashboard's summarizer is redirected: board resolved →
   // summarize the BOARD bundle itself; no board (a boardless project with a committed
   // `.agentstate-lite/`, the in-tree/window shape) → home's normal DISCOVERY walk,
   // started from the given dir instead of the cwd. A bare (cwd) invocation — the installed
