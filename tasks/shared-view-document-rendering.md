@@ -4,14 +4,14 @@ title: Shared bounded document rendering for portable Views
 status: in_progress
 priority: '2'
 description: >-
-  IN PROGRESS — Unit 1 shipped in PR #188. Unit 2 is draft PR #189, now at
-  ab0d5cf. Independent review found one fidelity bug: depth-collapsed Markdown
-  returned bounded:false. Follow-up ab0d5cf fixes the signal and pins it in
-  renderer plus real web/MCP agreement coverage. Focused revalidation is green;
-  exact follow-up review and refreshed CI are active before ready-for-review.
+  IN PROGRESS — Unit 1 shipped in PR #188; Unit 2 shipped in PR #189 (merge
+  af30e83) after independent approval and all CI gates. Unit 3 active as
+  bundle-only dogfood: migrate the core user-journey View's linked-record panel
+  from its local Markdown approximation to Bridge.renderDocument, then prove the
+  same durable View in web and MCP expanded surfaces.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-02T16:58:42.835Z'
+timestamp: '2026-08-02T17:04:36.890Z'
 ---
 # Outcome
 
