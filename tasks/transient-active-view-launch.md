@@ -12,13 +12,13 @@ description: >-
   behavior, bounded lifecycle, and no synthetic registry identity. Exact-byte
   save, bundle-propose parity, and deletion remain separate follow-on units.
 actor: openai/codex
-timestamp: '2026-08-02T19:07:07.375Z'
+timestamp: '2026-08-02T19:09:47.537Z'
 ---
 [specified by](../designs/transient-durable-view-unification.md)
 
 # Implementation
 
-PR #191 at 6f18dbc adds a discriminated registered/transient launch identity and exposes mode: transient through show_view while preserving the generated and registered contracts.
+PR #191 at 80f831d adds a discriminated registered/transient launch identity and exposes mode: transient through show_view while preserving the generated and registered contracts.
 
 # Evidence
 
