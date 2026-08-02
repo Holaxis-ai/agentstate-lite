@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { getDoc, listAllHeads } from "./client.js";
+import { getDoc } from "./client.js";
 import { listPages, pageFromFrontmatter, resolvePageTarget } from "./pages.js";
 import type { Frontmatter } from "./types.js";
 
 vi.mock("./client.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./client.js")>();
-  return { ...actual, getDoc: vi.fn(), listAllHeads: vi.fn() };
+  return { ...actual, getDoc: vi.fn() };
 });
 
 describe("pageFromFrontmatter", () => {
@@ -53,27 +53,17 @@ describe("pageFromFrontmatter", () => {
 });
 
 describe("listPages", () => {
-  it("queries ONLY type View — the legacy type Page listing is never requested; legacy-LOCATED View rows still list", async () => {
-    vi.mocked(listAllHeads).mockImplementation(async ({ type }) => {
-      if (type === "Page") {
-        return [
-          { id: "pages-registry/ghost", version: "v1", frontmatter: { type: "Page", title: "Ghost", entry: "pages/ghost.html", timestamp: "2026-07-03T00:00:00.000Z" } },
-        ];
-      }
-      if (type === "View") {
-        return [
-          { id: "pages-registry/legacy", version: "v1", frontmatter: { type: "View", title: "Legacy located", entry: "pages/legacy.html", timestamp: "2026-07-01T00:00:00.000Z" } },
-          { id: "views-registry/board", version: "v2", frontmatter: { type: "View", title: "Board", entry: "views/board.html", timestamp: "2026-07-02T00:00:00.000Z" } },
-        ];
-      }
-      return [];
-    });
+  it("consumes the server-owned shared View catalog without browser-side registry discovery", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ views: [
+      { id: "pages-registry/legacy", version: "v1", title: "Legacy located", access: "none" },
+      { id: "views-registry/board", version: "v2", title: "Board", access: "bundle-read", presentation: "workspace" },
+    ] }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
     const pages = await listPages();
-    expect(listAllHeads).toHaveBeenCalledWith({ type: "View" });
-    expect(listAllHeads).not.toHaveBeenCalledWith({ type: "Page" });
-    // Both LOCATIONS land in ONE list; ordering stays the launcher's stable newest-first sort.
-    expect(pages.map((p) => p.id)).toEqual(["views-registry/board", "pages-registry/legacy"]);
-    expect(pages.map((p) => p.entry)).toEqual(["views/board.html", "pages/legacy.html"]);
+    expect(fetchMock).toHaveBeenCalledWith("/__ui/views", { credentials: "same-origin" });
+    expect(pages.map((p) => p.id)).toEqual(["pages-registry/legacy", "views-registry/board"]);
+    expect(pages[1]).toMatchObject({ bridge: "bundle-read", presentation: "workspace" });
+    vi.unstubAllGlobals();
   });
 });
 
@@ -82,7 +72,6 @@ describe("pageFromFrontmatter (View)", () => {
     const fm: Frontmatter = { type: "View", title: "Board", entry: "views/board.html", access: "bundle-read" };
     expect(pageFromFrontmatter("views-registry/board", "v1", fm)).toMatchObject({
       id: "views-registry/board",
-      entry: "views/board.html",
       bridge: "bundle-read",
     });
   });

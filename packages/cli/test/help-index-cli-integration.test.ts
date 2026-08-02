@@ -103,13 +103,13 @@ test("built CLI: hosted control-plane command families are absent from help and 
   }
 });
 
-test("built CLI: the retired static `view` renderer is absent from help and unreachable", () => {
+test("built CLI: `view` is now catalog inspection only; the retired static renderer remains unreachable", () => {
   const help = run(["--help"]);
-  assert.doesNotMatch(help, /^  view(?: |$)/m);
+  assert.match(help, /^  view list(?: |$)/m);
 
-  const result = spawnSync("node", [cliBin, "view"], { encoding: "utf8" });
+  const result = spawnSync("node", [cliBin, "view", "legacy-file.html"], { encoding: "utf8" });
   assert.equal(result.status, 2, "view must route to the ordinary unknown-command boundary");
-  assert.match(`${result.stdout}${result.stderr}`, /unknown command: view/);
+  assert.match(`${result.stdout}${result.stderr}`, /unknown view subcommand: legacy-file\.html/);
 });
 
 test("built CLI: a subcommand's own `--help` (e.g. `new --help`) is UNCHANGED by the top-level rewrite", () => {

@@ -43,6 +43,7 @@ import { catalog } from "./commands/catalog.js";
 import { indexCommand } from "./commands/index.js";
 import { artifact } from "./commands/artifact.js";
 import { versionCommand } from "./commands/version.js";
+import { view } from "./commands/view.js";
 import { cliVersion } from "./build-identity.js";
 import { CliError, toEnvelope, toExit } from "./errors.js";
 import { renderErrorEnvelope } from "./output.js";
@@ -79,6 +80,7 @@ export const KNOWN_COMMANDS = [
   "skill",
   "session-start",
   "version",
+  "view",
 ] as const;
 
 /**
@@ -279,6 +281,7 @@ export async function main(argv: string[]): Promise<void> {
       serve: wrap(serve),
       ui: wrap(ui),
       mcp: wrap(mcp),
+      view: wrap(view),
       sync: wrap(sync),
       hook: wrap(hook),
       // Install/remove this package's generated Agent Skill in host skill folders.

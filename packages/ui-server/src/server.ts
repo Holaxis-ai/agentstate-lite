@@ -35,7 +35,9 @@ import {
   TrustedActionService,
   admitActiveView,
   launchIsCurrent,
+  listViewCatalog,
   pageLaunchAuthorizationSubject,
+  projectViewCatalog,
   type ActionTerminalResult,
   type BridgeOutcome,
   type PageLaunch,
@@ -490,6 +492,39 @@ async function kindsResponse(options: UiServerOptions): Promise<Response> {
   });
 }
 
+/** The web launcher's projection of the same durable View catalog used by CLI and MCP. */
+async function viewsResponse(options: UiServerOptions): Promise<Response> {
+  const bundle = options.mode === "dir" ? options.bundle : options.kindsBundle;
+  try {
+    const catalog = bundle
+      ? await listViewCatalog(bundle)
+      : await projectViewCatalog(await remoteRegistryHeads(options), {
+          admitEntry: async (entry) => {
+            const blob = await readPageBlob(options, entry);
+            if (blob === null) return false;
+            admitActiveView(blob.bytes, blob.contentType);
+            return true;
+          },
+        });
+    return new Response(JSON.stringify({
+      views: catalog.entries,
+      total: catalog.total,
+      invalidRegistrations: catalog.invalidRegistrations,
+      unavailableEntries: catalog.unavailableEntries,
+      skippedDocuments: catalog.skippedDocuments,
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  } catch (error) {
+    return jsonError(
+      502,
+      "RUNTIME",
+      `could not read the View catalog (${error instanceof Error ? error.message : String(error)})`,
+    );
+  }
+}
+
 /**
  * The bundle's derived edge list (graph-query-v0's `queryEdges`, gate 3: proxied, never
  * reimplemented) for the bridge's `edges` request. Mode-aware exactly like `kindsResponse` above:
@@ -763,6 +798,8 @@ async function handleRequest(
     response = await configResponse(options);
   } else if (url.pathname === "/__ui/kinds") {
     response = await kindsResponse(options);
+  } else if (url.pathname === "/__ui/views" && request.method === "GET") {
+    response = await viewsResponse(options);
   } else if (url.pathname === "/__ui/edges") {
     response = await edgesResponse(options, url);
   } else if (url.pathname.startsWith("/v0/")) {

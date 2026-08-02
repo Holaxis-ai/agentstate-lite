@@ -31,6 +31,18 @@ import {
 } from "./authorization.js";
 import type { BridgeLaunch, BridgeLaunchAuthority } from "./bridge.js";
 
+export {
+  listViewCatalog,
+  listViewCatalogPage,
+  projectViewCatalog,
+  type ViewCatalog,
+  type ViewCatalogEntry,
+  type ViewCatalogPage,
+  type ViewCatalogPageOptions,
+  type ViewCatalogProjectionOptions,
+  type ViewPresentation,
+} from "./catalog.js";
+
 export type ActionScalar = string | number | boolean;
 
 export interface DocumentSetFieldAction {

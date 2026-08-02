@@ -22,6 +22,7 @@ import {
   SessionViewAuthorizationStore,
   TrustedActionService,
   launchIsCurrent,
+  listViewCatalogPage,
   mintActiveViewLaunch,
   pageLaunchAuthorizationSubject,
   type ActionTerminalResult,
@@ -54,6 +55,7 @@ const MCP_VIEW_RESOURCE_DIGEST = versionOfBytes(MCP_VIEW_HTML).slice(
 export const MCP_VIEW_RESOURCE_URI =
   `ui://agentstate/view-host/v1/${MCP_VIEW_RESOURCE_DIGEST}.html`;
 export const SHOW_VIEW_TOOL_NAME = "show_view";
+export const LIST_VIEWS_TOOL_NAME = "list_views";
 export const PREPARE_VIEW_ACTION_TOOL_NAME = "prepare_view_action";
 export const FINISH_VIEW_ACTION_TOOL_NAME = "finish_view_action";
 export const AUTHORIZE_DURABLE_VIEW_TOOL_NAME = "authorize_durable_view";
@@ -79,6 +81,61 @@ export const MAX_VIEW_PRESENTATION_BYTES = 256 * 1024;
 export const MAX_VIEW_OBJECTS = 20;
 export const MAX_VIEW_ACTIONS = 8;
 export const MAX_VIEW_DATA_BYTES = 1024 * 1024;
+export const MAX_VIEW_CATALOG_PAGE = 20;
+export const MAX_VIEW_CATALOG_SCAN = 40;
+
+const listViewsInputSchema = z
+  .object({
+    cursor: z.string().trim().min(1).max(1024).optional(),
+  })
+  .strict();
+
+const listViewsOutputSchema = z.object({
+  views: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string().optional(),
+      access: z.literal("bundle-read"),
+      presentation: z.enum(["workspace", "inline", "adaptive"]).optional(),
+      timestamp: z.string().optional(),
+    }),
+  ),
+  shown: z.number().int().nonnegative(),
+  registeredTotal: z.number().int().nonnegative(),
+  excluded: z.number().int().nonnegative(),
+  invalidRegistrations: z.number().int().nonnegative(),
+  pageUnavailableEntries: z.number().int().nonnegative(),
+  skippedDocuments: z.number().int().nonnegative(),
+  examined: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+  nextCursor: z.string().optional(),
+});
+
+function encodeViewCursor(afterId: string): string {
+  return Buffer.from(JSON.stringify({ v: 1, afterId }), "utf8").toString("base64url");
+}
+
+function decodeViewCursor(cursor: string | undefined): string | undefined {
+  if (cursor === undefined) return undefined;
+  let value: unknown;
+  try {
+    value = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+  } catch {
+    throw new Error("cursor is not a valid AgentState View catalog cursor");
+  }
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.keys(value).sort().join(",") !== "afterId,v" ||
+    (value as { v?: unknown }).v !== 1 ||
+    typeof (value as { afterId?: unknown }).afterId !== "string"
+  ) {
+    throw new Error("cursor is not a valid AgentState View catalog cursor");
+  }
+  return (value as { afterId: string }).afterId;
+}
 
 const actionScalarSchema = z.union([z.string().max(4096), z.number().finite(), z.boolean()]);
 const fieldSelectionSchema = z
@@ -459,6 +516,79 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     allowActionProtocol: false,
     enablePolling: true,
   });
+
+  registerAppTool(
+    server,
+    LIST_VIEWS_TOOL_NAME,
+    {
+      title: "List registered AgentState Views",
+      description:
+        "List existing durable bundle Views that this MCP host can invoke by exact id with show_view. Results are deterministic and bounded; use nextCursor to continue.",
+      inputSchema: listViewsInputSchema,
+      outputSchema: listViewsOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: { ui: { visibility: ["model"] } },
+    },
+    async (input): Promise<CallToolResult> => {
+      try {
+        const { cursor } = listViewsInputSchema.parse(input);
+        const afterId = decodeViewCursor(cursor);
+        const catalog = await listViewCatalogPage(options.bundle, {
+          ...(afterId ? { afterId } : {}),
+          limit: MAX_VIEW_CATALOG_PAGE,
+          scanLimit: MAX_VIEW_CATALOG_SCAN,
+          access: ["bundle-read"],
+        });
+        const payload = {
+          views: catalog.entries.map((entry) => ({
+            id: entry.id,
+            title: entry.title,
+            ...(entry.description ? { description: entry.description } : {}),
+            access: "bundle-read" as const,
+            ...(entry.presentation ? { presentation: entry.presentation } : {}),
+            ...(entry.timestamp ? { timestamp: entry.timestamp } : {}),
+          })),
+          shown: catalog.entries.length,
+          registeredTotal: catalog.registeredTotal,
+          excluded: catalog.excludedAccess,
+          invalidRegistrations: catalog.invalidRegistrations,
+          pageUnavailableEntries: catalog.pageUnavailableEntries,
+          skippedDocuments: catalog.skippedDocuments,
+          examined: catalog.examined,
+          truncated: catalog.truncated,
+          ...(catalog.nextAfterId
+            ? { nextCursor: encodeViewCursor(catalog.nextAfterId) }
+            : {}),
+        };
+        return {
+          content: [
+            {
+              type: "text",
+              text: catalog.registeredTotal === 0
+                ? "No registered bundle-read Views are available to this MCP host."
+                : `Found ${catalog.registeredTotal} registered bundle-read View registration(s); showing ${catalog.entries.length} admitted View(s) from ${catalog.examined} examined.`,
+            },
+          ],
+          structuredContent: payload,
+        };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `Could not list AgentState Views: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+        };
+      }
+    },
+  );
 
   registerAppTool(
     server,

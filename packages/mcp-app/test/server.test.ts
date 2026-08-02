@@ -22,6 +22,7 @@ import {
   DURABLE_VIEW_BRIDGE_TOOL_NAME,
   FINISH_VIEW_ACTION_TOOL_NAME,
   MCP_VIEW_RESOURCE_URI,
+  LIST_VIEWS_TOOL_NAME,
   POLL_DURABLE_VIEW_TOOL_NAME,
   PREPARE_VIEW_ACTION_TOOL_NAME,
   RESUME_DURABLE_VIEW_TOOL_NAME,
@@ -134,6 +135,127 @@ test("resolveViewLaunch returns current versioned snapshots in the caller's expl
   assert.equal(payload.presentation.css, "");
   assert.equal(payload.launch.actions.length, 0);
   assert.match(payload.presentation.contentHash, /^sha256:[a-f0-9]{64}$/);
+});
+
+test("list_views is bounded, continues deterministically, and every listed id is invokable", async (t) => {
+  const bundle = memoryBundle();
+  await writeBlob(
+    bundle,
+    "views/shared.html",
+    new TextEncoder().encode("<!doctype html><title>Shared</title>"),
+    "text/html; charset=utf-8",
+  );
+  for (let index = 0; index < 21; index += 1) {
+    const suffix = String(index).padStart(2, "0");
+    await writeDoc(bundle, {
+      id: `views-registry/view-${suffix}`,
+      frontmatter: {
+        type: "View",
+        title: `View ${suffix}`,
+        entry: "views/shared.html",
+        access: "bundle-read",
+        ...(index === 0 ? { presentation: "inline" } : {}),
+      },
+      body: "",
+    });
+  }
+  await writeDoc(bundle, {
+    id: "views-registry/content-only",
+    frontmatter: { type: "View", title: "Content", entry: "views/shared.html", access: "none" },
+    body: "",
+  });
+  await writeDoc(bundle, {
+    id: "docs/invalid-view",
+    frontmatter: { type: "View", title: "Invalid", entry: "views/shared.html", access: "bundle-read" },
+    body: "",
+  });
+  await writeDoc(bundle, {
+    id: "views-registry/dangling",
+    frontmatter: {
+      type: "View",
+      title: "Dangling",
+      entry: "views/missing.html",
+      access: "bundle-read",
+    },
+    body: "",
+  });
+  await writeBlob(
+    bundle,
+    "views/not-html.txt",
+    new TextEncoder().encode("not HTML"),
+    "text/plain; charset=utf-8",
+  );
+  await writeDoc(bundle, {
+    id: "views-registry/not-html",
+    frontmatter: {
+      type: "View",
+      title: "Not HTML",
+      entry: "views/not-html.txt",
+      access: "bundle-read",
+    },
+    body: "",
+  });
+
+  const server = createMcpAppServer({ bundle });
+  const client = new Client({ name: "catalog-test", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+
+  const first = await client.callTool({ name: LIST_VIEWS_TOOL_NAME, arguments: {} });
+  const firstPage = first.structuredContent as {
+    views: Array<{ id: string; presentation?: string }>;
+    registeredTotal: number;
+    shown: number;
+    excluded: number;
+    invalidRegistrations: number;
+    pageUnavailableEntries: number;
+    skippedDocuments: number;
+    examined: number;
+    truncated: boolean;
+    nextCursor: string;
+  };
+  assert.equal(firstPage.registeredTotal, 23);
+  assert.equal(firstPage.shown, 20);
+  assert.equal(firstPage.excluded, 1);
+  assert.equal(firstPage.invalidRegistrations, 1);
+  assert.equal(firstPage.pageUnavailableEntries, 2);
+  assert.equal(firstPage.skippedDocuments, 0);
+  assert.equal(firstPage.examined, 22);
+  assert.equal(firstPage.truncated, true);
+  assert.equal(firstPage.views[0]?.id, "views-registry/view-00");
+  assert.equal(firstPage.views[0]?.presentation, "inline");
+
+  for (const row of firstPage.views) {
+    const shown = await client.callTool({
+      name: SHOW_VIEW_TOOL_NAME,
+      arguments: { viewId: row.id },
+    });
+    assert.equal(shown.isError, undefined, row.id);
+  }
+
+  const second = await client.callTool({
+    name: LIST_VIEWS_TOOL_NAME,
+    arguments: { cursor: firstPage.nextCursor },
+  });
+  const secondPage = second.structuredContent as {
+    views: Array<{ id: string }>;
+    shown: number;
+    examined: number;
+    pageUnavailableEntries: number;
+    truncated: boolean;
+    nextCursor?: string;
+  };
+  assert.deepEqual(secondPage.views.map((row) => row.id), ["views-registry/view-20"]);
+  assert.equal(secondPage.shown, 1);
+  assert.equal(secondPage.examined, 1);
+  assert.equal(secondPage.pageUnavailableEntries, 0);
+  assert.equal(secondPage.truncated, false);
+  assert.equal(secondPage.nextCursor, undefined);
 });
 
 test("resolveViewLaunch applies the shared View query semantics once and freezes an honest bounded selection", async () => {
@@ -325,6 +447,7 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
 
   const tools = await client.listTools();
   assert.deepEqual(tools.tools.map((tool) => tool.name), [
+    LIST_VIEWS_TOOL_NAME,
     SHOW_VIEW_TOOL_NAME,
     AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
     DURABLE_VIEW_BRIDGE_TOOL_NAME,
@@ -335,6 +458,7 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
     FINISH_VIEW_ACTION_TOOL_NAME,
     RESOLVE_LAUNCH_TOOL_NAME,
   ]);
+  const listTool = tools.tools.find((tool) => tool.name === LIST_VIEWS_TOOL_NAME);
   const showTool = tools.tools.find((tool) => tool.name === SHOW_VIEW_TOOL_NAME);
   const authorizeTool = tools.tools.find(
     (tool) => tool.name === AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
@@ -348,6 +472,7 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   const closeTool = tools.tools.find(
     (tool) => tool.name === CLOSE_DURABLE_VIEW_TOOL_NAME,
   );
+  assert.deepEqual(listTool?._meta?.ui?.visibility, ["model"]);
   const resumeTool = tools.tools.find(
     (tool) => tool.name === RESUME_DURABLE_VIEW_TOOL_NAME,
   );
