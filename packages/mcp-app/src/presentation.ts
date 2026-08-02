@@ -1,6 +1,5 @@
-import { renderMarkdown } from "@agentstate-lite/markdown-renderer";
+import { renderMarkdownToStaticHtml } from "@agentstate-lite/markdown-renderer/static";
 import DOMPurify from "dompurify";
-import { renderToStaticMarkup } from "react-dom/server";
 import type { ViewLaunchPayload } from "./contract.js";
 import {
   frameSizingScriptTag,
@@ -43,20 +42,14 @@ function markdownSource(payload: ViewPayload, path: string): { body: string; fro
 }
 
 function renderContainedMarkdown(body: string, fromId: string): DocumentFragment {
-  const rendered = renderMarkdown(body, { fromId, onNavigateDoc: () => {} });
+  const rendered = renderMarkdownToStaticHtml(body, { fromId });
   const template = document.createElement("template");
-  // This markup is produced by the shared closed-construction React renderer, never by bundle or
-  // agent HTML. Raw Markdown HTML is already escaped as text by that renderer.
-  template.innerHTML = renderToStaticMarkup(rendered.element);
-  for (const anchor of template.content.querySelectorAll("a")) {
-    anchor.removeAttribute("href");
-    anchor.removeAttribute("target");
-  }
+  template.innerHTML = rendered.html;
   if (rendered.bounded) {
     const notice = document.createElement("p");
     notice.className = "aslite-markdown-bounded";
     notice.textContent = "Document rendering stopped at the safety limit.";
-    template.content.append(notice);
+    template.content.firstElementChild?.append(notice);
   }
   return template.content;
 }
