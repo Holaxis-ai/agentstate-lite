@@ -4,15 +4,14 @@ title: Shared bounded document rendering for portable Views
 status: in_progress
 priority: '2'
 description: >-
-  IN PROGRESS — Unit 1 shipped in PR #188 (merge 890cfab). Unit 2 is draft PR
-  #189 at exact commit a8a8458: one document-centric render-document request in
-  shared BridgeService; web and MCP inject the same inert renderer; author
-  guidance is regenerated; cross-host agreement passes denial, success,
-  NOT_FOUND, bounded, and changed-launch outcomes. Full npm run check is green.
-  Independent review is active before marking the PR ready.
+  IN PROGRESS — Unit 1 shipped in PR #188. Unit 2 is draft PR #189, now at
+  ab0d5cf. Independent review found one fidelity bug: depth-collapsed Markdown
+  returned bounded:false. Follow-up ab0d5cf fixes the signal and pins it in
+  renderer plus real web/MCP agreement coverage. Focused revalidation is green;
+  exact follow-up review and refreshed CI are active before ready-for-review.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-02T16:55:07.887Z'
+timestamp: '2026-08-02T16:58:42.835Z'
 ---
 # Outcome
 
