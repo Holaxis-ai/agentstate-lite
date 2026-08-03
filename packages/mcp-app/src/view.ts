@@ -15,7 +15,6 @@ import {
 import type {
   ActiveViewLaunchPayload,
   McpViewPayload,
-  ViewLaunchPayload,
 } from "./contract.js";
 import { mayForwardDurableActivity } from "./durable-activity.js";
 import {
@@ -24,7 +23,6 @@ import {
   extractViewPayload,
   firstResultText,
   isActiveViewPayload,
-  isViewPayload,
 } from "./result-recovery.js";
 import { FrameLoadGuard } from "./frame-load-guard.js";
 import {
@@ -37,7 +35,6 @@ import {
   readFrameSizeEvent,
   type FrameSizingSession,
 } from "./frame-sizing.js";
-import { containedDocument, materializePresentation } from "./presentation.js";
 
 type HostContext = NonNullable<ReturnType<App["getHostContext"]>>;
 type PrepareResult =
@@ -50,10 +47,8 @@ type PrepareResult =
   | ActionTerminalResult;
 
 const statusEl = document.getElementById("status")!;
-const frame = document.getElementById("generated-view") as HTMLIFrameElement;
+const frame = document.getElementById("active-view") as HTMLIFrameElement;
 const shell = frame.closest(".shell") as HTMLElement;
-const actionsEl = document.getElementById("actions")!;
-const actionButtonsEl = document.getElementById("action-buttons")!;
 const confirmationBackdrop = document.getElementById("confirmation-backdrop")!;
 const confirmationApply = document.getElementById("confirmation-apply") as HTMLButtonElement;
 const confirmationCancel = document.getElementById("confirmation-cancel") as HTMLButtonElement;
@@ -67,12 +62,10 @@ const displayModeButton = document.getElementById("display-mode") as HTMLButtonE
 let app: App;
 let currentPayload: McpViewPayload | null = null;
 type PendingAction =
-  | { kind: "generated"; launchId: string; approvalToken: string; epoch: number }
-  | { kind: "active"; launchId: string; approvalToken: string; requestId: string; epoch: number };
+  { launchId: string; approvalToken: string; requestId: string; epoch: number };
 
 let pending: PendingAction | null = null;
 let preparingActiveAction: { launchId: string; requestId: string; epoch: number } | null = null;
-let preparingGeneratedAction: { launchId: string; epoch: number } | null = null;
 let finishingAction: PendingAction | null = null;
 let frameEpoch = 0;
 let pollTimer: number | null = null;
@@ -155,7 +148,6 @@ function abandonPendingAction(): void {
 function abandonActionOperations(): void {
   abandonPendingAction();
   preparingActiveAction = null;
-  preparingGeneratedAction = null;
   finishingAction = null;
 }
 
@@ -240,8 +232,6 @@ function retirePayload(closeDurable = true): void {
   clearFrameDocument();
   frame.setAttribute("sandbox", "");
   frame.removeAttribute("csp");
-  actionButtonsEl.replaceChildren();
-  actionsEl.hidden = true;
   if (
     closeDurable &&
     isActiveViewPayload(previous)
@@ -269,128 +259,6 @@ function openConfirmation(
   }, 350);
 }
 
-async function prepareAction(launchId: string, actionId: string, button: HTMLButtonElement): Promise<void> {
-  if (pending || preparingActiveAction || preparingGeneratedAction || finishingAction) return;
-  const reservation = { launchId, epoch: frameEpoch };
-  preparingGeneratedAction = reservation;
-  button.disabled = true;
-  statusEl.dataset.kind = "working";
-  statusEl.textContent = "Preparing the exact change for confirmation…";
-  try {
-    const response = await app.callServerTool({
-      name: "prepare_view_action",
-      arguments: { launchId, actionId },
-    });
-    const structured = structuredResult(response);
-    const result = structured?.result as PrepareResult | undefined;
-    const stillCurrent = currentPayload !== null &&
-      !isActiveViewPayload(currentPayload) &&
-      currentPayload.launch.launchId === launchId &&
-      frameEpoch === reservation.epoch;
-    if (!stillCurrent) {
-      if (result?.status === "prepared") {
-        void app.callServerTool({
-          name: "finish_view_action",
-          arguments: {
-            launchId,
-            approvalToken: result.approvalToken,
-            decision: "cancel",
-          },
-        }).catch(() => {});
-      }
-      return;
-    }
-    if (structured && isViewPayload(structured.view)) renderPayload(structured.view);
-    else if (structured?.view === null) retirePayload();
-    if (result?.status === "prepared") {
-      if (
-        currentPayload !== null &&
-        !isActiveViewPayload(currentPayload) &&
-        currentPayload.launch.launchId === launchId
-      ) {
-        openConfirmation(
-          { kind: "generated", launchId, approvalToken: result.approvalToken, epoch: frameEpoch },
-          result.confirmation,
-        );
-        statusEl.dataset.kind = "ready";
-        statusEl.textContent = "Review the trusted AgentState confirmation.";
-      } else {
-        void app.callServerTool({
-          name: "finish_view_action",
-          arguments: {
-            launchId,
-            approvalToken: result.approvalToken,
-            decision: "cancel",
-          },
-        }).catch(() => {});
-      }
-    } else {
-      statusEl.dataset.kind = result?.status === "conflict" ? "error" : "ready";
-      statusEl.textContent = resultMessage(result);
-    }
-  } catch (error) {
-    if (
-      preparingGeneratedAction === reservation &&
-      currentPayload !== null &&
-      !isActiveViewPayload(currentPayload) &&
-      currentPayload.launch.launchId === launchId &&
-      frameEpoch === reservation.epoch
-    ) {
-      statusEl.dataset.kind = "error";
-      statusEl.textContent = error instanceof Error ? error.message : String(error);
-    }
-  } finally {
-    if (preparingGeneratedAction === reservation) preparingGeneratedAction = null;
-    button.disabled = false;
-  }
-}
-
-function renderActions(payload: ViewLaunchPayload): void {
-  actionButtonsEl.replaceChildren();
-  for (const descriptor of payload.launch.actions) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = descriptor.label;
-    button.addEventListener("click", () => {
-      void prepareAction(payload.launch.launchId, descriptor.actionId, button);
-    });
-    actionButtonsEl.append(button);
-  }
-  actionsEl.hidden = payload.launch.actions.length === 0;
-}
-
-function renderGeneratedPayload(payload: ViewLaunchPayload): void {
-  try {
-    const presentation = materializePresentation(payload.presentation.html, payload);
-    const previous = currentPayload;
-    abandonActionOperations();
-    frameEpoch++;
-    stopPolling();
-    closeAuthorization();
-    suspendedDurableLaunch = null;
-    resumingDurableLaunch = null;
-    currentPayload = payload;
-    if (isActiveViewPayload(previous)) {
-      closeDurableLaunchEventually(previous.launch.launchId);
-    }
-    statusEl.dataset.kind = "ready";
-    statusEl.textContent = `${payload.title} · ${payload.objects.length} authoritative object${payload.objects.length === 1 ? "" : "s"}`;
-    frame.title = payload.title;
-    frame.setAttribute("sandbox", "allow-scripts");
-    frame.removeAttribute("csp");
-    const sizing = createFrameSizingSession(payload.launch.launchId, frameEpoch);
-    setFrameDocument(
-      containedDocument(presentation, payload.presentation.css, sizing),
-      sizing,
-    );
-    renderActions(payload);
-  } catch (error) {
-    retirePayload();
-    statusEl.dataset.kind = "error";
-    statusEl.textContent = error instanceof Error ? error.message : String(error);
-  }
-}
-
 function renderDurablePayload(payload: ActiveViewLaunchPayload): void {
   const previous = currentPayload;
   const sameLaunch =
@@ -409,8 +277,6 @@ function renderDurablePayload(payload: ActiveViewLaunchPayload): void {
   ) {
     closeDurableLaunchEventually(previous.launch.launchId);
   }
-  actionButtonsEl.replaceChildren();
-  actionsEl.hidden = true;
   frame.title = payload.title;
   if (!payload.launch.authorization.authorized) {
     clearFrameDocument();
@@ -460,11 +326,7 @@ function renderDurablePayload(payload: ActiveViewLaunchPayload): void {
 }
 
 function renderPayload(payload: McpViewPayload): void {
-  if (isActiveViewPayload(payload)) {
-    renderDurablePayload(payload);
-  } else {
-    renderGeneratedPayload(payload);
-  }
+  renderDurablePayload(payload);
   syncDisplayModeButton();
 }
 
@@ -674,7 +536,7 @@ async function prepareActiveAction(
   requestId: string,
   action: DocumentSetFieldAction,
 ): Promise<void> {
-  if (pending || preparingActiveAction || preparingGeneratedAction || finishingAction) {
+  if (pending || preparingActiveAction || finishingAction) {
     postActiveActionResult(launchId, epoch, requestId, {
       status: "rejected",
       action: "document.set-field",
@@ -708,7 +570,6 @@ async function prepareActiveAction(
     if (result?.status === "prepared") {
       openConfirmation(
         {
-          kind: "active",
           launchId,
           approvalToken: result.approvalToken,
           requestId,
@@ -792,7 +653,7 @@ async function finishAction(decision: "commit" | "cancel"): Promise<void> {
   pending = null;
   confirmationApply.disabled = true;
   confirmationCancel.disabled = true;
-  if (selected.kind === "active") closeConfirmation();
+  closeConfirmation();
   try {
     const response = await app.callServerTool({
       name: "finish_view_action",
@@ -803,22 +664,14 @@ async function finishAction(decision: "commit" | "cancel"): Promise<void> {
       },
     });
     const structured = structuredResult(response);
-    const stillCurrent = finishingAction === selected && (selected.kind === "active"
-      ? durablePayloadFor(selected.launchId, selected.epoch) !== null
-      : currentPayload !== null &&
-        !isActiveViewPayload(currentPayload) &&
-        currentPayload.launch.launchId === selected.launchId &&
-        frameEpoch === selected.epoch);
-    if (stillCurrent && selected.kind === "generated") {
-      if (structured && isViewPayload(structured.view)) renderPayload(structured.view);
-      else if (structured?.view === null) retirePayload();
-    }
+    const stillCurrent = finishingAction === selected &&
+      durablePayloadFor(selected.launchId, selected.epoch) !== null;
     if (stillCurrent) {
       statusEl.dataset.kind =
         isRecord(structured?.result) && structured.result.status === "conflict" ? "error" : "ready";
       statusEl.textContent = resultMessage(structured?.result);
     }
-    if (stillCurrent && selected.kind === "active") {
+    if (stillCurrent) {
       postActiveActionResult(
         selected.launchId,
         selected.epoch,
@@ -831,17 +684,13 @@ async function finishAction(decision: "commit" | "cancel"): Promise<void> {
       );
     }
   } catch (error) {
-    const stillCurrent = finishingAction === selected && (selected.kind === "active"
-      ? durablePayloadFor(selected.launchId, selected.epoch) !== null
-      : currentPayload !== null &&
-        !isActiveViewPayload(currentPayload) &&
-        currentPayload.launch.launchId === selected.launchId &&
-        frameEpoch === selected.epoch);
+    const stillCurrent = finishingAction === selected &&
+      durablePayloadFor(selected.launchId, selected.epoch) !== null;
     if (stillCurrent) {
       statusEl.dataset.kind = "error";
       statusEl.textContent = error instanceof Error ? error.message : String(error);
     }
-    if (stillCurrent && selected.kind === "active") {
+    if (stillCurrent) {
       postActiveActionResult(selected.launchId, selected.epoch, selected.requestId, {
         status: "failed",
         action: "document.set-field",

@@ -117,36 +117,12 @@ function actionPayload(authorized: boolean): TransientPayload {
   };
 }
 
-function generatedActionPayload() {
-  return {
-    schemaVersion: "agentstate.view-launch.v1" as const,
-    title: "Generated task action",
-    presentation: {
-      html: "<h1>Generated task action</h1>",
-      css: "",
-      contentHash: `sha256:${"4".repeat(64)}`,
-    },
-    selection: { objectIds: ["tasks/alpha"] },
-    objects: [{
-      id: "tasks/alpha",
-      version: "sha256:target",
-      frontmatter: { type: "Task", title: "Alpha", status: "todo" },
-      body: "",
-    }],
-    launch: {
-      launchId: "launch-generated",
-      actions: [{ actionId: "generated-action", label: "Mark complete", targetId: "tasks/alpha" }],
-    },
-  };
-}
-
 let displayMode: DisplayMode = "inline";
 let nextLaunch = 1;
 let releaseDisplayRequest: (() => void) | null = null;
 let releaseResumeRequest: (() => void) | null = null;
 let releaseCloseRequest: (() => void) | null = null;
 let releaseFinishRequest: (() => void) | null = null;
-let releasePrepareRequest: (() => void) | null = null;
 
 window.__displayRequests = [];
 window.__resumeRequests = [];
@@ -157,8 +133,6 @@ window.__holdDisplayRequest = false;
 window.__holdResumeRequest = false;
 window.__holdCloseRequest = false;
 window.__holdFinishRequest = false;
-window.__holdPrepareRequest = false;
-window.__prepareRequestError = null;
 window.__displayResponseMode = null;
 window.__displayRequestError = null;
 window.__suppressDisplayContextOnResolve = false;
@@ -178,10 +152,6 @@ window.__releaseCloseRequest = () => {
 window.__releaseFinishRequest = () => {
   releaseFinishRequest?.();
   releaseFinishRequest = null;
-};
-window.__releasePrepareRequest = () => {
-  releasePrepareRequest?.();
-  releasePrepareRequest = null;
 };
 
 const context = () => ({
@@ -216,12 +186,6 @@ window.__showActionResult = async () => {
   await bridge.sendToolResult({
     content: [{ type: "text", text: "Action View ready" }],
     structuredContent: actionPayload(false),
-  });
-};
-window.__showGeneratedActionResult = async () => {
-  await bridge.sendToolResult({
-    content: [{ type: "text", text: "Generated action View ready" }],
-    structuredContent: generatedActionPayload(),
   });
 };
 window.__startTeardown = () => {
@@ -291,12 +255,6 @@ bridge.oncalltool = async ({ name, arguments: args }) => {
   }
   if (name === "prepare_view_action") {
     window.__preparedActions.push(args ?? {});
-    if (window.__holdPrepareRequest) {
-      await new Promise<void>((resolve) => {
-        releasePrepareRequest = resolve;
-      });
-    }
-    if (window.__prepareRequestError) throw new Error(window.__prepareRequestError);
     return {
       content: [{ type: "text", text: "prepared" }],
       structuredContent: {
@@ -341,7 +299,6 @@ bridge.oncalltool = async ({ name, arguments: args }) => {
           changed: args?.decision === "commit",
           confirmed: args?.decision === "commit",
         },
-        ...(launchId === "launch-generated" ? { view: generatedActionPayload() } : {}),
       },
     };
   }
@@ -396,7 +353,6 @@ declare global {
     __resumeRequests: string[];
     __holdCloseRequest: boolean;
     __holdFinishRequest: boolean;
-    __holdPrepareRequest: boolean;
     __holdDisplayRequest: boolean;
     __holdResumeRequest: boolean;
     __hostInitialized?: boolean;
@@ -406,13 +362,10 @@ declare global {
     __replayOriginalResult: () => Promise<void>;
     __releaseCloseRequest: () => void;
     __releaseFinishRequest: () => void;
-    __releasePrepareRequest: () => void;
     __releaseDisplayRequest: () => void;
     __releaseResumeRequest: () => void;
     __startTeardown: () => void;
     __showTransientResult: () => Promise<void>;
     __showActionResult: () => Promise<void>;
-    __showGeneratedActionResult: () => Promise<void>;
-    __prepareRequestError: string | null;
   }
 }

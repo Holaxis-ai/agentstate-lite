@@ -232,7 +232,7 @@ test("fixed and flexible host height contracts stay distinct", () => {
   assert.equal(measureShellChromeHeight(Number.NaN, frameHeight), 0);
 });
 
-test("generated size reports are handled before the hidden-document bridge gate", async () => {
+test("active View size reports are handled before the hidden-document bridge gate", async () => {
   const source = await readFile(
     new URL("../src/view.ts", import.meta.url),
     "utf8",
@@ -248,7 +248,7 @@ test("generated size reports are handled before the hidden-document bridge gate"
   assert.ok(
     handler.indexOf("if (frameSizingSession)") <
       handler.indexOf('document.visibilityState === "hidden"'),
-    "layout-only reports must update generated Views while hidden; only the durable bridge is gated",
+    "layout-only reports must update active Views while hidden; only the durable bridge is gated",
   );
   assert.match(
     source,

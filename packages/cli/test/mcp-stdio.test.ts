@@ -95,15 +95,16 @@ test("built npm CLI serves the fixed MCP App contract over clean stdio", async (
   const result = await client.callTool({
     name: "show_view",
     arguments: {
+      mode: "transient",
       title: "Transport proof",
       html: "<h1>STDIO works</h1>",
-      objectIds: ["tasks/stdio"],
+      access: "bundle-read",
     },
   });
   assert.equal(result.isError, undefined);
-  assert.deepEqual(
-    (result.structuredContent as { selection: { objectIds: string[] } }).selection.objectIds,
-    ["tasks/stdio"],
+  assert.equal(
+    (result.structuredContent as { schemaVersion: string }).schemaVersion,
+    "agentstate.transient-view-launch.v1",
   );
 });
 

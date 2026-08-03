@@ -15,9 +15,9 @@ the CLI), `packages/markdown-renderer` (`@agentstate-lite/markdown-renderer` —
 bounded Markdown-to-React security boundary), `packages/ui` (the browser SPA — PRIVATE workspace;
 only its BUILT assets ship, gzip-embedded into the CLI bundle; it launches bundle-authored Views
 and consumes markdown-renderer, see gate 4), `packages/mcp-app` (the PRIVATE experimental local
-stdio adapter: one fixed MCP App shell over frozen presentations and active registered or
-process-local Views; generated presentation remains read-only while trusted shell chrome may
-mediate one governed scalar action through view-runtime), and `packages/cli` —
+stdio adapter: one fixed MCP App shell over active registered or process-local Views, using the
+same launch, bridge, authorization, rendering, and governed-action authorities as the web host),
+and `packages/cli` —
 the **publishable npm package `@holaxis/aslite`** (scoped interim coordinate per the board
 decision — npm rejected the unscoped name; bins stay `aslite` / `agentstate-lite`), an
 esbuild bundle that inlines core + board-git + server + the built UI assets + deps into one
@@ -146,11 +146,11 @@ Every produced bundle must stay a valid OKF v0.1 Knowledge Bundle:
 - Keep exactly **ONE** frontmatter parser, **ONE** bundle walk, **ONE** link resolver, and
   **ONE** View semantics/action authority. Human-facing hosts are adapters over those authorities:
   the supported local `ui` shell launches durable bundle-authored Views; the experimental `mcp`
-  command renders invocation-specific Views over exact selected snapshots. Do not reintroduce a
-  parallel static viewer, parser, or mutation policy inside either host. Generated presentation is
-  read-only. Both hosts delegate the same bounded `document.set-field` proposal to view-runtime,
-  which requires trusted-shell confirmation and hard CAS through core's mutation service; MCP keeps
-  its prepare/finish tools app-only so the model and generated frame cannot invoke writes directly.
+  command launches process-local or registered active Views. Do not reintroduce a parallel static
+  viewer, parser, or mutation policy inside either host. Both hosts delegate the same bounded
+  `document.set-field` proposal to view-runtime, which requires trusted-shell confirmation and hard
+  CAS through core's mutation service; MCP keeps its prepare/finish tools app-only so the model and
+  sandboxed View cannot invoke writes directly.
 - **Kind conventions (`core/src/kinds.ts`) are ONE registry, in core, consumed everywhere —
   not a schema fork.** A bundle MAY declare document kinds as plain OKF convention docs
   (`type: Convention`) naming the `type` value they govern, its required/optional fields,
@@ -203,23 +203,17 @@ opt into `bundle-propose` for one human-confirmed, version-guarded scalar-field 
 views as bundle Views rather than adding a second rendering engine.
 
 The experimental local `agentstate-lite mcp` command is a second host adapter, not a second View
-system. Its single model-visible `show_view` tool either binds agent-authored, script-free HTML/CSS
-to exact current document snapshots, launches agent-authored active HTML as a process-local
-transient View, or launches one existing registered View unchanged by exact id. Generated input
-may select by id or by one bounded launch-time query using the registered View's
-shared field/open filtering authority; the query resolves once in deterministic ID order and
-freezes at most 20 exact IDs/versions for the launch and its actions. Registered executable Views
-and transient executable Views use the same launch/bridge authority and require exact-byte local
-trust approval before bundle data is exposed; transient approval is process-local and never enters
-the persistent registered-View trust store. The model-visible `save_transient_view` tool can persist
-an approved launch unchanged as a registered View; it accepts no HTML, and the new durable identity
-requires its own local approval. The fixed trusted shell reuses the bounded Markdown
-renderer, strips navigation and active content from generated presentations, and may render bounded
-scalar actions outside that generated frame. App-only lifecycle and prepare/finish tools remain
-hidden from the model;
-actions require a configured actor, explicit human confirmation, selection/version revalidation,
-and hard CAS through the shared action and mutation authorities. It is deliberately local,
-stdio-only, unpublished as a standalone package, and not yet a supported product surface.
+system. Its single model-visible `show_view` tool launches either agent-authored active HTML as a
+process-local transient View or one existing registered View unchanged by exact id. Both use the
+same active source contract, launch/bridge authority, sandbox, CSP, shared bounded Markdown
+renderer, subscription and sizing behavior, and require exact-byte local trust approval before
+bundle data is exposed. Transient approval is process-local and never enters the persistent
+registered-View trust store. The model-visible `save_transient_view` tool can persist an approved
+launch unchanged as a registered View; it accepts no HTML, and the new durable identity requires
+its own local approval. App-only lifecycle and prepare/finish tools remain hidden from the model;
+actions require a configured actor, explicit human confirmation, version revalidation, and hard
+CAS through the shared action and mutation authorities. It is deliberately local, stdio-only,
+unpublished as a standalone package, and not yet a supported product surface.
 
 The multi-human collaboration substrate (hosted worker, auth, admin) is FROZEN per bundle doc
 `docs/core` and preserved outside the OSS repository — it is not a build or deployment target

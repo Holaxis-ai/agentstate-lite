@@ -27,14 +27,12 @@ Options:
 
 The experimental server uses stdio and exposes one model-visible tool: show_view. An agent can
 provide an exact registered View ID to launch its current HTML unchanged through the shared
-read-only bundle bridge, after trusted-shell approval of those exact bytes. Or the agent can select
-exact document IDs or supply one bounded launch-time query, then add script-free HTML/CSS with
-declarative data-aslite-text or data-aslite-markdown bindings over frozen authoritative snapshots.
-Queries reuse the bundle View's type/prefix/field/open semantics, resolve in deterministic ID order,
-and expose at most 20 documents per launch.
-Optional document.set-field declarations become trusted-shell controls; generated HTML cannot
-write directly, and every action requires explicit human confirmation plus a current version.
-The server does not save generated HTML, accept remote targets, or expose arbitrary filesystem paths.
+View bridge, after trusted-shell approval of those exact bytes. Or the agent can launch standard
+View HTML transiently for the current MCP process, with explicit bundle-read or bundle-propose
+access, then save the approved exact bytes as a registered View without transformation.
+Views use the same query, render-document, graph, subscription, and governed-action bridge in MCP
+and the web UI. Every bundle-propose action requires explicit human confirmation and a current
+document version. The server accepts no remote targets or arbitrary filesystem paths.
 `;
 
 export interface McpCliDeps {
