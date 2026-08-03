@@ -64,6 +64,16 @@ export const CLOSE_DURABLE_VIEW_TOOL_NAME = "close_durable_view";
 export const RESUME_DURABLE_VIEW_TOOL_NAME = "resume_durable_view";
 export const RESOLVE_LAUNCH_TOOL_NAME = "resolve_launch";
 export const SAVE_TRANSIENT_VIEW_TOOL_NAME = "save_transient_view";
+const MAX_NAVIGATION_OPERATIONS = 256;
+
+type ActiveViewNavigation =
+  | { status: "opened"; view: DurableViewLaunchPayload }
+  | { status: "failed"; message: string };
+
+function boundedNavigationMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.slice(0, 500) || "the target View could not be opened";
+}
 
 /**
  * Claim marker carried in show_view's TEXT content — the channel Claude Desktop preserves when it
@@ -406,7 +416,39 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     renderDocument: renderDocumentToStaticHtml,
     allowActionProtocol: true,
     enablePolling: true,
+    consumeOpenPage: true,
   });
+  // One source launch can select at most one target. Retaining the bounded promise lets duplicate
+  // or concurrent bridge deliveries converge on the same fresh target launch instead of racing a
+  // fast rejection against the winning response.
+  const navigations = new Map<string, Promise<ActiveViewNavigation>>();
+  const navigateActiveView = (
+    sourceLaunchId: string,
+    targetViewId: string,
+  ): Promise<ActiveViewNavigation> => {
+    const existing = navigations.get(sourceLaunchId);
+    if (existing) return existing;
+    while (navigations.size >= MAX_NAVIGATION_OPERATIONS) {
+      const oldest = navigations.keys().next().value as string | undefined;
+      if (!oldest) break;
+      navigations.delete(oldest);
+    }
+    const operation = (async (): Promise<ActiveViewNavigation> => {
+      try {
+        const view = await resolveDurableViewLaunch(
+          options.bundle,
+          { viewId: targetViewId },
+          durableLaunches,
+          durableAuthorizations,
+        );
+        return { status: "opened", view };
+      } catch (error) {
+        return { status: "failed", message: boundedNavigationMessage(error) };
+      }
+    })();
+    navigations.set(sourceLaunchId, operation);
+    return operation;
+  };
 
   registerAppTool(
     server,
@@ -682,9 +724,19 @@ export function createMcpAppServer(options: CreateMcpAppServerOptions): McpServe
     },
     async ({ launchId, request }): Promise<CallToolResult> => {
       const outcome = await durableBridge.handle(launchId, request);
+      const navigation = outcome.openPageId === undefined
+        ? undefined
+        : await navigateActiveView(launchId, outcome.openPageId);
       return {
-        content: [{ type: "text", text: "Processed one active View bridge request." }],
-        structuredContent: { outcome },
+        content: [{
+          type: "text",
+          text: navigation?.status === "opened"
+            ? `Opened registered View "${navigation.view.title}" inside the active MCP View host.`
+            : navigation?.status === "failed"
+              ? `Could not open the registered View: ${navigation.message}`
+              : "Processed one active View bridge request.",
+        }],
+        structuredContent: { outcome, ...(navigation ? { navigation } : {}) },
       };
     },
   );

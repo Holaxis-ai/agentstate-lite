@@ -496,18 +496,44 @@ async function forwardDurableBridgeMessage(
       name: "durable_view_bridge",
       arguments: { launchId, request },
     });
-    if (!durablePayloadFor(launchId, epoch)) return;
-    const outcome = structuredResult(response)?.outcome;
+    const structured = structuredResult(response);
+    const outcome = structured?.outcome;
     if (!isRecord(outcome)) throw new Error("The durable View bridge returned an invalid outcome.");
+    if (outcome.openPageId !== undefined) {
+      const navigation = structured?.navigation;
+      const target = isRecord(navigation) && navigation.status === "opened"
+        ? navigation.view
+        : null;
+      if (!durablePayloadFor(launchId, epoch)) {
+        if (
+          isActiveViewPayload(target) &&
+          (!isActiveViewPayload(currentPayload) ||
+            currentPayload.launch.launchId !== target.launch.launchId)
+        ) {
+          closeDurableLaunchEventually(target.launch.launchId);
+        }
+        return;
+      }
+      // The server has already consumed and revoked the source launch before resolving the target.
+      // Retire the local source generation without issuing a competing close, then admit only the
+      // fresh registered payload returned through trusted shell transport.
+      retirePayload(false);
+      if (isActiveViewPayload(target)) {
+        renderDurablePayload(target);
+        return;
+      }
+      statusEl.dataset.kind = "error";
+      statusEl.textContent =
+        `Could not open the registered View: ${
+          isRecord(navigation) && typeof navigation.message === "string"
+            ? navigation.message
+            : "the MCP host returned no valid target launch"
+        }`;
+      return;
+    }
+    if (!durablePayloadFor(launchId, epoch)) return;
     if (isRecord(outcome.reply)) {
       frame.contentWindow?.postMessage(outcome.reply, "*");
-    }
-    if (outcome.openPageId !== undefined) {
-      const reply = bridgeError(
-        request,
-        "registered View navigation is not part of the read-only MCP proof",
-      );
-      if (reply) frame.contentWindow?.postMessage(reply, "*");
     }
     if (outcome.subscribed === true) scheduleDurablePoll(launchId, epoch);
   } catch (error) {

@@ -435,6 +435,62 @@ test("authorization dialog reports registered and transient View provenance hone
   );
 });
 
+test("open-page replaces the source with a fresh independently authorized registered View", async ({
+  page,
+}) => {
+  const outer = await lifecycleHost(page);
+  await outer.locator("#authorization-apply").click();
+  const sourceFrame = page.frames().find((frame) => frame.parentFrame() === outer);
+  if (!sourceFrame) throw new Error("Expected the authorized source View frame.");
+
+  await sourceFrame.locator("#navigate").click();
+  await expect(outer.locator("#authorization-backdrop")).toBeVisible();
+  await expect(outer.locator("#authorization-view")).toHaveText(
+    "views-registry/target",
+  );
+  await expect(outer.locator("#status")).toContainText(
+    "Waiting for local approval",
+  );
+  await expect
+    .poll(() => page.evaluate(() => window.__closedLaunches))
+    .not.toContain("launch-navigation-target");
+
+  await outer.locator("#authorization-apply").click();
+  await expect(sourceFrame.locator("#target-control")).toBeVisible();
+});
+
+test("a delayed open-page result cannot replace a newer transient View", async ({
+  page,
+}) => {
+  const outer = await lifecycleHost(page);
+  await outer.locator("#authorization-apply").click();
+  const sourceFrame = page.frames().find((frame) => frame.parentFrame() === outer);
+  if (!sourceFrame) throw new Error("Expected the authorized source View frame.");
+  await page.evaluate(() => {
+    window.__holdNavigationRequest = true;
+  });
+
+  await sourceFrame.locator("#navigate").click();
+  await expect
+    .poll(() => page.evaluate(() => window.__bridgeRequests.length))
+    .toBe(1);
+  await page.evaluate(() => window.__showTransientResult());
+  await expect(outer.locator("#authorization-view")).toHaveText(
+    "Transient process-local View",
+  );
+  await page.evaluate(() => window.__releaseNavigationRequest());
+
+  await expect
+    .poll(() => page.evaluate(() => window.__closedLaunches))
+    .toContain("launch-navigation-target");
+  await expect(outer.locator("#authorization-view")).toHaveText(
+    "Transient process-local View",
+  );
+  await expect(outer.locator("#status")).toContainText(
+    "Waiting for local approval",
+  );
+});
+
 test("bundle-propose active Views receive only a human-confirmed terminal action result", async ({
   page,
 }) => {
@@ -668,6 +724,7 @@ declare global {
   interface Window {
     __appliedHeightReports?: AppliedHeightReport[];
     __closedLaunches: string[];
+    __bridgeRequests: unknown[];
     __preparedActions: unknown[];
     __finishedActions: unknown[];
     __displayRequestError: string | null;
@@ -675,6 +732,7 @@ declare global {
     __displayRequests: string[];
     __resumeRequests: string[];
     __holdCloseRequest: boolean;
+    __holdNavigationRequest: boolean;
     __holdDisplayRequest: boolean;
     __holdResumeRequest: boolean;
     __hostInitialized?: boolean;
@@ -684,6 +742,7 @@ declare global {
     __emitDisplayMode: (mode: "inline" | "fullscreen") => void;
     __replayOriginalResult: () => Promise<void>;
     __releaseCloseRequest: () => void;
+    __releaseNavigationRequest: () => void;
     __releaseDisplayRequest: () => void;
     __releaseResumeRequest: () => void;
     __startTeardown: () => void;

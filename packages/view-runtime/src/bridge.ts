@@ -297,6 +297,8 @@ export interface BridgeServiceOptions {
   renderDocument: BridgeDocumentRenderer;
   allowActionProtocol?: boolean;
   enablePolling?: boolean;
+  /** Retire the source launch before returning an open-page selection to a host-owned resolver. */
+  consumeOpenPage?: boolean;
 }
 
 export interface BridgeDocumentRendererInput {
@@ -361,6 +363,14 @@ export class BridgeService {
           error instanceof Error ? error.message : String(error),
         ),
       };
+    }
+
+    if (
+      request.type === "open-page" &&
+      this.options.consumeOpenPage === true &&
+      outcome.openPageId !== undefined
+    ) {
+      return outcome;
     }
 
     const after = await this.options.launches.resolve(launchId, dataBearing);
@@ -459,6 +469,10 @@ export class BridgeService {
 
   private async execute(launch: BridgeLaunch, request: ParsedBridgeRequest): Promise<BridgeOutcome> {
     if (request.type === "open-page") {
+      if (this.options.consumeOpenPage === true) {
+        this.revoke(launch.launchId);
+        return { reply: null, openPageId: request.pageId };
+      }
       try {
         const target = await readDocVersioned(this.options.bundle, request.pageId);
         if (!isAnyRegistryId(target.doc.id) || !parseRegistration(target.doc.id, target.doc.frontmatter)) {
