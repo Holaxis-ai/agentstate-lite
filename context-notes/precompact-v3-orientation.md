@@ -2,7 +2,7 @@
 type: Context Note
 title: 'Revision 3 orientation and domain model: compaction handoffs'
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-03T21:07:56.973Z'
+timestamp: '2026-08-03T21:18:34.581Z'
 ---
 # Summary
 
@@ -10,7 +10,7 @@ Revision 3 reorientation after a Codex context boundary on 2026-08-03.
 
 Ultimate goal: agentstate-lite is shared, versioned, conflict-safe memory for concurrent agent fleets, in plain text and owned by the user.
 
-Proximate goal: finish the reviewed revision-3 implementation, freeze one immutable candidate, and prove its delivery rail on the pinned Claude host; this serves the ultimate goal by making concurrent-session compaction recovery conflict-safe and empirically trustworthy.
+Proximate goal: close the newly identified T3.5 candidate-binding gap, review the complete rail, freeze one immutable candidate, and prove it on the pinned Claude host; this serves the ultimate goal by making concurrent-session compaction recovery conflict-safe and empirically trustworthy.
 
 Loaded skills: holaxis-self-awareness, holaxis-cognitive-ecosystem, agentstate-lite, holaxis-orchestrator, and holaxis-agent-launcher.
 
@@ -26,17 +26,18 @@ Hook installation is a separate safety boundary. Managed-command recognition is 
 
 The exact design and implementation plan passed independent lifecycle, product/acceptance, and adversarial plan review. T0 supplied process-level fixtures and boundary-driven tests. T1's private authority passed exact-SHA independent review at `a77ef92fa009ee424497317c129c6a6f88f122ef`, including interrupted-fence recovery. T2's five-event adapter and structural installer passed exact-SHA independent review at `e0aa63335dc4d4f1c5c21c74eb3fec8bdacad854`.
 
-Those reviewed chains are integrated on `feat/precompact-handoff-v3` in `/private/tmp/aslite-precompact-v3.RLDTIZ/repo`. T3's first cross-boundary review found two real defects: helper health bypassed journal-root initialization, and the helper/live harness used a second root override. Commit `579de4df5076f042282d0292db6ead0839f97ef3` repairs both by delegating readiness to `HandoffStore.initialize()` and using only `AGENTSTATE_LITE_HANDOFF_ROOT`. Focused integration, frozen contracts, the combined relevant suite, the full CLI suite, typecheck, and build are green. An independent exact-SHA T3 re-review is running now.
+Those reviewed chains are integrated on `feat/precompact-handoff-v3` in `/private/tmp/aslite-precompact-v3.RLDTIZ/repo`. T3's first cross-boundary review found two real defects: helper health bypassed journal-root initialization, and the helper/live harness used a second root override. The repair delegated readiness to `HandoffStore.initialize()` and retained only `AGENTSTATE_LITE_HANDOFF_ROOT`; exact-SHA T3 re-review passed at 0.99 confidence. T4 documentation then completed and passed its focused builder checks. The branch was rebased onto current `origin/main` so its package identity is `0.1.0-pre.3`; the resulting integrated SHA is `05466678ea25c3d4d43043c20969aaad3f52dd6b`, and an independent T4/rebase review is running.
 
-No T4 documentation, candidate freeze, QA, or live acceptance starts until that T3 review passes. After T4, the full check gate freezes one packed digest and manifest; Review, QA, negative-host tests, real manual/automatic main compaction, and real subagent acceptance must all consume that same artifact. Any code repair creates a new SHA and restarts downstream review.
+A pre-G0 audit correctly blocked candidate freeze. The committed live harness still declares `phase: T0-isolation-only`; it does not bind an expected candidate manifest digest, install the already-frozen tarball, verify helper/harness/host identities, or carry a lane binding through L0-L3. The existing package verifier also always rebuilds and deletes its scratch artifact. `context-notes/precompact-v3-g0-readiness` therefore prescribes a test-first T3.5 `freeze`/`verify-existing` seam with strict manifest/path/digest schemas, exactly one build and pack, zero downstream rebuilds, lane-bound sanitized receipts, byte-drift attacks, and clean offline install proof. Independent adversarial and acceptance reviews of that prescription are running. No G0 freeze starts until T3.5 is implemented and exact-SHA reviewed.
 
 ## Unverified assumptions and remaining risks
 
 - Whether the exact pinned Claude host exposes enough sub-agent context pressure to force and observe a real sub-agent compaction journey.
 - Whether real PreCompact blocking and SessionStart fail-closed results are enforced as expected for missing/killed/timed-out helper cases.
-- Whether the eventual packed artifact's installed command path, helper digest, and permissions remain identical through every acceptance gate.
+- Whether the reviewed T3.5 design completely binds real Claude invocation, first-response canaries, event-sequence evidence, and outside/candidate inventories without operator-only convention.
+- Whether the eventual packed artifact's installed command path, helper digest, harness digest, manifest digest, and permissions remain identical through every acceptance gate.
 - Physical deletion timing when the authority is never invoked again; the design guarantees logical expiry and explicitly does not claim a wall-clock daemon.
-- T3 is not accepted until the independent reviewer attacks the repaired journal-root boundary at exact SHA `579de4d` and records PASS.
+- The rebased T3/T4 integration is not accepted until its independent exact-SHA review passes.
 
 The deprecated fixed `context-notes/pre-compact-main` remains unsafe by design and points to session-scoped history. Revision 3 replaces that convention with the exact private authority; it does not revive the fixed-id rail.
 
