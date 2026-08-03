@@ -4,15 +4,16 @@ title: 'Product recipes: bundle-free discovery before init'
 status: in_progress
 priority: '1'
 description: >-
-  Implemented by openai/codex in commit 604c316; draft PR #201 is awaiting the
-  ordinary-code independent review. Bundle-free recipe discovery now succeeds
+  Implemented by openai/codex in PR #201 at commit e277ce5; awaiting
+  ordinary-code independent review. Bundle-free recipe discovery succeeds
   without writes, emits assets plus exact init/add commands, preserves
   fail-closed explicit targets and bundle-aware applied state, and is surfaced
-  from the no-bundle home view. Focused tests, installed npm tarball proof, and
-  the full repository gate passed on the exact commit.
+  from the no-bundle home view. CI expectation drift was corrected after the
+  first run; focused tests, installed npm tarball proof, and the full repository
+  gate now pass with explicit exit-code capture on the exact commit.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-03T03:32:32.224Z'
+timestamp: '2026-08-03T03:50:17.121Z'
 ---
 # Problem
 
