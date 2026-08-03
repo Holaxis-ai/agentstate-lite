@@ -2,7 +2,7 @@
 type: Context Note
 title: 'Revision 3 orientation and domain model: compaction handoffs'
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-03T21:28:38.356Z'
+timestamp: '2026-08-03T21:41:07.248Z'
 ---
 # Summary
 
@@ -28,12 +28,13 @@ The exact design and implementation plan passed independent lifecycle, product/a
 
 Those reviewed chains are integrated on `feat/precompact-handoff-v3` in `/private/tmp/aslite-precompact-v3.RLDTIZ/repo`. T3's first cross-boundary review found two real defects: helper health bypassed journal-root initialization, and the helper/live harness used a second root override. The repair delegated readiness to `HandoffStore.initialize()` and retained only `AGENTSTATE_LITE_HANDOFF_ROOT`; exact-SHA T3 re-review passed at 0.99 confidence. T4 documentation was rebased onto current `origin/main` and package identity `0.1.0-pre.3`. Its first review caught one stale universal SessionStart claim; the regression-tested repair passed exact-SHA re-review at `36c741a8173832d75d61a7ab138b5219c4415c66` with 0.99 confidence. T0-T4 are now accepted.
 
-A pre-G0 audit correctly blocked candidate freeze. The committed live harness still declares `phase: T0-isolation-only`; it does not bind an expected candidate manifest digest, install the already-frozen tarball, verify helper/harness/host identities, or carry a lane binding through L0-L3. The existing package verifier also always rebuilds and deletes its scratch artifact. `context-notes/precompact-v3-g0-readiness` therefore prescribes a test-first T3.5 `freeze`/`verify-existing` seam with strict manifest/path/digest schemas, exactly one build and pack, zero downstream rebuilds, lane-bound sanitized receipts, byte-drift attacks, and clean offline install proof. Independent adversarial and acceptance reviews of that prescription are running. No G0 freeze starts until T3.5 is implemented and exact-SHA reviewed.
+A pre-G0 audit correctly blocked candidate freeze. The committed live harness still declares `phase: T0-isolation-only`; it does not bind an expected candidate manifest digest, install the already-frozen tarball, verify helper/harness/host identities, or carry a lane binding through L0-L3. The existing package verifier also always rebuilds and deletes its scratch artifact. Two T3.5 plan revisions have now failed exact independent review. The second revision successfully specified the static candidate, one authority, verifier, strict oracles, and stage graph, but still relied on a racy parallel PreCompact fault, unspecified exact-host debug completion evidence, under-bound R0/Q0 assertions, lane-local replay claims, contradictory tmux auth/cleanup, and unenforceable root/real-npm claims. An isolated exact-2.1.220 primitive probe is now testing whether a flushed post-managed-exit/pre-join debug signal exists; this determines whether the SessionStart-halt lane can remain test-only or requires reopening T3. No G0 freeze or T3.5 code starts until a revised exact Plan passes both reviewers.
 
 ## Unverified assumptions and remaining risks
 
 - Whether the exact pinned Claude host exposes enough sub-agent context pressure to force and observe a real sub-agent compaction journey.
 - Whether real PreCompact blocking and SessionStart fail-closed results are enforced as expected for missing/killed/timed-out helper cases.
+- Whether exact Claude 2.1.220 exposes a handler-bound, flushed completion record after managed PreCompact exits but before a parallel sibling returns; without it, the proposed SessionStart corruption fault has no deterministic post-read-back ordering edge.
 - Whether the reviewed T3.5 design completely binds real Claude invocation, first-response canaries, event-sequence evidence, and outside/candidate inventories without operator-only convention.
 - Whether the eventual packed artifact's installed command path, helper digest, harness digest, manifest digest, and permissions remain identical through every acceptance gate.
 - Physical deletion timing when the authority is never invoked again; the design guarantees logical expiry and explicitly does not claim a wall-clock daemon.
