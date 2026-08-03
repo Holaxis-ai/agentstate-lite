@@ -1,83 +1,72 @@
 ---
 type: Task
-title: >-
-  Ship a guidance bundle with the aslite npm package that teaches users how to
-  use aslite
+title: Ship agentstate-guide as an explicit built-in learning workspace
 status: todo
 priority: '2'
 description: >-
-  Ship a bundle-native onboarding/guidance bundle with the npm package; decide
-  install model (silent-auto vs explicit command + destination),
-  skill-awareness, and lifecycle (always-available vs one-time wizard vs
-  combination).
-actor: brian-claude
-timestamp: '2026-08-02T15:32:12.127Z'
+  Ship a standalone bundle-native guide through the existing
+  RecipeSource/discovery path; explicit destination, persistent reference, no
+  silent install or acknowledgement subsystem.
+actor: codex-onboarding-scope
+assignee: brian-claude
+timestamp: '2026-08-03T22:36:34.255Z'
 ---
-# Guidance bundle shipped with the aslite npm package
+# Goal
 
-## Goal
+Ship `agentstate-guide` as a built-in, data-free Recipe that materializes a standalone learning workspace. It teaches a newcomer AgentState Lite through ordinary bundle References and one registered orientation View, then helps them create a separate real bundle without founder explanation.
 
-Ship a **guidance bundle** alongside the aslite npm package that teaches a new user how to use
-aslite — a bundle-native onboarding/education surface (aslite teaching aslite in its own medium),
-so a first-time user has a concrete, explorable example plus guidance rather than only docs/skill
-prose.
+This is the guidance work unit defined by [the onboarding surface plan](../plans/onboarding-surfaces.md). It is not a new installer or onboarding subsystem.
 
-## Why
+# Decided boundary
 
-Onboarding today is prose (README + the skill). A shipped guidance bundle makes aslite
-self-teaching in its own format and gives a newcomer something real to open, browse, and poke at.
-Fits the npm-first, bundle-native-knowledge direction ([distribution-neutral-resources]) and the
-installable-operating-model direction ([recipe-plugins]).
+- Delivery uses the existing built-in `RecipeSource` and the generic [bundle-free recipe discovery](product-recipe-discovery.md) shipped in PR #201.
+- The recommended path is explicit standalone creation at a user-chosen destination, equivalent to `aslite init --recipe agentstate-guide --dir <chosen-learning-workspace>`.
+- No silent npm postinstall behavior, cwd inference as a product choice, special `guide`/`learn` command, marketplace, second parser, or automatic composition.
+- The guide is a persistent reference, not a one-time wizard. V1 has no seen/acknowledgement state and does not depend on the identity/notice design.
+- Initial content is data-free: static References plus one bundle-read registered View. The learner creates the first ordinary instance through a safe attributed action.
+- The guide remains separate from `examples/sample-bundle`, whose job is interop and round-trip testing.
+- The Agent Skill may mention the exact discovery path when asked, but the CLI alone must be sufficient and must not nag.
 
-## Decisions to make (this is the crux — the task is to decide these, then build)
+# Acceptance criteria
 
-1. **Install model.** Silent + automatic on `npm install`, OR an explicit CLI command
-   (e.g. `aslite guide` / `aslite learn` / a `recipe add`) that lets the user choose a destination
-   folder.
-   - If AUTOMATIC: WHERE does it land? A fixed per-user home (e.g. `~/.aslite/guide`)? The cwd?
-     Automatic-into-a-project risks creating an unwanted bundle or colliding with the standing
-     "never init over an existing workspace" rule and the conventional-folder discovery walk.
-   - If EXPLICIT COMMAND: avoids that pollution risk and gives a destination choice, but adds a
-     discovery step (the user has to know the command exists — see decision 2).
-2. **Skill awareness.** Should the aslite skill KNOW about the guidance bundle — recommend it when
-   a user seems new or stuck, and/or surface relevant guidance inline while working elsewhere?
-   (Requires the skill to reference the guide's existence + how to install/open it.)
-3. **Lifecycle.** Always-available reference, a one-time wizard, or a combination. Candidate
-   combination: the skill notices a likely-new user and points at the guide -> the user runs a
-   one-time wizard and ACKNOWLEDGES having viewed it (a durable marker) -> thereafter the agent
-   stops prompting, but the bundle stays available on demand.
+Using the exact installed npm artifact from an isolated home and empty directory:
 
-## Acceptance criteria (to refine once the decisions above are settled)
+1. bare `aslite` points to recipe discovery without creating files;
+2. `aslite recipes` lists `agentstate-guide` with a concise purpose, assets, and an explicit safe creation path;
+3. initializing the guide at a chosen path never creates, replaces, or mutates an existing project workspace or binding target;
+4. the resulting bundle opens through ordinary local web and, where configured, MCP View surfaces;
+5. a fresh user/agent can explain bundles, docs, links, Kinds, Recipes, Views, status, local-first visibility, and optional sync;
+6. the learner completes one safe attributed write, observes the result, and creates a separate real bundle without founder coaching;
+7. the guide remains reopenable with no acknowledgement marker or stable-person identity; and
+8. offline operation after npm installation and existing Recipe create-only/idempotent semantics remain intact.
 
-- A guidance bundle exists and ships with (or is materialized from) the npm package with no extra
-  network beyond the already-installed package.
-- The install path is decided and documented, and it NEVER silently creates or clobbers a
-  project's own workspace bundle (honor the discovery-walk + "join, don't create a second bundle"
-  rules).
-- If skill-aware: the skill can recommend the guide and/or surface guidance, gated so it does not
-  nag after the user has acknowledged it.
-- If wizard: a durable "viewed/acknowledged" marker makes the one-time flow genuinely one-time,
-  while the bundle stays browsable afterward.
-- Content teaches the core loop (init/sync, docs, links, kinds/recipes, Views, status) through a
-  real explorable bundle, not just prose.
+# Content design questions owned here
 
-## Open questions
+- The smallest curriculum and flagship orientation View that satisfy the outcome.
+- Which existing base conventions the self-contained Recipe includes without adding hidden dependency resolution.
+- The exact safe first action and graduation prompt.
+- The emitted destination wording and collision probes needed to make the explicit path honest.
 
-- Does the guidance bundle double as the canonical example bundle (replacing/merging
-  `examples/sample-bundle`), or is it separate?
-- Is it a RECIPE (applied into a bundle) or a STANDALONE bundle the user opens/browses? These are
-  different install shapes.
-- How does it interact with discovery-before-init ([product-recipe-discovery]) — is the guide the
-  thing a bundle-free newcomer discovers first?
-- Does the acknowledgement marker live per-user (`~/.aslite/`) or per-bundle, given the same
-  person may onboard once across many projects?
+# Dependencies and sequence
 
-## Related
+- Depends on the shipped PR #201 recipe discovery seam.
+- Waits for Michael Collier's sign-off on [the shared boundary](../review-requests/onboarding-surfaces-mike-signoff.md), not on P5A or the npm quickstart task.
+- May proceed in parallel with [npm quickstart](npm-quickstart-onboarding.md) after sign-off because that task proves the existing `work-tracking` path.
+- When shipped, link evidence to [the guidance Journey Stage](../journey-stages/04-learn-through-guidance-bundle.md); Journey readiness changes only after proof.
+
+# Non-goals
+
+- P5A, staged release automation, update awareness, marketplace retirement, or deployment.
+- Personal Task System or another domain operating model. [The built-in recipe deferral](../decisions/defer-builtin-recipes.md) remains in force.
+- Per-person notices, acknowledgement, passive seen tracking, or identity work from [the notice design](../designs/user-notices.md).
+- Turning the learning workspace into the user's real project or encouraging `recipe add` into an existing project as the default onboarding path.
+
+# Related
 
 - [distribution-neutral-resources](../roadmap-items/distribution-neutral-resources.md)
 - [recipe-plugins](../roadmap-items/recipe-plugins.md)
-- [product-recipe-discovery](../tasks/product-recipe-discovery.md)
-- [npm-cli-skill-prerelease](../tasks/npm-cli-skill-prerelease.md)
+- [product-recipe-discovery](product-recipe-discovery.md)
+- [npm-cli-skill-prerelease](npm-cli-skill-prerelease.md)
 
 [part of](../roadmap-items/distribution-neutral-resources.md)
 

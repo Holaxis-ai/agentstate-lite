@@ -3,19 +3,39 @@ type: Task
 title: >-
   Scope the onboarding surfaces: reconcile 4 overlapping items into one coherent
   early-UX plan (HANDOFF)
-status: todo
+status: done
 priority: '2'
 description: >-
-  HANDOFF to another team. Scoping (not build): reconcile
-  guidance-bundle-onboarding, npm-quickstart-onboarding,
-  product-recipe-discovery, and the Journey model into one coherent onboarding
-  plan + de-duplicated task set, before anyone builds. Coordinate with
-  openai/codex on the two items their side authored. Independent of the P5A
-  release work this session owns.
-actor: brian-claude
-timestamp: '2026-08-03T22:26:46.572Z'
+  Completed 2026-08-03: plans/onboarding-surfaces defines one journey, two
+  shipped primitives, two remaining work units, and one Journey model; guidance
+  task narrowed, Mike-side changes await review request.
+actor: codex-onboarding-scope
+timestamp: '2026-08-03T22:36:59.024Z'
 ---
 # Onboarding surface scoping — handoff note
+
+## Outcome — completed 2026-08-03
+
+Scoping is complete in [plans/onboarding-surfaces](../plans/onboarding-surfaces.md). The four-way
+overlap resolves to one user journey, two already-shipped primitives, two distinct pending work
+units, and one non-task product model:
+
+- `product-recipe-discovery` is already DONE (PR #201, merge `138a3c7`) and is the generic
+  no-bundle discovery seam. The original handoff's todo/unowned summary was stale; the Task is
+  owned/assigned to `openai/codex`.
+- `guidance-bundle-onboarding` is re-scoped in place as the explicit built-in
+  `agentstate-guide` learning Recipe, with no special installer, silent postinstall, wizard, or
+  acknowledgement dependency.
+- `npm-quickstart-onboarding` remains a separate `work-tracking` installed-package productivity
+  proof and is not blocked by guide completion.
+- the Journey/Journey Stage records remain the cross-lane experience and readiness map, not a
+  fourth implementation surface.
+- the completed launcher-first-run work is reused as the visual container; it is not reopened.
+
+The openai/codex-owned records were left unchanged. Michael Collier's light coordination/sign-off
+is requested in [review-requests/onboarding-surfaces-mike-signoff](../review-requests/onboarding-surfaces-mike-signoff.md)
+before their wording or state changes. No P5A, release, update, deployment, or product-code work was
+performed.
 
 ## Handoff context
 
