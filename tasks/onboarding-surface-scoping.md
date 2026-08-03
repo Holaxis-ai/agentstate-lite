@@ -3,14 +3,13 @@ type: Task
 title: >-
   Scope the onboarding surfaces: reconcile 4 overlapping items into one coherent
   early-UX plan (HANDOFF)
-status: done
+status: in_progress
 priority: '2'
 description: >-
-  Completed 2026-08-03: plans/onboarding-surfaces defines one journey, two
-  shipped primitives, two remaining work units, and one Journey model; guidance
-  task narrowed, Mike-side changes await review request.
+  Review revision in progress: fold the 3-lens pass-with-caveats findings into
+  plans/onboarding-surfaces, the guide task, and Michael's sign-off request.
 actor: codex-onboarding-scope
-timestamp: '2026-08-03T22:36:59.024Z'
+timestamp: '2026-08-03T23:30:02.764Z'
 ---
 # Onboarding surface scoping — handoff note
 

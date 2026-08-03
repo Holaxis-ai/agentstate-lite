@@ -4,12 +4,11 @@ title: Implement and live-prove revision 3 multi-session compaction handoffs
 status: in_progress
 priority: '2'
 description: >-
-  T0-T4 passed exact review. The selected no-auth host probe passed the direct
-  same-PID broker/tmux primitives; independent acceptance and skeptic review now
-  gate replacement Plan synthesis. No T3.5 code, API-key Claude run, or G0
-  freeze yet.
+  T0-T4 passed exact review. The v5 host evidence received unanimous scoped PASS
+  for replacement-Plan synthesis; R5 synthesis and exact dual review now gate
+  T3.5 code. No API-key Claude run or G0 freeze yet.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-03T23:17:35.750Z'
+timestamp: '2026-08-03T23:30:44.961Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
