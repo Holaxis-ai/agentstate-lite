@@ -2,7 +2,7 @@
 type: Context Note
 title: Revision 3 T1 private authority builder
 actor: codex-precompact-v3-t1-builder
-timestamp: '2026-08-03T20:13:15.592Z'
+timestamp: '2026-08-03T20:27:02.723Z'
 ---
 # Summary
 
@@ -66,3 +66,20 @@ Two killpoint regressions now prove:
 - a production PostCompact mutation advancing the selected generation during quarantine makes recovery conflict without changing that updated generation or head.
 
 Final R2 verification: focused identity/schema/transcript/authority/true-process/contracts lane 34 pass, 0 fail, 13 expected T2 skips; opt-in red lane 14 pass with exactly the two deferred T2 failures; CLI typecheck, full monorepo build, and diff check pass. Exact T1 review commit: `a6af67738a1750b02a201ce4ea51cfdc84a3e23f`.
+
+## Independent review R3 repair
+
+Review `context-notes/precompact-v3-t1-review-r3` at `sha256:386383c267c2f60d51f3a955fab062c5801242728bde9a19f58d27a0376e0991` found that a real process exit after fence publication could leave an unbounded guard containing a duplicate of the original generation bytes. Later recovery nested and restored that old guard, while GC skipped it forever.
+
+Repair `a77ef92fa009ee424497317c129c6a6f88f122ef` replaces that opaque guard with a strict identity/address-bound recovery state. It stores only exact head/original-generation versions, the original SHA-256, an exact quarantine key/version reference, and fixed creation/expiry timestamps. Original bytes exist only in the private bounded quarantine. Guards are non-nesting: diagnosis reports `HANDOFF_RECOVERY_IN_PROGRESS`; attached recovery resumes the existing operation, and orphan recovery finishes cleanup directly. Successful recovery always removes the guard.
+
+Event-driven GC now owns interrupted guards. It detaches an expired attached guard only under exact head/guard versions, removes orphan guards under their exact version, observes the existing 25-generation deletion cap, and independently expires referenced quarantine records under the quarantine cap. A fresh prepare after cleanup leaves neither old guard nor quarantine residue.
+
+True-process children now exit with code 77 at both production boundaries:
+
+- immediately after the generation fence write while the exact head remains attached;
+- immediately after exact head detachment before guard release.
+
+For both boundaries, tests prove diagnosis, exact operator resumption without nesting, no secret canary in guard bytes, later quarantine expiry, an independent no-operator GC-only cleanup path, and successful new prepare with no sentinel/quarantine residue.
+
+Final R3 verification: focused identity/schema/transcript/authority/true-process/contracts lane 36 pass, 0 fail, 13 expected T2 skips; opt-in red lane 14 pass with exactly the two deferred T2 failures; CLI typecheck, full monorepo build, and diff check pass. Exact T1 review commit: `a77ef92fa009ee424497317c129c6a6f88f122ef`.
