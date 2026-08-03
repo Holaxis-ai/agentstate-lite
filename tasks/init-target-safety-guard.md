@@ -1,0 +1,63 @@
+---
+type: Task
+title: Add generic create-only target safety to init
+status: todo
+priority: '1'
+assignee: brian-claude
+description: >-
+  Add backward-compatible init --create-only preflight that refuses existing,
+  bound, enclosing, ambiguous, or concurrently-created bundle targets before any
+  write; shared predecessor for guide and quickstart.
+actor: codex-onboarding-scope
+timestamp: '2026-08-03T23:32:11.742Z'
+---
+# Problem
+
+Onboarding needs an explicit command that creates a new bundle only when its target is genuinely new. Current `init` is intentionally idempotent/open-or-create: it can apply another Recipe to an existing bundle and can create a nested bundle when invoked below an enclosing workspace. That behavior makes the proposed guide command unsafe as a “new standalone learning workspace” contract.
+
+This is a shared `init` target-selection boundary used by both [the guide task](guidance-bundle-onboarding.md) and [npm quickstart](npm-quickstart-onboarding.md). It is product code, not guide copy.
+
+# Behavioral decision
+
+Add a generic, opt-in `init --create-only` mode. Existing `init` behavior without the flag remains backward compatible.
+
+Before any write, create-only mode resolves the physical/local target and fails closed when:
+
+- the target is already an OKF bundle;
+- a project binding resolves the selected location to an existing bundle;
+- the target would be nested inside an enclosing bundle; or
+- target identity cannot be established safely because of malformed bindings, symlink ambiguity, or a concurrent create.
+
+The error explains the two valid recoveries: use `recipe add` to modify an existing bundle, or choose a different explicit `--dir` for a new bundle.
+
+The onboarding guide's intended command becomes:
+
+```sh
+aslite init --create-only --recipe agentstate-guide --dir ~/.agentstate-lite/guide
+```
+
+The exact spelling and semantics are generic; there is no `agentstate-guide` branch in target resolution. After Michael approves the shared boundary, npm quickstart should use the same mode for its fresh-workspace proof.
+
+# Acceptance criteria
+
+- A fresh explicit target initializes successfully with every supported Recipe form.
+- An existing bundle target fails before changing docs, blobs, reserved files, timestamps, or board state.
+- Invocation from inside an enclosing bundle cannot create an accidental nested workspace.
+- Local-path bindings are honored and URL-valued/invalid bindings remain fail-closed with existing guidance.
+- Symlink aliases, path normalization, simultaneous creators, interrupted preflight/write boundaries, and permission failures receive deterministic adversarial coverage.
+- Re-running the guide creation command against an existing guide fails safely and tells the user how to reopen it; it never injects guide content into another workspace.
+- `recipe add` remains the explicit path for adding a Recipe to an existing bundle.
+- `init` without `--create-only` retains its documented behavior and existing tests.
+- Help, generated skill text, no-bundle orientation, and the installed-tarball proof use the exact public spelling.
+- The exact installed local-dev tarball proves the guard without depending on a live npm publication.
+
+# Architecture and gate
+
+Target policy belongs in one owning CLI target-resolution primitive, not in guide content or recipe-specific branching. The mechanic sits on a destructive/create-path boundary and requires Builder → independent exact-SHA Review → adversarial QA → repository/package gate. Review must probe the guard red and verify that no write occurs before target safety is established.
+
+# Dependencies and coordination
+
+- Scoped by [the revised onboarding plan](../plans/onboarding-surfaces.md) and the review findings linked there.
+- Brian/Claude side owns the guard unit.
+- Implementation waits for [Michael's sign-off](../review-requests/onboarding-surfaces-mike-signoff.md) because the public mode changes the quickstart oracle and the npm/discovery front door.
+- No P5A, release automation, update-selection, marketplace-retirement, MCP, or View-action work belongs here.
