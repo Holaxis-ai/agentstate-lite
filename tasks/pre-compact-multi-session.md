@@ -3,17 +3,23 @@ type: Task
 title: >-
   Review the pre-compaction context-note design for multi-session safety (single
   fixed id collides)
-status: in_progress
+status: blocked
 priority: '2'
 description: >-
-  The main-agent pre-compact note uses a single fixed id
-  (context-notes/pre-compact-main); concurrent main sessions clobber each other
-  silently. Redesign for multiple concurrent sessions: per-session identity,
-  resume-time discovery, expiry/cleanup, orchestrator distinguishability.
-  Convention lives in global CLAUDE.md; reconcile with the existing
-  pre-compact-{agent_id} sub-agent scheme.
+  DESIGN VETTED, awaiting Brian's sign-off (2026-08-03). Team:
+  Scout->Designer->2x Skeptic passes. designs/pre-compact-multi-session resolves
+  all 6 decision points; skeptic verdict PASS-WITH-CAVEATS, every mechanism
+  tested on the built CLI (write->read->consume loop, machine-scoped queries, jq
+  id-derivation across 6 edge cases). Blocked on: Brian applying 3 proposed
+  diffs (global CLAUDE.md + ~/.claude/hooks/pre-compact.sh + post-compact.sh) —
+  no agent touches those. Open gap: session_id presence in PreCompact main
+  payload + survival across --resume needs a live-compaction check; design
+  degrades to a guarded best-effort fallback (detectable failure, not silent
+  corruption) if absent. Evidence:
+  context-notes/research-precompact-multisession,
+  context-notes/review-precompact-multisession.
 actor: claude-main-precompact
-timestamp: '2026-08-03T15:08:16.324Z'
+timestamp: '2026-08-03T15:48:46.991Z'
 ---
 # Multi-session-safe pre-compaction context notes
 
