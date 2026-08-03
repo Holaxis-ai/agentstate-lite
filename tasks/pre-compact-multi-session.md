@@ -9,7 +9,7 @@ description: >-
   auth/cleanup, and enforceable candidate verification. No T3.5 code/G0 before
   both PASS.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-03T22:19:53.353Z'
+timestamp: '2026-08-03T22:26:53.888Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
@@ -56,7 +56,8 @@ The exact accepted design/plan and unanimous independent gate are recorded in `r
 - Plan R3 `plans/precompact-v3-t35-candidate-acceptance@sha256:45c9862ba1e4a1686bb68d326530fc6f3ae51efa529caa6a3a29b59965c73b0d` replaced the racy fault with a deterministic sequential wrapper, added a CAS campaign ledger and challenge-bound authority-written R0/Q0 assertions, atomic absent-root freeze, enforceable npm proof, honest API-key/tmux possession, idempotent reaping, and closed fault terminal states.
 - Exact acceptance and skeptic review both rejected R3. The candidate architecture survived, but crash-atomic campaign ownership/tmux recovery, child close-plus-EOF success, fresh-generation causation and guarded corruption, hook-tree auth inheritance, serial L0 cleanup, and install-time versus publish-only npm lifecycle semantics remained open.
 - Plan R4 `plans/precompact-v3-t35-candidate-acceptance@sha256:d26ed81a61f6035de04252a9d8d3dccbbb9331192e86a51ff2912feb1ed2e812` closes those contracts with immutable owner-file-to-hard-link acquisition, pinned Darwin ps identity, history-before-current publication, socket-first tmux recovery, exact close-plus-EOF/fresh-generation wrapper predicates, serialized L0, honest full hook-tree auth possession, and a pinned install-triggered npm script boundary.
-- Current phase: exact independent product/acceptance and adversarial-skeptic review of Plan R4. No T3.5 code or G0 freeze is authorized until both reviewers pass this exact version.
+- Exact product/acceptance and adversarial-skeptic review both rejected Plan R4. The sole shared load-bearing defect is the tmux launch/reap gap: cleanup may observe a reserved socket absent and publish proof while a live or already-OS-spawned launcher can still bind it later. The skeptic also empirically showed the pinned Darwin `/bin/ps` grammar rejects a valid row with no leading PID whitespace.
+- Current phase: planning circuit breaker. Architect, acceptance, and skeptic must independently re-model the launch/cleanup subsystem and its interleavings before any replacement Plan is synthesized. This is an architecture re-plan, not an R5 wording patch. No T3.5 code or G0 freeze is authorized.
 
 ## Required gate order
 
@@ -64,7 +65,7 @@ T0 harness → T1/T2 implementation → T3 integration review → T4 docs/rebase
 
 ## Next action
 
-Obtain both independent exact-version PASS verdicts on Plan R4; if accepted, claim red-test F0 before implementation. Do not implement or freeze from R1-R3 or the current isolation-only harness.
+Produce and reconcile an explicit launch-capability/reaper state machine that prevents late spawn, kills an identified launcher/process group and identified server even without a socket, pins the actual Darwin ps row grammar, and survives two-cleaner/crash interleavings. Only then may a replacement exact Plan be synthesized and independently gated. Do not implement or freeze from R1-R4 or the current isolation-only harness.
 
 ## Related
 

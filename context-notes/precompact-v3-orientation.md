@@ -2,7 +2,7 @@
 type: Context Note
 title: 'Revision 3 orientation and domain model: compaction handoffs'
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-03T22:19:53.523Z'
+timestamp: '2026-08-03T22:26:54.060Z'
 ---
 # Summary
 
@@ -32,18 +32,21 @@ A pre-G0 audit correctly blocked candidate freeze. The committed live harness st
 
 Exact acceptance and skeptic review of Plan R3 version `sha256:45c9862ba1e4a1686bb68d326530fc6f3ae51efa529caa6a3a29b59965c73b0d` both returned FAIL. The retained architecture is still sound, but the executable contract did not yet close crash-atomic campaign ownership and tmux recovery, child `close` plus pipe-EOF wrapper success, exact fresh-generation causation and guarded corruption, full hook-tree auth inheritance, serialized L0 cleanup, or the distinction between install-triggered npm lifecycle scripts and the allowed publish-only `prepublishOnly`.
 
-Plan R4 is published at exact version `sha256:d26ed81a61f6035de04252a9d8d3dccbbb9331192e86a51ff2912feb1ed2e812`. It makes those repairs narrowly: immutable fully-written owner file followed by atomic hard-link acquisition and pinned-ps recovery; history-before-current ledger publication and non-advancing quarantine; socket-first reaping from both reservation states; exact wrapper close/EOF/stdin/env plus byte-validated one-fresh-generation causation and guarded replacement; serial L0; explicit hook-tree transient auth possession; and a shared pinned validator for install-triggered scripts that allows publish-only `prepublishOnly`. Exact product/acceptance and skeptic review is now the sole open gate. No G0 freeze or T3.5 code starts until both pass this exact version.
+Plan R4 was published at exact version `sha256:d26ed81a61f6035de04252a9d8d3dccbbb9331192e86a51ff2912feb1ed2e812`. It made those repairs narrowly: immutable fully-written owner file followed by atomic hard-link acquisition and pinned-ps recovery; history-before-current ledger publication and non-advancing quarantine; socket-first reaping from both reservation states; exact wrapper close/EOF/stdin/env plus byte-validated one-fresh-generation causation and guarded replacement; serial L0; explicit hook-tree transient auth possession; and a shared pinned validator for install-triggered scripts that allows publish-only `prepublishOnly`.
+
+Both exact reviewers rejected R4. Cleanup can observe `RESERVED_NO_SERVER_RECORD` with no socket and later publish completion even though a live or already-OS-spawned launcher can still bind the socket afterward; reservation alone neither revokes launch authority nor identifies a process to kill. The skeptic also ran the exact pinned `/bin/ps` command and obtained a valid row beginning directly with a five-digit PID, contradicting R4's required leading whitespace. The planning circuit breaker is active: the launch/cleanup subsystem now requires an explicit independent architecture pass and interleaving matrix before a replacement Plan, not another local wording repair. No G0 freeze or T3.5 code starts.
 
 ## Unverified assumptions and remaining risks
 
 - Whether the exact pinned Claude host exposes enough sub-agent context pressure to force and observe a real sub-agent compaction journey.
 - Whether real PreCompact blocking and SessionStart fail-closed results are enforced as expected for missing/killed/timed-out helper cases.
 - Whether Plan R4's test-only sequential PreCompact wrapper proves exact candidate-helper input/output/exit/EOF semantics and exactly one new selected generation strongly enough to exercise real SessionStart halt without pretending the temporarily substituted PreCompact entry is the normal managed install.
-- Whether crash-window tests prove an immutable complete campaign owner record is linked atomically, exact Darwin process identity is pinned, and every reserved or identified private tmux socket is killed before bookkeeping can release ownership.
+- Whether a durable launcher/process-group identity and a revocable launch capability can be published before any auth-bearing tmux spawn, then killed/fenced so cleanup proves stable socket and process absence with no late bind—even with a live runner, two cleaners, or crash between OS spawn and socket creation.
+- The strict Darwin ps parser must be derived from actual pinned output, including valid zero-leading-whitespace PID rows, and remain fail-closed for malformed/multiple/stderr/digest-drift cases.
 - Whether the reviewed T3.5 design completely binds real Claude invocation, first-response canaries, event-sequence evidence, and outside/candidate inventories without operator-only convention.
 - Whether the eventual packed artifact's installed command path, helper digest, harness digest, manifest digest, and permissions remain identical through every acceptance gate.
 - Physical deletion timing when the authority is never invoked again; the design guarantees logical expiry and explicitly does not claim a wall-clock daemon.
-- Three T3.5 plan versions have failed independent review. R4 must close the remaining ownership, wrapper, auth, serialization, and npm-boundary contracts without reopening the candidate architecture that survived; otherwise the planning circuit breaker requires re-planning rather than another local wording patch.
+- Four T3.5 plan versions have failed independent review. The candidate, wrapper, auth, serialization, npm, and ledger architecture survived R4; only the launch/reap subsystem and ps grammar are reopened under the planning circuit breaker. A replacement Plan is not eligible for review until three differentiated roles reconcile that state machine and its red interleavings.
 
 The deprecated fixed `context-notes/pre-compact-main` remains unsafe by design and points to session-scoped history. Revision 3 replaces that convention with the exact private authority; it does not revive the fixed-id rail.
 
