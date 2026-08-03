@@ -1,10 +1,11 @@
 ---
 type: Task
 title: Complete open-page navigation parity in the MCP View host
-status: todo
+status: in_progress
 priority: '1'
 actor: openai/codex
-timestamp: '2026-08-03T01:28:49.318Z'
+assignee: openai/codex
+timestamp: '2026-08-03T01:39:46.224Z'
 ---
 # Behavioral claim
 
