@@ -1,14 +1,17 @@
 ---
 type: Task
 title: 'Product recipes: bundle-free discovery before init'
-status: todo
+status: in_progress
 priority: '1'
 description: >-
-  Make the built-in Recipe inventory discoverable offline before a bundle
-  exists: actionable operating-model summaries, init/add commands, no-bundle
-  home and init-help pointers, and applied state when a bundle is present.
+  CLAIMED 2026-08-03 by openai/codex. Implementing the existing additive
+  contract: implicit no-bundle recipe discovery succeeds with actionable
+  inventory; explicit invalid --dir/--remote remains an error; bundle-present
+  applied state and existing fields remain stable; no recipe application or init
+  semantics change.
 actor: openai/codex
-timestamp: '2026-07-20T02:52:39.826Z'
+assignee: openai/codex
+timestamp: '2026-08-03T03:21:12.800Z'
 ---
 # Problem
 
