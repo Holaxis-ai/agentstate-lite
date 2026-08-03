@@ -15,14 +15,14 @@ interface AppliedHeightReport {
   iframeHeight: number;
 }
 
-async function generatedFrame(page: Page): Promise<Frame> {
+async function activeFrame(page: Page): Promise<Frame> {
   await expect
     .poll(() => page.frames().filter((frame) => frame !== page.mainFrame()).length)
     .toBe(1);
   const frame = page
     .frames()
     .find((candidate) => candidate !== page.mainFrame());
-  if (!frame) throw new Error("Expected one generated View frame.");
+  if (!frame) throw new Error("Expected one active View frame.");
   return frame;
 }
 
@@ -107,12 +107,12 @@ test("a flexible parent can apply growth and still receive intrinsic shrink", as
   );
 
   await page.setContent(`<!doctype html><html><body>
-    <iframe id="generated-view" style="display:block;width:400px;height:150px;border:0"></iframe>
+    <iframe id="active-view" style="display:block;width:400px;height:150px;border:0"></iframe>
   </body></html>`);
   await page.evaluate(
     ({ html, messageType }) => {
-      const frame = document.querySelector<HTMLIFrameElement>("#generated-view");
-      if (!frame) throw new Error("Missing generated View frame.");
+      const frame = document.querySelector<HTMLIFrameElement>("#active-view");
+      if (!frame) throw new Error("Missing active View frame.");
       window.__appliedHeightReports = [];
       window.addEventListener("message", (event) => {
         if (event.source !== frame.contentWindow || event.data?.type !== messageType) {
@@ -129,7 +129,7 @@ test("a flexible parent can apply growth and still receive intrinsic shrink", as
     { html: source, messageType: FRAME_SIZE_MESSAGE_TYPE },
   );
 
-  const child = await generatedFrame(page);
+  const child = await activeFrame(page);
   await expect
     .poll(() =>
       page.evaluate(
@@ -162,7 +162,7 @@ test("a flexible parent can apply growth and still receive intrinsic shrink", as
   expect(
     await page.evaluate(() => {
       const frame =
-        document.querySelector<HTMLIFrameElement>("#generated-view");
+        document.querySelector<HTMLIFrameElement>("#active-view");
       const documentElement = frame?.contentDocument?.documentElement;
       const body = frame?.contentDocument?.body;
       const content =
@@ -216,7 +216,7 @@ test("a hidden first mount and a visible remount size without interaction", asyn
       window.__mountReports = [];
       window.addEventListener("message", (event) => {
         if (event.data?.type !== ${JSON.stringify(FRAME_SIZE_MESSAGE_TYPE)}) return;
-        const frame = document.querySelector("#generated-view");
+        const frame = document.querySelector("#active-view");
         if (event.source !== frame?.contentWindow) return;
         frame.style.height = event.data.height + "px";
         window.__mountReports.push({
@@ -231,7 +231,7 @@ test("a hidden first mount and a visible remount size without interaction", asyn
     const slot = document.querySelector<HTMLElement>("#slot");
     if (!slot) throw new Error("Missing mount slot.");
     const frame = document.createElement("iframe");
-    frame.id = "generated-view";
+    frame.id = "active-view";
     frame.style.cssText = "display:block;width:400px;height:1px;border:0";
     frame.srcdoc = html;
     slot.append(frame);
@@ -254,10 +254,10 @@ test("a hidden first mount and a visible remount size without interaction", asyn
 
   await page.evaluate((html) => {
     const previous =
-      document.querySelector<HTMLIFrameElement>("#generated-view");
+      document.querySelector<HTMLIFrameElement>("#active-view");
     previous?.remove();
     const frame = document.createElement("iframe");
-    frame.id = "generated-view";
+    frame.id = "active-view";
     frame.style.cssText = "display:block;width:400px;height:1px;border:0";
     frame.srcdoc = html;
     document.querySelector("#slot")?.append(frame);
@@ -292,14 +292,14 @@ test("a 288px fixed host has no outer scroll and keeps child scrolling", async (
   await page.evaluate(() => {
     document.documentElement.dataset.fixedHeight = "true";
     const frame =
-      document.querySelector<HTMLIFrameElement>("#generated-view");
-    if (!frame) throw new Error("Missing generated View frame.");
+      document.querySelector<HTMLIFrameElement>("#active-view");
+    if (!frame) throw new Error("Missing active View frame.");
     frame.srcdoc = `<!doctype html><html><head><style>
       html, body { margin: 0; }
       main { height: 1200px; }
     </style></head><body><main>long content</main></body></html>`;
   });
-  const child = await generatedFrame(page);
+  const child = await activeFrame(page);
 
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollHeight))
@@ -310,7 +310,7 @@ test("a 288px fixed host has no outer scroll and keeps child scrolling", async (
     shellHeight:
       document.querySelector(".shell")?.getBoundingClientRect().height,
     frameHeight:
-      document.querySelector("#generated-view")?.getBoundingClientRect().height,
+      document.querySelector("#active-view")?.getBoundingClientRect().height,
   }));
   expect(fixedLayout.outerClientHeight).toBe(288);
   expect(fixedLayout.outerScrollHeight).toBe(288);
@@ -536,65 +536,6 @@ test("a delayed finish cannot overwrite a replacement View", async ({ page }) =>
   await page.evaluate(() => window.__releaseFinishRequest());
   await page.waitForTimeout(50);
   await expect(outer.locator("#authorization-backdrop")).toBeVisible();
-  await expect(outer.locator("#status")).toContainText(
-    "Waiting for local approval",
-  );
-});
-
-test("generated actions stay serialized and same-launch replay fences delayed finish", async ({
-  page,
-}) => {
-  const outer = await lifecycleHost(page);
-  await page.evaluate(() => window.__showGeneratedActionResult());
-  const action = outer.locator("#actions button");
-  await expect(action).toHaveText("Mark complete");
-  await action.click();
-  await expect(outer.locator("#confirmation-apply")).toBeEnabled();
-  await expect
-    .poll(() => page.evaluate(() => window.__preparedActions.length))
-    .toBe(1);
-
-  await page.evaluate(() => {
-    window.__holdFinishRequest = true;
-  });
-  await outer.locator("#confirmation-apply").click();
-  await expect(outer.locator("#confirmation-backdrop")).toBeVisible();
-  await action.evaluate((button: HTMLButtonElement) => button.click());
-  await expect
-    .poll(() => page.evaluate(() => window.__preparedActions.length))
-    .toBe(1);
-
-  await page.evaluate(() => window.__showGeneratedActionResult());
-  await expect(outer.locator("#confirmation-backdrop")).toBeHidden();
-  await expect(outer.locator("#status")).toContainText("Generated task action");
-  await page.evaluate(() => window.__releaseFinishRequest());
-  await page.waitForTimeout(50);
-  await expect
-    .poll(() => page.evaluate(() => window.__finishedActions))
-    .toHaveLength(1);
-  await expect(outer.locator("#status")).toContainText("Generated task action");
-});
-
-test("a delayed generated prepare failure cannot overwrite a replacement View", async ({
-  page,
-}) => {
-  const outer = await lifecycleHost(page);
-  await page.evaluate(() => window.__showGeneratedActionResult());
-  await page.evaluate(() => {
-    window.__holdPrepareRequest = true;
-    window.__prepareRequestError = "delayed generated prepare failure";
-  });
-  await outer.locator("#actions button").click();
-  await expect
-    .poll(() => page.evaluate(() => window.__preparedActions.length))
-    .toBe(1);
-
-  await page.evaluate(() => window.__showTransientResult());
-  await expect(outer.locator("#status")).toContainText(
-    "Waiting for local approval",
-  );
-  await page.evaluate(() => window.__releasePrepareRequest());
-  await page.waitForTimeout(50);
   await expect(outer.locator("#status")).toContainText(
     "Waiting for local approval",
   );

@@ -12,7 +12,6 @@ import type {
   DurableViewLaunchPayload,
   McpViewPayload,
   TransientViewLaunchPayload,
-  ViewLaunchPayload,
 } from "./contract.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -21,27 +20,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isBridgeCapability(value: unknown): boolean {
   return value === "none" || value === "bundle-read" || value === "bundle-propose";
-}
-
-export function isGeneratedViewPayload(value: unknown): value is ViewLaunchPayload {
-  if (!isRecord(value)) return false;
-  const presentation = value.presentation;
-  const selection = value.selection;
-  const launch = value.launch;
-  return (
-    value.schemaVersion === "agentstate.view-launch.v1" &&
-    typeof value.title === "string" &&
-    isRecord(presentation) &&
-    typeof presentation.html === "string" &&
-    typeof presentation.css === "string" &&
-    typeof presentation.contentHash === "string" &&
-    isRecord(selection) &&
-    Array.isArray(selection.objectIds) &&
-    Array.isArray(value.objects) &&
-    isRecord(launch) &&
-    typeof launch.launchId === "string" &&
-    Array.isArray(launch.actions)
-  );
 }
 
 export function isDurableViewPayload(value: unknown): value is DurableViewLaunchPayload {
@@ -95,7 +73,7 @@ export const isActiveViewPayload = (
   isDurableViewPayload(value) || isTransientViewPayload(value);
 
 export function isViewPayload(value: unknown): value is McpViewPayload {
-  return isGeneratedViewPayload(value) || isActiveViewPayload(value);
+  return isActiveViewPayload(value);
 }
 
 /**

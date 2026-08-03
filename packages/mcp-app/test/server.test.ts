@@ -32,7 +32,6 @@ import {
   SHOW_VIEW_TOOL_NAME,
   createMcpAppServer,
   resolveDurableViewLaunch,
-  resolveViewLaunch,
 } from "../src/index.js";
 import { SessionViewAuthorizationStore } from "@agentstate-lite/view-runtime";
 
@@ -115,29 +114,6 @@ async function seed(bundle: Bundle): Promise<void> {
     "text/html; charset=utf-8",
   );
 }
-
-test("resolveViewLaunch returns current versioned snapshots in the caller's explicit order", async () => {
-  const bundle = memoryBundle();
-  await seed(bundle);
-
-  const payload = await resolveViewLaunch(bundle, {
-    title: "Today",
-    html: "<main id='today'></main>",
-    objectIds: ["roadmap-items/views", "tasks/alpha"],
-  });
-  const alpha = await readDocVersioned(bundle, "tasks/alpha");
-
-  assert.equal(payload.schemaVersion, "agentstate.view-launch.v1");
-  assert.deepEqual(payload.selection, {
-    objectIds: ["roadmap-items/views", "tasks/alpha"],
-  });
-  assert.deepEqual(payload.objects.map((object) => object.id), ["roadmap-items/views", "tasks/alpha"]);
-  assert.equal(payload.objects[1]?.version, alpha.version);
-  assert.equal(payload.objects[1]?.body, "# Goal\n\nFirst task.");
-  assert.equal(payload.presentation.css, "");
-  assert.equal(payload.launch.actions.length, 0);
-  assert.match(payload.presentation.contentHash, /^sha256:[a-f0-9]{64}$/);
-});
 
 test("list_views is bounded, continues deterministically, and every listed id is invokable", async (t) => {
   const bundle = memoryBundle();
@@ -261,180 +237,6 @@ test("list_views is bounded, continues deterministically, and every listed id is
   assert.equal(secondPage.nextCursor, undefined);
 });
 
-test("resolveViewLaunch applies the shared View query semantics once and freezes an honest bounded selection", async () => {
-  const bundle = memoryBundle();
-  await seed(bundle);
-
-  const payload = await resolveViewLaunch(bundle, {
-    title: "Open tasks",
-    html: "<main></main>",
-    query: {
-      type: "Task",
-      field: "status=todo,done",
-      open: true,
-      limit: 1,
-    },
-  });
-
-  assert.deepEqual(payload.selection, {
-    objectIds: ["tasks/alpha"],
-    query: {
-      type: "Task",
-      field: "status=todo,done",
-      open: true,
-      limit: 1,
-    },
-    matchedCount: 2,
-  });
-  assert.deepEqual(payload.objects.map((object) => object.id), ["tasks/alpha"]);
-});
-
-test("query selection rejects ambiguous, empty, invalid, and no-match envelopes", async () => {
-  const bundle = memoryBundle();
-  await seed(bundle);
-  const base = { title: "Invalid", html: "<main></main>" };
-
-  await assert.rejects(
-    () => resolveViewLaunch(bundle, base),
-    /exactly one selection mode/,
-  );
-  await assert.rejects(
-    () =>
-      resolveViewLaunch(bundle, {
-        ...base,
-        objectIds: ["tasks/alpha"],
-        query: { type: "Task" },
-      }),
-    /exactly one selection mode/,
-  );
-  await assert.rejects(
-    () => resolveViewLaunch(bundle, { ...base, query: {} }),
-    /at least one of type, prefix, field, or open:true/,
-  );
-  await assert.rejects(
-    () => resolveViewLaunch(bundle, { ...base, query: { type: "Task", limit: 21 } }),
-    /between 1 and 20/,
-  );
-  await assert.rejects(
-    () => resolveViewLaunch(bundle, { ...base, query: { field: "status=todo,,done" } }),
-    /no empty members/,
-  );
-  await assert.rejects(
-    () => resolveViewLaunch(bundle, { ...base, query: { type: "Missing" } }),
-    /matched no AgentState documents/,
-  );
-});
-
-test("direct and MCP show_view entry paths share one strict input parser", async (t) => {
-  const bundle = memoryBundle();
-  await seed(bundle);
-  const server = createMcpAppServer({ bundle });
-  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  t.after(async () => {
-    await client.close();
-    await server.close();
-  });
-
-  const cases: Array<{
-    name: string;
-    input: Record<string, unknown>;
-    expected: RegExp;
-  }> = [
-    {
-      name: "wrong query member type",
-      input: {
-        title: "Invalid",
-        html: "<main></main>",
-        query: { type: "Task", open: "true" },
-      },
-      expected: /expected boolean, received string/i,
-    },
-    {
-      name: "unknown query member",
-      input: {
-        title: "Invalid",
-        html: "<main></main>",
-        query: { type: "Task", unexpected: true },
-      },
-      expected: /unrecognized key.*unexpected/i,
-    },
-    {
-      name: "unknown top-level member",
-      input: {
-        title: "Invalid",
-        html: "<main></main>",
-        objectIds: ["tasks/alpha"],
-        unexpected: true,
-      },
-      expected: /unrecognized key.*unexpected/i,
-    },
-  ];
-
-  for (const entry of cases) {
-    await assert.rejects(
-      () => resolveViewLaunch(bundle, entry.input as never),
-      entry.expected,
-      `${entry.name}: direct resolver`,
-    );
-    const result = await client.callTool({
-      name: SHOW_VIEW_TOOL_NAME,
-      arguments: entry.input,
-    });
-    assert.equal(result.isError, true, `${entry.name}: MCP tool`);
-    assert.match(
-      result.content[0]?.type === "text" ? result.content[0].text : "",
-      entry.expected,
-      `${entry.name}: MCP tool`,
-    );
-  }
-});
-
-test("query selection defaults to twenty id-sorted snapshots and reports the full match count", async () => {
-  const bundle = memoryBundle();
-  for (let index = 24; index >= 0; index -= 1) {
-    const suffix = String(index).padStart(2, "0");
-    await writeDoc(bundle, {
-      id: `bulk/${suffix}`,
-      frontmatter: { type: "Bulk", title: suffix, timestamp: T },
-      body: "",
-    });
-  }
-
-  const payload = await resolveViewLaunch(bundle, {
-    title: "Bounded",
-    html: "<main></main>",
-    query: { type: "Bulk" },
-  });
-
-  assert.equal(payload.selection.matchedCount, 25);
-  assert.equal(payload.selection.objectIds.length, 20);
-  assert.deepEqual(payload.selection.objectIds, [
-    "bulk/00",
-    "bulk/01",
-    "bulk/02",
-    "bulk/03",
-    "bulk/04",
-    "bulk/05",
-    "bulk/06",
-    "bulk/07",
-    "bulk/08",
-    "bulk/09",
-    "bulk/10",
-    "bulk/11",
-    "bulk/12",
-    "bulk/13",
-    "bulk/14",
-    "bulk/15",
-    "bulk/16",
-    "bulk/17",
-    "bulk/18",
-    "bulk/19",
-  ]);
-});
-
 test("MCP contract exposes one fixed App resource and invocation-specific tool results", async (t) => {
   const bundle = memoryBundle();
   await seed(bundle);
@@ -511,9 +313,9 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   const content = resource.contents[0];
   assert.ok(content && "text" in content);
   assert.equal(content.uri, MCP_VIEW_RESOURCE_URI);
-  assert.match(content.text, /id="generated-view"[\s\S]*\bsandbox\b/);
+  assert.match(content.text, /id="active-view"[\s\S]*\bsandbox\b/);
   assert.doesNotMatch(content.text, /sandbox="allow-scripts"/);
-  assert.match(content.text, /data-aslite-text/);
+  assert.doesNotMatch(content.text, /data-aslite-(?:text|markdown)/);
   assert.match(content.text, /id="confirmation-backdrop"/);
   assert.match(content.text, /id="authorization-backdrop"/);
   assert.match(content.text, /Trust this View with bundle data\?/);
@@ -528,7 +330,6 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   assert.match(content.text, /prepare_view_action/);
   assert.match(content.text, /finish_view_action/);
   assert.match(content.text, /navigated away from its approved document/);
-  assert.match(content.text, /script-src 'nonce-/);
   assert.match(content.text, /agentstate\.frame-size\.v1/);
   assert.match(content.text, /style-src 'unsafe-inline'/);
   const scriptStart = content.text.indexOf("<script>") + "<script>".length;
@@ -541,64 +342,52 @@ test("MCP contract exposes one fixed App resource and invocation-specific tool r
   const first = await client.callTool({
     name: SHOW_VIEW_TOOL_NAME,
     arguments: {
+      mode: "transient",
       title: "One task",
       html: "<h1>One</h1>",
-      css: "h1 { color: green; }",
-      objectIds: ["tasks/alpha"],
+      access: "bundle-read",
     },
   });
   assert.equal(first.isError, undefined);
   assert.match(first.content[0]?.type === "text" ? first.content[0].text : "", /One task/);
-  assert.deepEqual(
-    (first.structuredContent as { selection: { objectIds: string[] } }).selection.objectIds,
-    ["tasks/alpha"],
-  );
-
-  await writeDoc(bundle, {
-    id: "tasks/alpha",
-    frontmatter: { type: "Task", title: "Alpha", status: "done", timestamp: T },
-    body: "# Goal\n\nCompleted.",
+  assert.deepEqual(first.structuredContent, {
+    schemaVersion: "agentstate.transient-view-launch.v1",
+    title: "One task",
+    source: {
+      kind: "transient",
+      html: "<h1>One</h1>",
+      contentType: "text/html; charset=utf-8",
+      contentVersion: versionOfBytes("<h1>One</h1>"),
+    },
+    launch: {
+      launchId: (first.structuredContent as { launch: { launchId: string } }).launch.launchId,
+      access: "bundle-read",
+      authorization: { required: true, authorized: false },
+    },
   });
+
   const second = await client.callTool({
     name: SHOW_VIEW_TOOL_NAME,
-    arguments: {
-      title: "Two objects",
-      html: "<h1>Two</h1>",
-      objectIds: ["tasks/alpha", "roadmap-items/views"],
-    },
+    arguments: { viewId: "views-registry/roadmap" },
   });
-  const secondPayload = second.structuredContent as {
-    title: string;
-    presentation: { html: string; css: string };
-    objects: Array<{ id: string; body: string }>;
-  };
-  assert.equal(secondPayload.title, "Two objects");
-  assert.equal(secondPayload.presentation.html, "<h1>Two</h1>");
-  assert.equal(secondPayload.presentation.css, "");
-  assert.deepEqual(secondPayload.objects.map((object) => object.id), [
-    "tasks/alpha",
-    "roadmap-items/views",
-  ]);
-  assert.equal(secondPayload.objects[0]?.body, "# Goal\n\nCompleted.");
+  assert.equal(second.isError, undefined);
+  assert.equal(
+    (second.structuredContent as { schemaVersion: string }).schemaVersion,
+    "agentstate.durable-view-launch.v1",
+  );
 
-  const queried = await client.callTool({
+  const removedContract = await client.callTool({
     name: SHOW_VIEW_TOOL_NAME,
     arguments: {
-      title: "Open tasks",
-      html: "<h1>Open tasks</h1>",
-      query: { type: "Task", open: true, limit: 2 },
+      title: "Removed snapshot input",
+      html: "<h1>Old</h1>",
+      objectIds: ["tasks/alpha"],
     },
   });
-  assert.equal(queried.isError, undefined);
-  assert.deepEqual(
-    (queried.structuredContent as {
-      selection: { objectIds: string[]; matchedCount: number };
-    }).selection,
-    {
-      objectIds: ["tasks/gamma"],
-      query: { type: "Task", open: true, limit: 2 },
-      matchedCount: 1,
-    },
+  assert.equal(removedContract.isError, true);
+  assert.match(
+    removedContract.content[0]?.type === "text" ? removedContract.content[0].text : "",
+    /objectIds|unrecognized key/i,
   );
 });
 
@@ -1044,7 +833,7 @@ test("transient HTML uses the registered active-View bridge without a synthetic 
       objectIds: ["tasks/alpha"],
     },
   });
-  assert.equal(mixedContract.isError, true, "transient and generated inputs cannot be mixed");
+  assert.equal(mixedContract.isError, true, "transient input rejects removed snapshot fields");
 });
 
 test("save_transient_view persists server-owned exact bytes and returns a freshly unauthorized durable View", async (t) => {
@@ -1348,586 +1137,6 @@ test("durable resume rotates to fresh current bytes and recomputes authorization
   assert.equal(changedView.launch.authorization.authorized, false);
 });
 
-test("show_view fails closed for an unknown document ID", async (t) => {
-  const server = createMcpAppServer({ bundle: memoryBundle() });
-  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  t.after(async () => {
-    await client.close();
-    await server.close();
-  });
-
-  const result = await client.callTool({
-    name: SHOW_VIEW_TOOL_NAME,
-    arguments: {
-      title: "Missing",
-      html: "<p>Missing</p>",
-      objectIds: ["tasks/missing"],
-    },
-  });
-  assert.equal(result.isError, true);
-  assert.match(result.content[0]?.type === "text" ? result.content[0].text : "", /tasks\/missing/);
-});
-
-test("trusted MCP shell prepares, confirms, commits, and refreshes one selected Task action", async (t) => {
-  const bundle = memoryBundle();
-  await seed(bundle);
-  const server = createMcpAppServer({ bundle, actor: "mike/test" });
-  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  t.after(async () => {
-    await client.close();
-    await server.close();
-  });
-
-  const shown = await client.callTool({
-    name: SHOW_VIEW_TOOL_NAME,
-    arguments: {
-      title: "Task action",
-      html: "<h1 data-aslite-text='objects.0.frontmatter.title'></h1>",
-      objectIds: ["tasks/alpha"],
-      actions: [
-        {
-          kind: "document.set-field",
-          label: "Mark complete",
-          objectId: "tasks/alpha",
-          field: "status",
-          value: "done",
-        },
-      ],
-    },
-  });
-  assert.equal(shown.isError, undefined);
-  const view = shown.structuredContent as {
-    launch: { launchId: string; actions: Array<{ actionId: string; label: string }> };
-  };
-  assert.equal(view.launch.actions.length, 1);
-  assert.equal(view.launch.actions[0]?.label, "Mark complete");
-
-  const prepared = await client.callTool({
-    name: PREPARE_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: view.launch.launchId,
-      actionId: view.launch.actions[0]!.actionId,
-    },
-  });
-  const prepareResult = (prepared.structuredContent as {
-    result: {
-      status: string;
-      approvalToken?: string;
-      confirmation?: { before: unknown; after: unknown; actor: string };
-    };
-  }).result;
-  assert.equal(prepareResult.status, "prepared");
-  assert.equal(prepareResult.confirmation?.before, "todo");
-  assert.equal(prepareResult.confirmation?.after, "done");
-  assert.equal(prepareResult.confirmation?.actor, "mike/test");
-  assert.equal((await readDocVersioned(bundle, "tasks/alpha")).doc.frontmatter.status, "todo");
-
-  const otherView = await client.callTool({
-    name: SHOW_VIEW_TOOL_NAME,
-    arguments: {
-      title: "Other launch",
-      html: "<p>Other</p>",
-      objectIds: ["tasks/alpha"],
-    },
-  });
-  const otherLaunchId = (
-    otherView.structuredContent as { launch: { launchId: string } }
-  ).launch.launchId;
-  const wrongLaunch = await client.callTool({
-    name: FINISH_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: otherLaunchId,
-      approvalToken: prepareResult.approvalToken,
-      decision: "commit",
-    },
-  });
-  assert.equal(
-    (wrongLaunch.structuredContent as { result: { status: string } }).result.status,
-    "expired",
-    "a different launch cannot consume or commit the pending approval",
-  );
-  assert.equal((await readDocVersioned(bundle, "tasks/alpha")).doc.frontmatter.status, "todo");
-
-  const cancelled = await client.callTool({
-    name: FINISH_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: view.launch.launchId,
-      approvalToken: prepareResult.approvalToken,
-      decision: "cancel",
-    },
-  });
-  assert.equal(
-    (cancelled.structuredContent as { result: { status: string } }).result.status,
-    "cancelled",
-  );
-  assert.equal((await readDocVersioned(bundle, "tasks/alpha")).doc.frontmatter.status, "todo");
-
-  const preparedAgain = await client.callTool({
-    name: PREPARE_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: view.launch.launchId,
-      actionId: view.launch.actions[0]!.actionId,
-    },
-  });
-  const approvalToken = (
-    preparedAgain.structuredContent as { result: { status: string; approvalToken?: string } }
-  ).result.approvalToken;
-  assert.ok(approvalToken);
-  const finished = await client.callTool({
-    name: FINISH_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: view.launch.launchId,
-      approvalToken,
-      decision: "commit",
-    },
-  });
-  const finishPayload = finished.structuredContent as {
-    result: { status: string; version?: string };
-    view: { objects: Array<{ id: string; version: string; frontmatter: Record<string, unknown> }> };
-  };
-  assert.equal(finishPayload.result.status, "committed");
-  const persisted = await readDocVersioned(bundle, "tasks/alpha");
-  assert.equal(persisted.doc.frontmatter.status, "done");
-  assert.equal(persisted.doc.frontmatter.actor, "mike/test");
-  assert.equal(finishPayload.result.version, persisted.version);
-  assert.equal(finishPayload.view.objects[0]?.frontmatter.status, "done");
-  assert.equal(finishPayload.view.objects[0]?.version, persisted.version);
-
-  const replay = await client.callTool({
-    name: FINISH_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: view.launch.launchId,
-      approvalToken,
-      decision: "commit",
-    },
-  });
-  assert.equal(
-    (replay.structuredContent as { result: { status: string } }).result.status,
-    "expired",
-    "the shared approval authority is one-shot",
-  );
-});
-
-test("a query-selected action refreshes the frozen selection instead of re-running the query", async (t) => {
-  const bundle = memoryBundle();
-  await seed(bundle);
-  const server = createMcpAppServer({ bundle, actor: "mike/test" });
-  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  t.after(async () => {
-    await client.close();
-    await server.close();
-  });
-
-  const shown = await client.callTool({
-    name: SHOW_VIEW_TOOL_NAME,
-    arguments: {
-      title: "First open task",
-      html: "<p data-aslite-text='objects.0.frontmatter.status'></p>",
-      query: { type: "Task", field: "status=todo", open: true, limit: 1 },
-      actions: [
-        {
-          kind: "document.set-field",
-          label: "Mark complete",
-          objectId: "tasks/alpha",
-          field: "status",
-          value: "done",
-        },
-      ],
-    },
-  });
-  const launch = shown.structuredContent as {
-    selection: { objectIds: string[]; matchedCount: number };
-    launch: { launchId: string; actions: Array<{ actionId: string }> };
-  };
-  assert.deepEqual(launch.selection.objectIds, ["tasks/alpha"]);
-  assert.equal(launch.selection.matchedCount, 2);
-
-  const prepared = await client.callTool({
-    name: PREPARE_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: launch.launch.launchId,
-      actionId: launch.launch.actions[0]!.actionId,
-    },
-  });
-  const approvalToken = (
-    prepared.structuredContent as { result: { approvalToken?: string } }
-  ).result.approvalToken;
-  assert.ok(approvalToken);
-
-  const finished = await client.callTool({
-    name: FINISH_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: launch.launch.launchId,
-      approvalToken,
-      decision: "commit",
-    },
-  });
-  const terminal = finished.structuredContent as {
-    result: { status: string };
-    view: {
-      selection: { objectIds: string[]; matchedCount: number };
-      objects: Array<{ id: string; frontmatter: Record<string, unknown> }>;
-    };
-  };
-  assert.equal(terminal.result.status, "committed");
-  assert.deepEqual(terminal.view.selection.objectIds, ["tasks/alpha"]);
-  assert.equal(terminal.view.selection.matchedCount, 2);
-  assert.equal(terminal.view.objects[0]?.id, "tasks/alpha");
-  assert.equal(terminal.view.objects[0]?.frontmatter.status, "done");
-});
-
-test("trusted MCP shell requires an actor before preparing any write", async (t) => {
-  const bundle = memoryBundle();
-  await seed(bundle);
-  const server = createMcpAppServer({ bundle });
-  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  t.after(async () => {
-    await client.close();
-    await server.close();
-  });
-
-  const shown = await client.callTool({
-    name: SHOW_VIEW_TOOL_NAME,
-    arguments: {
-      title: "Task action",
-      html: "<p>Task</p>",
-      objectIds: ["tasks/alpha"],
-      actions: [
-        {
-          kind: "document.set-field",
-          label: "Mark complete",
-          objectId: "tasks/alpha",
-          field: "status",
-          value: "done",
-        },
-      ],
-    },
-  });
-  const view = shown.structuredContent as {
-    launch: { launchId: string; actions: Array<{ actionId: string }> };
-  };
-  const prepared = await client.callTool({
-    name: PREPARE_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: view.launch.launchId,
-      actionId: view.launch.actions[0]!.actionId,
-    },
-  });
-  assert.equal(
-    (prepared.structuredContent as { result: { status: string; message?: string } }).result.status,
-    "rejected",
-  );
-  assert.match(
-    (prepared.structuredContent as { result: { message?: string } }).result.message ?? "",
-    /action actor/,
-  );
-  assert.equal((await readDocVersioned(bundle, "tasks/alpha")).doc.frontmatter.status, "todo");
-});
-
-test("a committed action keeps its receipt and retires the launch when a selected sibling vanished", async (t) => {
-  const bundle = memoryBundle();
-  await seed(bundle);
-  const server = createMcpAppServer({ bundle, actor: "mike/test" });
-  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  t.after(async () => {
-    await client.close();
-    await server.close();
-  });
-
-  const shown = await client.callTool({
-    name: SHOW_VIEW_TOOL_NAME,
-    arguments: {
-      title: "Task and roadmap",
-      html: "<p>Selected objects</p>",
-      objectIds: ["tasks/alpha", "roadmap-items/views"],
-      actions: [
-        {
-          kind: "document.set-field",
-          label: "Mark complete",
-          objectId: "tasks/alpha",
-          field: "status",
-          value: "done",
-        },
-      ],
-    },
-  });
-  const view = shown.structuredContent as {
-    launch: { launchId: string; actions: Array<{ actionId: string }> };
-  };
-  const prepared = await client.callTool({
-    name: PREPARE_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: view.launch.launchId,
-      actionId: view.launch.actions[0]!.actionId,
-    },
-  });
-  const approvalToken = (
-    prepared.structuredContent as { result: { status: string; approvalToken?: string } }
-  ).result.approvalToken;
-  assert.ok(approvalToken);
-  await deleteDoc(bundle, "roadmap-items/views");
-
-  const finished = await client.callTool({
-    name: FINISH_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: view.launch.launchId,
-      approvalToken,
-      decision: "commit",
-    },
-  });
-  const terminal = finished.structuredContent as {
-    result: { status: string; version?: string };
-    view: unknown;
-  };
-  const persisted = await readDocVersioned(bundle, "tasks/alpha");
-  assert.equal(finished.isError, undefined);
-  assert.equal(terminal.result.status, "committed");
-  assert.equal(terminal.result.version, persisted.version);
-  assert.equal(persisted.doc.frontmatter.status, "done");
-  assert.equal(persisted.doc.frontmatter.actor, "mike/test");
-  assert.equal(terminal.view, null);
-
-  const retired = await client.callTool({
-    name: PREPARE_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: view.launch.launchId,
-      actionId: view.launch.actions[0]!.actionId,
-    },
-  });
-  assert.equal(
-    (retired.structuredContent as { result: { status: string } }).result.status,
-    "rejected",
-  );
-});
-
-test("a CAS conflict keeps its receipt and retires the launch when a selected sibling vanished", async (t) => {
-  const bundle = memoryBundle();
-  await seed(bundle);
-  const server = createMcpAppServer({ bundle, actor: "mike/test" });
-  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  t.after(async () => {
-    await client.close();
-    await server.close();
-  });
-
-  const shown = await client.callTool({
-    name: SHOW_VIEW_TOOL_NAME,
-    arguments: {
-      title: "Stale task and roadmap",
-      html: "<p>Selected objects</p>",
-      objectIds: ["tasks/alpha", "roadmap-items/views"],
-      actions: [
-        {
-          kind: "document.set-field",
-          label: "Mark complete",
-          objectId: "tasks/alpha",
-          field: "status",
-          value: "done",
-        },
-      ],
-    },
-  });
-  const view = shown.structuredContent as {
-    launch: { launchId: string; actions: Array<{ actionId: string }> };
-  };
-  const prepared = await client.callTool({
-    name: PREPARE_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: view.launch.launchId,
-      actionId: view.launch.actions[0]!.actionId,
-    },
-  });
-  const approvalToken = (
-    prepared.structuredContent as { result: { status: string; approvalToken?: string } }
-  ).result.approvalToken;
-  assert.ok(approvalToken);
-  await writeDoc(bundle, {
-    id: "tasks/alpha",
-    frontmatter: { type: "Task", title: "Alpha", status: "todo", timestamp: T },
-    body: "# Goal\n\nChanged elsewhere.",
-  });
-  await deleteDoc(bundle, "roadmap-items/views");
-
-  const finished = await client.callTool({
-    name: FINISH_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: view.launch.launchId,
-      approvalToken,
-      decision: "commit",
-    },
-  });
-  const terminal = finished.structuredContent as {
-    result: { status: string; version?: string };
-    view: unknown;
-  };
-  assert.equal(finished.isError, undefined);
-  assert.equal(terminal.result.status, "conflict");
-  assert.equal(terminal.view, null);
-  assert.equal((await readDocVersioned(bundle, "tasks/alpha")).doc.frontmatter.status, "todo");
-});
-
-test("MCP actions fail closed outside the explicit envelope and on stale displayed versions", async (t) => {
-  const bundle = memoryBundle();
-  await seed(bundle);
-  const server = createMcpAppServer({ bundle, actor: "mike/test" });
-  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  t.after(async () => {
-    await client.close();
-    await server.close();
-  });
-
-  const outside = await client.callTool({
-    name: SHOW_VIEW_TOOL_NAME,
-    arguments: {
-      title: "Outside",
-      html: "<p>Task only</p>",
-      query: { type: "Task", field: "status=todo", limit: 1 },
-      actions: [
-        {
-          kind: "document.set-field",
-          label: "Change roadmap",
-          objectId: "roadmap-items/views",
-          field: "status",
-          value: "done",
-        },
-      ],
-    },
-  });
-  assert.equal(outside.isError, true);
-  assert.match(
-    outside.content[0]?.type === "text" ? outside.content[0].text : "",
-    /outside this View's frozen object selection/,
-  );
-
-  const shown = await client.callTool({
-    name: SHOW_VIEW_TOOL_NAME,
-    arguments: {
-      title: "Stale task",
-      html: "<p>Task</p>",
-      objectIds: ["tasks/alpha"],
-      actions: [
-        {
-          kind: "document.set-field",
-          label: "Mark complete",
-          objectId: "tasks/alpha",
-          field: "status",
-          value: "done",
-        },
-      ],
-    },
-  });
-  const view = shown.structuredContent as {
-    launch: { launchId: string; actions: Array<{ actionId: string }> };
-  };
-  await writeDoc(bundle, {
-    id: "tasks/alpha",
-    frontmatter: { type: "Task", title: "Alpha", status: "todo", priority: "1", timestamp: T },
-    body: "# Goal\n\nChanged elsewhere.",
-  });
-  const prepared = await client.callTool({
-    name: PREPARE_VIEW_ACTION_TOOL_NAME,
-    arguments: {
-      launchId: view.launch.launchId,
-      actionId: view.launch.actions[0]!.actionId,
-    },
-  });
-  assert.equal(
-    (prepared.structuredContent as { result: { status: string } }).result.status,
-    "conflict",
-  );
-
-  const unknown = await client.callTool({
-    name: PREPARE_VIEW_ACTION_TOOL_NAME,
-    arguments: { launchId: view.launch.launchId, actionId: "not-a-real-action" },
-  });
-  assert.equal(
-    (unknown.structuredContent as { result: { status: string } }).result.status,
-    "rejected",
-  );
-});
-
-test("resolve_launch redeems the one-shot claim ticket for an undelivered generated launch", async (t) => {
-  const bundle = memoryBundle();
-  await seed(bundle);
-  const server = createMcpAppServer({ bundle, version: "test" });
-  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  t.after(async () => {
-    await client.close();
-    await server.close();
-  });
-
-  // The tool exists and is app-only — never model-visible.
-  const tools = await client.listTools();
-  const resolveTool = tools.tools.find((tool) => tool.name === RESOLVE_LAUNCH_TOOL_NAME);
-  assert.ok(resolveTool, "resolve_launch must be registered");
-  assert.deepEqual(resolveTool._meta?.ui?.visibility, ["app"]);
-
-  const shown = await client.callTool({
-    name: SHOW_VIEW_TOOL_NAME,
-    arguments: {
-      title: "Recovery proof",
-      html: "<p data-aslite-text=\"objects.0.id\"></p>",
-      objectIds: ["tasks/alpha"],
-    },
-  });
-  const shownPayload = shown.structuredContent;
-  assert.ok(shownPayload && typeof shownPayload.launch?.launchId === "string");
-
-  // The claim marker rides the preserved text channel; the shell's parser finds it there.
-  const claim = extractClaimId(shown);
-  assert.ok(claim, "show_view's text content must carry the claim marker");
-
-  // An unknown claim fails closed — NEVER another pending launch (PR #178 P1).
-  const wrong = await client.callTool({
-    name: RESOLVE_LAUNCH_TOOL_NAME,
-    arguments: { claim: "not-a-real-claim-id" },
-  });
-  assert.equal(wrong.isError, true);
-
-  // The exact claim redeems the ALREADY-MINTED launch…
-  const resolved = await client.callTool({
-    name: RESOLVE_LAUNCH_TOOL_NAME,
-    arguments: { claim },
-  });
-  assert.notEqual(resolved.isError, true);
-  assert.equal(
-    resolved.structuredContent?.launch?.launchId,
-    shownPayload.launch.launchId,
-    "resolve_launch must return the ALREADY-MINTED launch, not a new one",
-  );
-
-  // …and is one-shot.
-  const second = await client.callTool({
-    name: RESOLVE_LAUNCH_TOOL_NAME,
-    arguments: { claim },
-  });
-  assert.equal(second.isError, true);
-});
-
 test("resolve_launch redeems a durable launch with its current authorization state", async (t) => {
   const bundle = memoryBundle();
   await seed(bundle);
@@ -1988,40 +1197,4 @@ test("a failed show_view records no claim ticket", async (t) => {
     arguments: { claim: "claim-that-was-never-minted" },
   });
   assert.equal(resolved.isError, true, "no pending launch may be minted by a failed show_view");
-});
-
-test("an empty generated query returns a self-describing error at the tool surface", async (t) => {
-  const bundle = memoryBundle();
-  await seed(bundle);
-  const server = createMcpAppServer({ bundle, version: "test" });
-  const client = new Client({ name: "test-client", version: "test" }, { capabilities: {} });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  t.after(async () => {
-    await client.close();
-    await server.close();
-  });
-
-  // The exact miss a Desktop model hit in the field: lowercase type.
-  const typeMiss = await client.callTool({
-    name: SHOW_VIEW_TOOL_NAME,
-    arguments: { title: "T", html: "<p>x</p>", query: { type: "task" } },
-  });
-  assert.equal(typeMiss.isError, true);
-  const typeMissText = (typeMiss.content as Array<{ text?: string }>)[0]?.text ?? "";
-  assert.match(typeMissText, /did you mean 'Task'\?/);
-  assert.match(typeMissText, /this bundle's types: /);
-  assert.match(typeMissText, /'Task'/);
-
-  // A filter miss teaches the field's actual values instead of a dead end.
-  const filterMiss = await client.callTool({
-    name: SHOW_VIEW_TOOL_NAME,
-    arguments: { title: "T", html: "<p>x</p>", query: { type: "Task", field: "status=nonexistent" } },
-  });
-  assert.equal(filterMiss.isError, true);
-  const filterMissText = (filterMiss.content as Array<{ text?: string }>)[0]?.text ?? "";
-  assert.match(filterMissText, /matched type 'Task' before filters/);
-  assert.match(filterMissText, /field 'status' values in the first \d+ matched document\(s\): /);
-  assert.match(filterMissText, /'todo'/);
 });

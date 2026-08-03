@@ -14,7 +14,6 @@
 export interface PendingLaunchEntry {
   claimId: string;
   launchId: string;
-  kind: "generated" | "durable";
   recordedAt: number;
 }
 
@@ -30,9 +29,9 @@ export class PendingLaunchRegistry {
     this.#now = now;
   }
 
-  record(claimId: string, launchId: string, kind: "generated" | "durable"): void {
+  record(claimId: string, launchId: string): void {
     this.#prune();
-    this.#entries.push({ claimId, launchId, kind, recordedAt: this.#now() });
+    this.#entries.push({ claimId, launchId, recordedAt: this.#now() });
     if (this.#entries.length > this.#limit) this.#entries.shift();
   }
 

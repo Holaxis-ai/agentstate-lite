@@ -8,15 +8,6 @@ import {
   firstResultText,
 } from "../src/result-recovery.js";
 
-const generatedPayload = {
-  schemaVersion: "agentstate.view-launch.v1",
-  title: "Generated",
-  presentation: { html: "<p>x</p>", css: "", contentHash: "h" },
-  selection: { objectIds: ["tasks/a"] },
-  objects: [],
-  launch: { launchId: "launch-1", actions: [] },
-};
-
 const durablePayload = {
   schemaVersion: "agentstate.durable-view-launch.v1",
   title: "Board",
@@ -42,8 +33,7 @@ const transientPayload = {
   launch: { launchId: "launch-3", access: "bundle-propose", authorization: { required: true, authorized: false } },
 };
 
-test("extractViewPayload finds generated, registered, and transient schemas", () => {
-  assert.equal(extractViewPayload({ structuredContent: generatedPayload }), generatedPayload);
+test("extractViewPayload finds registered and transient active View schemas", () => {
   assert.equal(extractViewPayload({ structuredContent: durablePayload }), durablePayload);
   assert.equal(
     extractViewPayload({ structuredContent: { view: durablePayload } }),
@@ -66,7 +56,7 @@ test("extractViewPayload yields nothing for junk, absent structuredContent, or p
 
 test("error results NEVER yield a payload — recovery must not fire for them", () => {
   assert.equal(
-    extractViewPayload({ isError: true, structuredContent: generatedPayload }),
+    extractViewPayload({ isError: true, structuredContent: durablePayload }),
     null,
   );
 });
