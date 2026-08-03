@@ -1,16 +1,15 @@
 ---
 type: Task
 title: Complete open-page navigation parity in the MCP View host
-status: in_progress
+status: done
 priority: '1'
 actor: openai/codex
 assignee: openai/codex
 description: >-
-  Implemented in PR #199 at exact SHA 6dc3a182050e27902d2bf6a0b08fa55b657b65f5.
-  Full CI is green on Node 20/22/26. Independent exact-SHA review APPROVED with
-  no findings (PR comment 5161583853); adversarial QA PASSED with no findings
-  (PR comment 5161600126). Ready for merge.
-timestamp: '2026-08-03T02:10:46.904Z'
+  Completed in merged PR #199 (merge commit
+  f85c80fd6cc6e68f7e363636211c573aa337ce6f). Exact-SHA review APPROVED and
+  adversarial QA PASSED with no findings; CI was green on Node 20/22/26.
+timestamp: '2026-08-03T02:12:26.892Z'
 ---
 # Behavioral claim
 
