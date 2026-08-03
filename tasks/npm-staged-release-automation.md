@@ -4,10 +4,18 @@ title: Build retained-artifact staged npm release automation
 status: in_progress
 priority: '1'
 description: >-
-  Implement P5A: build/pack once candidate, exact-tarball verifier, staged state
-  machine, and no-rebuild finalizer.
+  BUILT + gate-verified; branch feat/npm-staged-release-automation @ 631c39c
+  PUSHED, PR-ready, awaiting Brian's PR/merge (no live release action in this
+  unit). Gate: Builder (npm run check exit 0) -> independent release/security
+  review (pass-with-caveats) -> adversarial dry-run QA (found + verified-closed
+  a HIGH shell-injection vector: execFile+validators, 45 bypass shapes
+  rejected). Reconciler documented-not-wired (operator-trust boundary explicit);
+  2 pre-live follow-ups tracked in tasks/p5a-pre-live-hardening. No live
+  tag/publish path on merge or bare tag push. Records:
+  context-notes/review-p5a-release-security,
+  context-notes/qa-p5a-release-automation.
 actor: claude-main-p5a
-timestamp: '2026-08-03T21:31:39.217Z'
+timestamp: '2026-08-03T23:35:29.557Z'
 ---
 # Goal
 
