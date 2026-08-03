@@ -26,7 +26,10 @@ async function activeFrame(page: Page): Promise<Frame> {
   return frame;
 }
 
-async function lifecycleHost(page: Page): Promise<Frame> {
+async function lifecycleHost(
+  page: Page,
+  options: { initialVisibility?: DocumentVisibilityState; authorized?: boolean } = {},
+): Promise<Frame> {
   const hostBundle = await build({
     entryPoints: [
       new URL("./fixtures/display-mode-host.ts", import.meta.url).pathname,
@@ -42,14 +45,25 @@ async function lifecycleHost(page: Page): Promise<Frame> {
   const hostScript = hostBundle.outputFiles?.[0]?.text;
   if (!hostScript) throw new Error("MCP lifecycle host build produced no JavaScript.");
   await page.setContent(
-    `<!doctype html><html><body><iframe id="app"></iframe><script>${hostScript.replaceAll("</script", "<\\/script")}</script></body></html>`,
+    `<!doctype html><html><body><iframe id="app"></iframe><script>window.__initialAuthorized = ${options.authorized === true};</script><script>${hostScript.replaceAll("</script", "<\\/script")}</script></body></html>`,
   );
+  const visibilitySetup = options.initialVisibility === undefined
+    ? ""
+    : `
+      window.__testVisibilityState = ${JSON.stringify(options.initialVisibility)};
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => window.__testVisibilityState,
+      });
+      Object.defineProperty(window, "__testVisibilityInstalled", { value: true });
+    `;
   const html = (await buildMcpViewHtml()).replace(
     "<script>",
     `<script>
       if (typeof crypto.randomUUID !== "function") {
         crypto.randomUUID = () => "00000000-0000-4000-8000-000000000001";
       }
+      ${visibilitySetup}
     </script><script>`,
   );
   await page.locator("#app").evaluate(
@@ -67,6 +81,58 @@ async function lifecycleHost(page: Page): Promise<Frame> {
   if (!outer) throw new Error("Expected one MCP App frame.");
   return outer;
 }
+
+test("an authorized first result delivered while hidden resumes when visible", async ({
+  page,
+}) => {
+  const outer = await lifecycleHost(page, {
+    initialVisibility: "hidden",
+    authorized: true,
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__resumeRequests))
+    .toEqual([]);
+  await expect
+    .poll(() => page.evaluate(() => window.__bridgeRequests))
+    .toEqual([]);
+  await expect
+    .poll(async () => {
+      const hiddenChild = page.frames().find((frame) => frame.parentFrame() === outer);
+      return hiddenChild ? await hiddenChild.locator("#hello").count() : 0;
+    })
+    .toBe(0);
+
+  await setDocumentVisibility(outer, "visible");
+  await expect
+    .poll(() => page.evaluate(() => window.__resumeRequests))
+    .toEqual(["launch-inline"]);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__bridgeRequests.map((entry) => {
+          const call = entry as {
+            launchId?: unknown;
+            request?: { type?: unknown };
+          };
+          return { launchId: call.launchId, type: call.request?.type };
+        }),
+      ),
+    )
+    .toEqual([
+      { launchId: "launch-resumed-1", type: "hello" },
+      { launchId: "launch-resumed-1", type: "subscribe" },
+    ]);
+  await expect
+    .poll(() => page.evaluate(() => window.__pollRequests))
+    .toContain("launch-resumed-1");
+  await expect
+    .poll(() => page.evaluate(() => window.__closedLaunches))
+    .toContain("launch-inline");
+  const active = page.frames().find((frame) => frame.parentFrame() === outer);
+  if (!active) throw new Error("Expected the resumed View frame.");
+  await expect(active.locator("#hello")).toHaveText("hello:result");
+  await expect(active.locator("#subscribe")).toHaveText("subscribe:result");
+});
 
 async function setDocumentVisibility(
   frame: Frame,
@@ -730,6 +796,7 @@ declare global {
     __displayRequestError: string | null;
     __displayResponseMode: "inline" | "fullscreen" | null;
     __displayRequests: string[];
+    __pollRequests: string[];
     __resumeRequests: string[];
     __holdCloseRequest: boolean;
     __holdNavigationRequest: boolean;
