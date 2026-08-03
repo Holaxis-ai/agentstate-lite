@@ -3,9 +3,9 @@ type: Task
 title: >-
   Agents cannot verify a bundle View renders without a browser (blocks
   generate-views-on-demand)
-status: in_progress
-priority: '1'
-assignee: claude-main-viewauthoring
+status: todo
+priority: '3'
+assignee: ''
 description: >-
   FOUND 2026-07-23 via a live end-to-end test: a fresh agent, given only the
   aslite skill + shipped references and the prompt 'create a view showing every
@@ -44,7 +44,23 @@ description: >-
 
   DONE WHEN: an agent can run one command that fails loudly on a view that
   throws, hangs on the bridge, or renders nothing — with no browser.
-actor: claude-main-viewauthoring
-timestamp: '2026-07-23T17:54:41.405Z'
+actor: openai/codex
+timestamp: '2026-08-03T01:47:57.118Z'
 ---
 [designs/view-headless-verify](../designs/view-headless-verify.md)
+
+## Reclassification — 2026-08-02
+
+Released the stale `claude-main-viewauthoring` claim after auditing the board, repository,
+branches, and pull requests: no implementation or active delivery branch was found after the
+2026-07-23 claim.
+
+This is now a P3 candidate, not a current product commitment. The remaining gap is narrow:
+an agent without browser access cannot independently smoke-test newly authored View JavaScript.
+Users can already launch Views through the real web and MCP hosts, and browser-capable agents can
+exercise the production runtime. Reconsider implementation only after repeated dogfood failures
+show that this limitation materially harms View authoring.
+
+If reconsidered, refresh the design first: it predates the shared `view-runtime` authority. Prefer
+verification through the real host and headless browser automation over a parallel bridge or a
+jsdom-specific product surface.
