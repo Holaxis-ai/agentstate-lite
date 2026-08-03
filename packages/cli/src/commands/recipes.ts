@@ -20,7 +20,7 @@ import {
 } from "../bundle.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
-import { cliInvocation } from "../invocation.js";
+import { cliInvocation, shellArg } from "../invocation.js";
 import { appliedDocIds, isRecipeApplied } from "../recipes.js";
 import { builtinNames, resolveRecipe, type LoadedRecipe } from "../recipe-source.js";
 
@@ -57,12 +57,33 @@ export interface RecipesCliDeps {
   findBundleRoot: typeof findBundleRoot;
 }
 
+interface RecipeCommandTarget {
+  dir?: string;
+  remote?: string;
+}
+
+function commandTargetSuffix(target: RecipeCommandTarget): string {
+  if (target.dir !== undefined) return ` --dir ${shellArg(target.dir)}`;
+  if (target.remote !== undefined) return ` --remote ${shellArg(target.remote)}`;
+  return "";
+}
+
 /** Project one LoadedRecipe (+ whether it's applied) into the flat row shape `recipes` renders. */
 export function recipeInventoryRow(
   recipe: LoadedRecipe,
   applied: boolean | null,
   inv: string,
+  target: RecipeCommandTarget = {},
 ): Record<string, unknown> {
+  const targetSuffix = commandTargetSuffix(target);
+  const commands: Record<string, string> = {};
+  // The wire protocol has no create-bundle endpoint, so a remote-scoped inventory must not emit a
+  // local init command disguised as an action on the selected remote.
+  if (target.remote === undefined) {
+    commands.create_bundle = `${inv} init --recipe ${recipe.id}${targetSuffix}`;
+  }
+  commands.add_to_bundle = `${inv} recipe add ${recipe.id}${targetSuffix}`;
+
   return {
     name: recipe.id,
     version: recipe.version,
@@ -74,10 +95,7 @@ export function recipeInventoryRow(
       references: recipe.references.map((reference) => reference.doc.id),
       views: recipe.pages.map((page) => page.registry.id),
     },
-    commands: {
-      create_bundle: `${inv} init --recipe ${recipe.id}`,
-      add_to_bundle: `${inv} recipe add ${recipe.id}`,
-    },
+    commands,
   };
 }
 
@@ -152,6 +170,7 @@ export async function recipes(argv: string[], deps: Partial<RecipesCliDeps> = {}
         loaded.recipe,
         appliedIds === undefined ? null : isRecipeApplied(loaded.recipe, appliedIds),
         inv,
+        { dir: values.dir, remote: values.remote },
       ),
     );
   }
@@ -161,7 +180,15 @@ export async function recipes(argv: string[], deps: Partial<RecipesCliDeps> = {}
       {
         count: rows.length,
         recipes: rows,
-        help: [`${inv} init --recipe <name>`, `${inv} recipe add <name-or-path>`],
+        help:
+          values.remote === undefined
+            ? [
+                `${inv} init --recipe <name>${commandTargetSuffix({ dir: values.dir })}`,
+                `${inv} recipe add <name-or-path>${commandTargetSuffix({ dir: values.dir })}`,
+              ]
+            : [
+                `${inv} recipe add <name-or-path>${commandTargetSuffix({ remote: values.remote })}`,
+              ],
       },
       resolveMode(values),
     ),

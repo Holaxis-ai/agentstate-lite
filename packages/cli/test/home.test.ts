@@ -120,6 +120,27 @@ test("A1.3 no-bundle fallback: no bundle block, getting_started hint, commands p
   assert.ok(out.length > 0);
 });
 
+test("A1.3b no-bundle --dir fallback preserves the explicit target in every actionable command", async () => {
+  let out = "";
+  const selected = "/tmp/selected bundle";
+  await home(["--dir", selected, "--json"], {
+    binPath: () => "/bin/agentstate-lite",
+    invocation: () => INVOKE,
+    stdout: (s) => (out += s),
+    summarizeBundle: async () => null,
+    loadBoardStatus: async () => null,
+    autoPull: async () => {},
+    hookNeedsUpdate: () => false,
+    loadWorkspaces: async () => [],
+  });
+
+  const gettingStarted = (JSON.parse(out) as Record<string, unknown>).getting_started as string;
+  assert.ok(gettingStarted.includes(`${INVOKE} init --recipe none --dir '${selected}'`));
+  assert.ok(gettingStarted.includes(`${INVOKE} recipes`));
+  assert.ok(gettingStarted.includes(`${INVOKE} init --recipe <name> --dir '${selected}'`));
+  assert.ok(!gettingStarted.includes(`recipes --dir`));
+});
+
 test("home --json is honored (renders valid JSON, not silently ignored TOON)", async () => {
   let toon = "";
   await home([], { binPath: () => "/bin/agentstate-lite", invocation: () => INVOKE, stdout: (s) => (toon += s), summarizeBundle: async () => null });

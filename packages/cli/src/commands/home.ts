@@ -50,7 +50,7 @@
 // a non-fatal `project_binding_error`, preserving SessionStart's render-always contract.
 //
 // Adapted from holaxis-agentstate `packages/cli/src/commands/home.ts`.
-import { cliInvocation, binPath, collapseHomeDirectory } from "../invocation.js";
+import { cliInvocation, binPath, collapseHomeDirectory, shellArg } from "../invocation.js";
 import { DESCRIPTION, commandReference, compactCommandReference } from "../reference.js";
 import { render } from "../output.js";
 import { findBundleRoot, openBundle, resolveProjectBinding } from "../bundle.js";
@@ -605,6 +605,8 @@ export function buildHomeView(
     binPath: () => string;
     invocation: () => string;
     identity?: () => { version: string; channel: ArtifactChannel };
+    /** Preserve an explicit home --dir selector in every emitted mutating follow-up command. */
+    targetDir?: string;
   },
   summary?: BundleSummary | UnreadableBundle | null,
   remote?: string,
@@ -689,9 +691,13 @@ export function buildHomeView(
     // A live board block (or the first-contact line) supersedes the init hint entirely: a project
     // with a provisioned/detected board HAS its bundle — "run init" there is the divergent-
     // second-bundle footgun.
+    const target = deps.targetDir === undefined ? "" : ` --dir ${shellArg(deps.targetDir)}`;
     view.getting_started =
-      `no OKF bundle found in this directory — run \`${deps.invocation()} init --recipe none\` ` +
-      `to create a blank bundle, or \`${deps.invocation()} recipes\` to compare available workspace setups`;
+      `no OKF bundle found in this directory — run \`${deps.invocation()} init --recipe none${target}\` ` +
+      `to create a blank bundle, or \`${deps.invocation()} recipes\` to compare available workspace setups` +
+      (target
+        ? `; create your chosen setup here with \`${deps.invocation()} init --recipe <name>${target}\``
+        : "");
     if (binding) {
       // A reached binding is always local; URL bindings are rejected before this pure renderer.
       view.getting_started += ` (project binding ${binding.file} -> ${binding.target} did not resolve to a bundle)`;
@@ -741,6 +747,7 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
   // summarizes THAT directory's bundle instead of the CWD.
   let remote: string | undefined;
   let dir: string | undefined;
+  let explicitDir: string | undefined;
   let jsonMode = false;
   try {
     const parsed = parseArgs({
@@ -754,7 +761,8 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
       allowPositionals: true,
     });
     remote = parsed.values.remote;
-    dir = parsed.values.dir;
+    explicitDir = parsed.values.dir;
+    dir = explicitDir;
     jsonMode = Boolean(parsed.values.json);
   } catch {
     /* ignore — fall back to the bare local view */
@@ -884,6 +892,7 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
         {
           binPath: deps.binPath ?? binPath,
           invocation,
+          targetDir: explicitDir,
           identity: () => {
             const build = staticBuildIdentity();
             return { version: build.package.version, channel: build.artifact.channel };

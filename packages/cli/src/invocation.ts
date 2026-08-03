@@ -33,6 +33,11 @@ export function collapseHomeDirectory(p: string): string {
   return p;
 }
 
+/** Quote one arbitrary value as a single POSIX-shell argument for emitted copy-paste commands. */
+export function shellArg(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 /** realpath a path, or undefined if it does not exist / is not resolvable. */
 function realOrUndefined(p: string): string | undefined {
   try {

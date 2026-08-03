@@ -193,6 +193,10 @@ test("recipes: lists context-notes with applied:false on a bare bundle, applied:
     assert.equal(rowsBefore[0]!.name, "context-notes");
     assert.equal(rowsBefore[0]!.version, "1");
     assert.equal(rowsBefore[0]!.applied, false);
+    assert.deepEqual(rowsBefore[0]!.commands, {
+      create_bundle: `${cliInvocation()} init --recipe context-notes --dir '${dir}'`,
+      add_to_bundle: `${cliInvocation()} recipe add context-notes --dir '${dir}'`,
+    });
 
     await recipe(["add", "context-notes", "--dir", dir], { stdout: () => {} });
 
@@ -1483,7 +1487,19 @@ test("--remote: recipe add against a served bundle, idempotent parity with the s
 
       const localRecipes = await runJson(recipes, ["--dir", localDir]);
       const remoteRecipes = await runJson(recipes, ["--remote", url]);
-      assert.deepEqual(remoteRecipes, localRecipes);
+      assert.equal(remoteRecipes.count, localRecipes.count);
+      const remoteRows = remoteRecipes.recipes as Array<Record<string, unknown>>;
+      const localRows = localRecipes.recipes as Array<Record<string, unknown>>;
+      assert.deepEqual(
+        remoteRows.map(({ commands: _, ...row }) => row),
+        localRows.map(({ commands: _, ...row }) => row),
+      );
+      assert.deepEqual(remoteRows[0]!.commands, {
+        add_to_bundle: `${cliInvocation()} recipe add context-notes --remote '${url}'`,
+      });
+      assert.deepEqual(remoteRecipes.help, [
+        `${cliInvocation()} recipe add <name-or-path> --remote '${url}'`,
+      ]);
     } finally {
       await handle.close();
     }
