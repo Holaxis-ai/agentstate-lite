@@ -4,12 +4,12 @@ title: Implement and live-prove revision 3 multi-session compaction handoffs
 status: in_progress
 priority: '2'
 description: >-
-  T0-T4 passed exact-SHA review. The second T3.5 Plan failed exact review on a
-  parallel-hook synchronization race and attestation/replay/auth-cleanup
-  enforceability; an isolated exact-2.1.220 primitive probe now determines the
-  next reviewed design.
+  T0-T4 passed exact review. Plan R3 for T3.5 is under exact acceptance/skeptic
+  review after replacing the fault race and binding campaign, review assertions,
+  auth/cleanup, and enforceable candidate verification. No T3.5 code/G0 before
+  both PASS.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-03T21:41:19.984Z'
+timestamp: '2026-08-03T22:19:53.353Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
@@ -52,7 +52,11 @@ The exact accepted design/plan and unanimous independent gate are recorded in `r
 - A pre-G0 readiness audit blocked freeze because the live harness is still T0-isolation-only and the existing package verifier always rebuilds/deletes a scratch artifact. Its first T3.5 prescription retained a sound `freeze`/`verify-existing` split but failed independent acceptance and skeptic review: it did not yet own real-Claude PTY invocation, deterministic L0-L3 oracles/event evidence, exact reviewed-SHA transactional freeze, immutable filesystem/postflight checks, R0/Q0 continuity/replay resistance, or explicit auth/global privacy snapshots.
 - Revised T3.5 plan `plans/precompact-v3-t35-candidate-acceptance@sha256:191e2ae88887246a65a6d8682f468acaa1eb47e1facfd5828043d5c762a44fc0` now names one executable authority, transactional freeze, factored existing-tarball verification, immutable/pre-post checks, replay-resistant attestations, repo-owned tmux/event/fault/canary oracles, and protected-state privacy scans.
 - The revised Plan failed its second exact acceptance/skeptic review. Static candidate integrity largely survived, but the load-bearing SessionStart corruption lane races the managed PreCompact final read-back; R0/Q0 findings and campaign replay state are under-bound; tmux auth/crash cleanup is contradictory; and real-npm/root-newness claims need enforceable boundaries.
-- Current phase: an isolated exact-host capability probe is testing exec-form hooks, independent stdin, synchronous parallel-wait behavior, and whether a flushed managed-handler completion record is visible before the sibling join. Its result determines the next exact Plan revision and whether T3 production mechanics must reopen. No T3.5 code or G0 freeze is authorized.
+- The exact-host probe overall failed because a normal-auth fallback changed real `~/.claude.json`; no content was inspected or reverted. Its isolated primitive component did prove exec-form hooks, independent stdin, parallel start/join, passive evidence, failure observability, and a pre-join completion record, while first model response remained `BLOCKED_AUTH`. A read-only addendum proved silent handlers cannot be mapped to command/args, so R3 forbids that inference and bans real-HOME/global-auth fallback.
+- Plan R3 `plans/precompact-v3-t35-candidate-acceptance@sha256:45c9862ba1e4a1686bb68d326530fc6f3ae51efa529caa6a3a29b59965c73b0d` replaced the racy fault with a deterministic sequential wrapper, added a CAS campaign ledger and challenge-bound authority-written R0/Q0 assertions, atomic absent-root freeze, enforceable npm proof, honest API-key/tmux possession, idempotent reaping, and closed fault terminal states.
+- Exact acceptance and skeptic review both rejected R3. The candidate architecture survived, but crash-atomic campaign ownership/tmux recovery, child close-plus-EOF success, fresh-generation causation and guarded corruption, hook-tree auth inheritance, serial L0 cleanup, and install-time versus publish-only npm lifecycle semantics remained open.
+- Plan R4 `plans/precompact-v3-t35-candidate-acceptance@sha256:d26ed81a61f6035de04252a9d8d3dccbbb9331192e86a51ff2912feb1ed2e812` closes those contracts with immutable owner-file-to-hard-link acquisition, pinned Darwin ps identity, history-before-current publication, socket-first tmux recovery, exact close-plus-EOF/fresh-generation wrapper predicates, serialized L0, honest full hook-tree auth possession, and a pinned install-triggered npm script boundary.
+- Current phase: exact independent product/acceptance and adversarial-skeptic review of Plan R4. No T3.5 code or G0 freeze is authorized until both reviewers pass this exact version.
 
 ## Required gate order
 
@@ -60,7 +64,7 @@ T0 harness → T1/T2 implementation → T3 integration review → T4 docs/rebase
 
 ## Next action
 
-Finish the exact-host primitive probe, revise T3.5 around only observed synchronization/evidence, bind structured human assertions and campaign replay state, choose an honest tmux auth/cleanup contract, and repeat both exact plan reviews. Do not implement or freeze from either rejected plan or the current isolation-only harness.
+Obtain both independent exact-version PASS verdicts on Plan R4; if accepted, claim red-test F0 before implementation. Do not implement or freeze from R1-R3 or the current isolation-only harness.
 
 ## Related
 
