@@ -457,7 +457,8 @@ test("first-contact: no board anywhere → today's behavior (init hint), no boar
     git(dir, ["add", "-A"]);
     git(dir, ["commit", "-m", "initial"]);
     const out = await runHome(homeDir, ["--dir", dir]);
-    assert.match(out, /getting_started: no OKF bundle found/);
+    assert.ok(out.includes("getting_started"));
+    assert.ok(out.includes("no OKF bundle found"));
     assert.ok(!out.includes("board:"), "no board block for a boardless repo");
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -1472,7 +1473,8 @@ test("session-start outside any git repo: no board block, plain home render, res
     const outcome = await withHome(homeDir, () => sessionStartPull(dir));
     assert.equal(outcome, undefined);
     const out = await runSessionStart(homeDir, ["--dir", dir]);
-    assert.match(out, /getting_started: no OKF bundle found/);
+    assert.ok(out.includes("getting_started"));
+    assert.ok(out.includes("no OKF bundle found"));
     assert.ok(!out.includes("board sync offline"));
   } finally {
     await rm(dir, { recursive: true, force: true });

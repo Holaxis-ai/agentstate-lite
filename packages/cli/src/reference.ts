@@ -158,8 +158,9 @@ export const COMMAND_GROUPS: CommandGroup[] = [
         summary: "Edit a kind's schema — add/remove a declared field or enum value on its convention (idempotent)",
       },
       {
-        usage: "recipes [--remote <url>]",
-        summary: "List built-in recipes and whether each is already applied to this bundle",
+        usage: "recipes [--dir <path>] [--remote <url>]",
+        summary:
+          "Browse built-in recipes before or after init; with a bundle, also show whether each is already applied",
       },
       {
         usage: "recipe add <name-or-path> [--remote <url>]",

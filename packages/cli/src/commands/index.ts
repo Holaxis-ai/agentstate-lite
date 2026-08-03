@@ -17,7 +17,7 @@ import { parseOrUsage } from "../args.js";
 import { deriveBundleDisplayName } from "../bundle-name.js";
 import { openBundle } from "../bundle.js";
 import { CliError, classifyBundleError } from "../errors.js";
-import { cliInvocation } from "../invocation.js";
+import { cliInvocation, shellArg } from "../invocation.js";
 import { render, resolveMode } from "../output.js";
 
 export const INDEX_USAGE = `agentstate-lite index — generate portable Markdown navigation
@@ -53,10 +53,6 @@ export interface IndexCliDeps {
 
 function displayPath(dir: string): string {
   return dir === "" ? "index.md" : `${dir}/index.md`;
-}
-
-function shellArg(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function generateCommand(options: { dir?: string; check?: boolean; force?: boolean } = {}): string {

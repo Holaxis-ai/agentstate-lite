@@ -50,7 +50,7 @@
 // a non-fatal `project_binding_error`, preserving SessionStart's render-always contract.
 //
 // Adapted from holaxis-agentstate `packages/cli/src/commands/home.ts`.
-import { cliInvocation, binPath, collapseHomeDirectory } from "../invocation.js";
+import { cliInvocation, binPath, collapseHomeDirectory, shellArg } from "../invocation.js";
 import { DESCRIPTION, commandReference, compactCommandReference } from "../reference.js";
 import { render } from "../output.js";
 import { findBundleRoot, openBundle, resolveProjectBinding } from "../bundle.js";
@@ -605,6 +605,8 @@ export function buildHomeView(
     binPath: () => string;
     invocation: () => string;
     identity?: () => { version: string; channel: ArtifactChannel };
+    /** Preserve an explicit home --dir selector in every emitted mutating follow-up command. */
+    targetDir?: string;
   },
   summary?: BundleSummary | UnreadableBundle | null,
   remote?: string,
@@ -685,14 +687,27 @@ export function buildHomeView(
     }
     if (binding) bundleBlock.via = binding.file;
     view.bundle = bundleBlock;
-  } else if (!board?.firstContact && board?.block === undefined) {
+  } else if (!bindingError && !board?.firstContact && board?.block === undefined) {
     // A live board block (or the first-contact line) supersedes the init hint entirely: a project
     // with a provisioned/detected board HAS its bundle — "run init" there is the divergent-
     // second-bundle footgun.
-    view.getting_started = `no OKF bundle found in this directory — run \`${deps.invocation()} init\` to create one`;
     if (binding) {
-      // A reached binding is always local; URL bindings are rejected before this pure renderer.
-      view.getting_started += ` (project binding ${binding.file} -> ${binding.target} did not resolve to a bundle)`;
+      // A reached binding is always local. Its target may have disappeared, but it remains the
+      // committed selection: never suggest an unscoped init that would mint a divergent cwd bundle,
+      // and do not advertise recipes until the broken binding is repaired (recipes fails closed).
+      const target = ` --dir ${shellArg(binding.target)}`;
+      view.getting_started =
+        `project binding ${binding.file} -> ${binding.target} did not resolve to a bundle — ` +
+        `run \`${deps.invocation()} init --recipe none${target}\` to recreate that bound bundle, ` +
+        `or fix/remove the binding before browsing recipes`;
+    } else {
+      const target = deps.targetDir === undefined ? "" : ` --dir ${shellArg(deps.targetDir)}`;
+      view.getting_started =
+        `no OKF bundle found in this directory — run \`${deps.invocation()} init --recipe none${target}\` ` +
+        `to create a blank bundle, or \`${deps.invocation()} recipes\` to compare available workspace setups` +
+        (target
+          ? `; create your chosen setup here with \`${deps.invocation()} init --recipe <name>${target}\``
+          : "");
     }
   }
   // The board block (sync-verb §U4). FIRST-CONTACT footgun guard: when a board exists for this
@@ -711,7 +726,8 @@ export function buildHomeView(
   if (bindingError) {
     // A malformed .agentstate.json — never a thrown exception (home must never crash the
     // SessionStart hook), surfaced instead as a visible, non-fatal note.
-    view.project_binding_error = bindingError;
+    view.project_binding_error =
+      `${bindingError}; fix or remove the binding before initializing or browsing recipes`;
   }
   if (workspaces) view.workspaces = workspaces;
 
@@ -739,6 +755,7 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
   // summarizes THAT directory's bundle instead of the CWD.
   let remote: string | undefined;
   let dir: string | undefined;
+  let explicitDir: string | undefined;
   let jsonMode = false;
   try {
     const parsed = parseArgs({
@@ -752,7 +769,8 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
       allowPositionals: true,
     });
     remote = parsed.values.remote;
-    dir = parsed.values.dir;
+    explicitDir = parsed.values.dir;
+    dir = explicitDir;
     jsonMode = Boolean(parsed.values.json);
   } catch {
     /* ignore — fall back to the bare local view */
@@ -882,6 +900,7 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
         {
           binPath: deps.binPath ?? binPath,
           invocation,
+          targetDir: explicitDir,
           identity: () => {
             const build = staticBuildIdentity();
             return { version: build.package.version, channel: build.artifact.channel };
