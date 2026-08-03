@@ -14,7 +14,7 @@ sequence: >-
   save shipped → bundle-propose parity shipped → cross-host acceptance passed →
   delete generated presentation contract → navigation parity
 actor: openai/codex
-timestamp: '2026-08-03T00:27:42.198Z'
+timestamp: '2026-08-03T00:42:42.591Z'
 ---
 # Direction
 
@@ -147,3 +147,5 @@ Current work:
 [contains](../tasks/mcp-active-view-bundle-propose.md)
 
 [validated by](../context-notes/transient-durable-cross-host-acceptance-2026-08-02.md)
+
+[contains](../tasks/retire-generated-mcp-presentations.md)
