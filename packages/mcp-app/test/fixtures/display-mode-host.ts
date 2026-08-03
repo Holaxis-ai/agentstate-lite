@@ -79,6 +79,22 @@ function payload(launchId: string, authorized: boolean): DurablePayload {
   };
 }
 
+function hiddenFirstMountPayload(launchId: string): DurablePayload {
+  const view = payload(launchId, true);
+  view.source = {
+    ...source,
+    html: `<!doctype html><output id="hello"></output><output id="subscribe"></output><script>
+      parent.postMessage({ bridge: 'v0', type: 'hello', id: 'hello' }, '*');
+      parent.postMessage({ bridge: 'v0', type: 'subscribe', id: 'subscribe' }, '*');
+      addEventListener('message', (event) => {
+        if (event.data?.id === 'hello') document.querySelector('#hello').textContent = event.data.type;
+        if (event.data?.id === 'subscribe') document.querySelector('#subscribe').textContent = event.data.type;
+      });
+    </script>`,
+  };
+  return view;
+}
+
 function transientPayload(launchId: string): TransientPayload {
   return {
     schemaVersion: "agentstate.transient-view-launch.v1",
@@ -154,6 +170,7 @@ let releaseNavigationRequest: (() => void) | null = null;
 
 window.__displayRequests = [];
 window.__resumeRequests = [];
+window.__pollRequests = [];
 window.__closedLaunches = [];
 window.__preparedActions = [];
 window.__finishedActions = [];
@@ -258,7 +275,10 @@ bridge.oncalltool = async ({ name, arguments: args }) => {
     return {
       content: [{ type: "text", text: "resumed" }],
       structuredContent: {
-        view: payload(`launch-resumed-${nextLaunch++}`, true),
+        view: (window.parent as Window & { __initialAuthorized?: boolean })
+          .__initialAuthorized === true
+          ? hiddenFirstMountPayload(`launch-resumed-${nextLaunch++}`)
+          : payload(`launch-resumed-${nextLaunch++}`, true),
       },
     };
   }
@@ -276,7 +296,10 @@ bridge.oncalltool = async ({ name, arguments: args }) => {
   }
   if (name === "durable_view_bridge") {
     window.__bridgeRequests.push(args ?? {});
-    if (args?.request && typeof args.request === "object" && "type" in args.request && args.request.type === "open-page") {
+    const request = args?.request && typeof args.request === "object"
+      ? args.request as Record<string, unknown>
+      : null;
+    if (request?.type === "open-page") {
       if (window.__holdNavigationRequest) {
         await new Promise<void>((resolve) => {
           releaseNavigationRequest = resolve;
@@ -295,16 +318,18 @@ bridge.oncalltool = async ({ name, arguments: args }) => {
       structuredContent: {
         outcome: {
           reply: {
-            bridge: "v0",
-            id: "test",
-            type: "result",
+            bridge: typeof request?.bridge === "string" ? request.bridge : "v0",
+            id: typeof request?.id === "string" ? request.id : "test",
+            type: `${typeof request?.type === "string" ? request.type : "request"}:result`,
             result: { ok: true },
           },
+          ...(request?.type === "subscribe" ? { subscribed: true } : {}),
         },
       },
     };
   }
   if (name === "poll_durable_view") {
+    window.__pollRequests.push(launchId);
     return {
       content: [{ type: "text", text: "unchanged" }],
       structuredContent: { poll: { status: "unchanged" } },
@@ -389,7 +414,10 @@ bridge.oninitialized = () => {
     });
     await bridge.sendToolResult({
       content: [{ type: "text", text: "Roadmap ready" }],
-      structuredContent: payload("launch-inline", false),
+      structuredContent: (window.parent as Window & { __initialAuthorized?: boolean })
+        .__initialAuthorized === true
+        ? hiddenFirstMountPayload("launch-inline")
+        : payload("launch-inline", false),
     });
     window.__hostInitialized = true;
   })();
@@ -408,6 +436,7 @@ declare global {
     __displayRequestError: string | null;
     __displayResponseMode: DisplayMode | null;
     __displayRequests: string[];
+    __pollRequests: string[];
     __resumeRequests: string[];
     __holdCloseRequest: boolean;
     __holdFinishRequest: boolean;

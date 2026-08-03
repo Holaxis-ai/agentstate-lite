@@ -315,6 +315,14 @@ function renderDurablePayload(payload: ActiveViewLaunchPayload): void {
   }
   statusEl.dataset.kind = "ready";
   statusEl.textContent = `${payload.title} · exact ${payload.schemaVersion === "agentstate.durable-view-launch.v1" ? "registered" : "transient"} View · live ${payload.launch.access} bridge`;
+  if (document.visibilityState !== "visible") {
+    clearFrameDocument();
+    frame.setAttribute("sandbox", "");
+    frame.removeAttribute("csp");
+    suspendedDurableLaunch = payload.launch.launchId;
+    statusEl.textContent = `${payload.title} · paused while hidden`;
+    return;
+  }
   frame.setAttribute("sandbox", "allow-scripts");
   frame.setAttribute("csp", ACTIVE_VIEW_CHILD_CSP);
   const sizing = createFrameSizingSession(payload.launch.launchId, frameEpoch);
