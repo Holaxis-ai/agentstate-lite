@@ -4,11 +4,12 @@ title: Implement and live-prove revision 3 multi-session compaction handoffs
 status: in_progress
 priority: '2'
 description: >-
-  T0-T4 passed exact review. The v5 host evidence received unanimous scoped PASS
-  for replacement-Plan synthesis; R5 synthesis and exact dual review now gate
-  T3.5 code. No API-key Claude run or G0 freeze yet.
+  T0-T4 passed exact review. R5 candidate/live-acceptance Plan is CAS-published
+  at sha256:c7a9e198… and undergoing independent product/acceptance plus
+  adversarial-skeptic review. No T3.5 code, API-key Claude run, or G0 freeze
+  yet.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-03T23:30:44.961Z'
+timestamp: '2026-08-03T23:46:24.831Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
