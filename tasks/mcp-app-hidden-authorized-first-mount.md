@@ -5,13 +5,12 @@ status: in_progress
 priority: '1'
 assignee: openai/codex
 description: >-
-  Re-verified against main f85c80f on 2026-08-02: a host-shaped Chromium probe
-  delivers an already-authorized View while the MCP App is hidden; after
-  visibility returns, resume_durable_view is never called. The 2026-07-29
-  codex-pr177-followup claim had no surviving code branch or PR, so openai/codex
-  has taken over the task for end-to-end delivery.
+  Reproduced on main f85c80f, claimed by openai/codex, and fixed in PR #200 at
+  exact SHA b25b4caa3b4a4897413bf014af55804b0c25953f. Focused MCP tests, full
+  lifecycle Chromium coverage, and the complete repository gate pass. Awaiting
+  required independent exact-SHA review and adversarial QA.
 actor: openai/codex
-timestamp: '2026-08-03T02:21:48.609Z'
+timestamp: '2026-08-03T02:30:37.473Z'
 ---
 # Problem
 
