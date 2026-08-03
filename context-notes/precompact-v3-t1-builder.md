@@ -2,11 +2,11 @@
 type: Context Note
 title: Revision 3 T1 private authority builder
 actor: codex-precompact-v3-t1-builder
-timestamp: '2026-08-03T19:40:36.697Z'
+timestamp: '2026-08-03T20:01:14.114Z'
 ---
 # Summary
 
-Revision-3 T1 private lifecycle authority is implemented and verified in its isolated worktree.
+Revision-3 T1 private lifecycle authority is implemented and its independent-review FAIL is repaired and verified in its isolated worktree.
 
 Ultimate goal: agentstate-lite is shared, versioned, conflict-safe memory for concurrent agent fleets, in plain text and owned by the user.
 
@@ -25,16 +25,16 @@ Proximate goal: deliver one private, project- and execution-bound compaction aut
 - Exact canonical project identity and complete execution tuple, each addressed by full SHA-256 and byte-compared on every structured read.
 - Strict v1 head, generation, checkpoint, decision-card, delivery, audit, and quarantine schemas; no persisted storage self-version; fixed seven-day prepare-derived expiry.
 - Deterministic transcript checkpointing and exact-identity extraction into all eight decision slots, with explicit unknowns and a render strictly below 8,000 characters.
-- Private 0700 journal tree and 0600 files, symlink refusal at owned boundaries, immutable-addressed generations, and a CAS-selected mutable head.
+- Private 0700 journal tree and final 0600 files, symlink refusal across the configured root's lexical ancestors and owned descendants, immutable-addressed generations, and a CAS-selected mutable head.
 - Prepare create/refresh, compact/resume delivery, PostCompact audit, response observation, diagnosis, exact-version recovery, quarantine, and event-driven GC in one authority.
 - Head rechecks and byte-exact rollback protect refresh, delivery, and Stop response observation from stale-generation races; interrupted create/delivery/recovery remain safely recoverable.
-- Deterministic GC deletes at most 25 records, detaches a final expired head before deletion, and preserves corruption in quarantine.
+- Deterministic GC independently caps generation and quarantine deletion at 25, accurately receipts both, detaches a final expired head before deletion, and preserves corruption in quarantine.
 - Frozen T1 rejection probes now exercise production boundaries; the two T2 hook-policy probes remain deliberately red.
 
 ## Verification
 
 - `npm run typecheck -w @holaxis/aslite`: pass.
-- Focused identity/schema/transcript/authority/process/contracts lane: 28 pass, 0 fail, 13 T2-red probes skipped.
+- Focused identity/schema/transcript/authority/process/contracts lane after repair: 32 pass, 0 fail, 13 T2-red probes skipped.
 - True multi-process CAS test: pass; two processes created distinct generations and exactly one won expect-absent head publication.
 - `npm run build`: pass for all workspaces.
 - `git diff --check`: pass.
@@ -42,4 +42,14 @@ Proximate goal: deliver one private, project- and execution-bound compaction aut
 
 ## Handoff
 
-No T2 public command, hook installation policy, or live-host integration was implemented here. Those remain downstream work. The code is ready to commit on the isolated T1 branch and hand to the orchestrator for review/cherry-pick.
+Independent review `context-notes/precompact-v3-t1-review` at `sha256:df58723f3e78891bf1cc400572a409d20dcd2cb42fe4eaa3303876e48d393c16` failed commit `a5a5efc269336abb2c76fb54d78d84d74abcfe9e` on five reproduced blockers. Repair commit `12ec093` adds regression-first fixes for all five:
+
+1. Reject every symlink ancestor of the configured journal root before and after root creation.
+2. Compact restoration requires the exact canonical prepare transcript and a byte-hash-proven strict append before mutation or injection.
+3. Exact recovery uses an explicit `null` generation version to CAS-guard a valid head selecting an absent generation.
+4. Quarantine GC has its own deterministic 25-record cap and accurate total/per-class receipt counts.
+5. Stop response observation proves the full delivery-checkpoint prefix by byte length and SHA-256 before mutation.
+
+Final 0600 record modes are asserted, prepared-state Post/Stop metadata is rejected by schema, premature PostCompact audit is ignored, and the true multi-process core-backend CAS probe remains green.
+
+No T2 public command, hook installation policy, or live-host integration was implemented here. Those remain downstream work. Exact repair commit: `12ec0938e4d4a0e824e1f6a977f0f504b3578f13`.

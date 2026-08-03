@@ -1,7 +1,7 @@
 ---
 type: Review Request
 title: 'Review: configurable board placement (main vs branch)'
-status: requested
+status: changes_requested
 reviewer: Brian Derfer
 requested_by: Michael Collier
 question: >-
@@ -9,8 +9,20 @@ question: >-
   niceties from the branch placement via a committed placement: main|branch
   config plus a thin adapter over git.ts — and are the config-home, discovery,
   and commit-on-main decisions sound enough to schedule the build?
-actor: mike/claude
-timestamp: '2026-07-12T02:56:25.282Z'
+actor: brian-claude
+decided_at: '2026-08-03T20:02:03Z'
+decision_summary: >-
+  changes_requested (Brian Derfer, 2026-08-03). Framing A ACCEPTED — decoupling
+  sync's niceties from where the board lives is the right goal (provisional; see
+  how it plays out). But do NOT schedule the build without real user demand for
+  board-on-main: the branch-model friction (GitHub 'Compare & pull request'
+  prompt) is real yet only the deferred on-main option fixes it, so it is
+  evidence for eventual value, not an urgent build. Deferring incurs ZERO
+  one-way doors, satisfying the limit-one-way-doors priority. Mechanism
+  decisions (config home, discovery marker, commits-on-main rebase risk,
+  transitions) deferred to build time with the design as the ready blueprint.
+  Moves to approved on real user demand for board-on-main with the niceties.
+timestamp: '2026-08-03T20:02:03.685Z'
 ---
 # Context
 
@@ -56,4 +68,33 @@ A complete review:
 
 # Reviewer response
 
-_(Brian to complete.)_
+**Verdict: changes_requested** (Brian Derfer, 2026-08-03) — NOT because the design is unsound, but
+because the specific ask ("sound enough to SCHEDULE THE BUILD?") is answered "not yet: get real user
+feedback first." The strategic frame: limit one-way doors and friction, but do not expend build
+effort ahead of real user demand.
+
+1. **Framing (decouple value from placement): ACCEPTED (Framing A), provisional.** Right goal in
+   principle — sync's collaboration niceties should not be welded to where the board lives. We want
+   to see how it plays out in practice. The board branch is genuinely inelegant; the constant GitHub
+   "Compare & pull request" prompt is exhibit A.
+2. **Thin placement seam over git.ts / right first extraction: SOUND SHAPE, WRONG TIME.** The
+   factoring-plus-a-switch is sensibly sized, but do NOT schedule the build without real user demand
+   for board-on-main. Building the switch before a real second need is the premature-abstraction
+   risk. The named friction (GitHub PR banner) is intrinsic to the branch model — only the on-main
+   option removes it — so it is evidence FOR the eventual build, not a cheap independent win.
+3. **Config home (.agentstate.json vs board-config doc): DEFERRED to build time.** Only becomes a
+   lock-in surface if/when on-main ships; additive and reversible either way.
+4. **Fresh-clone discovery marker: DEFERRED to build time.** A compatibility surface only once
+   on-main ships; no lock-in incurred by waiting.
+5. **Commits on main: DEFERRED, flagged as the riskiest mechanism to scrutinize at build time.** An
+   on-main sync pull becomes a fetch+rebase of the current (code) branch scoped to the bundle path,
+   which must never touch non-bundle files.
+6. **Transitions (--establish placement choice + reverse branch->main migrate): DEFERRED with the
+   build.** "Stay on main" as the default is acceptable framing when we do build.
+7. **Missing/mis-scoped:** the key point is strategic — this is a get-user-feedback-first decision.
+   Deferring incurs ZERO one-way doors now, satisfying the "limit one-way doors" priority. The design
+   stands as the ready blueprint for when demand justifies scheduling the build.
+
+**What would move this to `approved`:** real user demand for board-on-main — users actually hitting
+the board-branch friction and wanting main placement WITH the niceties — at which point the design is
+build-ready and the deferred mechanism decisions (3-6) get settled at build time.
