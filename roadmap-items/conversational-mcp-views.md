@@ -3,18 +3,19 @@ type: Roadmap Item
 title: Conversational Views through MCP Apps
 status: active
 description: >-
-  ACTIVE — the one-source View contract is now proven end to end. A transient
-  active View queried and rendered live data, subscribed, saved exact bytes,
-  reopened as a fresh durable identity in MCP, launched unchanged through the
-  web host, and completed governed actions through both authorities. The
-  superseded MCP-only generated-presentation contract is now ready for bounded
-  deletion; navigation parity follows.
+  ACTIVE — the one-source View contract is proven end to end. Transient and
+  registered Views now share the active runtime across MCP and web, including
+  live queries, bounded Markdown rendering, subscriptions, exact-byte save, and
+  governed actions. The superseded MCP-only generated-presentation contract was
+  deleted in PR #197. Open-page navigation parity is the next recorded gap and
+  should be marked shipped only when its implementation is published and
+  verified.
 sequence: >-
   Unified foundations shipped → transient active launch shipped → exact-byte
   save shipped → bundle-propose parity shipped → cross-host acceptance passed →
-  delete generated presentation contract → navigation parity
+  generated presentation contract deleted → navigation parity next
 actor: openai/codex
-timestamp: '2026-08-03T01:28:54.090Z'
+timestamp: '2026-08-03T01:37:08.492Z'
 ---
 # Direction
 
