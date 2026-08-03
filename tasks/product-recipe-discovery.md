@@ -4,17 +4,16 @@ title: 'Product recipes: bundle-free discovery before init'
 status: in_progress
 priority: '1'
 description: >-
-  PR #201 amended by openai/codex at commit b38d3ed to address the independent
-  re-review's remaining P1 binding-recovery finding; exact-SHA re-review and CI
-  are pending. A valid project binding whose local target disappeared now offers
-  only a safely quoted init command for that bound target and withholds recipe
-  browsing until repair. Malformed or URL-valued bindings withhold all
-  getting-started mutation commands and provide repair guidance. Focused tests
-  pass 142/142, typecheck passes, and the full local repository gate including
-  19 browser E2E tests passes.
+  PR #201 is ready to merge at exact commit b38d3ed. The independent re-review
+  approved with no findings after executing the emitted recovery command against
+  a bound path containing spaces and an apostrophe: only the bound target was
+  initialized, the project cwd remained untouched, and the next home render
+  resolved the bundle. Malformed and URL-valued bindings expose no unsafe
+  getting-started commands. Focused tests pass 142/142; exact-SHA CI is green on
+  Node 20, 22, and 26.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-03T13:11:24.373Z'
+timestamp: '2026-08-03T13:18:09.144Z'
 ---
 # Problem
 
