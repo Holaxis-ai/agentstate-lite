@@ -3,23 +3,24 @@ type: Task
 title: >-
   Review the pre-compaction context-note design for multi-session safety (single
   fixed id collides)
-status: blocked
+status: todo
 priority: '2'
 description: >-
-  DESIGN VETTED, awaiting Brian's sign-off (2026-08-03). Team:
-  Scout->Designer->2x Skeptic passes. designs/pre-compact-multi-session resolves
-  all 6 decision points; skeptic verdict PASS-WITH-CAVEATS, every mechanism
-  tested on the built CLI (write->read->consume loop, machine-scoped queries, jq
-  id-derivation across 6 edge cases). Blocked on: Brian applying 3 proposed
-  diffs (global CLAUDE.md + ~/.claude/hooks/pre-compact.sh + post-compact.sh) —
-  no agent touches those. Open gap: session_id presence in PreCompact main
-  payload + survival across --resume needs a live-compaction check; design
-  degrades to a guarded best-effort fallback (detectable failure, not silent
-  corruption) if absent. Evidence:
-  context-notes/research-precompact-multisession,
-  context-notes/review-precompact-multisession.
-actor: claude-main-precompact
-timestamp: '2026-08-03T15:48:46.991Z'
+  REVISION 2 REJECTED by independent Codex team review (2026-08-03; concurrency
+  specialist, cognitive-ecosystem reviewer, adversarial skeptic; all
+  high-confidence FAIL). Do NOT apply the proposed global CLAUDE.md or
+  pre/post-compact hook diffs. Blocking evidence: Claude Code 2.1.220 rejects
+  additionalContext on both load-bearing hook events; id8 is collision-prone;
+  promote is create-only so repeated compaction fails; unconditional delete is
+  generation-unsafe; expiry has no GC; raw Context Note promotion does not
+  validate the handoff schema. Next action: revise around hook-owned
+  persistence, a supported model-context event, full canonical identity, one
+  executable lifecycle authority, CAS/generations, validated schema, real GC,
+  and live manual/automatic concurrency/interruption tests. Evidence:
+  reviews/pre-compact-multi-session-team-2026-08-03 and
+  context-notes/review-precompact-codex-{concurrency,ecosystem,skeptic}.
+actor: codex-review-orchestrator
+timestamp: '2026-08-03T17:02:04.193Z'
 ---
 # Multi-session-safe pre-compaction context notes
 
