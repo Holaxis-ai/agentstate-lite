@@ -2,107 +2,95 @@
 type: Context Note
 title: P5A adversarial QA — retained-artifact staged npm release
 actor: claude-p5a-qa
-timestamp: '2026-08-03T23:00:50.368Z'
+timestamp: '2026-08-03T23:31:43.792Z'
 ---
 # Summary
 
-Adversarial QA for P5A (retained-artifact staged npm release automation), SHA
-b641dff6302d22db4c94c4696d83a2b31f4bc43c, branch feat/npm-staged-release-automation.
-Isolated worktree, `npm ci` clean, baseline `node --test` of the three release suites =
-31/31 pass (exit 0). Went beyond the suite with direct adversarial inputs against the pure
-reconciler, the retained-tarball SHA gate, and the operation emitters.
+DELTA re-verify of the P5A builder fix at SHA 631c39cf07a8230e5ecb99aeda307ac4e02f60dd
+(fix commit on top of b641dff, branch feat/npm-staged-release-automation). Isolated worktree,
+HEAD confirmed at 631c39c. This supersedes the first-round QA note below it.
 
-VERDICT: pass-with-caveats. Merges safely as a code-only, no-live-release unit (every live
-mutation is gated behind MODE==live + the not-yet-provisioned `release` environment). Two
-findings should be fixed before live is enabled; one is cheap enough to fix now.
+VERDICT: pass-with-caveats (clean to push as a code-only, no-live-release unit). The HIGH
+(shell injection) is GENUINELY CLOSED. Findings #2, #3, #4, and the environment-gate gap are
+all addressed. One LOW residual (leading-dash argument injection) remains, not reachable via
+the automation and not a merge blocker.
 
-## Attacks that SURVIVED (system resisted) — empirical unless noted
+## Injection (the HIGH) — CLOSED. Empirical.
 
-- State machine (release-state.mjs) resisted all 27 probes:
-  - Transition interruption: prepared->staged (skip draft) rejected (illegal_transition); a
-    partial/corrupt ledger that LOST tarball_sha256 fails CLOSED at inspection
-    (observed != undefined -> inspection_mismatch), never approves.
-  - rolled_back is terminal: ->final and ->promoted both blocked; rollback replay with
-    identical receipt is a no-op (changed:false); replay with a changed deprecated_version ->
-    identifier_mismatch.
-  - Rerun idempotency: every one of the 8 happy-path transitions is changed:false on identical
-    replay; re-asserting a different run_id / artifact_id / stage_id -> identifier_mismatch
-    every time.
-  - Artifact-swap semantics: draft asset_digest != prepared SHA -> artifact_mismatch; inspected
-    observed_sha256 != prepared SHA -> inspection_mismatch (cannot approve).
-  - resolveTags: prerelease keeps latest known-good until promoted; failed deprecates the
-    candidate and keeps both tags; stable failed restores prior latest; bad kind/phase throw.
-- Retained-tarball SHA gate (verifyRetainedTarball) held (empirical): a swapped/rebuilt tarball
-  whose bytes differ from the manifest sha256 is rejected at the cross-check BEFORE any install
-  (3a); a manifest declaring a non-`npm-package` channel is rejected (3d);
-  parseVerificationArgs rejects `--tarball` with no value, leftover args, and `--local
-  --release` together (3e). The workflow shell steps independently re-shasum the downloaded
-  tarball vs candidate.json in draft/stage/registry-verify jobs.
-- Fail-closed CLIs (empirical): release-emit-receipt exits 1 on a missing OR empty-string arg;
-  release-reconcile exits 1 on empty / non-JSON / incomplete receipt / unknown target state.
-- No-live-publish (empirical + reasoned): release-run-operations WITHOUT --execute only prints
-  (no sh -c spawn, verified with a marker that was NOT created). A bare `v*` tag push runs
-  release-staged.yml with MODE defaulting to dry-run (env `github.event.inputs.mode ||
-  'dry-run'`), so candidate builds+verifies but draft/stage only print. All live mutation sits
-  behind `[ "$MODE" = "live" ]`.
+Fix mechanism (verified in source): `release-run-operations.mjs` now runs each operation via
+`execFile(argv[0], argv.slice(1))` — NO shell, no `sh -c`, no word-splitting. `release-
+operations.mjs` builds validated ARGV ARRAYS and validates every interpolated value at
+construction: `assertVersion` (strict SemVer), `assertToken` ([A-Za-z0-9._-]), `assertSha256`.
 
-## Issues
+- My exact original repro re-run: `node scripts/release-run-operations.mjs --op reject
+  --stage-id "nope; touch ./INJECTED_PROOF; true" --execute` -> EXIT 1, message "invalid
+  stageId (must match [A-Za-z0-9._-])", NO marker file. (Round 1 this created the marker.)
+- 45 further bypass shapes across version / tag / stageId / releaseId, all REJECTED at
+  construction (empirical): command substitution `$(...)`, backticks, embedded newline,
+  semicolon, pipe, ampersand, glob/space, `--flag=value`, URL-encoded, NUL byte, unicode space.
+- No residual shell path exists: execFile is the only executor; the display/instruction
+  strings are quoted for HUMAN display only and are never executed.
 
-1. [HIGH severity / EMPIRICAL / fix-before-live, recommend now] Shell injection into the
-   `sh -c`-executed operation commands.
-   - release-run-operations.mjs `execute()` runs `spawn("sh", ["-c", command])`. The command
-     strings are built by release-operations.mjs via direct interpolation of `version`,
-     `release-id`, `stage-id`, `tag` with NO format validation (`req()` only checks non-empty).
-   - Repro (empirical, executed): `node scripts/release-run-operations.mjs --op reject
-     --stage-id "nope; touch ./INJECTED_PROOF; true" --execute` -> marker file created ->
-     arbitrary code ran on the runner. Same for `--op registry-verify --version
-     "0.1.0; <cmd>"` and `--op immutable-release --version/--release-id`.
-   - Reachability: release-finalize.yml runs `release-run-operations --execute` in MODE==live
-     with `version` and `draft_release_id` taken straight from workflow_dispatch inputs. The
-     `registry-verify` job runs `--execute --version <input>` and has NO `environment: release`
-     gate (only contents:read), so a live-mode dispatch achieves code execution on the runner
-     ahead of the environment-gated finalize job. Requires a privileged actor (Actions dispatch
-     + the workflow on the default branch), and live is gated off in this unit, so it is NOT
-     reachable today — but the vector ships in the code now and becomes live-reachable the
-     moment P5S provisions the environment.
-   - Fix: validate inputs before building commands (version -> strict SemVer, run/artifact/
-     draft-release ids -> `^[A-Za-z0-9._-]+$`, stage-id -> safe charset), and/or replace
-     `sh -c command` with `execFile`/`spawn` over argv arrays (no shell) since none of the
-     commands need shell features. Add an adversarial test that an injected metacharacter is
-     refused or rendered inert.
+## LOW residual — leading-dash argument injection (empirical, NOT reachable via automation)
 
-2. [LOW / EMPIRICAL+reasoned / fix-before-live] verifyRetainedTarball skips the SHA cross-check
-   when `manifest` is null.
-   - With manifest=null the tarball-vs-recorded-sha assert is bypassed; only the install +
-     identity + channel proof runs (3c). Reachable via prepublish-guard when
-     ASLITE_RELEASE_TARBALL is set but ASLITE_RELEASE_MANIFEST is not — so the guard would
-     "verify" ANY validly-built npm-package tarball, not specifically the staged candidate.
-     Low severity: the workflow path always passes the manifest AND does an independent shell
-     shasum compare; release-candidate.mjs always passes manifestPath. Existing tests cover the
-     mismatch-WITH-manifest path (release-candidate.test.mjs:84) but not the no-manifest skip.
-   - Fix: either require a manifest in retained mode, or have prepublish-guard refuse when no
-     manifest is available.
+`TOKEN = ^[A-Za-z0-9._-]+$` permits a leading dash, so flag-shaped values (`--force`, `--otp`,
+`--json`, `--registry`, `-f`, `--`) pass `assertToken` for fields that become a STANDALONE argv
+element (stageId in reject/approve, tag in promote, track in rollback). execFile has no shell,
+so this is NOT command injection, but npm/gh would interpret the value as a FLAG rather than an
+id/tag (classic argument injection). Materially lower severity than the shell injection:
+- `=` is banned, so `--flag=value` forms cannot be built; the flag is always the LAST argv, so
+  it cannot consume a following value.
+- releaseId is neutralized (embedded in the path string `repos/.../releases/<id>` = one arg).
+- In the ACTUAL workflow `--execute` paths, the only attacker-influenced inputs are `version`
+  (SemVer-guarded, no leading dash possible) and `releaseId` (string-embedded). stageId / tag /
+  track are operator-interactive, never fed to the workflow's execute path from dispatch input.
+  So this residual is only reachable by an operator hand-typing a flag-shaped value at the CLI
+  (self-inflicted), not by the automation with dispatch-controlled input.
+- Recommended hardening (not a blocker): reject a leading `-` in `assertToken`, or insert a
+  `--` end-of-options separator before any user-supplied argv tail. Also no max-length bound on
+  tokens/version (over-long values build an argv) — cosmetic, harmless.
 
-3. [INFORMATIONAL / reasoned / calibration] The pure reconciler (release-state.mjs via
-   release-reconcile.mjs) is ORPHANED — referenced by nothing in the workflows or package.json.
-   The transition-legality / ordering / idempotency guarantees it so thoroughly proves do NOT
-   govern the actual release runtime. The automation enforces byte identity (shell shasum +
-   verifyRetainedTarball) but does NOT machine-enforce ordering: release-finalize.yml does not
-   verify that inspection+approval actually occurred before it publishes — it trusts the
-   operator-supplied draft_release_id/stage_id/version. This is acceptable for a no-live unit,
-   but the ordering safety is human-procedural, not mechanical. Recommend either wiring the
-   reconciler into the finalize path (reconstruct+verify the ledger from the dispatched IDs
-   before mutating) or explicitly documenting that the reconciler is a design/validation
-   artifact, not a runtime gate, so a future reader does not assume it is enforcing ordering.
+## Spot-checks of the other fixes — all PASS (empirical)
+
+- #2 manifest now REQUIRED (fail closed): `verifyRetainedTarball({manifest:null})` throws
+  "requires a candidate manifest"; CLI `--tarball` without `--manifest` exits 1;
+  `prepublish-guard.mjs` explicitly refuses (exit 1) when ASLITE_RELEASE_TARBALL is set but
+  ASLITE_RELEASE_MANIFEST is not. The round-1 no-manifest SHA-skip is gone.
+- #4 the reframed "THE REAL INVARIANT" test is genuine, not vacuous: it asserts each mutating
+  job contains the retained-bytes SHA gate AND that every mutating command's string index is
+  AFTER the gate's. Probed RED once: injecting `gh release upload` BEFORE the SHA gate in the
+  draft job makes the position assertion FAIL — the test catches a premature mutation.
+- #5 / env gaps: draft (124), stage (170) in release-staged.yml and registry-verify (63),
+  finalize (108) in release-finalize.yml all bind `environment: release`; the candidate
+  (build/pack) job binds NO environment. My round-1 concern (registry-verify ran `--execute`
+  ungated) is closed — registry-verify is now environment-bound.
+- #3 documented-not-wired, HONEST: the release-finalize.yml "OPERATOR-TRUST BOUNDARY" comment
+  and the release-state.mjs / release-reconcile.mjs headers now state plainly that byte
+  identity is machine-enforced but inspection/approval ORDERING is human-procedural (the
+  reconciler is a validation/operator tool, deliberately not the runtime ordering gate; wiring
+  it needs persisted operator-signed receipts, tracked as a follow-up before live). No false
+  assurance. Acceptable for a no-live merge.
+
+## Gate
+
+- P5A tests all PASS by exit code. `npm run test:scripts` (npm context, so npm_execpath set):
+  112 tests, 110 pass. Every P5A test passed, including the heavy real "build once, pack once"
+  install proof (4594ms), the injection-refusal unit test, the REAL INVARIANT test, and the
+  env-bound test.
+- The ONLY 2 failures are `scripts/ci-version-bundle.test.mjs:368` and `:400` — real UI-workspace
+  vite-build REPRODUCIBILITY tests, a file UNTOUCHED by P5A, failing under this machine's node
+  25.2.1 (a nested-npm UI build flake; the UI builds fine standalone, and CI pins node 20 where
+  the builder reports `npm run check` exits 0). These are the BOT-OWNED plugin-bundle
+  reproducibility tests, explicitly outside the PR-side gate per CLAUDE.md. NOT a P5A regression.
+  Recommend the coordinator confirm CI is green on the exact SHA (node 20).
 
 ## Bottom line
 
-P5A is safe to MERGE as a code-only, no-live-release unit: all state-machine invariants hold,
-the retained-tarball SHA gate genuinely blocks a swapped/rebuilt tarball, no input combination
-triggers a live mutation while MODE!=live, and every fail-closed path exits non-zero. The
-review's runtime story (stage-time SHA cross-check + literal-file staging beats an
-evadable-test rebuild) is CONFIRMED empirically. Recommended: a short builder fix cycle for
-issue #1 (shell injection - cheap, and a security defect in a supply-chain publish mechanic
-that becomes live-reachable at P5S) and issue #2 (no-manifest SHA skip) before live is enabled,
-plus a decision on issue #3 (reconciler is not on the runtime path). None of these block the
-no-live merge; #1 should not survive to the P5S/live-enable milestone.
+631c39c is CLEAN to push as a code-only, no-live-release unit. The HIGH is genuinely closed
+(execFile no-shell + strict validators; 45 bypass shapes refused; original repro now exits 1
+with no marker). #2/#3/#4 and the environment-gate gap are all fixed and re-verified empirically.
+The only residual is a LOW leading-dash argument-injection surface that the automation does not
+expose to attacker input — worth a one-line hardening (ban leading `-` / add `--` separator) in
+this or a follow-up unit, alongside the already-tracked "wire the reconciler with signed
+receipts before live" follow-up, but neither blocks the no-live merge. The 2 red tests are an
+unrelated node-25 UI-build environment flake, not P5A.
