@@ -3,7 +3,7 @@ type: Task
 title: >-
   Review the pre-compaction context-note design for multi-session safety (single
   fixed id collides)
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   The main-agent pre-compact note uses a single fixed id
@@ -12,8 +12,8 @@ description: >-
   resume-time discovery, expiry/cleanup, orchestrator distinguishability.
   Convention lives in global CLAUDE.md; reconcile with the existing
   pre-compact-{agent_id} sub-agent scheme.
-actor: brian-claude
-timestamp: '2026-08-03T15:03:52.835Z'
+actor: claude-main-precompact
+timestamp: '2026-08-03T15:08:16.324Z'
 ---
 # Multi-session-safe pre-compaction context notes
 
