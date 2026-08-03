@@ -81,8 +81,8 @@ Every example below assumes the `aslite` bin is on PATH. If it is not:
   — List the kind conventions this bundle declares (purpose, described fields, exact required body headings, typed-link vocabulary, horizon)
 - `aslite kind field "<Kind>" (add <name> [--required] [--values <a,b,c>] | remove <name>) [--remote <url>]`
   — Edit a kind's schema — add/remove a declared field or enum value on its convention (idempotent)
-- `aslite recipes [--remote <url>]`
-  — List built-in recipes and whether each is already applied to this bundle
+- `aslite recipes [--dir <path>] [--remote <url>]`
+  — Browse built-in recipes before or after init; with a bundle, also show whether each is already applied
 - `aslite recipe add <name-or-path> [--remote <url>]`
   — Apply a recipe's content-free definitions — Kinds plus optional declared References and Views — idempotently
 

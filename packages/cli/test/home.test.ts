@@ -102,7 +102,11 @@ test("A1.3 no-bundle fallback: no bundle block, getting_started hint, commands p
   const view = buildHomeView(BASE_DEPS, null);
   assert.equal(view.bundle, undefined);
   assert.equal(typeof view.getting_started, "string");
-  assert.match(view.getting_started as string, new RegExp(`${INVOKE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} init`));
+  assert.match(
+    view.getting_started as string,
+    new RegExp(`${INVOKE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} init --recipe none`),
+  );
+  assert.match(view.getting_started as string, new RegExp(`${INVOKE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} recipes`));
   assert.ok(view.commands);
 
   // home() itself must resolve (never reject) with a null summarizer.

@@ -1,5 +1,5 @@
-// `agentstate-lite recipes` — list built-in recipes and whether each is already applied to this
-// bundle.
+// `agentstate-lite recipes` — list built-in recipes before or after a bundle exists, including
+// whether each is already applied when a bundle is available.
 //
 // Mirrors `kinds.ts` (read-only, --dir/--remote, TOON, a `count`). A recipe bundles one or more
 // kind-convention docs (with bodies) an agent can install onto a bundle in one shot; `recipe add
@@ -11,14 +11,20 @@
 // enumerable, since there is no registry of "every recipe folder that might exist on disk
 // somewhere." A `recipes --path <dir>` inspect is reserved, not built.
 import { parseArgs } from "node:util";
-import { openBundle, resolveRemoteFlag } from "../bundle.js";
+import type { Bundle } from "@agentstate-lite/core";
+import {
+  findBundleRoot,
+  openBundle,
+  resolveProjectBinding,
+  resolveRemoteFlag,
+} from "../bundle.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
 import { cliInvocation } from "../invocation.js";
 import { appliedDocIds, isRecipeApplied } from "../recipes.js";
 import { builtinNames, resolveRecipe, type LoadedRecipe } from "../recipe-source.js";
 
-export const RECIPES_USAGE = `agentstate-lite recipes — list built-in recipes and whether each is applied
+export const RECIPES_USAGE = `agentstate-lite recipes — browse built-in recipes before or after init
 
 Usage:
   agentstate-lite recipes [--dir <path>] [--remote <url>]
@@ -30,7 +36,9 @@ Reference docs and View registry/HTML pairs without carrying instances. This com
 BUILT-IN recipes shipped with the CLI; an external recipe (a path) is not enumerated here, only
 path-addressed via 'recipe add <path>'.
 'init' applies the default recipe ('context-notes') automatically unless '--recipe none' is
-passed. See 'agentstate-lite kinds' for the LIVE per-bundle registry a recipe's docs feed into.
+passed. Without a discoverable bundle, this command still lists the offline inventory and exact
+commands for creating a bundle or adding each recipe later. See 'agentstate-lite kinds' for the
+LIVE per-bundle registry a recipe's docs feed into.
 
 Options:
   --dir <path>          Bundle directory (default: discovered from the cwd)
@@ -42,21 +50,73 @@ Options:
 
 export interface RecipesCliDeps {
   stdout: (s: string) => void;
+  cwd: string;
+  openBundle: typeof openBundle;
+  resolveRemoteFlag: typeof resolveRemoteFlag;
+  resolveProjectBinding: typeof resolveProjectBinding;
+  findBundleRoot: typeof findBundleRoot;
 }
 
 /** Project one LoadedRecipe (+ whether it's applied) into the flat row shape `recipes` renders. */
-function toRow(recipe: LoadedRecipe, applied: boolean): Record<string, unknown> {
+export function recipeInventoryRow(
+  recipe: LoadedRecipe,
+  applied: boolean | null,
+  inv: string,
+): Record<string, unknown> {
   return {
     name: recipe.id,
     version: recipe.version,
     applied,
     summary: recipe.summary,
     docs: recipe.docs.map((d) => d.id),
+    assets: {
+      kinds: recipe.governs,
+      references: recipe.references.map((reference) => reference.doc.id),
+      views: recipe.pages.map((page) => page.registry.id),
+    },
+    commands: {
+      create_bundle: `${inv} init --recipe ${recipe.id}`,
+      add_to_bundle: `${inv} recipe add ${recipe.id}`,
+    },
   };
+}
+
+/**
+ * Resolve a bundle only when the caller selected one or discovery finds one. Explicit targets,
+ * malformed bindings, and disappeared bundles retain openBundle's existing failures; only the
+ * honest "nothing has been created here yet" state becomes an inventory-only success.
+ */
+async function optionalBundle(
+  values: { dir?: string; remote?: string },
+  deps: Pick<
+    RecipesCliDeps,
+    "cwd" | "openBundle" | "resolveRemoteFlag" | "resolveProjectBinding" | "findBundleRoot"
+  >,
+): Promise<Bundle | undefined> {
+  const remote = await deps.resolveRemoteFlag(values.remote, values.dir);
+  if (values.dir !== undefined || remote !== undefined) {
+    return deps.openBundle(values.dir, remote);
+  }
+
+  // A binding is an explicit committed selection. If it is malformed or its target vanished,
+  // openBundle must still fail loudly; it is not the bundle-free discovery state.
+  const binding = await deps.resolveProjectBinding(deps.cwd);
+  if (binding !== null) return deps.openBundle(undefined, undefined);
+
+  if ((await deps.findBundleRoot(deps.cwd)) === null) return undefined;
+  return deps.openBundle(undefined, undefined);
 }
 
 export async function recipes(argv: string[], deps: Partial<RecipesCliDeps> = {}): Promise<void> {
   const stdout = deps.stdout ?? ((s: string) => void process.stdout.write(s));
+  const resolvedDeps: RecipesCliDeps = {
+    stdout,
+    cwd: deps.cwd ?? process.cwd(),
+    openBundle: deps.openBundle ?? openBundle,
+    resolveRemoteFlag: deps.resolveRemoteFlag ?? resolveRemoteFlag,
+    resolveProjectBinding: deps.resolveProjectBinding ?? resolveProjectBinding,
+    findBundleRoot: deps.findBundleRoot ?? findBundleRoot,
+  };
 
   const { values } = parseOrUsage(
     () =>
@@ -77,8 +137,9 @@ export async function recipes(argv: string[], deps: Partial<RecipesCliDeps> = {}
     return;
   }
 
-  const bundle = await openBundle(values.dir, await resolveRemoteFlag(values.remote, values.dir));
-  const appliedIds = await appliedDocIds(bundle);
+  const bundle = await optionalBundle(values, resolvedDeps);
+  const appliedIds = bundle ? await appliedDocIds(bundle) : undefined;
+  const inv = cliInvocation();
 
   const rows: Record<string, unknown>[] = [];
   for (const name of builtinNames()) {
@@ -86,12 +147,22 @@ export async function recipes(argv: string[], deps: Partial<RecipesCliDeps> = {}
     // Every built-in name resolves by construction (parseRecipeFiles ran once already at module
     // load to build CONTEXT_NOTES_RECIPE) — but stay defensive rather than assume.
     if (!loaded.ok) continue;
-    rows.push(toRow(loaded.recipe, isRecipeApplied(loaded.recipe, appliedIds)));
+    rows.push(
+      recipeInventoryRow(
+        loaded.recipe,
+        appliedIds === undefined ? null : isRecipeApplied(loaded.recipe, appliedIds),
+        inv,
+      ),
+    );
   }
 
   stdout(
     render(
-      { count: rows.length, recipes: rows, help: [`${cliInvocation()} recipe add <name-or-path>`] },
+      {
+        count: rows.length,
+        recipes: rows,
+        help: [`${inv} init --recipe <name>`, `${inv} recipe add <name-or-path>`],
+      },
       resolveMode(values),
     ),
   );

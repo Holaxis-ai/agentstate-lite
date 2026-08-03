@@ -346,10 +346,36 @@ export async function verifyNpmPackage({ mode }) {
 
     await runCli("agentstate-lite", ["--help"]);
     await runCli("aslite", ["--help"]);
+    const initHelp = (await runCli("aslite", ["init", "--help"])).stdout;
+    assert.match(initHelp, /aslite recipes/, "init help must point at recipe discovery");
+    const discoveryDir = path.join(scratch, "recipe-discovery");
+    await mkdir(discoveryDir);
+    const discoveredRecipes = parseJson(
+      (await runCli("aslite", ["recipes", "--json"], { cwd: discoveryDir })).stdout,
+      "bundle-free recipes",
+    );
+    assert.ok(discoveredRecipes.count >= 3, "the installed CLI must discover the built-in recipe inventory");
+    const contextNotes = discoveredRecipes.recipes.find((recipe) => recipe.name === "context-notes");
+    assert.ok(contextNotes, "the installed recipe inventory must include context-notes");
+    assert.equal(contextNotes.applied, null, "bundle-free discovery must not imply an applied state");
+    assert.deepEqual(contextNotes.commands, {
+      create_bundle: "aslite init --recipe context-notes",
+      add_to_bundle: "aslite recipe add context-notes",
+    });
+    assert.deepEqual(await readdir(discoveryDir), [], "recipe discovery must not create bundle files");
     parseJson((await runCli("aslite", ["init", "--dir", bundle, "--recipe", "none", "--json"])).stdout, "init");
     parseJson(
       (await runCli("aslite", ["recipe", "add", "work-tracking", "--dir", bundle, "--json"])).stdout,
       "recipe add",
+    );
+    const appliedRecipes = parseJson(
+      (await runCli("aslite", ["recipes", "--dir", bundle, "--json"])).stdout,
+      "bundle recipes",
+    );
+    assert.equal(
+      appliedRecipes.recipes.find((recipe) => recipe.name === "work-tracking")?.applied,
+      true,
+      "the installed recipe inventory must retain bundle-aware applied state",
     );
     parseJson(
       (
@@ -536,7 +562,15 @@ export async function verifyNpmPackage({ mode }) {
       package: `${manifest.name}@${manifest.version}`,
       files: receipt.files.length,
       bins: Object.keys(manifest.bin),
-      workflow: ["init", "recipe add", "new", "list", "skill install/status/uninstall", "hook install/uninstall"],
+      workflow: [
+        "recipes",
+        "init",
+        "recipe add",
+        "new",
+        "list",
+        "skill install/status/uninstall",
+        "hook install/uninstall",
+      ],
       identity: preferredIdentity,
       tarball: {
         filename: receipt.filename,

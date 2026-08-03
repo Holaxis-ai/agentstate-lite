@@ -689,7 +689,9 @@ export function buildHomeView(
     // A live board block (or the first-contact line) supersedes the init hint entirely: a project
     // with a provisioned/detected board HAS its bundle — "run init" there is the divergent-
     // second-bundle footgun.
-    view.getting_started = `no OKF bundle found in this directory — run \`${deps.invocation()} init\` to create one`;
+    view.getting_started =
+      `no OKF bundle found in this directory — run \`${deps.invocation()} init --recipe none\` ` +
+      `to create a blank bundle, or \`${deps.invocation()} recipes\` to compare available workspace setups`;
     if (binding) {
       // A reached binding is always local; URL bindings are rejected before this pure renderer.
       view.getting_started += ` (project binding ${binding.file} -> ${binding.target} did not resolve to a bundle)`;

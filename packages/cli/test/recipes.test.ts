@@ -44,7 +44,7 @@ import { parseRegistration, PAGE_REGISTRY_PREFIX, VIEW_REGISTRY_PREFIX } from "@
 import { serve, type ServerHandle } from "@agentstate-lite/server";
 
 import { init } from "../src/commands/init.js";
-import { recipes } from "../src/commands/recipes.js";
+import { recipeInventoryRow, recipes } from "../src/commands/recipes.js";
 import { recipe } from "../src/commands/recipe.js";
 import { status } from "../src/commands/status.js";
 import { doc } from "../src/commands/doc.js";
@@ -62,7 +62,13 @@ import {
   ROADMAP_DESC_BODY,
   applyRecipe,
 } from "../src/recipes.js";
-import { CONTEXT_NOTES_RECIPE, parseRecipeFiles, type RecipeFile } from "../src/recipe-source.js";
+import {
+  CONTEXT_NOTES_RECIPE,
+  filesRecipeSource,
+  parseRecipeFiles,
+  type RecipeFile,
+} from "../src/recipe-source.js";
+import { cliInvocation } from "../src/invocation.js";
 
 const T = "2026-07-01T00:00:00.000Z";
 const EXAMPLE_RECIPE_FIXTURE = path.resolve(import.meta.dirname, "fixtures/example-recipe");
@@ -196,6 +202,96 @@ test("recipes: lists context-notes with applied:false on a bare bundle, applied:
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("recipes: no-bundle inventory succeeds without opening or creating a bundle and emits actionable commands", async () => {
+  let out = "";
+  let opened = false;
+  await recipes(["--json"], {
+    stdout: (s) => (out += s),
+    cwd: "/definitely/empty",
+    resolveRemoteFlag: async () => undefined,
+    resolveProjectBinding: async () => null,
+    findBundleRoot: async () => null,
+    openBundle: async () => {
+      opened = true;
+      throw new Error("bundle-free discovery must not open a bundle");
+    },
+  });
+
+  assert.equal(opened, false);
+  const result = JSON.parse(out) as Record<string, unknown>;
+  assert.equal(result.count, 3);
+  const rows = result.recipes as Array<Record<string, unknown>>;
+  const contextNotes = rows.find((row) => row.name === "context-notes");
+  assert.ok(contextNotes);
+  assert.equal(contextNotes.applied, null);
+  assert.equal(contextNotes.version, "1");
+  assert.equal(typeof contextNotes.summary, "string");
+  assert.deepEqual(contextNotes.assets, {
+    kinds: ["Context Note"],
+    references: [],
+    views: [],
+  });
+  assert.deepEqual(contextNotes.commands, {
+    create_bundle: `${cliInvocation()} init --recipe context-notes`,
+    add_to_bundle: `${cliInvocation()} recipe add context-notes`,
+  });
+});
+
+test("recipes: explicit targets remain fail-loud instead of falling back to bundle-free inventory", async () => {
+  let discoveryAttempted = false;
+  await assert.rejects(
+    recipes(["--dir", "/missing", "--json"], {
+      stdout: () => {},
+      cwd: "/empty",
+      resolveRemoteFlag: async () => undefined,
+      resolveProjectBinding: async () => null,
+      findBundleRoot: async () => {
+        discoveryAttempted = true;
+        return null;
+      },
+      openBundle: async () => {
+        throw new CliError("NOT_FOUND", "explicit target does not exist");
+      },
+    }),
+    (error: unknown) => error instanceof CliError && error.code === "NOT_FOUND",
+  );
+  assert.equal(discoveryAttempted, false);
+});
+
+test("recipes: valid project bindings remain committed targets whose open failures are surfaced", async () => {
+  await assert.rejects(
+    recipes(["--json"], {
+      stdout: () => {},
+      cwd: "/project",
+      resolveRemoteFlag: async () => undefined,
+      resolveProjectBinding: async () => ({
+        file: "/project/.agentstate.json",
+        target: "/missing-bundle",
+      }),
+      findBundleRoot: async () => {
+        throw new Error("binding selection must precede discovery");
+      },
+      openBundle: async () => {
+        throw new CliError("NOT_FOUND", "bound bundle disappeared");
+      },
+    }),
+    (error: unknown) => error instanceof CliError && error.code === "NOT_FOUND",
+  );
+});
+
+test("recipe inventory derives Reference and View identities from any loaded manifest", async () => {
+  const loaded = await filesRecipeSource().resolve(REVIEW_WORKFLOW_RECIPE);
+  assert.ok(loaded?.ok);
+  if (!loaded?.ok) return;
+
+  const row = recipeInventoryRow(loaded.recipe, null, "aslite");
+  assert.deepEqual(row.assets, {
+    kinds: ["Review Request"],
+    references: ["references/view-authoring-v0"],
+    views: ["views-registry/review-request"],
+  });
 });
 
 // ── work-tracking: the second built-in recipe (first DOMAIN recipe) ───────────────────────────
