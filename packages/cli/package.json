@@ -1,6 +1,6 @@
 {
   "name": "@holaxis/aslite",
-  "version": "0.1.0-pre.2",
+  "version": "0.1.0-pre.3",
   "type": "module",
   "description": "Agent-facing CLI (AXI) for reading and writing local OKF knowledge bundles: context notes, docs, cross-links, and live bundle Views.",
   "keywords": [
@@ -52,8 +52,8 @@
   "devDependencies": {
     "@agentstate-lite/board-git": "*",
     "@agentstate-lite/core": "*",
-    "@agentstate-lite/mcp-app": "*",
     "@agentstate-lite/markdown-renderer": "*",
+    "@agentstate-lite/mcp-app": "*",
     "@agentstate-lite/server": "*",
     "@agentstate-lite/ui-server": "*",
     "@modelcontextprotocol/sdk": "^1.29.0",
