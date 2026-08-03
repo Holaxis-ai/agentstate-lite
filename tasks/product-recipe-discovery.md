@@ -1,19 +1,18 @@
 ---
 type: Task
 title: 'Product recipes: bundle-free discovery before init'
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  PR #201 is ready to merge at exact commit b38d3ed. The independent re-review
-  approved with no findings after executing the emitted recovery command against
-  a bound path containing spaces and an apostrophe: only the bound target was
-  initialized, the project cwd remained untouched, and the next home render
-  resolved the bundle. Malformed and URL-valued bindings expose no unsafe
-  getting-started commands. Focused tests pass 142/142; exact-SHA CI is green on
-  Node 20, 22, and 26.
+  Merged as PR #201 on 2026-08-03 at merge commit 138a3c7. Product recipes are
+  discoverable before bundle initialization; explicit target selections remain
+  fail-closed, missing project bindings recover only at their bound target, and
+  malformed/URL bindings expose no unsafe setup commands. Independent exact-SHA
+  review approved with no findings; focused tests passed 142/142 and CI passed
+  on Node 20, 22, and 26.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-03T13:18:09.144Z'
+timestamp: '2026-08-03T14:00:07.118Z'
 ---
 # Problem
 
