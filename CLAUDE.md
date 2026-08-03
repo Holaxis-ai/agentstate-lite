@@ -251,6 +251,11 @@ bundle-relative**.
   do not leave two paths with a comment declaring which one should win.
 - A recurring bug class is API-design feedback. Move the invariant into one owning primitive so
   callers cannot reproduce the mistake; do not keep patching consumers or adding reminders.
+- Keep verification output out of agent context. Run `npm run check`, workspace-wide tests,
+  browser/E2E suites, mutation tests, and other full-repository gates with complete output
+  redirected to a temporary log. On success, inspect nothing further; on failure, inspect only
+  failure matches and a bounded tail. Inspect summaries before potentially large diffs or searches.
+  When uncertain, capture output instead of streaming it.
 
 - Build/verify gate: `npm run build` and `npm run typecheck` must exit 0, and `npm test`
   (`--workspaces --if-present`: board-git + core + cli + server + ui suites) must pass, before
