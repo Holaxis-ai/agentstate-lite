@@ -1,176 +1,145 @@
 ---
 type: Context Note
-title: 'Skeptic review: multi-session pre-compaction design'
+title: 'Skeptic review (rev2 re-verified): multi-session pre-compaction design'
 actor: claude-precompact-skeptic
-timestamp: '2026-08-03T15:27:05.843Z'
+timestamp: '2026-08-03T15:43:10.568Z'
 ---
 # Summary
 
-SKEPTIC review of `designs/pre-compact-multi-session` (task `tasks/pre-compact-multi-session`).
-Verdict: **FAIL — needs a revision pass before Brian's sign-off.** The narrative is careful and
-the discovery-QUERY design (read side) is sound and empirically verified, but the design ships on
-a WRITE mechanism that does not exist in today's CLI, and its headline "does not bet on UUID
-stability" claim breaks in the exact concurrency case the task targets. These are correctness
-defects, not polish. All findings below labeled [E]=empirical (reproduced against the built CLI
-this session) or [R]=reasoned.
+SKEPTIC review of `designs/pre-compact-multi-session`. **Rev 1 verdict: FAIL. Rev 2 (re-verified
+this session): PASS-WITH-CAVEATS — ready to bring to Brian for sign-off with the caveats below.**
+The Designer's rev-2 fixes are real: I re-ran every empirical claim I distrusted against the built
+CLI and they hold. Two residual issues remain, both in the newly-added HOOK diff (the load-bearing
+delivery rail), and both are bounded corrections Brian must apply to the proposed sketch before it
+goes live — not a redesign. Labels: [E]=empirical (reproduced this session), [R]=reasoned.
 
-Empirical harness: `examples/sample-bundle` copy + a fresh `init` bundle, built CLI at
-`packages/cli/dist/agentstate-lite.mjs`.
+## Revision 2 re-verification (2026-08-03)
 
-## HIGH
+Harness: `examples/sample-bundle` copy + `recipe add context-notes` (governed Context Note kind),
+built CLI `packages/cli/dist/agentstate-lite.mjs`.
 
-### H1 [E] The documented write path does not work — the whole convention is inoperable as written
-The design (decision e + the CLAUDE.md diff) tells agents to stamp custom frontmatter fields
-(`session_id`, `role`, `machine`, `expires`, `consumed`) via "a plain type: Context Note written
-through the generic path - NO special command." That path CANNOT set those fields:
+### Prior findings — each re-checked
 
-- Ungoverned Context Note (any conventions-free bundle): `doc update <id> --role orchestrator
-  --machine host1` -> exit 2: "no kind governs type 'Context Note', so kind field(s) --role,
-  --machine cannot be patched here — only the standard fields (--title/--description/--tag/--type/
-  --body/--body-file) are patchable on an ungoverned doc."
-- Governed Context Note (the built-in `context-notes` recipe): `doc update context-notes/x --role
-  orchestrator` -> exit 2: "unknown field(s) for kind 'Context Note': role (declared: title,
-  timestamp, description, tags ...)". The built-in kind declares only title/timestamp/description/
-  tags.
-- `doc write` has no arbitrary-frontmatter flag at all (only --type/--title/--body/--body-file/
-  --actor).
+- **H1 (write path) — FIXED [E].** Rev 2 drops the broken `doc write`/`doc update` recipe and moves
+  to `promote` of a hand-authored .md. I ran the design's EXACT hook-injected block (mktemp heredoc
+  with id8/expires/hostname + `promote --doc-key context-notes/pre-compact-<id8>.md`): wrote clean,
+  and `doc read` showed ALL custom frontmatter (`session_id/role/machine/actor/expires`) preserved
+  through the engine write. I also re-confirmed the failure it replaces: `doc update ... --role
+  orchestrator --machine host1` -> exit 2 on the governed kind. RESOLVED.
+- **H2 (concurrency mis-pick) — ADDRESSED, with a residual [R].** Rev 2 makes the exact-id read
+  primary (no recency guess) and reframes the frontmatter query as explicitly BEST-EFFORT with a
+  MANDATORY self-description guard ("does this `# Summary` describe MY work?") and a >1-candidate ->
+  escalate-to-human rule (no auto-pick-newest). This genuinely converts the silent-wrong-restore
+  hole into either a safe restore or a safe, detectable failure. It does NOT fully close concurrency
+  when no session id is reachable — see NEW-2. Net: materially better, honestly framed.
+- **H3 (consume) — FIXED [E].** Consume is now `doc delete <id>`. Verified idempotent:
+  `deleted:true` then `deleted:false`, both exit 0. The broken `--consumed` step is gone. RESOLVED.
+- **M1 (em-dash SEARCH bytes) — RESOLVED [E].** The live global CLAUDE.md sentence is
+  "...(sub-agents) — if one exists..." with a real em-dash (U+2014); the rev-2 SEARCH string uses
+  that em-dash and its leading context "Specifically, check for a note at `context-notes/
+  pre-compact-main`" matches the live file (grep count 1). A literal find/replace will now hit.
+- **M2 (collapse all old-id sources) — RESOLVED [E].** Independently grepped: the
+  `holaxis-orchestrator` SKILL.md
+  (`~/.claude/plugins/.../holaxis-orchestrator/skills/holaxis-orchestrator/SKILL.md`) has NO
+  `pre-compact`/`agent_id` reference — the rev-1 suspicion was unfounded, now confirmed clean. The
+  only LIVE sources naming the old ids are the global CLAUDE.md and the two `~/.claude/hooks/*.sh`
+  files; rev 2 correctly targets all of them.
+- **M3 (machine-scoped orchestrator query) — RESOLVED [E].** `list --field role=orchestrator
+  --field machine=<host>` AND-filters correctly (count 1, correct row). Design now scopes the
+  "THE orchestrator" query per-machine.
+- **M4 (host-locality scoped to Claude Code) — RESOLVED [R].** Non-goals now scope host-locality to
+  Claude Code and carry the Scout's [U] for Codex/OpenCode transcript locality rather than asserting
+  it universally.
+- **L1 (# Summary required) — RESOLVED [E].** A note without `# Summary` raises `status`
+  `kind_warnings: 1` (`KIND_SECTION_MISSING`); a conforming note does not. Note: `status` also flags
+  the note `stale: 1` after the kind's 24h horizon while `expires` is 7d — the design acknowledges
+  this as accepted advisory noise. Correct.
+- **L2 (expiry not load-bearing) — RESOLVED [R].** Design states expiry is GC-only and that the H2
+  guard, not expiry, prevents a wrong restore. Consistent.
+- **Mark-consumed-via-`promote --expected-version` (design's audit alternative) — [E] verified**
+  works with CAS (write succeeded against the read's head_version). Design correctly prefers delete
+  as simpler; the alternative is real.
 
-Consequence, reproduced: notes written through the documented path carry NONE of the discovery
-fields, so the design's own read query returns `count: 0`:
-`list --type "Context Note" --prefix context-notes/pre-compact- --field actor=me --field
-machine=host1 ...` -> `count: 0` against CLI-written notes. The documented write->read loop yields
-zero results.
+### New / residual findings (all in the hook diff, the now-load-bearing mechanism)
 
-The design says the discovery was "verified against the built CLI this session." That verification
-covered only the READ side (`--field` AND-filtering + `--fields` projection), which DOES work — I
-reproduced it against HAND-AUTHORED frontmatter (`count: 2`, then `count: 1` with an added
-role filter). The NOVEL requirement — writing those fields through the generic path — was never
-verified and does not work. The designer verified the half that works and asserted the whole.
+- **NEW-1 [MEDIUM] The proposed pre-compact.sh jq reintroduces a fixed-id COLLISION in exactly the
+  unverified case [E].** Proposed:
+  `((.agent_id // .session_id // "") | .[0:8]) as $h | "pre-compact-\($h)"`. I ran it:
+  - neither field present -> `pre-compact-` (EMPTY id8).
+  - `agent_id: ""` (empty string) -> `pre-compact-` too, because jq `//` only substitutes on
+    null/false/absent, NOT on an empty string; the CURRENT hook guards this with
+    `if (.agent_id // "") != ""` and the rewrite DROPS that guard.
 
-The ONLY convention-only write path that actually works is `promote` of a hand-authored full .md
-file: I wrote a file with the custom frontmatter, `promote --doc-key context-notes/pre-compact-
-ffff6666.md`, and the engine PRESERVED every custom field; the query then found it. But that is a
-multi-step ritual (hand-write correct YAML + correct id8 + compute the expires date + promote with
-the exact --doc-key) — precisely the "rely on instinct" failure mode Brian's working style (which
-the design itself invokes) is meant to eliminate. The other option, `kind field "Context Note" add
-role --values ... ` etc., is a per-bundle kind-schema change the design never mentions and which
-FAILS in conventions-free bundles that have no Context Note kind at all — yet this convention is
-GLOBAL and must run in any project.
+  So IF the main `PreCompact` payload lacks `session_id` (the design's own honest gap, point 6),
+  the hook writes to the single shared id `pre-compact-` — the exact collision the task exists to
+  kill, resurrected. The design PROSE says "falls back to a hostname/actor slug only if both are
+  absent," but the CODE sketch does not implement it (produces an empty id), and the primary hook
+  path is where the design says the guard is NOT applied ("exact read, H2 cannot arise here"). Fix
+  before Brian applies: the jq must (a) keep the empty-string guard, and (b) emit the real
+  degenerate slot `pre-compact-{actor}-{hostname-slug}` when no session id is present — never an
+  empty id. Until then the "primary path is exact and collision-free" claim has a hole precisely in
+  the case the design flags as unverifiable.
 
-Fix: pick and TEST an actual write mechanism end to end (write -> read -> consume). This flips
-decision (e): "convention-only, tool deferred" is untenable as written. Either build the thin
-`aslite handoff` tool now (it can write the frontmatter directly and compute id8/expires), or
-rewrite the convention around the verified `promote` path with exact copy-paste commands and prove
-the full loop. Do not ship the current `doc write`/`doc update` recipe — it hard-errors exit 2.
+- **NEW-2 [LOW-MEDIUM] Even a correctly-implemented slug fallback is not session-granular [R].** Two
+  concurrent main sessions, same actor+machine, no reachable session_id, both resolve to
+  `pre-compact-{actor}-{hostname}` -> collision -> sync convergence keeps one, exports/loses the
+  other. The H2 guard then prevents a WRONG restore, but cannot prevent handoff LOSS for the
+  clobbered session (its note is gone; nothing to compare against). Honest degradation is therefore
+  "no silent wrong-restore; handoff may still be LOST under concurrency-without-session_id" —
+  strictly better than the status quo (silent loss) but not a full solve. The design should state
+  this precisely rather than implying the guard fully closes concurrency.
 
-### H2 [R] "The design does not bet on UUID stability" is false under concurrency — the task's whole reason
-The design's central pivot (its own words: attack this hardest) is that the fallback query is "the
-correctness guarantee ... Either way the handoff is found." It is not, in the concurrent
-same-machine same-actor case the task exists for.
+- **NEW-3 [LOW] The hook cannot infer `role: orchestrator` [R].** A main session and THE
+  orchestrator both have no `agent_id` and no role in the payload, so the hook can only default
+  `role: main` (or `sub-agent` when agent_id is present). The orchestrator distinction — decision
+  (d)'s whole motivation, the exact thing Brian hit — still needs a MANUAL role set by the
+  agent/human. Not a regression; worth one line so the automation's reach is not overstated.
 
-When the UUID is NOT stable across resume — the ONLY case the fallback exists to cover — two
-concurrent sessions with the same `(actor, machine, role)` are indistinguishable to the fallback.
-It filters actor+machine (+role) and picks the NEWEST `timestamp`. Recency identifies who WROTE
-last, not who is RESUMING. Concrete break: Session A (orchestrator) writes its handoff at T1;
-concurrent Session B (also orchestrator, same actor+machine) writes at T2>T1; A resumes with a
-changed/lost UUID; the fallback returns B's note (newest, unconsumed) and A silently restores the
-WRONG session's context. The resuming session cannot match on `session_id` because, having lost its
-UUID, it does not know its own OLD session_id. So `(actor, machine, role, recency)` genuinely
-cannot disambiguate. This is the SAME collision the task set out to kill, reappearing at the
-discovery layer exactly when the fast path (stable UUID) is unavailable. Plain `role: main`
-sessions (multiple concurrent interactive sessions — very common) are even worse: the diff's
-main-session query has no role discriminator, so newest-wins across all the person's concurrent
-mains.
+### Point 6 — the honest gap (session_id in PreCompact main payload; survival across --resume)
 
-So correctness under concurrency DEPENDS on UUID stability (only the fast path's direct id read
-disambiguates). The design bets on the assumption for the concurrent case while claiming it does
-not. Fixes: (i) actually VERIFY scratchpad-UUID stability across compaction AND across
-`--resume`/`--continue` in a fresh process — the Scout left this [U] and the designer skipped it on
-the strength of a fallback that does not cover the case; (ii) re-frame the fallback honestly as
-best-effort recovery of the single-session-per-(actor,machine,role) case, not a guarantee; (iii)
-add a mandatory guard: the resuming agent must confirm the restored note describes ITS OWN work
-before trusting it, since the fallback can mis-pick. A cheap human/agent-in-the-loop check closes
-the silent-wrong-restore hole.
+The design is genuinely honest that it cannot verify these from inside one session. Is the
+degradation safe if the assumption fails? With the jq AS SKETCHED: NO — NEW-1 reintroduces a
+fixed-id collision. With the jq CORRECTED (real slug fallback) and the guard applied: safe against
+WRONG-restore, but handoff-loss under concurrency-without-session_id remains (NEW-2). Because the
+guard converts the worst case from silent corruption to a detectable/safe failure, and the design
+explicitly flags "verify on a live compaction," this gap is ACCEPTABLE to bring to Brian AS A
+DESIGN — it is NOT a hard blocker requiring another full cycle. The only must-fix before the hook
+goes live is NEW-1 (the collision-reintroducing jq), which Brian applies himself ("do NOT let an
+agent edit these").
 
-### H3 [E] The `consumed` self-cleaning mechanism is inoperable as documented
-Decision (c) and the diff say the resumed session marks its note `doc update <id> --consumed
-<ISO>`. Same root cause as H1: `--consumed` is an unknown field -> exit 2. Notes can never be
-marked consumed via the documented command, so consumed-filtering and "never re-nag / never win
-the pick again" never engage. Fix together with H1's write mechanism.
+## Bottom line (rev 2)
 
-## MEDIUM
+PASS-WITH-CAVEATS. The core mechanism is verified working end to end (write via `promote` -> query
+discovers -> `doc delete` consumes), the H2 overclaim is fixed with a real guard, and every M/L
+finding is resolved (M1/M2/M3/L1 independently re-verified empirical). Bring it to Brian for
+sign-off WITH these caveats attached:
+1. (NEW-1, must-fix in the pre-compact.sh diff before applying) keep the empty-string guard and
+   emit `pre-compact-{actor}-{hostname}` — never an empty `pre-compact-` id — when no session id is
+   present; otherwise the hook re-creates the original collision in the unverified case.
+2. (NEW-2) state honestly that the guard prevents wrong-restore, not handoff-loss, when session_id
+   is unreachable under concurrency.
+3. (NEW-3) note the hook cannot infer the orchestrator role; it stays a manual set.
+4. Keep the "verify on a live compaction whether session_id rides the PreCompact main payload and
+   survives --resume" step front-and-center — it gates reliance on the FAST path.
 
-### M1 [E] CLAUDE.md diff REPLACE target will not match the live file
-The diff quotes the sentence to replace with an ASCII hyphen ("(sub-agents) - if one exists"), but
-the live global CLAUDE.md uses an em-dash ("(sub-agents) — if one exists ..."). A literal
-find-replace fails to locate the target. For a deliverable the design itself insists is
-copy-paste-exact, quote the exact bytes (em-dash) as the SEARCH string (the ASCII replacement body
-is fine and matches Brian's plain-ASCII convention).
+Confidence: HIGH on the empirical re-verification (reproduced against the built CLI); HIGH on the
+NEW-1 jq defect (reproduced) and the NEW-2 reasoning.
 
-### M2 [R] "Collapse three patterns into one" (decision f) is incomplete — other instruction sources keep the old scheme alive
-The design updates only the global CLAUDE.md memory instruction. The retired `pre-compact-{agent_id}`
-/ `pre-compact-main` scheme is also plausibly referenced by the `holaxis-orchestrator` skill (which
-global CLAUDE.md points at for sub-agent dispatch and phase-boundary context notes) and possibly
-other dispatch instructions. If those are not updated in lockstep, a fourth/fifth source keeps the
-old pattern live and the "one shape" claim is false. Fix: enumerate every instruction source that
-names the old ids (at minimum holaxis-orchestrator) and either update them in the same change or
-explicitly scope-flag them for Brian.
+---
 
-### M3 [R] Cross-machine "THE orchestrator" query is ambiguous
-The decision-(d) query `--field role=orchestrator` (no machine filter) runs over the SHARED board,
-so it returns orchestrator notes from ALL hosts. Brian running sessions on a laptop and a desktop
-gets two "orchestrators." The "which is THE orchestrator" answer is per-machine, not global. Add
-machine scoping to the query or state the answer is host-scoped.
+## Appendix — Rev 1 review (FAIL), retained for provenance
 
-### M4 [R/E] Codex/OpenCode host-locality is asserted as fact but is unverified
-Non-goals state "a handoff is host-local (the transcript resumes on the machine that wrote it)" as
-settled and use it to justify machine-scoping. For Claude Code this is reasonable (resume reads
-local transcript files). But the Scout left BOTH "stable per-session id" and resume-locality [U]
-for Codex/OpenCode. If any runtime syncs transcripts across machines, machine-scoping would HIDE
-the legitimately-needed note. Carry the Scout's [U] caveat into the non-goals; scope the
-host-local guarantee to Claude Code rather than asserting it universally.
-
-## LOW
-
-### L1 [E] The design ignores the governed Context Note kind's real shape
-The built-in Context Note kind REQUIRES a `# Summary` heading and has a 24h freshness horizon.
-Handoff notes that omit `# Summary` trip the kind's section lint; a 7d-`expires` handoff is flagged
-stale by `status` after 24h (freshness noise). Minor, but the design treats "reuse the existing
-kind" without reconciling the kind's actual required_headings/horizon.
-
-### L2 [R] Expiry horizon (7d vs 48h) is orthogonal to the real risk — do not lean on it for safety
-Attack 2 result: expiry is GC only (the design says so) and does NOT mitigate the concurrency
-mis-pick — an abandoned-but-NEWER note still within its horizon can win the newest-pick over a live
-note (this is just H2 again). 48h is not materially safer for the failure that matters; it only
-trades away the weekend/PTO survival the design correctly wants. Keep 7d; just stop implying expiry
-adds safety against mis-selection.
-
-## Decision-point coverage (all 6 addressed; several share one root defect)
-(a) identity id8 — OK, math checks (~1e-6 at 100 concurrent). (b) discovery — read side verified;
-correctness overclaimed (H2). (c) cleanup — consumed mechanism broken (H3). (d) orchestrator query
-— depends on writable fields (H1) + cross-machine ambiguity (M3). (e) convention-only — untenable
-as written (H1). (f) reconcile sub-agent scheme — narratively OK, completeness gap (M2). The design
-is internally CONSISTENT in narrative, but H1's single defect (custom frontmatter is not writable
-through the generic path) cascades through (c), (d), and (e).
-
-## Bottom line
-NOT ready for Brian's sign-off. Needs a revision pass that: (1) specifies and TESTS a real write
-mechanism end to end (promote-a-file recipe, kind-field declaration, or build the `handoff` tool
-now — decision e must be reopened); (2) verifies scratchpad-UUID stability and re-frames the
-fallback as best-effort + adds a mis-pick guard (H2); (3) fixes the consumed command (H3), the diff
-em-dash match target (M1), and the cross-source (M2) / cross-machine (M3) / cross-runtime (M4)
-completeness gaps. The good news: the read-side discovery design is verified working, and a verified
-convention-only write path exists (hand-author + `promote`), so the revision is bounded, not a
-redesign.
-
-Confidence: HIGH on the empirical items (reproduced against the built CLI); HIGH on the H2
-concurrency reasoning.
+Rev 1 shipped a write path (`doc write`/`doc update` of custom frontmatter) that HARD-ERRORS exit 2
+(confirmed: ungoverned -> "no kind governs..."; governed built-in Context Note -> "unknown
+field(s)... role"); `doc write` has no arbitrary-frontmatter flag. The documented write->read loop
+therefore returned `count: 0`. Rev 1 also claimed the discovery fallback "does not bet on UUID
+stability" when under concurrent same-(actor,machine,role) sessions with a lost UUID it silently
+mis-picks by recency. Rev 1 further had a broken `--consumed` step (exit 2), an ASCII-hyphen SEARCH
+target that would not match the live em-dash, an incomplete "collapse to one pattern" (other
+instruction sources unchecked), a machine-unscoped orchestrator query, and an over-asserted
+Codex/OpenCode host-locality. All of the above are addressed in rev 2 as re-verified above.
 
 ## Related
 [design under review](../designs/pre-compact-multi-session.md)
 [scout research](research-precompact-multisession.md)
 [task](../tasks/pre-compact-multi-session.md)
-
-[designs/pre-compact-multi-session](../designs/pre-compact-multi-session.md)
-
-[tasks/pre-compact-multi-session](../tasks/pre-compact-multi-session.md)
