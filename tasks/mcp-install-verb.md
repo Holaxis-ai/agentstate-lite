@@ -3,19 +3,19 @@ type: Task
 title: >-
   No 'aslite mcp install' verb: the one surface built for host wiring makes
   users hand-author JSON
-status: in_progress
+status: todo
 priority: '1'
 description: >-
-  CLAIMED 2026-08-03 by openai/codex. The earlier security prerequisites are
-  shipped. Refreshing this as a computer-level desktop usability unit: explicit,
-  reversible mcp install|status|uninstall for the locally supported
-  ChatGPT/Codex and Claude Desktop host surfaces, with deterministic bundle
-  targeting and no hand-edited configuration. Host mechanics and durable
-  executable identity are being bounded against current official behavior before
-  implementation; Brian's npm release work remains separate.
+  Scoped 2026-08-03 after current-host research; no source code changed.
+  Recommended sequence: wait for Brian's durable npm executable/compatibility
+  unit, then add a narrow mcp install|status|uninstall wrapper around host-owned
+  Codex and Claude Code registration. Do not build a generic vendor-config
+  subsystem; Claude Desktop packaging/configuration remains a separate
+  evidence-driven decision. The worktree codex/mcp-install contains no
+  implementation.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-03T03:10:40.234Z'
+timestamp: '2026-08-03T03:17:12.984Z'
 ---
 # Problem
 
