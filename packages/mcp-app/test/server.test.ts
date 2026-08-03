@@ -115,6 +115,31 @@ async function seed(bundle: Bundle): Promise<void> {
   );
 }
 
+async function seedNavigationTarget(
+  bundle: Bundle,
+  id = "views-registry/target",
+  access: "none" | "bundle-read" | "bundle-propose" = "bundle-read",
+): Promise<void> {
+  const suffix = id.slice("views-registry/".length);
+  await writeDoc(bundle, {
+    id,
+    frontmatter: {
+      type: "View",
+      title: `Target ${suffix}`,
+      entry: `views/${suffix}.html`,
+      access,
+      timestamp: T,
+    },
+    body: "",
+  });
+  await writeBlob(
+    bundle,
+    `views/${suffix}.html`,
+    new TextEncoder().encode(`<!doctype html><title>Target ${suffix}</title>`),
+    "text/html; charset=utf-8",
+  );
+}
+
 test("list_views is bounded, continues deterministically, and every listed id is invokable", async (t) => {
   const bundle = memoryBundle();
   await writeBlob(
@@ -408,6 +433,274 @@ test("durable View execution preserves a UTF-8 BOM included in the approved byte
 
   assert.equal(payload.source.html.codePointAt(0), 0xfeff);
   assert.deepEqual(new TextEncoder().encode(payload.source.html), bytes);
+});
+
+test("registered and transient sources navigate to one independently authorized registered View", async (t) => {
+  for (const sourceKind of ["registered", "transient"] as const) {
+    await t.test(sourceKind, async (t) => {
+      const bundle = memoryBundle();
+      await seed(bundle);
+      await seedNavigationTarget(bundle);
+      const server = createMcpAppServer({ bundle });
+      const client = new Client({ name: `navigation-${sourceKind}`, version: "test" }, { capabilities: {} });
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      t.after(async () => {
+        await client.close();
+        await server.close();
+      });
+
+      const shown = await client.callTool({
+        name: SHOW_VIEW_TOOL_NAME,
+        arguments: sourceKind === "registered"
+          ? { viewId: "views-registry/roadmap" }
+          : {
+              mode: "transient",
+              title: "Transient source",
+              html: "<!doctype html><title>Transient source</title>",
+              access: "bundle-read",
+            },
+      });
+      const source = shown.structuredContent as {
+        launch: { launchId: string; authorization: { authorized: boolean } };
+      };
+      assert.equal(source.launch.authorization.authorized, false);
+      await client.callTool({
+        name: AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+        arguments: { launchId: source.launch.launchId },
+      });
+
+      const opened = await client.callTool({
+        name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+        arguments: {
+          launchId: source.launch.launchId,
+          request: {
+            bridge: "v0",
+            type: "open-page",
+            id: `open-${sourceKind}`,
+            pageId: "views-registry/target",
+          },
+        },
+      });
+      const result = opened.structuredContent as {
+        outcome: { openPageId: string; reply: null };
+        navigation: {
+          status: string;
+          view: {
+            schemaVersion: string;
+            source: { viewId: string };
+            launch: { launchId: string; authorization: { authorized: boolean } };
+          };
+        };
+      };
+      assert.equal(result.outcome.openPageId, "views-registry/target");
+      assert.equal(result.outcome.reply, null);
+      assert.equal(result.navigation.status, "opened");
+      assert.equal(result.navigation.view.schemaVersion, "agentstate.durable-view-launch.v1");
+      assert.equal(result.navigation.view.source.viewId, "views-registry/target");
+      assert.equal(
+        result.navigation.view.launch.authorization.authorized,
+        false,
+        "source approval never authorizes the target identity",
+      );
+
+      const retiredSource = await client.callTool({
+        name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+        arguments: {
+          launchId: source.launch.launchId,
+          request: { bridge: "v0", type: "hello", id: "retired-source" },
+        },
+      });
+      assert.equal(
+        (retiredSource.structuredContent as {
+          outcome: { reply: { error: { code: string } } };
+        }).outcome.reply.error.code,
+        "FORBIDDEN",
+      );
+
+      const targetBeforeApproval = await client.callTool({
+        name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+        arguments: {
+          launchId: result.navigation.view.launch.launchId,
+          request: { bridge: "v0", type: "hello", id: "target-before-approval" },
+        },
+      });
+      assert.equal(
+        (targetBeforeApproval.structuredContent as {
+          outcome: { reply: { error: { code: string } } };
+        }).outcome.reply.error.code,
+        "FORBIDDEN",
+      );
+      const approved = await client.callTool({
+        name: AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+        arguments: { launchId: result.navigation.view.launch.launchId },
+      });
+      assert.equal(
+        (approved.structuredContent as {
+          view: { launch: { authorization: { authorized: boolean } } };
+        }).view.launch.authorization.authorized,
+        true,
+      );
+    });
+  }
+});
+
+test("concurrent open-page requests consume one source generation and select at most one target", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  await seedNavigationTarget(bundle, "views-registry/first");
+  await seedNavigationTarget(bundle, "views-registry/second");
+  const server = createMcpAppServer({ bundle });
+  const client = new Client({ name: "navigation-race", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+  const shown = await client.callTool({
+    name: SHOW_VIEW_TOOL_NAME,
+    arguments: { viewId: "views-registry/roadmap" },
+  });
+  const launchId = (shown.structuredContent as { launch: { launchId: string } }).launch.launchId;
+  await client.callTool({
+    name: AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+    arguments: { launchId },
+  });
+
+  const responses = await Promise.all(
+    ["first", "second"].map((target) =>
+      client.callTool({
+        name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+        arguments: {
+          launchId,
+          request: {
+            bridge: "v0",
+            type: "open-page",
+            id: `open-${target}`,
+            pageId: `views-registry/${target}`,
+          },
+        },
+      }),
+    ),
+  );
+  const opened = responses.flatMap((response) => {
+    const navigation = (response.structuredContent as {
+      navigation?: { status?: string; view?: { source?: { viewId?: string }; launch?: { launchId?: string } } };
+    }).navigation;
+    return navigation?.status === "opened" && navigation.view
+      ? [navigation.view]
+      : [];
+  });
+  assert.ok(opened.length >= 1);
+  assert.equal(new Set(opened.map((view) => view.source?.viewId)).size, 1);
+  assert.equal(new Set(opened.map((view) => view.launch?.launchId)).size, 1);
+});
+
+test("open-page failures stay bounded and never expose or preserve an unlaunchable target", async (t) => {
+  const bundle = memoryBundle();
+  await seed(bundle);
+  await writeDoc(bundle, {
+    id: "views-registry/dangling-target",
+    frontmatter: {
+      type: "View",
+      title: "Dangling target",
+      entry: "views/missing-target.html",
+      access: "bundle-read",
+      timestamp: T,
+    },
+    body: "",
+  });
+  const server = createMcpAppServer({ bundle });
+  const client = new Client({ name: "navigation-failure", version: "test" }, { capabilities: {} });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+  const show = async () => {
+    const shown = await client.callTool({
+      name: SHOW_VIEW_TOOL_NAME,
+      arguments: { viewId: "views-registry/roadmap" },
+    });
+    const launchId = (shown.structuredContent as { launch: { launchId: string } }).launch.launchId;
+    await client.callTool({
+      name: AUTHORIZE_DURABLE_VIEW_TOOL_NAME,
+      arguments: { launchId },
+    });
+    return launchId;
+  };
+
+  const missingSource = await show();
+  const missing = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: missingSource,
+      request: {
+        bridge: "v0",
+        type: "open-page",
+        id: "missing",
+        pageId: "views-registry/missing",
+      },
+    },
+  });
+  const missingNavigation = (missing.structuredContent as {
+    navigation: { status: string; message: string; view?: unknown };
+  }).navigation;
+  assert.equal(missingNavigation.status, "failed");
+  assert.match(missingNavigation.message, /No registered View/i);
+  assert.equal(missingNavigation.view, undefined);
+  const missingRetired = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: missingSource,
+      request: { bridge: "v0", type: "hello", id: "missing-retired" },
+    },
+  });
+  assert.equal(
+    (missingRetired.structuredContent as {
+      outcome: { reply: { error: { code: string } } };
+    }).outcome.reply.error.code,
+    "FORBIDDEN",
+  );
+
+  const danglingSource = await show();
+  const dangling = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: danglingSource,
+      request: {
+        bridge: "v0",
+        type: "open-page",
+        id: "dangling",
+        pageId: "views-registry/dangling-target",
+      },
+    },
+  });
+  const navigation = (dangling.structuredContent as {
+    navigation: { status: string; message: string; view?: unknown };
+  }).navigation;
+  assert.equal(navigation.status, "failed");
+  assert.match(navigation.message, /no View bytes found/i);
+  assert.ok(navigation.message.length <= 500);
+  assert.equal(navigation.view, undefined);
+  const retired = await client.callTool({
+    name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+    arguments: {
+      launchId: danglingSource,
+      request: { bridge: "v0", type: "hello", id: "retired" },
+    },
+  });
+  assert.equal(
+    (retired.structuredContent as {
+      outcome: { reply: { error: { code: string } } };
+    }).outcome.reply.error.code,
+    "FORBIDDEN",
+  );
 });
 
 test("registered Roadmap View runs from unchanged source through the authorized active bridge", async (t) => {

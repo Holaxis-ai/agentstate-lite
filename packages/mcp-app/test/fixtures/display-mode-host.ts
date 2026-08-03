@@ -53,7 +53,15 @@ const source = {
   html: `<!doctype html><html><head><style>
     html, body { margin: 0; }
     main { min-height: 1200px; }
-  </style></head><body><main><button id="inside">Roadmap control</button></main></body></html>`,
+  </style></head><body><main>
+    <button id="inside">Roadmap control</button>
+    <button id="navigate">Open target</button>
+    <script>
+      document.querySelector('#navigate').addEventListener('click', () => parent.postMessage({
+        bridge: 'v0', type: 'open-page', id: 'open-target', pageId: 'views-registry/target'
+      }, '*'));
+    </script>
+  </main></body></html>`,
   contentType: "text/html; charset=utf-8",
   contentVersion: `sha256:${"1".repeat(64)}`,
 };
@@ -83,6 +91,25 @@ function transientPayload(launchId: string): TransientPayload {
     },
     launch: {
       launchId,
+      access: "bundle-read",
+      authorization: { required: true, authorized: false },
+    },
+  };
+}
+
+function navigationPayload(): DurablePayload {
+  return {
+    schemaVersion: "agentstate.durable-view-launch.v1",
+    title: "Navigation target",
+    source: {
+      viewId: "views-registry/target",
+      entry: "views/target.html",
+      html: "<!doctype html><button id=\"target-control\">Target control</button>",
+      contentType: source.contentType,
+      contentVersion: `sha256:${"4".repeat(64)}`,
+    },
+    launch: {
+      launchId: "launch-navigation-target",
       access: "bundle-read",
       authorization: { required: true, authorized: false },
     },
@@ -123,16 +150,19 @@ let releaseDisplayRequest: (() => void) | null = null;
 let releaseResumeRequest: (() => void) | null = null;
 let releaseCloseRequest: (() => void) | null = null;
 let releaseFinishRequest: (() => void) | null = null;
+let releaseNavigationRequest: (() => void) | null = null;
 
 window.__displayRequests = [];
 window.__resumeRequests = [];
 window.__closedLaunches = [];
 window.__preparedActions = [];
 window.__finishedActions = [];
+window.__bridgeRequests = [];
 window.__holdDisplayRequest = false;
 window.__holdResumeRequest = false;
 window.__holdCloseRequest = false;
 window.__holdFinishRequest = false;
+window.__holdNavigationRequest = false;
 window.__displayResponseMode = null;
 window.__displayRequestError = null;
 window.__suppressDisplayContextOnResolve = false;
@@ -152,6 +182,10 @@ window.__releaseCloseRequest = () => {
 window.__releaseFinishRequest = () => {
   releaseFinishRequest?.();
   releaseFinishRequest = null;
+};
+window.__releaseNavigationRequest = () => {
+  releaseNavigationRequest?.();
+  releaseNavigationRequest = null;
 };
 
 const context = () => ({
@@ -199,6 +233,14 @@ bridge.oncalltool = async ({ name, arguments: args }) => {
   const launchId =
     typeof args?.launchId === "string" ? args.launchId : "invalid-launch";
   if (name === "authorize_durable_view") {
+    if (launchId === "launch-navigation-target") {
+      const view = navigationPayload();
+      view.launch.authorization.authorized = true;
+      return {
+        content: [{ type: "text", text: "authorized" }],
+        structuredContent: { view },
+      };
+    }
     return {
       content: [{ type: "text", text: "authorized" }],
       structuredContent: {
@@ -233,6 +275,21 @@ bridge.oncalltool = async ({ name, arguments: args }) => {
     };
   }
   if (name === "durable_view_bridge") {
+    window.__bridgeRequests.push(args ?? {});
+    if (args?.request && typeof args.request === "object" && "type" in args.request && args.request.type === "open-page") {
+      if (window.__holdNavigationRequest) {
+        await new Promise<void>((resolve) => {
+          releaseNavigationRequest = resolve;
+        });
+      }
+      return {
+        content: [{ type: "text", text: "opened" }],
+        structuredContent: {
+          outcome: { reply: null, openPageId: "views-registry/target" },
+          navigation: { status: "opened", view: navigationPayload() },
+        },
+      };
+    }
     return {
       content: [{ type: "text", text: "bridge" }],
       structuredContent: {
@@ -345,6 +402,7 @@ void bridge.connect(
 declare global {
   interface Window {
     __closedLaunches: string[];
+    __bridgeRequests: unknown[];
     __preparedActions: unknown[];
     __finishedActions: unknown[];
     __displayRequestError: string | null;
@@ -353,6 +411,7 @@ declare global {
     __resumeRequests: string[];
     __holdCloseRequest: boolean;
     __holdFinishRequest: boolean;
+    __holdNavigationRequest: boolean;
     __holdDisplayRequest: boolean;
     __holdResumeRequest: boolean;
     __hostInitialized?: boolean;
@@ -362,6 +421,7 @@ declare global {
     __replayOriginalResult: () => Promise<void>;
     __releaseCloseRequest: () => void;
     __releaseFinishRequest: () => void;
+    __releaseNavigationRequest: () => void;
     __releaseDisplayRequest: () => void;
     __releaseResumeRequest: () => void;
     __startTeardown: () => void;

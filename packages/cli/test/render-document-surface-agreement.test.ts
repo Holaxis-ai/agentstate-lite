@@ -49,6 +49,7 @@ class LaunchChangingBackend extends MemoryBackend {
 interface Surface {
   authorize(): Promise<void>;
   request(docId: string): Promise<Record<string, any>>;
+  navigate(): Promise<Record<string, any>>;
   armLaunchChange(): void;
   close(): Promise<void>;
 }
@@ -71,6 +72,23 @@ async function seed(): Promise<{ bundle: Bundle; backend: LaunchChangingBackend 
     bundle,
     "views/agreement.html",
     new TextEncoder().encode("<!doctype html><p>agreement</p>"),
+    "text/html; charset=utf-8",
+  );
+  await writeDoc(bundle, {
+    id: "views-registry/target",
+    frontmatter: {
+      type: "View",
+      title: "Target",
+      entry: "views/target.html",
+      access: "bundle-read",
+      timestamp: T,
+    },
+    body: "",
+  });
+  await writeBlob(
+    bundle,
+    "views/target.html",
+    new TextEncoder().encode("<!doctype html><p>target</p>"),
     "text/html; charset=utf-8",
   );
   await writeDoc(bundle, {
@@ -131,6 +149,17 @@ async function webSurface(): Promise<Surface> {
       });
       return result.reply;
     },
+    async navigate() {
+      return await post("/__ui/views/bridge", {
+        launchId: minted.launchId,
+        request: {
+          bridge: "v0",
+          type: "open-page",
+          id: "open-target",
+          pageId: "views-registry/target",
+        },
+      });
+    },
     armLaunchChange: () => backend.armLaunchChange(),
     close: () => server.close(),
   };
@@ -169,6 +198,36 @@ async function mcpSurface(): Promise<Surface> {
         },
       });
       return (result.structuredContent as { outcome: { reply: Record<string, any> } }).outcome.reply;
+    },
+    async navigate() {
+      const result = await client.callTool({
+        name: DURABLE_VIEW_BRIDGE_TOOL_NAME,
+        arguments: {
+          launchId,
+          request: {
+            bridge: "v0",
+            type: "open-page",
+            id: "open-target",
+            pageId: "views-registry/target",
+          },
+        },
+      });
+      const structured = result.structuredContent as {
+        outcome: { openPageId?: string };
+        navigation?: {
+          status?: string;
+          view?: {
+            source?: { viewId?: string };
+            launch?: { authorization?: { authorized?: boolean } };
+          };
+        };
+      };
+      return {
+        openPageId: structured.outcome.openPageId,
+        navigationStatus: structured.navigation?.status,
+        targetViewId: structured.navigation?.view?.source?.viewId,
+        targetAuthorized: structured.navigation?.view?.launch?.authorization?.authorized,
+      };
     },
     armLaunchChange: () => backend.armLaunchChange(),
     async close() {
@@ -232,5 +291,26 @@ test("web and MCP durable Views agree on every render-document outcome", async (
       }
       if (scenario === "bounded") assert.equal((web as any).bounded, true);
     });
+  }
+});
+
+test("web and MCP select the same registered target for open-page", async () => {
+  const web = await webSurface();
+  const mcp = await mcpSurface();
+  try {
+    await web.authorize();
+    await mcp.authorize();
+    const webSelection = await web.navigate();
+    const mcpSelection = await mcp.navigate();
+    assert.equal(webSelection.openPageId, "views-registry/target");
+    assert.deepEqual(mcpSelection, {
+      openPageId: webSelection.openPageId,
+      navigationStatus: "opened",
+      targetViewId: webSelection.openPageId,
+      targetAuthorized: false,
+    });
+  } finally {
+    await web.close();
+    await mcp.close();
   }
 });
