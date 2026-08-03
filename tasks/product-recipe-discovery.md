@@ -4,14 +4,15 @@ title: 'Product recipes: bundle-free discovery before init'
 status: in_progress
 priority: '1'
 description: >-
-  CLAIMED 2026-08-03 by openai/codex. Implementing the existing additive
-  contract: implicit no-bundle recipe discovery succeeds with actionable
-  inventory; explicit invalid --dir/--remote remains an error; bundle-present
-  applied state and existing fields remain stable; no recipe application or init
-  semantics change.
+  Implemented by openai/codex in commit 604c316; draft PR #201 is awaiting the
+  ordinary-code independent review. Bundle-free recipe discovery now succeeds
+  without writes, emits assets plus exact init/add commands, preserves
+  fail-closed explicit targets and bundle-aware applied state, and is surfaced
+  from the no-bundle home view. Focused tests, installed npm tarball proof, and
+  the full repository gate passed on the exact commit.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-03T03:21:12.800Z'
+timestamp: '2026-08-03T03:32:32.224Z'
 ---
 # Problem
 
