@@ -9,11 +9,12 @@ description: >-
   without writes, emits assets plus exact init/add commands, preserves
   fail-closed explicit targets and bundle-aware applied state, and is surfaced
   from the no-bundle home view. CI expectation drift was corrected after the
-  first run; focused tests, installed npm tarball proof, and the full repository
-  gate now pass with explicit exit-code capture on the exact commit.
+  first run. Focused tests, installed npm tarball proof, the full local
+  repository gate, and GitHub's Node 20/22/26 checks now pass on the exact
+  commit.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-03T03:50:17.121Z'
+timestamp: '2026-08-03T03:56:06.819Z'
 ---
 # Problem
 
