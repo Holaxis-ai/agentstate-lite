@@ -3,7 +3,7 @@ type: Task
 title: >-
   Review the pre-compaction context-note design for multi-session safety (single
   fixed id collides)
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   REVISION 2 REJECTED by independent Codex team review (2026-08-03; concurrency
@@ -19,8 +19,8 @@ description: >-
   and live manual/automatic concurrency/interruption tests. Evidence:
   reviews/pre-compact-multi-session-team-2026-08-03 and
   context-notes/review-precompact-codex-{concurrency,ecosystem,skeptic}.
-actor: codex-review-orchestrator
-timestamp: '2026-08-03T17:02:04.193Z'
+actor: codex-precompact-v3-orchestrator
+timestamp: '2026-08-03T17:30:59.084Z'
 ---
 # Multi-session-safe pre-compaction context notes
 
