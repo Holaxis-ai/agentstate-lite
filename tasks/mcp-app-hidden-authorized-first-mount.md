@@ -3,13 +3,15 @@ type: Task
 title: Resume an already-authorized MCP App View first delivered while hidden
 status: in_progress
 priority: '1'
-assignee: codex-pr177-followup
+assignee: openai/codex
 description: >-
-  An already-authorized durable View mounted while the outer App is initially
-  hidden drops its one-shot bridge start and never establishes a fresh visible
-  baseline.
-actor: codex-pr177-followup
-timestamp: '2026-07-29T23:16:41.520Z'
+  Re-verified against main f85c80f on 2026-08-02: a host-shaped Chromium probe
+  delivers an already-authorized View while the MCP App is hidden; after
+  visibility returns, resume_durable_view is never called. The 2026-07-29
+  codex-pr177-followup claim had no surviving code branch or PR, so openai/codex
+  has taken over the task for end-to-end delivery.
+actor: openai/codex
+timestamp: '2026-08-03T02:21:48.609Z'
 ---
 # Problem
 
