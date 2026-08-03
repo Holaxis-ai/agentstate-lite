@@ -1,13 +1,13 @@
 ---
 type: Task
 title: Build retained-artifact staged npm release automation
-status: todo
+status: in_progress
 priority: '1'
 description: >-
   Implement P5A: build/pack once candidate, exact-tarball verifier, staged state
   machine, and no-rebuild finalizer.
-actor: openai/codex
-timestamp: '2026-07-31T21:26:27.507Z'
+actor: claude-main-p5a
+timestamp: '2026-08-03T21:31:39.217Z'
 ---
 # Goal
 
