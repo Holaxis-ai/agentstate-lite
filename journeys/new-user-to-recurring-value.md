@@ -7,39 +7,43 @@ product_promise: >-
   Install once, shape a durable workspace around the user's needs, and
   collaborate through useful live Views.
 entry_condition: >-
-  A new user has Node.js and a supported desktop or terminal agent, but no
-  AgentState knowledge.
+  A new user has Node.js and enters through an empty terminal, installed Agent
+  Skill, or existing project/host, but has no established AgentState mental
+  model.
 success_condition: >-
   The user has a useful bundle and custom portable View they can reopen and
   maintain across sessions and upgrades.
 description: >-
   The primary supported onboarding and recurring-use journey for AgentState
   Lite.
-actor: openai/codex
-timestamp: '2026-08-02T15:26:06.238Z'
+actor: codex-onboarding-scope
+timestamp: '2026-08-03T23:56:06.910Z'
 ---
 # Product promise
 
-A new user can install AgentState Lite, give a supported desktop agent a durable local workspace,
-shape that workspace around their needs, and collaborate through useful live Views without learning
-the product's internal architecture first.
+A new user can install AgentState Lite, give a supported agent a durable local workspace, shape that workspace around their needs, and collaborate through useful live Views without learning the product's internal architecture first.
 
 # Entry condition
 
-The user has Node.js and either Claude Desktop, the ChatGPT desktop app, or a terminal agent. They
-have not previously used AgentState Lite and should not need founder coaching.
+The user has Node.js, no established AgentState mental model, and reaches the product through one of three supported entry conditions:
+
+- an empty terminal where bare `aslite` can orient without creating files;
+- an agent with the optional Agent Skill/hook installed, where the user identifies as new or asks how to begin; or
+- an existing project or connected host where the user wants a separate learning workspace.
+
+Desktop host connection is a parallel lane, not a hard predecessor of the shared terminal/local-web learning and first-bundle path.
 
 # Successful outcome
 
-The user has a useful bundle with structured content and at least one custom durable View. They can
-invoke the same View inline or expanded through an MCP-capable desktop host, or through local web,
-return to it in a later session, and update AgentState Lite without losing data or configuration.
+The user has a useful real bundle with structured content and at least one custom durable View. They can return to it in a later session and update AgentState Lite without losing data or configuration. The separate `agentstate-guide` remains available as a reference rather than becoming the user's project.
 
 # Supported surfaces
 
-- Primary conversational hosts: Claude Desktop and the ChatGPT desktop app.
-- Primary human surface: MCP Apps, including expanded/full-page presentation.
-- Terminal path: CLI for the agent and local web as the human-facing View surface.
+- Bundle-free orientation: bare CLI, README/npm front door, and optional Agent Skill.
+- Shared learning path: explicit guide Recipe creation plus the local web launcher.
+- Primary conversational hosts: Claude Desktop and the ChatGPT desktop app, reached through their parallel connection lanes.
+- MCP Apps, including expanded/full-page presentation, remain “where configured”; they do not block guide-v1 validation.
+- Terminal path: CLI for writes and local web for the human-facing View.
 - One portable View model across every container.
 
 [has journey stage](../journey-stages/01-install.md)
@@ -69,3 +73,7 @@ return to it in a later session, and update AgentState Lite without losing data 
 [has journey stage](../journey-stages/13-update-without-disruption.md)
 
 [has journey stage](../journey-stages/14-share-an-operating-model.md)
+
+[onboarding scope](../plans/onboarding-surfaces.md)
+
+[guide-deferral decision](../decisions/agentstate-guide-outside-domain-recipe-deferral.md)

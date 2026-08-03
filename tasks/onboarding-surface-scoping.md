@@ -3,13 +3,14 @@ type: Task
 title: >-
   Scope the onboarding surfaces: reconcile 4 overlapping items into one coherent
   early-UX plan (HANDOFF)
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Review revision in progress: fold the 3-lens pass-with-caveats findings into
-  plans/onboarding-surfaces, the guide task, and Michael's sign-off request.
+  Completed review revision: Brian decided agentstate-guide is outside the
+  domain-Recipe deferral; plan now matches shipped View/init mechanics, adds
+  generic create-only safety, and reconciles quickstart/Journey/roadmap records.
 actor: codex-onboarding-scope
-timestamp: '2026-08-03T23:30:02.764Z'
+timestamp: '2026-08-03T23:56:36.501Z'
 ---
 # Onboarding surface scoping — handoff note
 
@@ -35,6 +36,27 @@ The openai/codex-owned records were left unchanged. Michael Collier's light coor
 is requested in [review-requests/onboarding-surfaces-mike-signoff](../review-requests/onboarding-surfaces-mike-signoff.md)
 before their wording or state changes. No P5A, release, update, deployment, or product-code work was
 performed.
+
+## Review revision and decision closure — 2026-08-03
+
+A three-lens [review synthesis](../context-notes/review-onboarding-synthesis.md) returned
+pass-with-caveats and found two incorrect mechanical assumptions: a read-only View cannot create a
+document, and current `init` does not protect existing/enclosing bundles. Revision 2 therefore:
+
+- makes the first learning action an exact CLI `new` write observed by the View;
+- creates [init-target-safety-guard](init-target-safety-guard.md) as a separate generic
+  `init --create-only` predecessor with destructive-boundary review/QA;
+- scopes the early slice to guard + guide + quickstart and names adjacent onboarding lanes;
+- makes guide discovery stateless, ordered, and agreement-tested across README, no-bundle home,
+  and Agent Skill;
+- specifies build-time embedding for the first named built-in with References + a View; and
+- preserves the domain-Recipe deferral and all P5A/release boundaries.
+
+Michael was unavailable, so Brian assumed decision authority and decided that `agentstate-guide`
+is [outside the domain-Recipe deferral](../decisions/agentstate-guide-outside-domain-recipe-deferral.md)
+because it explains existing product functionality rather than proposing a user operating model.
+The boundary Review Request is approved; quickstart/Journey records and typed roadmap containment
+have been reconciled under that authority. No product code was built in this scoping revision.
 
 ## Handoff context
 

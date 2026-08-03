@@ -6,12 +6,12 @@ description: >-
   Ship data-free, view-backed operating models through the one RecipeSource
   pipeline; built-ins travel with npm and become ordinary portable bundle
   content when installed.
-actor: openai/codex
+actor: codex-onboarding-scope
 sequence: >-
   Personal Task System built-in → installed-npm newcomer proof → working-memory
   Focus/Session layer → only then a second demonstrated domain recipe and
   generalized distribution
-timestamp: '2026-07-20T21:52:54.208Z'
+timestamp: '2026-08-03T23:56:13.719Z'
 ---
 # Vision
 
@@ -91,3 +91,5 @@ is absent.
 [contains](../tasks/persona-recipe-product-manager.md)
 
 [contains](../tasks/product-recipe-discovery.md)
+
+[contains](../tasks/guidance-bundle-onboarding.md)

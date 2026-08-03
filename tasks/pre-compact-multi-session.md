@@ -4,12 +4,12 @@ title: Implement and live-prove revision 3 multi-session compaction handoffs
 status: in_progress
 priority: '2'
 description: >-
-  T0-T4 passed exact review. R5 candidate/live-acceptance Plan is CAS-published
-  at sha256:c7a9e198… and undergoing independent product/acceptance plus
-  adversarial-skeptic review. No T3.5 code, API-key Claude run, or G0 freeze
-  yet.
+  T0-T4 passed exact review. Exact R5 Plan is rejected: unmodeled
+  cleanup-control clients and unobservable universal
+  short-lived/escaped-descendant proof. Architecture/acceptance/skeptic repair
+  adjudication now precedes any new Plan or T3.5 code.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-03T23:46:24.831Z'
+timestamp: '2026-08-03T23:57:16.462Z'
 ---
 # Revision 3 multi-session compaction handoffs
 

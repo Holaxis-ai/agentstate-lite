@@ -2,7 +2,7 @@
 type: Context Note
 title: Onboarding surfaces scoping orientation and system model
 actor: codex-onboarding-scope
-timestamp: '2026-08-03T23:35:03.087Z'
+timestamp: '2026-08-03T23:57:14.600Z'
 ---
 # Summary
 
@@ -27,23 +27,26 @@ A three-lens panel returned pass-with-caveats. It affirmed one journey, the Reci
 - The guide curriculum is ordered but has no completion state. Its order is a revisable, test-user-validated hypothesis.
 - The phrase only two remaining units was too broad. The discovery-to-first-value slice has a generic init safety predecessor, the guide unit, and quickstart, while host connection, return/rediscovery, richer domain recipes, and later Journey stages remain adjacent work.
 - The guide is the first named built-in expected to carry References and a View, so its build-time packaging and installed-tarball proof must be explicit.
-- Michael's sign-off must name the exact Journey records, ask whether the recipe deferral covers agentstate-guide, and authorize any edits to the completed discovery/home surface.
+- Brian assumed decision authority while Michael is unavailable; the exact Journey, quickstart,
+  no-bundle-home, create-only, and roadmap boundaries are approved and recorded.
 
-## Records to revise
+## Decision and final state
 
-- plans/onboarding-surfaces
-- tasks/guidance-bundle-onboarding
-- review-requests/onboarding-surfaces-mike-signoff
-- create tasks/init-target-safety-guard as a scoped predecessor
-- tasks/onboarding-surface-scoping returns to done after validation and sync
+- Brian decided that `agentstate-guide` is outside the domain-Recipe deferral because it teaches
+  existing AgentState Lite functionality rather than proposing a user operating model. The durable
+  record is [decisions/agentstate-guide-outside-domain-recipe-deferral](../decisions/agentstate-guide-outside-domain-recipe-deferral.md).
+- The Review Request is approved under Brian's authority; Personal Task System, Product Manager,
+  and other domain Recipes remain deferred.
+- The plan and guide task incorporate all review findings.
+- tasks/init-target-safety-guard is a separate P1 generic `init --create-only` predecessor.
+- npm quickstart now depends on that guard while retaining its separate `work-tracking` oracle.
+- The Journey, guide stage, operating-model stage, and typed Roadmap containment graph are
+  reconciled without advancing implementation readiness.
+- tasks/onboarding-surface-scoping is done. No product code, P5A, release, update, marketplace,
+  MCP-install, View-create-action, notice/identity, or deferred domain-Recipe work was performed.
 
-Openai/codex-owned task, Journey, Journey Stage, and Roadmap Item records remain unchanged until Michael approves.
+## Next action
 
-## Decision handoff — Michael unavailable
-
-Brian reported that Michael is out for the week and asked this session to drive the decision. The
-remaining human product call is whether `agentstate-guide` is outside the built-in domain-recipe
-deferral. Recommendation: YES — it teaches already-shipped product primitives rather than freezing
-a guessed user operating model, while curriculum order remains a revisable hypothesis validated by
-a fresh-user walkthrough. If Brian approves that distinction, this session is authorized to apply
-the already-reviewed record/front-door decisions without waiting for Michael.
+Begin implementation planning for the create-only safety unit and prototype the portable ordered
+guide curriculum/View in parallel. Built-in registration waits on create-only safety, fresh-user
+validation, independent review, and installed-package gates—not on another product decision.

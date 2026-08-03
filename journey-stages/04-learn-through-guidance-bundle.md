@@ -7,37 +7,39 @@ lane: shared
 readiness: missing
 criticality: core
 description: Stage 03 of the new-user-to-recurring-value journey.
-actor: openai/codex
-timestamp: '2026-08-02T15:35:23.392Z'
+actor: codex-onboarding-scope
+timestamp: '2026-08-03T23:56:06.899Z'
 ---
 # Desired experience
 
-The first bundle the user encounters teaches AgentState by being an AgentState bundle: it explains
-the mental model, exposes a useful orientation View, and invites a safe first action.
+A newcomer discovers `agentstate-guide` through the no-bundle home, README, or Agent Skill and explicitly creates it at a safe suggested personal location. The guide teaches AgentState through an ordered set of bundle-native References and one read-only live View, then helps the learner create a separate real workspace.
 
 # Current experience
 
-Product knowledge is split across CLI help, skills, repository guidance, and the live development
-bundle. A dedicated newcomer guidance bundle has been proposed but is not yet the default journey.
+Bundle-free Recipe discovery is shipped, and the launcher/View substrate works. The guide curriculum, build-time built-in assets, stateless front-door copy, and generic create-only init guard are scoped but not implemented. Readiness therefore remains `missing`.
 
 # Acceptance criteria
 
-- Installation makes the guidance bundle discoverable without polluting the user's project.
-- Its home View demonstrates kinds, relationships, live data, and portable Views.
-- The user can move from learning to creating their own bundle without founder explanation.
+- The guide is discoverable without creating or polluting a project bundle.
+- Its exact command uses generic create-only target safety and a suggested overrideable personal path.
+- Numbered References and next-links provide sequence without completion/acknowledgement state.
+- The learner creates the first attributed document with an exact CLI `aslite new` command; the `bundle-read` View observes it live and does not write.
+- A fresh user/agent completes the curriculum and creates a separate real bundle without founder coaching.
+- README, no-bundle home, and Agent Skill agree on the stateless, zero-nag recommendation.
+- Local web is sufficient for v1; MCP presentation remains optional where configured.
 
 # Evidence
 
-Founder discussion identified the guidance bundle as the best way to teach the product through its
-own primitives.
+PR #201 proves bundle-free Recipe discovery. The [reviewed onboarding plan](../plans/onboarding-surfaces.md) corrected the View-action and init-safety assumptions, and [Brian's decision](../decisions/agentstate-guide-outside-domain-recipe-deferral.md) permits the guide to pursue built-in status without changing the deferred domain-Recipe policy.
 
 # Remaining gaps
 
-Package the guidance content, decide its install/open path, and validate the transition to a user's
-first real workspace.
+Build and independently validate generic create-only init safety; prototype and fresh-user-test the curriculum/View; embed the first built-in References+View at build time; land stateless front-door copy; and pass installed-tarball/offline gates.
 
 [journey stage planned by](../roadmap-items/distribution-neutral-resources.md)
 
 [journey stage planned by](../roadmap-items/launcher-home-surface.md)
 
 [journey stage implemented by](../tasks/guidance-bundle-onboarding.md)
+
+[depends on target safety](../tasks/init-target-safety-guard.md)
