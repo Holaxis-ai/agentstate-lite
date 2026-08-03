@@ -5,7 +5,12 @@ status: in_progress
 priority: '1'
 assignee: openai/codex
 actor: openai/codex
-timestamp: '2026-08-03T00:42:42.436Z'
+description: >-
+  Implementation is PR #197 at exact commit 07bcb61. Full npm run check passed;
+  the change removes 2,354 net lines while preserving the active
+  transient/durable View contract. Awaiting the required independent exact-SHA
+  review.
+timestamp: '2026-08-03T01:07:23.565Z'
 ---
 # Scope
 
