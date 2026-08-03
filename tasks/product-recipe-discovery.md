@@ -4,16 +4,17 @@ title: 'Product recipes: bundle-free discovery before init'
 status: in_progress
 priority: '1'
 description: >-
-  PR #201 amended by openai/codex at commit d40cba9 to address the independent
-  review's P1 target-retention finding; exact-SHA re-review and CI are pending.
-  Explicit --dir recipe actions now retain their safely quoted target; remote
-  inventories emit only the supported remote recipe-add action; home preserves
-  explicit --dir for blank and selected-recipe initialization while keeping
-  bundle-free browsing runnable. Focused target tests, typecheck, and the full
-  local repository gate pass with explicit exit-code capture.
+  PR #201 amended by openai/codex at commit b38d3ed to address the independent
+  re-review's remaining P1 binding-recovery finding; exact-SHA re-review and CI
+  are pending. A valid project binding whose local target disappeared now offers
+  only a safely quoted init command for that bound target and withholds recipe
+  browsing until repair. Malformed or URL-valued bindings withhold all
+  getting-started mutation commands and provide repair guidance. Focused tests
+  pass 142/142, typecheck passes, and the full local repository gate including
+  19 browser E2E tests passes.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-03T12:55:02.229Z'
+timestamp: '2026-08-03T13:11:24.373Z'
 ---
 # Problem
 
