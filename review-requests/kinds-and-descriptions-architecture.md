@@ -1,7 +1,7 @@
 ---
 type: Review Request
 title: 'Architecture review: Kinds, relationships, and self-describing domain models'
-status: changes_requested
+status: approved
 reviewer: Brian Derfer
 requested_by: Michael Collier
 question: >-
@@ -10,14 +10,21 @@ question: >-
   domain-model foundation; does that shipped relationship implementation
   validate the extension path now being applied to enum-value descriptions in PR
   #52; and should section descriptions/examples remain evidence-gated?
-actor: codex-main
+actor: brian-claude
 decision_summary: >-
-  The overall architecture is sound, but changes are requested because the
-  generic link command cannot create two differently named relationships to the
-  same target, even though the graph model treats them as distinct. The
-  explainer's relationship and enum status labels must also be updated before
-  approval.
-timestamp: '2026-07-14T17:08:00.552Z'
+  APPROVED by Brian Derfer (2026-08-03). Both previously-blocking items verified
+  cleared on main this session: (1) the generic link command now creates
+  distinct differently-named relationships to the same target (PR #55 — link
+  identity keyed on target + exact text, regression-tested, reproduced
+  empirically); (2) the explainer's relationship/enum status labels are current
+  (Shipped: Relationships PR #51, Enums PR #52; stale date removed). PR #52
+  (enum-value descriptions) merged via the same Convention->parser->registry
+  path, validating the extension path — all four semantic layers (Kind, fields,
+  relationships, enums) shipped. One NON-blocking cosmetic nit (a flow-diagram
+  node in the explainer still labels enums 'in-progress') filed as
+  tasks/architecture-explainer-enum-label-nit; does not gate approval.
+decided_at: '2026-08-03T18:52:04Z'
+timestamp: '2026-08-03T18:52:04.913Z'
 ---
 # Context
 
