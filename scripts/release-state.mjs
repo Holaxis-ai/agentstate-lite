@@ -1,8 +1,13 @@
 // Pure staged-release state reconciler — no I/O, no clock, no network. It is the single authority
 // for which transition is legal, which immutable identifiers each state must carry, and whether a
-// proposed receipt CONTRADICTS the identifiers already fixed earlier in the transaction. Every
-// downstream surface (the workflow jobs, the interactive operator instructions, the finalizer)
-// reconciles from these facts; nothing here rebuilds or repacks.
+// proposed receipt CONTRADICTS the identifiers already fixed earlier in the transaction.
+//
+// SCOPE (QA finding #3): this is a VALIDATION / DESIGN artifact and an OPERATOR TOOL (via
+// scripts/release-reconcile.mjs) — it is NOT (yet) wired as the runtime ordering gate inside the
+// release workflows. The workflows enforce BYTE identity mechanically (retained-tarball SHA
+// re-verify) but trust the operator that inspection+approval preceded finalize; wiring THIS graph
+// as the mechanical ordering gate needs persisted operator-signed inspection/approval receipts (a
+// separate trust/storage design, tracked as a follow-up). Nothing here rebuilds or repacks.
 //
 // Normative source: .agentstate-lite/designs/version-update-protocols.md §5 (states/owners table
 // and transient tag/failure rules). The `rolled_back` state is derived from §5's transient-tag

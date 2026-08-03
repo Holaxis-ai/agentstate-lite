@@ -6,9 +6,19 @@ name: Finalize release (separately dispatched)
 # the retained artifact, and fails closed on any mismatch. It NEVER rebuilds or repacks — the
 # workflow test enforces that no build/pack token appears in this file.
 #
-# SAFETY: live registry/release mutation is guarded by BOTH MODE == live AND the protected `release`
-# environment (P5S). A dry-run dispatch prints the exact operations without touching the registry or
-# the GitHub release.
+# SAFETY: both jobs bind the protected `release` environment (P5S) and every live step is guarded by
+# MODE == live, so a dry-run dispatch prints the exact operations without touching the registry or
+# the GitHub release, and nothing runs at all until the environment exists.
+#
+# OPERATOR-TRUST BOUNDARY (QA finding #3): this workflow enforces BYTE identity mechanically (it
+# re-verifies the retained tarball SHA-256 against candidate.json before acting), but it does NOT
+# machine-enforce that human INSPECTION and APPROVAL preceded finalize — it trusts the dispatcher's
+# run/artifact/stage/draft ids. The pure reconciler (scripts/release-state.mjs) proves that ordering
+# in tests and is available as an operator/validation tool (scripts/release-reconcile.mjs), but it is
+# deliberately NOT wired as the runtime ordering gate here: doing so needs persisted, operator-signed
+# inspection/approval receipts (a new trust/storage design), which is more than a bounded change for
+# this no-live unit. Ordering safety is therefore human-procedural until that follow-up lands; this
+# is acceptable because no live mutation is reachable pre-P5S.
 on:
   workflow_dispatch:
     inputs:
@@ -48,6 +58,9 @@ jobs:
     name: registry_verified — packument signature/integrity/install proof
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Bind the protected release environment: its `--execute` step runs live registry commands, so it
+    # must be inert until P5S provisions the environment (QA finding #1 — no unguarded live exec).
+    environment: release
     # Read-only: the registry proof neither writes contents nor mints an OIDC token.
     permissions:
       contents: read

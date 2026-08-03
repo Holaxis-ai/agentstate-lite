@@ -4,21 +4,30 @@
 // `npm publish` from the package directory would re-pack a fresh tarball whose bytes nobody
 // verified or staged — so this guard REFUSES that path outright.
 //
-// It never builds and never packs. If `ASLITE_RELEASE_TARBALL` points at a retained tarball, it
-// re-proves that exact artifact through the no-build/no-pack verifier (optionally cross-checking
-// `ASLITE_RELEASE_MANIFEST`); otherwise it fails closed and points at the staged-release path.
+// It never builds and never packs. Verifying an already-retained tarball requires BOTH
+// `ASLITE_RELEASE_TARBALL` and `ASLITE_RELEASE_MANIFEST` (the candidate manifest is the SHA
+// cross-check anchor — without it any valid npm-package tarball would pass, not the staged
+// candidate). With neither, it fails closed and points at the staged-release path.
 import { verifyRetainedTarball } from "./verify-npm-package.mjs";
 
 const tarball = process.env.ASLITE_RELEASE_TARBALL?.trim();
-const manifest = process.env.ASLITE_RELEASE_MANIFEST?.trim() || null;
+const manifest = process.env.ASLITE_RELEASE_MANIFEST?.trim();
 
 if (!tarball) {
   console.error(
     "prepublishOnly refused: @holaxis/aslite is published through the staged-release workflow, not a\n" +
       "direct `npm publish`. Build the retained candidate with `npm run release:candidate -- --tag <v..>\n" +
       "--commit <sha>`, then stage/approve it. This guard never builds or packs a second candidate.\n" +
-      "(To verify an already-retained tarball here, set ASLITE_RELEASE_TARBALL=<path> [and\n" +
-      "ASLITE_RELEASE_MANIFEST=<candidate.json>].)",
+      "(To verify an already-retained tarball here, set BOTH ASLITE_RELEASE_TARBALL=<path> and\n" +
+      "ASLITE_RELEASE_MANIFEST=<candidate.json>.)",
+  );
+  process.exit(1);
+}
+if (!manifest) {
+  console.error(
+    "prepublishOnly refused: ASLITE_RELEASE_TARBALL is set but ASLITE_RELEASE_MANIFEST is not. The\n" +
+      "candidate manifest is required to prove these bytes are the STAGED candidate (its recorded\n" +
+      "SHA-256 must match the tarball), not merely some valid npm-package tarball.",
   );
   process.exit(1);
 }

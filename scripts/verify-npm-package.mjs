@@ -31,7 +31,7 @@ export function verificationPolicy(mode) {
   throw new Error("usage: verify-npm-package.mjs --local|--release [--json]");
 }
 
-const USAGE = "usage: verify-npm-package.mjs (--local | --release | --tarball <path> [--manifest <path>]) [--json]";
+const USAGE = "usage: verify-npm-package.mjs (--local | --release | --tarball <path> --manifest <path>) [--json]";
 
 export function parseVerificationArgs(argv) {
   const json = argv.includes("--json");
@@ -41,19 +41,16 @@ export function parseVerificationArgs(argv) {
   if (tarballAt !== -1) {
     // Retained-artifact mode: verify an ALREADY-PACKED tarball with NO build and NO pack. This is
     // the mode the staged-release workflow and prepublishOnly use so the verified bytes are the
-    // SAME bytes that get staged/published — never a freshly-rebuilt second candidate.
+    // SAME bytes that get staged/published — never a freshly-rebuilt second candidate. The manifest
+    // is REQUIRED: without it the SHA cross-check is impossible and ANY valid npm-package tarball
+    // would pass instead of specifically the staged candidate (QA finding #2). Fail closed.
     const tarball = rest[tarballAt + 1];
     if (!tarball || tarball.startsWith("--")) throw new Error(USAGE);
-    let manifest = null;
     const manifestAt = rest.indexOf("--manifest");
-    if (manifestAt !== -1) {
-      manifest = rest[manifestAt + 1];
-      if (!manifest || manifest.startsWith("--")) throw new Error(USAGE);
-    }
-    const consumed = new Set([tarballAt, tarballAt + 1]);
-    if (manifestAt !== -1) {
-      consumed.add(manifestAt).add(manifestAt + 1);
-    }
+    if (manifestAt === -1) throw new Error(USAGE);
+    const manifest = rest[manifestAt + 1];
+    if (!manifest || manifest.startsWith("--")) throw new Error(USAGE);
+    const consumed = new Set([tarballAt, tarballAt + 1, manifestAt, manifestAt + 1]);
     const leftover = rest.filter((_, i) => !consumed.has(i));
     if (leftover.length !== 0) throw new Error(USAGE);
     return { mode: "tarball", tarball, manifest, json };
@@ -663,27 +660,30 @@ export async function verifyNpmPackage({ mode }) {
  * manifest is supplied its recorded SHA-256 must equal the tarball's actual bytes, so a swapped
  * or rebuilt artifact fails closed here before it can be staged.
  */
-export async function verifyRetainedTarball({ tarball, manifest = null }) {
+export async function verifyRetainedTarball({ tarball, manifest }) {
   const tarballPath = path.resolve(tarball);
+  // The manifest is MANDATORY (QA finding #2): it is the only thing that ties these exact bytes to
+  // the staged candidate. Without it we could only prove "some valid npm-package tarball", which is
+  // not the retained-artifact guarantee. Fail closed.
+  if (!manifest) {
+    throw new Error("verifyRetainedTarball requires a candidate manifest (the retained SHA cross-check anchor)");
+  }
   await access(tarballPath, constants.R_OK).catch(() => {
     throw new Error(`retained tarball not found: ${tarballPath}`);
   });
   const actualSha = await fileSha256(tarballPath);
-  let recorded = null;
-  if (manifest) {
-    recorded = parseJson(await readFile(path.resolve(manifest), "utf8"), "candidate manifest");
-    const recordedSha = recorded?.tarball?.sha256;
-    assert.equal(
-      actualSha,
-      recordedSha,
-      `retained tarball SHA-256 ${actualSha} does not match candidate manifest ${recordedSha ?? "<missing>"}`,
-    );
-    assert.equal(
-      recorded?.build_identity?.artifact?.channel ?? "npm-package",
-      "npm-package",
-      "a retained release candidate must carry the npm-package artifact channel",
-    );
-  }
+  const recorded = parseJson(await readFile(path.resolve(manifest), "utf8"), "candidate manifest");
+  const recordedSha = recorded?.tarball?.sha256;
+  assert.equal(
+    actualSha,
+    recordedSha,
+    `retained tarball SHA-256 ${actualSha} does not match candidate manifest ${recordedSha ?? "<missing>"}`,
+  );
+  assert.equal(
+    recorded?.build_identity?.artifact?.channel ?? "npm-package",
+    "npm-package",
+    "a retained release candidate must carry the npm-package artifact channel",
+  );
   return runInstalledProof({
     mode: "tarball",
     // A retained release candidate is always an npm-package build; the identity proof enforces it.

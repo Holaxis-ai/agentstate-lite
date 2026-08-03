@@ -104,6 +104,23 @@ test("verifyRetainedTarball fails closed when the tarball bytes do not match the
   }
 });
 
+test("verifyRetainedTarball fails closed when no manifest is supplied (QA finding #2)", async () => {
+  const scratch = await mkdtemp(path.join(tmpdir(), "aslite-nomanifest-"));
+  try {
+    const fakeTgz = path.join(scratch, "holaxis-aslite-0.0.0.tgz");
+    await writeFile(fakeTgz, "not a real tarball\n");
+    // No manifest -> refuse BEFORE any install, so a bare valid npm-package tarball can never pass
+    // as "the staged candidate".
+    await assert.rejects(
+      verifyRetainedTarball({ tarball: fakeTgz }),
+      /requires a candidate manifest/,
+    );
+    await assert.rejects(verifyRetainedTarball({ tarball: fakeTgz, manifest: null }), /requires a candidate manifest/);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+});
+
 test("the retained-tarball verifier path contains no build or pack call (structural no-rebuild proof)", async () => {
   const source = await readFile(path.join(repoRoot, "scripts", "verify-npm-package.mjs"), "utf8");
   const at = source.indexOf("export async function verifyRetainedTarball");

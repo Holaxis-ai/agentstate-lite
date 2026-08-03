@@ -79,7 +79,11 @@ test("finalize workflow: registry-verify is read-only, finalize gets contents:wr
   assert.deepEqual(permissionsOf(jobs.finalize), { contents: "write" });
 });
 
-test("THE INVARIANT: no build/pack token appears outside the candidate job", () => {
+test("denylist scan (NOT a proof): no KNOWN build/pack token appears outside the candidate job", () => {
+  // HONEST framing (review #1): this is a denylist of known build/pack commands, which a disguised
+  // rebuild (e.g. a bare `npx esbuild ... --outfile x.tgz`) could evade. It is a lint, not the
+  // guarantee. The REAL guarantee is the structural SHA-gate test below: what gets staged/published
+  // is the re-verified retained artifact, so a disguised rebuild cannot change the staged bytes.
   const jobs = extractJobs(staged);
   for (const token of BUILD_PACK_TOKENS) {
     for (const [name, body] of Object.entries(jobs)) {
@@ -87,11 +91,34 @@ test("THE INVARIANT: no build/pack token appears outside the candidate job", () 
       assert.ok(!body.includes(token), `job ${name} must not contain build/pack token ${JSON.stringify(token)}`);
     }
   }
-  // The candidate job IS where the one build+pack happens.
   assert.ok(jobs.candidate.includes("release:candidate"), "candidate job must run the release-candidate command");
-  // The finalize workflow rebuilds nothing at all.
   for (const token of BUILD_PACK_TOKENS) {
     assert.ok(!finalize.includes(token), `finalize workflow must not contain build/pack token ${JSON.stringify(token)}`);
+  }
+});
+
+test("THE REAL INVARIANT: every downstream mutating step is preceded by the retained-bytes SHA gate", () => {
+  const jobs = extractJobs(staged);
+  // The retained-bytes gate token: the re-verify step that compares the downloaded tarball's SHA to
+  // the prepared candidate output and `exit 1`s on mismatch.
+  const shaGate = 'test "$ACTUAL" = "${{ needs.candidate.outputs.tarball_sha256 }}"';
+  // Each downstream job that MUTATES must (a) contain the SHA gate and (b) place it BEFORE the
+  // first mutating command — so a mutation can only ever act on re-verified retained bytes.
+  const mutating = {
+    draft: ["gh release create", "gh release edit", "gh release upload"],
+    stage: ["npm stage publish"],
+  };
+  for (const [job, commands] of Object.entries(mutating)) {
+    const body = jobs[job];
+    const gateAt = body.indexOf(shaGate);
+    assert.notEqual(gateAt, -1, `job ${job} must re-verify the retained SHA before mutating`);
+    for (const command of commands) {
+      const at = body.indexOf(command);
+      if (at === -1) continue; // command not present in this job
+      assert.ok(at > gateAt, `in job ${job}, "${command}" must appear AFTER the retained-bytes SHA gate`);
+    }
+    // And the mutation must target the LITERAL downloaded artifact, never a build output.
+    assert.ok(body.includes("download-artifact"), `job ${job} must obtain the retained artifact by download, not build`);
   }
 });
 
@@ -122,11 +149,16 @@ test("live registry/release mutation is guarded by MODE == live in BOTH workflow
   assert.match(staged, /MODE: \$\{\{ github\.event\.inputs\.mode \|\| 'dry-run' \}\}/);
 });
 
-test("the stage job binds the protected release environment; finalize does too", () => {
+test("EVERY live-mutating/live-executing job binds the protected release environment", () => {
   const stagedJobs = extractJobs(staged);
   const finalizeJobs = extractJobs(finalize);
-  assert.match(stagedJobs.stage, /environment: release/);
-  assert.match(finalizeJobs.finalize, /environment: release/);
+  // staged: draft (contents:write) + stage (OIDC publish) both gated; candidate (build only) is not.
+  assert.match(stagedJobs.draft, /environment: release/, "draft job must bind the release environment");
+  assert.match(stagedJobs.stage, /environment: release/, "stage job must bind the release environment");
+  assert.doesNotMatch(stagedJobs.candidate, /environment: release/, "candidate builds only — no environment gate needed");
+  // finalize: registry-verify runs live --execute; finalize publishes the draft. Both gated.
+  assert.match(finalizeJobs["registry-verify"], /environment: release/, "registry-verify runs live exec — must be gated");
+  assert.match(finalizeJobs.finalize, /environment: release/, "finalize job must bind the release environment");
 });
 
 test("the finalizer is separately dispatched and accepts the original immutable IDs", () => {

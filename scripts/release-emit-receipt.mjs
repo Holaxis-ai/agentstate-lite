@@ -13,7 +13,6 @@ import {
   approveOperation,
   promoteOperation,
   registryVerifyOperations,
-  immutableReleaseOperations,
 } from "./release-operations.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
@@ -50,7 +49,8 @@ export function buildReceipt(fields) {
       approve: approveOperation({ stageId }),
       registry_verify: registryVerifyOperations({ version }),
       promote: promoteOperation({ version, tag: policyTag }),
-      immutable_release: immutableReleaseOperations({ releaseId: "<draft-release-id>", tag: `v${version}` }),
+      // The immutable-release (draft publish) operation is emitted later by the finalize workflow,
+      // once a real draft release id exists — not premature at stage time with a placeholder.
     },
   };
 }

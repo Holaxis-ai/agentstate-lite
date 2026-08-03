@@ -1,7 +1,11 @@
-// Thin CLI over the pure reconciler (scripts/release-state.mjs) so a workflow job can advance and
+// Thin CLI over the pure reconciler (scripts/release-state.mjs) so an OPERATOR can advance and
 // VERIFY the staged-release ledger from immutable identifiers, failing closed (exit 1) on any
 // illegal transition or contradicted identifier. It performs no build, no pack, no network — it
-// only reconciles the receipt facts a prior job already fixed.
+// only reconciles the receipt facts a prior step already fixed.
+//
+// NOTE (QA finding #3): this is an operator/validation tool, NOT the workflow's runtime ordering
+// gate. release-finalize.yml does not invoke it to prove inspection+approval occurred (that needs
+// persisted operator-signed receipts — a tracked follow-up); it enforces byte identity instead.
 //
 // Usage: node scripts/release-reconcile.mjs --to <state> --receipt <file|-> [--ledger <file|->]
 import { readFile } from "node:fs/promises";

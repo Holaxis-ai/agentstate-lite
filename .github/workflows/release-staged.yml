@@ -7,10 +7,13 @@ name: Staged release (candidate -> draft -> stage)
 # its immutable identifiers and NEVER rebuild or repack. scripts/release-workflow.test.mjs fails if
 # any build/pack token appears outside the candidate job.
 #
-# SAFETY: no live tag is pushed by this unit, and every registry/release-mutating step is guarded by
-# BOTH `MODE == live` AND the protected `release` environment (which P5S provisions, restricted to
-# v* refs with no admin bypass). A plain `v*` tag push runs dry-run only; a live stage requires an
-# explicit `workflow_dispatch` with mode=live after P5S. Until then the workflow is inert.
+# SAFETY: no live tag is pushed by this unit. Every live-mutating job is guarded by BOTH
+# `MODE == live` AND the protected `release` environment (which P5S provisions, restricted to v*
+# refs with no admin bypass): the draft (prepares an unpublished GitHub draft) and the stage (OIDC
+# `npm stage publish`) both bind `environment: release` and act only when MODE==live. The candidate
+# job builds/verifies only (no environment, no mutation). A plain `v*` tag push runs dry-run only; a
+# live stage requires an explicit `workflow_dispatch` with mode=live after P5S. Until the release
+# environment exists, every mutating job is inert.
 #
 # Minimal, job-scoped permissions: candidate reads source only; draft has contents:write only to
 # prepare (never publish) the GitHub draft; stage has contents:read + id-token:write only for the
@@ -117,6 +120,8 @@ jobs:
     needs: candidate
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Bind the protected release environment so this contents:write mutation is inert until P5S.
+    environment: release
     # Only contents:write, and only to CREATE/UPDATE an unpublished draft with the retained assets.
     permissions:
       contents: write

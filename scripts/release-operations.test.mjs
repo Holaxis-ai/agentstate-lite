@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { access, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 
 import {
   inspectionInstructions,
@@ -12,8 +18,11 @@ import {
   promoteOperation,
   immutableReleaseOperations,
 } from "./release-operations.mjs";
-import { commandsFor } from "./release-run-operations.mjs";
+import { operationsFor } from "./release-run-operations.mjs";
 
+const execFileAsync = promisify(execFile);
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const runOps = path.join(repoRoot, "scripts", "release-run-operations.mjs");
 const SHA = "sha256:" + "a".repeat(64);
 const BARE = "a".repeat(64);
 
@@ -28,20 +37,34 @@ test("inspection instructions emit the exact stage download + SHA-256 compare", 
   assert.equal(i.expected_sha256, SHA);
 });
 
-test("reject/approve require 2fa and name the exact stage id", () => {
-  assert.deepEqual(rejectOperation({ stageId: "s9" }), { command: "npm stage reject s9", requires_2fa: true });
-  assert.deepEqual(approveOperation({ stageId: "s9" }), { command: "npm stage approve s9", requires_2fa: true });
+test("reject/approve return a shell-free argv plus display and require 2fa", () => {
+  assert.deepEqual(rejectOperation({ stageId: "s9" }), {
+    argv: ["npm", "stage", "reject", "s9"],
+    command: "npm stage reject s9",
+    requires_2fa: true,
+  });
+  assert.deepEqual(approveOperation({ stageId: "s9" }), {
+    argv: ["npm", "stage", "approve", "s9"],
+    command: "npm stage approve s9",
+    requires_2fa: true,
+  });
 });
 
-test("secondary tag operations target the scoped package", () => {
-  assert.equal(secondaryTagOperation({ version: "0.1.0-pre.4", tag: "next" }).command, "npm dist-tag add @holaxis/aslite@0.1.0-pre.4 next");
+test("secondary tag operations target the scoped package (argv + display)", () => {
+  const add = secondaryTagOperation({ version: "0.1.0-pre.4", tag: "next" });
+  assert.deepEqual(add.argv, ["npm", "dist-tag", "add", "@holaxis/aslite@0.1.0-pre.4", "next"]);
+  assert.equal(add.command, "npm dist-tag add @holaxis/aslite@0.1.0-pre.4 next");
   assert.equal(removeSecondaryTagOperation({ tag: "next" }).command, "npm dist-tag rm @holaxis/aslite next");
 });
 
 test("rollback restores the prior track and deprecates with the recovery command as the message", () => {
   const r = rollbackOperation({ failedVersion: "0.1.0-pre.4", priorVersion: "0.1.0-pre.3", track: "next" });
-  assert.equal(r.commands[0], "npm dist-tag add @holaxis/aslite@0.1.0-pre.3 next");
-  assert.match(r.commands[1], /^npm deprecate @holaxis\/aslite@0\.1\.0-pre\.4 ".*npm install --global @holaxis\/aslite@0\.1\.0-pre\.3.*"$/);
+  assert.deepEqual(r.argvs[0], ["npm", "dist-tag", "add", "@holaxis/aslite@0.1.0-pre.3", "next"]);
+  // The deprecate message is ONE argv element (no shell word-splitting), carrying the recovery.
+  assert.equal(r.argvs[1][0], "npm");
+  assert.equal(r.argvs[1][1], "deprecate");
+  assert.equal(r.argvs[1][2], "@holaxis/aslite@0.1.0-pre.4");
+  assert.match(r.argvs[1][3], /npm install --global @holaxis\/aslite@0\.1\.0-pre\.3/);
   assert.equal(r.recovery_command, "npm install --global @holaxis/aslite@0.1.0-pre.3");
 });
 
@@ -51,7 +74,6 @@ test("registry verification lists signature, integrity, and clean-install smoke 
   assert.ok(v.commands.includes("npm view @holaxis/aslite@0.1.0-pre.4 dist.integrity dist.shasum --json"));
   assert.ok(v.commands.includes("npm install --global @holaxis/aslite@0.1.0-pre.4"));
   assert.ok(v.commands.some((c) => c.startsWith("aslite version --check")));
-  // No mutation verb leaks into the read-only proof.
   assert.ok(!v.commands.some((c) => /dist-tag|publish|deprecate|stage (approve|reject)/.test(c)));
 });
 
@@ -62,19 +84,66 @@ test("promote and immutable release name the exact version/tag/release id", () =
   assert.ok(rel.commands[1].includes("-f draft=false"));
 });
 
-test("every operation fails closed on a missing required argument", () => {
-  assert.throws(() => rejectOperation({}), /requires stageId/);
-  assert.throws(() => secondaryTagOperation({ version: "1.0.0" }), /requires tag/);
-  assert.throws(() => rollbackOperation({ failedVersion: "x" }), /requires priorVersion/);
-  assert.throws(() => immutableReleaseOperations({ releaseId: "r" }), /requires tag/);
+// ── SECURITY: injection-shaped inputs are REJECTED at construction (no argv is ever built) ──
+test("injection-shaped version / id / stage-id / tag are refused, not interpolated", () => {
+  const injections = [
+    () => rejectOperation({ stageId: "nope; touch ./INJECTED_PROOF; true" }),
+    () => approveOperation({ stageId: "$(touch x)" }),
+    () => secondaryTagOperation({ version: "0.1.0; rm -rf /", tag: "next" }),
+    () => secondaryTagOperation({ version: "0.1.0", tag: "next && echo bad" }),
+    () => promoteOperation({ version: "0.1.0 | cat", tag: "latest" }),
+    () => rollbackOperation({ failedVersion: "0.1.0`id`", priorVersion: "0.1.0" }),
+    () => registryVerifyOperations({ version: "0.1.0\nid" }),
+    () => immutableReleaseOperations({ releaseId: "rel; curl evil", tag: "v0.1.0" }),
+  ];
+  for (const attempt of injections) {
+    assert.throws(attempt, /invalid (version|stageId|tag|releaseId)/);
+  }
 });
 
-test("commandsFor resolves each op name to the same exact strings", () => {
-  assert.deepEqual(commandsFor("reject", ["--stage-id", "s1"]), ["npm stage reject s1"]);
-  assert.deepEqual(commandsFor("registry-verify", ["--version", "0.1.0"]), registryVerifyOperations({ version: "0.1.0" }).commands);
+test("missing required arguments fail closed", () => {
+  assert.throws(() => rejectOperation({}), /invalid stageId/);
+  assert.throws(() => secondaryTagOperation({ version: "1.0.0" }), /invalid tag/);
+  assert.throws(() => rollbackOperation({ failedVersion: "1.0.0" }), /invalid version/);
+  assert.throws(() => immutableReleaseOperations({ releaseId: "r" }), /invalid tag/);
+});
+
+test("operationsFor resolves each op to the same argv + display strings", () => {
+  assert.deepEqual(operationsFor("reject", ["--stage-id", "s1"]), [
+    { argv: ["npm", "stage", "reject", "s1"], command: "npm stage reject s1", requires_2fa: true },
+  ]);
   assert.deepEqual(
-    commandsFor("immutable-release", ["--version", "0.1.0", "--release-id", "rel-9"]),
-    immutableReleaseOperations({ releaseId: "rel-9", tag: "v0.1.0" }).commands,
+    operationsFor("registry-verify", ["--version", "0.1.0"]).map((o) => o.command),
+    registryVerifyOperations({ version: "0.1.0" }).commands,
   );
-  assert.throws(() => commandsFor("bogus", []), /unknown op/);
+  assert.deepEqual(operationsFor("immutable-release", ["--version", "0.1.0", "--release-id", "rel-9"]).map((o) => o.argv), [
+    ["gh", "api", "repos/{owner}/{repo}/releases/rel-9", "--jq", ".draft, .tag_name, .id"],
+    ["gh", "api", "-X", "PATCH", "repos/{owner}/{repo}/releases/rel-9", "-f", "draft=false", "-f", "make_latest=true"],
+  ]);
+  assert.throws(() => operationsFor("bogus", []), /unknown op/);
+});
+
+// ── SECURITY (empirical): --execute with an injection-shaped stage id creates NO marker file ──
+test("release-run-operations --execute refuses an injected stage-id and creates no marker", async () => {
+  const scratch = await mkdtemp(path.join(tmpdir(), "aslite-inject-"));
+  try {
+    const marker = path.join(scratch, "INJECTED_PROOF");
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        runOps,
+        "--op",
+        "reject",
+        "--stage-id",
+        `nope; touch ${marker}; true`,
+        "--execute",
+      ]),
+      (err) => {
+        assert.match(String(err.stderr ?? err.message), /invalid stageId/);
+        return true;
+      },
+    );
+    await assert.rejects(access(marker), /ENOENT/, "no command ran — the marker must not exist");
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
 });
