@@ -3,15 +3,19 @@ type: Task
 title: >-
   No 'aslite mcp install' verb: the one surface built for host wiring makes
   users hand-author JSON
-status: todo
-priority: '3'
+status: in_progress
+priority: '1'
 description: >-
-  hook install and skill install both write host config; mcp is run-only.
-  Hand-wiring it took a wrong VS Code variable, a public-repo .mcp.json leak
-  risk, and two claude mcp round-trips. Gated behind the MCP security-model
-  unification.
-actor: mike/claude
-timestamp: '2026-07-27T01:49:45.535Z'
+  CLAIMED 2026-08-03 by openai/codex. The earlier security prerequisites are
+  shipped. Refreshing this as a computer-level desktop usability unit: explicit,
+  reversible mcp install|status|uninstall for the locally supported
+  ChatGPT/Codex and Claude Desktop host surfaces, with deterministic bundle
+  targeting and no hand-edited configuration. Host mechanics and durable
+  executable identity are being bounded against current official behavior before
+  implementation; Brian's npm release work remains separate.
+actor: openai/codex
+assignee: openai/codex
+timestamp: '2026-08-03T03:10:40.234Z'
 ---
 # Problem
 
