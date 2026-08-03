@@ -1,0 +1,133 @@
+name: Finalize release (separately dispatched)
+
+# P5A finalizer — version-update-protocols.md §5 (registry_verified -> promoted -> final). This is a
+# SEPARATE, explicitly dispatched workflow: external approval never resumes the original staged run.
+# It accepts the ORIGINAL immutable identifiers (run/artifact/stage/draft), DOWNLOADS and VERIFIES
+# the retained artifact, and fails closed on any mismatch. It NEVER rebuilds or repacks — the
+# workflow test enforces that no build/pack token appears in this file.
+#
+# SAFETY: live registry/release mutation is guarded by BOTH MODE == live AND the protected `release`
+# environment (P5S). A dry-run dispatch prints the exact operations without touching the registry or
+# the GitHub release.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Original staged run id (source of the retained artifact)"
+        required: true
+      artifact_id:
+        description: "Immutable artifact id fixed at candidate time"
+        required: true
+      stage_id:
+        description: "npm stage id from the staged run"
+        required: true
+      draft_release_id:
+        description: "GitHub draft release id prepared for this version"
+        required: true
+      version:
+        description: "Exact version, e.g. 0.1.0-pre.4"
+        required: true
+      mode:
+        description: "dry-run (default) prints operations; live promotes + publishes"
+        type: choice
+        options: ["dry-run", "live"]
+        default: "dry-run"
+
+permissions: {}
+
+concurrency:
+  group: release-finalize-${{ github.event.inputs.version }}
+  cancel-in-progress: false
+
+env:
+  MODE: ${{ github.event.inputs.mode }}
+  ARTIFACT_DIR: release-candidate
+
+jobs:
+  registry-verify:
+    name: registry_verified — packument signature/integrity/install proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Read-only: the registry proof neither writes contents nor mints an OIDC token.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pull the retained artifact from the ORIGINAL run by its immutable id — never rebuilt.
+      - name: Download the retained candidate from the original run (NO rebuild)
+        uses: actions/download-artifact@v4
+        with:
+          name: release-candidate-${{ github.event.inputs.run_id }}
+          run-id: ${{ github.event.inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ env.ARTIFACT_DIR }}
+
+      - name: Fail closed unless the retained manifest matches the dispatched identifiers
+        run: |
+          set -euo pipefail
+          MANIFEST_VERSION="$(node -p "require('./$ARTIFACT_DIR/candidate.json').version")"
+          test "$MANIFEST_VERSION" = "${{ github.event.inputs.version }}" || {
+            echo "::error::retained manifest version $MANIFEST_VERSION != dispatched ${{ github.event.inputs.version }}"; exit 1; }
+          FILENAME="$(node -p "require('./$ARTIFACT_DIR/candidate.json').tarball.filename")"
+          RECORDED="$(node -p "require('./$ARTIFACT_DIR/candidate.json').tarball.sha256")"
+          ACTUAL="sha256:$(shasum -a 256 "$ARTIFACT_DIR/$FILENAME" | awk '{print $1}')"
+          test "$ACTUAL" = "$RECORDED" || { echo "::error::retained tarball digest $ACTUAL != recorded $RECORDED"; exit 1; }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Registry signature/integrity/install proof (live) or exact commands (dry-run)
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "live" ]; then
+            node scripts/release-run-operations.mjs --op registry-verify --version "${{ github.event.inputs.version }}" --execute
+          else
+            node scripts/release-run-operations.mjs --op registry-verify --version "${{ github.event.inputs.version }}"
+          fi
+
+  finalize:
+    name: final — publish the PREPARED draft from immutable identifiers
+    needs: registry-verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    # contents:write only to flip the ALREADY-PREPARED draft to published (never a new build).
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify the prepared draft's identity before publishing (fail closed on mismatch)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "live" ]; then
+            DRAFT="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${{ github.event.inputs.draft_release_id }}" --jq '.draft')"
+            TAGNAME="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${{ github.event.inputs.draft_release_id }}" --jq '.tag_name')"
+            test "$DRAFT" = "true" || { echo "::error::release ${{ github.event.inputs.draft_release_id }} is not an unpublished draft"; exit 1; }
+            test "$TAGNAME" = "v${{ github.event.inputs.version }}" || { echo "::error::draft tag $TAGNAME != v${{ github.event.inputs.version }}"; exit 1; }
+          else
+            echo "[dry-run] would verify draft ${{ github.event.inputs.draft_release_id }} is an unpublished v${{ github.event.inputs.version }} draft"
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Publish the prepared draft (live) or print the exact commands (dry-run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "live" ]; then
+            node scripts/release-run-operations.mjs --op immutable-release \
+              --version "${{ github.event.inputs.version }}" \
+              --release-id "${{ github.event.inputs.draft_release_id }}" --execute
+          else
+            node scripts/release-run-operations.mjs --op immutable-release \
+              --version "${{ github.event.inputs.version }}" \
+              --release-id "${{ github.event.inputs.draft_release_id }}"
+          fi

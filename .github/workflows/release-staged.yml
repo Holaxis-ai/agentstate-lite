@@ -1,0 +1,222 @@
+name: Staged release (candidate -> draft -> stage)
+
+# P5A — retained-artifact staged-release automation. Normative: version-update-protocols.md §5.
+#
+# THE CORE INVARIANT: the candidate is built and packed EXACTLY ONCE, in the `candidate` job. Every
+# later job (draft, stage) and the separate finalize workflow DOWNLOAD that one retained artifact by
+# its immutable identifiers and NEVER rebuild or repack. scripts/release-workflow.test.mjs fails if
+# any build/pack token appears outside the candidate job.
+#
+# SAFETY: no live tag is pushed by this unit, and every registry/release-mutating step is guarded by
+# BOTH `MODE == live` AND the protected `release` environment (which P5S provisions, restricted to
+# v* refs with no admin bypass). A plain `v*` tag push runs dry-run only; a live stage requires an
+# explicit `workflow_dispatch` with mode=live after P5S. Until then the workflow is inert.
+#
+# Minimal, job-scoped permissions: candidate reads source only; draft has contents:write only to
+# prepare (never publish) the GitHub draft; stage has contents:read + id-token:write only for the
+# OIDC trusted-publisher stage. No token is broader than its job needs.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (default) prints operations; live stages through the release environment"
+        type: choice
+        options: ["dry-run", "live"]
+        default: "dry-run"
+
+# No ambient permissions: every job opts into exactly what it needs.
+permissions: {}
+
+concurrency:
+  group: release-staged-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  MODE: ${{ github.event.inputs.mode || 'dry-run' }}
+  ARTIFACT_DIR: release-candidate
+
+jobs:
+  candidate:
+    name: prepared — build+pack+verify the candidate ONCE
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.facts.outputs.tag }}
+      commit: ${{ steps.facts.outputs.commit }}
+      version: ${{ steps.facts.outputs.version }}
+      policy_tag: ${{ steps.facts.outputs.policy_tag }}
+      tarball_filename: ${{ steps.candidate.outputs.tarball_filename }}
+      tarball_sha256: ${{ steps.candidate.outputs.tarball_sha256 }}
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      run_id: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the exact tag + commit facts (immutable inputs to the candidate)
+        id: facts
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="$(node -p "require('./packages/cli/package.json').version" | sed 's/^/v/')"
+          fi
+          COMMIT="$(git rev-parse HEAD)"
+          VERSION="${TAG#v}"
+          case "$VERSION" in
+            *-*) POLICY_TAG="next" ;;   # a prerelease floats `next`, never the default at rest
+            *)   POLICY_TAG="latest" ;;
+          esac
+          {
+            echo "tag=$TAG"
+            echo "commit=$COMMIT"
+            echo "version=$VERSION"
+            echo "policy_tag=$POLICY_TAG"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # BUILD ONCE + PACK ONCE + verify the RETAINED tarball. This is the ONLY job permitted to run
+      # the release-candidate command; the workflow test enforces that.
+      - name: Create the retained release candidate
+        id: candidate
+        run: |
+          set -euo pipefail
+          npm run release:candidate -- --tag "${{ steps.facts.outputs.tag }}" --commit "${{ steps.facts.outputs.commit }}" --out "$ARTIFACT_DIR"
+          FILENAME="$(node -p "require('./$ARTIFACT_DIR/candidate.json').tarball.filename")"
+          SHA="$(node -p "require('./$ARTIFACT_DIR/candidate.json').tarball.sha256")"
+          {
+            echo "tarball_filename=$FILENAME"
+            echo "tarball_sha256=$SHA"
+          } >> "$GITHUB_OUTPUT"
+
+      # Retain the exact bytes for every downstream job. This artifact ID is the immutable handle;
+      # nothing downstream rebuilds.
+      - name: Retain the candidate artifact (tgz + manifest)
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: |
+            ${{ env.ARTIFACT_DIR }}/*.tgz
+            ${{ env.ARTIFACT_DIR }}/candidate.json
+          if-no-files-found: error
+          retention-days: 90
+
+  draft:
+    name: draft_prepared — prepare (never publish) the GitHub draft
+    needs: candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Only contents:write, and only to CREATE/UPDATE an unpublished draft with the retained assets.
+    permissions:
+      contents: write
+    steps:
+      - name: Download the retained candidate (NO rebuild, NO repack)
+        uses: actions/download-artifact@v4
+        with:
+          name: release-candidate-${{ needs.candidate.outputs.run_id }}
+          path: ${{ env.ARTIFACT_DIR }}
+
+      - name: Re-verify the retained bytes match the prepared receipt
+        run: |
+          set -euo pipefail
+          ACTUAL="sha256:$(shasum -a 256 "$ARTIFACT_DIR/${{ needs.candidate.outputs.tarball_filename }}" | awk '{print $1}')"
+          test "$ACTUAL" = "${{ needs.candidate.outputs.tarball_sha256 }}" || {
+            echo "::error::retained tarball digest $ACTUAL != prepared ${{ needs.candidate.outputs.tarball_sha256 }}"; exit 1; }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Reconcile draft_prepared and prepare the draft (live) or print it (dry-run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.candidate.outputs.tag }}"
+          FILE="$ARTIFACT_DIR/${{ needs.candidate.outputs.tarball_filename }}"
+          if [ "$MODE" = "live" ]; then
+            # Create the draft if absent, else update it; attach the retained tgz + manifest. Draft
+            # stays unpublished (--draft) — the finalize workflow publishes it later.
+            gh release view "$TAG" >/dev/null 2>&1 \
+              && gh release edit "$TAG" --draft \
+              || gh release create "$TAG" --draft --title "$TAG" --notes "Prepared draft for $TAG (unpublished)."
+            gh release upload "$TAG" "$FILE" "$ARTIFACT_DIR/candidate.json" --clobber
+          else
+            echo "[dry-run] would prepare unpublished draft $TAG and attach $FILE + candidate.json"
+          fi
+
+  stage:
+    name: staged — OIDC trusted-publisher stage of the retained tarball
+    needs: [candidate, draft]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The stage environment (P5S) restricts this to protected v* refs with no admin bypass.
+    environment: release
+    # Minimal: read to fetch the artifact, id-token to mint the OIDC token. NO contents:write.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download the retained candidate (NO rebuild, NO repack)
+        uses: actions/download-artifact@v4
+        with:
+          name: release-candidate-${{ needs.candidate.outputs.run_id }}
+          path: ${{ env.ARTIFACT_DIR }}
+
+      - name: Re-verify the retained bytes before staging
+        run: |
+          set -euo pipefail
+          ACTUAL="sha256:$(shasum -a 256 "$ARTIFACT_DIR/${{ needs.candidate.outputs.tarball_filename }}" | awk '{print $1}')"
+          test "$ACTUAL" = "${{ needs.candidate.outputs.tarball_sha256 }}" || {
+            echo "::error::retained tarball digest $ACTUAL != prepared ${{ needs.candidate.outputs.tarball_sha256 }}"; exit 1; }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+
+      - run: npm ci
+
+      - name: Stage the LITERAL retained tarball (live) or print the exact command (dry-run)
+        id: stage
+        run: |
+          set -euo pipefail
+          TARBALL="$ARTIFACT_DIR/${{ needs.candidate.outputs.tarball_filename }}"
+          POLICY_TAG="${{ needs.candidate.outputs.policy_tag }}"
+          if [ "$MODE" = "live" ]; then
+            # Stage — do NOT publish. npm returns a stage id; capture it as the immutable handle.
+            npm stage publish "$TARBALL" --tag "$POLICY_TAG" --provenance | tee stage.out
+            STAGE_ID="$(sed -nE 's/.*stage[ _-]?id[ :=]+([A-Za-z0-9_-]+).*/\1/p' stage.out | head -1)"
+            test -n "$STAGE_ID" || { echo "::error::could not parse npm stage id"; exit 1; }
+            echo "stage_id=$STAGE_ID" >> "$GITHUB_OUTPUT"
+          else
+            echo "[dry-run] would run: npm stage publish $TARBALL --tag $POLICY_TAG --provenance"
+            echo "stage_id=dry-run-stage" >> "$GITHUB_OUTPUT"
+          fi
+
+      # End the run with the immutable identifiers AND the operator's mandatory pre-approval
+      # inspection commands (npm stage download + SHA-256 compare). Approval happens interactively;
+      # this run does not resume.
+      - name: Emit immutable stage receipt + interactive inspection instructions
+        run: |
+          set -euo pipefail
+          node scripts/release-emit-receipt.mjs \
+            --run-id "${{ needs.candidate.outputs.run_id }}" \
+            --artifact-id "${{ needs.candidate.outputs.artifact_id }}" \
+            --stage-id "${{ steps.stage.outputs.stage_id }}" \
+            --version "${{ needs.candidate.outputs.version }}" \
+            --policy-tag "${{ needs.candidate.outputs.policy_tag }}" \
+            --tarball-sha256 "${{ needs.candidate.outputs.tarball_sha256 }}" \
+            --tarball-filename "${{ needs.candidate.outputs.tarball_filename }}" \
+            | tee "$GITHUB_STEP_SUMMARY"

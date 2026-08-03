@@ -31,13 +31,38 @@ export function verificationPolicy(mode) {
   throw new Error("usage: verify-npm-package.mjs --local|--release [--json]");
 }
 
+const USAGE = "usage: verify-npm-package.mjs (--local | --release | --tarball <path> [--manifest <path>]) [--json]";
+
 export function parseVerificationArgs(argv) {
   const json = argv.includes("--json");
-  const positionals = argv.filter((arg) => arg !== "--json");
-  if (positionals.length !== 1 || (positionals[0] !== "--local" && positionals[0] !== "--release")) {
-    throw new Error("usage: verify-npm-package.mjs --local|--release [--json]");
+  const rest = argv.filter((arg) => arg !== "--json");
+
+  const tarballAt = rest.indexOf("--tarball");
+  if (tarballAt !== -1) {
+    // Retained-artifact mode: verify an ALREADY-PACKED tarball with NO build and NO pack. This is
+    // the mode the staged-release workflow and prepublishOnly use so the verified bytes are the
+    // SAME bytes that get staged/published — never a freshly-rebuilt second candidate.
+    const tarball = rest[tarballAt + 1];
+    if (!tarball || tarball.startsWith("--")) throw new Error(USAGE);
+    let manifest = null;
+    const manifestAt = rest.indexOf("--manifest");
+    if (manifestAt !== -1) {
+      manifest = rest[manifestAt + 1];
+      if (!manifest || manifest.startsWith("--")) throw new Error(USAGE);
+    }
+    const consumed = new Set([tarballAt, tarballAt + 1]);
+    if (manifestAt !== -1) {
+      consumed.add(manifestAt).add(manifestAt + 1);
+    }
+    const leftover = rest.filter((_, i) => !consumed.has(i));
+    if (leftover.length !== 0) throw new Error(USAGE);
+    return { mode: "tarball", tarball, manifest, json };
   }
-  return { mode: positionals[0].slice(2), json };
+
+  if (rest.length !== 1 || (rest[0] !== "--local" && rest[0] !== "--release")) {
+    throw new Error(USAGE);
+  }
+  return { mode: rest[0].slice(2), json };
 }
 
 function npmInvocation(args, env = process.env) {
@@ -194,8 +219,20 @@ export async function assertCommandInBin(command, env, binDir, platform = proces
   return expected;
 }
 
-export async function verifyNpmPackage({ mode }) {
-  const policy = verificationPolicy(mode);
+/** SHA-256 of a file, prefixed `sha256:` (the build-identity convention). */
+export async function fileSha256(file) {
+  return `sha256:${createHash("sha256").update(await readFile(file)).digest("hex")}`;
+}
+
+/**
+ * Two producers, ONE proof. `spec.produce({ scratch, packDir, npmUserConfig, npmCache })` returns
+ * `{ tarball, meta }`: either builds+packs a fresh scratch candidate (developer/PR modes) OR
+ * accepts an ALREADY-RETAINED tarball and packs nothing (the staged-release path). The install +
+ * contract + workflow + identity proof below is byte-for-byte identical across both — the ONLY
+ * difference is where the tarball came from, which is exactly the retained-artifact invariant:
+ * the bytes we prove are the bytes that ship.
+ */
+async function runInstalledProof(spec) {
   const scratch = await mkdtemp(path.join(tmpdir(), "agentstate-lite-npm-proof-"));
   const packDir = path.join(scratch, "pack");
   const prefix = path.join(scratch, "prefix");
@@ -211,25 +248,7 @@ export async function verifyNpmPackage({ mode }) {
   try {
     await Promise.all([mkdir(packDir), mkdir(prefix), mkdir(home)]);
     await writeFile(npmUserConfig, "");
-    const cleanBuildEnv = sanitizedNpmEnvironment(process.env, npmUserConfig, npmCache);
-    await run(process.execPath, [path.join(repoRoot, "packages", "cli", "build.mjs"), policy.artifactChannel], {
-      cwd: repoRoot,
-      env: cleanBuildEnv,
-    });
-    const packed = await runNpm(
-      [
-        "pack",
-        "--json",
-        "--ignore-scripts",
-        "--pack-destination",
-        packDir,
-      ],
-      { cwd: path.join(repoRoot, "packages", "cli"), npmUserConfig, npmCache },
-    );
-    const receipts = parseJson(packed.stdout, "npm pack");
-    assert.equal(receipts.length, 1, "npm pack must produce exactly one tarball");
-    const receipt = receipts[0];
-    const tarball = path.join(packDir, receipt.filename);
+    const { tarball, meta } = await spec.produce({ scratch, packDir, npmUserConfig, npmCache });
 
     await runNpm(
       [
@@ -255,7 +274,13 @@ export async function verifyNpmPackage({ mode }) {
     const referenceFiles = (await listFiles(path.join(committedSkillRoot, "references"))).map((relative) =>
       relative.split(path.sep).join("/"),
     );
-    assertPackageContract(receipt, manifest, referenceFiles);
+    // Derive the tarball's file set from the installed tree so the contract check holds in BOTH
+    // producer modes (retained mode never sees npm pack's file list). The installed
+    // node_modules/@holaxis/aslite tree IS the tarball's contents.
+    const contractReceipt = {
+      files: (await listFiles(installedRoot)).map((relative) => ({ path: relative.split(path.sep).join("/") })),
+    };
+    assertPackageContract(contractReceipt, manifest, referenceFiles);
 
     // The shipped skill assets are byte-identical to the repo-committed generated ones (which
     // check:skill pins to the renderer + resource manifest).
@@ -327,7 +352,7 @@ export async function verifyNpmPackage({ mode }) {
       name: "@holaxis/aslite",
       version: manifest.version,
     });
-    assert.equal(preferredIdentity.identity.artifact.channel, policy.artifactChannel);
+    assert.equal(preferredIdentity.identity.artifact.channel, spec.expectedChannel);
     const installedSha = `sha256:${createHash("sha256").update(await readFile(installedEntrypoint)).digest("hex")}`;
     assert.equal(preferredIdentity.identity.artifact.sha256, installedSha);
     const installedEntrypointRealPath = await realpath(installedEntrypoint);
@@ -341,7 +366,7 @@ export async function verifyNpmPackage({ mode }) {
       "agentstate-lite"
     ];
     assert.equal(homeIdentity.version, manifest.version);
-    assert.equal(homeIdentity.channel, policy.artifactChannel);
+    assert.equal(homeIdentity.channel, spec.expectedChannel);
     assert.equal(homeIdentity.bin, installedEntrypointRealPath);
 
     await runCli("agentstate-lite", ["--help"]);
@@ -562,9 +587,9 @@ export async function verifyNpmPackage({ mode }) {
     assertSnapshotUnchanged(marketplaceBefore, await snapshotTree(marketplaceDir), ".claude-plugin/");
 
     return {
-      mode: policy.mode,
+      mode: spec.mode,
       package: `${manifest.name}@${manifest.version}`,
-      files: receipt.files.length,
+      files: contractReceipt.files.length,
       bins: Object.keys(manifest.bin),
       workflow: [
         "recipes",
@@ -577,11 +602,13 @@ export async function verifyNpmPackage({ mode }) {
       ],
       identity: preferredIdentity,
       tarball: {
-        filename: receipt.filename,
-        shasum: receipt.shasum,
-        integrity: receipt.integrity,
-        size: receipt.size,
-        unpacked_size: receipt.unpackedSize,
+        path: meta.path ?? null,
+        filename: meta.filename,
+        sha256: meta.sha256 ?? (await fileSha256(tarball)),
+        shasum: meta.shasum,
+        integrity: meta.integrity,
+        size: meta.size,
+        unpacked_size: meta.unpackedSize,
       },
     };
   } finally {
@@ -589,10 +616,102 @@ export async function verifyNpmPackage({ mode }) {
   }
 }
 
+/**
+ * Scratch-candidate mode (developer `--local`, PR-gate `--release`): builds+packs a FRESH candidate
+ * in the scratch dir, then proves it. This is ordinary verification — NOT the production release
+ * candidate. "Build/pack once" is a claim about the release-candidate command, not this mode.
+ */
+export async function verifyNpmPackage({ mode }) {
+  const policy = verificationPolicy(mode);
+  return runInstalledProof({
+    mode: policy.mode,
+    expectedChannel: policy.artifactChannel,
+    async produce({ packDir, npmUserConfig, npmCache }) {
+      const cleanBuildEnv = sanitizedNpmEnvironment(process.env, npmUserConfig, npmCache);
+      await run(process.execPath, [path.join(repoRoot, "packages", "cli", "build.mjs"), policy.artifactChannel], {
+        cwd: repoRoot,
+        env: cleanBuildEnv,
+      });
+      const packed = await runNpm(
+        ["pack", "--json", "--ignore-scripts", "--pack-destination", packDir],
+        { cwd: path.join(repoRoot, "packages", "cli"), npmUserConfig, npmCache },
+      );
+      const receipts = parseJson(packed.stdout, "npm pack");
+      assert.equal(receipts.length, 1, "npm pack must produce exactly one tarball");
+      const receipt = receipts[0];
+      const tarball = path.join(packDir, receipt.filename);
+      return {
+        tarball,
+        meta: {
+          path: tarball,
+          filename: receipt.filename,
+          sha256: await fileSha256(tarball),
+          shasum: receipt.shasum,
+          integrity: receipt.integrity,
+          size: receipt.size,
+          unpackedSize: receipt.unpackedSize,
+        },
+      };
+    },
+  });
+}
+
+/**
+ * Retained-artifact mode (`--tarball <path> [--manifest <candidate.json>]`): verifies an
+ * ALREADY-PACKED tarball with NO build and NO pack. Contains, by construction, zero calls to
+ * build.mjs or `npm pack` — the whole point of P5A's no-rebuild invariant. When a candidate
+ * manifest is supplied its recorded SHA-256 must equal the tarball's actual bytes, so a swapped
+ * or rebuilt artifact fails closed here before it can be staged.
+ */
+export async function verifyRetainedTarball({ tarball, manifest = null }) {
+  const tarballPath = path.resolve(tarball);
+  await access(tarballPath, constants.R_OK).catch(() => {
+    throw new Error(`retained tarball not found: ${tarballPath}`);
+  });
+  const actualSha = await fileSha256(tarballPath);
+  let recorded = null;
+  if (manifest) {
+    recorded = parseJson(await readFile(path.resolve(manifest), "utf8"), "candidate manifest");
+    const recordedSha = recorded?.tarball?.sha256;
+    assert.equal(
+      actualSha,
+      recordedSha,
+      `retained tarball SHA-256 ${actualSha} does not match candidate manifest ${recordedSha ?? "<missing>"}`,
+    );
+    assert.equal(
+      recorded?.build_identity?.artifact?.channel ?? "npm-package",
+      "npm-package",
+      "a retained release candidate must carry the npm-package artifact channel",
+    );
+  }
+  return runInstalledProof({
+    mode: "tarball",
+    // A retained release candidate is always an npm-package build; the identity proof enforces it.
+    expectedChannel: "npm-package",
+    async produce() {
+      return {
+        tarball: tarballPath,
+        meta: {
+          path: tarballPath,
+          filename: path.basename(tarballPath),
+          sha256: actualSha,
+          shasum: recorded?.tarball?.shasum ?? null,
+          integrity: recorded?.tarball?.integrity ?? null,
+          size: recorded?.tarball?.size ?? null,
+          unpackedSize: recorded?.tarball?.unpacked_size ?? null,
+        },
+      };
+    },
+  });
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   try {
     const args = parseVerificationArgs(process.argv.slice(2));
-    const result = await verifyNpmPackage({ mode: args.mode });
+    const result =
+      args.mode === "tarball"
+        ? await verifyRetainedTarball({ tarball: args.tarball, manifest: args.manifest })
+        : await verifyNpmPackage({ mode: args.mode });
     if (args.json) {
       console.log(JSON.stringify(result));
     } else {
