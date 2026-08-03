@@ -1,53 +1,71 @@
 ---
 type: Review Request
-title: 'Review: onboarding surface and task boundaries'
+title: 'Review: onboarding guide, create-only safety, and Mike-side record boundaries'
 status: requested
 reviewer: Michael Collier
 requested_by: Brian Derfer
 question: >-
-  Approve the proposed one-journey/two-work-unit boundary and the limited
-  updates to openai/codex-owned quickstart and Journey records?
+  Approve the guide/quickstart/create-only boundaries, decide whether
+  agentstate-guide is outside the built-in-recipe deferral, and authorize the
+  named Mike-side front-door and record updates?
 actor: codex-onboarding-scope
-timestamp: '2026-08-03T22:37:59.941Z'
+timestamp: '2026-08-03T23:34:21.064Z'
 ---
 # Context
 
-The scoping handoff asked for one coherent plan across recipe discovery, npm quickstart, the guidance bundle, and the new-user Journey model. [The resulting plan](../plans/onboarding-surfaces.md) finds one user journey but only two remaining implementation units:
+[The revised onboarding plan](../plans/onboarding-surfaces.md) was reviewed through founder-intent, coherence, and adversarial lenses. The panel's [synthesis](../context-notes/review-onboarding-synthesis.md) affirmed the one-journey structure and Recipe delivery shape but found two mechanics the original plan assumed incorrectly:
 
-- the openai/codex-owned npm quickstart remains the installed-package `work-tracking` productivity proof;
-- the Brian/Claude-owned guidance task becomes one explicit built-in `agentstate-guide` Recipe and learning workspace;
-- product recipe discovery and launcher first-run orientation remain completed primitives; and
-- the Journey/Journey Stage records remain the cross-lane experience and evidence map, not another build surface.
+- a read-only View cannot create a document, so guide v1 now teaches a CLI `new` action that the View observes; and
+- current `init` can mutate an existing bundle or create a nested bundle, so safe onboarding now has a separate generic [create-only target-safety task](../tasks/init-target-safety-guard.md).
 
-A current-state correction matters: [product recipe discovery](../tasks/product-recipe-discovery.md) is already done at PR #201 / merge `138a3c7` and is openai/codex-owned, although the handoff summarized it as todo/unowned. The plan therefore preserves it and expands the coordination boundary from two to three Mike-side records.
+The early discovery-to-first-value slice therefore has three work units: generic create-only init safety, the Brian/Claude guide unit, and the openai/codex npm quickstart. Adjacent MCP host connection, return/rediscovery, and deferred domain recipes remain outside this request.
+
+Recipe discovery remains done at PR #201 / merge `138a3c7`. The guide task may prototype curriculum and a read-only View now, but it will not register a recommended built-in or alter Mike-side surfaces/records until this request is decided.
 
 # Requested decision
 
-Michael, please approve or request changes to the proposed boundary before anyone changes the openai/codex-owned quickstart or Journey records:
+Michael, please approve, reject, or amend each boundary:
 
-1. keep recipe discovery done and consume it as the generic seam;
-2. keep Q6 quickstart independent of guide completion and focused on the installed npm → discovery/orientation → `work-tracking` → useful/visible state proof;
-3. use the Journey model as the organizing/readiness frame, with desktop host setup treated as parallel lanes rather than a hard predecessor of shared learning; and
-4. let the separate guidance task ship `agentstate-guide` through RecipeSource with no special command, silent install, wizard/acknowledgement, or Personal Task System dependency; and
-5. after approval, add the missing typed Roadmap Item → Task `contains` edges from npm-first distribution to quickstart and guidance, and from product recipes to guidance.
+1. **One-journey framing:** keep recipe discovery and launcher orientation as shipped primitives; keep quickstart, create-only safety, and guide as distinct work units; keep Journey docs as the evidence/readiness model rather than another runtime surface.
+2. **Recipe-deferral scope:** does [the built-in recipe deferral](../decisions/defer-builtin-recipes.md) extend to a built-in product guide, or is `agentstate-guide` outside it because it teaches shipped product primitives rather than guessing a user's domain operating model?
+3. **Completed discovery/home follow-up:** may the guide task update the no-bundle `getting_started` copy to name the guide and its explicit safe default path while leaving generic `aslite recipes` row-command semantics unchanged? [product-recipe-discovery](../tasks/product-recipe-discovery.md) remains done; this is a narrow follow-up owned by the guide task.
+4. **Generic target-safety contract:** approve a backward-compatible `init --create-only` mode, owned by the Brian/Claude guard task, that refuses existing/bound/enclosing/ambiguous/concurrent targets before writes. Existing `init` behavior without the flag and `recipe add` remain unchanged.
+5. **Quickstart integration:** after the guard ships, may [npm-quickstart-onboarding](../tasks/npm-quickstart-onboarding.md) use create-only for its fresh `work-tracking` proof and consume the revised no-bundle front door without taking ownership of guide content?
+6. **Exact Journey records:** approve later evidence/lane wording changes—only after implementation proof—to:
+   - [journeys/new-user-to-recurring-value](../journeys/new-user-to-recurring-value.md): name terminal, skill-mediated, and existing-project entry conditions; keep desktop host setup as parallel lanes;
+   - [journey-stages/04-learn-through-guidance-bundle](../journey-stages/04-learn-through-guidance-bundle.md): reflect ordered, stateless guide discovery and the CLI-write/read-only-View interaction; and
+   - [journey-stages/06-install-or-model-operating-system](../journey-stages/06-install-or-model-operating-system.md): record recipe discovery as shipped while leaving the deferred end-to-end domain operating-model proof outside the guide.
+7. **Typed roadmap containment after approval:** add:
+   - [npm-first distribution](../roadmap-items/distribution-neutral-resources.md) `contains` [npm quickstart](../tasks/npm-quickstart-onboarding.md);
+   - npm-first distribution `contains` [init target safety](../tasks/init-target-safety-guard.md);
+   - npm-first distribution `contains` [guidance onboarding](../tasks/guidance-bundle-onboarding.md); and
+   - [product recipes](../roadmap-items/recipe-plugins.md) `contains` guidance onboarding.
+8. **Work that need not wait:** curriculum ordering, read-only View design, folder-Recipe prototype, and build-time embedding design may proceed before this decision. Built-in registration, recommended-default copy, quickstart/Journey edits, and roadmap writes wait.
 
-Approval authorizes only the record clarifications described in the plan. It does not authorize product code, P5A/release changes, or retirement of a Mike-side task.
+Approval authorizes only the scoped records/behavior above. It does not authorize product implementation by this scoping session, P5A/release changes, MCP installation, View-create actions, notices/identity, or revival of deferred domain recipes.
 
 # Acceptance criteria
 
-- The boundary matches the intent of PR #201 and [its recipe-to-guide handoff](../context-notes/recipe-discovery-guidance-bundle.md).
-- Q6 remains consistent with Q6 in [the version/update plan](../plans/version-string-channel-identity.md) and [the built-in recipe deferral](../decisions/defer-builtin-recipes.md).
-- Journey records track evidence/readiness without duplicating implementation tasks.
-- The declared Roadmap Item → Task containment graph matches the approved ownership boundary.
-- Ownership and next actions are unambiguous, and no Mike-side record is merged, retired, or rewritten before this request is approved.
+- The decision explicitly resolves whether `agentstate-guide` is inside or outside the built-in-recipe deferral.
+- The completed discovery Task stays done and generic inventory behavior remains one RecipeSource path.
+- Any no-bundle home change is knowingly authorized and owned rather than smuggled through the guide.
+- Create-only safety is generic, backward compatible, separately reviewed/QA'd, and its quickstart coupling is explicit.
+- The exact Journey and Journey Stage IDs are discoverable through backlinks from this request.
+- Roadmap containment matches the approved ownership boundary.
+- The guide can design content now without silently claiming built-in/default status.
+- No Mike-side Task, Journey, Journey Stage, or Roadmap Item body/state is changed before approval.
 
 # Reviewer response
 
-Pending Michael Collier. Record approval or requested changes in this document's lifecycle fields and summarize any boundary changes here.
+Pending Michael Collier. Please record approval or requested changes in this document's lifecycle fields and summarize any per-item exceptions here.
 
 [reviews task](../tasks/npm-quickstart-onboarding.md)
 
 [reviews task](../tasks/product-recipe-discovery.md)
+
+[reviews task](../tasks/init-target-safety-guard.md)
+
+[reviews task](../tasks/guidance-bundle-onboarding.md)
 
 [reviews roadmap item](../roadmap-items/distribution-neutral-resources.md)
 

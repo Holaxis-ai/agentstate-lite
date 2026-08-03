@@ -9,7 +9,7 @@ description: >-
   embedding, and a generic create-only init guard predecessor.
 actor: codex-onboarding-scope
 assignee: brian-claude
-timestamp: '2026-08-03T23:33:52.571Z'
+timestamp: '2026-08-03T23:34:27.691Z'
 ---
 # Goal
 
@@ -129,3 +129,5 @@ Using the exact installed local-dev npm artifact from an isolated home and empty
 - [recipe-plugins](../roadmap-items/recipe-plugins.md)
 - [npm-cli-skill-prerelease](npm-cli-skill-prerelease.md)
 - [recipe-to-guide handoff](../context-notes/recipe-discovery-guidance-bundle.md)
+
+[depends on](init-target-safety-guard.md)

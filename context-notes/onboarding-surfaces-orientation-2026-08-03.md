@@ -2,7 +2,7 @@
 type: Context Note
 title: Onboarding surfaces scoping orientation and system model
 actor: codex-onboarding-scope
-timestamp: '2026-08-03T23:30:14.162Z'
+timestamp: '2026-08-03T23:35:03.087Z'
 ---
 # Summary
 
@@ -38,3 +38,12 @@ A three-lens panel returned pass-with-caveats. It affirmed one journey, the Reci
 - tasks/onboarding-surface-scoping returns to done after validation and sync
 
 Openai/codex-owned task, Journey, Journey Stage, and Roadmap Item records remain unchanged until Michael approves.
+
+## Decision handoff — Michael unavailable
+
+Brian reported that Michael is out for the week and asked this session to drive the decision. The
+remaining human product call is whether `agentstate-guide` is outside the built-in domain-recipe
+deferral. Recommendation: YES — it teaches already-shipped product primitives rather than freezing
+a guessed user operating model, while curriculum order remains a revisable hypothesis validated by
+a fresh-user walkthrough. If Brian approves that distinction, this session is authorized to apply
+the already-reviewed record/front-door decisions without waiting for Michael.
