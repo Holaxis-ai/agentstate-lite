@@ -3,17 +3,18 @@ type: Roadmap Item
 title: Conversational Views through MCP Apps
 status: active
 description: >-
-  ACTIVE — converge transient and durable Views on one active source contract.
-  Durable catalog, shared rendering, authoring guidance, and cross-host dogfood
-  have shipped. The current unit proves a hash-identified process-local
-  transient launch; exact-byte save, governed-action parity, and deletion of the
-  generated presentation contract follow.
+  ACTIVE — the one-source View contract is now proven end to end. A transient
+  active View queried and rendered live data, subscribed, saved exact bytes,
+  reopened as a fresh durable identity in MCP, launched unchanged through the
+  web host, and completed governed actions through both authorities. The
+  superseded MCP-only generated-presentation contract is now ready for bounded
+  deletion; navigation parity follows.
 sequence: >-
-  Durable View foundations shipped → transient active-source proof → exact-byte
-  save → bundle-propose parity → delete generated presentation contract →
-  navigation parity
+  Unified foundations shipped → transient active launch shipped → exact-byte
+  save shipped → bundle-propose parity shipped → cross-host acceptance passed →
+  delete generated presentation contract → navigation parity
 actor: openai/codex
-timestamp: '2026-08-02T20:42:40.702Z'
+timestamp: '2026-08-03T00:27:42.198Z'
 ---
 # Direction
 
@@ -144,3 +145,5 @@ Current work:
 [contains](../tasks/transient-authorization-store-isolation.md)
 
 [contains](../tasks/mcp-active-view-bundle-propose.md)
+
+[validated by](../context-notes/transient-durable-cross-host-acceptance-2026-08-02.md)
