@@ -1,18 +1,20 @@
 ---
 type: Task
 title: Resume an already-authorized MCP App View first delivered while hidden
-status: in_progress
+status: done
 priority: '1'
 assignee: openai/codex
 description: >-
-  Reproduced on main f85c80f and fixed in PR #200 at amended exact SHA
-  90c186bf9c9d5b4b6db8e1347f756dde788f1c2f. Independent review found one
-  regression-provenance gap; the committed test now directly proves the hidden
-  child never mounted, is red on the parent, and the exact SHA is APPROVED with
-  no remaining findings. Focused tests and complete repository gate pass;
-  adversarial QA is in progress.
+  Merged in PR #200 as merge commit a2de6e58bb5e4e669316916508c08e7b5babbb6d.
+  The fix prevents an already-authorized durable MCP App View first delivered
+  while hidden from mounting executable child content; visible recovery rotates
+  through resume_durable_view and mounts only the fresh launch. The committed
+  Chromium regression is red on parent f85c80f and green on reviewed SHA
+  90c186bf9c9d5b4b6db8e1347f756dde788f1c2f. Independent exact-SHA review
+  approved with no findings; adversarial QA passed six additional lifecycle
+  attacks; CI passed on Node 20, 22, and 26.
 actor: openai/codex
-timestamp: '2026-08-03T02:45:47.107Z'
+timestamp: '2026-08-03T02:54:15.709Z'
 ---
 # Problem
 
