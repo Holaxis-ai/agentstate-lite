@@ -5,11 +5,11 @@ status: todo
 priority: '1'
 assignee: brian-claude
 description: >-
-  Add backward-compatible init --create-only preflight that refuses existing,
-  bound, enclosing, ambiguous, or concurrently-created bundle targets before any
-  write; shared predecessor for guide and quickstart.
+  Approved P1 predecessor: add backward-compatible init --create-only preflight
+  that refuses existing, bound, enclosing, ambiguous, or concurrently-created
+  targets before any write; shared by guide and quickstart.
 actor: codex-onboarding-scope
-timestamp: '2026-08-03T23:32:11.742Z'
+timestamp: '2026-08-03T23:54:59.775Z'
 ---
 # Problem
 
@@ -36,7 +36,7 @@ The onboarding guide's intended command becomes:
 aslite init --create-only --recipe agentstate-guide --dir ~/.agentstate-lite/guide
 ```
 
-The exact spelling and semantics are generic; there is no `agentstate-guide` branch in target resolution. After Michael approves the shared boundary, npm quickstart should use the same mode for its fresh-workspace proof.
+The exact spelling and semantics are generic; there is no `agentstate-guide` branch in target resolution. The [approved boundary review](../review-requests/onboarding-surfaces-mike-signoff.md) authorizes npm quickstart to use the same mode for its fresh-workspace proof after this guard ships.
 
 # Acceptance criteria
 
@@ -59,5 +59,5 @@ Target policy belongs in one owning CLI target-resolution primitive, not in guid
 
 - Scoped by [the revised onboarding plan](../plans/onboarding-surfaces.md) and the review findings linked there.
 - Brian/Claude side owns the guard unit.
-- Implementation waits for [Michael's sign-off](../review-requests/onboarding-surfaces-mike-signoff.md) because the public mode changes the quickstart oracle and the npm/discovery front door.
+- Brian's [guide-deferral decision](../decisions/agentstate-guide-outside-domain-recipe-deferral.md) and the approved boundary review clear this unit to enter implementation planning under its required review/QA gate.
 - No P5A, release automation, update-selection, marketplace-retirement, MCP, or View-action work belongs here.

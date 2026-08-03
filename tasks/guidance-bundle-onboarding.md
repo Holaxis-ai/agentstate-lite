@@ -4,12 +4,12 @@ title: 'Ship agentstate-guide as an ordered, stateless learning workspace'
 status: todo
 priority: '2'
 description: >-
-  Review-revised: ordered built-in guide prototype with read-only live View, CLI
-  first action, stateless skill/home/README discovery, build-time asset
-  embedding, and a generic create-only init guard predecessor.
+  Approved direction: ordered built-in guide with read-only live View, CLI first
+  action, stateless skill/home/README discovery, build-time embedding,
+  fresh-user validation, and generic create-only init safety predecessor.
 actor: codex-onboarding-scope
 assignee: brian-claude
-timestamp: '2026-08-03T23:34:27.691Z'
+timestamp: '2026-08-03T23:54:35.694Z'
 ---
 # Goal
 
@@ -25,10 +25,13 @@ This task was narrowed once during scoping. This revision folds in [the three-le
 - Prototype the Recipe as a folder source and design its build-time embedding generator.
 - Validate content through local builds without claiming it is the recommended built-in.
 
-## Waits for Michael's decision
+## Product decision resolved
 
-- Register `agentstate-guide` as a built-in while [the built-in recipe deferral](../decisions/defer-builtin-recipes.md) remains explicitly open for other built-in-flavored work.
-- Change the completed no-bundle home/discovery copy or openai/codex-owned Journey/quickstart records.
+[Brian's decision](../decisions/agentstate-guide-outside-domain-recipe-deferral.md) establishes that
+`agentstate-guide` is outside the domain-Recipe deferral because it teaches existing AgentState
+functionality. Built-in registration and the narrow front-door follow-up are authorized after the
+prototype, create-only safety, fresh-user validation, independent review, and package gates pass.
+Personal Task System, Product Manager, and other domain Recipes remain deferred.
 
 ## Hard predecessor
 
@@ -68,7 +71,7 @@ The `bundle-read` View subscribes and visibly updates when the document lands. I
 
 ## Proactive front doors
 
-After Michael authorizes the completed-surface follow-up:
+The completed-surface follow-up is approved:
 
 - the generated Agent Skill source names `agentstate-guide`, prints the exact create-only command, and instructs agents to recommend it only when the user says they are new or asks how to start;
 - no-bundle `getting_started` names the same guide/default path while retaining blank-init and generic recipe discovery choices; and
@@ -115,7 +118,7 @@ Using the exact installed local-dev npm artifact from an isolated home and empty
 # Non-goals
 
 - P5A, staged release automation, update awareness, marketplace retirement, deployment, or MCP host installation.
-- A guessed domain operating model or reversal of the recipe deferral without Michael's explicit decision.
+- A guessed domain operating model or any change to the still-active domain-Recipe deferral.
 - Per-person notices, passive seen tracking, acknowledgement, stable identity, or repeated reminders.
 - View-mediated document creation or any new trusted-action mechanic.
 - Turning the learning workspace into the user's real project.
@@ -124,7 +127,9 @@ Using the exact installed local-dev npm artifact from an isolated home and empty
 # Related
 
 - [revised onboarding plan](../plans/onboarding-surfaces.md)
-- [Michael sign-off](../review-requests/onboarding-surfaces-mike-signoff.md)
+- [approved boundary review](../review-requests/onboarding-surfaces-mike-signoff.md)
+- [guide-deferral decision](../decisions/agentstate-guide-outside-domain-recipe-deferral.md)
+- [the built-in recipe deferral](../decisions/defer-builtin-recipes.md)
 - [distribution-neutral-resources](../roadmap-items/distribution-neutral-resources.md)
 - [recipe-plugins](../roadmap-items/recipe-plugins.md)
 - [npm-cli-skill-prerelease](npm-cli-skill-prerelease.md)

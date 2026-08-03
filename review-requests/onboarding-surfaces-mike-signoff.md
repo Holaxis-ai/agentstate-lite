@@ -1,15 +1,21 @@
 ---
 type: Review Request
-title: 'Review: onboarding guide, create-only safety, and Mike-side record boundaries'
-status: requested
-reviewer: Michael Collier
+title: 'Approved: onboarding guide, create-only safety, and record boundaries'
+status: approved
+reviewer: Brian Derfer
 requested_by: Brian Derfer
 question: >-
   Approve the guide/quickstart/create-only boundaries, decide whether
   agentstate-guide is outside the built-in-recipe deferral, and authorize the
   named Mike-side front-door and record updates?
 actor: codex-onboarding-scope
-timestamp: '2026-08-03T23:34:21.064Z'
+decision_summary: >-
+  Approved by Brian Derfer on 2026-08-03. agentstate-guide is outside the
+  domain-Recipe deferral because it teaches existing product functionality;
+  reviewed create-only, front-door, quickstart, Journey, and roadmap boundaries
+  adopted. Domain Recipes remain deferred.
+decided_at: '2026-08-03T23:52:46Z'
+timestamp: '2026-08-03T23:53:23.652Z'
 ---
 # Context
 
@@ -24,7 +30,8 @@ Recipe discovery remains done at PR #201 / merge `138a3c7`. The guide task may p
 
 # Requested decision
 
-Michael, please approve, reject, or amend each boundary:
+Michael is unavailable this week. Brian assumed decision authority and asked this session to drive
+the reviewed technical boundaries. The resulting disposition of each item is recorded below.
 
 1. **One-journey framing:** keep recipe discovery and launcher orientation as shipped primitives; keep quickstart, create-only safety, and guide as distinct work units; keep Journey docs as the evidence/readiness model rather than another runtime surface.
 2. **Recipe-deferral scope:** does [the built-in recipe deferral](../decisions/defer-builtin-recipes.md) extend to a built-in product guide, or is `agentstate-guide` outside it because it teaches shipped product primitives rather than guessing a user's domain operating model?
@@ -57,7 +64,18 @@ Approval authorizes only the scoped records/behavior above. It does not authoriz
 
 # Reviewer response
 
-Pending Michael Collier. Please record approval or requested changes in this document's lifecycle fields and summarize any per-item exceptions here.
+**APPROVED by Brian Derfer on 2026-08-03.**
+
+Brian explicitly decided that the built-in Recipe deferral does **not** cover `agentstate-guide`:
+the guide explains AgentState Lite's existing functionality and therefore has a different intent
+from speculative domain operating models. The durable rationale and boundaries are recorded in
+[the guide-deferral decision](../decisions/agentstate-guide-outside-domain-recipe-deferral.md).
+
+Items 1 and 3–8 are adopted as the review-revised technical plan: one early slice with separate
+create-only safety, guide, and quickstart units; a narrow no-bundle-home follow-up; generic
+backward-compatible create-only safety; the named quickstart/Journey/roadmap record updates; and
+curriculum prototyping before implementation gates. Personal Task System, Product Manager, and all
+other domain Recipes remain deferred.
 
 [reviews task](../tasks/npm-quickstart-onboarding.md)
 

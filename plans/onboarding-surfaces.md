@@ -3,10 +3,10 @@ type: Plan
 title: 'Onboarding surfaces v2: one journey, safe guide slice, explicit adjacent lanes'
 actor: codex-onboarding-scope
 description: >-
-  Revised after 3-lens review: one journey; generic create-only init guard,
-  ordered agentstate-guide, and npm quickstart in the early slice; adjacent
-  host/return/recipe lanes remain separate.
-timestamp: '2026-08-03T23:33:23.173Z'
+  Approved direction: agentstate-guide is outside the domain-Recipe deferral;
+  early slice contains generic create-only init safety, ordered/stateless guide,
+  and independent npm quickstart, with adjacent lanes explicit.
+timestamp: '2026-08-03T23:54:01.578Z'
 ---
 # Revision 2 decision summary
 
@@ -20,7 +20,7 @@ There is one new-user journey, not four competing onboarding products. Within th
 
 Two primitives are already shipped—bundle-free recipe discovery and launcher/home orientation—and the Journey records remain the cross-lane product/evidence model. Host connection, return/rediscovery, and richer operating-model recipes remain adjacent onboarding work outside this slice.
 
-Michael Collier's sign-off is required before changing openai/codex-owned records, changing the completed no-bundle home behavior, integrating create-only into quickstart, or registering the guide as a built-in while the recipe-deferral scope remains undecided. Curriculum and View design may begin now as a portable prototype.
+**Decision resolved:** Brian Derfer decided that `agentstate-guide` is outside the domain-Recipe deferral because it teaches AgentState Lite's existing functionality rather than a proposed user operating model. The durable [decision](../decisions/agentstate-guide-outside-domain-recipe-deferral.md) and [approved review request](../review-requests/onboarding-surfaces-mike-signoff.md) authorize the reviewed front-door, create-only, quickstart, Journey, and roadmap record boundaries. Built-in registration remains evidence-gated, not decision-blocked.
 
 # Goals
 
@@ -40,7 +40,7 @@ Three earlier claims were wrong or too broad:
 - **Current `init` does not fail closed on existing/enclosing workspaces.** It can apply another Recipe to an existing bundle and create a nested bundle. Safe onboarding needs an explicit generic create-only preflight; this is shared product code, not guide copy.
 - **“Only two implementation tasks remain” was true only of the four handed-off records, not onboarding as a whole.** This revision scopes the claim to the early slice and names adjacent open work.
 
-A fourth current-code constraint shapes discovery: bundle-free `aslite recipes` emits a cwd-targeting `init --recipe <name>` command when the caller supplied no target. V1 will not change that generic inventory contract implicitly. The no-bundle home, README, and Agent Skill will carry the guide's explicit safe command after Michael approves the completed-surface follow-up.
+A fourth current-code constraint shapes discovery: bundle-free `aslite recipes` emits a cwd-targeting `init --recipe <name>` command when the caller supplied no target. V1 will not change that generic inventory contract. The approved no-bundle home, README, and Agent Skill follow-up will carry the guide's explicit safe command.
 
 # Domain model
 
@@ -59,12 +59,12 @@ A fourth current-code constraint shapes discovery: bundle-free `aslite recipes` 
 
 | Component | Current state | Disposition and owner |
 | --- | --- | --- |
-| README, no-bundle home, Agent Skill | Live but do not name the guide; README skips recipe discovery. | The guide task owns the minimal static guide-entry copy and exact command. Editing the completed no-bundle home behavior waits for Michael's approval. Quickstart continues to own the general installed-package journey. |
+| README, no-bundle home, Agent Skill | Live but do not name the guide; README skips recipe discovery. | The approved guide task owns the minimal static guide-entry copy and exact command. Quickstart continues to own the general installed-package journey. |
 | [Bundle-free recipe discovery](../tasks/product-recipe-discovery.md) | Done in PR #201 / merge `138a3c7`; openai/codex. | Keep done. A built-in guide appears generically in inventory. Do not change per-row command semantics in this slice. |
 | [Create-only init safety](../tasks/init-target-safety-guard.md) | Missing; newly scoped P1, Brian/Claude side. | Build one backward-compatible generic `--create-only` mode before the guide's creation command or revised quickstart is treated as safe. |
-| [Guidance task](../tasks/guidance-bundle-onboarding.md) | Todo P2; assignee brian-claude. | Own ordered curriculum, read-only View, build-time Recipe embedding, static front-door copy, and the learn-to-real-bundle proof. Built-in registration waits for Michael's deferral decision. |
+| [Guidance task](../tasks/guidance-bundle-onboarding.md) | Todo P2; assignee brian-claude. | Own ordered curriculum, read-only View, build-time Recipe embedding, static front-door copy, and the learn-to-real-bundle proof. Built-in registration is permitted after the prototype, safety, user-validation, review, and package gates pass. |
 | [Launcher first-run](../tasks/launcher-first-run-onboarding.md) | Done in PRs #135/#137/#151. | Reuse as the container. The separate guide is justified because the launcher explains the current bundle at a glance; it does not provide an ordered, reopenable learn-by-doing path or graduation to another workspace. Do not reopen it. |
-| [npm quickstart](../tasks/npm-quickstart-onboarding.md) | Todo P1; openai/codex. | Remains independent of guide content. After approval and the guard ships, use create-only for its fresh `work-tracking` target and consume the existing discovery/front door. |
+| [npm quickstart](../tasks/npm-quickstart-onboarding.md) | Todo P1; openai/codex. | Remains independent of guide content. After the guard ships, use create-only for its fresh `work-tracking` target and consume the existing discovery/front door. |
 | [MCP install verb](../tasks/mcp-install-verb.md) | Todo P1; openai/codex. | Adjacent host-connection lane, not a guide-v1 predecessor. MCP remains “where configured”; terminal/local web is sufficient for guide validation. |
 | Return/rediscovery | Existing hook, catalog, session-start, and [catalog dogfood](../tasks/workspace-catalog-dogfood-checkpoint.md); Journey readiness remains rough. | Adjacent recurring-use work. The guide teaches how to reopen its fixed location; broader cross-host rediscovery stays in its existing lane. |
 | [Capability-awareness hints](../tasks/capability-awareness-hints.md) | Todo P3. | Separate general capability-hint system. Guide discovery is narrower and stateless: recommend only when the user self-identifies as new or asks how to begin. |
@@ -103,7 +103,7 @@ Claude Desktop and ChatGPT setup are parallel host lanes. They do not block the 
 
 - V1 is an ordered persistent reference, not a completion-tracking wizard.
 - The Agent Skill must name `agentstate-guide`, print the exact create-only command, and recommend it when a user says they are new or asks how to start.
-- The no-bundle `getting_started` copy and README must name the same safe path after Michael authorizes the follow-up to the completed discovery/home surface.
+- The approved no-bundle `getting_started` copy and README follow-up must name the same safe path.
 - Recommendation is **stateless and zero-nag**. With no repeated prompt there is nothing to suppress, so no acknowledgement marker is needed. Any future repeated/proactive prompt must remain stateless or it reacquires the stable-identity prerequisite from [the notice design](../designs/user-notices.md).
 - The guide remains available on demand and documents the exact reopen command/location.
 
@@ -128,12 +128,12 @@ The guide is the first named built-in expected to carry References and a registe
 
 # Implementation and decision sequence
 
-1. **Now, no Mike dependency:** prototype the ordered curriculum, read-only View, exact CLI first action, and build-time embedding generator. Test with a folder Recipe or local build; do not register it as the recommended built-in yet.
-2. **Michael sign-off:** decide deferral scope; authorize no-bundle home/quickstart/Journey/roadmap record changes; approve the create-only contract and ownership.
+1. **Decision complete:** Brian approved the guide-deferral distinction and the review-revised technical boundaries.
+2. **Prototype:** author the ordered curriculum, read-only View, exact CLI first action, and build-time embedding generator. Test with a folder Recipe or local build.
 3. **Target-safety unit:** build and independently review/QA generic `init --create-only`. This is a destructive/create-path boundary.
-4. **Guide unit:** after the guard and deferral decision, register the guide built-in, land the static front-door copy, run source/package gates, and complete a fresh-user walkthrough.
+4. **Guide unit:** after the guard, register the guide built-in, land the static front-door copy, run source/package gates, and complete a fresh-user walkthrough before declaring v1 done.
 5. **Quickstart unit:** after its existing I1+C2S prerequisites plus create-only, prove the installed `work-tracking` fast path. It may assert that the guide appears, but does not test guide curriculum.
-6. **Evidence updates:** openai/codex updates Journey records only after implementation evidence exists.
+6. **Evidence updates:** update Journey records only after implementation evidence exists.
 
 # De-duplicated task disposition
 
@@ -143,7 +143,7 @@ The guide is the first named built-in expected to carry References and a registe
 | [launcher-first-run-onboarding](../tasks/launcher-first-run-onboarding.md) | Keep done; reuse as container. |
 | [init-target-safety-guard](../tasks/init-target-safety-guard.md) | New P1 predecessor; generic shared safety mechanic with its own review/QA gate. |
 | [guidance-bundle-onboarding](../tasks/guidance-bundle-onboarding.md) | Keep todo P2; revise acceptance, not scope again. Own guide content, embedding, front doors, and guide proof. |
-| [npm-quickstart-onboarding](../tasks/npm-quickstart-onboarding.md) | Keep separate todo P1; Mike-side clarification after approval. |
+| [npm-quickstart-onboarding](../tasks/npm-quickstart-onboarding.md) | Keep separate todo P1; approved clarification links create-only while preserving its distinct oracle. |
 | [mcp-install-verb](../tasks/mcp-install-verb.md) | Keep separate adjacent P1 host-lane work. |
 | [capability-awareness-hints](../tasks/capability-awareness-hints.md) | Keep separate P3; broader than stateless guide discovery. |
 | [new-kind-missing-convention-hint](../tasks/new-kind-missing-convention-hint.md) | Keep separate P3 recovery work. |
@@ -152,17 +152,11 @@ The guide is the first named built-in expected to carry References and a registe
 | [Journey and stages](../journeys/new-user-to-recurring-value.md) | Keep active as the cross-lane evidence model; no task conversion. |
 | [onboarding-surface-scoping](../tasks/onboarding-surface-scoping.md) | Close after this revision, task revisions, validation, and sync. |
 
-# Exact coordination request
+# Decision and authorized record changes
 
-Before Mike-side edits, [the review request](../review-requests/onboarding-surfaces-mike-signoff.md) asks Michael to decide:
+Brian assumed decision authority while Michael is unavailable. The [approved request](../review-requests/onboarding-surfaces-mike-signoff.md) records the reviewed technical disposition; the [Decision](../decisions/agentstate-guide-outside-domain-recipe-deferral.md) records the human product call.
 
-- whether the built-in-recipe deferral includes `agentstate-guide`;
-- whether the guide task may update the completed no-bundle home copy while leaving generic recipe-row command semantics unchanged;
-- whether generic `init --create-only` is the right shared safety contract and should enter quickstart;
-- whether the exact Journey records named there should receive the proposed evidence/lane clarifications; and
-- whether the npm/product-recipe Roadmap Items should add the typed Task containment edges listed there.
-
-Until approval, openai/codex-owned task, Journey, Journey Stage, and Roadmap Item bodies/states remain unchanged.
+Authorized record changes are: link quickstart to the generic create-only predecessor; clarify the named Journey/Journey Stage entry, guide, and operating-model evidence; and add the typed npm/product-recipe Roadmap Item containment edges. Product recipe discovery stays done and its generic row-command behavior stays unchanged.
 
 # Acceptance matrix
 
@@ -170,11 +164,11 @@ Until approval, openai/codex-owned task, Journey, Journey Stage, and Roadmap Ite
 | --- | --- | --- |
 | Existing discovery | Empty directory: bare `aslite` and `recipes` exit 0, create no files, and inventory remains generic. | Shipped primitive regression. |
 | Create-only safety | Fresh target succeeds; existing/bound/enclosing/ambiguous/concurrent targets fail before writes; ordinary `init` and `recipe add` retain their contracts. | init target-safety task. |
-| Stateless guide discovery | README, no-bundle home, and generated skill agree on name, exact create-only/default-path command, when to recommend, and zero-nag behavior. | guide task after approval. |
+| Stateless guide discovery | README, no-bundle home, and generated skill agree on name, exact create-only/default-path command, when to recommend, and zero-nag behavior. | guide task. |
 | Ordered learning | Fresh user follows numbered curriculum, performs CLI `new`, sees it live in the read-only View, and creates a separate real bundle. | guide task. |
 | Built-in packaging | Source assets generate one embedded `RecipeFile[]`; inventory lists References+View; installed local-dev tarball applies/idempotently re-applies without runtime source files. | guide task. |
 | Minimal productivity | Installed artifact: install → orient/discover → create-only `work-tracking` init → attributed Task → visible state. | npm quickstart. |
-| Journey fidelity | Named Journey Stage records cite evidence and do not claim readiness before proof. Stage 06's deferred operating-model gap is not assigned to the guide. | openai/codex after approval. |
+| Journey fidelity | Named Journey Stage records cite evidence and do not claim readiness before proof. Stage 06's deferred operating-model gap is not assigned to the guide. | Journey record owner; scoped clarification authorized now. |
 | Collision avoidance | No P5A, release automation, update selection, marketplace retirement, MCP installation, View-create action, notice identity, or deferred domain-recipe build. | All units. |
 
 # Evidence
