@@ -5,12 +5,14 @@ status: in_progress
 priority: '1'
 assignee: openai/codex
 description: >-
-  Reproduced on main f85c80f, claimed by openai/codex, and fixed in PR #200 at
-  exact SHA b25b4caa3b4a4897413bf014af55804b0c25953f. Focused MCP tests, full
-  lifecycle Chromium coverage, and the complete repository gate pass. Awaiting
-  required independent exact-SHA review and adversarial QA.
+  Reproduced on main f85c80f and fixed in PR #200 at amended exact SHA
+  90c186bf9c9d5b4b6db8e1347f756dde788f1c2f. Independent review found one
+  regression-provenance gap; the committed test now directly proves the hidden
+  child never mounted, is red on the parent, and the exact SHA is APPROVED with
+  no remaining findings. Focused tests and complete repository gate pass;
+  adversarial QA is in progress.
 actor: openai/codex
-timestamp: '2026-08-03T02:30:37.473Z'
+timestamp: '2026-08-03T02:45:47.107Z'
 ---
 # Problem
 
