@@ -1,16 +1,17 @@
 ---
 type: Task
 title: Retire the superseded MCP generated-presentation contract
-status: in_progress
+status: done
 priority: '1'
 assignee: openai/codex
 actor: openai/codex
 description: >-
-  Implementation is PR #197 at exact commit 07bcb61. Full npm run check passed;
-  the change removes 2,354 net lines while preserving the active
-  transient/durable View contract. Awaiting the required independent exact-SHA
-  review.
-timestamp: '2026-08-03T01:07:23.565Z'
+  Shipped in PR #197, merged as 6567c8a7694e62a4c5a8f6ba277ac2911dfeba26 after
+  independent exact-SHA approval with no findings. Full repository checks and CI
+  passed. The superseded MCP generated-presentation contract was removed: 2,516
+  lines deleted, 162 added, for a net reduction of 2,354 lines; active transient
+  and registered Views remain the single runtime path.
+timestamp: '2026-08-03T01:33:37.426Z'
 ---
 # Scope
 
