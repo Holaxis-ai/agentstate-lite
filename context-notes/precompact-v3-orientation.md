@@ -2,54 +2,34 @@
 type: Context Note
 title: 'Revision 3 orientation and domain model: compaction handoffs'
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-03T17:30:59.304Z'
+timestamp: '2026-08-03T18:26:22.729Z'
 ---
 # Summary
 
-Ultimate goal: agentstate-lite is shared, versioned, conflict-safe memory for agent fleets, in plain text and owned by the user.
+Revision 3 reorientation after context boundary.
 
-Proximate goal: design, implement, independently review, and adversarially validate revision 3 of multi-session compaction handoffs; this serves the ultimate goal by making the session-boundary rail itself executable, verifiable, and fail-closed.
+Ultimate goal: agentstate-lite is shared, versioned, conflict-safe memory for concurrent agent fleets, in plain text and owned by the user.
 
-Status: orientation complete; research and acceptance-definition phase starting. Revision 2 is rejected and its proposed global instruction and hook diffs must not be applied.
+Proximate goal: revise the revision-3 compaction handoff design and implementation plan until independent lifecycle, product, and adversarial reviewers accept the delivery rail; this serves the ultimate goal by preventing implementation against an internally inconsistent or unprovable lifecycle contract.
 
-# Current system model
+## Current system model
 
-Claude Code invokes host lifecycle hooks with a full session_id and, inside subagents, agent_id. PreCompact can block but cannot inject agent context. PostCompact is side-effect-only. SessionStart with source compact can inject context for the first post-compaction model turn.
+The pilot has five components: Claude Code emits lifecycle events; one managed `aslite hook run` adapter parses and maps event-valid JSON; a private `CompactionHandoffAuthority` owns identity, extraction, validation, state transitions, and receipts; a host-local journal stores content outside the project bundle; and isolated automated/live harnesses prove the exact packaged candidate. The observed installed-host order is `PreCompact -> SessionStart(source=compact) -> PostCompact -> first model response -> Stop`. PreCompact may run even when compaction is declined. SessionStart is therefore the only load-bearing restore point, PreCompact is the only pre-boundary preparation point, and PostCompact is audit-only.
 
-agentstate-lite already owns typed mutation, version receipts, CAS writes, expected-version deletion, kind conventions, recipes, hook installation, and cross-host hook status. Revision 3 should compose those authorities rather than reproducing them in shell and prose.
+The journal must be exact-identity, private, bounded, and CAS guarded. Its namespace includes both canonical project identity and the complete execution identity `(runtime, session_id, agent_id|null)`. A mutable identity-local head selects generation-addressed records; their state changes only under record CAS, and selecting a new generation never overwrites older content. Storing a record's own content-addressed version inside itself is impossible. Delivery proves context was emitted, but Stop cannot causally prove that the model consumed one particular nonce, so response observation is informational and never changes delivery/redelivery policy.
 
-# Domain model
+Hook installation is a separate safety boundary. Managed-command recognition must be structural, never substring-based: the installed foreign SessionStart `printf` contains the words `agentstate-lite` and would otherwise be destructively misclassified. Compact and fresh-resume handoff paths run no board/network/render work, preventing that best-effort path from delaying or overflowing model context. Completed writes claim process-level atomicity and read-back verification only; no fsync crash-durability claim is made.
 
-- runtime adapter: the host-specific translation from lifecycle payloads to the host-neutral handoff authority.
-- canonical execution identity: a path-safe, collision-resistant identity derived from runtime plus full session identity plus full subagent identity when present.
-- compaction generation: one handoff attempt within an execution identity; repeated compactions are distinct generations or explicit CAS replacements.
-- handoff record: validated structured state sufficient to resume, including goal/task refs, decisions/evidence, constraints, blockers, loaded skills, and next action.
-- lifecycle authority: one executable owner of identity validation, persistence, lookup, restoration receipt, consume, and GC policy.
-- write receipt: proof that the intended generation was durably persisted before compaction may proceed.
-- read receipt: exact record identity plus version returned to the restoring side.
-- restore acknowledgement: evidence that restoration reached the first post-compaction model boundary before consume is allowed.
-- consume: deletion or retirement of exactly the version restored; must fail closed against a newer generation.
-- GC sweep: a named, bounded owner/trigger for expired abandoned generations, using validation and CAS.
-- fallback candidate: an untrusted record surfaced when canonical identity is unavailable; never an automatic identity proof.
-- role: advisory coordination metadata; not a unique orchestrator lease unless separately governed by CAS.
-- local/shared placement: explicit policy for whether ephemeral handoffs live only on the host or participate in board sync.
+## Plan-gate state
 
-# Acceptance boundary
+The first independent plan gate failed, correctly, and its findings were closed. The second gate produced one product PASS and two narrow FAILs. The revised exact design now: gives final heads a hard seven-day logical expiry plus exact-CAS event-driven physical cleanup; refuses stale prepared/delivered cards on resume using transcript checkpoints; makes Stop observations incapable of suppressing redelivery; removes board work from load-bearing SessionStart paths; pins Claude support to executable digest/version/platform/architecture; and requires real manual and automatic PreCompact blocking tests. These corrections are awaiting the third exact-version gate.
 
-Automated unit/agreement/adversarial tests are necessary but not sufficient. Acceptance requires exact installed-version manual and automatic compaction journeys proving the lifecycle rail invokes the authority, persists before compaction, restores through a supported model-context event, and consumes only the restored version. If the live rail cannot be exercised, the verdict is blocked-pending-verification.
+## Unverified assumptions
 
-# Unverified assumptions
+- Whether the exact Claude host exposes enough sub-agent context pressure to force and observe a real sub-agent compaction journey.
+- What Claude does when a hook executable is missing, killed, or exceeds timeout; a hook cannot emit fail-closed JSON if the host never invokes it.
+- Whether a real PreCompact blocking result and SessionStart `continue:false` are displayed and enforced as documented on Claude Code 2.1.220.
+- The exact packaged command path/digest and permissions that will be installed for the candidate.
+- Physical deletion timing on a host where the authority is never invoked again; the design guarantees logical expiry and explicitly does not claim a wall-clock daemon.
 
-- The best host-neutral shape and whether a private command remains private or becomes a public CLI verb.
-- Whether PostCompact direct persistence or PreCompact fail-closed persistence best preserves a model-authored decision card.
-- Which event identifier can safely distinguish repeated compaction generations.
-- The exact isolated harness for automatic compaction without mutating the users active sessions.
-- Runtime support beyond a Claude-only pilot; unsupported adapters must be labeled rather than inferred.
-
-# References
-
-- reviews/pre-compact-multi-session-team-2026-08-03
-- designs/pre-compact-multi-session
-- context-notes/review-precompact-codex-concurrency
-- context-notes/review-precompact-codex-ecosystem
-- context-notes/review-precompact-codex-skeptic
+No production code starts until the revised exact design and plan versions pass all three independent reviewers. Board changes remain unsynced until those reviewers finish writing.

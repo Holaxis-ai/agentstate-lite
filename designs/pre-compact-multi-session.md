@@ -2,85 +2,106 @@
 type: Design
 title: Multi-session-safe pre-compaction handoff notes
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-03T18:01:08.851Z'
+timestamp: '2026-08-03T18:29:30.731Z'
 ---
 # Multi-session-safe compaction handoffs — revision 3
 
-**Status:** implementation-ready draft, 2026-08-03. Revision 2 remains rejected. No user-global hook or instruction change is authorized by this document. Revision 3 is a Claude Code-only pilot and is accepted only by exact-artifact manual and automatic live compaction.
+**Status:** review-revised draft, 2026-08-03. Revision 2 remains rejected. No user-global hook or instruction change is authorized by this document. Production code starts only after this exact design and its implementation plan pass the independent plan gate.
 
-## Purpose and product claim
+## Purpose and bounded product claim
 
 Ultimate goal: agentstate-lite is shared, versioned, conflict-safe memory for concurrent agent fleets, in plain text and owned by the user.
 
-Proximate goal: ship one executable Claude Code lifecycle authority that preserves a validated, identity-bound evidence card across compaction and proves the complete rail on the installed host. This serves the ultimate goal by removing a silent context-loss boundary without adding heuristics, board conflicts, or permanent human supervision.
+Proximate goal: ship one executable Claude Code lifecycle authority that preserves a validated, project- and execution-bound evidence card across compaction and proves the complete rail on one digest-pinned candidate. This serves the ultimate goal by removing a silent context-loss boundary without heuristics, board conflicts, or continuing human supervision.
 
-The pilot's claim is deliberately narrow:
+The Claude Code pilot claims:
 
-- On a machine where Claude Code and agentstate-lite are installed, a main or sub-agent compaction gets one private, exact-identity handoff generation.
-- PreCompact durably prepares and reads back that generation before compaction is allowed.
-- SessionStart with `source: compact` restores only that generation through Claude's supported model-context channel.
-- The first later Stop/SubagentStop acknowledges delivery through CAS; bounded GC physically retires old records.
-- Host-local handoffs never enter the project bundle, git, the shared board, catalog, or sync.
+- An exact-host-verified main or sub-agent compaction gets one private generation bound to canonical project identity plus the complete Claude execution identity.
+- Once the managed helper is successfully invoked, PreCompact CAS-publishes and reads back that generation before allowing compaction; SessionStart with `source: compact` restores only that generation through Claude's supported model-context channel.
+- A later Stop/SubagentStop may record evidence that a new response followed delivery. It does not claim that Claude cryptographically acknowledged a delivery nonce, and it never authorizes destructive replacement of the current generation.
+- Generations become ineligible for restore at fixed expiry; a named event-driven GC owner version-guardedly detaches expired heads and retires eligible records on the next authority invocation.
+- Host-local handoffs never enter the project bundle, git, shared board, catalog, or sync.
 
-Codex and OpenCode compaction handoffs, cross-machine restoration, public handoff commands, orchestrator leasing, and board-shared ephemeral generations are non-goals. Their ordinary SessionStart board orientation remains supported, but hook status must say `compaction_handoff.supported: false` for those runtimes.
+The verified host artifact is the resolved Claude Code `2.1.220` Darwin/arm64 executable with SHA-256 `8addc857f3fe64d5a0368af9ee50321b50afb4a6918ba3ef018ab84f5dbbe081`. The previously reported source commit is supplemental provenance, not a value exposed by the installed runtime and not a readiness key. Status distinguishes `verified_host`, `installed_unverified`, `not_installed`, and `unsupported_runtime`; it never generalizes the verified result to another executable digest, version, platform, or architecture. Codex and OpenCode compaction handoffs, cross-machine restoration, public content inspection, orchestrator leasing, and board-shared ephemeral generations are non-goals. Their ordinary SessionStart board orientation remains supported, while status reports their compaction handoff as unsupported.
 
-## Installed-host evidence that changes the architecture
+The executable cannot control a host that never launches it or kills it at a host timeout. The fail-closed claim therefore starts at successful helper invocation. Install and status must run a schema/health probe of the exact installed helper and report `rail_ready: false` for a missing, moved, non-executable, timed-out, or unhealthy command. Exact-host red probes characterize Claude's launch and timeout behavior rather than disguising that boundary.
 
-The exact installed artifact is Claude Code `2.1.220` (commit `4073f59596e2`). A temporary configuration and scratch project exercised real manual and automatic compaction without touching user-global settings.
+## Installed-host evidence that fixes the lifecycle
 
-Observed manual and automatic order was:
+A temporary configuration and scratch project exercised real manual and automatic compaction without changing user-global settings. The observed order was:
 
 ```text
 PreCompact -> SessionStart(source=compact) -> PostCompact -> first model response -> Stop
 ```
 
-A two-second delay inside SessionStart delayed PostCompact by the same two seconds; PostCompact began 57 ms after SessionStart returned. SessionStart therefore cannot wait for PostCompact. PreCompact also fires when Claude later declines manual compaction as "Not enough messages to compact," so prepare must be retryable. In the exercised short journeys, `PostCompact.compact_summary` was only the previous assistant reply (`FOUR` / `AUTO-END`), and the automatic compacted continuation lost earlier canaries. It is audit evidence, not the load-bearing decision card.
+A two-second delay inside SessionStart delayed PostCompact by the same interval; PostCompact began 57 ms after SessionStart returned. SessionStart cannot wait for PostCompact. PreCompact also fires when Claude later declines manual compaction as “Not enough messages to compact,” so a prepared generation must be refreshable. In the exercised journeys, `PostCompact.compact_summary` was only the previous assistant reply (`FOUR` / `AUTO-END`), and the automatic compacted continuation lost earlier canaries. PostCompact is audit evidence, never the load-bearing decision card.
 
-The supported SessionStart JSON form was accepted on real startup, resume, and compact events with no schema error. Automatic compaction was forced with a bounded effective window and produced `trigger: auto`, proving that the rail itself is invocable before component implementation.
+Real SessionStart `hookSpecificOutput.additionalContext` was schema-valid on startup, resume, and compact events. Real automatic compaction was forced with a bounded effective window and emitted `trigger: auto`. Still-unverified negative paths—real PreCompact block, real SessionStart `continue:false`, launch failure, and timeout—are mandatory candidate gates.
 
-Evidence: `context-notes/precompact-v3-live-rail-probe` and the official [Claude Code hook contract](https://code.claude.com/docs/en/hooks).
+Evidence: `context-notes/precompact-v3-live-rail-probe`, `context-notes/precompact-v3-host-identity`, and the official [Claude Code hook contract](https://code.claude.com/docs/en/hooks).
 
-## One executable authority
+## One executable authority and invocation boundary
 
-All lifecycle policy belongs to a private `CompactionHandoffAuthority`. The Claude adapter only parses the documented hook payload, calls the authority, and maps its result onto an event-valid hook response. Identity construction, transcript extraction, schema validation, state transitions, CAS, selection, acknowledgement, and GC may not be duplicated in shell, prose, YAML snippets, or the adapter.
+All lifecycle policy belongs to a private `CompactionHandoffAuthority`. The Claude adapter parses the documented payload, calls the authority, and maps its result to fields valid for that event. Identity construction, project resolution, transcript extraction, validation, head/generation transitions, CAS, selection, response observation, diagnosis, recovery, and GC may not be duplicated in shell, prose, settings snippets, or the adapter.
 
-The installed command is the hidden `aslite hook run` subcommand. The same command handles Claude PreCompact, SessionStart, PostCompact, Stop, and SubagentStop based on stdin `hook_event_name`. For Claude SessionStart it also composes the existing board pull/home render so two managed handlers do not race or duplicate context.
+The installed command is the private `aslite hook run` subcommand. The same command handles Claude PreCompact, SessionStart, PostCompact, Stop, and SubagentStop according to stdin `hook_event_name`. Compact SessionStart, and resume SessionStart with an eligible handoff, return **only** the bounded handoff result and never start board, network, or home-render work in that process. Startup, clear, and resume with no eligible handoff retain ordinary best-effort board orientation. This branch boundary prevents board latency or output size from timing out or overflowing the load-bearing result.
 
-## Placement and privacy
+The helper also exposes content-free health, diagnosis, and exact-version recovery operations under `aslite hook`. They use the same authority and are the only operator surface for the journal; there is no command to print handoff content.
 
-Handoffs are session-boundary runtime state, not shared project knowledge. The authority owns a private local OKF journal at `~/.agentstate/handoffs/v1` (test override permitted), initialized with 0700 directories. Its `Session Handoff` documents are protected by that directory boundary and never discovered as a project bundle.
+## Placement, privacy, and durability semantics
 
-The canonical project/bundle identity is stored in each record and hashed into its local namespace. The journal is excluded by construction from `.agentstate-lite`, git, board sync, remote backends, catalog, and home rendering. Compact summaries and transcript excerpts may contain secrets; no content or receipt may be printed by status, logs, or hook error messages. Receipts expose hashes, versions, lengths, stages, and reason codes only.
+Handoffs are host-local session-boundary runtime state, not shared project knowledge. The authority owns a private journal at `~/.agentstate/handoffs/v1` with a test-only root override. It creates and verifies 0700 directories and refuses symlinks, unsafe ownership, or permissive boundaries. Journal records are never discovered as project bundles.
 
-## Canonical execution identity
+Compact summaries and transcript excerpts may contain secrets. Status, logs, recovery output, hook errors, manifests, and receipts expose only runtime, hashed keys, generations, storage versions, lengths, stages, outcomes, and reason codes. The journal is excluded by construction from `.agentstate-lite`, git, board sync, remote backends, catalog, stdout, and home rendering.
 
-The ordered identity tuple is:
+The storage guarantee is process-level atomic CAS plus post-write read-back for completed operations. It uses the existing filesystem backend's lock and temp-file/rename behavior. Revision 3 does **not** claim power-loss or kernel-crash durability because the existing path does not fsync both file and parent directory; that stronger guarantee is a separate future change.
+
+## Canonical project and execution identity
+
+The authority derives canonical project identity only from a successfully resolved local bundle:
 
 ```json
-["agentstate-lite-handoff", 1, "claude-code", "<exact session_id>", "<exact agent_id or null>"]
+["agentstate-lite-project", 1, "<canonical real path of bundle root>"]
 ```
 
-Each string is non-empty when present, at most 256 UTF-8 bytes, and contains no NUL or control characters. Values are not trimmed, case-folded, shortened, or path-normalized. `execution_key` is the full lowercase SHA-256 of the canonical tuple encoding; the slot id is `handoffs/v1/claude-code/<64-hex>`.
+The path is resolved without following an unsafe journal symlink, encoded byte-for-byte, stored privately, and never emitted. `project_key` is the full lowercase SHA-256 of this canonical tuple.
 
-Every read recomputes the key and compares the full stored tuple byte-for-byte. A digest hit with a different stored identity is `IDENTITY_KEY_COLLISION`, never a match. No fallback uses actor, hostname, cwd, role, recency, a singleton candidate, or an id prefix.
+The execution identity tuple is:
 
-`execution_role` is derived mechanically: missing `agent_id` means `main`; present `agent_id` means `subagent`. `agent_type` is advisory metadata. Actor may be absent. The pilot never infers or claims `orchestrator`; coordination role is advisory unless a future separate lease design proves uniqueness.
+```json
+["agentstate-lite-execution", 1, "claude-code", "<exact session_id>", "<exact agent_id or null>"]
+```
 
-## Validated handoff record
+Each string is non-empty when present, at most 256 UTF-8 bytes, and contains no NUL or control characters. Values are not trimmed, case-folded, shortened, or path-normalized. `execution_key` is the full lowercase SHA-256 of the canonical encoding.
 
-The private journal declares a dedicated internal `Session Handoff` kind and also applies a domain validator. A record has a fixed schema version and rejects unknown keys, malformed timestamps, invalid enums, identity/hash disagreement, payload/body disagreement, and over-budget content.
+The physical namespace is:
 
-Required envelope fields include:
+```text
+projects/<project_key>/executions/<execution_key>/head
+projects/<project_key>/executions/<execution_key>/generations/<generation_uuid>
+```
 
-- schema/runtime/project identity and full execution identity;
-- full execution key and authority-owned UUIDv4 generation;
-- state (`prepared`, `delivered`, or `acknowledged`), trigger, prepare/expiry timestamps, and current record version;
-- typed decision card, payload SHA-256, deterministic human-readable body, and bounded transcript evidence metadata;
-- delivery nonce/time when delivered and acknowledgement time/evidence hash when acknowledged.
+Every transition recomputes both keys and byte-compares both stored canonical tuples with the currently resolved project and hook identity. A digest hit with different stored bytes is `IDENTITY_KEY_COLLISION`. A session invoked while another bundle resolves cannot select the former project's generation. No fallback uses actor, hostname, cwd recency, a singleton candidate, a shortened id, or another project.
 
-PostCompact may add only bounded audit fields: summary hash, original length, a capped excerpt, trigger, and observed time. It does not become the restored payload.
+`execution_role` is derived mechanically: missing `agent_id` is `main`; present `agent_id` is `subagent`. `agent_type` and actor are advisory metadata. The pilot never infers an orchestrator role.
 
-### Decision-card contract
+## Head and generation schema
+
+One mutable head selects the current generation for an exact project/execution identity. Each generation has its own address, so selecting a new generation never overwrites retained history. A storage version is metadata returned by a read/write operation and passed separately into validation and CAS; it is never persisted inside the content-addressed document whose bytes define that version.
+
+The private journal declares strict internal `Handoff Head` and `Session Handoff` kinds and applies domain validators. Unknown keys, malformed timestamps, invalid enums, identity/hash disagreement, head/generation disagreement, payload/body disagreement, and over-budget content are rejected.
+
+The head stores schema version, both canonical identities and keys, current generation UUID, and transition timestamps. A generation stores:
+
+- schema version, both identities and keys, authority-owned UUIDv4 generation, and delivery state (`prepared` or `delivered`);
+- trigger, fixed prepare/expiry timestamps, refresh count, typed decision card, payload SHA-256, deterministic rendered body, canonical transcript path, prepare checkpoint, and bounded transcript evidence metadata;
+- latest delivery attempt with nonce, time, transcript canonical path, pre-delivery transcript checkpoint, and attempt count;
+- optional response-observation time, assistant-message hash, and transcript position;
+- optional bounded PostCompact audit fields.
+
+Head and generation read receipts carry their independent storage versions. A transition that reads both must CAS the object it mutates, then re-read and validate the head/generation relationship before returning trusted context.
+
+## Decision-card contract
 
 The card always has these fixed slots:
 
@@ -93,84 +114,108 @@ The card always has these fixed slots:
 7. assumptions and unverified claims;
 8. one exact next action or command.
 
-Each slot is either `observed` with literal source excerpts/references or `unknown` with a reason. Unknown is valid evidence discipline; invented semantic completion is not. The payload also carries a bounded, ordered excerpt of recent user/assistant text so the model can inspect evidence directly.
+Each slot is `observed` with literal source excerpts/references or `unknown` with a reason. Unknown is valid evidence discipline; semantic invention is forbidden. The payload also includes a bounded ordered excerpt of recent user/assistant text so the model can inspect the source.
 
-PreCompact builds the card deterministically from the transcript JSONL available before compaction:
+PreCompact builds the card deterministically from transcript JSONL available before compaction:
 
-- retain the current prompt, last completed assistant response, and most recent visible text turns within the injection budget;
-- collect literal OKF ids such as `tasks/...`, exact labelled goal/decision/constraint/blocker/assumption/next-action lines, and named Skill tool invocations;
+- retain the current prompt, last completed assistant response, and recent visible text within budget;
+- collect literal OKF ids such as `tasks/...`, exact labelled goal/decision/constraint/blocker/assumption/next-action lines, and named Skill invocations;
 - attach source message UUIDs/positions and hashes; never summarize with another model;
-- mark any unproved slot unknown.
+- mark every unproved slot unknown.
 
-The stored record may keep a larger capped card, but SessionStart additional context must remain below 8,000 characters, leaving headroom under Claude's 10,000-character hook limit. Truncation is deterministic, preserves the current prompt and exact next action first, and is disclosed in the receipt.
+The stored card may be larger, but SessionStart additional context stays below 8,000 characters, leaving headroom under Claude's 10,000-character hook limit. Deterministic truncation preserves the current prompt and exact next action first, retains slot labels and unknown reasons, and records original/rendered lengths plus `truncated: true` in content-free receipts.
+
+Acceptance fixtures and live journeys must contain at least one goal/task reference, one constraint, one evidence-backed decision, one deliberate unknown, and one exact next command. Unique values appear only before compaction, not in the compaction-driving prompt or PostCompact summary. The first post-compaction assistant response must reproduce the required pre-only values and act on the next-action field. An oversized live case must prove current prompt and next action survive disclosed truncation below 8,000 characters.
 
 ## State machine and generation safety
 
-There is one CAS-governed slot per exact execution identity. It is single-occupancy, not last-writer-wins.
+### PreCompact — refresh or publish a new head
 
-### PreCompact — prepare or refresh
+1. Resolve the local project bundle and canonical project identity. No bundle is an intentional no-op.
+2. Validate hook identity and transcript; build and validate the evidence card; run bounded GC.
+3. Exact-read the head and current generation if they exist.
+4. If the current generation is healthy `prepared`, CAS-refresh that same generation because a previous host attempt may have been declined. Its generation UUID and fixed expiry do not change.
+5. If no head exists, or the current generation is healthy `delivered` or expired, create a new generation-addressed `prepared` record and CAS the head to it. The old generation remains retained. A head-CAS loser quarantines or leaves its unreferenced generation for bounded GC and never changes the winner.
+6. Read back and validate the selected head and generation, including both identities and hashes, before returning a prepared receipt.
 
-1. Resolve the local project bundle only to bind project identity; a project with no agentstate-lite bundle is an intentional no-op.
-2. Validate the live identity and transcript; build and validate the evidence card.
-3. Run the bounded GC sweep.
-4. If the slot is absent, acknowledged, or expired, CAS-write a new generation. If it is still `prepared`, refresh that same generation through CAS because a prior host attempt may have been declined after PreCompact. If it is `delivered` and unacknowledged, return `HANDOFF_IN_FLIGHT` and block rather than overwrite it.
-5. Read the just-written version back, revalidate identity/schema/hash, and produce a prepared receipt.
-
-Any identity, persistence, validation, CAS, or read-back failure returns an event-valid PreCompact block. Shell dependencies such as jq, date, hostname, and heredocs do not exist.
+A corrupt or unsafe head/current generation is never guessed around or overwritten. A successfully invoked helper returns an event-valid PreCompact block with a content-free reason. Identity, persistence, validation, CAS, and read-back failures also block. There is no shell jq/date/hostname/heredoc dependency.
 
 ### SessionStart compact/resume — exact delivery
 
-For `source: compact`, exact-read the slot, validate every invariant and expiry, then CAS-mark the same generation `delivered` with a fresh delivery nonce. Only after that write succeeds may the authority return the bounded decision card through `hookSpecificOutput.additionalContext` alongside the existing board/home context.
+For `source: compact`, exact-read the current head and its prepared generation, validate every invariant and expiry, capture a canonical transcript checkpoint, then CAS-mark that generation `delivered` with a fresh nonce. Re-read the head: if it no longer selects that generation, return `continue:false` and inject nothing. Only a still-current, fully valid generation may produce bounded `hookSpecificOutput.additionalContext`.
 
-Missing, corrupt, expired, ambiguous, or mismatched state on a bundle where the managed rail is active returns top-level `continue: false`; SessionStart exit code 2 is not treated as a gate by Claude. No unverified record becomes a model premise.
+A retried compact event may create a new delivery attempt on the same current prepared/delivered generation. A `source: resume` event applies a freshness gate before redelivery: a prepared generation is eligible only when the transcript still equals its prepare checkpoint, and a delivered generation is eligible only when the transcript has no visible turn beyond its latest delivery checkpoint. Any transcript advance makes the card stale; resume injects no handoff and returns ordinary board orientation with content-free `STALE_PREPARE` or `STALE_DELIVERY` diagnostics. An eligible retry updates the latest nonce/checkpoint and attempt count through CAS and returns only the handoff result. Startup and clear provide ordinary board orientation and never select another session or project's handoff.
 
-For `source: resume`, a prepared or delivered but unacknowledged exact generation is redelivered; this recovers interruption before acknowledgement. Startup and clear render ordinary board orientation and never select another session's handoff.
+For `source: compact`, missing, corrupt, expired, ambiguous, mismatched, or concurrently displaced state on an active managed rail returns top-level `continue:false`. A resume without an eligible fresh handoff injects no card and falls back to ordinary board orientation with content-free diagnostics. SessionStart exit code 2 is not treated as a gate. No unverified record becomes a model premise. Live fault injection must prove that `continue:false` actually prevents the first post-compaction model response on the verified host.
 
-### PostCompact — non-load-bearing audit
+### PostCompact — audit only
 
-PostCompact exact-reads the same generation and CAS-attaches only bounded host-summary audit fields. It preserves state and delivery nonce. It cannot block, and its failure never causes SessionStart to trust missing data; the prepared card was already delivered. A structured, content-free diagnostic is recorded for later status/QA.
+PostCompact exact-reads the current generation and CAS-attaches only bounded summary hash, original length, capped excerpt, trigger, and observed time. It preserves delivery state and nonce. It cannot block, and failure cannot cause SessionStart to trust missing data because delivery already completed.
 
-### Stop/SubagentStop — executable acknowledgement
+### Stop/SubagentStop — informational response observation
 
-The first main Stop or sub-agent SubagentStop after delivery exact-reads the current record, verifies full identity, generation, delivery nonce/state, and current version, then CAS-marks it `acknowledged`. `last_assistant_message` is hashed as evidence that a post-delivery model response completed; content is not copied into receipts. User interruption produces no Stop, so the record remains redeliverable.
+Stop and SubagentStop do not carry the delivery nonce back from model context, so revision 3 does not claim causal nonce acknowledgement and does not change delivery state. The authority may append bounded informational `response_observation` metadata to the current delivered generation only when:
 
-Acknowledgement does not immediately delete the record. This keeps the transition auditable and avoids delete-before-context hazards. A stale acknowledgement or GC worker cannot mutate a newer generation because every write/delete is based on the version from its own exact read and checks generation/state again.
+- head and generation still match the exact project/execution identity;
+- the transcript path matches the recorded delivery attempt;
+- the transcript has a strict append beyond the delivery checkpoint; and
+- `last_assistant_message` matches one unambiguous first assistant response after that checkpoint.
 
-## Garbage collection
+The content is hashed, not copied into receipts. Failure or ambiguity leaves the generation delivered and recoverable. Resume eligibility ignores stored response observations and recomputes freshness only from the latest delivery checkpoint and current transcript. Observation never suppresses redelivery, changes the head, permits replacement/deletion, or changes GC eligibility. A stale concurrent Stop is therefore informational and non-destructive.
 
-`CompactionHandoffAuthority.gc` is the named physical-GC owner. It runs on prepare and SessionStart and is callable through an internal maintenance seam for tests.
+## Garbage collection and operator recovery
 
-- Acknowledged records are eligible after 24 hours.
-- Prepared or delivered records expire after a fixed seven days; callers cannot extend expiry.
-- The sweep orders by eligibility then id, inspects a bounded candidate set, and CAS-deletes at most 25 records per invocation.
-- The current slot may collect its own expired record even when the global cap is exhausted.
-- Version conflicts are skipped without deleting the newer value. Malformed records are retained and reported for inspection rather than guessed safe to delete.
+`CompactionHandoffAuthority.gc` is the sole physical-GC owner. It runs on prepare and SessionStart and has an internal test seam.
 
-## Managed-hook installation
+- A current prepared/delivered generation is protected only until its fixed seven-day expiry; callers and refreshes cannot extend it. An expired current head is CAS-detached only after re-reading and validating both head and generation versions, then its former generation becomes deletable.
+- Every non-current prepared/delivered/orphan generation uses the same fixed prepare-derived seven-day expiry. Response-observation metadata never changes that time.
+- The sweep orders by eligibility then path, examines a bounded set, and expected-version deletes at most 25 generation records per call.
+- Head/version conflicts and newly selected generations are skipped. SessionStart that races a head detachment fails its final head recheck and injects nothing. Malformed bytes are quarantined, never guessed safe to delete.
 
-Claude installation manages exactly one `aslite hook run` command for each of PreCompact, SessionStart, PostCompact, Stop, and SubagentStop. Reinstall is idempotent, collapses duplicate managed entries, migrates the current managed SessionStart command, and preserves every foreign hook and malformed-file refusal guarantee. Uninstall removes only managed entries from every managed event.
+Expiry is a hard logical access bound: expired content is never injected. Physical deletion is event-driven on the first later authority invocation, not a wall-clock daemon. A host on which agentstate-lite never runs again may retain expired private bytes; revision 3 does not claim scheduled deletion in that case.
 
-Codex and OpenCode retain their existing SessionStart board integration. Install/status receipts distinguish board orientation from compaction handoff capability and report Claude supported/installed versus Codex/OpenCode unsupported. A foreign legacy compaction script is never silently removed; status warns that multiple compaction handlers exist so the user can retire it deliberately.
+Content-free diagnosis resolves one exact project/session/agent target and reports hashed keys, reason, and raw head/generation versions without content. `aslite hook recover` requires those same exact identities and expected versions. It is allowed only for unsafe, corrupt, or expired state; it privately quarantines the raw bytes, then version-guardedly detaches the head. A conflict changes nothing. Healthy current state cannot be recovered away. The next PreCompact may create a new generation after successful detachment. Quarantine has its own bounded seven-day, 25-record GC policy and remains private.
+
+Because delivered generations no longer block a later PreCompact, ordinary operation needs no human cleanup. Recovery exists only for fail-closed corruption and is testable without exposing content.
+
+## Managed-hook installation and readiness
+
+Claude installation manages one `aslite hook run` command for each of PreCompact, SessionStart, PostCompact, Stop, and SubagentStop. New commands carry an explicit, start-anchored managed marker and exact token shape. Legacy managed forms are recognized only by anchored executable/subcommand patterns. Arbitrary occurrence of `agentstate-lite` in a command string is never ownership evidence.
+
+Install/reinstall/uninstall transformations:
+
+- are idempotent and collapse only structurally recognized managed entries;
+- preserve every foreign hook object and command string exactly, including the installed foreign SessionStart `printf` whose payload text mentions `agentstate-lite`;
+- migrate recognized earlier agentstate-lite SessionStart forms;
+- retain foreign legacy PreCompact/PostCompact scripts and warn about multiple handlers;
+- refuse malformed settings rather than rewriting them.
+
+After writing settings, install executes the exact helper's health/schema probe using the configured command, timeout, minimal PATH, and isolated content-free payload. Status repeats that probe and checks executable path/digest, permissions, all five event registrations, foreign coexistence, and the resolved Claude executable realpath, SHA-256, reported version, platform, and architecture. `rail_ready: true` requires a verified Claude host tuple and healthy exact helper. `installed_unverified` may be installed but is never represented as proven support.
 
 ## Failure and observability contract
 
-The authority returns structured internal receipts with runtime, execution-key hash, generation, stage, record version, payload hash/length, outcome, and reason code. Hook adapters emit only fields legal for that exact Claude event. Expected reason codes include `UNSUPPORTED_RUNTIME`, `UNSUPPORTED_IDENTITY`, `HANDOFF_SCHEMA_INVALID`, `HANDOFF_IN_FLIGHT`, `STALE_RESTORE`, `HANDOFF_NOT_FOUND`, `HANDOFF_EXPIRED`, `IDENTITY_KEY_COLLISION`, `HANDOFF_STORE_UNSAFE`, and `HANDOFF_STORE_CORRUPT`.
+Internal receipts include runtime, project/execution key hashes, generation, stage, storage versions, payload hash/length, outcome, and reason code. Hook adapters emit only fields legal for the exact Claude event. Expected codes include `UNSUPPORTED_RUNTIME`, `INSTALLED_HOST_UNVERIFIED`, `HOOK_HELPER_UNHEALTHY`, `UNSUPPORTED_IDENTITY`, `HANDOFF_SCHEMA_INVALID`, `STALE_RESTORE`, `HANDOFF_NOT_FOUND`, `HANDOFF_EXPIRED`, `IDENTITY_KEY_COLLISION`, `HEAD_GENERATION_MISMATCH`, `HANDOFF_STORE_UNSAFE`, `HANDOFF_STORE_CORRUPT`, and `RECOVERY_VERSION_CONFLICT`.
 
-No content-bearing fallback is automatic. There is no newest-record selection. Operator recovery is inspectable and local; corrupt or unacknowledged records are preserved until an explicit safe transition or GC eligibility.
+No content-bearing fallback, newest-record selection, or silent corrupt overwrite exists. Successfully invoked PreCompact failures block; successfully invoked compact SessionStart failures return `continue:false`. Host process-launch/kill/timeout failures are reported by readiness and exact-host probes because a process that did not run cannot emit hook JSON.
 
-## Acceptance criteria
+## Digest-locked acceptance
 
-Automated tests must cover first/repeated compaction, old-prefix collisions, concurrent mains, sibling sub-agents, prepare refresh after declined compaction, malformed fields, transcript truncation, stale delivery/ack/GC, every interruption boundary, missing executable/dependencies, permissions and symlink attacks, hook migration, privacy scans, and true multi-process contention.
+Automated tests cover repeated/declined compaction, old-prefix collisions, concurrent mains, sibling subagents, canonical-project separation, head/generation contention, orphan publication, every interruption boundary, transcript usefulness/truncation, corrupt recovery, stale response observation/GC (including unchanged deletion time), missing/moved executable, timeout, permissions/symlink attacks, structural hook migration, exact foreign-hook preservation, privacy scans, and true multi-process contention.
 
-The exact candidate artifact must then pass, in order:
+G0 runs all targeted tests, packaging checks, and the complete `npm run check`, then freezes a private candidate manifest containing source commit, packed CLI/tarball SHA-256, CLI version identity, helper digest/path, harness revision, and resolved Claude executable realpath/digest/version/platform/architecture. Rebuilding or changing source, package bytes, helper, harness, or host tuple invalidates the manifest and restarts the chain.
 
-1. repository/package gates;
-2. independent exact-SHA Review;
-3. adversarial QA of that reviewed SHA;
-4. isolated installed-host manual compaction;
-5. separate real automatic context-pressure compaction.
+The same manifest digest must pass, in order:
 
-Both live journeys must prove full-identity receipt continuity, card canary restoration, post-model acknowledgement, CAS safety, 0700/private local placement, no project/global configuration mutation outside the isolated target, and truthful unsupported-runtime status. An external inability to exercise a journey is `BLOCKED-PENDING-VERIFICATION`, which blocks merge. A rejected output, missing/out-of-order transition, wrong restore, privacy leak, or canary failure is FAIL.
+1. independent exact-SHA/package Review;
+2. adversarial QA of that reviewed artifact;
+3. installed-host negative rail tests for real PreCompact block under both `trigger: manual` and `trigger: auto`, real compact SessionStart `continue:false`, missing helper, and timeout behavior;
+4. isolated manual main-session compaction, including a second generation;
+5. separate real automatic main-session context-pressure compaction;
+6. a real sub-agent compaction from PreCompact through SessionStart/PostCompact, first response, and SubagentStop with stable `agent_id`.
+
+Both main live journeys use distinct pre-compaction-only card values, verify they are absent from the driving prompt and PostCompact summary, and require the first post-compaction assistant response to reproduce them and follow the exact next action. At least one live journey exercises disclosed truncation while preserving the current prompt and next command. The sub-agent journey proves the same identity continuity and response oracle. All live gates verify receipt continuity, retained generations, CAS safety, 0700 placement, redaction, exact foreign-hook preservation, no mutation outside isolated targets, and truthful runtime status.
+
+PASS requires every gate on the one manifest digest. External inability to exercise a required journey is `BLOCKED-PENDING-VERIFICATION` and blocks shipping. Rejected output, missing/out-of-order transition, wrong restore, first-response canary loss, privacy leak, digest drift, or unsupported-host overclaim is FAIL.
 
 ## Related
 
