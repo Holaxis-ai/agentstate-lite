@@ -1,89 +1,77 @@
 ---
 type: Context Note
-title: 'Current main-agent checkpoint: PR #177 Claude follow-up'
-actor: codex-pr177-followup
+title: >-
+  Pre-compaction state — MAIN ORCHESTRATOR session (reviews teed up, onboarding
+  overlap, PR-fix-claim)
+actor: brian-claude
 description: >-
   Post-compaction recovery checkpoint for the cache-identity follow-up and
   separately reviewed hidden-lifecycle defect.
-timestamp: '2026-07-30T00:05:37.223Z'
+timestamp: '2026-08-03T15:01:40Z'
 ---
 # Summary
 
-## Goals
+Pre-compaction state for the MAIN ORCHESTRATOR session (Brian designated it explicitly on
+2026-07-30: "Ok you are the main orchestration session"). Captures only what is NOT already on the
+board. Reload skills: holaxis-self-awareness, holaxis-cognitive-ecosystem, aslite, holaxis-orchestrator
+(dispatch), holaxis-agent-launcher (tmux spawns are permission-gated — stage for Brian to run with `!`).
 
-- **Ultimate goal:** Make agentstate-lite a reliable local-first collaboration substrate whose
-  conversational MCP Views behave correctly across supported hosts and whose work state survives
-  agent/session boundaries.
-- **Proximate goal:** Ship the PR #177 Claude Desktop follow-up as one reviewed cache-identity
-  repair, then handle the independently discovered hidden-lifecycle defect as a separate unit.
-- The proximate goal serves the ultimate goal by making exact View bytes selectable and testable
-  in real hosts without conflating an unrelated lifecycle policy change.
+## Highest-leverage open items (both awaiting Brian's own decision — DO NOT decide for him)
 
-## Skills and instructions active
+Two review requests where Brian is the NAMED HUMAN REVIEWER. Both are teed up; verdicts are his to
+give. When he gives them, record status + decision_summary on the review doc, then `sync` — do not
+flip status yourself (the Review Request convention: reviewer is the human judge, not an agent grant).
 
-- Loaded and applied: `holaxis-self-awareness`, `holaxis-cognitive-ecosystem`,
-  `agentstate-lite:agentstate-lite`.
-- `holaxis-orchestrator` was loaded before required reviewer/QA agent coordination.
-- `openai-docs` was loaded only for the later Codex lifecycle-hook discussion.
-- `CLAUDE.md` is authoritative. Code work must use isolated worktrees, one coherent claim per PR,
-  parent-red tests, independent Review before QA, full gates, feature-branch push, and no agent PR
-  creation.
-- Board/task/knowledge writes use only this agentstate-lite bundle and `aslite sync`.
+1. **`review-requests/kinds-and-descriptions-architecture`** (currently `changes_requested`) —
+   RE-REVIEW VERIFIED THIS SESSION, both recorded blockers CLEARED on main (don't re-run this):
+   - Blocker 1 (generic link couldn't make two differently-named relationships to the same target):
+     RESOLVED — fixed in PR #55, link identity now keyed on target + exact text (`link.ts:414`),
+     proven empirically (citation + depends-on to one target both persist), regression test
+     `link.test.ts:168`.
+   - Blocker 2 (explainer relationship/enum status labels stale): RESOLVED — `pages/architecture-kinds.html`
+     now reads "Shipped · Relationships (PR #51)" / "Shipped · Enums (PR #52)"; stale July-2026 date gone.
+   - Validation question resolved: PR #52 (enum descriptions) MERGED via the same Convention->parser->registry
+     path (all four semantic layers shipped).
+   - One NON-blocking cosmetic nit: a flow-diagram node still says "enum meaning is the current in-progress
+     extension" (stale vs the same page calling enums Shipped). Recommend Brian APPROVE + file the nit as a
+     small follow-up task. Near-certain approve.
 
-## Current system model and evidence
+2. **`review-requests/board-placement`** (currently `requested`) — design review, 7 explicit judgments
+   (decouple sync's value from placement; thin `placement: main|branch` seam over git.ts; config home;
+   fresh-clone discovery marker; commits-on-main; transitions; anything missing). Design pre-answers most
+   with leanings. The THREE that need Brian's real judgment: **Q2** (is the seam premature? — gate-3: is
+   on-main a real second strategy or hypothetical), **Q5** (commits-on-main is the riskiest bit: a sync
+   pull becomes a fetch+rebase of the CURRENT branch scoped to the bundle path — must not touch non-bundle
+   files), **Q4** (discovery marker form for the branch case). Full brief was delivered in chat; evidence is
+   `designs/board-placement`.
 
-- Merged PR #177 exact head `13fcc2c` rendered and authorized in Claude Desktop but could remain at
-  the initial graph-loading state while server logs showed no app-only bridge calls.
-- A unique diagnostic resource URI at current main `77c84e4` loaded the live Roadmap immediately in
-  Claude Desktop. Visible trace showed the outer document remained visible throughout startup; the
-  server log showed child bridge calls and sustained polling.
-- Therefore the field incident is stale host reuse/cache under the mutable resource identity
-  `ui://agentstate/view-host/v1.html`, not an initially-hidden Claude activation.
-- Candidate `91a0cbe` correctly changed the resource identity to a full content-derived SHA URI and
-  had parent-red unit provenance plus green focused/full checks.
-- The same candidate also attempted the separately proven hidden-first-mount lifecycle repair.
-  Independent review rejected the combined candidate:
-  1. It violates the repository's one-coherent-claim rule by combining cache identity with a
-     separate hidden-lifecycle defect.
-  2. It introduces a blocking replacement regression: mounted authorized A -> hidden -> authorized
-     replacement B calls `clearFrameDocument()` after B becomes current; the intentional
-     `about:blank` load is treated as hostile navigation, so B is retired/closed and cannot resume.
-- Exact review record:
-  `context-notes/claude-bridge-code-review-91a0cbe`.
+## Already captured on the board this session (reference, do not re-narrate)
+- Page->View rename (Option C+) COMPLETE — all 3 units merged (#83 U1, #87 U3 + partial-pair pin d12b402,
+  #88 U2 detection/nudge/audit at cf8afeb after 3 external-review findings fixed). Record on
+  `tasks/rename-page-kind-to-view` (status done).
+- `designs/user-notices` — addressed/expiring/acknowledgeable notices design (expiry-mandatory +
+  optional-ack; address the person not the surface; identity prerequisite seeded from `git config user.email`).
+- `tasks/guidance-bundle-onboarding` (P2, todo) — guidance bundle shipped with npm.
 
-## Durable work state
+## Open threads NOT yet captured anywhere (do these / offer them)
+- ONBOARDING-NEIGHBORHOOD OVERLAP (flagged, mapping OFFERED but not done): the new guidance-bundle task
+  overlaps `tasks/npm-quickstart-onboarding`, `tasks/product-recipe-discovery`, and a NEW `Journey` model
+  from openai/codex (`journeys/new-user-to-recurring-value` + `journey-stages/*`). Risk: 3-4 half-built
+  onboarding surfaces. Offer to map where they genuinely differ before anyone builds guidance-bundle.
+- PR-FIX-CLAIM design — discussed in chat, NOT captured. Shape: a PR fix becomes claimable the moment it's
+  a status-bearing doc; reuse the exact CAS-flip-with-actor claim; the doc POINTS at the PR by number+head-SHA
+  (bundle owns the claim, GitHub owns the PR — don't mirror PR state); one new glue step turns review findings
+  into `open` fix docs; claim per fix-ROUND to avoid branch-push contention. Offer to write it up as a design +
+  draft the `PR Fix` convention.
+- FIVE `in_progress` tasks with NO assignee = likely stale claims to reconcile (check actor/timestamp, flip
+  back to todo if dead): mcp-generated-view-type-discovery, npm-cli-skill-prerelease, source-comment-hygiene,
+  sync-receipt-edge-polish, workspace-catalog-dogfood-checkpoint. (Some may have been touched since; re-verify.)
 
-- `tasks/claude-desktop-durable-bridge-initialization`: `in_progress`, actor
-  `codex-pr177-followup`. This is the cache-identity field fix and requires exact uninstrumented
-  Claude validation.
-- `tasks/mcp-app-hidden-authorized-first-mount`: `in_progress`, actor
-  `codex-pr177-followup`. This is a separate lifecycle unit.
-- Existing rejected combined worktree:
-  `/private/tmp/aslite-claude-bridge-fix`, branch
-  `fix/claude-desktop-durable-bridge-init`, exact `91a0cbe`.
-- Diagnostic worktree:
-  `/private/tmp/aslite-claude-bridge-probe`, detached `77c84e4`.
-- Main working tree has a user-owned `.gitignore` modification; do not touch it.
-- Claude Desktop is currently configured to the unique diagnostic probe server; restore or replace
-  that entry only when preparing the exact accepted candidate.
-
-## Next actions
-
-1. Create a clean cache-only worktree/branch from current `origin/main`.
-2. Apply only `server.ts` and `server.test.ts` content-derived resource-identity changes, including
-   the reviewer's missing assertion that the resource response URI equals the exported hash URI.
-3. Prove parent-red and candidate-green, run the relevant full gates, commit, independently review,
-   then adversarially QA the exact cache-only SHA.
-4. Build that exact SHA, configure Claude Desktop to a uniquely named server, and ask Brian to run
-   the uninstrumented Roadmap validation. Record and close the cache task only after it passes.
-5. Separately create a lifecycle branch. Add the mounted-A -> hidden -> replacement-B parent-red
-   regression before changing the intentional-clear/navigation-guard state machine. Review and QA
-   that exact unit independently.
-
-## Unverified assumptions and blockers
-
-- The cache root cause has strong field evidence but final acceptance still needs uninstrumented
-  exact-SHA Claude Desktop validation using the production content-derived URI.
-- The correct cross-browser representation of an intentional iframe clear has not yet been
-  designed. It must remain safe both when clearing emits a `load` event and when it does not.
-- No code candidate is currently approved for QA. `91a0cbe` is changes-requested and must not ship.
+## Working conventions in force (from Brian's global + repo CLAUDE.md)
+- CODE ships on feature branches; I push branches + write ASCII-safe PR descriptions; BRIAN opens/merges PRs
+  (never gh pr create, never push main). No AI-attribution trailers.
+- Board writes go through `aslite sync` (board branch). Reviewers detach onto exact SHAs in isolated
+  worktrees; `npm ci` in fresh worktrees; gates verified by DIRECT exit codes, never pipes.
+- Sub-agents have dropped their completion notifications ~3x this session — after dispatching a background
+  gate, watch for stall and nudge; prefer foreground for a sub-agent's final gate.
+- Board writes attributed `--actor brian-claude` this session.
