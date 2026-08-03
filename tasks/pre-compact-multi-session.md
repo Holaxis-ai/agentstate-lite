@@ -4,12 +4,11 @@ title: Implement and live-prove revision 3 multi-session compaction handoffs
 status: in_progress
 priority: '2'
 description: >-
-  T0-T4 passed exact review. Plan R3 for T3.5 is under exact acceptance/skeptic
-  review after replacing the fault race and binding campaign, review assertions,
-  auth/cleanup, and enforceable candidate verification. No T3.5 code/G0 before
-  both PASS.
+  T0-T4 passed exact review. R4 T3.5 failed on a late-bind launch/reap race; the
+  circuit breaker is running an isolated no-auth exact-host primitive probe
+  before any replacement Plan, code, API-key Claude run, or G0 freeze.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-03T22:26:53.888Z'
+timestamp: '2026-08-03T23:00:55.700Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
@@ -57,7 +56,8 @@ The exact accepted design/plan and unanimous independent gate are recorded in `r
 - Exact acceptance and skeptic review both rejected R3. The candidate architecture survived, but crash-atomic campaign ownership/tmux recovery, child close-plus-EOF success, fresh-generation causation and guarded corruption, hook-tree auth inheritance, serial L0 cleanup, and install-time versus publish-only npm lifecycle semantics remained open.
 - Plan R4 `plans/precompact-v3-t35-candidate-acceptance@sha256:d26ed81a61f6035de04252a9d8d3dccbbb9331192e86a51ff2912feb1ed2e812` closes those contracts with immutable owner-file-to-hard-link acquisition, pinned Darwin ps identity, history-before-current publication, socket-first tmux recovery, exact close-plus-EOF/fresh-generation wrapper predicates, serialized L0, honest full hook-tree auth possession, and a pinned install-triggered npm script boundary.
 - Exact product/acceptance and adversarial-skeptic review both rejected Plan R4. The sole shared load-bearing defect is the tmux launch/reap gap: cleanup may observe a reserved socket absent and publish proof while a live or already-OS-spawned launcher can still bind it later. The skeptic also empirically showed the pinned Darwin `/bin/ps` grammar rejects a valid row with no leading PID whitespace.
-- Current phase: planning circuit breaker. Architect, acceptance, and skeptic must independently re-model the launch/cleanup subsystem and its interleavings before any replacement Plan is synthesized. This is an architecture re-plan, not an R5 wording patch. No T3.5 code or G0 freeze is authorized.
+- The circuit-breaker analysis is recorded independently in `research/precompact-v3-t35-launch-reaper-architect@sha256:60018b553f55944a78f1631718e0f5c225eef4c72d85a423b76234acc4a19c43`, `research/precompact-v3-t35-launch-reaper-acceptance@sha256:4e05e1e5f39a1fe75d6caf5ad494092587ac490a73c61f4953f02e8d68a012ce`, and `research/precompact-v3-t35-launch-reaper-skeptic@sha256:ceba46d2a33f1d1bc4782077a546e043af8d7163ed70d807233c88e8cab07143`. All three agree on a no-auth gated broker, durable release/reap fence, foreground commandless `tmux -D`, separately fenced `-N` session client, creator-before-creation cleanup, and exact descendant proof. The skeptic retains an explicit Darwin PID/start-to-kill TOCTOU limitation.
+- Current phase: run one isolated no-auth exact-host primitive probe to adjudicate execve identity, tmux foreground/no-autostart behavior, client/session topology, control-FD closure, process-group/descendant teardown, socket-loss fallback, and real ps grammar. No replacement Plan is eligible until this evidence is reviewed. No T3.5 code, API key, Claude, or G0 freeze is authorized.
 
 ## Required gate order
 
@@ -65,7 +65,7 @@ T0 harness → T1/T2 implementation → T3 integration review → T4 docs/rebase
 
 ## Next action
 
-Produce and reconcile an explicit launch-capability/reaper state machine that prevents late spawn, kills an identified launcher/process group and identified server even without a socket, pins the actual Darwin ps row grammar, and survives two-cleaner/crash interleavings. Only then may a replacement exact Plan be synthesized and independently gated. Do not implement or freeze from R1-R4 or the current isolation-only harness.
+Execute the bounded no-auth exact-host launch/reap probe in a private temporary root, persist sanitized evidence and a disposition, then have acceptance and skeptic roles review whether the state machine is implementable and which PID-signal guarantee is honest. Do not implement or freeze from R1-R4 or the current isolation-only harness.
 
 ## Related
 
