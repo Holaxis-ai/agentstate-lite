@@ -559,6 +559,37 @@ test("A1.12 project binding (directory-type, item 43 follow-on): home's dashboar
   }
 });
 
+test("A1.12b disappeared project-binding target: recovery init preserves the bound target and recipe browsing is withheld", async () => {
+  const root = await tempDir();
+  try {
+    const projectDir = path.join(root, "project");
+    const missingBundle = path.join(await realpath(root), "missing bundle");
+    await mkdir(projectDir, { recursive: true });
+    await writeFile(path.join(projectDir, ".agentstate.json"), JSON.stringify({ bundle: "../missing bundle" }));
+
+    const origCwd = process.cwd();
+    try {
+      process.chdir(projectDir);
+      let out = "";
+      await home(["--json"], { stdout: (s) => (out += s) });
+      const view = JSON.parse(out) as Record<string, unknown>;
+      const gettingStarted = view.getting_started as string;
+      assert.ok(
+        gettingStarted.includes(
+          `${INVOKE} init --recipe none --dir '${missingBundle}'`,
+        ),
+      );
+      assert.ok(gettingStarted.includes("fix/remove the binding before browsing recipes"));
+      assert.ok(!gettingStarted.includes(`${INVOKE} recipes`));
+      assert.ok(!gettingStarted.includes("init --recipe none`"), "must not emit an unscoped init");
+    } finally {
+      process.chdir(origCwd);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("A1.13 project binding URL: home surfaces explicit --remote migration guidance and never fetches", async () => {
   const projectDir = await tempDir();
   try {
@@ -574,7 +605,8 @@ test("A1.13 project binding URL: home surfaces explicit --remote migration guida
       assert.ok(out.includes(".agentstate.json"));
       assert.ok(out.includes("project_binding_error"));
       assert.ok(out.includes("pass --remote"));
-      assert.ok(out.includes("getting_started"));
+      assert.ok(out.includes("fix or remove the binding before initializing or browsing recipes"));
+      assert.ok(!out.includes("getting_started"));
     } finally {
       process.chdir(origCwd);
     }
@@ -583,7 +615,7 @@ test("A1.13 project binding URL: home surfaces explicit --remote migration guida
   }
 });
 
-test("A1.14 malformed project binding: home NEVER throws (SessionStart hook safety) — surfaces project_binding_error and still falls back to getting_started", async () => {
+test("A1.14 malformed project binding: home NEVER throws and withholds unsafe getting-started commands", async () => {
   const projectDir = await tempDir();
   try {
     await writeFile(path.join(projectDir, ".agentstate.json"), "not json at all");
@@ -600,7 +632,8 @@ test("A1.14 malformed project binding: home NEVER throws (SessionStart hook safe
       }
       assert.equal(threw, false, "a malformed .agentstate.json must never crash the SessionStart hook");
       assert.ok(out.includes("project_binding_error"));
-      assert.ok(out.includes("getting_started"));
+      assert.ok(out.includes("fix or remove the binding before initializing or browsing recipes"));
+      assert.ok(!out.includes("getting_started"));
     } finally {
       process.chdir(origCwd);
     }
