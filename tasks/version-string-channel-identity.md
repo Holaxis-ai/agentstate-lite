@@ -1,18 +1,16 @@
 ---
 type: Task
 title: Define and ship the npm versioning and update contract
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  HIGHEST PRIORITY: @holaxis/aslite@0.1.0-pre.2 is publicly published from
-  merged PR #181; both latest and next now resolve to pre.2. Clean isolated
-  registry installs proved the plain npm install path plus both aslite and
-  agentstate-lite binaries. Remaining work is the durable update-discovery,
-  upgrade, skill/hook compatibility, automation, and rollback contract before
-  retiring the marketplace channel.
+  CLOSED: the original version/channel identity finding shipped in merged PR
+  #183 at @holaxis/aslite@0.1.0-pre.2; the broader release/update program
+  continues in separate child tasks under
+  roadmap-items/distribution-neutral-resources.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-07-31T21:28:53.560Z'
+timestamp: '2026-08-03T14:50:24.305Z'
 ---
 # Problem
 
@@ -112,13 +110,18 @@ authority by installing guidance from `main` that can drift ahead of the install
 
 [specified by protocol design](../designs/version-update-protocols.md)
 
-# Approved decomposition and current progress (2026-07-31)
+# Closeout (2026-08-03)
 
-D0 is complete: two independent reviewers approved the domain model, release/update Decision,
-normative protocol design, and implementation Plan after multiple correction rounds. The task stays
-as the umbrella and closes only after both public-release proofs succeed. Child tasks and typed
-dependencies now live under `roadmap-items/distribution-neutral-resources`.
+The original version-string/channel-identity finding is resolved. `@holaxis/aslite` remains at
+`0.1.0-pre.2`, and PR #183 shipped one byte-distinguishing build/runtime identity authority across
+the CLI's projections. Brian reviewed and merged the implementation; merge commit:
+`deb2aaf746e290c40379f3ae9e7d89c0832ddc07`.
 
-Current unit: [one build/runtime identity authority](version-build-identity.md). Later code and
-operational units follow the exact DAG in the approved Plan; marketplace deletion remains a
-separate blocked task.
+This task is closed at Brian's direction. The broader release/update program developed during D0
+is **not** being claimed complete by this closeout: its remaining compatibility, discovery,
+publishing, two-release proof, recovery, documentation, gate-transfer, and marketplace-retirement
+units already live as separate child tasks under the active
+[`distribution-neutral-resources` roadmap item](../roadmap-items/distribution-neutral-resources.md).
+Those task records retain their own statuses and acceptance gates.
+
+[identity implementation completed by](version-build-identity.md)
