@@ -2,26 +2,48 @@
 type: Context Note
 title: Revision 3 T4 documentation builder
 actor: codex-precompact-v3-docs-builder
-timestamp: '2026-08-03T21:10:52.622Z'
+timestamp: '2026-08-03T21:16:52.913Z'
 ---
 # Summary
 
-Phase start for T4 at frozen reviewed production SHA `579de4df5076f042282d0292db6ead0839f97ef3`.
+T4 documentation is complete at exact commit `0b23287ede1e5d9ce6052d21649bf70cfb0b39af` on `feat/precompact-handoff-v3`. No production mechanics or tests changed.
 
 Ultimate goal: agentstate-lite is shared, versioned, conflict-safe memory for concurrent agent fleets, in plain text and owned by the user.
 
-Proximate goal: make the exact-host compaction-handoff pilot understandable and operable from one source-owned documentation authority without changing the frozen mechanics; this serves the ultimate goal by making the session-boundary scaffold legible, bounded, and testable.
+Proximate goal achieved: make the exact-host compaction-handoff pilot understandable and operable from source-owned documentation without changing the frozen T3 mechanics; this serves the ultimate goal by making the session-boundary scaffold legible, bounded, and testable.
 
 Loaded skills: holaxis-self-awareness, holaxis-cognitive-ecosystem, and agentstate-lite.
 
-# System model
+# Delivered
 
-The accepted lifecycle is `PreCompact -> SessionStart(source=compact) -> PostCompact -> first model response -> Stop`; only SessionStart is load-bearing restore. One private executable authority owns complete project/execution identity, a 0700 host-local generation journal, content-free operations, fixed logical expiry/event-driven GC, and process-level CAS/read-back semantics without an fsync claim. The adapter and structurally managed five-event installation are projections of that authority. Support is pinned to the exact verified Claude host tuple, and downstream acceptance must consume one immutable candidate.
+Source-owned files updated:
 
-# Scope and progress
+- `packages/cli/src/commands/hook.ts`: operator help and source comments for five lifecycle roles, exact-host/readiness states, full identity, private journal, fixed expiry/event GC, process-level durability, content-free diagnosis/recovery, and structural foreign-hook preservation.
+- `packages/cli/src/reference.ts`: honest top-level command reference including health/diagnosis/recovery.
+- `packages/cli/src/distribution-resources.ts`: matching command-resource key.
+- `packages/cli/src/skill-render.ts`: one shared detailed operating contract rendered into both distribution channels.
+- `README.md`, `packages/cli/README.md`, and `CLAUDE.md`: concise front-door and maintainer projections, including Claude-versus-Codex/OpenCode support boundaries.
 
-T3 passed exact-SHA review in `context-notes/precompact-v3-t3-review-r2`. T4 will inspect repository generators and edit only source-owned help/reference/docs/skill inputs required to explain verified support, lifecycle roles, privacy/durability, recovery, readiness failures, unsupported hosts, and digest-locked live acceptance. Derived files will be regenerated only with repository scripts. No production semantics, global settings, or live Claude configuration are in scope.
+Generated file updated:
 
-# Next action
+- `packages/cli/SKILL.md`, generated with `npm run gen:skill -w @holaxis/aslite`. The plugin-channel SKILL and compiled plugin bundle remain untouched because repository policy assigns them to the merge bot.
 
-Map the existing hook help/reference/README/skill generation graph and choose the smallest source-owned documentation set that gives progressive disclosure without duplicating policy.
+The generated skill names the pinned Claude `2.1.220` Darwin/arm64 realpath/digest tuple, PreCompact prepare, compact SessionStart load-bearing restore, PostCompact audit, Stop/SubagentStop informational observation, canonical bundle plus complete execution identity, private 0700 journal, seven-day logical expiry with event-driven physical GC, no-fsync durability boundary, content-free exact-version recovery, readiness failure states, structural hook ownership, unsupported runtimes, and the one-manifest Review -> QA -> negative -> manual -> automatic -> sub-agent rail.
+
+# Verification
+
+- `npm run typecheck -w @holaxis/aslite`: PASS.
+- `npm run check:skill -w @holaxis/aslite`: PASS; npm SKILL current.
+- root `npm run build`: PASS.
+- focused reference, skill-distribution, hook-lifecycle, and help-index tests with `--test-concurrency=1`: 65 passed, 0 failed.
+- exact helper-readiness test isolated: PASS.
+- built `aslite hook --help` and top-level `aslite --help`: expected exact-host, lifecycle, readiness, durability, recovery, and expanded command reference present.
+- `git diff --check`: PASS. Diff privacy scan found no auth/API token, raw lifecycle payload field, transcript-path, compact-summary, assistant-message, or temporary-root content. Worktree clean after commit.
+
+A first parallel focused run passed 64 tests and timed out only the timing-sensitive healthy-helper probe at its exact 1.5-second boundary; the same test passed in isolation and the whole focused set passed serially. This is recorded as suite contention, not hidden.
+
+# Caveat and next action
+
+The branch is intentionally still four commits behind `origin/main`, including the package version/reference updates identified by the orchestrator. Per instruction, T4 did not rebase or merge. The orchestrator must integrate upstream, regenerate the npm SKILL from the reconciled source, rerun generated checks, and exact-review the resulting candidate.
+
+No live Claude acceptance or global configuration mutation occurred in T4.
