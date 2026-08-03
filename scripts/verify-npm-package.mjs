@@ -347,7 +347,11 @@ export async function verifyNpmPackage({ mode }) {
     await runCli("agentstate-lite", ["--help"]);
     await runCli("aslite", ["--help"]);
     const initHelp = (await runCli("aslite", ["init", "--help"])).stdout;
-    assert.match(initHelp, /aslite recipes/, "init help must point at recipe discovery");
+    assert.match(
+      initHelp,
+      /(?:agentstate-lite|aslite) recipes/,
+      "init help must point at recipe discovery through an installed bin alias",
+    );
     const discoveryDir = path.join(scratch, "recipe-discovery");
     await mkdir(discoveryDir);
     const discoveredRecipes = parseJson(

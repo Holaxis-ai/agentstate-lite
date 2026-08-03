@@ -288,9 +288,9 @@ test("recipe inventory derives Reference and View identities from any loaded man
 
   const row = recipeInventoryRow(loaded.recipe, null, "aslite");
   assert.deepEqual(row.assets, {
-    kinds: ["Review Request"],
+    kinds: ["Review Request", "View"],
     references: ["references/view-authoring-v0"],
-    views: ["views-registry/review-request"],
+    views: ["views-registry/review-workflow-reviews"],
   });
 });
 
