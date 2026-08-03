@@ -2,7 +2,7 @@
 type: Design
 title: Multi-session-safe pre-compaction handoff notes
 actor: claude-precompact-designer
-timestamp: '2026-08-03T15:36:10.956Z'
+timestamp: '2026-08-03T15:46:26.016Z'
 ---
 # Multi-session-safe pre-compaction handoff notes
 
@@ -104,6 +104,16 @@ Therefore, on the fallback path the resuming agent MUST NOT silently trust the p
 The fallback is honestly framed as recovery of the single-session-per-`(actor,machine,role)` case;
 multi-concurrent recovery without a stable id is human-confirmed, not automatic.
 
+**Residual limit the guard does NOT remove (NEW-2).** The slug fallback (`pre-compact-{actor}-
+{hostname}`, used when no `session_id`/`agent_id` is in the payload) is NOT session-granular: two
+concurrent same-actor + same-machine main sessions with no session id both key on the SAME slug, so
+the second write clobbers the first (the original collision, in the degraded no-id case). The
+self-description guard prevents a resuming agent from restoring the WRONG session's handoff, but it
+does NOT prevent that handoff LOSS — the guard closes wrong-restore, not loss. Loss in this corner
+is only truly fixed by a session-granular id actually being present (the primary hook path), which
+is why confirming `session_id` in the payload matters. In the common case (a real `agent_id`/
+`session_id`), distinct ids mean no slug and no collision.
+
 ### (c) Cleanup / staleness — mandatory expiry + delete-on-consume
 
 Mirrors `designs/user-notices` (expiry does double duty: stop-condition AND GC; mandatory).
@@ -131,6 +141,14 @@ aslite list --type "Context Note" --prefix context-notes/pre-compact- \
 `--field machine=<hostname>` or it returns orchestrators from every host Brian runs. "THE
 orchestrator" is well-defined only within one machine; a cross-host view intentionally lists one per
 host. Verified: `--field role=orchestrator --field machine=testhost` AND-filters correctly.
+
+**`role` is set manually, not auto-populated (NEW-3).** The hook payload carries no signal for
+whether a session is THE orchestrator, so the hook cannot infer `role: orchestrator` — it can only
+distinguish sub-agent (`agent_id` present) from main. `role` therefore stays a value the
+orchestrator session sets on its own note (the interactive session that Brian designated as
+orchestrator writes `role: orchestrator`; other mains write `role: main`; dispatched sub-agents are
+told `role: sub-agent`). Decision (d)'s query still works exactly as written — it is just filtering a
+manually-set field, not a hook-derived one.
 
 ### (e) Convention vs tooling — RE-OPENED and RESOLVED: convention on the verified promote path, mechanized by the hook
 
@@ -225,20 +243,41 @@ ADD:
 
 ### 3. ~/.claude/hooks/pre-compact.sh — key on session_id, drop the legacy MCP tool
 
+**KEY correctness (NEW-1):** jq `//` treats an EMPTY string as present, so
+`((.agent_id // .session_id // "") | .[0:8])` emits a bare `pre-compact-` when `agent_id` is `""`
+(or both fields are `""`/absent) — reintroducing the original fixed-id collision. Use an explicit
+non-empty filter and a NON-EMPTY slug fallback. Copy-paste-correct block:
+
 ```
-- Change KEY so a MAIN session keys on its session_id, not the colliding constant:
-    KEY=$(echo "$INPUT" | jq -r '((.agent_id // .session_id // "") | .[0:8]) as $h | "pre-compact-\($h)"')
-  (falls back to a hostname/actor slug only if both are absent)
-- Change additionalContext to instruct the aslite `promote` write (the block in decision (e)),
-  NOT `mcp__agentstate-mcp__agentstate_context_note_write`. Have the hook substitute ID8, the
-  computed EXP date, session_id, and role into the injected command.
+# Pick the first NON-EMPTY of agent_id, session_id (jq drops null AND ""); RAW is empty only if none.
+RAW=$(echo "$INPUT" | jq -r '[.agent_id, .session_id] | map(select(. != null and . != "")) | (.[0] // "")')
+if [ -n "$RAW" ]; then
+  ID8="${RAW:0:8}"
+  KEY="pre-compact-${ID8}"
+else
+  # No session-granular id in the payload -> a NON-EMPTY, never-bare slug (see NEW-2 caveat).
+  ACTOR="${AGENTSTATE_LITE_ACTOR:-unknown}"
+  HOST=$(hostname | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/-\{1,\}/-/g; s/^-//; s/-$//')
+  KEY="pre-compact-${ACTOR}-${HOST}"
+fi
 ```
+
+What each branch produces (verified against all six edge cases):
+- `agent_id` present (sub-agent): `pre-compact-<agent_id[0:8]>` (e.g. `pre-compact-ad77f1b9`).
+- `agent_id` empty/absent, `session_id` present (main): `pre-compact-<session_id[0:8]>`
+  (e.g. `pre-compact-cccc3333`).
+- BOTH empty/absent/null: `pre-compact-<actor>-<hostname-slug>`
+  (e.g. `pre-compact-brian-claude-brianss-macbook-pro-m4-local`) — never a bare `pre-compact-`.
+
+Also change additionalContext to instruct the aslite `promote` write (the block in decision (e)),
+NOT `mcp__agentstate-mcp__agentstate_context_note_write`. Have the hook substitute the computed
+`KEY`, the `EXP` date, `session_id`, and `role` into the injected command.
 
 ### 4. ~/.claude/hooks/post-compact.sh — same id, aslite read + delete-consume
 
 ```
-- Compute the SAME id8 (same jq expression) and inject:
-    aslite doc read context-notes/pre-compact-<id8>
+- Compute the SAME KEY (the exact block from #3, so both hooks agree) and inject:
+    aslite doc read context-notes/<KEY>
   (reload the skills it lists, restore state), then AFTER restoring:
     aslite doc delete context-notes/pre-compact-<id8>
 - Drop the legacy-tool phrasing; if the id is absent, tell the agent to run the best-effort
