@@ -2,7 +2,7 @@
 type: Context Note
 title: Revision 3 T1 private authority builder
 actor: codex-precompact-v3-t1-builder
-timestamp: '2026-08-03T20:01:14.114Z'
+timestamp: '2026-08-03T20:13:15.592Z'
 ---
 # Summary
 
@@ -52,4 +52,17 @@ Independent review `context-notes/precompact-v3-t1-review` at `sha256:df58723f3e
 
 Final 0600 record modes are asserted, prepared-state Post/Stop metadata is rejected by schema, premature PostCompact audit is ignored, and the true multi-process core-backend CAS probe remains green.
 
-No T2 public command, hook installation policy, or live-host integration was implemented here. Those remain downstream work. Exact repair commit: `12ec0938e4d4a0e824e1f6a977f0f504b3578f13`.
+No T2 public command, hook installation policy, or live-host integration was implemented here. Those remain downstream work.
+
+## Independent review R2 repair
+
+Review `context-notes/precompact-v3-t1-review-r2` at `sha256:8018384072ece7751ab0812b259c04399c52c47c3df71ae1a4a41ec2b5be30dd` found one remaining TOCTOU: recovery quarantined the observed generation premise, then detached the head without keeping the generation version/absence premise stable.
+
+Repair `a6af67738a1750b02a201ce4ea51cfdc84a3e23f` adds a real core-backend CAS fence at the selected generation key after quarantine and before head detachment. The fence is installed with the caller's exact generation version or expect-absent premise. Existing authority mutations either lose their old-version CAS or reject the fenced record; GC recognizes and preserves the short-lived fence. Recovery then CAS-detaches the exact head and restores the prior generation bytes byte-exact, or removes the expect-absent fence. Premise/head conflicts clean up the quarantine/fence and preserve current head and generation bytes. No second lock was added.
+
+Two killpoint regressions now prove:
+
+- an absent selected generation recreated during quarantine makes recovery conflict without changing the recreated generation or head;
+- a production PostCompact mutation advancing the selected generation during quarantine makes recovery conflict without changing that updated generation or head.
+
+Final R2 verification: focused identity/schema/transcript/authority/true-process/contracts lane 34 pass, 0 fail, 13 expected T2 skips; opt-in red lane 14 pass with exactly the two deferred T2 failures; CLI typecheck, full monorepo build, and diff check pass. Exact T1 review commit: `a6af67738a1750b02a201ce4ea51cfdc84a3e23f`.
