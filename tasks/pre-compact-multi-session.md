@@ -4,13 +4,13 @@ title: Implement and live-prove revision 3 multi-session compaction handoffs
 status: in_progress
 priority: '2'
 description: >-
-  Revision 3 design and plan passed unanimous independent lifecycle,
-  product/acceptance, and adversarial-skeptic review. Current phase: T0 feedback
-  infrastructure in the isolated feat/precompact-handoff-v3 worktree.
-  Implementation remains gated by tests, exact-artifact Review, QA, and real
-  negative/manual/automatic/sub-agent Claude acceptance.
+  Revision 3 plan and T0 feedback infrastructure passed independent review.
+  Current phase: parallel T1 private authority/journal and T2 Claude
+  adapter/install on frozen executable contracts. Later gates remain
+  integration, full check/candidate freeze, exact-artifact Review, QA, and real
+  negative/manual/automatic/sub-agent acceptance.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-03T18:31:37.296Z'
+timestamp: '2026-08-03T19:10:57.263Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
@@ -43,7 +43,9 @@ The exact accepted design/plan and unanimous independent gate are recorded in `r
 - Installed Claude lifecycle and automatic compaction rail probed successfully in isolated configuration.
 - Revision-3 design/plan passed final lifecycle, product/acceptance, and adversarial-skeptic review.
 - Feature branch/worktree: `feat/precompact-handoff-v3` in `/private/tmp/aslite-precompact-v3.RLDTIZ/repo`, based on `origin/main` `138a3c7c756e5fdb883a84b3c10611f92253033e`.
-- Current phase: T0 feedback infrastructure and red probes. Production implementation has not started.
+- T0 feedback infrastructure was committed at `ebfd190a8fb01525eb9a9cd2bcca6570bb3d2c61` after an independent FAIL-and-repair cycle. Its final review `context-notes/precompact-v3-t0-review-r2` passed at 0.97 confidence with 19 executable checks and 14 boundary-driven red contracts.
+- A real isolated Claude subagent supplied the exact installed SubagentStop fixture; global configuration was byte-identical before/after.
+- Current phase: T1 private authority/journal and T2 Claude adapter/install in parallel on frozen T0 interfaces.
 
 ## Required gate order
 
@@ -51,7 +53,7 @@ T0 harness → T1/T2 implementation → integration/docs → full `npm run check
 
 ## Next action
 
-Have the QA-infrastructure builder create the event/transcript/process/settings/live harnesses and demonstrate the rejected behaviors as red tests, then freeze those interfaces before authority/adapter implementation.
+Implement T1 and T2 in isolated builder worktrees against the frozen T0 adapter/oracles, then independently review each builder commit before integration.
 
 ## Related
 
