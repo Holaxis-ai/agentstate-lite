@@ -4,11 +4,12 @@ title: Add skill compatibility and prove stable MCP launch
 status: in_progress
 priority: '1'
 description: >-
-  Candidate cd3d330 passed independent exact-SHA re-review after the Windows
-  path-safety repair; separate adversarial QA is in progress.
+  Implementation is PR-ready at cd3d330 with exact-SHA review, adversarial QA,
+  and the full repository/package/MCP gate green; remains in progress only for
+  release-receipt guidance integration after PR 204 lands.
 actor: codex-c2s-orchestrator
 assignee: codex-c2s
-timestamp: '2026-08-04T01:21:18.724Z'
+timestamp: '2026-08-04T01:36:22.757Z'
 ---
 # Goal
 
@@ -24,6 +25,21 @@ Add additive skill compatibility receipts and prove the bounded stable MCP PATH/
 # Gate
 
 Builder → independent exact-SHA Review → adversarial owned/unmanaged/legacy/partial/no-write QA → repository/package/MCP gates → Brian-owned PR/merge.
+
+# Progress
+
+Parallel implementation is complete and PR-ready at exact SHA `cd3d330a069419b9746bc007d8aedf10666c2c78` on `feat/skill-mcp-compatibility`.
+
+- Independent exact-SHA re-review: PASS with no findings after the Windows path-safety repair.
+- Adversarial QA: PASS; focused suite 113/113, independent harness 6/6, both-host no-write and literal-PATH MCP probes green.
+- Final `npm run check`: PASS, including local package verification, generated skill, 15 MCP browser tests, and 19 UI end-to-end tests.
+- PR 204 is still open and owns the release workflow/scripts and receipt implementation surface. C2S did not touch those files. After PR 204 lands, rebase and wire the already bounded migration-guidance authority into its release receipt, then repeat exact-SHA review and affected gates before closing this task.
+
+[exact-SHA review](../context-notes/c2s-exact-sha-rereview-cd3d330.md)
+
+[adversarial QA](../context-notes/c2s-adversarial-qa-cd3d330.md)
+
+[implementation plan](../context-notes/c2s-implementation-plan-2026-08-03.md)
 
 [unit contract](../plans/version-string-channel-identity.md)
 
