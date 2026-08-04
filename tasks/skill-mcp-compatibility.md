@@ -4,12 +4,11 @@ title: Add skill compatibility and prove stable MCP launch
 status: in_progress
 priority: '1'
 description: >-
-  CLAIMED by codex-c2s: implementing the approved C2S manifest-v2,
-  compatibility, durable-global, and bounded MCP PATH/handshake contract with
-  independent review and adversarial QA.
+  Candidate 0fa253f is implementation-complete with the full repository gate
+  green; independent exact-SHA Review is in progress before adversarial QA.
 actor: codex-c2s-orchestrator
 assignee: codex-c2s
-timestamp: '2026-08-04T00:41:06.192Z'
+timestamp: '2026-08-04T01:09:26.730Z'
 ---
 # Goal
 
