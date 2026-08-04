@@ -68,7 +68,7 @@ import {
   parseRecipeFiles,
   type RecipeFile,
 } from "../src/recipe-source.js";
-import { cliInvocation } from "../src/invocation.js";
+import { cliInvocation, shellArg } from "../src/invocation.js";
 
 const T = "2026-07-01T00:00:00.000Z";
 const EXAMPLE_RECIPE_FIXTURE = path.resolve(import.meta.dirname, "fixtures/example-recipe");
@@ -1354,6 +1354,50 @@ test("init: default (no --recipe) applies context-notes, reports recipe:context-
     assert.ok(registry.kinds.has("Context Note"));
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("init receipt recommends Context Note creation only when the selected recipe declares it", async () => {
+  const rows: Array<{
+    recipe?: string;
+    recommendsContextNote: boolean;
+    recommendsKinds: boolean;
+  }> = [
+    { recommendsContextNote: true, recommendsKinds: false },
+    { recipe: "context-notes", recommendsContextNote: true, recommendsKinds: false },
+    { recipe: "work-tracking", recommendsContextNote: false, recommendsKinds: true },
+    { recipe: "roadmap", recommendsContextNote: false, recommendsKinds: true },
+    { recipe: EXAMPLE_RECIPE_FIXTURE, recommendsContextNote: false, recommendsKinds: true },
+    { recipe: "none", recommendsContextNote: false, recommendsKinds: false },
+  ];
+
+  for (const row of rows) {
+    const dir = await tempDir();
+    try {
+      const args = ["--dir", dir];
+      if (row.recipe !== undefined) args.push("--recipe", row.recipe);
+      const result = await runJson(init, args);
+      const help = result.help as string[];
+      const target = ` --dir ${shellArg(path.resolve(dir))}`;
+
+      assert.equal(
+        help.some((entry) => entry.includes('new "Context Note"')),
+        row.recommendsContextNote,
+        `Context Note help for recipe ${row.recipe ?? "<default>"}`,
+      );
+      assert.equal(
+        help.some((entry) => entry.startsWith(`${cliInvocation()} kinds`)),
+        row.recommendsKinds,
+        `kinds help for recipe ${row.recipe ?? "<default>"}`,
+      );
+      assert.ok(help.some((entry) => entry.startsWith(`${cliInvocation()} recipes`)));
+      assert.ok(
+        help.every((entry) => entry.endsWith(target)),
+        `every follow-up must retain the explicit target for recipe ${row.recipe ?? "<default>"}: ${help.join(" | ")}`,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   }
 });
 

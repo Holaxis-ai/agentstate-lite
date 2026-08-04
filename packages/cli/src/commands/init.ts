@@ -13,7 +13,7 @@ import { resolveTargetDir } from "../bundle.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
-import { cliInvocation } from "../invocation.js";
+import { cliInvocation, shellArg } from "../invocation.js";
 import { applyRecipe } from "../recipes.js";
 import { resolveRecipe, DEFAULT_RECIPE_REF } from "../recipe-source.js";
 
@@ -103,6 +103,7 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
   const bundle = await initBundle(root, okfVersion ? { okfVersion } : {});
   const recipeRef = values.recipe?.trim() || DEFAULT_RECIPE_REF;
   let recipeApplied = "none";
+  let selectedRecipeKinds: string[] = [];
   let warnings: unknown[] = [];
   if (recipeRef !== "none") {
     const loaded = await resolveRecipe(recipeRef);
@@ -111,6 +112,7 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
     }
     const result = await applyRecipe(bundle, loaded.recipe);
     recipeApplied = result.id;
+    selectedRecipeKinds = loaded.recipe.governs;
     // Duplicate-`governs` against the TARGET bundle (approved §B decision 8(ii)), same as
     // `recipe add` — surfaced via the EXISTING `loadKinds` machinery, no new conflict machinery.
     const registry = await loadKinds(bundle);
@@ -128,13 +130,20 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
       `\`${cliInvocation()} sync\` joins it (never init there, that mints a divergent second ` +
       `bundle); to start sharing this one, \`${cliInvocation()} sync --establish\``;
   }
-  // Surface the recipe catalog so a cold agent whose task needs a DIFFERENT kind (e.g. tasks) does
-  // not have to guess that `recipes` exists — the study's C1 tester had to discover work-tracking
-  // (the Task kind) on its own after `init` advertised only the auto-seeded Context Note.
-  receipt.help = [
-    `${cliInvocation()} new "Context Note" <id> --title <title>`,
-    `${cliInvocation()} recipes  (list other capability recipes — e.g. work-tracking adds a Task kind)`,
-  ];
+  // A selected recipe may not install Context Note (or any kind at all). Never advertise a
+  // mutation the resulting bundle cannot perform; use the recipe's parsed `governs` inventory to
+  // offer the known Context Note shortcut or send the caller through the generic kind catalog.
+  // When `--dir` selected a bundle outside the invocation cwd, retain that resolved target in every
+  // follow-up. Otherwise a copy-pasted read can inspect a different bundle and `new` can mutate it.
+  const target = values.dir === undefined ? "" : ` --dir ${shellArg(root)}`;
+  const help: string[] = [];
+  if (selectedRecipeKinds.includes("Context Note")) {
+    help.push(`${cliInvocation()} new "Context Note" <id> --title <title>${target}`);
+  } else if (selectedRecipeKinds.length > 0) {
+    help.push(`${cliInvocation()} kinds${target}`);
+  }
+  help.push(`${cliInvocation()} recipes${target}`);
+  receipt.help = help;
 
   stdout(render(receipt, resolveMode(values)));
 }
