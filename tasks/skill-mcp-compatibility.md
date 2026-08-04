@@ -4,12 +4,13 @@ title: Add skill compatibility and prove stable MCP launch
 status: in_progress
 priority: '1'
 description: >-
-  Branch feat/skill-mcp-compatibility is pushed at cd3d330 with exact-SHA
-  review, adversarial QA, and full gate green; remains in progress only for
-  release-receipt guidance integration after PR 204 lands.
+  Draft PR #205 is open at
+  https://github.com/Holaxis-ai/agentstate-lite/pull/205 from
+  feat/skill-mcp-compatibility at cd3d330; review, adversarial QA, and full gate
+  are green, with release-receipt integration pending PR #204.
 actor: codex-c2s-orchestrator
 assignee: codex-c2s
-timestamp: '2026-08-04T01:37:06.789Z'
+timestamp: '2026-08-04T01:46:43.551Z'
 ---
 # Goal
 
