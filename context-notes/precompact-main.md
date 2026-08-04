@@ -3,11 +3,11 @@ type: Context Note
 title: 'Pre-compact handoff: revision 3 compaction rail'
 description: Handoff state and next actions for a fresh Codex session.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-04T17:26:26.497Z'
+timestamp: '2026-08-04T17:29:46.020Z'
 ---
 # Summary
 
-R0 r6 is implemented and locally tested; exact review and real-Claude live acceptance remain.
+R0 r6 is implemented and locally tested, but exact review r7 failed; live authorization is CLOSED.
 
 # Handoff: revision 3 compaction rail
 
@@ -17,7 +17,7 @@ Prove a safe, durable multi-session handoff rail for Claude compaction before im
 
 ## Current status
 
-- R0 structural repair r6 is complete in `/private/tmp/aslite-precompact-v3.RLDTIZ/repo`.
+- R0 structural repair r6 is complete in `/private/tmp/aslite-precompact-v3.RLDTIZ/repo`; exact review r7 failed.
 - Branch: `feat/precompact-handoff-v3`.
 - Targeted deterministic suite: 6/6 passing.
 - No lifecycle or tmux code has been started.
@@ -26,11 +26,11 @@ Prove a safe, durable multi-session handoff rail for Claude compaction before im
 
 ## Review state
 
-Prior exact reviews repeatedly returned FAIL because the fixture was synthetic: fabricated Claude events, disconnected manifests/settings, missing stdout passthrough and raw adjudication, incomplete automatic/negative cases, and STATIC artifacts claiming LIVE. Those blockers were targeted by r6, but r6 has not yet received a fresh exact-byte skeptic/product review.
+Prior exact reviews repeatedly returned FAIL because the fixture was synthetic. Latest skeptic record: `context-notes/precompact-v3-r0-live-rail-skeptic-r7@sha256:3f6b6fb48ebd74e0f98b519cf20d44890083e268efd00ed03e74ede21f62ad43`. A valid PreCompact input still produces a SessionStart response; settings/path binding, isolation, raw adjudication, STATIC/LIVE enforcement, and cwd-independent tests remain unresolved.
 
 ## Immediate next action
 
-Dispatch exact-byte skeptic and product acceptance reviews of r6. Do not run Claude or authorize live acceptance unless both pass. If either fails, repair the concrete blocker immediately and re-review. If both pass, run the isolated four-case live matrix: manual positive, automatic positive, automatic PreCompact negative, and SessionStart `continue:false` negative, capturing raw hook input/output, transcript/native-summary, host/settings/version/digest provenance, timing, and restoration evidence.
+Next session: repair the r7 blockers, then repeat exact review. Do not run Claude or authorize live acceptance unless both reviewers pass. If they pass, run the isolated four-case live matrix with raw evidence and restoration proof.
 
 ## Architectural invariants
 
