@@ -3,8 +3,12 @@ type: Context Note
 title: 'Pre-compact handoff: revision 3 compaction rail'
 description: Handoff state and next actions for a fresh Codex session.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-04T17:26:10.246Z'
+timestamp: '2026-08-04T17:26:26.497Z'
 ---
+# Summary
+
+R0 r6 is implemented and locally tested; exact review and real-Claude live acceptance remain.
+
 # Handoff: revision 3 compaction rail
 
 ## Goal
