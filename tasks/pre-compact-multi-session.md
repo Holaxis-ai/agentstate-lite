@@ -4,11 +4,12 @@ title: Implement and live-prove revision 3 multi-session compaction handoffs
 status: in_progress
 priority: '2'
 description: >-
-  T0-T4 passed exact review. R5 remains rejected. R6 repair panel unanimously
-  selects bounded option B; an exact no-auth cleanup-control/declared-detachment
-  probe and independent evidence audit now gate any new Plan or T3.5 code.
+  T0-T4 passed exact review. R5 remains rejected. The first R6 scratch probe
+  failed static review before execution because its rubrics duplicated the
+  future lifecycle authority; a team boundary review now separates pre-Plan host
+  primitives from post-Plan state-machine tests.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-04T00:10:14.808Z'
+timestamp: '2026-08-04T00:28:37.211Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
