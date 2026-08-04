@@ -387,7 +387,7 @@ test("a failed persistent-install authority preflight leaves both host targets u
           allowed: false,
           state: "unknown",
           reason: "transient npx cache",
-          evidence: { npm_prefix: null, bin_path: null, executable_path: executable },
+          evidence: { npm_prefix: null, bin_path: null, executable_path: executable, runtime_path: process.execPath },
         }),
       }),
     /durable npm-global CLI/,

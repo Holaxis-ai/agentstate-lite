@@ -1,0 +1,171 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import {
+  buildHookLaunchSpec,
+  buildOpenCodePluginSource,
+  computeHookUninstall,
+  computeSessionStartHookInstall,
+  hook,
+  readHookCompatibilityStatus,
+} from "../src/commands/hook.js";
+import { CliError } from "../src/errors.js";
+import type { PersistentInstallAuthority } from "../src/install-authority.js";
+
+const FOREIGN = [
+  { type: "command", command: "echo agentstate-lite", timeout: 10 },
+  { type: "command", command: "agentstate-lite backup", timeout: 10 },
+  { type: "command", command: "npx -y @holaxis/aslite session-start", timeout: 10 },
+];
+
+function capture(): { out: () => string; stdout: (value: string) => void } {
+  let value = "";
+  return { out: () => value, stdout: (next) => void (value += next) };
+}
+
+test("JSON reconciliation owns exact generated forms and preserves every near-match", () => {
+  const settings = {
+    hooks: {
+      SessionStart: [
+        { matcher: "", hooks: [...FOREIGN] },
+        {
+          matcher: "",
+          hooks: [{ type: "command", command: "agentstate-lite session-start", timeout: 10 }],
+        },
+      ],
+    },
+  };
+  const [installed, changed] = computeSessionStartHookInstall(settings, { command: "aslite session-start" });
+  assert.equal(changed, true);
+  assert.deepEqual(installed.hooks!.SessionStart![0]!.hooks, FOREIGN);
+  assert.equal(installed.hooks!.SessionStart![1]!.hooks![0]!.command, "aslite session-start");
+
+  const foreignOnly = { hooks: { SessionStart: [{ matcher: "", hooks: [...FOREIGN] }] } };
+  const [uninstalled, removed] = computeHookUninstall(foreignOnly);
+  assert.equal(removed, false);
+  assert.equal(uninstalled, foreignOnly);
+});
+
+test("a recognized hook under a non-empty matcher moves without changing foreign siblings", () => {
+  const foreign = { type: "command", command: "lint-session", timeout: 30 };
+  const settings = {
+    hooks: {
+      SessionStart: [
+        {
+          matcher: "tool",
+          hooks: [foreign, { type: "command", command: "aslite session-start", timeout: 10 }],
+        },
+      ],
+    },
+  };
+  const [updated, changed] = computeSessionStartHookInstall(settings, { command: "aslite session-start" });
+  assert.equal(changed, true);
+  assert.deepEqual(updated.hooks!.SessionStart, [
+    { matcher: "tool", hooks: [foreign] },
+    { matcher: "", hooks: [{ type: "command", command: "aslite session-start", timeout: 10 }] },
+  ]);
+});
+
+test("status reports duplicate generated entries as stale", () => {
+  const status = readHookCompatibilityStatus({
+    hooks: {
+      SessionStart: [
+        { matcher: "", hooks: [{ type: "command", command: "aslite session-start", timeout: 10 }] },
+        { matcher: "", hooks: [{ type: "command", command: "agentstate-lite session-start", timeout: 10 }] },
+      ],
+    },
+  });
+  assert.equal(status.installed, true);
+  assert.equal(status.compatibility.state, "stale");
+  assert.match(status.compatibility.reason, /2 generated hook entries/);
+});
+
+test("durable authority composes a stable npm-prefix Node launch", () => {
+  const authority: PersistentInstallAuthority = {
+    allowed: true,
+    state: "durable_global",
+    reason: "durable npm-global executable",
+    evidence: {
+      npm_prefix: "/opt/aslite",
+      bin_path: "/opt/aslite/bin/aslite",
+      runtime_path: "/opt/aslite/bin/node",
+      executable_path: "/opt/aslite/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs",
+    },
+  };
+  assert.deepEqual(buildHookLaunchSpec(authority), {
+    program: "/opt/aslite/bin/node",
+    args: [
+      "/opt/aslite/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs",
+      "session-start",
+    ],
+    command:
+      "/opt/aslite/bin/node /opt/aslite/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+  });
+});
+
+test("hook install refuses missing persistent authority before creating target files", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-authority-"));
+  try {
+    await assert.rejects(
+      () =>
+        hook(["install"], {
+          base,
+          installAuthority: () => ({
+            allowed: false,
+            state: "unknown",
+            reason: "transient npm exec",
+            evidence: { npm_prefix: null, bin_path: null, runtime_path: null, executable_path: null },
+          }),
+          stdout: () => {},
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof CliError);
+        assert.match(error.message, /durable npm-global CLI/);
+        return true;
+      },
+    );
+    assert.deepEqual(await readdir(base), []);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode marker lookalikes are reported unmanaged and never overwritten or deleted", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-opencode-foreign-"));
+  const plugin = path.join(base, ".config", "opencode", "plugins", "axi-agentstate-lite.js");
+  const authored = "// axi-sdk-js managed opencode plugin: agentstate-lite\nexport default 'mine';\n";
+  try {
+    await mkdir(path.dirname(plugin), { recursive: true });
+    await writeFile(plugin, authored);
+
+    const statusCapture = capture();
+    await hook(["status", "--json"], { base, stdout: statusCapture.stdout });
+    const status = JSON.parse(statusCapture.out());
+    assert.equal(status.hook.opencode, false);
+    assert.equal(status.hook.hosts.opencode.state, "unmanaged");
+
+    await hook(["uninstall"], { base, stdout: () => {} });
+    assert.equal(await readFile(plugin, "utf8"), authored);
+
+    await assert.rejects(() => hook(["install"], { base, commandBase: "aslite", stdout: () => {} }), CliError);
+    assert.equal(await readFile(plugin, "utf8"), authored);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("OpenCode exact generated source remains managed", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-opencode-owned-"));
+  const plugin = path.join(base, ".config", "opencode", "plugins", "axi-agentstate-lite.js");
+  try {
+    await mkdir(path.dirname(plugin), { recursive: true });
+    await writeFile(plugin, buildOpenCodePluginSource("aslite"));
+    await hook(["uninstall"], { base, stdout: () => {} });
+    await assert.rejects(() => readFile(plugin, "utf8"));
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});

@@ -16,7 +16,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chmod, lstat, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { chmodSync, existsSync } from "node:fs";
+import { chmodSync, existsSync, realpathSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -60,6 +60,7 @@ import {
   sessionStartHookCommand,
 } from "../src/commands/hook.js";
 import { CliError } from "../src/errors.js";
+import { tokenizeGeneratedHookCommand } from "../src/hook-compatibility.js";
 import { readCursor, readMarker, readSelfActors, type AwarenessCache } from "../src/cursor.js";
 import { initBundle, writeDoc } from "@agentstate-lite/core";
 import { addCatalogEntry } from "../src/catalog.js";
@@ -80,12 +81,8 @@ const cliPackageRoot = path.resolve(here, "..");
 const cliBin = path.join(cliPackageRoot, "dist", "agentstate-lite.mjs");
 
 /**
- * Deterministic preferred-bin resolution for spawned `hook install`s (review finding: an
- * in-process install writes hookCommand()'s absolute source path, whose RECOGNITION as managed
- * depended on the checkout path containing the legacy "agentstate-lite" substring — falsely green
- * on GitHub's checkout, red in a marker-free worktree). An `aslite` symlink to the BUILT dist on
- * the child's PATH makes the spawned CLI resolve the bare preferred bin, so the written command
- * is exactly `aslite session-start` at ANY checkout path.
+ * Deterministic CLI resolution for spawned hook commands. The installed hook no longer inherits
+ * this PATH lookup: it binds absolute Node + CLI paths after the process establishes authority.
  */
 let preferredBinDirPromise: Promise<string> | undefined;
 function preferredBinDir(): Promise<string> {
@@ -115,6 +112,18 @@ async function runCliHook(
     encoding: "utf8",
   });
   return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+}
+
+function assertPathIndependentLocalLaunch(command: string): string[] {
+  const tokens = tokenizeGeneratedHookCommand(command);
+  assert.ok(tokens, `expected generated hook command: ${command}`);
+  assert.equal(tokens.length, 3);
+  assert.equal(path.basename(tokens[0]!), "node");
+  assert.equal(tokens[1], realpathSync(cliBin));
+  assert.equal(tokens[2], "session-start");
+  assert.equal(path.isAbsolute(tokens[0]!), true);
+  assert.equal(path.isAbsolute(tokens[1]!), true);
+  return tokens;
 }
 
 async function withHome<T>(home: string, run: () => Promise<T>): Promise<T> {
@@ -715,8 +724,7 @@ test("defaultLoadBoardStatus: provisioned board reports live counts + cache; boa
 test("hook install wires `session-start` into all three runtimes; status/uninstall agree", async () => {
   const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-base-"));
   try {
-    // Spawned as the bare preferred bin so the WRITTEN command is exactly `aslite session-start`
-    // — deterministic managed-recognition at any checkout path (see preferredBinDir).
+    // The CLI itself is found through PATH, but the WRITTEN command is fully absolute.
     const install = await runCliHook(["hook", "install"], { cwd: base });
     assert.equal(install.status, 0, install.stdout + install.stderr);
     assert.match(install.stdout, /session-start/);
@@ -725,20 +733,27 @@ test("hook install wires `session-start` into all three runtimes; status/uninsta
       await import("node:fs/promises").then((fs) => fs.readFile(path.join(base, ".claude", "settings.json"), "utf8")),
     );
     const entry = claude.hooks.SessionStart[0].hooks[0];
-    assert.equal(entry.command, "aslite session-start");
+    const launchTokens = assertPathIndependentLocalLaunch(entry.command);
     assert.equal(entry.timeout, HOOK_TIMEOUT_SECONDS);
 
     const codex = JSON.parse(
       await import("node:fs/promises").then((fs) => fs.readFile(path.join(base, ".codex", "hooks.json"), "utf8")),
     );
-    assert.equal(codex.hooks.SessionStart[0].hooks[0].command, "aslite session-start");
+    assert.equal(codex.hooks.SessionStart[0].hooks[0].command, entry.command);
 
     const plugin = await import("node:fs/promises").then((fs) =>
       fs.readFile(path.join(base, ".config", "opencode", "plugins", "axi-agentstate-lite.js"), "utf8"),
     );
     assert.ok(plugin.includes("axi-sdk-js managed opencode plugin: agentstate-lite"));
-    assert.ok(plugin.includes('const command = "aslite"'));
-    assert.ok(plugin.includes('"session-start"'));
+    assert.ok(plugin.includes(`const command = ${JSON.stringify(launchTokens[0])}`));
+    assert.ok(plugin.includes(`const commandArgs = ${JSON.stringify(launchTokens.slice(1))}`));
+
+    const minimalPathRun = spawnSync("/bin/sh", ["-c", entry.command], {
+      cwd: base,
+      env: { HOME: base, USERPROFILE: base, PATH: "/usr/bin:/bin", AGENTSTATE_LITE_NO_AUTOPULL: "1" },
+      encoding: "utf8",
+    });
+    assert.equal(minimalPathRun.status, 0, minimalPathRun.stdout + minimalPathRun.stderr);
 
     // A freshly installed hook needs no update…
     assert.equal(hookNeedsUpdate([base]), false);
@@ -784,9 +799,9 @@ test("global hook operations honor each host's relocated config home", async () 
     assert.equal(install.status, 0, install.stdout + install.stderr);
 
     const claude = JSON.parse(await readFile(path.join(claudeHome, "settings.json"), "utf8"));
-    assert.equal(claude.hooks.SessionStart[0].hooks[0].command, "aslite session-start");
+    assertPathIndependentLocalLaunch(claude.hooks.SessionStart[0].hooks[0].command);
     const codex = JSON.parse(await readFile(path.join(codexHome, "hooks.json"), "utf8"));
-    assert.equal(codex.hooks.SessionStart[0].hooks[0].command, "aslite session-start");
+    assert.equal(codex.hooks.SessionStart[0].hooks[0].command, claude.hooks.SessionStart[0].hooks[0].command);
     assert.match(await readFile(path.join(codexHome, "config.toml"), "utf8"), /hooks = true/);
     assert.match(
       await readFile(path.join(xdgHome, "opencode", "plugins", "axi-agentstate-lite.js"), "utf8"),
@@ -857,7 +872,7 @@ test("hook re-install prompt: a pre-session-start managed hook is detected and s
     const install = await runCliHook(["hook", "install"], { cwd: base });
     assert.equal(install.status, 0, install.stdout + install.stderr);
     const rewritten = JSON.parse(await readFile(path.join(base, ".claude", "settings.json"), "utf8"));
-    assert.equal(rewritten.hooks.SessionStart[0].hooks[0].command, "aslite session-start");
+    assertPathIndependentLocalLaunch(rewritten.hooks.SessionStart[0].hooks[0].command);
     assert.equal(hookNeedsUpdate([base]), false);
   } finally {
     await rm(base, { recursive: true, force: true });
@@ -869,7 +884,7 @@ test("sessionStartHookCommand: bare base passes through; a spaced path is quoted
   assert.equal(sessionStartHookCommand("aslite"), "aslite session-start");
   assert.equal(
     sessionStartHookCommand("/Users/f b/agentstate-lite.mjs"),
-    '"/Users/f b/agentstate-lite.mjs" session-start',
+    "'/Users/f b/agentstate-lite.mjs' session-start",
   );
   const src = buildOpenCodePluginSource("/opt/bin/agentstate-lite");
   assert.ok(src.includes('const command = "/opt/bin/agentstate-lite"'));
@@ -882,7 +897,6 @@ test("writer/recognizer agreement: every reachable hookCommand() base composes a
   const reachableBases = [
     "aslite", //                                                       bare preferred bin on PATH
     "agentstate-lite", //                                              bare legacy bin on PATH
-    "@holaxis/aslite", //                                              PACKAGE_NAME last-resort fallback (scoped coordinate; basename `aslite` matches through the slash)
     "/usr/local/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs", // npm-dist absolute path (scoped install root)
     "/Users/f b/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs", //    absolute path WITH spaces (quoted form)
     "/home/u/.claude/plugins/cache/m/agentstate-lite/1.0.0/skills/agentstate-lite/scripts/agentstate-lite.mjs", // skill-bundle shape
@@ -925,12 +939,14 @@ test("writer/recognizer agreement: every reachable hookCommand() base composes a
 // hook (no duplicate), reinstall over a correct new-form hook is a no-op, uninstall/status see
 // either form, and a foreign SessionStart hook is never touched.
 
-test("isManagedHookCommand: legacy substring + new-form `aslite` first-token bin, word-boundary strict", () => {
-  // Legacy form — the marker substring anywhere in the command.
+test("isManagedHookCommand: exact historical/generated tokens, never marker substrings", () => {
+  // Legacy generated forms.
   assert.equal(isManagedHookCommand("agentstate-lite session-start"), true);
   assert.equal(isManagedHookCommand("/opt/homebrew/bin/agentstate-lite session-start"), true);
   assert.equal(isManagedHookCommand("npx -y agentstate-lite session-start"), true);
   assert.equal(isManagedHookCommand('"/Users/f b/dist/agentstate-lite.mjs" session-start'), true);
+  assert.equal(isManagedHookCommand("echo agentstate-lite"), false);
+  assert.equal(isManagedHookCommand("agentstate-lite backup"), false);
   // New form — bare, absolute, quoted-with-space; with or without args.
   assert.equal(isManagedHookCommand("aslite session-start"), true);
   assert.equal(isManagedHookCommand("aslite"), true);
@@ -1076,7 +1092,7 @@ test("hook install over a seeded legacy hook converges on disk: rewrite, idempot
       .flatMap((g) => g.hooks ?? [])
       .filter((h) => isManagedHookCommand(h.command ?? ""));
     assert.equal(managed.length, 1, "the legacy hook was rewritten, not duplicated");
-    assert.equal(managed[0]!.command, "aslite session-start");
+    assertPathIndependentLocalLaunch(managed[0]!.command);
     assert.deepEqual(afterInstall.hooks.SessionStart[0].hooks, [FOREIGN_HOOK], "foreign hook untouched");
 
     const bytesAfterInstall = await readFile(settingsPath, "utf8");
@@ -1327,7 +1343,7 @@ test("hook install writes THROUGH a symlinked settings.json: the link survives, 
     // target stayed stale. Now the link is STILL a link and the resolved target carries the update.
     assert.equal((await lstat(link)).isSymbolicLink(), true, "the symlink must survive the install");
     const updated = JSON.parse(await readFile(real, "utf8"));
-    assert.equal(updated.hooks.SessionStart[0].hooks[0].command, "aslite session-start");
+    assertPathIndependentLocalLaunch(updated.hooks.SessionStart[0].hooks[0].command);
     assert.equal(updated.theme, "dark", "unrelated keys in the dotfile target survive");
     assert.equal((await stat(real)).mode & 0o777, 0o600, "the target's mode is preserved");
     assert.deepEqual(await readdir(dotfiles), ["claude-settings.json"], "no temp residue beside the target");
