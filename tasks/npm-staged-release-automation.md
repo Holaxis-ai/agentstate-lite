@@ -1,18 +1,16 @@
 ---
 type: Task
 title: Build retained-artifact staged npm release automation
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  PR 204 exact head c1f7937 is OPEN, CLEAN, CI-green, and independently APPROVED
-  at the supply-chain tier (context-notes/pr-204-exact-head-approval-c1f7937).
-  Three review notes are explicitly non-blocking; leading-dash and
-  signed-receipt work stays in tasks/p5a-pre-live-hardening before live
-  enablement, not this merge. Status remains in_progress only for Brian-owned
-  merge. Do not launch another full review or absorb compaction work unless the
-  head changes; then review only the exact delta and affected safety claims.
-actor: codex-pr204-scope-auditor
-timestamp: '2026-08-04T19:11:51.670Z'
+  MERGED via PR 204 at c5c1876 on 2026-08-04 from independently approved exact
+  head c1f7937; CI was green on Node 20/22/26. The retained-artifact
+  staged-release automation is complete. Pre-live signed inspection/approval
+  receipts, reconciler ordering, and leading-dash hardening remain separately
+  tracked in tasks/p5a-pre-live-hardening before live enablement.
+actor: codex-npm-priority
+timestamp: '2026-08-04T20:39:58.891Z'
 ---
 # Goal
 
