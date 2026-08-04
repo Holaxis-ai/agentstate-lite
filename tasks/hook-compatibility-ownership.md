@@ -4,13 +4,14 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  IMPLEMENTED and pushed by codex-durable-hook at 9b6b114 on
-  feat/durable-npm-hook-install: exact token-and-shape ownership, byte-exact
-  OpenCode reconciliation, durable npm-prefix Node launch, additive per-host
-  status, and foreign-config preservation. Final npm run check passed. Awaiting
-  required independent exact-SHA review before QA/closure.
+  CHANGES REQUESTED on PR 207 exact head 9b6b114. Valid high findings: tokenizer
+  accepts unquoted CR/LF separators; Node fallback owns arbitrary basenames;
+  arbitrary matcher/type/timeout variants become stale-owned and removable.
+  Repair must enumerate generated command layouts and historical host shapes,
+  preserve unknown variants byte-identically, then obtain independent exact-SHA
+  re-review.
 actor: codex-durable-hook
-timestamp: '2026-08-04T22:35:19.924Z'
+timestamp: '2026-08-04T23:46:21.327Z'
 ---
 # Goal
 

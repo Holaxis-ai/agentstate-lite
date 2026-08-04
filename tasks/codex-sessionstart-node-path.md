@@ -4,13 +4,13 @@ title: Make Codex SessionStart hook independent of GUI PATH
 status: in_progress
 priority: '1'
 description: >-
-  IMPLEMENTED and pushed by codex-durable-hook at 9b6b114 on
-  feat/durable-npm-hook-install: generated hooks invoke absolute Node plus
-  absolute CLI entry; durable npm authority proves stable npm-prefix bin/node
-  resolves to the runtime. Real PATH=/usr/bin:/bin execution and final npm run
-  check pass. Awaiting independent exact-SHA review before closure.
+  CHANGES REQUESTED on PR 207 exact head 9b6b114. Valid medium migration gap:
+  historical bare aslite/agentstate-lite session-start hooks are owned but
+  marked current, suppressing the reinstall prompt even though they can fail
+  under GUI PATH. Repair must distinguish mutation ownership from durable-launch
+  currency and prompt migration.
 actor: codex-durable-hook
-timestamp: '2026-08-04T22:35:20.156Z'
+timestamp: '2026-08-04T23:46:21.570Z'
 ---
 # Problem
 
