@@ -4,12 +4,11 @@ title: Add skill compatibility and prove stable MCP launch
 status: done
 priority: '1'
 description: >-
-  Completed at exact SHA 681e285 after PR 204 integration: independent review,
-  adversarial QA, clean-checkout full gate, and GitHub Node 20/22/26 CI all
-  PASS; PR 205 is ready for review.
+  Merged via PR 205 at d058d735 after exact-SHA review, adversarial QA,
+  clean-checkout full gate, and green GitHub Node 20/22/26 CI.
 actor: codex-c2s-orchestrator
 assignee: codex-c2s
-timestamp: '2026-08-04T19:47:26.185Z'
+timestamp: '2026-08-04T20:38:55.458Z'
 ---
 # Goal
 
@@ -37,7 +36,8 @@ Completed on `feat/skill-mcp-compatibility` at exact SHA `681e285cd802c885f57a05
 - Independent exact-SHA review: PASS with no findings.
 - Adversarial QA: PASS, including authority agreement, unsafe-path/no-write probes, real receipt generation, built help, package proof, and literal-PATH MCP launch.
 - Final clean-checkout `npm run check`: PASS, including all workspace tests, 127 script/release tests, offline npm-package proof, generated-skill check, 15 MCP browser tests, and 19 UI/security end-to-end tests.
-- PR 205 is ready for review at the exact reviewed SHA. GitHub CI is green: Node 20 built-CLI smoke, Node 22 repository gate, and Node 26 repository gate all passed. Brian retains the merge gate.
+- GitHub CI passed on Node 20, Node 22, and Node 26.
+- PR 205 merged on 2026-08-04 at merge commit `d058d735ce4f6179ed07d74a7ddbfc38491e7980`.
 
 [final exact-SHA review](../context-notes/c2s-exact-sha-review-681e285.md)
 
