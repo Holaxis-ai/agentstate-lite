@@ -5,6 +5,7 @@ import { buildIdentityEnvelope } from "../build-identity.js";
 import { CliError } from "../errors.js";
 import { cliInvocation } from "../invocation.js";
 import { render, resolveMode } from "../output.js";
+import { STABLE_MCP_LAUNCH_GUIDANCE } from "../integration-guidance.js";
 
 export const VERSION_USAGE = `agentstate-lite version — show the exact CLI build and runtime identity
 
@@ -14,6 +15,8 @@ Usage:
 Reports the package version, source commit/dirty state baked at build time, artifact channel and
 SHA-256, executable path and launch evidence, compatibility-contract generations, and any adjacent
 package.json version drift. This command is entirely local and never contacts npm or another server.
+
+${STABLE_MCP_LAUNCH_GUIDANCE}
 
 Options:
   --json      Emit compact JSON instead of TOON

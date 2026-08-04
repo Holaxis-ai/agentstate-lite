@@ -28,6 +28,14 @@ Every example below assumes the `aslite` bin is on PATH. If it is not:
 - `npx -y @holaxis/aslite …` runs any command below with no install at all — swap the leading `aslite`
   for that prefix and the rest of the line runs unchanged.
 
+## Stable MCP launch
+
+For a persistent MCP integration, install the supported CLI with
+`npm install -g @holaxis/aslite`. Configure the host command `aslite` with first argument `mcp`;
+do not bind the host to an absolute, version-keyed legacy marketplace or cache executable. Replace
+such a legacy path manually, then verify the selected bytes with `aslite version --json`. The MCP
+initialize response reports the same running release. AgentState Lite does not scan or rewrite host MCP configuration.
+
 ## Commands
 
 ### Bundle

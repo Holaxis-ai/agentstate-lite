@@ -30,9 +30,9 @@
 // extras scan and swept by the mutating verbs — while a temp-patterned name with a foreign base
 // stays foreign — and ownership must be ESTABLISHED: without a valid manifest, the only swept
 // base is the reserved manifest filename itself, so a refusal over a foreign folder deletes
-// nothing of that folder's own content. (Honesty note: the sweep still runs BEFORE the
-// unmanaged/malformed refusals — load-bearing for interruption recovery — so a folder about to
-// be refused can first lose a reserved-manifest-name tmp.) The one unmanaged shape (files, no
+// nothing of that folder's own content. Mutating verbs perform a complete READ-ONLY preflight and
+// sweep eligible debris only after the target is accepted, so every refusal is byte-preserving.
+// The one unmanaged shape (files, no
 // manifest) can only be foreign, and stays a refusal. A target that exists but is NOT a real directory — a symlink above all — is refused by
 // every verb before any walk: destructive operations never follow a link AT the target or in
 // manifested entries (ancestor symlinks, e.g. a stowed ~/.claude, are deliberately honored — the
@@ -40,6 +40,7 @@
 // (never followed) on removal. A DIRECTORY squatting at a manifested path is handled type-aware:
 // an empty one converges/uninstalls (rmdir); a non-empty one is a structured refusal — this tool
 // never recursive-deletes content no manifest names.
+import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync, rmSync, rmdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -55,7 +56,22 @@ import { render, resolveMode } from "../output.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { HOST_CONFIG_ROOTS, resolveHostConfigRoot } from "../host-config.js";
-import { cliVersion } from "../build-identity.js";
+import { buildIdentityEnvelope, cliVersion } from "../build-identity.js";
+import {
+  SKILL_INSTALLER,
+  SKILL_MANIFEST_SCHEMA,
+  classifySkillCompatibility,
+  parseOwnedSkillManifest,
+  type OwnedSkillManifest,
+  type SkillCompatibility,
+  type SkillManifestV2,
+  type SkillSourceIdentity,
+  type SkillState,
+} from "../skill-compatibility.js";
+import {
+  resolvePersistentInstallAuthority,
+  type PersistentInstallAuthority,
+} from "../install-authority.js";
 
 export const SKILL_USAGE = `agentstate-lite skill — install this package's Agent Skill into host skill folders
 
@@ -76,6 +92,10 @@ executable's own shipped assets). Status reports install state at these paths; C
 discovery is verified at GLOBAL scope (codex 0.144.x) — project-scope placement follows each
 host's documented convention.
 
+Persistent install from npm-package bytes requires a durable global install
+(\`npm install -g @holaxis/aslite\`); transient npx/npm-exec cache paths fail closed before either
+host folder is changed. npx remains supported for read-only, trial, and bootstrap commands.
+
 Options:
   --scope project   Write to the CURRENT project (default): .claude/skills/aslite/, .codex/skills/aslite/
   --scope global    Write to each host's configured USER home (environment override or default)
@@ -92,16 +112,14 @@ export const SKILL_MANIFEST_FILENAME = ".aslite-skill.json";
 export interface SkillAssets {
   root: string;
   version: string;
+  compatibilityContract: number | null;
+  sourceIdentity: SkillSourceIdentity;
   /** Sorted, POSIX-relative to `root`: `SKILL.md` plus every file under `references/`. */
   files: string[];
+  fileSha256: Record<string, string>;
 }
 
-export interface SkillManifest {
-  package: string;
-  version: string;
-  installed_by: string;
-  files: string[];
-}
+export type SkillManifest = OwnedSkillManifest;
 
 /** All files under `dir`, recursively, POSIX-relative (empty when `dir` does not exist). */
 function listFilesRelative(dir: string, prefix = ""): string[] {
@@ -144,7 +162,29 @@ export function resolveSkillAssets(executable?: string): SkillAssets {
     );
   }
   const files = ["SKILL.md", ...listFilesRelative(referencesDir).map((f) => `references/${f}`)].sort();
-  return { root, version: cliVersion(), files };
+  const identity = buildIdentityEnvelope({
+    executablePath: () => exe,
+    managedBin: () => undefined,
+  });
+  const fileSha256 = Object.fromEntries(
+    files.map((relativePath) => [
+      relativePath,
+      `sha256:${createHash("sha256").update(readFileSync(join(root, relativePath))).digest("hex")}`,
+    ]),
+  );
+  return {
+    root,
+    version: cliVersion(),
+    compatibilityContract: identity.identity.compatibility_contracts.skill,
+    sourceIdentity: {
+      release_version: identity.identity.package.version,
+      source_commit: identity.identity.source.commit,
+      artifact_channel: identity.identity.artifact.channel,
+      artifact_sha256: identity.identity.artifact.sha256,
+    },
+    files,
+    fileSha256,
+  };
 }
 
 /** The per-host target folders (the `skills/aslite` dir itself) for one resolved scope. */
@@ -251,33 +291,58 @@ export function isSafeManifestEntry(entry: string): boolean {
   return entry.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
 }
 
-/** Read + validate the folder's manifest. `undefined` when absent; `null` when malformed. */
+/** Read + validate ownership. `undefined` when absent; `null` when ownership is not proven. */
 function readManifest(dir: string): SkillManifest | undefined | null {
   const manifestPath = join(dir, SKILL_MANIFEST_FILENAME);
-  if (!existsSync(manifestPath)) return undefined;
+  let manifestStats;
   try {
-    const parsed = JSON.parse(readFileSync(manifestPath, "utf8")) as SkillManifest;
-    if (typeof parsed !== "object" || parsed === null || !Array.isArray(parsed.files)) return null;
-    if (!parsed.files.every(isSafeManifestEntry)) return null;
-    return parsed;
+    manifestStats = lstatSync(manifestPath);
+  } catch {
+    return undefined;
+  }
+  if (manifestStats.isSymbolicLink() || !manifestStats.isFile()) return null;
+  try {
+    return parseOwnedSkillManifest(JSON.parse(readFileSync(manifestPath, "utf8")));
   } catch {
     return null;
   }
 }
 
-function manifestContent(assets: SkillAssets, files: readonly string[] = assets.files): string {
-  const manifest: SkillManifest = {
+/** Legacy manifest-first transition: it owns union files without claiming not-yet-true digests. */
+function transitionalManifestContent(assets: SkillAssets, files: readonly string[]): string {
+  const manifest = {
     package: "@holaxis/aslite",
     version: assets.version,
-    installed_by: "aslite skill install",
+    installed_by: SKILL_INSTALLER,
     files: [...files],
   };
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
-/** Files in `dir` that neither the manifest nor the new asset set accounts for. */
+function manifestContent(assets: SkillAssets): string {
+  if (assets.compatibilityContract === null) {
+    throw new CliError("RUNTIME", "running build has no skill compatibility contract", {
+      help: `${cliInvocation()} version --json`,
+    });
+  }
+  const manifest: Omit<SkillManifestV2, "kind" | "receipt_valid"> = {
+    schema: SKILL_MANIFEST_SCHEMA,
+    package: "@holaxis/aslite",
+    version: assets.version,
+    installed_by: SKILL_INSTALLER,
+    compatibility_contract: assets.compatibilityContract,
+    source_identity: assets.sourceIdentity,
+    files: [...assets.files],
+    file_sha256: Object.fromEntries(assets.files.map((file) => [file, assets.fileSha256[file]!])),
+  };
+  return `${JSON.stringify(manifest, null, 2)}\n`;
+}
+
+/** Files in `dir` that neither the manifest/new asset set nor eligible managed debris accounts for. */
 function unmanagedExtras(dir: string, managed: Set<string>): string[] {
-  return listFilesRelative(dir).filter((f) => f !== SKILL_MANIFEST_FILENAME && !managed.has(f));
+  return listFilesRelative(dir).filter(
+    (f) => f !== SKILL_MANIFEST_FILENAME && !managed.has(f) && !isManagedDebris(f, managed),
+  );
 }
 
 /** True when the path is a directory (lstat — a symlink to a directory is NOT; false when absent). */
@@ -324,16 +389,27 @@ function installIntoDir(dir: string, assets: SkillAssets): InstallResult {
   const notDir = nonDirectoryRefusal(dir);
   if (notDir !== undefined) return { ok: false, reason: notDir };
   const manifest = readManifest(dir);
-  const debrisRemoved = sweepManagedDebris(dir, sweepOwnership(manifest, assets.files));
+  const ownedForSweep = sweepOwnership(manifest, assets.files);
   if (existsSync(dir)) {
-    if (manifest === undefined && listFilesRelative(dir).length > 0) {
+    const logicalFiles = listFilesRelative(dir).filter((file) => !isManagedDebris(file, ownedForSweep));
+    if (manifest === undefined && logicalFiles.length > 0) {
       return { ok: false, reason: `folder exists with no ${SKILL_MANIFEST_FILENAME} manifest — not managed by this tool` };
     }
     if (manifest === null) {
-      return { ok: false, reason: `${SKILL_MANIFEST_FILENAME} is malformed — refusing to write over a folder in an unknown state` };
+      return { ok: false, reason: `${SKILL_MANIFEST_FILENAME} does not prove ownership — refusing to write over a folder in an unknown state` };
     }
     if (manifest !== undefined) {
-      const managed = new Set([...manifest.files, ...assets.files]);
+      if (
+        manifest.compatibility_contract !== null &&
+        assets.compatibilityContract !== null &&
+        manifest.compatibility_contract > assets.compatibilityContract
+      ) {
+        return {
+          ok: false,
+          reason: `installed skill uses newer compatibility contract ${manifest.compatibility_contract}; running CLI contract ${assets.compatibilityContract} will not downgrade it`,
+        };
+      }
+      const managed = new Set([...manifest.files, ...assets.files, SKILL_MANIFEST_FILENAME]);
       const obstructed = directoryObstructions(dir, managed);
       if (obstructed.length > 0) return directoryObstructionRefusal(obstructed);
       const extras = unmanagedExtras(dir, managed);
@@ -345,6 +421,9 @@ function installIntoDir(dir: string, assets: SkillAssets): InstallResult {
       }
     }
   }
+  // No refused target has been touched. Debris cleanup starts only after the entire target passes
+  // the read-only ownership/extras/obstruction/no-downgrade preflight.
+  const debrisRemoved = sweepManagedDebris(dir, ownedForSweep);
   let changed = debrisRemoved;
   // Manifest FIRST — and on an UPGRADE over an existing valid manifest, a TRANSITIONAL manifest
   // first: files = union(old manifested files, new asset files). Every interruption point then
@@ -355,7 +434,7 @@ function installIntoDir(dir: string, assets: SkillAssets): InstallResult {
   const manifestPath = join(dir, SKILL_MANIFEST_FILENAME);
   const finalManifest = manifestContent(assets);
   const unionFiles = [...new Set([...(manifest?.files ?? []), ...assets.files])].sort();
-  const transitionalManifest = manifestContent(assets, unionFiles);
+  const transitionalManifest = transitionalManifestContent(assets, unionFiles);
   const writeManifest = (content: string): void => {
     // atomicWriteFileSync writes THROUGH a symlinked destination (right for user-owned settings);
     // skill-folder contents are wholly TOOL-owned, so a link here is unmanaged drift — converge by
@@ -425,20 +504,22 @@ function uninstallFromDir(dir: string): UninstallResult {
   if (notDir !== undefined) return { ok: false, reason: notDir };
   if (!existsSync(dir)) return { ok: true, changed: false };
   const manifest = readManifest(dir);
-  const debrisRemoved = sweepManagedDebris(dir, sweepOwnership(manifest, []));
+  const ownedForSweep = sweepOwnership(manifest, []);
   if (manifest === undefined) {
     // A folder left empty (a first-install kill stranded only OUR manifest tmp, or a pre-existing
     // empty dir) holds nothing foreign — a no-op, cleaned up only when we removed the debris.
-    if (listFilesRelative(dir).length === 0) {
+    const logicalFiles = listFilesRelative(dir).filter((file) => !isManagedDebris(file, ownedForSweep));
+    if (logicalFiles.length === 0) {
+      const debrisRemoved = sweepManagedDebris(dir, ownedForSweep);
       if (debrisRemoved) removeEmptyDirectories(dir, true);
       return { ok: true, changed: debrisRemoved };
     }
     return { ok: false, reason: `folder exists with no ${SKILL_MANIFEST_FILENAME} manifest — not managed by this tool, nothing deleted` };
   }
   if (manifest === null) {
-    return { ok: false, reason: `${SKILL_MANIFEST_FILENAME} is malformed — refusing to delete anything from a folder in an unknown state` };
+    return { ok: false, reason: `${SKILL_MANIFEST_FILENAME} does not prove ownership — refusing to delete anything from a folder in an unknown state` };
   }
-  const managed = new Set(manifest.files);
+  const managed = new Set([...manifest.files, SKILL_MANIFEST_FILENAME]);
   const obstructed = directoryObstructions(dir, managed);
   if (obstructed.length > 0) return directoryObstructionRefusal(obstructed);
   const extras = unmanagedExtras(dir, managed);
@@ -448,6 +529,8 @@ function uninstallFromDir(dir: string): UninstallResult {
       reason: `folder holds file(s) the manifest does not name: ${extras.join(", ")} — nothing deleted`,
     };
   }
+  // Sweep only after the whole target has passed the no-delete preflight.
+  sweepManagedDebris(dir, ownedForSweep);
   for (const relativePath of manifest.files) {
     // Type-aware: a symlinked entry unlinks the link itself (never its target); an EMPTY
     // directory (pre-scanned above) rmdirs; absent files skip without a throw.
@@ -458,7 +541,7 @@ function uninstallFromDir(dir: string): UninstallResult {
   return { ok: true, changed: true };
 }
 
-export type SkillState = "absent" | "unmanaged" | "installed" | "stale";
+export type { SkillState } from "../skill-compatibility.js";
 
 /**
  * Read-only per-folder state: byte-compare the manifested install against the running assets.
@@ -467,30 +550,70 @@ export type SkillState = "absent" | "unmanaged" | "installed" | "stale";
  * hand-edited, or symlinked is managed-STALE (install converges over it), never unmanaged.
  * Managed temp-write debris is IGNORED (status stays read-only; the mutating verbs sweep it).
  */
-export function skillStatusForDir(dir: string, assets: SkillAssets): { state: SkillState; version?: string } {
-  if (nonDirectoryRefusal(dir) !== undefined) return { state: "unmanaged" };
-  if (!existsSync(dir)) return { state: "absent" };
+export function skillStatusForDir(
+  dir: string,
+  assets: SkillAssets,
+  installCommand = `${cliInvocation()} skill install --scope project`,
+): { state: SkillState; version?: string; compatibility: SkillCompatibility } {
+  const classify = (
+    target: "absent" | "unmanaged" | "owned",
+    manifest: OwnedSkillManifest | null,
+    assetsMatch: boolean,
+    receiptDigestsMatch: boolean,
+  ) =>
+    classifySkillCompatibility({
+      target,
+      manifest,
+      running_contract: assets.compatibilityContract,
+      assets_match: assetsMatch,
+      receipt_digests_match: receiptDigestsMatch,
+      install_command: installCommand,
+    });
+
+  if (nonDirectoryRefusal(dir) !== undefined) {
+    return classify("unmanaged", null, false, false);
+  }
+  if (!existsSync(dir)) return classify("absent", null, false, false);
   const manifest = readManifest(dir);
   const owned = sweepOwnership(manifest, assets.files);
   const files = listFilesRelative(dir).filter((f) => !isManagedDebris(f, owned));
-  if (files.length === 0) return { state: "absent" };
-  if (manifest === undefined || manifest === null) return { state: "unmanaged" };
-  const version = typeof manifest.version === "string" ? manifest.version : undefined;
+  if (files.length === 0) return classify("absent", null, false, false);
+  if (manifest === undefined || manifest === null) return classify("unmanaged", null, false, false);
+  const version = manifest.version;
   const onDisk = files.filter((f) => f !== SKILL_MANIFEST_FILENAME);
   const sameSet =
     onDisk.length === assets.files.length && onDisk.every((f, i) => f === assets.files[i]);
-  if (!sameSet) return { state: "stale", version };
-  for (const relativePath of assets.files) {
-    const installedPath = join(dir, ...relativePath.split("/"));
-    if (isSymlink(installedPath)) return { state: "stale", version };
-    const installed = readFileSync(installedPath);
-    const shipped = readFileSync(join(assets.root, relativePath));
-    if (!installed.equals(shipped)) return { state: "stale", version };
+  let assetsMatch = sameSet;
+  let receiptDigestsMatch = manifest.kind === "legacy";
+  if (sameSet) {
+    receiptDigestsMatch = manifest.kind === "legacy" || (manifest.receipt_valid && manifest.file_sha256 !== null);
+    for (const relativePath of assets.files) {
+      const installedPath = join(dir, ...relativePath.split("/"));
+      let regularFile = false;
+      try {
+        regularFile = lstatSync(installedPath).isFile();
+      } catch {
+        regularFile = false;
+      }
+      if (!regularFile) {
+        assetsMatch = false;
+        receiptDigestsMatch = false;
+        break;
+      }
+      const installed = readFileSync(installedPath);
+      const shipped = readFileSync(join(assets.root, relativePath));
+      if (!installed.equals(shipped)) assetsMatch = false;
+      if (
+        manifest.kind === "v2" &&
+        manifest.file_sha256?.[relativePath] !==
+          `sha256:${createHash("sha256").update(installed).digest("hex")}`
+      ) {
+        receiptDigestsMatch = false;
+      }
+    }
   }
-  if (readFileSync(join(dir, SKILL_MANIFEST_FILENAME), "utf8") !== manifestContent(assets)) {
-    return { state: "stale", version };
-  }
-  return { state: "installed", version };
+  const classified = classify("owned", manifest, assetsMatch, receiptDigestsMatch);
+  return { ...classified, version };
 }
 
 /** Injectable seams, defaulting to production. */
@@ -500,6 +623,8 @@ export interface SkillDeps {
   env?: NodeJS.ProcessEnv;
   /** Override the running-executable path the asset source derives from (tests). */
   executable?: string;
+  /** Override the one pre-write persistent-install authority (tests). */
+  installAuthority?: () => PersistentInstallAuthority;
   stdout?: (s: string) => void;
 }
 
@@ -558,8 +683,17 @@ export async function skill(argv: string[], deps: SkillDeps = {}): Promise<void>
     const assets = resolveSkillAssets(deps.executable);
     const hosts: Record<string, unknown> = {};
     for (const [key, dir] of hostDirs) {
-      const s = skillStatusForDir(dir, assets);
-      hosts[key] = { path: collapseHomeDirectory(dir), state: s.state, ...(s.version ? { version: s.version } : {}) };
+      const s = skillStatusForDir(
+        dir,
+        assets,
+        `${cliInvocation()} skill install --scope ${scope}`,
+      );
+      hosts[key] = {
+        path: collapseHomeDirectory(dir),
+        state: s.state,
+        ...(s.version ? { version: s.version } : {}),
+        compatibility: s.compatibility,
+      };
     }
     stdout(render({ skill: { action: "status", scope, version: assets.version, hosts } }, mode));
     return;
@@ -567,6 +701,18 @@ export async function skill(argv: string[], deps: SkillDeps = {}): Promise<void>
 
   if (sub === "install") {
     const assets = resolveSkillAssets(deps.executable);
+    const authority =
+      deps.installAuthority?.() ?? resolvePersistentInstallAuthority({ env: deps.env ?? process.env });
+    if (!authority.allowed) {
+      throw new CliError(
+        "RUNTIME",
+        `persistent skill install requires a durable npm-global CLI; authority is ${authority.state}: ${authority.reason}`,
+        {
+          details: { install_authority: authority },
+          help: "run `npm install -g @holaxis/aslite`, verify `aslite version --json`, then re-run skill install; npx remains supported for read-only/trial commands",
+        },
+      );
+    }
     const refusals: string[] = [];
     const hosts: Record<string, unknown> = {};
     let changed = false;

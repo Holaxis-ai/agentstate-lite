@@ -17,6 +17,7 @@
 import { DESCRIPTION, COMMAND_GROUPS, commandName, type CommandGroup } from "./reference.js";
 import { NPM_RESOURCES, SKILL_RESOURCES } from "./distribution-resources.js";
 import { HOST_CONFIG_ROOTS, renderShellHostConfigRoot } from "./host-config.js";
+import { STABLE_MCP_LAUNCH_GUIDANCE } from "./integration-guidance.js";
 
 export { NPM_RESOURCES, SKILL_RESOURCES, commandName };
 
@@ -655,6 +656,7 @@ export function renderNpm(): string {
   lines.push("<!-- GENERATED from src/reference.ts by scripts/gen-skill.mjs — do not edit by hand. -->");
   lines.push("");
   lines.push(...renderNpmPathSection());
+  lines.push(...STABLE_MCP_LAUNCH_GUIDANCE.split("\n"), "");
   lines.push(...renderCommandsSection(COMMAND_GROUPS, NPM_BIN));
   lines.push(...renderWorkspaceLocation(NPM_BIN));
   lines.push(...renderTypicalFlow(NPM_BIN));
@@ -846,6 +848,7 @@ export function renderSkill(): string {
   );
   lines.push("both wrap the identical CLI source, so behavior and output are identical.");
   lines.push("");
+  lines.push(...STABLE_MCP_LAUNCH_GUIDANCE.split("\n"), "");
   lines.push("## Invocation — it is NOT on PATH");
   lines.push("");
   lines.push(

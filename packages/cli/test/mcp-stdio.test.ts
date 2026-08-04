@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -106,6 +106,58 @@ test("built npm CLI serves the fixed MCP App contract over clean stdio", async (
     (result.structuredContent as { schemaVersion: string }).schemaVersion,
     "agentstate.transient-view-launch.v1",
   );
+});
+
+test("literal PATH `aslite mcp` reports the selected CLI release and never rewrites host config", async (t) => {
+  const base = await mkdtemp(path.join(os.tmpdir(), "aslite-mcp-path-"));
+  const root = path.join(base, "bundle");
+  const binDir = path.join(base, "bin");
+  const home = path.join(base, "home");
+  await mkdir(binDir, { recursive: true });
+  await mkdir(path.join(home, ".claude"), { recursive: true });
+  await symlink(CLI, path.join(binDir, "aslite"));
+  const sentinel = path.join(home, ".claude", "mcp.json");
+  const sentinelBytes = '{"command":"/old/plugin/cache/0.1.0/scripts/agentstate-lite.mjs"}\n';
+  await writeFile(sentinel, sentinelBytes);
+  await initBundle(root);
+  const env = {
+    ...process.env,
+    PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+    HOME: home,
+    ASLITE_NO_UPDATE_CHECK: "1",
+  };
+  const selected = spawn("aslite", ["version", "--json"], {
+    cwd: root,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let versionStdout = "";
+  let versionStderr = "";
+  selected.stdout.setEncoding("utf8");
+  selected.stderr.setEncoding("utf8");
+  selected.stdout.on("data", (chunk: string) => (versionStdout += chunk));
+  selected.stderr.on("data", (chunk: string) => (versionStderr += chunk));
+  const selectedCode = await new Promise<number | null>((resolve, reject) => {
+    selected.once("error", reject);
+    selected.once("close", resolve);
+  });
+  assert.equal(selectedCode, 0, versionStderr);
+  const selectedVersion = JSON.parse(versionStdout).identity.package.version as string;
+
+  const transport = new StdioClientTransport({
+    command: "aslite",
+    args: ["mcp", "--dir", root, "--actor", "path/test"],
+    env,
+    stderr: "pipe",
+  });
+  const client = new Client({ name: "path-proof", version: "test" }, { capabilities: {} });
+  t.after(async () => {
+    await client.close();
+    await rm(base, { recursive: true, force: true });
+  });
+  await client.connect(transport);
+  assert.equal(client.getServerVersion()?.version, selectedVersion);
+  assert.equal(await readFile(sentinel, "utf8"), sentinelBytes);
 });
 
 test("built npm CLI keeps MCP stdout byte-empty for usage and bundle startup failures", async (t) => {

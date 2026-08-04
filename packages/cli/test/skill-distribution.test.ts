@@ -213,6 +213,16 @@ test("the View authoring reference documents hello grants for both read and prop
 const rendered = renderSkill();
 const renderedNpm = renderNpm();
 
+test("both skill channels teach only the bounded stable MCP PATH contract", () => {
+  for (const text of [renderedNpm, rendered]) {
+    assert.match(text, /## Stable MCP launch/);
+    assert.match(text, /npm install -g @holaxis\/aslite/);
+    assert.match(text, /command `aslite`.*argument `mcp`/s);
+    assert.match(text, /`aslite version --json`/);
+    assert.match(text, /does not scan or rewrite host MCP configuration/);
+  }
+});
+
 test("the typical flow creates a complete Context Note in one command", () => {
   for (const text of [renderedNpm, rendered]) {
     assert.match(
