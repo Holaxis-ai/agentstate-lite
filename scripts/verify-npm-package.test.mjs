@@ -134,6 +134,27 @@ test("package proof modes separate dirty-tree verification from strict release c
   }
 });
 
+test("the retained-artifact mode requires BOTH --tarball and --manifest", () => {
+  assert.deepEqual(parseVerificationArgs(["--tarball", "/p/x.tgz", "--manifest", "/p/candidate.json", "--json"]), {
+    mode: "tarball",
+    tarball: "/p/x.tgz",
+    manifest: "/p/candidate.json",
+    json: true,
+  });
+  // The manifest is mandatory (QA finding #2): a bare --tarball is rejected. --tarball is also
+  // mutually exclusive with the scratch modes and needs a value.
+  for (const invalid of [
+    ["--tarball"],
+    ["--tarball", "--json"],
+    ["--tarball", "/p/x.tgz"], // no manifest -> refused
+    ["--tarball", "/p/x.tgz", "--local"],
+    ["--tarball", "/p/x.tgz", "--manifest"],
+    ["--tarball", "/p/x.tgz", "--manifest", "/p/c.json", "--stray"],
+  ]) {
+    assert.throws(() => parseVerificationArgs(invalid), /usage: verify-npm-package/);
+  }
+});
+
 test("the UI build launches npm shell-free through the lifecycle CLI path", () => {
   const npmCli = "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js";
   assert.deepEqual(uiBuildNpmInvocation(["run", "build"], { npm_execpath: npmCli }), {

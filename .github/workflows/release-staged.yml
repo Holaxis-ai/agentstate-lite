@@ -1,0 +1,285 @@
+name: Staged release (candidate -> draft -> stage)
+
+# P5A — retained-artifact staged-release automation. The candidate is built and packed exactly
+# once. Drafting, npm staging, inspection, and finalization consume those retained bytes by exact
+# artifact ID and verify the receipt chain before any mutation.
+#
+# Fail-closed live gate: GitHub auto-creates a referenced environment without protection, so the
+# environment name alone is not a disarm mechanism. P5S must configure the protected `release`
+# environment AND set its ASLITE_RELEASE_LIVE_ENABLED variable to exactly `true`. Live dispatches
+# also have to run from the exact v* tag ref. Missing either control makes every mutation fail.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (default) prints operations; live stages through the release environment"
+        type: choice
+        options: ["dry-run", "live"]
+        default: "dry-run"
+
+permissions: {}
+
+concurrency:
+  group: release-staged-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  MODE: ${{ inputs.mode || 'dry-run' }}
+  ARTIFACT_DIR: release-candidate
+
+jobs:
+  candidate:
+    name: prepared — build+pack+verify the candidate ONCE
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.facts.outputs.tag }}
+      commit: ${{ steps.facts.outputs.commit }}
+      version: ${{ steps.facts.outputs.version }}
+      policy_tag: ${{ steps.facts.outputs.policy_tag }}
+      tarball_filename: ${{ steps.candidate.outputs.tarball_filename }}
+      tarball_sha256: ${{ steps.candidate.outputs.tarball_sha256 }}
+      manifest_sha256: ${{ steps.candidate.outputs.manifest_sha256 }}
+      integrity: ${{ steps.candidate.outputs.integrity }}
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+      run_id: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the exact tag + commit facts
+        id: facts
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="$(node -p "require('./packages/cli/package.json').version" | sed 's/^/v/')"
+          fi
+          if [ "$MODE" = "live" ]; then
+            test "$GITHUB_REF_TYPE" = "tag" || { echo "::error::live staging must be dispatched from a tag ref"; exit 1; }
+            test "$GITHUB_REF_NAME" = "$TAG" || { echo "::error::live ref $GITHUB_REF_NAME != $TAG"; exit 1; }
+          fi
+          COMMIT="$(git rev-parse HEAD)"
+          VERSION="${TAG#v}"
+          case "$VERSION" in
+            *-*) POLICY_TAG="next" ;;
+            *) POLICY_TAG="latest" ;;
+          esac
+          {
+            echo "tag=$TAG"
+            echo "commit=$COMMIT"
+            echo "version=$VERSION"
+            echo "policy_tag=$POLICY_TAG"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Create the retained release candidate
+        id: candidate
+        env:
+          RELEASE_TAG: ${{ steps.facts.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.facts.outputs.commit }}
+        run: |
+          set -euo pipefail
+          npm run release:candidate -- --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --out "$ARTIFACT_DIR"
+          FILENAME="$(node -p "require('./$ARTIFACT_DIR/candidate.json').tarball.filename")"
+          SHA="$(node -p "require('./$ARTIFACT_DIR/candidate.json').tarball.sha256")"
+          INTEGRITY="$(node -p "require('./$ARTIFACT_DIR/candidate.json').tarball.integrity")"
+          MANIFEST_SHA="sha256:$(shasum -a 256 "$ARTIFACT_DIR/candidate.json" | awk '{print $1}')"
+          {
+            echo "tarball_filename=$FILENAME"
+            echo "tarball_sha256=$SHA"
+            echo "manifest_sha256=$MANIFEST_SHA"
+            echo "integrity=$INTEGRITY"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Retain the candidate artifact (tgz + manifest)
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: |
+            ${{ env.ARTIFACT_DIR }}/*.tgz
+            ${{ env.ARTIFACT_DIR }}/candidate.json
+          if-no-files-found: error
+          retention-days: 90
+
+  draft:
+    name: draft_prepared — prepare (never publish) the GitHub draft
+    needs: candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      actions: read
+      contents: write
+    outputs:
+      release_id: ${{ steps.draft.outputs.release_id }}
+      assets_json: ${{ steps.draft.outputs.assets_json }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the exact retained candidate artifact
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.candidate.outputs.artifact_id }}
+          path: ${{ env.ARTIFACT_DIR }}
+          merge-multiple: true
+
+      - name: Re-verify the retained bytes match the prepared receipt
+        env:
+          TARBALL_FILENAME: ${{ needs.candidate.outputs.tarball_filename }}
+          EXPECTED_SHA256: ${{ needs.candidate.outputs.tarball_sha256 }}
+        run: |
+          set -euo pipefail
+          ACTUAL="sha256:$(shasum -a 256 "$ARTIFACT_DIR/$TARBALL_FILENAME" | awk '{print $1}')"
+          test "$ACTUAL" = "$EXPECTED_SHA256" || { echo "::error::retained tarball digest mismatch"; exit 1; }
+
+      - name: Reconcile and capture the unpublished draft
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          LIVE_RELEASE_ENABLED: ${{ vars.ASLITE_RELEASE_LIVE_ENABLED }}
+          TAG: ${{ needs.candidate.outputs.tag }}
+          TARBALL_FILENAME: ${{ needs.candidate.outputs.tarball_filename }}
+          TARBALL_SHA256: ${{ needs.candidate.outputs.tarball_sha256 }}
+          MANIFEST_SHA256: ${{ needs.candidate.outputs.manifest_sha256 }}
+        run: |
+          set -euo pipefail
+          FILE="$ARTIFACT_DIR/$TARBALL_FILENAME"
+          if [ "$MODE" = "live" ]; then
+            test "$LIVE_RELEASE_ENABLED" = "true" || { echo "::error::release environment is not explicitly live-enabled"; exit 1; }
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              DRAFT="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.draft')"
+              test "$DRAFT" = "true" || { echo "::error::refusing to alter an already-published release"; exit 1; }
+            else
+              gh release create "$TAG" --draft --title "$TAG" --notes "Prepared draft for $TAG (unpublished)."
+            fi
+            gh release upload "$TAG" "$FILE" "$ARTIFACT_DIR/candidate.json" --clobber
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > draft-release.json
+            node scripts/release-verify-chain.mjs capture-draft \
+              --release draft-release.json --tag "$TAG" --tarball "$FILE" \
+              --manifest "$ARTIFACT_DIR/candidate.json" --github-output "$GITHUB_OUTPUT"
+          else
+            echo "[dry-run] would prepare unpublished draft $TAG and attach $FILE + candidate.json"
+            echo "release_id=dry-run-release" >> "$GITHUB_OUTPUT"
+            echo "assets_json=[{\"id\":\"dry-run-manifest\",\"name\":\"candidate.json\",\"digest\":\"$MANIFEST_SHA256\"},{\"id\":\"dry-run-tarball\",\"name\":\"$TARBALL_FILENAME\",\"digest\":\"$TARBALL_SHA256\"}]" >> "$GITHUB_OUTPUT"
+          fi
+
+  stage:
+    name: staged — OIDC trusted-publisher stage of the retained tarball
+    needs: [candidate, draft]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the exact retained candidate artifact
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.candidate.outputs.artifact_id }}
+          path: ${{ env.ARTIFACT_DIR }}
+          merge-multiple: true
+
+      - name: Re-verify the retained bytes before staging
+        env:
+          TARBALL_FILENAME: ${{ needs.candidate.outputs.tarball_filename }}
+          EXPECTED_SHA256: ${{ needs.candidate.outputs.tarball_sha256 }}
+        run: |
+          set -euo pipefail
+          ACTUAL="sha256:$(shasum -a 256 "$ARTIFACT_DIR/$TARBALL_FILENAME" | awk '{print $1}')"
+          test "$ACTUAL" = "$EXPECTED_SHA256" || { echo "::error::retained tarball digest mismatch"; exit 1; }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Pin npm with staged-publishing support
+        run: |
+          set -euo pipefail
+          npm install --global npm@11.15.0 --ignore-scripts --no-audit --no-fund
+          test "$(npm --version)" = "11.15.0"
+
+      - name: Stage the literal retained tarball
+        id: stage
+        env:
+          LIVE_RELEASE_ENABLED: ${{ vars.ASLITE_RELEASE_LIVE_ENABLED }}
+          TARBALL_FILENAME: ${{ needs.candidate.outputs.tarball_filename }}
+          POLICY_TAG: ${{ needs.candidate.outputs.policy_tag }}
+        run: |
+          set -euo pipefail
+          TARBALL="$ARTIFACT_DIR/$TARBALL_FILENAME"
+          if [ "$MODE" = "live" ]; then
+            test "$LIVE_RELEASE_ENABLED" = "true" || { echo "::error::release environment is not explicitly live-enabled"; exit 1; }
+            npm stage publish "$TARBALL" --tag "$POLICY_TAG" --provenance --json | tee stage.json
+            STAGE_ID="$(node scripts/release-verify-chain.mjs stage-id --file stage.json)"
+            echo "stage_id=$STAGE_ID" >> "$GITHUB_OUTPUT"
+          else
+            echo "[dry-run] would run: npm stage publish $TARBALL --tag $POLICY_TAG --provenance --json"
+            echo "stage_id=dry-run-stage" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write immutable stage receipt and inspection instructions
+        env:
+          RUN_ID: ${{ needs.candidate.outputs.run_id }}
+          ARTIFACT_ID: ${{ needs.candidate.outputs.artifact_id }}
+          ARTIFACT_DIGEST: ${{ needs.candidate.outputs.artifact_digest }}
+          STAGE_ID: ${{ steps.stage.outputs.stage_id }}
+          VERSION: ${{ needs.candidate.outputs.version }}
+          TAG: ${{ needs.candidate.outputs.tag }}
+          SOURCE_COMMIT: ${{ needs.candidate.outputs.commit }}
+          POLICY_TAG: ${{ needs.candidate.outputs.policy_tag }}
+          TARBALL_SHA256: ${{ needs.candidate.outputs.tarball_sha256 }}
+          TARBALL_FILENAME: ${{ needs.candidate.outputs.tarball_filename }}
+          INTEGRITY: ${{ needs.candidate.outputs.integrity }}
+          MANIFEST_SHA256: ${{ needs.candidate.outputs.manifest_sha256 }}
+          DRAFT_RELEASE_ID: ${{ needs.draft.outputs.release_id }}
+          DRAFT_ASSETS_JSON: ${{ needs.draft.outputs.assets_json }}
+        run: |
+          set -euo pipefail
+          node scripts/release-emit-receipt.mjs \
+            --run-id "$RUN_ID" --artifact-id "$ARTIFACT_ID" --artifact-digest "$ARTIFACT_DIGEST" \
+            --stage-id "$STAGE_ID" --version "$VERSION" --tag "$TAG" --source-commit "$SOURCE_COMMIT" \
+            --policy-tag "$POLICY_TAG" --tarball-sha256 "$TARBALL_SHA256" \
+            --tarball-filename "$TARBALL_FILENAME" --integrity "$INTEGRITY" \
+            --manifest-sha256 "$MANIFEST_SHA256" --draft-release-id "$DRAFT_RELEASE_ID" \
+            --draft-assets-json "$DRAFT_ASSETS_JSON" --json-out stage-receipt.json \
+            | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain the stage receipt for separate finalization
+        id: receipt_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-stage-receipt-${{ needs.candidate.outputs.run_id }}
+          path: stage-receipt.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Emit finalizer receipt-artifact identifiers
+        env:
+          RECEIPT_ARTIFACT_ID: ${{ steps.receipt_upload.outputs.artifact-id }}
+          RECEIPT_ARTIFACT_DIGEST: ${{ steps.receipt_upload.outputs.artifact-digest }}
+        run: |
+          {
+            echo ""
+            echo "### Finalizer receipt artifact"
+            echo "- Artifact ID: \`$RECEIPT_ARTIFACT_ID\`"
+            echo "- Artifact digest: \`$RECEIPT_ARTIFACT_DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"
