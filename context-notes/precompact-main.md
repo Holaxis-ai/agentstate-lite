@@ -1,36 +1,36 @@
 ---
 type: Context Note
-title: 'Pre-compact handoff: PR 204 approved; compaction paused'
+title: 'Pre-compact handoff: PR 207 exact-SHA review'
 description: >-
-  PR 204 exact head c1f7937 is independently approved and awaits Brian merge; no
-  further full review, compaction, or pre-live scope is current.
-actor: codex-pr204-scope-auditor
-timestamp: '2026-08-04T19:11:51.892Z'
+  Current work is the focused independent review of PR 207 head 9b6b114; PR 204
+  is approved and compaction remains paused.
+actor: codex-pr207-review
+timestamp: '2026-08-04T23:19:24.639Z'
 ---
 # Summary
 
-PR 204 exact head `c1f7937c4231087956d7a6cd881671ca7f057491` is OPEN, CLEAN, CI-green, and independently approved at the supply-chain tier. The current canonical review is `context-notes/pr-204-exact-head-approval-c1f7937@sha256:12c8ac969c2e28236123107d35b3064866ff42a4e7e7853fbbcf183189bbd196`. Its three notes are explicitly non-blocking; the leading-dash and signed-receipt items remain separate must-land-before-live work, not PR 204 merge conditions.
+Current work is an independent exact-SHA review of PR 207, `fix: make session hooks durable and exact`, at head `9b6b114d481a9fbfd447f89e7d302156d969cb95` over base `d058d735ce4f6179ed07d74a7ddbfc38491e7980`. The clean review worktree is `/private/tmp/aslite-durable-hook.lLSKS1`. Review task: `tasks/pr-207-exact-sha-review@sha256:5f7c82dc949a4f0182bb42c74556e9984b60e392f123e0484e84982f547d363d`.
 
-The unrelated compaction T3.5 path remains paused. Its builder wrote no source and ran no probe. Do not restart it as part of PR 204.
+The review is scoped to durable minimal-PATH SessionStart launch, exact current/stale/legacy/unmanaged ownership classification, install/status/deduplication/uninstall convergence, foreign-config preservation, and the claimed tests/package proof. No source edits or GitHub comments are authorized by the review request.
 
 # Goals
 
-Ultimate goal: agentstate-lite is a dependable, distributable local-first coordination substrate whose releases are reproducible and fail closed.
+Ultimate goal: make agentstate-lite the shared, versioned, conflict-safe markdown memory that a human and agent fleet can install and use without founder intervention.
 
-Proximate goal: carry the independently approved code-only PR 204 head through Brian's merge gate without expanding scope; this serves the ultimate goal by shipping the verified retained-artifact release rail before optional simplification and pre-live activation work.
+Proximate goal: independently determine whether PR 207 safely makes npm-installed SessionStart hooks PATH-independent without adopting or mutating foreign host configuration; this serves the ultimate goal by removing a first-use failure while preserving exact ownership boundaries.
 
-# Current durable state
+# Current authority
 
-- PR 204 approval: `context-notes/pr-204-exact-head-approval-c1f7937@sha256:12c8ac969c2e28236123107d35b3064866ff42a4e7e7853fbbcf183189bbd196`.
-- Current P5A task: `tasks/npm-staged-release-automation` remains in progress only for the Brian-owned merge gate.
-- Old changes-requested review at `631c39c` is superseded and historical.
-- Pre-live follow-up: `tasks/p5a-pre-live-hardening`; do not absorb into PR 204.
-- Scope audit: `context-notes/pr204-scope-reorientation-2026-08-04@sha256:9dc676d21ba845c2aab7d84d8d1f28c7d7fac9a8faf47b8372e5579cc2319b63`.
-- Compaction parent and builder tasks remain blocked pending an explicit separate-feature decision.
+- PR 207: https://github.com/Holaxis-ai/agentstate-lite/pull/207
+- Exact head: `9b6b114d481a9fbfd447f89e7d302156d969cb95`.
+- Product tasks: `tasks/codex-sessionstart-node-path@sha256:3d9589c9840740d137e33eee6a20303ae8f0857f87dcc7c1e8a7b0bcea4b700f` and `tasks/hook-compatibility-ownership@sha256:dfb22ceb0fc8e1abb8d09b19adf4c93bb6692be0053394757449ab71075aa0ee`.
+- Review task: `tasks/pr-207-exact-sha-review@sha256:5f7c82dc949a4f0182bb42c74556e9984b60e392f123e0484e84982f547d363d`.
+- Existing PR 204 approval remains historical/current for PR 204 only; compaction T3.5 remains paused and unrelated.
+- Main checkout has a user-owned `CLAUDE.md` modification; do not touch it.
 
 # Next dependency
 
-If PR 204 stays at `c1f7937`, no further agent review or implementation is warranted; the next gate is Brian's merge decision. If its head changes, review only the exact delta and affected safety claims. Do not reopen proven areas without a concrete regression trace.
+Complete the exact-head static and executable review, record findings with file/line references, then close the review task. A PASS advances to adversarial install/uninstall byte-preservation QA; CHANGES REQUESTED returns only concrete findings for repair.
 
 # Loaded skills
 
