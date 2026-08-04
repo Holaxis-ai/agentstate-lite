@@ -4,12 +4,13 @@ title: Implement and live-prove revision 3 multi-session compaction handoffs
 status: in_progress
 priority: '2'
 description: >-
-  Alternatives architecture review reopened after the R6 circuit breaker.
-  Compare direct process primitives, purpose-built supervisor, launchd, reuse of
-  audited v5 tmux evidence, and host-policy separation before any new probe,
-  Plan, or code.
+  Alternatives review converged on synchronous invocation-scoped
+  CompactionHandoffAuthority + private CAS journal, no resident daemon, fake
+  scheduler/process adapter for lifecycle policy, narrow real-host
+  Claude/filesystem checks, and reuse of audited v5 tmux facts. Next: revise
+  T3.5 boundary/Plan and dual-review it before implementation.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-04T02:33:53.733Z'
+timestamp: '2026-08-04T02:41:20.523Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
