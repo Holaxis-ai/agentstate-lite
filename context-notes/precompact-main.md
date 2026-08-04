@@ -1,37 +1,34 @@
 ---
 type: Context Note
-title: 'Pre-compact handoff: PR 207 exact-SHA review'
+title: 'Pre-compact handoff: PR 207 review changes requested'
 description: >-
-  Current work is the focused independent review of PR 207 head 9b6b114; PR 204
-  is approved and compaction remains paused.
+  PR 207 exact-head review complete at 9b6b114: two high ownership/deletion
+  defects and one migration-signal gap require repair.
 actor: codex-pr207-review
-timestamp: '2026-08-04T23:19:24.639Z'
+timestamp: '2026-08-04T23:28:42.822Z'
 ---
 # Summary
 
-Current work is an independent exact-SHA review of PR 207, `fix: make session hooks durable and exact`, at head `9b6b114d481a9fbfd447f89e7d302156d969cb95` over base `d058d735ce4f6179ed07d74a7ddbfc38491e7980`. The clean review worktree is `/private/tmp/aslite-durable-hook.lLSKS1`. Review task: `tasks/pr-207-exact-sha-review@sha256:5f7c82dc949a4f0182bb42c74556e9984b60e392f123e0484e84982f547d363d`.
+PR 207 exact-SHA review is complete at head `9b6b114d481a9fbfd447f89e7d302156d969cb95` over base `d058d735ce4f6179ed07d74a7ddbfc38491e7980`. Verdict: **CHANGES REQUESTED**. Review worktree `/private/tmp/aslite-durable-hook.lLSKS1` remained clean; no source edits or GitHub comments were made.
 
-The review is scoped to durable minimal-PATH SessionStart launch, exact current/stale/legacy/unmanaged ownership classification, install/status/deduplication/uninstall convergence, foreign-config preservation, and the claimed tests/package proof. No source edits or GitHub comments are authorized by the review request.
+The implementation's intended durable npm-prefix launcher and authority checks are strong, focused local tests passed 69/69, `git diff --check` passed, and GitHub CI passed Node 20/22/26. The review found two high-severity classifier ownership defects and one medium migration gap:
 
-# Goals
+1. Newline-separated commands and bare-Node/arbitrary-basename paths can be falsely classified as owned/current and removed by uninstall.
+2. Once a command is recognized, arbitrary matcher/type/timeout variants become stale/owned and can be removed, rather than remaining unmanaged.
+3. Historical bare `aslite session-start` remains PATH-dependent but reports current and generates no upgrade signal; this matches the current design table, so design and implementation need a coordinated compatibility/migration distinction.
+
+Authoritative review note: `context-notes/pr-207-exact-sha-review-9b6b114@sha256:9dba12409b2e8a05aba5ae583ebe8640b2bf690077d723b5cf128c903d802ee0`. Independent confirmation: `context-notes/pr-207-ownership-skeptic-9b6b114@sha256:51283bc91f6796603cf5797f973bc70528a925ef4c8db9440bcccb667f6227bc`. Review task closed done at `tasks/pr-207-exact-sha-review@sha256:da394135ab359fe7f07891265cfb6a0f83e16377acb003c28cfdce3808bd04d4`.
+
+## Goals
 
 Ultimate goal: make agentstate-lite the shared, versioned, conflict-safe markdown memory that a human and agent fleet can install and use without founder intervention.
 
-Proximate goal: independently determine whether PR 207 safely makes npm-installed SessionStart hooks PATH-independent without adopting or mutating foreign host configuration; this serves the ultimate goal by removing a first-use failure while preserving exact ownership boundaries.
+Proximate goal: independently verify that PR 207 makes npm-installed SessionStart hooks durable without gaining mutation authority over foreign host configuration; this served the ultimate goal by identifying unsafe upgrade automation before merge. The goal is complete for head `9b6b114`.
 
-# Current authority
+## Next dependency
 
-- PR 207: https://github.com/Holaxis-ai/agentstate-lite/pull/207
-- Exact head: `9b6b114d481a9fbfd447f89e7d302156d969cb95`.
-- Product tasks: `tasks/codex-sessionstart-node-path@sha256:3d9589c9840740d137e33eee6a20303ae8f0857f87dcc7c1e8a7b0bcea4b700f` and `tasks/hook-compatibility-ownership@sha256:dfb22ceb0fc8e1abb8d09b19adf4c93bb6692be0053394757449ab71075aa0ee`.
-- Review task: `tasks/pr-207-exact-sha-review@sha256:5f7c82dc949a4f0182bb42c74556e9984b60e392f123e0484e84982f547d363d`.
-- Existing PR 204 approval remains historical/current for PR 204 only; compaction T3.5 remains paused and unrelated.
-- Main checkout has a user-owned `CLAUDE.md` modification; do not touch it.
+The PR branch needs a bounded repair: constrain the command grammar and historical host shapes to explicitly generated forms, add byte-preservation regressions for the counterexamples, and decide how historical bare hooks signal durable-launch convergence. A new exact-head review is required after repair. PR 204 approval remains separate and historical; compaction T3.5 remains paused/unrelated. Preserve the user's dirty main-checkout `CLAUDE.md`.
 
-# Next dependency
-
-Complete the exact-head static and executable review, record findings with file/line references, then close the review task. A PASS advances to adversarial install/uninstall byte-preservation QA; CHANGES REQUESTED returns only concrete findings for repair.
-
-# Loaded skills
+## Loaded skills
 
 `holaxis-self-awareness`, `holaxis-cognitive-ecosystem`, `agentstate-lite`, and `holaxis-orchestrator`.

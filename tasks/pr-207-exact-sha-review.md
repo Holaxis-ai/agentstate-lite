@@ -1,14 +1,14 @@
 ---
 type: Task
 title: Review PR 207 durable exact SessionStart hooks
-status: in_progress
+status: done
 priority: '1'
 assignee: codex-pr207-review
 description: >-
-  Independent exact-SHA review of PR 207 at 9b6b114: durable minimal-PATH
-  launcher, exact ownership classification, and foreign-config preservation.
+  Exact-SHA review complete at 9b6b114: CHANGES REQUESTED for two high-severity
+  ownership/deletion counterexamples plus one medium migration-signal gap.
 actor: codex-pr207-review
-timestamp: '2026-08-04T23:19:07.713Z'
+timestamp: '2026-08-04T23:28:21.240Z'
 ---
 # Goal
 
@@ -40,3 +40,7 @@ Run the smallest relevant tests first, then broader gates in proportion to survi
 # Deliverable
 
 Write `context-notes/pr-207-exact-sha-review-9b6b114` with findings ordered by severity and file/line references, exact commands/results, residual risks, and PASS or CHANGES REQUESTED. Close this review task. If no findings survive, say so explicitly and identify any test or platform limits. Board sync belongs to the root reviewer.
+
+# Outcome
+
+Completed at exact head `9b6b114d481a9fbfd447f89e7d302156d969cb95` with verdict **CHANGES REQUESTED**. Two high-severity mutation-authority counterexamples survived: the command grammar owns newline/bare-Node/arbitrary-basename paths it did not generate, and the entry classifier owns arbitrary matcher/type/timeout variants. A medium historical-upgrade signal gap also survived. Focused local tests passed 69/69, adversarial reproductions confirmed deletion, CI passed on Node 20/22/26, and the worktree remained clean. Full findings are recorded in `context-notes/pr-207-exact-sha-review-9b6b114`; independent confirmation is in `context-notes/pr-207-ownership-skeptic-9b6b114`.
