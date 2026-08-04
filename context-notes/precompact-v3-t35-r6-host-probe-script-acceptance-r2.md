@@ -2,7 +2,7 @@
 type: Context Note
 title: Revision 3 T3.5 R6 repaired host-probe static acceptance R2
 actor: codex-precompact-v3-r6-acceptance-r2
-timestamp: '2026-08-04T01:45:53.764Z'
+timestamp: '2026-08-04T01:47:13.905Z'
 ---
 # Summary
 
@@ -23,7 +23,7 @@ I read in full and verified the single-version histories of:
 - strict boundary synthesis `context-notes/precompact-v3-t35-r6-host-probe-boundary-synthesis@sha256:61ccbe83a2ce74e859ee18e714d04edf8297edf1db9f7cc9e2947897b1e24c5e`; and
 - prior R1 acceptance `context-notes/precompact-v3-t35-r6-host-probe-script-acceptance@sha256:d5309ef9c566fcbddfd48ca07a5a12af86657c3330ff12bfc51ea6f8d9d193fe`.
 
-I did not inspect or communicate with the skeptic. I did not invoke the candidate's `--run` or any child mode, tmux, Claude, auth, network, or tests. I did not edit the candidate, source root, repository, feature worktree, task, Plan, or implementation.
+I did not inspect or communicate with the skeptic. I did not invoke the candidate's `--run` or any child mode, tmux, Claude, auth, candidate-facing network, or tests. I did not edit the candidate, source root, repository, feature worktree, task, Plan, or implementation. After the verdict was complete, the required agentstate-lite board sync was the sole networked coordination action.
 
 Frozen static facts:
 
