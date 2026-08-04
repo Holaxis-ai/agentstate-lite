@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
 
 import {
   classifySkillCompatibility,
@@ -45,10 +46,20 @@ test("owned manifest parser recognizes only exact historical ownership shapes", 
     { ...LEGACY, files: ["SKILL.md", "SKILL.md"] },
     { ...LEGACY, files: ["SKILL.md", "../victim"] },
     { ...LEGACY, files: ["SKILL.md", "notes.md"] },
+    { ...LEGACY, files: ["SKILL.md", "references/..\\..\\victim.txt"] },
+    { ...LEGACY, files: ["SKILL.md", "references/bad\0name"] },
     { ...V2, schema: "aslite.skill-manifest.v3" },
   ]) {
     assert.equal(parseOwnedSkillManifest(candidate), null);
   }
+});
+
+test("Windows separators cannot turn an owned manifest path into an uninstall escape", () => {
+  const target = "C:\\project\\.codex\\skills\\aslite";
+  const relative = "references/..\\..\\victim.txt";
+  const escaped = path.win32.join(target, ...relative.split("/"));
+  assert.equal(escaped, "C:\\project\\.codex\\skills\\victim.txt");
+  assert.equal(parseOwnedSkillManifest({ ...LEGACY, files: ["SKILL.md", relative] }), null);
 });
 test("a corrupt v2 extension stays owned but its receipt is invalid", () => {
   for (const candidate of [

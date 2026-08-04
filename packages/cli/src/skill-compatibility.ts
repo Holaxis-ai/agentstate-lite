@@ -43,12 +43,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/** Every manifested path must remain inside the target on both POSIX and Windows. */
+export function isSafeManifestEntry(entry: unknown): entry is string {
+  if (typeof entry !== "string" || entry.length === 0) return false;
+  if (entry.startsWith("/") || entry.includes("\\") || entry.includes("\0")) return false;
+  return entry.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+}
+
 function isManagedSkillEntry(value: unknown): value is string {
-  if (typeof value !== "string") return false;
+  if (!isSafeManifestEntry(value)) return false;
   if (value === "SKILL.md") return true;
   if (!value.startsWith("references/")) return false;
-  const parts = value.split("/");
-  return parts.length >= 2 && parts.every((part) => part.length > 0 && part !== "." && part !== "..");
+  return value.split("/").length >= 2;
 }
 
 function parseOwnedFiles(value: unknown): string[] | null {

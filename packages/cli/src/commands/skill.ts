@@ -61,6 +61,7 @@ import {
   SKILL_INSTALLER,
   SKILL_MANIFEST_SCHEMA,
   classifySkillCompatibility,
+  isSafeManifestEntry,
   parseOwnedSkillManifest,
   type OwnedSkillManifest,
   type SkillCompatibility,
@@ -72,6 +73,8 @@ import {
   resolvePersistentInstallAuthority,
   type PersistentInstallAuthority,
 } from "../install-authority.js";
+
+export { isSafeManifestEntry };
 
 export const SKILL_USAGE = `agentstate-lite skill — install this package's Agent Skill into host skill folders
 
@@ -278,17 +281,6 @@ function sweepManagedDebris(dir: string, owned: Set<string>): boolean {
     }
   }
   return removed;
-}
-
-/**
- * A manifest file entry we would ever act on must stay INSIDE the target folder: relative, no
- * `..` segment, no absolute path, no backslash. A violating entry marks the whole manifest
- * malformed (refusal — a hand-edited manifest must never steer a delete outside the folder).
- */
-export function isSafeManifestEntry(entry: string): boolean {
-  if (typeof entry !== "string" || entry.length === 0) return false;
-  if (entry.startsWith("/") || entry.includes("\\") || entry.includes("\0")) return false;
-  return entry.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
 }
 
 /** Read + validate ownership. `undefined` when absent; `null` when ownership is not proven. */

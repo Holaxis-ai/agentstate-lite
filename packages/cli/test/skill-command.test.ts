@@ -348,6 +348,28 @@ test("reserved manifest debris beside a foreign file is preserved on every refus
   }
 });
 
+test("backslash-traversal manifests make both mutators refuse without changing target bytes", async () => {
+  for (const verb of ["install", "uninstall"]) {
+    const { base, executable } = scratch();
+    const cwd = path.join(base, "project");
+    const dir = path.join(cwd, ".claude", "skills", "aslite");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "SKILL.md"), "owned-looking\n");
+    writeFileSync(
+      path.join(dir, SKILL_MANIFEST_FILENAME),
+      `${JSON.stringify({
+        package: "@holaxis/aslite",
+        version: RUNNING_VERSION,
+        installed_by: "aslite skill install",
+        files: ["SKILL.md", "references/..\\..\\victim.txt"],
+      }, null, 2)}\n`,
+    );
+    const before = treeSnapshot(dir);
+    await assert.rejects(() => runSkill([verb], { cwd, executable }));
+    assertSameTree(before, treeSnapshot(dir));
+  }
+});
+
 test("a failed persistent-install authority preflight leaves both host targets untouched", async () => {
   const { base, executable } = scratch();
   const cwd = path.join(base, "project");
