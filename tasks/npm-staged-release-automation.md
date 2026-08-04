@@ -4,18 +4,16 @@ title: Build retained-artifact staged npm release automation
 status: in_progress
 priority: '1'
 description: >-
-  BUILT + gate-verified; branch feat/npm-staged-release-automation @ 631c39c
-  PUSHED, PR-ready, awaiting Brian's PR/merge (no live release action in this
-  unit). Gate: Builder (npm run check exit 0) -> independent release/security
-  review (pass-with-caveats) -> adversarial dry-run QA (found + verified-closed
-  a HIGH shell-injection vector: execFile+validators, 45 bypass shapes
-  rejected). Reconciler documented-not-wired (operator-trust boundary explicit);
-  2 pre-live follow-ups tracked in tasks/p5a-pre-live-hardening. No live
-  tag/publish path on merge or bare tag push. Records:
-  context-notes/review-p5a-release-security,
-  context-notes/qa-p5a-release-automation.
-actor: claude-main-p5a
-timestamp: '2026-08-03T23:35:29.557Z'
+  FIX IN PROGRESS on PR #204 after independent Codex review at 631c39c.
+  Ownership transferred from the initial Claude implementation team to
+  codex-pr204-fix to close workflow-input injection, fresh-runner/toolchain
+  failures, real npm 11.15 stage receipt/download contracts, immutable
+  artifact/draft/registry verification, cross-run permissions, pre-P5S disarm,
+  and candidate output/source safety. Proximate goal: make the code-only
+  retained-artifact release path executable and fail-closed; this serves the
+  project goal by preventing ambiguous or unsafe npm releases.
+actor: codex-pr204-fix
+timestamp: '2026-08-04T00:11:38.334Z'
 ---
 # Goal
 
