@@ -4,8 +4,8 @@ title: 'Version identity, update, compatibility, and staged-release protocols'
 description: >-
   Normative schemas, state precedence, budgets, compatibility tables, build
   flavors, staged-release state machine, and two-release proof.
-actor: openai/codex
-timestamp: '2026-07-31T21:22:48.303Z'
+actor: codex-durable-hook
+timestamp: '2026-08-04T22:18:43.908Z'
 ---
 # Purpose
 
@@ -189,11 +189,12 @@ Manifest v2 is exact and additive (existing keys retained):
 
 ## Hook ownership and mutation boundary
 
-A pure tokenized classifier is the sole authority for status, install deduplication/rewrite, and uninstall. It must preserve explicitly enumerated historical managed forms (bare/absolute `agentstate-lite ...`, current exact bare `aslite session-start`, known generated quoted cache paths, known legacy npx coordinate, and exact OpenCode generated marker/source) while rejecting foreign near-misses. Claude/Codex settings carry no provenance marker, so an exact generated-compatible semantic shape is deemed owned regardless of who typed it; non-exact/near-match hand-authored forms are unmanaged. A substring mention is never ownership evidence.
+A pure tokenized classifier is the sole authority for status, install deduplication/rewrite, and uninstall. It must preserve explicitly enumerated historical managed forms (bare/absolute `agentstate-lite ...`, current exact bare `aslite session-start`, the runtime-bound npm-prefix Node launch, known generated quoted cache paths, known legacy npx coordinate, and byte-exact OpenCode generated source) while rejecting foreign near-misses. Claude/Codex settings carry no provenance marker, so an exact generated-compatible semantic shape is deemed owned regardless of who typed it; non-exact/near-match hand-authored forms are unmanaged. A substring mention or OpenCode marker alone is never ownership evidence.
 
 | Class | Compatibility | Mutator behavior | Remedy |
 |---|---|---|---|
-| Exact stable `aslite session-start` or `agentstate-lite session-start` on PATH, expected timeout/shape | `current` | Idempotent owned update/removal | None |
+| Exact `<npm-prefix>/bin/node <npm-prefix>/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start`, expected timeout/shape | `current` | Idempotent owned update/removal | None |
+| Exact historical `aslite session-start` or `agentstate-lite session-start`, expected timeout/shape | `current` | Remains owned; explicit install converges to the PATH-independent launch | None |
 | Exact historically generated command with old subcommand/timeout | `stale` | Explicit install may converge; uninstall may remove | `aslite hook install --scope <scope>` |
 | Exact generated absolute plugin/cache path | `legacy_path_bound` | Remains owned; explicit install from supported global CLI converges | Install global CLI, then hook install |
 | No managed hook | `absent` | Install may add without touching foreign entries | Hook install |
@@ -201,7 +202,7 @@ A pure tokenized classifier is the sole authority for status, install deduplicat
 
 C2H is a high-risk mutation-authority change. Adversarial QA runs both install and uninstall against every historical form and foreign near-match and byte-compares unrelated configuration.
 
-For an `npm-package` invocation, persistent skill/hook install requires `durable_global` evidence, not merely PATH equality (npm exec/npx adds its cache bin to PATH). The classifier must resolve a managed bin on PATH to the running executable; obtain and validate the absolute `npm prefix --global`; prove the bin and real executable reside in that prefix's supported macOS/Linux global layout; reject npm-exec/npx-cache path or environment evidence; and fail closed to `unknown`/refusal when any proof is unavailable. The resolver is injected for tests and performs no write. `npx` remains supported for read-only/trial/bootstrap commands. Temporary `marketplace-legacy` behavior remains explicitly legacy until cutover; `local-dev` behavior is test/developer-only.
+For an `npm-package` invocation, persistent skill/hook install requires `durable_global` evidence, not merely PATH equality (npm exec/npx adds its cache bin to PATH). The classifier must resolve a managed bin on PATH to the running executable; obtain and validate the absolute `npm prefix --global`; prove the bin and real executable reside in that prefix's supported macOS/Linux global layout; prove `<prefix>/bin/node` resolves to the Node runtime currently executing the CLI; reject npm-exec/npx-cache path or environment evidence; and fail closed to `unknown`/refusal when any proof is unavailable. The installed hook invokes that stable Node path with the absolute package entry and `session-start`, and an execution proof must pass with a minimal GUI-style PATH. The resolver is injected for tests and performs no write. `npx` remains supported for read-only/trial/bootstrap commands. Temporary `marketplace-legacy` behavior remains explicitly legacy until cutover; `local-dev` behavior is test/developer-only.
 
 ## MCP
 

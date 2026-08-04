@@ -4,14 +4,13 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  CLAIMED by codex-durable-hook on 2026-08-04. Build one durable npm
-  hook-install contract: tokenized exact ownership and foreign-config safety
-  plus PATH-independent execution under Codex GUI/minimal environments.
-  Proximate goal: make npm-installed skill/hook integration reliably reach
-  first-session orientation, serving the product goal of installable shared
-  agent memory.
+  IMPLEMENTED on feat/durable-npm-hook-install by codex-durable-hook: exact
+  token-and-shape ownership, byte-exact OpenCode source reconciliation, durable
+  npm-prefix Node launch, additive per-host status, and foreign-config
+  preservation. Focused 70-test suite, full CLI suite, and installed-tarball
+  proof pass; full repository gate and independent exact-SHA review remain.
 actor: codex-durable-hook
-timestamp: '2026-08-04T21:54:12.788Z'
+timestamp: '2026-08-04T22:18:44.142Z'
 ---
 # Goal
 
