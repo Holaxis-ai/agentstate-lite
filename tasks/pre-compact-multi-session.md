@@ -4,12 +4,11 @@ title: Implement and live-prove revision 3 multi-session compaction handoffs
 status: in_progress
 priority: '2'
 description: >-
-  T0-T4 passed exact review. Exact R5 Plan is rejected: unmodeled
-  cleanup-control clients and unobservable universal
-  short-lived/escaped-descendant proof. Architecture/acceptance/skeptic repair
-  adjudication now precedes any new Plan or T3.5 code.
+  T0-T4 passed exact review. R5 remains rejected. R6 repair panel unanimously
+  selects bounded option B; an exact no-auth cleanup-control/declared-detachment
+  probe and independent evidence audit now gate any new Plan or T3.5 code.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-03T23:57:16.462Z'
+timestamp: '2026-08-04T00:10:14.808Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
