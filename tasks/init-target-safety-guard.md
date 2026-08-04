@@ -5,17 +5,17 @@ status: todo
 priority: '1'
 assignee: brian-claude
 description: >-
-  Approved P1 predecessor: add backward-compatible init --create-only preflight
-  that refuses existing, bound, enclosing, ambiguous, or concurrently-created
-  targets before any write; shared by guide and quickstart.
+  Approved P1 predecessor: generic init --create-only preflight shared by the
+  aslite guide facade and npm quickstart; it refuses existing, bound, enclosing,
+  ambiguous, or concurrently-created targets before any write.
 actor: codex-onboarding-scope
-timestamp: '2026-08-03T23:54:59.775Z'
+timestamp: '2026-08-04T00:02:52.277Z'
 ---
 # Problem
 
 Onboarding needs an explicit command that creates a new bundle only when its target is genuinely new. Current `init` is intentionally idempotent/open-or-create: it can apply another Recipe to an existing bundle and can create a nested bundle when invoked below an enclosing workspace. That behavior makes the proposed guide command unsafe as a “new standalone learning workspace” contract.
 
-This is a shared `init` target-selection boundary used by both [the guide task](guidance-bundle-onboarding.md) and [npm quickstart](npm-quickstart-onboarding.md). It is product code, not guide copy.
+This is a shared `init` target-selection boundary used underneath [the guide task](guidance-bundle-onboarding.md)'s zero-decision `aslite guide` facade and directly by [npm quickstart](npm-quickstart-onboarding.md). It is product code, not guide copy.
 
 # Behavioral decision
 
@@ -30,13 +30,13 @@ Before any write, create-only mode resolves the physical/local target and fails 
 
 The error explains the two valid recoveries: use `recipe add` to modify an existing bundle, or choose a different explicit `--dir` for a new bundle.
 
-The onboarding guide's intended command becomes:
+The onboarding guide's lower-level equivalent becomes:
 
 ```sh
 aslite init --create-only --recipe agentstate-guide --dir ~/.agentstate-lite/guide
 ```
 
-The exact spelling and semantics are generic; there is no `agentstate-guide` branch in target resolution. The [approved boundary review](../review-requests/onboarding-surfaces-mike-signoff.md) authorizes npm quickstart to use the same mode for its fresh-workspace proof after this guard ships.
+The public newcomer command is `aslite guide`, which must delegate first-run creation to this generic boundary and use `~/.agentstate-lite/guide` unless an advanced `--dir` override is supplied. The exact `init --create-only` spelling and semantics remain generic; there is no `agentstate-guide` branch in target resolution. The [approved boundary review](../review-requests/onboarding-surfaces-mike-signoff.md) authorizes npm quickstart to use the same mode for its fresh-workspace proof after this guard ships.
 
 # Acceptance criteria
 

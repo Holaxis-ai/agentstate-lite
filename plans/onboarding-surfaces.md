@@ -1,16 +1,18 @@
 ---
 type: Plan
-title: 'Onboarding surfaces v2: one journey, safe guide slice, explicit adjacent lanes'
+title: >-
+  Onboarding surfaces v3: one journey, zero-decision guide entry, explicit
+  adjacent lanes
 actor: codex-onboarding-scope
 description: >-
   Approved direction: agentstate-guide is outside the domain-Recipe deferral;
-  early slice contains generic create-only init safety, ordered/stateless guide,
-  and independent npm quickstart, with adjacent lanes explicit.
-timestamp: '2026-08-03T23:54:01.578Z'
+  aslite guide is the zero-decision public entry over generic create-only safety
+  and the embedded Recipe; npm quickstart remains independent.
+timestamp: '2026-08-04T00:03:13.010Z'
 ---
-# Revision 2 decision summary
+# Revision 3 decision summary
 
-**Status:** revised after the [three-lens review synthesis](../context-notes/review-onboarding-synthesis.md) on 2026-08-03. The panel returned **pass-with-caveats**: the one-journey structure and Recipe delivery shape hold, but v1 must not claim mechanics the current product lacks.
+**Status:** revised after the [three-lens review synthesis](../context-notes/review-onboarding-synthesis.md) and Brian's final zero-decision entry-point refinement on 2026-08-03. The panel returned **pass-with-caveats**: the one-journey structure and Recipe delivery shape hold, but v1 must not claim mechanics the current product lacks.
 
 There is one new-user journey, not four competing onboarding products. Within the **discovery → guide → first-value slice**, three implementation units remain:
 
@@ -40,7 +42,7 @@ Three earlier claims were wrong or too broad:
 - **Current `init` does not fail closed on existing/enclosing workspaces.** It can apply another Recipe to an existing bundle and create a nested bundle. Safe onboarding needs an explicit generic create-only preflight; this is shared product code, not guide copy.
 - **“Only two implementation tasks remain” was true only of the four handed-off records, not onboarding as a whole.** This revision scopes the claim to the early slice and names adjacent open work.
 
-A fourth current-code constraint shapes discovery: bundle-free `aslite recipes` emits a cwd-targeting `init --recipe <name>` command when the caller supplied no target. V1 will not change that generic inventory contract. The approved no-bundle home, README, and Agent Skill follow-up will carry the guide's explicit safe command.
+A fourth current-code constraint shapes discovery: bundle-free `aslite recipes` emits a cwd-targeting `init --recipe <name>` command when the caller supplied no target. V1 will not change that generic inventory contract. The approved no-bundle home, README, and Agent Skill follow-up will instead carry the zero-decision `aslite guide` facade.
 
 # Domain model
 
@@ -49,7 +51,7 @@ A fourth current-code constraint shapes discovery: bundle-free `aslite recipes` 
 | **Front doors** | README/npm quickstart, bare `aslite`, and the installed Agent Skill tell a newcomer what to do next. | Persistent nagging or a hidden user-state machine. |
 | **Recipe discovery** | Bundle-free `aslite recipes` inventories starting setups without creating files. | The owner of guide-specific recommendation copy or destination policy. |
 | **Create-only target safety** | A generic opt-in `init` preflight refuses existing, bound, enclosing, ambiguous, or concurrently created bundle targets before any write. | Recipe-specific branching or a replacement for `recipe add`. |
-| **Guidance Recipe** | A portable, ordered curriculum plus a registered read-only View, proposed as the built-in `agentstate-guide`. | A special installer, a guessed domain operating model, or an unordered documentation dump. |
+| **Guidance Recipe** | A portable, ordered curriculum plus a registered read-only View, proposed as the built-in `agentstate-guide`, reached normally through `aslite guide`. | A second Recipe pipeline, a guessed domain operating model, or an unordered documentation dump. |
 | **Launcher/home** | The existing human container for any materialized bundle and its Views/activity. | A second curriculum or a reason to reopen completed launcher work. |
 | **Quickstart proof** | The literal installed-package install → orientation → fresh `work-tracking` bundle → useful/visible state acceptance journey. | Release staging, guide content, or another UI. |
 | **Journey model** | Desired experience, lane, evidence, readiness, and gaps across the whole lifecycle. | An implementation backlog or runtime surface. |
@@ -59,10 +61,10 @@ A fourth current-code constraint shapes discovery: bundle-free `aslite recipes` 
 
 | Component | Current state | Disposition and owner |
 | --- | --- | --- |
-| README, no-bundle home, Agent Skill | Live but do not name the guide; README skips recipe discovery. | The approved guide task owns the minimal static guide-entry copy and exact command. Quickstart continues to own the general installed-package journey. |
+| README, no-bundle home, Agent Skill | Live but do not name the guide; README skips recipe discovery. | The approved guide task owns the minimal static guide-entry copy and shared `aslite guide` command. Quickstart continues to own the general installed-package journey. |
 | [Bundle-free recipe discovery](../tasks/product-recipe-discovery.md) | Done in PR #201 / merge `138a3c7`; openai/codex. | Keep done. A built-in guide appears generically in inventory. Do not change per-row command semantics in this slice. |
-| [Create-only init safety](../tasks/init-target-safety-guard.md) | Missing; newly scoped P1, Brian/Claude side. | Build one backward-compatible generic `--create-only` mode before the guide's creation command or revised quickstart is treated as safe. |
-| [Guidance task](../tasks/guidance-bundle-onboarding.md) | Todo P2; assignee brian-claude. | Own ordered curriculum, read-only View, build-time Recipe embedding, static front-door copy, and the learn-to-real-bundle proof. Built-in registration is permitted after the prototype, safety, user-validation, review, and package gates pass. |
+| [Create-only init safety](../tasks/init-target-safety-guard.md) | Missing; newly scoped P1, Brian/Claude side. | Build one backward-compatible generic `--create-only` mode before the guide facade's first-run materialization or revised quickstart is treated as safe. |
+| [Guidance task](../tasks/guidance-bundle-onboarding.md) | Todo P2; assignee brian-claude. | Own `aslite guide`, ordered curriculum, read-only View, build-time Recipe embedding, static front-door copy, and the learn-to-real-bundle proof. Built-in registration is permitted after the prototype, safety, user-validation, review, and package gates pass. |
 | [Launcher first-run](../tasks/launcher-first-run-onboarding.md) | Done in PRs #135/#137/#151. | Reuse as the container. The separate guide is justified because the launcher explains the current bundle at a glance; it does not provide an ordered, reopenable learn-by-doing path or graduation to another workspace. Do not reopen it. |
 | [npm quickstart](../tasks/npm-quickstart-onboarding.md) | Todo P1; openai/codex. | Remains independent of guide content. After the guard ships, use create-only for its fresh `work-tracking` target and consume the existing discovery/front door. |
 | [MCP install verb](../tasks/mcp-install-verb.md) | Todo P1; openai/codex. | Adjacent host-connection lane, not a guide-v1 predecessor. MCP remains “where configured”; terminal/local web is sufficient for guide validation. |
@@ -85,11 +87,11 @@ The common sequence is:
 1. **Install executable:** install the supported npm package.
 2. **Optionally install durable agent integration:** `aslite skill install` and `aslite hook install` make help/orientation available to supported agents and future sessions; neither is required for CLI correctness.
 3. **Discover without mutation:** bare `aslite` and `aslite recipes` work offline from an empty directory and create no files. The skill/no-bundle/README front doors name the guide only in the relevant new-user context.
-4. **Create explicitly and safely:** use the suggested, overrideable personal location:
+4. **Enter without configuration:** run one stable offline command:
    ```sh
-   aslite init --create-only --recipe agentstate-guide --dir ~/.agentstate-lite/guide
+   aslite guide
    ```
-   The create-only guard must ship first. Generic recipe inventory may continue to show its ordinary cwd-oriented command; guide-specific safe placement lives in the front-door copy.
+   On first use the command lazily applies the already-packaged built-in Recipe at `~/.agentstate-lite/guide`; later use reopens it through the ordinary launcher/home path. An advanced `--dir <path>` override controls only the guide bundle destination, never the `aslite` installation. The generic create-only guard must ship first. Generic recipe inventory may continue to show its ordinary cwd-oriented command.
 5. **Learn in order:** open the guide with the ordinary local launcher. Numbered References, explicit next-links, and a home View form a sequence without storing completion state.
 6. **Perform one real action:** run an exact CLI command such as `aslite new "Context Note" first-step --title "My first note" --actor <name>`; the `bundle-read` View live-refreshes and shows the attributed record. The View does not write.
 7. **Graduate rather than convert:** create a separate real workspace in the intended visibility mode and choose an appropriate Recipe. The guide stays reopenable at its known location.
@@ -102,8 +104,8 @@ Claude Desktop and ChatGPT setup are parallel host lanes. They do not block the 
 ## Lifecycle and proactive discovery
 
 - V1 is an ordered persistent reference, not a completion-tracking wizard.
-- The Agent Skill must name `agentstate-guide`, print the exact create-only command, and recommend it when a user says they are new or asks how to start.
-- The approved no-bundle `getting_started` copy and README follow-up must name the same safe path.
+- The Agent Skill must name `agentstate-guide`, print `aslite guide`, and recommend it when a user says they are new or asks how to start.
+- The approved no-bundle `getting_started` copy and README follow-up must name the same zero-decision command.
 - Recommendation is **stateless and zero-nag**. With no repeated prompt there is nothing to suppress, so no acknowledgement marker is needed. Any future repeated/proactive prompt must remain stateless or it reacquires the stable-identity prerequisite from [the notice design](../designs/user-notices.md).
 - The guide remains available on demand and documents the exact reopen command/location.
 
@@ -164,7 +166,8 @@ Authorized record changes are: link quickstart to the generic create-only predec
 | --- | --- | --- |
 | Existing discovery | Empty directory: bare `aslite` and `recipes` exit 0, create no files, and inventory remains generic. | Shipped primitive regression. |
 | Create-only safety | Fresh target succeeds; existing/bound/enclosing/ambiguous/concurrent targets fail before writes; ordinary `init` and `recipe add` retain their contracts. | init target-safety task. |
-| Stateless guide discovery | README, no-bundle home, and generated skill agree on name, exact create-only/default-path command, when to recommend, and zero-nag behavior. | guide task. |
+| Stateless guide discovery | README, no-bundle home, and generated skill agree on `aslite guide`, when to recommend it, and zero-nag behavior. | guide task. |
+| Zero-decision guide entry | First run safely materializes the embedded Recipe at the per-user default; later runs reopen it; `--dir` is an advanced bundle-destination override only; no install-time writes occur. | guide task plus init target-safety task. |
 | Ordered learning | Fresh user follows numbered curriculum, performs CLI `new`, sees it live in the read-only View, and creates a separate real bundle. | guide task. |
 | Built-in packaging | Source assets generate one embedded `RecipeFile[]`; inventory lists References+View; installed local-dev tarball applies/idempotently re-applies without runtime source files. | guide task. |
 | Minimal productivity | Installed artifact: install → orient/discover → create-only `work-tracking` init → attributed Task → visible state. | npm quickstart. |
@@ -178,7 +181,7 @@ This revision incorporates the [intent review](../context-notes/review-onboardin
 # Non-goals
 
 - No product implementation in this scoping revision.
-- No special guide installer/command, silent postinstall, recipe-specific target branch, second Recipe parser, or runtime asset lookup.
+- No silent postinstall, making the guide the default Recipe for ordinary project `init`, recipe-specific target-safety branch, second Recipe parser, or runtime asset lookup. `aslite guide` is only a thin facade over the generic create-only and RecipeSource paths.
 - No View-mediated document creation or `bundle-propose` action.
 - No acknowledgement, passive seen tracking, identity work, or repeated prompt.
 - No P5A, staged release, update, marketplace, deployment, MCP-install, or deferred domain-operating-model work.

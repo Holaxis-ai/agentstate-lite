@@ -3,13 +3,14 @@ type: Task
 title: >-
   Scope the onboarding surfaces: reconcile 4 overlapping items into one coherent
   early-UX plan (HANDOFF)
-status: in_progress
+status: done
 priority: '2'
 description: >-
-  Final refinement in progress: make aslite guide the zero-decision public
-  onboarding command while preserving generic create-only safety underneath.
+  Complete: reconciled onboarding surfaces and recorded the final zero-decision
+  entry contract: aslite guide over embedded Recipe plus generic create-only
+  safety; implementation remains in separate open tasks.
 actor: codex-onboarding-scope
-timestamp: '2026-08-04T00:00:37.236Z'
+timestamp: '2026-08-04T00:02:42.180Z'
 ---
 # Onboarding surface scoping — handoff note
 
@@ -30,6 +31,13 @@ units, and one non-task product model:
 - the Journey/Journey Stage records remain the cross-lane experience and readiness map, not a
   fourth implementation surface.
 - the completed launcher-first-run work is reused as the visual container; it is not reopened.
+
+The final entry-point refinement removes recipe and directory decisions from the newcomer path:
+`aslite guide` lazily materializes the already-packaged built-in at its per-user default on first
+use and reopens it later. The long `init --create-only --recipe ... --dir ...` form remains the
+lower-level mechanism and `--dir` controls only the guide bundle destination, not the CLI install.
+There is no npm postinstall write and the guide does not become the default for ordinary project
+`init`.
 
 The openai/codex-owned records were left unchanged. Michael Collier's light coordination/sign-off
 is requested in [review-requests/onboarding-surfaces-mike-signoff](../review-requests/onboarding-surfaces-mike-signoff.md)
@@ -56,6 +64,9 @@ is [outside the domain-Recipe deferral](../decisions/agentstate-guide-outside-do
 because it explains existing product functionality rather than proposing a user operating model.
 The boundary Review Request is approved; quickstart/Journey records and typed roadmap containment
 have been reconciled under that authority. No product code was built in this scoping revision.
+
+Brian subsequently approved the zero-decision `aslite guide` public facade. The plan and guide task
+record that facade while retaining the independently reviewed generic create-only safety boundary.
 
 ## Handoff context
 

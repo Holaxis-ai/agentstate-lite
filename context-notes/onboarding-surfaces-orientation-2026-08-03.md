@@ -2,7 +2,7 @@
 type: Context Note
 title: Onboarding surfaces scoping orientation and system model
 actor: codex-onboarding-scope
-timestamp: '2026-08-03T23:57:14.600Z'
+timestamp: '2026-08-04T00:02:42.170Z'
 ---
 # Summary
 
@@ -44,9 +44,14 @@ A three-lens panel returned pass-with-caveats. It affirmed one journey, the Reci
   reconciled without advancing implementation readiness.
 - tasks/onboarding-surface-scoping is done. No product code, P5A, release, update, marketplace,
   MCP-install, View-create-action, notice/identity, or deferred domain-Recipe work was performed.
+- Brian approved `aslite guide` as the zero-decision public entry. The built-in Recipe remains
+  embedded in the CLI package; first use materializes its separate per-user bundle through generic
+  create-only safety, later use reopens it, and `--dir` affects only that bundle destination. This
+  does not authorize npm postinstall writes or make the tutorial the ordinary `init` default.
 
 ## Next action
 
 Begin implementation planning for the create-only safety unit and prototype the portable ordered
-guide curriculum/View in parallel. Built-in registration waits on create-only safety, fresh-user
-validation, independent review, and installed-package gates—not on another product decision.
+guide curriculum/View plus thin `aslite guide` facade in parallel. Built-in registration and the
+facade's first-run materialization wait on create-only safety, fresh-user validation, independent
+review, and installed-package gates—not on another product decision.

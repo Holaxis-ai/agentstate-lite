@@ -4,12 +4,12 @@ title: 'Ship agentstate-guide as an ordered, stateless learning workspace'
 status: todo
 priority: '2'
 description: >-
-  Approved direction: ordered built-in guide with read-only live View, CLI first
-  action, stateless skill/home/README discovery, build-time embedding,
-  fresh-user validation, and generic create-only init safety predecessor.
+  Approved direction: ship the embedded ordered guide plus a zero-decision
+  aslite guide facade, backed by generic create-only safety, with stateless
+  discovery, build-time embedding, and fresh-user validation.
 actor: codex-onboarding-scope
 assignee: brian-claude
-timestamp: '2026-08-03T23:54:35.694Z'
+timestamp: '2026-08-04T00:02:42.169Z'
 ---
 # Goal
 
@@ -35,21 +35,27 @@ Personal Task System, Product Manager, and other domain Recipes remain deferred.
 
 ## Hard predecessor
 
-The guide's public creation path depends on [generic create-only init target safety](init-target-safety-guard.md). Do not publish the command or treat the guide as safely materializable until that guard passes its independent review and adversarial QA.
+The guide facade's first-run materialization depends on [generic create-only init target safety](init-target-safety-guard.md). Do not publish `aslite guide` or treat the guide as safely materializable until that guard passes its independent review and adversarial QA.
 
 # Product contract
 
-## Explicit safe creation
+## Zero-decision public entry
 
-The suggested, overrideable personal location is:
+The normal newcomer path is one stable offline command with no recipe or directory choice:
+
+```sh
+aslite guide
+```
+
+`aslite guide` is a thin first-party facade over the existing RecipeSource and generic create-only machinery, not a second installer or Recipe path. On first run it lazily materializes the packaged built-in at the default per-user bundle root `~/.agentstate-lite/guide`; on later runs it resolves the same existing guide and hands off to the ordinary launcher/home experience. It accepts `--dir <path>` only as an advanced destination override.
+
+The equivalent lower-level operation remains available for testing and explicit placement:
 
 ```sh
 aslite init --create-only --recipe agentstate-guide --dir ~/.agentstate-lite/guide
 ```
 
-No silent npm postinstall behavior, cwd inference as the guide recommendation, special `guide`/`learn` command, marketplace, second parser, or automatic composition. Generic `aslite recipes` inventory keeps its ordinary command semantics; guide-specific safe placement lives in the front-door copy.
-
-Re-running creation against an existing guide fails safely and points at the reopen path. The guide never injects itself into an existing project; `recipe add` remains the explicit generic operation for changing an existing bundle.
+The recipe definition is already embedded in the installed `aslite` package; `--dir` controls only where the materialized guide bundle lives, never where the executable or packaged recipe is installed. There is no silent npm postinstall behavior, cwd inference, marketplace dependency, second parser, or automatic composition. An occupied or ambiguous default/override target fails safely instead of being overwritten. The guide never injects itself into an existing project; `recipe add` remains the explicit generic operation for changing an existing bundle.
 
 ## Ordered but stateless lifecycle
 
@@ -73,8 +79,8 @@ The `bundle-read` View subscribes and visibly updates when the document lands. I
 
 The completed-surface follow-up is approved:
 
-- the generated Agent Skill source names `agentstate-guide`, prints the exact create-only command, and instructs agents to recommend it only when the user says they are new or asks how to start;
-- no-bundle `getting_started` names the same guide/default path while retaining blank-init and generic recipe discovery choices; and
+- the generated Agent Skill source names `agentstate-guide`, prints `aslite guide`, and instructs agents to recommend it only when the user says they are new or asks how to start;
+- no-bundle `getting_started` names the same zero-decision guide command while retaining blank-init and generic recipe discovery choices; and
 - README/npm quickstart names recipe discovery and the same optional learning path.
 
 These static surfaces must derive or agreement-test their shared name/command/cue so they cannot drift.
@@ -96,8 +102,8 @@ Using the exact installed local-dev npm artifact from an isolated home and empty
 
 1. bare `aslite` and `aslite recipes` remain bundle-free and create no files;
 2. `aslite recipes` lists `agentstate-guide` with accurate Reference/View assets through the generic inventory;
-3. the skill, no-bundle home, and README agree on the guide name, exact create-only/default-path command, when to recommend it, and zero-nag behavior;
-4. the create-only command materializes the guide only at a fresh explicit location and never changes an existing, bound, enclosing, ambiguous, or concurrently created workspace;
+3. the skill, no-bundle home, and README agree on `aslite guide`, when to recommend it, and zero-nag behavior;
+4. first `aslite guide` use materializes the embedded recipe at its default per-user root without asking for a recipe or directory, later use reopens that guide, `--dir` can deliberately override the destination, and no path changes an existing, bound, enclosing, ambiguous, or concurrently created workspace;
 5. the resulting bundle opens through ordinary local web; MCP presentation is optional “where configured” and not a v1 gate;
 6. a fresh user/agent follows the numbered curriculum without source-code reading or founder explanation;
 7. the learner runs the exact CLI `new` action, sees the attributed record arrive live in the read-only View, and understands that the View observed rather than wrote it;
@@ -121,6 +127,7 @@ Using the exact installed local-dev npm artifact from an isolated home and empty
 - A guessed domain operating model or any change to the still-active domain-Recipe deferral.
 - Per-person notices, passive seen tracking, acknowledgement, stable identity, or repeated reminders.
 - View-mediated document creation or any new trusted-action mechanic.
+- Silent npm postinstall writes or making the tutorial Recipe the default for ordinary project `init`.
 - Turning the learning workspace into the user's real project.
 - Merging the guide with `examples/sample-bundle`, whose job is interop/round-trip validation.
 
