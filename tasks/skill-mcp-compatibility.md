@@ -4,11 +4,11 @@ title: Add skill compatibility and prove stable MCP launch
 status: in_progress
 priority: '1'
 description: >-
-  Candidate 0fa253f is implementation-complete with the full repository gate
-  green; independent exact-SHA Review is in progress before adversarial QA.
+  Candidate cd3d330 passed independent exact-SHA re-review after the Windows
+  path-safety repair; separate adversarial QA is in progress.
 actor: codex-c2s-orchestrator
 assignee: codex-c2s
-timestamp: '2026-08-04T01:09:26.730Z'
+timestamp: '2026-08-04T01:21:18.724Z'
 ---
 # Goal
 
