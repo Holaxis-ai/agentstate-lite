@@ -1,13 +1,17 @@
 ---
 type: Task
 title: Make hook ownership and mutation compatibility exact
-status: todo
+status: in_progress
 priority: '1'
 description: >-
-  Implement C2H: tokenized historical/current hook ownership with foreign-config
-  safety.
-actor: openai/codex
-timestamp: '2026-07-31T21:26:26.639Z'
+  CLAIMED by codex-durable-hook on 2026-08-04. Build one durable npm
+  hook-install contract: tokenized exact ownership and foreign-config safety
+  plus PATH-independent execution under Codex GUI/minimal environments.
+  Proximate goal: make npm-installed skill/hook integration reliably reach
+  first-session orientation, serving the product goal of installable shared
+  agent memory.
+actor: codex-durable-hook
+timestamp: '2026-08-04T21:54:12.788Z'
 ---
 # Goal
 

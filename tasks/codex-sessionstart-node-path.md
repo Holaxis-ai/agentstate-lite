@@ -1,18 +1,16 @@
 ---
 type: Task
 title: Make Codex SessionStart hook independent of GUI PATH
-status: todo
+status: in_progress
 priority: '1'
 description: >-
-  Confirmed chronology: the project hook file dates from 2026-07-10, while Codex
-  created and enabled its trust record at 2026-08-04 13:17:42, about 15 seconds
-  before the failing session. This was an old hook newly accepted/executed by
-  Codex, not a new installation. Minimal PATH reproduces exit 127; an absolute
-  /opt/homebrew/bin/node plus the global npm dist succeeds. Temporary repair is
-  that explicit command followed by Codex re-trust on the next session; durable
-  installer-owned runtime resolution and regression coverage remain todo.
-actor: codex-hook-diagnosis
-timestamp: '2026-08-04T19:27:44.543Z'
+  CLAIMED by codex-durable-hook on 2026-08-04 and reconciled into
+  tasks/hook-compatibility-ownership. The implementation must make the exact
+  installed command run under a minimal GUI PATH, avoid transient/dev executable
+  persistence for durable npm installs, and retain safe managed-hook
+  reconciliation.
+actor: codex-durable-hook
+timestamp: '2026-08-04T21:54:13.016Z'
 ---
 # Problem
 
