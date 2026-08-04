@@ -29,6 +29,7 @@ import { cliVersion, KNOWN_COMMANDS } from "../src/cli.js";
 import { BUILD_IDENTITY_SCHEMA } from "../src/build-identity.js";
 import { buildCliBundle } from "../scripts/build-bundle.mjs";
 import { COMMAND_GROUPS } from "../src/reference.js";
+import { VERSION_USAGE } from "../src/commands/version.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cliPackageRoot = path.resolve(here, "..");
@@ -57,6 +58,13 @@ test("version is registered in command discovery", () => {
       command.usage.startsWith("version "),
     ),
   );
+});
+
+test("version help carries bounded stable-MCP verification guidance", () => {
+  assert.match(VERSION_USAGE, /npm install -g @holaxis\/aslite/);
+  assert.match(VERSION_USAGE, /command `aslite`.*argument `mcp`/s);
+  assert.match(VERSION_USAGE, /`aslite version --json`/);
+  assert.match(VERSION_USAGE, /does not scan or rewrite host MCP configuration/);
 });
 
 test("the BUILT CLI: `--version` and `-v` print the version and exit 0", () => {

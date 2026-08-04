@@ -5,6 +5,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -29,6 +30,7 @@ import {
 } from "../src/commands/skill.js";
 import { CliError } from "../src/errors.js";
 import { cliVersion } from "../src/build-identity.js";
+import type { PersistentInstallAuthority } from "../src/install-authority.js";
 
 const RUNNING_VERSION = cliVersion();
 
@@ -59,7 +61,13 @@ function scratch(): { base: string; executable: string } {
 
 async function runSkill(
   argv: string[],
-  deps: { cwd?: string; home?: string; env?: NodeJS.ProcessEnv; executable?: string },
+  deps: {
+    cwd?: string;
+    home?: string;
+    env?: NodeJS.ProcessEnv;
+    executable?: string;
+    installAuthority?: () => PersistentInstallAuthority;
+  },
 ): Promise<Record<string, any>> {
   let out = "";
   await skill([...argv, "--json"], { env: {}, ...deps, stdout: (s) => (out += s) });
@@ -106,6 +114,27 @@ test("skill install (project scope): assets + manifest land in BOTH host folders
     assert.equal(manifest.version, RUNNING_VERSION);
     assert.equal(manifest.installed_by, "aslite skill install");
     assert.deepEqual(manifest.files, Object.keys(ASSET_FILES).sort());
+    assert.deepEqual(Object.keys(manifest), [
+      "schema",
+      "package",
+      "version",
+      "installed_by",
+      "compatibility_contract",
+      "source_identity",
+      "files",
+      "file_sha256",
+    ]);
+    assert.equal(manifest.schema, "aslite.skill-manifest.v2");
+    assert.equal(manifest.compatibility_contract, 1);
+    assert.equal(manifest.source_identity.release_version, RUNNING_VERSION);
+    assert.equal(manifest.source_identity.artifact_channel, "local-dev");
+    assert.deepEqual(Object.keys(manifest.file_sha256), manifest.files);
+    for (const relative of manifest.files) {
+      const expected = `sha256:${createHash("sha256")
+        .update(readFileSync(path.join(dir, ...relative.split("/"))))
+        .digest("hex")}`;
+      assert.equal(manifest.file_sha256[relative], expected);
+    }
   }
 
   const before = treeSnapshot(path.join(cwd, ".claude"));
@@ -173,6 +202,198 @@ test("skill status: absent before install, unmanaged for a manifest-less folder,
   const installed = await runSkill(["status"], { cwd, executable });
   assert.equal(installed.skill.hosts.claude_code.state, "installed");
   assert.equal(installed.skill.hosts.claude_code.version, RUNNING_VERSION);
+  assert.deepEqual(installed.skill.hosts.claude_code.compatibility, {
+    state: "current",
+    reason: null,
+    installed_contract: 1,
+    running_contract: 1,
+    remedy: { action: "none", command: null },
+  });
+});
+
+test("legacy owned receipts remain current and explicit install refreshes only the receipt", async () => {
+  const { base, executable } = scratch();
+  const cwd = path.join(base, "project");
+  await runSkill(["install"], { cwd, executable });
+  const dir = path.join(cwd, ".claude", "skills", "aslite");
+  const manifestPath = path.join(dir, SKILL_MANIFEST_FILENAME);
+  const current = JSON.parse(readFileSync(manifestPath, "utf8"));
+  writeFileSync(
+    manifestPath,
+    `${JSON.stringify({
+      package: "aslite",
+      version: "0.0.1",
+      installed_by: "aslite skill install",
+      files: current.files,
+    }, null, 2)}\n`,
+  );
+  const assetsBefore = new Map(
+    current.files.map((relative: string) => [relative, readFileSync(path.join(dir, ...relative.split("/")))]),
+  );
+
+  const status = await runSkill(["status"], { cwd, executable });
+  assert.equal(status.skill.hosts.claude_code.state, "installed");
+  assert.equal(status.skill.hosts.claude_code.compatibility.state, "current");
+  assert.equal(status.skill.hosts.claude_code.compatibility.reason, "legacy_receipt");
+
+  await runSkill(["install"], { cwd, executable });
+  assert.equal(JSON.parse(readFileSync(manifestPath, "utf8")).schema, "aslite.skill-manifest.v2");
+  for (const [relative, bytes] of assetsBefore) {
+    assert.ok(readFileSync(path.join(dir, ...relative.split("/"))).equals(bytes));
+  }
+});
+
+test("matching assets ignore informational provenance while digest corruption is owned-stale", async () => {
+  const { base, executable } = scratch();
+  const cwd = path.join(base, "project");
+  await runSkill(["install"], { cwd, executable });
+  const manifestPath = path.join(cwd, ".claude", "skills", "aslite", SKILL_MANIFEST_FILENAME);
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.version = "99.0.0";
+  manifest.source_identity = {
+    release_version: "99.0.0",
+    source_commit: "c".repeat(40),
+    artifact_channel: "marketplace-legacy",
+    artifact_sha256: null,
+  };
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  let status = await runSkill(["status"], { cwd, executable });
+  assert.equal(status.skill.hosts.claude_code.state, "installed");
+  assert.equal(status.skill.hosts.claude_code.compatibility.state, "current");
+
+  manifest.file_sha256["SKILL.md"] = `sha256:${"0".repeat(64)}`;
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  status = await runSkill(["status"], { cwd, executable });
+  assert.equal(status.skill.hosts.claude_code.state, "stale");
+  assert.equal(status.skill.hosts.claude_code.compatibility.reason, "receipt_invalid");
+});
+
+test("higher installed skill contracts are reported and never silently downgraded", async () => {
+  const { base, executable } = scratch();
+  const cwd = path.join(base, "project");
+  await runSkill(["install"], { cwd, executable });
+  const dir = path.join(cwd, ".claude", "skills", "aslite");
+  const manifestPath = path.join(dir, SKILL_MANIFEST_FILENAME);
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.compatibility_contract = 2;
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  const before = treeSnapshot(dir);
+
+  const status = await runSkill(["status"], { cwd, executable });
+  assert.equal(status.skill.hosts.claude_code.state, "installed");
+  assert.equal(status.skill.hosts.claude_code.compatibility.state, "newer_contract");
+  await assert.rejects(
+    () => runSkill(["install"], { cwd, executable }),
+    (error: unknown) => {
+      assert.ok(error instanceof CliError);
+      assert.match(String(error.details?.refused), /newer compatibility contract/);
+      return true;
+    },
+  );
+  assertSameTree(before, treeSnapshot(dir));
+});
+
+test("ownership field near-misses are never mutated", async () => {
+  const candidates = [
+    { ...scratch(), mutation: (manifest: any) => ({ ...manifest, package: "foreign" }) },
+    { ...scratch(), mutation: (manifest: any) => ({ ...manifest, installed_by: "aslite skill install " }) },
+  ];
+  for (const candidate of candidates) {
+    const cwd = path.join(candidate.base, "project");
+    await runSkill(["install"], { cwd, executable: candidate.executable });
+    const dir = path.join(cwd, ".claude", "skills", "aslite");
+    const manifestPath = path.join(dir, SKILL_MANIFEST_FILENAME);
+    const manifest = candidate.mutation(JSON.parse(readFileSync(manifestPath, "utf8")));
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    const before = treeSnapshot(dir);
+    await assert.rejects(() => runSkill(["install"], { cwd, executable: candidate.executable }));
+    assertSameTree(before, treeSnapshot(dir));
+    await assert.rejects(() => runSkill(["uninstall"], { cwd, executable: candidate.executable }));
+    assertSameTree(before, treeSnapshot(dir));
+  }
+});
+
+test("a symlinked manifest never establishes ownership and neither mutator follows it", async () => {
+  const { base, executable } = scratch();
+  const cwd = path.join(base, "project");
+  await runSkill(["install"], { cwd, executable });
+  const dir = path.join(cwd, ".claude", "skills", "aslite");
+  const manifestPath = path.join(dir, SKILL_MANIFEST_FILENAME);
+  const victim = path.join(base, "outside-manifest.json");
+  const victimBytes = readFileSync(manifestPath);
+  writeFileSync(victim, victimBytes);
+  rmSync(manifestPath);
+  symlinkSync(victim, manifestPath);
+
+  const status = await runSkill(["status"], { cwd, executable });
+  assert.equal(status.skill.hosts.claude_code.state, "unmanaged");
+  for (const verb of ["install", "uninstall"]) {
+    await assert.rejects(() => runSkill([verb], { cwd, executable }));
+    assert.equal(lstatSync(manifestPath).isSymbolicLink(), true);
+    assert.ok(readFileSync(victim).equals(victimBytes));
+  }
+});
+
+test("reserved manifest debris beside a foreign file is preserved on every refusal", async () => {
+  const { base, executable } = scratch();
+  const cwd = path.join(base, "project");
+  const dir = path.join(cwd, ".claude", "skills", "aslite");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, "foreign.md"), "keep\n");
+  writeFileSync(path.join(dir, `${SKILL_MANIFEST_FILENAME}.tmp-4242-a1-b2`), "partial\n");
+  const before = treeSnapshot(dir);
+  for (const verb of ["install", "uninstall"]) {
+    await assert.rejects(() => runSkill([verb], { cwd, executable }));
+    assertSameTree(before, treeSnapshot(dir));
+  }
+});
+
+test("backslash-traversal manifests make both mutators refuse without changing target bytes", async () => {
+  for (const verb of ["install", "uninstall"]) {
+    const { base, executable } = scratch();
+    const cwd = path.join(base, "project");
+    const dir = path.join(cwd, ".claude", "skills", "aslite");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "SKILL.md"), "owned-looking\n");
+    writeFileSync(
+      path.join(dir, SKILL_MANIFEST_FILENAME),
+      `${JSON.stringify({
+        package: "@holaxis/aslite",
+        version: RUNNING_VERSION,
+        installed_by: "aslite skill install",
+        files: ["SKILL.md", "references/..\\..\\victim.txt"],
+      }, null, 2)}\n`,
+    );
+    const before = treeSnapshot(dir);
+    await assert.rejects(() => runSkill([verb], { cwd, executable }));
+    assertSameTree(before, treeSnapshot(dir));
+  }
+});
+
+test("a failed persistent-install authority preflight leaves both host targets untouched", async () => {
+  const { base, executable } = scratch();
+  const cwd = path.join(base, "project");
+  const claudeDir = path.join(cwd, ".claude", "skills", "aslite");
+  mkdirSync(claudeDir, { recursive: true });
+  writeFileSync(path.join(claudeDir, "foreign.md"), "keep\n");
+  const beforeClaude = treeSnapshot(claudeDir);
+
+  await assert.rejects(
+    () =>
+      runSkill(["install"], {
+        cwd,
+        executable,
+        installAuthority: () => ({
+          allowed: false,
+          state: "unknown",
+          reason: "transient npx cache",
+          evidence: { npm_prefix: null, bin_path: null, executable_path: executable },
+        }),
+      }),
+    /durable npm-global CLI/,
+  );
+  assertSameTree(beforeClaude, treeSnapshot(claudeDir));
+  assert.equal(existsSync(path.join(cwd, ".codex")), false);
 });
 
 test("skill uninstall removes exactly the managed folders and leaves foreign sibling skills untouched", async () => {

@@ -14,6 +14,7 @@ import { cliInvocation } from "../invocation.js";
 import { renderErrorEnvelope } from "../output.js";
 import { LocalViewAuthorizationStore } from "../ui/view-authorizations.js";
 import { cliVersion } from "../build-identity.js";
+import { STABLE_MCP_LAUNCH_GUIDANCE } from "../integration-guidance.js";
 
 export const MCP_USAGE = `agentstate-lite mcp — expose invocation-specific AgentState Views to an MCP Apps host
 
@@ -33,6 +34,8 @@ access, then save the approved exact bytes as a registered View without transfor
 Views use the same query, render-document, graph, subscription, and governed-action bridge in MCP
 and the web UI. Every bundle-propose action requires explicit human confirmation and a current
 document version. The server accepts no remote targets or arbitrary filesystem paths.
+
+${STABLE_MCP_LAUNCH_GUIDANCE}
 `;
 
 export interface McpCliDeps {

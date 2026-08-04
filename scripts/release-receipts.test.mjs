@@ -7,7 +7,8 @@ import {
   stageDownloadFilename,
   verifyFinalizerChain,
 } from "./release-receipts.mjs";
-import { buildReceipt } from "./release-emit-receipt.mjs";
+import { STABLE_MCP_LAUNCH_GUIDANCE } from "../packages/cli/src/integration-guidance.js";
+import { buildReceipt, renderReceiptMarkdown } from "./release-emit-receipt.mjs";
 
 const STAGE_ID = "123e4567-e89b-42d3-a456-426614174000";
 const VERSION = "0.1.0-pre.4";
@@ -123,6 +124,34 @@ test("stage summary and retained JSON are emitted from the same v2 receipt", () 
   assert.equal(built.receipt.stage.id, STAGE_ID);
   assert.equal(built.inspection.steps[0], `npm stage download ${STAGE_ID}`);
   assert.ok(!built.inspection.steps.some((step) => step.includes("--out")));
+});
+
+test("stage summary carries the bounded stable MCP launch migration guidance", () => {
+  const f = fixture();
+  const built = buildReceipt({
+    runId: "100",
+    artifactId: "101",
+    artifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+    stageId: STAGE_ID,
+    version: VERSION,
+    tag: `v${VERSION}`,
+    sourceCommit: COMMIT,
+    policyTag: "next",
+    tarballSha256: TARBALL_SHA,
+    tarballFilename: TARBALL,
+    integrity: INTEGRITY,
+    manifestSha256: MANIFEST_SHA,
+    draftReleaseId: "300",
+    draftAssets: f.release.assets,
+  });
+  const summary = renderReceiptMarkdown(built);
+  assert.equal((summary.match(/## Stable MCP launch/g) ?? []).length, 1);
+  assert.match(summary, /npm install -g @holaxis\/aslite/);
+  assert.match(summary, /host command `aslite` with first argument `mcp`/);
+  assert.match(summary, /aslite version --json/);
+  assert.match(summary, /does not scan or rewrite host MCP configuration/);
+  assert.ok(summary.endsWith(STABLE_MCP_LAUNCH_GUIDANCE), "receipt consumes the shared guidance authority exactly");
+  assert.ok(!Object.hasOwn(built.receipt, "guidance"), "immutable receipt schema remains unchanged");
 });
 
 test("finalizer rejects ignored/swapped immutable identifiers and assets", () => {

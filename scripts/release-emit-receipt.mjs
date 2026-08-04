@@ -8,6 +8,7 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { STABLE_MCP_LAUNCH_GUIDANCE } from "../packages/cli/src/integration-guidance.js";
 import {
   inspectionInstructions,
   rejectOperation,
@@ -48,7 +49,7 @@ export function buildReceipt(fields) {
   };
 }
 
-function markdown(built) {
+export function renderReceiptMarkdown(built) {
   const { receipt, inspection, operations } = built;
   const lines = [
     "## Staged release receipt",
@@ -80,6 +81,8 @@ function markdown(built) {
     ...operations.registry_verify.commands,
     operations.registry_verify.workflow_proof,
     "```",
+    "",
+    ...STABLE_MCP_LAUNCH_GUIDANCE.split("\n"),
   ];
   return lines.join("\n");
 }
@@ -104,5 +107,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   });
   const jsonOut = arg(argv, "--json-out", false);
   if (jsonOut) await writeFile(jsonOut, `${JSON.stringify(built.receipt, null, 2)}\n`);
-  console.log(markdown(built));
+  console.log(renderReceiptMarkdown(built));
 }

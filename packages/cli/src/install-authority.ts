@@ -1,0 +1,171 @@
+// Read-only authority for persistent integration installs.
+//
+// `npm exec`/npx can put a transient cache bin on PATH, so PATH equality alone cannot authorize
+// durable host changes. npm-package bytes must prove the supported POSIX npm-global layout.
+import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
+import { delimiter, isAbsolute, join, normalize } from "node:path";
+import type { ArtifactChannel } from "./build-identity.js";
+import { buildIdentityEnvelope } from "./build-identity.js";
+import { BIN_NAMES } from "./invocation.js";
+
+export type PersistentInstallAuthorityState =
+  | "durable_global"
+  | "local_dev"
+  | "marketplace_legacy"
+  | "unknown";
+
+export interface PersistentInstallAuthority {
+  allowed: boolean;
+  state: PersistentInstallAuthorityState;
+  reason: string;
+  evidence: {
+    npm_prefix: string | null;
+    bin_path: string | null;
+    executable_path: string | null;
+  };
+}
+
+export interface PersistentInstallAuthorityInput {
+  artifact_channel: ArtifactChannel;
+  executable_path: string | null;
+  env: NodeJS.ProcessEnv;
+  platform: string;
+  npm_prefix_global: () => string | undefined;
+  realpath: (path: string) => string | undefined;
+}
+
+function unknown(input: PersistentInstallAuthorityInput, reason: string): PersistentInstallAuthority {
+  return {
+    allowed: false,
+    state: "unknown",
+    reason,
+    evidence: { npm_prefix: null, bin_path: null, executable_path: input.executable_path },
+  };
+}
+
+function defaultRealpath(candidate: string): string | undefined {
+  try {
+    return realpathSync(candidate);
+  } catch {
+    return undefined;
+  }
+}
+
+function defaultNpmPrefixGlobal(): string | undefined {
+  try {
+    const stdout = execFileSync("npm", ["prefix", "--global"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2_000,
+      maxBuffer: 1024 * 1024,
+    }).trim();
+    return stdout.length > 0 ? stdout : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function containsNpxCache(candidate: string | null | undefined): boolean {
+  return candidate?.split(/[\\/]/).includes("_npx") ?? false;
+}
+
+/** Classify an already-resolved running distribution. Performs no writes. */
+export function classifyPersistentInstallAuthority(
+  input: PersistentInstallAuthorityInput,
+): PersistentInstallAuthority {
+  const evidence = {
+    npm_prefix: null,
+    bin_path: null,
+    executable_path: input.executable_path,
+  };
+  if (input.artifact_channel === "local-dev") {
+    return { allowed: true, state: "local_dev", reason: "developer build", evidence };
+  }
+  if (input.artifact_channel === "marketplace-legacy") {
+    return { allowed: true, state: "marketplace_legacy", reason: "legacy marketplace build", evidence };
+  }
+  if (input.artifact_channel !== "npm-package") {
+    return unknown(input, "running build channel cannot authorize persistent integration changes");
+  }
+  if (input.platform !== "darwin" && input.platform !== "linux") {
+    return unknown(input, "durable npm-global layout is supported only on macOS and Linux");
+  }
+  if (input.env.npm_command === "exec" || input.env.npm_lifecycle_event === "npx") {
+    return unknown(input, "npm-exec/npx environment cannot authorize a persistent install");
+  }
+  if (!input.executable_path || containsNpxCache(input.executable_path)) {
+    return unknown(input, "running executable is missing or resides in an npm-exec/npx cache");
+  }
+
+  const executable = input.realpath(input.executable_path);
+  if (!executable || containsNpxCache(executable)) {
+    return unknown(input, "running executable cannot be resolved as a durable file");
+  }
+  const prefixRaw = input.npm_prefix_global();
+  if (!prefixRaw || !isAbsolute(prefixRaw)) {
+    return unknown(input, "npm prefix --global did not return one absolute prefix");
+  }
+  const prefix = input.realpath(normalize(prefixRaw));
+  if (!prefix || !isAbsolute(prefix)) {
+    return unknown(input, "npm global prefix cannot be resolved");
+  }
+
+  let selectedBin: string | null = null;
+  const pathDirs = (input.env.PATH ?? "").split(delimiter).filter(Boolean);
+  for (const name of BIN_NAMES) {
+    for (const dir of pathDirs) {
+      const candidate = normalize(join(dir, name));
+      const resolved = input.realpath(candidate);
+      if (resolved === undefined) continue;
+      if (resolved === executable) selectedBin = candidate;
+      // Command lookup stops at the first existing entry for an alias. A later matching entry
+      // cannot rescue a shadowed one.
+      break;
+    }
+    if (selectedBin !== null) break;
+  }
+  if (selectedBin === null || containsNpxCache(selectedBin)) {
+    return unknown(input, "no managed PATH bin resolves to the running executable");
+  }
+
+  const supportedBins = new Set(BIN_NAMES.map((name) => normalize(join(prefix, "bin", name))));
+  if (!supportedBins.has(selectedBin)) {
+    return unknown(input, "managed PATH bin is outside the npm global prefix bin directory");
+  }
+  const packageRoot = normalize(join(prefix, "lib", "node_modules", "@holaxis", "aslite"));
+  if (executable !== join(packageRoot, "dist", "agentstate-lite.mjs")) {
+    return unknown(input, "running executable is outside the supported npm global package layout");
+  }
+
+  return {
+    allowed: true,
+    state: "durable_global",
+    reason: "durable npm-global executable",
+    evidence: { npm_prefix: prefix, bin_path: selectedBin, executable_path: executable },
+  };
+}
+
+export interface ResolvePersistentInstallAuthorityDeps {
+  identity?: ReturnType<typeof buildIdentityEnvelope>;
+  env?: NodeJS.ProcessEnv;
+  platform?: string;
+  npm_prefix_global?: () => string | undefined;
+  realpath?: (path: string) => string | undefined;
+}
+
+/** Production projection from the one running BuildIdentityV1 authority. */
+export function resolvePersistentInstallAuthority(
+  deps: ResolvePersistentInstallAuthorityDeps = {},
+): PersistentInstallAuthority {
+  const env = deps.env ?? process.env;
+  const identity = deps.identity ?? buildIdentityEnvelope({ env });
+  return classifyPersistentInstallAuthority({
+    artifact_channel: identity.identity.artifact.channel,
+    executable_path: identity.identity.runtime.executable_path,
+    env,
+    platform: deps.platform ?? process.platform,
+    npm_prefix_global: deps.npm_prefix_global ?? defaultNpmPrefixGlobal,
+    realpath: deps.realpath ?? defaultRealpath,
+  });
+}
