@@ -1,11 +1,12 @@
 ---
 type: Context Note
-title: 'PR #204 Codex review — changes requested'
-actor: codex-pr204-fix
+title: PR 204 superseded changes-requested review at 631c39c
+actor: codex-pr204-scope-auditor
 description: >-
-  Implementation follow-up active: codex-pr204-fix has claimed P5A and is
-  correcting the changes-requested findings on PR #204.
-timestamp: '2026-08-04T00:11:38.505Z'
+  Historical review only: its findings were repaired; canonical current verdict
+  is exact-head approval at c1f7937 in
+  context-notes/pr-204-exact-head-approval-c1f7937.
+timestamp: '2026-08-04T19:11:51.434Z'
 ---
 # Summary
 
