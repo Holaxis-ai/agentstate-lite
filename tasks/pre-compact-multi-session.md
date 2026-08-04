@@ -1,15 +1,15 @@
 ---
 type: Task
 title: Implement and live-prove revision 3 multi-session compaction handoffs
-status: in_progress
+status: blocked
 priority: '2'
 description: >-
-  T0-T4 passed. R5 Plan rejected. R6 host-probe R2 was dual-static-review FAIL
-  before execution; one final architecture repair must establish pure H2
-  isolation and quiescent fixed-point zero-survivor teardown before any run,
-  Plan, or code.
+  Revision 3 is blocked before R6 build/run: the fresh absent-query experiment
+  lacks a bounded observer-independent orphan-server containment envelope. Human
+  choice required: reuse audited v5 negative evidence (recommended) or authorize
+  a new Darwin supervisor architecture.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-04T01:50:33.659Z'
+timestamp: '2026-08-04T02:25:24.507Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
@@ -17,7 +17,7 @@ timestamp: '2026-08-04T01:50:33.659Z'
 
 Ultimate goal: agentstate-lite is shared, versioned, conflict-safe memory for concurrent agent fleets, in plain text and owned by the user.
 
-Proximate goal: independently adjudicate the exact-host-proven T3.5 launch/reap mechanism, then synthesize and exact-review one replacement candidate/live-acceptance Plan before implementation; this serves the ultimate goal by preventing an unowned late process or an unsupported lifecycle assumption from entering the compaction-memory rail.
+Proximate goal: choose whether revision 3 reuses the already audited v5 no-autostart evidence or expands into a separately reviewed Darwin supervisor architecture; this serves the ultimate goal by preventing an unsafe negative-host experiment from entering the compaction-memory rail.
 
 ## Problem
 
@@ -59,7 +59,9 @@ The exact accepted design/plan and unanimous independent gate are recorded in `r
 - Exact product/acceptance and adversarial-skeptic review both rejected Plan R4. The sole shared load-bearing defect is the tmux launch/reap gap: cleanup may observe a reserved socket absent and publish proof while a live or already-OS-spawned launcher can still bind it later. The skeptic also empirically showed the pinned Darwin `/bin/ps` grammar rejects a valid row with no leading PID whitespace.
 - The circuit-breaker analysis is recorded independently in `research/precompact-v3-t35-launch-reaper-architect@sha256:60018b553f55944a78f1631718e0f5c225eef4c72d85a423b76234acc4a19c43`, `research/precompact-v3-t35-launch-reaper-acceptance@sha256:4e05e1e5f39a1fe75d6caf5ad494092587ac490a73c61f4953f02e8d68a012ce`, and `research/precompact-v3-t35-launch-reaper-skeptic@sha256:ceba46d2a33f1d1bc4782077a546e043af8d7163ed70d807233c88e8cab07143`. All three agree on a no-auth gated broker, durable release/reap fence, foreground commandless `tmux -D`, separately fenced `-N` session client, creator-before-creation cleanup, and exact descendant proof. The skeptic retains an explicit Darwin PID/start-to-kill TOCTOU limitation.
 - The selected no-auth exact-host primitive campaign is recorded at `research/precompact-v3-t35-launch-reaper-host-probe@sha256:2f910d13a66e4a95f886dccf2bfbbb9be9576c17be51cb7e922bcd0a9a18d3cf`. Exact script/evidence/summary hashes are retained under `/private/tmp/aslite-t35-launch-probe.6p0HMoqJ`. It proved explicit-argv0 same-PID Node->foreground-tmux exec, a zero-session server, separate `-N` no-autostart client, pipe-only random-canary delivery, FD closure, exact server/pane group enumeration, kill-server/TERM/KILL teardown, and protected-state continuity. It also proved `sess=0` is unusable and `kill-server` may leave a validated stale socket that is removed only after every owned process/group is absent.
-- Current phase: acceptance and skeptic roles independently inspect the exact host probe and decide whether the direct gated-broker architecture is eligible for replacement Plan synthesis, including an explicit disposition of sampled-PID signaling risk, pre-record quarantine, client fencing, stale-socket cleanup, and real-Claude descendant limits. No T3.5 code, API key, Claude, or G0 freeze is authorized before their disposition and an exact replacement-Plan PASS.
+- The strict R6 host-probe R2 source (`sha256:757aec7c...`) was never executed and received exact product and skeptic static FAIL. Three subsequent exact build-contract cycles closed the expected-resource, transition, Git, H2, identity, helper, fixed-point, and socket-generation contracts but ended product FAIL (0.99) and skeptic FAIL (0.97), both requiring the orchestration circuit breaker.
+- Current blocker: a fresh absent `tmux -N` query can hypothetically daemonize a server without a usable PID while its sole bounded recovery client also fails. The self-contained controller then has no legal non-tmux/non-ps exact termination capability. A separate late-child abort-record contradiction is locally repairable. Full report: `context-notes/precompact-v3-t35-r6-host-probe-circuit-breaker`.
+- No R6 probe run root, replacement Plan, T3.5 code, API key, Claude action, candidate freeze, or G0 acceptance is authorized. The accepted feature worktree remains clean at `36c741a8173832d75d61a7ab138b5219c4415c66`.
 
 ## Required gate order
 
@@ -67,7 +69,7 @@ T0 harness → T1/T2 implementation → T3 integration review → T4 docs/rebase
 
 ## Next action
 
-Have the independent acceptance and skeptic roles audit `research/precompact-v3-t35-launch-reaper-host-probe@sha256:2f910d13a66e4a95f886dccf2bfbbb9be9576c17be51cb7e922bcd0a9a18d3cf` plus the exact retained v5 evidence. If both accept Plan eligibility, synthesize a replacement Plan from the survived R4 architecture and host corrections, then obtain exact acceptance and skeptic PASS before test-first T3.5 implementation. If either rejects, preserve the evidence and reopen only the named architectural blocker.
+Await the human architecture choice. Recommended: revise the strict R6 proof obligation to reuse the already audited v5 no-autostart evidence and freshly probe only the remaining H2-H5 physical/controller facts, then dual-review that revised boundary before any builder resumes. Alternative: authorize research/design of a pre-existing Darwin supervisor with non-tmux, non-ps, PID-reuse-safe authority over a query-created server. Do not resume the current self-contained negative-query repair loop.
 
 ## Related
 
