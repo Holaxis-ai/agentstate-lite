@@ -4,12 +4,12 @@ title: Add skill compatibility and prove stable MCP launch
 status: in_progress
 priority: '1'
 description: >-
-  Implementation is PR-ready at cd3d330 with exact-SHA review, adversarial QA,
-  and the full repository/package/MCP gate green; remains in progress only for
+  Branch feat/skill-mcp-compatibility is pushed at cd3d330 with exact-SHA
+  review, adversarial QA, and full gate green; remains in progress only for
   release-receipt guidance integration after PR 204 lands.
 actor: codex-c2s-orchestrator
 assignee: codex-c2s
-timestamp: '2026-08-04T01:36:22.757Z'
+timestamp: '2026-08-04T01:37:06.789Z'
 ---
 # Goal
 
