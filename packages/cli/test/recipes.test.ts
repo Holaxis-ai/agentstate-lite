@@ -68,7 +68,7 @@ import {
   parseRecipeFiles,
   type RecipeFile,
 } from "../src/recipe-source.js";
-import { cliInvocation } from "../src/invocation.js";
+import { cliInvocation, shellArg } from "../src/invocation.js";
 
 const T = "2026-07-01T00:00:00.000Z";
 const EXAMPLE_RECIPE_FIXTURE = path.resolve(import.meta.dirname, "fixtures/example-recipe");
@@ -1378,6 +1378,7 @@ test("init receipt recommends Context Note creation only when the selected recip
       if (row.recipe !== undefined) args.push("--recipe", row.recipe);
       const result = await runJson(init, args);
       const help = result.help as string[];
+      const target = ` --dir ${shellArg(path.resolve(dir))}`;
 
       assert.equal(
         help.some((entry) => entry.includes('new "Context Note"')),
@@ -1390,6 +1391,10 @@ test("init receipt recommends Context Note creation only when the selected recip
         `kinds help for recipe ${row.recipe ?? "<default>"}`,
       );
       assert.ok(help.some((entry) => entry.startsWith(`${cliInvocation()} recipes`)));
+      assert.ok(
+        help.every((entry) => entry.endsWith(target)),
+        `every follow-up must retain the explicit target for recipe ${row.recipe ?? "<default>"}: ${help.join(" | ")}`,
+      );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
