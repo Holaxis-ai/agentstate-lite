@@ -4,12 +4,11 @@ title: Add skill compatibility and prove stable MCP launch
 status: in_progress
 priority: '1'
 description: >-
-  Post-PR-204 release-receipt integration is committed at exact SHA 681e285;
-  focused release/CLI/package gates pass and independent exact-SHA review is
-  next.
+  Exact-SHA review PASS at 681e285 with no findings; post-PR-204 release-receipt
+  integration now advances to adversarial QA.
 actor: codex-c2s-orchestrator
 assignee: codex-c2s
-timestamp: '2026-08-04T19:18:48.590Z'
+timestamp: '2026-08-04T19:23:41.051Z'
 ---
 # Goal
 
