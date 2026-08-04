@@ -1357,6 +1357,45 @@ test("init: default (no --recipe) applies context-notes, reports recipe:context-
   }
 });
 
+test("init receipt recommends Context Note creation only when the selected recipe declares it", async () => {
+  const rows: Array<{
+    recipe?: string;
+    recommendsContextNote: boolean;
+    recommendsKinds: boolean;
+  }> = [
+    { recommendsContextNote: true, recommendsKinds: false },
+    { recipe: "context-notes", recommendsContextNote: true, recommendsKinds: false },
+    { recipe: "work-tracking", recommendsContextNote: false, recommendsKinds: true },
+    { recipe: "roadmap", recommendsContextNote: false, recommendsKinds: true },
+    { recipe: EXAMPLE_RECIPE_FIXTURE, recommendsContextNote: false, recommendsKinds: true },
+    { recipe: "none", recommendsContextNote: false, recommendsKinds: false },
+  ];
+
+  for (const row of rows) {
+    const dir = await tempDir();
+    try {
+      const args = ["--dir", dir];
+      if (row.recipe !== undefined) args.push("--recipe", row.recipe);
+      const result = await runJson(init, args);
+      const help = result.help as string[];
+
+      assert.equal(
+        help.some((entry) => entry.includes('new "Context Note"')),
+        row.recommendsContextNote,
+        `Context Note help for recipe ${row.recipe ?? "<default>"}`,
+      );
+      assert.equal(
+        help.some((entry) => entry.startsWith(`${cliInvocation()} kinds`)),
+        row.recommendsKinds,
+        `kinds help for recipe ${row.recipe ?? "<default>"}`,
+      );
+      assert.ok(help.some((entry) => entry.startsWith(`${cliInvocation()} recipes`)));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
 test("init: an unknown --recipe name is a USAGE error", async () => {
   const dir = await tempDir();
   try {
