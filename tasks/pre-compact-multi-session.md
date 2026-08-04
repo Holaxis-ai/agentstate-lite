@@ -4,11 +4,12 @@ title: Implement and live-prove revision 3 multi-session compaction handoffs
 status: in_progress
 priority: '2'
 description: >-
-  T0-T4 passed exact review. R5 remains rejected. Strict host-probe script R1
-  was dual-static-review FAIL before execution; controller-safety/evidence
-  repairs and a fresh exact script digest now gate any run, Plan, or code.
+  T0-T4 passed. R5 Plan rejected. R6 host-probe R2 was dual-static-review FAIL
+  before execution; one final architecture repair must establish pure H2
+  isolation and quiescent fixed-point zero-survivor teardown before any run,
+  Plan, or code.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-04T01:07:48.626Z'
+timestamp: '2026-08-04T01:50:33.659Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
