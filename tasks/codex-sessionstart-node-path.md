@@ -4,13 +4,15 @@ title: Make Codex SessionStart hook independent of GUI PATH
 status: todo
 priority: '1'
 description: >-
-  Diagnosed 2026-08-04: Codex SessionStart exits 127 because the installed
-  absolute .mjs uses #!/usr/bin/env node, while the GUI hook PATH may omit
-  /opt/homebrew/bin. Exact minimal-PATH reproduction confirmed. Needs an
-  installer-owned executable/interpreter contract plus regression coverage; no
-  hook or code mutation made during diagnosis.
+  Confirmed chronology: the project hook file dates from 2026-07-10, while Codex
+  created and enabled its trust record at 2026-08-04 13:17:42, about 15 seconds
+  before the failing session. This was an old hook newly accepted/executed by
+  Codex, not a new installation. Minimal PATH reproduces exit 127; an absolute
+  /opt/homebrew/bin/node plus the global npm dist succeeds. Temporary repair is
+  that explicit command followed by Codex re-trust on the next session; durable
+  installer-owned runtime resolution and regression coverage remain todo.
 actor: codex-hook-diagnosis
-timestamp: '2026-08-04T19:21:45.848Z'
+timestamp: '2026-08-04T19:27:44.543Z'
 ---
 # Problem
 
