@@ -1,15 +1,15 @@
 ---
 type: Task
 title: Implement and live-prove revision 3 multi-session compaction handoffs
-status: blocked
+status: in_progress
 priority: '2'
 description: >-
-  Revision 3 is blocked before R6 build/run: the fresh absent-query experiment
-  lacks a bounded observer-independent orphan-server containment envelope. Human
-  choice required: reuse audited v5 negative evidence (recommended) or authorize
-  a new Darwin supervisor architecture.
+  Alternatives architecture review reopened after the R6 circuit breaker.
+  Compare direct process primitives, purpose-built supervisor, launchd, reuse of
+  audited v5 tmux evidence, and host-policy separation before any new probe,
+  Plan, or code.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-04T02:25:24.507Z'
+timestamp: '2026-08-04T02:33:53.733Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
