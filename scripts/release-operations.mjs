@@ -51,15 +51,17 @@ function op(argv, extra = {}) {
 }
 
 /** `npm stage download <id>` + local SHA-256 compare — the mandatory pre-approval inspection. */
-export function inspectionInstructions({ stageId, tarballSha256, filename }) {
+export function inspectionInstructions({ stageId, tarballSha256, version }) {
   assertToken("stageId", stageId);
   assertSha256(tarballSha256);
-  const out = filename ? `./${assertToken("filename", filename)}` : "./candidate.tgz";
+  assertVersion(version);
+  // npm 11.15 does not implement `stage download --out`; it writes this deterministic filename.
+  const out = `./holaxis-aslite-${version}-${stageId}.tgz`;
   const bare = String(tarballSha256).replace(/^sha256:/, "");
   return {
     title: "Inspect the staged tarball BEFORE approval",
     steps: [
-      `npm stage download ${stageId} --out ${out}`,
+      `npm stage download ${stageId}`,
       `shasum -a 256 ${out}`,
       `test "$(shasum -a 256 ${out} | awk '{print $1}')" = "${bare}" && echo MATCH || echo MISMATCH`,
     ],
@@ -106,23 +108,22 @@ export function rollbackOperation({ failedVersion, priorVersion, track = "next" 
 }
 
 /**
- * Registry-side verification of an approved public version (§5 registry_verified): packument
- * integrity/signature/provenance plus a clean install/bins/identity smoke. All read-only.
+ * Human-readable registry inspection commands. The strict integrity/signature/provenance/install
+ * proof is performed by release-verify-registry.mjs in the separately dispatched finalizer.
  */
 export function registryVerifyOperations({ version }) {
   assertVersion(version);
   const coord = `${PKG}@${version}`;
   const argvs = [
     ["npm", "view", coord, "dist.integrity", "dist.shasum", "--json"],
-    ["npm", "audit", "signatures", "--package", coord],
     ["npm", "view", coord, "--json"],
-    ["npm", "install", "--global", coord],
-    ["aslite", "--version"],
-    ["aslite", "version", "--json"],
-    ["aslite", "version", "--check", "--json"],
-    ["aslite", "mcp", "--help"],
+    ["npm", "pack", coord, "--json", "--ignore-scripts"],
   ];
-  return { argvs, commands: argvs.map(displayCommand) };
+  return {
+    argvs,
+    commands: argvs.map(displayCommand),
+    workflow_proof: `node scripts/release-verify-registry.mjs --version ${version} --manifest release-candidate/candidate.json`,
+  };
 }
 
 /** Interactive dist-tag promotion after registry proof (§5 promoted). */

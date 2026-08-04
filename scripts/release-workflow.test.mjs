@@ -64,19 +64,19 @@ test("staged workflow: each job carries exactly its minimal permissions", () => 
   const jobs = extractJobs(staged);
   assert.deepEqual(Object.keys(jobs).sort(), ["candidate", "draft", "stage"]);
   assert.deepEqual(permissionsOf(jobs.candidate), { contents: "read" }, "candidate reads source only");
-  assert.deepEqual(permissionsOf(jobs.draft), { contents: "write" }, "draft prepares the GitHub draft only");
+  assert.deepEqual(permissionsOf(jobs.draft), { actions: "read", contents: "write" });
   assert.deepEqual(
     permissionsOf(jobs.stage),
-    { contents: "read", "id-token": "write" },
-    "stage needs read + OIDC only — never contents:write",
+    { actions: "read", contents: "read", "id-token": "write" },
+    "stage needs exact artifact read + source read + OIDC — never contents:write",
   );
 });
 
 test("finalize workflow: registry-verify is read-only, finalize gets contents:write only", () => {
   const jobs = extractJobs(finalize);
   assert.deepEqual(Object.keys(jobs).sort(), ["finalize", "registry-verify"]);
-  assert.deepEqual(permissionsOf(jobs["registry-verify"]), { contents: "read" });
-  assert.deepEqual(permissionsOf(jobs.finalize), { contents: "write" });
+  assert.deepEqual(permissionsOf(jobs["registry-verify"]), { actions: "read", contents: "read" });
+  assert.deepEqual(permissionsOf(jobs.finalize), { actions: "read", contents: "write" });
 });
 
 test("denylist scan (NOT a proof): no KNOWN build/pack token appears outside the candidate job", () => {
@@ -101,7 +101,7 @@ test("THE REAL INVARIANT: every downstream mutating step is preceded by the reta
   const jobs = extractJobs(staged);
   // The retained-bytes gate token: the re-verify step that compares the downloaded tarball's SHA to
   // the prepared candidate output and `exit 1`s on mismatch.
-  const shaGate = 'test "$ACTUAL" = "${{ needs.candidate.outputs.tarball_sha256 }}"';
+  const shaGate = 'test "$ACTUAL" = "$EXPECTED_SHA256"';
   // Each downstream job that MUTATES must (a) contain the SHA gate and (b) place it BEFORE the
   // first mutating command — so a mutation can only ever act on re-verified retained bytes.
   const mutating = {
@@ -125,7 +125,8 @@ test("THE REAL INVARIANT: every downstream mutating step is preceded by the reta
 test("the stage job stages the LITERAL retained tarball, not a fresh build", () => {
   const jobs = extractJobs(staged);
   assert.match(jobs.stage, /download-artifact/, "stage must download the retained artifact");
-  assert.match(jobs.stage, /TARBALL="\$ARTIFACT_DIR\/\$\{\{ needs\.candidate\.outputs\.tarball_filename \}\}"/);
+  assert.match(jobs.stage, /artifact-ids: \$\{\{ needs\.candidate\.outputs\.artifact_id \}\}/);
+  assert.match(jobs.stage, /TARBALL="\$ARTIFACT_DIR\/\$TARBALL_FILENAME"/);
   assert.match(jobs.stage, /npm stage publish "\$TARBALL" --tag "\$POLICY_TAG"/);
   // And it re-verifies the retained bytes against the prepared SHA before staging.
   assert.match(jobs.stage, /needs\.candidate\.outputs\.tarball_sha256/);
@@ -135,7 +136,9 @@ test("the run ends with immutable identifiers and the interactive inspection ins
   const jobs = extractJobs(staged);
   assert.match(jobs.candidate, /run_id: \$\{\{ github\.run_id \}\}/);
   assert.match(jobs.candidate, /artifact_id: \$\{\{ steps\.upload\.outputs\.artifact-id \}\}/);
+  assert.match(jobs.candidate, /artifact_digest: \$\{\{ steps\.upload\.outputs\.artifact-digest \}\}/);
   assert.match(jobs.stage, /release-emit-receipt\.mjs/, "stage emits the immutable receipt + inspection instructions");
+  assert.match(jobs.stage, /release-stage-receipt-/);
   assert.match(jobs.stage, /--stage-id/);
 });
 
@@ -146,7 +149,7 @@ test("live registry/release mutation is guarded by MODE == live in BOTH workflow
     assert.ok(guardedMutations, `${name} workflow must guard live mutation behind MODE == live`);
   }
   // The default mode is dry-run.
-  assert.match(staged, /MODE: \$\{\{ github\.event\.inputs\.mode \|\| 'dry-run' \}\}/);
+  assert.match(staged, /MODE: \$\{\{ inputs\.mode \|\| 'dry-run' \}\}/);
 });
 
 test("EVERY live-mutating/live-executing job binds the protected release environment", () => {
@@ -161,16 +164,80 @@ test("EVERY live-mutating/live-executing job binds the protected release environ
   assert.match(finalizeJobs.finalize, /environment: release/, "finalize job must bind the release environment");
 });
 
-test("the finalizer is separately dispatched and accepts the original immutable IDs", () => {
+test("the finalizer is separately dispatched and consumes every immutable ID", () => {
   assert.match(finalize, /on:\n {2}workflow_dispatch:/, "finalize is workflow_dispatch only (no tag trigger)");
-  for (const input of ["run_id", "artifact_id", "stage_id", "draft_release_id", "version"]) {
+  for (const input of [
+    "run_id",
+    "artifact_id",
+    "stage_receipt_artifact_id",
+    "stage_receipt_artifact_digest",
+    "stage_id",
+    "draft_release_id",
+    "version",
+  ]) {
     assert.match(finalize, new RegExp(`\\n {6}${input}:`), `finalize must accept the ${input} identifier`);
   }
-  // It downloads the retained artifact from the ORIGINAL run rather than rebuilding.
-  assert.match(finalize, /run-id: \$\{\{ github\.event\.inputs\.run_id \}\}/);
+  assert.match(finalize, /run-id: \$\{\{ inputs\.run_id \}\}/);
+  assert.match(finalize, /artifact-ids: \$\{\{ inputs\.artifact_id \}\}/);
+  assert.match(finalize, /artifact-ids: \$\{\{ inputs\.stage_receipt_artifact_id \}\}/);
+  assert.ok((finalize.match(/release-verify-chain\.mjs verify-finalizer/g) ?? []).length === 2);
 });
 
 test("the staged workflow triggers on v* tags and on dry-run dispatch", () => {
   assert.match(staged, /on:\n {2}push:\n {4}tags: \["v\*"\]/);
   assert.match(staged, /workflow_dispatch:/);
+});
+
+function runBlocks(text) {
+  const lines = text.split("\n");
+  const blocks = [];
+  for (let i = 0; i < lines.length; i++) {
+    const match = /^(\s+)(?:- )?run:\s*\|\s*$/.exec(lines[i]);
+    if (!match) continue;
+    const indent = match[1].length;
+    const body = [];
+    for (i += 1; i < lines.length; i++) {
+      if (lines[i].trim() && lines[i].match(/^\s*/)[0].length <= indent) {
+        i -= 1;
+        break;
+      }
+      body.push(lines[i]);
+    }
+    blocks.push(body.join("\n"));
+  }
+  return blocks;
+}
+
+test("untrusted GitHub expressions are never interpolated directly into shell scripts", () => {
+  for (const [name, text] of [["staged", staged], ["finalize", finalize]]) {
+    for (const block of runBlocks(text)) {
+      assert.doesNotMatch(block, /\$\{\{/, `${name} run blocks must receive expressions through env, never script text`);
+    }
+  }
+});
+
+test("live mode fails closed without an explicit P5S environment enablement variable", () => {
+  for (const [name, jobs] of [["draft", extractJobs(staged).draft], ["stage", extractJobs(staged).stage], ["registry", extractJobs(finalize)["registry-verify"]], ["finalize", extractJobs(finalize).finalize]]) {
+    assert.match(jobs, /vars\.ASLITE_RELEASE_LIVE_ENABLED/, `${name} must bind the environment enablement variable`);
+    assert.match(jobs, /test "\$LIVE_RELEASE_ENABLED" = "true"/, `${name} must fail unless explicitly enabled`);
+  }
+});
+
+test("npm staged publishing pins the supported runtime and parses npm's JSON contract", () => {
+  const stage = extractJobs(staged).stage;
+  assert.match(stage, /node-version: 22\.14\.0/);
+  assert.match(stage, /npm@11\.15\.0/);
+  assert.match(stage, /npm stage publish "\$TARBALL" --tag "\$POLICY_TAG" --provenance --json/);
+  assert.match(stage, /release-verify-chain\.mjs stage-id/);
+  assert.doesNotMatch(stage, /sed -nE/);
+  assert.doesNotMatch(stage, /stage download .*--out/);
+});
+
+test("cross-run downloads have actions:read and select artifacts by ID, not name", () => {
+  const jobs = extractJobs(finalize);
+  for (const body of Object.values(jobs)) {
+    assert.match(body, /artifact-ids: \$\{\{ inputs\.artifact_id \}\}/);
+    assert.match(body, /artifact-ids: \$\{\{ inputs\.stage_receipt_artifact_id \}\}/);
+    assert.match(body, /run-id: \$\{\{ inputs\.run_id \}\}/);
+  }
 });

@@ -1,0 +1,59 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { assertRegistryCandidate } from "./release-verify-registry.mjs";
+
+const SHA = "sha256:" + "a".repeat(64);
+const candidate = {
+  version: "0.1.0-pre.4",
+  source: { commit: "b".repeat(40), dirty: false },
+  tarball: { sha256: SHA, shasum: "c".repeat(40), integrity: "sha512-YWJjZA==" },
+  build_identity: { artifact: { sha256: "sha256:" + "d".repeat(64) } },
+};
+const packReceipt = {
+  name: "@holaxis/aslite",
+  version: candidate.version,
+  shasum: candidate.tarball.shasum,
+  integrity: candidate.tarball.integrity,
+};
+const packumentDist = {
+  shasum: candidate.tarball.shasum,
+  integrity: candidate.tarball.integrity,
+  signatures: [{ keyid: "SHA256:test", sig: "test" }],
+  attestations: {
+    url: `https://registry.npmjs.org/-/npm/v1/attestations/%40holaxis%2faslite@${candidate.version}`,
+    provenance: { predicateType: "https://slsa.dev/provenance/v1" },
+  },
+};
+const installedIdentity = {
+  identity: {
+    package: { name: "@holaxis/aslite", version: candidate.version },
+    source: candidate.source,
+    artifact: { channel: "npm-package", sha256: candidate.build_identity.artifact.sha256 },
+  },
+};
+
+test("registry proof requires packument, bytes, and installed identity to match candidate", () => {
+  assert.doesNotThrow(() =>
+    assertRegistryCandidate({ candidate, packReceipt, packumentDist, tarballSha256: SHA, installedIdentity }),
+  );
+});
+
+test("registry proof fails closed on each independent mismatch", () => {
+  assert.throws(
+    () => assertRegistryCandidate({ candidate, packReceipt: { ...packReceipt, integrity: "sha512-bad" }, packumentDist, tarballSha256: SHA, installedIdentity }),
+    /registry integrity/,
+  );
+  assert.throws(
+    () => assertRegistryCandidate({ candidate, packReceipt, packumentDist, tarballSha256: "sha256:" + "0".repeat(64), installedIdentity }),
+    /tarball SHA-256/,
+  );
+  assert.throws(
+    () => assertRegistryCandidate({ candidate, packReceipt, packumentDist, tarballSha256: SHA, installedIdentity: { identity: { ...installedIdentity.identity, source: { commit: "e".repeat(40), dirty: false } } } }),
+    /source identity/,
+  );
+  assert.throws(
+    () => assertRegistryCandidate({ candidate, packReceipt, packumentDist: { ...packumentDist, attestations: undefined }, tarballSha256: SHA, installedIdentity }),
+    /no npm-hosted SLSA provenance/,
+  );
+});

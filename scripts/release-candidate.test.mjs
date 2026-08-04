@@ -6,7 +6,12 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { parseCandidateArgs, createReleaseCandidate } from "./release-candidate.mjs";
+import {
+  assertCandidateSource,
+  createReleaseCandidate,
+  parseCandidateArgs,
+  prepareCandidateOutputDir,
+} from "./release-candidate.mjs";
 import { verifyRetainedTarball, fileSha256 } from "./verify-npm-package.mjs";
 import { buildCli } from "../packages/cli/build.mjs";
 
@@ -47,6 +52,38 @@ test("createReleaseCandidate refuses a tag that does not match the package versi
   assert.equal(after, before, "a version mismatch must not rebuild dist");
 });
 
+test("candidate source facts must match HEAD and prove a clean checkout", () => {
+  const commit = "a".repeat(40);
+  assert.deepEqual(assertCandidateSource(commit, { commit, dirty: false }), { commit, dirty: false });
+  assert.throws(() => assertCandidateSource(commit, { commit: "b".repeat(40), dirty: false }), /does not match checked-out HEAD/);
+  assert.throws(() => assertCandidateSource(commit, { commit, dirty: true }), /requires a clean checkout/);
+  assert.throws(() => assertCandidateSource(commit, { commit, dirty: null }), /requires a clean checkout/);
+});
+
+test("candidate output cleanup refuses broad and foreign non-empty directories", async () => {
+  const scratch = await mkdtemp(path.join(tmpdir(), "aslite-out-safety-"));
+  try {
+    await assert.rejects(prepareCandidateOutputDir(repoRoot), /unsafe --out target/);
+    await writeFile(path.join(scratch, "belongs-to-user.txt"), "keep\n");
+    await assert.rejects(prepareCandidateOutputDir(scratch), /not owned by release-candidate/);
+    assert.equal(await readFile(path.join(scratch, "belongs-to-user.txt"), "utf8"), "keep\n");
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+});
+
+test("candidate output cleanup permits an empty directory and its own later rerun", async () => {
+  const scratch = await mkdtemp(path.join(tmpdir(), "aslite-out-owned-"));
+  try {
+    await prepareCandidateOutputDir(scratch);
+    await writeFile(path.join(scratch, "stale.tgz"), "stale\n");
+    await prepareCandidateOutputDir(scratch);
+    assert.deepEqual(await readdir(scratch), [".aslite-release-candidate-owned-v1"]);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+});
+
 test("build once, pack once: the retained manifest's SHA-256 is the tarball's actual bytes", async (t) => {
   const commit = headCommit();
   if (!commit || !process.env.npm_execpath) {
@@ -62,6 +99,7 @@ test("build once, pack once: the retained manifest's SHA-256 is the tarball's ac
       out,
       verify: false, // the heavy global-install proof is exercised by verify:npm-package; here we
       // pin build/pack-once + retention integrity deterministically.
+      sourceFacts: { commit, dirty: false },
     });
     // Exactly one tarball retained, plus the manifest — never a second candidate.
     const entries = (await readdir(outDir)).filter((f) => f.endsWith(".tgz"));

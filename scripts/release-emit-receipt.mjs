@@ -3,8 +3,9 @@
 // staged-release run ends with everything a human needs and NOTHING that resumes automatically.
 // All command strings come from the ONE pure emitter (scripts/release-operations.mjs).
 //
-// Usage: node scripts/release-emit-receipt.mjs --run-id .. --artifact-id .. --stage-id ..
-//        --version .. --policy-tag .. --tarball-sha256 .. --tarball-filename ..
+// The workflow supplies the full prepared/draft/staged chain and --json-out stage-receipt.json;
+// stdout remains the human-readable step summary.
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -14,6 +15,7 @@ import {
   promoteOperation,
   registryVerifyOperations,
 } from "./release-operations.mjs";
+import { buildStageReceipt } from "./release-receipts.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 
@@ -29,20 +31,11 @@ function arg(argv, flag, required = true) {
 }
 
 export function buildReceipt(fields) {
-  const { runId, artifactId, stageId, version, policyTag, tarballSha256, tarballFilename } = fields;
-  const inspection = inspectionInstructions({ stageId, tarballSha256, filename: tarballFilename });
+  const { stageId, version, policyTag, tarballSha256 } = fields;
+  const receipt = buildStageReceipt(fields);
+  const inspection = inspectionInstructions({ stageId, tarballSha256, version });
   return {
-    receipt: {
-      schema: "aslite.stage-receipt.v1",
-      state: "staged",
-      run_id: runId,
-      artifact_id: artifactId,
-      stage_id: stageId,
-      version,
-      policy_tag: policyTag,
-      tarball_sha256: tarballSha256,
-      tarball_filename: tarballFilename,
-    },
+    receipt,
     inspection,
     operations: {
       reject: rejectOperation({ stageId }),
@@ -85,6 +78,7 @@ function markdown(built) {
     "",
     "```sh",
     ...operations.registry_verify.commands,
+    operations.registry_verify.workflow_proof,
     "```",
   ];
   return lines.join("\n");
@@ -95,11 +89,20 @@ if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   const built = buildReceipt({
     runId: arg(argv, "--run-id"),
     artifactId: arg(argv, "--artifact-id"),
+    artifactDigest: arg(argv, "--artifact-digest"),
     stageId: arg(argv, "--stage-id"),
     version: arg(argv, "--version"),
+    tag: arg(argv, "--tag"),
+    sourceCommit: arg(argv, "--source-commit"),
     policyTag: arg(argv, "--policy-tag"),
     tarballSha256: arg(argv, "--tarball-sha256"),
     tarballFilename: arg(argv, "--tarball-filename"),
+    integrity: arg(argv, "--integrity"),
+    manifestSha256: arg(argv, "--manifest-sha256"),
+    draftReleaseId: arg(argv, "--draft-release-id"),
+    draftAssets: JSON.parse(arg(argv, "--draft-assets-json")),
   });
+  const jsonOut = arg(argv, "--json-out", false);
+  if (jsonOut) await writeFile(jsonOut, `${JSON.stringify(built.receipt, null, 2)}\n`);
   console.log(markdown(built));
 }

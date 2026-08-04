@@ -27,12 +27,13 @@ const SHA = "sha256:" + "a".repeat(64);
 const BARE = "a".repeat(64);
 
 test("inspection instructions emit the exact stage download + SHA-256 compare", () => {
-  const i = inspectionInstructions({ stageId: "stage-1", tarballSha256: SHA, filename: "holaxis-aslite-0.1.0-pre.4.tgz" });
-  assert.equal(i.steps[0], "npm stage download stage-1 --out ./holaxis-aslite-0.1.0-pre.4.tgz");
-  assert.equal(i.steps[1], "shasum -a 256 ./holaxis-aslite-0.1.0-pre.4.tgz");
+  const i = inspectionInstructions({ stageId: "stage-1", tarballSha256: SHA, version: "0.1.0-pre.4" });
+  const downloaded = "./holaxis-aslite-0.1.0-pre.4-stage-1.tgz";
+  assert.equal(i.steps[0], "npm stage download stage-1");
+  assert.equal(i.steps[1], `shasum -a 256 ${downloaded}`);
   assert.equal(
     i.steps[2],
-    `test "$(shasum -a 256 ./holaxis-aslite-0.1.0-pre.4.tgz | awk '{print $1}')" = "${BARE}" && echo MATCH || echo MISMATCH`,
+    `test "$(shasum -a 256 ${downloaded} | awk '{print $1}')" = "${BARE}" && echo MATCH || echo MISMATCH`,
   );
   assert.equal(i.expected_sha256, SHA);
 });
@@ -68,12 +69,12 @@ test("rollback restores the prior track and deprecates with the recovery command
   assert.equal(r.recovery_command, "npm install --global @holaxis/aslite@0.1.0-pre.3");
 });
 
-test("registry verification lists signature, integrity, and clean-install smoke — all read-only", () => {
+test("registry instructions are read-only and delegate strict proof to the verifier", () => {
   const v = registryVerifyOperations({ version: "0.1.0-pre.4" });
-  assert.ok(v.commands.includes("npm audit signatures --package @holaxis/aslite@0.1.0-pre.4"));
   assert.ok(v.commands.includes("npm view @holaxis/aslite@0.1.0-pre.4 dist.integrity dist.shasum --json"));
-  assert.ok(v.commands.includes("npm install --global @holaxis/aslite@0.1.0-pre.4"));
-  assert.ok(v.commands.some((c) => c.startsWith("aslite version --check")));
+  assert.ok(v.commands.includes("npm pack @holaxis/aslite@0.1.0-pre.4 --json --ignore-scripts"));
+  assert.match(v.workflow_proof, /release-verify-registry\.mjs/);
+  assert.ok(!v.commands.some((c) => c.includes("audit signatures --package")), "npm has no audit signatures --package option");
   assert.ok(!v.commands.some((c) => /dist-tag|publish|deprecate|stage (approve|reject)/.test(c)));
 });
 

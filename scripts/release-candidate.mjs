@@ -10,18 +10,21 @@
 // Usage: node scripts/release-candidate.mjs --tag v<version> --commit <40-hex> [--out <dir>] [--json]
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 import { buildCli } from "../packages/cli/build.mjs";
+import { currentSourceFacts } from "../packages/cli/scripts/build-bundle.mjs";
 import { sanitizedNpmEnvironment, verifyRetainedTarball, fileSha256 } from "./verify-npm-package.mjs";
 
 const execFileAsync = promisify(execFile);
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(scriptPath), "..");
 const cliRoot = path.join(repoRoot, "packages", "cli");
+const OUTPUT_OWNER = ".aslite-release-candidate-owned-v1";
+const OUTPUT_OWNER_CONTENT = "agentstate-lite release candidate output v1\n";
 
 export function parseCandidateArgs(argv) {
   const json = argv.includes("--json");
@@ -71,21 +74,71 @@ function npmRun(args, env) {
   return execFileAsync(process.execPath, [npmCli, ...args], { cwd: cliRoot, env, maxBuffer: 20 * 1024 * 1024 });
 }
 
+/** Refuse broad, symlinked, or foreign non-empty output directories before recursive cleanup. */
+export async function prepareCandidateOutputDir(requested) {
+  const outDir = path.resolve(requested);
+  const root = path.parse(outDir).root;
+  if (outDir === root || outDir === repoRoot || repoRoot.startsWith(`${outDir}${path.sep}`)) {
+    throw new Error(`unsafe --out target: ${outDir}`);
+  }
+
+  let entries = [];
+  try {
+    const info = await lstat(outDir);
+    if (info.isSymbolicLink() || !info.isDirectory()) {
+      throw new Error(`--out must be a real directory, not a symlink or file: ${outDir}`);
+    }
+    entries = await readdir(outDir);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  if (entries.length > 0) {
+    if (!entries.includes(OUTPUT_OWNER)) {
+      throw new Error(`refusing to clean non-empty --out directory not owned by release-candidate: ${outDir}`);
+    }
+    const marker = await readFile(path.join(outDir, OUTPUT_OWNER), "utf8");
+    if (marker !== OUTPUT_OWNER_CONTENT) {
+      throw new Error(`refusing to clean --out directory with an invalid ownership marker: ${outDir}`);
+    }
+  }
+
+  await rm(outDir, { recursive: true, force: true });
+  await mkdir(outDir, { recursive: true });
+  await writeFile(path.join(outDir, OUTPUT_OWNER), OUTPUT_OWNER_CONTENT);
+  return outDir;
+}
+
+export function assertCandidateSource(commit, observed = currentSourceFacts()) {
+  if (observed.commit !== commit) {
+    throw new Error(`--commit ${commit} does not match checked-out HEAD ${observed.commit ?? "unknown"}`);
+  }
+  if (observed.dirty !== false) {
+    throw new Error(`release candidate requires a clean checkout; observed dirty=${String(observed.dirty)}`);
+  }
+  return observed;
+}
+
 /**
  * Build once, pack once, emit the immutable manifest, verify the RETAINED tarball. Returns the
  * candidate manifest object. `verify` defaults true; the workflow passes it, tests can skip the
  * heavy install proof and assert the build/pack-once shape directly.
  */
-export async function createReleaseCandidate({ tag, commit, out, verify = true }) {
+export async function createReleaseCandidate({ tag, commit, out, verify = true, sourceFacts }) {
   const version = tag.slice(1);
   const manifest = JSON.parse(await readFile(path.join(cliRoot, "package.json"), "utf8"));
   if (manifest.version !== version) {
     throw new Error(`tag ${tag} does not match packages/cli/package.json version ${manifest.version}`);
   }
-  const outDir = path.isAbsolute(out) ? out : path.join(repoRoot, out);
-  // Clean candidate output so a rerun cannot mix a stale tgz/manifest with a fresh one.
-  await rm(outDir, { recursive: true, force: true });
-  await mkdir(outDir, { recursive: true });
+  // Never trust a caller-supplied SHA or invented clean-tree claim. Production callers always use
+  // the observed Git facts; sourceFacts is injectable only so the build-once unit test can remain
+  // hermetic while its own test checkout contains uncommitted test edits.
+  assertCandidateSource(commit, sourceFacts ?? currentSourceFacts());
+
+  const requestedOut = path.isAbsolute(out) ? out : path.join(repoRoot, out);
+  // Clean only an empty or explicitly-owned candidate directory, so --out can never recursively
+  // erase an arbitrary caller-selected path.
+  const outDir = await prepareCandidateOutputDir(requestedOut);
 
   // BUILD ONCE — npm-package channel, exact injected tag SHA, clean tree required.
   await buildCli("npm-package", { source: { commit, dirty: false } });

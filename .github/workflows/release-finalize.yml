@@ -1,44 +1,39 @@
 name: Finalize release (separately dispatched)
 
-# P5A finalizer — version-update-protocols.md §5 (registry_verified -> promoted -> final). This is a
-# SEPARATE, explicitly dispatched workflow: external approval never resumes the original staged run.
-# It accepts the ORIGINAL immutable identifiers (run/artifact/stage/draft), DOWNLOADS and VERIFIES
-# the retained artifact, and fails closed on any mismatch. It NEVER rebuilds or repacks — the
-# workflow test enforces that no build/pack token appears in this file.
+# P5A finalizer — separately dispatched after interactive npm stage inspection and approval. Both
+# jobs independently download the original candidate and stage-receipt artifacts by immutable ID,
+# query their Actions API metadata, and compare the candidate bytes, source SHA, stage ID, draft ID,
+# and exact GitHub asset IDs/digests before doing anything live.
 #
-# SAFETY: both jobs bind the protected `release` environment (P5S) and every live step is guarded by
-# MODE == live, so a dry-run dispatch prints the exact operations without touching the registry or
-# the GitHub release, and nothing runs at all until the environment exists.
-#
-# OPERATOR-TRUST BOUNDARY (QA finding #3): this workflow enforces BYTE identity mechanically (it
-# re-verifies the retained tarball SHA-256 against candidate.json before acting), but it does NOT
-# machine-enforce that human INSPECTION and APPROVAL preceded finalize — it trusts the dispatcher's
-# run/artifact/stage/draft ids. The pure reconciler (scripts/release-state.mjs) proves that ordering
-# in tests and is available as an operator/validation tool (scripts/release-reconcile.mjs), but it is
-# deliberately NOT wired as the runtime ordering gate here: doing so needs persisted, operator-signed
-# inspection/approval receipts (a new trust/storage design), which is more than a bounded change for
-# this no-live unit. Ordering safety is therefore human-procedural until that follow-up lands; this
-# is acceptable because no live mutation is reachable pre-P5S.
+# P5S must protect the `release` environment and set ASLITE_RELEASE_LIVE_ENABLED=true there. GitHub
+# auto-creates missing environments without protection, so absence of that explicit variable always
+# fails closed even if someone dispatches with mode=live.
 on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: "Original staged run id (source of the retained artifact)"
+        description: "Original staged workflow run id"
         required: true
       artifact_id:
-        description: "Immutable artifact id fixed at candidate time"
+        description: "Candidate artifact id from the staged run"
+        required: true
+      stage_receipt_artifact_id:
+        description: "Stage-receipt artifact id from the staged run summary"
+        required: true
+      stage_receipt_artifact_digest:
+        description: "Stage-receipt artifact sha256 digest from the staged run summary"
         required: true
       stage_id:
         description: "npm stage id from the staged run"
         required: true
       draft_release_id:
-        description: "GitHub draft release id prepared for this version"
+        description: "GitHub draft release id captured before staging"
         required: true
       version:
         description: "Exact version, e.g. 0.1.0-pre.4"
         required: true
       mode:
-        description: "dry-run (default) prints operations; live promotes + publishes"
+        description: "dry-run (default) verifies/prints; live verifies registry + publishes draft"
         type: choice
         options: ["dry-run", "live"]
         default: "dry-run"
@@ -46,101 +41,182 @@ on:
 permissions: {}
 
 concurrency:
-  group: release-finalize-${{ github.event.inputs.version }}
+  group: release-finalize-${{ inputs.version }}
   cancel-in-progress: false
 
 env:
-  MODE: ${{ github.event.inputs.mode }}
+  MODE: ${{ inputs.mode }}
   ARTIFACT_DIR: release-candidate
+  RECEIPT_DIR: release-stage-receipt
 
 jobs:
   registry-verify:
-    name: registry_verified — packument signature/integrity/install proof
+    name: registry_verified — integrity/signature/provenance/install proof
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Bind the protected release environment: its `--execute` step runs live registry commands, so it
-    # must be inert until P5S provisions the environment (QA finding #1 — no unguarded live exec).
     environment: release
-    # Read-only: the registry proof neither writes contents nor mints an OIDC token.
     permissions:
+      actions: read
       contents: read
     steps:
       - uses: actions/checkout@v4
 
-      # Pull the retained artifact from the ORIGINAL run by its immutable id — never rebuilt.
-      - name: Download the retained candidate from the original run (NO rebuild)
+      - name: Download candidate by exact artifact id from the original run
         uses: actions/download-artifact@v4
         with:
-          name: release-candidate-${{ github.event.inputs.run_id }}
-          run-id: ${{ github.event.inputs.run_id }}
+          artifact-ids: ${{ inputs.artifact_id }}
+          run-id: ${{ inputs.run_id }}
           github-token: ${{ github.token }}
           path: ${{ env.ARTIFACT_DIR }}
+          merge-multiple: true
 
-      - name: Fail closed unless the retained manifest matches the dispatched identifiers
+      - name: Download stage receipt by exact artifact id from the original run
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ inputs.stage_receipt_artifact_id }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ env.RECEIPT_DIR }}
+          merge-multiple: true
+
+      - name: Query independent artifact and draft metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          RECEIPT_ARTIFACT_ID: ${{ inputs.stage_receipt_artifact_id }}
+          DRAFT_RELEASE_ID: ${{ inputs.draft_release_id }}
         run: |
           set -euo pipefail
-          MANIFEST_VERSION="$(node -p "require('./$ARTIFACT_DIR/candidate.json').version")"
-          test "$MANIFEST_VERSION" = "${{ github.event.inputs.version }}" || {
-            echo "::error::retained manifest version $MANIFEST_VERSION != dispatched ${{ github.event.inputs.version }}"; exit 1; }
-          FILENAME="$(node -p "require('./$ARTIFACT_DIR/candidate.json').tarball.filename")"
-          RECORDED="$(node -p "require('./$ARTIFACT_DIR/candidate.json').tarball.sha256")"
-          ACTUAL="sha256:$(shasum -a 256 "$ARTIFACT_DIR/$FILENAME" | awk '{print $1}')"
-          test "$ACTUAL" = "$RECORDED" || { echo "::error::retained tarball digest $ACTUAL != recorded $RECORDED"; exit 1; }
+          case "$CANDIDATE_ARTIFACT_ID:$RECEIPT_ARTIFACT_ID:$DRAFT_RELEASE_ID" in
+            *[!0-9:]*) echo "::error::artifact and release ids must be decimal integers"; exit 1 ;;
+          esac
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$CANDIDATE_ARTIFACT_ID" > candidate-artifact.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$RECEIPT_ARTIFACT_ID" > receipt-artifact.json
+          gh api "repos/$GITHUB_REPOSITORY/releases/$DRAFT_RELEASE_ID" > draft-release.json
+
+      - name: Verify the complete immutable receipt chain
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+          ARTIFACT_ID: ${{ inputs.artifact_id }}
+          RECEIPT_ARTIFACT_ID: ${{ inputs.stage_receipt_artifact_id }}
+          RECEIPT_ARTIFACT_DIGEST: ${{ inputs.stage_receipt_artifact_digest }}
+          STAGE_ID: ${{ inputs.stage_id }}
+          DRAFT_RELEASE_ID: ${{ inputs.draft_release_id }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          node scripts/release-verify-chain.mjs verify-finalizer \
+            --candidate "$ARTIFACT_DIR/candidate.json" --receipt "$RECEIPT_DIR/stage-receipt.json" \
+            --candidate-artifact candidate-artifact.json --receipt-artifact receipt-artifact.json \
+            --release draft-release.json --run-id "$RUN_ID" --artifact-id "$ARTIFACT_ID" \
+            --stage-receipt-artifact-id "$RECEIPT_ARTIFACT_ID" \
+            --stage-receipt-artifact-digest "$RECEIPT_ARTIFACT_DIGEST" \
+            --stage-id "$STAGE_ID" --draft-release-id "$DRAFT_RELEASE_ID" --version "$VERSION" \
+            --out verified-chain.json
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.14.0
+          registry-url: "https://registry.npmjs.org"
 
-      - name: Registry signature/integrity/install proof (live) or exact commands (dry-run)
+      - name: Pin npm used for signature and provenance verification
+        run: |
+          set -euo pipefail
+          npm install --global npm@11.15.0 --ignore-scripts --no-audit --no-fund
+          test "$(npm --version)" = "11.15.0"
+
+      - name: Verify registry bytes, signatures, provenance, install, and build identity
+        env:
+          LIVE_RELEASE_ENABLED: ${{ vars.ASLITE_RELEASE_LIVE_ENABLED }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           if [ "$MODE" = "live" ]; then
-            node scripts/release-run-operations.mjs --op registry-verify --version "${{ github.event.inputs.version }}" --execute
+            test "$LIVE_RELEASE_ENABLED" = "true" || { echo "::error::release environment is not explicitly live-enabled"; exit 1; }
+            node scripts/release-verify-registry.mjs --version "$VERSION" \
+              --manifest "$ARTIFACT_DIR/candidate.json" --out registry-proof.json
           else
-            node scripts/release-run-operations.mjs --op registry-verify --version "${{ github.event.inputs.version }}"
+            echo "[dry-run] verified immutable chain; would run the exact registry proof for @holaxis/aslite@$VERSION"
           fi
 
   finalize:
-    name: final — publish the PREPARED draft from immutable identifiers
+    name: final — publish the prepared draft only after re-verification
     needs: registry-verify
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: release
-    # contents:write only to flip the ALREADY-PREPARED draft to published (never a new build).
     permissions:
+      actions: read
       contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify the prepared draft's identity before publishing (fail closed on mismatch)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ "$MODE" = "live" ]; then
-            DRAFT="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${{ github.event.inputs.draft_release_id }}" --jq '.draft')"
-            TAGNAME="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${{ github.event.inputs.draft_release_id }}" --jq '.tag_name')"
-            test "$DRAFT" = "true" || { echo "::error::release ${{ github.event.inputs.draft_release_id }} is not an unpublished draft"; exit 1; }
-            test "$TAGNAME" = "v${{ github.event.inputs.version }}" || { echo "::error::draft tag $TAGNAME != v${{ github.event.inputs.version }}"; exit 1; }
-          else
-            echo "[dry-run] would verify draft ${{ github.event.inputs.draft_release_id }} is an unpublished v${{ github.event.inputs.version }} draft"
-          fi
-
-      - uses: actions/setup-node@v4
+      - name: Download candidate by exact artifact id from the original run
+        uses: actions/download-artifact@v4
         with:
-          node-version: 20
+          artifact-ids: ${{ inputs.artifact_id }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ env.ARTIFACT_DIR }}
+          merge-multiple: true
 
-      - name: Publish the prepared draft (live) or print the exact commands (dry-run)
+      - name: Download stage receipt by exact artifact id from the original run
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ inputs.stage_receipt_artifact_id }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ env.RECEIPT_DIR }}
+          merge-multiple: true
+
+      - name: Query independent artifact and draft metadata again
         env:
           GH_TOKEN: ${{ github.token }}
+          CANDIDATE_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          RECEIPT_ARTIFACT_ID: ${{ inputs.stage_receipt_artifact_id }}
+          DRAFT_RELEASE_ID: ${{ inputs.draft_release_id }}
+        run: |
+          set -euo pipefail
+          case "$CANDIDATE_ARTIFACT_ID:$RECEIPT_ARTIFACT_ID:$DRAFT_RELEASE_ID" in
+            *[!0-9:]*) echo "::error::artifact and release ids must be decimal integers"; exit 1 ;;
+          esac
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$CANDIDATE_ARTIFACT_ID" > candidate-artifact.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$RECEIPT_ARTIFACT_ID" > receipt-artifact.json
+          gh api "repos/$GITHUB_REPOSITORY/releases/$DRAFT_RELEASE_ID" > draft-release.json
+
+      - name: Re-verify the complete chain immediately before publication
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+          ARTIFACT_ID: ${{ inputs.artifact_id }}
+          RECEIPT_ARTIFACT_ID: ${{ inputs.stage_receipt_artifact_id }}
+          RECEIPT_ARTIFACT_DIGEST: ${{ inputs.stage_receipt_artifact_digest }}
+          STAGE_ID: ${{ inputs.stage_id }}
+          DRAFT_RELEASE_ID: ${{ inputs.draft_release_id }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          node scripts/release-verify-chain.mjs verify-finalizer \
+            --candidate "$ARTIFACT_DIR/candidate.json" --receipt "$RECEIPT_DIR/stage-receipt.json" \
+            --candidate-artifact candidate-artifact.json --receipt-artifact receipt-artifact.json \
+            --release draft-release.json --run-id "$RUN_ID" --artifact-id "$ARTIFACT_ID" \
+            --stage-receipt-artifact-id "$RECEIPT_ARTIFACT_ID" \
+            --stage-receipt-artifact-digest "$RECEIPT_ARTIFACT_DIGEST" \
+            --stage-id "$STAGE_ID" --draft-release-id "$DRAFT_RELEASE_ID" --version "$VERSION" \
+            --out verified-chain.json
+
+      - name: Publish the already-prepared draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LIVE_RELEASE_ENABLED: ${{ vars.ASLITE_RELEASE_LIVE_ENABLED }}
+          DRAFT_RELEASE_ID: ${{ inputs.draft_release_id }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           if [ "$MODE" = "live" ]; then
+            test "$LIVE_RELEASE_ENABLED" = "true" || { echo "::error::release environment is not explicitly live-enabled"; exit 1; }
             node scripts/release-run-operations.mjs --op immutable-release \
-              --version "${{ github.event.inputs.version }}" \
-              --release-id "${{ github.event.inputs.draft_release_id }}" --execute
+              --version "$VERSION" --release-id "$DRAFT_RELEASE_ID" --execute
           else
             node scripts/release-run-operations.mjs --op immutable-release \
-              --version "${{ github.event.inputs.version }}" \
-              --release-id "${{ github.event.inputs.draft_release_id }}"
+              --version "$VERSION" --release-id "$DRAFT_RELEASE_ID"
           fi
