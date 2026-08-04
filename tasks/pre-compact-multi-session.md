@@ -1,13 +1,13 @@
 ---
 type: Task
 title: Implement and live-prove revision 3 multi-session compaction handoffs
-status: in_progress
+status: blocked
 priority: '2'
 description: >-
-  Option 1 active: exact R5 passed both boundary gates; a clean-room builder may
-  author one immutable source before fresh exact-byte dual review.
-actor: codex-t35-option1-orchestrator
-timestamp: '2026-08-04T18:49:58.916Z'
+  Paused by scope audit: this no-PR compaction feature is unrelated to PR 204;
+  resume only by explicit separate-feature decision.
+actor: codex-pr204-scope-auditor
+timestamp: '2026-08-04T18:55:02.601Z'
 ---
 # Revision 3 multi-session compaction handoffs
 

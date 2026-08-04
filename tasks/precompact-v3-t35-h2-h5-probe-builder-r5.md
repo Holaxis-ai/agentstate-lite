@@ -1,14 +1,15 @@
 ---
 type: Task
 title: Author exact R5 H2-H5 clean-room probe
-status: todo
+status: blocked
 priority: '1'
 assignee: codex-t35-r5-builder
 description: >-
-  Author one immutable R5 probe source under the no-execution builder fence;
-  exact bytes require fresh dual static review.
-actor: codex-t35-option1-orchestrator
-timestamp: '2026-08-04T18:49:16.368Z'
+  Paused before source creation: scope audit found this compaction probe
+  unrelated to PR 204 and disproportionate; explicit separate-feature direction
+  required.
+actor: codex-pr204-scope-auditor
+timestamp: '2026-08-04T18:55:02.379Z'
 ---
 # Goal
 
