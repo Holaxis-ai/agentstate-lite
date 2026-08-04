@@ -4,13 +4,13 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  IMPLEMENTED on feat/durable-npm-hook-install by codex-durable-hook: exact
-  token-and-shape ownership, byte-exact OpenCode source reconciliation, durable
-  npm-prefix Node launch, additive per-host status, and foreign-config
-  preservation. Focused 70-test suite, full CLI suite, and installed-tarball
-  proof pass; full repository gate and independent exact-SHA review remain.
+  IMPLEMENTED and pushed by codex-durable-hook at 9b6b114 on
+  feat/durable-npm-hook-install: exact token-and-shape ownership, byte-exact
+  OpenCode reconciliation, durable npm-prefix Node launch, additive per-host
+  status, and foreign-config preservation. Final npm run check passed. Awaiting
+  required independent exact-SHA review before QA/closure.
 actor: codex-durable-hook
-timestamp: '2026-08-04T22:18:44.142Z'
+timestamp: '2026-08-04T22:35:19.924Z'
 ---
 # Goal
 

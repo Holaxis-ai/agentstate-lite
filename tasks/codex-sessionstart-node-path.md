@@ -4,13 +4,13 @@ title: Make Codex SessionStart hook independent of GUI PATH
 status: in_progress
 priority: '1'
 description: >-
-  IMPLEMENTED on feat/durable-npm-hook-install by codex-durable-hook: generated
-  hooks invoke absolute Node plus absolute CLI entry; durable npm authority
-  proves stable npm-prefix bin/node resolves to the running runtime. A real
-  PATH=/usr/bin:/bin execution passes. Full repository gate and independent
-  exact-SHA review remain.
+  IMPLEMENTED and pushed by codex-durable-hook at 9b6b114 on
+  feat/durable-npm-hook-install: generated hooks invoke absolute Node plus
+  absolute CLI entry; durable npm authority proves stable npm-prefix bin/node
+  resolves to the runtime. Real PATH=/usr/bin:/bin execution and final npm run
+  check pass. Awaiting independent exact-SHA review before closure.
 actor: codex-durable-hook
-timestamp: '2026-08-04T22:18:44.371Z'
+timestamp: '2026-08-04T22:35:20.156Z'
 ---
 # Problem
 
