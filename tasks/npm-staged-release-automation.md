@@ -4,17 +4,19 @@ title: Build retained-artifact staged npm release automation
 status: in_progress
 priority: '1'
 description: >-
-  CHANGES REQUESTED on PR #204 (codex team review, 7 P1s: GHA template injection
-  via ${{ }} interpolation, no-checkout jobs, node20-vs-npm-stage toolchain, npm
-  11.15 stage output/download contracts, unenforced provenance chain, missing
-  actions:read, and the release-environment auto-creation hole that voids the
-  double-gate claim — plus rm-path and dirty:false safety bugs). CODEX TEAM OWNS
-  THE FIX ROUND on the open PR. PR description's safety claim corrected. Prior
-  internal gate (Builder->review->QA) validated logic but not platform contracts
-  — the platform-verification gap is theirs to close. Branch
-  feat/npm-staged-release-automation, reviewed head 631c39c.
-actor: claude-main-p5a
-timestamp: '2026-08-04T00:34:55.585Z'
+  FIX ROUND IMPLEMENTED on PR #204 and pushed as c1f7937. The workflows now
+  prevent expression-to-shell injection, fail closed without explicit live
+  enablement, use exact artifact IDs plus Actions read permission, pin Node
+  22.14/npm 11.15, parse npm stage JSON, use the real stage-download filename,
+  retain and verify a v2 candidate/draft/stage receipt chain, compare registry
+  bytes/signatures/SLSA provenance/install identity, and guard candidate
+  source/output cleanup. Full npm run check passed (including 15 browser and 19
+  e2e tests); the final 126-test script suite also passed after the last
+  provenance assertion. GitHub Node 20/22/26 CI is queued. Proximate goal: get
+  the corrected immutable staged-release automation through PR CI and review,
+  serving the project goal of reproducible, trustworthy npm releases.
+actor: codex-pr204-fix
+timestamp: '2026-08-04T00:36:33.315Z'
 ---
 # Goal
 
