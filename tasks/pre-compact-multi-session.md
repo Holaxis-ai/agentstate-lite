@@ -4,12 +4,11 @@ title: Implement and live-prove revision 3 multi-session compaction handoffs
 status: in_progress
 priority: '2'
 description: >-
-  T0-T4 passed exact review. R5 remains rejected. Team unanimously passes a
-  strict five-question host-only R6 probe boundary; a clean-room <=800-line
-  replacement script, exact dual static review, and evidence audit now gate any
-  new Plan or code.
+  T0-T4 passed exact review. R5 remains rejected. Strict host-probe script R1
+  was dual-static-review FAIL before execution; controller-safety/evidence
+  repairs and a fresh exact script digest now gate any run, Plan, or code.
 actor: codex-precompact-v3-orchestrator
-timestamp: '2026-08-04T00:35:52.224Z'
+timestamp: '2026-08-04T01:07:48.626Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
