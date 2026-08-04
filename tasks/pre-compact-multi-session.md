@@ -4,11 +4,10 @@ title: Implement and live-prove revision 3 multi-session compaction handoffs
 status: in_progress
 priority: '2'
 description: >-
-  R0 duplicate retired with independent PASS. Current blocker: choose T3.5
-  architecture—reuse audited v5 no-autostart evidence and probe H2-H5
-  (recommended), or authorize a separately designed no-tmux/supervisor path.
-actor: codex-takeover-main
-timestamp: '2026-08-04T17:47:29.588Z'
+  Option 1 active: exact R5 passed both boundary gates; a clean-room builder may
+  author one immutable source before fresh exact-byte dual review.
+actor: codex-t35-option1-orchestrator
+timestamp: '2026-08-04T18:49:58.916Z'
 ---
 # Revision 3 multi-session compaction handoffs
 
@@ -16,7 +15,7 @@ timestamp: '2026-08-04T17:47:29.588Z'
 
 Ultimate goal: agentstate-lite is shared, versioned, conflict-safe memory for concurrent agent fleets, in plain text and owned by the user.
 
-Proximate goal: choose whether revision 3 reuses the already audited v5 no-autostart evidence or expands into a separately reviewed Darwin supervisor architecture; this serves the ultimate goal by preventing an unsafe negative-host experiment from entering the compaction-memory rail.
+Proximate goal: produce one immutable clean-room R5 H2-H5 probe source under a no-execution fence, then obtain fresh dual exact-byte static review; this serves the ultimate goal by converting an accepted safety boundary into inspectable code without exposing protected host state to unreviewed execution.
 
 ## Problem
 
@@ -60,6 +59,10 @@ The exact accepted design/plan and unanimous independent gate are recorded in `r
 - The selected no-auth exact-host primitive campaign is recorded at `research/precompact-v3-t35-launch-reaper-host-probe@sha256:2f910d13a66e4a95f886dccf2bfbbb9be9576c17be51cb7e922bcd0a9a18d3cf`. Exact script/evidence/summary hashes are retained under `/private/tmp/aslite-t35-launch-probe.6p0HMoqJ`. It proved explicit-argv0 same-PID Node->foreground-tmux exec, a zero-session server, separate `-N` no-autostart client, pipe-only random-canary delivery, FD closure, exact server/pane group enumeration, kill-server/TERM/KILL teardown, and protected-state continuity. It also proved `sess=0` is unusable and `kill-server` may leave a validated stale socket that is removed only after every owned process/group is absent.
 - The strict R6 host-probe R2 source (`sha256:757aec7c...`) was never executed and received exact product and skeptic static FAIL. Three subsequent exact build-contract cycles closed the expected-resource, transition, Git, H2, identity, helper, fixed-point, and socket-generation contracts but ended product FAIL (0.99) and skeptic FAIL (0.97), both requiring the orchestration circuit breaker.
 - Current blocker: a fresh absent `tmux -N` query can hypothetically daemonize a server without a usable PID while its sole bounded recovery client also fails. The self-contained controller then has no legal non-tmux/non-ps exact termination capability. A separate late-child abort-record contradiction is locally repairable. Full report: `context-notes/precompact-v3-t35-r6-host-probe-circuit-breaker`.
+- The user selected option 1: retain audited v5 no-autostart evidence and freshly test only H2-H5. Boundary R1 failed on fence/race/conditioning/ownership gaps; R2 closed those mechanics but failed because Git helpers ran after baseline acceptance; R3 added the P0/Git/P1 sandwich but allowed helper-caused drift to become a later baseline; R4 added one-shot consumption, terminal post-helper FAIL, and separately reviewed rebaseline, but overstated same-UID metadata as nonforgeable authority.
+- Exact R5 boundary `designs/precompact-v3-t35-h2-h5-host-probe-boundary@sha256:33db32b3d9088052481301ee5829170c0ddee4f333eabf6b06907818bc951852` retains the accepted mechanics while narrowing the claim to cooperative evidence admission under the explicit non-malicious same-UID threat model. Whole-system diagnostic: `designs/precompact-v3-t35-h2-h5-probe-system-diagnostic-r3@sha256:2bcba5fdbf2b8b5b775ce4d0143b0d37265e2653910c28f789fe73cad5b8583c`.
+- Exact R5 received acceptance PASS `context-notes/precompact-v3-t35-h2-h5-boundary-acceptance-r5@sha256:d2e72878e0e7968daae4daf268d111a0113d6aa09c9d7f4cc6c7dc83be51b050` (0.99) and skeptic PASS `context-notes/precompact-v3-t35-h2-h5-boundary-skeptic-r5@sha256:b3fc5bb7be1f1fc47baa2ea95bf1703a22e31d31a8d5973138ccc5e64bc5a384` (0.97).
+- Clean-room builder task `tasks/precompact-v3-t35-h2-h5-probe-builder-r5@sha256:ee61dc75f9e91d2996062daf6957bc91fda1e49fe2c8b581239c8a58bd16b80d` permits only authoring `/private/tmp/aslite-t35-h2-h5-source-r5/h2-h5-probe.mjs`; source execution and host actions remain forbidden.
 - No R6 probe run root, replacement Plan, T3.5 code, API key, Claude action, candidate freeze, or G0 acceptance is authorized. The accepted feature worktree remains clean at `36c741a8173832d75d61a7ab138b5219c4415c66`.
 
 ## Required gate order
@@ -68,7 +71,7 @@ T0 harness → T1/T2 implementation → T3 integration review → T4 docs/rebase
 
 ## Next action
 
-Await the human architecture choice. Recommended: revise the strict R6 proof obligation to reuse the already audited v5 no-autostart evidence and freshly probe only the remaining H2-H5 physical/controller facts, then dual-review that revised boundary before any builder resumes. Alternative: authorize research/design of a pre-existing Darwin supervisor with non-tmux, non-ps, PID-reuse-safe authority over a query-created server. Do not resume the current self-contained negative-query repair loop.
+Complete the no-execution clean-room builder task, then obtain fresh isolated acceptance and adversarial-skeptic review of the exact immutable source digest. Only exact-source dual PASS permits one cooperative execution-admission record.
 
 ## Related
 
