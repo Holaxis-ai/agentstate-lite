@@ -5,7 +5,7 @@ description: >-
   Normative schemas, state precedence, budgets, compatibility tables, build
   flavors, staged-release state machine, and two-release proof.
 actor: codex-durable-hook
-timestamp: '2026-08-04T22:18:43.908Z'
+timestamp: '2026-08-04T23:53:55.583Z'
 ---
 # Purpose
 
@@ -189,16 +189,16 @@ Manifest v2 is exact and additive (existing keys retained):
 
 ## Hook ownership and mutation boundary
 
-A pure tokenized classifier is the sole authority for status, install deduplication/rewrite, and uninstall. It must preserve explicitly enumerated historical managed forms (bare/absolute `agentstate-lite ...`, current exact bare `aslite session-start`, the runtime-bound npm-prefix Node launch, known generated quoted cache paths, known legacy npx coordinate, and byte-exact OpenCode generated source) while rejecting foreign near-misses. Claude/Codex settings carry no provenance marker, so an exact generated-compatible semantic shape is deemed owned regardless of who typed it; non-exact/near-match hand-authored forms are unmanaged. A substring mention or OpenCode marker alone is never ownership evidence.
+A pure tokenized classifier is the sole authority for status, install deduplication/rewrite, and uninstall. It owns only explicitly enumerated command layouts and host shapes that this project historically generated: bare `aslite`/`agentstate-lite` commands, managed npm/local-dev/plugin-cache entry layouts, the same-prefix npm Node launch, supported local-dev/plugin-cache Node launches, the legacy npx coordinate, and byte-exact OpenCode source. The command grammar accepts exactly one ASCII space between tokens and rejects control characters, shell operators, malformed quoting, and arbitrary basename lookalikes. Claude/Codex ownership additionally requires the exact generated host shape: `SessionStart` with `matcher: ""`, or the historical `session_start` location, and a `type: "command"`/ten-second entry. An unknown matcher, type, or timeout remains unmanaged even when its command text looks familiar. Claude/Codex settings carry no provenance marker, so an exact generated-compatible semantic shape is deemed owned regardless of who typed it; every non-exact/near-match hand-authored form is unmanaged. A substring mention or OpenCode marker alone is never ownership evidence.
 
 | Class | Compatibility | Mutator behavior | Remedy |
 |---|---|---|---|
 | Exact `<npm-prefix>/bin/node <npm-prefix>/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start`, expected timeout/shape | `current` | Idempotent owned update/removal | None |
-| Exact historical `aslite session-start` or `agentstate-lite session-start`, expected timeout/shape | `current` | Remains owned; explicit install converges to the PATH-independent launch | None |
-| Exact historically generated command with old subcommand/timeout | `stale` | Explicit install may converge; uninstall may remove | `aslite hook install --scope <scope>` |
-| Exact generated absolute plugin/cache path | `legacy_path_bound` | Remains owned; explicit install from supported global CLI converges | Install global CLI, then hook install |
+| Exact historical `aslite session-start` or `agentstate-lite session-start`, exact generated host shape | `legacy_path_bound` | Remains owned; status/session-start prompts migration because ambient PATH may be absent in GUI hosts | Install global CLI, then hook install |
+| Exact historically generated command with the pre-`session-start` subcommand, exact generated host shape | `stale` | Explicit install may converge; uninstall may remove | `aslite hook install --scope <scope>` |
+| Exact generated direct npm/local-dev/plugin-cache entry path, exact generated host shape | `legacy_path_bound` | Remains owned; explicit install from supported global CLI converges | Install global CLI, then hook install |
 | No managed hook | `absent` | Install may add without touching foreign entries | Hook install |
-| Foreign/non-exact hand-authored near-match | `unmanaged` | Never rewrite/remove/deduplicate | User-managed |
+| Foreign/non-exact command or unknown matcher/type/timeout | `unmanaged` | Never rewrite/remove/deduplicate | User-managed |
 
 C2H is a high-risk mutation-authority change. Adversarial QA runs both install and uninstall against every historical form and foreign near-match and byte-compares unrelated configuration.
 
