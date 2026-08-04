@@ -4,16 +4,17 @@ title: Build retained-artifact staged npm release automation
 status: in_progress
 priority: '1'
 description: >-
-  FIX IN PROGRESS on PR #204 after independent Codex review at 631c39c.
-  Ownership transferred from the initial Claude implementation team to
-  codex-pr204-fix to close workflow-input injection, fresh-runner/toolchain
-  failures, real npm 11.15 stage receipt/download contracts, immutable
-  artifact/draft/registry verification, cross-run permissions, pre-P5S disarm,
-  and candidate output/source safety. Proximate goal: make the code-only
-  retained-artifact release path executable and fail-closed; this serves the
-  project goal by preventing ambiguous or unsafe npm releases.
-actor: codex-pr204-fix
-timestamp: '2026-08-04T00:11:38.334Z'
+  CHANGES REQUESTED on PR #204 (codex team review, 7 P1s: GHA template injection
+  via ${{ }} interpolation, no-checkout jobs, node20-vs-npm-stage toolchain, npm
+  11.15 stage output/download contracts, unenforced provenance chain, missing
+  actions:read, and the release-environment auto-creation hole that voids the
+  double-gate claim — plus rm-path and dirty:false safety bugs). CODEX TEAM OWNS
+  THE FIX ROUND on the open PR. PR description's safety claim corrected. Prior
+  internal gate (Builder->review->QA) validated logic but not platform contracts
+  — the platform-verification gap is theirs to close. Branch
+  feat/npm-staged-release-automation, reviewed head 631c39c.
+actor: claude-main-p5a
+timestamp: '2026-08-04T00:34:55.585Z'
 ---
 # Goal
 
