@@ -3,14 +3,13 @@ type: Task
 title: >-
   Scope the onboarding surfaces: reconcile 4 overlapping items into one coherent
   early-UX plan (HANDOFF)
-status: done
+status: in_progress
 priority: '2'
 description: >-
-  Completed review revision: Brian decided agentstate-guide is outside the
-  domain-Recipe deferral; plan now matches shipped View/init mechanics, adds
-  generic create-only safety, and reconciles quickstart/Journey/roadmap records.
+  Final refinement in progress: make aslite guide the zero-decision public
+  onboarding command while preserving generic create-only safety underneath.
 actor: codex-onboarding-scope
-timestamp: '2026-08-03T23:56:36.501Z'
+timestamp: '2026-08-04T00:00:37.236Z'
 ---
 # Onboarding surface scoping — handoff note
 
