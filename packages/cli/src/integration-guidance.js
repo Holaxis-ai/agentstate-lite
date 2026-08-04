@@ -1,6 +1,7 @@
 /**
- * One bounded, generic migration contract shared by help, generated skills, and release receipts.
- * It intentionally names no host config path and makes no claim that the CLI inspected a host.
+ * One bounded, generic migration contract shared by help, generated skills, and release receipt
+ * summaries. It intentionally names no host config path and makes no claim that the CLI inspected
+ * a host.
  */
 export const STABLE_MCP_LAUNCH_GUIDANCE = `## Stable MCP launch
 
