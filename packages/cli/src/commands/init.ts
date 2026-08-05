@@ -9,7 +9,7 @@ import { parseArgs } from "node:util";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { initBundle, loadKinds, VersionConflict } from "@agentstate-lite/core";
-import { assertCreateOnlyTarget, resolveTargetDir } from "../bundle.js";
+import { assertCreateOnlyTarget, claimCreateOnlyTarget, resolveTargetDir } from "../bundle.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
@@ -33,14 +33,17 @@ Options:
                            an enclosing bundle or bound project workspace, or is created
                            concurrently. Without the flag, init keeps its open-or-create behavior.
                            Recoveries: 'recipe add' modifies an existing bundle; a different
-                           explicit --dir creates a new one.
+                           explicit --dir creates a new one. The receipt's root is the PHYSICAL
+                           (symlink-resolved) path, which may differ from the spelling passed.
   --json                  Emit compact JSON instead of TOON
   -h, --help              Show this help
 `;
 
-/** Injectable seam so the parse→init wiring is unit-testable. */
+/** Injectable seams so the parse→init wiring — including the CAS-conflict mapping — is unit-testable. */
 export interface InitCliDeps {
   stdout: (s: string) => void;
+  /** Core bundle creator override (tests pin the VersionConflict → ALREADY_EXISTS mapping). */
+  initBundleImpl: typeof initBundle;
 }
 
 /**
@@ -111,9 +114,12 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
   // one, now expressed as a product-surface commitment in the CLI, not an engine default).
   // Idempotent (expect-absent CAS per doc) — re-running `init` against an already-recipe'd bundle
   // is a no-op for each convention doc. `--recipe none` opts out to a bare bundle.
+  // The claim closes the preflight-to-write window deterministically (absent target: atomic
+  // mkdir; pre-existing empty dir: re-verified). Plain init performs neither step.
+  if (createOnly) await claimCreateOnlyTarget(root);
   let bundle;
   try {
-    bundle = await initBundle(root, {
+    bundle = await (deps.initBundleImpl ?? initBundle)(root, {
       ...(okfVersion ? { okfVersion } : {}),
       ...(createOnly ? { expectNew: true } : {}),
     });

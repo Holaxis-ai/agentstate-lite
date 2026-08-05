@@ -420,6 +420,7 @@ async function runInstalledProof(spec) {
       (error) => error,
     );
     assert.match(String(refused.stdout ?? refused.message), /already an OKF bundle/);
+    assert.equal(refused.code, 5, "create-only refusal must use the conflict exit class");
     assertSnapshotUnchanged(
       bundleSnapshotBefore,
       await snapshotTree(bundle),

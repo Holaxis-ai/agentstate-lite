@@ -375,13 +375,43 @@ export async function assertCreateOnlyTarget(
 
   // Physical resolution: realpath the nearest EXISTING ancestor and re-append the missing tail,
   // so every later check sees the alias-free target even when the target itself is absent.
+  // Presence uses LSTAT, never stat: a dangling or looping symlink IS present and must route into
+  // the inspection block's exit-5 symlink refusal, not fall through as "missing" to a raw mkdir
+  // failure (review finding: exists() follows links, misclassifying that whole family as exit 1).
+  const lexists = async (p: string): Promise<boolean> => {
+    try {
+      await fs.lstat(p);
+      return true;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") return false;
+      throw new CliError(
+        "RUNTIME",
+        `cannot inspect the create-only target path ${p}: ${err instanceof Error ? err.message : String(err)}`,
+        { help: recoveryHelp },
+      );
+    }
+  };
   let existingPrefix = logical;
   const missingTail: string[] = [];
-  while (!(await exists(existingPrefix))) {
+  while (!(await lexists(existingPrefix))) {
     const parent = path.dirname(existingPrefix);
     if (parent === existingPrefix) break;
     missingTail.unshift(path.basename(existingPrefix));
     existingPrefix = parent;
+  }
+  // Inspect the LOGICAL target BEFORE canonicalization: a `--dir` naming a symlink — healthy,
+  // dangling, or looping — is refused as the alias it is (exit 5, the documented contract), and
+  // only a real directory proceeds to realpath (which would throw a raw ENOENT/ELOOP on links).
+  if (missingTail.length === 0) {
+    const info = await fs.lstat(logical).catch(() => null);
+    if (info === null) {
+      refuse(`create-only target ${logical} disappeared while being inspected`);
+    } else if (info.isSymbolicLink()) {
+      refuse(`create-only target ${logical} is a symlink — pass the physical directory instead`);
+    } else if (!info.isDirectory()) {
+      refuse(`create-only target ${logical} exists and is not a directory`);
+    }
   }
   let physicalPrefix: string;
   try {
@@ -396,18 +426,15 @@ export async function assertCreateOnlyTarget(
   const target = path.join(physicalPrefix, ...missingTail);
 
   if (missingTail.length === 0) {
-    // The target itself exists: it must be a real, empty directory reached without a final-hop
-    // symlink. lstat the LOGICAL path so `--dir` naming a symlink is refused as the alias it is.
-    const info = await fs.lstat(logical).catch(() => null);
-    if (info === null) {
-      refuse(`create-only target ${logical} disappeared while being inspected`);
-    } else if (info.isSymbolicLink()) {
-      refuse(`create-only target ${logical} is a symlink — pass the physical directory instead`);
-    } else if (!info.isDirectory()) {
-      refuse(`create-only target ${logical} exists and is not a directory`);
-    }
+    // The target is a real directory: it must be genuinely new content-wise. Name an existing
+    // conventional workspace precisely rather than counting it among "entries".
     if (await exists(path.join(target, "index.md"))) {
       refuse(`create-only target ${target} is already an OKF bundle`);
+    }
+    if (await exists(path.join(target, CONVENTIONAL_BUNDLE_DIR_NAME, "index.md"))) {
+      refuse(
+        `an existing project workspace ${path.join(target, CONVENTIONAL_BUNDLE_DIR_NAME)} already serves this location — join it rather than creating a second bundle`,
+      );
     }
     const entries = await fs.readdir(target);
     if (entries.length > 0) {
@@ -422,11 +449,13 @@ export async function assertCreateOnlyTarget(
   // has a bundle) both refuse. The target's own paths were handled above.
   const enclosing = await findBundleRoot(path.dirname(target));
   if (enclosing !== null) {
+    // Wording tracks the actual relationship: the target UNDER the found root is nesting; a root
+    // found at an ancestor's conventional folder (never containing the target) is the project's
+    // existing workspace.
     refuse(
-      enclosing === path.join(path.dirname(target), CONVENTIONAL_BUNDLE_DIR_NAME) ||
-        enclosing.endsWith(`${path.sep}${CONVENTIONAL_BUNDLE_DIR_NAME}`)
-        ? `an existing project workspace ${enclosing} already serves this location — join it rather than creating a second bundle`
-        : `create-only target ${target} would nest inside the existing bundle at ${enclosing}`,
+      target.startsWith(`${enclosing}${path.sep}`)
+        ? `create-only target ${target} would nest inside the existing bundle at ${enclosing}`
+        : `an existing project workspace ${enclosing} already serves this location — join it rather than creating a second bundle`,
     );
   }
 
@@ -447,6 +476,46 @@ export async function assertCreateOnlyTarget(
   }
 
   return target;
+}
+
+/**
+ * Claim the preflighted create-only target — the ONE write between {@link assertCreateOnlyTarget}
+ * (read-only) and core `initBundle`'s `expectNew` CAS. Closes the preflight-to-write window
+ * deterministically for both target shapes:
+ *
+ *   - absent target: parents are created, then the target itself via a NON-recursive mkdir — a
+ *     concurrent creator surfaces as EEXIST and refuses (exit 5), never adoption;
+ *   - existing empty directory: re-verified (still a real, empty, non-symlink directory)
+ *     immediately before proceeding, so files dropped in after the preflight refuse.
+ *
+ * Residual window (documented, not closable without directory locks): content written into the
+ * claimed directory between this check and the index.md CAS is adopted; the CAS itself still
+ * guarantees the BUNDLE identity (index.md) is ours or the run fails with a typed conflict.
+ */
+export async function claimCreateOnlyTarget(target: string): Promise<void> {
+  const recoveryHelp =
+    `${cliInvocation()} recipe add <name> --dir <existing-bundle>  (modify an existing bundle), or ` +
+    `${cliInvocation()} init --create-only --dir <new-path>  (a different, genuinely new location)`;
+  const refuse = (message: string): never => {
+    throw new CliError("ALREADY_EXISTS", message, { help: recoveryHelp });
+  };
+  // mkdir-first so both branches are deterministic: success claims a fresh directory atomically;
+  // EEXIST (pre-existing OR concurrently created) falls through to re-verification, where an
+  // empty real directory converges — same acceptance as the preflight — and anything else refuses.
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  try {
+    await fs.mkdir(target);
+    return;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+  }
+  const info = await fs.lstat(target).catch(() => null);
+  if (info === null || info.isSymbolicLink() || !info.isDirectory()) {
+    refuse(`create-only target ${target} changed shape after preflight — refusing to write`);
+  }
+  if ((await fs.readdir(target)).length > 0) {
+    refuse(`create-only target ${target} gained content after preflight — a new workspace must not adopt concurrent files`);
+  }
 }
 
 /**

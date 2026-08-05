@@ -315,3 +315,104 @@ test("usage text and reference carry the exact public spelling", async () => {
   assert.ok(entry, "init entry present");
   assert.match(entry.usage, /\[--create-only\]/);
 });
+
+// ── review-fix round: findings from the independent exact-SHA review of e84a66e ──
+
+test("dangling and looping symlink targets refuse at exit 5 with recovery help, never a raw fs error", async () => {
+  const base = await tempDir();
+  try {
+    const dangling = path.join(base, "dangling");
+    await symlink(path.join(base, "nowhere"), dangling);
+    const err = await expectRefusal(["--create-only", "--dir", dangling], /is a symlink/);
+    assert.equal(err.code, "ALREADY_EXISTS");
+    assert.match(String(err.help), /recipe add/);
+
+    const loop = path.join(base, "loop");
+    await symlink(loop, loop);
+    const looping = await expectRefusal(["--create-only", "--dir", loop], /is a symlink/);
+    assert.equal(looping.code, "ALREADY_EXISTS");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("the CLI maps a core VersionConflict to a structured ALREADY_EXISTS conflict (seam-pinned)", async () => {
+  const base = await tempDir();
+  try {
+    let out = "";
+    let thrown: unknown;
+    try {
+      await init(["--create-only", "--dir", path.join(base, "raced"), "--json"], {
+        stdout: (s) => (out += s),
+        initBundleImpl: async () => {
+          throw new VersionConflict("index.md", null, "sha256:other");
+        },
+      });
+    } catch (err) {
+      thrown = err;
+    }
+    assert.ok(thrown instanceof CliError, out);
+    assert.equal(thrown.code, "ALREADY_EXISTS");
+    assert.match(thrown.message, /gained a bundle concurrently/);
+    assert.match(String(thrown.help), /recipe add/);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("claim closes the preflight-to-write window deterministically for both target shapes", async () => {
+  const { claimCreateOnlyTarget } = await import("../src/bundle.js");
+  const base = await tempDir();
+  try {
+    // Absent at preflight, concurrently created WITH CONTENT before the claim -> refusal, files
+    // preserved. (A concurrently created EMPTY directory converges — same acceptance as preflight.)
+    const raced = path.join(base, "raced-dir");
+    const target = await assertCreateOnlyTarget(raced);
+    await mkdir(target); // the concurrent creator...
+    await writeFile(path.join(target, "theirs.txt"), "keep\n"); // ...with content
+    await assert.rejects(
+      () => claimCreateOnlyTarget(target),
+      (err: unknown) => err instanceof CliError && /gained content after preflight/.test(err.message),
+    );
+    assert.equal(readFileSync(path.join(target, "theirs.txt"), "utf8"), "keep\n");
+
+    // A symlink swapped in at the claimed path refuses as a shape change.
+    const swapped = path.join(base, "swapped");
+    const swappedTarget = await assertCreateOnlyTarget(swapped);
+    const real = path.join(base, "swap-dest");
+    await mkdir(real);
+    await symlink(real, swappedTarget);
+    await assert.rejects(
+      () => claimCreateOnlyTarget(swappedTarget),
+      (err: unknown) => err instanceof CliError && /changed shape after preflight/.test(err.message),
+    );
+
+    // Empty at preflight, file dropped in before the claim -> adoption refusal, file preserved.
+    const drifted = path.join(base, "drifted");
+    await mkdir(drifted);
+    const verified = await assertCreateOnlyTarget(drifted);
+    await writeFile(path.join(verified, "foreign.txt"), "keep\n");
+    await assert.rejects(
+      () => claimCreateOnlyTarget(verified),
+      (err: unknown) => err instanceof CliError && /gained content after preflight/.test(err.message),
+    );
+    assert.equal(readFileSync(path.join(verified, "foreign.txt"), "utf8"), "keep\n");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("a project-root target holding a conventional workspace is refused BY NAME, not as clutter", async () => {
+  const base = await tempDir();
+  try {
+    const proj = path.join(base, "proj");
+    await runInit(["--dir", path.join(proj, ".agentstate-lite"), "--recipe", "none"]);
+    const err = await expectRefusal(
+      ["--create-only", "--dir", proj],
+      /existing project workspace .*\.agentstate-lite already serves this location/,
+    );
+    assert.equal(err.code, "ALREADY_EXISTS");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
