@@ -1,11 +1,18 @@
 ---
 type: Task
 title: Add cached nonblocking update orientation
-status: todo
+status: in_progress
 priority: '1'
-description: 'Implement N4: default home/session cached notice and detached bounded refresh.'
-actor: openai/codex
-timestamp: '2026-07-31T21:26:27.292Z'
+description: >-
+  CLAIMED by codex-orientation-orchestrator on 2026-08-05. Proximate goal: add
+  cached, nonblocking default update orientation without adding registry latency
+  or destabilizing JSON/MCP output; this serves the ultimate goal by making the
+  npm-installed CLI self-orienting across sessions without founder intervention.
+  Team will follow domain-model/plan review, Builder, independent exact-SHA
+  Review, adversarial offline/concurrency/output QA, and repository gate.
+actor: codex-orientation-orchestrator
+assignee: codex-orientation-orchestrator
+timestamp: '2026-08-05T20:34:20.998Z'
 ---
 # Goal
 
