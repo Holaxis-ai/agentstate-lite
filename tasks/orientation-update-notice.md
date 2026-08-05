@@ -4,14 +4,15 @@ title: Add cached nonblocking update orientation
 status: in_progress
 priority: '1'
 description: >-
-  BUILDER COMPLETE on feat/orientation-update-notice at exact SHA
-  21a028c418bf30ecb72aa77a0b06a244aee769d0. Approved active/cooldown protocol
-  implemented across 11 files with focused 119/119, build, typecheck, generated
-  skill, npm package proof, full npm run check, and UI E2E 19/19 passing. Branch
-  is pushed/clean. Gate is now independent exact-SHA Review; QA has not started.
+  EXACT-SHA REVIEW FAILED at 21a028c. Expired-cooldown quarantine can
+  ABA-capture a successor active token; because the parent rechecks cache but
+  not matching active authority immediately before spawn, two detached workers
+  can start even though the captured worker later exits before U3. Builder is
+  adding deterministic C/A/B regression and pre-spawn active-token revalidation;
+  QA remains blocked.
 actor: codex-orientation-orchestrator
 assignee: codex-orientation-orchestrator
-timestamp: '2026-08-05T21:29:08.769Z'
+timestamp: '2026-08-05T21:36:56.495Z'
 ---
 # Goal
 
