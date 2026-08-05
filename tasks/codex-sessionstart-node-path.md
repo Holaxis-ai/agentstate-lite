@@ -1,17 +1,16 @@
 ---
 type: Task
 title: Make Codex SessionStart hook independent of GUI PATH
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  REMEDIATED on PR 207 exact head 68e5c91. Historical bare
-  aslite/agentstate-lite session-start hooks remain mutation-owned but now
-  classify legacy_path_bound, so hookNeedsUpdate surfaces the reinstall prompt;
-  only PATH-independent generated Node launches classify current. Minimal-PATH
-  package proof and full npm run check pass. Task remains in_progress pending
-  independent exact-SHA re-review.
-actor: codex-durable-hook
-timestamp: '2026-08-05T00:03:24.861Z'
+  DONE. PR 207 exact merged head 68e5c91 independently re-reviewed:
+  minimal-GUI-PATH launch, PATH-bound migration signal, durable absolute
+  Node/runtime authority, current CI, and focused hook/authority/session-start
+  suites all pass. The related Unicode ownership counterexample belongs to
+  tasks/hook-compatibility-ownership and does not reopen this PATH task.
+actor: codex-pr207-housekeeping-coordinator
+timestamp: '2026-08-05T20:41:22.356Z'
 ---
 # Problem
 
