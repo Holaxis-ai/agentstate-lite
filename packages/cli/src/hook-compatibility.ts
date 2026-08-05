@@ -28,6 +28,12 @@ export interface HookEntryContext {
 }
 
 const CURRENT_REMEDY = "re-run `aslite hook install` from the durable global npm installation";
+const SAFE_UNQUOTED_HOOK_TOKEN = /^[A-Za-z0-9_@%+=:,./-]+$/;
+
+/** The complete unquoted token language shared by the hook writer and recognizer. */
+export function isSafeUnquotedHookToken(value: string): boolean {
+  return SAFE_UNQUOTED_HOOK_TOKEN.test(value);
+}
 
 function result(
   state: HookCompatibilityState,
@@ -101,18 +107,7 @@ export function tokenizeGeneratedHookCommand(command: string): string[] | undefi
         i += 2;
         continue;
       }
-      const code = ch.charCodeAt(0);
-      if (
-        code < 0x20 ||
-        code === 0x7f ||
-        /[;&|<>`$()\\]/.test(ch) ||
-        ch === "*" ||
-        ch === "?" ||
-        ch === "[" ||
-        ch === "]"
-      ) {
-        return undefined;
-      }
+      if (!isSafeUnquotedHookToken(ch)) return undefined;
       token += ch;
       i += 1;
     }

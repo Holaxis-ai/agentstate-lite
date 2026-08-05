@@ -57,6 +57,7 @@ import { HOST_CONFIG_ROOTS, resolveHostConfigRoot } from "../host-config.js";
 import {
   classifyHookCommand,
   classifyHookEntry,
+  isSafeUnquotedHookToken,
   isOwnedHookCompatibility,
   type HookCompatibility,
 } from "../hook-compatibility.js";
@@ -115,7 +116,7 @@ const OPENCODE_MANAGED_MARKER = `axi-sdk-js managed opencode plugin: ${HOOK_MARK
  * explicit grammar fails closed here.
  */
 function generatedShellArg(value: string): string {
-  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(value) ? value : shellArg(value);
+  return isSafeUnquotedHookToken(value) ? value : shellArg(value);
 }
 
 export function sessionStartHookCommand(

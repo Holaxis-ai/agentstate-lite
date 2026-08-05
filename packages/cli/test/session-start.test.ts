@@ -60,7 +60,12 @@ import {
   sessionStartHookCommand,
 } from "../src/commands/hook.js";
 import { CliError } from "../src/errors.js";
-import { tokenizeGeneratedHookCommand } from "../src/hook-compatibility.js";
+import { isSafeUnquotedHookToken, tokenizeGeneratedHookCommand } from "../src/hook-compatibility.js";
+import {
+  SHELL_FOREIGN_COMMANDS,
+  localDevExecutable,
+  stableNodePair,
+} from "./hook-shell-fixtures.js";
 import { readCursor, readMarker, readSelfActors, type AwarenessCache } from "../src/cursor.js";
 import { initBundle, writeDoc } from "@agentstate-lite/core";
 import { addCatalogEntry } from "../src/catalog.js";
@@ -978,15 +983,6 @@ test("isManagedHookCommand: exact historical/generated tokens, never marker subs
 
 const FOREIGN_HOOK = { type: "command", command: "some-other-tool session-start", timeout: 30 };
 
-const GLOB_NEAR_MATCH_HOOKS = [
-  "/tmp/*/packages/cli/dist/agentstate-lite.mjs session-start",
-  "/tmp/?/packages/cli/dist/agentstate-lite.mjs session-start",
-  "/tmp/[ab]/packages/cli/dist/agentstate-lite.mjs session-start",
-  "/opt/*/bin/node /opt/*/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
-  "/opt/?/bin/node /opt/?/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
-  "/opt/[ab]/bin/node /opt/[ab]/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
-];
-
 test("computeSessionStartHookInstall: a LEGACY hook is rewritten IN PLACE — no duplicate appended", () => {
   const settings = {
     hooks: {
@@ -1066,15 +1062,32 @@ test("uninstall + status recognize historical and generated managed forms; a for
   assert.equal(readHookStatus(foreignOnly).installed, false);
 });
 
-test("built uninstall preserves unquoted direct and Node glob near-matches byte-for-byte", async () => {
-  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-glob-foreign-"));
+test("writer and recognizer round-trip the complete printable alphabet and representative Node pairs", () => {
+  for (let code = 0x20; code <= 0x7e; code += 1) {
+    const character = String.fromCharCode(code);
+    const executable = localDevExecutable(character);
+    const command = sessionStartHookCommand(executable);
+    assert.deepEqual(tokenizeGeneratedHookCommand(command), [executable, "session-start"], JSON.stringify(character));
+    assert.equal(isManagedHookCommand(command), true, JSON.stringify(character));
+    assert.equal(command.startsWith("'"), !isSafeUnquotedHookToken(executable), JSON.stringify(character));
+  }
+  for (const character of ["{a,b}", "${HOME}", "*", "café", "a b", "a'b", String.raw`a\b`]) {
+    const [runtime, executable] = stableNodePair(character);
+    const command = sessionStartHookCommand(runtime, [executable, "session-start"]);
+    assert.deepEqual(tokenizeGeneratedHookCommand(command), [runtime, executable, "session-start"], character);
+    assert.equal(isManagedHookCommand(command), true, character);
+  }
+});
+
+test("built uninstall preserves the complete shell-expansion taxonomy byte-for-byte", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-shell-foreign-"));
   const settings = JSON.stringify(
     {
       hooks: {
         SessionStart: [
           {
             matcher: "",
-            hooks: GLOB_NEAR_MATCH_HOOKS.map((command) => ({ type: "command", command, timeout: 10 })),
+            hooks: SHELL_FOREIGN_COMMANDS.map(({ command }) => ({ type: "command", command, timeout: 10 })),
           },
         ],
       },

@@ -4,9 +4,11 @@ import assert from "node:assert/strict";
 import {
   classifyHookCommand,
   classifyHookEntry,
+  isSafeUnquotedHookToken,
   isOwnedHookCompatibility,
   tokenizeGeneratedHookCommand,
 } from "../src/hook-compatibility.js";
+import { SHELL_FOREIGN_COMMANDS, localDevExecutable } from "./hook-shell-fixtures.js";
 
 const stable =
   "'/opt/aslite/bin/node' '/opt/aslite/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs' 'session-start'";
@@ -45,6 +47,48 @@ test("generated command tokenizer accepts emitted quoting and rejects shell beha
     assert.equal(tokenizeGeneratedHookCommand(command), undefined, command);
   }
   assert.deepEqual(tokenizeGeneratedHookCommand("echo agentstate-lite"), ["echo", "agentstate-lite"]);
+});
+
+test("the recognizer's unquoted alphabet is exactly the writer's closed alphabet", () => {
+  const alphabet = new Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_@%+=:,./-");
+  for (let code = 0x21; code <= 0x7e; code += 1) {
+    const character = String.fromCharCode(code);
+    const safe = alphabet.has(character);
+    assert.equal(isSafeUnquotedHookToken(character), safe, `predicate drift for ${JSON.stringify(character)}`);
+    const command = `${localDevExecutable(character)} session-start`;
+    assert.equal(
+      tokenizeGeneratedHookCommand(command) !== undefined,
+      safe,
+      `tokenizer drift for ${JSON.stringify(character)}`,
+    );
+  }
+  for (const character of [" ", "é", "\u{1f642}", "\n", "\t"]) {
+    assert.equal(isSafeUnquotedHookToken(character), false, JSON.stringify(character));
+  }
+});
+
+test("shell-expansion taxonomy is unmanaged before the semantic classifier", () => {
+  for (const { family, command } of SHELL_FOREIGN_COMMANDS) {
+    assert.equal(tokenizeGeneratedHookCommand(command), undefined, family);
+    assert.equal(classifyHookCommand(command).state, "unmanaged", family);
+  }
+});
+
+test("supported quote grammar retains literal shell characters only inside managed layouts", () => {
+  const table: Array<[string, string]> = [
+    ["'/tmp/{a,b}/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    ['"/tmp/{a,b}/packages/cli/dist/agentstate-lite.mjs" session-start', "legacy_path_bound"],
+    ["'/tmp/#/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    ["'/tmp/~/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    ["'/tmp/!/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    ["'/tmp/café/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    [String.raw`"/tmp/\${HOME}/packages/cli/dist/agentstate-lite.mjs" session-start`, "legacy_path_bound"],
+    [String.raw`"/tmp/\$(pwd)/packages/cli/dist/agentstate-lite.mjs" session-start`, "legacy_path_bound"],
+    ["'echo {a,b}' session-start", "unmanaged"],
+  ];
+  for (const [command, state] of table) {
+    assert.equal(classifyHookCommand(command).state, state, command);
+  }
 });
 
 test("command compatibility recognizes exact generated history and rejects near-matches", () => {
