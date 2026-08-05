@@ -4,17 +4,19 @@ title: Add cached nonblocking update orientation
 status: in_progress
 priority: '1'
 description: >-
-  ADVERSARIAL QA PASS at exact SHA 8056f525766551556dedb31928d09e821fc4a58e.
-  Fresh detached QA passed external filesystem/privacy 9/9, focused 120/120,
-  built base-vs-candidate output parity 4/4, suppression/protocol/no-write
-  18/18, six-process authority/lease/cooldown/ABA probes, exact five-field
-  notice placement, fixed request shape, and cached session-start at 199 ms.
-  Candidate remained clean/pinned and only the declared private cache state was
-  written. Evidence: context-notes/orientation-update-adversarial-qa-8056f52.
-  Next and final dependency: full repository/package gate at this exact SHA.
+  READY FOR PR at exact pushed SHA 8056f525766551556dedb31928d09e821fc4a58e.
+  Independent exact-SHA review passed; adversarial QA passed filesystem/privacy
+  9/9, focused 120/120, output parity 4/4, suppression/protocol/no-write 18/18,
+  real multi-process authority/lease/cooldown/ABA probes, exact notice/request
+  behavior, and 199 ms cached session-start. Final ASLITE_NO_UPDATE_CHECK=1 npm
+  run check exited 0, including package/generated-skill gates and browser 19/19.
+  Worktree is clean and local HEAD equals origin branch. Evidence:
+  context-notes/orientation-update-adversarial-qa-8056f52 and
+  context-notes/orientation-update-final-gate-8056f52. No source edits followed
+  Review or QA; next dependency is Brian-owned PR creation and merge.
 actor: codex-orientation-orchestrator
 assignee: codex-orientation-orchestrator
-timestamp: '2026-08-05T22:44:24.271Z'
+timestamp: '2026-08-05T22:49:54.755Z'
 ---
 # Goal
 

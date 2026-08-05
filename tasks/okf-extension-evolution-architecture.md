@@ -4,7 +4,7 @@ title: Define an evolution-safe OKF extension architecture
 status: in_progress
 priority: '1'
 actor: codex-main
-timestamp: '2026-08-05T22:29:22.459Z'
+timestamp: '2026-08-05T22:49:08.051Z'
 ---
 # Objective
 
@@ -36,3 +36,7 @@ Claimed by codex-main. Domain-model and research-plan phase is next.
 [depends on](okf-extension-evolution-architecture-options.md)
 
 [depends on](okf-extension-evolution-adversarial-review.md)
+
+[depends on](okf-extension-evolution-standards-cross-review.md)
+
+[depends on](okf-extension-evolution-architecture-cross-review.md)
