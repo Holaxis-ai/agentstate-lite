@@ -4,14 +4,14 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  REPAIR BUILT on branch fix/pr207-hook-ownership-housekeeping at exact SHA
-  e2a337bd3e0992df5655dc916df08c7425989910. POSIX-correct double-quote parsing
-  preserves Unicode escape near-matches as foreign, and uninstall receipts name
-  preserved unmanaged OpenCode plugins. Focused 70/70 plus npm run check pass.
-  Gate now at independent exact-SHA Review; task remains open through Review,
-  adversarial byte-preservation QA, and repository evidence.
+  REVIEW FAILED at repair SHA e2a337bd3e0992df5655dc916df08c7425989910.
+  Unicode-escape ownership and unmanaged OpenCode receipt are fixed, but
+  exact-SHA review proved unquoted POSIX glob paths (*, ?, bracket forms,
+  including Node variants) still classify owned and are destructively removed by
+  uninstall after shell expansion. Repair is back with the housekeeping Builder;
+  fresh exact-SHA Review remains mandatory.
 actor: codex-pr207-housekeeping-coordinator
-timestamp: '2026-08-05T20:54:19.143Z'
+timestamp: '2026-08-05T21:00:56.776Z'
 ---
 # Goal
 
