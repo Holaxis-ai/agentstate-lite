@@ -4,19 +4,16 @@ title: Add cached nonblocking update orientation
 status: in_progress
 priority: '1'
 description: >-
-  READY FOR PR at exact pushed SHA 8056f525766551556dedb31928d09e821fc4a58e.
-  Independent exact-SHA review passed; adversarial QA passed filesystem/privacy
-  9/9, focused 120/120, output parity 4/4, suppression/protocol/no-write 18/18,
-  real multi-process authority/lease/cooldown/ABA probes, exact notice/request
-  behavior, and 199 ms cached session-start. Final ASLITE_NO_UPDATE_CHECK=1 npm
-  run check exited 0, including package/generated-skill gates and browser 19/19.
-  Worktree is clean and local HEAD equals origin branch. Evidence:
-  context-notes/orientation-update-adversarial-qa-8056f52 and
-  context-notes/orientation-update-final-gate-8056f52. No source edits followed
-  Review or QA; next dependency is Brian-owned PR creation and merge.
+  PR #209 OPEN at exact reviewed, QA-passed, and final-gated SHA
+  8056f525766551556dedb31928d09e821fc4a58e:
+  https://github.com/Holaxis-ai/agentstate-lite/pull/209. Independent review,
+  adversarial multi-process/filesystem/privacy/output QA, and final
+  ASLITE_NO_UPDATE_CHECK=1 npm run check all passed without later source edits.
+  Feature worktree is clean and remote head matches the pinned SHA. Next
+  dependency: GitHub CI/review and Brian-owned merge.
 actor: codex-orientation-orchestrator
 assignee: codex-orientation-orchestrator
-timestamp: '2026-08-05T22:49:54.755Z'
+timestamp: '2026-08-05T22:51:59.340Z'
 ---
 # Goal
 
