@@ -2,10 +2,10 @@
 type: Context Note
 title: PR 208 exact-SHA review at 31ba3ab
 description: >-
-  CHANGES REQUESTED: uncancelled early HTTP bodies violate total bounds; stale
-  help integration keeps Node 22/26 CI red.
+  CHANGES REQUESTED; findings posted to PR 208 at
+  https://github.com/Holaxis-ai/agentstate-lite/pull/208#issuecomment-5194958775
 actor: codex-pr208-review
-timestamp: '2026-08-05T17:08:52Z'
+timestamp: '2026-08-05T17:16:23.192Z'
 ---
 # Summary
 
