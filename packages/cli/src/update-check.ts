@@ -320,6 +320,20 @@ export async function fetchSupportedReleasePackument(
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
+  const rejectResponse = async (
+    response: Response,
+    code: UpdateUnavailableCode,
+    message: string,
+  ): Promise<never> => {
+    controller.abort();
+    try {
+      await response.body?.cancel();
+    } catch {
+      // Aborting a real fetch may error the stream before explicit cancellation observes it.
+    }
+    throw new TransportFailure(code, message);
+  };
+
   const request = async (): Promise<unknown> => {
     const response = await fetchImpl(endpoint, {
       method: "GET",
@@ -328,14 +342,18 @@ export async function fetchSupportedReleasePackument(
       signal: controller.signal,
     });
     if (response.status >= 300 && response.status < 400) {
-      throw new TransportFailure("http", "npm registry redirected the fixed endpoint");
+      return await rejectResponse(response, "http", "npm registry redirected the fixed endpoint");
     }
     if (response.status !== 200) {
-      throw new TransportFailure("http", `npm registry returned HTTP ${response.status}`);
+      return await rejectResponse(response, "http", `npm registry returned HTTP ${response.status}`);
     }
     const contentLength = response.headers.get("content-length");
     if (contentLength && /^\d+$/.test(contentLength) && Number(contentLength) > maxBytes) {
-      throw new TransportFailure("too_large", `npm registry response exceeded ${maxBytes} bytes`);
+      return await rejectResponse(
+        response,
+        "too_large",
+        `npm registry response exceeded ${maxBytes} bytes`,
+      );
     }
     if (!response.body) throw new TransportFailure("malformed", "npm registry response body was empty");
     const reader = response.body.getReader();
@@ -347,6 +365,11 @@ export async function fetchSupportedReleasePackument(
       total += value.byteLength;
       if (total > maxBytes) {
         controller.abort();
+        try {
+          await reader.cancel();
+        } catch {
+          // The abort may error the reader before explicit cancellation observes it.
+        }
         throw new TransportFailure("too_large", `npm registry response exceeded ${maxBytes} bytes`);
       }
       chunks.push(value);

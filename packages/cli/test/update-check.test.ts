@@ -288,6 +288,69 @@ test("bounded transport sends the exact request and never follows redirects or r
   }
 });
 
+test("early response rejection aborts and cancels every untrusted response stream", async () => {
+  for (const [label, status, headers, code] of [
+    ["redirect", 302, { location: "https://example.invalid/target" }, "http"],
+    ["http", 503, {}, "http"],
+    ["declared oversized", 200, { "content-length": "9" }, "too_large"],
+  ] as const) {
+    let cancelCalls = 0;
+    let requestSignal: AbortSignal | null = null;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(Uint8Array.of(0x78));
+      },
+      cancel() {
+        cancelCalls += 1;
+      },
+    });
+    const result = await fetchSupportedReleasePackument({
+      maxBytes: 8,
+      fetchImpl: async (_input, init) => {
+        requestSignal = init?.signal ?? null;
+        return new Response(body, { status, headers });
+      },
+    });
+    assert.equal(result.ok, false, label);
+    if (!result.ok) assert.equal(result.unavailable.code, code, label);
+    assert.equal(requestSignal?.aborted, true, `${label}: request was aborted`);
+    assert.equal(cancelCalls, 1, `${label}: response body was cancelled before return`);
+  }
+});
+
+test("an early streaming HTTP failure closes the peer connection within the total bound", async () => {
+  const timeoutMs = 200;
+  let resolvePeerClosed: (() => void) | undefined;
+  const peerClosed = new Promise<void>((resolve) => {
+    resolvePeerClosed = resolve;
+  });
+  const server = createServer((_request, response) => {
+    response.writeHead(503, { "content-type": "application/octet-stream" });
+    response.flushHeaders();
+    const interval = setInterval(() => response.write("x"), 10);
+    response.on("close", () => {
+      clearInterval(interval);
+      resolvePeerClosed?.();
+    });
+  });
+  const origin = await listen(server);
+  const startedAt = Date.now();
+  try {
+    const result = await fetchSupportedReleasePackument({ endpoint: origin, timeoutMs, maxBytes: 8 });
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.unavailable.code, "http");
+    await Promise.race([
+      peerClosed,
+      new Promise<never>((_resolve, reject) =>
+        setTimeout(() => reject(new Error("peer connection remained open past the total bound")), timeoutMs),
+      ),
+    ]);
+    assert.ok(Date.now() - startedAt < timeoutMs, "peer connection closed before the total deadline");
+  } finally {
+    await close(server);
+  }
+});
+
 test("bounded transport classifies HTTP, malformed, oversized, timeout, and offline failures", async () => {
   const json = JSON.stringify(packument("0.1.0-pre.3"));
   const server = createServer((request, response) => {

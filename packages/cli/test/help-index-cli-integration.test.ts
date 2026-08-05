@@ -53,7 +53,7 @@ for (const argv of [["--help"], ["-h"], ["help"]]) {
     assert.match(out, /\nDocuments & links:\n {2}doc write <id> --type <t>/);
     assert.match(
       out,
-      /\nSession:\n {2}version \[--json\][^\n]* — Show the complete local build\/runtime identity[^\n]*\n {2}session-start/,
+      /\nSession:\n {2}version \[--check\] \[--tag latest\|next\] \[--json\][^\n]* — Show the complete local build\/runtime identity[^\n]*\n {2}session-start/,
     );
     assert.match(out, /\n {2}hook install\|status\|uninstall/);
 
