@@ -2,7 +2,7 @@
 type: Roadmap
 title: agentstate-lite — Roadmap (near-term spine)
 actor: openai/codex
-timestamp: '2026-07-31T21:28:32.867Z'
+timestamp: '2026-08-05T02:00:50.112Z'
 ---
 # agentstate-lite — Roadmap (near-term spine)
 
@@ -197,3 +197,5 @@ items the same way, so the whole chain (roadmap → item → task) is one filter
 [contains](roadmap-items/launcher-home-surface.md)
 
 [contains](roadmap-items/conversational-mcp-views.md)
+
+[contains](roadmap-items/okf-compatibility-upstream-stewardship.md)
