@@ -4,8 +4,8 @@ title: 'Version identity, update, compatibility, and staged-release protocols'
 description: >-
   Normative schemas, state precedence, budgets, compatibility tables, build
   flavors, staged-release state machine, and two-release proof.
-actor: codex-durable-hook
-timestamp: '2026-08-04T23:53:55.583Z'
+actor: codex-orientation-orchestrator
+timestamp: '2026-08-05T20:53:18.711Z'
 ---
 # Purpose
 
@@ -136,10 +136,11 @@ Default human/TOON output is the same data. No check changes npm, integrations, 
 
 - Eligible surfaces: bare/home/session-start in default output mode only. `home --json` and `session-start --json` are stable machine projections: they neither display cached update data nor launch refresh work.
 - Passive track: `latest` only. A `next` preview is never advertised passively.
-- Cache: `~/.agentstate/update-check-v1.json`, directory 0700/file 0600 through the existing atomic writer. Schema `aslite.update-cache.v1` binds package name, running version, track, successful check result, `checked_at`, and `expires_at`.
-- TTL: 86,400,000 ms (24 hours). Cache entries for another running version/track, unavailable results, malformed data, unsafe file types/permissions, or expired display are ignored.
-- Cross-process lease: `~/.agentstate/update-check-v1.lock`, exclusive create, random token, 30,000 ms stale lease. At most one eligible process starts one worker per TTL window. Stale/foreign/symlinked locks fail closed and never block rendering.
-- Refresh: one detached invocation of the exact current executable's private `__update-refresh-v1` worker, stdio ignored, no retries, using the same 2,000 ms/1 MiB network primitive. Parent returns without waiting. Worker writes only a successful latest-track cache entry and removes only its matching lease token.
+- Cache: `~/.agentstate/update-check-v1.json`, directory 0700/file 0600 through the existing atomic writer, with a 65,536-byte read/write ceiling. Schema `aslite.update-cache.v1` binds package name, running version, track, complete successful check result, canonical `checked_at`, and canonical `expires_at`.
+- Cache TTL: 86,400,000 ms (24 hours), exactly `expires_at - checked_at`. Cache entries for another running version/track, unavailable results, malformed/oversized data, unsafe file types/owner/permissions, future check time, noncanonical time, or expired display are ignored. Unsafe state fails closed without replacement; safely stored ordinary invalid/expired state may refresh.
+- Cross-process coordination: `~/.agentstate/update-check-v1.lock`, maximum 4,096 bytes, is absent or a complete private `aslite.update-lease.v1` record published atomically from an exclusive 0600 temp; a killed writer must never expose partial bytes at the fixed path. The schema is an exact union: `active` binds one random token, canonical start time, a 30,000 ms lease expiry, and the 86,400,000 ms attempt-window expiry; `cooldown` retains that token/start/window expiry after the active lease ends without a successful cache. At most one eligible process starts one worker per attempt window, including unavailable checks and interrupted workers after lease publication.
+- Active/cooldown transitions fail closed and never block rendering. A live active record or live cooldown means render-only. An unavailable worker atomically converts only its matching unexpired active record to cooldown; a successful worker writes the cache and removes only its matching active record. A recognized stale active record is converted to its original attempt-window cooldown; an expired cooldown is removed by a cleanup-only visit, and only a later eligible visit may acquire. Foreign/malformed/symlinked/non-regular/oversized/unsafe-owner-or-mode state is never removed automatically. Fixed-path removal/recovery uses a token-validated quarantine transition rather than read-then-unlink, and a worker revalidates a matching unexpired active lease before network work and immediately before cache commit.
+- Refresh: one detached invocation of the exact current executable's private `__update-refresh-v1` worker, stdio ignored, no retries, using the same 2,000 ms/1 MiB network primitive. Parent returns without waiting and removes only its matching active record if spawn itself fails. The worker derives current identity and latest track itself; missing/invalid private-worker arguments are silent zero-work exits.
 - One-run flag: `--no-update-check` on home/session-start. Environment opt-outs: presence of `ASLITE_NO_UPDATE_CHECK` or `NO_UPDATE_NOTIFIER`; `CI` presence also disables. Tests set `ASLITE_NO_UPDATE_CHECK`. Any suppressor disables both cached display and refresh; explicit `version --check` is unaffected.
 - Cached output is a single additive `update_notice` object in default home/session-start TOON, containing only `status`, running/selected version, checked time, and nullable exact command. It appears only for `upgrade_available`, `rollback_available`, or `deprecated`; the deprecated/equal inconsistent-policy notice has `command: null`.
 - The session-start render path and its existing ten-second hook timeout are not extended. No network promise, child close, or lease wait is awaited by rendering. Ordinary commands and all MCP/JSON protocol output are byte-unaffected.

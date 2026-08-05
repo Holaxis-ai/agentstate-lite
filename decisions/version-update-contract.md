@@ -5,8 +5,8 @@ description: >-
   Defines the npm release source, complete build identity, supported-release
   discovery, explicit upgrade journey, integration compatibility, human
   approval, and rollback boundary.
-actor: openai/codex
-timestamp: '2026-07-31T21:21:33.273Z'
+actor: codex-orientation-orchestrator
+timestamp: '2026-08-05T20:53:18.531Z'
 ---
 # Decision
 
@@ -52,7 +52,7 @@ AgentState will treat `@holaxis/aslite` on npm as the single executable authorit
 
 # 5. Passive orientation and privacy
 
-- Passive latest-track awareness exists only for bare/home/session-start default output. It displays a valid cached actionable result and may launch one detached refresh per 24 hours; rendering never waits. `home/session-start --json`, ordinary commands, MCP, CI, and tests neither display nor refresh.
+- Passive latest-track awareness exists only for bare/home/session-start default output. It displays a valid cached actionable result and may start at most one detached refresh in a 24-hour attempt window; a private active-lease/cooldown record preserves that bound after unavailable checks or an interrupted worker, while rendering never waits. `home/session-start --json`, ordinary commands, MCP, CI, and tests neither display nor refresh.
 - `--no-update-check`, presence of `ASLITE_NO_UPDATE_CHECK`, `NO_UPDATE_NOTIFIER`, or `CI` suppress both cached display and refresh. Explicit `version --check` is unaffected.
 - The exact cache/lease paths, permissions, TTL/lease, private worker, network bounds, and optional `update_notice` shape are fixed by the protocol. Corrupt/unsafe/mismatched state is ignored and cannot fail or delay orientation.
 - Requests send no installed version, cwd, bundle, actor, or usage data. npm necessarily sees the public package coordinate and ordinary network metadata; docs say so plainly.
