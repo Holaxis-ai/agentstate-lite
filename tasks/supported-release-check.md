@@ -1,13 +1,16 @@
 ---
 type: Task
 title: Add rollback-aware supported-release check
-status: todo
+status: in_progress
 priority: '1'
 description: >-
-  Implement U3: read-only exact npm dist-tag comparison and version-pinned
-  reconciliation.
-actor: openai/codex
-timestamp: '2026-07-31T21:26:27.075Z'
+  CLAIMED by codex-supported-release-check on 2026-08-05. Implementing approved
+  U3: bounded read-only npm dist-tag comparison, rollback-aware exact version
+  selection, version-pinned remediation, stable output/exit behavior, and
+  adversarial no-write tests.
+actor: codex-supported-release-check
+assignee: codex-supported-release-check
+timestamp: '2026-08-05T16:24:44.952Z'
 ---
 # Goal
 
