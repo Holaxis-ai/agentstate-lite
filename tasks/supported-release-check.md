@@ -1,19 +1,18 @@
 ---
 type: Task
 title: Add rollback-aware supported-release check
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  MERGE READY: PR #208 exact SHA 32108c3c6cd59a41c8d5f8fe7fafb705331cb1f9 passed
-  independent re-review, adversarial registry/output/no-write QA with no
-  findings, GitHub Node 20/22/26 checks, and the final local full npm run check.
-  The first full run had one unrelated load-sensitive session-start timing
-  failure; it passed isolated and in the complete rerun, with no source change.
-  Final evidence: context-notes/pr-208-final-gate-32108c3. Awaiting Brian-owned
-  merge; close this task after the merge receipt.
+  DONE: PR #208 merged on 2026-08-05 at merge commit
+  164ba7edb89c31678856020ee794f80530e6c276 from exact gated head
+  32108c3c6cd59a41c8d5f8fe7fafb705331cb1f9. Independent re-review, adversarial
+  registry/output/no-write QA, GitHub Node 20/22/26 checks, and the final full
+  npm run check all passed. Final evidence:
+  context-notes/pr-208-final-gate-32108c3.
 actor: codex-supported-release-check
 assignee: codex-supported-release-check
-timestamp: '2026-08-05T19:26:42.254Z'
+timestamp: '2026-08-05T19:53:18.824Z'
 ---
 # Goal
 
