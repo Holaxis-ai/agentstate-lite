@@ -1,19 +1,18 @@
 ---
 type: Task
 title: Add cached nonblocking update orientation
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  PR #209 OPEN at exact reviewed, QA-passed, and final-gated SHA
-  8056f525766551556dedb31928d09e821fc4a58e:
-  https://github.com/Holaxis-ai/agentstate-lite/pull/209. Independent review,
-  adversarial multi-process/filesystem/privacy/output QA, and final
-  ASLITE_NO_UPDATE_CHECK=1 npm run check all passed without later source edits.
-  Feature worktree is clean and remote head matches the pinned SHA. Next
-  dependency: GitHub CI/review and Brian-owned merge.
+  DONE. PR #209 merged on 2026-08-05 at merge commit
+  28cbf9139ec62f2ebeaf5b4ebb230911e4e72071 from exact gated head
+  8056f525766551556dedb31928d09e821fc4a58e. Independent exact-SHA review,
+  adversarial multi-process/filesystem/privacy/output QA, final
+  repository/package gate, and browser 19/19 all passed; no source edits
+  followed review or QA. Cached nonblocking update orientation is now on main.
 actor: codex-orientation-orchestrator
 assignee: codex-orientation-orchestrator
-timestamp: '2026-08-05T22:51:59.340Z'
+timestamp: '2026-08-05T23:06:14.713Z'
 ---
 # Goal
 
