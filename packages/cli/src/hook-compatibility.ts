@@ -244,11 +244,12 @@ export function classifyHookCommand(command: string): HookCompatibility {
     return result("stale", "recognized pre-session-start generated npx command");
   }
 
+  const executableLayout = tokens.length === 3 ? managedExecutableLayout(tokens[1]!) : undefined;
   if (
     tokens.length === 3 &&
     isAbsolute(tokens[0]!) &&
     normalize(tokens[0]!).endsWith(`${sep}bin${sep}node`) &&
-    managedExecutableLayout(tokens[1]!) !== undefined &&
+    (executableLayout === "local_dev" || executableLayout === "marketplace") &&
     tokens[2] === "session-start"
   ) {
     return result("current", "recognized generated PATH-independent Node launch");

@@ -76,3 +76,63 @@ export const stableNodePair = (segment: string): [string, string] => [
   `/opt/x${segment}x/bin/node`,
   `/opt/x${segment}x/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs`,
 ];
+
+export const MISMATCHED_NPM_NODE_COMMAND =
+  "/opt/runtime-a/bin/node /opt/npm-b/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start";
+
+/** Semantic provenance matrix: lexical validity alone does not establish a generated Node pair. */
+export const NODE_PACKAGE_PAIR_CASES: ReadonlyArray<{
+  family: string;
+  command: string;
+  state: "current" | "unmanaged";
+}> = [
+  {
+    family: "same-prefix npm A",
+    command:
+      "/opt/npm-a/bin/node /opt/npm-a/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+    state: "current",
+  },
+  {
+    family: "same-prefix npm B",
+    command:
+      "/opt/npm-b/bin/node /opt/npm-b/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+    state: "current",
+  },
+  { family: "foreign runtime with npm B", command: MISMATCHED_NPM_NODE_COMMAND, state: "unmanaged" },
+  {
+    family: "npm A runtime with npm B package",
+    command:
+      "/opt/npm-a/bin/node /opt/npm-b/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+    state: "unmanaged",
+  },
+  {
+    family: "npm B runtime with npm A package",
+    command:
+      "/opt/npm-b/bin/node /opt/npm-a/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+    state: "unmanaged",
+  },
+  {
+    family: "historical unscoped npm package is not a current Node pair",
+    command:
+      "/opt/aslite/bin/node /opt/aslite/lib/node_modules/aslite/dist/agentstate-lite.mjs session-start",
+    state: "unmanaged",
+  },
+  {
+    family: "independently located local-dev package",
+    command:
+      "/opt/runtime-a/bin/node /workspace/agentstate-lite/packages/cli/dist/agentstate-lite.mjs session-start",
+    state: "current",
+  },
+  {
+    family: "independently located marketplace cache package",
+    command:
+      "/opt/runtime-a/bin/node /Users/u/.codex/plugins/cache/holaxis/agentstate-lite/1.0.0/skills/agentstate-lite/scripts/agentstate-lite.mjs session-start",
+    state: "current",
+  },
+  {
+    family: "independently located repository marketplace package",
+    command:
+      "/opt/runtime-a/bin/node /workspace/agentstate-lite/plugins/agentstate-lite/skills/agentstate-lite/scripts/agentstate-lite.mjs session-start",
+    state: "current",
+  },
+];

@@ -11,6 +11,7 @@ import {
 } from "../src/hook-compatibility.js";
 import {
   LEXICAL_ENVELOPE_FOREIGN_COMMANDS,
+  NODE_PACKAGE_PAIR_CASES,
   SHELL_FOREIGN_COMMANDS,
   localDevExecutable,
 } from "./hook-shell-fixtures.js";
@@ -203,6 +204,13 @@ test("command compatibility recognizes exact generated history and rejects near-
   ];
   for (const [command, state] of table) {
     assert.equal(classifyHookCommand(command).state, state, command);
+  }
+});
+
+test("Node/package semantic provenance requires same-prefix npm but permits enumerated local layouts", () => {
+  for (const { family, command, state } of NODE_PACKAGE_PAIR_CASES) {
+    assert.notEqual(tokenizeGeneratedHookCommand(command), undefined, `${family}: lexical precondition`);
+    assert.equal(classifyHookCommand(command).state, state, family);
   }
 });
 

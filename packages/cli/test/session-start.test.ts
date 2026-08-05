@@ -67,6 +67,7 @@ import {
 } from "../src/hook-compatibility.js";
 import {
   LEXICAL_ENVELOPE_FOREIGN_COMMANDS,
+  MISMATCHED_NPM_NODE_COMMAND,
   SHELL_FOREIGN_COMMANDS,
   localDevExecutable,
   stableNodePair,
@@ -1203,6 +1204,96 @@ test("built uninstall preserves the complete shell-expansion taxonomy byte-for-b
     }
   } finally {
     await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("built install and uninstall preserve mismatched npm Node/package pairs across all hosts", async () => {
+  const control = await mkdtemp(path.join(tmpdir(), "aslite-hook-semantic-control-"));
+  const installBase = await mkdtemp(path.join(tmpdir(), "aslite-hook-semantic-install-"));
+  const uninstallBase = await mkdtemp(path.join(tmpdir(), "aslite-hook-semantic-uninstall-"));
+  const mismatchedPlugin = buildOpenCodePluginSource("/opt/runtime-a/bin/node", [
+    "/opt/npm-b/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs",
+    "session-start",
+  ]);
+  const jsonTargets = (base: string): string[] => [
+    path.join(base, ".claude", "settings.json"),
+    path.join(base, ".codex", "hooks.json"),
+  ];
+  const pluginTarget = (base: string): string =>
+    path.join(base, ".config", "opencode", "plugins", "axi-agentstate-lite.js");
+  try {
+    const controlInstall = await runCliHook(["hook", "install", "--json"], { cwd: control });
+    assert.equal(controlInstall.status, 0, controlInstall.stdout + controlInstall.stderr);
+    const controlSettings = JSON.parse(await readFile(jsonTargets(control)[0]!, "utf8"));
+    const currentCommand = controlSettings.hooks.SessionStart[0].hooks[0].command as string;
+
+    const installSettings = JSON.stringify(
+      {
+        hooks: {
+          SessionStart: [
+            {
+              matcher: "",
+              hooks: [{ type: "command", command: MISMATCHED_NPM_NODE_COMMAND, timeout: 10 }],
+            },
+            { matcher: "", hooks: [{ type: "command", command: currentCommand, timeout: 10 }] },
+          ],
+        },
+      },
+      null,
+      2,
+    ) + "\n";
+    for (const target of jsonTargets(installBase)) {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, installSettings);
+    }
+    await mkdir(path.dirname(pluginTarget(installBase)), { recursive: true });
+    await writeFile(pluginTarget(installBase), mismatchedPlugin);
+    await writeFile(path.join(installBase, ".codex", "config.toml"), "[features]\nhooks = true\n");
+
+    const install = await runCliHook(["hook", "install", "--json"], { cwd: installBase });
+    assert.equal(install.status, 1, install.stdout + install.stderr);
+    for (const target of jsonTargets(installBase)) {
+      assert.equal(await readFile(target, "utf8"), installSettings, `${target} must remain byte-identical`);
+    }
+    assert.equal(await readFile(pluginTarget(installBase), "utf8"), mismatchedPlugin);
+
+    const uninstallSettings = JSON.stringify(
+      {
+        hooks: {
+          SessionStart: [
+            {
+              matcher: "",
+              hooks: [{ type: "command", command: MISMATCHED_NPM_NODE_COMMAND, timeout: 10 }],
+            },
+          ],
+        },
+      },
+      null,
+      2,
+    ) + "\n";
+    for (const target of jsonTargets(uninstallBase)) {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, uninstallSettings);
+    }
+    await mkdir(path.dirname(pluginTarget(uninstallBase)), { recursive: true });
+    await writeFile(pluginTarget(uninstallBase), mismatchedPlugin);
+
+    const uninstall = await runCliHook(["hook", "uninstall", "--json"], { cwd: uninstallBase });
+    assert.equal(uninstall.status, 0, uninstall.stdout + uninstall.stderr);
+    const receipt = JSON.parse(uninstall.stdout);
+    const canonicalUninstallBase = await realpath(uninstallBase);
+    assert.equal(receipt.hook.changed, false);
+    assert.deepEqual(receipt.hook.notes, [
+      `preserved unmanaged OpenCode plugin: ${pluginTarget(canonicalUninstallBase)}`,
+    ]);
+    for (const target of jsonTargets(uninstallBase)) {
+      assert.equal(await readFile(target, "utf8"), uninstallSettings, `${target} must remain byte-identical`);
+    }
+    assert.equal(await readFile(pluginTarget(uninstallBase), "utf8"), mismatchedPlugin);
+  } finally {
+    await rm(control, { recursive: true, force: true });
+    await rm(installBase, { recursive: true, force: true });
+    await rm(uninstallBase, { recursive: true, force: true });
   }
 });
 

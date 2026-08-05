@@ -14,6 +14,7 @@ import {
 } from "../src/commands/hook.js";
 import { CliError } from "../src/errors.js";
 import type { PersistentInstallAuthority } from "../src/install-authority.js";
+import { MISMATCHED_NPM_NODE_COMMAND } from "./hook-shell-fixtures.js";
 
 const FOREIGN = [
   { type: "command", command: "echo agentstate-lite", timeout: 10 },
@@ -22,6 +23,7 @@ const FOREIGN = [
   { type: "command", command: "aslite\nsession-start", timeout: 10 },
   { type: "command", command: String.raw`"\u0061slite" session-start`, timeout: 10 },
   { type: "command", command: "node /tmp/agentstate-lite.mjs session-start", timeout: 10 },
+  { type: "command", command: MISMATCHED_NPM_NODE_COMMAND, timeout: 10 },
 ];
 
 function capture(): { out: () => string; stdout: (value: string) => void } {
@@ -50,6 +52,28 @@ test("JSON reconciliation owns exact generated forms and preserves every near-ma
   const [uninstalled, removed] = computeHookUninstall(foreignOnly);
   assert.equal(removed, false);
   assert.equal(uninstalled, foreignOnly);
+});
+
+test("mismatched npm Node/package prefixes remain foreign through pure status, install, and uninstall", () => {
+  const foreign = { type: "command", command: MISMATCHED_NPM_NODE_COMMAND, timeout: 10 };
+  const settings = { hooks: { SessionStart: [{ matcher: "", hooks: [foreign] }] } };
+
+  const status = readHookCompatibilityStatus(settings);
+  assert.equal(status.installed, false);
+  assert.equal(status.compatibility.state, "unmanaged");
+
+  const [installed, installedChanged] = computeSessionStartHookInstall(settings, {
+    command: "aslite session-start",
+  });
+  assert.equal(installedChanged, true);
+  assert.deepEqual(installed.hooks!.SessionStart, [
+    { matcher: "", hooks: [foreign] },
+    { matcher: "", hooks: [{ type: "command", command: "aslite session-start", timeout: 10 }] },
+  ]);
+
+  const [uninstalled, uninstalledChanged] = computeHookUninstall(settings);
+  assert.equal(uninstalledChanged, false);
+  assert.equal(uninstalled, settings);
 });
 
 test("a familiar command under a non-generated matcher is preserved and a managed group is appended", () => {
