@@ -1,42 +1,45 @@
 ---
 type: Task
 title: Audit OKF v0.2 compatibility and define the migration contract
-status: todo
+status: done
 priority: '1'
 description: >-
   Evidence-first audit of AgentState's v0.1 behavior against OKF v0.2; produces
   the policy and only then executable implementation units.
 actor: openai/codex
-timestamp: '2026-08-05T02:00:50.995Z'
+assignee: openai/codex
+timestamp: '2026-08-05T02:15:57.224Z'
 ---
 # Objective
 
 Produce an evidence-backed compatibility matrix between AgentState's current OKF v0.1 contract and
 OKF v0.2, then recommend the smallest honest migration policy.
 
-# Questions to settle
+# Result
 
-- Which v0.2 fields already round-trip through the generic document model unchanged?
-- Does `generated.at` have the same semantics as AgentState's last-meaningful-change `timestamp`?
-- How should `generated.by`, `verified`, and actor attribution compose without inventing trust?
-- When a verified document changes, what must be invalidated or preserved?
-- How should legacy `timestamp` and `# Citations` remain readable?
-- Are `sources`, `status`, `stale_after`, and Attested Computation purely optional pass-through data,
-  or do any require engine or CLI behavior?
-- Do index generation, reserved files, links, imports, recipes, sync, and backend round trips remain
-  conformant for both versions?
-- What exact public conformance claim can AgentState make after the work?
+Complete. AgentState is a sound v0.1 writer and a useful permissive v0.2 reader/transporter, but it
+must not yet claim v0.2 authoring or mutation conformance.
+
+The audit demonstrated two blocking semantic gaps:
+
+1. v0.2 meaningful writes must update `generated.at` without inventing `generated.by` provenance or
+   allowing old verification to appear current.
+2. v0.2's global document-lifecycle `status` collides with AgentState's established type-specific
+   workflow statuses.
+
+It also demonstrated a smaller scalar-preservation issue: YAML date-only fields can be rewritten as
+datetimes. The upstream specification has the same ambiguity recorded in issue #240.
 
 # Deliverables
 
-1. A v0.1/v0.2 read-write compatibility matrix with executable or fixture evidence.
-2. A revision to the linked compatibility design recording the chosen policy.
-3. A bounded list of implementation tasks, if any, each tied to a demonstrated gap.
-4. A draft upstream producer report identifying findings useful to OKF maintainers.
+- [Compatibility audit](../research/okf-v0-2-compatibility-audit.md)
+- [Adopted migration design](../designs/okf-compatibility-and-upstream-stewardship.md)
+- [Guard unsupported version claims](./okf-version-claim-guard.md)
+- [Publish the producer report](./okf-upstream-producer-report.md)
+- [Implement the v0.2 write contract after adjudication](./okf-v0-2-write-contract.md)
 
-# Not in scope
+# Evidence boundary
 
-Implementing the migration, adding every v0.2 feature, changing AgentState's domain model, or opening
-an upstream pull request before the findings are reviewed.
-
-[specified by](../designs/okf-compatibility-and-upstream-stewardship.md)
+Probes used upstream commit `599a24029400b32436bc58c425d722e8ad8d221f` and AgentState Lite commit
+`8d0253a40bc00f9c7997e177a70b21f829769e8e`. The repository build passed. No production code was
+changed by this audit.

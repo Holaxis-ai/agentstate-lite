@@ -7,10 +7,11 @@ description: >-
   contribute implementation evidence without coupling the product runtime to the
   specification.
 sequence: >-
-  Audit v0.2 → decide compatibility policy → implement proven gaps → publish
-  producer evidence and fixtures → list AgentState upstream
+  Audit complete → guard unsupported authoring claims → publish producer
+  evidence → adjudicate status/provenance → implement and prove v0.2 writes →
+  update public claim
 actor: openai/codex
-timestamp: '2026-08-05T02:00:50.764Z'
+timestamp: '2026-08-05T02:15:58.287Z'
 ---
 # Outcome
 
@@ -50,3 +51,11 @@ maintainers have a concrete producer report or fixtures drawn from AgentState's 
 [design](../designs/okf-compatibility-and-upstream-stewardship.md)
 
 [research](../context-notes/okf-v0-2-traction-and-contribution-scan-2026-08-04.md)
+
+[research](../research/okf-v0-2-compatibility-audit.md)
+
+[contains](../tasks/okf-version-claim-guard.md)
+
+[contains](../tasks/okf-upstream-producer-report.md)
+
+[contains](../tasks/okf-v0-2-write-contract.md)

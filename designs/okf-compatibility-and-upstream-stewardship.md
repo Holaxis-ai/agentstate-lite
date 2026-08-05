@@ -2,64 +2,89 @@
 type: Design
 title: OKF compatibility and upstream stewardship
 actor: openai/codex
-timestamp: '2026-08-05T02:00:30.138Z'
+timestamp: '2026-08-05T02:15:27.257Z'
 ---
-# Decision frame
+# Decision
 
-AgentState adopts OKF as its portable document-format boundary, not as its runtime architecture.
-Compatibility therefore means that ordinary OKF bundles remain readable, writable, movable, and
-useful outside AgentState. It does not require upstreaming AgentState's Kinds, Views, CAS semantics,
-storage interfaces, collaboration workflow, or product recipes.
+AgentState Lite remains an OKF v0.1 writer. It accepts v0.2 bundles for permissive reading and
+transport, but does not claim v0.2 authoring or mutation conformance yet.
 
-OKF v0.2 supersedes v0.1 and deliberately replaces two v0.1 conventions: `timestamp` with
-`generated.at`, and body `# Citations` with structured `sources`. It also adds optional provenance,
-verification, lifecycle, freshness, actor, and attested-computation fields. AgentState currently
-declares and teaches v0.1, so its compatibility posture must be reassessed before its public claim is
-updated.
+The migration is deliberately gated by semantics, not parser coverage. AgentState already parses
+and transports nearly all optional v0.2 frontmatter. The unsafe gap is that a meaningful write can
+leave v0.2 provenance stale and can emit a `status` value that a generic v0.2 consumer will interpret
+incorrectly.
 
-# Proposed compatibility policy
+# Product boundary
 
-This is the starting recommendation for the audit to confirm or revise:
+OKF is AgentState's portable document-format boundary, not its runtime architecture. Ordinary OKF
+bundles should remain readable, movable, and useful outside AgentState. AgentState's Kinds, Views,
+CAS semantics, storage interfaces, collaboration workflow, and product recipes remain product-level
+extensions.
 
-1. **Read older bundles.** Continue accepting valid v0.1 documents and the upstream-declared v0.2
-   fallbacks. Never require migration merely to open an existing bundle.
-2. **Preserve unknown optional fields.** Generic document reads and state-dependent writes must not
-   erase v0.2 metadata AgentState does not interpret.
-3. **Do not equate fields by spelling alone.** Map `timestamp` to `generated.at` only if their mutation
-   semantics are actually compatible. Do not manufacture `verified`, trust, sources, or provenance.
-4. **Write one explicit version contract.** New-bundle defaults, migrated-bundle behavior, examples,
-   skill guidance, and public claims must all derive from the same decision.
-5. **Make migration explicit and idempotent.** If byte changes are necessary, expose an inspectable,
-   testable migration rather than rewriting bundles opportunistically.
-6. **Test portability at the boundary.** Use representative upstream bundles and small language-neutral
-   fixtures to prove parsing, preservation, indexing, links, reserved-file treatment, and round trips.
-7. **Contribute evidence, not product-specific schema.** Upstream reports should describe observed
-   problems and interoperable fixtures; proposals should remain minimal and producer-independent.
+Compatibility does not mean implementing every optional upstream field. It means making every
+version claim truthful and never silently changing the meaning of user data.
 
-# Upstream contribution boundary
+# Supported-version contract
 
-AgentState has useful evidence in areas upstream is actively discussing:
+## Today
 
-- repeated agent mutation and whether provenance or verification still describes current bytes;
-- actor attribution versus authenticated identity;
-- typed relationship discovery and link identity;
-- nested reserved filenames, path encoding, Unicode, and deterministic indexes;
-- deletion, history, and `log.md` as portable projections rather than runtime authorities;
-- storage-independent round trips and conformance behavior.
+- **OKF v0.1 read/write:** supported.
+- **OKF v0.2 read/transport:** supported on a best-effort, unknown-field-preserving basis.
+- **OKF v0.2 create/mutate:** unsupported until the write contract below is implemented.
+- **Unknown future versions:** readable only through explicitly permissive paths; never authorable
+  merely because a caller supplied a string.
 
-The preferred contribution order is: producer report, fixtures, targeted clarification or bug fix,
-then ecosystem listing. Avoid proposing AgentState's complete architecture as an OKF requirement.
+The CLI must not let `--okf-version` act as an unverified conformance assertion. Supported write
+versions belong to product code, not user input.
 
-# Acceptance criteria
+## Future v0.2 writer contract
 
-- The audit records read, preserve, write, and migrate behavior for v0.1 and v0.2.
-- The chosen policy has one implementation authority and executable compatibility evidence.
-- Public documentation no longer makes a version claim broader or older than actual behavior.
-- At least one upstream-facing artifact is useful without requiring AgentState.
+A v0.2 writer must own these invariants at the shared mutation boundary:
 
-# Sources
+1. A meaningful content change advances `generated.at`.
+2. `generated.by` is preserved unless an explicit, syntactically valid provenance identity is
+   supplied. The mutation actor is not silently promoted into provenance.
+3. Verification history may remain, but current trust must be derived relative to the new
+   `generated.at`; the writer must not imply that old verification covers new content.
+4. Date-only values such as `stale_after` and `sources[].last_modified` retain their date shape.
+5. The v0.1 fallback fields remain readable, and migration is lazy rather than an eager bundle
+   rewrite.
+6. Freshness, recent-document, and history consumers prefer `generated.at` for v0.2 and fall back to
+   legacy `timestamp`.
+7. Local, memory, and remote backends agree on the resulting document and final version receipt.
 
-- [OKF v0.2 specification](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
-- [Google Cloud: OKF v0.2 tackles agentic trust](https://cloud.google.com/blog/products/data-analytics/okf-v0-2-adds-trust-signals/)
-- [Typed relationships proposal](https://github.com/GoogleCloudPlatform/knowledge-catalog/issues/148)
-- [Current upstream viewer/conformance fixes](https://github.com/GoogleCloudPlatform/knowledge-catalog/pull/262)
+# Unresolved field collision
+
+OKF v0.2 defines global `status` as `draft | stable | deprecated`. AgentState Kinds use `status` for
+type-specific workflow state (`todo`, `in_progress`, `done`, `queued`, `active`, and others). Both are
+valuable; they are not the same concept.
+
+AgentState will not rename mature Kind fields speculatively and will not emit those values under a
+v0.2 claim without an explicit interoperability rule. The producer report should ask upstream
+whether profiles or namespaced extension fields are the intended solution. The final local choice
+must keep workflow authoring ergonomic while giving generic OKF consumers an unambiguous lifecycle.
+
+# Migration sequence
+
+1. Guard unsupported version claims in `init` and any other authoring entry points.
+2. Publish the empirical producer report upstream, centered on the `status` collision, date
+   preservation, and current-content provenance.
+3. Decide the workflow-field/profile mapping based on the product requirement and upstream response.
+4. Implement the version-aware mutation clock and non-lossy scalar handling in the shared mutation
+   layer.
+5. Update freshness/history readers and add cross-backend v0.1/v0.2 agreement fixtures.
+6. Only then change defaults, documentation, or the public conformance claim.
+
+# Non-goals
+
+- No eager rewrite of existing v0.1 bundles.
+- No automatic conversion of CLI actor labels into `generated.by` identities.
+- No trust UI, Attested Computation executor, or structured-source product feature solely to claim
+  minimal v0.2 support.
+- No coupling of Kinds, Views, recipes, or the storage abstraction to upstream OKF releases.
+
+# Evidence
+
+The detailed compatibility matrix and empirical probes are recorded in
+[the audit](../research/okf-v0-2-compatibility-audit.md). The prior ecosystem scan remains in
+[the traction note](../context-notes/okf-v0-2-traction-and-contribution-scan-2026-08-04.md).
