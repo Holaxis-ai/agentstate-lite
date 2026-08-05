@@ -1,34 +1,33 @@
 ---
 type: Context Note
-title: 'Pre-compact handoff: PR 207 review changes requested'
+title: 'Pre-compact handoff: PR 208 review changes requested'
 description: >-
-  PR 207 exact-head review complete at 9b6b114: two high ownership/deletion
-  defects and one migration-signal gap require repair.
-actor: codex-pr207-review
-timestamp: '2026-08-04T23:28:42.822Z'
+  PR 208 exact-head review complete at 31ba3ab: uncancelled early HTTP bodies
+  and stale help integration require repair.
+actor: codex-pr208-review
+timestamp: '2026-08-05T17:09:43.617Z'
 ---
 # Summary
 
-PR 207 exact-SHA review is complete at head `9b6b114d481a9fbfd447f89e7d302156d969cb95` over base `d058d735ce4f6179ed07d74a7ddbfc38491e7980`. Verdict: **CHANGES REQUESTED**. Review worktree `/private/tmp/aslite-durable-hook.lLSKS1` remained clean; no source edits or GitHub comments were made.
+PR 208 exact-SHA review is complete at head `31ba3abe32ea69c62bcc349d44e9ece9d2d839d7` over base `8d0253a40bc00f9c7997e177a70b21f829769e8e`. Verdict: **CHANGES REQUESTED**. No source edits or GitHub comments were made; isolated worktree `/private/tmp/aslite-supported-release.H860lp` remained clean.
 
-The implementation's intended durable npm-prefix launcher and authority checks are strong, focused local tests passed 69/69, `git diff --check` passed, and GitHub CI passed Node 20/22/26. The review found two high-severity classifier ownership defects and one medium migration gap:
+Two findings survived:
 
-1. Newline-separated commands and bare-Node/arbitrary-basename paths can be falsely classified as owned/current and removed by uninstall.
-2. Once a command is recognized, arbitrary matcher/type/timeout variants become stale/owned and can be removed, rather than remaining unmanaged.
-3. Historical bare `aslite session-start` remains PATH-dependent but reports current and generates no upgrade signal; this matches the current design table, so design and implementation need a coordinated compatibility/migration distinction.
+1. High: redirects, non-200 responses, and declared-oversize responses throw before cancelling the body. A streaming 503 probe returned in 10 ms but remained connected and continued receiving bytes after a 50 ms timeout/8-byte cap, violating the total network bounds.
+2. Medium: the generated help synopsis changed, but the existing built-help integration regex still requires the old line. Exact CI fails three assertions on Node 22 and Node 26; local reproduction matches.
 
-Authoritative review note: `context-notes/pr-207-exact-sha-review-9b6b114@sha256:9dba12409b2e8a05aba5ae583ebe8640b2bf690077d723b5cf128c903d802ee0`. Independent confirmation: `context-notes/pr-207-ownership-skeptic-9b6b114@sha256:51283bc91f6796603cf5797f973bc70528a925ef4c8db9440bcccb667f6227bc`. Review task closed done at `tasks/pr-207-exact-sha-review@sha256:da394135ab359fe7f07891265cfb6a0f83e16377acb003c28cfdce3808bd04d4`.
+Focused tests passed 26/26 with loopback access, `git diff --check` passed, and Node 20 built-CLI smoke passed. The selection, deprecation, integrity, output, and no-write paths otherwise survived review.
 
 ## Goals
 
 Ultimate goal: make agentstate-lite the shared, versioned, conflict-safe markdown memory that a human and agent fleet can install and use without founder intervention.
 
-Proximate goal: independently verify that PR 207 makes npm-installed SessionStart hooks durable without gaining mutation authority over foreign host configuration; this served the ultimate goal by identifying unsafe upgrade automation before merge. The goal is complete for head `9b6b114`.
+Proximate goal: independently determine whether PR 208 makes supported-release discovery rollback-aware and fail-closed without mutation or misleading commands. The review goal is complete for head `31ba3ab`; repair and a new exact-head review are now required.
 
 ## Next dependency
 
-The PR branch needs a bounded repair: constrain the command grammar and historical host shapes to explicitly generated forms, add byte-preservation regressions for the counterexamples, and decide how historical bare hooks signal durable-launch convergence. A new exact-head review is required after repair. PR 204 approval remains separate and historical; compaction T3.5 remains paused/unrelated. Preserve the user's dirty main-checkout `CLAUDE.md`.
+Repair the early-response cancellation boundary and the stale help integration expectation, add a streaming-error cancellation regression, rerun the repository gate, then request a new exact-head review before adversarial QA. Preserve the user's dirty main-checkout `CLAUDE.md`.
 
 ## Loaded skills
 
-`holaxis-self-awareness`, `holaxis-cognitive-ecosystem`, `agentstate-lite`, and `holaxis-orchestrator`.
+`holaxis-self-awareness`, `holaxis-cognitive-ecosystem`, and `agentstate-lite`.
