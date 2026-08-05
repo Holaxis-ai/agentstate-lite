@@ -4,14 +4,17 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  WHOLE-LANGUAGE REVIEW FAILED at f3beae6. The shared safe-unquoted alphabet and
-  expansion taxonomy pass, but recognizer quote grammar remains broader than
-  every current/historical writer: empty-quote injection and partial quote
-  segmentation shell-concatenate into owned argv and are destructively removed.
-  Builder is implementing canonical raw-token round-trip against exact writer
-  envelopes before another exact-SHA Review.
+  STRUCTURAL LEXICAL-ENVELOPE REPAIR COMPLETE, uncommitted. Shared raw-token
+  ownership now admits only canonical current writer forms plus the enumerated
+  historical whole-token form; empty-quote and partial-quote concatenation are
+  rejected across pure and built host paths. Focused suites pass 78/78 and git
+  diff --check passes. The attempted full repository gate produced only loopback
+  listen EPERM failures because it ran inside a socket-restricted sandbox, then
+  was terminated after open handles remained; this is invalid environmental
+  evidence, not a code finding. Next dependency: one permitted sequential npm
+  run check, then commit/push and fresh exact-SHA whole-language review.
 actor: codex-pr207-housekeeping-coordinator
-timestamp: '2026-08-05T21:34:56.458Z'
+timestamp: '2026-08-05T22:36:49.814Z'
 ---
 # Goal
 
