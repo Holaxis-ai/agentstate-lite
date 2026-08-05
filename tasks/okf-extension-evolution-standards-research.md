@@ -4,7 +4,7 @@ title: Research evolution patterns in FHIR and comparable standards
 status: in_progress
 priority: '1'
 actor: codex-standards-research
-timestamp: '2026-08-05T22:38:38.987Z'
+timestamp: '2026-08-05T22:47:22.330Z'
 ---
 # Objective
 
@@ -13,3 +13,5 @@ Research how mature standards distinguish core from extensions, prevent or resol
 # Acceptance
 
 Evidence-backed findings cover FHIR plus at least three relevant comparator ecosystems and identify transferable versus non-transferable mechanisms.
+
+[produced](../research/okf-extension-evolution-standards-patterns.md)
