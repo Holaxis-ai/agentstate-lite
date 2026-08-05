@@ -1,15 +1,15 @@
 ---
 type: Task
 title: Add generic create-only target safety to init
-status: todo
+status: in_progress
 priority: '1'
 assignee: brian-claude
 description: >-
   Approved P1 predecessor: generic init --create-only preflight shared by the
   aslite guide facade and npm quickstart; it refuses existing, bound, enclosing,
   ambiguous, or concurrently-created targets before any write.
-actor: codex-onboarding-scope
-timestamp: '2026-08-04T00:02:52.277Z'
+actor: claude/brian-claude
+timestamp: '2026-08-05T23:13:10.244Z'
 ---
 # Problem
 

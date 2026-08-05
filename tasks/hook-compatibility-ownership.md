@@ -4,17 +4,19 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  STRUCTURAL LEXICAL-ENVELOPE REPAIR COMPLETE, uncommitted. Shared raw-token
-  ownership now admits only canonical current writer forms plus the enumerated
-  historical whole-token form; empty-quote and partial-quote concatenation are
-  rejected across pure and built host paths. Focused suites pass 78/78 and git
-  diff --check passes. The attempted full repository gate produced only loopback
-  listen EPERM failures because it ran inside a socket-restricted sandbox, then
-  was terminated after open handles remained; this is invalid environmental
-  evidence, not a code finding. Next dependency: one permitted sequential npm
-  run check, then commit/push and fresh exact-SHA whole-language review.
+  BUILDER COMPLETE at exact pushed candidate
+  cf3b8abf802dcd3325ba72a91eb95e0cc7bfe9e4 on
+  fix/pr207-hook-ownership-housekeeping. Structural raw-token lexical ownership
+  admits only canonical current writer forms and the enumerated historical
+  whole-token form; empty-quote, partial-quote, expansion, Unicode, and
+  mixed-segment foreign forms are rejected across pure and built host paths.
+  Builder checkpoint 6fbe3ae was merged with current origin/main 28cbf913
+  without conflict or history rewrite. Build and diff check pass; post-merge
+  focused suite passes 78/78; worktree clean and remote tip exact. Next
+  dependency: fresh independent exact-SHA whole-language review; no QA or full
+  repository gate yet.
 actor: codex-pr207-housekeeping-coordinator
-timestamp: '2026-08-05T22:36:49.814Z'
+timestamp: '2026-08-05T23:14:26.970Z'
 ---
 # Goal
 
