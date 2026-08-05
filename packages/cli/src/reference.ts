@@ -203,9 +203,9 @@ export const COMMAND_GROUPS: CommandGroup[] = [
     group: "Session",
     commands: [
       {
-        usage: "version [--json]",
+        usage: "version [--check] [--tag latest|next] [--json]",
         summary:
-          "Show the complete local build/runtime identity, including artifact bytes and adjacent-manifest drift; never contacts npm",
+          "Show the complete local build/runtime identity, or perform one bounded read-only comparison against npm's exact latest/next release policy",
       },
       {
         usage: "session-start [--dir <path>]",

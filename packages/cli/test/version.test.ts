@@ -65,6 +65,9 @@ test("version help carries bounded stable-MCP verification guidance", () => {
   assert.match(VERSION_USAGE, /command `aslite`.*argument `mcp`/s);
   assert.match(VERSION_USAGE, /`aslite version --json`/);
   assert.match(VERSION_USAGE, /does not scan or rewrite host MCP configuration/);
+  assert.match(VERSION_USAGE, /--check performs one read-only, two-second comparison/);
+  assert.match(VERSION_USAGE, /--tag latest\|next/);
+  assert.match(VERSION_USAGE, /never installs a package/);
 });
 
 test("the BUILT CLI: `--version` and `-v` print the version and exit 0", () => {
