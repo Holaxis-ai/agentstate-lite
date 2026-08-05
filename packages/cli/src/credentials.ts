@@ -60,6 +60,7 @@ export async function writeFileAtomic0600(
   dir: string,
   fileName: string,
   content: string,
+  options: { beforeCommit?: () => boolean | Promise<boolean> } = {},
 ): Promise<void> {
   await mkdir(dir, { recursive: true, mode: DIR_MODE });
   await chmod(dir, DIR_MODE);
@@ -77,6 +78,9 @@ export async function writeFileAtomic0600(
     await handle.close();
   }
   try {
+    if (options.beforeCommit && !(await options.beforeCommit())) {
+      throw new Error("atomic write commit authority was withdrawn");
+    }
     // Atomic on the same filesystem: the target is replaced in one step, so a reader sees
     // either the old complete file or the new complete file — never a partial write.
     await rename(tmpPath, path);

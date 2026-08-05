@@ -1,20 +1,16 @@
 // `axi` (zero-arg) — the content-first home view.
 //
-// This is the SessionStart hook payload: it loads on EVERY new session, so it MUST be cheap and
-// offline. Per AXI §8 ("no-args shows live content, not a manual"), it leads with a compact,
-// LIVE dashboard of the CWD's bundle when one is discoverable — total doc count, counts by type,
+// This is the SessionStart hook payload: it loads on EVERY new session, so it MUST render cheaply
+// without awaiting the network. Per AXI §8 ("no-args shows live content, not a manual"), it leads
+// with a compact, LIVE dashboard of the CWD's bundle when one is discoverable — total doc count, counts by type,
 // and a small capped list of the most recent docs in the minimal list schema — and falls back to
 // today's identity + command-reference view when no bundle is discoverable. It ALWAYS exits 0,
 // whether a bundle is present OR not and whether the bundle read succeeds OR fails (it never
 // throws).
 //
-// OFFLINE GUARANTEE (structural, extended): this module imports `reference.ts` (pure data),
-// `invocation.ts` (path resolution), `output.ts`
-// (TOON) — and now also `bundle.ts`'s `openBundle` + core's `query`, for a LOCAL bundle read.
-// `openBundle(undefined, undefined)` (no `--dir`, no `--remote`) is structurally network-free: it
-// only ever constructs a `RemoteBackend` when a truthy `remoteFlag` is passed, and home never
-// passes one — home has no `--remote`/URL concept at all and never fetches. The local read is
-// CHEAP (ONE `query()` — the sanctioned single bundle walk, gate 3; NO `loadKinds`, NO
+// RENDER GUARANTEE: the dashboard path passes only a local directory to `openBundle`; an explicit
+// `--remote` produces an offline pointer and never constructs a RemoteBackend here. The local read
+// is CHEAP (ONE `query()` — the sanctioned single bundle walk, gate 3; NO `loadKinds`, NO
 // `freshness`, NO graph/backlink walk) and DOUBLE-GUARDED: the default summarizer swallows any
 // throw into `null` (no bundle, permissions, malformed bundle — all become "no bundle"), and
 // `home()` wraps the call in its OWN try/catch too, so even an injected/misbehaving dep can never
@@ -33,8 +29,8 @@
 // outcome IN-PROCESS via `HomeDeps.boardPull`; a plain `home` render labels the cache with
 // `as_of` instead of guessing at network state.
 //
-// OPPORTUNISTIC FRESHNESS — the one deliberate amendment to "home
-// never touches the network"): a plain LOCAL `home` invocation — a board-READING command — first
+// OPPORTUNISTIC FRESHNESS — two deliberate, bounded amendments to "home never touches the
+// network": (1) a plain LOCAL `home` invocation — a board-READING command — first
 // runs autopull.ts's `maybeAutoPull`, the silent, time-boxed, ff-only, detection-gated stale-cache
 // pull every board-reading command shares. Everything the old guarantee protected still holds
 // structurally: the RENDER itself (everything below the trigger) is fs + local-git only and never
@@ -43,7 +39,9 @@
 // triggers it, and neither does ANY session-start-driven render — session-start passes a defined
 // `deps.boardPull` on EVERY path, including its no-repo/no-board/pull-threw ones, precisely so
 // its own budget race stays the only network bound in that flow (test-pinned). Home still NEVER
-// provisions and still exits 0 in every case.
+// provisions and still exits 0 in every case. (2) eligible default TOON may synchronously inspect
+// private cached update state and launch one DETACHED worker; the render awaits neither its npm
+// request nor child close. JSON and suppressor paths bypass that owner entirely.
 //
 // PROJECT-BINDING PEEK: home consults `.agentstate.json` only when no explicit flag is present. A
 // local path scopes the dashboard; a URL binding is rejected by `resolveProjectBinding` and shown as
@@ -88,6 +86,32 @@ import { defaultSyncStore, type AwarenessCache, type AwarenessDeltaRow } from ".
 import { hookNeedsUpdate } from "./hook.js";
 import { loadCatalog } from "../catalog.js";
 import { staticBuildIdentity, type ArtifactChannel } from "../build-identity.js";
+import {
+  isPassiveUpdateSuppressed,
+  runPassiveUpdateOrientation,
+  type UpdateNotice,
+} from "../update-orientation.js";
+
+export const HOME_USAGE = `agentstate-lite home — render the local orientation view
+
+Usage:
+  agentstate-lite home [--dir <path> | --remote <url>] [--json] [--no-update-check]
+
+Default TOON output may display a previously validated latest-track release notice and launch one
+detached refresh at most once per 24-hour attempt window. Rendering never waits for npm. The fixed
+public npm request names only @holaxis/aslite; it sends no installed version, cwd, bundle, actor, or
+usage data beyond ordinary network metadata.
+
+Options:
+  --dir <path>       Orient from this local directory
+  --remote <url>     Show offline guidance for this explicit remote
+  --json             Emit stable compact JSON; no notice or refresh work is performed
+  --no-update-check  Disable both cached notice display and detached refresh for this run
+  -h, --help         Show this help
+
+Environment opt-outs (presence, including an empty value): ASLITE_NO_UPDATE_CHECK,
+NO_UPDATE_NOTIFIER, or CI.
+`;
 
 /** A dashboard row in the minimal list schema (AXI §2) — reuses `list.ts`'s exact projection. */
 export interface HomeRow {
@@ -206,6 +230,10 @@ export interface HomeDeps {
   loadWorkspaces: (signal?: AbortSignal) => Promise<HomeWorkspace[]>;
   /** Maximum time catalog orientation may add to home/session-start. */
   workspaceBudgetMs: number;
+  /** Synchronous, bounded private update-cache/lease/process owner. */
+  updateOrientation: () => UpdateNotice | undefined;
+  /** Passive suppression is key-presence based; injected so tests never mutate process-global env. */
+  updateEnvironment: Readonly<Record<string, string | undefined>>;
 }
 
 /** A doc's `title` with the SAME fallback `list.ts` uses (frontmatter `title`, else the id's tail). */
@@ -615,6 +643,7 @@ export function buildHomeView(
   board?: { block?: string | Record<string, unknown>; firstContact?: string },
   hookUpdate?: string,
   workspaces?: HomeWorkspacesBlock,
+  updateNotice?: UpdateNotice,
 ): Record<string, unknown> {
   const inv = deps.invocation();
   const ref = commandReference(inv);
@@ -629,6 +658,7 @@ export function buildHomeView(
       description: DESCRIPTION,
     },
   };
+  if (updateNotice) view.update_notice = updateNotice;
 
   if (remote) {
     // Scoped to a remote bundle: an OFFLINE orientation pointer (home never fetches — it is the
@@ -748,6 +778,12 @@ export function buildHomeView(
  */
 export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promise<void> {
   const stdout = deps.stdout ?? ((s: string) => void process.stdout.write(s));
+  // Exact-token pre-scan is deliberately independent of forgiving parsing: a malformed sibling
+  // option must never accidentally re-enable passive work requested off by the caller.
+  const passiveSuppressed = isPassiveUpdateSuppressed(
+    argv,
+    deps.updateEnvironment ?? process.env,
+  );
 
   // Parse the home-compatible global flags. Best-effort — an unknown/bad flag just yields the bare
   // local view (home NEVER throws). `--remote <url>` scopes the view to a remote (offline: a pointer
@@ -757,6 +793,7 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
   let dir: string | undefined;
   let explicitDir: string | undefined;
   let jsonMode = false;
+  let helpMode = false;
   try {
     const parsed = parseArgs({
       args: argv,
@@ -764,6 +801,7 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
         remote: { type: "string" },
         dir: { type: "string" },
         json: { type: "boolean" },
+        "no-update-check": { type: "boolean" },
         help: { type: "boolean", short: "h" },
       },
       allowPositionals: true,
@@ -772,8 +810,13 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
     explicitDir = parsed.values.dir;
     dir = explicitDir;
     jsonMode = Boolean(parsed.values.json);
+    helpMode = Boolean(parsed.values.help);
   } catch {
     /* ignore — fall back to the bare local view */
+  }
+  if (helpMode) {
+    stdout(HOME_USAGE);
+    return;
   }
 
   // A committed project binding (see the module header's PROJECT-BINDING PEEK) is consulted ONLY
@@ -894,6 +937,15 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
     hookUpdate = undefined;
   }
 
+  let updateNotice: UpdateNotice | undefined;
+  if (!jsonMode && !passiveSuppressed) {
+    try {
+      updateNotice = (deps.updateOrientation ?? runPassiveUpdateOrientation)();
+    } catch {
+      updateNotice = undefined;
+    }
+  }
+
   stdout(
     render(
       buildHomeView(
@@ -913,6 +965,7 @@ export async function home(argv: string[], deps: Partial<HomeDeps> = {}): Promis
         board,
         hookUpdate,
         workspaces,
+        updateNotice,
       ),
       // Honor --json (JSON is equally offline/never-throw); default remains TOON, the format the
       // SessionStart hook ingests as ambient context.
