@@ -4,22 +4,18 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  EXACT-SHA REVIEW FAIL at cf3b8abf802dcd3325ba72a91eb95e0cc7bfe9e4. The
-  structural lexical-envelope repair and OpenCode unmanaged-preservation receipt
-  pass, but semantic Node-layout ownership remains too broad: a lexically
-  canonical command pairing Node from /opt/runtime-a with an npm package entry
-  under /opt/npm-b is classified current through the generic absolute-Node
-  fallback even though no writer emits it. Pure and freshly built
-  status/install/uninstall claim, rewrite, or delete it across Claude, Codex,
-  and OpenCode. Required repair: npm-shaped entries must pass
-  stableNpmRuntimePair; the generic Node branch may accept only enumerated
-  local-dev/marketplace layouts. QA remains blocked. Evidence:
-  context-notes/pr207-housekeeping-exact-review-cf3b8ab and
-  context-notes/hook-ownership-semantic-node-pair-model-2026-08-05. Next
-  dependency: builder repair with cross-prefix pure+built byte-preservation
-  tests, then fresh exact-SHA review.
+  BUILDER REPAIR COMPLETE at exact pushed SHA
+  4e394db65346d957676e590d7ca287d20b39dafb, now the head of PR #210:
+  https://github.com/Holaxis-ai/agentstate-lite/pull/210. npm-shaped Node
+  launches now require stableNpmRuntimePair; the generic absolute-Node path is
+  limited to enumerated local-dev and marketplace layouts. The cross-prefix
+  reproduction is unmanaged and preserved; source-focused tests pass 17/17, full
+  focused suite 81/81, build and diff check pass, and the worktree/remote SHA
+  match cleanly. No QA or full repository gate yet. Next dependency: fresh
+  independent exact-SHA re-review at 4e394db; PR #210 is not merge-ready until
+  review, QA, and final gate pass.
 actor: codex-pr207-housekeeping-coordinator
-timestamp: '2026-08-05T23:40:20.124Z'
+timestamp: '2026-08-05T23:58:01.009Z'
 ---
 # Goal
 
