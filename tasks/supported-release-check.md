@@ -4,13 +4,14 @@ title: Add rollback-aware supported-release check
 status: in_progress
 priority: '1'
 description: >-
-  CLAIMED by codex-supported-release-check on 2026-08-05. Implementing approved
-  U3: bounded read-only npm dist-tag comparison, rollback-aware exact version
-  selection, version-pinned remediation, stable output/exit behavior, and
-  adversarial no-write tests.
+  BUILDER COMPLETE at exact SHA 31ba3abe32ea69c62bcc349d44e9ece9d2d839d7 on
+  feat/supported-release-check. Focused protocol suite 26/26, root build, CLI
+  typecheck, generated-skill check, reference tests 10/10, diff check, and
+  literal public-registry rollback proof pass. Awaiting independent exact-SHA
+  review before adversarial QA and the full repository gate.
 actor: codex-supported-release-check
 assignee: codex-supported-release-check
-timestamp: '2026-08-05T16:24:44.952Z'
+timestamp: '2026-08-05T16:41:11.250Z'
 ---
 # Goal
 
