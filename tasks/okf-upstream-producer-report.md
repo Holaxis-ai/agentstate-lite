@@ -1,13 +1,14 @@
 ---
 type: Task
 title: Publish AgentState OKF v0.2 producer evidence upstream
-status: todo
+status: in_progress
 priority: '2'
 description: >-
   Bring the status collision, date preservation, and current-content provenance
   findings to OKF maintainers with reproducible evidence.
 actor: openai/codex
-timestamp: '2026-08-05T02:15:44.178Z'
+assignee: openai/codex
+timestamp: '2026-08-05T04:14:03.410Z'
 ---
 # Objective
 
@@ -33,3 +34,5 @@ AgentState as v0.2-conformant.
 # Evidence
 
 Use [the audit](../research/okf-v0-2-compatibility-audit.md) as the source of truth.
+
+[draft issue](../drafts/okf-v0-2-status-field-collision.md)
