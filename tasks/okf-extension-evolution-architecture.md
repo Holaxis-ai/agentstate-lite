@@ -4,7 +4,7 @@ title: Define an evolution-safe OKF extension architecture
 status: in_progress
 priority: '1'
 actor: codex-main
-timestamp: '2026-08-05T22:49:08.051Z'
+timestamp: '2026-08-05T22:58:25.730Z'
 ---
 # Objective
 
@@ -27,7 +27,9 @@ Proximate goal: establish an evolution-safe extension and migration policy so up
 
 # Progress
 
-Claimed by codex-main. Domain-model and research-plan phase is next.
+Domain model, research plan, independent standards research, independent architecture options, and reciprocal exact-version cross-reviews are complete. The two branches converged on authority-qualified identities, isolated custom wire space, profiles for composition rather than isolation, logical-to-wire mappings, operation-specific capabilities, and explicit write-gated CAS migration.
+
+The synthesized recommendation is frozen at `designs/okf-extension-evolution-recommendation` version `sha256:226214f3ab5d302cffa4ceb57d9fa3965cf1aaf4d2bce065348949cd376cc600`. Independent adversarial review of that exact head is in progress. No implementation or data migration has been performed.
 
 [depends on](okf-extension-evolution-domain-model.md)
 
@@ -40,3 +42,5 @@ Claimed by codex-main. Domain-model and research-plan phase is next.
 [depends on](okf-extension-evolution-standards-cross-review.md)
 
 [depends on](okf-extension-evolution-architecture-cross-review.md)
+
+[produces recommendation](../designs/okf-extension-evolution-recommendation.md)

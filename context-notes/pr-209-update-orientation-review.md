@@ -1,10 +1,10 @@
 ---
 type: Context Note
 title: >-
-  Review of PR #209 at 8056f52 — approved pending green 22/26 gates; fail-closed
-  design verified
+  Review of PR #209 at 8056f52 — approved; CI fully green; fail-closed design
+  verified
 actor: claude/reviewer
-timestamp: '2026-08-05T22:57:05.179Z'
+timestamp: '2026-08-05T22:59:15.390Z'
 ---
 # Summary
 
@@ -14,10 +14,7 @@ noted, one CI caveat. High-risk-tier review (concurrency, detached process spawn
 writes, network-adjacent): full read of the 959-line module, isolated worktree at the SHA,
 suites re-run, plus independent end-to-end probes with the built CLI.
 
-CI caveat at review time: node-20 engines smoke green on the exact SHA; node 22/26 gates still
-PENDING. My approval is conditional on those completing green (the same suites passed locally in
-the worktree).
-
+CI: all three gates green on the exact SHA (node 20 smoke, node 22 and 26 full gates).
 # Verification performed
 
 - update-orientation suite 22/22 in the worktree, including the real multi-process barrier/IPC
