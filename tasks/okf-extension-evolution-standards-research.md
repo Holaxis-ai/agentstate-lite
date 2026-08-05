@@ -1,10 +1,10 @@
 ---
 type: Task
 title: Research evolution patterns in FHIR and comparable standards
-status: todo
+status: in_progress
 priority: '1'
-actor: codex-main
-timestamp: '2026-08-05T22:29:08.727Z'
+actor: codex-standards-research
+timestamp: '2026-08-05T22:38:38.987Z'
 ---
 # Objective
 

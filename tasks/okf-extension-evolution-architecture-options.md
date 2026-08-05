@@ -1,10 +1,11 @@
 ---
 type: Task
 title: Design OKF and Kind extension-evolution options
-status: todo
+status: in_progress
 priority: '1'
-actor: codex-main
-timestamp: '2026-08-05T22:29:08.923Z'
+actor: codex-okf-architect
+assignee: codex-okf-architect
+timestamp: '2026-08-05T22:37:59.631Z'
 ---
 # Objective
 

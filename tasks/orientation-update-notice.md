@@ -4,14 +4,17 @@ title: Add cached nonblocking update orientation
 status: in_progress
 priority: '1'
 description: >-
-  EXACT-SHA REVIEW PASS at 8056f525766551556dedb31928d09e821fc4a58e. C/A/B ABA
-  replay, external authority-withdrawal control, owner 22/22, focused 120/120,
-  build, and diff check pass; lost parent spawns zero and leaves successor token
-  untouched. Adversarial offline/concurrency/output/no-write/privacy QA is now
-  unblocked for this exact SHA only.
+  ADVERSARIAL QA PASS at exact SHA 8056f525766551556dedb31928d09e821fc4a58e.
+  Fresh detached QA passed external filesystem/privacy 9/9, focused 120/120,
+  built base-vs-candidate output parity 4/4, suppression/protocol/no-write
+  18/18, six-process authority/lease/cooldown/ABA probes, exact five-field
+  notice placement, fixed request shape, and cached session-start at 199 ms.
+  Candidate remained clean/pinned and only the declared private cache state was
+  written. Evidence: context-notes/orientation-update-adversarial-qa-8056f52.
+  Next and final dependency: full repository/package gate at this exact SHA.
 actor: codex-orientation-orchestrator
 assignee: codex-orientation-orchestrator
-timestamp: '2026-08-05T21:57:02.105Z'
+timestamp: '2026-08-05T22:44:24.271Z'
 ---
 # Goal
 
