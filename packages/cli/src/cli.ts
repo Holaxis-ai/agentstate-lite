@@ -130,7 +130,7 @@ const wrap =
  */
 /**
  * True when `argv` is ONLY home-compatible global flags (`--remote <url>` / `--dir <path>` /
- * `--json`) with NO positional subcommand — the canonical `agentstate-lite --remote <url>` an agent
+ * `--json` / `--no-update-check`) with NO positional subcommand — the canonical `agentstate-lite --remote <url>` an agent
  * runs to orient against a bundle. Such an invocation routes to the home view rather than the
  * "options must follow the command" USAGE error (which is for a real flag-before-command like
  * `--dir x list`, or an unknown flag like `--bogus`). Any parse failure returns false.
@@ -143,6 +143,7 @@ function isGlobalOnlyHomeInvocation(argv: string[]): boolean {
         remote: { type: "string" },
         dir: { type: "string" },
         json: { type: "boolean" },
+        "no-update-check": { type: "boolean" },
         help: { type: "boolean", short: "h" },
       },
       allowPositionals: true,
@@ -177,6 +178,7 @@ export function hoistLeadingGlobalFlags(argv: string[]): string[] | null {
         remote: { type: "string" },
         dir: { type: "string" },
         json: { type: "boolean" },
+        "no-update-check": { type: "boolean" },
         help: { type: "boolean", short: "h" },
       },
     }).tokens;

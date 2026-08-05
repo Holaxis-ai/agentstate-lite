@@ -208,9 +208,9 @@ export const COMMAND_GROUPS: CommandGroup[] = [
           "Show the complete local build/runtime identity, or perform one bounded read-only comparison against npm's exact latest/next release policy",
       },
       {
-        usage: "session-start [--dir <path>]",
+        usage: "session-start [--dir <path>] [--no-update-check]",
         summary:
-          "The SessionStart hook payload: a time-boxed best-effort board pull, then the home view — every pull failure falls through to the render (exit 0)",
+          "The SessionStart hook payload: pull then render; default TOON uses a nonblocking 24-hour cached latest check, while --no-update-check or ASLITE_NO_UPDATE_CHECK/NO_UPDATE_NOTIFIER/CI presence disables both display and refresh; npm receives only the public package request and ordinary network metadata, never installed version, cwd, bundle, actor, or usage data",
       },
       {
         usage: "hook install|status|uninstall [--scope project|global]",

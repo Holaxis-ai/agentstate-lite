@@ -85,7 +85,7 @@ export const MIN_USEFUL_BUDGET_MS = 250;
 export const SESSION_START_USAGE = `agentstate-lite session-start — the SessionStart hook payload (pull the board, then render home)
 
 Usage:
-  agentstate-lite session-start [--dir <path>] [--json]
+  agentstate-lite session-start [--dir <path>] [--json] [--no-update-check]
 
 Runs a time-boxed, best-effort pull of this repo's shared board (provisioning the checkout from
 origin/board on a fresh clone — announced, never silent), then renders the home view with registered
@@ -97,10 +97,17 @@ state, honestly labeled.
 This is the command \`hook install\` wires as the SessionStart hook for Claude Code, Codex, and
 OpenCode. Run it directly to see exactly what a new session will see.
 
+Default TOON may show a cached latest-track release notice and launch one detached refresh per
+24-hour attempt window; rendering never waits for npm. The fixed public request names only
+@holaxis/aslite and sends no installed version, cwd, bundle, actor, or usage data beyond ordinary
+network metadata. Presence of ASLITE_NO_UPDATE_CHECK, NO_UPDATE_NOTIFIER, or CI disables both
+display and refresh.
+
 Options:
-  --dir <path>   Directory to run from (default: the cwd)
-  --json         Emit compact JSON instead of TOON
-  -h, --help     Show this help
+  --dir <path>       Directory to run from (default: the cwd)
+  --json             Emit stable compact JSON; no update display or refresh work
+  --no-update-check  Disable cached update display and refresh for this run
+  -h, --help         Show this help
 `;
 
 /** `ffPull` swallow reasons that mean "could not reach/verify the remote" → the offline note. */
@@ -116,6 +123,8 @@ export interface SessionStartDeps {
   pull: (dir: string | undefined, budgetMs: number) => Promise<BoardPullOutcome | undefined>;
   /** Pull budget override (tests shrink it). Default {@link SESSION_START_PULL_BUDGET_MS}. */
   budgetMs: number;
+  /** Injected final renderer for argv-forwarding tests; production uses {@link home}. */
+  renderHome: typeof home;
 }
 
 /**
@@ -262,6 +271,7 @@ export async function sessionStart(argv: string[], deps: Partial<SessionStartDep
         options: {
           dir: { type: "string" },
           json: { type: "boolean" },
+          "no-update-check": { type: "boolean" },
           help: { type: "boolean", short: "h" },
         },
         allowPositionals: true,
@@ -299,8 +309,8 @@ export async function sessionStart(argv: string[], deps: Partial<SessionStartDep
     if (timer) clearTimeout(timer);
   }
 
-  // GUARANTEED fall-through: the home render, in-process. home itself never throws and never
-  // touches the network — the whole render is fs + local-git, stale-instant by construction.
+  // GUARANTEED fall-through: the home render, in-process. home itself never throws; its optional
+  // update orientation is cached local work plus a detached child and never extends this budget.
   //
   // `--dir` SEMANTICS BRIDGE: this verb's `--dir` names the directory to run from and may be
   // nested inside a project; home's explicit resolution never walks upward to select an ancestor.
@@ -312,9 +322,10 @@ export async function sessionStart(argv: string[], deps: Partial<SessionStartDep
   const homeArgv: string[] = [];
   if (values.dir !== undefined) homeArgv.push("--dir", values.dir);
   if (values.json) homeArgv.push("--json");
+  if (values["no-update-check"]) homeArgv.push("--no-update-check");
   const boardPath = outcome?.boardPath;
   const projectDir = values.dir;
-  await home(homeArgv, {
+  await (deps.renderHome ?? home)(homeArgv, {
     stdout,
     // ALWAYS a defined boardPull — session-start IS the pull step, so home's own opportunistic
     // trigger must never run under it. A pull that resolved to `undefined`

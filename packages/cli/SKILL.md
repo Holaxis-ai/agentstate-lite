@@ -111,8 +111,8 @@ initialize response reports the same running release. AgentState Lite does not s
 
 - `aslite version [--check] [--tag latest|next] [--json]`
   — Show the complete local build/runtime identity, or perform one bounded read-only comparison against npm's exact latest/next release policy
-- `aslite session-start [--dir <path>]`
-  — The SessionStart hook payload: a time-boxed best-effort board pull, then the home view — every pull failure falls through to the render (exit 0)
+- `aslite session-start [--dir <path>] [--no-update-check]`
+  — The SessionStart hook payload: pull then render; default TOON uses a nonblocking 24-hour cached latest check, while --no-update-check or ASLITE_NO_UPDATE_CHECK/NO_UPDATE_NOTIFIER/CI presence disables both display and refresh; npm receives only the public package request and ordinary network metadata, never installed version, cwd, bundle, actor, or usage data
 - `aslite hook install|status|uninstall [--scope project|global]`
   — Install the SessionStart hook (runs session-start: pull the board, then render) for Claude Code, Codex, OpenCode
 - `aslite skill install|status|uninstall [--scope project|global]`
