@@ -4,17 +4,16 @@ title: Add rollback-aware supported-release check
 status: in_progress
 priority: '1'
 description: >-
-  ADVERSARIAL QA PASS at exact PR #208 SHA
-  32108c3c6cd59a41c8d5f8fe7fafb705331cb1f9 with high confidence and no findings.
-  Focused suite 36/36; independent loopback peers closed with zero active
-  connections for overflow/timeout/declared-oversize/redirect; exact JSON/TOON
-  bytes and exit 0/1/2 passed; recursive
-  cwd/HOME/npm/integration/preference/bundle snapshots remained identical.
-  Evidence: context-notes/pr-208-adversarial-qa-32108c3. Next gate: full
-  repository check at the same SHA.
+  MERGE READY: PR #208 exact SHA 32108c3c6cd59a41c8d5f8fe7fafb705331cb1f9 passed
+  independent re-review, adversarial registry/output/no-write QA with no
+  findings, GitHub Node 20/22/26 checks, and the final local full npm run check.
+  The first full run had one unrelated load-sensitive session-start timing
+  failure; it passed isolated and in the complete rerun, with no source change.
+  Final evidence: context-notes/pr-208-final-gate-32108c3. Awaiting Brian-owned
+  merge; close this task after the merge receipt.
 actor: codex-supported-release-check
 assignee: codex-supported-release-check
-timestamp: '2026-08-05T19:16:56.528Z'
+timestamp: '2026-08-05T19:26:42.254Z'
 ---
 # Goal
 
