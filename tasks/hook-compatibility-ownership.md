@@ -4,14 +4,14 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  REVIEW FAILED again at c0c2b26: glob fixes pass, but unquoted brace expansion
-  remains falsely owned and destructively removed. Because this area has
-  exceeded two interventions, work has paused for a whole-system shell/ownership
-  model. Next repair must replace the unquoted denylist with the writer's closed
-  safe-alphabet grammar and add an expansion-taxonomy/property matrix before
-  fresh exact-SHA Review.
+  STRUCTURAL REPAIR BUILT at exact SHA f3beae6dad93de9acbee3bfcfdae54ab150c6a86.
+  Writer and recognizer now share one closed unquoted alphabet; 26
+  shell-syntax/expansion cases, exhaustive printable-ASCII round-trips,
+  Node-pair properties, built Claude/Codex byte preservation, Unicode, and
+  OpenCode receipt regressions pass. Focused 75/75 and full npm run check pass.
+  Gate is fresh whole-language exact-SHA Review.
 actor: codex-pr207-housekeeping-coordinator
-timestamp: '2026-08-05T21:15:36.247Z'
+timestamp: '2026-08-05T21:27:48.307Z'
 ---
 # Goal
 
