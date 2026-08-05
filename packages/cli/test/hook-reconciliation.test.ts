@@ -20,6 +20,7 @@ const FOREIGN = [
   { type: "command", command: "agentstate-lite backup", timeout: 10 },
   { type: "command", command: "npx -y @holaxis/aslite session-start", timeout: 10 },
   { type: "command", command: "aslite\nsession-start", timeout: 10 },
+  { type: "command", command: String.raw`"\u0061slite" session-start`, timeout: 10 },
   { type: "command", command: "node /tmp/agentstate-lite.mjs session-start", timeout: 10 },
 ];
 
@@ -179,7 +180,12 @@ test("OpenCode marker lookalikes are reported unmanaged and never overwritten or
     assert.equal(status.hook.opencode, false);
     assert.equal(status.hook.hosts.opencode.state, "unmanaged");
 
-    await hook(["uninstall"], { base, stdout: () => {} });
+    const uninstallCapture = capture();
+    await hook(["uninstall", "--json"], { base, stdout: uninstallCapture.stdout });
+    const uninstall = JSON.parse(uninstallCapture.out());
+    assert.deepEqual(uninstall.hook.notes, [
+      `preserved unmanaged OpenCode plugin: ${plugin}`,
+    ]);
     assert.equal(await readFile(plugin, "utf8"), authored);
 
     await assert.rejects(() => hook(["install"], { base, commandBase: "aslite", stdout: () => {} }), CliError);

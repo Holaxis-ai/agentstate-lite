@@ -62,23 +62,37 @@ export function tokenizeGeneratedHookCommand(command: string): string[] | undefi
         continue;
       }
       if (ch === '"') {
-        const start = i;
         i += 1;
-        let escaped = false;
+        let closed = false;
         while (i < command.length) {
           const inner = command[i]!;
-          if (!escaped && inner === '"') break;
-          if (!escaped && inner === "\\") escaped = true;
-          else escaped = false;
+          if (inner === '"') {
+            closed = true;
+            i += 1;
+            break;
+          }
+          const code = inner.charCodeAt(0);
+          if (code < 0x20 || code === 0x7f) return undefined;
+          if (inner === "$" || inner === "`") return undefined;
+          if (inner === "\\") {
+            const next = command[i + 1];
+            if (next === undefined) return undefined;
+            // POSIX double quotes only consume a backslash before $, `, ", or another backslash.
+            // For every other character the backslash is literal; JSON.parse would incorrectly turn forms
+            // such as `\u0061` into a different executable and could falsely claim ownership.
+            if (next === "$" || next === "`" || next === '"' || next === "\\") {
+              token += next;
+              i += 2;
+              continue;
+            }
+            token += "\\";
+            i += 1;
+            continue;
+          }
+          token += inner;
           i += 1;
         }
-        if (i >= command.length) return undefined;
-        try {
-          token += JSON.parse(command.slice(start, i + 1)) as string;
-        } catch {
-          return undefined;
-        }
-        i += 1;
+        if (!closed) return undefined;
         continue;
       }
       if (ch === "\\" && command[i + 1] === "'") {

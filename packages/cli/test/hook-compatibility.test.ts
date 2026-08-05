@@ -21,13 +21,19 @@ test("generated command tokenizer accepts emitted quoting and rejects shell beha
     "/Users/a b/bin/aslite",
     "session-start",
   ]);
+  assert.deepEqual(tokenizeGeneratedHookCommand(String.raw`"\u0061slite" session-start`), [
+    String.raw`\u0061slite`,
+    "session-start",
+  ]);
+  assert.deepEqual(tokenizeGeneratedHookCommand(String.raw`"aslite\nsession-start"`), [
+    String.raw`aslite\nsession-start`,
+  ]);
   for (const command of [
     "aslite session-start && echo owned",
     "aslite\nsession-start",
     "aslite\rsession-start",
     "aslite\tsession-start",
     "'aslite\nsession-start'",
-    '"aslite\\nsession-start"',
     "aslite  session-start",
     "$(which aslite) session-start",
     "aslite; session-start",
@@ -55,6 +61,8 @@ test("command compatibility recognizes exact generated history and rejects near-
     ["echo agentstate-lite", "unmanaged"],
     ["agentstate-lite backup", "unmanaged"],
     ["aslite2 session-start", "unmanaged"],
+    [String.raw`"\u0061slite" session-start`, "unmanaged"],
+    [String.raw`"aslite\/" session-start`, "unmanaged"],
     ["some-tool --aslite", "unmanaged"],
   ];
   for (const [command, state] of table) {

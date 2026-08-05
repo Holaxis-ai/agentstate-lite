@@ -1045,6 +1045,7 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
   // uninstall: remove the managed hook from the JSON targets + delete the OpenCode plugin file. The
   // Codex config.toml [features].hooks flag is left in place (harmless; other hooks may rely on it).
   let changed = false;
+  const notes: string[] = [];
   for (const path of [targets.claudeSettings, targets.codexHooks]) {
     const [updated, didChange] = computeHookUninstall(readSettings(path));
     if (didChange) {
@@ -1052,9 +1053,14 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
       changed = true;
     }
   }
-  if (readOpenCodeHookStatus(targets.opencodePlugin).installed) {
+  const openCodeStatus = readOpenCodeHookStatus(targets.opencodePlugin);
+  if (openCodeStatus.installed) {
     rmSync(targets.opencodePlugin, { force: true });
     changed = true;
+  } else if (openCodeStatus.compatibility.state === "unmanaged") {
+    notes.push(
+      `preserved unmanaged OpenCode plugin: ${collapseHomeDirectory(targets.opencodePlugin)}`,
+    );
   }
   stdout(
     render(
@@ -1064,6 +1070,7 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
           scope,
           installed: false,
           changed,
+          ...(notes.length > 0 ? { notes } : {}),
           targets: {
             claude_code: collapseHomeDirectory(targets.claudeSettings),
             codex: collapseHomeDirectory(targets.codexHooks),
