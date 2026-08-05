@@ -34,6 +34,41 @@ export const SHELL_FOREIGN_COMMANDS: ReadonlyArray<{ family: string; command: st
   { family: "Node brace expansion", command: nodeWith("{a,b}") },
 ];
 
+/** Shell-equivalent argv spellings that no current or historical hook writer emitted. */
+export const LEXICAL_ENVELOPE_FOREIGN_COMMANDS: ReadonlyArray<{ family: string; command: string }> = [
+  { family: "empty single quotes inside binary", command: "a''slite session-start" },
+  { family: "empty single quotes inside subcommand", command: "aslite s''ession-start" },
+  { family: "empty double quotes inside subcommand", command: 'aslite s""ession-start' },
+  {
+    family: "single-quoted direct prefix with unquoted suffix",
+    command: "'/tmp/x/packages/cli/dist/'agentstate-lite.mjs session-start",
+  },
+  {
+    family: "double-quoted direct prefix with unquoted suffix",
+    command: '"/tmp/x/packages/cli/dist/"agentstate-lite.mjs session-start',
+  },
+  {
+    family: "single-quoted Node prefixes with unquoted suffixes",
+    command:
+      "'/opt/aslite/bin/'node '/opt/aslite/lib/node_modules/@holaxis/aslite/dist/'agentstate-lite.mjs session-start",
+  },
+  {
+    family: "double-quoted Node prefixes with unquoted suffixes",
+    command:
+      '"/opt/aslite/bin/"node "/opt/aslite/lib/node_modules/@holaxis/aslite/dist/"agentstate-lite.mjs session-start',
+  },
+  {
+    family: "canonical first Node token plus partial second token",
+    command:
+      "/opt/aslite/bin/node '/opt/aslite/lib/node_modules/@holaxis/aslite/dist/'agentstate-lite.mjs session-start",
+  },
+  {
+    family: "historical double envelopes in a never-historical Node layout",
+    command:
+      '"/opt/as lite/bin/node" "/opt/as lite/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs" session-start',
+  },
+];
+
 export const localDevExecutable = (segment: string): string =>
   `/tmp/x${segment}x/packages/cli/dist/agentstate-lite.mjs`;
 

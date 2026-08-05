@@ -35,6 +35,13 @@ export function isSafeUnquotedHookToken(value: string): boolean {
   return SAFE_UNQUOTED_HOOK_TOKEN.test(value);
 }
 
+/** Render one token in the exact lexical envelope emitted by the current hook writer. */
+export function renderGeneratedHookToken(value: string): string {
+  return isSafeUnquotedHookToken(value)
+    ? value
+    : `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function result(
   state: HookCompatibilityState,
   reason: string,
@@ -45,17 +52,65 @@ function result(
   return { state, reason, ...(remedy ? { remedy } : {}) };
 }
 
+interface DoubleQuotedSegment {
+  value: string;
+  next: number;
+}
+
+function decodeDoubleQuotedSegment(command: string, start: number): DoubleQuotedSegment | undefined {
+  let i = start + 1;
+  let value = "";
+  while (i < command.length) {
+    const inner = command[i]!;
+    if (inner === '"') return { value, next: i + 1 };
+    const code = inner.charCodeAt(0);
+    if (code < 0x20 || code === 0x7f || inner === "$" || inner === "`") return undefined;
+    if (inner === "\\") {
+      const next = command[i + 1];
+      if (next === undefined) return undefined;
+      // POSIX double quotes consume a backslash only before $, `, ", or another backslash.
+      if (next === "$" || next === "`" || next === '"' || next === "\\") {
+        value += next;
+        i += 2;
+        continue;
+      }
+      value += "\\";
+      i += 1;
+      continue;
+    }
+    value += inner;
+    i += 1;
+  }
+  return undefined;
+}
+
+function renderHistoricalDoubleQuotedHookToken(value: string): string | undefined {
+  // The historical writer used JSON.stringify only when its command base contained whitespace.
+  if (!/\s/.test(value)) return undefined;
+  const rendered = JSON.stringify(value);
+  const decoded = decodeDoubleQuotedSegment(rendered, 0);
+  return decoded?.next === rendered.length && decoded.value === value ? rendered : undefined;
+}
+
+type HookTokenEnvelope = "current" | "historical_double";
+
+interface LexicalHookToken {
+  raw: string;
+  value: string;
+  envelope: HookTokenEnvelope;
+}
+
 /**
- * Tokenize only the deliberately small POSIX-shell subset emitted by this project. This is not a
- * general shell parser: control operators, substitutions, redirects, pathname expansion, escapes
- * in unquoted text, and unterminated quotes are rejected so a similar hand-authored command is
- * never owned.
+ * Parse only enough shell syntax to recover raw token slices, then require every decoded token to
+ * round-trip to one exact current or historical writer envelope. Shell-equivalent mixed, empty,
+ * or partial quote segments are therefore foreign even when quote removal yields familiar argv.
  */
-export function tokenizeGeneratedHookCommand(command: string): string[] | undefined {
+function lexicalHookTokens(command: string): LexicalHookToken[] | undefined {
   if (command.length === 0 || command.startsWith(" ") || command.endsWith(" ")) return undefined;
-  const tokens: string[] = [];
+  const tokens: LexicalHookToken[] = [];
   let i = 0;
   while (i < command.length) {
+    const start = i;
     let token = "";
     let consumed = false;
     while (i < command.length && command[i] !== " ") {
@@ -69,37 +124,10 @@ export function tokenizeGeneratedHookCommand(command: string): string[] | undefi
         continue;
       }
       if (ch === '"') {
-        i += 1;
-        let closed = false;
-        while (i < command.length) {
-          const inner = command[i]!;
-          if (inner === '"') {
-            closed = true;
-            i += 1;
-            break;
-          }
-          const code = inner.charCodeAt(0);
-          if (code < 0x20 || code === 0x7f) return undefined;
-          if (inner === "$" || inner === "`") return undefined;
-          if (inner === "\\") {
-            const next = command[i + 1];
-            if (next === undefined) return undefined;
-            // POSIX double quotes only consume a backslash before $, `, ", or another backslash.
-            // For every other character the backslash is literal; JSON.parse would incorrectly turn forms
-            // such as `\u0061` into a different executable and could falsely claim ownership.
-            if (next === "$" || next === "`" || next === '"' || next === "\\") {
-              token += next;
-              i += 2;
-              continue;
-            }
-            token += "\\";
-            i += 1;
-            continue;
-          }
-          token += inner;
-          i += 1;
-        }
-        if (!closed) return undefined;
+        const segment = decodeDoubleQuotedSegment(command, i);
+        if (!segment) return undefined;
+        token += segment.value;
+        i = segment.next;
         continue;
       }
       if (ch === "\\" && command[i + 1] === "'") {
@@ -115,13 +143,32 @@ export function tokenizeGeneratedHookCommand(command: string): string[] | undefi
     if ([...token].some((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f)) {
       return undefined;
     }
-    tokens.push(token);
+    const raw = command.slice(start, i);
+    const current = renderGeneratedHookToken(token);
+    const historical = renderHistoricalDoubleQuotedHookToken(token);
+    const envelope: HookTokenEnvelope | undefined =
+      raw === current ? "current" : raw === historical ? "historical_double" : undefined;
+    if (!envelope) return undefined;
+    tokens.push({ raw, value: token, envelope });
     if (i < command.length) {
       i += 1;
       if (i === command.length || command[i] === " ") return undefined;
     }
   }
+  if (tokens.some(({ envelope }) => envelope === "historical_double")) {
+    const exactHistoricalCommand =
+      tokens.length === 2 &&
+      tokens[0]?.envelope === "historical_double" &&
+      tokens[1]?.envelope === "current" &&
+      tokens[1]?.raw === "session-start";
+    if (!exactHistoricalCommand) return undefined;
+  }
   return tokens.length > 0 ? tokens : undefined;
+}
+
+/** Decode commands only after each raw token proves an exact generated lexical envelope. */
+export function tokenizeGeneratedHookCommand(command: string): string[] | undefined {
+  return lexicalHookTokens(command)?.map(({ value }) => value);
 }
 
 function isBareManagedBin(value: string): boolean {
@@ -159,8 +206,9 @@ function stableNpmRuntimePair(program: string, executable: string): boolean {
 
 /** Classify a complete command token sequence; near-matches are always unmanaged. */
 export function classifyHookCommand(command: string): HookCompatibility {
-  const tokens = tokenizeGeneratedHookCommand(command);
-  if (!tokens) return result("unmanaged", "command is outside the generated-command grammar");
+  const lexical = lexicalHookTokens(command);
+  if (!lexical) return result("unmanaged", "command is outside the generated-command grammar");
+  const tokens = lexical.map(({ value }) => value);
 
   if (
     tokens.length === 3 &&

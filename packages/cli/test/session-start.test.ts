@@ -60,8 +60,13 @@ import {
   sessionStartHookCommand,
 } from "../src/commands/hook.js";
 import { CliError } from "../src/errors.js";
-import { isSafeUnquotedHookToken, tokenizeGeneratedHookCommand } from "../src/hook-compatibility.js";
 import {
+  isSafeUnquotedHookToken,
+  renderGeneratedHookToken,
+  tokenizeGeneratedHookCommand,
+} from "../src/hook-compatibility.js";
+import {
+  LEXICAL_ENVELOPE_FOREIGN_COMMANDS,
   SHELL_FOREIGN_COMMANDS,
   localDevExecutable,
   stableNodePair,
@@ -1067,6 +1072,7 @@ test("writer and recognizer round-trip the complete printable alphabet and repre
     const character = String.fromCharCode(code);
     const executable = localDevExecutable(character);
     const command = sessionStartHookCommand(executable);
+    assert.equal(command, `${renderGeneratedHookToken(executable)} session-start`, JSON.stringify(character));
     assert.deepEqual(tokenizeGeneratedHookCommand(command), [executable, "session-start"], JSON.stringify(character));
     assert.equal(isManagedHookCommand(command), true, JSON.stringify(character));
     assert.equal(command.startsWith("'"), !isSafeUnquotedHookToken(executable), JSON.stringify(character));
@@ -1076,6 +1082,90 @@ test("writer and recognizer round-trip the complete printable alphabet and repre
     const command = sessionStartHookCommand(runtime, [executable, "session-start"]);
     assert.deepEqual(tokenizeGeneratedHookCommand(command), [runtime, executable, "session-start"], character);
     assert.equal(isManagedHookCommand(command), true, character);
+  }
+});
+
+test("built uninstall preserves noncanonical lexical envelopes byte-for-byte for Claude and Codex", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-lexical-foreign-"));
+  const settings = JSON.stringify(
+    {
+      hooks: {
+        SessionStart: [
+          {
+            matcher: "",
+            hooks: LEXICAL_ENVELOPE_FOREIGN_COMMANDS.map(({ command }) => ({
+              type: "command",
+              command,
+              timeout: 10,
+            })),
+          },
+        ],
+      },
+    },
+    null,
+    2,
+  ) + "\n";
+  const targets = [
+    path.join(base, ".claude", "settings.json"),
+    path.join(base, ".codex", "hooks.json"),
+  ];
+  try {
+    for (const target of targets) {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, settings);
+    }
+
+    const result = await runCliHook(["hook", "uninstall", "--json"], { cwd: base });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(JSON.parse(result.stdout).hook.changed, false);
+    for (const target of targets) {
+      assert.equal(await readFile(target, "utf8"), settings, `${target} must remain byte-identical`);
+    }
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("built uninstall recognizes every canonical lexical envelope", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-lexical-owned-"));
+  const canonicalCommands = [
+    "aslite session-start",
+    "'/tmp/a b/packages/cli/dist/agentstate-lite.mjs' session-start",
+    String.raw`'/tmp/a'\''b/packages/cli/dist/agentstate-lite.mjs' session-start`,
+    '"/tmp/a b/packages/cli/dist/agentstate-lite.mjs" session-start',
+    String.raw`'/opt/a'\''b/bin/node' '/opt/a'\''b/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs' session-start`,
+  ];
+  const settings = JSON.stringify(
+    {
+      hooks: {
+        SessionStart: canonicalCommands.map((command) => ({
+          matcher: "",
+          hooks: [{ type: "command", command, timeout: 10 }],
+        })),
+      },
+    },
+    null,
+    2,
+  ) + "\n";
+  const targets = [
+    path.join(base, ".claude", "settings.json"),
+    path.join(base, ".codex", "hooks.json"),
+  ];
+  try {
+    for (const target of targets) {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, settings);
+    }
+
+    const result = await runCliHook(["hook", "uninstall", "--json"], { cwd: base });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(JSON.parse(result.stdout).hook.changed, true);
+    for (const target of targets) {
+      const after = JSON.parse(await readFile(target, "utf8"));
+      assert.deepEqual(after, { hooks: { SessionStart: [] } }, `${target} must remove every canonical form`);
+    }
+  } finally {
+    await rm(base, { recursive: true, force: true });
   }
 });
 
