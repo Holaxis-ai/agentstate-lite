@@ -4,15 +4,16 @@ title: Add cached nonblocking update orientation
 status: in_progress
 priority: '1'
 description: >-
-  EXACT-SHA REVIEW FAILED at 21a028c. Expired-cooldown quarantine can
-  ABA-capture a successor active token; because the parent rechecks cache but
-  not matching active authority immediately before spawn, two detached workers
-  can start even though the captured worker later exits before U3. Builder is
-  adding deterministic C/A/B regression and pre-spawn active-token revalidation;
-  QA remains blocked.
+  REPAIR COMPLETE at exact SHA 8056f525766551556dedb31928d09e821fc4a58e. Parent
+  now revalidates matching unexpired active-token authority immediately before
+  spawn after cache reread; authority loss returns zero-spawn without
+  cleanup/successor touch. Deterministic C/A/B ABA regression passes (B=1, A=0,
+  B token preserved), owner 22/22, focused 120/120,
+  build/typecheck/generated/package/full check all pass. Gate returned to
+  mandatory fresh exact-SHA re-review; QA remains blocked.
 actor: codex-orientation-orchestrator
 assignee: codex-orientation-orchestrator
-timestamp: '2026-08-05T21:36:56.495Z'
+timestamp: '2026-08-05T21:52:17.327Z'
 ---
 # Goal
 

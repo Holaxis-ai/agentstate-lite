@@ -1,16 +1,17 @@
 ---
 type: Context Note
-title: Orientation update builder complete at 21a028c
+title: Orientation update builder repaired at 8056f52
 description: >-
-  Builder implementation and verification handoff for the exact
-  orientation-update review candidate.
+  Builder implementation, exact-SHA review repair, and verification handoff for
+  the replacement orientation-update candidate.
 actor: codex-orientation-builder
-timestamp: '2026-08-05T21:28:25.367Z'
+timestamp: '2026-08-05T21:51:53.991Z'
 ---
 # Summary
 
-The orientation-update implementation is complete on `feat/orientation-update-notice` at exact
-candidate SHA `21a028c418bf30ecb72aa77a0b06a244aee769d0`.
+The orientation-update implementation and exact-SHA review repair are complete on
+`feat/orientation-update-notice` at replacement candidate SHA
+`8056f525766551556dedb31928d09e821fc4a58e`.
 
 ## Goals
 
@@ -33,25 +34,35 @@ candidate SHA `21a028c418bf30ecb72aa77a0b06a244aee769d0`.
   validated results, and converts unavailable attempts to cooldown state.
 - CLI help, reference data, generated skill text, privacy wording, and test/mutation harness
   suppression are aligned with the new behavior.
+- After the first exact-SHA review exposed an expired-cooldown ABA process-start race, the parent
+  now revalidates its matching, unexpired fixed-path active token immediately before detached spawn.
+  Lost authority returns without cleanup, because even token-scoped quarantine would briefly move
+  a successor's record. A deterministic cleaner-C / parent-A / parent-B IPC barrier test proves
+  parent B starts exactly one worker, parent A starts none, and B's successor lease is preserved.
 
 ## Verification
 
-- Focused owner/home/session-start/update batteries: PASS, 119/119.
+- Orientation owner suite: PASS, 22/22, including the deterministic ABA regression.
+- Focused owner/home/session-start/update/version batteries: PASS, 120/120.
 - Root `npm run build`: PASS.
 - Root `npm run typecheck`: PASS.
 - Generated skill check (`npm run check:skill -w @holaxis/aslite`): PASS.
 - Offline npm package proof (`ASLITE_NO_UPDATE_CHECK=1 npm run verify:npm-package`): PASS.
-- Full repository gate (`ASLITE_NO_UPDATE_CHECK=1 npm run check`): PASS, including 19/19 UI E2E.
-- Final staged `git diff --check`: PASS; 11 scoped files, 2,060 insertions and 28 deletions.
+- Full repository gate (`ASLITE_NO_UPDATE_CHECK=1 npm run check`): PASS after the final
+  no-successor-touch correction, including the UI E2E gate.
+- Final staged `git diff --check`: PASS; cumulative branch scope is 11 files, 2,194 insertions and
+  28 deletions.
 - Branch pushed to `origin/feat/orientation-update-notice`; worktree clean after commit.
 
 ## Review focus and residuals
 
-No known builder finding remains. The candidate still requires the planned independent exact-SHA
-Review before adversarial QA. Review should concentrate on filesystem-race authority, private-route
-argv exactness, global flag routing, and the claim that every JSON/suppressed path performs zero
-update-state or process work. No bundle sync, PR action, GitHub comment, merge, or unrelated
-init-target-safety change was performed by this builder.
+The first exact-SHA review finding is repaired with deterministic regression coverage. No known
+builder finding remains. Replacement SHA `8056f525766551556dedb31928d09e821fc4a58e` requires mandatory
+independent exact-SHA re-review before adversarial QA. Review should concentrate on the repaired
+cleanup/claim/spawn authority boundary, private-route argv exactness, global flag routing, and the
+claim that every JSON/suppressed path performs zero update-state or process work. No bundle sync,
+PR action, GitHub comment, merge, or unrelated init-target-safety change was performed by this
+builder.
 
 [task](../tasks/orientation-update-notice.md)
 
