@@ -4,11 +4,11 @@ title: Publish AgentState OKF v0.2 producer evidence upstream
 status: in_progress
 priority: '2'
 description: >-
-  Bring the status collision, date preservation, and current-content provenance
-  findings to OKF maintainers with reproducible evidence.
+  Published the status/extension compatibility issue as upstream #272;
+  date-scalar, verification, and maintainer-response follow-up remain.
 actor: openai/codex
 assignee: openai/codex
-timestamp: '2026-08-05T04:14:03.410Z'
+timestamp: '2026-08-05T11:54:46.250Z'
 ---
 # Objective
 
@@ -36,3 +36,11 @@ AgentState as v0.2-conformant.
 Use [the audit](../research/okf-v0-2-compatibility-audit.md) as the source of truth.
 
 [draft issue](../drafts/okf-v0-2-status-field-collision.md)
+
+# Publication status
+
+The forward-compatibility finding was published as
+[GoogleCloudPlatform/knowledge-catalog#272](https://github.com/GoogleCloudPlatform/knowledge-catalog/issues/272)
+on 2026-08-05 by `mikec-ai`, after independent skeptical review and a final duplicate/specification
+check. The task remains open for the date-scalar contribution, verification feedback, and maintainer
+response.

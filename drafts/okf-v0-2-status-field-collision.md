@@ -1,11 +1,11 @@
 ---
 type: Issue Draft
-title: 'Upstream issue draft: forward compatibility for adopted extension keys'
+title: 'Published upstream issue: forward compatibility for adopted extension keys'
 description: >-
-  Narrow draft asking how an OKF minor version should handle a key previously
-  used as a producer extension, using status as the concrete case.
+  Published as GoogleCloudPlatform/knowledge-catalog#272 after skeptical review
+  and final specification checks.
 actor: openai/codex
-timestamp: '2026-08-05T04:22:56.427Z'
+timestamp: '2026-08-05T11:54:46.404Z'
 ---
 # Proposed title
 
@@ -91,11 +91,11 @@ retires earlier conventions. This question appears to sit at the intersection of
 Once the intended behavior is settled, we would be happy to contribute a small cross-producer
 fixture covering the example above.
 
-# Internal publication notes
+# Publication status
 
-- Internal source record: [evidence](../research/okf-v0-2-compatibility-audit.md).
-- Replace `#212` and `#239` with links if the GitHub editor does not autolink them in the final form.
-- Recheck the section numbers against the current specification immediately before publication.
-- Search for a newer issue that already settles extension-key collisions.
-- Publish only the `# Draft issue` contents; omit this proposed-title wrapper and internal notes.
-- Keep date-scalar and verification findings in their existing upstream discussions.
+Published on 2026-08-05 as
+[GoogleCloudPlatform/knowledge-catalog#272](https://github.com/GoogleCloudPlatform/knowledge-catalog/issues/272)
+by `mikec-ai` after independent skeptical review. The final pre-publication check confirmed the
+section references and found no newer duplicate.
+
+Internal source record: [evidence](../research/okf-v0-2-compatibility-audit.md).
