@@ -2,24 +2,36 @@
 type: Context Note
 title: Summarize upstream OKF issue 272
 actor: codex-main
-timestamp: '2026-08-05T21:07:46.000Z'
+timestamp: '2026-08-05T22:19:50.287Z'
 ---
 # Summary
 
-Completed summary of GoogleCloudPlatform/knowledge-catalog issue #272. The issue is an open specification question, not a pull request or implementation.
+Recommended navigation policy for the OKF v0.2 `status` collision: keep v0.1 authoring, immediately guard unsupported version claims, preserve v0.2 read/transport behavior, and gate the permanent workflow-state serialization decision on upstream adjudication or an explicit local decision.
 
 # Goals
 
 Ultimate goal: make agentstate-lite the shared, versioned, conflict-safe markdown memory that a human and agent fleet can install and use without founder intervention.
 
-Proximate goal: extract the durable OKF implications of upstream issue #272 so agentstate-lite can remain aligned with the knowledge format it implements.
+Proximate goal: turn upstream issue #272 into a low-risk OKF adoption policy for agentstate-lite, preserving portability while avoiding ambiguous or lossy migration.
 
-# Outcome
+# Recommendation
 
-Issue #272 asks how OKF should handle a collision when a later minor version standardizes a frontmatter key that earlier producers legally used as an extension. The concrete collision is `status`: agentstate-lite uses it for kind-specific workflow states under OKF v0.1, while OKF v0.2 gives it document-lifecycle values `draft`, `stable`, and `deprecated`.
+1. Implement the existing `tasks/okf-version-claim-guard` now. This correctness guard does not depend on upstream: agentstate-lite should reject v0.2 and unknown authoring claims while continuing permissive reads.
+2. Do not rename fields, bump defaults, dual-write, or eagerly migrate existing v0.1 bundles.
+3. Adopt four semantic invariants: the declared OKF version determines ownership of a serialized key; meaning is never inferred from a value; invalid core values are preserved and warned on rather than reinterpreted; ordinary mutation never performs an implicit schema migration.
+4. Default the eventual v0.2 design toward a namespaced producer field for workflow state, unless upstream specifies another mechanism that is equally unambiguous to generic consumers. A profile alone is insufficient if unaware consumers still misread top-level `status`.
+5. Use dual-read/single-write migration: existing v0.1 `status` remains readable; an explicit, resumable, CAS-protected upgrade writes only the adjudicated v0.2 representation. Do not dual-write two competing sources of truth.
+6. Keep the user-facing workflow ergonomic, but decouple logical Kind fields or CLI aliases from serialized keys if necessary so future core-field adoption requires a mapping change rather than another ecosystem-wide data collision.
+7. Pin the decision with cross-producer and cross-backend fixtures before enabling a v0.2 writer.
 
-The issue argues that v0.2 minimal conformance does not clearly invalidate values such as `todo`, but generic consumers cannot know whether those values are lifecycle data or producer-specific workflow data. It asks whether core semantics globally claim the key, how consumers should handle out-of-vocabulary values, and what migration pattern producers should use.
+# Decision trigger
 
-Evidence cited from an agentstate-lite snapshot: 826 documents; 336 with nonempty top-level `status`; 331 outside the v0.2 lifecycle vocabulary; 5 using `deprecated`. The issue links profile proposal #212 and version-compatibility issue #239, and offers a cross-producer fixture after policy is settled.
+Upstream response is useful but not an indefinite blocker. The permanent field mapping is decided when either upstream provides collision semantics or agentstate-lite is otherwise ready to begin the v0.2 writer, whichever comes first. Until then, the write-version guard makes the waiting state safe.
 
-As of 2026-08-05 the issue is open with no comments, labels, assignees, timeline events, or linked implementation. Practical implication: agentstate-lite should not treat a v0.2 declaration as a mechanical version bump until upstream defines collision and migration semantics.
+# Existing alignment
+
+This recommendation refines rather than replaces `research/okf-v0-2-compatibility-audit` and `designs/okf-compatibility-and-upstream-stewardship`. The current roadmap and tasks already encode most of it; the immediate actionable unit is `tasks/okf-version-claim-guard`.
+
+[applies](../designs/okf-compatibility-and-upstream-stewardship.md)
+
+[recommends next](../tasks/okf-version-claim-guard.md)
