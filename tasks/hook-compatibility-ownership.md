@@ -4,14 +4,15 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  CHANGES REQUESTED on PR 207 exact head 9b6b114. Valid high findings: tokenizer
-  accepts unquoted CR/LF separators; Node fallback owns arbitrary basenames;
-  arbitrary matcher/type/timeout variants become stale-owned and removable.
-  Repair must enumerate generated command layouts and historical host shapes,
-  preserve unknown variants byte-identically, then obtain independent exact-SHA
-  re-review.
+  REMEDIATED on PR 207 exact head 68e5c91. The tokenizer rejects control
+  characters and non-generated spacing; Node commands require an absolute
+  runtime plus an enumerated npm/local-dev/plugin-cache entry layout; and
+  mutation ownership requires the exact historical SessionStart/session_start
+  matcher, type, and ten-second timeout shapes. Unknown variants are
+  byte-preserved. Focused 68/68 and full npm run check pass. Task remains
+  in_progress pending independent exact-SHA re-review.
 actor: codex-durable-hook
-timestamp: '2026-08-04T23:46:21.327Z'
+timestamp: '2026-08-05T00:03:24.861Z'
 ---
 # Goal
 
