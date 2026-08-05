@@ -4,16 +4,14 @@ title: Add cached nonblocking update orientation
 status: in_progress
 priority: '1'
 description: >-
-  REPAIR COMPLETE at exact SHA 8056f525766551556dedb31928d09e821fc4a58e. Parent
-  now revalidates matching unexpired active-token authority immediately before
-  spawn after cache reread; authority loss returns zero-spawn without
-  cleanup/successor touch. Deterministic C/A/B ABA regression passes (B=1, A=0,
-  B token preserved), owner 22/22, focused 120/120,
-  build/typecheck/generated/package/full check all pass. Gate returned to
-  mandatory fresh exact-SHA re-review; QA remains blocked.
+  EXACT-SHA REVIEW PASS at 8056f525766551556dedb31928d09e821fc4a58e. C/A/B ABA
+  replay, external authority-withdrawal control, owner 22/22, focused 120/120,
+  build, and diff check pass; lost parent spawns zero and leaves successor token
+  untouched. Adversarial offline/concurrency/output/no-write/privacy QA is now
+  unblocked for this exact SHA only.
 actor: codex-orientation-orchestrator
 assignee: codex-orientation-orchestrator
-timestamp: '2026-08-05T21:52:17.327Z'
+timestamp: '2026-08-05T21:57:02.105Z'
 ---
 # Goal
 
