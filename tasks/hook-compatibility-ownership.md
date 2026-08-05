@@ -4,13 +4,14 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  REPAIR UPDATED at exact SHA c0c2b26f19827750f54a320bd6796df641ee7353 on
-  fix/pr207-hook-ownership-housekeeping. Unquoted *, ?, [, ] direct and
-  absolute-Node variants now fail closed; quoted historical literals remain
-  recognized. Focused 71/71 and full npm run check pass. Gate returned to fresh
-  independent exact-SHA Review before adversarial QA.
+  REVIEW FAILED again at c0c2b26: glob fixes pass, but unquoted brace expansion
+  remains falsely owned and destructively removed. Because this area has
+  exceeded two interventions, work has paused for a whole-system shell/ownership
+  model. Next repair must replace the unquoted denylist with the writer's closed
+  safe-alphabet grammar and add an expansion-taxonomy/property matrix before
+  fresh exact-SHA Review.
 actor: codex-pr207-housekeeping-coordinator
-timestamp: '2026-08-05T21:09:00.582Z'
+timestamp: '2026-08-05T21:15:36.247Z'
 ---
 # Goal
 
