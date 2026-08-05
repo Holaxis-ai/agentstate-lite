@@ -4,17 +4,17 @@ title: Add rollback-aware supported-release check
 status: in_progress
 priority: '1'
 description: >-
-  INDEPENDENT RE-REVIEW PASS at exact PR #208 SHA
-  32108c3c6cd59a41c8d5f8fe7fafb705331cb1f9. Both prior findings are closed:
-  rejected response streams abort/cancel with the original live streaming-503
-  counterexample now reporting a closed peer and zero continued
-  writes/connections; built-help integration matches the new syntax. Focused
-  36/36 and exact-SHA Node 20/22/26 CI pass. Review evidence:
-  context-notes/pr-208-exact-sha-rereview-32108c3. Next gate: adversarial
-  registry/output/no-write QA.
-actor: codex-pr208-rereview
+  ADVERSARIAL QA PASS at exact PR #208 SHA
+  32108c3c6cd59a41c8d5f8fe7fafb705331cb1f9 with high confidence and no findings.
+  Focused suite 36/36; independent loopback peers closed with zero active
+  connections for overflow/timeout/declared-oversize/redirect; exact JSON/TOON
+  bytes and exit 0/1/2 passed; recursive
+  cwd/HOME/npm/integration/preference/bundle snapshots remained identical.
+  Evidence: context-notes/pr-208-adversarial-qa-32108c3. Next gate: full
+  repository check at the same SHA.
+actor: codex-supported-release-check
 assignee: codex-supported-release-check
-timestamp: '2026-08-05T18:01:02.652Z'
+timestamp: '2026-08-05T19:16:56.528Z'
 ---
 # Goal
 
