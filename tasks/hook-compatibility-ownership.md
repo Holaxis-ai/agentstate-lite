@@ -4,19 +4,22 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  BUILDER COMPLETE at exact pushed candidate
-  cf3b8abf802dcd3325ba72a91eb95e0cc7bfe9e4 on
-  fix/pr207-hook-ownership-housekeeping. Structural raw-token lexical ownership
-  admits only canonical current writer forms and the enumerated historical
-  whole-token form; empty-quote, partial-quote, expansion, Unicode, and
-  mixed-segment foreign forms are rejected across pure and built host paths.
-  Builder checkpoint 6fbe3ae was merged with current origin/main 28cbf913
-  without conflict or history rewrite. Build and diff check pass; post-merge
-  focused suite passes 78/78; worktree clean and remote tip exact. Next
-  dependency: fresh independent exact-SHA whole-language review; no QA or full
-  repository gate yet.
+  EXACT-SHA REVIEW FAIL at cf3b8abf802dcd3325ba72a91eb95e0cc7bfe9e4. The
+  structural lexical-envelope repair and OpenCode unmanaged-preservation receipt
+  pass, but semantic Node-layout ownership remains too broad: a lexically
+  canonical command pairing Node from /opt/runtime-a with an npm package entry
+  under /opt/npm-b is classified current through the generic absolute-Node
+  fallback even though no writer emits it. Pure and freshly built
+  status/install/uninstall claim, rewrite, or delete it across Claude, Codex,
+  and OpenCode. Required repair: npm-shaped entries must pass
+  stableNpmRuntimePair; the generic Node branch may accept only enumerated
+  local-dev/marketplace layouts. QA remains blocked. Evidence:
+  context-notes/pr207-housekeeping-exact-review-cf3b8ab and
+  context-notes/hook-ownership-semantic-node-pair-model-2026-08-05. Next
+  dependency: builder repair with cross-prefix pure+built byte-preservation
+  tests, then fresh exact-SHA review.
 actor: codex-pr207-housekeeping-coordinator
-timestamp: '2026-08-05T23:14:26.970Z'
+timestamp: '2026-08-05T23:40:20.124Z'
 ---
 # Goal
 
