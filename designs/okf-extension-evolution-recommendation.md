@@ -5,7 +5,7 @@ description: >-
   Recommended identity, wire-isolation, profile, collision, capability, and
   migration policy for OKF extensions and agentstate-lite Kind conventions
 actor: codex-main
-timestamp: '2026-08-05T22:55:47.779Z'
+timestamp: '2026-08-05T23:02:39.996Z'
 ---
 # Evolution-safe OKF extension architecture
 
@@ -167,6 +167,7 @@ A network registry may advertise or retrieve an explicitly requested snapshot, b
 13. Retired semantic identifiers are never reassigned to unrelated meanings.
 14. Runtime network access is never required to interpret, validate, author, or migrate an already-resolved bundle.
 15. Compatibility or quarantined source data can prevent loss, but it is archival and non-authoritative; it never becomes a second writable truth.
+16. Target activation requires a proven bundle-wide write fence or a quiescent write domain. Per-document and root CAS do not, by themselves, exclude a fresh legacy/unaware writer between verification and commit.
 
 ## Collision taxonomy and matched responses
 
@@ -208,17 +209,17 @@ Bundle open resolves the root OKF edition and exact local contract/profile set. 
 
 1. Stay on v0.1 until a target writer and named migration exist. Do not eagerly rename `status` now.
 2. Preflight every affected document and classify source form, ownership, target, shape/loss, current revision, and ambiguity.
-3. Pin rollback bytes/history, source/target contracts, dependencies, and transform digest.
-4. CAS-enter a persistent write-gated migration state.
-5. Transform each document from a fresh revision; write target and delete legacy in one CAS operation; checkpoint result.
+3. Pin rollback bytes/history, source/target contracts, dependencies, transform digest, and the source root revision.
+4. Enter a persistent migration epoch and establish the write fence. On a server/backend that can enforce a bundle epoch at every write boundary, reject missing/stale epochs and incompatible client contracts. On a direct filesystem where old binaries can ignore the marker, require an operator-enforced quiescent maintenance window. If neither is provable, automated online migration and target activation are unsupported.
+5. Transform each document from a fresh revision; write target and delete legacy in one CAS operation; checkpoint result under the migration epoch.
 6. Keep root `okf_version: "0.1"` while documents are mixed. Generic consumers therefore continue to interpret legacy bare fields under their source edition while new extension-envelope data remains opaque.
-7. Verify target constraints, unknown preservation, scalar shapes, cross-field invariants, expected counts, and absence of legacy/dual coordinates.
-8. CAS-flip root version/profile last, then unblock target authoring.
-9. Retain bounded legacy-read support and diagnostics; never resume legacy writes.
+7. Verify target constraints, unknown preservation, scalar shapes, cross-field invariants, expected counts, and absence of legacy/dual coordinates. Persist the exact protected set of document IDs and verified revisions (or an equivalent complete authenticated snapshot) for the commit gate.
+8. Commit only while the write fence/quiescence still holds and the complete protected revision set is unchanged. Atomically where the backend permits—or within the same exclusive maintenance window otherwise—CAS-flip the root version/profile and migration epoch last. Run a final protected audit of the root and target revision set, then release the fence and enable only target-compatible writers.
+9. Retain bounded legacy-read support and diagnostics; never resume legacy writes. An incompatible old writer after cutover is outside the supported contract and must be prevented by the backend/write-domain policy or detected as conformance regression; frontmatter alone cannot force it to cooperate.
 
 Migration states should at least distinguish `idle`, `planned`, `in_progress`, `verifying`, `committing`, `complete`, and `failed/aborting`. A checkpoint records document ID, source revision, result revision, transform identity, outcome, and diagnostic. A content hash without restorable bytes is not a rollback strategy.
 
-Every semantic mutator must honor the persisted gate. Per-document CAS rejects stale revisions but cannot stop a fresh legacy writer from reintroducing a source coordinate after reading a converted head; the shared write/version gate is the local-first substitute for centralized admission control.
+Every current semantic mutator must honor the persisted gate, but that is only the cooperative-client layer. Per-document CAS rejects stale revisions but cannot stop a fresh legacy writer from reintroducing a source coordinate after reading a converted head, nor can a root CAS close the verification-to-commit race across many files. The authoritative guarantee therefore comes from a backend-enforced bundle epoch/fence or truthful operational quiescence; the protected revision set proves that the verified snapshot is the snapshot being activated. Drift before commit returns the migration to `in_progress`/`verifying`; it never becomes an accepted exception. Failure or abort retains the epoch, transform identity, checkpoints, and rollback bytes until the complete source contract is restored or the same migration resumes.
 
 ## What the standards contribute
 
@@ -300,6 +301,18 @@ That makes known collision patterns executable release gates rather than institu
 
 agentstate-lite should not wait for every answer before installing the identity, collision, capability, and migration abstractions. It should avoid freezing the exact top-level extension/profile spelling until upstream either reserves one or declines to do so.
 
+### Decision table by upstream outcome
+
+| Upstream outcome | Declaration and wire choice | Layers that remain local/unchanged | Adoption evidence and migration rule |
+| --- | --- | --- | --- |
+| OKF reserves a normative extension container and profile declaration | Use both normative mechanisms; the agentstate-specific spelling becomes legacy. | Canonical semantic IDs, exact definition pins, operation capabilities, mappings, collision taxonomy, and migration lifecycle remain. | Adopt after normative text and representative tool tests. Migrate every provisional coordinate before claiming the target edition/profile. |
+| OKF standardizes profiles but no isolated extension lane | Use the normative profile declaration for contract selection; retain an agentstate-local isolated wire lane. Profiles never license core-key overloading. | Identity, wire mapping, operation gates, and migration remain local. | Adopt the profile mechanism after conformance tests; no wire relocation is implied. Any later normative lane requires a separate migration before its claim. |
+| OKF reserves a producer prefix/namespace lane without prescribing inner syntax | Use the reserved prefix for the outer envelope anchor or, if tooling favors it, for authority-bound flat keys; keep profile declaration local unless separately standardized. | Canonical IDs remain independent of prefixes; capability, mapping, and migration layers remain. | Select nested versus flat only after preservation/query tests. Relocate the provisional anchor before the edition that relies on the reservation is claimed. |
+| OKF guarantees a global producer-key reservation/registry but supplies no extension container | Register an authority-bound key or anchor under the normative reservation; do not treat registration as semantic definition or profile validation. | Exact definitions, logical mappings, composition, and migrations remain local/pinned. | Adopt after ownership, transfer, and collision rules are normative and tooling tests pass. Existing provisional data migrates before the new conformance claim. |
+| OKF publishes only a machine-readable core registry/change policy | Compile it into the collision/capability gate; continue the clearly local, provisional, migratable extension lane. | All extension identity, declaration, wire, and migration policy remains agentstate-owned. | Consume exact edition artifacts after diff validation. No target wire claim changes merely because collision detection improves. |
+| OKF retracts or renames the conflicting core `status` rule | Reclassify the immediate collision under the exact new edition; do not collapse custom identity back into the bare key by default. | The general identity, capability, and migration architecture remains. | Adopt only from normative edition text. Any wire simplification is a separate target mapping and migration, never an in-place reinterpretation. |
+| OKF provides no timely relevant mechanism | Stay on honest v0.1 writes until v0.2 authoring justifies a local target; if proceeding, use the tested provisional lane and local profile declaration without claiming permanent standards protection. | All layers remain local and offline-pinned. | Proceed only after prototype gates and an explicit product decision. Preserve a relocation mapping; migrate before any later normative-lane/profile claim. |
+
 ## Rejected approaches
 
 - **Rename `status` and stop:** fixes C1 once, but leaves all other collision classes and future renames unmanaged.
@@ -321,6 +334,7 @@ agentstate-lite should not wait for every answer before installing the identity,
 - Authority transfer, abandoned namespaces, signing, and digest trust are unresolved governance risks. Exact local pins prevent silent substitution but do not establish publisher trust.
 - Bundle-local IDs may become unstable across copy/fork/merge. Require explicit re-homing or define a durable bundle identity before promising local-ID portability.
 - Write-gated migrations pause normal semantic writes. The UX must make preflight, progress, resume, conflict, rollback, and completion obvious.
+- Direct-file legacy writers cannot be fenced by metadata they do not understand. Migration must use an exclusive/quiescent write domain or a backend that enforces the bundle epoch; otherwise target activation remains unsupported rather than approximately safe.
 - If several real future collisions are fully handled by the immediate ledger and no alternate wire form is needed, defer envelope rollout; do not weaken identity or truthful-capability invariants.
 - If OKF publishes a stronger normative extension mechanism, adopt its wire/profile syntax and preserve the logical IDs, mappings, collision taxonomy, and migration lifecycle.
 
@@ -333,7 +347,7 @@ agentstate-lite should not wait for every answer before installing the identity,
 5. Duplicate canonical ID with different content, ambiguous alias, incompatible profile composition, and duplicate write-coordinate claims all fail closed.
 6. Date-only, datetime, nested mapping, list, scalar, and unknown-key round-trip fixtures establish representation guarantees.
 7. Legacy and target values that disagree stop migration; no load-order or value-based precedence is used.
-8. Interrupted and concurrent migrations resume safely with per-document CAS and never flip the root claim early.
+8. Interrupted and concurrent migrations resume safely with per-document CAS, a bundle epoch/fence, and a protected verified revision set; they never flip the root claim early. A direct-filesystem test proves the quiescent-mode requirement rather than pretending an unaware writer can be fenced by frontmatter.
 9. Rollback restores source bytes/history, not merely hashes.
 10. Offline resolution succeeds from pinned definitions and refuses missing or substituted definitions for semantic operations.
 11. Extension-to-core graduation retains one logical view, single-writes target, detects duplicate truth, and retires only after storage audit.
