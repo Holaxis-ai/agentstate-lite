@@ -4,15 +4,17 @@ title: Add rollback-aware supported-release check
 status: in_progress
 priority: '1'
 description: >-
-  REVIEW FIXES IN PROGRESS for PR #208 at
-  https://github.com/Holaxis-ai/agentstate-lite/pull/208. Addressing exact-SHA
-  review findings: early rejected HTTP responses must abort/cancel their streams
-  within the advertised resource bounds, and the built-help integration
-  expectation must match the generated version syntax. New exact SHA will
-  require independent re-review before QA/gate.
+  REVIEW FIXES PUSHED on PR #208 at exact SHA
+  32108c3c6cd59a41c8d5f8fe7fafb705331cb1f9. Early rejected responses now
+  abort/cancel streams with cancellation-unit and live streaming-socket
+  regressions; built-help integration matches the new version syntax. Focused
+  fix suite 36/36, CLI typecheck, root build, and diff check pass. Resolution
+  comment:
+  https://github.com/Holaxis-ai/agentstate-lite/pull/208#issuecomment-5195041516.
+  Awaiting independent exact-SHA re-review before adversarial QA/full gate.
 actor: codex-supported-release-check
 assignee: codex-supported-release-check
-timestamp: '2026-08-05T17:21:39.522Z'
+timestamp: '2026-08-05T17:24:36.982Z'
 ---
 # Goal
 
