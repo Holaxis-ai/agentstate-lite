@@ -155,14 +155,12 @@ function isManagedHook(
   hook: HookEntry | undefined,
   location: "SessionStart" | "session_start",
   matcher: unknown,
-  expectedCommand?: string,
 ): boolean {
   return isOwnedHookCompatibility(
     classifyHookEntry({
       entry: hook,
       location,
       matcher,
-      expectedCommand,
       timeoutSeconds: HOOK_TIMEOUT_SECONDS,
     }),
   );
@@ -171,7 +169,7 @@ function isManagedHook(
 /**
  * Pure install updater for the Claude settings.json / Codex hooks.json SessionStart shape —
  * modeled on the SDK's `computeSessionStartHookUpdate`, but recognizing managed hooks through
- * {@link isManagedHookCommand} (both command forms) instead of one substring marker. Rewrites the
+ * the exact shared compatibility classifier instead of one substring marker. Rewrites the
  * FIRST managed hook in place (preserving its group position), removes any FURTHER managed hooks
  * (a duplicate left by an older marker mismatch), strips legacy `hooks.session_start` managed
  * entries, and appends a fresh group only when no managed hook exists. Returns
@@ -191,9 +189,7 @@ export function computeSessionStartHookInstall(
   const hooks = updated.hooks;
 
   if (Array.isArray(hooks.session_start)) {
-    const kept = hooks.session_start.filter(
-      (h) => !isManagedHook(h, "session_start", undefined, spec.command),
-    );
+    const kept = hooks.session_start.filter((h) => !isManagedHook(h, "session_start", undefined));
     if (kept.length !== hooks.session_start.length) {
       changed = true;
       if (kept.length === 0) delete hooks.session_start;
@@ -218,14 +214,8 @@ export function computeSessionStartHookInstall(
     }
     const keptHooks: HookEntry[] = [];
     for (const h of group.hooks) {
-      if (!isManagedHook(h, "SessionStart", group.matcher, spec.command)) {
+      if (!isManagedHook(h, "SessionStart", group.matcher)) {
         keptHooks.push(h);
-        continue;
-      }
-      // A matcher applies to every hook in its group. Moving our entry to a fresh matcher:""
-      // group is the only safe convergence when foreign siblings share a historical matcher.
-      if (group.matcher !== "") {
-        changed = true;
         continue;
       }
       if (rewritten) {
@@ -260,7 +250,7 @@ export function computeSessionStartHookInstall(
 
 /**
  * Pure managed-hook removal (the SDK exports none). Removes every SessionStart hook recognized by
- * {@link isManagedHookCommand} (either command form), drops any group left with no hooks, and
+ * the exact shared compatibility classifier, drops any group left with no hooks, and
  * strips legacy hooks.session_start matches. Returns [updatedSettings, changed]; unrelated hooks
  * and groups survive untouched. Shared by the Claude settings.json and the Codex hooks.json
  * (identical HookSettings shape).
@@ -310,7 +300,7 @@ export interface HookStatus {
 }
 
 /** Pure status scan over the same exact classifier used by install and uninstall. */
-export function readHookCompatibilityStatus(settings: HookSettings, expectedCommand?: string): HookStatus {
+export function readHookCompatibilityStatus(settings: HookSettings): HookStatus {
   const hooks = settings.hooks;
   let sawUnmanaged = false;
   const owned: Array<{ command: string; compatibility: HookCompatibility }> = [];
@@ -323,7 +313,6 @@ export function readHookCompatibilityStatus(settings: HookSettings, expectedComm
             entry: h,
             location: "SessionStart",
             matcher: group.matcher,
-            expectedCommand,
             timeoutSeconds: HOOK_TIMEOUT_SECONDS,
           });
           if (isOwnedHookCompatibility(compatibility)) {
@@ -339,7 +328,6 @@ export function readHookCompatibilityStatus(settings: HookSettings, expectedComm
         const compatibility = classifyHookEntry({
           entry: h,
           location: "session_start",
-          expectedCommand,
           timeoutSeconds: HOOK_TIMEOUT_SECONDS,
         });
         if (isOwnedHookCompatibility(compatibility)) {
@@ -894,8 +882,8 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
     } catch {
       expectedLaunch = undefined;
     }
-    const claude = readHookCompatibilityStatus(readSettings(targets.claudeSettings), expectedLaunch?.command);
-    const codex = readHookCompatibilityStatus(readSettings(targets.codexHooks), expectedLaunch?.command);
+    const claude = readHookCompatibilityStatus(readSettings(targets.claudeSettings));
+    const codex = readHookCompatibilityStatus(readSettings(targets.codexHooks));
     const opencode = readOpenCodeHookStatus(
       targets.opencodePlugin,
       expectedLaunch

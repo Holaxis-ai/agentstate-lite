@@ -23,6 +23,12 @@ test("generated command tokenizer accepts emitted quoting and rejects shell beha
   ]);
   for (const command of [
     "aslite session-start && echo owned",
+    "aslite\nsession-start",
+    "aslite\rsession-start",
+    "aslite\tsession-start",
+    "'aslite\nsession-start'",
+    '"aslite\\nsession-start"',
+    "aslite  session-start",
     "$(which aslite) session-start",
     "aslite; session-start",
     "aslite 'unterminated",
@@ -35,11 +41,14 @@ test("generated command tokenizer accepts emitted quoting and rejects shell beha
 test("command compatibility recognizes exact generated history and rejects near-matches", () => {
   const table: Array<[string, string]> = [
     [stable, "current"],
-    ["aslite session-start", "current"],
-    ["agentstate-lite session-start", "current"],
+    ["aslite session-start", "legacy_path_bound"],
+    ["agentstate-lite session-start", "legacy_path_bound"],
     ["aslite", "stale"],
-    ["/usr/local/bin/aslite session-start", "legacy_path_bound"],
+    ["/usr/local/bin/aslite session-start", "unmanaged"],
     ["/x/packages/cli/dist/agentstate-lite.mjs session-start", "legacy_path_bound"],
+    ["/opt/node/bin/node /x/packages/cli/dist/agentstate-lite.mjs session-start", "current"],
+    ["node /tmp/agentstate-lite.mjs session-start", "unmanaged"],
+    ["/tmp/bin/node /tmp/agentstate-lite.mjs session-start", "unmanaged"],
     ["npx -y agentstate-lite session-start", "legacy_path_bound"],
     ["npx -y agentstate-lite", "stale"],
     ["npx -y @holaxis/aslite session-start", "unmanaged"],
@@ -53,7 +62,7 @@ test("command compatibility recognizes exact generated history and rejects near-
   }
 });
 
-test("entry compatibility includes location, matcher, type, and timeout in ownership state", () => {
+test("entry compatibility owns only exact current and explicitly historical host shapes", () => {
   const current = classifyHookEntry({
     entry: { type: "command", command: stable, timeout: 10 },
     location: "SessionStart",
@@ -61,8 +70,15 @@ test("entry compatibility includes location, matcher, type, and timeout in owner
     timeoutSeconds: 10,
   });
   assert.equal(current.state, "current");
+  const historical = classifyHookEntry({
+    entry: { type: "command", command: "aslite session-start", timeout: 10 },
+    location: "session_start",
+    timeoutSeconds: 10,
+  });
+  assert.equal(historical.state, "stale");
+  assert.equal(isOwnedHookCompatibility(historical), true);
+
   for (const changed of [
-    { location: "session_start" as const, matcher: undefined, type: "command", timeout: 10 },
     { location: "SessionStart" as const, matcher: "tool", type: "command", timeout: 10 },
     { location: "SessionStart" as const, matcher: "", type: "prompt", timeout: 10 },
     { location: "SessionStart" as const, matcher: "", type: "command", timeout: 9 },
@@ -73,7 +89,7 @@ test("entry compatibility includes location, matcher, type, and timeout in owner
       matcher: changed.matcher,
       timeoutSeconds: 10,
     });
-    assert.equal(compatibility.state, "stale");
-    assert.equal(isOwnedHookCompatibility(compatibility), true);
+    assert.equal(compatibility.state, "unmanaged");
+    assert.equal(isOwnedHookCompatibility(compatibility), false);
   }
 });

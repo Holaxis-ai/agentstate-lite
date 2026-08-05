@@ -1,4 +1,4 @@
-import { basename, isAbsolute, normalize, sep } from "node:path";
+import { isAbsolute, normalize, sep } from "node:path";
 
 /** Compatibility states shared by status, install reconciliation, probes, and uninstall. */
 export type HookCompatibilityState =
@@ -24,7 +24,6 @@ export interface HookEntryContext {
   entry: HookEntryLike | undefined;
   location: "SessionStart" | "session_start";
   matcher?: unknown;
-  expectedCommand?: string;
   timeoutSeconds: number;
 }
 
@@ -46,14 +45,13 @@ function result(
  * and unterminated quotes are rejected so a merely similar hand-authored command is never owned.
  */
 export function tokenizeGeneratedHookCommand(command: string): string[] | undefined {
+  if (command.length === 0 || command.startsWith(" ") || command.endsWith(" ")) return undefined;
   const tokens: string[] = [];
   let i = 0;
   while (i < command.length) {
-    while (i < command.length && /\s/.test(command[i]!)) i += 1;
-    if (i === command.length) break;
     let token = "";
     let consumed = false;
-    while (i < command.length && !/\s/.test(command[i]!)) {
+    while (i < command.length && command[i] !== " ") {
       consumed = true;
       const ch = command[i]!;
       if (ch === "'") {
@@ -88,12 +86,20 @@ export function tokenizeGeneratedHookCommand(command: string): string[] | undefi
         i += 2;
         continue;
       }
-      if (/[;&|<>`$()\\]/.test(ch)) return undefined;
+      const code = ch.charCodeAt(0);
+      if (code < 0x20 || code === 0x7f || /[;&|<>`$()\\]/.test(ch)) return undefined;
       token += ch;
       i += 1;
     }
     if (!consumed) return undefined;
+    if ([...token].some((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f)) {
+      return undefined;
+    }
     tokens.push(token);
+    if (i < command.length) {
+      i += 1;
+      if (i === command.length || command[i] === " ") return undefined;
+    }
   }
   return tokens.length > 0 ? tokens : undefined;
 }
@@ -102,12 +108,25 @@ function isBareManagedBin(value: string): boolean {
   return value === "aslite" || value === "agentstate-lite";
 }
 
-function isKnownAbsoluteManagedExecutable(value: string): boolean {
-  if (!isAbsolute(value)) return false;
+type ManagedExecutableLayout = "npm" | "local_dev" | "marketplace";
+
+function managedExecutableLayout(value: string): ManagedExecutableLayout | undefined {
+  if (!isAbsolute(value)) return undefined;
   const normalized = normalize(value);
-  const name = basename(normalized);
-  if (name === "aslite" || name === "agentstate-lite") return true;
-  return name === "agentstate-lite.mjs";
+  const portable = normalized.split(sep).join("/");
+  if (
+    /\/node_modules\/(?:@holaxis\/aslite|aslite|agentstate-lite)\/dist\/agentstate-lite\.mjs$/.test(portable)
+  ) {
+    return "npm";
+  }
+  if (/\/packages\/cli\/dist\/agentstate-lite\.mjs$/.test(portable)) return "local_dev";
+  if (
+    /\/(?:\.claude|\.codex)\/plugins\/cache\/.+\/skills\/agentstate-lite\/scripts\/agentstate-lite\.mjs$/.test(portable) ||
+    /\/plugins\/agentstate-lite\/skills\/agentstate-lite\/scripts\/agentstate-lite\.mjs$/.test(portable)
+  ) {
+    return "marketplace";
+  }
+  return undefined;
 }
 
 function stableNpmRuntimePair(program: string, executable: string): boolean {
@@ -119,19 +138,9 @@ function stableNpmRuntimePair(program: string, executable: string): boolean {
 }
 
 /** Classify a complete command token sequence; near-matches are always unmanaged. */
-export function classifyHookCommand(
-  command: string,
-  expectedCommand?: string,
-): HookCompatibility {
+export function classifyHookCommand(command: string): HookCompatibility {
   const tokens = tokenizeGeneratedHookCommand(command);
   if (!tokens) return result("unmanaged", "command is outside the generated-command grammar");
-
-  if (expectedCommand !== undefined) {
-    const expected = tokenizeGeneratedHookCommand(expectedCommand);
-    if (expected && tokens.length === expected.length && tokens.every((token, i) => token === expected[i])) {
-      return result("current", "command exactly matches this installation's PATH-independent launch");
-    }
-  }
 
   if (
     tokens.length === 3 &&
@@ -142,16 +151,16 @@ export function classifyHookCommand(
   }
 
   if (tokens.length === 2 && isBareManagedBin(tokens[0]!) && tokens[1] === "session-start") {
-    return result("current", "recognized historical generated bare-bin session-start command");
+    return result("legacy_path_bound", "recognized historical generated command depends on ambient PATH");
   }
   if (tokens.length === 1 && isBareManagedBin(tokens[0]!)) {
     return result("stale", "recognized pre-session-start generated bare-bin command");
   }
 
-  if (tokens.length === 2 && isKnownAbsoluteManagedExecutable(tokens[0]!) && tokens[1] === "session-start") {
+  if (tokens.length === 2 && managedExecutableLayout(tokens[0]!) && tokens[1] === "session-start") {
     return result("legacy_path_bound", "recognized generated direct-executable command bound to one path");
   }
-  if (tokens.length === 1 && isKnownAbsoluteManagedExecutable(tokens[0]!)) {
+  if (tokens.length === 1 && managedExecutableLayout(tokens[0]!)) {
     return result("stale", "recognized pre-session-start generated direct-executable command");
   }
 
@@ -169,8 +178,9 @@ export function classifyHookCommand(
 
   if (
     tokens.length === 3 &&
-    basename(tokens[0]!) === "node" &&
-    isKnownAbsoluteManagedExecutable(tokens[1]!) &&
+    isAbsolute(tokens[0]!) &&
+    normalize(tokens[0]!).endsWith(`${sep}bin${sep}node`) &&
+    managedExecutableLayout(tokens[1]!) !== undefined &&
     tokens[2] === "session-start"
   ) {
     return result("current", "recognized generated PATH-independent Node launch");
@@ -183,15 +193,18 @@ export function classifyHookCommand(
 export function classifyHookEntry(context: HookEntryContext): HookCompatibility {
   const command = context.entry?.command;
   if (typeof command !== "string") return result("unmanaged", "entry has no generated command string");
-  const commandCompatibility = classifyHookCommand(command, context.expectedCommand);
+  const commandCompatibility = classifyHookCommand(command);
   if (commandCompatibility.state === "unmanaged") return commandCompatibility;
-  if (
-    context.location !== "SessionStart" ||
-    context.matcher !== "" ||
-    context.entry?.type !== "command" ||
-    context.entry?.timeout !== context.timeoutSeconds
-  ) {
+  const exactEntryShape =
+    context.entry?.type === "command" && context.entry?.timeout === context.timeoutSeconds;
+  if (!exactEntryShape) {
+    return result("unmanaged", "recognized command appears in an unknown hook entry shape");
+  }
+  if (context.location === "session_start") {
     return result("stale", "recognized generated command has a historical or non-current hook shape");
+  }
+  if (context.matcher !== "") {
+    return result("unmanaged", "recognized command appears under an unknown SessionStart matcher");
   }
   return commandCompatibility;
 }

@@ -19,6 +19,8 @@ const FOREIGN = [
   { type: "command", command: "echo agentstate-lite", timeout: 10 },
   { type: "command", command: "agentstate-lite backup", timeout: 10 },
   { type: "command", command: "npx -y @holaxis/aslite session-start", timeout: 10 },
+  { type: "command", command: "aslite\nsession-start", timeout: 10 },
+  { type: "command", command: "node /tmp/agentstate-lite.mjs session-start", timeout: 10 },
 ];
 
 function capture(): { out: () => string; stdout: (value: string) => void } {
@@ -49,7 +51,7 @@ test("JSON reconciliation owns exact generated forms and preserves every near-ma
   assert.equal(uninstalled, foreignOnly);
 });
 
-test("a recognized hook under a non-empty matcher moves without changing foreign siblings", () => {
+test("a familiar command under a non-generated matcher is preserved and a managed group is appended", () => {
   const foreign = { type: "command", command: "lint-session", timeout: 30 };
   const settings = {
     hooks: {
@@ -64,9 +66,39 @@ test("a recognized hook under a non-empty matcher moves without changing foreign
   const [updated, changed] = computeSessionStartHookInstall(settings, { command: "aslite session-start" });
   assert.equal(changed, true);
   assert.deepEqual(updated.hooks!.SessionStart, [
-    { matcher: "tool", hooks: [foreign] },
+    {
+      matcher: "tool",
+      hooks: [foreign, { type: "command", command: "aslite session-start", timeout: 10 }],
+    },
     { matcher: "", hooks: [{ type: "command", command: "aslite session-start", timeout: 10 }] },
   ]);
+});
+
+test("unknown type and timeout variants remain byte-preserved through install and uninstall", () => {
+  const settings = {
+    hooks: {
+      SessionStart: [
+        {
+          matcher: "",
+          hooks: [
+            { type: "prompt", command: "aslite session-start", timeout: 10 },
+            { type: "command", command: "aslite session-start", timeout: 9 },
+          ],
+        },
+      ],
+    },
+  };
+  const [installed, changed] = computeSessionStartHookInstall(settings, { command: "agentstate-lite session-start" });
+  assert.equal(changed, true);
+  assert.deepEqual(installed.hooks!.SessionStart![0], settings.hooks.SessionStart[0]);
+  assert.deepEqual(installed.hooks!.SessionStart![1], {
+    matcher: "",
+    hooks: [{ type: "command", command: "agentstate-lite session-start", timeout: 10 }],
+  });
+
+  const [uninstalled, removed] = computeHookUninstall(settings);
+  assert.equal(removed, false);
+  assert.equal(uninstalled, settings);
 });
 
 test("status reports duplicate generated entries as stale", () => {

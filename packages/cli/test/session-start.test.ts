@@ -883,8 +883,8 @@ test("hook re-install prompt: a pre-session-start managed hook is detected and s
 test("sessionStartHookCommand: bare base passes through; a spaced path is quoted; plugin spawns argv", () => {
   assert.equal(sessionStartHookCommand("aslite"), "aslite session-start");
   assert.equal(
-    sessionStartHookCommand("/Users/f b/agentstate-lite.mjs"),
-    "'/Users/f b/agentstate-lite.mjs' session-start",
+    sessionStartHookCommand("/Users/f b/packages/cli/dist/agentstate-lite.mjs"),
+    "'/Users/f b/packages/cli/dist/agentstate-lite.mjs' session-start",
   );
   const src = buildOpenCodePluginSource("/opt/bin/agentstate-lite");
   assert.ok(src.includes('const command = "/opt/bin/agentstate-lite"'));
@@ -942,16 +942,27 @@ test("writer/recognizer agreement: every reachable hookCommand() base composes a
 test("isManagedHookCommand: exact historical/generated tokens, never marker substrings", () => {
   // Legacy generated forms.
   assert.equal(isManagedHookCommand("agentstate-lite session-start"), true);
-  assert.equal(isManagedHookCommand("/opt/homebrew/bin/agentstate-lite session-start"), true);
+  assert.equal(isManagedHookCommand("/opt/homebrew/bin/agentstate-lite session-start"), false);
   assert.equal(isManagedHookCommand("npx -y agentstate-lite session-start"), true);
-  assert.equal(isManagedHookCommand('"/Users/f b/dist/agentstate-lite.mjs" session-start'), true);
+  assert.equal(isManagedHookCommand('"/Users/f b/dist/agentstate-lite.mjs" session-start'), false);
   assert.equal(isManagedHookCommand("echo agentstate-lite"), false);
   assert.equal(isManagedHookCommand("agentstate-lite backup"), false);
-  // New form — bare, absolute, quoted-with-space; with or without args.
+  // New form — bare historical commands remain owned but migration-required. Absolute commands
+  // are owned only at executable layouts the installer has actually emitted.
   assert.equal(isManagedHookCommand("aslite session-start"), true);
   assert.equal(isManagedHookCommand("aslite"), true);
-  assert.equal(isManagedHookCommand("/usr/local/bin/aslite session-start"), true);
-  assert.equal(isManagedHookCommand('"/Users/f b/bin/aslite" session-start'), true);
+  assert.equal(isManagedHookCommand("/usr/local/bin/aslite session-start"), false);
+  assert.equal(isManagedHookCommand('"/Users/f b/bin/aslite" session-start'), false);
+  assert.equal(
+    isManagedHookCommand("/usr/local/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start"),
+    true,
+  );
+  assert.equal(
+    isManagedHookCommand(
+      "'/Users/f b/.codex/plugins/cache/m/agentstate-lite/1.0.0/skills/agentstate-lite/scripts/agentstate-lite.mjs' session-start",
+    ),
+    true,
+  );
   // Documented asymmetry: the new-form npx spelling is NOT recognized (first token `npx`) —
   // the installer never emits an npx form, so only hand-authored hooks can hit this.
   assert.equal(isManagedHookCommand("npx -y aslite session-start"), false);
@@ -1018,8 +1029,12 @@ test("computeSessionStartHookInstall: a legacy+new duplicate pair collapses to O
   assert.deepEqual(groups[1]!.hooks, [FOREIGN_HOOK], "foreign hook survives the duplicate sweep");
 });
 
-test("uninstall + status recognize EITHER managed form; a foreign hook is never touched", () => {
-  for (const command of ["agentstate-lite session-start", "aslite session-start", "/usr/local/bin/aslite session-start"]) {
+test("uninstall + status recognize historical and generated managed forms; a foreign hook is never touched", () => {
+  for (const command of [
+    "agentstate-lite session-start",
+    "aslite session-start",
+    "/usr/local/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+  ]) {
     const settings = {
       hooks: {
         SessionStart: [
@@ -1042,7 +1057,7 @@ test("uninstall + status recognize EITHER managed form; a foreign hook is never 
   assert.equal(readHookStatus(foreignOnly).installed, false);
 });
 
-test("hookNeedsUpdate: a new-form `aslite session-start` hook is current; a bare `aslite` hook is flagged", async () => {
+test("hookNeedsUpdate: PATH-bound and pre-session-start hooks are flagged; a stable Node pair is current", async () => {
   const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-newform-"));
   const write = async (command: string) => {
     await mkdir(path.join(base, ".claude"), { recursive: true });
@@ -1053,9 +1068,13 @@ test("hookNeedsUpdate: a new-form `aslite session-start` hook is current; a bare
   };
   try {
     await write("aslite session-start");
-    assert.equal(hookNeedsUpdate([base]), false);
+    assert.equal(hookNeedsUpdate([base]), true);
     await write("aslite"); // pre-session-start shape under the new bin name
     assert.equal(hookNeedsUpdate([base]), true);
+    await write(
+      "/opt/aslite/bin/node /opt/aslite/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+    );
+    assert.equal(hookNeedsUpdate([base]), false);
   } finally {
     await rm(base, { recursive: true, force: true });
   }
