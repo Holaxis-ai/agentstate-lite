@@ -5,11 +5,11 @@ description: >-
   Current goals, system model, artifacts, assumptions, and independent-review
   gate for the OKF extension architecture
 actor: codex-main
-timestamp: '2026-08-05T22:57:51.979Z'
+timestamp: '2026-08-05T23:06:56.524Z'
 ---
 # Summary
 
-The standards and architecture branches converged on a layered extension contract; the exact synthesized design is now at its independent adversarial acceptance gate.
+The standards and architecture branches converged on a layered extension contract. This gate note is superseded by `context-notes/okf-extension-evolution-final-result`; exact repaired re-review passed.
 
 Ultimate goal: make agentstate-lite the shared, versioned, conflict-safe Markdown memory that a human and agent fleet can install and use without founder intervention.
 
@@ -21,7 +21,7 @@ Proximate goal: establish an evolution-safe extension and migration policy so up
 - Independent standards research and architecture option analysis were frozen before cross-reading.
 - Both exact-version cross-reviews passed with nonblocking caveats.
 - Synthesis is persisted as `designs/okf-extension-evolution-recommendation` at `sha256:226214f3ab5d302cffa4ceb57d9fa3965cf1aaf4d2bce065348949cd376cc600`.
-- An independent adversarial reviewer is testing that exact design through `tasks/okf-extension-evolution-adversarial-review`.
+- The initial adversarial review was conditional; the repair passed exact re-review at `reviews/okf-extension-evolution-recommendation-rereview` version `sha256:fa97d2bacf90c01050e96a02bc03e819a7eed9d1eb3c313f1cba921d81ddd3f5`.
 
 ## Current system model
 
@@ -34,6 +34,8 @@ The recommendation separates five concerns that the current implementation confl
 - Authority transfer/trust, bundle-local identity through copy/fork/merge, maturity labels, support windows, and exact profile scope need policy decisions.
 - No code or data migration is authorized by this research task. The immediate recommendation remains honest v0.1 authoring plus an unsupported-writer guard and collision/capability ledger.
 
-## Next gate
+## Gate result
 
-Accept only after the exact adversarial review passes. If it is conditional or fails, repair the design and require exact-version re-review before closing the parent task.
+Accepted after repair and exact-version PASS. See `context-notes/okf-extension-evolution-final-result` for the final system model and remaining implementation gates.
+
+[superseded by final result](okf-extension-evolution-final-result.md)
