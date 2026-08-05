@@ -1,10 +1,10 @@
 ---
 type: Task
 title: Adversarially review the OKF evolution recommendation
-status: todo
+status: in_progress
 priority: '1'
-actor: codex-main
-timestamp: '2026-08-05T22:29:09.124Z'
+actor: codex-standards-reviewer
+timestamp: '2026-08-05T22:56:57.614Z'
 ---
 # Objective
 
