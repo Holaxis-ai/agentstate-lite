@@ -401,6 +401,31 @@ async function runInstalledProof(spec) {
       (await runCli("aslite", ["recipe", "add", "work-tracking", "--dir", bundle, "--json"])).stdout,
       "recipe add",
     );
+
+    // ── init --create-only: the installed guard proves the exact public spelling offline ──
+    const freshCreateOnly = path.join(scratch, "create-only-fresh");
+    parseJson(
+      (await runCli("aslite", ["init", "--create-only", "--dir", freshCreateOnly, "--recipe", "none", "--json"])).stdout,
+      "init --create-only (fresh)",
+    );
+    const bundleSnapshotBefore = await snapshotTree(bundle);
+    const refused = await runCli(
+      "aslite",
+      ["init", "--create-only", "--dir", bundle, "--json"],
+      {},
+    ).then(
+      () => {
+        throw new Error("init --create-only over an existing bundle must exit non-zero");
+      },
+      (error) => error,
+    );
+    assert.match(String(refused.stdout ?? refused.message), /already an OKF bundle/);
+    assertSnapshotUnchanged(
+      bundleSnapshotBefore,
+      await snapshotTree(bundle),
+      "create-only refusal must not change the existing bundle: ",
+    );
+    assert.match(initHelp, /--create-only/, "installed init help must carry the exact create-only spelling");
     const appliedRecipes = parseJson(
       (await runCli("aslite", ["recipes", "--dir", bundle, "--json"])).stdout,
       "bundle recipes",

@@ -44,8 +44,8 @@ initialize response reports the same running release. AgentState Lite does not s
   — Resolve the exact canonical local bundle path and report why it won selection
 - `aslite catalog (add <label> [--dir <path>] | list | resolve <label-or-id> [--field path])`
   — Register and deterministically resolve this user's explicitly named local workspaces
-- `aslite init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]`
-  — Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init
+- `aslite init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>] [--create-only]`
+  — Create (or open) an OKF knowledge bundle in a directory — greenfield setup; a project that already shares a board is set up by sync, not init. --create-only requires a genuinely NEW target: it fails closed (exit 5, no write) on an existing bundle, a non-empty or symlinked target, an enclosing or bound workspace, or a concurrent create — 'recipe add' modifies an existing bundle instead
 - `aslite index generate [--dir <path>] [--check] [--force] [--actor <name>]`
   — Generate complete portable Markdown navigation explicitly; refuses curated indexes unless --force adopts them
 - `aslite status [--limit <n>] [--remote <url>]`

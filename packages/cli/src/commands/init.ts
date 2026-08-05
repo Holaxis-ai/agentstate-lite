@@ -8,8 +8,8 @@
 import { parseArgs } from "node:util";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { initBundle, loadKinds } from "@agentstate-lite/core";
-import { resolveTargetDir } from "../bundle.js";
+import { initBundle, loadKinds, VersionConflict } from "@agentstate-lite/core";
+import { assertCreateOnlyTarget, resolveTargetDir } from "../bundle.js";
 import { CliError } from "../errors.js";
 import { parseOrUsage } from "../args.js";
 import { render, resolveMode } from "../output.js";
@@ -20,7 +20,7 @@ import { resolveRecipe, DEFAULT_RECIPE_REF } from "../recipe-source.js";
 export const INIT_USAGE = `agentstate-lite init — create (or open) an OKF knowledge bundle
 
 Usage:
-  agentstate-lite init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>]
+  agentstate-lite init [--dir <path>] [--okf-version <v>] [--recipe <name-or-path>] [--create-only]
 
 Options:
   --dir <path>            Directory to init the bundle in (default: the current directory)
@@ -28,6 +28,12 @@ Options:
   --recipe <name-or-path> Apply a recipe on create (default: context-notes; 'none' for a bare
                            bundle) — a built-in name or a path to a recipe folder; see
                            'agentstate-lite recipes' to list built-ins
+  --create-only           Require a genuinely NEW workspace: fail closed (exit 5, no write) when
+                           the target is already a bundle, is non-empty or a symlink, sits inside
+                           an enclosing bundle or bound project workspace, or is created
+                           concurrently. Without the flag, init keeps its open-or-create behavior.
+                           Recoveries: 'recipe add' modifies an existing bundle; a different
+                           explicit --dir creates a new one.
   --json                  Emit compact JSON instead of TOON
   -h, --help              Show this help
 `;
@@ -66,6 +72,7 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
           dir: { type: "string" },
           "okf-version": { type: "string" },
           recipe: { type: "string" },
+          "create-only": { type: "boolean" },
           // Declared (not just left to error out generically) so a misdirected `init --remote`
           // gets the SPECIFIC message below instead of parseArgs's generic unknown-option text.
           remote: { type: "string" },
@@ -92,7 +99,11 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
     );
   }
 
-  const root = resolveTargetDir(values.dir);
+  const createOnly = Boolean(values["create-only"]);
+  // Create-only preflight (the shared onboarding target-safety boundary): resolve the PHYSICAL
+  // target and refuse existing/bound/enclosing/ambiguous targets BEFORE any write. The concurrent
+  // case is closed below by `expectNew`'s expect-absent CAS, not by this read-only preflight.
+  const root = createOnly ? await assertCreateOnlyTarget(values.dir) : resolveTargetDir(values.dir);
   const okfVersion = values["okf-version"]?.trim();
   // The engine (`initBundle`) no longer seeds anything (CLAUDE.md gate 3: core special-cases
   // nothing about conventions) — it just creates the bundle. `init` applies the default recipe
@@ -100,7 +111,26 @@ export async function init(argv: string[], deps: Partial<InitCliDeps> = {}): Pro
   // one, now expressed as a product-surface commitment in the CLI, not an engine default).
   // Idempotent (expect-absent CAS per doc) — re-running `init` against an already-recipe'd bundle
   // is a no-op for each convention doc. `--recipe none` opts out to a bare bundle.
-  const bundle = await initBundle(root, okfVersion ? { okfVersion } : {});
+  let bundle;
+  try {
+    bundle = await initBundle(root, {
+      ...(okfVersion ? { okfVersion } : {}),
+      ...(createOnly ? { expectNew: true } : {}),
+    });
+  } catch (err) {
+    if (createOnly && err instanceof VersionConflict) {
+      throw new CliError(
+        "ALREADY_EXISTS",
+        `create-only target ${root} gained a bundle concurrently — another process created it first; nothing was written by this run`,
+        {
+          help:
+            `${cliInvocation()} recipe add <name> --dir ${shellArg(root)}  (modify the bundle that won), or ` +
+            `${cliInvocation()} init --create-only --dir <new-path>`,
+        },
+      );
+    }
+    throw err;
+  }
   const recipeRef = values.recipe?.trim() || DEFAULT_RECIPE_REF;
   let recipeApplied = "none";
   let selectedRecipeKinds: string[] = [];

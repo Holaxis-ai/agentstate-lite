@@ -341,6 +341,115 @@ async function canonicalBundleRoot(
 }
 
 /**
+ * `init --create-only` target safety (the shared onboarding boundary). Resolves the PHYSICAL
+ * create target and fails closed — before any write — when the target is not genuinely new:
+ *
+ *   - the target is already an OKF bundle (its own `index.md`);
+ *   - the target directory exists but is a symlink, a non-directory, or non-empty (alias or
+ *     adopted-content ambiguity — a "new workspace" must not absorb existing files);
+ *   - the target sits inside an enclosing bundle, or a project workspace already exists at an
+ *     ancestor's conventional folder (join it via `sync`/`recipe add`, never mint a second store);
+ *   - a `.agentstate.json` binding at or above the target resolves to an EXISTING bundle
+ *     elsewhere (bare commands there would keep resolving the bound bundle, shadowing the new
+ *     one); malformed and URL-valued bindings keep their existing fail-closed USAGE errors.
+ *
+ * Symlinked ANCESTORS are resolved through the nearest existing ancestor's realpath, so an alias
+ * cannot dodge the enclosing-bundle walk. This primitive performs NO writes; the create itself
+ * runs through core `initBundle`'s `expectNew` expect-absent CAS, which turns a concurrent
+ * creator into a typed `VersionConflict` instead of silently opening the racer's bundle.
+ *
+ * Returns the physical target directory to create.
+ */
+export async function assertCreateOnlyTarget(
+  dirFlag: string | undefined,
+  startDir: string = process.cwd(),
+): Promise<string> {
+  const recoveryHelp =
+    `${cliInvocation()} recipe add <name> --dir <existing-bundle>  (modify an existing bundle), or ` +
+    `${cliInvocation()} init --create-only --dir <new-path>  (a different, genuinely new location)`;
+  const refuse = (message: string): never => {
+    throw new CliError("ALREADY_EXISTS", message, { help: recoveryHelp });
+  };
+
+  const logical = path.resolve(startDir, dirFlag ?? startDir);
+
+  // Physical resolution: realpath the nearest EXISTING ancestor and re-append the missing tail,
+  // so every later check sees the alias-free target even when the target itself is absent.
+  let existingPrefix = logical;
+  const missingTail: string[] = [];
+  while (!(await exists(existingPrefix))) {
+    const parent = path.dirname(existingPrefix);
+    if (parent === existingPrefix) break;
+    missingTail.unshift(path.basename(existingPrefix));
+    existingPrefix = parent;
+  }
+  let physicalPrefix: string;
+  try {
+    physicalPrefix = await fs.realpath(existingPrefix);
+  } catch (err) {
+    throw new CliError(
+      "RUNTIME",
+      `cannot resolve the create-only target ${logical}: ${err instanceof Error ? err.message : String(err)}`,
+      { help: recoveryHelp },
+    );
+  }
+  const target = path.join(physicalPrefix, ...missingTail);
+
+  if (missingTail.length === 0) {
+    // The target itself exists: it must be a real, empty directory reached without a final-hop
+    // symlink. lstat the LOGICAL path so `--dir` naming a symlink is refused as the alias it is.
+    const info = await fs.lstat(logical).catch(() => null);
+    if (info === null) {
+      refuse(`create-only target ${logical} disappeared while being inspected`);
+    } else if (info.isSymbolicLink()) {
+      refuse(`create-only target ${logical} is a symlink — pass the physical directory instead`);
+    } else if (!info.isDirectory()) {
+      refuse(`create-only target ${logical} exists and is not a directory`);
+    }
+    if (await exists(path.join(target, "index.md"))) {
+      refuse(`create-only target ${target} is already an OKF bundle`);
+    }
+    const entries = await fs.readdir(target);
+    if (entries.length > 0) {
+      refuse(
+        `create-only target ${target} exists and is not empty (${entries.length} entr${entries.length === 1 ? "y" : "ies"}) — a new workspace must not adopt existing files`,
+      );
+    }
+  }
+
+  // Enclosing-bundle walk from the physical PARENT: an ancestor's own index.md (the target would
+  // nest inside that bundle) or an ancestor's conventional workspace folder (the project already
+  // has a bundle) both refuse. The target's own paths were handled above.
+  const enclosing = await findBundleRoot(path.dirname(target));
+  if (enclosing !== null) {
+    refuse(
+      enclosing === path.join(path.dirname(target), CONVENTIONAL_BUNDLE_DIR_NAME) ||
+        enclosing.endsWith(`${path.sep}${CONVENTIONAL_BUNDLE_DIR_NAME}`)
+        ? `an existing project workspace ${enclosing} already serves this location — join it rather than creating a second bundle`
+        : `create-only target ${target} would nest inside the existing bundle at ${enclosing}`,
+    );
+  }
+
+  // Binding rung: malformed/URL bindings throw their existing USAGE errors here (fail-closed).
+  const binding = await resolveProjectBinding(path.dirname(target));
+  if (binding && binding.target !== target) {
+    const boundBundle =
+      (await exists(path.join(binding.target, "index.md")))
+        ? binding.target
+        : (await exists(path.join(binding.target, CONVENTIONAL_BUNDLE_DIR_NAME, "index.md")))
+          ? path.join(binding.target, CONVENTIONAL_BUNDLE_DIR_NAME)
+          : null;
+    if (boundBundle !== null) {
+      refuse(
+        `project binding ${binding.file} already resolves this location to the existing bundle at ${boundBundle} — bare commands here would keep using it, shadowing a new bundle`,
+      );
+    }
+  }
+
+  return target;
+}
+
+/**
  * Resolve exactly one local bundle using the CLI's established precedence and retain why it won.
  * This is the sole local target-selection primitive: {@link openBundle} consumes it, and
  * `bundle locate` only projects its result.

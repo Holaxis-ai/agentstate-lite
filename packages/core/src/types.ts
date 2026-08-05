@@ -397,6 +397,12 @@ export interface StorageBackend {
 export interface InitBundleOptions {
   /** OKF version stamped into the root `index.md` frontmatter. Defaults to `"0.1"`. */
   okfVersion?: string;
+  /**
+   * Require that this call CREATE the bundle: the root `index.md` write runs expect-absent
+   * through the backend's CAS, and a pre-existing or concurrently created `index.md` throws
+   * `VersionConflict` instead of opening the existing bundle. Default false (open-or-create).
+   */
+  expectNew?: boolean;
 }
 
 /** Filter for {@link query}. Provided facets are ANDed; reserved files are always excluded. */
