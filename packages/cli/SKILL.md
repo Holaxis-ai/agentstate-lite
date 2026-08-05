@@ -109,8 +109,8 @@ initialize response reports the same running release. AgentState Lite does not s
 
 ### Session
 
-- `aslite version [--json]`
-  — Show the complete local build/runtime identity, including artifact bytes and adjacent-manifest drift; never contacts npm
+- `aslite version [--check] [--tag latest|next] [--json]`
+  — Show the complete local build/runtime identity, or perform one bounded read-only comparison against npm's exact latest/next release policy
 - `aslite session-start [--dir <path>]`
   — The SessionStart hook payload: a time-boxed best-effort board pull, then the home view — every pull failure falls through to the render (exit 0)
 - `aslite hook install|status|uninstall [--scope project|global]`
