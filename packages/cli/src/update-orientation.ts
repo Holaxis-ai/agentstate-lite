@@ -638,6 +638,7 @@ function transitionStaleActiveToCooldown(
 function quarantineMatchingLease(
   home: string,
   matches: (lease: UpdateLeaseRecord) => boolean,
+  afterCapture?: () => void,
 ): boolean {
   const fixed = updateLeasePath(home);
   const quarantine = join(
@@ -647,6 +648,18 @@ function quarantineMatchingLease(
   try {
     renameSync(fixed, quarantine);
   } catch {
+    return false;
+  }
+  try {
+    afterCapture?.();
+  } catch {
+    // A test barrier (or future observer) must not leave the fixed path needlessly absent.
+    try {
+      linkSync(quarantine, fixed);
+      unlinkSync(quarantine);
+    } catch {
+      // Preserve the captured record when a successor raced into the fixed path.
+    }
     return false;
   }
   const captured = readPrivateFile(quarantine, UPDATE_LEASE_MAX_BYTES);
@@ -684,6 +697,10 @@ export function claimUpdateLease(input: {
   token?: string;
   /** Deterministic test barrier immediately before the continuous stale replacement. */
   beforeStaleReplace?: () => void;
+  /** Deterministic test barrier after observing an expired cooldown, before quarantine. */
+  beforeExpiredCooldownCleanup?: () => void;
+  /** Deterministic test barrier after quarantine removes the fixed path. */
+  afterExpiredCooldownCapture?: () => void;
 }): UpdateLeaseClaimResult {
   if (inspectStateDirectory(input.home, true) !== "safe") return { state: "occupied" };
   const token = input.token ?? randomBytes(32).toString("hex");
@@ -709,9 +726,15 @@ export function claimUpdateLease(input: {
     return { state: "occupied" };
   }
   if (nowMs < Date.parse(inspected.lease.expires_at)) return { state: "occupied" };
+  try {
+    input.beforeExpiredCooldownCleanup?.();
+  } catch {
+    return { state: "occupied" };
+  }
   return quarantineMatchingLease(
     input.home,
     (lease) => lease.state === "cooldown" && sameLease(lease, inspected.lease),
+    input.afterExpiredCooldownCapture,
   )
     ? { state: "cleaned" }
     : { state: "occupied" };
@@ -849,6 +872,14 @@ export function runPassiveUpdateOrientation(
   const spawn =
     deps.spawn ??
     ((command, argv, options) => spawnChild(command, argv, options) as DetachedUpdateChild);
+
+  // Cleanup quarantine can ABA-capture this claim and let a successor claim the reopened fixed
+  // path. Cache freshness alone cannot prove process-start authority: immediately before spawn,
+  // require the fixed record to still be our matching, unexpired active token. On lost authority,
+  // do no cleanup at all: even token-scoped quarantine would briefly move a successor's record.
+  if (!activeLeaseAuthority(home, claimed.lease.token, now())) {
+    return undefined;
+  }
   try {
     const child = spawn(
       process.execPath,

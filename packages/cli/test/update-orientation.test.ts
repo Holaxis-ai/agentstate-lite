@@ -170,7 +170,13 @@ function activeLease(token = "a".repeat(64)): UpdateLeaseRecord {
 
 function startConcurrencyFixture(input: {
   home: string;
-  mode: "claim" | "stale" | "paused-parent";
+  mode:
+    | "claim"
+    | "stale"
+    | "paused-parent"
+    | "cleanup-racer"
+    | "aba-parent-a"
+    | "passive-parent";
   now: string;
   token: string;
 }): ChildProcess {
@@ -930,6 +936,71 @@ test("barrier/IPC: stale active replacement stays occupied before and after the 
     );
   } finally {
     stopChildren([child]);
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("barrier/IPC: expired-cooldown ABA starts only the successor's worker", async () => {
+  const home = tempHome();
+  const now = "2026-08-06T12:00:01.000Z";
+  const tokenA = "a".repeat(64);
+  const tokenB = "b".repeat(64);
+  const tokenC = "c".repeat(64);
+  const cleaner = startConcurrencyFixture({ home, mode: "cleanup-racer", now, token: tokenC });
+  const parentA = startConcurrencyFixture({ home, mode: "aba-parent-a", now, token: tokenA });
+  const parentB = startConcurrencyFixture({ home, mode: "passive-parent", now, token: tokenB });
+  try {
+    mkdirSync(path.join(home, ".agentstate"), { mode: 0o700 });
+    writeFileSync(
+      updateLeasePath(home),
+      serializeUpdateLease({
+        schema: UPDATE_LEASE_SCHEMA,
+        state: "cooldown",
+        token: "d".repeat(64),
+        started_at: CHECKED_AT,
+        expires_at: "2026-08-06T12:00:00.000Z",
+      }),
+      { mode: 0o600 },
+    );
+
+    const cleanerBeforeCleanup = nextChildMessage(cleaner);
+    cleaner.send("go");
+    assert.deepEqual(await cleanerBeforeCleanup, { type: "before-cooldown-cleanup" });
+
+    const parentAAfterClaim = nextChildMessage(parentA);
+    parentA.send("go");
+    assert.deepEqual(await parentAAfterClaim, { type: "after-claim" });
+
+    const cleanerAfterCapture = nextChildMessage(cleaner);
+    releaseChildBarrier(cleaner);
+    assert.deepEqual(await cleanerAfterCapture, { type: "after-cooldown-capture" });
+
+    const parentBResult = nextChildMessage(parentB);
+    parentB.send("go");
+    assert.deepEqual(await parentBResult, {
+      type: "result",
+      state: "done",
+      spawns: 1,
+    });
+
+    const cleanerResult = nextChildMessage(cleaner);
+    releaseChildBarrier(cleaner);
+    assert.deepEqual(await cleanerResult, { type: "result", state: "occupied" });
+
+    const parentAResult = nextChildMessage(parentA);
+    releaseChildBarrier(parentA);
+    assert.deepEqual(await parentAResult, {
+      type: "result",
+      state: "done",
+      spawns: 0,
+    });
+    assert.equal(
+      parseUpdateLeaseText(readFileSync(updateLeasePath(home), "utf8"))?.token,
+      tokenB,
+      "lost-token cleanup must not touch the successor's active lease",
+    );
+  } finally {
+    stopChildren([cleaner, parentA, parentB]);
     rmSync(home, { recursive: true, force: true });
   }
 });

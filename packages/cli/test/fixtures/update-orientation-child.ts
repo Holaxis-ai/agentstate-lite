@@ -29,6 +29,27 @@ class SilentChild extends EventEmitter {
   unref(): void {}
 }
 
+function passiveParent(barriers: {
+  afterClaim?: () => void;
+  afterInitialCacheRead?: () => void;
+} = {}): { spawns: number; notice: unknown } {
+  let spawns = 0;
+  const notice = runPassiveUpdateOrientation({
+    home,
+    runningVersion: "0.1.0-pre.3",
+    now: () => now,
+    token: () => token,
+    executablePath: () => "/opt/aslite/dist/agentstate-lite.mjs",
+    afterClaim: barriers.afterClaim,
+    afterInitialCacheRead: barriers.afterInitialCacheRead,
+    spawn: () => {
+      spawns += 1;
+      return new SilentChild();
+    },
+  });
+  return { spawns, notice };
+}
+
 process.once("message", (message) => {
   if (message !== "go") return;
   if (mode === "claim") {
@@ -43,19 +64,30 @@ process.once("message", (message) => {
     });
     finish({ type: "result", state: result.state });
   } else if (mode === "paused-parent") {
-    let spawns = 0;
-    const notice = runPassiveUpdateOrientation({
-      home,
-      runningVersion: "0.1.0-pre.3",
-      now: () => now,
-      token: () => token,
-      executablePath: () => "/opt/aslite/dist/agentstate-lite.mjs",
+    const { spawns, notice } = passiveParent({
       afterInitialCacheRead: () => barrier("after-initial-cache-read"),
-      spawn: () => {
-        spawns += 1;
-        return new SilentChild();
-      },
     });
+    finish({ type: "result", state: "done", spawns, notice });
+  } else if (mode === "cleanup-racer") {
+    const result = claimUpdateLease({
+      home,
+      now,
+      token,
+      beforeExpiredCooldownCleanup: () => barrier("before-cooldown-cleanup"),
+      afterExpiredCooldownCapture: () => barrier("after-cooldown-capture"),
+    });
+    finish({ type: "result", state: result.state });
+  } else if (mode === "aba-parent-a") {
+    const first = passiveParent();
+    const second = passiveParent({ afterClaim: () => barrier("after-claim") });
+    finish({
+      type: "result",
+      state: "done",
+      spawns: first.spawns + second.spawns,
+      notice: second.notice,
+    });
+  } else if (mode === "passive-parent") {
+    const { spawns, notice } = passiveParent();
     finish({ type: "result", state: "done", spawns, notice });
   }
 });
