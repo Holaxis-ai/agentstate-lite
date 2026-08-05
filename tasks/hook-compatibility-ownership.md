@@ -4,15 +4,14 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  REMEDIATED on PR 207 exact head 68e5c91. The tokenizer rejects control
-  characters and non-generated spacing; Node commands require an absolute
-  runtime plus an enumerated npm/local-dev/plugin-cache entry layout; and
-  mutation ownership requires the exact historical SessionStart/session_start
-  matcher, type, and ten-second timeout shapes. Unknown variants are
-  byte-preserved. Focused 68/68 and full npm run check pass. Task remains
-  in_progress pending independent exact-SHA re-review.
-actor: codex-durable-hook
-timestamp: '2026-08-05T00:03:24.861Z'
+  REPAIR BUILT on branch fix/pr207-hook-ownership-housekeeping at exact SHA
+  e2a337bd3e0992df5655dc916df08c7425989910. POSIX-correct double-quote parsing
+  preserves Unicode escape near-matches as foreign, and uninstall receipts name
+  preserved unmanaged OpenCode plugins. Focused 70/70 plus npm run check pass.
+  Gate now at independent exact-SHA Review; task remains open through Review,
+  adversarial byte-preservation QA, and repository evidence.
+actor: codex-pr207-housekeeping-coordinator
+timestamp: '2026-08-05T20:54:19.143Z'
 ---
 # Goal
 
