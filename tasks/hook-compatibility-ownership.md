@@ -4,14 +4,14 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  STRUCTURAL REPAIR BUILT at exact SHA f3beae6dad93de9acbee3bfcfdae54ab150c6a86.
-  Writer and recognizer now share one closed unquoted alphabet; 26
-  shell-syntax/expansion cases, exhaustive printable-ASCII round-trips,
-  Node-pair properties, built Claude/Codex byte preservation, Unicode, and
-  OpenCode receipt regressions pass. Focused 75/75 and full npm run check pass.
-  Gate is fresh whole-language exact-SHA Review.
+  WHOLE-LANGUAGE REVIEW FAILED at f3beae6. The shared safe-unquoted alphabet and
+  expansion taxonomy pass, but recognizer quote grammar remains broader than
+  every current/historical writer: empty-quote injection and partial quote
+  segmentation shell-concatenate into owned argv and are destructively removed.
+  Builder is implementing canonical raw-token round-trip against exact writer
+  envelopes before another exact-SHA Review.
 actor: codex-pr207-housekeeping-coordinator
-timestamp: '2026-08-05T21:27:48.307Z'
+timestamp: '2026-08-05T21:34:56.458Z'
 ---
 # Goal
 
