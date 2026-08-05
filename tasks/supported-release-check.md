@@ -4,14 +4,15 @@ title: Add rollback-aware supported-release check
 status: in_progress
 priority: '1'
 description: >-
-  BUILDER COMPLETE at exact SHA 31ba3abe32ea69c62bcc349d44e9ece9d2d839d7 on
-  feat/supported-release-check. Focused protocol suite 26/26, root build, CLI
-  typecheck, generated-skill check, reference tests 10/10, diff check, and
-  literal public-registry rollback proof pass. Awaiting independent exact-SHA
-  review before adversarial QA and the full repository gate.
+  PR #208 OPEN at https://github.com/Holaxis-ai/agentstate-lite/pull/208 for
+  exact builder SHA 31ba3abe32ea69c62bcc349d44e9ece9d2d839d7. Focused protocol
+  suite 26/26, root build, CLI typecheck, generated-skill check, reference tests
+  10/10, diff check, and literal public-registry rollback proof pass. Awaiting
+  independent exact-SHA review before adversarial QA and the full repository
+  gate.
 actor: codex-supported-release-check
 assignee: codex-supported-release-check
-timestamp: '2026-08-05T16:41:11.250Z'
+timestamp: '2026-08-05T16:49:12.235Z'
 ---
 # Goal
 
