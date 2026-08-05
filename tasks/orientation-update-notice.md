@@ -4,15 +4,14 @@ title: Add cached nonblocking update orientation
 status: in_progress
 priority: '1'
 description: >-
-  CLAIMED by codex-orientation-orchestrator on 2026-08-05. Proximate goal: add
-  cached, nonblocking default update orientation without adding registry latency
-  or destabilizing JSON/MCP output; this serves the ultimate goal by making the
-  npm-installed CLI self-orienting across sessions without founder intervention.
-  Team will follow domain-model/plan review, Builder, independent exact-SHA
-  Review, adversarial offline/concurrency/output QA, and repository gate.
+  BUILDER COMPLETE on feat/orientation-update-notice at exact SHA
+  21a028c418bf30ecb72aa77a0b06a244aee769d0. Approved active/cooldown protocol
+  implemented across 11 files with focused 119/119, build, typecheck, generated
+  skill, npm package proof, full npm run check, and UI E2E 19/19 passing. Branch
+  is pushed/clean. Gate is now independent exact-SHA Review; QA has not started.
 actor: codex-orientation-orchestrator
 assignee: codex-orientation-orchestrator
-timestamp: '2026-08-05T20:34:20.998Z'
+timestamp: '2026-08-05T21:29:08.769Z'
 ---
 # Goal
 
