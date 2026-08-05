@@ -508,9 +508,12 @@ function renderNotesSection(extraBullets: string[] = []): string[] {
     "  session starts with the bundle's state AND any teammate changes already in context. Offline is",
   );
   lines.push(
-    "  fine: the render always appears, labeled with the last known state. If you installed the hook",
+    "  fine: the render always appears, labeled with the last known state. A global npm install binds",
   );
-  lines.push("  before `session-start` existed, re-run `hook install` once to upgrade it.");
+  lines.push(
+    "  absolute Node and CLI paths, so GUI sessions do not depend on their inherited PATH. If you",
+  );
+  lines.push("  installed the hook before `session-start` existed, re-run `hook install` once to upgrade it.");
   lines.push(
     "- Edit a doc's body through `doc update --body-file` (or `--body`), never by pulling the raw file",
   );

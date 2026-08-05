@@ -23,12 +23,14 @@ export interface PersistentInstallAuthority {
     npm_prefix: string | null;
     bin_path: string | null;
     executable_path: string | null;
+    runtime_path: string | null;
   };
 }
 
 export interface PersistentInstallAuthorityInput {
   artifact_channel: ArtifactChannel;
   executable_path: string | null;
+  runtime_path: string | null;
   env: NodeJS.ProcessEnv;
   platform: string;
   npm_prefix_global: () => string | undefined;
@@ -40,7 +42,12 @@ function unknown(input: PersistentInstallAuthorityInput, reason: string): Persis
     allowed: false,
     state: "unknown",
     reason,
-    evidence: { npm_prefix: null, bin_path: null, executable_path: input.executable_path },
+    evidence: {
+      npm_prefix: null,
+      bin_path: null,
+      executable_path: input.executable_path,
+      runtime_path: input.runtime_path,
+    },
   };
 }
 
@@ -78,6 +85,7 @@ export function classifyPersistentInstallAuthority(
     npm_prefix: null,
     bin_path: null,
     executable_path: input.executable_path,
+    runtime_path: input.runtime_path,
   };
   if (input.artifact_channel === "local-dev") {
     return { allowed: true, state: "local_dev", reason: "developer build", evidence };
@@ -137,12 +145,26 @@ export function classifyPersistentInstallAuthority(
   if (executable !== join(packageRoot, "dist", "agentstate-lite.mjs")) {
     return unknown(input, "running executable is outside the supported npm global package layout");
   }
+  if (!input.runtime_path || !isAbsolute(input.runtime_path) || containsNpxCache(input.runtime_path)) {
+    return unknown(input, "running Node executable is missing or transient");
+  }
+  const runtime = input.realpath(input.runtime_path);
+  const stableRuntimePath = normalize(join(prefix, "bin", "node"));
+  const stableRuntime = input.realpath(stableRuntimePath);
+  if (!runtime || !stableRuntime || runtime !== stableRuntime) {
+    return unknown(input, "npm-prefix bin/node does not resolve to the running Node executable");
+  }
 
   return {
     allowed: true,
     state: "durable_global",
     reason: "durable npm-global executable",
-    evidence: { npm_prefix: prefix, bin_path: selectedBin, executable_path: executable },
+    evidence: {
+      npm_prefix: prefix,
+      bin_path: selectedBin,
+      executable_path: executable,
+      runtime_path: stableRuntimePath,
+    },
   };
 }
 
@@ -152,6 +174,7 @@ export interface ResolvePersistentInstallAuthorityDeps {
   platform?: string;
   npm_prefix_global?: () => string | undefined;
   realpath?: (path: string) => string | undefined;
+  runtime_path?: string;
 }
 
 /** Production projection from the one running BuildIdentityV1 authority. */
@@ -163,6 +186,7 @@ export function resolvePersistentInstallAuthority(
   return classifyPersistentInstallAuthority({
     artifact_channel: identity.identity.artifact.channel,
     executable_path: identity.identity.runtime.executable_path,
+    runtime_path: deps.runtime_path ?? process.execPath,
     env,
     platform: deps.platform ?? process.platform,
     npm_prefix_global: deps.npm_prefix_global ?? defaultNpmPrefixGlobal,

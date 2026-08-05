@@ -391,8 +391,9 @@ cat "$REFS/views/references/view-authoring-v0.md"
 - `hook install` registers a SessionStart hook (Claude Code, Codex, OpenCode) that runs
   `session-start`: a quick best-effort pull of the shared board, then the home view — so a new
   session starts with the bundle's state AND any teammate changes already in context. Offline is
-  fine: the render always appears, labeled with the last known state. If you installed the hook
-  before `session-start` existed, re-run `hook install` once to upgrade it.
+  fine: the render always appears, labeled with the last known state. A global npm install binds
+  absolute Node and CLI paths, so GUI sessions do not depend on their inherited PATH. If you
+  installed the hook before `session-start` existed, re-run `hook install` once to upgrade it.
 - Edit a doc's body through `doc update --body-file` (or `--body`), never by pulling the raw file
   with `--out`, editing it with text tools, and re-promoting it — that risks corrupting the
   frontmatter (the engine rejects it, but the right tool avoids the dance entirely).

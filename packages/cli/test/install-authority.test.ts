@@ -8,14 +8,19 @@ function durableFixture(overrides: Record<string, unknown> = {}) {
   const prefix = "/opt/aslite-npm";
   const executable = `${prefix}/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs`;
   const bin = `${prefix}/bin/aslite`;
+  const runtime = "/opt/node/bin/node";
+  const stableRuntime = `${prefix}/bin/node`;
   const realpaths = new Map<string, string>([
     [prefix, prefix],
     [bin, executable],
     [executable, executable],
+    [runtime, runtime],
+    [stableRuntime, runtime],
   ]);
   return {
     artifact_channel: "npm-package" as const,
     executable_path: executable,
+    runtime_path: runtime,
     env: { PATH: `${prefix}/bin:/usr/bin` },
     platform: "linux",
     npm_prefix_global: () => prefix,
@@ -30,6 +35,7 @@ test("npm-package authority requires a supported durable npm-global layout", () 
   assert.equal(result.state, "durable_global");
   assert.equal(result.evidence.bin_path, "/opt/aslite-npm/bin/aslite");
   assert.equal(result.evidence.npm_prefix, "/opt/aslite-npm");
+  assert.equal(result.evidence.runtime_path, "/opt/aslite-npm/bin/node");
 });
 
 test("durable npm-package proof fails closed for every missing or transient fact", () => {
@@ -53,6 +59,20 @@ test("durable npm-package proof fails closed for every missing or transient fact
     durableFixture({ env: { PATH: "/opt/aslite-npm/bin", npm_command: "exec" } }),
     durableFixture({ env: { PATH: "/opt/aslite-npm/bin", npm_lifecycle_event: "npx" } }),
     durableFixture({ executable_path: "/tmp/_npx/123/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs" }),
+    durableFixture({ runtime_path: null }),
+    durableFixture({
+      realpath: (candidate: string) => {
+        const normalized = path.normalize(candidate);
+        if (normalized === "/opt/aslite-npm") return normalized;
+        if (normalized === "/opt/aslite-npm/bin/aslite") {
+          return "/opt/aslite-npm/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs";
+        }
+        if (normalized.endsWith("/dist/agentstate-lite.mjs")) return normalized;
+        if (normalized === "/opt/node/bin/node") return normalized;
+        if (normalized === "/opt/aslite-npm/bin/node") return "/opt/other-node/bin/node";
+        return undefined;
+      },
+    }),
     durableFixture({
       executable_path: "/tmp/copied-agentstate-lite.mjs",
       realpath: (candidate: string) =>
@@ -75,7 +95,12 @@ test("local-dev and marketplace legacy policies remain explicit while unknown fa
       allowed: true,
       state: "local_dev",
       reason: "developer build",
-      evidence: { npm_prefix: null, bin_path: null, executable_path: durableFixture().executable_path },
+      evidence: {
+        npm_prefix: null,
+        bin_path: null,
+        executable_path: durableFixture().executable_path,
+        runtime_path: durableFixture().runtime_path,
+      },
     },
   );
   assert.equal(

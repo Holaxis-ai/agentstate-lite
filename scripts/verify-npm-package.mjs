@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { access, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -309,9 +309,16 @@ async function runInstalledProof(spec) {
     }
 
     const binDir = process.platform === "win32" ? prefix : path.join(prefix, "bin");
+    if (process.platform !== "win32") {
+      // `npm install --prefix` builds an isolated package prefix but not a Node installation.
+      // Model the supported real-world POSIX global layout so durable hook authority can prove
+      // and persist the stable <prefix>/bin/node launcher.
+      await symlink(process.execPath, path.join(binDir, "node"));
+    }
     const commandEnv = {
       ...process.env,
       PATH: `${binDir}${path.delimiter}${path.dirname(process.execPath)}`,
+      npm_config_prefix: prefix,
       HOME: home,
       USERPROFILE: home,
       XDG_CONFIG_HOME: path.join(home, ".config"),
@@ -544,7 +551,7 @@ async function runInstalledProof(spec) {
       await assert.rejects(stat(path.join(dir, "skills", "aslite")), /ENOENT/, `${dir} must be cleaned up`);
     }
 
-    // ── hook-command stability: the written SessionStart hook runs the preferred `aslite` bin ──
+    // ── hook-command stability: installed hooks bind Node + the package entry, never ambient PATH ──
     parseJson(
       (await runCli("aslite", ["hook", "install", "--scope", "project", "--json"], { cwd: project })).stdout,
       "hook install",
@@ -557,14 +564,17 @@ async function runInstalledProof(spec) {
       (group.hooks ?? []).map((h) => h.command),
     );
     if (process.platform === "win32") {
-      // The win32 harness execs node directly, so the bare-bin PATH probe cannot match.
       assert.equal(hookCommands.length, 1, "exactly one managed SessionStart hook");
       assert.ok(hookCommands[0].endsWith(" session-start"), "hook must run session-start");
     } else {
       assert.deepEqual(
         hookCommands,
-        ["aslite session-start"],
-        "the installed hook command must be exactly `aslite session-start`",
+        [
+          `${
+            spec.expectedChannel === "npm-package" ? path.join(prefix, "bin", "node") : process.execPath
+          } ${installedEntrypointRealPath} session-start`,
+        ],
+        "the installed hook must use absolute Node and package-entry paths",
       );
     }
     parseJson(
