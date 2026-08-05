@@ -978,6 +978,15 @@ test("isManagedHookCommand: exact historical/generated tokens, never marker subs
 
 const FOREIGN_HOOK = { type: "command", command: "some-other-tool session-start", timeout: 30 };
 
+const GLOB_NEAR_MATCH_HOOKS = [
+  "/tmp/*/packages/cli/dist/agentstate-lite.mjs session-start",
+  "/tmp/?/packages/cli/dist/agentstate-lite.mjs session-start",
+  "/tmp/[ab]/packages/cli/dist/agentstate-lite.mjs session-start",
+  "/opt/*/bin/node /opt/*/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+  "/opt/?/bin/node /opt/?/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+  "/opt/[ab]/bin/node /opt/[ab]/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+];
+
 test("computeSessionStartHookInstall: a LEGACY hook is rewritten IN PLACE — no duplicate appended", () => {
   const settings = {
     hooks: {
@@ -1055,6 +1064,43 @@ test("uninstall + status recognize historical and generated managed forms; a for
   assert.equal(changed, false);
   assert.equal(after, foreignOnly);
   assert.equal(readHookStatus(foreignOnly).installed, false);
+});
+
+test("built uninstall preserves unquoted direct and Node glob near-matches byte-for-byte", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "aslite-hook-glob-foreign-"));
+  const settings = JSON.stringify(
+    {
+      hooks: {
+        SessionStart: [
+          {
+            matcher: "",
+            hooks: GLOB_NEAR_MATCH_HOOKS.map((command) => ({ type: "command", command, timeout: 10 })),
+          },
+        ],
+      },
+    },
+    null,
+    2,
+  ) + "\n";
+  const targets = [
+    path.join(base, ".claude", "settings.json"),
+    path.join(base, ".codex", "hooks.json"),
+  ];
+  try {
+    for (const target of targets) {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, settings);
+    }
+
+    const result = await runCliHook(["hook", "uninstall", "--json"], { cwd: base });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(JSON.parse(result.stdout).hook.changed, false);
+    for (const target of targets) {
+      assert.equal(await readFile(target, "utf8"), settings, `${target} must remain byte-identical`);
+    }
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
 });
 
 test("hookNeedsUpdate: PATH-bound and pre-session-start hooks are flagged; a stable Node pair is current", async () => {

@@ -37,6 +37,9 @@ test("generated command tokenizer accepts emitted quoting and rejects shell beha
     "aslite  session-start",
     "$(which aslite) session-start",
     "aslite; session-start",
+    "/tmp/*/packages/cli/dist/agentstate-lite.mjs session-start",
+    "/tmp/?/packages/cli/dist/agentstate-lite.mjs session-start",
+    "/tmp/[ab]/packages/cli/dist/agentstate-lite.mjs session-start",
     "aslite 'unterminated",
   ]) {
     assert.equal(tokenizeGeneratedHookCommand(command), undefined, command);
@@ -63,6 +66,28 @@ test("command compatibility recognizes exact generated history and rejects near-
     ["aslite2 session-start", "unmanaged"],
     [String.raw`"\u0061slite" session-start`, "unmanaged"],
     [String.raw`"aslite\/" session-start`, "unmanaged"],
+    ["/tmp/*/packages/cli/dist/agentstate-lite.mjs session-start", "unmanaged"],
+    ["/tmp/?/packages/cli/dist/agentstate-lite.mjs session-start", "unmanaged"],
+    ["/tmp/[ab]/packages/cli/dist/agentstate-lite.mjs session-start", "unmanaged"],
+    [
+      "/opt/*/bin/node /opt/*/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+      "unmanaged",
+    ],
+    [
+      "/opt/?/bin/node /opt/?/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+      "unmanaged",
+    ],
+    [
+      "/opt/[ab]/bin/node /opt/[ab]/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs session-start",
+      "unmanaged",
+    ],
+    ["'/tmp/*/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    ['"/tmp/?/packages/cli/dist/agentstate-lite.mjs" session-start', "legacy_path_bound"],
+    ["'/tmp/[ab]/packages/cli/dist/agentstate-lite.mjs' session-start", "legacy_path_bound"],
+    [
+      "'/opt/*/bin/node' '/opt/*/lib/node_modules/@holaxis/aslite/dist/agentstate-lite.mjs' session-start",
+      "current",
+    ],
     ["some-tool --aslite", "unmanaged"],
   ];
   for (const [command, state] of table) {

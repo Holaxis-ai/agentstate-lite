@@ -41,8 +41,9 @@ function result(
 
 /**
  * Tokenize only the deliberately small POSIX-shell subset emitted by this project. This is not a
- * general shell parser: control operators, substitutions, redirects, escapes in unquoted text,
- * and unterminated quotes are rejected so a merely similar hand-authored command is never owned.
+ * general shell parser: control operators, substitutions, redirects, pathname expansion, escapes
+ * in unquoted text, and unterminated quotes are rejected so a similar hand-authored command is
+ * never owned.
  */
 export function tokenizeGeneratedHookCommand(command: string): string[] | undefined {
   if (command.length === 0 || command.startsWith(" ") || command.endsWith(" ")) return undefined;
@@ -101,7 +102,17 @@ export function tokenizeGeneratedHookCommand(command: string): string[] | undefi
         continue;
       }
       const code = ch.charCodeAt(0);
-      if (code < 0x20 || code === 0x7f || /[;&|<>`$()\\]/.test(ch)) return undefined;
+      if (
+        code < 0x20 ||
+        code === 0x7f ||
+        /[;&|<>`$()\\]/.test(ch) ||
+        ch === "*" ||
+        ch === "?" ||
+        ch === "[" ||
+        ch === "]"
+      ) {
+        return undefined;
+      }
       token += ch;
       i += 1;
     }
