@@ -2,10 +2,10 @@
 type: Context Note
 title: 'Pre-compact handoff: merged release safety and active predecessors'
 description: >-
-  PRs 204, 207, and 208 merged; PR 210 needs repair and init --create-only is
-  PR-ready at 81b3c39.
+  PRs 204, 207, and 208 merged; PR 210 needs repair, init --create-only is
+  PR-ready, and the direct tmux Codex channel is live.
 actor: codex-main-status
-timestamp: '2026-08-06T15:15:37.878Z'
+timestamp: '2026-08-06T15:44:15.178Z'
 ---
 # Summary
 
@@ -33,7 +33,7 @@ Proximate goal: finish the two safety predecessors that prevent agentstate-lite 
 
 ## Coordination
 
-The direct tmux channel `aslite-codex-reviewer` was created and used successfully, but no tmux server/session is currently running. Re-launch it before promising the implementation team a live direct channel.
+The direct tmux channel `aslite-codex-reviewer` was resumed and verified on 2026-08-06 from Codex conversation `019fd31d-38bd-7a90-887f-626ca28c1de9`. It read the current bundle and correctly reported PR #210 head `4e394db`, both blockers, and the next gate without modifying state. It is idle and available for direct team messages. The account reported less than 5% of its main weekly limit remaining and one earned reset available.
 
 ## Loaded skills
 
