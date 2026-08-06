@@ -124,8 +124,8 @@ function validIntegrity(value: unknown): value is string {
 function expectedVerify(): string[] {
   return [
     "aslite version --check",
-    "aslite skill status --scope global",
-    "aslite hook status --scope global",
+    "aslite skill status --scope user",
+    "aslite hook status --scope user",
   ];
 }
 

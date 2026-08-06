@@ -772,7 +772,7 @@ test("hook install wires `session-start` into all three runtimes; status/uninsta
   }
 });
 
-test("global hook operations honor each host's relocated config home", async () => {
+test("user hook operations honor relocated config homes and global remains an alias", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aslite-hook-relocated-"));
   const homeDir = path.join(root, "home");
   const claudeHome = path.join(root, "claude-config");
@@ -791,8 +791,8 @@ test("global hook operations honor each host's relocated config home", async () 
     await mkdir(homeDir, { recursive: true });
     await mkdir(cwd, { recursive: true });
     // Spawned as the bare preferred bin (checkout-path-independent recognition of the written
-    // command); the child's HOME is redirected so global fallbacks resolve inside the fixture.
-    const install = await runCliHook(["hook", "install", "--scope", "global"], {
+    // command); the child's HOME is redirected so user-scope fallbacks resolve inside the fixture.
+    const install = await runCliHook(["hook", "install", "--scope", "user"], {
       cwd,
       env: { ...env, HOME: homeDir, USERPROFILE: homeDir },
     });
@@ -813,6 +813,7 @@ test("global hook operations honor each host's relocated config home", async () 
     const status = capture();
     await hook(["status", "--scope", "global"], { ...location, stdout: status.stdout });
     assert.match(status.out(), /installed: true/);
+    assert.match(status.out(), /scope: user/);
     assert.match(status.out(), new RegExp(codexHome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 
     await assert.rejects(() => readFile(path.join(homeDir, ".claude", "settings.json")));
@@ -821,7 +822,7 @@ test("global hook operations honor each host's relocated config home", async () 
       readFile(path.join(homeDir, ".config", "opencode", "plugins", "axi-agentstate-lite.js")),
     );
 
-    await hook(["uninstall", "--scope", "global"], { ...location, stdout: () => {} });
+    await hook(["uninstall", "--scope", "user"], { ...location, stdout: () => {} });
     assert.equal(hookInstalled(undefined, location), false);
     await assert.rejects(() =>
       readFile(path.join(xdgHome, "opencode", "plugins", "axi-agentstate-lite.js")),

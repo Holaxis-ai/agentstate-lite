@@ -119,8 +119,8 @@ test("selection follows exact dist-tag policy for current, forward, and rollback
   assert.equal(forward.command, "npm install --global @holaxis/aslite@0.1.0-pre.3");
   assert.deepEqual(forward.verify, [
     "aslite version --check",
-    "aslite skill status --scope global",
-    "aslite hook status --scope global",
+    "aslite skill status --scope user",
+    "aslite hook status --scope user",
   ]);
 
   const rollback = select("0.1.0-pre.3", "0.1.0-pre.2");

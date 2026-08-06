@@ -27,7 +27,7 @@
 // through same-directory temp + rename, so a concurrent reader never observes a torn file.
 // Read-only paths (status, probes) and uninstall stay lenient: a malformed file is never touched.
 //
-// SCOPE: `--scope project` (default) targets the current repo; `--scope global` targets each
+// SCOPE: `--scope project` (default) targets the current repo; `--scope user` targets each
 // host's configured user directory. Project-scope OpenCode stays under `<cwd>/.config/opencode/`.
 import {
   chmodSync,
@@ -64,13 +64,14 @@ import {
   resolvePersistentInstallAuthority,
   type PersistentInstallAuthority,
 } from "../install-authority.js";
+import { normalizeInstallScope } from "../install-scope.js";
 
 export const HOOK_USAGE = `agentstate-lite hook — manage the SessionStart board-aware hook
 
 Usage:
-  agentstate-lite hook install   [--scope project|global]
-  agentstate-lite hook status    [--scope project|global]
-  agentstate-lite hook uninstall [--scope project|global]
+  agentstate-lite hook install   [--scope project|user]
+  agentstate-lite hook status    [--scope project|user]
+  agentstate-lite hook uninstall [--scope project|user]
 
 Installs (or removes) a SessionStart hook that runs \`session-start\` — a time-boxed best-effort
 board pull, then the home view — as ambient context at the start of every agent session, for
@@ -84,9 +85,11 @@ authorize persistent host configuration.
 
 Options:
   --scope project   Write to the CURRENT project (default): .claude/, .codex/, .config/opencode/
-  --scope global    Write to each host's configured USER home (environment override or default)
+  --scope user      Write to each host's configured user home (environment override or default)
   --json            Emit compact JSON instead of TOON
   -h, --help        Show this help
+
+The former spelling --scope global remains accepted as an alias for --scope user.
 `;
 
 /** The historical OpenCode marker. Marker presence alone never establishes ownership. */
@@ -851,20 +854,21 @@ export async function hook(argv: string[], deps: Partial<HookDeps> = {}): Promis
       sub === undefined
         ? "hook requires a subcommand (install|status|uninstall)"
         : `unknown hook subcommand: ${sub} (expected install|status|uninstall)`,
-      { help: `${cliInvocation()} hook install|status|uninstall [--scope project|global]` },
+      { help: `${cliInvocation()} hook install|status|uninstall [--scope project|user]` },
     );
   }
 
-  const scope = (values.scope as string | undefined) ?? "project";
-  if (scope !== "project" && scope !== "global") {
-    throw new CliError("USAGE", `unsupported hook scope: ${scope} (expected project|global)`, {
-      help: `${cliInvocation()} hook ${sub} --scope project|global`,
+  const requestedScope = values.scope as string | undefined;
+  const scope = normalizeInstallScope(requestedScope);
+  if (scope === undefined) {
+    throw new CliError("USAGE", `unsupported hook scope: ${requestedScope} (expected project|user)`, {
+      help: `${cliInvocation()} hook ${sub} --scope project|user`,
     });
   }
 
   const targets = deps.base !== undefined
     ? targetsForBase(deps.base)
-    : scope === "global"
+    : scope === "user"
       ? globalHookTargets(deps.home ?? homedir(), deps.env ?? process.env)
       : targetsForBase(deps.cwd ?? process.cwd());
   const mode = resolveMode(values);

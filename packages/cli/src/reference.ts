@@ -213,11 +213,11 @@ export const COMMAND_GROUPS: CommandGroup[] = [
           "The SessionStart hook payload: pull then render; default TOON uses a nonblocking 24-hour cached latest check, while --no-update-check or ASLITE_NO_UPDATE_CHECK/NO_UPDATE_NOTIFIER/CI presence disables both display and refresh; npm receives only the public package request and ordinary network metadata, never installed version, cwd, bundle, actor, or usage data",
       },
       {
-        usage: "hook install|status|uninstall [--scope project|global]",
+        usage: "hook install|status|uninstall [--scope project|user]",
         summary: "Install the SessionStart hook (runs session-start: pull the board, then render) for Claude Code, Codex, OpenCode",
       },
       {
-        usage: "skill install|status|uninstall [--scope project|global]",
+        usage: "skill install|status|uninstall [--scope project|user]",
         summary:
           "Install this package's Agent Skill (SKILL.md + references/) into Claude Code and Codex skill folders (OpenCode has no skill surface — its integration is `hook install`); manifest-tracked, idempotent, refuses folders it does not manage",
       },
