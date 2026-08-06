@@ -2,6 +2,20 @@
 type: Context Note
 title: PR 210 merge-readiness orchestration start
 description: >-
+  PR #210 implementation, exact-SHA review, aggregate QA, and local Node
+  20/22/25/26 gates passed at 5a5a622; GitHub received the push but omitted the
+  Actions dispatch, so hosted CI remains absent and no merge was performed.
+tags:
+  - pr210
+  - orchestration
+  - hook-ownership
+actor: codex-pr210-ci-diagnosis
+timestamp: '2026-08-06T20:13:24.334Z'
+---
+---
+type: Context Note
+title: PR 210 merge-readiness orchestration start
+description: >-
   PR #210 carried from failing 4e394db through bounded repair, independent
   review, adversarial QA, exact Node 20/22/25/26 gates, and merge-ready handoff
   at 5a5a622; no merge performed.
@@ -58,6 +72,16 @@ Repository execution passed at the exact SHA under Node 25.2.1, Node 22.23.2, an
 
 GitHub did not enqueue an Actions suite for the automated branch push or the reversible close/reopen event. The PR nevertheless reports OPEN, MERGEABLE, and CLEAN with an empty check rollup; the active workflow's Node 20/22/26 commands were reproduced locally against the exact SHA using stable runtime layouts. This exception is disclosed in the final PR evidence rather than represented as a green hosted check.
 
-Final evidence: https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5208761858. The task is complete at merge readiness; no merge was performed because Brian retains the merge gate.
+Final evidence: https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5208761858. Implementation, review, and local QA are complete; no merge was performed because Brian retains the merge gate.
+
+## Hosted-CI dispatch diagnosis
+
+Proximate diagnostic goal: determine why the final exact SHA lacks hosted CI and keep the merge claim aligned with observable evidence. This serves the ultimate goal by ensuring unattended installation safety is backed by the repository's normal external feedback loop, not only local reproduction.
+
+The CI workflow at base SHA `28cbf9139ec62f2ebeaf5b4ebb230911e4e72071` is active, Actions is repository-enabled, and `.github/workflows/ci-tests.yml` has an unrestricted `pull_request` trigger with no path filter. PR #210 is open, non-draft, mergeable, and clean. The final commit message contains no skip marker. GitHub recorded the `4e394db` -> `5a5a622` push at `2026-08-06T19:18:07Z` while the PR was open, and Cloudflare and Devin check suites were created for the new SHA at `19:18:08Z`, proving GitHub received and distributed the push event. However, the GitHub Actions app created no check suite or workflow run for `5a5a622`. GitHub also recorded a close at `19:25:22Z` and reopen at `19:25:28Z`, but no Actions run followed.
+
+The previous head `4e394db` did receive CI run `31057746922` when the PR opened, so the workflow itself parses and is eligible on this PR. No `GH_TOKEN`/`GITHUB_TOKEN` or Actions environment was present in the local process, the branch push used the repository's SSH remote, and the push actor was the normal `briand-ai` account. Available repository APIs therefore rule out disabled Actions, an ineligible trigger, a path filter, draft state, a skip directive, an unreceived push, and the usual recursive `GITHUB_TOKEN` suppression. They do not expose the internal Actions event-delivery reason. The remaining evidence supports a GitHub-side Actions dispatch omission/transient failure, but that causal label is an inference rather than a provable API field.
+
+Until a hosted run is attached to the final tree, describe the PR as locally gated and GitHub-mergeable, not as having passed hosted CI. A tree-identical empty commit pushed to the PR branch is the least invasive new `synchronize` event if Brian asks to retrigger; it changes the exact SHA and therefore requires final SHA bookkeeping, but not a new semantic review of the tree.
 
 [tracks](../tasks/hook-compatibility-ownership.md)
