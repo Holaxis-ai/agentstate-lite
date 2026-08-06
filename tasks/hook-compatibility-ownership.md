@@ -1,23 +1,22 @@
 ---
 type: Task
 title: Make hook ownership and mutation compatibility exact
-status: in_progress
+status: done
 priority: '1'
 description: >-
-  REVIEW + ADVERSARIAL QA PASS for PR #210 exact SHA
-  5a5a6229c840992e94cf26e91bd1f82b4bf18488; no P0/P1/P2 or lifecycle
-  counterexample. Review:
-  https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5208595913.
-  QA aggregate combines 37-case Claude/Codex preservation, independent OpenCode
-  6-negative/1-positive lifecycle, 12-case authority matrix, six actual
-  installed-tarball hook/skill no-write refusals, stable same-prefix positive
-  install/uninstall, corrected 11-form history matrix, complete installed proof,
-  and unchanged plugin trees. Full local repository gate passes under Node 25
-  and stable Node 22 (Node 22 exit 0 with one Playwright retry reported flaky);
-  Node 26 gate is running. Status remains in_progress pending Node 26, exact
-  Node 20 smoke, and final GitHub/PR evidence.
+  MERGE-READY HANDOFF for PR #210 at exact SHA
+  5a5a6229c840992e94cf26e91bd1f82b4bf18488. Independent exact-SHA review PASS;
+  aggregate adversarial QA PASS; full npm run check PASS on Node 25.2.1, Node
+  22.23.2, and Node 26.7.0; exact Node 20.20.2 engines-floor smoke 8/8;
+  installed-package/poisoned-environment proofs PASS; plugin and tracked trees
+  clean; local/remote SHA match; GitHub reports OPEN, MERGEABLE, CLEAN. GitHub
+  did not enqueue an Actions suite for the automated push/reopen, so the active
+  workflow commands were reproduced locally at the exact SHA and the empty check
+  rollup is disclosed. Final evidence:
+  https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5208761858.
+  No merge performed; Brian owns the merge gate.
 actor: codex-pr210-orchestrator
-timestamp: '2026-08-06T19:54:08.903Z'
+timestamp: '2026-08-06T20:02:15.961Z'
 ---
 # Goal
 

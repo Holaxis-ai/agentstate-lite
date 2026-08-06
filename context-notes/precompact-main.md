@@ -2,39 +2,52 @@
 type: Context Note
 title: 'Pre-compact handoff: merged release safety and active predecessors'
 description: >-
-  PRs 204, 207, and 208 merged; PR 210 needs repair, init --create-only is
-  PR-ready, and the direct tmux Codex channel is live.
-actor: codex-main-status
-timestamp: '2026-08-06T15:44:15.178Z'
+  PR #210 is merge-ready at exact SHA 5a5a622 after independent review,
+  aggregate QA, and exact runtime gates; all agents completed and no merge was
+  performed.
+actor: codex-pr210-orchestrator
+timestamp: '2026-08-06T20:04:23.695Z'
 ---
 # Summary
 
-The recent release-safety sequence has three merged units and two active successor tracks.
+PR #210 is merge-ready at exact head `5a5a6229c840992e94cf26e91bd1f82b4bf18488` on `fix/pr207-hook-ownership-housekeeping`, based on `28cbf9139ec62f2ebeaf5b4ebb230911e4e72071`. GitHub reports the PR OPEN, MERGEABLE, and CLEAN. The branch ref, `origin/fix/pr207-hook-ownership-housekeeping`, and GitHub head all match. No merge was performed; Brian owns the merge gate.
 
-- PR #204, retained-artifact staged npm release automation, merged at `c5c1876d14c9c7aeffdb0da37b598052f2fd1fa3`.
-- PR #207, durable and exact SessionStart hooks, merged at `8d0253a40bc00f9c7997e177a70b21f829769e8e`.
-- PR #208, rollback-aware supported-release checks, completed all review/QA/repository gates and merged at `164ba7edb89c31678856020ee794f80530e6c276` from gated head `32108c3c6cd59a41c8d5f8fe7fafb705331cb1f9`.
+The primary workspace remains on the separate `feat/init-create-only` branch at `81b3c39ff252013e318b1a714b63430a24074d70`; PR #210 was repaired and gated in isolated worktrees. Do not mistake the primary workspace head for PR #210's head.
 
 ## Goals
 
-Ultimate goal: make agentstate-lite the shared, versioned, conflict-safe Markdown memory that a human and agent fleet can install and use without founder intervention.
+Ultimate goal: make agentstate-lite installable and self-orienting without claiming, rewriting, or deleting host configuration it did not generate.
 
-Proximate goal: finish the two safety predecessors that prevent agentstate-lite from claiming foreign host hooks or creating/reusing an unsafe onboarding target. This serves the ultimate goal by making installation and first use safe without founder judgment at each step.
+Proximate goal completed: close PR #210's two exact blockers and carry a single repaired SHA through independent review, adversarial QA, and repository/runtime gates. This serves the ultimate goal by making hook ownership fail closed while retaining only proved installed-package authority.
 
-## Active work
+## System model and repair
 
-### Hook ownership follow-up (PR #210)
+Hook compatibility is an ownership boundary shared by status, install/deduplication, and uninstall across Claude, Codex, and OpenCode host configuration. It depends on tokenized command semantics, canonical absolute runtime/package paths, durable same-prefix npm authority, stable on-disk generated receipts, and byte-preserving refusal of foreign or near-match configuration. PR #210 now applies one canonical-path predicate to every absolute semantic admission and routes the supported installed local-dev tarball through the existing durable prefix/PATH/bin/runtime proof. Generic cross-prefix and npm-exec/npx cache fallbacks remain closed.
 
-`tasks/hook-compatibility-ownership` remains `in_progress`. PR #210 is open at exact head `4e394db65346d957676e590d7ca287d20b39dafb`. Independent review failed on two blockers: noncanonical npm paths with dot segments or duplicate separators are still granted ownership, and the installed-tarball proof fails because local-dev authority installed in npm layout composes a rejected cross-prefix runtime/executable pair. Next dependency: builder repair with pure and built byte-preservation regressions, then fresh exact-SHA review, adversarial QA, and the repository gate.
+## Completed gates
 
-### Init create-only safety guard
+- Builder repair commit: `5a5a6229c840992e94cf26e91bd1f82b4bf18488` (`fix: close hook canonical path ownership`).
+- Independent full-diff exact-SHA review: PASS, no P0/P1/P2. Evidence comment: https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5208595913
+- Aggregate adversarial QA: PASS. The first QA harness stopped on its own incorrect uninstall-receipt assertion, not a product defect; two fresh supplemental QAs closed the remaining OpenCode and installed-authority/history coverage.
+- Full `npm run check`: PASS on Node 25.2.1, Node 22.23.2, and Node 26.7.0. Node 22 had one trusted-action e2e retry and then passed; Node 26 had one load-sensitive first-run miss, passed alone, then the complete idle-machine rerun passed 19/19.
+- Exact Node 20.20.2 engines-floor smoke: 8/8.
+- Focused source, built lifecycle, installed-package, poisoned-environment, preflight no-write, byte/mode/tree preservation, and history matrix proofs: PASS.
+- Worktree/tree/diff checks for the gated PR worktrees are clean; tracked plugin artifacts are unchanged.
 
-`tasks/init-target-safety-guard` remains `in_progress` for workflow purposes but is PR-ready on pushed branch `feat/init-create-only` at exact SHA `81b3c39ff252013e318b1a714b63430a24074d70`. It passed five independent review rounds, adversarial QA, installed-tarball proof, and the full repository gate. Next dependency: Brian opens and owns the PR/merge decision. This unit unblocks the guide and npm quickstart onboarding successors.
+GitHub did not enqueue an Actions suite for the automated branch push or reversible close/reopen, so `statusCheckRollup` remains empty. The active workflow commands were reproduced locally at the exact SHA and the exception is disclosed in the final evidence comment: https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5208761858
 
-## Coordination
+## Persistent records
 
-The direct tmux channel `aslite-codex-reviewer` was resumed and verified on 2026-08-06 from Codex conversation `019fd31d-38bd-7a90-887f-626ca28c1de9`. It read the current bundle and correctly reported PR #210 head `4e394db`, both blockers, and the next gate without modifying state. It is idle and available for direct team messages. The account reported less than 5% of its main weekly limit remaining and one earned reset available.
+- Task `tasks/hook-compatibility-ownership` is `done`, version `sha256:352a05297ea2d0b521900f53a3c5f13cd7931d7e4b2924a4e464398f24eb4052`.
+- Orchestration note `context-notes/pr210-merge-readiness-orchestration-2026-08-06`, version `sha256:501e3cea51c3eb7299b2d6330ad78e4d4d6e776ed33cb9f29dbb6f978b261988`.
+- Aggregate QA note `context-notes/pr210-adversarial-qa-aggregate-5a5a622-2026-08-06`, version `sha256:052b66626169fce2ee33400f91b6a03e085c5503cdc4f087f333ca8319f254a4`.
+- Exact review note `context-notes/pr210-exact-review-5a5a622-2026-08-06`, version `sha256:5e1fd3eabb36a82fc71d00b88439f666d96fe8efac9a23a8e224ee58845c870b`.
+- Supplemental QA notes: `context-notes/pr210-opencode-qa-5a5a622-2026-08-06` and `context-notes/pr210-authority-qa-5a5a622-2026-08-06`.
 
-## Loaded skills
+All orchestration sub-agents have completed. The named tmux session `aslite-codex-reviewer` is intentionally idle at its prompt; it was the builder/advisor channel, not an independent merge gate, and does not need to be restarted. It may remain available or be closed later.
 
-`holaxis-self-awareness`, `holaxis-cognitive-ecosystem`, and `agentstate-lite`.
+## Skills and next action
+
+Skills loaded for the completed work: `holaxis-self-awareness`, `holaxis-cognitive-ecosystem`, `agentstate-lite`, `holaxis-orchestrator`, `holaxis-agent-launcher`, and `browser:control-in-app-browser`.
+
+No additional implementation or agent work is needed for PR #210. The next action is Brian's merge decision. Do not merge unless he explicitly asks.

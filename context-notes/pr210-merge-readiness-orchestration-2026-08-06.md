@@ -2,14 +2,15 @@
 type: Context Note
 title: PR 210 merge-readiness orchestration start
 description: >-
-  Bounded two-blocker repair pipeline with reproduced red baseline from 4e394db
-  through review, QA, and CI; stop before merge.
+  PR #210 carried from failing 4e394db through bounded repair, independent
+  review, adversarial QA, exact Node 20/22/25/26 gates, and merge-ready handoff
+  at 5a5a622; no merge performed.
 tags:
   - pr210
   - orchestration
   - hook-ownership
 actor: codex-pr210-orchestrator
-timestamp: '2026-08-06T18:55:07.962Z'
+timestamp: '2026-08-06T20:02:43.987Z'
 ---
 # Summary
 
@@ -48,5 +49,15 @@ In the isolated clean worktree, `npm ci` and the prerequisite `npm run build` pa
 An ad-hoc source probe at the same SHA proves that same-prefix npm pairs containing `/./`, `//`, or `/a/../` all classify as `current`. The independent skeptic found the same normalization-before-proof flaw in direct npm/local-dev/marketplace executable recognition and in Node launches for local-dev/marketplace entries. The repair invariant is therefore one bounded shared rule: every absolute runtime or executable token admitted as generated must already be in canonical lexical path form. This is a string-provenance check, not filesystem existence or `realpath` resolution; symlink policy remains unchanged. Any legitimate historical noncanonical spelling must be explicitly proven as writer output rather than accepted through normalization.
 
 The local installed-tarball repair must preserve ordinary repository local-dev launches while using stable same-prefix npm evidence when a local-dev artifact is physically installed into the supported npm-global layout. It must not add a generic cross-prefix npm exception to the command recognizer.
+
+## Final outcome
+
+The bounded repair was committed and pushed at exact SHA `5a5a6229c840992e94cf26e91bd1f82b4bf18488`. Independent full-PR review passed with no P0/P1/P2 finding. Aggregate adversarial QA passed after the primary matrix and fresh OpenCode and installed-authority supplements closed every lifecycle leg; no foreign-state mutation or authority counterexample was found.
+
+Repository execution passed at the exact SHA under Node 25.2.1, Node 22.23.2, and Node 26.7.0. The repository's exact Node 20.20.2 engines-floor smoke passed all eight commands. The complete installed-package and poisoned npm-environment proofs passed, plugin/tracked trees remained unchanged, and local/remote branch SHAs match.
+
+GitHub did not enqueue an Actions suite for the automated branch push or the reversible close/reopen event. The PR nevertheless reports OPEN, MERGEABLE, and CLEAN with an empty check rollup; the active workflow's Node 20/22/26 commands were reproduced locally against the exact SHA using stable runtime layouts. This exception is disclosed in the final PR evidence rather than represented as a green hosted check.
+
+Final evidence: https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5208761858. The task is complete at merge readiness; no merge was performed because Brian retains the merge gate.
 
 [tracks](../tasks/hook-compatibility-ownership.md)
