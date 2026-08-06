@@ -1,10 +1,10 @@
 ---
 type: Context Note
 title: >-
-  init --create-only gate ledger — review PASS at 81b3c39; QA final battery
-  pending
+  init --create-only gate COMPLETE at 81b3c39 — review PASS x5, QA PASS incl.
+  red-proofed final battery
 actor: claude/brian-claude
-timestamp: '2026-08-06T00:49:53.770Z'
+timestamp: '2026-08-06T00:56:50.191Z'
 ---
 # Summary
 
@@ -64,3 +64,22 @@ reasoning ("a user at 'no bundle found' wants create-or-join; --create-only woul
 non-empty project root — the common case there").
 
 [reviews](../tasks/init-target-safety-guard.md)
+# QA final battery at 81b3c39 (appended to the gate ledger)
+
+PASS, no findings, both distribution shapes (built CLI + installed tarball). Batteries: classic
+parent/child x12, review-round-4 ancestor-vs-conventional-child x16 (+x14 tarball), 5-levels-up
+x12, both-conventional x12, 3-level-with-conventional-leaf x10. Zero nested pairs, zero
+two-winner rounds, zero damaged winners anywhere; one clean double-yield observed ("nothing of
+this run remains" literally true).
+
+RED-PROOF (the epistemically important part): review r4's issue 1 is REAL at the primitive level
+— 81b3c39's unit test FAILS when run against a5c0838's source and passes at 81b3c39 — but was
+NOT process-manifestable as a nested pair (0/150 across a 0-160ms stagger sweep at the old SHA:
+the preflight catches any ancestor head start, and at zero stagger the child commits first so
+the down-scan arbitrates). The batteries alone are therefore NOT the proof of the fix; the
+red/green unit-test transition plus the live "enclosing bundle" loser message from a
+.agentstate-lite child (which only the resumed up-walk can produce, observed 3-4/16 rounds
+through both distributions) are. Recorded so nobody later reads green batteries as the evidence.
+
+F2/F3/regressions re-run at 81b3c39 rather than carried over (diff-verified unchanged code):
+all green. Gate at the SHA: npm test workspaces exit 0 unpiped, typecheck exit 0.
