@@ -5,10 +5,10 @@ description: >-
   Owns the installed npm → no-bundle orientation/Recipe discovery → create-only
   work-tracking bundle → attributed Task → visible productive-state proof; guide
   curriculum and release staging remain separate.
-actor: codex-onboarding-scope
+actor: openai/codex
 status: todo
 priority: '1'
-timestamp: '2026-08-03T23:55:30.390Z'
+timestamp: '2026-08-06T14:31:49.286Z'
 ---
 [the tested new-user onboarding journey](../roadmap-items/distribution-neutral-resources.md)
 
@@ -36,7 +36,13 @@ is unavailable. This task remains separate from guide curriculum and proves the 
 2. receive the no-bundle orientation and generic Recipe inventory;
 3. create a genuinely fresh `work-tracking` workspace through generic `init --create-only`;
 4. create one valid attributed Task; and
-5. observe useful live state.
+5. observe useful live state; and
+6. understand that ongoing authoring is agent-driven: the user supplies source material or intent in their preferred tool, and the agent organizes, types, links, and updates the bundle through the CLI primitives.
+
+This clarity requirement comes from anonymized first-use feedback: successful installation and a
+working View did not by themselves give a newcomer a reliable mental model for contributing new
+content. The quickstart must prove that handoff explicitly without turning into the separate guide
+curriculum.
 
 The [create-only target-safety guard](init-target-safety-guard.md) is a new shared predecessor and
 must pass its independent review/adversarial QA before this journey adopts the flag. The separate

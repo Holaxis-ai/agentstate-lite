@@ -7,9 +7,9 @@ description: >-
   Approved direction: ship the embedded ordered guide plus a zero-decision
   aslite guide facade, backed by generic create-only safety, with stateless
   discovery, build-time embedding, and fresh-user validation.
-actor: codex-onboarding-scope
+actor: openai/codex
 assignee: brian-claude
-timestamp: '2026-08-04T00:02:42.169Z'
+timestamp: '2026-08-06T14:31:49.091Z'
 ---
 # Goal
 
@@ -109,7 +109,7 @@ Using the exact installed local-dev npm artifact from an isolated home and empty
 7. the learner runs the exact CLI `new` action, sees the attributed record arrive live in the read-only View, and understands that the View observed rather than wrote it;
 8. the learner can explain bundles, docs, links, Kinds, Recipes, Views, status, local-first visibility, and optional sync;
 9. the learner creates a separate real workspace, reopens the guide later, and encounters no acknowledgement marker or repeated prompt;
-10. at least one fresh-user/fresh-agent walkthrough tests the curriculum order as a revisable hypothesis, with observed friction recorded before v1 is declared done;
+10. at least one fresh-user/fresh-agent walkthrough tests the curriculum order as a revisable hypothesis, with observed friction recorded before v1 is declared done; the learner must be able to explain how they would add or revise project knowledge through their agent, with `doc write`/`doc update` presented as underlying primitives rather than a required manual authoring workflow;
 11. offline operation after installation, create-only safety, and existing Recipe create-only/idempotent apply semantics remain intact; and
 12. installed-tarball tests prove the embedded guide requires no repository checkout, package-relative runtime file, or marketplace plugin.
 

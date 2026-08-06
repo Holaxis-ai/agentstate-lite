@@ -15,8 +15,8 @@ description: >-
   prototyped+reviewed), Idea 3 (containment outline), plus doc-reader PR-3
   (open-doc handoff). Naming (home vs launcher) still open pending test users.
   Parked: tasks/edge-index-derive-on-read (edge-read scaling).
-actor: codex-main-home-truth-rebase
-timestamp: '2026-07-23T13:25:53.453Z'
+actor: openai/codex
+timestamp: '2026-08-06T14:31:48.780Z'
 ---
 # Intent
 
@@ -171,3 +171,5 @@ decision, never backed into.
 [contains](../tasks/home-git-probe-failure-truth.md)
 
 [contains](../tasks/home-truth-followups-rebase.md)
+
+[contains](../tasks/document-route-breadcrumb-navigation.md)
