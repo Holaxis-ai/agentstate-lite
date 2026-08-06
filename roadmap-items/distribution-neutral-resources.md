@@ -8,12 +8,12 @@ description: >-
   HIGHEST PRIORITY: execute the approved npm identity/update/staged-release
   program through two real release proofs, frozen recovery, npm-primary docs,
   gate transfer, and marketplace deletion.
-actor: codex-onboarding-scope
+actor: openai/codex
 sequence: >-
   identity → compatibility/check/notice → protected staged release → pre.2
   bootstrap → self-discovered release → frozen recovery → npm primary → gate
   transfer → delete marketplace
-timestamp: '2026-08-03T23:56:13.528Z'
+timestamp: '2026-08-06T13:12:11.296Z'
 ---
 # Remaining sequence
 
@@ -93,3 +93,5 @@ npm owns executable mechanics plus the optional bootstrap skill.
 [contains](../tasks/init-target-safety-guard.md)
 
 [contains](../tasks/guidance-bundle-onboarding.md)
+
+[contains](../tasks/user-scope-install-vocabulary.md)
