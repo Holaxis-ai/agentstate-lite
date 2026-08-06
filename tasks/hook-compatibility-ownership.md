@@ -4,20 +4,20 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  INDEPENDENT EXACT-SHA REVIEW PASS for PR #210 at
-  5a5a6229c840992e94cf26e91bd1f82b4bf18488; no P0/P1/P2 findings. Canonical
-  absolute-path admission closes dot-segment/duplicate-separator ownership
-  across npm/local-dev/marketplace; installed local-dev npm-layout authority now
-  emits a proven stable same-prefix Node launch with no generic fallback.
-  Builder evidence: focused 22/22, built lifecycle 3/3, poisoned proof 1/1,
-  installed-package proof and full authorized npm run check exit 0. Reviewer
-  evidence: built lifecycle 4/4, custom paths 9 negative + 4 positive, authority
-  refusal matrix 8/8, old defects independently reproduced. Review comment:
+  REVIEW + ADVERSARIAL QA PASS for PR #210 exact SHA
+  5a5a6229c840992e94cf26e91bd1f82b4bf18488; no P0/P1/P2 or lifecycle
+  counterexample. Review:
   https://github.com/Holaxis-ai/agentstate-lite/pull/210#issuecomment-5208595913.
-  Status remains in_progress pending fresh adversarial QA and exact-SHA Node
-  20/22/26 execution.
+  QA aggregate combines 37-case Claude/Codex preservation, independent OpenCode
+  6-negative/1-positive lifecycle, 12-case authority matrix, six actual
+  installed-tarball hook/skill no-write refusals, stable same-prefix positive
+  install/uninstall, corrected 11-form history matrix, complete installed proof,
+  and unchanged plugin trees. Full local repository gate passes under Node 25
+  and stable Node 22 (Node 22 exit 0 with one Playwright retry reported flaky);
+  Node 26 gate is running. Status remains in_progress pending Node 26, exact
+  Node 20 smoke, and final GitHub/PR evidence.
 actor: codex-pr210-orchestrator
-timestamp: '2026-08-06T19:33:34.865Z'
+timestamp: '2026-08-06T19:54:08.903Z'
 ---
 # Goal
 
