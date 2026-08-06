@@ -1,27 +1,39 @@
 ---
 type: Context Note
-title: 'Pre-compact handoff: PR 208 re-review PASS'
+title: 'Pre-compact handoff: merged release safety and active predecessors'
 description: >-
-  PR 208 repair head 32108c3 passed independent exact-SHA re-review; next
-  dependency is adversarial registry/output/no-write QA.
-actor: codex-pr208-rereview
-timestamp: '2026-08-05T18:01:06.872Z'
+  PRs 204, 207, and 208 merged; PR 210 needs repair and init --create-only is
+  PR-ready at 81b3c39.
+actor: codex-main-status
+timestamp: '2026-08-06T15:15:37.878Z'
 ---
 # Summary
 
-PR 208 exact-SHA re-review is complete at repair head `32108c3c6cd59a41c8d5f8fe7fafb705331cb1f9`. Verdict: **PASS**, no surviving findings. No source edits or GitHub comments were made; isolated worktree `/private/tmp/aslite-supported-release.H860lp` remained clean.
+The recent release-safety sequence has three merged units and two active successor tracks.
 
-Both prior findings are closed. Early redirect/non-200/declared-oversize paths now abort and cancel response bodies; streamed overflow aborts and cancels the reader. The exact original streaming-503 probe now reports `socketClosed: true`, `writes: 0`, `activeConnections: 0`. The built-help integration expectation matches the new version syntax. Focused tests pass 36/36 and exact-SHA CI is green on Node 20, 22, and 26.
+- PR #204, retained-artifact staged npm release automation, merged at `c5c1876d14c9c7aeffdb0da37b598052f2fd1fa3`.
+- PR #207, durable and exact SessionStart hooks, merged at `8d0253a40bc00f9c7997e177a70b21f829769e8e`.
+- PR #208, rollback-aware supported-release checks, completed all review/QA/repository gates and merged at `164ba7edb89c31678856020ee794f80530e6c276` from gated head `32108c3c6cd59a41c8d5f8fe7fafb705331cb1f9`.
 
 ## Goals
 
-Ultimate goal: make agentstate-lite the shared, versioned, conflict-safe markdown memory that a human and agent fleet can install and use without founder intervention.
+Ultimate goal: make agentstate-lite the shared, versioned, conflict-safe Markdown memory that a human and agent fleet can install and use without founder intervention.
 
-Proximate goal: independently prove that repair head `32108c3` closes both PR 208 findings without weakening rollback-aware release discovery. The goal is complete.
+Proximate goal: finish the two safety predecessors that prevent agentstate-lite from claiming foreign host hooks or creating/reusing an unsafe onboarding target. This serves the ultimate goal by making installation and first use safe without founder judgment at each step.
 
-## Next dependency
+## Active work
 
-Advance `tasks/supported-release-check` to its planned adversarial registry/output/no-write QA. QA should retain successful-stream body overflow and exact structured output/no-write behavior in scope. If QA passes, the exact repository gate is already green and the PR can proceed to the Brian-owned merge decision.
+### Hook ownership follow-up (PR #210)
+
+`tasks/hook-compatibility-ownership` remains `in_progress`. PR #210 is open at exact head `4e394db65346d957676e590d7ca287d20b39dafb`. Independent review failed on two blockers: noncanonical npm paths with dot segments or duplicate separators are still granted ownership, and the installed-tarball proof fails because local-dev authority installed in npm layout composes a rejected cross-prefix runtime/executable pair. Next dependency: builder repair with pure and built byte-preservation regressions, then fresh exact-SHA review, adversarial QA, and the repository gate.
+
+### Init create-only safety guard
+
+`tasks/init-target-safety-guard` remains `in_progress` for workflow purposes but is PR-ready on pushed branch `feat/init-create-only` at exact SHA `81b3c39ff252013e318b1a714b63430a24074d70`. It passed five independent review rounds, adversarial QA, installed-tarball proof, and the full repository gate. Next dependency: Brian opens and owns the PR/merge decision. This unit unblocks the guide and npm quickstart onboarding successors.
+
+## Coordination
+
+The direct tmux channel `aslite-codex-reviewer` was created and used successfully, but no tmux server/session is currently running. Re-launch it before promising the implementation team a live direct channel.
 
 ## Loaded skills
 
