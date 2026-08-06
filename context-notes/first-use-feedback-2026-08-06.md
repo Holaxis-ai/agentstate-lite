@@ -1,8 +1,8 @@
 ---
 type: Context Note
 title: 'First-use feedback: installation, navigation, authoring, and sharing'
-actor: openai/codex
-timestamp: '2026-08-06T14:31:48.131Z'
+actor: brian-claude
+timestamp: '2026-08-06T16:49:50.598Z'
 ---
 # Summary
 
@@ -15,3 +15,5 @@ An anonymized first-use session surfaced five product-friction themes. The sourc
 5. Broader sharing of selected project-plan content, potentially through tools outside Aslite, is a user need but not yet a build-ready solution. It is preserved as [external-sharing research](../research/external-plan-sharing.md).
 
 These are observations and problem statements, not commitments to the suggested implementations.
+
+[plain-language execute brief](../docs/first-use-execute-brief.md)
