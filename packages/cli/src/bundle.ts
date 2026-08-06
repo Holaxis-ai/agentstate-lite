@@ -570,11 +570,18 @@ export async function verifyCreateOnlyIsolation(target: string): Promise<void> {
     `${cliInvocation()} init --create-only --dir <new-path>  (a different, genuinely new location)`;
 
   // The up-walk can find OUR OWN just-committed index.md when the target IS a conventional
-  // `.agentstate-lite` folder (the parent's conventional-child check resolves to us) — self is
-  // never a conflict.
-  const enclosing = await findBundleRoot(path.dirname(target));
+  // `.agentstate-lite` folder (the parent's conventional-child rung resolves to us). Self is
+  // never a conflict — but the walk must RESUME above it, not stop: stopping would blind the up
+  // direction for exactly the default target shape and collapse the mutual-visibility argument
+  // onto the down scan alone (review round 4, issue 1). Resuming from the grandparent is
+  // complete: the parent's own index.md was already checked BEFORE the conventional rung that
+  // matched us, and nothing else can re-match self above that level.
+  let enclosing = await findBundleRoot(path.dirname(target));
+  if (enclosing === target) {
+    enclosing = await findBundleRoot(path.dirname(path.dirname(target)));
+  }
   let conflict: string | null = null;
-  if (enclosing !== null && enclosing !== target) {
+  if (enclosing !== null) {
     conflict = `a concurrent create committed the enclosing bundle at ${enclosing}`;
   } else {
     const nestedIndex = await (async function scan(dir: string): Promise<string | null> {

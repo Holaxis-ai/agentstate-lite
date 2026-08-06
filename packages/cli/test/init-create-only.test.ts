@@ -492,6 +492,28 @@ test("QA F1: parent/child concurrent creates never leave a silent nested pair", 
     assert.equal(existsSync(path.join(child2, "index.md")), false, "child's index.md rolled back");
     assert.equal(existsSync(path.join(parent2, "index.md")), true, "parent's bundle survives");
 
+    // The DEFAULT target shape: a conventional-folder child must still detect an ancestor racer
+    // ABOVE its parent — the self-exclusion resumes the walk, it must not blind the up direction
+    // (review round 4, issue 1: grandparent racer was missed when the walk stopped at self).
+    const anc = path.join(base, "anc");
+    const convChild = path.join(anc, "g", "proj", ".agentstate-lite");
+    await mkdir(convChild, { recursive: true });
+    await writeFile(path.join(anc, "index.md"), "---\nokf_version: '0.1'\n---\n# anc\n"); // grandparent racer
+    await writeFile(path.join(convChild, "index.md"), "---\nokf_version: '0.1'\n---\n# conv\n"); // "our" CAS
+    await assert.rejects(
+      () => verifyCreateOnlyIsolation(convChild),
+      (err: unknown) => err instanceof CliError && /enclosing bundle at \S*\/anc;/.test(err.message),
+    );
+    assert.equal(existsSync(path.join(convChild, "index.md")), false, "conventional child rolled back");
+    assert.equal(existsSync(path.join(anc, "index.md")), true, "ancestor racer survives");
+
+    // And a LONE conventional-folder create still passes (self is not a conflict).
+    const lone = path.join(base, "lone-proj", ".agentstate-lite");
+    await mkdir(lone, { recursive: true });
+    await writeFile(path.join(lone, "index.md"), "---\nokf_version: '0.1'\n---\n# lone\n");
+    await verifyCreateOnlyIsolation(lone);
+    assert.equal(existsSync(path.join(lone, "index.md")), true);
+
     // A clean isolated create passes the verify untouched.
     const clean = path.join(base, "clean");
     await mkdir(clean, { recursive: true });
@@ -509,7 +531,10 @@ test("QA F1 (live): simultaneous parent/child create-only processes never both s
   try {
     for (let round = 0; round < 6; round += 1) {
       const parent = path.join(base, `r${round}`, "p");
-      const child = path.join(base, `r${round}`, "p", "deep", "c");
+      const child =
+        round % 2 === 0
+          ? path.join(base, `r${round}`, "p", "deep", "c")
+          : path.join(base, `r${round}`, "p", "deep", "proj", ".agentstate-lite");
       const runOne = (dir: string) =>
         new Promise<number | null>((resolve) => {
           const proc = spawn(
