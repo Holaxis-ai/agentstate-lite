@@ -2,15 +2,15 @@
 type: Context Note
 title: PR 210 merge-readiness orchestration start
 description: >-
-  PR #210 has tree-identical CI-retrigger head caa94a0; a 30-minute monitor
-  ended with GitHub Actions still in major outage and no hosted run, so the task
-  remains pending recovery and no merge was performed.
+  PR #210 now has tree-identical recovery-retrigger head bc4a59a; GitHub is
+  throttling push/PR triggers during its Actions outage, so no hosted run exists
+  and no merge was performed.
 tags:
   - pr210
   - orchestration
   - hook-ownership
 actor: codex-pr210-ci-retrigger
-timestamp: '2026-08-06T20:50:48.761Z'
+timestamp: '2026-08-06T21:46:09.879Z'
 ---
 ---
 type: Context Note
@@ -89,5 +89,7 @@ The causal evidence is now definitive: GitHub's official status API reports an u
 Until a hosted run is attached to the new exact SHA, describe the PR as locally gated and GitHub-mergeable, not as having passed hosted CI. Do not emit more commits during the outage. Monitor GitHub recovery and the new SHA for a delayed run; once Actions recovers, retrigger only if GitHub does not process the queued synchronization.
 
 A continuous read-only monitor ran from `2026-08-06T20:19:45Z` through `20:50:04Z`. Every official status sample remained `major_outage`; no Actions run appeared for `caa94a0`. At the boundary the PR was still OPEN, MERGEABLE, CLEAN, and unmerged, with an empty check rollup; the local branch matched origin and remained clean. Leave the task `in_progress` pending external recovery. The next continuation should first inspect the official incident and exact-SHA run list. If Actions is operational but no delayed run exists, create one fresh synchronization event only, then monitor the hosted jobs through completion.
+
+During reported partial recovery Brian authorized one further attempt. The workflow has no `workflow_dispatch`, so the GitHub UI cannot run it for the current SHA; rerunning run `31057746922` would test old SHA `4e394db`. Empty commit `bc4a59ae20af3ac1ac0a7c78bb59be8027f6c94e` (`chore: retry PR checks during Actions recovery`) was created on `caa94a0` and pushed at `2026-08-06T21:44:36Z`. Parent and child have identical tree `7279c8f2000508bbac363e109c7c12602ffd42e1`, and `git diff-tree` is empty. GitHub updated PR/app state but again created no Actions suite. The latest official incident update explains that webhook triggers remain throttled and many push/PR events are not triggering workflows; the earlier 65% figure applies only to already queued jobs, while only about 15% of webhook triggers were being processed. Do not push another outage-era commit. Current exact PR head is `bc4a59a`; wait for trigger throttling to end, then emit at most one recovery synchronization if no delayed run exists.
 
 [tracks](../tasks/hook-compatibility-ownership.md)

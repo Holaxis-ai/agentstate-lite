@@ -4,18 +4,18 @@ title: Make hook ownership and mutation compatibility exact
 status: in_progress
 priority: '1'
 description: >-
-  WAITING ON GITHUB ACTIONS RECOVERY for PR #210 at exact head
-  caa94a061c0ecd60715ed886d4063a86b29675c3, a tree-identical empty commit over
-  reviewed 5a5a622 (tree 7279c8f). A read-only monitor from 20:19:45Z through
-  20:50:04Z found the official Actions component in major_outage throughout and
-  no hosted run. PR remains OPEN, MERGEABLE, CLEAN, and unmerged; local/origin
-  branch is exact and clean. Product implementation, independent review,
-  aggregate QA, and local Node 20/22/25/26 gates are complete. On continuation
-  inspect the official incident and exact-SHA run list first; after recovery,
-  retrigger once only if the queued event was not processed, then monitor hosted
-  CI to completion.
+  WAITING ON GITHUB ACTIONS TRIGGER RECOVERY for PR #210 at exact head
+  bc4a59ae20af3ac1ac0a7c78bb59be8027f6c94e. This is a tree-identical empty
+  recovery-retrigger commit over caa94a0 and reviewed 5a5a622; all have tree
+  7279c8f. GitHub processed the push but created no Actions suite because the
+  official incident says push/PR webhook triggers remain throttled; the 65%
+  success figure applies to already queued jobs, while only about 15% of
+  triggers were processed. Product implementation, review, QA, and local Node
+  gates remain complete. Do not push another outage-era commit. After throttling
+  ends, retrigger once only if no delayed run appears, then monitor hosted CI.
+  No merge performed.
 actor: codex-pr210-ci-retrigger
-timestamp: '2026-08-06T20:50:54.094Z'
+timestamp: '2026-08-06T21:46:15.600Z'
 ---
 # Goal
 

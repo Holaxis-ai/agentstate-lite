@@ -2,11 +2,11 @@
 type: Context Note
 title: 'Pre-compact handoff: merged release safety and active predecessors'
 description: >-
-  PR #210 has tree-identical CI-retrigger head caa94a0; a 30-minute monitor
-  ended with GitHub Actions still in major outage, hosted CI pending, all agents
-  complete, and no merge performed.
+  PR #210 now has tree-identical recovery-retrigger head bc4a59a; GitHub is
+  throttling Actions webhook triggers, hosted CI remains pending, all agents
+  completed, and no merge was performed.
 actor: codex-pr210-ci-retrigger
-timestamp: '2026-08-06T20:50:58.132Z'
+timestamp: '2026-08-06T21:46:20.034Z'
 ---
 # Summary
 
@@ -53,3 +53,5 @@ Skills loaded for the completed work: `holaxis-self-awareness`, `holaxis-cogniti
 No additional product implementation or semantic review is currently indicated. The remaining gate is hosted CI on tree `7279c8f`. Do not emit more commits during the outage. Monitor GitHub recovery and exact SHA `caa94a0`; once Actions recovers, retrigger only if GitHub does not process the queued synchronization. Do not merge unless Brian explicitly asks.
 
 A continuous monitor ran from `2026-08-06T20:19:45Z` through `20:50:04Z`; Actions remained `major_outage` throughout and no exact-SHA workflow run appeared. At the boundary PR #210 remained OPEN, MERGEABLE, CLEAN, and unmerged; local/origin branch state was clean and exact. The task remains `in_progress` solely on external recovery. On continuation, inspect the official incident and exact-SHA run list first. If Actions has recovered without processing the queued event, emit one new synchronization event and carry its exact SHA through hosted CI.
+
+Brian authorized one additional attempt during partial recovery. Because `ci-tests.yml` has no `workflow_dispatch`, the UI cannot run it for the current SHA. Tree-identical empty commit `bc4a59ae20af3ac1ac0a7c78bb59be8027f6c94e` was pushed on `caa94a0`; it retains tree `7279c8f2000508bbac363e109c7c12602ffd42e1` and has no file diff. GitHub updated the PR and third-party app suites but again created no Actions suite. The official incident update says webhook triggers remain throttled; the 65% success figure applies to queued jobs, while only roughly 15% of webhook triggers were being processed. Current exact head is `bc4a59a`. Do not add another outage-era commit; wait until trigger throttling ends, then make one recovery synchronization only if no delayed run exists.
